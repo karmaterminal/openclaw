@@ -1,0 +1,647 @@
+{
+  "schema": "frond.causal-bug-proof.v1",
+  "name": "OpenClaw six-seat fleet causal localization for karmaterminal/openclaw#1254",
+  "nodes": [
+    {
+      "id": "governance:read-only",
+      "layer": "governance",
+      "kind": "constraint",
+      "label": "Read-only fleet investigation"
+    },
+    {
+      "id": "governance:missing-report",
+      "layer": "governance",
+      "kind": "evidence-gap",
+      "label": "Original row-level report unavailable"
+    },
+    {
+      "id": "governance:stale-gitnexus",
+      "layer": "governance",
+      "kind": "evidence-gap",
+      "label": "GitNexus index is not exact 6b09",
+      "toolReportedCommit": "a59a96549b7736613cb86dc846b28d0d82f03295",
+      "workorderIndexNote": "frozen near 530b"
+    },
+    {
+      "id": "commit:deployed",
+      "layer": "commit",
+      "kind": "composite",
+      "sha": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955",
+      "timestamp": "2026-08-15T01:14:41-07:00"
+    },
+    {
+      "id": "commit:absorbed-upstream",
+      "layer": "commit",
+      "kind": "upstream-base",
+      "sha": "530b33e4e37264c89ecd5abdd06279dd23d5c867"
+    },
+    {
+      "id": "commit:settled-finalizer",
+      "layer": "commit",
+      "kind": "introducing-candidate",
+      "sha": "6eea20ce181ecfcb9ff4cf24f85ef54f8580a690",
+      "pr": "openclaw/openclaw#110565",
+      "timestamp": "2026-07-22"
+    },
+    {
+      "id": "commit:turn-adoption",
+      "layer": "commit",
+      "kind": "introducing-candidate",
+      "sha": "16c14e5bbfc9e3a82203272ec7bb82b586df0a84",
+      "pr": "openclaw/openclaw#108924",
+      "timestamp": "2026-07-17"
+    },
+    {
+      "id": "commit:session-fence",
+      "layer": "commit",
+      "kind": "introducing-candidate",
+      "sha": "6df0fb818d67032c71eb885ac36febd540fbd10f",
+      "pr": "openclaw/openclaw#98510",
+      "timestamp": "2026-07-04"
+    },
+    {
+      "id": "commit:route-materialization",
+      "layer": "commit",
+      "kind": "introducing-candidate",
+      "sha": "1b1cebfe4218191db3644af9511c48eed070304f",
+      "pr": "openclaw/openclaw#104685",
+      "timestamp": "2026-07-11"
+    },
+    {
+      "id": "commit:ingress-recovery",
+      "layer": "commit",
+      "kind": "prior-fix",
+      "sha": "69983f80113aab3e88adfe60f98d2e1f17fbe2ca",
+      "pr": "openclaw/openclaw#122384",
+      "timestamp": "2026-08-11"
+    },
+    {
+      "id": "commit:shared-wal",
+      "layer": "commit",
+      "kind": "current-upstream-fix",
+      "sha": "ed447135bd427508cdc42aec9bc2549c6860c326",
+      "pr": "openclaw/openclaw#123777",
+      "timestamp": "2026-08-15"
+    },
+    {
+      "id": "incident:source-event",
+      "layer": "incident",
+      "kind": "discord-event",
+      "eventId": "1538222293149294694",
+      "channelId": "1466192485440164011"
+    },
+    {
+      "id": "incident:no-visible-payload",
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seats": "cael,ronan,emeric"
+    },
+    {
+      "id": "incident:rune-silent-loss",
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seat": "rune"
+    },
+    {
+      "id": "incident:sqlite-pressure",
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seats": "cael,ronan,emeric"
+    },
+    {
+      "id": "incident:silas-loop",
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seat": "silas",
+      "observedAttempts": 42
+    },
+    {
+      "id": "incident:elliott-route",
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seat": "elliott",
+      "observedRouteFailureRows": 72
+    },
+    {
+      "id": "receipt:cael-trace",
+      "layer": "incident",
+      "kind": "trace-receipt",
+      "traceId": "818314b20865025cc092d3042672f63b"
+    },
+    {
+      "id": "receipt:ronan-trace",
+      "layer": "incident",
+      "kind": "trace-receipt",
+      "traceId": "39bb0342c1c8abf08d305343b75028a6"
+    },
+    {
+      "id": "receipt:emeric-trace",
+      "layer": "incident",
+      "kind": "trace-receipt",
+      "traceId": "9af101e0eeb3b3058bc3810e5b8851ad"
+    },
+    {
+      "id": "receipt:silas-cadence",
+      "layer": "incident",
+      "kind": "journal-receipt",
+      "first": "2026-08-15T09:26:17.394-07:00",
+      "last": "2026-08-15T11:12:17-07:00",
+      "attempts": 42
+    },
+    {
+      "id": "code:capture-finalization-context",
+      "layer": "code",
+      "kind": "function",
+      "name": "captureCodexSettledTurnFinalizationContext",
+      "file": "extensions/codex/src/app-server/settled-turn-context.ts"
+    },
+    {
+      "id": "code:build-finalization-context",
+      "layer": "code",
+      "kind": "function",
+      "name": "buildCodexSettledTurnFinalizationContext",
+      "file": "extensions/codex/src/app-server/settled-turn-context.ts"
+    },
+    {
+      "id": "code:finalize-codex-attempt",
+      "layer": "code",
+      "kind": "function",
+      "name": "finalizeCodexAttempt",
+      "file": "extensions/codex/src/app-server/run-attempt-finalize.ts"
+    },
+    {
+      "id": "code:prepare-terminal-finalization",
+      "layer": "code",
+      "kind": "function",
+      "name": "prepareTerminalWithSettledTurnFinalization",
+      "file": "src/agents/embedded-agent-runner/run/settled-turn-finalization.ts"
+    },
+    {
+      "id": "code:zero-payload-warning",
+      "layer": "code",
+      "kind": "function",
+      "name": "maybeWarnZeroCountVisibleDispatch",
+      "file": "src/channels/turn/execution.ts"
+    },
+    {
+      "id": "code:load-transcript-events",
+      "layer": "code",
+      "kind": "function",
+      "name": "loadTranscriptEventsSync",
+      "file": "src/config/sessions/session-accessor.sqlite-read.ts"
+    },
+    {
+      "id": "code:ingress-complete",
+      "layer": "code",
+      "kind": "function",
+      "name": "complete",
+      "file": "src/channels/message/ingress-queue.ts"
+    },
+    {
+      "id": "code:monitor-default-completion",
+      "layer": "code",
+      "kind": "branch",
+      "name": "policy gate or deliberate no-dispatch completion",
+      "file": "src/channels/message/ingress-monitor.ts"
+    },
+    {
+      "id": "code:admit-reply-turn",
+      "layer": "code",
+      "kind": "function",
+      "name": "admitReplyTurn",
+      "file": "src/auto-reply/reply/reply-turn-admission.ts"
+    },
+    {
+      "id": "code:complete-followup-lifecycle",
+      "layer": "code",
+      "kind": "function",
+      "name": "completeFollowupRunLifecycle",
+      "file": "src/auto-reply/reply/queue/types.ts"
+    },
+    {
+      "id": "code:abandon-ingress",
+      "layer": "code",
+      "kind": "branch",
+      "name": "ChannelIngressDispatchLifecycle.onAbandoned",
+      "file": "src/channels/message/ingress-drain.ts"
+    },
+    {
+      "id": "code:retry-disposition",
+      "layer": "code",
+      "kind": "function",
+      "name": "resolveIngressFailureDisposition",
+      "file": "src/channels/message/ingress-retry-policy.ts"
+    },
+    {
+      "id": "code:materialize-route",
+      "layer": "code",
+      "kind": "function",
+      "name": "materializePreparedRuntimeModel",
+      "file": "src/agents/runtime-plan/materialize-model.ts"
+    },
+    {
+      "id": "defect:finalization-context-reason",
+      "layer": "defect",
+      "kind": "missing-discriminator",
+      "owner": "Codex settled-turn transcript attestation",
+      "status": "localized"
+    },
+    {
+      "id": "defect:rune-completion-reason",
+      "layer": "defect",
+      "kind": "missing-discriminator",
+      "owner": "channel ingress completion metadata",
+      "status": "localized"
+    },
+    {
+      "id": "defect:sqlite-hot-read",
+      "layer": "defect",
+      "kind": "performance-amplifier",
+      "owner": "agent session SQLite transcript read",
+      "status": "source-and-trace-evidenced"
+    },
+    {
+      "id": "defect:silas-abandonment-budget",
+      "layer": "defect",
+      "kind": "retry-policy-bypass",
+      "owner": "durable ingress abandonment",
+      "status": "source-and-cadence-evidenced"
+    },
+    {
+      "id": "defect:silas-rejection-reason",
+      "layer": "defect",
+      "kind": "missing-discriminator",
+      "owner": "reply-turn admission",
+      "status": "localized"
+    },
+    {
+      "id": "defect:elliott-materialization-reason",
+      "layer": "defect",
+      "kind": "missing-discriminator",
+      "owner": "prepared provider route materialization",
+      "status": "localized"
+    },
+    {
+      "id": "issue:fork-1254",
+      "layer": "governance",
+      "kind": "issue",
+      "url": "https://github.com/karmaterminal/openclaw/issues/1254"
+    },
+    {
+      "id": "issue:upstream-118873",
+      "layer": "governance",
+      "kind": "issue",
+      "url": "https://github.com/openclaw/openclaw/issues/118873"
+    },
+    {
+      "id": "issue:upstream-119884",
+      "layer": "governance",
+      "kind": "issue",
+      "url": "https://github.com/openclaw/openclaw/issues/119884"
+    },
+    {
+      "id": "issue:upstream-122076",
+      "layer": "governance",
+      "kind": "issue",
+      "url": "https://github.com/openclaw/openclaw/issues/122076"
+    },
+    {
+      "id": "issue:upstream-114603",
+      "layer": "governance",
+      "kind": "issue",
+      "url": "https://github.com/openclaw/openclaw/issues/114603"
+    },
+    {
+      "id": "probe:finalization-reason",
+      "layer": "test",
+      "kind": "proposed-probe",
+      "label": "Return and log a closed context rejection reason"
+    },
+    {
+      "id": "probe:rune-outcome",
+      "layer": "test",
+      "kind": "proposed-probe",
+      "label": "Retain bounded completion outcome metadata"
+    },
+    {
+      "id": "probe:sqlite-copy",
+      "layer": "test",
+      "kind": "proposed-probe",
+      "label": "Immutable copy query-plan and ANALYZE counterfactual"
+    },
+    {
+      "id": "fossil:silas-eight-abandons",
+      "layer": "test",
+      "kind": "proposed-fossil",
+      "expectedResult": "RED on 6b09"
+    },
+    {
+      "id": "probe:elliott-route",
+      "layer": "test",
+      "kind": "proposed-probe",
+      "label": "Typed route materialization mismatch with redacted route facts"
+    },
+    {
+      "id": "intervention:finalization-result",
+      "layer": "intervention",
+      "kind": "candidate",
+      "status": "not-executed"
+    },
+    {
+      "id": "intervention:rune-metadata",
+      "layer": "intervention",
+      "kind": "candidate",
+      "status": "not-executed"
+    },
+    {
+      "id": "intervention:offline-analyze",
+      "layer": "intervention",
+      "kind": "candidate",
+      "status": "not-executed"
+    },
+    {
+      "id": "intervention:abandonment-budget",
+      "layer": "intervention",
+      "kind": "candidate",
+      "status": "not-executed"
+    },
+    {
+      "id": "intervention:route-result",
+      "layer": "intervention",
+      "kind": "candidate",
+      "status": "not-executed"
+    }
+  ],
+  "edges": [
+    {
+      "source": "commit:absorbed-upstream",
+      "target": "commit:deployed",
+      "relation": "ABSORBED_BY"
+    },
+    {
+      "source": "receipt:cael-trace",
+      "target": "incident:no-visible-payload",
+      "relation": "EVIDENCES"
+    },
+    {
+      "source": "receipt:ronan-trace",
+      "target": "incident:no-visible-payload",
+      "relation": "EVIDENCES"
+    },
+    {
+      "source": "receipt:emeric-trace",
+      "target": "incident:no-visible-payload",
+      "relation": "EVIDENCES"
+    },
+    {
+      "source": "receipt:cael-trace",
+      "target": "incident:sqlite-pressure",
+      "relation": "EVIDENCES"
+    },
+    {
+      "source": "receipt:ronan-trace",
+      "target": "incident:sqlite-pressure",
+      "relation": "EVIDENCES"
+    },
+    {
+      "source": "receipt:emeric-trace",
+      "target": "incident:sqlite-pressure",
+      "relation": "EVIDENCES"
+    },
+    {
+      "source": "receipt:silas-cadence",
+      "target": "incident:silas-loop",
+      "relation": "EVIDENCES"
+    },
+    {
+      "source": "code:finalize-codex-attempt",
+      "target": "code:capture-finalization-context",
+      "relation": "CALLS"
+    },
+    {
+      "source": "code:capture-finalization-context",
+      "target": "code:build-finalization-context",
+      "relation": "CALLS"
+    },
+    {
+      "source": "code:capture-finalization-context",
+      "target": "code:load-transcript-events",
+      "relation": "CALLS"
+    },
+    {
+      "source": "code:build-finalization-context",
+      "target": "defect:finalization-context-reason",
+      "relation": "COLLAPSES_FAILURE_REASONS"
+    },
+    {
+      "source": "code:prepare-terminal-finalization",
+      "target": "code:zero-payload-warning",
+      "relation": "SAME_TRACE_PRECEDES",
+      "evidenceClass": "observed-and-source-localized"
+    },
+    {
+      "source": "defect:finalization-context-reason",
+      "target": "incident:no-visible-payload",
+      "relation": "CHARACTERIZES",
+      "note": "The outer failure chain is observed; the inner rejection reason remains unknown."
+    },
+    {
+      "source": "code:monitor-default-completion",
+      "target": "code:ingress-complete",
+      "relation": "CALLS"
+    },
+    {
+      "source": "code:ingress-complete",
+      "target": "defect:rune-completion-reason",
+      "relation": "ERASES_DISCRIMINATOR"
+    },
+    {
+      "source": "defect:rune-completion-reason",
+      "target": "incident:rune-silent-loss",
+      "relation": "CHARACTERIZES"
+    },
+    {
+      "source": "code:load-transcript-events",
+      "target": "defect:sqlite-hot-read",
+      "relation": "HOLDS_SYNC_TRANSACTION"
+    },
+    {
+      "source": "defect:sqlite-hot-read",
+      "target": "incident:sqlite-pressure",
+      "relation": "EVIDENCES"
+    },
+    {
+      "source": "code:admit-reply-turn",
+      "target": "defect:silas-rejection-reason",
+      "relation": "COLLAPSES_FAILURE_REASONS"
+    },
+    {
+      "source": "code:admit-reply-turn",
+      "target": "code:complete-followup-lifecycle",
+      "relation": "RETURNS_UNADOPTED_TO"
+    },
+    {
+      "source": "code:complete-followup-lifecycle",
+      "target": "code:abandon-ingress",
+      "relation": "CALLS"
+    },
+    {
+      "source": "code:abandon-ingress",
+      "target": "code:retry-disposition",
+      "relation": "BYPASSES"
+    },
+    {
+      "source": "code:abandon-ingress",
+      "target": "defect:silas-abandonment-budget",
+      "relation": "INTRODUCES_RETRY_POLICY_BYPASS"
+    },
+    {
+      "source": "defect:silas-abandonment-budget",
+      "target": "incident:silas-loop",
+      "relation": "EVIDENCES",
+      "evidenceClass": "source-plus-observed-capped-cadence"
+    },
+    {
+      "source": "code:materialize-route",
+      "target": "defect:elliott-materialization-reason",
+      "relation": "COLLAPSES_FAILURE_REASONS"
+    },
+    {
+      "source": "defect:elliott-materialization-reason",
+      "target": "incident:elliott-route",
+      "relation": "CHARACTERIZES"
+    },
+    {
+      "source": "commit:settled-finalizer",
+      "target": "defect:finalization-context-reason",
+      "relation": "INTRODUCES",
+      "evidenceClass": "textual-archaeology"
+    },
+    {
+      "source": "commit:turn-adoption",
+      "target": "defect:silas-abandonment-budget",
+      "relation": "INTRODUCES",
+      "evidenceClass": "textual-archaeology"
+    },
+    {
+      "source": "commit:session-fence",
+      "target": "defect:silas-rejection-reason",
+      "relation": "INTRODUCES",
+      "evidenceClass": "textual-archaeology"
+    },
+    {
+      "source": "commit:route-materialization",
+      "target": "defect:elliott-materialization-reason",
+      "relation": "INTRODUCES",
+      "evidenceClass": "textual-archaeology"
+    },
+    {
+      "source": "commit:ingress-recovery",
+      "target": "incident:silas-loop",
+      "relation": "PRESERVES_RETRY_HANDOFF",
+      "note": "Deployed fix prevents stranded claim loss but does not bound abandonment."
+    },
+    {
+      "source": "commit:shared-wal",
+      "target": "incident:sqlite-pressure",
+      "relation": "DOES_NOT_REACH",
+      "note": "Current-upstream-only fix owns shared state WAL; observed holds use agent DB."
+    },
+    {
+      "source": "issue:fork-1254",
+      "target": "incident:no-visible-payload",
+      "relation": "TRACKS"
+    },
+    {
+      "source": "issue:fork-1254",
+      "target": "incident:rune-silent-loss",
+      "relation": "TRACKS"
+    },
+    {
+      "source": "issue:fork-1254",
+      "target": "incident:sqlite-pressure",
+      "relation": "TRACKS"
+    },
+    {
+      "source": "issue:fork-1254",
+      "target": "incident:silas-loop",
+      "relation": "TRACKS"
+    },
+    {
+      "source": "issue:fork-1254",
+      "target": "incident:elliott-route",
+      "relation": "TRACKS"
+    },
+    {
+      "source": "issue:upstream-118873",
+      "target": "defect:silas-rejection-reason",
+      "relation": "TRACKS"
+    },
+    {
+      "source": "issue:upstream-119884",
+      "target": "defect:sqlite-hot-read",
+      "relation": "TRACKS"
+    },
+    {
+      "source": "issue:upstream-122076",
+      "target": "defect:finalization-context-reason",
+      "relation": "CONDITIONALLY_OVERLAPS",
+      "note": "Fleet traces contain zero yield markers."
+    },
+    {
+      "source": "issue:upstream-114603",
+      "target": "defect:elliott-materialization-reason",
+      "relation": "CONDITIONALLY_OVERLAPS"
+    },
+    {
+      "source": "probe:finalization-reason",
+      "target": "defect:finalization-context-reason",
+      "relation": "PROPOSED_PROBE_FOR"
+    },
+    {
+      "source": "probe:rune-outcome",
+      "target": "defect:rune-completion-reason",
+      "relation": "PROPOSED_PROBE_FOR"
+    },
+    {
+      "source": "probe:sqlite-copy",
+      "target": "defect:sqlite-hot-read",
+      "relation": "PROPOSED_PROBE_FOR"
+    },
+    {
+      "source": "fossil:silas-eight-abandons",
+      "target": "defect:silas-abandonment-budget",
+      "relation": "PROPOSED_FOSSIL_FOR"
+    },
+    {
+      "source": "probe:elliott-route",
+      "target": "defect:elliott-materialization-reason",
+      "relation": "PROPOSED_PROBE_FOR"
+    },
+    {
+      "source": "intervention:finalization-result",
+      "target": "probe:finalization-reason",
+      "relation": "CANDIDATE_INTERVENTION"
+    },
+    {
+      "source": "intervention:rune-metadata",
+      "target": "probe:rune-outcome",
+      "relation": "CANDIDATE_INTERVENTION"
+    },
+    {
+      "source": "intervention:offline-analyze",
+      "target": "probe:sqlite-copy",
+      "relation": "CANDIDATE_INTERVENTION"
+    },
+    {
+      "source": "intervention:abandonment-budget",
+      "target": "fossil:silas-eight-abandons",
+      "relation": "CANDIDATE_INTERVENTION"
+    },
+    {
+      "source": "intervention:route-result",
+      "target": "probe:elliott-route",
+      "relation": "CANDIDATE_INTERVENTION"
+    }
+  ]
+}

@@ -1,0 +1,679 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d31" for="edge" attr.name="source_system" attr.type="string" />
+  <key id="d30" for="edge" attr.name="reason" attr.type="string" />
+  <key id="d29" for="edge" attr.name="note" attr.type="string" />
+  <key id="d28" for="edge" attr.name="evidenceClass" attr.type="string" />
+  <key id="d27" for="edge" attr.name="relation" attr.type="string" />
+  <key id="d26" for="node" attr.name="source_system" attr.type="string" />
+  <key id="d25" for="node" attr.name="expectedResult" attr.type="string" />
+  <key id="d24" for="node" attr.name="url" attr.type="string" />
+  <key id="d23" for="node" attr.name="status" attr.type="string" />
+  <key id="d22" for="node" attr.name="owner" attr.type="string" />
+  <key id="d21" for="node" attr.name="file" attr.type="string" />
+  <key id="d20" for="node" attr.name="name" attr.type="string" />
+  <key id="d19" for="node" attr.name="attempts" attr.type="string" />
+  <key id="d18" for="node" attr.name="last" attr.type="string" />
+  <key id="d17" for="node" attr.name="first" attr.type="string" />
+  <key id="d16" for="node" attr.name="traceId" attr.type="string" />
+  <key id="d15" for="node" attr.name="observedRouteFailureRows" attr.type="string" />
+  <key id="d14" for="node" attr.name="observedAttempts" attr.type="string" />
+  <key id="d13" for="node" attr.name="seat" attr.type="string" />
+  <key id="d12" for="node" attr.name="seats" attr.type="string" />
+  <key id="d11" for="node" attr.name="channelId" attr.type="string" />
+  <key id="d10" for="node" attr.name="eventId" attr.type="string" />
+  <key id="d9" for="node" attr.name="pr" attr.type="string" />
+  <key id="d8" for="node" attr.name="timestamp" attr.type="string" />
+  <key id="d7" for="node" attr.name="sha" attr.type="string" />
+  <key id="d6" for="node" attr.name="workorderIndexNote" attr.type="string" />
+  <key id="d5" for="node" attr.name="toolReportedCommit" attr.type="string" />
+  <key id="d4" for="node" attr.name="label" attr.type="string" />
+  <key id="d3" for="node" attr.name="kind" attr.type="string" />
+  <key id="d2" for="node" attr.name="layer" attr.type="string" />
+  <key id="d1" for="graph" attr.name="schema" attr.type="string" />
+  <key id="d0" for="graph" attr.name="name" attr.type="string" />
+  <graph edgedefault="directed">
+    <node id="governance:read-only">
+      <data key="d2">governance</data>
+      <data key="d3">constraint</data>
+      <data key="d4">Read-only fleet investigation</data>
+    </node>
+    <node id="governance:missing-report">
+      <data key="d2">governance</data>
+      <data key="d3">evidence-gap</data>
+      <data key="d4">Original row-level report unavailable</data>
+    </node>
+    <node id="governance:stale-gitnexus">
+      <data key="d2">governance</data>
+      <data key="d3">evidence-gap</data>
+      <data key="d4">GitNexus index is not exact 6b09</data>
+      <data key="d5">a59a96549b7736613cb86dc846b28d0d82f03295</data>
+      <data key="d6">frozen near 530b</data>
+    </node>
+    <node id="commit:deployed">
+      <data key="d2">commit</data>
+      <data key="d3">composite</data>
+      <data key="d7">6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955</data>
+      <data key="d8">2026-08-15T01:14:41-07:00</data>
+      <data key="d4">commit:deployed</data>
+    </node>
+    <node id="commit:absorbed-upstream">
+      <data key="d2">commit</data>
+      <data key="d3">upstream-base</data>
+      <data key="d7">530b33e4e37264c89ecd5abdd06279dd23d5c867</data>
+      <data key="d4">commit:absorbed-upstream</data>
+    </node>
+    <node id="commit:settled-finalizer">
+      <data key="d2">commit</data>
+      <data key="d3">introducing-candidate</data>
+      <data key="d7">6eea20ce181ecfcb9ff4cf24f85ef54f8580a690</data>
+      <data key="d9">openclaw/openclaw#110565</data>
+      <data key="d8">2026-07-22</data>
+      <data key="d4">commit:settled-finalizer</data>
+    </node>
+    <node id="commit:turn-adoption">
+      <data key="d2">commit</data>
+      <data key="d3">introducing-candidate</data>
+      <data key="d7">16c14e5bbfc9e3a82203272ec7bb82b586df0a84</data>
+      <data key="d9">openclaw/openclaw#108924</data>
+      <data key="d8">2026-07-17</data>
+      <data key="d4">commit:turn-adoption</data>
+    </node>
+    <node id="commit:session-fence">
+      <data key="d2">commit</data>
+      <data key="d3">introducing-candidate</data>
+      <data key="d7">6df0fb818d67032c71eb885ac36febd540fbd10f</data>
+      <data key="d9">openclaw/openclaw#98510</data>
+      <data key="d8">2026-07-04</data>
+      <data key="d4">commit:session-fence</data>
+    </node>
+    <node id="commit:route-materialization">
+      <data key="d2">commit</data>
+      <data key="d3">introducing-candidate</data>
+      <data key="d7">1b1cebfe4218191db3644af9511c48eed070304f</data>
+      <data key="d9">openclaw/openclaw#104685</data>
+      <data key="d8">2026-07-11</data>
+      <data key="d4">commit:route-materialization</data>
+    </node>
+    <node id="commit:ingress-recovery">
+      <data key="d2">commit</data>
+      <data key="d3">prior-fix</data>
+      <data key="d7">69983f80113aab3e88adfe60f98d2e1f17fbe2ca</data>
+      <data key="d9">openclaw/openclaw#122384</data>
+      <data key="d8">2026-08-11</data>
+      <data key="d4">commit:ingress-recovery</data>
+    </node>
+    <node id="commit:shared-wal">
+      <data key="d2">commit</data>
+      <data key="d3">current-upstream-fix</data>
+      <data key="d7">ed447135bd427508cdc42aec9bc2549c6860c326</data>
+      <data key="d9">openclaw/openclaw#123777</data>
+      <data key="d8">2026-08-15</data>
+      <data key="d4">commit:shared-wal</data>
+    </node>
+    <node id="incident:source-event">
+      <data key="d2">incident</data>
+      <data key="d3">discord-event</data>
+      <data key="d10">1538222293149294694</data>
+      <data key="d11">1466192485440164011</data>
+      <data key="d4">incident:source-event</data>
+    </node>
+    <node id="incident:no-visible-payload">
+      <data key="d2">incident</data>
+      <data key="d3">symptom-family</data>
+      <data key="d12">cael,ronan,emeric</data>
+      <data key="d4">incident:no-visible-payload</data>
+    </node>
+    <node id="incident:rune-silent-loss">
+      <data key="d2">incident</data>
+      <data key="d3">symptom-family</data>
+      <data key="d13">rune</data>
+      <data key="d4">incident:rune-silent-loss</data>
+    </node>
+    <node id="incident:sqlite-pressure">
+      <data key="d2">incident</data>
+      <data key="d3">symptom-family</data>
+      <data key="d12">cael,ronan,emeric</data>
+      <data key="d4">incident:sqlite-pressure</data>
+    </node>
+    <node id="incident:silas-loop">
+      <data key="d2">incident</data>
+      <data key="d3">symptom-family</data>
+      <data key="d13">silas</data>
+      <data key="d14">42</data>
+      <data key="d4">incident:silas-loop</data>
+    </node>
+    <node id="incident:elliott-route">
+      <data key="d2">incident</data>
+      <data key="d3">symptom-family</data>
+      <data key="d13">elliott</data>
+      <data key="d15">72</data>
+      <data key="d4">incident:elliott-route</data>
+    </node>
+    <node id="receipt:cael-trace">
+      <data key="d2">incident</data>
+      <data key="d3">trace-receipt</data>
+      <data key="d16">818314b20865025cc092d3042672f63b</data>
+      <data key="d4">receipt:cael-trace</data>
+    </node>
+    <node id="receipt:ronan-trace">
+      <data key="d2">incident</data>
+      <data key="d3">trace-receipt</data>
+      <data key="d16">39bb0342c1c8abf08d305343b75028a6</data>
+      <data key="d4">receipt:ronan-trace</data>
+    </node>
+    <node id="receipt:emeric-trace">
+      <data key="d2">incident</data>
+      <data key="d3">trace-receipt</data>
+      <data key="d16">9af101e0eeb3b3058bc3810e5b8851ad</data>
+      <data key="d4">receipt:emeric-trace</data>
+    </node>
+    <node id="receipt:silas-cadence">
+      <data key="d2">incident</data>
+      <data key="d3">journal-receipt</data>
+      <data key="d17">2026-08-15T09:26:17.394-07:00</data>
+      <data key="d18">2026-08-15T11:12:17-07:00</data>
+      <data key="d19">42</data>
+      <data key="d4">receipt:silas-cadence</data>
+    </node>
+    <node id="code:capture-finalization-context">
+      <data key="d2">code</data>
+      <data key="d3">function</data>
+      <data key="d20">captureCodexSettledTurnFinalizationContext</data>
+      <data key="d21">extensions/codex/src/app-server/settled-turn-context.ts</data>
+      <data key="d4">captureCodexSettledTurnFinalizationContext</data>
+    </node>
+    <node id="code:build-finalization-context">
+      <data key="d2">code</data>
+      <data key="d3">function</data>
+      <data key="d20">buildCodexSettledTurnFinalizationContext</data>
+      <data key="d21">extensions/codex/src/app-server/settled-turn-context.ts</data>
+      <data key="d4">buildCodexSettledTurnFinalizationContext</data>
+    </node>
+    <node id="code:finalize-codex-attempt">
+      <data key="d2">code</data>
+      <data key="d3">function</data>
+      <data key="d20">finalizeCodexAttempt</data>
+      <data key="d21">extensions/codex/src/app-server/run-attempt-finalize.ts</data>
+      <data key="d4">finalizeCodexAttempt</data>
+    </node>
+    <node id="code:prepare-terminal-finalization">
+      <data key="d2">code</data>
+      <data key="d3">function</data>
+      <data key="d20">prepareTerminalWithSettledTurnFinalization</data>
+      <data key="d21">src/agents/embedded-agent-runner/run/settled-turn-finalization.ts</data>
+      <data key="d4">prepareTerminalWithSettledTurnFinalization</data>
+    </node>
+    <node id="code:zero-payload-warning">
+      <data key="d2">code</data>
+      <data key="d3">function</data>
+      <data key="d20">maybeWarnZeroCountVisibleDispatch</data>
+      <data key="d21">src/channels/turn/execution.ts</data>
+      <data key="d4">maybeWarnZeroCountVisibleDispatch</data>
+    </node>
+    <node id="code:load-transcript-events">
+      <data key="d2">code</data>
+      <data key="d3">function</data>
+      <data key="d20">loadTranscriptEventsSync</data>
+      <data key="d21">src/config/sessions/session-accessor.sqlite-read.ts</data>
+      <data key="d4">loadTranscriptEventsSync</data>
+    </node>
+    <node id="code:ingress-complete">
+      <data key="d2">code</data>
+      <data key="d3">function</data>
+      <data key="d20">complete</data>
+      <data key="d21">src/channels/message/ingress-queue.ts</data>
+      <data key="d4">complete</data>
+    </node>
+    <node id="code:monitor-default-completion">
+      <data key="d2">code</data>
+      <data key="d3">branch</data>
+      <data key="d20">policy gate or deliberate no-dispatch completion</data>
+      <data key="d21">src/channels/message/ingress-monitor.ts</data>
+      <data key="d4">policy gate or deliberate no-dispatch completion</data>
+    </node>
+    <node id="code:admit-reply-turn">
+      <data key="d2">code</data>
+      <data key="d3">function</data>
+      <data key="d20">admitReplyTurn</data>
+      <data key="d21">src/auto-reply/reply/reply-turn-admission.ts</data>
+      <data key="d4">admitReplyTurn</data>
+    </node>
+    <node id="code:complete-followup-lifecycle">
+      <data key="d2">code</data>
+      <data key="d3">function</data>
+      <data key="d20">completeFollowupRunLifecycle</data>
+      <data key="d21">src/auto-reply/reply/queue/types.ts</data>
+      <data key="d4">completeFollowupRunLifecycle</data>
+    </node>
+    <node id="code:abandon-ingress">
+      <data key="d2">code</data>
+      <data key="d3">branch</data>
+      <data key="d20">ChannelIngressDispatchLifecycle.onAbandoned</data>
+      <data key="d21">src/channels/message/ingress-drain.ts</data>
+      <data key="d4">ChannelIngressDispatchLifecycle.onAbandoned</data>
+    </node>
+    <node id="code:retry-disposition">
+      <data key="d2">code</data>
+      <data key="d3">function</data>
+      <data key="d20">resolveIngressFailureDisposition</data>
+      <data key="d21">src/channels/message/ingress-retry-policy.ts</data>
+      <data key="d4">resolveIngressFailureDisposition</data>
+    </node>
+    <node id="code:materialize-route">
+      <data key="d2">code</data>
+      <data key="d3">function</data>
+      <data key="d20">materializePreparedRuntimeModel</data>
+      <data key="d21">src/agents/runtime-plan/materialize-model.ts</data>
+      <data key="d4">materializePreparedRuntimeModel</data>
+    </node>
+    <node id="defect:finalization-context-reason">
+      <data key="d2">defect</data>
+      <data key="d3">missing-discriminator</data>
+      <data key="d22">Codex settled-turn transcript attestation</data>
+      <data key="d23">localized</data>
+      <data key="d4">defect:finalization-context-reason</data>
+    </node>
+    <node id="defect:rune-completion-reason">
+      <data key="d2">defect</data>
+      <data key="d3">missing-discriminator</data>
+      <data key="d22">channel ingress completion metadata</data>
+      <data key="d23">localized</data>
+      <data key="d4">defect:rune-completion-reason</data>
+    </node>
+    <node id="defect:sqlite-hot-read">
+      <data key="d2">defect</data>
+      <data key="d3">performance-amplifier</data>
+      <data key="d22">agent session SQLite transcript read</data>
+      <data key="d23">source-and-trace-evidenced</data>
+      <data key="d4">defect:sqlite-hot-read</data>
+    </node>
+    <node id="defect:silas-abandonment-budget">
+      <data key="d2">defect</data>
+      <data key="d3">retry-policy-bypass</data>
+      <data key="d22">durable ingress abandonment</data>
+      <data key="d23">source-and-cadence-evidenced</data>
+      <data key="d4">defect:silas-abandonment-budget</data>
+    </node>
+    <node id="defect:silas-rejection-reason">
+      <data key="d2">defect</data>
+      <data key="d3">missing-discriminator</data>
+      <data key="d22">reply-turn admission</data>
+      <data key="d23">localized</data>
+      <data key="d4">defect:silas-rejection-reason</data>
+    </node>
+    <node id="defect:elliott-materialization-reason">
+      <data key="d2">defect</data>
+      <data key="d3">missing-discriminator</data>
+      <data key="d22">prepared provider route materialization</data>
+      <data key="d23">localized</data>
+      <data key="d4">defect:elliott-materialization-reason</data>
+    </node>
+    <node id="issue:fork-1254">
+      <data key="d2">governance</data>
+      <data key="d3">issue</data>
+      <data key="d24">https://github.com/karmaterminal/openclaw/issues/1254</data>
+      <data key="d4">issue:fork-1254</data>
+    </node>
+    <node id="issue:upstream-118873">
+      <data key="d2">governance</data>
+      <data key="d3">issue</data>
+      <data key="d24">https://github.com/openclaw/openclaw/issues/118873</data>
+      <data key="d4">issue:upstream-118873</data>
+    </node>
+    <node id="issue:upstream-119884">
+      <data key="d2">governance</data>
+      <data key="d3">issue</data>
+      <data key="d24">https://github.com/openclaw/openclaw/issues/119884</data>
+      <data key="d4">issue:upstream-119884</data>
+    </node>
+    <node id="issue:upstream-122076">
+      <data key="d2">governance</data>
+      <data key="d3">issue</data>
+      <data key="d24">https://github.com/openclaw/openclaw/issues/122076</data>
+      <data key="d4">issue:upstream-122076</data>
+    </node>
+    <node id="issue:upstream-114603">
+      <data key="d2">governance</data>
+      <data key="d3">issue</data>
+      <data key="d24">https://github.com/openclaw/openclaw/issues/114603</data>
+      <data key="d4">issue:upstream-114603</data>
+    </node>
+    <node id="probe:finalization-reason">
+      <data key="d2">test</data>
+      <data key="d3">proposed-probe</data>
+      <data key="d4">Return and log a closed context rejection reason</data>
+    </node>
+    <node id="probe:rune-outcome">
+      <data key="d2">test</data>
+      <data key="d3">proposed-probe</data>
+      <data key="d4">Retain bounded completion outcome metadata</data>
+    </node>
+    <node id="probe:sqlite-copy">
+      <data key="d2">test</data>
+      <data key="d3">proposed-probe</data>
+      <data key="d4">Immutable copy query-plan and ANALYZE counterfactual</data>
+    </node>
+    <node id="fossil:silas-eight-abandons">
+      <data key="d2">test</data>
+      <data key="d3">proposed-fossil</data>
+      <data key="d25">RED on 6b09</data>
+      <data key="d4">fossil:silas-eight-abandons</data>
+    </node>
+    <node id="probe:elliott-route">
+      <data key="d2">test</data>
+      <data key="d3">proposed-probe</data>
+      <data key="d4">Typed route materialization mismatch with redacted route facts</data>
+    </node>
+    <node id="intervention:finalization-result">
+      <data key="d2">intervention</data>
+      <data key="d3">candidate</data>
+      <data key="d23">not-executed</data>
+      <data key="d4">intervention:finalization-result</data>
+    </node>
+    <node id="intervention:rune-metadata">
+      <data key="d2">intervention</data>
+      <data key="d3">candidate</data>
+      <data key="d23">not-executed</data>
+      <data key="d4">intervention:rune-metadata</data>
+    </node>
+    <node id="intervention:offline-analyze">
+      <data key="d2">intervention</data>
+      <data key="d3">candidate</data>
+      <data key="d23">not-executed</data>
+      <data key="d4">intervention:offline-analyze</data>
+    </node>
+    <node id="intervention:abandonment-budget">
+      <data key="d2">intervention</data>
+      <data key="d3">candidate</data>
+      <data key="d23">not-executed</data>
+      <data key="d4">intervention:abandonment-budget</data>
+    </node>
+    <node id="intervention:route-result">
+      <data key="d2">intervention</data>
+      <data key="d3">candidate</data>
+      <data key="d23">not-executed</data>
+      <data key="d4">intervention:route-result</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:drainOnce">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d20">drainOnce</data>
+      <data key="d21">src/channels/message/ingress-drain.ts</data>
+      <data key="d26">gitnexus</data>
+      <data key="d4">drainOnce</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:runClaimed">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d20">runClaimed</data>
+      <data key="d21">src/channels/message/ingress-drain.ts</data>
+      <data key="d26">gitnexus</data>
+      <data key="d4">runClaimed</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:createLifecycle">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d20">createLifecycle</data>
+      <data key="d21">src/channels/message/ingress-drain.ts</data>
+      <data key="d26">gitnexus</data>
+      <data key="d4">createLifecycle</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d20">completeClaimWithRetry</data>
+      <data key="d21">src/channels/message/ingress-drain.ts</data>
+      <data key="d26">gitnexus</data>
+      <data key="d4">completeClaimWithRetry</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:onAdopted">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d20">onAdopted</data>
+      <data key="d21">src/channels/message/ingress-drain.ts</data>
+      <data key="d26">gitnexus</data>
+      <data key="d4">onAdopted</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:onAbandoned">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d20">onAbandoned</data>
+      <data key="d21">src/channels/message/ingress-drain.ts</data>
+      <data key="d26">gitnexus</data>
+      <data key="d4">onAbandoned</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:releaseClaim">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d20">releaseClaim</data>
+      <data key="d21">src/channels/message/ingress-drain.ts</data>
+      <data key="d26">gitnexus</data>
+      <data key="d4">releaseClaim</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d20">commitClaimWriteWithRetry</data>
+      <data key="d21">src/channels/message/ingress-drain.ts</data>
+      <data key="d26">gitnexus</data>
+      <data key="d4">commitClaimWriteWithRetry</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-retry-policy.ts:sleepIngressRetryDelay">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d20">sleepIngressRetryDelay</data>
+      <data key="d21">src/channels/message/ingress-retry-policy.ts</data>
+      <data key="d26">gitnexus</data>
+      <data key="d4">sleepIngressRetryDelay</data>
+    </node>
+    <edge source="commit:absorbed-upstream" target="commit:deployed" id="0">
+      <data key="d27">ABSORBED_BY</data>
+    </edge>
+    <edge source="commit:settled-finalizer" target="defect:finalization-context-reason" id="0">
+      <data key="d27">INTRODUCES</data>
+      <data key="d28">textual-archaeology</data>
+    </edge>
+    <edge source="commit:turn-adoption" target="defect:silas-abandonment-budget" id="0">
+      <data key="d27">INTRODUCES</data>
+      <data key="d28">textual-archaeology</data>
+    </edge>
+    <edge source="commit:session-fence" target="defect:silas-rejection-reason" id="0">
+      <data key="d27">INTRODUCES</data>
+      <data key="d28">textual-archaeology</data>
+    </edge>
+    <edge source="commit:route-materialization" target="defect:elliott-materialization-reason" id="0">
+      <data key="d27">INTRODUCES</data>
+      <data key="d28">textual-archaeology</data>
+    </edge>
+    <edge source="commit:ingress-recovery" target="incident:silas-loop" id="0">
+      <data key="d27">PRESERVES_RETRY_HANDOFF</data>
+      <data key="d29">Deployed fix prevents stranded claim loss but does not bound abandonment.</data>
+    </edge>
+    <edge source="commit:shared-wal" target="incident:sqlite-pressure" id="0">
+      <data key="d27">DOES_NOT_REACH</data>
+      <data key="d29">Current-upstream-only fix owns shared state WAL; observed holds use agent DB.</data>
+    </edge>
+    <edge source="receipt:cael-trace" target="incident:no-visible-payload" id="0">
+      <data key="d27">EVIDENCES</data>
+    </edge>
+    <edge source="receipt:cael-trace" target="incident:sqlite-pressure" id="0">
+      <data key="d27">EVIDENCES</data>
+    </edge>
+    <edge source="receipt:ronan-trace" target="incident:no-visible-payload" id="0">
+      <data key="d27">EVIDENCES</data>
+    </edge>
+    <edge source="receipt:ronan-trace" target="incident:sqlite-pressure" id="0">
+      <data key="d27">EVIDENCES</data>
+    </edge>
+    <edge source="receipt:emeric-trace" target="incident:no-visible-payload" id="0">
+      <data key="d27">EVIDENCES</data>
+    </edge>
+    <edge source="receipt:emeric-trace" target="incident:sqlite-pressure" id="0">
+      <data key="d27">EVIDENCES</data>
+    </edge>
+    <edge source="receipt:silas-cadence" target="incident:silas-loop" id="0">
+      <data key="d27">EVIDENCES</data>
+    </edge>
+    <edge source="code:capture-finalization-context" target="code:build-finalization-context" id="0">
+      <data key="d27">CALLS</data>
+    </edge>
+    <edge source="code:capture-finalization-context" target="code:load-transcript-events" id="0">
+      <data key="d27">CALLS</data>
+    </edge>
+    <edge source="code:build-finalization-context" target="defect:finalization-context-reason" id="0">
+      <data key="d27">COLLAPSES_FAILURE_REASONS</data>
+    </edge>
+    <edge source="code:finalize-codex-attempt" target="code:capture-finalization-context" id="0">
+      <data key="d27">CALLS</data>
+    </edge>
+    <edge source="code:prepare-terminal-finalization" target="code:zero-payload-warning" id="0">
+      <data key="d27">SAME_TRACE_PRECEDES</data>
+      <data key="d28">observed-and-source-localized</data>
+    </edge>
+    <edge source="code:load-transcript-events" target="defect:sqlite-hot-read" id="0">
+      <data key="d27">HOLDS_SYNC_TRANSACTION</data>
+    </edge>
+    <edge source="code:ingress-complete" target="defect:rune-completion-reason" id="0">
+      <data key="d27">ERASES_DISCRIMINATOR</data>
+    </edge>
+    <edge source="code:monitor-default-completion" target="code:ingress-complete" id="0">
+      <data key="d27">CALLS</data>
+    </edge>
+    <edge source="code:admit-reply-turn" target="defect:silas-rejection-reason" id="0">
+      <data key="d27">COLLAPSES_FAILURE_REASONS</data>
+    </edge>
+    <edge source="code:admit-reply-turn" target="code:complete-followup-lifecycle" id="0">
+      <data key="d27">RETURNS_UNADOPTED_TO</data>
+    </edge>
+    <edge source="code:complete-followup-lifecycle" target="code:abandon-ingress" id="0">
+      <data key="d27">CALLS</data>
+    </edge>
+    <edge source="code:abandon-ingress" target="code:retry-disposition" id="0">
+      <data key="d27">BYPASSES</data>
+    </edge>
+    <edge source="code:abandon-ingress" target="defect:silas-abandonment-budget" id="0">
+      <data key="d27">INTRODUCES_RETRY_POLICY_BYPASS</data>
+    </edge>
+    <edge source="code:materialize-route" target="defect:elliott-materialization-reason" id="0">
+      <data key="d27">COLLAPSES_FAILURE_REASONS</data>
+    </edge>
+    <edge source="defect:finalization-context-reason" target="incident:no-visible-payload" id="0">
+      <data key="d27">CHARACTERIZES</data>
+      <data key="d29">The outer failure chain is observed; the inner rejection reason remains unknown.</data>
+    </edge>
+    <edge source="defect:rune-completion-reason" target="incident:rune-silent-loss" id="0">
+      <data key="d27">CHARACTERIZES</data>
+    </edge>
+    <edge source="defect:sqlite-hot-read" target="incident:sqlite-pressure" id="0">
+      <data key="d27">EVIDENCES</data>
+    </edge>
+    <edge source="defect:silas-abandonment-budget" target="incident:silas-loop" id="0">
+      <data key="d27">EVIDENCES</data>
+      <data key="d28">source-plus-observed-capped-cadence</data>
+    </edge>
+    <edge source="defect:elliott-materialization-reason" target="incident:elliott-route" id="0">
+      <data key="d27">CHARACTERIZES</data>
+    </edge>
+    <edge source="issue:fork-1254" target="incident:no-visible-payload" id="0">
+      <data key="d27">TRACKS</data>
+    </edge>
+    <edge source="issue:fork-1254" target="incident:rune-silent-loss" id="0">
+      <data key="d27">TRACKS</data>
+    </edge>
+    <edge source="issue:fork-1254" target="incident:sqlite-pressure" id="0">
+      <data key="d27">TRACKS</data>
+    </edge>
+    <edge source="issue:fork-1254" target="incident:silas-loop" id="0">
+      <data key="d27">TRACKS</data>
+    </edge>
+    <edge source="issue:fork-1254" target="incident:elliott-route" id="0">
+      <data key="d27">TRACKS</data>
+    </edge>
+    <edge source="issue:upstream-118873" target="defect:silas-rejection-reason" id="0">
+      <data key="d27">TRACKS</data>
+    </edge>
+    <edge source="issue:upstream-119884" target="defect:sqlite-hot-read" id="0">
+      <data key="d27">TRACKS</data>
+    </edge>
+    <edge source="issue:upstream-122076" target="defect:finalization-context-reason" id="0">
+      <data key="d27">CONDITIONALLY_OVERLAPS</data>
+      <data key="d29">Fleet traces contain zero yield markers.</data>
+    </edge>
+    <edge source="issue:upstream-114603" target="defect:elliott-materialization-reason" id="0">
+      <data key="d27">CONDITIONALLY_OVERLAPS</data>
+    </edge>
+    <edge source="probe:finalization-reason" target="defect:finalization-context-reason" id="0">
+      <data key="d27">PROPOSED_PROBE_FOR</data>
+    </edge>
+    <edge source="probe:rune-outcome" target="defect:rune-completion-reason" id="0">
+      <data key="d27">PROPOSED_PROBE_FOR</data>
+    </edge>
+    <edge source="probe:sqlite-copy" target="defect:sqlite-hot-read" id="0">
+      <data key="d27">PROPOSED_PROBE_FOR</data>
+    </edge>
+    <edge source="fossil:silas-eight-abandons" target="defect:silas-abandonment-budget" id="0">
+      <data key="d27">PROPOSED_FOSSIL_FOR</data>
+    </edge>
+    <edge source="probe:elliott-route" target="defect:elliott-materialization-reason" id="0">
+      <data key="d27">PROPOSED_PROBE_FOR</data>
+    </edge>
+    <edge source="intervention:finalization-result" target="probe:finalization-reason" id="0">
+      <data key="d27">CANDIDATE_INTERVENTION</data>
+    </edge>
+    <edge source="intervention:rune-metadata" target="probe:rune-outcome" id="0">
+      <data key="d27">CANDIDATE_INTERVENTION</data>
+    </edge>
+    <edge source="intervention:offline-analyze" target="probe:sqlite-copy" id="0">
+      <data key="d27">CANDIDATE_INTERVENTION</data>
+    </edge>
+    <edge source="intervention:abandonment-budget" target="fossil:silas-eight-abandons" id="0">
+      <data key="d27">CANDIDATE_INTERVENTION</data>
+    </edge>
+    <edge source="intervention:route-result" target="probe:elliott-route" id="0">
+      <data key="d27">CANDIDATE_INTERVENTION</data>
+    </edge>
+    <edge source="Function:src/channels/message/ingress-drain.ts:drainOnce" target="Function:src/channels/message/ingress-drain.ts:runClaimed" id="0">
+      <data key="d27">CALLS</data>
+      <data key="d30">local-call</data>
+      <data key="d31">gitnexus</data>
+    </edge>
+    <edge source="Function:src/channels/message/ingress-drain.ts:runClaimed" target="Function:src/channels/message/ingress-drain.ts:createLifecycle" id="0">
+      <data key="d27">CALLS</data>
+      <data key="d30">local-call</data>
+      <data key="d31">gitnexus</data>
+    </edge>
+    <edge source="Function:src/channels/message/ingress-drain.ts:runClaimed" target="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry" id="0">
+      <data key="d27">CALLS</data>
+      <data key="d30">local-call</data>
+      <data key="d31">gitnexus</data>
+    </edge>
+    <edge source="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry" target="Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry" id="0">
+      <data key="d27">CALLS</data>
+      <data key="d30">local-call</data>
+      <data key="d31">gitnexus</data>
+    </edge>
+    <edge source="Function:src/channels/message/ingress-drain.ts:onAdopted" target="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry" id="0">
+      <data key="d27">CALLS</data>
+      <data key="d30">local-call</data>
+      <data key="d31">gitnexus</data>
+    </edge>
+    <edge source="Function:src/channels/message/ingress-drain.ts:onAbandoned" target="Function:src/channels/message/ingress-drain.ts:releaseClaim" id="0">
+      <data key="d27">CALLS</data>
+      <data key="d30">local-call</data>
+      <data key="d31">gitnexus</data>
+    </edge>
+    <edge source="Function:src/channels/message/ingress-drain.ts:releaseClaim" target="Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry" id="0">
+      <data key="d27">CALLS</data>
+      <data key="d30">local-call</data>
+      <data key="d31">gitnexus</data>
+    </edge>
+    <edge source="Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry" target="Function:src/channels/message/ingress-retry-policy.ts:sleepIngressRetryDelay" id="0">
+      <data key="d27">CALLS</data>
+      <data key="d30">import-resolved</data>
+      <data key="d31">gitnexus</data>
+    </edge>
+    <data key="d0">OpenClaw six-seat fleet causal localization for karmaterminal/openclaw#1254</data>
+    <data key="d1">frond.causal-bug-proof.v1</data>
+  </graph>
+</graphml>

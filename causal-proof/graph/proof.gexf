@@ -1,0 +1,930 @@
+<?xml version='1.0' encoding='utf-8'?>
+<gexf xmlns="http://www.gexf.net/1.2draft" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.gexf.net/1.2draft http://www.gexf.net/1.2draft/gexf.xsd" version="1.2">
+  <meta lastmodifieddate="2026-08-15">
+    <creator>NetworkX 3.6.1</creator>
+  </meta>
+  <graph defaultedgetype="directed" mode="static" name="OpenClaw six-seat fleet causal localization for karmaterminal/openclaw#1254">
+    <attributes mode="static" class="edge">
+      <attribute id="24" title="relation" type="string" />
+      <attribute id="25" title="networkx_key" type="long" />
+      <attribute id="26" title="evidenceClass" type="string" />
+      <attribute id="27" title="note" type="string" />
+      <attribute id="28" title="reason" type="string" />
+      <attribute id="29" title="source_system" type="string" />
+    </attributes>
+    <attributes mode="static" class="node">
+      <attribute id="0" title="layer" type="string" />
+      <attribute id="1" title="kind" type="string" />
+      <attribute id="2" title="toolReportedCommit" type="string" />
+      <attribute id="3" title="workorderIndexNote" type="string" />
+      <attribute id="4" title="sha" type="string" />
+      <attribute id="5" title="timestamp" type="string" />
+      <attribute id="6" title="pr" type="string" />
+      <attribute id="7" title="eventId" type="string" />
+      <attribute id="8" title="channelId" type="string" />
+      <attribute id="9" title="seats" type="string" />
+      <attribute id="10" title="seat" type="string" />
+      <attribute id="11" title="observedAttempts" type="string" />
+      <attribute id="12" title="observedRouteFailureRows" type="string" />
+      <attribute id="13" title="traceId" type="string" />
+      <attribute id="14" title="first" type="string" />
+      <attribute id="15" title="last" type="string" />
+      <attribute id="16" title="attempts" type="string" />
+      <attribute id="17" title="name" type="string" />
+      <attribute id="18" title="file" type="string" />
+      <attribute id="19" title="owner" type="string" />
+      <attribute id="20" title="status" type="string" />
+      <attribute id="21" title="url" type="string" />
+      <attribute id="22" title="expectedResult" type="string" />
+      <attribute id="23" title="source_system" type="string" />
+    </attributes>
+    <nodes>
+      <node id="governance:read-only" label="Read-only fleet investigation">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="constraint" />
+        </attvalues>
+      </node>
+      <node id="governance:missing-report" label="Original row-level report unavailable">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="evidence-gap" />
+        </attvalues>
+      </node>
+      <node id="governance:stale-gitnexus" label="GitNexus index is not exact 6b09">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="evidence-gap" />
+          <attvalue for="2" value="a59a96549b7736613cb86dc846b28d0d82f03295" />
+          <attvalue for="3" value="frozen near 530b" />
+        </attvalues>
+      </node>
+      <node id="commit:deployed" label="commit:deployed">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="composite" />
+          <attvalue for="4" value="6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955" />
+          <attvalue for="5" value="2026-08-15T01:14:41-07:00" />
+        </attvalues>
+      </node>
+      <node id="commit:absorbed-upstream" label="commit:absorbed-upstream">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="upstream-base" />
+          <attvalue for="4" value="530b33e4e37264c89ecd5abdd06279dd23d5c867" />
+        </attvalues>
+      </node>
+      <node id="commit:settled-finalizer" label="commit:settled-finalizer">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="introducing-candidate" />
+          <attvalue for="4" value="6eea20ce181ecfcb9ff4cf24f85ef54f8580a690" />
+          <attvalue for="6" value="openclaw/openclaw#110565" />
+          <attvalue for="5" value="2026-07-22" />
+        </attvalues>
+      </node>
+      <node id="commit:turn-adoption" label="commit:turn-adoption">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="introducing-candidate" />
+          <attvalue for="4" value="16c14e5bbfc9e3a82203272ec7bb82b586df0a84" />
+          <attvalue for="6" value="openclaw/openclaw#108924" />
+          <attvalue for="5" value="2026-07-17" />
+        </attvalues>
+      </node>
+      <node id="commit:session-fence" label="commit:session-fence">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="introducing-candidate" />
+          <attvalue for="4" value="6df0fb818d67032c71eb885ac36febd540fbd10f" />
+          <attvalue for="6" value="openclaw/openclaw#98510" />
+          <attvalue for="5" value="2026-07-04" />
+        </attvalues>
+      </node>
+      <node id="commit:route-materialization" label="commit:route-materialization">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="introducing-candidate" />
+          <attvalue for="4" value="1b1cebfe4218191db3644af9511c48eed070304f" />
+          <attvalue for="6" value="openclaw/openclaw#104685" />
+          <attvalue for="5" value="2026-07-11" />
+        </attvalues>
+      </node>
+      <node id="commit:ingress-recovery" label="commit:ingress-recovery">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="prior-fix" />
+          <attvalue for="4" value="69983f80113aab3e88adfe60f98d2e1f17fbe2ca" />
+          <attvalue for="6" value="openclaw/openclaw#122384" />
+          <attvalue for="5" value="2026-08-11" />
+        </attvalues>
+      </node>
+      <node id="commit:shared-wal" label="commit:shared-wal">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="current-upstream-fix" />
+          <attvalue for="4" value="ed447135bd427508cdc42aec9bc2549c6860c326" />
+          <attvalue for="6" value="openclaw/openclaw#123777" />
+          <attvalue for="5" value="2026-08-15" />
+        </attvalues>
+      </node>
+      <node id="incident:source-event" label="incident:source-event">
+        <attvalues>
+          <attvalue for="0" value="incident" />
+          <attvalue for="1" value="discord-event" />
+          <attvalue for="7" value="1538222293149294694" />
+          <attvalue for="8" value="1466192485440164011" />
+        </attvalues>
+      </node>
+      <node id="incident:no-visible-payload" label="incident:no-visible-payload">
+        <attvalues>
+          <attvalue for="0" value="incident" />
+          <attvalue for="1" value="symptom-family" />
+          <attvalue for="9" value="cael,ronan,emeric" />
+        </attvalues>
+      </node>
+      <node id="incident:rune-silent-loss" label="incident:rune-silent-loss">
+        <attvalues>
+          <attvalue for="0" value="incident" />
+          <attvalue for="1" value="symptom-family" />
+          <attvalue for="10" value="rune" />
+        </attvalues>
+      </node>
+      <node id="incident:sqlite-pressure" label="incident:sqlite-pressure">
+        <attvalues>
+          <attvalue for="0" value="incident" />
+          <attvalue for="1" value="symptom-family" />
+          <attvalue for="9" value="cael,ronan,emeric" />
+        </attvalues>
+      </node>
+      <node id="incident:silas-loop" label="incident:silas-loop">
+        <attvalues>
+          <attvalue for="0" value="incident" />
+          <attvalue for="1" value="symptom-family" />
+          <attvalue for="10" value="silas" />
+          <attvalue for="11" value="42" />
+        </attvalues>
+      </node>
+      <node id="incident:elliott-route" label="incident:elliott-route">
+        <attvalues>
+          <attvalue for="0" value="incident" />
+          <attvalue for="1" value="symptom-family" />
+          <attvalue for="10" value="elliott" />
+          <attvalue for="12" value="72" />
+        </attvalues>
+      </node>
+      <node id="receipt:cael-trace" label="receipt:cael-trace">
+        <attvalues>
+          <attvalue for="0" value="incident" />
+          <attvalue for="1" value="trace-receipt" />
+          <attvalue for="13" value="818314b20865025cc092d3042672f63b" />
+        </attvalues>
+      </node>
+      <node id="receipt:ronan-trace" label="receipt:ronan-trace">
+        <attvalues>
+          <attvalue for="0" value="incident" />
+          <attvalue for="1" value="trace-receipt" />
+          <attvalue for="13" value="39bb0342c1c8abf08d305343b75028a6" />
+        </attvalues>
+      </node>
+      <node id="receipt:emeric-trace" label="receipt:emeric-trace">
+        <attvalues>
+          <attvalue for="0" value="incident" />
+          <attvalue for="1" value="trace-receipt" />
+          <attvalue for="13" value="9af101e0eeb3b3058bc3810e5b8851ad" />
+        </attvalues>
+      </node>
+      <node id="receipt:silas-cadence" label="receipt:silas-cadence">
+        <attvalues>
+          <attvalue for="0" value="incident" />
+          <attvalue for="1" value="journal-receipt" />
+          <attvalue for="14" value="2026-08-15T09:26:17.394-07:00" />
+          <attvalue for="15" value="2026-08-15T11:12:17-07:00" />
+          <attvalue for="16" value="42" />
+        </attvalues>
+      </node>
+      <node id="code:capture-finalization-context" label="captureCodexSettledTurnFinalizationContext">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="function" />
+          <attvalue for="17" value="captureCodexSettledTurnFinalizationContext" />
+          <attvalue for="18" value="extensions/codex/src/app-server/settled-turn-context.ts" />
+        </attvalues>
+      </node>
+      <node id="code:build-finalization-context" label="buildCodexSettledTurnFinalizationContext">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="function" />
+          <attvalue for="17" value="buildCodexSettledTurnFinalizationContext" />
+          <attvalue for="18" value="extensions/codex/src/app-server/settled-turn-context.ts" />
+        </attvalues>
+      </node>
+      <node id="code:finalize-codex-attempt" label="finalizeCodexAttempt">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="function" />
+          <attvalue for="17" value="finalizeCodexAttempt" />
+          <attvalue for="18" value="extensions/codex/src/app-server/run-attempt-finalize.ts" />
+        </attvalues>
+      </node>
+      <node id="code:prepare-terminal-finalization" label="prepareTerminalWithSettledTurnFinalization">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="function" />
+          <attvalue for="17" value="prepareTerminalWithSettledTurnFinalization" />
+          <attvalue for="18" value="src/agents/embedded-agent-runner/run/settled-turn-finalization.ts" />
+        </attvalues>
+      </node>
+      <node id="code:zero-payload-warning" label="maybeWarnZeroCountVisibleDispatch">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="function" />
+          <attvalue for="17" value="maybeWarnZeroCountVisibleDispatch" />
+          <attvalue for="18" value="src/channels/turn/execution.ts" />
+        </attvalues>
+      </node>
+      <node id="code:load-transcript-events" label="loadTranscriptEventsSync">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="function" />
+          <attvalue for="17" value="loadTranscriptEventsSync" />
+          <attvalue for="18" value="src/config/sessions/session-accessor.sqlite-read.ts" />
+        </attvalues>
+      </node>
+      <node id="code:ingress-complete" label="complete">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="function" />
+          <attvalue for="17" value="complete" />
+          <attvalue for="18" value="src/channels/message/ingress-queue.ts" />
+        </attvalues>
+      </node>
+      <node id="code:monitor-default-completion" label="policy gate or deliberate no-dispatch completion">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="branch" />
+          <attvalue for="17" value="policy gate or deliberate no-dispatch completion" />
+          <attvalue for="18" value="src/channels/message/ingress-monitor.ts" />
+        </attvalues>
+      </node>
+      <node id="code:admit-reply-turn" label="admitReplyTurn">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="function" />
+          <attvalue for="17" value="admitReplyTurn" />
+          <attvalue for="18" value="src/auto-reply/reply/reply-turn-admission.ts" />
+        </attvalues>
+      </node>
+      <node id="code:complete-followup-lifecycle" label="completeFollowupRunLifecycle">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="function" />
+          <attvalue for="17" value="completeFollowupRunLifecycle" />
+          <attvalue for="18" value="src/auto-reply/reply/queue/types.ts" />
+        </attvalues>
+      </node>
+      <node id="code:abandon-ingress" label="ChannelIngressDispatchLifecycle.onAbandoned">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="branch" />
+          <attvalue for="17" value="ChannelIngressDispatchLifecycle.onAbandoned" />
+          <attvalue for="18" value="src/channels/message/ingress-drain.ts" />
+        </attvalues>
+      </node>
+      <node id="code:retry-disposition" label="resolveIngressFailureDisposition">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="function" />
+          <attvalue for="17" value="resolveIngressFailureDisposition" />
+          <attvalue for="18" value="src/channels/message/ingress-retry-policy.ts" />
+        </attvalues>
+      </node>
+      <node id="code:materialize-route" label="materializePreparedRuntimeModel">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="function" />
+          <attvalue for="17" value="materializePreparedRuntimeModel" />
+          <attvalue for="18" value="src/agents/runtime-plan/materialize-model.ts" />
+        </attvalues>
+      </node>
+      <node id="defect:finalization-context-reason" label="defect:finalization-context-reason">
+        <attvalues>
+          <attvalue for="0" value="defect" />
+          <attvalue for="1" value="missing-discriminator" />
+          <attvalue for="19" value="Codex settled-turn transcript attestation" />
+          <attvalue for="20" value="localized" />
+        </attvalues>
+      </node>
+      <node id="defect:rune-completion-reason" label="defect:rune-completion-reason">
+        <attvalues>
+          <attvalue for="0" value="defect" />
+          <attvalue for="1" value="missing-discriminator" />
+          <attvalue for="19" value="channel ingress completion metadata" />
+          <attvalue for="20" value="localized" />
+        </attvalues>
+      </node>
+      <node id="defect:sqlite-hot-read" label="defect:sqlite-hot-read">
+        <attvalues>
+          <attvalue for="0" value="defect" />
+          <attvalue for="1" value="performance-amplifier" />
+          <attvalue for="19" value="agent session SQLite transcript read" />
+          <attvalue for="20" value="source-and-trace-evidenced" />
+        </attvalues>
+      </node>
+      <node id="defect:silas-abandonment-budget" label="defect:silas-abandonment-budget">
+        <attvalues>
+          <attvalue for="0" value="defect" />
+          <attvalue for="1" value="retry-policy-bypass" />
+          <attvalue for="19" value="durable ingress abandonment" />
+          <attvalue for="20" value="source-and-cadence-evidenced" />
+        </attvalues>
+      </node>
+      <node id="defect:silas-rejection-reason" label="defect:silas-rejection-reason">
+        <attvalues>
+          <attvalue for="0" value="defect" />
+          <attvalue for="1" value="missing-discriminator" />
+          <attvalue for="19" value="reply-turn admission" />
+          <attvalue for="20" value="localized" />
+        </attvalues>
+      </node>
+      <node id="defect:elliott-materialization-reason" label="defect:elliott-materialization-reason">
+        <attvalues>
+          <attvalue for="0" value="defect" />
+          <attvalue for="1" value="missing-discriminator" />
+          <attvalue for="19" value="prepared provider route materialization" />
+          <attvalue for="20" value="localized" />
+        </attvalues>
+      </node>
+      <node id="issue:fork-1254" label="issue:fork-1254">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="issue" />
+          <attvalue for="21" value="https://github.com/karmaterminal/openclaw/issues/1254" />
+        </attvalues>
+      </node>
+      <node id="issue:upstream-118873" label="issue:upstream-118873">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="issue" />
+          <attvalue for="21" value="https://github.com/openclaw/openclaw/issues/118873" />
+        </attvalues>
+      </node>
+      <node id="issue:upstream-119884" label="issue:upstream-119884">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="issue" />
+          <attvalue for="21" value="https://github.com/openclaw/openclaw/issues/119884" />
+        </attvalues>
+      </node>
+      <node id="issue:upstream-122076" label="issue:upstream-122076">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="issue" />
+          <attvalue for="21" value="https://github.com/openclaw/openclaw/issues/122076" />
+        </attvalues>
+      </node>
+      <node id="issue:upstream-114603" label="issue:upstream-114603">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="issue" />
+          <attvalue for="21" value="https://github.com/openclaw/openclaw/issues/114603" />
+        </attvalues>
+      </node>
+      <node id="probe:finalization-reason" label="Return and log a closed context rejection reason">
+        <attvalues>
+          <attvalue for="0" value="test" />
+          <attvalue for="1" value="proposed-probe" />
+        </attvalues>
+      </node>
+      <node id="probe:rune-outcome" label="Retain bounded completion outcome metadata">
+        <attvalues>
+          <attvalue for="0" value="test" />
+          <attvalue for="1" value="proposed-probe" />
+        </attvalues>
+      </node>
+      <node id="probe:sqlite-copy" label="Immutable copy query-plan and ANALYZE counterfactual">
+        <attvalues>
+          <attvalue for="0" value="test" />
+          <attvalue for="1" value="proposed-probe" />
+        </attvalues>
+      </node>
+      <node id="fossil:silas-eight-abandons" label="fossil:silas-eight-abandons">
+        <attvalues>
+          <attvalue for="0" value="test" />
+          <attvalue for="1" value="proposed-fossil" />
+          <attvalue for="22" value="RED on 6b09" />
+        </attvalues>
+      </node>
+      <node id="probe:elliott-route" label="Typed route materialization mismatch with redacted route facts">
+        <attvalues>
+          <attvalue for="0" value="test" />
+          <attvalue for="1" value="proposed-probe" />
+        </attvalues>
+      </node>
+      <node id="intervention:finalization-result" label="intervention:finalization-result">
+        <attvalues>
+          <attvalue for="0" value="intervention" />
+          <attvalue for="1" value="candidate" />
+          <attvalue for="20" value="not-executed" />
+        </attvalues>
+      </node>
+      <node id="intervention:rune-metadata" label="intervention:rune-metadata">
+        <attvalues>
+          <attvalue for="0" value="intervention" />
+          <attvalue for="1" value="candidate" />
+          <attvalue for="20" value="not-executed" />
+        </attvalues>
+      </node>
+      <node id="intervention:offline-analyze" label="intervention:offline-analyze">
+        <attvalues>
+          <attvalue for="0" value="intervention" />
+          <attvalue for="1" value="candidate" />
+          <attvalue for="20" value="not-executed" />
+        </attvalues>
+      </node>
+      <node id="intervention:abandonment-budget" label="intervention:abandonment-budget">
+        <attvalues>
+          <attvalue for="0" value="intervention" />
+          <attvalue for="1" value="candidate" />
+          <attvalue for="20" value="not-executed" />
+        </attvalues>
+      </node>
+      <node id="intervention:route-result" label="intervention:route-result">
+        <attvalues>
+          <attvalue for="0" value="intervention" />
+          <attvalue for="1" value="candidate" />
+          <attvalue for="20" value="not-executed" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:drainOnce" label="drainOnce">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="17" value="drainOnce" />
+          <attvalue for="18" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="23" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:runClaimed" label="runClaimed">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="17" value="runClaimed" />
+          <attvalue for="18" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="23" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:createLifecycle" label="createLifecycle">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="17" value="createLifecycle" />
+          <attvalue for="18" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="23" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry" label="completeClaimWithRetry">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="17" value="completeClaimWithRetry" />
+          <attvalue for="18" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="23" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:onAdopted" label="onAdopted">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="17" value="onAdopted" />
+          <attvalue for="18" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="23" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:onAbandoned" label="onAbandoned">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="17" value="onAbandoned" />
+          <attvalue for="18" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="23" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:releaseClaim" label="releaseClaim">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="17" value="releaseClaim" />
+          <attvalue for="18" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="23" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry" label="commitClaimWriteWithRetry">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="17" value="commitClaimWriteWithRetry" />
+          <attvalue for="18" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="23" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-retry-policy.ts:sleepIngressRetryDelay" label="sleepIngressRetryDelay">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="17" value="sleepIngressRetryDelay" />
+          <attvalue for="18" value="src/channels/message/ingress-retry-policy.ts" />
+          <attvalue for="23" value="gitnexus" />
+        </attvalues>
+      </node>
+    </nodes>
+    <edges>
+      <edge source="commit:absorbed-upstream" target="commit:deployed" id="0">
+        <attvalues>
+          <attvalue for="24" value="ABSORBED_BY" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="commit:settled-finalizer" target="defect:finalization-context-reason" id="1">
+        <attvalues>
+          <attvalue for="24" value="INTRODUCES" />
+          <attvalue for="26" value="textual-archaeology" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="commit:turn-adoption" target="defect:silas-abandonment-budget" id="2">
+        <attvalues>
+          <attvalue for="24" value="INTRODUCES" />
+          <attvalue for="26" value="textual-archaeology" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="commit:session-fence" target="defect:silas-rejection-reason" id="3">
+        <attvalues>
+          <attvalue for="24" value="INTRODUCES" />
+          <attvalue for="26" value="textual-archaeology" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="commit:route-materialization" target="defect:elliott-materialization-reason" id="4">
+        <attvalues>
+          <attvalue for="24" value="INTRODUCES" />
+          <attvalue for="26" value="textual-archaeology" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="commit:ingress-recovery" target="incident:silas-loop" id="5">
+        <attvalues>
+          <attvalue for="24" value="PRESERVES_RETRY_HANDOFF" />
+          <attvalue for="27" value="Deployed fix prevents stranded claim loss but does not bound abandonment." />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="commit:shared-wal" target="incident:sqlite-pressure" id="6">
+        <attvalues>
+          <attvalue for="24" value="DOES_NOT_REACH" />
+          <attvalue for="27" value="Current-upstream-only fix owns shared state WAL; observed holds use agent DB." />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="receipt:cael-trace" target="incident:no-visible-payload" id="7">
+        <attvalues>
+          <attvalue for="24" value="EVIDENCES" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="receipt:cael-trace" target="incident:sqlite-pressure" id="8">
+        <attvalues>
+          <attvalue for="24" value="EVIDENCES" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="receipt:ronan-trace" target="incident:no-visible-payload" id="9">
+        <attvalues>
+          <attvalue for="24" value="EVIDENCES" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="receipt:ronan-trace" target="incident:sqlite-pressure" id="10">
+        <attvalues>
+          <attvalue for="24" value="EVIDENCES" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="receipt:emeric-trace" target="incident:no-visible-payload" id="11">
+        <attvalues>
+          <attvalue for="24" value="EVIDENCES" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="receipt:emeric-trace" target="incident:sqlite-pressure" id="12">
+        <attvalues>
+          <attvalue for="24" value="EVIDENCES" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="receipt:silas-cadence" target="incident:silas-loop" id="13">
+        <attvalues>
+          <attvalue for="24" value="EVIDENCES" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:capture-finalization-context" target="code:build-finalization-context" id="14">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:capture-finalization-context" target="code:load-transcript-events" id="15">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:build-finalization-context" target="defect:finalization-context-reason" id="16">
+        <attvalues>
+          <attvalue for="24" value="COLLAPSES_FAILURE_REASONS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:finalize-codex-attempt" target="code:capture-finalization-context" id="17">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:prepare-terminal-finalization" target="code:zero-payload-warning" id="18">
+        <attvalues>
+          <attvalue for="24" value="SAME_TRACE_PRECEDES" />
+          <attvalue for="26" value="observed-and-source-localized" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:load-transcript-events" target="defect:sqlite-hot-read" id="19">
+        <attvalues>
+          <attvalue for="24" value="HOLDS_SYNC_TRANSACTION" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:ingress-complete" target="defect:rune-completion-reason" id="20">
+        <attvalues>
+          <attvalue for="24" value="ERASES_DISCRIMINATOR" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:monitor-default-completion" target="code:ingress-complete" id="21">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:admit-reply-turn" target="defect:silas-rejection-reason" id="22">
+        <attvalues>
+          <attvalue for="24" value="COLLAPSES_FAILURE_REASONS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:admit-reply-turn" target="code:complete-followup-lifecycle" id="23">
+        <attvalues>
+          <attvalue for="24" value="RETURNS_UNADOPTED_TO" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:complete-followup-lifecycle" target="code:abandon-ingress" id="24">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:abandon-ingress" target="code:retry-disposition" id="25">
+        <attvalues>
+          <attvalue for="24" value="BYPASSES" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:abandon-ingress" target="defect:silas-abandonment-budget" id="26">
+        <attvalues>
+          <attvalue for="24" value="INTRODUCES_RETRY_POLICY_BYPASS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:materialize-route" target="defect:elliott-materialization-reason" id="27">
+        <attvalues>
+          <attvalue for="24" value="COLLAPSES_FAILURE_REASONS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="defect:finalization-context-reason" target="incident:no-visible-payload" id="28">
+        <attvalues>
+          <attvalue for="24" value="CHARACTERIZES" />
+          <attvalue for="27" value="The outer failure chain is observed; the inner rejection reason remains unknown." />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="defect:rune-completion-reason" target="incident:rune-silent-loss" id="29">
+        <attvalues>
+          <attvalue for="24" value="CHARACTERIZES" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="defect:sqlite-hot-read" target="incident:sqlite-pressure" id="30">
+        <attvalues>
+          <attvalue for="24" value="EVIDENCES" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="defect:silas-abandonment-budget" target="incident:silas-loop" id="31">
+        <attvalues>
+          <attvalue for="24" value="EVIDENCES" />
+          <attvalue for="26" value="source-plus-observed-capped-cadence" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="defect:elliott-materialization-reason" target="incident:elliott-route" id="32">
+        <attvalues>
+          <attvalue for="24" value="CHARACTERIZES" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="issue:fork-1254" target="incident:no-visible-payload" id="33">
+        <attvalues>
+          <attvalue for="24" value="TRACKS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="issue:fork-1254" target="incident:rune-silent-loss" id="34">
+        <attvalues>
+          <attvalue for="24" value="TRACKS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="issue:fork-1254" target="incident:sqlite-pressure" id="35">
+        <attvalues>
+          <attvalue for="24" value="TRACKS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="issue:fork-1254" target="incident:silas-loop" id="36">
+        <attvalues>
+          <attvalue for="24" value="TRACKS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="issue:fork-1254" target="incident:elliott-route" id="37">
+        <attvalues>
+          <attvalue for="24" value="TRACKS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="issue:upstream-118873" target="defect:silas-rejection-reason" id="38">
+        <attvalues>
+          <attvalue for="24" value="TRACKS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="issue:upstream-119884" target="defect:sqlite-hot-read" id="39">
+        <attvalues>
+          <attvalue for="24" value="TRACKS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="issue:upstream-122076" target="defect:finalization-context-reason" id="40">
+        <attvalues>
+          <attvalue for="24" value="CONDITIONALLY_OVERLAPS" />
+          <attvalue for="27" value="Fleet traces contain zero yield markers." />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="issue:upstream-114603" target="defect:elliott-materialization-reason" id="41">
+        <attvalues>
+          <attvalue for="24" value="CONDITIONALLY_OVERLAPS" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="probe:finalization-reason" target="defect:finalization-context-reason" id="42">
+        <attvalues>
+          <attvalue for="24" value="PROPOSED_PROBE_FOR" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="probe:rune-outcome" target="defect:rune-completion-reason" id="43">
+        <attvalues>
+          <attvalue for="24" value="PROPOSED_PROBE_FOR" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="probe:sqlite-copy" target="defect:sqlite-hot-read" id="44">
+        <attvalues>
+          <attvalue for="24" value="PROPOSED_PROBE_FOR" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="fossil:silas-eight-abandons" target="defect:silas-abandonment-budget" id="45">
+        <attvalues>
+          <attvalue for="24" value="PROPOSED_FOSSIL_FOR" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="probe:elliott-route" target="defect:elliott-materialization-reason" id="46">
+        <attvalues>
+          <attvalue for="24" value="PROPOSED_PROBE_FOR" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="intervention:finalization-result" target="probe:finalization-reason" id="47">
+        <attvalues>
+          <attvalue for="24" value="CANDIDATE_INTERVENTION" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="intervention:rune-metadata" target="probe:rune-outcome" id="48">
+        <attvalues>
+          <attvalue for="24" value="CANDIDATE_INTERVENTION" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="intervention:offline-analyze" target="probe:sqlite-copy" id="49">
+        <attvalues>
+          <attvalue for="24" value="CANDIDATE_INTERVENTION" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="intervention:abandonment-budget" target="fossil:silas-eight-abandons" id="50">
+        <attvalues>
+          <attvalue for="24" value="CANDIDATE_INTERVENTION" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="intervention:route-result" target="probe:elliott-route" id="51">
+        <attvalues>
+          <attvalue for="24" value="CANDIDATE_INTERVENTION" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="Function:src/channels/message/ingress-drain.ts:drainOnce" target="Function:src/channels/message/ingress-drain.ts:runClaimed" id="52">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="28" value="local-call" />
+          <attvalue for="29" value="gitnexus" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="Function:src/channels/message/ingress-drain.ts:runClaimed" target="Function:src/channels/message/ingress-drain.ts:createLifecycle" id="53">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="28" value="local-call" />
+          <attvalue for="29" value="gitnexus" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="Function:src/channels/message/ingress-drain.ts:runClaimed" target="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry" id="54">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="28" value="local-call" />
+          <attvalue for="29" value="gitnexus" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry" target="Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry" id="55">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="28" value="local-call" />
+          <attvalue for="29" value="gitnexus" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="Function:src/channels/message/ingress-drain.ts:onAdopted" target="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry" id="56">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="28" value="local-call" />
+          <attvalue for="29" value="gitnexus" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="Function:src/channels/message/ingress-drain.ts:onAbandoned" target="Function:src/channels/message/ingress-drain.ts:releaseClaim" id="57">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="28" value="local-call" />
+          <attvalue for="29" value="gitnexus" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="Function:src/channels/message/ingress-drain.ts:releaseClaim" target="Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry" id="58">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="28" value="local-call" />
+          <attvalue for="29" value="gitnexus" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry" target="Function:src/channels/message/ingress-retry-policy.ts:sleepIngressRetryDelay" id="59">
+        <attvalues>
+          <attvalue for="24" value="CALLS" />
+          <attvalue for="28" value="import-resolved" />
+          <attvalue for="29" value="gitnexus" />
+          <attvalue for="25" value="0" />
+        </attvalues>
+      </edge>
+    </edges>
+  </graph>
+</gexf>

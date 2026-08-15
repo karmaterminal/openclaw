@@ -1,0 +1,82 @@
+[
+  {
+    "sourceId": "Function:src/channels/message/ingress-drain.ts:drainOnce",
+    "sourceName": "drainOnce",
+    "sourceFile": "src/channels/message/ingress-drain.ts",
+    "relation": "CALLS",
+    "targetId": "Function:src/channels/message/ingress-drain.ts:runClaimed",
+    "targetName": "runClaimed",
+    "targetFile": "src/channels/message/ingress-drain.ts",
+    "reason": "local-call"
+  },
+  {
+    "sourceId": "Function:src/channels/message/ingress-drain.ts:runClaimed",
+    "sourceName": "runClaimed",
+    "sourceFile": "src/channels/message/ingress-drain.ts",
+    "relation": "CALLS",
+    "targetId": "Function:src/channels/message/ingress-drain.ts:createLifecycle",
+    "targetName": "createLifecycle",
+    "targetFile": "src/channels/message/ingress-drain.ts",
+    "reason": "local-call"
+  },
+  {
+    "sourceId": "Function:src/channels/message/ingress-drain.ts:runClaimed",
+    "sourceName": "runClaimed",
+    "sourceFile": "src/channels/message/ingress-drain.ts",
+    "relation": "CALLS",
+    "targetId": "Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry",
+    "targetName": "completeClaimWithRetry",
+    "targetFile": "src/channels/message/ingress-drain.ts",
+    "reason": "local-call"
+  },
+  {
+    "sourceId": "Function:src/channels/message/ingress-drain.ts:onAdopted",
+    "sourceName": "onAdopted",
+    "sourceFile": "src/channels/message/ingress-drain.ts",
+    "relation": "CALLS",
+    "targetId": "Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry",
+    "targetName": "completeClaimWithRetry",
+    "targetFile": "src/channels/message/ingress-drain.ts",
+    "reason": "local-call"
+  },
+  {
+    "sourceId": "Function:src/channels/message/ingress-drain.ts:onAbandoned",
+    "sourceName": "onAbandoned",
+    "sourceFile": "src/channels/message/ingress-drain.ts",
+    "relation": "CALLS",
+    "targetId": "Function:src/channels/message/ingress-drain.ts:releaseClaim",
+    "targetName": "releaseClaim",
+    "targetFile": "src/channels/message/ingress-drain.ts",
+    "reason": "local-call"
+  },
+  {
+    "sourceId": "Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry",
+    "sourceName": "completeClaimWithRetry",
+    "sourceFile": "src/channels/message/ingress-drain.ts",
+    "relation": "CALLS",
+    "targetId": "Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry",
+    "targetName": "commitClaimWriteWithRetry",
+    "targetFile": "src/channels/message/ingress-drain.ts",
+    "reason": "local-call"
+  },
+  {
+    "sourceId": "Function:src/channels/message/ingress-drain.ts:releaseClaim",
+    "sourceName": "releaseClaim",
+    "sourceFile": "src/channels/message/ingress-drain.ts",
+    "relation": "CALLS",
+    "targetId": "Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry",
+    "targetName": "commitClaimWriteWithRetry",
+    "targetFile": "src/channels/message/ingress-drain.ts",
+    "reason": "local-call"
+  },
+  {
+    "sourceId": "Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry",
+    "sourceName": "commitClaimWriteWithRetry",
+    "sourceFile": "src/channels/message/ingress-drain.ts",
+    "relation": "CALLS",
+    "targetId": "Function:src/channels/message/ingress-retry-policy.ts:sleepIngressRetryDelay",
+    "targetName": "sleepIngressRetryDelay",
+    "targetFile": "src/channels/message/ingress-retry-policy.ts",
+    "reason": "import-resolved"
+  }
+]

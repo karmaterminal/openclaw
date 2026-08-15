@@ -1,0 +1,14 @@
+{
+  "schema": "frond.causal-bug-proof.v1",
+  "nodes": 64,
+  "edges": 60,
+  "layers": [
+    "code",
+    "commit",
+    "defect",
+    "governance",
+    "incident",
+    "intervention",
+    "test"
+  ]
+}

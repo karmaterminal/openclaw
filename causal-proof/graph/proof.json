@@ -1,0 +1,896 @@
+{
+  "directed": true,
+  "multigraph": true,
+  "graph": {
+    "name": "OpenClaw six-seat fleet causal localization for karmaterminal/openclaw#1254",
+    "schema": "frond.causal-bug-proof.v1"
+  },
+  "nodes": [
+    {
+      "layer": "governance",
+      "kind": "constraint",
+      "label": "Read-only fleet investigation",
+      "id": "governance:read-only"
+    },
+    {
+      "layer": "governance",
+      "kind": "evidence-gap",
+      "label": "Original row-level report unavailable",
+      "id": "governance:missing-report"
+    },
+    {
+      "layer": "governance",
+      "kind": "evidence-gap",
+      "label": "GitNexus index is not exact 6b09",
+      "toolReportedCommit": "a59a96549b7736613cb86dc846b28d0d82f03295",
+      "workorderIndexNote": "frozen near 530b",
+      "id": "governance:stale-gitnexus"
+    },
+    {
+      "layer": "commit",
+      "kind": "composite",
+      "sha": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955",
+      "timestamp": "2026-08-15T01:14:41-07:00",
+      "label": "commit:deployed",
+      "id": "commit:deployed"
+    },
+    {
+      "layer": "commit",
+      "kind": "upstream-base",
+      "sha": "530b33e4e37264c89ecd5abdd06279dd23d5c867",
+      "label": "commit:absorbed-upstream",
+      "id": "commit:absorbed-upstream"
+    },
+    {
+      "layer": "commit",
+      "kind": "introducing-candidate",
+      "sha": "6eea20ce181ecfcb9ff4cf24f85ef54f8580a690",
+      "pr": "openclaw/openclaw#110565",
+      "timestamp": "2026-07-22",
+      "label": "commit:settled-finalizer",
+      "id": "commit:settled-finalizer"
+    },
+    {
+      "layer": "commit",
+      "kind": "introducing-candidate",
+      "sha": "16c14e5bbfc9e3a82203272ec7bb82b586df0a84",
+      "pr": "openclaw/openclaw#108924",
+      "timestamp": "2026-07-17",
+      "label": "commit:turn-adoption",
+      "id": "commit:turn-adoption"
+    },
+    {
+      "layer": "commit",
+      "kind": "introducing-candidate",
+      "sha": "6df0fb818d67032c71eb885ac36febd540fbd10f",
+      "pr": "openclaw/openclaw#98510",
+      "timestamp": "2026-07-04",
+      "label": "commit:session-fence",
+      "id": "commit:session-fence"
+    },
+    {
+      "layer": "commit",
+      "kind": "introducing-candidate",
+      "sha": "1b1cebfe4218191db3644af9511c48eed070304f",
+      "pr": "openclaw/openclaw#104685",
+      "timestamp": "2026-07-11",
+      "label": "commit:route-materialization",
+      "id": "commit:route-materialization"
+    },
+    {
+      "layer": "commit",
+      "kind": "prior-fix",
+      "sha": "69983f80113aab3e88adfe60f98d2e1f17fbe2ca",
+      "pr": "openclaw/openclaw#122384",
+      "timestamp": "2026-08-11",
+      "label": "commit:ingress-recovery",
+      "id": "commit:ingress-recovery"
+    },
+    {
+      "layer": "commit",
+      "kind": "current-upstream-fix",
+      "sha": "ed447135bd427508cdc42aec9bc2549c6860c326",
+      "pr": "openclaw/openclaw#123777",
+      "timestamp": "2026-08-15",
+      "label": "commit:shared-wal",
+      "id": "commit:shared-wal"
+    },
+    {
+      "layer": "incident",
+      "kind": "discord-event",
+      "eventId": "1538222293149294694",
+      "channelId": "1466192485440164011",
+      "label": "incident:source-event",
+      "id": "incident:source-event"
+    },
+    {
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seats": "cael,ronan,emeric",
+      "label": "incident:no-visible-payload",
+      "id": "incident:no-visible-payload"
+    },
+    {
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seat": "rune",
+      "label": "incident:rune-silent-loss",
+      "id": "incident:rune-silent-loss"
+    },
+    {
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seats": "cael,ronan,emeric",
+      "label": "incident:sqlite-pressure",
+      "id": "incident:sqlite-pressure"
+    },
+    {
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seat": "silas",
+      "observedAttempts": "42",
+      "label": "incident:silas-loop",
+      "id": "incident:silas-loop"
+    },
+    {
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seat": "elliott",
+      "observedRouteFailureRows": "72",
+      "label": "incident:elliott-route",
+      "id": "incident:elliott-route"
+    },
+    {
+      "layer": "incident",
+      "kind": "trace-receipt",
+      "traceId": "818314b20865025cc092d3042672f63b",
+      "label": "receipt:cael-trace",
+      "id": "receipt:cael-trace"
+    },
+    {
+      "layer": "incident",
+      "kind": "trace-receipt",
+      "traceId": "39bb0342c1c8abf08d305343b75028a6",
+      "label": "receipt:ronan-trace",
+      "id": "receipt:ronan-trace"
+    },
+    {
+      "layer": "incident",
+      "kind": "trace-receipt",
+      "traceId": "9af101e0eeb3b3058bc3810e5b8851ad",
+      "label": "receipt:emeric-trace",
+      "id": "receipt:emeric-trace"
+    },
+    {
+      "layer": "incident",
+      "kind": "journal-receipt",
+      "first": "2026-08-15T09:26:17.394-07:00",
+      "last": "2026-08-15T11:12:17-07:00",
+      "attempts": "42",
+      "label": "receipt:silas-cadence",
+      "id": "receipt:silas-cadence"
+    },
+    {
+      "layer": "code",
+      "kind": "function",
+      "name": "captureCodexSettledTurnFinalizationContext",
+      "file": "extensions/codex/src/app-server/settled-turn-context.ts",
+      "label": "captureCodexSettledTurnFinalizationContext",
+      "id": "code:capture-finalization-context"
+    },
+    {
+      "layer": "code",
+      "kind": "function",
+      "name": "buildCodexSettledTurnFinalizationContext",
+      "file": "extensions/codex/src/app-server/settled-turn-context.ts",
+      "label": "buildCodexSettledTurnFinalizationContext",
+      "id": "code:build-finalization-context"
+    },
+    {
+      "layer": "code",
+      "kind": "function",
+      "name": "finalizeCodexAttempt",
+      "file": "extensions/codex/src/app-server/run-attempt-finalize.ts",
+      "label": "finalizeCodexAttempt",
+      "id": "code:finalize-codex-attempt"
+    },
+    {
+      "layer": "code",
+      "kind": "function",
+      "name": "prepareTerminalWithSettledTurnFinalization",
+      "file": "src/agents/embedded-agent-runner/run/settled-turn-finalization.ts",
+      "label": "prepareTerminalWithSettledTurnFinalization",
+      "id": "code:prepare-terminal-finalization"
+    },
+    {
+      "layer": "code",
+      "kind": "function",
+      "name": "maybeWarnZeroCountVisibleDispatch",
+      "file": "src/channels/turn/execution.ts",
+      "label": "maybeWarnZeroCountVisibleDispatch",
+      "id": "code:zero-payload-warning"
+    },
+    {
+      "layer": "code",
+      "kind": "function",
+      "name": "loadTranscriptEventsSync",
+      "file": "src/config/sessions/session-accessor.sqlite-read.ts",
+      "label": "loadTranscriptEventsSync",
+      "id": "code:load-transcript-events"
+    },
+    {
+      "layer": "code",
+      "kind": "function",
+      "name": "complete",
+      "file": "src/channels/message/ingress-queue.ts",
+      "label": "complete",
+      "id": "code:ingress-complete"
+    },
+    {
+      "layer": "code",
+      "kind": "branch",
+      "name": "policy gate or deliberate no-dispatch completion",
+      "file": "src/channels/message/ingress-monitor.ts",
+      "label": "policy gate or deliberate no-dispatch completion",
+      "id": "code:monitor-default-completion"
+    },
+    {
+      "layer": "code",
+      "kind": "function",
+      "name": "admitReplyTurn",
+      "file": "src/auto-reply/reply/reply-turn-admission.ts",
+      "label": "admitReplyTurn",
+      "id": "code:admit-reply-turn"
+    },
+    {
+      "layer": "code",
+      "kind": "function",
+      "name": "completeFollowupRunLifecycle",
+      "file": "src/auto-reply/reply/queue/types.ts",
+      "label": "completeFollowupRunLifecycle",
+      "id": "code:complete-followup-lifecycle"
+    },
+    {
+      "layer": "code",
+      "kind": "branch",
+      "name": "ChannelIngressDispatchLifecycle.onAbandoned",
+      "file": "src/channels/message/ingress-drain.ts",
+      "label": "ChannelIngressDispatchLifecycle.onAbandoned",
+      "id": "code:abandon-ingress"
+    },
+    {
+      "layer": "code",
+      "kind": "function",
+      "name": "resolveIngressFailureDisposition",
+      "file": "src/channels/message/ingress-retry-policy.ts",
+      "label": "resolveIngressFailureDisposition",
+      "id": "code:retry-disposition"
+    },
+    {
+      "layer": "code",
+      "kind": "function",
+      "name": "materializePreparedRuntimeModel",
+      "file": "src/agents/runtime-plan/materialize-model.ts",
+      "label": "materializePreparedRuntimeModel",
+      "id": "code:materialize-route"
+    },
+    {
+      "layer": "defect",
+      "kind": "missing-discriminator",
+      "owner": "Codex settled-turn transcript attestation",
+      "status": "localized",
+      "label": "defect:finalization-context-reason",
+      "id": "defect:finalization-context-reason"
+    },
+    {
+      "layer": "defect",
+      "kind": "missing-discriminator",
+      "owner": "channel ingress completion metadata",
+      "status": "localized",
+      "label": "defect:rune-completion-reason",
+      "id": "defect:rune-completion-reason"
+    },
+    {
+      "layer": "defect",
+      "kind": "performance-amplifier",
+      "owner": "agent session SQLite transcript read",
+      "status": "source-and-trace-evidenced",
+      "label": "defect:sqlite-hot-read",
+      "id": "defect:sqlite-hot-read"
+    },
+    {
+      "layer": "defect",
+      "kind": "retry-policy-bypass",
+      "owner": "durable ingress abandonment",
+      "status": "source-and-cadence-evidenced",
+      "label": "defect:silas-abandonment-budget",
+      "id": "defect:silas-abandonment-budget"
+    },
+    {
+      "layer": "defect",
+      "kind": "missing-discriminator",
+      "owner": "reply-turn admission",
+      "status": "localized",
+      "label": "defect:silas-rejection-reason",
+      "id": "defect:silas-rejection-reason"
+    },
+    {
+      "layer": "defect",
+      "kind": "missing-discriminator",
+      "owner": "prepared provider route materialization",
+      "status": "localized",
+      "label": "defect:elliott-materialization-reason",
+      "id": "defect:elliott-materialization-reason"
+    },
+    {
+      "layer": "governance",
+      "kind": "issue",
+      "url": "https://github.com/karmaterminal/openclaw/issues/1254",
+      "label": "issue:fork-1254",
+      "id": "issue:fork-1254"
+    },
+    {
+      "layer": "governance",
+      "kind": "issue",
+      "url": "https://github.com/openclaw/openclaw/issues/118873",
+      "label": "issue:upstream-118873",
+      "id": "issue:upstream-118873"
+    },
+    {
+      "layer": "governance",
+      "kind": "issue",
+      "url": "https://github.com/openclaw/openclaw/issues/119884",
+      "label": "issue:upstream-119884",
+      "id": "issue:upstream-119884"
+    },
+    {
+      "layer": "governance",
+      "kind": "issue",
+      "url": "https://github.com/openclaw/openclaw/issues/122076",
+      "label": "issue:upstream-122076",
+      "id": "issue:upstream-122076"
+    },
+    {
+      "layer": "governance",
+      "kind": "issue",
+      "url": "https://github.com/openclaw/openclaw/issues/114603",
+      "label": "issue:upstream-114603",
+      "id": "issue:upstream-114603"
+    },
+    {
+      "layer": "test",
+      "kind": "proposed-probe",
+      "label": "Return and log a closed context rejection reason",
+      "id": "probe:finalization-reason"
+    },
+    {
+      "layer": "test",
+      "kind": "proposed-probe",
+      "label": "Retain bounded completion outcome metadata",
+      "id": "probe:rune-outcome"
+    },
+    {
+      "layer": "test",
+      "kind": "proposed-probe",
+      "label": "Immutable copy query-plan and ANALYZE counterfactual",
+      "id": "probe:sqlite-copy"
+    },
+    {
+      "layer": "test",
+      "kind": "proposed-fossil",
+      "expectedResult": "RED on 6b09",
+      "label": "fossil:silas-eight-abandons",
+      "id": "fossil:silas-eight-abandons"
+    },
+    {
+      "layer": "test",
+      "kind": "proposed-probe",
+      "label": "Typed route materialization mismatch with redacted route facts",
+      "id": "probe:elliott-route"
+    },
+    {
+      "layer": "intervention",
+      "kind": "candidate",
+      "status": "not-executed",
+      "label": "intervention:finalization-result",
+      "id": "intervention:finalization-result"
+    },
+    {
+      "layer": "intervention",
+      "kind": "candidate",
+      "status": "not-executed",
+      "label": "intervention:rune-metadata",
+      "id": "intervention:rune-metadata"
+    },
+    {
+      "layer": "intervention",
+      "kind": "candidate",
+      "status": "not-executed",
+      "label": "intervention:offline-analyze",
+      "id": "intervention:offline-analyze"
+    },
+    {
+      "layer": "intervention",
+      "kind": "candidate",
+      "status": "not-executed",
+      "label": "intervention:abandonment-budget",
+      "id": "intervention:abandonment-budget"
+    },
+    {
+      "layer": "intervention",
+      "kind": "candidate",
+      "status": "not-executed",
+      "label": "intervention:route-result",
+      "id": "intervention:route-result"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "drainOnce",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "drainOnce",
+      "id": "Function:src/channels/message/ingress-drain.ts:drainOnce"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "runClaimed",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "runClaimed",
+      "id": "Function:src/channels/message/ingress-drain.ts:runClaimed"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "createLifecycle",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "createLifecycle",
+      "id": "Function:src/channels/message/ingress-drain.ts:createLifecycle"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "completeClaimWithRetry",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "completeClaimWithRetry",
+      "id": "Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "onAdopted",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "onAdopted",
+      "id": "Function:src/channels/message/ingress-drain.ts:onAdopted"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "onAbandoned",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "onAbandoned",
+      "id": "Function:src/channels/message/ingress-drain.ts:onAbandoned"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "releaseClaim",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "releaseClaim",
+      "id": "Function:src/channels/message/ingress-drain.ts:releaseClaim"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "commitClaimWriteWithRetry",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "commitClaimWriteWithRetry",
+      "id": "Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "sleepIngressRetryDelay",
+      "file": "src/channels/message/ingress-retry-policy.ts",
+      "source_system": "gitnexus",
+      "label": "sleepIngressRetryDelay",
+      "id": "Function:src/channels/message/ingress-retry-policy.ts:sleepIngressRetryDelay"
+    }
+  ],
+  "edges": [
+    {
+      "relation": "ABSORBED_BY",
+      "source": "commit:absorbed-upstream",
+      "target": "commit:deployed",
+      "key": 0
+    },
+    {
+      "relation": "INTRODUCES",
+      "evidenceClass": "textual-archaeology",
+      "source": "commit:settled-finalizer",
+      "target": "defect:finalization-context-reason",
+      "key": 0
+    },
+    {
+      "relation": "INTRODUCES",
+      "evidenceClass": "textual-archaeology",
+      "source": "commit:turn-adoption",
+      "target": "defect:silas-abandonment-budget",
+      "key": 0
+    },
+    {
+      "relation": "INTRODUCES",
+      "evidenceClass": "textual-archaeology",
+      "source": "commit:session-fence",
+      "target": "defect:silas-rejection-reason",
+      "key": 0
+    },
+    {
+      "relation": "INTRODUCES",
+      "evidenceClass": "textual-archaeology",
+      "source": "commit:route-materialization",
+      "target": "defect:elliott-materialization-reason",
+      "key": 0
+    },
+    {
+      "relation": "PRESERVES_RETRY_HANDOFF",
+      "note": "Deployed fix prevents stranded claim loss but does not bound abandonment.",
+      "source": "commit:ingress-recovery",
+      "target": "incident:silas-loop",
+      "key": 0
+    },
+    {
+      "relation": "DOES_NOT_REACH",
+      "note": "Current-upstream-only fix owns shared state WAL; observed holds use agent DB.",
+      "source": "commit:shared-wal",
+      "target": "incident:sqlite-pressure",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "source": "receipt:cael-trace",
+      "target": "incident:no-visible-payload",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "source": "receipt:cael-trace",
+      "target": "incident:sqlite-pressure",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "source": "receipt:ronan-trace",
+      "target": "incident:no-visible-payload",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "source": "receipt:ronan-trace",
+      "target": "incident:sqlite-pressure",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "source": "receipt:emeric-trace",
+      "target": "incident:no-visible-payload",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "source": "receipt:emeric-trace",
+      "target": "incident:sqlite-pressure",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "source": "receipt:silas-cadence",
+      "target": "incident:silas-loop",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "source": "code:capture-finalization-context",
+      "target": "code:build-finalization-context",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "source": "code:capture-finalization-context",
+      "target": "code:load-transcript-events",
+      "key": 0
+    },
+    {
+      "relation": "COLLAPSES_FAILURE_REASONS",
+      "source": "code:build-finalization-context",
+      "target": "defect:finalization-context-reason",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "source": "code:finalize-codex-attempt",
+      "target": "code:capture-finalization-context",
+      "key": 0
+    },
+    {
+      "relation": "SAME_TRACE_PRECEDES",
+      "evidenceClass": "observed-and-source-localized",
+      "source": "code:prepare-terminal-finalization",
+      "target": "code:zero-payload-warning",
+      "key": 0
+    },
+    {
+      "relation": "HOLDS_SYNC_TRANSACTION",
+      "source": "code:load-transcript-events",
+      "target": "defect:sqlite-hot-read",
+      "key": 0
+    },
+    {
+      "relation": "ERASES_DISCRIMINATOR",
+      "source": "code:ingress-complete",
+      "target": "defect:rune-completion-reason",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "source": "code:monitor-default-completion",
+      "target": "code:ingress-complete",
+      "key": 0
+    },
+    {
+      "relation": "COLLAPSES_FAILURE_REASONS",
+      "source": "code:admit-reply-turn",
+      "target": "defect:silas-rejection-reason",
+      "key": 0
+    },
+    {
+      "relation": "RETURNS_UNADOPTED_TO",
+      "source": "code:admit-reply-turn",
+      "target": "code:complete-followup-lifecycle",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "source": "code:complete-followup-lifecycle",
+      "target": "code:abandon-ingress",
+      "key": 0
+    },
+    {
+      "relation": "BYPASSES",
+      "source": "code:abandon-ingress",
+      "target": "code:retry-disposition",
+      "key": 0
+    },
+    {
+      "relation": "INTRODUCES_RETRY_POLICY_BYPASS",
+      "source": "code:abandon-ingress",
+      "target": "defect:silas-abandonment-budget",
+      "key": 0
+    },
+    {
+      "relation": "COLLAPSES_FAILURE_REASONS",
+      "source": "code:materialize-route",
+      "target": "defect:elliott-materialization-reason",
+      "key": 0
+    },
+    {
+      "relation": "CHARACTERIZES",
+      "note": "The outer failure chain is observed; the inner rejection reason remains unknown.",
+      "source": "defect:finalization-context-reason",
+      "target": "incident:no-visible-payload",
+      "key": 0
+    },
+    {
+      "relation": "CHARACTERIZES",
+      "source": "defect:rune-completion-reason",
+      "target": "incident:rune-silent-loss",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "source": "defect:sqlite-hot-read",
+      "target": "incident:sqlite-pressure",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "evidenceClass": "source-plus-observed-capped-cadence",
+      "source": "defect:silas-abandonment-budget",
+      "target": "incident:silas-loop",
+      "key": 0
+    },
+    {
+      "relation": "CHARACTERIZES",
+      "source": "defect:elliott-materialization-reason",
+      "target": "incident:elliott-route",
+      "key": 0
+    },
+    {
+      "relation": "TRACKS",
+      "source": "issue:fork-1254",
+      "target": "incident:no-visible-payload",
+      "key": 0
+    },
+    {
+      "relation": "TRACKS",
+      "source": "issue:fork-1254",
+      "target": "incident:rune-silent-loss",
+      "key": 0
+    },
+    {
+      "relation": "TRACKS",
+      "source": "issue:fork-1254",
+      "target": "incident:sqlite-pressure",
+      "key": 0
+    },
+    {
+      "relation": "TRACKS",
+      "source": "issue:fork-1254",
+      "target": "incident:silas-loop",
+      "key": 0
+    },
+    {
+      "relation": "TRACKS",
+      "source": "issue:fork-1254",
+      "target": "incident:elliott-route",
+      "key": 0
+    },
+    {
+      "relation": "TRACKS",
+      "source": "issue:upstream-118873",
+      "target": "defect:silas-rejection-reason",
+      "key": 0
+    },
+    {
+      "relation": "TRACKS",
+      "source": "issue:upstream-119884",
+      "target": "defect:sqlite-hot-read",
+      "key": 0
+    },
+    {
+      "relation": "CONDITIONALLY_OVERLAPS",
+      "note": "Fleet traces contain zero yield markers.",
+      "source": "issue:upstream-122076",
+      "target": "defect:finalization-context-reason",
+      "key": 0
+    },
+    {
+      "relation": "CONDITIONALLY_OVERLAPS",
+      "source": "issue:upstream-114603",
+      "target": "defect:elliott-materialization-reason",
+      "key": 0
+    },
+    {
+      "relation": "PROPOSED_PROBE_FOR",
+      "source": "probe:finalization-reason",
+      "target": "defect:finalization-context-reason",
+      "key": 0
+    },
+    {
+      "relation": "PROPOSED_PROBE_FOR",
+      "source": "probe:rune-outcome",
+      "target": "defect:rune-completion-reason",
+      "key": 0
+    },
+    {
+      "relation": "PROPOSED_PROBE_FOR",
+      "source": "probe:sqlite-copy",
+      "target": "defect:sqlite-hot-read",
+      "key": 0
+    },
+    {
+      "relation": "PROPOSED_FOSSIL_FOR",
+      "source": "fossil:silas-eight-abandons",
+      "target": "defect:silas-abandonment-budget",
+      "key": 0
+    },
+    {
+      "relation": "PROPOSED_PROBE_FOR",
+      "source": "probe:elliott-route",
+      "target": "defect:elliott-materialization-reason",
+      "key": 0
+    },
+    {
+      "relation": "CANDIDATE_INTERVENTION",
+      "source": "intervention:finalization-result",
+      "target": "probe:finalization-reason",
+      "key": 0
+    },
+    {
+      "relation": "CANDIDATE_INTERVENTION",
+      "source": "intervention:rune-metadata",
+      "target": "probe:rune-outcome",
+      "key": 0
+    },
+    {
+      "relation": "CANDIDATE_INTERVENTION",
+      "source": "intervention:offline-analyze",
+      "target": "probe:sqlite-copy",
+      "key": 0
+    },
+    {
+      "relation": "CANDIDATE_INTERVENTION",
+      "source": "intervention:abandonment-budget",
+      "target": "fossil:silas-eight-abandons",
+      "key": 0
+    },
+    {
+      "relation": "CANDIDATE_INTERVENTION",
+      "source": "intervention:route-result",
+      "target": "probe:elliott-route",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "reason": "local-call",
+      "source_system": "gitnexus",
+      "source": "Function:src/channels/message/ingress-drain.ts:drainOnce",
+      "target": "Function:src/channels/message/ingress-drain.ts:runClaimed",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "reason": "local-call",
+      "source_system": "gitnexus",
+      "source": "Function:src/channels/message/ingress-drain.ts:runClaimed",
+      "target": "Function:src/channels/message/ingress-drain.ts:createLifecycle",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "reason": "local-call",
+      "source_system": "gitnexus",
+      "source": "Function:src/channels/message/ingress-drain.ts:runClaimed",
+      "target": "Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "reason": "local-call",
+      "source_system": "gitnexus",
+      "source": "Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry",
+      "target": "Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "reason": "local-call",
+      "source_system": "gitnexus",
+      "source": "Function:src/channels/message/ingress-drain.ts:onAdopted",
+      "target": "Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "reason": "local-call",
+      "source_system": "gitnexus",
+      "source": "Function:src/channels/message/ingress-drain.ts:onAbandoned",
+      "target": "Function:src/channels/message/ingress-drain.ts:releaseClaim",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "reason": "local-call",
+      "source_system": "gitnexus",
+      "source": "Function:src/channels/message/ingress-drain.ts:releaseClaim",
+      "target": "Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "reason": "import-resolved",
+      "source_system": "gitnexus",
+      "source": "Function:src/channels/message/ingress-drain.ts:commitClaimWriteWithRetry",
+      "target": "Function:src/channels/message/ingress-retry-policy.ts:sleepIngressRetryDelay",
+      "key": 0
+    }
+  ]
+}

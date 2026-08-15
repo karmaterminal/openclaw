@@ -1,0 +1,184 @@
+{
+  "schema": "frond.causal-bug-proof.passive-observations.v1",
+  "capturedAt": "2026-08-15T20:30:00Z",
+  "method": {
+    "kind": "payload-free-passive-observation",
+    "journalWindow": {
+      "since": "2026-08-15T09:15:00-07:00",
+      "until": "2026-08-15T11:15:00-07:00"
+    },
+    "stateChanges": [],
+    "excluded": [
+      "message payloads",
+      "memory content",
+      "provider credentials",
+      "config values",
+      "database mutations",
+      "gateway restarts",
+      "test traffic"
+    ]
+  },
+  "sourceEvent": {
+    "discordMessageId": "1538222293149294694",
+    "channelId": "1466192485440164011",
+    "correlationQuality": "partial",
+    "note": "Silas diagnostics retain this inbound ID. Successful/finalized paths frequently log messageId=unknown, so the source event cannot be joined to every run."
+  },
+  "seats": {
+    "cael": {
+      "representativeTrace": {
+        "traceId": "818314b20865025cc092d3042672f63b",
+        "runId": "3cf47ea3-fe24-4ec1-b465-83ac23968f6c",
+        "sessionId": "81e13776-d44a-4522-9cb4-3d36d8b6f320",
+        "events": [
+          {
+            "at": "2026-08-15T09:27:21.779-07:00",
+            "kind": "settled-finalization-failed",
+            "error": "Codex settled-turn finalization context is unavailable"
+          },
+          {
+            "at": "2026-08-15T09:27:27.938-07:00",
+            "kind": "zero-visible-payload",
+            "messageId": "unknown"
+          },
+          {
+            "at": "2026-08-15T09:29:44.498-07:00",
+            "kind": "slow-sqlite-hold",
+            "database": "agent",
+            "operation": "session transcript fenced read",
+            "elapsedMs": 4864
+          },
+          {
+            "at": "2026-08-15T09:29:44.603-07:00",
+            "kind": "finalization-context-unavailable",
+            "sameSpanAsPrevious": true
+          }
+        ],
+        "sessionsYieldMarkers": 0
+      },
+      "sqliteFileMetadata": {
+        "agentDatabaseBytes": 5403803648,
+        "agentWalBytes": 5084112,
+        "sharedStateDatabaseBytes": 47599616,
+        "sharedStateWalBytes": 0
+      },
+      "issueLedgerIntegrity": "quick-check reported corruption; source report naming the damaged database was unavailable"
+    },
+    "ronan": {
+      "representativeTrace": {
+        "traceId": "39bb0342c1c8abf08d305343b75028a6",
+        "runId": "a5641441-3ebe-4d55-b5f8-e2fd08b31e3d",
+        "sessionId": "994fd111-0b9d-456c-8cc0-38c24d56a718",
+        "events": [
+          {
+            "at": "2026-08-15T09:55:12.726-07:00",
+            "kind": "settled-finalization-failed",
+            "error": "Codex settled-turn finalization context is unavailable"
+          },
+          {
+            "at": "2026-08-15T09:55:15.431-07:00",
+            "kind": "slow-sqlite-hold",
+            "database": "agent",
+            "operation": "session transcript fenced read",
+            "elapsedMs": 2543
+          },
+          {
+            "at": "2026-08-15T09:55:24.971-07:00",
+            "kind": "zero-visible-payload",
+            "messageId": "unknown"
+          }
+        ],
+        "sessionsYieldMarkers": 0
+      },
+      "sqliteFileMetadata": {
+        "agentDatabaseBytes": 3796570112,
+        "agentWalBytes": 5265392,
+        "sharedStateDatabaseBytes": 77062144,
+        "sharedStateWalBytes": 0
+      }
+    },
+    "emeric": {
+      "representativeTrace": {
+        "traceId": "9af101e0eeb3b3058bc3810e5b8851ad",
+        "runId": "2102eb28-97da-41ce-87ba-7ce5199062af",
+        "sessionId": "39a09edf-c0c1-41e1-818d-4e23c468610a",
+        "events": [
+          {
+            "at": "2026-08-15T09:38:03.096-07:00",
+            "kind": "slow-sqlite-hold",
+            "database": "agent",
+            "operation": "agent.write",
+            "elapsedMs": 1222
+          },
+          {
+            "at": "2026-08-15T09:38:03.172-07:00",
+            "kind": "settled-finalization-failed",
+            "error": "Codex settled-turn finalization context is unavailable"
+          },
+          {
+            "at": "2026-08-15T09:38:06.507-07:00",
+            "kind": "zero-visible-payload",
+            "messageId": "unknown"
+          }
+        ],
+        "sessionsYieldMarkers": 0
+      },
+      "sqliteFileMetadata": {
+        "agentDatabaseBytes": 6622703616,
+        "agentWalBytes": 5187112,
+        "sharedStateDatabaseBytes": 84881408,
+        "sharedStateWalBytes": 4194192
+      }
+    },
+    "silas": {
+      "sourceMessageId": "1538222293149294694",
+      "diagnosticSessionId": "c6acb69a-4241-4ec1-a307-494802919887",
+      "firstRejectedAt": "2026-08-15T09:26:17.394-07:00",
+      "lastRejectedAtInWindow": "2026-08-15T11:12:17-07:00",
+      "rejectedAttemptsInWindow": 42,
+      "durationMsRange": [3, 13],
+      "error": "Session changed while starting work. Retry.",
+      "visibleReplyObserved": false,
+      "cadence": "Backoff reaches and remains near the configured 180000ms maximum.",
+      "evidenceClass": "same-source repeated diagnostic observation"
+    },
+    "rune": {
+      "issueLedgerIngressCompletions": 1,
+      "issueLedgerVisibleReplies": 0,
+      "matchingFilteredJournalRows": 0,
+      "note": "The bounded journal window contained no matching zero-payload, finalization, SQLite, auth, or message-processed diagnostic. This absence does not identify the completion reason."
+    },
+    "elliott": {
+      "representativeRouteChain": [
+        {
+          "candidate": "openai/gpt-5.6-terra",
+          "outcome": "materialization-failed",
+          "next": "openai/gpt-5.6-sol"
+        },
+        {
+          "candidate": "openai/gpt-5.6-sol",
+          "outcome": "materialization-failed",
+          "next": "github-copilot/gpt-5.5"
+        }
+      ],
+      "openAiMaterializationFailureRowsInWindow": 72,
+      "issueLedgerVisibleHttp401Notices": 2,
+      "weakJoin": "The journal route decisions do not carry the inbound source message ID, and the visible HTTP 401 receipts do not identify the provider in the retained log line."
+    }
+  },
+  "claimBoundary": {
+    "proven": [
+      "Cael, Ronan, and Emeric each contain a trace where settled-turn finalization failure precedes a zero-visible-payload warning.",
+      "The slow SQLite operations in the representative traces target the agent database, not the shared ingress state database.",
+      "Silas repeatedly rejects the same source message and reaches the capped retry cadence without terminal disposition.",
+      "Elliott repeatedly fails exact OpenAI subscription-route materialization before selecting GitHub Copilot as the next candidate."
+    ],
+    "notProven": [
+      "The zero-visible-payload warnings cannot be joined to the original Discord event on successful paths because messageId is unknown.",
+      "Slow SQLite holds are not proven to cause finalization context rejection.",
+      "The inner finalization-context rejection branch is not logged.",
+      "Rune's completion reason is not retained.",
+      "Elliott's exact materialization mismatch and the provider that emitted each visible HTTP 401 are not logged."
+    ]
+  }
+}
