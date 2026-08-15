@@ -1,9 +1,9 @@
 # Six-seat communication and SQLite causal investigation
 
-**Bound issue:** [karmaterminal/openclaw#1254](https://github.com/karmaterminal/openclaw/issues/1254)  
-**Deployed composite:** `6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955`  
-**Absorbed upstream:** `530b33e4e37264c89ecd5abdd06279dd23d5c867`  
-**Current upstream context:** `ab5b8b9a02c8b90c15b9c618b03cdf9a553d0cde`
+- **Bound issue:** [karmaterminal/openclaw#1254](https://github.com/karmaterminal/openclaw/issues/1254)
+- **Deployed composite:** `6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955`
+- **Absorbed upstream:** `530b33e4e37264c89ecd5abdd06279dd23d5c867`
+- **Current upstream context:** `ab5b8b9a02c8b90c15b9c618b03cdf9a553d0cde`
 
 The evidence supports several downstream forms of silence, not one shared root cause. The strongest concrete defect is Silas's unbounded pre-adoption retry loop. Cael, Ronan, and Emeric have a separate same-trace chain from Codex finalization failure to zero-payload dispatch, with multi-second agent-SQLite work inside the same traces. Rune lacks a retained terminal-outcome discriminator. Elliott is a distinct route/config/auth chain.
 
