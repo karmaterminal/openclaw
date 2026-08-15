@@ -1,0 +1,141 @@
+{
+  "schema": "frond.causal-bug-proof.incident-ledger.v1",
+  "frozenAt": "2026-08-15T19:19:45.984Z",
+  "product": {
+    "repository": "karmaterminal/openclaw",
+    "deployedComposite": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955",
+    "absorbedUpstream": "530b33e4e37264c89ecd5abdd06279dd23d5c867",
+    "compositeParents": [
+      "b5de30c6ffe068d26f6b18e416f8f4659088241f",
+      "99ce36658eef9d4a9ad9eca6782ffa0ee7891fd6"
+    ],
+    "currentUpstreamContext": "ab5b8b9a02c8b90c15b9c618b03cdf9a553d0cde"
+  },
+  "sources": [
+    {
+      "id": "github:issue-1254",
+      "kind": "github-issue",
+      "url": "https://github.com/karmaterminal/openclaw/issues/1254",
+      "capturedAt": "2026-08-15T16:40:29Z",
+      "evidenceClass": "observed-summary"
+    },
+    {
+      "id": "github:issue-1254-comment-5303260540",
+      "kind": "github-comment",
+      "url": "https://github.com/karmaterminal/openclaw/issues/1254#issuecomment-5303260540",
+      "capturedAt": "2026-08-15T16:54:13Z",
+      "evidenceClass": "observed-summary"
+    },
+    {
+      "id": "missing:fleet-palliative-report",
+      "kind": "missing-artifact",
+      "requestedPath": "/home/figs/.copilot/session-state/7a7d27c0-5282-46b3-ac01-ae0bae3b6054/files/fleet-palliative-issue-triage-report.md",
+      "evidenceClass": "unavailable",
+      "note": "The supplied session and report path did not exist, and an exact-filename search under session-state found no relocated copy. Row-level IDs, timestamps, and the appended upstream-history supplement could not be recovered from this source."
+    }
+  ],
+  "knownGlobalFacts": {
+    "fleetUnitState": "all six seats active/running with HTTP 200 and zero restarts",
+    "pendingOutboundOrSessionDeliveryRows": 0,
+    "historicalFailedOutboundTombstonesRecentlyUpdated": false,
+    "probeHadUniqueNonce": false,
+    "successfulJournalMessageIdsMayBeUnknown": true
+  },
+  "families": [
+    {
+      "id": "family:no-visible-payload",
+      "seats": {
+        "cael": {
+          "ingressCompletions": 1,
+          "similarVisibleReplies": 3,
+          "transcriptRotations": 12,
+          "zeroPayloadDispatchWarnings": 12,
+          "slowSqliteHolds": 29,
+          "finalizationFailures": 5,
+          "memoryPressure": "severe"
+        },
+        "ronan": {
+          "ingressCompletions": 1,
+          "visibleReplies": 2,
+          "replyTurns": "separate",
+          "transcriptRotations": 16,
+          "zeroPayloadDispatchWarnings": 11,
+          "slowSqliteHolds": 24,
+          "finalizationFailures": 1,
+          "emptyResponseContinuation": true,
+          "memoryPressure": "severe"
+        },
+        "emeric": {
+          "ingressCompletions": 1,
+          "semanticVisibleReplies": 1,
+          "transcriptRotations": 14,
+          "zeroPayloadDispatchWarnings": 13,
+          "slowSqliteHolds": 12,
+          "finalizationFailures": 3,
+          "memoryPressure": "warning"
+        }
+      },
+      "evidenceClass": "observed-summary"
+    },
+    {
+      "id": "family:rune-silent-loss",
+      "seats": {
+        "rune": {
+          "ingressCompletions": 1,
+          "visibleReplies": 0,
+          "matchingPressureSqliteAuthOrDispatchErrors": 0
+        }
+      },
+      "evidenceClass": "observed-summary"
+    },
+    {
+      "id": "family:sqlite-pressure",
+      "seats": {
+        "cael": {
+          "quickCheck": "corruption reported",
+          "slowSqliteHolds": 29
+        },
+        "ronan": {
+          "slowSqliteHolds": 24
+        }
+      },
+      "evidenceClass": "observed-summary"
+    },
+    {
+      "id": "family:silas-session-loop",
+      "seats": {
+        "silas": {
+          "visibleReplies": 0,
+          "ingressCompletions": 0,
+          "sessionChangedOrTurnAbandonedAttempts": 14,
+          "pendingFifoIngressEvents": 17
+        }
+      },
+      "evidenceClass": "observed-summary"
+    },
+    {
+      "id": "family:elliott-provider-route",
+      "seats": {
+        "elliott": {
+          "semanticVisibleReplies": 0,
+          "visibleHttp401Notices": 2,
+          "openaiTerraSolPreparedSubscriptionRoutesMaterialized": false,
+          "copilotFallback": "expired or unusable",
+          "restartCured": false
+        }
+      },
+      "evidenceClass": "observed-summary"
+    }
+  ],
+  "claimBoundary": {
+    "directlyEvidenced": [
+      "The linked issue and comment record the summarized per-seat observations.",
+      "The deployed composite and absorbed upstream identities are present in local Git history."
+    ],
+    "notProven": [
+      "No family has nonce-correlated event-to-run-to-payload-to-visible-message lineage.",
+      "The missing report prevents independent verification of row-level counts and its upstream-history supplement.",
+      "Co-occurrence does not establish a common root cause or SQLite-to-finalization causality."
+    ]
+  }
+}
