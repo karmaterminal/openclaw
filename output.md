@@ -168,14 +168,15 @@ The corrected assignment is below.
 
 | # | Semantic owner | Conflicted | Silent auto-merge | Notes |
 |---|---|---|---|---|
-| 1 | Continuation work / delegate | **4** | 6 | `openclaw-tools.ts` (Gate-2 core), `server-maintenance.ts` (delegate-artifact GC), `heartbeat-runner-execution.ts`, `heartbeat-runner-run.ts`; plus TaskFlow trio + `compact.hooks.*` |
+| 1 | Continuation work / delegate | **4** | 4 | `openclaw-tools.ts` (Gate-2 core), `server-maintenance.ts` (delegate-artifact GC), `heartbeat-runner-execution.ts`, `heartbeat-runner-run.ts`; plus the TaskFlow trio + `heartbeat-runner-config.ts` |
 | 2 | Subagents / spawn / yield / admission | **1** | 7 | `subagent-attachments.ts`; `sessions-spawn-tool.{ts,test.ts}`, announce delivery/output, registry run-wait + lifecycle-completion, `docs/tools/subagents.md` |
 | 3 | Compaction / transcript / finalization | **4** | 7 | `commands-compact.ts`, `commands-compact.runtime.ts`, `server.sessions.compaction.test.ts`, `user-turn-transcript.ts`; **`compaction-safeguard.ts` auto-merges with upstream +314/−78** |
 | 4 | Discord ingress / egress / reply dispatch | **1** | 3 | `server-restart-sentinel.ts`; `agent-runner-result-payloads.ts`, `get-reply.ts`, `server-restart-sentinel-agent-delivery.ts` |
 | 5 | SQLite / session / task persistence | **1** | 11 | `session-updates.ts`; **`openclaw-state-schema.sql` (ours +125, upstream +26/−2)**, `-schema-additive.ts`, `.generated.d.ts`, `-contract.ts`, `session-accessor.*` |
 | 6 | Provider / auth routing | **1** | 6 | `extensions/codex/.../approval-requester.real-binary.live.test.ts`; `side-question.{ts,test.ts}`, `auth-bridge.test.ts`, `config.test.ts`, `dynamic-tool-build.ts`, `run-attempt-tool-setup.ts` |
-| 7 | Tests / harness / config / docs | **4** | 26 | 3 codex prompt snapshots + `plugin-sdk-surface-report.mts`; broad test churn |
+| 7 | Tests / harness / config / docs | **5** | 28 | 3 codex prompt snapshots + `plugin-sdk-surface-report.mts` + `plugin-sdk/test-env.ts`; broad test churn |
 | 8 | Unrelated upstream churn | **0** | 22 | `google-meet/cli.ts`, `signal/event-handler.ts`, `agent-loop.ts`, cron, plugins, TUI, status |
+| | **Total** | **17** | **88** | |
 
 ### 3.2 Mechanical vs genuine contract conflicts
 
