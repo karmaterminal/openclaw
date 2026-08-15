@@ -337,7 +337,42 @@ No RED/GREEN/revert intervention receipt is claimed: this workorder is read-only
 
 ## Validation
 
-Full suite tally: **pending final sanctioned run**.
+Full sanctioned suite:
+
+```text
+node --import tsx scripts/test-projects.mts
+538/538 shard invocations completed in 2596.04s
+528 green, 10 red
+24 failing tests
+```
+
+Failure classification:
+
+- **17 baseline failures:** focused reruns reproduce on composite first-parent
+  `b5de30c6ffe068d26f6b18e416f8f4659088241f` or absorbed upstream
+  `530b33e4e37264c89ecd5abdd06279dd23d5c867`. They cover three continuation
+  Responses assertions, the Project 84 topology contract, one Discord
+  retry-exhaustion assertion, three golden/git-backup assertions, four plugin
+  assertions, and five tooling/package/release assertions.
+- **7 load-sensitive failures:** one TUI PTY assertion, four post-compaction
+  durable-handoff assertions, and two backup assertions passed when their
+  failed configs were rerun serially with `maxWorkers=1`.
+- Serial diagnostics also exposed unrelated baseline/environment noise not
+  present in the original full run; it was not counted as a full-suite failure.
+- The branch changes only Markdown, JSON, CSV, GraphML, and GEXF report
+  artifacts. No product or test source changed. The final composite merge from
+  `b5de` to `6b09` changes only `src/gateway/server-cron.test.ts`, outside every
+  failing file.
+
+The baseline command grouped exact failing files under the same sanctioned
+Vitest configs:
+
+```text
+node scripts/run-vitest.mjs run --config <failed-config> --maxWorkers=1 <failed-files...>
+```
+
+This lane does not repair those reds: they predate the report branch and are
+outside issue #1254's bounded causal investigation.
 
 Artifact validation completed:
 
