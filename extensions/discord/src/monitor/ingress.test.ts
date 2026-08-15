@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { APIMessage } from "discord-api-types/v10";
+import { ChannelType, type APIMessage } from "discord-api-types/v10";
 import type { ChannelIngressQueue } from "openclaw/plugin-sdk/channel-outbound";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import {
@@ -17,9 +17,19 @@ type DiscordIngressPayload = {
   version: 1;
   receivedAt: number;
   rawMessage: APIMessage;
+  channelKind?: "non-thread" | "thread";
 };
 
-function createRawMessage(id: string, channelId = "channel-1"): APIMessage {
+type RawMessageOverrides = Partial<APIMessage> & {
+  channel_type?: number;
+  guild_id?: string;
+};
+
+function createRawMessage(
+  id: string,
+  channelId = "channel-1",
+  overrides: RawMessageOverrides = {},
+): APIMessage {
   return {
     id,
     channel_id: channelId,
@@ -41,6 +51,7 @@ function createRawMessage(id: string, channelId = "channel-1"): APIMessage {
     pinned: false,
     type: 0,
     tts: false,
+    ...overrides,
   } as unknown as APIMessage;
 }
 
@@ -48,8 +59,17 @@ function runtime(): Pick<RuntimeEnv, "error" | "log"> {
   return { error: vi.fn(), log: vi.fn() };
 }
 
-function payloadFor(rawMessage: APIMessage): DiscordIngressPayload {
-  return { version: 1, receivedAt: Date.now(), rawMessage };
+function payloadFor(
+  rawMessage: APIMessage,
+  receivedAt = Date.now(),
+  channelKind?: "non-thread" | "thread",
+): DiscordIngressPayload {
+  return {
+    version: 1,
+    receivedAt,
+    rawMessage,
+    ...(channelKind ? { channelKind } : {}),
+  };
 }
 
 async function withQueue<T>(
@@ -267,6 +287,220 @@ describe("Discord durable ingress", () => {
           const verdict = await queue.enqueue("1005", payloadFor(rawMessage));
           expect(verdict.kind).toBe("failed");
         });
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("suppresses stale ambient guild backlog before a fresh addressed message", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.parse("2026-08-14T20:00:00.000Z");
+      const stale = createRawMessage("1006", "channel-1", {
+        guild_id: "guild-1",
+        channel_type: ChannelType.GuildText,
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      });
+      const fresh = createRawMessage("1007", "channel-1", {
+        guild_id: "guild-1",
+        channel_type: ChannelType.GuildText,
+        content: "fresh <@bot-1>",
+        mentions: [{ id: "bot-1" }] as APIMessage["mentions"],
+        timestamp: new Date(now).toISOString(),
+      });
+      const logs = vi.fn();
+      await queue.enqueue("1006", payloadFor(stale, now - 16 * 60 * 1_000, "non-thread"), {
+        laneKey: "channel:channel-1",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+      await queue.enqueue("1007", payloadFor(fresh, now, "non-thread"), {
+        laneKey: "channel:channel-1",
+        receivedAt: now,
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: { error: vi.fn(), log: logs },
+        botUserId: "bot-1",
+        now: () => now,
+        queue,
+        dispatch: async (event, lifecycle) => {
+          dispatched.push(event.id ?? "missing");
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["1007"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+          { id: "1006", reason: "stale-ambient-backlog" },
+        ]);
+        expect(logs).toHaveBeenCalledTimes(1);
+        expect(logs).toHaveBeenCalledWith(
+          expect.objectContaining({
+            source: "discord",
+            eventId: "1006",
+            sourceEventId: "1006",
+            channelId: "channel-1",
+            disposition: "failed",
+            reason: "stale-ambient-backlog",
+          }),
+          "discord ingress stale ambient backlog suppressed",
+        );
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("persists the closed channel kind during raw gateway admission", async () => {
+    await withQueue(async (queue) => {
+      const rawMessage = createRawMessage("1006-kind", "channel-kind", {
+        guild_id: "guild-1",
+        channel_type: ChannelType.GuildText,
+      });
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        queue,
+        dispatch: async (_event, lifecycle) => {
+          await lifecycle.onAdopted();
+        },
+      });
+      try {
+        await monitor.accept(rawMessage);
+        expect(await queue.listPending({ limit: "all" })).toMatchObject([
+          { payload: { channelKind: "non-thread" } },
+        ]);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("preserves stale addressed and unknown-channel rows fail-open", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.parse("2026-08-14T20:00:00.000Z");
+      const addressed = createRawMessage("1008", "channel-2", {
+        guild_id: "guild-1",
+        channel_type: ChannelType.GuildText,
+        content: "old direct ask <@bot-1>",
+        mentions: [],
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      });
+      const unknown = createRawMessage("1009", "channel-3", {
+        guild_id: "guild-1",
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      });
+      await queue.enqueue("1008", payloadFor(addressed, now - 16 * 60 * 1_000, "non-thread"), {
+        laneKey: "channel:channel-2",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+      await queue.enqueue("1009", payloadFor(unknown, now - 16 * 60 * 1_000), {
+        laneKey: "channel:channel-3",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: "bot-1",
+        now: () => now,
+        queue,
+        dispatch: async (event, lifecycle) => {
+          dispatched.push(event.id ?? "missing");
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["1008", "1009"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("preserves stale rows from an explicitly ambient guild", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.parse("2026-08-14T20:00:00.000Z");
+      const ambient = createRawMessage("1011", "channel-ambient", {
+        guild_id: "guild-ambient",
+        channel_type: ChannelType.GuildText,
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      });
+      await queue.enqueue("1011", payloadFor(ambient, now - 16 * 60 * 1_000, "non-thread"), {
+        laneKey: "channel:channel-ambient",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: "bot-1",
+        guildEntries: {
+          "guild-ambient": {
+            channels: {
+              "channel-ambient": { enabled: true, requireMention: false },
+            },
+          },
+        },
+        now: () => now,
+        queue,
+        dispatch: async (event, lifecycle) => {
+          dispatched.push(event.id ?? "missing");
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["1011"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("suppresses persisted stale rows after restart using the closed channel kind fact", async () => {
+    await withQueue(async (queue) => {
+      const now = Date.parse("2026-08-14T20:00:00.000Z");
+      const stale = createRawMessage("1010", "channel-4", {
+        guild_id: "guild-1",
+        channel_type: ChannelType.GuildText,
+        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
+      });
+      await queue.enqueue("1010", payloadFor(stale, now - 16 * 60 * 1_000), {
+        laneKey: "channel:channel-4",
+        receivedAt: now - 16 * 60 * 1_000,
+      });
+
+      const dispatch = vi.fn();
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        botUserId: "bot-1",
+        now: () => now,
+        queue,
+        dispatch,
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(async () =>
+          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+            { id: "1010", reason: "stale-ambient-backlog" },
+          ]),
+        );
+        expect(dispatch).not.toHaveBeenCalled();
       } finally {
         await monitor.stop();
       }

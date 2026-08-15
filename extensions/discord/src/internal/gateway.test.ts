@@ -322,6 +322,7 @@ describe("GatewayPlugin", () => {
       d: {
         id: "m1",
         channel_id: "c1",
+        channel_type: 0,
         content: "hello",
         attachments: [],
         timestamp: new Date().toISOString(),
@@ -337,10 +338,12 @@ describe("GatewayPlugin", () => {
     expect(dispatchGatewayEvent).toHaveBeenCalledTimes(1);
     const dispatched = firstDispatchedData(dispatchGatewayEvent) as {
       author?: { id: string };
+      channel_type?: number;
       message?: { author?: { id: string } | null; content?: string };
       content?: string;
     };
     expect(dispatched.author?.id).toBe("u1");
+    expect(dispatched.channel_type).toBe(0);
     expect(dispatched.content).toBe("hello");
     expect(dispatched.message).toBeUndefined();
   });
