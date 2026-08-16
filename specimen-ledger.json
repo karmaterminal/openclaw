@@ -1,0 +1,196 @@
+{
+  "schema": "karmaterminal.openclaw.project87.specimen-ledger.v1",
+  "issue": "https://github.com/karmaterminal/openclaw/issues/1262",
+  "parentIssue": "https://github.com/karmaterminal/openclaw/issues/1256",
+  "causalReport": "cfbb29bfd3e751e718fda44649b690268621f13f",
+  "instrumentationHead": "d74c71c0a3e585f5411c6ea1fac236ee30445299",
+  "instrumentationBase": "acbbff19bad0a5539cd4725e6a6c8ae8e53f6694",
+  "inventoriedAt": "2026-08-16T07:00:02Z",
+  "method": "metadata-only remote stat/find/sha256sum; no sqlite open; no live copy",
+  "incidentFrozenSizes": {
+    "source": "cfbb29bfd3e:causal-proof/passive-observations.json",
+    "journalWindow": {
+      "since": "2026-08-15T09:15:00-07:00",
+      "until": "2026-08-15T11:15:00-07:00"
+    },
+    "cael": {
+      "traceId": "818314b20865025cc092d3042672f63b",
+      "runId": "3cf47ea3-fe24-4ec1-b465-83ac23968f6c",
+      "sessionId": "81e13776-d44a-4522-9cb4-3d36d8b6f320",
+      "finalizationFailedAt": "2026-08-15T09:27:21.779-07:00",
+      "zeroPayloadAt": "2026-08-15T09:27:27.938-07:00",
+      "agentDatabaseBytes": 5403803648,
+      "agentWalBytes": 5084112,
+      "sessionsYieldMarkers": 0
+    },
+    "ronan": {
+      "traceId": "39bb0342c1c8abf08d305343b75028a6",
+      "runId": "a5641441-3ebe-4d55-b5f8-e2fd08b31e3d",
+      "sessionId": "994fd111-0b9d-456c-8cc0-38c24d56a718",
+      "finalizationFailedAt": "2026-08-15T09:55:12.726-07:00",
+      "zeroPayloadAt": "2026-08-15T09:55:24.971-07:00",
+      "agentDatabaseBytes": 3796570112,
+      "agentWalBytes": 5265392,
+      "sessionsYieldMarkers": 0
+    },
+    "emeric": {
+      "traceId": "9af101e0eeb3b3058bc3810e5b8851ad",
+      "runId": "2102eb28-97da-41ce-87ba-7ce5199062af",
+      "sessionId": "39a09edf-c0c1-41e1-818d-4e23c468610a",
+      "finalizationFailedAt": "2026-08-15T09:38:03.172-07:00",
+      "zeroPayloadAt": "2026-08-15T09:38:06.507-07:00",
+      "agentDatabaseBytes": 6622703616,
+      "agentWalBytes": 5187112,
+      "sessionsYieldMarkers": 0
+    }
+  },
+  "liveAtInventory": {
+    "note": "Live paths recorded for exclusion only. Not copied. Gateways were running.",
+    "cael": {
+      "path": "/home/figs/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+      "sizeBytes": 5404979200,
+      "mtime": "2026-08-15T23:59:40.650230563-07:00",
+      "walBytes": 4148872,
+      "inode": 3539335,
+      "gateway": "running node .../flesh_beast_tmp/openclaw/dist/index.js gateway --port 18789"
+    },
+    "ronan": {
+      "path": "/home/figs/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+      "sizeBytes": 3903057920,
+      "mtime": "2026-08-15T23:59:05.783507718-07:00",
+      "walBytes": 5335432,
+      "inode": 4074116,
+      "gateway": "running"
+    },
+    "emeric": {
+      "path": "/home/figs/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+      "sizeBytes": 6695112704,
+      "mtime": "2026-08-15T23:33:24.987327106-07:00",
+      "walBytes": 4923432,
+      "inode": 7369015,
+      "gateway": "running"
+    }
+  },
+  "candidates": [
+    {
+      "id": "cael-main-pre-surgery-20260812T163601-0700",
+      "host": "cael",
+      "role": "agent-db",
+      "path": "/home/figs/.openclaw/backups/cael-main-pre-surgery-20260812T163601-0700/openclaw-agent.sqlite",
+      "sizeBytes": 4472635392,
+      "mtime": "2026-08-12T16:36:04.232360433-07:00",
+      "inode": 55705603,
+      "sha256": "ce0f49564769d009c23427fc33008898381994240769c684868d6bf2b31b6edc",
+      "walPresent": false,
+      "integrityReceipt": null,
+      "accepted": false,
+      "rejectReason": "predates incident by ~65h; size 4472635392 != frozen 5403803648; no WAL; no receipt binding to trace 818314b20865025cc092d3042672f63b"
+    },
+    {
+      "id": "cael-schema-prep-20260722T215512-0700",
+      "host": "cael",
+      "role": "agent-db",
+      "path": "/home/figs/.openclaw/backups/cael-schema-prep-20260722T215512-0700/openclaw-agent.sqlite",
+      "sizeBytes": 1852956672,
+      "mtime": "2026-07-22T21:55:12.577484077-07:00",
+      "sha256": "985e055f9502d847eece3609438975083a8bbe081d2fd5b8ff291883eec3ea6e",
+      "accepted": false,
+      "rejectReason": "24 days before incident; size mismatch"
+    },
+    {
+      "id": "cael-agent-recovery-20260731T2058Z",
+      "host": "cael",
+      "role": "agent-db",
+      "path": "/home/figs/.openclaw/backups/agent-recovery/main.pre-direct-recover-20260731T2058Z/agent/openclaw-agent.sqlite",
+      "sizeBytes": 2271191040,
+      "mtime": "2026-07-31T13:50:36.506335209-07:00",
+      "sha256": "2e5923f5df64e8b1e2aeb299d55d74fee1ee7b5011167e105e78156a29f9a604",
+      "accepted": false,
+      "rejectReason": "15 days before incident; size mismatch"
+    },
+    {
+      "id": "ronan-memory-pre-reindex-20260805",
+      "host": "ronan",
+      "role": "memory-or-agent-copy",
+      "path": "/home/figs/.openclaw/backups/memory-github-copilot-20260805T1910PDT/main.pre-reindex.sqlite",
+      "sizeBytes": 3317645312,
+      "mtime": "2026-08-05T19:13:47.248233522-07:00",
+      "sha256": "b4ac38e524730cccb52f002b0ae418109b5e4a019ea45f00ebb13798ee06d9dc",
+      "accepted": false,
+      "rejectReason": "10 days before incident; size 3317645312 != frozen 3796570112; named as memory reindex, not incident agent snapshot"
+    },
+    {
+      "id": "ronan-memory-ollama-20260806",
+      "host": "ronan",
+      "role": "memory-or-agent-copy",
+      "path": "/home/figs/.openclaw/backups/memory-ollama-pre-replacement-20260806T200909Z/main.sqlite",
+      "sizeBytes": 3315441664,
+      "mtime": "2026-08-06T13:09:11.478485789-07:00",
+      "sha256": "9ad07d997dae6526102f56d6d9fbe11cde4d7c148303f47d76a6d63a80efab47",
+      "existingSha256File": "9ad07d997dae6526102f56d6d9fbe11cde4d7c148303f47d76a6d63a80efab47",
+      "accepted": false,
+      "rejectReason": "9 days before incident; size mismatch; no Ronan agent-db copy exists at all"
+    },
+    {
+      "id": "emeric-pre-nomic-20260806",
+      "host": "emeric",
+      "role": "agent-db",
+      "path": "/home/figs/.openclaw/backups/memory-nomic-standardize-20260806-1138/openclaw-agent.sqlite.pre-nomic",
+      "sizeBytes": 6206427136,
+      "mtime": "2026-08-06T11:42:04.599520068-07:00",
+      "inode": 885187201,
+      "sha256": "543ecc9a17ea17f94b2267f1b871754ba4ec7be59cfbf2949717166a41f05824",
+      "accepted": false,
+      "rejectReason": "9 days before incident; size 6206427136 != frozen 6622703616; no WAL"
+    }
+  ],
+  "wrongRoleAug15Backups": [
+    {
+      "host": "cael",
+      "path": "/home/figs/.openclaw/backups/cael-state-corrupt-20260816T023456Z/openclaw.sqlite",
+      "sizeBytes": 47599616,
+      "mtime": "2026-08-15T11:47:10.674827682-07:00",
+      "role": "shared-state-db",
+      "accepted": false,
+      "rejectReason": "shared state DB; matches ledger sharedStateDatabaseBytes 47599616, not agent DB"
+    },
+    {
+      "host": "cael",
+      "path": "/home/figs/.openclaw/backups/cael-ingress-palliative-20260815T043719Z/openclaw.sqlite",
+      "sizeBytes": 46276608,
+      "mtime": "2026-08-14T21:37:19.940515234-07:00",
+      "role": "shared-state-db",
+      "accepted": false
+    },
+    {
+      "host": "ronan",
+      "path": "/home/figs/.openclaw/backups/ronan-sqlite-repair-20260815T090547Z/openclaw.sqlite",
+      "sizeBytes": 102354944,
+      "mtime": "2026-08-15T02:03:23.883857200-07:00",
+      "role": "shared-state-db",
+      "accepted": false,
+      "rejectReason": "pre-incident shared-state repair; not agent DB; predates 09:55 finalization"
+    },
+    {
+      "host": "emeric",
+      "path": "/home/figs/.openclaw/backups/emeric-ingress-palliative-20260815T090552Z/openclaw.sqlite",
+      "sizeBytes": 84377600,
+      "mtime": "2026-08-15T02:05:52.913652039-07:00",
+      "role": "shared-state-db",
+      "accepted": false
+    }
+  ],
+  "filesystemSnapshots": {
+    "cael": { "zfs": false, "btrfsSnapper": false, "slashSnapshots": false },
+    "ronan": { "zfs": false, "btrfsSnapper": false, "slashSnapshots": false },
+    "emeric": {
+      "zfs": false,
+      "slashSnapshotsPathExists": true,
+      "slashSnapshotsContents": "empty",
+      "snapper": false
+    },
+    "thornfield-gw": { "openclawAgentCopies": false }
+  },
+  "acceptedSpecimen": null,
+  "copiedToScratch": false
+}

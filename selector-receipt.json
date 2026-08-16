@@ -1,0 +1,67 @@
+{
+  "schema": "karmaterminal.openclaw.project87.selector-receipt.v1",
+  "requirement": "R-NC-CODEX-CONTEXT-COPY",
+  "issue": "https://github.com/karmaterminal/openclaw/issues/1262",
+  "consumes": {
+    "m2Issue": "https://github.com/karmaterminal/openclaw/issues/1256",
+    "upstreamInstrumentationPr": "https://github.com/openclaw/openclaw/pull/124454",
+    "m2Head": "d74c71c0a3e585f5411c6ea1fac236ee30445299",
+    "m2Base": "acbbff19bad0a5539cd4725e6a6c8ae8e53f6694",
+    "causalReport": "cfbb29bfd3e751e718fda44649b690268621f13f"
+  },
+  "inventoriedAt": "2026-08-16T07:00:02Z",
+  "decidedAt": "2026-08-16T07:05:00Z",
+  "safety": {
+    "liveAgentDbOpened": false,
+    "liveAgentDbCopied": false,
+    "providerCalls": false,
+    "channelDelivery": false,
+    "fleetMutation": false,
+    "transcriptPayloadPrinted": false
+  },
+  "selection": {
+    "accepted": false,
+    "outcome": "no-reproduction",
+    "closedReason": null,
+    "reason": "missing-incident-bound-immutable-agent-store",
+    "bindingRule": "A specimen binds only if it is an immutable agent-store copy (not live, not shared-state) whose size/time/integrity can be related to a recorded Cael/Ronan/Emeric finalization trace.",
+    "missingEvidence": [
+      "No immutable openclaw-agent.sqlite copy whose size equals a frozen incident size (Cael 5403803648, Ronan 3796570112, Emeric 6622703616).",
+      "No agent-store copy whose mtime is inside or after the 2026-08-15T09:15-11:15-07:00 journal window while remaining frozen.",
+      "No WAL sidecar matching frozen agentWalBytes.",
+      "No ZFS/btrfs/snapper snapshot of the live agent path at incident time.",
+      "2026-08-15 backups on all three seats are shared-state DBs (openclaw.sqlite), not agent DBs.",
+      "Live agent DBs are owned by running gateways and grew past frozen sizes; mutation gate forbids copy."
+    ]
+  },
+  "replay": {
+    "affectedCopiedStoreRuns": 0,
+    "deterministicClassification": null,
+    "adaptersDisabled": true,
+    "note": "Exact M2 capture was not pointed at a copied incident store. Doing so would have been a non-binding fossil."
+  },
+  "control": {
+    "kind": "m2-owner-fossil-known-valid-turn",
+    "command": "OPENCLAW_HEAVY_CHECK_LOCK_SCOPE=worktree node scripts/run-vitest.mjs extensions/codex/src/app-server/settled-turn-context.test.ts",
+    "head": "d74c71c0a3e585f5411c6ea1fac236ee30445299",
+    "result": "21/21 passed",
+    "validContextRemainsValid": true,
+    "copiedStoreControl": false
+  },
+  "coordination": {
+    "upstream124176": {
+      "url": "https://github.com/openclaw/openclaw/pull/124176",
+      "overlap": "same warning string, different owner",
+      "action": "do-not-absorb",
+      "evidence": "incident traces recorded sessionsYieldMarkers=0; #124176 is sessions_yield skip only"
+    },
+    "upstream119901": {
+      "url": "https://github.com/openclaw/openclaw/pull/119901",
+      "overlap": "none for C2 reason selection",
+      "action": "leave-to-1257",
+      "evidence": "SQLite plan/ANALYZE is #1257; this selector did not open any agent DB"
+    }
+  },
+  "successor": "successor-issue-draft.md",
+  "specimenLedger": "specimen-ledger.json"
+}
