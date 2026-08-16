@@ -15,7 +15,10 @@ import {
   isLiveLocalIngressDrainOwner,
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
-import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
+import {
+  isIngressCancelCompat,
+  type ChannelIngressDispatchLifecycle,
+} from "./ingress-drain-lifecycle.js";
 import {
   activeClaimKey,
   IngressAdoptionLostError,
@@ -495,11 +498,14 @@ export function createChannelIngressDrain<
         await settleUnadopted(state, (claim) => releaseClaim(claim, { recordAttempt: false }));
       },
       onAbandoned: async () => {
-        // A deferred turn that never owned the reply lane is a real failed
-        // attempt: it takes the same bounded disposition as onFailed, or an
-        // unadoptable row retries forever and holds the head of its FIFO lane.
+        // Mixed fan-in cancel falls back to onAbandoned when a source predates
+        // onCancelled. That path is still cancellation: do not charge budget.
+        // A genuine un-admitted turn takes the same bounded disposition as
+        // onFailed, or it retries forever and holds the head of its FIFO lane.
         await settleUnadopted(state, (claim) =>
-          applyFailureDisposition(claim, new Error("turn-abandoned")),
+          isIngressCancelCompat()
+            ? releaseClaim(claim, { recordAttempt: false })
+            : applyFailureDisposition(claim, new Error("turn-abandoned")),
         );
       },
     };
