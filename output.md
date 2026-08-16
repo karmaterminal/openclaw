@@ -13,7 +13,7 @@ This report is public-safe. No message payloads, credentials, prince memory, or 
 
 The preserved Cael shared-state snapshot is physically inconsistent. Offline `PRAGMA integrity_check` on a hash-verified copy reports one overflow-list mismatch on tree 146 (`model_catalog_remote`) plus 99 unused pages. SQLite `.recover` into a new file yields `integrity_check=ok` at `user_version=7` (the `6b09` / package `openclaw.schemaVersions.state` contract). All product table counts match the corrupt image except an empty reconstructed catalog row and a 204-row non-product `lost_and_found` salvage table.
 
-**Selected strategy:** worker-only Phase 1 is complete. Post-cleanup candidate SHA-256 `4a92bb50ecaf562017950e3605454ce883ecea4515c69ac361e84127e29ed8fc` (`37801984` bytes, `user_version=7`, integrity/quick/fk clean, catalog count 0, `lost_and_found` absent). Stage that file beside live only after an explicit mutation gate. Do not restart Cael from this lane.
+**Selected strategy executed** under gate comment `5306199372`. Candidate `4a92bb50…e29ed8fc` is now live. Corrupt inode preserved as `openclaw.sqlite.incident-held-20260816` (`9a6617ba…818831`). Gateway started on exact `6b09`; `NRestarts=0`. Copy integrity `ok` / `user_version=7`. Discord connected. Nonce speech proof remains pending for scribe. No fleet-cure claim.
 
 No introducing write is identified. Do not claim a corruption root cause.
 

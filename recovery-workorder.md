@@ -76,7 +76,17 @@ model_catalog_remote COUNT(*)=0; lost_and_found absent
 owner counts match recovery-row-counts.csv recovered column
 ```
 
-Receipt: `phase1-receipt.json`. Do not regenerate unless that hash is missing. Phase 2+ remains gated and was not executed.
+Receipt: `phase1-receipt.json`.
+
+## Phase 2–5 — EXECUTED 2026-08-16T06:54Z under gate `5306199372`
+
+- Staged beside live; hashes `4a92bb50…` / `9a6617ba…`.
+- Atomic `mv -n` live → `openclaw.sqlite.incident-held-20260816`, stage → live.
+- Started existing `6b09` only. No deploy/config change.
+- `/health` 200 live; `/readyz` 200 ready after settle; copy `integrity_check=ok`, `user_version=7`.
+- Discord default connected. Catalog cache rebuilt (`bundle_json` ~1.17 MiB).
+- Nonce-correlated Discord speech **not** fired from this lane (`pending-scribe`).
+- Receipt: `cutover-receipt.json`.
 
 ## Phase 2 — copy candidate to Cael _beside_ live (still no cutover)
 

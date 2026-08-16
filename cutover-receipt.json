@@ -1,0 +1,52 @@
+{
+  "schema": "cael-state-cutover.v1",
+  "generated_at": "2026-08-16T06:57:20Z",
+  "issue": "karmaterminal/openclaw#1261",
+  "gate_comment": 5306199372,
+  "runtime_composite": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955",
+  "strategy": "phase1-cleaned-recover",
+  "hashes": {
+    "phase1_cleaned_candidate": "4a92bb50ecaf562017950e3605454ce883ecea4515c69ac361e84127e29ed8fc",
+    "incident_preserved": "9a6617baf51cd083dc9c96852fcf4c7803bb6dfd4891865ad8609a3584818831",
+    "incident_held_after_cutover": "9a6617baf51cd083dc9c96852fcf4c7803bb6dfd4891865ad8609a3584818831"
+  },
+  "service": {
+    "unit": "openclaw-gateway.service",
+    "active_state": "active",
+    "nrestarts": 0,
+    "exec_main_status": 0,
+    "runtime_head": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955",
+    "deploy_or_config_changed": false
+  },
+  "probes": {
+    "health": { "http": 200, "body": { "ok": true, "status": "live" }, "meaning": "process liveness only" },
+    "readyz": { "http": 200, "ready": true, "failing": [], "event_loop_degraded_after_settle": false }
+  },
+  "post_start_copy_integrity": {
+    "integrity_check": "ok",
+    "user_version": 7,
+    "foreign_key_check_violations": 0,
+    "lost_and_found_present": false,
+    "model_catalog_remote_count": 1,
+    "model_catalog_bundle_bytes": 1176603,
+    "owner_counts": {
+      "channel_ingress_events": 3751,
+      "delivery_queue_entries": 161,
+      "plugin_state_entries": 6908,
+      "task_runs": 1574,
+      "worker_session_placements": 39,
+      "device_pairing_paired": 85
+    }
+  },
+  "channels": {
+    "discord_default": {
+      "enabled": true,
+      "configured": true,
+      "running": true,
+      "connected": true
+    }
+  },
+  "nonce_discord_speech": "pending-scribe",
+  "fleet_cure_claimed": false,
+  "rollback_executed": false
+}
