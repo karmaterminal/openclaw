@@ -63,5 +63,16 @@
     }
   },
   "successor": "successor-issue-draft.md",
-  "specimenLedger": "specimen-ledger.json"
+  "specimenLedger": "specimen-ledger.json",
+  "fullSuite": {
+    "command": "OPENCLAW_HEAVY_CHECK_LOCK_SCOPE=worktree node --import tsx scripts/test-projects.mts",
+    "head": "d74c71c0a3e585f5411c6ea1fac236ee30445299",
+    "shardsInvoked": 539,
+    "durationSec": 1822.8,
+    "wrapperExit": 1,
+    "uniqueFailTestFiles": 20,
+    "ownerSettledTurnContextFails": 0,
+    "wrapperDigestFailedShards": 357,
+    "wrapperDigestNote": "overcount; unique FAIL files are 20"
+  }
 }

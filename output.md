@@ -55,7 +55,19 @@ OPENCLAW_HEAVY_CHECK_LOCK_SCOPE=worktree node scripts/run-vitest.mjs \
 # 21/21 passed in 23.36s on d74c71c0a3e
 ```
 
-Full sanctioned suite (`node --import tsx scripts/test-projects.mts`) started on this exact head after the report files; tally recorded in the COMPLETE post / later commit if the run finishes.
+Full sanctioned suite on `d74c71c0a3e` (report files only; no product delta):
+
+```text
+OPENCLAW_HEAVY_CHECK_LOCK_SCOPE=worktree node --import tsx scripts/test-projects.mts
+# 539/539 shards invoked in 1822.80s; wrapper exit 1
+# Unique FAIL test files: 20. Owner settled-turn-context*: 0.
+# configured-mcp 120s timeouts: same class as M2 exact-base hang.
+# Other reds match M2 out-of-lane families (UI Playwright, TUI PTY,
+# IPv6 portal, HOME isolation, respawn, git-backup, exec PATH) plus a
+# few extra non-owner files. Not repaired here.
+# Wrapper digest claimed 357 failed shards; that overcounts — only 20
+# unique FAIL files appear in the log.
+```
 
 ## Uncertainties
 
