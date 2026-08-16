@@ -100,7 +100,7 @@ function isIngressCompletionOutcome(value: unknown): value is ChannelIngressComp
  * session identity are not facts at this layer; extra keys would reintroduce
  * payload into the tombstone.
  */
-export function buildChannelIngressCompletionLineage(
+function buildChannelIngressCompletionLineage(
   input: unknown,
 ): ChannelIngressCompletionLineage | undefined {
   if (!isRecord(input) || !isIngressCompletionOutcome(input.outcome)) {

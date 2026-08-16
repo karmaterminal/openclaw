@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   bindIngressLifecycleToReplyOptions,
   buildAgentRunAdoptedLineage,
-  buildChannelIngressCompletionLineage,
   resolveReturnedIngressCompletion,
 } from "./ingress-drain-lifecycle.js";
 
@@ -50,27 +49,37 @@ describe("channel ingress drain lifecycle", () => {
   });
 
   it("redacts completion lineage to closed producer-known outcomes", () => {
-    expect(buildChannelIngressCompletionLineage(undefined)).toBeUndefined();
-    expect(buildChannelIngressCompletionLineage({ outcome: "policy-gate" })).toBeUndefined();
     expect(
-      buildChannelIngressCompletionLineage({
-        outcome: "delivery-returned-completed",
-        payload: "secret",
-        runId: "should-not-copy",
+      resolveReturnedIngressCompletion({
+        kind: "completed",
+        completion: { outcome: "policy-gate", payload: "secret" },
       }),
     ).toEqual({ outcome: "delivery-returned-completed" });
     expect(
-      buildChannelIngressCompletionLineage({
-        outcome: "agent-run-adopted",
-        runId: "  run-1  ",
-        sessionId: "sess",
-        payload: "secret",
+      resolveReturnedIngressCompletion({
+        kind: "completed",
+        completion: {
+          outcome: "delivery-returned-completed",
+          payload: "secret",
+          runId: "should-not-copy",
+        },
+      }),
+    ).toEqual({ outcome: "delivery-returned-completed" });
+    expect(
+      resolveReturnedIngressCompletion({
+        kind: "completed",
+        completion: {
+          outcome: "agent-run-adopted",
+          runId: "  run-1  ",
+          sessionId: "sess",
+          payload: "secret",
+        },
       }),
     ).toEqual({ outcome: "agent-run-adopted", runId: "run-1" });
     expect(
-      buildChannelIngressCompletionLineage({
-        outcome: "agent-run-adopted",
-        runId: "x".repeat(129),
+      resolveReturnedIngressCompletion({
+        kind: "completed",
+        completion: { outcome: "agent-run-adopted", runId: "x".repeat(129) },
       }),
     ).toEqual({ outcome: "agent-run-adopted" });
     expect(buildAgentRunAdoptedLineage()).toEqual({ outcome: "agent-run-adopted" });
