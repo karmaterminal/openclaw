@@ -46,6 +46,7 @@ export type {
 } from "../channels/message-access/index.js";
 export type { ResolvedChannelImplicitMentions } from "../config/implicit-mentions.js";
 
+import { runIngressCancelCompat } from "../channels/message/ingress-drain-lifecycle.js";
 import {
   createChannelIngressMonitor,
   type ChannelIngressMonitorDrainOptions,
@@ -160,7 +161,9 @@ export function fanInChannelIngressLifecycles(
   const cancelAll = async () => {
     await Promise.all(
       lifecycles.map(async (lifecycle) =>
-        lifecycle.onCancelled ? await lifecycle.onCancelled() : await lifecycle.onAbandoned(),
+        lifecycle.onCancelled
+          ? await lifecycle.onCancelled()
+          : await runIngressCancelCompat(() => lifecycle.onAbandoned()),
       ),
     );
   };
