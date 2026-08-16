@@ -1,0 +1,164 @@
+{
+  "generated_at": "2026-08-16T07:40:00Z",
+  "issue": "karmaterminal/openclaw#1263",
+  "parent_issue": "karmaterminal/openclaw#1254",
+  "sibling_issue": "karmaterminal/openclaw#1261",
+  "runtime_composite": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955",
+  "lane": "codeagent/ronan-state-db-recovery-analysis",
+  "mutation_performed": false,
+  "gateway_restarted": false,
+  "live_sqlite_opened": false,
+  "full_suite_run": false,
+  "selected_strategy": "current_recover_drop_salvage_keep_catalog",
+  "sqlite": {
+    "system_cli": "3.45.1",
+    "recover_cli": "3.53.4",
+    "node_runtime": "3.51.3",
+    "system_recover_blocked": "no such table: sqlite_dbpage"
+  },
+  "unit": {
+    "name": "openclaw-gateway.service",
+    "active_state": "failed",
+    "sub_state": "failed",
+    "n_restarts": 6,
+    "inactive_enter": "2026-08-16T00:03:23-07:00",
+    "oom_pid": 1307987,
+    "oom_result": "core-dump status=6/ABRT",
+    "memory_peak": "59.8G",
+    "swap_peak": "43.2M",
+    "heap_limit_mib": 32768,
+    "v8_heap_mib_at_death": 32751.1
+  },
+  "artifact_hashes": {
+    "frozen_db": "98b7a91bb71830f3b415200f88c5fb52b4f96b74393119fe16a947898ecbaef0",
+    "frozen_shm": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+    "frozen_wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "recovered_preclean": "278fa90c0e8e8c9023318935f130450439fcca331413740b072d3f644386818a",
+    "selected_cleaned": "30940a6e0b25f2c0fc0b5a9cd16b7a7a7a5886927b307a5e5efd4707a4cbb28d",
+    "prior_source_20260815T090547Z": "25b4ac6f3db7215c3f7d1e612fbfcd8b9b4c8764d8ae43ea69d7a5cd52ac33c0",
+    "prior_repaired_20260815T090547Z": "ff9dd266bd00871c50af17ffd407c9e2eba5b226302994755d65406b16e6ecf3"
+  },
+  "artifact_sizes_bytes": {
+    "frozen_db": 78249984,
+    "frozen_shm": 32768,
+    "frozen_wal": 0,
+    "recovered_preclean": 77144064,
+    "selected_cleaned": 74825728,
+    "prior_source_20260815T090547Z": 102354944,
+    "prior_repaired_20260815T090547Z": 75497472
+  },
+  "paths": {
+    "frozen_dir": "~/.openclaw/recovery/project87-ronan-20260816T0028PDT/",
+    "live_db": "~/.openclaw/state/openclaw.sqlite",
+    "live_wal_shm_at_freeze": "present",
+    "live_wal_shm_now": "absent",
+    "selected_candidate": "~/.openclaw/recovery/project87-ronan-20260816T0028PDT/openclaw.recovered-cleaned.sqlite",
+    "preclean_candidate": "~/.openclaw/recovery/project87-ronan-20260816T0028PDT/openclaw.recovered-preclean.sqlite",
+    "prior_repair_dir": "~/.openclaw/backups/ronan-sqlite-repair-20260815T090547Z/"
+  },
+  "integrity": {
+    "corrupt_copy": {
+      "user_version": 7,
+      "schema_version": 805,
+      "page_size": 4096,
+      "page_count": 19104,
+      "freelist_count": 274,
+      "quick_check_ok": false,
+      "integrity_check_ok": false,
+      "integrity_check_lines": [
+        "*** in database main ***",
+        "Freelist: size is 267 but should be 274"
+      ],
+      "foreign_key_violations": 0,
+      "table_count": 130,
+      "index_count": 134,
+      "row_count_errors": 0,
+      "schema_meta_primary": { "role": "global", "schema_version": 7, "app_version": "2026.8.1" }
+    },
+    "recovered_preclean": {
+      "user_version": 7,
+      "schema_version": 266,
+      "page_size": 4096,
+      "page_count": 18834,
+      "freelist_count": 0,
+      "quick_check_ok": true,
+      "integrity_check_ok": true,
+      "foreign_key_violations": 0,
+      "table_count": 131,
+      "lost_and_found_rows": 33,
+      "lost_and_found_distinct_rootpgno": 5,
+      "lost_and_found_catalog_root_248_rows": 0,
+      "catalog_rows": 1,
+      "catalog_bundle_bytes": 1169691
+    },
+    "selected_cleaned": {
+      "user_version": 7,
+      "schema_version": 268,
+      "page_size": 4096,
+      "page_count": 18268,
+      "freelist_count": 0,
+      "journal_mode": "delete",
+      "quick_check_ok": true,
+      "integrity_check_ok": true,
+      "foreign_key_violations": 0,
+      "node_3_51_3_integrity_ok": true,
+      "lost_and_found_present": false,
+      "catalog_rows": 1,
+      "catalog_bundle_bytes": 1169691,
+      "product_counts_match_corrupt": true
+    },
+    "prior_source": {
+      "user_version": 6,
+      "page_count": 24989,
+      "freelist_count": 580,
+      "quick_check_ok": false,
+      "integrity_check_lines": [
+        "*** in database main ***",
+        "Freelist: size is 578 but should be 580"
+      ]
+    },
+    "prior_repaired": {
+      "user_version": 6,
+      "schema_version": 775,
+      "page_size": 4096,
+      "page_count": 18432,
+      "freelist_count": 0,
+      "quick_check_ok": true,
+      "integrity_check_ok": true,
+      "foreign_key_violations": 0,
+      "has_commitments_table": true,
+      "catalog_rows": 1,
+      "catalog_bundle_bytes": 1162229
+    }
+  },
+  "owner_counts_cleaned": {
+    "channel_ingress_events": 5177,
+    "delivery_queue_entries": 106,
+    "plugin_state_entries": 6043,
+    "task_runs": 1656,
+    "task_delivery_state": 76,
+    "worker_session_placements": 2,
+    "device_pairing_paired": 1,
+    "session_state_heads": 91,
+    "session_watch_cursors": 74,
+    "session_state_events": 144,
+    "cron_run_receipts": 2,
+    "audit_events": 76547,
+    "model_catalog_remote": 1
+  },
+  "cleaned_minus_prior_repaired": {
+    "channel_ingress_events": 3,
+    "delivery_queue_entries": -9,
+    "plugin_state_entries": 38,
+    "task_runs": -1,
+    "task_delivery_state": -5,
+    "worker_session_placements": 2,
+    "audit_events": -643,
+    "gateway_boot_lifecycle": -7
+  },
+  "corruption_class": {
+    "this_incident": "freelist_header_size_mismatch",
+    "prior_ronan": "freelist_header_size_mismatch",
+    "cael_1261": "overflow_list_length_mismatch_on_model_catalog_remote"
+  }
+}
