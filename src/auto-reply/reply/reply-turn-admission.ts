@@ -87,11 +87,32 @@ export async function runWithReplyOperationLifecycleAdmission<T>(
   return admission ? await admission.run(run) : await run();
 }
 
-function rejectLifecycleInvalidatedWork(params: { kind: ReplyTurnKind; message: string }): never {
-  if (params.kind === "queued_followup") {
-    throw new QueuedFollowupLifecycleInvalidatedError(params.message);
+type ReplyTurnLifecycleInvalidationReason =
+  | "expected-session-mismatch"
+  | "recovery-owner-invalidated"
+  | "pre-operation-interrupted";
+
+function rejectLifecycleInvalidatedWork(params: {
+  kind: ReplyTurnKind;
+  message: string;
+  reason?: ReplyTurnLifecycleInvalidationReason;
+}): never {
+  const error =
+    params.kind === "queued_followup"
+      ? new QueuedFollowupLifecycleInvalidatedError(params.message)
+      : new Error(params.message);
+  // Private closed reason: the three "changed while starting work" producers
+  // share one user-visible message. Diagnostics must not infer the owner from
+  // that text, and JSON/log enumerations must not grow a new public field.
+  if (params.reason) {
+    Object.defineProperty(error, "replyTurnLifecycleInvalidationReason", {
+      configurable: false,
+      enumerable: false,
+      value: params.reason,
+      writable: false,
+    });
   }
-  throw new Error(params.message);
+  throw error;
 }
 
 function isAbortSignalAborted(signal: AbortSignal | undefined): boolean {
@@ -271,6 +292,7 @@ async function admitReplyTurnWithWaitSignal(
                 rejectLifecycleInvalidatedWork({
                   kind: params.kind,
                   message: `Session "${params.sessionKey}" changed while starting work. Retry.`,
+                  reason: "expected-session-mismatch",
                 });
               }
               if (activeOperationRotatedExpectedSession) {
@@ -314,6 +336,7 @@ async function admitReplyTurnWithWaitSignal(
             rejectLifecycleInvalidatedWork({
               kind: params.kind,
               message: `Session "${params.sessionKey}" changed while starting work. Retry.`,
+              reason: "recovery-owner-invalidated",
             });
           }
           recoveryOwnerLease = ownerClaim.kind === "claimed" ? ownerClaim.lease : undefined;
@@ -322,6 +345,7 @@ async function admitReplyTurnWithWaitSignal(
           rejectLifecycleInvalidatedWork({
             kind: params.kind,
             message: `Session "${params.sessionKey}" changed while starting work. Retry.`,
+            reason: interruptedBeforeOperation ? "pre-operation-interrupted" : undefined,
           });
         }
         if (params.adoptOperation) {
