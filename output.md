@@ -13,7 +13,7 @@ This report is public-safe. No message payloads, credentials, prince memory, or 
 
 The preserved Cael shared-state snapshot is physically inconsistent. Offline `PRAGMA integrity_check` on a hash-verified copy reports one overflow-list mismatch on tree 146 (`model_catalog_remote`) plus 99 unused pages. SQLite `.recover` into a new file yields `integrity_check=ok` at `user_version=7` (the `6b09` / package `openclaw.schemaVersions.state` contract). All product table counts match the corrupt image except an empty reconstructed catalog row and a 204-row non-product `lost_and_found` salvage table.
 
-**Selected strategy:** stage the `.recover` candidate beside the live file, drop `lost_and_found`, delete the empty catalog cache row, then cut over only under an explicit mutation gate. Keep the latest verified-clean snapshot as rollback. Do not restart Cael from this lane.
+**Selected strategy:** worker-only Phase 1 is complete. Post-cleanup candidate SHA-256 `4a92bb50ecaf562017950e3605454ce883ecea4515c69ac361e84127e29ed8fc` (`37801984` bytes, `user_version=7`, integrity/quick/fk clean, catalog count 0, `lost_and_found` absent). Stage that file beside live only after an explicit mutation gate. Do not restart Cael from this lane.
 
 No introducing write is identified. Do not claim a corruption root cause.
 
@@ -63,7 +63,28 @@ Gateway remained stopped for the entire analysis. No live SQLite write, WAL/SHM 
 | Catalog row       | present, `bundle_json` length `0`, timestamps `0`                  |
 | `lost_and_found`  | 204 rows, 23 unmapped `rootpgno` values, none equal to 146         |
 
-The empty catalog row is cache, not speech state. `lost_and_found` is SQLite salvage, not an OpenClaw owner. Drop it before any cutover.
+The empty catalog row is cache, not speech state. `lost_and_found` is SQLite salvage, not an OpenClaw owner.
+
+### Phase 1 worker cleanup (2026-08-16T06:27Z)
+
+New destination only. Source hashes re-verified. Rebuilt from the prior immutable `.recover` SQL dump, then:
+
+`DROP TABLE IF EXISTS lost_and_found;` `DELETE FROM model_catalog_remote;` `PRAGMA user_version=7;` `VACUUM;`
+
+| Fact                                                       | Value                                                              |
+| ---------------------------------------------------------- | ------------------------------------------------------------------ |
+| SHA-256                                                    | `4a92bb50ecaf562017950e3605454ce883ecea4515c69ac361e84127e29ed8fc` |
+| Size                                                       | `37801984`                                                         |
+| `user_version` / SQLite `schema_version`                   | `7` / `269`                                                        |
+| Pages                                                      | `9229` × `4096`, freelist `0`, journal `delete`                    |
+| `integrity_check` / `quick_check`                          | `ok` / `ok`                                                        |
+| `foreign_key_check`                                        | 0 rows                                                             |
+| `model_catalog_remote`                                     | table present, `COUNT(*)=0`                                        |
+| `lost_and_found`                                           | absent                                                             |
+| Owner counts vs `recovery-row-counts.csv` recovered column | exact match (catalog expected 0 after DELETE)                      |
+| Cael                                                       | not contacted                                                      |
+
+Receipt: `phase1-receipt.json`. Phase 2+ (copy/stage/cutover/start) was not run.
 
 ## Prior snapshots (metadata/hash only)
 

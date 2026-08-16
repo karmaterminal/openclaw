@@ -7,7 +7,7 @@ This file is a procedure. It is not authorization.
 
 ## Hard stops
 
-Do nothing in the mutation section until a named operator posts an explicit mutation gate on #1261 naming this workorder and the recovered SHA-256 below.
+Do nothing in the mutation section until a named operator posts an explicit mutation gate on #1261 naming this workorder and the **Phase 1 post-cleanup** SHA-256 below.
 
 Until then:
 
@@ -19,10 +19,12 @@ Until then:
 ## Frozen hashes
 
 ```
-corrupt DB   9a6617baf51cd083dc9c96852fcf4c7803bb6dfd4891865ad8609a3584818831
-recovered    1b2918286dfee6d1780201f6b140c4e72d639ef6a484f9deceb3f0fbace9a94a
-clean v7     77daa71a96eb84fb0beb438b8adcfb3ab214b06a0f21db2481dd7e3e3d6883d4
-             (cael-manual-recovery-20260815T064304Z)
+corrupt DB        9a6617baf51cd083dc9c96852fcf4c7803bb6dfd4891865ad8609a3584818831
+pre-cleanup rec.  1b2918286dfee6d1780201f6b140c4e72d639ef6a484f9deceb3f0fbace9a94a
+PHASE1 CLEANED    4a92bb50ecaf562017950e3605454ce883ecea4515c69ac361e84127e29ed8fc
+                  size 37801984; this is the only cutover identity
+clean v7 restore  77daa71a96eb84fb0beb438b8adcfb3ab214b06a0f21db2481dd7e3e3d6883d4
+                  (cael-manual-recovery-20260815T064304Z)
 ```
 
 Host paths on Cael:
@@ -59,33 +61,22 @@ stat -c '%s %y' "$LIVE"
 
 If any of those drifted, stop and re-analyze. Do not cut over.
 
-## Phase 1 — rebuild the candidate on the worker (still no Cael mutation)
+## Phase 1 — DONE on worker (2026-08-16T06:27Z). No Cael mutation.
 
-Use a _new_ destination every time. Never write the incident snapshot.
+New dest: `/tmp/cael-state-db-recovery-analysis/work/phase1-20260816T062741Z/openclaw.recovered-cleaned.sqlite`
+
+Rebuilt from the prior immutable `.recover` SQL dump (`1b291828…`), then DROP/DELETE/user_version=7/VACUUM.
 
 ```
-SRC=/tmp/cael-state-db-recovery-analysis/work/corrupt-immutable.sqlite
-CAND=/tmp/cael-state-db-recovery-analysis/work/recovered.sqlite
-# If regenerating:
-# rm -f "$CAND"
-# sqlite3 "file:${SRC}?immutable=1" ".recover" | sqlite3 "$CAND"
-sqlite3 "$CAND" "PRAGMA integrity_check; PRAGMA user_version; PRAGMA foreign_key_check;"
-# expect: ok / 7 / (no rows)
-
-sqlite3 "$CAND" <<'SQL'
-DROP TABLE IF EXISTS lost_and_found;
-DELETE FROM model_catalog_remote;
-PRAGMA user_version=7;
-VACUUM;
-SQL
-
-sqlite3 "$CAND" "PRAGMA integrity_check; PRAGMA user_version;"
-# expect: ok / 7
-sha256sum "$CAND"
-# record the post-cleanup hash; it will differ from 1b291828… after DROP/DELETE/VACUUM
+sha256  4a92bb50ecaf562017950e3605454ce883ecea4515c69ac361e84127e29ed8fc
+size    37801984
+user_version 7 / schema_version 269
+integrity_check ok; quick_check ok; foreign_key_check empty
+model_catalog_remote COUNT(*)=0; lost_and_found absent
+owner counts match recovery-row-counts.csv recovered column
 ```
 
-Confirm public-safe counts still match `recovery-row-counts.csv` for `channel_ingress_events`, `delivery_queue_entries`, `plugin_state_entries`, `task_runs`, `worker_session_placements`, `device_pairing_paired`. `model_catalog_remote` must be `0`. `lost_and_found` must be absent.
+Receipt: `phase1-receipt.json`. Do not regenerate unless that hash is missing. Phase 2+ remains gated and was not executed.
 
 ## Phase 2 — copy candidate to Cael _beside_ live (still no cutover)
 
