@@ -86,15 +86,14 @@ type DiscordIngressMonitor = {
 const DiscordIngressPayloadError = createChannelIngressError("DiscordIngressPayloadError");
 
 function inspectDiscordMessage(rawMessage: unknown): { eventId: string; laneKey: string } {
-  if (!rawMessage || typeof rawMessage !== "object" || Array.isArray(rawMessage)) {
+  if (!isRecord(rawMessage)) {
     throw new DiscordIngressPayloadError("Discord MESSAGE_CREATE payload must be an object");
   }
-  const candidate = rawMessage as { id?: unknown; channel_id?: unknown };
-  const eventId = nonEmptyString(candidate.id);
+  const eventId = nonEmptyString(rawMessage.id);
   if (!eventId) {
     throw new DiscordIngressPayloadError("Discord MESSAGE_CREATE payload is missing its snowflake");
   }
-  const channelId = nonEmptyString(candidate.channel_id);
+  const channelId = nonEmptyString(rawMessage.channel_id);
   if (!channelId) {
     throw new DiscordIngressPayloadError("Discord MESSAGE_CREATE payload is missing channel_id");
   }
@@ -125,28 +124,33 @@ function decodeDiscordIngressChannelKind(value: unknown): DiscordIngressChannelK
 }
 
 function decodeDiscordIngressPayload(
-  payload: DiscordIngressPayload,
+  payload: unknown,
   claimedId: string,
 ): { version: unknown; body: DiscordIngressBody } {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+  if (!isRecord(payload)) {
     throw new DiscordIngressPayloadError("Discord ingress payload must be an object");
   }
-  const candidate = payload as Partial<DiscordIngressPayload>;
+  const rawMessageValue = payload.rawMessage;
   try {
-    inspectDiscordMessage(candidate.rawMessage);
+    inspectDiscordMessage(rawMessageValue);
   } catch (error) {
     throw new DiscordIngressPayloadError(`Discord ingress payload ${claimedId} is invalid`, {
       cause: error,
     });
   }
+  if (typeof payload.receivedAt !== "number") {
+    throw new DiscordIngressPayloadError(`Discord ingress payload ${claimedId} is invalid`);
+  }
+  // SAFETY: inspectDiscordMessage proved the durable payload has Discord message identity fields.
+  const rawMessage = rawMessageValue as DiscordGatewayMessage;
   const channelKind =
-    decodeDiscordIngressChannelKind(candidate.channelKind) ||
-    resolveDiscordIngressChannelKind(candidate.rawMessage?.channel_type);
+    decodeDiscordIngressChannelKind(payload.channelKind) ||
+    resolveDiscordIngressChannelKind(rawMessage.channel_type);
   return {
-    version: candidate.version,
+    version: payload.version,
     body: {
-      receivedAt: candidate.receivedAt as number,
-      rawMessage: candidate.rawMessage as DiscordGatewayMessage,
+      receivedAt: payload.receivedAt,
+      rawMessage,
       ...(channelKind ? { channelKind } : {}),
     },
   };
@@ -155,13 +159,12 @@ function decodeDiscordIngressPayload(
 function isDiscordAuthenticationFailure(error: unknown): boolean {
   let current: unknown = error;
   const seen = new Set<unknown>();
-  while (current && typeof current === "object" && !seen.has(current)) {
+  while (isRecord(current) && !seen.has(current)) {
     seen.add(current);
-    const candidate = current as { status?: unknown; statusCode?: unknown; cause?: unknown };
-    if (candidate.status === 401 || candidate.statusCode === 401) {
+    if (current.status === 401 || current.statusCode === 401) {
       return true;
     }
-    current = candidate.cause;
+    current = current.cause;
   }
   return false;
 }
@@ -172,26 +175,26 @@ function discordMessageSentAtMs(rawMessage: DiscordGatewayMessage): number | nul
 }
 
 function isDiscordGuildMessage(rawMessage: DiscordGatewayMessage): boolean {
-  return typeof (rawMessage as { guild_id?: unknown }).guild_id === "string";
+  return isRecord(rawMessage) && typeof rawMessage.guild_id === "string";
 }
 
 function hasPotentialDiscordAudioAttachment(rawMessage: DiscordGatewayMessage): boolean {
   for (const attachment of rawMessage.attachments ?? []) {
-    const contentType = nonEmptyString(
-      (attachment as { content_type?: unknown; contentType?: unknown }).content_type ??
-        (attachment as { contentType?: unknown }).contentType,
-    );
+    if (!isRecord(attachment)) {
+      continue;
+    }
+    const contentType = nonEmptyString(attachment.content_type ?? attachment.contentType);
     if (contentType?.startsWith("audio/")) {
       return true;
     }
-    if (typeof (attachment as { duration_secs?: unknown }).duration_secs === "number") {
+    if (typeof attachment.duration_secs === "number") {
       return true;
     }
-    if (nonEmptyString((attachment as { waveform?: unknown }).waveform)) {
+    if (nonEmptyString(attachment.waveform)) {
       return true;
     }
-    const filename = nonEmptyString((attachment as { filename?: unknown }).filename);
-    const url = nonEmptyString((attachment as { url?: unknown }).url);
+    const filename = nonEmptyString(attachment.filename);
+    const url = nonEmptyString(attachment.url);
     if (
       (filename && DISCORD_AUDIO_ATTACHMENT_EXTENSIONS.test(filename)) ||
       (url && DISCORD_AUDIO_ATTACHMENT_EXTENSIONS.test(url))
@@ -235,11 +238,11 @@ function hasConfiguredDiscordChannels(guildInfo: DiscordGuildEntryResolved | nul
 }
 
 function hasCachedThreadChannel(rawMessage: DiscordGatewayMessage): boolean {
-  const channel = (rawMessage as { channel?: unknown }).channel;
-  if (!channel || typeof channel !== "object") {
+  const channel = isRecord(rawMessage) ? rawMessage.channel : undefined;
+  if (!isRecord(channel)) {
     return false;
   }
-  const isThread = (channel as { isThread?: unknown }).isThread;
+  const isThread = channel.isThread;
   if (typeof isThread === "function") {
     try {
       return isThread() === true;
@@ -247,7 +250,7 @@ function hasCachedThreadChannel(rawMessage: DiscordGatewayMessage): boolean {
       return true;
     }
   }
-  return isDiscordThreadChannelType((channel as { type?: unknown }).type);
+  return isDiscordThreadChannelType(channel.type);
 }
 
 function hasBoundThread(
@@ -308,7 +311,7 @@ function canExpireDiscordStaleAmbientBacklog(
     return false;
   }
   const guildInfo = resolveDiscordGuildEntry({
-    guildId: nonEmptyString((rawMessage as { guild_id?: unknown }).guild_id),
+    guildId: nonEmptyString(isRecord(rawMessage) ? rawMessage.guild_id : undefined),
     guildEntries: params.guildEntries,
   });
   if (params.guildEntries && Object.keys(params.guildEntries).length > 0 && !guildInfo) {
@@ -316,7 +319,9 @@ function canExpireDiscordStaleAmbientBacklog(
   }
 
   const channelId = nonEmptyString(rawMessage.channel_id);
-  const channelInfo = resolveDiscordChannelInfoSafe((rawMessage as { channel?: unknown }).channel);
+  const channelInfo = resolveDiscordChannelInfoSafe(
+    isRecord(rawMessage) ? rawMessage.channel : undefined,
+  );
   const channelSlug = channelInfo.name ? normalizeDiscordSlug(channelInfo.name) : "";
   const parentSlug = channelInfo.parentName ? normalizeDiscordSlug(channelInfo.parentName) : "";
   const channelConfig = channelId
@@ -467,11 +472,13 @@ export function createDiscordIngressMonitor(params: {
     },
     // Gateway mapping is intentionally delayed until after the durable claim.
     deliver: async (rawMessage, lifecycle) => {
-      const event = mapGatewayDispatchData(
+      const mappedEvent = mapGatewayDispatchData(
         params.client,
         GatewayDispatchEvents.MessageCreate,
         rawMessage,
-      ) as DiscordMessageEvent;
+      );
+      // SAFETY: MessageCreate dispatch mapping returns DiscordMessageDispatchData.
+      const event = mappedEvent as DiscordMessageEvent;
       return await params.dispatch(event, lifecycle);
     },
     pollIntervalMs: DISCORD_INGRESS_DRAIN_INTERVAL_MS,
