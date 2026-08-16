@@ -7,7 +7,7 @@ export type ChannelIngressAdoptedFacts = {
 };
 
 /** Closed completion lineage persisted on completed ingress tombstones. */
-export type ChannelIngressCompletionOutcome =
+type ChannelIngressCompletionOutcome =
   | "agent-run-adopted"
   | "delivery-returned-completed"
   | "delivery-returned-without-handoff";
