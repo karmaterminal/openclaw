@@ -19,6 +19,7 @@ import {
   openOpenClawStateDatabase,
   runOpenClawStateWriteTransaction,
 } from "../../state/openclaw-state-db.js";
+import type { ChannelIngressCompletionLineage } from "./ingress-drain-lifecycle.js";
 
 /** Pending or retryable inbound channel event stored in the durable ingress queue. */
 export type ChannelIngressQueueRecord<TPayload, TMetadata = unknown> = {
@@ -213,7 +214,11 @@ export type ChannelIngressQueue<TPayload, TMetadata = unknown, TCompletedMetadat
   ): Promise<boolean>;
   complete(
     idOrClaim: string | ChannelIngressQueueClaimRef,
-    options?: { metadata?: TCompletedMetadata; completedAt?: number },
+    options?: {
+      // Drain persists closed lineage; caller-specific completed metadata remains valid.
+      metadata?: TCompletedMetadata | ChannelIngressCompletionLineage;
+      completedAt?: number;
+    },
   ): Promise<boolean>;
   release(
     idOrClaim: string | ChannelIngressQueueClaimRef,

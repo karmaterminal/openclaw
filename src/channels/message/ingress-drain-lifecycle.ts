@@ -89,8 +89,10 @@ const INGRESS_COMPLETION_OUTCOMES = [
   "delivery-returned-without-handoff",
 ] as const satisfies readonly ChannelIngressCompletionOutcome[];
 
+const INGRESS_COMPLETION_OUTCOME_SET = new Set<string>(INGRESS_COMPLETION_OUTCOMES);
+
 function isIngressCompletionOutcome(value: unknown): value is ChannelIngressCompletionOutcome {
-  return (INGRESS_COMPLETION_OUTCOMES as readonly string[]).includes(value as string);
+  return typeof value === "string" && INGRESS_COMPLETION_OUTCOME_SET.has(value);
 }
 
 /**

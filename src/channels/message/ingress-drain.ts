@@ -294,7 +294,7 @@ export function createChannelIngressDrain<
       write: () =>
         completion === undefined
           ? queue.complete(claim)
-          : queue.complete(claim, { metadata: completion as TCompletedMetadata }),
+          : queue.complete(claim, { metadata: completion }),
       falseMeansReclaimed: true,
     });
   };
