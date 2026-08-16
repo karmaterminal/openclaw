@@ -3,7 +3,7 @@
 - **Bound issue:** [karmaterminal/openclaw#1255](https://github.com/karmaterminal/openclaw/issues/1255) (child of [#1254](https://github.com/karmaterminal/openclaw/issues/1254))
 - **Lane:** `codeagent/ward-1255-m1-intervention`
 - **Implementation:** `401dc7a1f5c3445b4ff85de6ac0574f91da2fde9`
-- **Review/sibling retarget:** this commit
+- **Review/sibling retarget:** `a01d78a4b33c155c948eeca283f179ef06fa7e7e`
 - **Upstream base:** `5626a79cc836d95d236debd720a34fc2dcdcc685`
 - **Frozen fossil:** `c17a5c73a9bf9807d15b33bfa6bfb4aad5116398` (`origin/codeagent/silas-abandonment-red-fossil`)
 - **No fleet / live / DB / config / continuation / #121204 mutation. Unit causal closure is not a fleet cure.**
