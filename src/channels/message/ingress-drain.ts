@@ -15,7 +15,13 @@ import {
   isLiveLocalIngressDrainOwner,
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
-import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
+import {
+  buildAgentRunAdoptedLineage,
+  buildChannelIngressCompletionLineage,
+  type ChannelIngressAdoptedFacts,
+  type ChannelIngressCompletionLineage,
+  type ChannelIngressDispatchLifecycle,
+} from "./ingress-drain-lifecycle.js";
 import {
   activeClaimKey,
   IngressAdoptionLostError,
@@ -279,14 +285,34 @@ export function createChannelIngressDrain<
 
   const completeClaimWithRetry = async (
     claim: ChannelIngressQueueClaim<TPayload, TMetadata>,
+    completion?: ChannelIngressCompletionLineage,
   ): Promise<void> => {
     // Tombstone via complete() — never delete. Retry IO failures; false = reclaimed.
     await commitClaimWriteWithRetry({
       claim,
       label: "tombstone",
-      write: () => queue.complete(claim),
+      write: () =>
+        completion === undefined
+          ? queue.complete(claim)
+          : queue.complete(claim, { metadata: completion as TCompletedMetadata }),
       falseMeansReclaimed: true,
     });
+  };
+
+  const resolveReturnedCompletion = (
+    result: ChannelIngressDrainDispatchResult | void,
+  ): ChannelIngressCompletionLineage | undefined => {
+    if (result?.kind === "completed") {
+      return (
+        buildChannelIngressCompletionLineage(result.completion) ?? {
+          outcome: "delivery-returned-completed",
+        }
+      );
+    }
+    if (result === undefined) {
+      return { outcome: "delivery-returned-without-handoff" };
+    }
+    return undefined;
   };
 
   const releaseClaim = async (
@@ -434,7 +460,7 @@ export function createChannelIngressDrain<
   ): ChannelIngressDispatchLifecycle => {
     return {
       abortSignal: state.abortController.signal,
-      onAdopted: async () => {
+      onAdopted: async (facts?: ChannelIngressAdoptedFacts) => {
         // Lost adoption is loud: guillotine/supersede already tombstoned/failed the claim.
         if (state.guillotined) {
           throw new IngressAdoptionLostError("guillotined");
@@ -450,7 +476,7 @@ export function createChannelIngressDrain<
         state.phase = "adopted";
         clearStallTimer(state);
         await state.settleOnce(async () => {
-          await completeClaimWithRetry(state.claim);
+          await completeClaimWithRetry(state.claim, buildAgentRunAdoptedLineage(facts));
         });
       },
       onDeferred: () => {
@@ -580,7 +606,7 @@ export function createChannelIngressDrain<
           state.phase = "adopted";
           clearStallTimer(state);
           await state.settleOnce(async () => {
-            await completeClaimWithRetry(claim);
+            await completeClaimWithRetry(claim, resolveReturnedCompletion(result));
           });
         }
       } catch (err) {

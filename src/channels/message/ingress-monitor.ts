@@ -1,6 +1,7 @@
 /** Shared durable channel-ingress admission, pump, retention, and shutdown lifecycle. */
 import { formatErrorMessage, toErrorObject } from "../../infra/errors.js";
 import { sleep } from "../../utils/sleep.js";
+import type { ChannelIngressAdoptedFacts } from "./ingress-drain-lifecycle.js";
 import {
   createChannelIngressDrain,
   type ChannelIngressDrain,
@@ -61,7 +62,7 @@ type ChannelIngressPayloadEnvelope<TBody> = { version: number; body: TBody };
 export type ChannelIngressMonitorLifecycle = {
   admission: "exclusive";
   abortSignal: AbortSignal;
-  onAdopted: () => void | Promise<void>;
+  onAdopted: (facts?: ChannelIngressAdoptedFacts) => void | Promise<void>;
   onDeferred: () => void;
   onAdoptionFinalizing: () => void;
   onFailed?: (error: unknown) => void | Promise<void>;
@@ -382,10 +383,10 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
         const wrappedLifecycle: ChannelIngressMonitorLifecycle = {
           ...lifecycle,
           admission: "exclusive",
-          onAdopted: async () => {
+          onAdopted: async (facts) => {
             handedOff = true;
             try {
-              await lifecycle.onAdopted();
+              await lifecycle.onAdopted(facts);
               requestDrain();
             } finally {
               settleDeferredClaim();
@@ -435,7 +436,10 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
           return { kind: "failed-retryable", error: createStoppedError() };
         }
         if (result?.kind === "completed") {
-          return result;
+          return {
+            kind: "completed",
+            completion: { outcome: "delivery-returned-completed" },
+          };
         }
         if (result?.kind === "deferred") {
           if (!deferredHandoff) {
@@ -444,8 +448,12 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
           return { kind: "deferred" };
         }
         if (!handedOff) {
-          // A policy gate or deliberate no-dispatch is terminal for transport replay.
-          await wrappedLifecycle.onAdopted();
+          // Transport replay ended without a lifecycle handoff. Record that fact
+          // only — do not mint policy-gate, silence, or an inferred adoption.
+          return {
+            kind: "completed",
+            completion: { outcome: "delivery-returned-without-handoff" },
+          };
         }
         return deferredHandoff ? { kind: "deferred" } : { kind: "completed" };
       },

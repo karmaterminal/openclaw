@@ -1,3 +1,4 @@
+import type { ChannelIngressCompletionLineage } from "./ingress-drain-lifecycle.js";
 import type { ChannelIngressQueueClaim, ChannelIngressQueueRecord } from "./ingress-queue.js";
 
 export class IngressAdoptionLostError extends Error {
@@ -15,7 +16,7 @@ export function isIngressAdoptionLostError(error: unknown): error is IngressAdop
 }
 
 export type ChannelIngressDrainDispatchResult =
-  | { kind: "completed" }
+  | { kind: "completed"; completion?: ChannelIngressCompletionLineage }
   | { kind: "deferred" }
   | { kind: "failed-retryable"; error: unknown };
 

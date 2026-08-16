@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
-import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
+import { executeSqliteQueryTakeFirstSync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
+import type { DB as OpenClawStateKyselyDatabase } from "../../state/openclaw-state-db.generated.js";
+import {
+  closeOpenClawStateDatabaseForTest,
+  openOpenClawStateDatabase,
+} from "../../state/openclaw-state-db.js";
 import { sleep } from "../../utils/sleep.js";
 import {
   CHANNEL_INGRESS_RETENTION_DEFAULTS,
@@ -21,16 +26,29 @@ type StoredEvent = { version: 1; rawEvent: string };
 class PermanentIngressError extends Error {}
 
 async function withQueue<T>(
-  run: (queue: ChannelIngressQueue<StoredEvent>) => Promise<T>,
+  run: (queue: ChannelIngressQueue<StoredEvent>, stateDir: string) => Promise<T>,
 ): Promise<T> {
   const stateDir = tempDirs.make("openclaw-ingress-monitor-");
   try {
     return await run(
       createChannelIngressQueue<StoredEvent>({ channelId: "test", accountId: "a", stateDir }),
+      stateDir,
     );
   } finally {
     closeOpenClawStateDatabaseForTest();
   }
+}
+
+function readIngressCompletionRow(stateDir: string, eventId: string) {
+  const database = openOpenClawStateDatabase({ env: { OPENCLAW_STATE_DIR: stateDir } });
+  return executeSqliteQueryTakeFirstSync(
+    database.db,
+    getNodeSqliteKysely<Pick<OpenClawStateKyselyDatabase, "channel_ingress_events">>(database.db)
+      .selectFrom("channel_ingress_events")
+      .select(["status", "payload_json", "metadata_json", "completed_metadata_json"])
+      .where("queue_name", "=", JSON.stringify(["test", "a"]))
+      .where("event_id", "=", eventId),
+  );
 }
 
 function createMonitor(
@@ -680,6 +698,161 @@ describe("channel ingress monitor", () => {
       await monitor.stop();
       releaseDelivery();
       await monitor.waitForIdle();
+    });
+  });
+
+  describe("completion lineage", () => {
+    const lineageCases = [
+      {
+        name: "agent-run-adopted with supplied runId",
+        eventId: "lineage-adopted-run",
+        deliver: async (_raw: RawEvent, lifecycle: ChannelIngressMonitorLifecycle) => {
+          await lifecycle.onAdopted({ runId: "run-adopted-1" });
+        },
+        expected: { outcome: "agent-run-adopted", runId: "run-adopted-1" },
+      },
+      {
+        name: "agent-run-adopted without inferred runId",
+        eventId: "lineage-adopted-bare",
+        deliver: async (_raw: RawEvent, lifecycle: ChannelIngressMonitorLifecycle) => {
+          await lifecycle.onAdopted();
+        },
+        expected: { outcome: "agent-run-adopted" },
+      },
+      {
+        name: "delivery-returned-completed",
+        eventId: "lineage-delivery-completed",
+        deliver: async () => ({ kind: "completed" as const }),
+        expected: { outcome: "delivery-returned-completed" },
+      },
+      {
+        name: "delivery-returned-without-handoff",
+        eventId: "lineage-no-handoff",
+        deliver: async () => {},
+        expected: { outcome: "delivery-returned-without-handoff" },
+      },
+    ] as const;
+
+    it.each(lineageCases)(
+      "retains $name in SQLite without the original payload",
+      async ({ eventId, deliver, expected }) => {
+        await withQueue(async (queue, stateDir) => {
+          const monitor = createMonitor(queue, deliver);
+          monitor.start();
+          await monitor.admit({
+            id: eventId,
+            lane: "lineage",
+            text: "secret-ingress-payload",
+          });
+          await monitor.waitForIdle();
+
+          const row = readIngressCompletionRow(stateDir, eventId);
+          expect(row).toEqual({
+            status: "completed",
+            payload_json: "null",
+            metadata_json: null,
+            completed_metadata_json: JSON.stringify(expected),
+          });
+          await expect(
+            queue.enqueue(eventId, { version: 1, rawEvent: "duplicate" }),
+          ).resolves.toMatchObject({
+            kind: "completed",
+            record: { metadata: expected },
+          });
+          await monitor.stop();
+        });
+      },
+    );
+
+    it("redacts unknown adoption fields and never stores event text", async () => {
+      await withQueue(async (queue, stateDir) => {
+        const monitor = createMonitor(queue, async (_raw, lifecycle) => {
+          await lifecycle.onAdopted({
+            runId: "run-redacted",
+            payload: "secret-ingress-payload",
+            sessionId: "sess-inferred",
+            outcome: "policy-gate",
+          } as { runId: string });
+        });
+        monitor.start();
+        await monitor.admit({
+          id: "lineage-redaction",
+          lane: "lineage",
+          text: "secret-ingress-payload",
+        });
+        await monitor.waitForIdle();
+
+        const row = readIngressCompletionRow(stateDir, "lineage-redaction");
+        expect(row).toEqual({
+          status: "completed",
+          payload_json: "null",
+          metadata_json: null,
+          completed_metadata_json: JSON.stringify({
+            outcome: "agent-run-adopted",
+            runId: "run-redacted",
+          }),
+        });
+        expect(row?.completed_metadata_json).not.toContain("secret-ingress-payload");
+        expect(row?.completed_metadata_json).not.toContain("policy-gate");
+        expect(row?.completed_metadata_json).not.toContain("sess-inferred");
+        await monitor.stop();
+      });
+    });
+
+    it("leaves failed work failed without completed metadata", async () => {
+      await withQueue(async (queue, stateDir) => {
+        const monitor = createMonitor(queue, () => {
+          throw new PermanentIngressError("invalid-event");
+        });
+        monitor.start();
+        await monitor.admit({
+          id: "lineage-failed",
+          lane: "lineage",
+          text: "secret-ingress-payload",
+        });
+        await monitor.waitForIdle();
+
+        const row = readIngressCompletionRow(stateDir, "lineage-failed");
+        expect(row).toMatchObject({
+          status: "failed",
+          completed_metadata_json: null,
+        });
+        await expect(
+          queue.enqueue("lineage-failed", { version: 1, rawEvent: "duplicate" }),
+        ).resolves.toMatchObject({
+          kind: "failed",
+          record: { reason: "invalid-event" },
+        });
+        await monitor.stop();
+      });
+    });
+
+    it("preserves legacy null completed metadata for duplicate detection", async () => {
+      await withQueue(async (queue, stateDir) => {
+        await queue.enqueue("lineage-legacy-null", {
+          version: 1,
+          rawEvent: JSON.stringify({
+            id: "lineage-legacy-null",
+            lane: "lineage",
+            text: "secret-ingress-payload",
+          }),
+        });
+        expect(await queue.complete("lineage-legacy-null", { completedAt: 50 })).toBe(true);
+
+        const row = readIngressCompletionRow(stateDir, "lineage-legacy-null");
+        expect(row).toEqual({
+          status: "completed",
+          payload_json: "null",
+          metadata_json: null,
+          completed_metadata_json: null,
+        });
+        await expect(
+          queue.enqueue("lineage-legacy-null", { version: 1, rawEvent: "duplicate" }),
+        ).resolves.toMatchObject({
+          kind: "completed",
+          record: { id: "lineage-legacy-null", completedAt: 50 },
+        });
+      });
     });
   });
 });

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { bindIngressLifecycleToReplyOptions } from "./ingress-drain-lifecycle.js";
+import {
+  bindIngressLifecycleToReplyOptions,
+  buildAgentRunAdoptedLineage,
+  buildChannelIngressCompletionLineage,
+} from "./ingress-drain-lifecycle.js";
 
 describe("channel ingress drain lifecycle", () => {
   it("binds only the reply-lane ownership surface", async () => {
@@ -42,5 +46,36 @@ describe("channel ingress drain lifecycle", () => {
     bound.turnAdoptionLifecycle.onDeferred();
     await bound.turnAdoptionLifecycle.onAdopted();
     expect(calls).toEqual(["deferred", "adopted"]);
+  });
+
+  it("redacts completion lineage to closed producer-known outcomes", () => {
+    expect(buildChannelIngressCompletionLineage(undefined)).toBeUndefined();
+    expect(buildChannelIngressCompletionLineage({ outcome: "policy-gate" })).toBeUndefined();
+    expect(
+      buildChannelIngressCompletionLineage({
+        outcome: "delivery-returned-completed",
+        payload: "secret",
+        runId: "should-not-copy",
+      }),
+    ).toEqual({ outcome: "delivery-returned-completed" });
+    expect(
+      buildChannelIngressCompletionLineage({
+        outcome: "agent-run-adopted",
+        runId: "  run-1  ",
+        sessionId: "sess",
+        payload: "secret",
+      }),
+    ).toEqual({ outcome: "agent-run-adopted", runId: "run-1" });
+    expect(
+      buildChannelIngressCompletionLineage({
+        outcome: "agent-run-adopted",
+        runId: "x".repeat(129),
+      }),
+    ).toEqual({ outcome: "agent-run-adopted" });
+    expect(buildAgentRunAdoptedLineage()).toEqual({ outcome: "agent-run-adopted" });
+    expect(buildAgentRunAdoptedLineage({ runId: "run-2" })).toEqual({
+      outcome: "agent-run-adopted",
+      runId: "run-2",
+    });
   });
 });
