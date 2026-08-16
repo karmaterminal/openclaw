@@ -153,4 +153,29 @@ These show the product already has shared-state corruption and fail-open neighbo
 
 ## Validation
 
-See the COMPLETE note for the full-suite tally. Analysis commands are listed in `recovery-workorder.md` (read-only section).
+Analysis (copied artifacts only):
+
+```
+sha256sum snapshot/openclaw.sqlite
+# 9a6617baf51cd083dc9c96852fcf4c7803bb6dfd4891865ad8609a3584818831
+sqlite3 "file:…/corrupt-immutable.sqlite?immutable=1" "PRAGMA quick_check; PRAGMA integrity_check; PRAGMA user_version;"
+sqlite3 "file:…/corrupt-immutable.sqlite?immutable=1" ".recover" | sqlite3 recovered.sqlite
+sqlite3 recovered.sqlite "PRAGMA integrity_check; PRAGMA user_version;"
+# ok / 7
+```
+
+Full sanctioned suite on this docs-only head (`53f7dfb6d0f` plus this closeout):
+
+```
+node --import tsx scripts/test-projects.mts
+# 538 shards in 4659.82s; wrapper exit 1
+# failed shard digest: 16 configs (gateway-server, ui, gateway-core, tui-pty,
+# agents-core, unit-fast-isolated, auto-reply-reply, infra, unit-src,
+# extension-discord, tooling x2, + 4 omitted)
+```
+
+Those reds are pre-existing on exact composite `6b09` (UI catalog icons, TUI PTY, continuation Responses, restart-stale-pids, Discord queue, session-delete rollback, proxy-capture). This lane added only public-safe analysis files and did not own those behaviors. Left classified, not repaired.
+
+Issue comment: https://github.com/karmaterminal/openclaw/issues/1261#issuecomment-5305449089
+
+Cael remained `inactive`, `NRestarts=0` through closeout. No PR.
