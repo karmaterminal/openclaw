@@ -48,6 +48,7 @@ export type {
 } from "../channels/message-access/types.js";
 export type { ResolvedChannelImplicitMentions } from "../config/implicit-mentions.js";
 
+import { runIngressCancelCompat } from "../channels/message/ingress-drain-lifecycle.js";
 import {
   createChannelIngressMonitor,
   type ChannelIngressMonitorDrainOptions,
@@ -163,7 +164,9 @@ export function fanInChannelIngressLifecycles(
   // can then use settle/abandon without an acknowledged-but-unsettled claim.
   const cancelAll = () =>
     fanOut((lifecycle) =>
-      lifecycle.onCancelled ? lifecycle.onCancelled() : lifecycle.onAbandoned(),
+      lifecycle.onCancelled
+        ? lifecycle.onCancelled()
+        : runIngressCancelCompat(() => lifecycle.onAbandoned()),
     );
   return {
     lifecycle: {

@@ -12,6 +12,7 @@ import {
 } from "./bot-processing-outcome.js";
 import { createTelegramIngressMonitor } from "./telegram-ingress-drain.js";
 import { resolveTelegramIngressNonRetryableFailure } from "./telegram-ingress-non-retryable.js";
+import { resolveTelegramUpdateId } from "./telegram-ingress-spool.js";
 import {
   TelegramIngressPayloadError,
   type TelegramSpooledUpdatePayload,
@@ -128,6 +129,54 @@ describe("createTelegramIngressMonitor", () => {
       expect(await queue.listPending({ limit: "all" })).toEqual([]);
 
       await monitor.stop();
+    });
+  });
+
+  it("dispatches an eligible head when a same-lane tail is retry-delayed", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createChannelIngressQueueForTests<TelegramSpooledUpdatePayload>({
+        channelId: "telegram",
+        accountId: "default",
+        stateDir,
+      });
+      const head = updatePayload(1);
+      const tail = updatePayload(2);
+      const headId = String(head.updateId).padStart(16, "0");
+      const tailId = String(tail.updateId).padStart(16, "0");
+      const laneKey = telegramSpooledUpdateLaneKey(head.update);
+      await queue.enqueue(headId, head, { laneKey, receivedAt: 1 });
+      await queue.enqueue(tailId, tail, { laneKey, receivedAt: 2 });
+      const tailClaim = await queue.claim(tailId, { ownerId: "retry-worker" });
+      if (!tailClaim) {
+        throw new Error("Expected the delayed Telegram tail claim");
+      }
+      await queue.release(tailClaim, {
+        lastError: "provider blip",
+        releasedAt: Date.now(),
+      });
+
+      const dispatched: number[] = [];
+      const monitor = createTelegramIngressMonitor({
+        queue,
+        cfg,
+        accountId: "default",
+        dispatch: async (update) => {
+          const updateId = resolveTelegramUpdateId(update);
+          if (updateId === null) {
+            throw new Error("Expected a Telegram update id");
+          }
+          dispatched.push(updateId);
+          return { kind: "completed" as const };
+        },
+      });
+
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual([1]));
+        expect(await queue.listPending({ limit: "all" })).toMatchObject([{ id: tailId }]);
+      } finally {
+        await monitor.stop();
+      }
     });
   });
 
