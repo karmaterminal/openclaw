@@ -17,7 +17,7 @@ import {
 } from "./ingress-claim-owner.js";
 import {
   buildAgentRunAdoptedLineage,
-  buildChannelIngressCompletionLineage,
+  resolveReturnedIngressCompletion,
   type ChannelIngressAdoptedFacts,
   type ChannelIngressCompletionLineage,
   type ChannelIngressDispatchLifecycle,
@@ -297,22 +297,6 @@ export function createChannelIngressDrain<
           : queue.complete(claim, { metadata: completion }),
       falseMeansReclaimed: true,
     });
-  };
-
-  const resolveReturnedCompletion = (
-    result: ChannelIngressDrainDispatchResult | void,
-  ): ChannelIngressCompletionLineage | undefined => {
-    if (result?.kind === "completed") {
-      return (
-        buildChannelIngressCompletionLineage(result.completion) ?? {
-          outcome: "delivery-returned-completed",
-        }
-      );
-    }
-    if (result === undefined) {
-      return { outcome: "delivery-returned-without-handoff" };
-    }
-    return undefined;
   };
 
   const releaseClaim = async (
@@ -606,7 +590,7 @@ export function createChannelIngressDrain<
           state.phase = "adopted";
           clearStallTimer(state);
           await state.settleOnce(async () => {
-            await completeClaimWithRetry(claim, resolveReturnedCompletion(result));
+            await completeClaimWithRetry(claim, resolveReturnedIngressCompletion(result));
           });
         }
       } catch (err) {

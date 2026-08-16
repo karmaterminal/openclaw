@@ -124,3 +124,23 @@ export function buildAgentRunAdoptedLineage(
     }) ?? { outcome: "agent-run-adopted" }
   );
 }
+
+/** Map a drain dispatch return onto closed lineage. Unknown completed shapes default to delivery-returned-completed. */
+export function resolveReturnedIngressCompletion(
+  result:
+    | { kind: "completed"; completion?: unknown }
+    | { kind: "deferred" | "failed-retryable" }
+    | void,
+): ChannelIngressCompletionLineage | undefined {
+  if (result?.kind === "completed") {
+    return (
+      buildChannelIngressCompletionLineage(result.completion) ?? {
+        outcome: "delivery-returned-completed",
+      }
+    );
+  }
+  if (result === undefined) {
+    return { outcome: "delivery-returned-without-handoff" };
+  }
+  return undefined;
+}

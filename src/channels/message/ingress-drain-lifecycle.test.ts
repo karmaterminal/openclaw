@@ -3,6 +3,7 @@ import {
   bindIngressLifecycleToReplyOptions,
   buildAgentRunAdoptedLineage,
   buildChannelIngressCompletionLineage,
+  resolveReturnedIngressCompletion,
 } from "./ingress-drain-lifecycle.js";
 
 describe("channel ingress drain lifecycle", () => {
@@ -77,5 +78,12 @@ describe("channel ingress drain lifecycle", () => {
       outcome: "agent-run-adopted",
       runId: "run-2",
     });
+    expect(resolveReturnedIngressCompletion({ kind: "completed" })).toEqual({
+      outcome: "delivery-returned-completed",
+    });
+    expect(resolveReturnedIngressCompletion(undefined)).toEqual({
+      outcome: "delivery-returned-without-handoff",
+    });
+    expect(resolveReturnedIngressCompletion({ kind: "deferred" })).toBeUndefined();
   });
 });

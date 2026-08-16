@@ -383,10 +383,10 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
         const wrappedLifecycle: ChannelIngressMonitorLifecycle = {
           ...lifecycle,
           admission: "exclusive",
-          onAdopted: async (facts) => {
+          onAdopted: async (adoptedFacts) => {
             handedOff = true;
             try {
-              await lifecycle.onAdopted(facts);
+              await lifecycle.onAdopted(adoptedFacts);
               requestDrain();
             } finally {
               settleDeferredClaim();
