@@ -1,0 +1,95 @@
+{
+  "schema": "frond.project87.proof-handoff.v1",
+  "boundIssue": "karmaterminal/openclaw#1255",
+  "parentIssue": "karmaterminal/openclaw#1254",
+  "lane": "codeagent/ward-1255-m1-intervention",
+  "upstreamBase": "5626a79cc836d95d236debd720a34fc2dcdcc685",
+  "fossilCommit": "c17a5c73a9bf9807d15b33bfa6bfb4aad5116398",
+  "implementationCommit": "401dc7a1f5c3445b4ff85de6ac0574f91da2fde9",
+  "claimScope": "unit-causal-closure",
+  "doesNotClaim": [
+    "fleet-cure",
+    "live-discord-delivery",
+    "treatment-composite-gateway-smoke"
+  ],
+  "futureCorpusTemplate": "karmaterminal-openclaw-docs:main:PR-NNNNNN/PROOFS/<FULL_SHA>/",
+  "receiptsDir": "/home/figs/.copilot/session-state/10458b29-3e96-4ee4-95e4-13c1b00a8c0f/files/receipts",
+  "correctedUpstreamExpectation": {
+    "file": "src/channels/message/ingress-drain.test.ts",
+    "oldName": "keeps retry-accounted abandonment pending beyond the failure threshold",
+    "newName": "retry-accounts abandonment and dead-letters it at the failure threshold",
+    "rationale": "The pending-past-maxAttempts half was the defect. Retry accounting is retained; the ceiling now terminalizes via applyFailureDisposition."
+  },
+  "siblingRetarget": {
+    "file": "extensions/msteams/src/monitor-handler/message-handler.ingress-lifecycle.test.ts",
+    "oldName": "preserves abandon retry accounting, backoff, threshold, and restart behavior",
+    "newName": "retry-accounts abandonment, honors backoff, and dead-letters at the aged attempt ceiling",
+    "baseGreenOnOldAssertion": true,
+    "patchRedOnOldAssertion": true,
+    "newAssertionRedOnExactBase": true,
+    "newAssertionGreenOnPatch": true
+  },
+  "rows": [
+    {
+      "id": "R-NC-ABANDON-BUDGET",
+      "contract": "Pre-adoption onAbandoned consumes the existing retry budget and terminalizes at maxAttempts when the age floor is met.",
+      "owner": "src/channels/message/ingress-drain.ts#createLifecycle.onAbandoned",
+      "disposition": "applyFailureDisposition -> resolveIngressFailureDisposition",
+      "primaryProof": "src/channels/message/ingress-drain.abandonment-retry-budget.test.ts::terminalizes a repeatedly abandoned pre-adoption claim at the attempt ceiling",
+      "supportingProof": [
+        "src/channels/message/ingress-drain.test.ts::retry-accounts abandonment and dead-letters it at the failure threshold",
+        "extensions/msteams/src/monitor-handler/message-handler.ingress-lifecycle.test.ts::retry-accounts abandonment, honors backoff, and dead-letters at the aged attempt ceiling"
+      ],
+      "receipts": [
+        "01-base-red-5626a79.txt",
+        "02-patched-green-fossil.txt",
+        "04-patch-only-revert-red.txt",
+        "05-reapply-green.txt"
+      ],
+      "status": "unit-closed"
+    },
+    {
+      "id": "R-NC-ABANDON-LANE-PROGRESS",
+      "contract": "A terminalized abandoned head unblocks the next FIFO row in the same lane.",
+      "owner": "src/channels/message/ingress-drain.ts",
+      "primaryProof": "src/channels/message/ingress-drain.abandonment-retry-budget.test.ts::terminalizes a repeatedly abandoned pre-adoption claim at the attempt ceiling (follower adopted after ceiling)",
+      "supportingProof": [
+        "src/channels/message/ingress-drain.abandonment-retry-budget.test.ts::keeps an unrelated lane draining while one lane head is abandoned"
+      ],
+      "receipts": [
+        "02-patched-green-fossil.txt",
+        "05-reapply-green.txt"
+      ],
+      "status": "unit-closed"
+    },
+    {
+      "id": "R-NC-ABANDON-CANCEL",
+      "contract": "onCancelled remains budget-free even at the attempt ceiling and does not dead-letter.",
+      "owner": "src/channels/message/ingress-drain.ts#createLifecycle.onCancelled",
+      "primaryProof": "src/channels/message/ingress-drain.abandonment-retry-budget.test.ts::leaves cancellation budget-free even at the attempt ceiling",
+      "supportingProof": [
+        "src/channels/message/ingress-drain.abandonment-retry-budget.test.ts::keeps an abandoned claim retryable below the attempt ceiling"
+      ],
+      "receipts": [
+        "02-patched-green-fossil.txt",
+        "05-reapply-green.txt"
+      ],
+      "status": "unit-closed"
+    },
+    {
+      "id": "R-NC-ABANDON-SETTLE-RACE",
+      "contract": "Abandonment and failure share the existing single-settle owner; a second settle is a no-op after the first commit.",
+      "owner": "src/channels/message/ingress-drain.ts#createSettleOwner / settleUnadopted",
+      "primaryProof": "Existing drain settle-once / tombstone / adoption-lost tests plus settleUnadopted wrapping the same settleOnce.",
+      "supportingProof": [
+        "src/channels/message/ingress-drain.test.ts::throws IngressAdoptionLostError when onAdopted races supersede",
+        "src/channels/message/ingress-drain.test.ts::lets callers await an abandoned claim release"
+      ],
+      "receipts": [
+        "03-channels-shard-green.txt"
+      ],
+      "status": "unit-closed-via-existing-settle-owner",
+      "note": "No new dedicated race harness. Treatment-composite Gateway/state-dir smoke remains a future lane."
+    }
+  ]
+}
