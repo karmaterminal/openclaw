@@ -1,0 +1,175 @@
+{
+  "schema": "ward-1257-small-control.v1",
+  "boundIssue": "karmaterminal/openclaw#1257",
+  "role": "SMALL-CONTROL + RUN-ORDER + NO-MUTATION",
+  "notIncidentShaped": true,
+  "root": "/tmp/ward-1257-small-control-b7d5777580f8",
+  "originalHashBefore": "3ddaeccea347c5f354fba003fda604cf9fe79118f88c5486762c83ece588989d",
+  "originalHashAfter": "3ddaeccea347c5f354fba003fda604cf9fe79118f88c5486762c83ece588989d",
+  "originalUnchanged": true,
+  "equalPayloads": true,
+  "clones": {
+    "A": {
+      "label": "A",
+      "analyzed": false,
+      "sizeBytes": 24576,
+      "pragmas": {
+        "sqliteVersion": "3.51.3",
+        "pageSize": 4096,
+        "pageCount": 6,
+        "freelistCount": 0,
+        "journalMode": "delete",
+        "integrityCheck": "ok",
+        "quickCheck": "ok",
+        "stat1Count": 0,
+        "stat1Hash": null
+      },
+      "unfencedExplain": "4 | 0 | 62 | SEARCH transcript_events USING INDEX sqlite_autoindex_transcript_events_1 (session_id=?)",
+      "fencedExplain": "4 | 0 | 51 | SEARCH transcript_events USING INDEX sqlite_autoindex_transcript_events_1 (session_id=? AND seq<?)",
+      "coldUnfenced": {
+        "rowCount": 80,
+        "selectedBytes": 6422,
+        "payloadHash": "649c08f8d5ff6da12392c7586854e5b04455ea313fb4595998422a5e8ed83170",
+        "sqlWallMs": 0.05296,
+        "sqlCpuMs": 0.055,
+        "decodeWallMs": 0.09344,
+        "decodeCpuMs": 0.094
+      },
+      "coldFenced": {
+        "rowCount": 39,
+        "selectedBytes": 3119,
+        "payloadHash": "bd7f3fdef3f3d9b0090fa9758975070c27d2fcf9d7071ca3373e00e5d915d9d9",
+        "sqlWallMs": 0.025473,
+        "sqlCpuMs": 0.027,
+        "decodeWallMs": 0.024816,
+        "decodeCpuMs": 0.025
+      },
+      "warmUnfenced": {
+        "rowCount": 80,
+        "selectedBytes": 6422,
+        "payloadHash": "649c08f8d5ff6da12392c7586854e5b04455ea313fb4595998422a5e8ed83170",
+        "sqlWallMs": 0.073969,
+        "sqlCpuMs": 0.077,
+        "decodeWallMs": 0.04872,
+        "decodeCpuMs": 0.049
+      },
+      "warmFenced": {
+        "rowCount": 39,
+        "selectedBytes": 3119,
+        "payloadHash": "bd7f3fdef3f3d9b0090fa9758975070c27d2fcf9d7071ca3373e00e5d915d9d9",
+        "sqlWallMs": 0.021936,
+        "sqlCpuMs": 0.022,
+        "decodeWallMs": 0.023873,
+        "decodeCpuMs": 0.024
+      }
+    },
+    "B": {
+      "label": "B",
+      "analyzed": true,
+      "sizeBytes": 28672,
+      "pragmas": {
+        "sqliteVersion": "3.51.3",
+        "pageSize": 4096,
+        "pageCount": 7,
+        "freelistCount": 0,
+        "journalMode": "delete",
+        "integrityCheck": "ok",
+        "quickCheck": "ok",
+        "stat1Count": 1,
+        "stat1Hash": "d5ba9c2ab133386b22f61f1304f3dc2e411ba2ac0012f8c09d426ef19bb7a4fa"
+      },
+      "unfencedExplain": "4 | 0 | 80 | SEARCH transcript_events USING INDEX sqlite_autoindex_transcript_events_1 (session_id=?)",
+      "fencedExplain": "4 | 0 | 61 | SEARCH transcript_events USING INDEX sqlite_autoindex_transcript_events_1 (session_id=? AND seq<?)",
+      "coldUnfenced": {
+        "rowCount": 80,
+        "selectedBytes": 6422,
+        "payloadHash": "649c08f8d5ff6da12392c7586854e5b04455ea313fb4595998422a5e8ed83170",
+        "sqlWallMs": 0.034016,
+        "sqlCpuMs": 0.034,
+        "decodeWallMs": 0.051968,
+        "decodeCpuMs": 0.052
+      },
+      "coldFenced": {
+        "rowCount": 39,
+        "selectedBytes": 3119,
+        "payloadHash": "bd7f3fdef3f3d9b0090fa9758975070c27d2fcf9d7071ca3373e00e5d915d9d9",
+        "sqlWallMs": 0.020944,
+        "sqlCpuMs": 0.021,
+        "decodeWallMs": 0.027617,
+        "decodeCpuMs": 0.028
+      },
+      "warmUnfenced": {
+        "rowCount": 80,
+        "selectedBytes": 6422,
+        "payloadHash": "649c08f8d5ff6da12392c7586854e5b04455ea313fb4595998422a5e8ed83170",
+        "sqlWallMs": 0.05008,
+        "sqlCpuMs": 0.05,
+        "decodeWallMs": 0.068801,
+        "decodeCpuMs": 0.069
+      },
+      "warmFenced": {
+        "rowCount": 39,
+        "selectedBytes": 3119,
+        "payloadHash": "bd7f3fdef3f3d9b0090fa9758975070c27d2fcf9d7071ca3373e00e5d915d9d9",
+        "sqlWallMs": 0.020208,
+        "sqlCpuMs": 0.02,
+        "decodeWallMs": 0.020752,
+        "decodeCpuMs": 0.02
+      }
+    },
+    "A-prime": {
+      "label": "A-prime",
+      "analyzed": false,
+      "sizeBytes": 24576,
+      "pragmas": {
+        "sqliteVersion": "3.51.3",
+        "pageSize": 4096,
+        "pageCount": 6,
+        "freelistCount": 0,
+        "journalMode": "delete",
+        "integrityCheck": "ok",
+        "quickCheck": "ok",
+        "stat1Count": 0,
+        "stat1Hash": null
+      },
+      "unfencedExplain": "4 | 0 | 62 | SEARCH transcript_events USING INDEX sqlite_autoindex_transcript_events_1 (session_id=?)",
+      "fencedExplain": "4 | 0 | 51 | SEARCH transcript_events USING INDEX sqlite_autoindex_transcript_events_1 (session_id=? AND seq<?)",
+      "coldUnfenced": {
+        "rowCount": 80,
+        "selectedBytes": 6422,
+        "payloadHash": "649c08f8d5ff6da12392c7586854e5b04455ea313fb4595998422a5e8ed83170",
+        "sqlWallMs": 0.048512,
+        "sqlCpuMs": 0.177,
+        "decodeWallMs": 0.048785,
+        "decodeCpuMs": 0.049
+      },
+      "coldFenced": {
+        "rowCount": 39,
+        "selectedBytes": 3119,
+        "payloadHash": "bd7f3fdef3f3d9b0090fa9758975070c27d2fcf9d7071ca3373e00e5d915d9d9",
+        "sqlWallMs": 0.036896,
+        "sqlCpuMs": 0.037,
+        "decodeWallMs": 0.020912,
+        "decodeCpuMs": 0.021
+      },
+      "warmUnfenced": {
+        "rowCount": 80,
+        "selectedBytes": 6422,
+        "payloadHash": "649c08f8d5ff6da12392c7586854e5b04455ea313fb4595998422a5e8ed83170",
+        "sqlWallMs": 0.058032,
+        "sqlCpuMs": 0.075,
+        "decodeWallMs": 0.046064,
+        "decodeCpuMs": 0.064
+      },
+      "warmFenced": {
+        "rowCount": 39,
+        "selectedBytes": 3119,
+        "payloadHash": "bd7f3fdef3f3d9b0090fa9758975070c27d2fcf9d7071ca3373e00e5d915d9d9",
+        "sqlWallMs": 0.020529,
+        "sqlCpuMs": 0.02,
+        "decodeWallMs": 0.037408,
+        "decodeCpuMs": 0.053
+      }
+    }
+  }
+}

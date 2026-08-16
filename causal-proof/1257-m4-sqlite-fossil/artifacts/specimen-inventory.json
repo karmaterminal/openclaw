@@ -1,0 +1,100 @@
+{
+  "schema": "ward-1257-specimen-inventory.v1",
+  "generatedAt": "2026-08-16T06:58:00Z",
+  "host": "ronan",
+  "baseSha": "a4407f638af0d0147e3712eb6202ba7bf5d3d7fc",
+  "boundIssue": "karmaterminal/openclaw#1257",
+  "acceptableSpecimenFound": false,
+  "incidentTargets": [
+    {
+      "seat": "cael",
+      "bytes": 5403803648,
+      "holdsMs": [4864, 5398],
+      "foundOffline": false
+    },
+    {
+      "seat": "ronan",
+      "bytes": 3796570112,
+      "holdsMs": [2327, 2543],
+      "foundOffline": false
+    },
+    {
+      "seat": "emeric",
+      "bytes": 6622703616,
+      "holdsMs": [1222],
+      "foundOffline": false
+    }
+  ],
+  "liveExcluded": [
+    {
+      "path": "/home/figs/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+      "bytesObserved": 3898867712,
+      "mtime": "2026-08-15T23:56:16-07:00",
+      "action": "stat-only; never hashed, copied, or opened"
+    },
+    {
+      "path": "/home/figs/.openclaw/state/openclaw.sqlite",
+      "bytesObserved": 78249984,
+      "action": "stat-only; wrong store (ingress/state)"
+    }
+  ],
+  "rejectedOffline": [
+    {
+      "path": "/home/figs/.openclaw/recovery-backups/elliott-ronan-auth-migration-20260808T035105Z/main-openclaw-agent.sqlite",
+      "bytes": 3190161408,
+      "sha256": "98fbded258836d9b4de0a53c74e042a8165ea9a97765b728f6a48c99c814ad6b",
+      "sha256MatchesReceipt": true,
+      "walShm": false,
+      "receipt": {
+        "target": "03939273216bc0c08a2df2d768f2f8d6549ca1f2",
+        "timestamp": "2026-08-07T20:51:13-07:00",
+        "doctorExit": 1,
+        "gateway": "active"
+      },
+      "reasons": [
+        "size != incident Ronan/Cael/Emeric bytes",
+        "no WAL/SHM sidecars",
+        "taken while gateway=active",
+        "8 days before 2026-08-15 incident"
+      ]
+    },
+    {
+      "path": "/home/figs/.openclaw/recovery-backups/elliott-ronan-auth-migration-heap16-20260808T035506Z/main-openclaw-agent.sqlite",
+      "bytes": 3190161408,
+      "sha256": "6f204d65d91eb3020baeab40dfb4399c97d2d6d761357d6b330baf08c47da5a5",
+      "sha256MatchesReceipt": true,
+      "walShm": false,
+      "receipt": {
+        "target": "03939273216bc0c08a2df2d768f2f8d6549ca1f2",
+        "timestamp": "2026-08-07T20:55:12-07:00",
+        "doctorExit": 0,
+        "doctorHeapMib": 16384,
+        "gateway": "active"
+      },
+      "reasons": [
+        "size != incident Ronan/Cael/Emeric bytes",
+        "no WAL/SHM sidecars",
+        "taken while gateway=active",
+        "8 days before 2026-08-15 incident"
+      ]
+    }
+  ],
+  "wrongOwnerOffline": [
+    {
+      "path": "/home/figs/.openclaw/backups/memory-github-copilot-20260805T1910PDT/main.pre-reindex.sqlite",
+      "bytes": 3318743040,
+      "owner": "memory plugin"
+    },
+    {
+      "path": "/home/figs/.openclaw/backups/memory-ollama-pre-replacement-20260806T200909Z/main.sqlite",
+      "bytes": 3316547584,
+      "owner": "memory plugin"
+    },
+    {
+      "path": "/home/figs/.openclaw/backups/ronan-sqlite-repair-20260815T090547Z/openclaw.sqlite",
+      "bytes": 102760448,
+      "owner": "state DB"
+    }
+  ],
+  "searchNote": "Exact-size find for 5403803648/3796570112/6622703616 returned zero files. Named openclaw-agent.sqlite search found only the live Ronan main store and the rejected Aug 7 copies as multi-GB agent files."
+}

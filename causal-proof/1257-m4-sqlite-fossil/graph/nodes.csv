@@ -1,0 +1,19 @@
+id,layer,kind,file,lines,sha,status,note
+governance:proof-only-lane,governance,constraint,,,,,"Proof/test only"
+governance:stale-gitnexus,governance,evidence-gap,,,,,"GitNexus not a4407f638af"
+governance:missing-incident-copy,governance,evidence-gap,,,,,"No acceptable offline specimen"
+commit:base,commit,upstream-base,,,a4407f638af0d0147e3712eb6202ba7bf5d3d7fc,,
+commit:deployed-incident,commit,composite,,,6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955,,
+commit:session-fence,commit,introducing-candidate,,,6df0fb818d67032c71eb885ac36febd540fbd10f,,openclaw/openclaw#98510
+commit:shared-wal,commit,does-not-reach,,,ed447135bd427508cdc42aec9bc2549c6860c326,,state WAL not agent DB
+code:session-manager-open,code,caller,src/agents/sessions/session-manager.ts,78-84,,,
+code:load-transcript-events-sync,code,owner-boundary,src/config/sessions/session-accessor.sqlite-read.ts,49-63,,,
+code:load-transcript-events-from-database,code,owner-boundary,src/config/sessions/session-accessor.sqlite-read.ts,174-190,,,
+code:read-fence,code,fence,src/config/sessions/session-transcript-read-fence.ts,39-119,,,
+code:slow-hold-log,code,instrumentation,src/infra/sqlite-transaction.ts,"20,87-112",,,threshold 1000ms
+incident:sqlite-pressure,incident,symptom-family,,,,,"cael,ronan,emeric"
+defect:sqlite-hot-read,defect,performance-amplifier,,,,source-and-trace-evidenced,copy-timing blocked
+probe:sqlite-copy,test,proposed-probe,,,,BLOCKED,
+fossil:small-control,test,fossil,,,,GREEN,not incident-shaped
+intervention:offline-analyze,intervention,candidate,,,,not-applicable,openclaw/openclaw#119901
+intervention:c4-read-owner,intervention,named-future-owner,src/config/sessions/session-accessor.sqlite-read.ts,,,not-implemented,

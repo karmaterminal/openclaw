@@ -1,0 +1,19 @@
+{
+  "schema": "frond.causal-bug-proof.v1",
+  "name": "Multi-GB agent SQLite fenced transcript read: copied-store causal fossil",
+  "boundIssue": "karmaterminal/openclaw#1257",
+  "nodes": 18,
+  "edges": 13,
+  "layers": [
+    "code",
+    "commit",
+    "defect",
+    "governance",
+    "incident",
+    "intervention",
+    "test"
+  ],
+  "interventionExecuted": false,
+  "acceptableSpecimenFound": false,
+  "relationNote": "Every fossil edge is CHARACTERIZES, never PROVES. This lane observes and freezes behavior; it applies no production change."
+}

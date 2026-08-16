@@ -1,0 +1,14 @@
+source,target,relation
+governance:proof-only-lane,probe:sqlite-copy,CONSTRAINS
+governance:missing-incident-copy,probe:sqlite-copy,BLOCKS
+code:session-manager-open,code:load-transcript-events-sync,CALLS
+code:load-transcript-events-sync,code:read-fence,CALLS
+code:load-transcript-events-sync,code:load-transcript-events-from-database,CALLS
+code:load-transcript-events-sync,code:slow-hold-log,HOLDS_SYNC_TRANSACTION
+code:load-transcript-events-from-database,defect:sqlite-hot-read,CHARACTERIZES
+defect:sqlite-hot-read,incident:sqlite-pressure,CHARACTERIZES
+commit:shared-wal,incident:sqlite-pressure,DOES_NOT_REACH
+probe:sqlite-copy,defect:sqlite-hot-read,PROPOSED_PROBE_FOR
+fossil:small-control,probe:sqlite-copy,CHARACTERIZES
+intervention:offline-analyze,probe:sqlite-copy,CANDIDATE_INTERVENTION
+intervention:c4-read-owner,code:load-transcript-events-from-database,NAMED_FUTURE_OWNER

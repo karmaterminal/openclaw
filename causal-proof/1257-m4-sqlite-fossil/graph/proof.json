@@ -1,0 +1,201 @@
+{
+  "schema": "frond.causal-bug-proof.v1",
+  "name": "Multi-GB agent SQLite fenced transcript read: copied-store causal fossil",
+  "boundIssue": "karmaterminal/openclaw#1257",
+  "lane": "ward-1257-m4-sqlite-fossil",
+  "evidenceSource": "cfbb29bfd3e751e718fda44649b690268621f13f",
+  "baseSha": "a4407f638af0d0147e3712eb6202ba7bf5d3d7fc",
+  "interventionExecuted": false,
+  "relationNote": "Every fossil edge is CHARACTERIZES, never PROVES. This lane observes and freezes behavior; it applies no production change.",
+  "nodes": [
+    {
+      "id": "governance:proof-only-lane",
+      "layer": "governance",
+      "kind": "constraint",
+      "label": "Proof/test only; no product repair; no live DB operation"
+    },
+    {
+      "id": "governance:stale-gitnexus",
+      "layer": "governance",
+      "kind": "evidence-gap",
+      "label": "GitNexus indexes are other worktrees, not a4407f638af",
+      "note": "Owner path reconstructed from source on this SHA."
+    },
+    {
+      "id": "governance:missing-incident-copy",
+      "layer": "governance",
+      "kind": "evidence-gap",
+      "label": "No acceptable immutable offline incident specimen"
+    },
+    {
+      "id": "commit:base",
+      "layer": "commit",
+      "kind": "upstream-base",
+      "sha": "a4407f638af0d0147e3712eb6202ba7bf5d3d7fc"
+    },
+    {
+      "id": "commit:deployed-incident",
+      "layer": "commit",
+      "kind": "composite",
+      "sha": "6b09b1dbe938ab6b5f56eaf4e58f1ed243f89955"
+    },
+    {
+      "id": "commit:session-fence",
+      "layer": "commit",
+      "kind": "introducing-candidate",
+      "sha": "6df0fb818d67032c71eb885ac36febd540fbd10f",
+      "pr": "openclaw/openclaw#98510"
+    },
+    {
+      "id": "commit:shared-wal",
+      "layer": "commit",
+      "kind": "does-not-reach",
+      "sha": "ed447135bd427508cdc42aec9bc2549c6860c326",
+      "pr": "openclaw/openclaw#123777",
+      "note": "Shared state WAL; observed holds are agent DB."
+    },
+    {
+      "id": "code:session-manager-open",
+      "layer": "code",
+      "kind": "caller",
+      "file": "src/agents/sessions/session-manager.ts",
+      "lines": "78-84"
+    },
+    {
+      "id": "code:load-transcript-events-sync",
+      "layer": "code",
+      "kind": "owner-boundary",
+      "file": "src/config/sessions/session-accessor.sqlite-read.ts",
+      "lines": "49-63"
+    },
+    {
+      "id": "code:load-transcript-events-from-database",
+      "layer": "code",
+      "kind": "owner-boundary",
+      "file": "src/config/sessions/session-accessor.sqlite-read.ts",
+      "lines": "174-190"
+    },
+    {
+      "id": "code:read-fence",
+      "layer": "code",
+      "kind": "fence",
+      "file": "src/config/sessions/session-transcript-read-fence.ts",
+      "lines": "39-119"
+    },
+    {
+      "id": "code:slow-hold-log",
+      "layer": "code",
+      "kind": "instrumentation",
+      "file": "src/infra/sqlite-transaction.ts",
+      "lines": "20,87-112",
+      "thresholdMs": 1000
+    },
+    {
+      "id": "incident:sqlite-pressure",
+      "layer": "incident",
+      "kind": "symptom-family",
+      "seats": "cael,ronan,emeric"
+    },
+    {
+      "id": "defect:sqlite-hot-read",
+      "layer": "defect",
+      "kind": "performance-amplifier",
+      "owner": "agent session SQLite transcript read",
+      "status": "source-and-trace-evidenced; copy-timing blocked"
+    },
+    {
+      "id": "probe:sqlite-copy",
+      "layer": "test",
+      "kind": "proposed-probe",
+      "result": "BLOCKED"
+    },
+    {
+      "id": "fossil:small-control",
+      "layer": "test",
+      "kind": "fossil",
+      "result": "GREEN",
+      "note": "Healthy 24KiB store only. Not incident-shaped."
+    },
+    {
+      "id": "intervention:offline-analyze",
+      "layer": "intervention",
+      "kind": "candidate",
+      "pr": "openclaw/openclaw#119901",
+      "status": "not-executed; not-applicable until incident copy"
+    },
+    {
+      "id": "intervention:c4-read-owner",
+      "layer": "intervention",
+      "kind": "named-future-owner",
+      "file": "src/config/sessions/session-accessor.sqlite-read.ts",
+      "status": "not-implemented"
+    }
+  ],
+  "edges": [
+    {
+      "source": "governance:proof-only-lane",
+      "target": "probe:sqlite-copy",
+      "relation": "CONSTRAINS"
+    },
+    {
+      "source": "governance:missing-incident-copy",
+      "target": "probe:sqlite-copy",
+      "relation": "BLOCKS"
+    },
+    {
+      "source": "code:session-manager-open",
+      "target": "code:load-transcript-events-sync",
+      "relation": "CALLS"
+    },
+    {
+      "source": "code:load-transcript-events-sync",
+      "target": "code:read-fence",
+      "relation": "CALLS"
+    },
+    {
+      "source": "code:load-transcript-events-sync",
+      "target": "code:load-transcript-events-from-database",
+      "relation": "CALLS"
+    },
+    {
+      "source": "code:load-transcript-events-sync",
+      "target": "code:slow-hold-log",
+      "relation": "HOLDS_SYNC_TRANSACTION"
+    },
+    {
+      "source": "code:load-transcript-events-from-database",
+      "target": "defect:sqlite-hot-read",
+      "relation": "CHARACTERIZES"
+    },
+    {
+      "source": "defect:sqlite-hot-read",
+      "target": "incident:sqlite-pressure",
+      "relation": "CHARACTERIZES"
+    },
+    {
+      "source": "commit:shared-wal",
+      "target": "incident:sqlite-pressure",
+      "relation": "DOES_NOT_REACH"
+    },
+    {
+      "source": "probe:sqlite-copy",
+      "target": "defect:sqlite-hot-read",
+      "relation": "PROPOSED_PROBE_FOR"
+    },
+    {
+      "source": "fossil:small-control",
+      "target": "probe:sqlite-copy",
+      "relation": "CHARACTERIZES"
+    },
+    {
+      "source": "intervention:offline-analyze",
+      "target": "probe:sqlite-copy",
+      "relation": "CANDIDATE_INTERVENTION"
+    },
+    {
+      "source": "intervention:c4-read-owner",
+      "target": "code:load-transcript-events-from-database",
+      "relation": "NAMED_FUTURE_OWNER"
+    }
+  ]
+}
