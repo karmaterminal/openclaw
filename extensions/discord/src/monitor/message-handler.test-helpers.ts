@@ -1,10 +1,36 @@
 // Discord helper module supports message handler helpers behavior.
+import type { APIMessage } from "discord-api-types/v10";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { vi } from "vitest";
 import type { createDiscordMessageDispatcher } from "./message-dispatcher.js";
 import { createNoopThreadBindingManager } from "./thread-bindings.js";
 
 export const DEFAULT_DISCORD_BOT_USER_ID = "bot-123";
+
+export function createRawMessage(id: string, channelId = "ch-1"): APIMessage {
+  return {
+    id,
+    channel_id: channelId,
+    content: "hello",
+    author: {
+      id: "user-1",
+      username: "alice",
+      discriminator: "0",
+      avatar: null,
+    },
+    attachments: [],
+    embeds: [],
+    mentions: [],
+    mention_roles: [],
+    mention_everyone: false,
+    timestamp: new Date().toISOString(),
+    edited_timestamp: null,
+    components: [],
+    pinned: false,
+    type: 0,
+    tts: false,
+  } as unknown as APIMessage;
+}
 
 export function createDiscordHandlerParams(overrides?: {
   botUserId?: string;

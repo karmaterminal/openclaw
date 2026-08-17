@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_LEGACY_SESSION_SURFACES } from "../plugins/legacy-session-surfaces.types.js";
 import { resolveOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { runStartupSessionMigration } from "./server-startup-session-migration.js";
@@ -18,6 +18,8 @@ type ReconcileSessionTranscriptIndexes = NonNullable<
   StartupMigrationDeps["reconcileSessionTranscriptIndexes"]
 >;
 type SessionSqliteDatabaseExists = NonNullable<StartupMigrationDeps["sessionSqliteDatabaseExists"]>;
+
+const startupMigrationTempDirs = new Set<string>();
 
 function makeLog() {
   return {
@@ -43,12 +45,14 @@ function makeDeps(
     .fn<ReconcileSessionTranscriptIndexes>()
     .mockResolvedValue({ reconciledSessions: 0 }),
 ) {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-session-startup-"));
+  startupMigrationTempDirs.add(stateDir);
   return {
     migrateOrphanedSessionKeys: migrate,
     prepareLegacySessionSurfaces: vi.fn(() => EMPTY_LEGACY_SESSION_SURFACES),
     resolveAllAgentSessionStoreTargetsSync: vi.fn<ResolveStoreTargets>().mockReturnValue([
-      { agentId: "main", storePath: "/tmp/main/sessions.json" },
-      { agentId: "ops", storePath: "/tmp/ops/sessions.json" },
+      { agentId: "main", storePath: path.join(stateDir, "main", "sessions.json") },
+      { agentId: "ops", storePath: path.join(stateDir, "ops", "sessions.json") },
     ]),
     sweepOrphanSessionStoreTemps: vi
       .fn<SweepStoreTemps>()
@@ -98,6 +102,13 @@ function makeSessionSqliteImport(
 }
 
 describe("runStartupSessionMigration", () => {
+  afterEach(() => {
+    for (const stateDir of startupMigrationTempDirs) {
+      fs.rmSync(stateDir, { force: true, recursive: true });
+    }
+    startupMigrationTempDirs.clear();
+  });
+
   it("skips legacy migration imports when no session stores exist", async () => {
     const log = makeLog();
     const migrate = vi.fn<MigrateSessionKeys>().mockResolvedValue({ changes: [], warnings: [] });

@@ -29,6 +29,7 @@ import { createBaseDiscordMessageContext } from "./message-handler.test-harness.
 import {
   createDiscordHandlerParams,
   createDiscordPreflightContext,
+  createRawMessage,
 } from "./message-handler.test-helpers.js";
 import { createDiscordMessageRunQueue } from "./message-run-queue.js";
 
@@ -89,31 +90,6 @@ async function withDiscordQueue<T>(
     closeOpenClawStateDatabaseForTest();
     await fs.rm(stateDir, { recursive: true, force: true });
   }
-}
-
-function createRawMessage(id: string, channelId = "ch-1"): APIMessage {
-  return {
-    id,
-    channel_id: channelId,
-    content: "hello",
-    author: {
-      id: "user-1",
-      username: "alice",
-      discriminator: "0",
-      avatar: null,
-    },
-    attachments: [],
-    embeds: [],
-    mentions: [],
-    mention_roles: [],
-    mention_everyone: false,
-    timestamp: new Date().toISOString(),
-    edited_timestamp: null,
-    components: [],
-    pinned: false,
-    type: 0,
-    tts: false,
-  } as unknown as APIMessage;
 }
 
 async function flushQueueWork(): Promise<void> {
@@ -524,6 +500,25 @@ describe("createDiscordMessageHandler queue behavior", () => {
           }
           return null;
         });
+        const receivedAt = Date.now();
+        const enqueue = async (id: string, channelId: string, offsetMs: number) => {
+          await queue.enqueue(
+            id,
+            {
+              version: 1,
+              receivedAt: receivedAt + offsetMs,
+              rawMessage: createRawMessage(id, channelId),
+            },
+            {
+              laneKey: `channel:${channelId}`,
+              receivedAt: receivedAt + offsetMs,
+            },
+          );
+        };
+        await enqueue("poison", "lane-a", 0);
+        await enqueue("follower", "lane-a", 1);
+        await enqueue("independent", "lane-b", 2);
+
         const params = createDiscordHandlerParams();
         const handler = createDurableDiscordMessageHandler({
           ...params,
@@ -535,10 +530,6 @@ describe("createDiscordMessageHandler queue behavior", () => {
           },
         });
         try {
-          await handler(createRawMessage("poison", "lane-a") as never, {} as never);
-          await handler(createRawMessage("follower", "lane-a") as never, {} as never);
-          await handler(createRawMessage("independent", "lane-b") as never, {} as never);
-
           for (let attempt = 0; attempt < DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS; attempt += 1) {
             await vi.advanceTimersByTimeAsync(3 * 60_000);
           }
