@@ -241,6 +241,20 @@ function proxyHeaders(headers: IncomingHttpHeaders, targetPort?: number): Outgoi
   return result;
 }
 
+function connectPortalTarget(port: number): Socket {
+  return net.connect({
+    host: "localhost",
+    autoSelectFamily: true,
+    // Some hosts omit ::1 from localhost DNS despite supporting IPv6 loopback.
+    lookup: (_hostname, _options, callback) =>
+      callback(null, [
+        { address: "::1", family: 6 },
+        { address: "127.0.0.1", family: 4 },
+      ]),
+    port,
+  });
+}
+
 /** Proxies one authorized portal request only to the loopback target. */
 export function handlePortalProxyRequest(params: {
   req: IncomingMessage;
@@ -266,12 +280,9 @@ export function handlePortalProxyRequest(params: {
   if (originalHost) {
     headers["x-forwarded-host"] = originalHost;
   }
-  // Dial "localhost", not a fixed loopback literal: Node >=17 dev servers (Vite,
-  // Next.js) often bind ::1 only, and family autoselection reaches either stack.
   const proxyReq = requestHttp({
     hostname: "localhost",
-    createConnection: () =>
-      net.connect({ host: "localhost", autoSelectFamily: true, port: target.targetPort }),
+    createConnection: () => connectPortalTarget(target.targetPort),
     port: target.targetPort,
     method: req.method,
     path: authorization.requestPath,
@@ -390,12 +401,7 @@ export function handlePortalProxyUpgrade(params: {
     return;
   }
 
-  // Same localhost/dual-stack contract as the HTTP path above.
-  const targetSocket: Socket = net.connect({
-    host: "localhost",
-    autoSelectFamily: true,
-    port: target.targetPort,
-  });
+  const targetSocket = connectPortalTarget(target.targetPort);
   upgradedSockets.add(socket);
   upgradedSockets.add(targetSocket);
   const release = (stream: Duplex) => upgradedSockets.delete(stream);
