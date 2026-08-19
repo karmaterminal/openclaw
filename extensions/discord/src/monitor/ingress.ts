@@ -47,8 +47,15 @@ const loadMentionRuntime = createLazyRuntimeModule(
   () => import("openclaw/plugin-sdk/channel-inbound"),
 );
 
-type DiscordGatewayMessage = APIMessage & {
+type DiscordGatewayAttachment = APIMessage["attachments"][number] & {
+  contentType?: unknown;
+};
+
+type DiscordGatewayMessage = Omit<APIMessage, "attachments"> & {
+  attachments: DiscordGatewayAttachment[];
+  channel?: unknown;
   channel_type?: unknown;
+  guild_id?: unknown;
 };
 
 type DiscordIngressChannelKind = "non-thread" | "thread";
@@ -172,26 +179,23 @@ function discordMessageSentAtMs(rawMessage: DiscordGatewayMessage): number | nul
 }
 
 function isDiscordGuildMessage(rawMessage: DiscordGatewayMessage): boolean {
-  return typeof (rawMessage as { guild_id?: unknown }).guild_id === "string";
+  return typeof rawMessage.guild_id === "string";
 }
 
 function hasPotentialDiscordAudioAttachment(rawMessage: DiscordGatewayMessage): boolean {
   for (const attachment of rawMessage.attachments ?? []) {
-    const contentType = nonEmptyString(
-      (attachment as { content_type?: unknown; contentType?: unknown }).content_type ??
-        (attachment as { contentType?: unknown }).contentType,
-    );
+    const contentType = nonEmptyString(attachment.content_type ?? attachment.contentType);
     if (contentType?.startsWith("audio/")) {
       return true;
     }
-    if (typeof (attachment as { duration_secs?: unknown }).duration_secs === "number") {
+    if (typeof attachment.duration_secs === "number") {
       return true;
     }
-    if (nonEmptyString((attachment as { waveform?: unknown }).waveform)) {
+    if (nonEmptyString(attachment.waveform)) {
       return true;
     }
-    const filename = nonEmptyString((attachment as { filename?: unknown }).filename);
-    const url = nonEmptyString((attachment as { url?: unknown }).url);
+    const filename = nonEmptyString(attachment.filename);
+    const url = nonEmptyString(attachment.url);
     if (
       (filename && DISCORD_AUDIO_ATTACHMENT_EXTENSIONS.test(filename)) ||
       (url && DISCORD_AUDIO_ATTACHMENT_EXTENSIONS.test(url))
@@ -235,11 +239,11 @@ function hasConfiguredDiscordChannels(guildInfo: DiscordGuildEntryResolved | nul
 }
 
 function hasCachedThreadChannel(rawMessage: DiscordGatewayMessage): boolean {
-  const channel = (rawMessage as { channel?: unknown }).channel;
-  if (!channel || typeof channel !== "object") {
+  const channel = rawMessage.channel;
+  if (!isRecord(channel)) {
     return false;
   }
-  const isThread = (channel as { isThread?: unknown }).isThread;
+  const isThread = channel.isThread;
   if (typeof isThread === "function") {
     try {
       return isThread() === true;
@@ -247,7 +251,7 @@ function hasCachedThreadChannel(rawMessage: DiscordGatewayMessage): boolean {
       return true;
     }
   }
-  return isDiscordThreadChannelType((channel as { type?: unknown }).type);
+  return isDiscordThreadChannelType(channel.type);
 }
 
 function hasBoundThread(
@@ -308,7 +312,7 @@ function canExpireDiscordStaleAmbientBacklog(
     return false;
   }
   const guildInfo = resolveDiscordGuildEntry({
-    guildId: nonEmptyString((rawMessage as { guild_id?: unknown }).guild_id),
+    guildId: nonEmptyString(rawMessage.guild_id),
     guildEntries: params.guildEntries,
   });
   if (params.guildEntries && Object.keys(params.guildEntries).length > 0 && !guildInfo) {
@@ -316,7 +320,7 @@ function canExpireDiscordStaleAmbientBacklog(
   }
 
   const channelId = nonEmptyString(rawMessage.channel_id);
-  const channelInfo = resolveDiscordChannelInfoSafe((rawMessage as { channel?: unknown }).channel);
+  const channelInfo = resolveDiscordChannelInfoSafe(rawMessage.channel);
   const channelSlug = channelInfo.name ? normalizeDiscordSlug(channelInfo.name) : "";
   const parentSlug = channelInfo.parentName ? normalizeDiscordSlug(channelInfo.parentName) : "";
   const channelConfig = channelId
