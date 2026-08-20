@@ -26,8 +26,8 @@ import {
   activeClaimKey,
   IngressAdoptionLostError,
   isIngressAdoptionLostError,
+  resolveIngressDrainLaneState,
   resolveLaneKey,
-  sortedKeys,
   type ActiveHandlerState,
   type ChannelIngressDrainDispatchResult,
 } from "./ingress-drain-state.js";
@@ -41,7 +41,6 @@ import {
   DEFAULT_INGRESS_RETRY_BASE_MS,
   DEFAULT_INGRESS_RETRY_MAX_MS,
   resolveIngressFailureDisposition,
-  resolveIngressRetryDelayMs,
   type IngressNonRetryableFailure,
   type IngressRetryPolicyConfig,
 } from "./ingress-retry-policy.js";
@@ -686,51 +685,17 @@ export function createChannelIngressDrain<
       reconcileStoredLaneKey: options.reconcileStoredLaneKey,
       log,
     });
-    const pending = pendingDispositionResult.pending;
-    const claims = await queue.listClaims();
-    const activeLaneKeys = new Set(laneOwnerByKey.keys());
-    const claimedLaneKeys = new Set(
-      claims
-        .filter((claim) => {
-          const state = activeByClaim.get(activeClaimKey(claim));
-          return !(
-            state?.phase === "deferred" &&
-            !state.occupiesLane &&
-            !state.guillotined &&
-            !state.superseded
-          );
-        })
-        .map((claim) =>
-          resolveLaneKey(claim, options.deriveLaneKey, options.reconcileStoredLaneKey),
-        ),
-    );
-    const eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
-    const oldestRetainedPendingLaneKeys = new Set<string>();
-    const retryDelayedLaneKeys = new Set<string>();
-    for (const event of pending) {
-      const retryDelayMs = resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow);
-      if (retryDelayMs === 0) {
-        eligiblePending.push(event);
-      }
-      const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
-      if (oldestRetainedPendingLaneKeys.has(laneKey)) {
-        continue;
-      }
-      oldestRetainedPendingLaneKeys.add(laneKey);
-      // Only the oldest retained row can block its lane for retry backoff. A
-      // delayed tail must not hide an eligible head from claimNext.
-      if (retryDelayMs > 0) {
-        retryDelayedLaneKeys.add(laneKey);
-      }
-    }
-
-    // Deterministic blocked set for claimNext lane serialization.
-    const blockedLaneKeys = new Set<string>([
-      ...sortedKeys(activeLaneKeys),
-      ...sortedKeys(claimedLaneKeys),
-      ...sortedKeys(retryDelayedLaneKeys),
-      ...sortedKeys(pendingDispositionResult.blockedLaneKeys),
-    ]);
+    const { eligiblePending, blockedLaneKeys } = resolveIngressDrainLaneState({
+      pending: pendingDispositionResult.pending,
+      claims: await queue.listClaims(),
+      activeByClaim,
+      activeLaneKeys: laneOwnerByKey.keys(),
+      pendingDispositionBlockedLaneKeys: pendingDispositionResult.blockedLaneKeys,
+      retryPolicy: options.retryPolicy,
+      now: dispositionNow,
+      deriveLaneKey: options.deriveLaneKey,
+      reconcileStoredLaneKey: options.reconcileStoredLaneKey,
+    });
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
     // Free the lane in blockedLaneKeys so claimNext can take the superseding event.

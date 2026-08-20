@@ -1,4 +1,8 @@
 import type { ChannelIngressQueueClaim, ChannelIngressQueueRecord } from "./ingress-queue.js";
+import {
+  resolveIngressRetryDelayMs,
+  type IngressRetryPolicyConfig,
+} from "./ingress-retry-policy.js";
 
 export class IngressAdoptionLostError extends Error {
   readonly code: "guillotined" | "superseded" | "reclaimed";
@@ -70,4 +74,69 @@ export function resolveLaneKey<TPayload, TMetadata>(
 
 export function sortedKeys(keys: Iterable<string>): string[] {
   return [...keys].toSorted((a, b) => a.localeCompare(b));
+}
+
+export function resolveIngressDrainLaneState<TPayload, TMetadata>(params: {
+  pending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
+  claims: Array<ChannelIngressQueueClaim<TPayload, TMetadata>>;
+  activeByClaim: ReadonlyMap<string, ActiveHandlerState<TPayload, TMetadata>>;
+  activeLaneKeys: Iterable<string>;
+  pendingDispositionBlockedLaneKeys: Iterable<string>;
+  retryPolicy?: IngressRetryPolicyConfig;
+  now: number;
+  deriveLaneKey?: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => string | undefined;
+  reconcileStoredLaneKey?: (
+    record: ChannelIngressQueueRecord<TPayload, TMetadata>,
+    storedLaneKey: string,
+    derivedLaneKey: string,
+  ) => boolean;
+}): {
+  eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
+  blockedLaneKeys: Set<string>;
+} {
+  const resolveRecordLaneKey = (record: ChannelIngressQueueRecord<TPayload, TMetadata>) =>
+    resolveLaneKey(record, params.deriveLaneKey, params.reconcileStoredLaneKey);
+  const claimedLaneKeys = new Set(
+    params.claims
+      .filter((claim) => {
+        const state = params.activeByClaim.get(activeClaimKey(claim));
+        return !(
+          state?.phase === "deferred" &&
+          !state.occupiesLane &&
+          !state.guillotined &&
+          !state.superseded
+        );
+      })
+      .map(resolveRecordLaneKey),
+  );
+  const eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
+  const oldestRetainedPendingLaneKeys = new Set<string>();
+  const retryDelayedLaneKeys = new Set<string>();
+  for (const event of params.pending) {
+    const retryDelayMs = resolveIngressRetryDelayMs(event, params.retryPolicy, params.now);
+    if (retryDelayMs === 0) {
+      eligiblePending.push(event);
+    }
+    const laneKey = resolveRecordLaneKey(event);
+    if (oldestRetainedPendingLaneKeys.has(laneKey)) {
+      continue;
+    }
+    oldestRetainedPendingLaneKeys.add(laneKey);
+    // Only the oldest retained row can block its lane for retry backoff. A
+    // delayed tail must not hide an eligible head from claimNext.
+    if (retryDelayMs > 0) {
+      retryDelayedLaneKeys.add(laneKey);
+    }
+  }
+
+  return {
+    eligiblePending,
+    // Deterministic blocked set for claimNext lane serialization.
+    blockedLaneKeys: new Set([
+      ...sortedKeys(params.activeLaneKeys),
+      ...sortedKeys(claimedLaneKeys),
+      ...sortedKeys(retryDelayedLaneKeys),
+      ...sortedKeys(params.pendingDispositionBlockedLaneKeys),
+    ]),
+  };
 }
