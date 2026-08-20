@@ -85,11 +85,19 @@ describe("channel ingress pending disposition drain", () => {
       });
 
       const adopted: string[] = [];
+      const committed: Array<{ id: string; reason: string; laneKey: string }> = [];
       const drain = createChannelIngressDrain<Payload>({
         queue,
         now: () => clock,
         startLimit: 2,
         resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
+        onPendingDispositionCommitted: (event, disposition, context) => {
+          committed.push({
+            id: event.id,
+            reason: disposition.reason,
+            laneKey: context.laneKey,
+          });
+        },
         dispatchClaimedEvent: async (event, lifecycle) => {
           adopted.push(event.id);
           await lifecycle.onAdopted();
@@ -99,6 +107,8 @@ describe("channel ingress pending disposition drain", () => {
       expect(await drain.drainOnce()).toEqual({ started: 1 });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane"]);
+      // The lost CAS race must not report a commit that never happened.
+      expect(committed).toEqual([]);
       expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
         "stale-ambient",
         "fresh-addressed",
@@ -107,10 +117,68 @@ describe("channel ingress pending disposition drain", () => {
       expect(await drain.drainOnce()).toEqual({ started: 1 });
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane", "fresh-addressed"]);
+      expect(committed).toEqual([
+        { id: "stale-ambient", reason: "stale-ambient-backlog", laneKey },
+      ]);
       expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
         { id: "stale-ambient", reason: "stale-ambient-backlog" },
       ]);
       siblingDrain.dispose();
+      drain.dispose();
+    });
+  });
+
+  it("offers only pending rows and leaves retained rows claimable", async () => {
+    await withTempState(async (stateDir) => {
+      const clock = 1_000;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "held",
+        { text: "first", kind: "addressed" },
+        { laneKey: "channel:a", receivedAt: clock },
+      );
+      await queue.enqueue(
+        "later",
+        { text: "second", kind: "addressed" },
+        { laneKey: "channel:b", receivedAt: clock },
+      );
+
+      const offered: string[][] = [];
+      let pass: string[] = [];
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        startLimit: 1,
+        resolvePendingDisposition: (event) => {
+          pass.push(event.id);
+          return null;
+        },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          if (event.id === "held") {
+            await held;
+          }
+          await lifecycle.onAdopted();
+        },
+      });
+
+      pass = [];
+      await drain.drainOnce();
+      offered.push(pass);
+
+      // "held" is claimed and in flight, so the pre-claim seam must not see it.
+      pass = [];
+      await drain.drainOnce();
+      offered.push(pass);
+
+      release();
+      await drain.waitForIdle();
+      expect(offered).toEqual([["held", "later"], ["later"]]);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       drain.dispose();
     });
   });

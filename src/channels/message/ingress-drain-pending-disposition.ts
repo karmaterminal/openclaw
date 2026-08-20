@@ -12,6 +12,21 @@ export type ChannelIngressPendingDispositionContext = {
   now: number;
 };
 
+/**
+ * Optional channel policy hook, called once per pending row per drain pass,
+ * before any claim. Return a disposition to settle the row terminally instead of
+ * dispatching it; return null/undefined to retain it as a normal claim
+ * candidate.
+ *
+ * The record is the row as stored: its payload has not been through the channel
+ * payload codec, which runs at claim time. Narrow before reading it and retain
+ * anything unreadable so the canonical claim-time invalid-event path owns it.
+ * Throwing aborts the whole drain pass, so a corrupt row must never throw here.
+ *
+ * The commit is CAS-fenced. A concurrent claim can win the race, in which case
+ * the row is retained, its lane is blocked for this pass, and no committed
+ * callback fires.
+ */
 export type ResolveChannelIngressPendingDisposition<TPayload, TMetadata> = (
   record: ChannelIngressQueueRecord<TPayload, TMetadata>,
   context: ChannelIngressPendingDispositionContext,
@@ -21,6 +36,11 @@ export type ResolveChannelIngressPendingDisposition<TPayload, TMetadata> = (
   | undefined
   | Promise<ChannelIngressPendingDisposition | null | undefined>;
 
+/**
+ * Fires only after a disposition was durably committed, exactly once per
+ * settled row. Use it for the operator receipt; the terminal write already
+ * happened, so it must not decide anything.
+ */
 export type OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata> = (
   record: ChannelIngressQueueRecord<TPayload, TMetadata>,
   disposition: ChannelIngressPendingDisposition,
