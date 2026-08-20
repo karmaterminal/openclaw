@@ -76,26 +76,20 @@ export function sortedKeys(keys: Iterable<string>): string[] {
   return [...keys].toSorted((a, b) => a.localeCompare(b));
 }
 
-export function resolveIngressDrainLaneState<TPayload, TMetadata>(params: {
+type ResolveIngressDrainLaneStateParams<TPayload, TMetadata> = {
   pending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
   claims: Array<ChannelIngressQueueClaim<TPayload, TMetadata>>;
   activeByClaim: ReadonlyMap<string, ActiveHandlerState<TPayload, TMetadata>>;
   activeLaneKeys: Iterable<string>;
   pendingDispositionBlockedLaneKeys: Iterable<string>;
-  retryPolicy?: IngressRetryPolicyConfig;
+  retryPolicy: IngressRetryPolicyConfig | undefined;
   now: number;
-  deriveLaneKey?: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => string | undefined;
-  reconcileStoredLaneKey?: (
-    record: ChannelIngressQueueRecord<TPayload, TMetadata>,
-    storedLaneKey: string,
-    derivedLaneKey: string,
-  ) => boolean;
-}): {
-  eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
-  blockedLaneKeys: Set<string>;
-} {
-  const resolveRecordLaneKey = (record: ChannelIngressQueueRecord<TPayload, TMetadata>) =>
-    resolveLaneKey(record, params.deriveLaneKey, params.reconcileStoredLaneKey);
+  resolveLaneKey: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => string;
+};
+
+export function resolveIngressDrainLaneState<TPayload, TMetadata>(
+  params: ResolveIngressDrainLaneStateParams<TPayload, TMetadata>,
+) {
   const claimedLaneKeys = new Set(
     params.claims
       .filter((claim) => {
@@ -107,7 +101,7 @@ export function resolveIngressDrainLaneState<TPayload, TMetadata>(params: {
           !state.superseded
         );
       })
-      .map(resolveRecordLaneKey),
+      .map(params.resolveLaneKey),
   );
   const eligiblePending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
   const oldestRetainedPendingLaneKeys = new Set<string>();
@@ -117,7 +111,7 @@ export function resolveIngressDrainLaneState<TPayload, TMetadata>(params: {
     if (retryDelayMs === 0) {
       eligiblePending.push(event);
     }
-    const laneKey = resolveRecordLaneKey(event);
+    const laneKey = params.resolveLaneKey(event);
     if (oldestRetainedPendingLaneKeys.has(laneKey)) {
       continue;
     }

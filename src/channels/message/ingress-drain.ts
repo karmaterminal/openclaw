@@ -140,6 +140,9 @@ export function createChannelIngressDrain<
     options.onLog?.(message);
   };
 
+  const resolveRecordLaneKey = (record: ChannelIngressQueueRecord<TPayload, TMetadata>): string =>
+    resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey);
+
   const clearStallTimer = (state: ActiveHandlerState<TPayload, TMetadata>) => {
     if (state.stallTimer) {
       clearTimeout(state.stallTimer);
@@ -693,8 +696,7 @@ export function createChannelIngressDrain<
       pendingDispositionBlockedLaneKeys: pendingDispositionResult.blockedLaneKeys,
       retryPolicy: options.retryPolicy,
       now: dispositionNow,
-      deriveLaneKey: options.deriveLaneKey,
-      reconcileStoredLaneKey: options.reconcileStoredLaneKey,
+      resolveLaneKey: resolveRecordLaneKey,
     });
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
@@ -703,7 +705,7 @@ export function createChannelIngressDrain<
       if (shouldStop()) {
         break;
       }
-      const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
+      const laneKey = resolveRecordLaneKey(event);
       if (await supersedeActiveIfNeeded(event, laneKey)) {
         blockedLaneKeys.delete(laneKey);
       }
@@ -736,11 +738,7 @@ export function createChannelIngressDrain<
         await queue.release(claimed, { recordAttempt: false });
         break;
       }
-      const laneKey = resolveLaneKey(
-        claimed,
-        options.deriveLaneKey,
-        options.reconcileStoredLaneKey,
-      );
+      const laneKey = resolveRecordLaneKey(claimed);
       const existing = laneOwnerByKey.get(laneKey);
       if (existing && existing.phase !== "settled") {
         if (await supersedeActiveIfNeeded(claimed, laneKey)) {
