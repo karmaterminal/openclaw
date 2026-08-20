@@ -134,7 +134,30 @@ Worktree runner: `node scripts/run-vitest.mjs run --config … --maxWorkers=1` w
 | `tsgo` core tests | 0 |
 | `plugin-sdk:check-exports` | 0 |
 
-Full project suite: in progress on immutable head `8a7c7a4d413…` via `node --import tsx scripts/test-projects.mts` (546 shards, `OPENCLAW_VITEST_MAX_WORKERS=1`). Log: `/tmp/oc-124337-proof/full-suite.log`. Classification vs exact frozen upstream will be filled at closeout. Unrelated baseline debt is not repaired in this lane.
+Full project suite on merge head `8a7c7a4d413…`:
+
+```
+node --import tsx scripts/test-projects.mts
+OPENCLAW_VITEST_MAX_WORKERS=1
+```
+
+- Duration: 13318.27s (15:51Z–19:33Z)
+- Wrapper: `[test] failed 546 Vitest shards`
+- Shared `node_modules` (symlink to `source/openclaw/node_modules`) was mutated mid-run: 62 late shards `Cannot find module .../vitest/vitest.mjs`; 6 `Worker exited unexpectedly`; post-run `pathe` missing so follow-up vitest cannot even spawn
+- Assertion `FAIL` headers: 234 across **143 files**
+- **PR-surface FAIL hits: 0** (no drain/fan-in/Feishu/Mattermost/Teams-ingress-lifecycle files)
+- Unique fail files: `REPORTS/124337-proof/full-suite-fail-files.txt`
+
+Classification vs exact frozen upstream `923e972` / this product:
+
+| Class | Disposition |
+|---|---|
+| Host shared-`node_modules` race (vitest.mjs/`pathe`) | Not this PR. Do not `pnpm install` in the worktree. |
+| Worker-exit / pool crashes | Host/process contamination. Not this PR. |
+| 143 assertion files (agents/cli/ui/config/cron/infra/commands/msteams-sdk, …) | None intersect the 11 PR files. Not repaired here. Treat as baseline/host unless a later isolated rerun on `923e972` proves otherwise. |
+| Owner ingress suites run **before** node_modules collapse | GREEN (channels 1138, fossil 5/5, siblings, plugin-sdk fan-in) |
+
+This lane does not fix unrelated baseline debt.
 
 ## ClawSweeper disposition
 
@@ -222,4 +245,4 @@ Prince deploy, live Discord fire, composite construction, PR source fast-forward
 
 - ClawSweeper started a later review lease at 2026-08-20T06:25Z on `70d47bec`; durable verdict at write time remained the proof-blocked silver-shellfish comment. A newer in-place edit may land after this report.
 - Frozen upstream was re-frozen once at `923e972`. Later `upstream/main` motion is not absorbed.
-- Full-suite reds, if any, will be classified against exact `923e972` and the PR original base, not current moving main.
+- Full-suite assertion reds were not isolated on exact `923e972` because the shared `node_modules` install collapsed during the run. Owner suites completed before that collapse.

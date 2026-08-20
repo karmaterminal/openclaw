@@ -1,0 +1,4 @@
+3290 /tmp/oc-124337-proof/upstream-tests-changed.txt
+intersection:
+extensions/mattermost/src/mattermost/monitor.inbound-system-event.test.ts
+extensions/msteams/src/monitor-handler/message-handler.ingress-lifecycle.test.ts

@@ -1,0 +1,9 @@
+head_started=8a7c7a4d41317105c198e1864d2c00825203ad57
+duration_s=13318.27
+wrapper=[test] failed 546 Vitest shards in 13318.27s
+note=RUNNER_EXIT in log is echo-after-redirect artifact; wrapper line is the suite result
+vitest_mjs_missing_events=62
+worker_exit_events=6
+FAIL_headers=234
+unique_fail_files=143
+pr_surface_fail_hits=0
