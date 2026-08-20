@@ -1,0 +1,26 @@
+source,target,evidence_class,localization,note,reason,receipt,relation,source_system
+commit:runtime-46f4d211,bug:D-policy-direct-open,,,,,,PRESERVES,
+commit:introducing-ebd44c4d,bug:D-policy-direct-open,textual-archaeology,git log -S; not a behavioral first-bad bisect,,,,INTRODUCES,
+commit:pr1237-head,bug:D-policy-direct-open,,,mention-gated suppression retained,,,PRESERVES,
+bug:D-model-amplifier,incident:elliott-sprites-2026-08-20,observed,,Terra reasoning-only retries prolonged already-admitted stale turns; did not introduce Discord payload,,,AMPLIFIES,
+code:canExpireDiscordStaleAmbientBacklog,code:resolveDiscordShouldRequireMention,observed,,deployed 46f4d211 predicate; removed by intervention,,,CALLS,
+code:canExpireDiscordStaleAmbientBacklog,bug:D-policy-direct-open,observed,,"returns false unless resolveDiscordShouldRequireMention === true, so direct-open stale rows never settle pre-dispatch",,,BYPASSES,
+code:resolvePendingDisposition,code:canExpireDiscordStaleAmbientBacklog,,,,,,CALLS,exact-source-reconstruction
+code:createDiscordIngressMonitor,code:resolvePendingDisposition,,,,,,CALLS,exact-source-reconstruction
+code:queue-adoption,incident:elliott-sprites-2026-08-20,observed,,FIFO claim/adopt of retained ambient rows emitted visible stale replies,,,CAUSES,
+incident:elliott-sprites-2026-08-20,bug:D-policy-direct-open,observed,,comments 5350760388 and 5351158895; 794 pending/claimed; requireMention false,,,EVIDENCES,
+incident:elliott-sprites-2026-08-20,bug:D-abandonment-budget,observed,,Rune/Silas 5-minute claim-adoption timeouts; separate node,,,EVIDENCES,
+incident:elliott-sprites-2026-08-20,bug:D-sqlite-pressure,observed,,cross-filed #1257 comment 5351160981; separate node,,,EVIDENCES,
+fossil:direct-open-stale,bug:D-policy-direct-open,observed,,RED-only before intervention; does not PROVE incident causality,,,CHARACTERIZES,
+gov:issue-1246,bug:D-policy-direct-open,,,,,,TRACKS,
+gov:pr-1237,bug:D-policy-direct-open,,,still returns channelKind === non-thread && requireMention; source material only,,,ATTEMPTS_FIX,
+gov:upstream-121204,bug:D-policy-direct-open,,,,,,ATTEMPTS_FIX,
+gov:upstream-97320,bug:D-policy-direct-open,,,,,,TRACKS,
+gov:upstream-97435,bug:D-abandonment-budget,,,sibling delayed-drain family; not this policy cell,,,TRACKS,
+patch:decouple-stale-from-mention,fossil:direct-open-stale,observed,,,,14 passed after 7871ecfe,CAUSES_TEST_PASS,
+patch:decouple-stale-from-mention,fossil:direct-open-stale,observed,,,,4 failed with stale dispatch after patch-only checkout of ingress.ts,REVERT_RESTORES_RED,
+Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor,Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor,,,,exact-source-reconstruction at 46f4d211/7871ecfe,,CALLS,gitnexus
+Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor,Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor,,,,gitnexus import-resolved from 530b33e index,,CALLS,gitnexus
+Function:src/channels/message/ingress-monitor.ts:getDrain,Function:src/channels/message/ingress-drain.ts:createChannelIngressDrain,,,,exact-source-reconstruction ingress-monitor.ts:310,,CALLS,gitnexus
+Function:src/channels/message/ingress-drain.ts:drainOnce,Function:src/channels/message/ingress-drain-pending-disposition.ts:resolveIngressPendingDispositions,,,,exact-source-reconstruction ingress-drain.ts:672,,CALLS,gitnexus
+Function:src/channels/message/ingress-drain.ts:onAdopted,Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry,,,,gitnexus+exact,,CALLS,gitnexus

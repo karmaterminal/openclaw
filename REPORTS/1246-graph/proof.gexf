@@ -1,0 +1,494 @@
+<?xml version='1.0' encoding='utf-8'?>
+<gexf xmlns="http://www.gexf.net/1.2draft" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.gexf.net/1.2draft http://www.gexf.net/1.2draft/gexf.xsd" version="1.2">
+  <meta lastmodifieddate="2026-08-19">
+    <creator>NetworkX 3.6.1</creator>
+  </meta>
+  <graph defaultedgetype="directed" mode="static" name="1246 direct-open stale ingress causal proof">
+    <attributes mode="static" class="edge">
+      <attribute id="20" title="relation" type="string" />
+      <attribute id="21" title="networkx_key" type="long" />
+      <attribute id="22" title="evidence_class" type="string" />
+      <attribute id="23" title="localization" type="string" />
+      <attribute id="24" title="note" type="string" />
+      <attribute id="25" title="source_system" type="string" />
+      <attribute id="26" title="receipt" type="string" />
+      <attribute id="27" title="reason" type="string" />
+    </attributes>
+    <attributes mode="static" class="node">
+      <attribute id="0" title="layer" type="string" />
+      <attribute id="1" title="kind" type="string" />
+      <attribute id="2" title="sha" type="string" />
+      <attribute id="3" title="timestamp" type="string" />
+      <attribute id="4" title="role" type="string" />
+      <attribute id="5" title="localization" type="string" />
+      <attribute id="6" title="owner" type="string" />
+      <attribute id="7" title="status" type="string" />
+      <attribute id="8" title="name" type="string" />
+      <attribute id="9" title="file" type="string" />
+      <attribute id="10" title="source_system" type="string" />
+      <attribute id="11" title="runtime" type="string" />
+      <attribute id="12" title="lane" type="string" />
+      <attribute id="13" title="public_safe" type="string" />
+      <attribute id="14" title="pre_fix_result" type="string" />
+      <attribute id="15" title="post_fix_result" type="string" />
+      <attribute id="16" title="revert_result" type="string" />
+      <attribute id="17" title="reapply_result" type="string" />
+      <attribute id="18" title="ref" type="string" />
+      <attribute id="19" title="production_loc" type="string" />
+    </attributes>
+    <nodes>
+      <node id="commit:runtime-46f4d211" label="commit:runtime-46f4d211">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="commit" />
+          <attvalue for="2" value="46f4d2115700d574501bb3c4763abf6b2ba977fe" />
+          <attvalue for="3" value="2026-08-20" />
+          <attvalue for="4" value="deployed pre-fix runtime" />
+        </attvalues>
+      </node>
+      <node id="commit:introducing-ebd44c4d" label="commit:introducing-ebd44c4d">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="commit" />
+          <attvalue for="2" value="ebd44c4d30a3256fbd314de46ef577fcd0d6c484" />
+          <attvalue for="3" value="2026-08-15T00:38:42-07:00" />
+          <attvalue for="4" value="introducing commit for canExpireDiscordStaleAmbientBacklog (textual archaeology)" />
+          <attvalue for="5" value="git log -S canExpireDiscordStaleAmbientBacklog" />
+        </attvalues>
+      </node>
+      <node id="commit:fossil-68023dba" label="commit:fossil-68023dba">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="commit" />
+          <attvalue for="2" value="68023dba9d62566de093c958137a33fb8492c77a" />
+          <attvalue for="4" value="fixed-semantics fossils, RED on deployed predicate" />
+        </attvalues>
+      </node>
+      <node id="commit:intervention-7871ecfe" label="commit:intervention-7871ecfe">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="commit" />
+          <attvalue for="2" value="7871ecfeacfb9d00fac983439b39448a5f11f791" />
+          <attvalue for="4" value="minimal D-policy-direct-open intervention" />
+        </attvalues>
+      </node>
+      <node id="commit:origin-main" label="commit:origin-main">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="commit" />
+          <attvalue for="2" value="6a637469a09b4e20637fb2056ba56bc9e154301e" />
+          <attvalue for="4" value="fork origin/main context only" />
+        </attvalues>
+      </node>
+      <node id="commit:pr1237-head" label="commit:pr1237-head">
+        <attvalues>
+          <attvalue for="0" value="commit" />
+          <attvalue for="1" value="commit" />
+          <attvalue for="2" value="85e5252e17a693e843bcc7bebc76ba09c3911d85" />
+          <attvalue for="4" value="karmaterminal/openclaw#1237 head; still mention-gated" />
+        </attvalues>
+      </node>
+      <node id="bug:D-policy-direct-open" label="bug:D-policy-direct-open">
+        <attvalues>
+          <attvalue for="0" value="defect" />
+          <attvalue for="1" value="bug" />
+          <attvalue for="6" value="extensions/discord/src/monitor/ingress.ts" />
+          <attvalue for="7" value="intervened-on-this-branch" />
+        </attvalues>
+      </node>
+      <node id="bug:D-abandonment-budget" label="bug:D-abandonment-budget">
+        <attvalues>
+          <attvalue for="0" value="defect" />
+          <attvalue for="1" value="bug" />
+          <attvalue for="6" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="7" value="separate; not a necessary dominator for this fossil" />
+        </attvalues>
+      </node>
+      <node id="bug:D-sqlite-pressure" label="bug:D-sqlite-pressure">
+        <attvalues>
+          <attvalue for="0" value="defect" />
+          <attvalue for="1" value="bug" />
+          <attvalue for="6" value="agent/session sqlite" />
+          <attvalue for="7" value="separate; not a necessary dominator for this fossil" />
+        </attvalues>
+      </node>
+      <node id="bug:D-model-amplifier" label="bug:D-model-amplifier">
+        <attvalues>
+          <attvalue for="0" value="defect" />
+          <attvalue for="1" value="bug" />
+          <attvalue for="6" value="provider retry/fallback" />
+          <attvalue for="7" value="separate; amplifies admitted stale turns only" />
+        </attvalues>
+      </node>
+      <node id="code:canExpireDiscordStaleAmbientBacklog" label="canExpireDiscordStaleAmbientBacklog">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="canExpireDiscordStaleAmbientBacklog" />
+          <attvalue for="9" value="extensions/discord/src/monitor/ingress.ts" />
+          <attvalue for="10" value="exact-source-reconstruction" />
+        </attvalues>
+      </node>
+      <node id="code:resolveDiscordShouldRequireMention" label="resolveDiscordShouldRequireMention">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="resolveDiscordShouldRequireMention" />
+          <attvalue for="9" value="extensions/discord/src/monitor/allow-list.ts" />
+          <attvalue for="10" value="exact-source-reconstruction" />
+        </attvalues>
+      </node>
+      <node id="code:resolvePendingDisposition" label="resolvePendingDisposition">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="resolvePendingDisposition" />
+          <attvalue for="9" value="extensions/discord/src/monitor/ingress.ts" />
+          <attvalue for="10" value="exact-source-reconstruction" />
+        </attvalues>
+      </node>
+      <node id="code:createDiscordIngressMonitor" label="createDiscordIngressMonitor">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="createDiscordIngressMonitor" />
+          <attvalue for="9" value="extensions/discord/src/monitor/ingress.ts" />
+          <attvalue for="10" value="exact-source-reconstruction" />
+        </attvalues>
+      </node>
+      <node id="code:queue-adoption" label="runClaimed/onAdopted">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="runClaimed/onAdopted" />
+          <attvalue for="9" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="10" value="exact-source-reconstruction" />
+        </attvalues>
+      </node>
+      <node id="incident:elliott-sprites-2026-08-20" label="incident:elliott-sprites-2026-08-20">
+        <attvalues>
+          <attvalue for="0" value="incident" />
+          <attvalue for="1" value="incident" />
+          <attvalue for="11" value="46f4d2115700d574501bb3c4763abf6b2ba977fe" />
+          <attvalue for="12" value="channel:1466192485440164011" />
+          <attvalue for="13" value="True" />
+        </attvalues>
+      </node>
+      <node id="fossil:direct-open-stale" label="fossil:direct-open-stale">
+        <attvalues>
+          <attvalue for="0" value="test" />
+          <attvalue for="1" value="fossil" />
+          <attvalue for="9" value="extensions/discord/src/monitor/ingress.direct-open-stale.fossil.test.ts" />
+          <attvalue for="14" value="RED" />
+          <attvalue for="15" value="GREEN" />
+          <attvalue for="16" value="RED" />
+          <attvalue for="17" value="GREEN" />
+        </attvalues>
+      </node>
+      <node id="gov:issue-1246" label="gov:issue-1246">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="issue" />
+          <attvalue for="18" value="karmaterminal/openclaw#1246" />
+        </attvalues>
+      </node>
+      <node id="gov:pr-1237" label="gov:pr-1237">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="pr" />
+          <attvalue for="18" value="karmaterminal/openclaw#1237" />
+        </attvalues>
+      </node>
+      <node id="gov:upstream-121204" label="gov:upstream-121204">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="pr" />
+          <attvalue for="18" value="openclaw/openclaw#121204" />
+        </attvalues>
+      </node>
+      <node id="gov:upstream-97320" label="gov:upstream-97320">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="issue" />
+          <attvalue for="18" value="openclaw/openclaw#97320" />
+        </attvalues>
+      </node>
+      <node id="gov:upstream-97435" label="gov:upstream-97435">
+        <attvalues>
+          <attvalue for="0" value="governance" />
+          <attvalue for="1" value="issue" />
+          <attvalue for="18" value="openclaw/openclaw#97435" />
+        </attvalues>
+      </node>
+      <node id="patch:decouple-stale-from-mention" label="patch:decouple-stale-from-mention">
+        <attvalues>
+          <attvalue for="0" value="intervention" />
+          <attvalue for="1" value="patch" />
+          <attvalue for="2" value="7871ecfeacfb9d00fac983439b39448a5f11f791" />
+          <attvalue for="19" value="+12/-8" />
+        </attvalues>
+      </node>
+      <node id="Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor" label="createDiscordIngressMonitor">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="createDiscordIngressMonitor" />
+          <attvalue for="9" value="extensions/discord/src/monitor/ingress.ts" />
+          <attvalue for="10" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor" label="createChannelIngressMonitor">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="createChannelIngressMonitor" />
+          <attvalue for="9" value="src/channels/message/ingress-monitor.ts" />
+          <attvalue for="10" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-monitor.ts:getDrain" label="getDrain">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="getDrain" />
+          <attvalue for="9" value="src/channels/message/ingress-monitor.ts" />
+          <attvalue for="10" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:createChannelIngressDrain" label="createChannelIngressDrain">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="createChannelIngressDrain" />
+          <attvalue for="9" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="10" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:drainOnce" label="drainOnce">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="drainOnce" />
+          <attvalue for="9" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="10" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain-pending-disposition.ts:resolveIngressPendingDispositions" label="resolveIngressPendingDispositions">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="resolveIngressPendingDispositions" />
+          <attvalue for="9" value="src/channels/message/ingress-drain-pending-disposition.ts" />
+          <attvalue for="10" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:onAdopted" label="onAdopted">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="onAdopted" />
+          <attvalue for="9" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="10" value="gitnexus" />
+        </attvalues>
+      </node>
+      <node id="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry" label="completeClaimWithRetry">
+        <attvalues>
+          <attvalue for="0" value="code" />
+          <attvalue for="1" value="Function" />
+          <attvalue for="8" value="completeClaimWithRetry" />
+          <attvalue for="9" value="src/channels/message/ingress-drain.ts" />
+          <attvalue for="10" value="gitnexus" />
+        </attvalues>
+      </node>
+    </nodes>
+    <edges>
+      <edge source="commit:runtime-46f4d211" target="bug:D-policy-direct-open" id="0">
+        <attvalues>
+          <attvalue for="20" value="PRESERVES" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="commit:introducing-ebd44c4d" target="bug:D-policy-direct-open" id="1">
+        <attvalues>
+          <attvalue for="20" value="INTRODUCES" />
+          <attvalue for="22" value="textual-archaeology" />
+          <attvalue for="23" value="git log -S; not a behavioral first-bad bisect" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="commit:pr1237-head" target="bug:D-policy-direct-open" id="2">
+        <attvalues>
+          <attvalue for="20" value="PRESERVES" />
+          <attvalue for="24" value="mention-gated suppression retained" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="bug:D-model-amplifier" target="incident:elliott-sprites-2026-08-20" id="3">
+        <attvalues>
+          <attvalue for="20" value="AMPLIFIES" />
+          <attvalue for="22" value="observed" />
+          <attvalue for="24" value="Terra reasoning-only retries prolonged already-admitted stale turns; did not introduce Discord payload" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:canExpireDiscordStaleAmbientBacklog" target="code:resolveDiscordShouldRequireMention" id="4">
+        <attvalues>
+          <attvalue for="20" value="CALLS" />
+          <attvalue for="22" value="observed" />
+          <attvalue for="24" value="deployed 46f4d211 predicate; removed by intervention" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:canExpireDiscordStaleAmbientBacklog" target="bug:D-policy-direct-open" id="5">
+        <attvalues>
+          <attvalue for="20" value="BYPASSES" />
+          <attvalue for="22" value="observed" />
+          <attvalue for="24" value="returns false unless resolveDiscordShouldRequireMention === true, so direct-open stale rows never settle pre-dispatch" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:resolvePendingDisposition" target="code:canExpireDiscordStaleAmbientBacklog" id="6">
+        <attvalues>
+          <attvalue for="20" value="CALLS" />
+          <attvalue for="25" value="exact-source-reconstruction" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:createDiscordIngressMonitor" target="code:resolvePendingDisposition" id="7">
+        <attvalues>
+          <attvalue for="20" value="CALLS" />
+          <attvalue for="25" value="exact-source-reconstruction" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="code:queue-adoption" target="incident:elliott-sprites-2026-08-20" id="8">
+        <attvalues>
+          <attvalue for="20" value="CAUSES" />
+          <attvalue for="22" value="observed" />
+          <attvalue for="24" value="FIFO claim/adopt of retained ambient rows emitted visible stale replies" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="incident:elliott-sprites-2026-08-20" target="bug:D-policy-direct-open" id="9">
+        <attvalues>
+          <attvalue for="20" value="EVIDENCES" />
+          <attvalue for="22" value="observed" />
+          <attvalue for="24" value="comments 5350760388 and 5351158895; 794 pending/claimed; requireMention false" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="incident:elliott-sprites-2026-08-20" target="bug:D-abandonment-budget" id="10">
+        <attvalues>
+          <attvalue for="20" value="EVIDENCES" />
+          <attvalue for="22" value="observed" />
+          <attvalue for="24" value="Rune/Silas 5-minute claim-adoption timeouts; separate node" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="incident:elliott-sprites-2026-08-20" target="bug:D-sqlite-pressure" id="11">
+        <attvalues>
+          <attvalue for="20" value="EVIDENCES" />
+          <attvalue for="22" value="observed" />
+          <attvalue for="24" value="cross-filed #1257 comment 5351160981; separate node" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="fossil:direct-open-stale" target="bug:D-policy-direct-open" id="12">
+        <attvalues>
+          <attvalue for="20" value="CHARACTERIZES" />
+          <attvalue for="22" value="observed" />
+          <attvalue for="24" value="RED-only before intervention; does not PROVE incident causality" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="gov:issue-1246" target="bug:D-policy-direct-open" id="13">
+        <attvalues>
+          <attvalue for="20" value="TRACKS" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="gov:pr-1237" target="bug:D-policy-direct-open" id="14">
+        <attvalues>
+          <attvalue for="20" value="ATTEMPTS_FIX" />
+          <attvalue for="24" value="still returns channelKind === non-thread &amp;&amp; requireMention; source material only" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="gov:upstream-121204" target="bug:D-policy-direct-open" id="15">
+        <attvalues>
+          <attvalue for="20" value="ATTEMPTS_FIX" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="gov:upstream-97320" target="bug:D-policy-direct-open" id="16">
+        <attvalues>
+          <attvalue for="20" value="TRACKS" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="gov:upstream-97435" target="bug:D-abandonment-budget" id="17">
+        <attvalues>
+          <attvalue for="20" value="TRACKS" />
+          <attvalue for="24" value="sibling delayed-drain family; not this policy cell" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="patch:decouple-stale-from-mention" target="fossil:direct-open-stale" id="18">
+        <attvalues>
+          <attvalue for="20" value="CAUSES_TEST_PASS" />
+          <attvalue for="22" value="observed" />
+          <attvalue for="26" value="14 passed after 7871ecfe" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="patch:decouple-stale-from-mention" target="fossil:direct-open-stale" id="19">
+        <attvalues>
+          <attvalue for="20" value="REVERT_RESTORES_RED" />
+          <attvalue for="22" value="observed" />
+          <attvalue for="26" value="4 failed with stale dispatch after patch-only checkout of ingress.ts" />
+          <attvalue for="21" value="1" />
+        </attvalues>
+      </edge>
+      <edge source="Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor" target="Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor" id="20">
+        <attvalues>
+          <attvalue for="20" value="CALLS" />
+          <attvalue for="27" value="exact-source-reconstruction at 46f4d211/7871ecfe" />
+          <attvalue for="25" value="gitnexus" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor" target="Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor" id="21">
+        <attvalues>
+          <attvalue for="20" value="CALLS" />
+          <attvalue for="27" value="gitnexus import-resolved from 530b33e index" />
+          <attvalue for="25" value="gitnexus" />
+          <attvalue for="21" value="1" />
+        </attvalues>
+      </edge>
+      <edge source="Function:src/channels/message/ingress-monitor.ts:getDrain" target="Function:src/channels/message/ingress-drain.ts:createChannelIngressDrain" id="22">
+        <attvalues>
+          <attvalue for="20" value="CALLS" />
+          <attvalue for="27" value="exact-source-reconstruction ingress-monitor.ts:310" />
+          <attvalue for="25" value="gitnexus" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="Function:src/channels/message/ingress-drain.ts:drainOnce" target="Function:src/channels/message/ingress-drain-pending-disposition.ts:resolveIngressPendingDispositions" id="23">
+        <attvalues>
+          <attvalue for="20" value="CALLS" />
+          <attvalue for="27" value="exact-source-reconstruction ingress-drain.ts:672" />
+          <attvalue for="25" value="gitnexus" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+      <edge source="Function:src/channels/message/ingress-drain.ts:onAdopted" target="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry" id="24">
+        <attvalues>
+          <attvalue for="20" value="CALLS" />
+          <attvalue for="27" value="gitnexus+exact" />
+          <attvalue for="25" value="gitnexus" />
+          <attvalue for="21" value="0" />
+        </attvalues>
+      </edge>
+    </edges>
+  </graph>
+</gexf>

@@ -1,0 +1,60 @@
+{
+  "index": {
+    "exact_worktree_indexed": false,
+    "indexed_repo": "/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-85651-upstream-530b33e-gitnexus",
+    "indexed_commit": "530b33e4e37264c89ecd5abdd06279dd23d5c867",
+    "note": "Exact 46f4d211 index unavailable; GitNexus CALLS below are from the closest index plus exact-source reconstruction on this worktree."
+  },
+  "rows": [
+    {
+      "sourceId": "Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor",
+      "sourceName": "createDiscordIngressMonitor",
+      "sourceFile": "extensions/discord/src/monitor/ingress.ts",
+      "relation": "CALLS",
+      "targetId": "Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor",
+      "targetName": "createChannelIngressMonitor",
+      "targetFile": "src/channels/message/ingress-monitor.ts",
+      "reason": "exact-source-reconstruction at 46f4d211/7871ecfe"
+    },
+    {
+      "sourceId": "Function:src/channels/message/ingress-monitor.ts:getDrain",
+      "sourceName": "getDrain",
+      "sourceFile": "src/channels/message/ingress-monitor.ts",
+      "relation": "CALLS",
+      "targetId": "Function:src/channels/message/ingress-drain.ts:createChannelIngressDrain",
+      "targetName": "createChannelIngressDrain",
+      "targetFile": "src/channels/message/ingress-drain.ts",
+      "reason": "exact-source-reconstruction ingress-monitor.ts:310"
+    },
+    {
+      "sourceId": "Function:src/channels/message/ingress-drain.ts:drainOnce",
+      "sourceName": "drainOnce",
+      "sourceFile": "src/channels/message/ingress-drain.ts",
+      "relation": "CALLS",
+      "targetId": "Function:src/channels/message/ingress-drain-pending-disposition.ts:resolveIngressPendingDispositions",
+      "targetName": "resolveIngressPendingDispositions",
+      "targetFile": "src/channels/message/ingress-drain-pending-disposition.ts",
+      "reason": "exact-source-reconstruction ingress-drain.ts:672"
+    },
+    {
+      "sourceId": "Function:src/channels/message/ingress-drain.ts:onAdopted",
+      "sourceName": "onAdopted",
+      "sourceFile": "src/channels/message/ingress-drain.ts",
+      "relation": "CALLS",
+      "targetId": "Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry",
+      "targetName": "completeClaimWithRetry",
+      "targetFile": "src/channels/message/ingress-drain.ts",
+      "reason": "gitnexus+exact"
+    },
+    {
+      "sourceId": "Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor",
+      "sourceName": "createDiscordIngressMonitor",
+      "sourceFile": "extensions/discord/src/monitor/ingress.ts",
+      "relation": "CALLS",
+      "targetId": "Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor",
+      "targetName": "createChannelIngressMonitor",
+      "targetFile": "src/channels/message/ingress-monitor.ts",
+      "reason": "gitnexus import-resolved from 530b33e index"
+    }
+  ]
+}

@@ -1,0 +1,381 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d29" for="edge" attr.name="reason" attr.type="string" />
+  <key id="d28" for="edge" attr.name="receipt" attr.type="string" />
+  <key id="d27" for="edge" attr.name="source_system" attr.type="string" />
+  <key id="d26" for="edge" attr.name="note" attr.type="string" />
+  <key id="d25" for="edge" attr.name="localization" attr.type="string" />
+  <key id="d24" for="edge" attr.name="evidence_class" attr.type="string" />
+  <key id="d23" for="edge" attr.name="relation" attr.type="string" />
+  <key id="d22" for="node" attr.name="production_loc" attr.type="string" />
+  <key id="d21" for="node" attr.name="ref" attr.type="string" />
+  <key id="d20" for="node" attr.name="reapply_result" attr.type="string" />
+  <key id="d19" for="node" attr.name="revert_result" attr.type="string" />
+  <key id="d18" for="node" attr.name="post_fix_result" attr.type="string" />
+  <key id="d17" for="node" attr.name="pre_fix_result" attr.type="string" />
+  <key id="d16" for="node" attr.name="public_safe" attr.type="string" />
+  <key id="d15" for="node" attr.name="lane" attr.type="string" />
+  <key id="d14" for="node" attr.name="runtime" attr.type="string" />
+  <key id="d13" for="node" attr.name="source_system" attr.type="string" />
+  <key id="d12" for="node" attr.name="file" attr.type="string" />
+  <key id="d11" for="node" attr.name="name" attr.type="string" />
+  <key id="d10" for="node" attr.name="status" attr.type="string" />
+  <key id="d9" for="node" attr.name="owner" attr.type="string" />
+  <key id="d8" for="node" attr.name="localization" attr.type="string" />
+  <key id="d7" for="node" attr.name="label" attr.type="string" />
+  <key id="d6" for="node" attr.name="role" attr.type="string" />
+  <key id="d5" for="node" attr.name="timestamp" attr.type="string" />
+  <key id="d4" for="node" attr.name="sha" attr.type="string" />
+  <key id="d3" for="node" attr.name="kind" attr.type="string" />
+  <key id="d2" for="node" attr.name="layer" attr.type="string" />
+  <key id="d1" for="graph" attr.name="schema" attr.type="string" />
+  <key id="d0" for="graph" attr.name="name" attr.type="string" />
+  <graph edgedefault="directed">
+    <node id="commit:runtime-46f4d211">
+      <data key="d2">commit</data>
+      <data key="d3">commit</data>
+      <data key="d4">46f4d2115700d574501bb3c4763abf6b2ba977fe</data>
+      <data key="d5">2026-08-20</data>
+      <data key="d6">deployed pre-fix runtime</data>
+      <data key="d7">commit:runtime-46f4d211</data>
+    </node>
+    <node id="commit:introducing-ebd44c4d">
+      <data key="d2">commit</data>
+      <data key="d3">commit</data>
+      <data key="d4">ebd44c4d30a3256fbd314de46ef577fcd0d6c484</data>
+      <data key="d5">2026-08-15T00:38:42-07:00</data>
+      <data key="d6">introducing commit for canExpireDiscordStaleAmbientBacklog (textual archaeology)</data>
+      <data key="d8">git log -S canExpireDiscordStaleAmbientBacklog</data>
+      <data key="d7">commit:introducing-ebd44c4d</data>
+    </node>
+    <node id="commit:fossil-68023dba">
+      <data key="d2">commit</data>
+      <data key="d3">commit</data>
+      <data key="d4">68023dba9d62566de093c958137a33fb8492c77a</data>
+      <data key="d6">fixed-semantics fossils, RED on deployed predicate</data>
+      <data key="d7">commit:fossil-68023dba</data>
+    </node>
+    <node id="commit:intervention-7871ecfe">
+      <data key="d2">commit</data>
+      <data key="d3">commit</data>
+      <data key="d4">7871ecfeacfb9d00fac983439b39448a5f11f791</data>
+      <data key="d6">minimal D-policy-direct-open intervention</data>
+      <data key="d7">commit:intervention-7871ecfe</data>
+    </node>
+    <node id="commit:origin-main">
+      <data key="d2">commit</data>
+      <data key="d3">commit</data>
+      <data key="d4">6a637469a09b4e20637fb2056ba56bc9e154301e</data>
+      <data key="d6">fork origin/main context only</data>
+      <data key="d7">commit:origin-main</data>
+    </node>
+    <node id="commit:pr1237-head">
+      <data key="d2">commit</data>
+      <data key="d3">commit</data>
+      <data key="d4">85e5252e17a693e843bcc7bebc76ba09c3911d85</data>
+      <data key="d6">karmaterminal/openclaw#1237 head; still mention-gated</data>
+      <data key="d7">commit:pr1237-head</data>
+    </node>
+    <node id="bug:D-policy-direct-open">
+      <data key="d2">defect</data>
+      <data key="d3">bug</data>
+      <data key="d9">extensions/discord/src/monitor/ingress.ts</data>
+      <data key="d10">intervened-on-this-branch</data>
+      <data key="d7">bug:D-policy-direct-open</data>
+    </node>
+    <node id="bug:D-abandonment-budget">
+      <data key="d2">defect</data>
+      <data key="d3">bug</data>
+      <data key="d9">src/channels/message/ingress-drain.ts</data>
+      <data key="d10">separate; not a necessary dominator for this fossil</data>
+      <data key="d7">bug:D-abandonment-budget</data>
+    </node>
+    <node id="bug:D-sqlite-pressure">
+      <data key="d2">defect</data>
+      <data key="d3">bug</data>
+      <data key="d9">agent/session sqlite</data>
+      <data key="d10">separate; not a necessary dominator for this fossil</data>
+      <data key="d7">bug:D-sqlite-pressure</data>
+    </node>
+    <node id="bug:D-model-amplifier">
+      <data key="d2">defect</data>
+      <data key="d3">bug</data>
+      <data key="d9">provider retry/fallback</data>
+      <data key="d10">separate; amplifies admitted stale turns only</data>
+      <data key="d7">bug:D-model-amplifier</data>
+    </node>
+    <node id="code:canExpireDiscordStaleAmbientBacklog">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">canExpireDiscordStaleAmbientBacklog</data>
+      <data key="d12">extensions/discord/src/monitor/ingress.ts</data>
+      <data key="d13">exact-source-reconstruction</data>
+      <data key="d7">canExpireDiscordStaleAmbientBacklog</data>
+    </node>
+    <node id="code:resolveDiscordShouldRequireMention">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">resolveDiscordShouldRequireMention</data>
+      <data key="d12">extensions/discord/src/monitor/allow-list.ts</data>
+      <data key="d13">exact-source-reconstruction</data>
+      <data key="d7">resolveDiscordShouldRequireMention</data>
+    </node>
+    <node id="code:resolvePendingDisposition">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">resolvePendingDisposition</data>
+      <data key="d12">extensions/discord/src/monitor/ingress.ts</data>
+      <data key="d13">exact-source-reconstruction</data>
+      <data key="d7">resolvePendingDisposition</data>
+    </node>
+    <node id="code:createDiscordIngressMonitor">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">createDiscordIngressMonitor</data>
+      <data key="d12">extensions/discord/src/monitor/ingress.ts</data>
+      <data key="d13">exact-source-reconstruction</data>
+      <data key="d7">createDiscordIngressMonitor</data>
+    </node>
+    <node id="code:queue-adoption">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">runClaimed/onAdopted</data>
+      <data key="d12">src/channels/message/ingress-drain.ts</data>
+      <data key="d13">exact-source-reconstruction</data>
+      <data key="d7">runClaimed/onAdopted</data>
+    </node>
+    <node id="incident:elliott-sprites-2026-08-20">
+      <data key="d2">incident</data>
+      <data key="d3">incident</data>
+      <data key="d14">46f4d2115700d574501bb3c4763abf6b2ba977fe</data>
+      <data key="d15">channel:1466192485440164011</data>
+      <data key="d16">True</data>
+      <data key="d7">incident:elliott-sprites-2026-08-20</data>
+    </node>
+    <node id="fossil:direct-open-stale">
+      <data key="d2">test</data>
+      <data key="d3">fossil</data>
+      <data key="d12">extensions/discord/src/monitor/ingress.direct-open-stale.fossil.test.ts</data>
+      <data key="d17">RED</data>
+      <data key="d18">GREEN</data>
+      <data key="d19">RED</data>
+      <data key="d20">GREEN</data>
+      <data key="d7">fossil:direct-open-stale</data>
+    </node>
+    <node id="gov:issue-1246">
+      <data key="d2">governance</data>
+      <data key="d3">issue</data>
+      <data key="d21">karmaterminal/openclaw#1246</data>
+      <data key="d7">gov:issue-1246</data>
+    </node>
+    <node id="gov:pr-1237">
+      <data key="d2">governance</data>
+      <data key="d3">pr</data>
+      <data key="d21">karmaterminal/openclaw#1237</data>
+      <data key="d7">gov:pr-1237</data>
+    </node>
+    <node id="gov:upstream-121204">
+      <data key="d2">governance</data>
+      <data key="d3">pr</data>
+      <data key="d21">openclaw/openclaw#121204</data>
+      <data key="d7">gov:upstream-121204</data>
+    </node>
+    <node id="gov:upstream-97320">
+      <data key="d2">governance</data>
+      <data key="d3">issue</data>
+      <data key="d21">openclaw/openclaw#97320</data>
+      <data key="d7">gov:upstream-97320</data>
+    </node>
+    <node id="gov:upstream-97435">
+      <data key="d2">governance</data>
+      <data key="d3">issue</data>
+      <data key="d21">openclaw/openclaw#97435</data>
+      <data key="d7">gov:upstream-97435</data>
+    </node>
+    <node id="patch:decouple-stale-from-mention">
+      <data key="d2">intervention</data>
+      <data key="d3">patch</data>
+      <data key="d4">7871ecfeacfb9d00fac983439b39448a5f11f791</data>
+      <data key="d22">+12/-8</data>
+      <data key="d7">patch:decouple-stale-from-mention</data>
+    </node>
+    <node id="Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">createDiscordIngressMonitor</data>
+      <data key="d12">extensions/discord/src/monitor/ingress.ts</data>
+      <data key="d13">gitnexus</data>
+      <data key="d7">createDiscordIngressMonitor</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">createChannelIngressMonitor</data>
+      <data key="d12">src/channels/message/ingress-monitor.ts</data>
+      <data key="d13">gitnexus</data>
+      <data key="d7">createChannelIngressMonitor</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-monitor.ts:getDrain">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">getDrain</data>
+      <data key="d12">src/channels/message/ingress-monitor.ts</data>
+      <data key="d13">gitnexus</data>
+      <data key="d7">getDrain</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:createChannelIngressDrain">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">createChannelIngressDrain</data>
+      <data key="d12">src/channels/message/ingress-drain.ts</data>
+      <data key="d13">gitnexus</data>
+      <data key="d7">createChannelIngressDrain</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:drainOnce">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">drainOnce</data>
+      <data key="d12">src/channels/message/ingress-drain.ts</data>
+      <data key="d13">gitnexus</data>
+      <data key="d7">drainOnce</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain-pending-disposition.ts:resolveIngressPendingDispositions">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">resolveIngressPendingDispositions</data>
+      <data key="d12">src/channels/message/ingress-drain-pending-disposition.ts</data>
+      <data key="d13">gitnexus</data>
+      <data key="d7">resolveIngressPendingDispositions</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:onAdopted">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">onAdopted</data>
+      <data key="d12">src/channels/message/ingress-drain.ts</data>
+      <data key="d13">gitnexus</data>
+      <data key="d7">onAdopted</data>
+    </node>
+    <node id="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry">
+      <data key="d2">code</data>
+      <data key="d3">Function</data>
+      <data key="d11">completeClaimWithRetry</data>
+      <data key="d12">src/channels/message/ingress-drain.ts</data>
+      <data key="d13">gitnexus</data>
+      <data key="d7">completeClaimWithRetry</data>
+    </node>
+    <edge source="commit:runtime-46f4d211" target="bug:D-policy-direct-open" id="0">
+      <data key="d23">PRESERVES</data>
+    </edge>
+    <edge source="commit:introducing-ebd44c4d" target="bug:D-policy-direct-open" id="0">
+      <data key="d23">INTRODUCES</data>
+      <data key="d24">textual-archaeology</data>
+      <data key="d25">git log -S; not a behavioral first-bad bisect</data>
+    </edge>
+    <edge source="commit:pr1237-head" target="bug:D-policy-direct-open" id="0">
+      <data key="d23">PRESERVES</data>
+      <data key="d26">mention-gated suppression retained</data>
+    </edge>
+    <edge source="bug:D-model-amplifier" target="incident:elliott-sprites-2026-08-20" id="0">
+      <data key="d23">AMPLIFIES</data>
+      <data key="d24">observed</data>
+      <data key="d26">Terra reasoning-only retries prolonged already-admitted stale turns; did not introduce Discord payload</data>
+    </edge>
+    <edge source="code:canExpireDiscordStaleAmbientBacklog" target="code:resolveDiscordShouldRequireMention" id="0">
+      <data key="d23">CALLS</data>
+      <data key="d24">observed</data>
+      <data key="d26">deployed 46f4d211 predicate; removed by intervention</data>
+    </edge>
+    <edge source="code:canExpireDiscordStaleAmbientBacklog" target="bug:D-policy-direct-open" id="0">
+      <data key="d23">BYPASSES</data>
+      <data key="d24">observed</data>
+      <data key="d26">returns false unless resolveDiscordShouldRequireMention === true, so direct-open stale rows never settle pre-dispatch</data>
+    </edge>
+    <edge source="code:resolvePendingDisposition" target="code:canExpireDiscordStaleAmbientBacklog" id="0">
+      <data key="d23">CALLS</data>
+      <data key="d27">exact-source-reconstruction</data>
+    </edge>
+    <edge source="code:createDiscordIngressMonitor" target="code:resolvePendingDisposition" id="0">
+      <data key="d23">CALLS</data>
+      <data key="d27">exact-source-reconstruction</data>
+    </edge>
+    <edge source="code:queue-adoption" target="incident:elliott-sprites-2026-08-20" id="0">
+      <data key="d23">CAUSES</data>
+      <data key="d24">observed</data>
+      <data key="d26">FIFO claim/adopt of retained ambient rows emitted visible stale replies</data>
+    </edge>
+    <edge source="incident:elliott-sprites-2026-08-20" target="bug:D-policy-direct-open" id="0">
+      <data key="d23">EVIDENCES</data>
+      <data key="d24">observed</data>
+      <data key="d26">comments 5350760388 and 5351158895; 794 pending/claimed; requireMention false</data>
+    </edge>
+    <edge source="incident:elliott-sprites-2026-08-20" target="bug:D-abandonment-budget" id="0">
+      <data key="d23">EVIDENCES</data>
+      <data key="d24">observed</data>
+      <data key="d26">Rune/Silas 5-minute claim-adoption timeouts; separate node</data>
+    </edge>
+    <edge source="incident:elliott-sprites-2026-08-20" target="bug:D-sqlite-pressure" id="0">
+      <data key="d23">EVIDENCES</data>
+      <data key="d24">observed</data>
+      <data key="d26">cross-filed #1257 comment 5351160981; separate node</data>
+    </edge>
+    <edge source="fossil:direct-open-stale" target="bug:D-policy-direct-open" id="0">
+      <data key="d23">CHARACTERIZES</data>
+      <data key="d24">observed</data>
+      <data key="d26">RED-only before intervention; does not PROVE incident causality</data>
+    </edge>
+    <edge source="gov:issue-1246" target="bug:D-policy-direct-open" id="0">
+      <data key="d23">TRACKS</data>
+    </edge>
+    <edge source="gov:pr-1237" target="bug:D-policy-direct-open" id="0">
+      <data key="d23">ATTEMPTS_FIX</data>
+      <data key="d26">still returns channelKind === non-thread &amp;&amp; requireMention; source material only</data>
+    </edge>
+    <edge source="gov:upstream-121204" target="bug:D-policy-direct-open" id="0">
+      <data key="d23">ATTEMPTS_FIX</data>
+    </edge>
+    <edge source="gov:upstream-97320" target="bug:D-policy-direct-open" id="0">
+      <data key="d23">TRACKS</data>
+    </edge>
+    <edge source="gov:upstream-97435" target="bug:D-abandonment-budget" id="0">
+      <data key="d23">TRACKS</data>
+      <data key="d26">sibling delayed-drain family; not this policy cell</data>
+    </edge>
+    <edge source="patch:decouple-stale-from-mention" target="fossil:direct-open-stale" id="0">
+      <data key="d23">CAUSES_TEST_PASS</data>
+      <data key="d24">observed</data>
+      <data key="d28">14 passed after 7871ecfe</data>
+    </edge>
+    <edge source="patch:decouple-stale-from-mention" target="fossil:direct-open-stale" id="1">
+      <data key="d23">REVERT_RESTORES_RED</data>
+      <data key="d24">observed</data>
+      <data key="d28">4 failed with stale dispatch after patch-only checkout of ingress.ts</data>
+    </edge>
+    <edge source="Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor" target="Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor" id="0">
+      <data key="d23">CALLS</data>
+      <data key="d29">exact-source-reconstruction at 46f4d211/7871ecfe</data>
+      <data key="d27">gitnexus</data>
+    </edge>
+    <edge source="Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor" target="Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor" id="1">
+      <data key="d23">CALLS</data>
+      <data key="d29">gitnexus import-resolved from 530b33e index</data>
+      <data key="d27">gitnexus</data>
+    </edge>
+    <edge source="Function:src/channels/message/ingress-monitor.ts:getDrain" target="Function:src/channels/message/ingress-drain.ts:createChannelIngressDrain" id="0">
+      <data key="d23">CALLS</data>
+      <data key="d29">exact-source-reconstruction ingress-monitor.ts:310</data>
+      <data key="d27">gitnexus</data>
+    </edge>
+    <edge source="Function:src/channels/message/ingress-drain.ts:drainOnce" target="Function:src/channels/message/ingress-drain-pending-disposition.ts:resolveIngressPendingDispositions" id="0">
+      <data key="d23">CALLS</data>
+      <data key="d29">exact-source-reconstruction ingress-drain.ts:672</data>
+      <data key="d27">gitnexus</data>
+    </edge>
+    <edge source="Function:src/channels/message/ingress-drain.ts:onAdopted" target="Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry" id="0">
+      <data key="d23">CALLS</data>
+      <data key="d29">gitnexus+exact</data>
+      <data key="d27">gitnexus</data>
+    </edge>
+    <data key="d0">1246 direct-open stale ingress causal proof</data>
+    <data key="d1">frond.causal-bug-proof.v1</data>
+  </graph>
+</graphml>

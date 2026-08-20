@@ -1,0 +1,462 @@
+{
+  "directed": true,
+  "multigraph": true,
+  "graph": {
+    "name": "1246 direct-open stale ingress causal proof",
+    "schema": "frond.causal-bug-proof.v1"
+  },
+  "nodes": [
+    {
+      "layer": "commit",
+      "kind": "commit",
+      "sha": "46f4d2115700d574501bb3c4763abf6b2ba977fe",
+      "timestamp": "2026-08-20",
+      "role": "deployed pre-fix runtime",
+      "label": "commit:runtime-46f4d211",
+      "id": "commit:runtime-46f4d211"
+    },
+    {
+      "layer": "commit",
+      "kind": "commit",
+      "sha": "ebd44c4d30a3256fbd314de46ef577fcd0d6c484",
+      "timestamp": "2026-08-15T00:38:42-07:00",
+      "role": "introducing commit for canExpireDiscordStaleAmbientBacklog (textual archaeology)",
+      "localization": "git log -S canExpireDiscordStaleAmbientBacklog",
+      "label": "commit:introducing-ebd44c4d",
+      "id": "commit:introducing-ebd44c4d"
+    },
+    {
+      "layer": "commit",
+      "kind": "commit",
+      "sha": "68023dba9d62566de093c958137a33fb8492c77a",
+      "role": "fixed-semantics fossils, RED on deployed predicate",
+      "label": "commit:fossil-68023dba",
+      "id": "commit:fossil-68023dba"
+    },
+    {
+      "layer": "commit",
+      "kind": "commit",
+      "sha": "7871ecfeacfb9d00fac983439b39448a5f11f791",
+      "role": "minimal D-policy-direct-open intervention",
+      "label": "commit:intervention-7871ecfe",
+      "id": "commit:intervention-7871ecfe"
+    },
+    {
+      "layer": "commit",
+      "kind": "commit",
+      "sha": "6a637469a09b4e20637fb2056ba56bc9e154301e",
+      "role": "fork origin/main context only",
+      "label": "commit:origin-main",
+      "id": "commit:origin-main"
+    },
+    {
+      "layer": "commit",
+      "kind": "commit",
+      "sha": "85e5252e17a693e843bcc7bebc76ba09c3911d85",
+      "role": "karmaterminal/openclaw#1237 head; still mention-gated",
+      "label": "commit:pr1237-head",
+      "id": "commit:pr1237-head"
+    },
+    {
+      "layer": "defect",
+      "kind": "bug",
+      "owner": "extensions/discord/src/monitor/ingress.ts",
+      "status": "intervened-on-this-branch",
+      "label": "bug:D-policy-direct-open",
+      "id": "bug:D-policy-direct-open"
+    },
+    {
+      "layer": "defect",
+      "kind": "bug",
+      "owner": "src/channels/message/ingress-drain.ts",
+      "status": "separate; not a necessary dominator for this fossil",
+      "label": "bug:D-abandonment-budget",
+      "id": "bug:D-abandonment-budget"
+    },
+    {
+      "layer": "defect",
+      "kind": "bug",
+      "owner": "agent/session sqlite",
+      "status": "separate; not a necessary dominator for this fossil",
+      "label": "bug:D-sqlite-pressure",
+      "id": "bug:D-sqlite-pressure"
+    },
+    {
+      "layer": "defect",
+      "kind": "bug",
+      "owner": "provider retry/fallback",
+      "status": "separate; amplifies admitted stale turns only",
+      "label": "bug:D-model-amplifier",
+      "id": "bug:D-model-amplifier"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "canExpireDiscordStaleAmbientBacklog",
+      "file": "extensions/discord/src/monitor/ingress.ts",
+      "source_system": "exact-source-reconstruction",
+      "label": "canExpireDiscordStaleAmbientBacklog",
+      "id": "code:canExpireDiscordStaleAmbientBacklog"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "resolveDiscordShouldRequireMention",
+      "file": "extensions/discord/src/monitor/allow-list.ts",
+      "source_system": "exact-source-reconstruction",
+      "label": "resolveDiscordShouldRequireMention",
+      "id": "code:resolveDiscordShouldRequireMention"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "resolvePendingDisposition",
+      "file": "extensions/discord/src/monitor/ingress.ts",
+      "source_system": "exact-source-reconstruction",
+      "label": "resolvePendingDisposition",
+      "id": "code:resolvePendingDisposition"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "createDiscordIngressMonitor",
+      "file": "extensions/discord/src/monitor/ingress.ts",
+      "source_system": "exact-source-reconstruction",
+      "label": "createDiscordIngressMonitor",
+      "id": "code:createDiscordIngressMonitor"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "runClaimed/onAdopted",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "exact-source-reconstruction",
+      "label": "runClaimed/onAdopted",
+      "id": "code:queue-adoption"
+    },
+    {
+      "layer": "incident",
+      "kind": "incident",
+      "runtime": "46f4d2115700d574501bb3c4763abf6b2ba977fe",
+      "lane": "channel:1466192485440164011",
+      "public_safe": "True",
+      "label": "incident:elliott-sprites-2026-08-20",
+      "id": "incident:elliott-sprites-2026-08-20"
+    },
+    {
+      "layer": "test",
+      "kind": "fossil",
+      "file": "extensions/discord/src/monitor/ingress.direct-open-stale.fossil.test.ts",
+      "pre_fix_result": "RED",
+      "post_fix_result": "GREEN",
+      "revert_result": "RED",
+      "reapply_result": "GREEN",
+      "label": "fossil:direct-open-stale",
+      "id": "fossil:direct-open-stale"
+    },
+    {
+      "layer": "governance",
+      "kind": "issue",
+      "ref": "karmaterminal/openclaw#1246",
+      "label": "gov:issue-1246",
+      "id": "gov:issue-1246"
+    },
+    {
+      "layer": "governance",
+      "kind": "pr",
+      "ref": "karmaterminal/openclaw#1237",
+      "label": "gov:pr-1237",
+      "id": "gov:pr-1237"
+    },
+    {
+      "layer": "governance",
+      "kind": "pr",
+      "ref": "openclaw/openclaw#121204",
+      "label": "gov:upstream-121204",
+      "id": "gov:upstream-121204"
+    },
+    {
+      "layer": "governance",
+      "kind": "issue",
+      "ref": "openclaw/openclaw#97320",
+      "label": "gov:upstream-97320",
+      "id": "gov:upstream-97320"
+    },
+    {
+      "layer": "governance",
+      "kind": "issue",
+      "ref": "openclaw/openclaw#97435",
+      "label": "gov:upstream-97435",
+      "id": "gov:upstream-97435"
+    },
+    {
+      "layer": "intervention",
+      "kind": "patch",
+      "sha": "7871ecfeacfb9d00fac983439b39448a5f11f791",
+      "production_loc": "+12/-8",
+      "label": "patch:decouple-stale-from-mention",
+      "id": "patch:decouple-stale-from-mention"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "createDiscordIngressMonitor",
+      "file": "extensions/discord/src/monitor/ingress.ts",
+      "source_system": "gitnexus",
+      "label": "createDiscordIngressMonitor",
+      "id": "Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "createChannelIngressMonitor",
+      "file": "src/channels/message/ingress-monitor.ts",
+      "source_system": "gitnexus",
+      "label": "createChannelIngressMonitor",
+      "id": "Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "getDrain",
+      "file": "src/channels/message/ingress-monitor.ts",
+      "source_system": "gitnexus",
+      "label": "getDrain",
+      "id": "Function:src/channels/message/ingress-monitor.ts:getDrain"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "createChannelIngressDrain",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "createChannelIngressDrain",
+      "id": "Function:src/channels/message/ingress-drain.ts:createChannelIngressDrain"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "drainOnce",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "drainOnce",
+      "id": "Function:src/channels/message/ingress-drain.ts:drainOnce"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "resolveIngressPendingDispositions",
+      "file": "src/channels/message/ingress-drain-pending-disposition.ts",
+      "source_system": "gitnexus",
+      "label": "resolveIngressPendingDispositions",
+      "id": "Function:src/channels/message/ingress-drain-pending-disposition.ts:resolveIngressPendingDispositions"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "onAdopted",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "onAdopted",
+      "id": "Function:src/channels/message/ingress-drain.ts:onAdopted"
+    },
+    {
+      "layer": "code",
+      "kind": "Function",
+      "name": "completeClaimWithRetry",
+      "file": "src/channels/message/ingress-drain.ts",
+      "source_system": "gitnexus",
+      "label": "completeClaimWithRetry",
+      "id": "Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry"
+    }
+  ],
+  "edges": [
+    {
+      "relation": "PRESERVES",
+      "source": "commit:runtime-46f4d211",
+      "target": "bug:D-policy-direct-open",
+      "key": 0
+    },
+    {
+      "relation": "INTRODUCES",
+      "evidence_class": "textual-archaeology",
+      "localization": "git log -S; not a behavioral first-bad bisect",
+      "source": "commit:introducing-ebd44c4d",
+      "target": "bug:D-policy-direct-open",
+      "key": 0
+    },
+    {
+      "relation": "PRESERVES",
+      "note": "mention-gated suppression retained",
+      "source": "commit:pr1237-head",
+      "target": "bug:D-policy-direct-open",
+      "key": 0
+    },
+    {
+      "relation": "AMPLIFIES",
+      "evidence_class": "observed",
+      "note": "Terra reasoning-only retries prolonged already-admitted stale turns; did not introduce Discord payload",
+      "source": "bug:D-model-amplifier",
+      "target": "incident:elliott-sprites-2026-08-20",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "evidence_class": "observed",
+      "note": "deployed 46f4d211 predicate; removed by intervention",
+      "source": "code:canExpireDiscordStaleAmbientBacklog",
+      "target": "code:resolveDiscordShouldRequireMention",
+      "key": 0
+    },
+    {
+      "relation": "BYPASSES",
+      "evidence_class": "observed",
+      "note": "returns false unless resolveDiscordShouldRequireMention === true, so direct-open stale rows never settle pre-dispatch",
+      "source": "code:canExpireDiscordStaleAmbientBacklog",
+      "target": "bug:D-policy-direct-open",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "source_system": "exact-source-reconstruction",
+      "source": "code:resolvePendingDisposition",
+      "target": "code:canExpireDiscordStaleAmbientBacklog",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "source_system": "exact-source-reconstruction",
+      "source": "code:createDiscordIngressMonitor",
+      "target": "code:resolvePendingDisposition",
+      "key": 0
+    },
+    {
+      "relation": "CAUSES",
+      "evidence_class": "observed",
+      "note": "FIFO claim/adopt of retained ambient rows emitted visible stale replies",
+      "source": "code:queue-adoption",
+      "target": "incident:elliott-sprites-2026-08-20",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "evidence_class": "observed",
+      "note": "comments 5350760388 and 5351158895; 794 pending/claimed; requireMention false",
+      "source": "incident:elliott-sprites-2026-08-20",
+      "target": "bug:D-policy-direct-open",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "evidence_class": "observed",
+      "note": "Rune/Silas 5-minute claim-adoption timeouts; separate node",
+      "source": "incident:elliott-sprites-2026-08-20",
+      "target": "bug:D-abandonment-budget",
+      "key": 0
+    },
+    {
+      "relation": "EVIDENCES",
+      "evidence_class": "observed",
+      "note": "cross-filed #1257 comment 5351160981; separate node",
+      "source": "incident:elliott-sprites-2026-08-20",
+      "target": "bug:D-sqlite-pressure",
+      "key": 0
+    },
+    {
+      "relation": "CHARACTERIZES",
+      "evidence_class": "observed",
+      "note": "RED-only before intervention; does not PROVE incident causality",
+      "source": "fossil:direct-open-stale",
+      "target": "bug:D-policy-direct-open",
+      "key": 0
+    },
+    {
+      "relation": "TRACKS",
+      "source": "gov:issue-1246",
+      "target": "bug:D-policy-direct-open",
+      "key": 0
+    },
+    {
+      "relation": "ATTEMPTS_FIX",
+      "note": "still returns channelKind === non-thread && requireMention; source material only",
+      "source": "gov:pr-1237",
+      "target": "bug:D-policy-direct-open",
+      "key": 0
+    },
+    {
+      "relation": "ATTEMPTS_FIX",
+      "source": "gov:upstream-121204",
+      "target": "bug:D-policy-direct-open",
+      "key": 0
+    },
+    {
+      "relation": "TRACKS",
+      "source": "gov:upstream-97320",
+      "target": "bug:D-policy-direct-open",
+      "key": 0
+    },
+    {
+      "relation": "TRACKS",
+      "note": "sibling delayed-drain family; not this policy cell",
+      "source": "gov:upstream-97435",
+      "target": "bug:D-abandonment-budget",
+      "key": 0
+    },
+    {
+      "relation": "CAUSES_TEST_PASS",
+      "evidence_class": "observed",
+      "receipt": "14 passed after 7871ecfe",
+      "source": "patch:decouple-stale-from-mention",
+      "target": "fossil:direct-open-stale",
+      "key": 0
+    },
+    {
+      "relation": "REVERT_RESTORES_RED",
+      "evidence_class": "observed",
+      "receipt": "4 failed with stale dispatch after patch-only checkout of ingress.ts",
+      "source": "patch:decouple-stale-from-mention",
+      "target": "fossil:direct-open-stale",
+      "key": 1
+    },
+    {
+      "relation": "CALLS",
+      "reason": "exact-source-reconstruction at 46f4d211/7871ecfe",
+      "source_system": "gitnexus",
+      "source": "Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor",
+      "target": "Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "reason": "gitnexus import-resolved from 530b33e index",
+      "source_system": "gitnexus",
+      "source": "Function:extensions/discord/src/monitor/ingress.ts:createDiscordIngressMonitor",
+      "target": "Function:src/channels/message/ingress-monitor.ts:createChannelIngressMonitor",
+      "key": 1
+    },
+    {
+      "relation": "CALLS",
+      "reason": "exact-source-reconstruction ingress-monitor.ts:310",
+      "source_system": "gitnexus",
+      "source": "Function:src/channels/message/ingress-monitor.ts:getDrain",
+      "target": "Function:src/channels/message/ingress-drain.ts:createChannelIngressDrain",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "reason": "exact-source-reconstruction ingress-drain.ts:672",
+      "source_system": "gitnexus",
+      "source": "Function:src/channels/message/ingress-drain.ts:drainOnce",
+      "target": "Function:src/channels/message/ingress-drain-pending-disposition.ts:resolveIngressPendingDispositions",
+      "key": 0
+    },
+    {
+      "relation": "CALLS",
+      "reason": "gitnexus+exact",
+      "source_system": "gitnexus",
+      "source": "Function:src/channels/message/ingress-drain.ts:onAdopted",
+      "target": "Function:src/channels/message/ingress-drain.ts:completeClaimWithRetry",
+      "key": 0
+    }
+  ]
+}
