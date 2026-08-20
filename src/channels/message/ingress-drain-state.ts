@@ -80,8 +80,6 @@ type ResolveIngressDrainLaneStateParams<TPayload, TMetadata> = {
   pending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
   claims: Array<ChannelIngressQueueClaim<TPayload, TMetadata>>;
   activeByClaim: ReadonlyMap<string, ActiveHandlerState<TPayload, TMetadata>>;
-  activeLaneKeys: Iterable<string>;
-  pendingDispositionBlockedLaneKeys: Iterable<string>;
   retryPolicy: IngressRetryPolicyConfig | undefined;
   now: number;
   resolveLaneKey: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => string;
@@ -125,12 +123,7 @@ export function resolveIngressDrainLaneState<TPayload, TMetadata>(
 
   return {
     eligiblePending,
-    // Deterministic blocked set for claimNext lane serialization.
-    blockedLaneKeys: new Set([
-      ...sortedKeys(params.activeLaneKeys),
-      ...sortedKeys(claimedLaneKeys),
-      ...sortedKeys(retryDelayedLaneKeys),
-      ...sortedKeys(params.pendingDispositionBlockedLaneKeys),
-    ]),
+    claimedLaneKeys,
+    retryDelayedLaneKeys,
   };
 }

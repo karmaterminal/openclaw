@@ -28,6 +28,7 @@ import {
   isIngressAdoptionLostError,
   resolveIngressDrainLaneState,
   resolveLaneKey,
+  sortedKeys,
   type ActiveHandlerState,
   type ChannelIngressDrainDispatchResult,
 } from "./ingress-drain-state.js";
@@ -688,16 +689,23 @@ export function createChannelIngressDrain<
       reconcileStoredLaneKey: options.reconcileStoredLaneKey,
       log,
     });
-    const { eligiblePending, blockedLaneKeys } = resolveIngressDrainLaneState({
-      pending: pendingDispositionResult.pending,
-      claims: await queue.listClaims(),
-      activeByClaim,
-      activeLaneKeys: laneOwnerByKey.keys(),
-      pendingDispositionBlockedLaneKeys: pendingDispositionResult.blockedLaneKeys,
-      retryPolicy: options.retryPolicy,
-      now: dispositionNow,
-      resolveLaneKey: resolveRecordLaneKey,
-    });
+    const { eligiblePending, claimedLaneKeys, retryDelayedLaneKeys } = resolveIngressDrainLaneState(
+      {
+        pending: pendingDispositionResult.pending,
+        claims: await queue.listClaims(),
+        activeByClaim,
+        retryPolicy: options.retryPolicy,
+        now: dispositionNow,
+        resolveLaneKey: resolveRecordLaneKey,
+      },
+    );
+    // Deterministic blocked set for claimNext lane serialization.
+    const blockedLaneKeys = new Set<string>([
+      ...sortedKeys(laneOwnerByKey.keys()),
+      ...sortedKeys(claimedLaneKeys),
+      ...sortedKeys(retryDelayedLaneKeys),
+      ...sortedKeys(pendingDispositionResult.blockedLaneKeys),
+    ]);
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
     // Free the lane in blockedLaneKeys so claimNext can take the superseding event.
