@@ -109,7 +109,7 @@ Upstream `openclaw/openclaw#121204`, `#97320`, `#97435` remain open provenance. 
 - `D-abandonment-budget` and `D-sqlite-pressure` can still stall drain; they are not required to explain Elliott's mention-gate bypass.
 - Settlement remains a durable `failed`/`stale-ambient-backlog` row on this SHA (health-pollution is a #1237 concern, not this policy cell).
 - No behavioral bisect: introducing commit is textual archaeology.
-- Full-suite tally is recorded in `output.md` after `node --import tsx scripts/test-projects.mts`.
+- Full suite `node --import tsx scripts/test-projects.mts`: 542 shards in 2079.27s, **12 failed shards**. Discord `message-handler.queue.test.ts` "exhausted preflight" ordering assertion fails identically on `46f4d211` `ingress.ts` (baseline, not this intervention). Other failed shards are UI browser presentation, tui-pty, gateway-core portal-http-proxy, unit-fast usage helpers, auto-reply continuation, tooling, git-backup — classified out of this lane. Owner fossils 14/14 GREEN.
 
 ## Graph
 
