@@ -427,49 +427,6 @@ describe("Discord durable ingress", () => {
     });
   });
 
-  it("preserves stale rows from an explicitly ambient guild", async () => {
-    await withQueue(async (queue) => {
-      const now = Date.parse("2026-08-14T20:00:00.000Z");
-      const ambient = createRawMessage("1011", "channel-ambient", {
-        guild_id: "guild-ambient",
-        channel_type: ChannelType.GuildText,
-        timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
-      });
-      await queue.enqueue("1011", payloadFor(ambient, now - 16 * 60 * 1_000, "non-thread"), {
-        laneKey: "channel:channel-ambient",
-        receivedAt: now - 16 * 60 * 1_000,
-      });
-
-      const dispatched: string[] = [];
-      const monitor = createDiscordIngressMonitor({
-        accountId: "default",
-        client: {} as never,
-        runtime: runtime(),
-        botUserId: "bot-1",
-        guildEntries: {
-          "guild-ambient": {
-            channels: {
-              "channel-ambient": { enabled: true, requireMention: false },
-            },
-          },
-        },
-        now: () => now,
-        queue,
-        dispatch: async (event, lifecycle) => {
-          dispatched.push(event.id ?? "missing");
-          await lifecycle.onAdopted();
-        },
-      });
-      monitor.start();
-      try {
-        await vi.waitFor(() => expect(dispatched).toEqual(["1011"]));
-        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
-      } finally {
-        await monitor.stop();
-      }
-    });
-  });
-
   it("suppresses persisted stale rows after restart using the closed channel kind fact", async () => {
     await withQueue(async (queue) => {
       const now = Date.parse("2026-08-14T20:00:00.000Z");

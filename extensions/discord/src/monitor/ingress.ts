@@ -31,7 +31,6 @@ import {
   normalizeDiscordSlug,
   resolveDiscordChannelConfigWithFallback,
   resolveDiscordGuildEntry,
-  resolveDiscordShouldRequireMention,
   type DiscordGuildEntryResolved,
 } from "./allow-list.js";
 import { resolveDiscordChannelInfoSafe } from "./channel-access.js";
@@ -298,7 +297,14 @@ function hasHydrateableDiscordReplyReference(rawMessage: DiscordGatewayMessage):
   if (rawMessage.type != null && rawMessage.type !== MessageType.Reply) {
     return false;
   }
-  return !Object.hasOwn(rawMessage, "referenced_message");
+  if (!Object.hasOwn(rawMessage, "referenced_message")) {
+    return true;
+  }
+  const nested = rawMessage.referenced_message;
+  if (!nested || typeof nested !== "object") {
+    return true;
+  }
+  return nonEmptyString(nested.id) !== nonEmptyString(reference.message_id);
 }
 
 function canExpireDiscordStaleAmbientBacklog(
@@ -339,12 +345,10 @@ function canExpireDiscordStaleAmbientBacklog(
   if (hasConfiguredDiscordChannels(guildInfo) && channelConfig?.allowed === false) {
     return false;
   }
-  return resolveDiscordShouldRequireMention({
-    isGuildMessage: true,
-    isThread: false,
-    channelConfig,
-    guildInfo,
-  });
+  // Freshness is independent of room activation. Mention-gating still decides
+  // who may speak; it must not keep day-old ambient rows claimable on
+  // direct-open rooms. Unknown/thread/DM rows stay fail-open above.
+  return true;
 }
 
 async function matchesConfiguredDiscordMentionText(
