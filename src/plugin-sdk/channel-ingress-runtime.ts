@@ -162,11 +162,12 @@ export function fanInChannelIngressLifecycles(
   // Omit aggregate cancellation unless every durable source supports it. Callers
   // can then use settle/abandon without an acknowledged-but-unsettled claim.
   const cancelAll = () =>
-    fanOut((lifecycle) =>
-      lifecycle.onCancelled
-        ? lifecycle.onCancelled()
-        : runIngressCancelCompat(() => lifecycle.onAbandoned()),
-    );
+    fanOut((lifecycle) => {
+      if (lifecycle.onCancelled) {
+        return lifecycle.onCancelled();
+      }
+      return runIngressCancelCompat(() => lifecycle.onAbandoned());
+    });
   return {
     lifecycle: {
       abortSignal:

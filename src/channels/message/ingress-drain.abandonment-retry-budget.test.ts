@@ -102,7 +102,9 @@ describe("channel ingress drain abandonment retry budget", () => {
 
       // The same row went through the exact onAbandoned path once per attempt,
       // consuming one unit of retry budget each time.
-      expect(abandonedAttempts).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+      expect(abandonedAttempts).toEqual(
+        Array.from({ length: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS }, (_, attempt) => attempt),
+      );
       expect(adopted).toEqual([]);
       expect(await queue.listClaims()).toEqual([]);
 

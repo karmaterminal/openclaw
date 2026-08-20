@@ -15,7 +15,9 @@ type ChannelIngressDispatchLifecycle = Parameters<
 >[1];
 
 /** Predates onCancelled: mixed fan-in cancel falls back to onAbandoned. */
-function asLegacyLifecycle(lifecycle: ChannelIngressDispatchLifecycle) {
+function asLegacyLifecycle(
+  lifecycle: ChannelIngressDispatchLifecycle,
+): Omit<ChannelIngressDispatchLifecycle, "onCancelled"> {
   return {
     abortSignal: lifecycle.abortSignal,
     onAdopted: lifecycle.onAdopted,

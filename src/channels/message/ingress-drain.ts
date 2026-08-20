@@ -423,7 +423,7 @@ export function createChannelIngressDrain<
 
   const settleUnadopted = async (
     state: ActiveHandlerState<TPayload, TMetadata>,
-    settle: (claim: ChannelIngressQueueClaim<TPayload, TMetadata>) => Promise<void>,
+    outcome: "cancelled" | "abandoned",
   ) => {
     if (state.phase !== "deferred" && state.phase !== "dispatching") {
       return;
@@ -434,7 +434,11 @@ export function createChannelIngressDrain<
     clearStallTimer(state);
     await state
       .settleOnce(async () => {
-        await settle(state.claim);
+        if (outcome === "cancelled") {
+          await releaseClaim(state.claim, { recordAttempt: false });
+          return;
+        }
+        await applyFailureDisposition(state.claim, new Error("turn-abandoned"));
       })
       .catch(() => undefined);
   };
@@ -502,18 +506,15 @@ export function createChannelIngressDrain<
       onCancelled: async () => {
         // Cancellation means ownership ended before delivery, so preserve every
         // prior retry fact while reopening the canonical row for replacement.
-        await settleUnadopted(state, (claim) => releaseClaim(claim, { recordAttempt: false }));
+        await settleUnadopted(state, "cancelled");
       },
       onAbandoned: async () => {
         // Mixed fan-in cancel falls back to onAbandoned when a source predates
         // onCancelled. That path is still cancellation: do not charge budget.
         // A genuine un-admitted turn takes the same bounded disposition as
         // onFailed, or it retries forever and holds the head of its FIFO lane.
-        await settleUnadopted(state, (claim) =>
-          isIngressCancelCompat()
-            ? releaseClaim(claim, { recordAttempt: false })
-            : applyFailureDisposition(claim, new Error("turn-abandoned")),
-        );
+        const outcome = isIngressCancelCompat() ? "cancelled" : "abandoned";
+        await settleUnadopted(state, outcome);
       },
     };
   };
