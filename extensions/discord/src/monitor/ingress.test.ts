@@ -23,6 +23,7 @@ type DiscordIngressPayload = {
 
 type RawMessageOverrides = Partial<APIMessage> & {
   channel?: unknown;
+  channel_type?: number;
   guild_id?: string;
 };
 
@@ -93,10 +94,6 @@ async function withQueue<T>(
 type DiscordIngressMonitor = ReturnType<typeof createDiscordIngressMonitor>;
 type DiscordThreadBindings = Parameters<typeof createDiscordIngressMonitor>[0]["threadBindings"];
 type DiscordGuildEntries = Record<string, DiscordGuildEntryResolved>;
-
-function guildTextChannel(id: string): unknown {
-  return { id, type: ChannelType.GuildText };
-}
 
 async function stopAll(monitors: DiscordIngressMonitor[]): Promise<void> {
   await Promise.allSettled(monitors.map((monitor) => monitor.stop()));
@@ -414,7 +411,7 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const stale = createRawMessage("1006", "channel-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-1"),
+        channel_type: ChannelType.GuildText,
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>);
       const fresh = createRawMessage("1007", "channel-1", {
@@ -765,7 +762,7 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageFailsAsAmbient({
       rawMessage: createRawMessage("1020", "channel-unmatched-identity-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-unmatched-identity-1"),
+        channel_type: ChannelType.GuildText,
         content: "unrelated room chatter",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>),
@@ -780,7 +777,7 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageFailsAsAmbient({
       rawMessage: createRawMessage("1021", "channel-denied-identity-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-denied-identity-1"),
+        channel_type: ChannelType.GuildText,
         content: "Molty can you check the incident?",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>),
@@ -812,7 +809,7 @@ describe("Discord durable ingress", () => {
     await expectStaleMessageFailsAsAmbient({
       rawMessage: createRawMessage("1024", "channel-require-mention-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-require-mention-1"),
+        channel_type: ChannelType.GuildText,
         content: "old unmentioned room text",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>),
@@ -845,7 +842,7 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1025", "channel-debug-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-debug-1"),
+        channel_type: ChannelType.GuildText,
         content: "old room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>);
@@ -902,7 +899,7 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1027", "channel-cas-loss-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-cas-loss-1"),
+        channel_type: ChannelType.GuildText,
         content: "old room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>);
@@ -946,7 +943,7 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1028", "channel-fail-throws-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-fail-throws-1"),
+        channel_type: ChannelType.GuildText,
         content: "old room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>);
@@ -984,7 +981,7 @@ describe("Discord durable ingress", () => {
       const now = Date.now();
       const rawMessage = createRawMessage("1029", "channel-duplicate-debug-1", {
         guild_id: "guild-1",
-        channel: guildTextChannel("channel-duplicate-debug-1"),
+        channel_type: ChannelType.GuildText,
         content: "old duplicate room history must not be logged",
         timestamp: new Date(now - 16 * 60 * 1_000).toISOString(),
       } as Partial<APIMessage>);
