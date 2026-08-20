@@ -8,29 +8,47 @@ assembly or presentation ref is touched.
 
 ## 1. Exact identity
 
-| Item                                         | Value                                      |
-| -------------------------------------------- | ------------------------------------------ |
-| Final head                                   | `c5389927a14b7844b121a375bfa83f318a8e627f` |
-| Head tree                                    | `31bea4343293c35dcd9970110e4f5a3cd5cc3c63` |
-| Merge commit                                 | `62cfaef0c34ab34137a6aa34e4f15b29d7a595d0` |
-| Merge parent 1 (PR head, preserved ancestor) | `b958ca22efd5e67de16746d1341d6bea7c594847` |
-| Merge parent 2 (frozen upstream)             | `689ab6ec82b638f282c98f25599a4919e7e86da5` |
-| Merge base (PR head ∩ upstream)              | `cb50289e28369f61cab6572e3952879f8854b17c` |
-| PR-creation commit (`PRC`)                   | `2b2019202ffdbcdb0393a76be9d0ecdcb48489fe` |
+**Static-finalize supersession (this file).** Do not collapse these layers:
+
+| Layer                   | SHA                                                                                                                                                                    | Role                                                                                                                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gate-2 product HEAD     | `c5389927a14b7844b121a375bfa83f318a8e627f`                                                                                                                             | Last product/docs-channels commit. Historical Gate 2 then-HEAD. Not a CI target.                                                                                        |
+| Historical suite parent | `754ee5eae4a501c124f4e1975d2efef6d3b7d9f6`                                                                                                                             | Product tree plus the first back-merge report. The §8 suite is evidence for **this** tree only; it does not validate any descendant.                                    |
+| Premature READY report  | `562461e01e6c813057f041c2ac19cbf6458e5636`                                                                                                                             | Report-only above the product tree. **Not** a final validation head. Superseded.                                                                                        |
+| Final source SHA        | the `codeagent/121204-static-finalize` descendant of `562461e` that shrinks `config/assertion-safety-baseline.txt` (`extensions/discord/src/monitor/ingress.ts` 6 → 5) | Exact 40-char source head for CI and `PR-121204/PROOFS/<FINAL-FULL-SOURCE-SHA>/`. Record that SHA in untracked receipts after commit so the validated head stays fixed. |
+| Composite execution SHA | (future, distinct metadata)                                                                                                                                            | Never a source SHA. Never a proof-directory name.                                                                                                                       |
+
+| Item                                         | Value                                                                                                     |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Gate-2 product HEAD                          | `c5389927a14b7844b121a375bfa83f318a8e627f`                                                                |
+| Gate-2 product tree                          | `31bea4343293c35dcd9970110e4f5a3cd5cc3c63`                                                                |
+| Merge commit                                 | `62cfaef0c34ab34137a6aa34e4f15b29d7a595d0`                                                                |
+| Merge parent 1 (PR head, preserved ancestor) | `b958ca22efd5e67de16746d1341d6bea7c594847`                                                                |
+| Merge parent 2 (frozen upstream)             | `689ab6ec82b638f282c98f25599a4919e7e86da5`                                                                |
+| Merge base (PR head ∩ upstream)              | `cb50289e28369f61cab6572e3952879f8854b17c`                                                                |
+| PR-creation commit (`PRC`)                   | `2b2019202ffdbcdb0393a76be9d0ecdcb48489fe`                                                                |
+| Gate 1 savegame                              | `savegame/20260820-0706Z/pr-121204-pre-repair-b958ca22` → `b958ca22efd5e67de16746d1341d6bea7c594847`      |
+| Pre-finalize savegame                        | `savegame/20260820-0940Z/121204-pre-static-finalize-562461e` → `562461e01e6c813057f041c2ac19cbf6458e5636` |
 
 First-parent history from the PR head:
 
 ```
+<static-finalize source> chore: shrink discord ingress assertion baseline 6→5
+562461e01e6 docs(reports): record the #121204 full-suite tally and red classification
+754ee5eae4a docs(reports): record #121204 back-merge gates and repair evidence
 c5389927a14 docs(channels): accept the pre-claim ingress disposition as a plugin contract
 bd0a6147391 fix(discord): persist an authoritative channel kind for stale ingress
 62cfaef0c34 Merge upstream main 689ab6ec into PR #121204 durable ingress repair
 b958ca22efd  (PR head, unchanged ancestor)
 ```
 
-Topology is an ordinary two-parent `--no-ff` back-merge followed by two normal
-commits. No rebase, squash, amend, force-push, or history rewrite. Gate 1
-savegame `savegame/20260820-0706Z/pr-121204-pre-repair-b958ca22` is untouched,
-and `codeagent/wo1229-upstream-pr` was never modified or pushed.
+Topology is an ordinary two-parent `--no-ff` back-merge followed by normal
+commits (product, then report-only, then this static-finalize descendant). No
+rebase, squash, amend, force-push, or history rewrite. Gate 1 savegame
+`savegame/20260820-0706Z/pr-121204-pre-repair-b958ca22` is untouched, the
+pre-finalize savegame
+`savegame/20260820-0940Z/121204-pre-static-finalize-562461e` is untouched, and
+`codeagent/wo1229-upstream-pr` was never modified or pushed.
 
 ### Upstream re-baseline at dispatch
 
@@ -406,8 +424,9 @@ starvation the PR exists to fix. Restoring the narrowing returns 5/5.
 <!-- FULL-SUITE -->
 
 `OPENCLAW_VITEST_MAX_WORKERS=1 node --import tsx scripts/test-projects.mts` on the
-final immutable head `754ee5eae4a501c124f4e1975d2efef6d3b7d9f6`, 544 shards,
-13084 s (3 h 38 m). Runner exit 1.
+historical parent `754ee5eae4a501c124f4e1975d2efef6d3b7d9f6` (product tree plus
+the first back-merge report; **not** a final immutable head; **not** evidence
+for any descendant SHA), 544 shards, 13084 s (3 h 38 m). Runner exit 1.
 
 Raw aggregate across all shard summaries:
 
@@ -490,17 +509,24 @@ Known limits of this packet:
 
 Suggested exact-head proof for Scribe:
 
-- Sanctioned exact-SHA CI:
-  `gh workflow run openclaw-local-ci.yml --repo karmaterminal/openclaw-bootstrap -f ref=c5389927a14b7844b121a375bfa83f318a8e627f`
-  (full 40-char SHA; an abbreviated ref dies in preflight).
+- Sanctioned exact-SHA CI against the **final source SHA** (the
+  `codeagent/121204-static-finalize` descendant of `562461e` that shrinks the
+  discord ingress assertion baseline). A run on any ancestor (`c538992…`,
+  `754ee5…`, `562461e…`) is invalid:
+  `gh workflow run openclaw-local-ci.yml --repo karmaterminal/openclaw-bootstrap -f ref=<FINAL-FULL-SOURCE-SHA>`
+  (full 40-char SHA; an abbreviated ref dies in preflight). Record the SHA in
+  untracked receipts after commit so this tracked report does not move the
+  validated head.
+- Canonical proof path: `PR-121204/PROOFS/<FINAL-FULL-SOURCE-SHA>/`.
+  Future composite execution SHA is distinct metadata and must not name that
+  directory.
 - Fixed-head direct-open canary: a naturally aged retained real ambient row must
   settle as `stale-ambient-backlog` with attempts unchanged and no visible
   delivery, while a fresh addressed row on the same lane is answered.
 - Corrupt-row canary: inject one unreadable pending row, confirm it lands in the
   failed table as `invalid-event` and that the next fresh same-lane addressed row
   is admitted.
-- Build `PR-121204/PROOFS/c5389927a14b7844b121a375bfa83f318a8e627f/` from those
-  receipts before deciding the plain fast-forward.
 
-This lane opened no PR, requested no review, touched no seat, and pushed only
-`origin/codeagent/121204-p1p2-backmerge`.
+This static-finalize lane opened no PR, requested no review, touched no seat,
+and pushes only `origin/codeagent/121204-static-finalize`. The presenting
+branch `codeagent/wo1229-upstream-pr` is never modified.
