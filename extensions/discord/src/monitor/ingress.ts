@@ -9,6 +9,7 @@ import {
 import {
   createChannelIngressError,
   createChannelIngressMonitor,
+  DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
   type ChannelIngressQueue,
   type ChannelIngressMonitorDeliveryResult,
   type ChannelIngressMonitorLifecycle,
@@ -511,6 +512,10 @@ export function createDiscordIngressMonitor(params: {
             `Discord ambient message ${record.id} on ${context.laneKey} is older than ` +
             `${DISCORD_STALE_AMBIENT_BACKLOG_MS}ms; suppressing stale backlog before dispatch.`,
         };
+      },
+      retryPolicy: {
+        maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
+        deadLetterMinAgeMs: 0,
       },
       resolveNonRetryableFailure: (error) => {
         if (error instanceof DiscordIngressPayloadError) {

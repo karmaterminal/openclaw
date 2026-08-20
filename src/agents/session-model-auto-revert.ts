@@ -2,15 +2,15 @@
 import {
   appendTranscriptMessage,
   loadSessionEntry,
-  patchSessionEntry,
+  patchSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
 import {
   createAgentPatchedSessionModelFallback,
-  type AgentPatchedSessionModelFallback,
+  type InternalAgentPatchedSessionModelFallback,
 } from "../config/sessions/session-model-fallback.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { FailoverReason } from "./embedded-agent-helpers/types.js";
 import { resolveFailoverReasonFromError } from "./failover-error.js";
+import type { FailoverReason } from "./failover/signal.js";
 import { resolveSessionModelRef } from "./session-model-ref.js";
 
 // Revert only when the chosen model is definitively unusable. Transient
@@ -34,7 +34,7 @@ async function reconcileAgentPatchedSessionModel(params: {
   storePath?: string;
   outcome: SessionModelRunOutcome;
   expectedMarkerTs?: number;
-  validatedFallback?: AgentPatchedSessionModelFallback;
+  validatedFallback?: InternalAgentPatchedSessionModelFallback;
   now?: number;
 }): Promise<"cleared" | "promoted" | "reverted" | "kept" | "none"> {
   const reason = params.outcome.success
@@ -47,7 +47,7 @@ async function reconcileAgentPatchedSessionModel(params: {
   let note: string | undefined;
   let sessionId: string | undefined;
   let result: "cleared" | "promoted" | "reverted" | "none" = "none";
-  await patchSessionEntry(
+  await patchSessionEntryCore(
     {
       agentId: params.agentId,
       sessionKey: params.sessionKey,
@@ -97,6 +97,7 @@ async function reconcileAgentPatchedSessionModel(params: {
         authProfileOverrideSource: marker.prevAuthProfileOverrideSource,
         authProfileOverrideCompactionCount: marker.prevAuthProfileOverrideCompactionCount,
         thinkingLevel: marker.prevThinkingLevel,
+        thinkingLevelSelection: marker.prevThinkingLevelSelection,
         modelFallback: undefined,
         liveModelSwitchPending: undefined,
       };
@@ -139,7 +140,7 @@ export function createAgentPatchedSessionModelRunGuard(params: {
   onError?: (error: unknown) => void;
 }) {
   let markerTs: number | undefined;
-  let validatedFallback: AgentPatchedSessionModelFallback | undefined;
+  let validatedFallback: InternalAgentPatchedSessionModelFallback | undefined;
   if (params.sessionKey) {
     try {
       const entry = loadSessionEntry({

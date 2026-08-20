@@ -6,6 +6,7 @@
  */
 import { sleepWithAbort } from "@openclaw/retry";
 import { formatErrorMessage, toErrorObject } from "../../infra/errors.js";
+import { GatewayDrainingError } from "../../process/gateway-work-admission.js";
 import {
   createIngressDrainOwnerId,
   deregisterLiveIngressDrainInstance,
@@ -15,6 +16,7 @@ import {
   isLiveLocalIngressDrainOwner,
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
+import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
 import {
   applyIngressPendingDispositions,
   type OnChannelIngressPendingDispositionCommitted,
@@ -28,13 +30,8 @@ import {
   sortedKeys,
   type ActiveHandlerState,
   type ChannelIngressDrainDispatchResult,
-  type ChannelIngressDispatchLifecycle,
 } from "./ingress-drain-state.js";
 import { supersedeActiveStatesIfNeeded } from "./ingress-drain-supersede.js";
-export {
-  bindIngressLifecycleToReplyOptions,
-  isIngressAdoptionLostError,
-} from "./ingress-drain-state.js";
 import type {
   ChannelIngressQueue,
   ChannelIngressQueueClaim,
@@ -48,6 +45,8 @@ import {
   type IngressNonRetryableFailure,
   type IngressRetryPolicyConfig,
 } from "./ingress-retry-policy.js";
+export { bindIngressLifecycleToReplyOptions } from "./ingress-drain-lifecycle.js";
+export { isIngressAdoptionLostError } from "./ingress-drain-state.js";
 
 /** Default claim→adoption stall before dead-lettering with handler-timeout. */
 export const DEFAULT_INGRESS_ADOPTION_STALL_MS = 5 * 60 * 1000;
@@ -300,13 +299,12 @@ export function createChannelIngressDrain<
 
   const releaseClaim = async (
     claim: ChannelIngressQueueClaim<TPayload, TMetadata>,
-    lastError?: string,
+    releaseOptions?: { lastError?: string; recordAttempt?: boolean },
   ) => {
     await commitClaimWriteWithRetry({
       claim,
       label: "release",
-      write: () =>
-        queue.release(claim, lastError === undefined ? {} : { lastError, releasedAt: now() }),
+      write: () => queue.release(claim, { ...releaseOptions, releasedAt: now() }),
       falseMeansReclaimed: false,
     });
   };
@@ -329,6 +327,12 @@ export function createChannelIngressDrain<
     claim: ChannelIngressQueueClaim<TPayload, TMetadata>,
     err: unknown,
   ) => {
+    if (err instanceof GatewayDrainingError) {
+      // Root dispatch closes before durable transport admission during restart.
+      // Preserve the row for the successor without spending its failure budget.
+      await releaseClaim(claim, { recordAttempt: false });
+      return;
+    }
     const disposition = resolveIngressFailureDisposition({
       err,
       event: claim,
@@ -354,7 +358,7 @@ export function createChannelIngressDrain<
     }
     const displayId = claim.id.replace(/^0+(?=\d)/, "") || claim.id;
     log(`spooled update ${displayId} failed; keeping for retry: ${disposition.message}`);
-    await releaseClaim(claim, disposition.message);
+    await releaseClaim(claim, { lastError: disposition.message });
   };
 
   const createSettleOwner = (
@@ -421,6 +425,24 @@ export function createChannelIngressDrain<
     state.stallTimer.unref?.();
   };
 
+  const releaseUnadopted = async (
+    state: ActiveHandlerState<TPayload, TMetadata>,
+    releaseOptions: { lastError?: string; recordAttempt?: boolean },
+  ) => {
+    if (state.phase !== "deferred" && state.phase !== "dispatching") {
+      return;
+    }
+    if (state.guillotined || state.superseded) {
+      return;
+    }
+    clearStallTimer(state);
+    await state
+      .settleOnce(async () => {
+        await releaseClaim(state.claim, releaseOptions);
+      })
+      .catch(() => undefined);
+  };
+
   const createLifecycle = (
     state: ActiveHandlerState<TPayload, TMetadata>,
   ): ChannelIngressDispatchLifecycle => {
@@ -476,24 +498,18 @@ export function createChannelIngressDrain<
         if (state.guillotined || state.superseded) {
           return;
         }
-        clearStallTimer(state);
+        // Keep recovery armed until disposition commits; removeActive clears it after success.
         await state.settleOnce(async () => {
           await applyFailureDisposition(state.claim, error);
         });
       },
+      onCancelled: async () => {
+        // Cancellation means ownership ended before delivery, so preserve every
+        // prior retry fact while reopening the canonical row for replacement.
+        await releaseUnadopted(state, { recordAttempt: false });
+      },
       onAbandoned: async () => {
-        if (state.phase !== "deferred" && state.phase !== "dispatching") {
-          return;
-        }
-        if (state.guillotined || state.superseded) {
-          return;
-        }
-        clearStallTimer(state);
-        await state
-          .settleOnce(async () => {
-            await releaseClaim(state.claim, "turn-abandoned");
-          })
-          .catch(() => undefined);
+        await releaseUnadopted(state, { lastError: "turn-abandoned" });
       },
     };
   };

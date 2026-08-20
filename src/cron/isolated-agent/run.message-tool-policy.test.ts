@@ -8,8 +8,8 @@ import type { CronDeliveryMode } from "../types.js";
 import type { MutableCronSession } from "./run-session-state.js";
 import {
   buildSafeExternalPromptMock,
+  callGatewayMock,
   clearFastTestEnv,
-  cleanupDirectCronSessionMock,
   dispatchCronDeliveryMock,
   getChannelPluginMock,
   isCliProviderMock,
@@ -1224,15 +1224,7 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
     expect(result.delivered).toBe(false);
     expect(result.deliveryAttempted).toBe(false);
     expect(dispatchCronDeliveryMock).not.toHaveBeenCalled();
-    expect(cleanupDirectCronSessionMock).toHaveBeenCalledWith({
-      job: expect.objectContaining({ id: "fatal-error-payload" }),
-      agentSessionKey: "agent:default:cron:message-tool-policy",
-      sessionId: "test-session-id",
-      lifecycleRevision: "test-lifecycle-revision",
-      sessionUpdatedAt: expect.any(Number),
-      beforeSessionDelete: expect.any(Function),
-      retireReason: "cron-delete-after-run-fatal-error",
-    });
+    expect(callGatewayMock).not.toHaveBeenCalled();
     expectDeliveryFields(result.delivery, {
       intended: { channel: "messagechat", to: "123", source: "explicit" },
       resolved: { ok: true, channel: "messagechat", to: "123", source: "explicit" },
@@ -1260,18 +1252,7 @@ describe("runCronIsolatedAgentTurn message tool policy", () => {
     });
 
     expect(dispatchCronDeliveryMock).not.toHaveBeenCalled();
-    expect(cleanupDirectCronSessionMock).toHaveBeenCalledWith({
-      job: expect.objectContaining({
-        id: "fatal-delete-after-run",
-        deleteAfterRun: true,
-      }),
-      agentSessionKey: "agent:default:cron:message-tool-policy",
-      sessionId: "test-session-id",
-      lifecycleRevision: "test-lifecycle-revision",
-      sessionUpdatedAt: expect.any(Number),
-      beforeSessionDelete: expect.any(Function),
-      retireReason: "cron-delete-after-run-fatal-error",
-    });
+    expect(callGatewayMock).toHaveBeenCalledTimes(1);
   });
 
   it("skips cron fallback delivery when the message tool already sent to the same target", async () => {
@@ -1781,6 +1762,10 @@ describe("runCronIsolatedAgentTurn delivery instruction", () => {
         expectEmbeddedRunFields(expectedFields);
       }
       const prompt = expectEmbeddedRunPrompt(messageToolAvailable);
+      expect(prompt).toMatch(/write only the exact user-facing message to send/i);
+      expect(prompt).toMatch(
+        /do not narrate the automatic delivery itself or say things like "Sent the user\.\.\."/i,
+      );
       if (messageToolAvailable) {
         expect(prompt).toContain("Use the message tool");
         expect(prompt).toContain("will be delivered automatically");
