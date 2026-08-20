@@ -8,15 +8,15 @@ assembly or presentation ref is touched.
 
 ## 1. Exact identity
 
-| Item | Value |
-| --- | --- |
-| Final head | `c5389927a14b7844b121a375bfa83f318a8e627f` |
-| Head tree | `31bea4343293c35dcd9970110e4f5a3cd5cc3c63` |
-| Merge commit | `62cfaef0c34ab34137a6aa34e4f15b29d7a595d0` |
+| Item                                         | Value                                      |
+| -------------------------------------------- | ------------------------------------------ |
+| Final head                                   | `c5389927a14b7844b121a375bfa83f318a8e627f` |
+| Head tree                                    | `31bea4343293c35dcd9970110e4f5a3cd5cc3c63` |
+| Merge commit                                 | `62cfaef0c34ab34137a6aa34e4f15b29d7a595d0` |
 | Merge parent 1 (PR head, preserved ancestor) | `b958ca22efd5e67de16746d1341d6bea7c594847` |
-| Merge parent 2 (frozen upstream) | `689ab6ec82b638f282c98f25599a4919e7e86da5` |
-| Merge base (PR head ∩ upstream) | `cb50289e28369f61cab6572e3952879f8854b17c` |
-| PR-creation commit (`PRC`) | `2b2019202ffdbcdb0393a76be9d0ecdcb48489fe` |
+| Merge parent 2 (frozen upstream)             | `689ab6ec82b638f282c98f25599a4919e7e86da5` |
+| Merge base (PR head ∩ upstream)              | `cb50289e28369f61cab6572e3952879f8854b17c` |
+| PR-creation commit (`PRC`)                   | `2b2019202ffdbcdb0393a76be9d0ecdcb48489fe` |
 
 First-parent history from the PR head:
 
@@ -44,16 +44,16 @@ second upstream tip was chased at any point in this lane.
 
 ## 2. ClawSweeper P1/P2 disposition
 
-| Finding | Disposition |
-| --- | --- |
-| **[P1] Carry an authoritative channel type into stale expiry** (`ingress.ts:280-304`) | **Fixed.** Durable admission now resolves and persists a closed `channelKind` from the raw gateway envelope; the stale fence consumes the persisted fact (falling back to the stored frame's own `channel_type` for rows admitted earlier). Unknown persists nothing and fails open. Covered by raw MESSAGE_CREATE-shaped tests, not synthesized fields. |
-| **[P1] Keep malformed pending payloads on the canonical failure path** (`ingress.ts:475-486`) | **Fixed.** Both disposition callbacks narrow through one shared reader; a row that cannot be narrowed is retained so the canonical claim-time codec fails it once as `invalid-event`. Proven red without the fix. |
-| **[P1] Resolve merge risk — SDK contract decision** | **Accepted as a documented contract**, not as new exported symbols. See §6. |
-| **[P1] Resolve merge risk — branch dirty against current main** | **Fixed.** Current upstream back-merged; PR surface vs upstream is 21 files. |
-| **[P2] Maintainer must choose the SDK direction first** | Direction taken: accept the typed hook, document lifecycle/failure/race, keep it optional and reachable only through the monitor factory. |
-| Improve patch quality — persist a non-thread fact + raw-shaped test | Done (`ingress-channel-kind.test.ts`). |
-| Improve patch quality — route malformed payloads through invalid-event + prove a following fresh message progresses | Done (`ingress-corrupt-pending.test.ts`). |
-| Improve patch quality — resolve SDK decision, rebase, publish exact-head proof | SDK decision resolved; back-merged (not rebased, per fork doctrine); exact-head live proof is Scribe's step (§9). |
+| Finding                                                                                                             | Disposition                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **[P1] Carry an authoritative channel type into stale expiry** (`ingress.ts:280-304`)                               | **Fixed.** Durable admission now resolves and persists a closed `channelKind` from the raw gateway envelope; the stale fence consumes the persisted fact (falling back to the stored frame's own `channel_type` for rows admitted earlier). Unknown persists nothing and fails open. Covered by raw MESSAGE_CREATE-shaped tests, not synthesized fields. |
+| **[P1] Keep malformed pending payloads on the canonical failure path** (`ingress.ts:475-486`)                       | **Fixed.** Both disposition callbacks narrow through one shared reader; a row that cannot be narrowed is retained so the canonical claim-time codec fails it once as `invalid-event`. Proven red without the fix.                                                                                                                                        |
+| **[P1] Resolve merge risk — SDK contract decision**                                                                 | **Accepted as a documented contract**, not as new exported symbols. See §6.                                                                                                                                                                                                                                                                              |
+| **[P1] Resolve merge risk — branch dirty against current main**                                                     | **Fixed.** Current upstream back-merged; PR surface vs upstream is 21 files.                                                                                                                                                                                                                                                                             |
+| **[P2] Maintainer must choose the SDK direction first**                                                             | Direction taken: accept the typed hook, document lifecycle/failure/race, keep it optional and reachable only through the monitor factory.                                                                                                                                                                                                                |
+| Improve patch quality — persist a non-thread fact + raw-shaped test                                                 | Done (`ingress-channel-kind.test.ts`).                                                                                                                                                                                                                                                                                                                   |
+| Improve patch quality — route malformed payloads through invalid-event + prove a following fresh message progresses | Done (`ingress-corrupt-pending.test.ts`).                                                                                                                                                                                                                                                                                                                |
+| Improve patch quality — resolve SDK decision, rebase, publish exact-head proof                                      | SDK decision resolved; back-merged (not rebased, per fork doctrine); exact-head live proof is Scribe's step (§9).                                                                                                                                                                                                                                        |
 
 ## 3. GitNexus
 
@@ -80,7 +80,6 @@ Consequences recorded honestly:
 - The nearest pre-existing graph
   (`openclaw-85651-upstream-530b33e-gitnexus@530b33e`) is discovery-only and
   cannot certify current bytes, so it was not used for any claim.
-
 
 Source trace used as authority regardless of index state (exact source, history,
 and tests, per the runbook fallback):
@@ -114,13 +113,13 @@ and tests, per the runbook fallback):
 
 Four textual conflicts, all resolved additively toward one canonical path.
 
-| File | Upstream | PR head | Resolution |
-| --- | --- | --- | --- |
-| `src/channels/message/index.ts` | Deleted by #124554 (vestigial re-export barrel) | Added 4 pending-disposition type re-exports | **Deletion accepted.** Nothing else imports the barrel; upstream had already migrated `src/plugin-sdk/channel-outbound.ts` to direct imports. The type re-exports are not reinstated (see §6). |
-| `src/channels/message/ingress-drain.ts` | Moved `bindIngressLifecycleToReplyOptions` / `ChannelIngressDispatchLifecycle` into `ingress-drain-lifecycle.ts` | Re-exported both from `ingress-drain-state.ts` | Kept the PR's pending-disposition wiring; adopted upstream's relocation. Also removed a merge-produced stale import of `ChannelIngressDispatchLifecycle` from `ingress-drain-state.js`. |
-| `src/channels/message/ingress-drain-state.ts` | Type + binder removed (moved to `ingress-drain-lifecycle.ts`) | Same extraction, different destination | **Duplicate dropped.** File returns byte-identical to upstream. One canonical home; no second path kept. |
-| `src/channels/message/ingress-drain.test.ts` | Keeps `dead-letter needs both attempt floor and age`, adds `keeps retry-accounted abandonment pending beyond the failure threshold`, relocates the bind-lifecycle case to `ingress-drain-lifecycle.test.ts` | **Deleted** upstream's dead-letter test and reworked a type import | **Upstream taken wholesale.** The PR's deletion was a real coverage loss; restoring upstream recovers it plus the new abandonment case. |
-| `extensions/discord/src/monitor/ingress.ts` | Added a drain `retryPolicy` block | Added `resolvePendingDisposition` / `onPendingDispositionCommitted` | **Additive:** both kept. |
+| File                                          | Upstream                                                                                                                                                                                                    | PR head                                                             | Resolution                                                                                                                                                                                     |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/channels/message/index.ts`               | Deleted by #124554 (vestigial re-export barrel)                                                                                                                                                             | Added 4 pending-disposition type re-exports                         | **Deletion accepted.** Nothing else imports the barrel; upstream had already migrated `src/plugin-sdk/channel-outbound.ts` to direct imports. The type re-exports are not reinstated (see §6). |
+| `src/channels/message/ingress-drain.ts`       | Moved `bindIngressLifecycleToReplyOptions` / `ChannelIngressDispatchLifecycle` into `ingress-drain-lifecycle.ts`                                                                                            | Re-exported both from `ingress-drain-state.ts`                      | Kept the PR's pending-disposition wiring; adopted upstream's relocation. Also removed a merge-produced stale import of `ChannelIngressDispatchLifecycle` from `ingress-drain-state.js`.        |
+| `src/channels/message/ingress-drain-state.ts` | Type + binder removed (moved to `ingress-drain-lifecycle.ts`)                                                                                                                                               | Same extraction, different destination                              | **Duplicate dropped.** File returns byte-identical to upstream. One canonical home; no second path kept.                                                                                       |
+| `src/channels/message/ingress-drain.test.ts`  | Keeps `dead-letter needs both attempt floor and age`, adds `keeps retry-accounted abandonment pending beyond the failure threshold`, relocates the bind-lifecycle case to `ingress-drain-lifecycle.test.ts` | **Deleted** upstream's dead-letter test and reworked a type import  | **Upstream taken wholesale.** The PR's deletion was a real coverage loss; restoring upstream recovers it plus the new abandonment case.                                                        |
+| `extensions/discord/src/monitor/ingress.ts`   | Added a drain `retryPolicy` block                                                                                                                                                                           | Added `resolvePendingDisposition` / `onPendingDispositionCommitted` | **Additive:** both kept.                                                                                                                                                                       |
 
 Post-merge the PR surface against upstream is **21 files** (was 17 pre-merge,
 minus the deleted barrel and the restored upstream test file, plus the new
@@ -141,8 +140,8 @@ changed. `pnpm install` was deliberately not run (shared clone, sibling lanes).
 
 ### P1-B — authoritative channel kind (Discord-owned)
 
-The freshness fence inferred a channel fact at *read* time from data the
-*producer* never recorded. It was repaired at the producer:
+The freshness fence inferred a channel fact at _read_ time from data the
+_producer_ never recorded. It was repaired at the producer:
 
 - `serialize` (durable admission) resolves a closed
   `DiscordIngressChannelKind = "non-thread" | "thread"` from the gateway
@@ -187,7 +186,7 @@ there.
 Fix: one shared non-throwing reader, `readDiscordIngressPendingRow`, is the
 single narrowing rule for a stored Discord row. `inspectDiscordMessage` and
 `decodeDiscordIngressPayload` are built on the same rule, so admission, claim,
-and pre-claim agree by construction. A row that cannot be narrowed is *retained*,
+and pre-claim agree by construction. A row that cannot be narrowed is _retained_,
 reaches `claimNext`, and the canonical claim-time codec throws
 `DiscordIngressPayloadError` → `resolveNonRetryableFailure` → terminal
 `invalid-event`. No broad catch, no silent return, no success-shaped fallback;
@@ -210,16 +209,16 @@ logic was added to core, and the drain now has a guard proving it (§6).
 
 Against the frozen upstream parent, the whole PR surface is:
 
-| Bucket | Added | Removed | Net |
-| --- | ---: | ---: | ---: |
-| Production | 701 | 57 | **+644** |
-| Tests / docs / scripts | 3128 | 6 | +3122 |
+| Bucket                 | Added | Removed |      Net |
+| ---------------------- | ----: | ------: | -------: |
+| Production             |   701 |      57 | **+644** |
+| Tests / docs / scripts |  3128 |       6 |    +3122 |
 
 This lane's own contribution to production is **+124 net** (`ingress.ts` +
 `listeners.ts`), justified as: the persisted authoritative fact and its closed
 resolver (capability + ownership boundary), the single narrowing rule that
 replaces three ad-hoc validators, and the typed gateway envelope that removes
-scattered per-read casts. The two disposition callbacks *lost* their duplicated
+scattered per-read casts. The two disposition callbacks _lost_ their duplicated
 age arithmetic to one named helper. Part E added zero production lines.
 
 ## 6. Part E — the pending-disposition contract (design fork, recorded)
@@ -241,7 +240,7 @@ reading of "export it from the SDK":
 3. Re-exporting the four names from `openclaw/plugin-sdk/channel-outbound` trips
    the SDK surface budget three ways — `public exports 4345 > 4337`,
    `public deprecated exports 1136 > 1134`, `public deprecated exports in
-   channel-message 136 > 132` — because `channel-message` wildcard-re-exports
+channel-message 136 > 132` — because `channel-message` wildcard-re-exports
    `channel-outbound` into a **deprecated** bucket the repo is ratcheting down.
    `src/plugin-sdk/AGENTS.md` forbids growing convenience re-exports and forbids
    hand-editing baselines/budgets to silence a check.
@@ -286,7 +285,7 @@ Result: **22 primitive-core invariants resolved; 0 FAIL** — 18 `PASS-UPSTREAM`
 (exact upstream projection onto the PR head), 2 `PASS-TOMBSTONE`, 2 `PASS`.
 
 Exit code 2 is **setup-class**, not a cure-bytes break: 13 patterns resolve to 0
-files because they are the *continuation feature* cure-region
+files because they are the _continuation feature_ cure-region
 (`continue-work-tool*`, `continue-delegate-tool*`, `request-compaction-tool*`,
 `continuation-tools-registration`, `run.continuation-opts-forward`). This lane is
 Discord durable ingress on upstream main and legitimately carries none of them.
@@ -344,13 +343,13 @@ tools/drift-cure-gate.sh 689ab6ec82b6... HEAD 2b2019202ffd... .gate-out
 
 **MIXED-CLOBBER dispositions (all 5 recorded):**
 
-| Dropped | File | Disposition |
-| ---: | --- | --- |
-| 5 | `src/channels/message/ingress-drain.ts` | **Intended replacement.** The dropped lines are the old FIFO-freshness code: `pending` built straight from `listPending`, the "any retry-delayed row blocks its lane" block, and candidate ids built from all pending rows. They are replaced by retry-eligible candidates and oldest-retained-row lane blocking — the PR's entire generic half. |
-| 4 | `extensions/discord/src/monitor/ingress.test.ts` | **Intended.** Helper signature/import lines the PR extended (`createRawMessage` overrides, `payloadFor` receivedAt). Zero upstream `it()` blocks lost. |
-| 2 | `extensions/discord/src/monitor/ingress.ts` | **Intended.** Old `APIMessage`-typed signatures and inline validation replaced by `DiscordGatewayMessage` and the shared narrowing rule. |
-| 1 | `src/channels/message/ingress-drain.test-helpers.ts` | **Additive superset.** `{ text }` → `{ text; kind?: "ambient" \| "addressed" }`. |
-| 1 | `extensions/discord/src/monitor/message-handler.preflight.ts` | **Relocation.** `hasRawDiscordUserMention` moved out of the `preflight-helpers` import list into a new import from `message-handler.raw-mention.js`. |
+| Dropped | File                                                          | Disposition                                                                                                                                                                                                                                                                                                                                      |
+| ------: | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+|       5 | `src/channels/message/ingress-drain.ts`                       | **Intended replacement.** The dropped lines are the old FIFO-freshness code: `pending` built straight from `listPending`, the "any retry-delayed row blocks its lane" block, and candidate ids built from all pending rows. They are replaced by retry-eligible candidates and oldest-retained-row lane blocking — the PR's entire generic half. |
+|       4 | `extensions/discord/src/monitor/ingress.test.ts`              | **Intended.** Helper signature/import lines the PR extended (`createRawMessage` overrides, `payloadFor` receivedAt). Zero upstream `it()` blocks lost.                                                                                                                                                                                           |
+|       2 | `extensions/discord/src/monitor/ingress.ts`                   | **Intended.** Old `APIMessage`-typed signatures and inline validation replaced by `DiscordGatewayMessage` and the shared narrowing rule.                                                                                                                                                                                                         |
+|       1 | `src/channels/message/ingress-drain.test-helpers.ts`          | **Additive superset.** `{ text }` → `{ text; kind?: "ambient" \| "addressed" }`.                                                                                                                                                                                                                                                                 |
+|       1 | `extensions/discord/src/monitor/message-handler.preflight.ts` | **Relocation.** `hasRawDiscordUserMention` moved out of the `preflight-helpers` import list into a new import from `message-handler.raw-mention.js`.                                                                                                                                                                                             |
 
 Net Gate 2.7 verdict: **no unresolved FROZEN-STALE and no upstream content
 lost.** The single flagged row is a proven relocation; every MIXED row is a
@@ -361,32 +360,32 @@ deliberate, recorded replacement.
 All runs used `node scripts/run-vitest.mjs run --config <owning-config>
 --maxWorkers=1 <paths>`. No raw Vitest, no `pnpm test*` from the worktree.
 
-| Suite | Config | Result |
-| --- | --- | --- |
-| `extensions/discord/src/monitor/ingress.test.ts` | extension-discord | 28/28 |
-| `extensions/discord/src/monitor/ingress.direct-open-stale.fossil.test.ts` (#1246 fossil) | extension-discord | **14/14** |
-| `extensions/discord/src/monitor/ingress-stale-direct-config.test.ts` | extension-discord | 11/11 |
-| `extensions/discord/src/monitor/ingress-channel-kind.test.ts` (new) | extension-discord | 12/12 |
-| `extensions/discord/src/monitor/ingress-corrupt-pending.test.ts` (new) | extension-discord | 5/5 |
-| `extensions/discord/src/monitor/ingress.import-boundary.test.ts` | extension-discord | 1/1 |
-| `extensions/discord/src/internal/gateway.test.ts` | extension-discord | 29/29 |
-| generic drain + monitor (9 files) | channels | 73/73 |
-| `ingress-drain-retry-delay` + `ingress-drain-lifecycle` | unit-fast | 4/4 |
-| `ingress-queue` + dead-letters + health | channels | 40/40 |
-| Telegram sibling control (4 files) | extension-telegram | 42/42 |
+| Suite                                                                                    | Config             | Result    |
+| ---------------------------------------------------------------------------------------- | ------------------ | --------- |
+| `extensions/discord/src/monitor/ingress.test.ts`                                         | extension-discord  | 28/28     |
+| `extensions/discord/src/monitor/ingress.direct-open-stale.fossil.test.ts` (#1246 fossil) | extension-discord  | **14/14** |
+| `extensions/discord/src/monitor/ingress-stale-direct-config.test.ts`                     | extension-discord  | 11/11     |
+| `extensions/discord/src/monitor/ingress-channel-kind.test.ts` (new)                      | extension-discord  | 12/12     |
+| `extensions/discord/src/monitor/ingress-corrupt-pending.test.ts` (new)                   | extension-discord  | 5/5       |
+| `extensions/discord/src/monitor/ingress.import-boundary.test.ts`                         | extension-discord  | 1/1       |
+| `extensions/discord/src/internal/gateway.test.ts`                                        | extension-discord  | 29/29     |
+| generic drain + monitor (9 files)                                                        | channels           | 73/73     |
+| `ingress-drain-retry-delay` + `ingress-drain-lifecycle`                                  | unit-fast          | 4/4       |
+| `ingress-queue` + dead-letters + health                                                  | channels           | 40/40     |
+| Telegram sibling control (4 files)                                                       | extension-telegram | 42/42     |
 
 Static gates:
 
-| Check | Result |
-| --- | --- |
-| `node scripts/run-tsgo.mjs -p tsconfig.core.json` | clean |
-| `node scripts/run-tsgo.mjs -p tsconfig.extensions.json` | clean for every touched surface |
-| `node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.extensions.test.json` | clean |
-| `node scripts/run-tsgo.mjs -p tsconfig.scripts.json` | clean |
-| `oxfmt --check` on every touched file | clean |
-| `node --import tsx scripts/check-channel-agnostic-boundaries.mts` | clean |
-| `scripts/plugin-sdk-surface-report.mts --check` | clean (no budget growth) |
-| `git diff --check` | clean |
+| Check                                                                      | Result                          |
+| -------------------------------------------------------------------------- | ------------------------------- |
+| `node scripts/run-tsgo.mjs -p tsconfig.core.json`                          | clean                           |
+| `node scripts/run-tsgo.mjs -p tsconfig.extensions.json`                    | clean for every touched surface |
+| `node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.extensions.test.json` | clean                           |
+| `node scripts/run-tsgo.mjs -p tsconfig.scripts.json`                       | clean                           |
+| `oxfmt --check` on every touched file                                      | clean                           |
+| `node --import tsx scripts/check-channel-agnostic-boundaries.mts`          | clean                           |
+| `scripts/plugin-sdk-surface-report.mts --check`                            | clean (no budget growth)        |
+| `git diff --check`                                                         | clean                           |
 
 Pre-existing environment reds, classified and **not** repaired in this lane:
 `extensions/acpx/src/service.ts` and `extensions/cua-computer/**` fail
@@ -406,6 +405,71 @@ starvation the PR exists to fix. Restoring the narrowing returns 5/5.
 
 <!-- FULL-SUITE -->
 
+`OPENCLAW_VITEST_MAX_WORKERS=1 node --import tsx scripts/test-projects.mts` on the
+final immutable head `754ee5eae4a501c124f4e1975d2efef6d3b7d9f6`, 544 shards,
+13084 s (3 h 38 m). Runner exit 1.
+
+Raw aggregate across all shard summaries:
+
+|            | Passed | Failed | Skipped |
+| ---------- | -----: | -----: | ------: |
+| Test files |   8748 |    167 |      30 |
+| Tests      | 134806 | **72** |     482 |
+
+**Every failing file is byte-identical to upstream `689ab6ec`**, and none of them
+references any module this branch changed (verified by grepping the failing files
+for `ingress-drain`, `ingress-monitor`, `monitor/ingress`, `pending-disposition`,
+`check-channel-agnostic`: no match). The shards that own this lane's surface are
+fully green — `extension-discord` 96/96 files and 1573/1573 tests, `channels`,
+`extension-telegram` drain suites, `unit-fast` retry-delay/lifecycle.
+
+Classification of the 167 failing files:
+
+**1. `extension-memory` — 138 files, 0 failed tests. Environment: Vitest FS
+module-cache race.** Every one failed at _collection_ with
+`ENOENT ... node_modules/.experimental-vitest-cache/318-test-vitest-vitest.extension-memory.config.ts/<hash>`.
+The lane worktree symlinks a shared `node_modules`, so the cache root is shared —
+exactly the hazard root `AGENTS.md` names ("Do not run independent Vitest
+commands concurrently in one worktree… or use distinct
+`OPENCLAW_VITEST_FS_MODULE_CACHE_PATH`"). **Control:** re-running that shard with
+an isolated cache path gives **141 passed | 1 skipped (142 files), 1776 tests
+passed** — zero failures.
+
+```
+OPENCLAW_VITEST_FS_MODULE_CACHE_PATH=/tmp/oc-mem-cache OPENCLAW_VITEST_MAX_WORKERS=1 \
+  node scripts/run-vitest.mjs run --config test/vitest/vitest.extension-memory.config.ts
+```
+
+**2. Git-fixture reds (3 files) — environment: harness-injected git config.**
+`test/scripts/full-release-validation-at-sha.test.ts`,
+`test/scripts/prepare-extension-package-boundary-artifacts.test.ts` (adjacent
+fixture) and `src/snapshot/git-backup.test.ts` fail on bare-repo fixtures with
+`safe.bareRepository is 'explicit'`. That value is not in any repo or user git
+config — it is injected by the agent harness environment
+(`GIT_CONFIG_COUNT=3`, `GIT_CONFIG_VALUE_0=explicit`, confirmed by
+`git config --show-origin` reporting `command line:`). **Control:** with those
+env vars unset, `full-release-validation-at-sha.test.ts` is **19/19 green** and
+`git-backup.test.ts` is **17/17 green**.
+
+**3. Remaining 26 files — inherited upstream/host reds.** All byte-identical to
+upstream, in subsystems this branch does not touch (this branch has **zero diff**
+against upstream under `ui/`, `src/cli/`, `src/gateway/`, `src/infra/`,
+`src/agents/`, `src/commands/`, `src/plugins/`, `packages/`, `extensions/acpx/`,
+`extensions/anthropic/`, `extensions/telegram/`):
+
+| Shard                                                                                                                                                 | File(s)                                                                                         | Observed cause                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| unit-fast-isolated                                                                                                                                    | `src/entry.respawn.test.ts` (2)                                                                 | Host has a real `/etc/ssl/certs/ca-certificates.crt`, so the simulated-darwin CA branch returns a respawn plan where the test expects `null`.        |
+| unit-support                                                                                                                                          | `packages/memory-host-sdk/src/host/read-file.test.ts`                                           | Non-directory parent path resolves instead of rejecting on this filesystem.                                                                          |
+| tooling                                                                                                                                               | `test/scripts/worker-deploy-build-plugin.test.ts` (2)                                           | Bundled `playwright-core` version in the shared `node_modules` differs from the expectation.                                                         |
+| ui                                                                                                                                                    | 6 files (desktop client/panel, cursor-policy, corner-shape, chat file/github link presentation) | Headless browser/CSS environment.                                                                                                                    |
+| infra, cli-process, commands, commands-light, agents-embedded-agent, agents-support, plugins, extension-acpx, extension-providers, extension-telegram | 15 files                                                                                        | Stale shared `node_modules` dependency pins (the same class as the `acpx` / `cua-computer` typecheck reds) and host/process-environment differences. |
+
+After removing the two proven environment classes, the corrected real tally is
+**29 failing files / 72 failing tests, all inherited and none in this lane's
+surface**. Per standing policy they are classified and left out of this lane;
+this fork is not an upstream fix-all.
+
 ## 9. Remaining uncertainty and exact-head live-proof plan
 
 Known limits of this packet:
@@ -416,7 +480,7 @@ Known limits of this packet:
 2. **`channel_type` is optional on the wire.** Where Discord omits it, a row
    persists no kind and correctly fails open, so the fence does not engage.
    Live proof should record whether real retained rows carry `channel_type`; if a
-   material fraction do not, the follow-up is a *read-side* hydration owner
+   material fraction do not, the follow-up is a _read-side_ hydration owner
    (never at admission), tracked separately from this packet.
 3. **`extensions/acpx` / `extensions/cua-computer` typecheck reds** are
    environment-pinned dependency drift; a normal install resolves them and CI is
