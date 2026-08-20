@@ -1,4 +1,10 @@
-import "./prepared-model-runtime.test-harness.js";
+// Preserve module setup before modules that consume it.
+// oxfmt-ignore
+import {
+  getPreparedModelRuntimeMocks,
+  getPreparedModelRuntimeTestApi,
+  resetPreparedModelRuntimeHarness,
+} from "./prepared-model-runtime.test-harness.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -14,11 +20,6 @@ import {
   publishPreparedModelRuntimeSnapshot,
   refreshPreparedModelRuntimeSnapshots,
 } from "./prepared-model-runtime.js";
-import {
-  getPreparedModelRuntimeMocks,
-  getPreparedModelRuntimeTestApi,
-  resetPreparedModelRuntimeHarness,
-} from "./prepared-model-runtime.test-harness.js";
 
 const mocks = getPreparedModelRuntimeMocks();
 
@@ -153,6 +154,29 @@ describe("prepared model runtime owner selection", () => {
     ).rejects.toThrow("prepared model runtime owner was not published");
   });
 
+  it("publishes provider selections kept on the core runtime by request parameters", async () => {
+    mocks.configuredAgentIds = ["default"];
+    const config = {
+      agents: {
+        defaults: {
+          model: "openai/gpt-5",
+          models: {
+            "openai/gpt-5": { params: { transport: "sse", openaiWsWarmup: false } },
+          },
+        },
+      },
+    };
+
+    await refreshPreparedModelRuntimeSnapshots(config, {
+      catalogMode: "static",
+      gatewayLifecycle: true,
+    });
+
+    expect(
+      mocks.loadAgentRuntimePluginRegistryHandle.mock.calls.map((call) => call[0].selections),
+    ).toContainEqual([{ provider: "openai", modelId: "gpt-5", runtime: "openclaw" }]);
+  });
+
   it("reuses the configured owner for its prepared plugin harness selections", async () => {
     mocks.configuredAgentIds = ["default"];
     const config = { agents: { defaults: { model: "openai/gpt-5.5" } } };
@@ -200,6 +224,61 @@ describe("prepared model runtime owner selection", () => {
     expect(mocks.prepareStaticCatalog).toHaveBeenCalledOnce();
     expect(mocks.discoverModels).toHaveBeenCalledOnce();
     expect(mocks.ensureOpenClawModelsJson).not.toHaveBeenCalled();
+  });
+
+  it("sequences pending owners by their explicit plugin generation", async () => {
+    mocks.configuredAgentIds = ["default"];
+    const config = {};
+    await refreshPreparedModelRuntimeSnapshots(config, { gatewayLifecycle: true });
+    const generationA = (await loadPublishedGatewayReplyDispatchRuntime({ agentId: "default" }))
+      ?.pluginGeneration;
+    expect(generationA).toBeDefined();
+    const generationB = {
+      ...generationA!,
+      pluginMetadataSnapshot: { ...generationA!.pluginMetadataSnapshot },
+    };
+    let finishGenerationA!: () => void;
+    mocks.ensureOpenClawModelsJson.mockImplementationOnce(
+      async () =>
+        await new Promise<{ agentDir: string; wrote: false }>((resolve) => {
+          finishGenerationA = () =>
+            resolve({ agentDir: "/tmp/dynamic-generation-agent", wrote: false });
+        }),
+    );
+    const input = {
+      config,
+      agentId: "default",
+      agentDir: "/tmp/dynamic-generation-agent",
+      workspaceDir: "/tmp/dynamic-generation-workspace",
+    };
+
+    const pendingA = acquireAgentRunPreparedModelRuntime(input, {
+      pluginGeneration: generationA!,
+    });
+    await vi.waitFor(() => expect(mocks.ensureOpenClawModelsJson).toHaveBeenCalledTimes(2));
+    const matchingPendingA = acquireAgentRunPreparedModelRuntime(input, {
+      pluginGeneration: generationA!,
+    });
+    const pendingB = acquireAgentRunPreparedModelRuntime(input, {
+      pluginGeneration: generationB,
+    });
+    await Promise.resolve();
+    expect(mocks.ensureOpenClawModelsJson).toHaveBeenCalledTimes(2);
+    finishGenerationA();
+    const [leaseA, matchingLeaseA, leaseB] = await Promise.all([
+      pendingA,
+      matchingPendingA,
+      pendingB,
+    ]);
+
+    expect(matchingLeaseA.snapshot).toBe(leaseA.snapshot);
+    expect(leaseB.snapshot).not.toBe(leaseA.snapshot);
+    expect(leaseA.snapshot.metadataSnapshot).toBe(generationA!.pluginMetadataSnapshot);
+    expect(leaseB.snapshot.metadataSnapshot).toBe(generationB.pluginMetadataSnapshot);
+    leaseA.release();
+    matchingLeaseA.release();
+    await expect(prepareModelRuntimeSnapshot(input)).resolves.toBe(leaseB.snapshot);
+    leaseB.release();
   });
 
   it("bounds retained gateway run owners while reusing recent selections", async () => {
