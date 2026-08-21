@@ -201,6 +201,7 @@ describe("OpenClaw database integrity verifier", () => {
       const reader = spawnSync(
         process.execPath,
         [
+          "--disable-warning=ExperimentalWarning",
           "--input-type=module",
           "-e",
           `
