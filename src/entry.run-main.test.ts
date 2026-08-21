@@ -1,7 +1,7 @@
-import { spawnSync } from "node:child_process";
-import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { ExpectedCliError } from "./cli/failure-output.js";
 import { runMainOrRootHelp } from "./entry.js";
+import { loggingState } from "./logging/state.js";
 
 describe("entry run-main boundary", () => {
   it("retains JSON console routing through process finalization", async () => {
@@ -17,46 +17,45 @@ describe("entry run-main boundary", () => {
     });
   });
 
-  it("keeps expected conditions at exit 1 without crash framing", () => {
+  it("keeps expected conditions at exit 1 without crash framing", async () => {
+    const previousExitCode = process.exitCode;
+    const previousConsolePatched = loggingState.consolePatched;
+    const previousEnv = { ...process.env };
     const message =
       'The `openclaw workboard` command is provided by the "workboard" plugin, but that bundled plugin is disabled by default. Run `openclaw plugins enable workboard` to enable that CLI surface.';
-    const result = spawnSync(
-      process.execPath,
-      [
-        "--disable-warning=ExperimentalWarning",
-        "--import",
-        "tsx",
-        "--input-type=module",
-        "-e",
-        `
-          import { ExpectedCliError } from "./src/cli/failure-output.ts";
-          import { runMainOrRootHelp } from "./src/entry.ts";
-          const message = ${JSON.stringify(message)};
-          const error = new ExpectedCliError({
-            message,
-            humanOutput: message,
-            machineOutput: message,
-          });
-          await runMainOrRootHelp(["node", "openclaw", "workboard", "list"], {
-            loadRunCli: async () => ({
-              runCli: async () => {
-                throw error;
-              },
-            }),
-          });
-        `,
-      ],
-      {
-        cwd: path.resolve(import.meta.dirname, ".."),
-        encoding: "utf8",
-        env: { ...process.env, OPENCLAW_TEST_CONSOLE: "1" },
-      },
-    );
+    const error = new ExpectedCliError({
+      message,
+      humanOutput: message,
+      machineOutput: message,
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    process.exitCode = undefined;
+    loggingState.consolePatched = true;
 
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(message);
-    expect(result.stderr).not.toContain("OPENCLAW_DEBUG");
-    expect(result.stderr).not.toContain("openclaw doctor");
-    expect(result.stderr).not.toContain("Could not start the CLI");
+    try {
+      await runMainOrRootHelp(["node", "openclaw", "workboard", "list"], {
+        loadRunCli: async () => ({
+          runCli: vi.fn(async () => {
+            throw error;
+          }),
+        }),
+      });
+
+      expect(process.exitCode).toBe(1);
+      expect(errorSpy.mock.calls).toEqual([[message]]);
+      expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining("OPENCLAW_DEBUG"));
+      expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining("openclaw doctor"));
+      expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining("Could not start the CLI"));
+    } finally {
+      for (const key of Object.keys(process.env)) {
+        if (!Object.hasOwn(previousEnv, key)) {
+          delete process.env[key];
+        }
+      }
+      Object.assign(process.env, previousEnv);
+      errorSpy.mockRestore();
+      loggingState.consolePatched = previousConsolePatched;
+      process.exitCode = previousExitCode;
+    }
   });
 });
