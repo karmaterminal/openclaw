@@ -7,6 +7,8 @@ import {
   waitForGoogleMeetAuthCode,
 } from "./oauth.js";
 
+const GOOGLE_MEET_CALLBACK_PORT = 8085;
+
 async function getFreePort(): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolve) => {
@@ -39,10 +41,14 @@ async function occupyPort(port: number): Promise<Server | null> {
 }
 
 async function closeServer(server: Server): Promise<void> {
+  if (!server.listening) {
+    return;
+  }
   await new Promise<void>((resolve) => {
     server.close(() => {
       resolve();
     });
+    server.closeAllConnections?.();
   });
 }
 
@@ -221,7 +227,7 @@ describe("Google Meet OAuth", () => {
   });
 
   it("falls back to manual paste when the local callback port is occupied", async () => {
-    const blocker = await occupyPort(8085);
+    const blocker = await occupyPort(GOOGLE_MEET_CALLBACK_PORT);
     try {
       const state = "state-token";
       const lines: string[] = [];
