@@ -12,6 +12,10 @@ const LONG_PATH_FRAGMENT = "x".repeat(210);
 const guardScriptPath = fileURLToPath(
   new URL("../../scripts/check-temp-path-guardrails.ts", import.meta.url),
 );
+// The guard resolves its repo root from cwd, so the child runs in the temp repo.
+// Launch it exactly as `check:temp-path-guardrails` does, and pre-resolve tsx
+// here because a bare `--import tsx` would resolve against that temp cwd.
+const tsxLoaderSpecifier = import.meta.resolve("tsx");
 
 describe("check-temp-path-guardrails", () => {
   it("handles tracked path inventories larger than Node's default child-process buffer", () => {
@@ -39,11 +43,15 @@ describe("check-temp-path-guardrails", () => {
       });
       expect(trackedPaths.byteLength).toBeGreaterThan(NODE_DEFAULT_MAX_BUFFER_BYTES);
 
-      const result = spawnSync(process.execPath, [guardScriptPath], {
-        cwd: repoDir,
-        encoding: "utf8",
-        maxBuffer: 2 * NODE_DEFAULT_MAX_BUFFER_BYTES,
-      });
+      const result = spawnSync(
+        process.execPath,
+        ["--import", tsxLoaderSpecifier, guardScriptPath],
+        {
+          cwd: repoDir,
+          encoding: "utf8",
+          maxBuffer: 2 * NODE_DEFAULT_MAX_BUFFER_BYTES,
+        },
+      );
       expect(result.error).toBeUndefined();
       expect(result.status, result.stderr).toBe(0);
     } finally {
