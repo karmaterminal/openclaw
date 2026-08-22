@@ -8,11 +8,50 @@ title: "Tests"
 - Full testing kit (suites, live, Docker): [Testing](/help/testing)
 - Update and plugin package validation: [Testing updates and plugins](/help/testing-updates-plugins)
 
+## Fork CI acceptance
+
+This checkout is the `karmaterminal/openclaw` fork. Broad CI acceptance for fork
+work is a bootstrap Mode-B dispatch of `openclaw-local-ci.yml` in
+`karmaterminal/openclaw-bootstrap`, run against the exact full 40-character
+product SHA under test:
+
+```bash
+gh workflow run openclaw-local-ci.yml \
+  --repo karmaterminal/openclaw-bootstrap \
+  --ref <reviewed-workflow-branch-or-tag> \
+  -f repo=karmaterminal/openclaw \
+  -f ref=<FULL_40_CHAR_PRODUCT_SHA>
+```
+
+Record two distinct full SHAs in every acceptance report: the product SHA passed
+as `-f ref=`, and the workflow SHA returned as the dispatched run's `headSha`.
+Neither substitutes for the other.
+
+Mode-B routes hermetic shards to isolated hosted workers and keeps only large,
+host-bound, and dist shards on local self-hosted seats. Every routed shard runs
+with one Vitest worker.
+
+Local rules that follow from that split:
+
+- Focused owner proof runs through the repository runner with one worker, either
+  `OPENCLAW_VITEST_MAX_WORKERS=1 pnpm test <path-or-filter>` or
+  `node scripts/run-vitest.mjs run --config test/vitest/<config> --maxWorkers=1 <path>`.
+- Do not fan Vitest workers out across a shared tree. Concurrent leaf configs in
+  one checkout race on fixtures and on the Vitest module cache.
+- `pnpm verify`, untargeted `pnpm test`, `pnpm test:max`,
+  `pnpm test:perf:groups --full-suite`, and `scripts/prepush-ci.sh` are
+  upstream-maintainer local kit and exceptional local fallbacks. None of them is
+  the ordinary fork landing gate; do not report one as broad fork acceptance.
+- Crabbox and Testbox remain the authority for live, E2E, clean-machine, and
+  other environment proof. They do not replace Mode-B for broad CI acceptance,
+  and Mode-B does not replace them for environment proof.
+
 ## Agent default
 
 Agent sessions run trusted development tests, changed gates, typecheck/lint,
-and builds locally by default, broadening only when the touched contract
-requires it. Never execute untrusted repository tooling locally. Use Crabbox
+and builds locally by default, keeping local Vitest focused and at one worker.
+Broad acceptance is the Mode-B dispatch above, not a local full suite. Never
+execute untrusted repository tooling locally. Use Crabbox
 when the environment is part of the proof: clean-machine, install/package,
 Docker, E2E, live, desktop, or cross-platform work, or when the operator
 explicitly requests remote proof. Do not use Crabbox merely as generic compute
@@ -62,7 +101,11 @@ report public networking with no Tailscale state before uploading any script.
 
 1. `pnpm test:changed` for changed-scope Vitest proof.
 2. `pnpm test <path-or-filter>` for one file, directory, or explicit target.
-3. `pnpm test` only when you intentionally need the full local Vitest suite.
+3. `pnpm test` untargeted is exceptional local maintainer tooling, not fork
+   acceptance. Prefer a Mode-B dispatch when you need broad proof.
+
+Keep local Vitest at one worker (`OPENCLAW_VITEST_MAX_WORKERS=1`) so a shared
+checkout never runs concurrent leaf configs.
 
 Codex and other linked/sparse worktrees can run local tests and checks. When the
 dependency install is ready, use the normal commands above. If pnpm would
@@ -81,16 +124,16 @@ reconcile dependencies before the remote wrapper starts.
 
 Test wrapper runs end with a short `[test] passed|failed|skipped ... in ...` summary; Vitest's own duration line stays the per-shard detail.
 
-| Command                                           | What it does                                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm test`                                       | Explicit file/directory targets route through scoped Vitest lanes. Untargeted runs are full-suite proof: fixed shard groups expand to leaf configs for local parallel execution, with the expected shard fanout printed before starting. The extension group always expands to per-extension shard configs instead of one giant root-project process. |
-| `pnpm test:changed`                               | Cheap smart changed-test run: precise targets from direct test edits, sibling `*.test.ts` files, explicit source mappings, and the local import graph. Broad/config/package changes are skipped unless they map to precise tests.                                                                                                                     |
-| `OPENCLAW_TEST_CHANGED_BROAD=1 pnpm test:changed` | Explicit broad changed-test run; use when a test harness/config/package edit should fall back to Vitest's broader changed-test behavior.                                                                                                                                                                                                              |
-| `pnpm test:force`                                 | Frees the configured OpenClaw gateway port (default `18789`), then runs the full suite with an isolated gateway port so server tests do not collide with a running instance.                                                                                                                                                                          |
-| `pnpm test:coverage`                              | Emits an informational V8 coverage report for the default unit lane (`vitest.unit.config.ts`); no coverage thresholds are enforced.                                                                                                                                                                                                                   |
-| `pnpm test:coverage:changed`                      | Unit coverage only for files changed since `origin/main`.                                                                                                                                                                                                                                                                                             |
-| `pnpm changed:lanes`                              | Shows the architectural lanes triggered by the diff against `origin/main`.                                                                                                                                                                                                                                                                            |
-| `pnpm check:changed`                              | Classifies and runs the local changed formatting/typecheck/lint/guard plan. Does not run Vitest; use `pnpm test:changed` or `pnpm test <target>` for test proof.                                                                                                                                                                                      |
+| Command                                           | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm test`                                       | Explicit file/directory targets route through scoped Vitest lanes. Untargeted runs are a local full-suite tool for upstream-maintainer use, not fork acceptance: fixed shard groups expand to leaf configs for local parallel execution, with the expected shard fanout printed before starting. On a shared checkout, keep `OPENCLAW_VITEST_MAX_WORKERS=1`. The extension group always expands to per-extension shard configs instead of one giant root-project process. |
+| `pnpm test:changed`                               | Cheap smart changed-test run: precise targets from direct test edits, sibling `*.test.ts` files, explicit source mappings, and the local import graph. Broad/config/package changes are skipped unless they map to precise tests.                                                                                                                                                                                                                                         |
+| `OPENCLAW_TEST_CHANGED_BROAD=1 pnpm test:changed` | Explicit broad changed-test run; use when a test harness/config/package edit should fall back to Vitest's broader changed-test behavior.                                                                                                                                                                                                                                                                                                                                  |
+| `pnpm test:force`                                 | Frees the configured OpenClaw gateway port (default `18789`), then runs the full suite with an isolated gateway port so server tests do not collide with a running instance.                                                                                                                                                                                                                                                                                              |
+| `pnpm test:coverage`                              | Emits an informational V8 coverage report for the default unit lane (`vitest.unit.config.ts`); no coverage thresholds are enforced.                                                                                                                                                                                                                                                                                                                                       |
+| `pnpm test:coverage:changed`                      | Unit coverage only for files changed since `origin/main`.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `pnpm changed:lanes`                              | Shows the architectural lanes triggered by the diff against `origin/main`.                                                                                                                                                                                                                                                                                                                                                                                                |
+| `pnpm check:changed`                              | Classifies and runs the local changed formatting/typecheck/lint/guard plan. Does not run Vitest; use `pnpm test:changed` or `pnpm test <target>` for test proof.                                                                                                                                                                                                                                                                                                          |
 
 ## Shared test state and process helpers
 
@@ -179,7 +222,9 @@ Other behavior: the runner preflights Docker by default, cleans stale OpenClaw E
 
 ## Local PR gate
 
-For local PR land/gate checks, run:
+The command list below is the upstream-maintainer local kit. It is a local or
+exceptional check, not the karmaterminal fork acceptance path; broad fork
+acceptance is the Mode-B dispatch above.
 
 - `pnpm check:changed`
 - `pnpm check`
@@ -188,7 +233,7 @@ For local PR land/gate checks, run:
 - `pnpm test`
 - `pnpm check:docs`
 
-If `pnpm test` flakes on a loaded host, rerun once before treating it as a regression, then isolate with `pnpm test <path/to/test>`. For memory-constrained hosts:
+If `pnpm test` flakes on a loaded host, rerun once before treating it as a regression, then isolate with `pnpm test <path/to/test>`. On a shared checkout, and on any memory-constrained host:
 
 - `OPENCLAW_VITEST_MAX_WORKERS=1 pnpm test`
 - `OPENCLAW_VITEST_FS_MODULE_CACHE_PATH=/tmp/openclaw-vitest-cache pnpm test:changed`
@@ -198,7 +243,7 @@ If `pnpm test` flakes on a loaded host, rerun once before treating it as a regre
 - `pnpm test:perf:imports`: enables Vitest import-duration + import-breakdown reporting, while still using scoped lane routing for explicit file/directory targets. `pnpm test:perf:imports:changed` scopes the same profiling to files changed since `origin/main`.
 - `pnpm test:perf:changed:bench -- --ref <git-ref>` benchmarks the routed changed-mode path against the native root-project run for the same committed git diff; `pnpm test:perf:changed:bench -- --worktree` benchmarks the current worktree change set without committing first.
 - `pnpm test:perf:profile:main` writes a CPU profile for the Vitest main thread (`.artifacts/vitest-main-profile`); `pnpm test:perf:profile:runner` writes CPU + heap profiles for the unit runner (`.artifacts/vitest-runner-profile`).
-- `pnpm test:perf:groups --full-suite --allow-failures --output .artifacts/test-perf/baseline-before.json`: runs every full-suite Vitest leaf config serially and writes grouped duration data plus per-config JSON/log artifacts. Full-suite reports isolate files by default so retained module graphs and GC pauses from earlier files are not charged to later assertions; pass `-- --no-isolate` only when intentionally profiling shared-worker accumulation. `pnpm test:perf:groups:compare .artifacts/test-perf/baseline-before.json .artifacts/test-perf/after-agent.json` compares grouped reports after a performance-focused change.
+- `pnpm test:perf:groups --full-suite --allow-failures --output .artifacts/test-perf/baseline-before.json`: runs every full-suite Vitest leaf config serially and writes grouped duration data plus per-config JSON/log artifacts. This is performance measurement, never fork CI acceptance. Full-suite reports isolate files by default so retained module graphs and GC pauses from earlier files are not charged to later assertions; pass `-- --no-isolate` only when intentionally profiling shared-worker accumulation. `pnpm test:perf:groups:compare .artifacts/test-perf/baseline-before.json .artifacts/test-perf/after-agent.json` compares grouped reports after a performance-focused change.
 - Full, extension, and include-pattern shard runs update local timing data in `.artifacts/vitest-shard-timings.json`; later whole-config runs use those timings to balance slow and fast shards. Include-pattern CI shards append the shard name to the timing key, which keeps filtered shard timings visible without replacing whole-config timing data. Set `OPENCLAW_TEST_PROJECTS_TIMINGS=0` to ignore the local timing artifact.
 
 ## Benchmarks

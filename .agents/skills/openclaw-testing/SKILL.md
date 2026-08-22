@@ -10,9 +10,26 @@ or validating a change without wasting hours.
 
 ## Read First
 
-- `docs/reference/test.md` for local test commands.
+- `docs/reference/test.md` for local test commands and the fork CI acceptance
+  policy.
 - `docs/ci.md` for CI scope, release checks, Docker chunks, and runner behavior.
 - Scoped `AGENTS.md` files before editing code under a subtree.
+
+## Fork CI Acceptance
+
+Broad CI acceptance for `karmaterminal/openclaw` is a bootstrap Mode-B dispatch
+of `openclaw-local-ci.yml` in `karmaterminal/openclaw-bootstrap` against the
+exact full 40-character product SHA under test. Mode-B runs hermetic shards on
+isolated hosted workers and keeps only large, host-bound, and dist shards on
+local self-hosted seats, each at one Vitest worker. Report both the product SHA
+and the dispatched run's workflow `headSha`.
+
+`pnpm verify`, untargeted `pnpm test`, `pnpm test:max`, full-suite perf groups,
+and `scripts/prepush-ci.sh` are upstream-maintainer local kit or exceptional
+fallbacks. Do not run them as the ordinary fork landing gate and do not report
+one as broad acceptance. Crabbox and Testbox stay the authority for live, E2E,
+and other environment proof; they neither replace Mode-B nor are replaced by it.
+Commands and two-SHA reporting live in `docs/reference/test.md`.
 
 ## Default Rule
 
@@ -21,7 +38,8 @@ Prove the touched surface first. Do not reflexively run the whole suite.
 Route by source trust first, then required environment. Only trusted source may
 run locally; never execute untrusted repository tooling locally. Trusted
 development tests, changed gates, typecheck/lint, and builds run locally by
-default, including broad suites when they are the proportional proof. Use a
+default, kept focused and at one Vitest worker. Broad coverage goes to a Mode-B
+dispatch rather than a shared-tree full suite. Use a
 remote backend only when the environment is part of the proof: clean-machine,
 install/package, Docker, E2E, live, desktop, or cross-platform work, or when the
 operator explicitly requests remote proof. Do not use Crabbox merely as
@@ -121,7 +139,7 @@ sync the current checkout on every run, and stop it before handoff.
   once, then report the first actionable error.
 - Codex and other linked/sparse worktrees may run local `pnpm test*` and
   `pnpm check*` when the dependency install is ready. If pnpm would reconcile a
-  shared install, use `node scripts/run-vitest.mjs` or
+  shared install, use `node scripts/run-vitest.mjs ... --maxWorkers=1` or
   `node scripts/check-changed.mjs` to bypass that package-manager preflight.
   For actual remote proof, invoke `node scripts/crabbox-wrapper.mjs` directly
   rather than local `pnpm crabbox:run`.
@@ -166,19 +184,20 @@ sync the current checkout on every run, and stop it before handoff.
 
 ## Local Development Proof
 
-Use the smallest command that proves the touched contract, then broaden locally
-when the risk requires it. Select a remote backend only for environment or
-isolation proof.
+Use the smallest command that proves the touched contract. Keep local Vitest at
+one worker; route broad coverage to Mode-B, and select a remote backend only for
+environment or isolation proof.
 
 ```bash
 pnpm changed:lanes --json
 pnpm check:changed       # local changed typecheck/lint/guard plan; no Vitest
 pnpm test:changed        # cheap smart changed Vitest targets
-pnpm verify              # full check, then full Vitest
 OPENCLAW_TEST_CHANGED_BROAD=1 pnpm test:changed
-pnpm test <path-or-filter> -- --reporter=verbose
-OPENCLAW_VITEST_MAX_WORKERS=1 pnpm test <path-or-filter>
+OPENCLAW_VITEST_MAX_WORKERS=1 pnpm test <path-or-filter> -- --reporter=verbose
 ```
+
+`pnpm verify` (full check, then full Vitest) is upstream-maintainer local kit
+and an exceptional fallback here, never the fork landing gate.
 
 Do not run independent `pnpm test`/Vitest commands concurrently in one
 worktree; the Vitest cache races with `ENOTEMPTY`. Group one command or use
@@ -191,7 +210,7 @@ In a linked worktree, use the direct Node harness when avoiding pnpm dependency
 reconciliation is useful:
 
 ```bash
-node scripts/run-vitest.mjs <path-or-filter>
+node scripts/run-vitest.mjs <path-or-filter> --maxWorkers=1
 ```
 
 That keeps the test scoped without giving pnpm a chance to run dependency
@@ -234,7 +253,8 @@ official trust.
   typecheck, lint, and guard proof.
 - `pnpm test` and `pnpm test:changed` run Vitest tests.
 - `pnpm verify` runs `pnpm check`, then `pnpm test`, with Crabbox phase markers
-  so remote summaries show which half failed.
+  so remote summaries show which half failed. It is an exceptional local
+  fallback, not the fork acceptance gate.
 - `pnpm test:changed` is intentionally cheap by default: direct test edits,
   sibling tests, explicit source mappings, and import-graph dependents.
 - `OPENCLAW_TEST_CHANGED_BROAD=1 pnpm test:changed` is the explicit broad
