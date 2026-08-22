@@ -1,3 +1,20 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
+const ingressCancelCompat = new AsyncLocalStorage<true>();
+
+/**
+ * Fan-in cancel falls back to `onAbandoned` for sources that predate
+ * `onCancelled`. That invocation is still cancellation: it must not consume
+ * retry budget. Genuine `onAbandoned()` callers leave this store unset.
+ */
+export function runIngressCancelCompat<T>(fn: () => T): T {
+  return ingressCancelCompat.run(true, fn);
+}
+
+export function isIngressCancelCompat(): boolean {
+  return ingressCancelCompat.getStore() === true;
+}
+
 /** Full pre-adoption -> adoption ownership lifecycle for one claimed event. */
 export type ChannelIngressDispatchLifecycle = {
   /** Pre-adoption only. After adopt the drain treats this signal as inert. */
@@ -25,7 +42,8 @@ export type ChannelIngressDispatchLifecycle = {
   onCancelled?: () => void | Promise<void>;
   /**
    * Deferred turn finished without ever owning the reply lane.
-   * Drain releases the claim for retry.
+   * Drain applies the bounded retry disposition unless the call is
+   * fan-in cancel-compat (see `runIngressCancelCompat`).
    */
   onAbandoned: () => void | Promise<void>;
 };
@@ -36,6 +54,7 @@ export function bindIngressLifecycleToReplyOptions(lifecycle: ChannelIngressDisp
     admission: "exclusive";
     onAdopted: () => void | Promise<void>;
     onDeferred: () => void;
+    onCancelled?: () => void | Promise<void>;
     onAbandoned: () => void | Promise<void>;
     abortSignal: AbortSignal;
   };
@@ -45,6 +64,9 @@ export function bindIngressLifecycleToReplyOptions(lifecycle: ChannelIngressDisp
       admission: "exclusive",
       onAdopted: lifecycle.onAdopted,
       onDeferred: lifecycle.onDeferred,
+      // Debounce/fan-in cancel uses this object. Omitting onCancelled made
+      // cancel fall back to onAbandoned and charge the retry budget.
+      ...(lifecycle.onCancelled ? { onCancelled: lifecycle.onCancelled } : {}),
       onAbandoned: lifecycle.onAbandoned,
       abortSignal: lifecycle.abortSignal,
     },

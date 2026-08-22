@@ -20,7 +20,10 @@ import {
   isLiveLocalIngressDrainOwner,
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
-import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
+import {
+  isIngressCancelCompat,
+  type ChannelIngressDispatchLifecycle,
+} from "./ingress-drain-lifecycle.js";
 import {
   applyIngressPendingDispositions,
   type OnChannelIngressPendingDispositionCommitted,
@@ -433,9 +436,9 @@ export function createChannelIngressDrain<
     state.stallTimer.unref?.();
   };
 
-  const releaseUnadopted = async (
+  const settleUnadopted = async (
     state: ActiveHandlerState<TPayload, TMetadata>,
-    releaseOptions: { lastError?: string; recordAttempt?: boolean },
+    outcome: "cancelled" | "abandoned",
   ) => {
     if (state.phase !== "deferred" && state.phase !== "dispatching") {
       return;
@@ -446,7 +449,11 @@ export function createChannelIngressDrain<
     clearStallTimer(state);
     await state
       .settleOnce(async () => {
-        await releaseClaim(state.claim, releaseOptions);
+        if (outcome === "cancelled") {
+          await releaseClaim(state.claim, { recordAttempt: false });
+          return;
+        }
+        await applyFailureDisposition(state.claim, new Error("turn-abandoned"));
       })
       .catch(() => undefined);
   };
@@ -514,10 +521,15 @@ export function createChannelIngressDrain<
       onCancelled: async () => {
         // Cancellation means ownership ended before delivery, so preserve every
         // prior retry fact while reopening the canonical row for replacement.
-        await releaseUnadopted(state, { recordAttempt: false });
+        await settleUnadopted(state, "cancelled");
       },
       onAbandoned: async () => {
-        await releaseUnadopted(state, { lastError: "turn-abandoned" });
+        // Mixed fan-in cancel falls back to onAbandoned when a source predates
+        // onCancelled. That path is still cancellation: do not charge budget.
+        // A genuine un-admitted turn takes the same bounded disposition as
+        // onFailed, or it retries forever and holds the head of its FIFO lane.
+        const outcome = isIngressCancelCompat() ? "cancelled" : "abandoned";
+        await settleUnadopted(state, outcome);
       },
     };
   };
