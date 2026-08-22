@@ -22,7 +22,9 @@ guesswork.
    - `src/infra/outbound/AGENTS.md` for outbound/media/action tests.
 2. Establish a baseline before changing code:
    - Prefer `pnpm test:perf:groups --full-suite --allow-failures --output <file>`
-     for full-suite ranking.
+     for full-suite ranking. This is performance measurement only; a full-suite
+     perf group run is never fork CI acceptance, and broad acceptance stays a
+     Mode-B dispatch (`docs/reference/test.md`).
    - For bundled plugin breadth, run the smallest relevant `pnpm
 test:extensions:batch <plugin[,plugin...]>` or plugin-inspector command
      before jumping to the full extension sweep.
@@ -192,7 +194,7 @@ timeout 240 /usr/bin/time -l env \
   pnpm test <file> --maxWorkers=1 --reporter=verbose
 ```
 
-Grouped suite:
+Grouped suite (timing evidence only, not fork CI acceptance):
 
 ```bash
 pnpm test:perf:groups --full-suite --allow-failures \

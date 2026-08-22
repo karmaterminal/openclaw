@@ -26,8 +26,14 @@ This page covers the regular test suites and Docker/Parallels runners. [QA-speci
 
 Most days:
 
-- Full gate (expected before push): `pnpm build && pnpm check && pnpm check:test-types && pnpm test`
-- Faster local full-suite run on a roomy machine: `pnpm test:max`
+- Focused proof for the surface you touched (fork default):
+  `OPENCLAW_VITEST_MAX_WORKERS=1 pnpm test <path-or-filter>`
+- Broad fork CI acceptance is a bootstrap Mode-B dispatch against the exact full
+  product SHA, not a local full suite. See
+  [Fork CI acceptance](/reference/test#fork-ci-acceptance).
+- Upstream-maintainer local kit, exceptional here and not fork acceptance:
+  `pnpm build && pnpm check && pnpm check:test-types && pnpm test`, and
+  `pnpm test:max` on a roomy dedicated machine
 - Direct Vitest watch loop: `pnpm test:watch`
 - Direct file targeting routes plugin/channel paths too: `pnpm test extensions/discord/src/monitor/message-handler.preflight.test.ts`
 - Prefer targeted runs first when iterating on a single failure.
@@ -620,10 +626,12 @@ Think of the suites as "increasing realism" (and increasing flakiness/cost).
 
 ### Unit / integration (default)
 
-- Command: `pnpm test`
+- Command: `pnpm test` (targeted); untargeted local full-suite runs are
+  upstream-maintainer kit, not fork acceptance
 - Config: untargeted runs use the `vitest.full-*.config.ts` shard set and may
   expand multi-project shards into per-project configs for parallel
-  scheduling
+  scheduling. Keep `OPENCLAW_VITEST_MAX_WORKERS=1` on a shared checkout; fork
+  broad coverage comes from isolated Mode-B shards instead
 - Files: core/unit inventories under `src/**/*.test.ts`,
   `packages/**/*.test.ts`, and `test/**/*.test.ts`; UI unit tests run in the
   dedicated `unit-ui` shard
@@ -715,7 +723,8 @@ Native dependency policy:
       decides a harness, config, package, or contract edit really needs
       broader Vitest coverage.
     - `pnpm test:max` and `pnpm test:changed:max` keep the same routing
-      behavior, just with a higher worker cap.
+      behavior, just with a higher worker cap. Do not use them on a shared
+      checkout or a shared runner seat, and never as fork acceptance.
     - Local worker auto-scaling is intentionally conservative and backs off
       when the host load average is already high, so multiple concurrent
       Vitest runs do less damage by default.
