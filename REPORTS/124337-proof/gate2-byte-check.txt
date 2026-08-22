@@ -1,0 +1,24 @@
+Gate 2 — feature-byte preservation check
+  PR_HEAD:   70d47bec1f9
+  CANDIDATE: 8a7c7a4d413
+  UPSTREAM:  923e972564c
+  BASE:      5626a79cc83
+  CORES:     /tmp/oc-124337-proof/pr-cores.txt
+
+  PASS: extensions/feishu/src/monitor.message-handler.ingress.test.ts
+  PASS-UPSTREAM: extensions/mattermost/src/mattermost/monitor.inbound-system-event.test.ts (exact projected blob 09c4241ea640ab42a1b13b68b15a649e3e05b6e1)
+  PASS-UPSTREAM: extensions/msteams/src/monitor-handler/message-handler.ingress-lifecycle.test.ts (exact projected blob bf3d554f12db4d396b757783e5ad49f6503f4f43)
+  PASS: src/channels/message/ingress-drain-lifecycle.test.ts
+  PASS: src/channels/message/ingress-drain-lifecycle.ts
+  PASS: src/channels/message/ingress-drain.abandonment-retry-budget.test.ts
+  PASS: src/channels/message/ingress-drain.cancellation.test.ts
+  PASS: src/channels/message/ingress-drain.test.ts
+  PASS-UPSTREAM: src/channels/message/ingress-drain.ts (exact projected blob 2912871c0012af0f0a1fd51208104855045db4ac)
+  PASS: src/plugin-sdk/channel-ingress-runtime.test.ts
+  FAIL: src/plugin-sdk/channel-ingress-runtime.ts (blob db280929507fddc05a927d28e24a8dc802a804fa → acfd4a73e93b80eb3e77b9b0f92cd71d6751ea16; 3319 bytes diff; upstream delta does not apply cleanly to PR_HEAD: Applied patch to 'src/plugin-sdk/channel-ingress-runtime.ts' with conflicts. U src/plugin-sdk/channel-ingress-runtime.ts )
+
+Summary: 11 primitive-core invariants; 1 FAIL; 3 exact-upstream; 0 tombstone; 0 empty-pattern
+Gate 2 FAIL — 1 feature-core file(s) are neither byte-identical nor exact upstream projections.
+
+Failed files:
+  - src/plugin-sdk/channel-ingress-runtime.ts
