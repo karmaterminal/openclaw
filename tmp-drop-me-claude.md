@@ -1218,3 +1218,102 @@ loop, per the work order.
   No repository dependency, lockfile, patch, or store configuration was changed.
 - GitNexus index artifacts and any generated guidance stay untracked and out of
   the candidate diff.
+
+## 2026-08-22T22:35:00Z - Treatment composite: pre-mutation map and frozen inputs
+
+Lane: `codeagent/composite-121204-124337-current`. This section is the
+append-only record for materializing the disclosed treatment composite on the
+current-upstream continuation base.
+
+### Frozen inputs (exact, workorder-pinned)
+
+- Base continuation: `09b553e5fc7c2b3a26954046c1d9f52c55af4b40`
+  (`fix: repair two silent merge overlaps surfaced by the static gates`).
+- Repaired #121204 input: `3bf1ca1d211f4f303ca1bfec9e47daef8f4192f9`.
+- Treatment-only #124337 input: `4ff99f7e5c149d90214a3df932f9d5adb438b835`.
+- Excluded: withdrawn #124454 and old composite
+  `46f4d2115700d574501bb3c4763abf6b2ba977fe`.
+
+### Pre-mutation verification
+
+- Worktree started at exactly `09b553e5fc7c2b3a26954046c1d9f52c55af4b40` with an
+  empty `git status --porcelain`.
+- `git merge-base 3bf1ca1d 09b553e5` = `689ab6ec82b638f282c98f25599a4919e7e86da5`.
+- `git merge-base 4ff99f7e 09b553e5` = `923e972564cec0d2ce1dd9e46325a571ac52818e`.
+- Both micro bases are genuine ancestors of the composite base
+  (`git merge-base --is-ancestor` exit 0 for each), so each authored delta has a
+  true three-way base on this trunk and neither input needs re-parenting.
+- `689ab6ec` is itself an ancestor of `923e9725`, so the two micro bases are
+  ordered on one upstream line rather than being independent frozen walls.
+- `git merge-base --is-ancestor 46f4d2115700d574501bb3c4763abf6b2ba977fe HEAD`
+  exited 1 before mutation. The forbidden old composite is not an ancestor.
+- Neither micro head is an ancestor of the base, so nothing was already absorbed.
+
+### Gate 1 savegame
+
+- Immutable annotated tag
+  `savegame/20260822-2230Z/composite-121204-124337-pre-apply-09b553e5`, pushed
+  before any mutation; `git ls-remote origin` resolves it to
+  `09b553e5fc7c2b3a26954046c1d9f52c55af4b40`. It will not be moved or deleted.
+- Branch `codeagent/composite-121204-124337-current` was published at the same
+  base SHA so remote parity is auditable from the first mutation onward.
+
+### Authored deltas
+
+`#121204` (`689ab6ec..3bf1ca1d`): 22 commits, of which 2 are upstream absorb
+merges (`62cfaef0c34`, `b677cfabda9`) that carry no authored content. The
+authored delta is the 20 non-merge commits, 32 files, `+4567/-124`. Surfaces:
+durable Discord ingress (stale/direct-open channel-kind persistence, raw channel
+type, lazy mention runtime warmup), the shared channel ingress drain lane-state
+and pending-disposition extraction, an `sdk-channel-outbound` plugin-contract
+doc, the temp-path guardrail inventory bound, and a block of Gate 3g unit
+ordering/isolation test repairs.
+
+`#124337` (`923e9725..4ff99f7e`): 11 commits, of which 1 is an upstream absorb
+merge (`8a7c7a4d413`). The authored delta is the 10 non-merge commits, 20 files,
+`+1054/-31`. Surfaces: pre-adoption abandonment routed through the existing retry
+budget, budget-free explicit/mixed-fan-in cancellation, lifecycle `onCancelled`
+forwarding, plugin-SDK fan-in release selection, plus its `REPORTS/124337-*`
+evidence artifacts.
+
+### Host-surface drift since each micro base
+
+Only 4 of the 32 `#121204` files drifted between `689ab6ec` and the composite
+base: `config/assertion-safety-baseline.txt`,
+`extensions/google-meet/src/oauth.test.ts`,
+`scripts/check-temp-path-guardrails.ts`, and
+`src/channels/message/ingress-drain.ts`.
+
+Only 3 of the 20 `#124337` files drifted between `923e9725` and the composite
+base: `extensions/msteams/src/monitor.inbound-system-event.test.ts`,
+`src/channels/message/ingress-drain.test.ts`, and
+`src/channels/message/ingress-drain.ts`.
+
+### The single both-sides file
+
+`src/channels/message/ingress-drain.ts` is the only file touched by both micro
+inputs. Its blob is byte-identical at both micro bases (`3465591b280`), so the
+three deltas share one true base. Their hunk regions are disjoint:
+
+- composite base (continuation + upstream): the import block, the
+  claim-to-adoption stall watchdog (now routed through
+  `applyFailureDisposition` instead of a direct `failClaim` dead-letter), and the
+  `state.task` gateway-root work-admission retention around
+  `dispatchClaimedEvent`;
+- `#121204`: the import block plus the `drainOnce` pending/lane-state region
+  (`applyIngressPendingDispositions`, `resolveIngressDrainLaneState`,
+  `resolveRecordLaneKey`);
+- `#124337`: the import block plus `releaseUnadopted` -> `settleUnadopted` and
+  the `onCancelled`/`onAbandoned` lifecycle callbacks.
+
+The import block is the only shared line region, and all three sides only add
+there. The semantic interaction to audit after both applications is that the
+base already routes the stall timeout through `applyFailureDisposition` while
+`#124337` newly routes genuine pre-adoption abandonment through the same owner;
+these must remain one disposition owner rather than two parallel budgets.
+
+### Plan
+
+`#121204` is replayed first as its own commit sequence, then `#124337` as a
+second, separately auditable sequence. No branch root is merged wholesale; every
+authored commit is cherry-picked onto this trunk so provenance stays per-commit.
