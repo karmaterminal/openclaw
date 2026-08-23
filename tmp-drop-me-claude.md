@@ -1317,3 +1317,23 @@ these must remain one disposition owner rather than two parallel budgets.
 `#121204` is replayed first as its own commit sequence, then `#124337` as a
 second, separately auditable sequence. No branch root is merged wholesale; every
 authored commit is cherry-picked onto this trunk so provenance stays per-commit.
+
+## 2026-08-22T23:46:00Z — correction to extraction commit LOC claim
+
+Commit `7cf0f25d2db32e26f563df445365800b443a69bb` correctly extracts the
+single durable claim-settlement owner and clears the 700-line cap, but its commit
+message incorrectly says the production LOC delta is negative.
+
+Byte-correct arithmetic:
+
+- pre-extraction `src/channels/message/ingress-drain.ts`: 825 lines;
+- post-extraction `src/channels/message/ingress-drain.ts`: 699 lines;
+- new `src/channels/message/ingress-drain-claim-settlement.ts`: 183 lines;
+- extraction delta: `699 + 183 - 825 = +57` production lines.
+
+The extraction remains justified by ownership and invariant shape—not code
+shrinkage. It centralizes tombstone/release/dead-letter writes and the sole
+`applyFailureDisposition` decision, makes bypasses cross-module-visible, clears
+the max-lines gate without suppression, and preserves the existing retry,
+fencing, logging, and abortable-backoff behavior. No later receipt or COMPLETE
+message may repeat the false net-negative claim.
