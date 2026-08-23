@@ -32,7 +32,7 @@ export type DiscordMessageDispatchData = {
  * extras `APIMessage` does not declare. Durable ingress persists the frame, so
  * the boundary type must expose them instead of casting at each reader.
  */
-export type DiscordMessageCreateEvent = APIMessage & {
+type DiscordMessageCreateEvent = APIMessage & {
   channel_type?: number;
   guild_id?: string;
 };

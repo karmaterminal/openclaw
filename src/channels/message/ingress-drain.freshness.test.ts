@@ -3,17 +3,13 @@
 // repo max-lines budget; lifecycle/adoption invariants stay in the original.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
-import type {
-  ChannelIngressPendingDisposition,
-  ChannelIngressPendingDispositionContext,
-} from "./ingress-drain-pending-disposition.js";
+import type { ResolveChannelIngressPendingDisposition } from "./ingress-drain-pending-disposition.js";
 import { createChannelIngressDrain } from "./ingress-drain.js";
 import {
   createTestIngressQueue,
   type IngressDrainTestPayload as Payload,
   withTempState,
 } from "./ingress-drain.test-helpers.js";
-import type { ChannelIngressQueueRecord } from "./ingress-queue.js";
 import {
   DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
   DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
@@ -21,10 +17,10 @@ import {
 
 const STALE_AMBIENT_PENDING_MS = 15 * 60 * 1_000;
 
-function resolveStaleAmbientPendingDisposition(
-  event: ChannelIngressQueueRecord<Payload>,
-  context: ChannelIngressPendingDispositionContext,
-): ChannelIngressPendingDisposition | null {
+const resolveStaleAmbientPendingDisposition: ResolveChannelIngressPendingDisposition<
+  Payload,
+  unknown
+> = (event, context) => {
   if (event.payload.kind !== "ambient") {
     return null;
   }
@@ -36,7 +32,7 @@ function resolveStaleAmbientPendingDisposition(
     reason: "stale-ambient-backlog",
     message: `stale ambient backlog ${event.id} on ${context.laneKey}`,
   };
-}
+};
 
 describe("channel ingress drain", () => {
   beforeEach(() => {
