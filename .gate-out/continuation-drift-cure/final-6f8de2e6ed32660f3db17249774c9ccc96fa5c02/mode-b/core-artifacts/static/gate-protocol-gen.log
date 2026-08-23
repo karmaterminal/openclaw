@@ -1,0 +1,2 @@
+$ node --import tsx scripts/protocol-gen.ts
+wrote /home/figs/actions-runner/_work/_temp/openclaw-local-ci-32642373348-XRhZHt/dist/protocol.schema.json

@@ -1,0 +1,83 @@
+{
+  "receipt_kind": "shard-execution-routing-receipt",
+  "vehicle": "openclaw-bootstrap#1341",
+  "routing_contract_version": "2.0.0",
+  "ruleset_digest": "sha256:9ac20d0d5ad7c5dd63fbc9fd03fb40929fc70932c743f31cb1d79382badbef5d",
+  "planner_digest": "sha256:00998116b58eb9be21491129a6ecfeb6816694ba71c9c813f7cda68abd82fc32",
+  "target": {
+    "repo": "karmaterminal/openclaw",
+    "ref": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+    "sha": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02"
+  },
+  "workflow": {
+    "repo": "karmaterminal/openclaw-bootstrap",
+    "sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+  },
+  "batch": {
+    "batch_id": "dist-batch-068",
+    "batch_name": "core-runtime-tui-pty",
+    "check_name": "core-runtime-tui-pty",
+    "lane": "self-hosted-dist",
+    "selected_execution_class": "self-hosted",
+    "shard_count": 1,
+    "max_concurrent_shards": 1,
+    "resolved_slots": 1,
+    "requires_dist": true
+  },
+  "worker": {
+    "runner_name": "cael",
+    "runner_environment": "self-hosted",
+    "runner_os": "Linux",
+    "runner_arch": "ARM64"
+  },
+  "execution": {
+    "run_id": "32642373348",
+    "run_attempt": 1,
+    "job": "test-shard-local-dist",
+    "started_at": "2026-08-23T13:43:03Z",
+    "completed_at": "2026-08-23T13:52:05Z",
+    "queue_seconds": null,
+    "runtime_seconds": 542,
+    "rc": 1,
+    "step_outcome": "failure",
+    "conclusion": "failure",
+    "resource_usage": {
+      "collector": "gnu-time-v",
+      "user_cpu_seconds": 573.56,
+      "system_cpu_seconds": 756.58,
+      "total_cpu_seconds": 1330.14,
+      "peak_rss_kb": 5061364,
+      "raw_file": "batch-resource-usage.txt"
+    }
+  },
+  "shards": [
+    {
+      "check_name": "checks-node-core-runtime-tui-pty",
+      "shard_name": "core-runtime-tui-pty",
+      "kind": "node-dist",
+      "capability_class": "hermetic",
+      "weight_class": "exclusive",
+      "weight_seconds": 134,
+      "requires_dist": true,
+      "selected_execution_class": "self-hosted",
+      "lane": "self-hosted-dist",
+      "result": "failure",
+      "rc": 1,
+      "tests": {
+        "passed": 87,
+        "failed": 13
+      },
+      "failure_count": 12,
+      "retry_count": 1,
+      "results_dir": "dist-core-runtime-tui-pty",
+      "resource_usage": {
+        "collector": "gnu-time-v",
+        "user_cpu_seconds": 552.08,
+        "system_cpu_seconds": 742.72,
+        "total_cpu_seconds": 1294.8,
+        "peak_rss_kb": 5061364,
+        "raw_file": "dist-core-runtime-tui-pty/resource-usage.txt"
+      }
+    }
+  ]
+}

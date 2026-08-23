@@ -1,0 +1,34 @@
+Changes: 1067 files, 5393 symbols
+Affected processes: 21
+Risk level: critical
+
+Changed symbols:
+  Symbol AGENTS.MD → AGENTS.md
+  Symbol Platform / Ops → AGENTS.md
+  Symbol config → config/knip.config.ts
+  Symbol Continuation tools infographics → docs/design/continuation-tools-infographics.md
+  Symbol `continue_work()` — same-session successor turn → docs/design/continuation-tools-infographics.md
+  Symbol `continue_delegate()` — child worker shard and return routing → docs/design/continuation-tools-infographics.md
+  Symbol `request_compaction()` — elective compaction seam → docs/design/continuation-tools-infographics.md
+  Symbol One-screen comparison → docs/design/continuation-tools-infographics.md
+  Symbol RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`) → docs/design/continue-work-signal-v2.md
+  Symbol Table of Contents → docs/design/continue-work-signal-v2.md
+  Symbol 1. Problem → docs/design/continue-work-signal-v2.md
+  Symbol 1.1 Inter-turn inertia → docs/design/continue-work-signal-v2.md
+  Symbol 1.2 The dwindle pattern → docs/design/continue-work-signal-v2.md
+  Symbol 1.3 Requirements for a continuation primitive → docs/design/continue-work-signal-v2.md
+  Symbol 2. Solution → docs/design/continue-work-signal-v2.md
+... and 5378 more
+
+Affected execution flows:
+  • HandleToolExecutionEnd → NormalizeNullableString (8 steps) — changed: handleToolExecutionEnd
+  • HandleToolExecutionEnd → ReadNormalizedSessionKeyCache (7 steps) — changed: handleToolExecutionEnd
+  • HandleToolExecutionEnd → MayContainCasePreservingPeer (7 steps) — changed: handleToolExecutionEnd
+  • HandleToolExecutionEnd → ReadToolErrorField (5 steps) — changed: handleToolExecutionEnd, readToolErrorField, isToolResultError
+  • HandleToolExecutionEnd → Wake (4 steps) — changed: handleToolExecutionEnd
+  • HandleEvent → ResolveGlobalSingletonResetRegistry (7 steps) — changed: handleEvent
+  • HandleToolCall → TryProcessCwd (7 steps) — changed: handleToolCall
+  • HandleToolCall → RedactRegisteredSecretValues (7 steps) — changed: handleToolCall
+  • HandleToolCall → NormalizeMode (7 steps) — changed: handleToolCall
+  • HandleToolCall → UsesBuiltInRedactPatterns (7 steps) — changed: handleToolCall
+... and 11 more

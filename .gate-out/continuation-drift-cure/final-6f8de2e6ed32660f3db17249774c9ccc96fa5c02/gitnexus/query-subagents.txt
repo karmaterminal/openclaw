@@ -1,0 +1,148 @@
+{
+  "processes": [],
+  "process_symbols": [],
+  "definitions": [
+    {
+      "id": "Const:src/agents/subagents/registry/subagent-registry-sweeper.ts:STALE_ACTIVE_SUBAGENT_GRACE_MS",
+      "name": "STALE_ACTIVE_SUBAGENT_GRACE_MS",
+      "filePath": "src/agents/subagents/registry/subagent-registry-sweeper.ts",
+      "startLine": 47,
+      "endLine": 47
+    },
+    {
+      "id": "Function:src/agents/subagents/registry/subagent-registry-sweeper.ts:restartRecoveryLoader",
+      "name": "restartRecoveryLoader",
+      "filePath": "src/agents/subagents/registry/subagent-registry-sweeper.ts",
+      "startLine": 48,
+      "endLine": 50
+    },
+    {
+      "id": "File:src/agents/subagents/registry/subagent-registry-sweeper.ts",
+      "name": "subagent-registry-sweeper.ts",
+      "filePath": "src/agents/subagents/registry/subagent-registry-sweeper.ts"
+    },
+    {
+      "id": "Const:src/gateway/server-chat.ts:RESTART_RECOVERY_LIFECYCLE_PHASES",
+      "name": "RESTART_RECOVERY_LIFECYCLE_PHASES",
+      "filePath": "src/gateway/server-chat.ts",
+      "startLine": 96,
+      "endLine": 96
+    },
+    {
+      "id": "Const:src/gateway/server-chat.ts:AGENT_LIFECYCLE_ERROR_RETRY_GRACE_MS",
+      "name": "AGENT_LIFECYCLE_ERROR_RETRY_GRACE_MS",
+      "filePath": "src/gateway/server-chat.ts",
+      "startLine": 225,
+      "endLine": 225
+    },
+    {
+      "id": "Const:src/gateway/server-chat.ts:isHeartbeat",
+      "name": "isHeartbeat",
+      "filePath": "src/gateway/server-chat.ts",
+      "startLine": 1442,
+      "endLine": 1442
+    },
+    {
+      "id": "Function:src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts:schedule",
+      "name": "schedule",
+      "filePath": "src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts",
+      "startLine": 46,
+      "endLine": 93,
+      "module": "Registry"
+    },
+    {
+      "id": "Function:src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts:timer",
+      "name": "timer",
+      "filePath": "src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts",
+      "startLine": 48,
+      "endLine": 90
+    },
+    {
+      "id": "File:src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts",
+      "name": "subagent-registry-pending-lifecycle.ts",
+      "filePath": "src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts"
+    },
+    {
+      "id": "Const:src/agents/subagents/registry/subagent-registry-restart-recovery.ts:error",
+      "name": "error",
+      "filePath": "src/agents/subagents/registry/subagent-registry-restart-recovery.ts",
+      "startLine": 243,
+      "endLine": 243
+    },
+    {
+      "id": "Function:src/agents/subagents/registry/subagent-registry-restart-recovery.ts:assertCommitAllowed",
+      "name": "assertCommitAllowed",
+      "filePath": "src/agents/subagents/registry/subagent-registry-restart-recovery.ts",
+      "startLine": 215,
+      "endLine": 219,
+      "module": "Registry"
+    },
+    {
+      "id": "File:src/agents/subagents/registry/subagent-registry-restart-recovery.ts",
+      "name": "subagent-registry-restart-recovery.ts",
+      "filePath": "src/agents/subagents/registry/subagent-registry-restart-recovery.ts"
+    },
+    {
+      "id": "Function:extensions/qa-lab/src/providers/mock-openai/mock-openai-contracts.ts:isStrandedFinalRetryFailureRequest",
+      "name": "isStrandedFinalRetryFailureRequest",
+      "filePath": "extensions/qa-lab/src/providers/mock-openai/mock-openai-contracts.ts",
+      "startLine": 319,
+      "endLine": 325,
+      "module": "Mock-openai"
+    },
+    {
+      "id": "Const:extensions/qa-lab/src/providers/mock-openai/mock-openai-contracts.ts:QA_STRANDED_FINAL_RETRY_FAILURE_PROMPT_RE",
+      "name": "QA_STRANDED_FINAL_RETRY_FAILURE_PROMPT_RE",
+      "filePath": "extensions/qa-lab/src/providers/mock-openai/mock-openai-contracts.ts",
+      "startLine": 252,
+      "endLine": 252
+    },
+    {
+      "id": "File:extensions/qa-lab/src/providers/mock-openai/mock-openai-contracts.ts",
+      "name": "mock-openai-contracts.ts",
+      "filePath": "extensions/qa-lab/src/providers/mock-openai/mock-openai-contracts.ts"
+    },
+    {
+      "id": "Function:src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts:killSessionEntry",
+      "name": "killSessionEntry",
+      "filePath": "src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts",
+      "startLine": 23,
+      "endLine": 27
+    },
+    {
+      "id": "Const:src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts:killSessionEntry",
+      "name": "killSessionEntry",
+      "filePath": "src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts",
+      "startLine": 23,
+      "endLine": 27
+    },
+    {
+      "id": "File:src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts",
+      "name": "subagent-registry-sweeper-recovery.test.ts",
+      "filePath": "src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts"
+    },
+    {
+      "id": "Function:src/agents/subagents/registry/subagent-registry.test.ts:resolveSubagentTask",
+      "name": "resolveSubagentTask",
+      "filePath": "src/agents/subagents/registry/subagent-registry.test.ts",
+      "startLine": 2521,
+      "endLine": 2521
+    },
+    {
+      "id": "Const:src/agents/subagents/registry/subagent-registry.test.ts:runId",
+      "name": "runId",
+      "filePath": "src/agents/subagents/registry/subagent-registry.test.ts",
+      "startLine": 1044,
+      "endLine": 1044
+    }
+  ],
+  "timing": {
+    "vector": 5.8,
+    "bm25": 2603.5,
+    "merge": 0.3,
+    "symbol_lookup": 125.6,
+    "ranking": 0,
+    "formatting": 0,
+    "wall": 2730.3
+  }
+}

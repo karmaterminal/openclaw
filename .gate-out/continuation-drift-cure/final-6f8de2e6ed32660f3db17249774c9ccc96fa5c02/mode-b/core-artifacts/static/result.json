@@ -1,0 +1,9 @@
+{
+  "repo": "karmaterminal/openclaw",
+  "ref": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+  "sha": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+  "mode": "static-gates",
+  "rc": 0,
+  "duration_seconds": 585,
+  "conclusion": "success"
+}

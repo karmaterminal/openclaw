@@ -1,0 +1,86 @@
+{
+  "target": {
+    "id": "Function:src/agents/tools/continue-delegate-tool.ts:createContinueDelegateTool",
+    "name": "createContinueDelegateTool",
+    "type": "Function",
+    "filePath": "src/agents/tools/continue-delegate-tool.ts"
+  },
+  "direction": "upstream",
+  "impactedCount": 6,
+  "risk": "MEDIUM",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 6,
+    "processes_affected": 0,
+    "modules_affected": 1
+  },
+  "byDepthCounts": {
+    "1": 6
+  },
+  "affected_processes": [],
+  "affected_modules": [
+    {
+      "name": "Tools",
+      "hits": 2,
+      "impact": "direct"
+    }
+  ],
+  "byDepth": {
+    "1": [
+      {
+        "depth": 1,
+        "id": "Function:src/agents/openclaw-tools.continuation.ts:createOpenClawContinuationTools",
+        "name": "createOpenClawContinuationTools",
+        "filePath": "src/agents/openclaw-tools.continuation.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/agents/tools/continue-delegate-tool.crosssession-gate.test.ts:executeContinueDelegate",
+        "name": "executeContinueDelegate",
+        "filePath": "src/agents/tools/continue-delegate-tool.crosssession-gate.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/auto-reply/continuation/trace-context-propagation.integration.test.ts",
+        "name": "trace-context-propagation.integration.test.ts",
+        "filePath": "src/auto-reply/continuation/trace-context-propagation.integration.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/auto-reply/reply/agent-runner.continuation-delegate-fire-span.test.ts",
+        "name": "agent-runner.continuation-delegate-fire-span.test.ts",
+        "filePath": "src/auto-reply/reply/agent-runner.continuation-delegate-fire-span.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/agents/tools/continue-delegate-tool.test.ts",
+        "name": "continue-delegate-tool.test.ts",
+        "filePath": "src/agents/tools/continue-delegate-tool.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/agents/tools/continue-delegate-attachment-validation.test.ts",
+        "name": "continue-delegate-attachment-validation.test.ts",
+        "filePath": "src/agents/tools/continue-delegate-attachment-validation.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      }
+    ]
+  }
+}

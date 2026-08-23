@@ -1,0 +1,56 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Function:src/auto-reply/continuation/work-terminal-notice.ts:deliverPendingTerminalNotice",
+    "name": "deliverPendingTerminalNotice",
+    "kind": "Function",
+    "filePath": "src/auto-reply/continuation/work-terminal-notice.ts",
+    "startLine": 79,
+    "endLine": 155
+  },
+  "epistemic": "exact",
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Function:src/auto-reply/continuation/work-terminal-notice.ts:timer",
+        "name": "timer",
+        "filePath": "src/auto-reply/continuation/work-terminal-notice.ts"
+      },
+      {
+        "uid": "Function:src/auto-reply/continuation/work-terminal-notice.ts:deliverPendingTerminalNoticeWithRetry",
+        "name": "deliverPendingTerminalNoticeWithRetry",
+        "filePath": "src/auto-reply/continuation/work-terminal-notice.ts"
+      },
+      {
+        "uid": "File:src/auto-reply/continuation/work-terminal-notice.durability.test.ts",
+        "name": "work-terminal-notice.durability.test.ts",
+        "filePath": "src/auto-reply/continuation/work-terminal-notice.durability.test.ts"
+      }
+    ]
+  },
+  "outgoing": {
+    "calls": [
+      {
+        "uid": "Function:src/auto-reply/continuation/work-store.ts:readPendingTerminalNoticeWork",
+        "name": "readPendingTerminalNoticeWork",
+        "filePath": "src/auto-reply/continuation/work-store.ts"
+      },
+      {
+        "uid": "Function:src/auto-reply/continuation/work-store.ts:clearPendingTerminalNotice",
+        "name": "clearPendingTerminalNotice",
+        "filePath": "src/auto-reply/continuation/work-store.ts"
+      },
+      {
+        "uid": "Function:src/auto-reply/continuation/work-terminal-notice.ts:continuationWorkTerminalNoticeIdempotencyKey",
+        "name": "continuationWorkTerminalNoticeIdempotencyKey",
+        "filePath": "src/auto-reply/continuation/work-terminal-notice.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-wake.ts:markTrustedContinuationHeartbeatWake",
+        "name": "markTrustedContinuationHeartbeatWake",
+        "filePath": "src/infra/heartbeat-wake.ts"
+      }
+    ]
+  },
+  "processes": []
+}

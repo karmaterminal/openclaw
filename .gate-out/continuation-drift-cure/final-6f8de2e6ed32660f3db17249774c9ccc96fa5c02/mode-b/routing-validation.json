@@ -1,0 +1,101 @@
+{
+  "receipt_kind": "shard-execution-routing-receipts",
+  "vehicle": "openclaw-bootstrap#1341",
+  "batches_planned": 69,
+  "batches_seen": 69,
+  "missing_batches": [],
+  "receipts_valid": true,
+  "exact_sha_consistent": true,
+  "target_shas": [
+    "6f8de2e6ed32660f3db17249774c9ccc96fa5c02"
+  ],
+  "validation_errors": [],
+  "lane_totals": {
+    "self-hosted-dist": {
+      "batches": 2,
+      "shards": 2,
+      "failed_batches": 1,
+      "queue_seconds": 654,
+      "runtime_seconds": 631,
+      "max_runtime_seconds": 568,
+      "cpu_seconds": 1377.22,
+      "max_peak_rss_kb": 5061364
+    },
+    "hosted": {
+      "batches": 55,
+      "shards": 143,
+      "failed_batches": 1,
+      "queue_seconds": 141,
+      "runtime_seconds": 34128,
+      "max_runtime_seconds": 3418,
+      "cpu_seconds": 26331.699999999986,
+      "max_peak_rss_kb": 6885320
+    },
+    "self-hosted": {
+      "batches": 12,
+      "shards": 18,
+      "failed_batches": 0,
+      "queue_seconds": 4124,
+      "runtime_seconds": 4048,
+      "max_runtime_seconds": 1452,
+      "cpu_seconds": 4624.13,
+      "max_peak_rss_kb": 7479404
+    }
+  },
+  "routing_plan": {
+    "target_repo": "karmaterminal/openclaw",
+    "target_ref": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+    "target_sha": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+    "workflow_repo": "karmaterminal/openclaw-bootstrap",
+    "workflow_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1",
+    "ruleset_id": "shard-execution-routing-ruleset-v2",
+    "ruleset_digest": "sha256:9ac20d0d5ad7c5dd63fbc9fd03fb40929fc70932c743f31cb1d79382badbef5d",
+    "planner_digest": "sha256:00998116b58eb9be21491129a6ecfeb6816694ba71c9c813f7cda68abd82fc32",
+    "routing_contract_version": "2.0.0",
+    "identity_coverage": {
+      "emitted": 163,
+      "matched": 163,
+      "unknown": 0,
+      "blocked": 0,
+      "matched_ratio": 1
+    },
+    "lane_coverage": {
+      "hosted": 143,
+      "self-hosted": 18,
+      "self-hosted-dist": 2,
+      "unrouted": 0
+    },
+    "routing": {
+      "hosted_weight_seconds_max": 280,
+      "hosted_slowdown_factor": 2,
+      "hosted_job_overhead_seconds": 210,
+      "self_hosted_job_overhead_seconds": 80,
+      "hosted_job_budget_seconds": 420,
+      "self_hosted_job_budget_seconds": 600,
+      "hosted_max_shards_per_job": 4,
+      "self_hosted_max_shards_per_job": 8,
+      "hosted_max_jobs": 55,
+      "self_hosted_max_jobs": 12,
+      "matrix_max_jobs": 256,
+      "hosted_slots": 2
+    }
+  },
+  "receipt_count": 69,
+  "shard_count": 163,
+  "failed_batches": [
+    {
+      "batch": "dist-batch-068",
+      "lane": "self-hosted-dist",
+      "shards": [
+        "core-runtime-tui-pty"
+      ]
+    },
+    {
+      "batch": "hosted-batch-035",
+      "lane": "hosted",
+      "shards": [
+        "agentic-commands-doctor"
+      ]
+    }
+  ]
+}

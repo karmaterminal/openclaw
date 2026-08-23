@@ -1,0 +1,77 @@
+{
+  "target": {
+    "id": "Function:src/agents/tools/request-compaction-tool.ts:createRequestCompactionTool",
+    "name": "createRequestCompactionTool",
+    "type": "Function",
+    "filePath": "src/agents/tools/request-compaction-tool.ts"
+  },
+  "direction": "upstream",
+  "impactedCount": 5,
+  "risk": "MEDIUM",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 5,
+    "processes_affected": 0,
+    "modules_affected": 1
+  },
+  "byDepthCounts": {
+    "1": 5
+  },
+  "affected_processes": [],
+  "affected_modules": [
+    {
+      "name": "Tools",
+      "hits": 4,
+      "impact": "direct"
+    }
+  ],
+  "byDepth": {
+    "1": [
+      {
+        "depth": 1,
+        "id": "Function:src/agents/openclaw-tools.continuation.ts:createOpenClawContinuationTools",
+        "name": "createOpenClawContinuationTools",
+        "filePath": "src/agents/openclaw-tools.continuation.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/agents/tools/request-compaction-tool.callsite-threading.test.ts:executeRequestCompactionTool",
+        "name": "executeRequestCompactionTool",
+        "filePath": "src/agents/tools/request-compaction-tool.callsite-threading.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/agents/tools/request-compaction-tool.test.ts:makeTool",
+        "name": "makeTool",
+        "filePath": "src/agents/tools/request-compaction-tool.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/agents/tools/request-compaction-tool.volitional-threading.test.ts:executeTool",
+        "name": "executeTool",
+        "filePath": "src/agents/tools/request-compaction-tool.volitional-threading.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/agents/tools/request-compaction-tool.classifier-emission.test.ts",
+        "name": "request-compaction-tool.classifier-emission.test.ts",
+        "filePath": "src/agents/tools/request-compaction-tool.classifier-emission.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      }
+    ]
+  }
+}

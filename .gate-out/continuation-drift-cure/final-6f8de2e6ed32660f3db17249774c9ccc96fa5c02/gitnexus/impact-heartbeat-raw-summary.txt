@@ -1,0 +1,90 @@
+{
+  "target": {
+    "id": "Function:src/infra/heartbeat-wake.ts:requestHeartbeatRaw",
+    "name": "requestHeartbeatRaw",
+    "type": "Function",
+    "filePath": "src/infra/heartbeat-wake.ts"
+  },
+  "direction": "upstream",
+  "impactedCount": 83,
+  "risk": "CRITICAL",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 37,
+    "processes_affected": 0,
+    "modules_affected": 13
+  },
+  "byDepthCounts": {
+    "1": 37,
+    "2": 17,
+    "3": 29
+  },
+  "affected_processes": [],
+  "affected_modules": [
+    {
+      "name": "Infra",
+      "hits": 21,
+      "impact": "direct"
+    },
+    {
+      "name": "Spawn",
+      "hits": 8,
+      "impact": "indirect"
+    },
+    {
+      "name": "Events",
+      "hits": 7,
+      "impact": "direct"
+    },
+    {
+      "name": "Tasks",
+      "hits": 7,
+      "impact": "direct"
+    },
+    {
+      "name": "Server-methods",
+      "hits": 5,
+      "impact": "direct"
+    },
+    {
+      "name": "Agents",
+      "hits": 5,
+      "impact": "direct"
+    },
+    {
+      "name": "Server",
+      "hits": 3,
+      "impact": "direct"
+    },
+    {
+      "name": "Runtime",
+      "hits": 2,
+      "impact": "direct"
+    },
+    {
+      "name": "Control-plane",
+      "hits": 1,
+      "impact": "indirect"
+    },
+    {
+      "name": "Completion",
+      "hits": 1,
+      "impact": "indirect"
+    },
+    {
+      "name": "Sessions",
+      "hits": 1,
+      "impact": "indirect"
+    },
+    {
+      "name": "Monitor",
+      "hits": 1,
+      "impact": "indirect"
+    },
+    {
+      "name": "Reply",
+      "hits": 1,
+      "impact": "indirect"
+    }
+  ]
+}

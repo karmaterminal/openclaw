@@ -1,0 +1,1009 @@
+[
+  {
+    "completed_at": "2026-08-23T13:27:31Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:26:57Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-eligible"
+    ],
+    "name": "preflight (karmaterminal/openclaw@6f8de2e6ed32660f3db17249774c9ccc96fa5c02)",
+    "runner_group_name": "thornfield",
+    "runner_name": "elliott",
+    "started_at": "2026-08-23T13:26:58Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:38:37Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-eligible"
+    ],
+    "name": "static gates (6f8de2e6ed32)",
+    "runner_group_name": "thornfield",
+    "runner_name": "emeric",
+    "started_at": "2026-08-23T13:27:33Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:30:37Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "core-tooling-3",
+    "runner_group_name": "thornfield",
+    "runner_name": "elliott",
+    "started_at": "2026-08-23T13:27:33Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:34:14Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "core-tooling-2",
+    "runner_group_name": "thornfield",
+    "runner_name": "ronan",
+    "started_at": "2026-08-23T13:31:50Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:31:49Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "core-tooling-6",
+    "runner_group_name": "thornfield",
+    "runner_name": "ronan",
+    "started_at": "2026-08-23T13:27:33Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:30:40Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "core-tooling-7",
+    "runner_group_name": "thornfield",
+    "runner_name": "cael",
+    "started_at": "2026-08-23T13:27:33Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:41:35Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "core-tooling-1",
+    "runner_group_name": "thornfield",
+    "runner_name": "emeric",
+    "started_at": "2026-08-23T13:38:39Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:32:49Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "core-tooling-5",
+    "runner_group_name": "thornfield",
+    "runner_name": "cael",
+    "started_at": "2026-08-23T13:30:42Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:54:50Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "local(agentic-command-support,extension-telegram)",
+    "runner_group_name": "thornfield",
+    "runner_name": "elliott",
+    "started_at": "2026-08-23T13:30:38Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:42:48Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "local(core-runtime-infra-process,extension-memory,…)",
+    "runner_group_name": "thornfield",
+    "runner_name": "cael",
+    "started_at": "2026-08-23T13:32:51Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:44:43Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "local(agentic-cli,extension-slack,…)",
+    "runner_group_name": "thornfield",
+    "runner_name": "ronan",
+    "started_at": "2026-08-23T13:38:29Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:36:47Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "core-tooling-4",
+    "runner_group_name": "thornfield",
+    "runner_name": "ronan",
+    "started_at": "2026-08-23T13:34:15Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:38:28Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "core-tooling-isolated",
+    "runner_group_name": "thornfield",
+    "runner_name": "ronan",
+    "started_at": "2026-08-23T13:36:49Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:47:16Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "local(agentic-gateway-methods,extension-messaging)",
+    "runner_group_name": "thornfield",
+    "runner_name": "emeric",
+    "started_at": "2026-08-23T13:42:16Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:35:20Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-unit-fast-2,agentic-control-plane-startup-config)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475496",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:38:01Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "core-unit-fast-isolated",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475497",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:46:24Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(extension-providers,core-runtime-infra-misc)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475499",
+    "started_at": "2026-08-23T13:27:39Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:38:24Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-cli-process,extension-provider-openai)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475498",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:47:32Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(extensions,agentic-control-plane-startup-restart-close,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475502",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:34:53Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-runtime-media-ui-2,core-runtime-hooks)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475506",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:33:27Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-gateway-server-isolated,extension-active-memory)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475500",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:32:26Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-unit-src-security-support,channels)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475501",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:32:27Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-agents-core-isolated,extension-codex-app-server-attempt-light)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475504",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:41:33Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-unit-src-security-1,agentic-commands-doctor-workspace)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475503",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:33:51Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-unit-fast-1,agentic-control-plane-runtime-network)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475508",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:35:35Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(extension-misc,agentic-control-plane-startup-health-runtime,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475507",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:36:22Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-agents-tools,agentic-control-plane-runtime-cron)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475531",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:37:02Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-gateway-core-1,agentic-control-plane-http-models)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475518",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:34:15Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(extension-signal,core-runtime-infra-core-utils)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475530",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:34:14Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-runtime-media-ui-3,core-runtime-infra-approval-exec)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475513",
+    "started_at": "2026-08-23T13:27:36Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:33:22Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-unit-fast-fake-timers,agentic-agents-core-auth)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475514",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:46:39Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-agents-support,extension-line)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475517",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:36:01Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(extension-browser,core-runtime-infra-system-runtime)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475510",
+    "started_at": "2026-08-23T13:27:36Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:34:33Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-runtime-media-ui-support,agentic-commands-doctor-whatsapp)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475523",
+    "started_at": "2026-08-23T13:27:36Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:32:50Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(extension-media,agentic-control-plane-runtime-state)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475537",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:40:05Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-gateway-core-3,extension-acpx)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475528",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:36:54Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-agents-embedded,extension-codex-app-server-attempt-support)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475505",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:37:06Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-unit-src-security-2,agentic-commands-models)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475526",
+    "started_at": "2026-08-23T13:27:36Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:35:41Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-control-plane-auth-node,extension-codex-app-server-attempt)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475529",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:32:50Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-runtime-infra-repo-tooling,core-runtime-infra-provider-push,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475509",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:33:57Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-runtime-media-ui-1,agentic-commands-status-tools)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475546",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:36:58Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-gateway-core-2,agentic-control-plane-http-plugin-ws)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475515",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:34:39Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-unit-support,extension-feishu,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475520",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:37:06Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-runtime-cron-isolated-agent,auto-reply-core-top-level,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475511",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:35:56Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(extension-zalo,core-runtime-secrets)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475527",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:37:57Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-commands-doctor-config-state,checks-fast-contracts-plugins-b,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475522",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:33:53Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(auto-reply-reply-commands-3,extension-codex-app-server-tools,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475519",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:37:26Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-control-plane-agent-chat,extension-codex-app-server-attempt-extra)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475521",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:38:50Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-agents-core-subagents,agentic-agents-core-runtime,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475525",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:42:25Z",
+    "conclusion": "failure",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-plugins,agentic-commands-doctor,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475547",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:39:35Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(extension-qa,agentic-control-plane-runtime-ui-tools)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475535",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:39:06Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-runtime-infra-heartbeat-core,extension-matrix,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475512",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:38:03Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-runtime-cron-service,auto-reply-reply-agent-runner,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475536",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:34:44Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-runtime-cron-core,extension-diffs,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475524",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:37:10Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-plugin-sdk,agentic-commands-agent-channel,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475543",
+    "started_at": "2026-08-23T13:27:36Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:37:49Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(auto-reply-reply-session,auto-reply-reply-state-routing,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475532",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:36:42Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(extension-codex-app-server-runtime,checks-fast-contracts-channels-a,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475544",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:33:09Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-commands-doctor-auth,checks-fast-contracts-plugins-a,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475533",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:38:43Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-unit-src-security-3,agentic-commands-onboard-config)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475550",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:37:30Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(auto-reply-reply-dispatch,extension-codex-surface,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475534",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:37:32Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-runtime-shared,extension-discord,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475539",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:40:49Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-agents-core-tools,agentic-commands-doctor-platform,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475540",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:43:56Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(extension-imessage,core-runtime-config,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475548",
+    "started_at": "2026-08-23T13:27:36Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:36:14Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(auto-reply-reply-commands-1,auto-reply-reply-commands-2,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475516",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:37:16Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(core-runtime-infra-heartbeat-runner,extension-mattermost,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475542",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T14:24:32Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-commands-doctor-sessions-cron,agentic-commands-doctor-shared,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475545",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:37:39Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-agents-core-runner-commands,agentic-agents-core-runner-embedded,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475549",
+    "started_at": "2026-08-23T13:27:35Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:33:22Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(agentic-agents-core-runner-cli-1,agentic-agents-core-runner-sessions,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475538",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:34:44Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "hosted(extension-codex-app-server-support,checks-fast-contracts-channels-b,…)",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475541",
+    "started_at": "2026-08-23T13:27:34Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:27:32Z",
+    "conclusion": "skipped",
+    "created_at": "2026-08-23T13:27:32Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-eligible"
+    ],
+    "name": "custom command (${{ needs.preflight.outputs.short_sha }})",
+    "runner_group_name": null,
+    "runner_name": null,
+    "started_at": "2026-08-23T13:27:32Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:38:53Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:38:38Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "routed lane eligibility",
+    "runner_group_name": "GitHub Actions",
+    "runner_name": "GitHub Actions 1000475552",
+    "started_at": "2026-08-23T13:38:40Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:52:17Z",
+    "conclusion": "failure",
+    "created_at": "2026-08-23T13:38:53Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "core-runtime-tui-pty",
+    "runner_group_name": "thornfield",
+    "runner_name": "cael",
+    "started_at": "2026-08-23T13:42:49Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:46:54Z",
+    "conclusion": "success",
+    "created_at": "2026-08-23T13:38:53Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "core-support-boundary",
+    "runner_group_name": "thornfield",
+    "runner_name": "ronan",
+    "started_at": "2026-08-23T13:45:51Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:38:53Z",
+    "conclusion": "skipped",
+    "created_at": "2026-08-23T13:38:53Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "name": "matrix.check_name",
+    "runner_group_name": null,
+    "runner_name": null,
+    "started_at": "2026-08-23T13:38:53Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": "2026-08-23T13:38:53Z",
+    "conclusion": "skipped",
+    "created_at": "2026-08-23T13:38:53Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-test-eligible"
+    ],
+    "name": "matrix.check_name",
+    "runner_group_name": null,
+    "runner_name": null,
+    "started_at": "2026-08-23T13:38:53Z",
+    "status": "completed"
+  },
+  {
+    "completed_at": null,
+    "conclusion": null,
+    "created_at": "2026-08-23T14:24:33Z",
+    "labels": [
+      "self-hosted",
+      "openclaw-ci-eligible"
+    ],
+    "name": "aggregate + status",
+    "runner_group_name": "thornfield",
+    "runner_name": "elliott",
+    "started_at": "2026-08-23T14:24:34Z",
+    "status": "in_progress"
+  }
+]

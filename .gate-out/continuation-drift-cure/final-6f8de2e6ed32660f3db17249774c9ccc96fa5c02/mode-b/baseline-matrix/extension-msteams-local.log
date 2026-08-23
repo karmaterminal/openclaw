@@ -1,0 +1,87 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-85651-continuation-drift-cure-candidate-20260823[39m
+
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/channel.actions.test.ts [2m([22m[2m71 tests[22m[2m)[22m[32m 59[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/messenger.test.ts [2m([22m[2m46 tests[22m[2m)[22m[32m 72[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/reply-dispatcher.test.ts [2m([22m[2m49 tests[22m[2m)[22m[32m 57[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/reply-stream-controller.test.ts [2m([22m[2m60 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/monitor-handler/message-handler.authz.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 238[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/monitor.lifecycle.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 93[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/attachments.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/attachments/graph.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 115[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/send.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/attachments/bot-framework.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/attachments/shared.test.ts [2m([22m[2m57 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/monitor-handler/inbound-media.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/graph.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/graph-upload.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 43[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/msteams-ingress.test.ts [2m([22m[2m17 tests[22m[2m)[22m[33m 7177[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves the inbound quote across 'retry' for 'groupChat' replies [33m 1528[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves the inbound quote across 'retry' for 'channel' replies [33m 1574[2mms[22m[39m
+     [33m[2m✓[22m[39m releases transient dispatch failures for retry [33m 1527[2mms[22m[39m
+     [33m[2m✓[22m[39m caps active deliveries across repeated drain pumps [33m 529[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/outbound.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/file-consent.test.ts [2m([22m[2m81 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/resolve-allowlist.test.ts [2m([22m[2m49 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/doctor-contract-api.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 651[2mms[22m[39m
+ [31m❯[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/send.threaded-attachments.test.ts [2m([22m[2m14 tests[22m[2m | [22m[31m13 failed[39m[2m)[22m[32m 37[2mms[22m[39m
+[31m     [31m×[31m sends 'channel attachment in its stored thre…' through the real Teams SDK and Bot Framework HTTP endpoint[39m[32m 7[2mms[22m[39m
+[31m     [31m×[31m sends 'channel attachment using the stored a…' through the real Teams SDK and Bot Framework HTTP endpoint[39m[32m 3[2mms[22m[39m
+[31m     [31m×[31m sends 'explicit top-level channel attachment' through the real Teams SDK and Bot Framework HTTP endpoint[39m[32m 3[2mms[22m[39m
+[31m     [31m×[31m sends 'group chat attachment without channel…' through the real Teams SDK and Bot Framework HTTP endpoint[39m[32m 3[2mms[22m[39m
+[31m     [31m×[31m delivers a workspace-relative attachment through the real Teams SDK and Bot Framework[39m[32m 7[2mms[22m[39m
+     [32m✓[39m keeps personal image delivery on the existing non-SharePoint path[32m 3[2mms[22m[39m
+[31m     [31m×[31m sends to the resolved 'threaded channel' identity through the real Teams SDK[39m[32m 2[2mms[22m[39m
+[31m     [31m×[31m sends to the resolved 'top-level channel' identity through the real Teams SDK[39m[32m 2[2mms[22m[39m
+[31m     [31m×[31m sends to the resolved 'group chat' identity through the real Teams SDK[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m sends to the resolved 'personal chat' identity through the real Teams SDK[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m sends to the resolved 'threaded channel' identity through the real Teams SDK[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m sends to the resolved 'top-level channel' identity through the real Teams SDK[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m sends to the resolved 'group chat' identity through the real Teams SDK[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m sends to the resolved 'personal chat' identity through the real Teams SDK[39m[32m 1[2mms[22m[39m
+ [31m❯[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/sdk.test.ts [2m([22m[2m23 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 161[2mms[22m[39m
+     [32m✓[39m does not crash with express 5 path-to-regexp (#55161)[32m 152[2mms[22m[39m
+     [32m✓[39m creates app with secret credentials[32m 1[2mms[22m[39m
+     [32m✓[39m keeps private QA App options absent in production[32m 0[2mms[22m[39m
+     [32m✓[39m passes the complete private QA bootstrap into the SDK App[32m 1[2mms[22m[39m
+[31m     [31m×[31m routes a private QA proactive send through the loopback Connector[39m[32m 1[2mms[22m[39m
+     [32m✓[39m creates app with federated certificate credentials[32m 1[2mms[22m[39m
+     [32m✓[39m prevents ambient CLIENT_SECRET from overriding 'certificate' authentication[32m 0[2mms[22m[39m
+     [32m✓[39m prevents ambient CLIENT_SECRET from overriding 'managed identity' authentication[32m 0[2mms[22m[39m
+     [32m✓[39m throws when certificate file is missing[32m 0[2mms[22m[39m
+     [32m✓[39m creates app with managed identity credentials[32m 0[2mms[22m[39m
+     [32m✓[39m creates app with user-assigned managed identity[32m 0[2mms[22m[39m
+     [32m✓[39m throws when federated credentials lack certificate and managed identity[32m 0[2mms[22m[39m
+     [32m✓[39m preserves both Teams SDK and OpenClaw User-Agent fragments[32m 0[2mms[22m[39m
+     [32m✓[39m bounds Teams SDK API requests[32m 0[2mms[22m[39m
+     [32m✓[39m accepts custom messagingEndpoint[32m 0[2mms[22m[39m
+     [32m✓[39m passes configured cloud and serviceUrl to the SDK App[32m 0[2mms[22m[39m
+     [32m✓[39m passes China cloud to the SDK App without requiring a configured serviceUrl[32m 0[2mms[22m[39m
+     [32m✓[39m fails closed for Graph tokens when China cloud is configured[32m 0[2mms[22m[39m
+     [32m✓[39m rejects configured serviceUrls outside the Bot Framework allowlist[32m 0[2mms[22m[39m
+[31m     [31m×[31m uses the configured cloud serviceUrl for proactive HTTP posts[39m[32m 0[2mms[22m[39m
+     [32m✓[39m returns bot token for bot framework scope[32m 0[2mms[22m[39m
+     [32m✓[39m returns graph token for graph scope[32m 0[2mms[22m[39m
+     [32m✓[39m returns empty string when token is null[32m 0[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/attachments.graph.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/read-policy.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/token.test.ts [2m([22m[2m26 tests[22m[2m)[22m[33m 417[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/monitor-handler.file-consent.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 347[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/channel.test.ts [2m([22m[2m39 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/send-context.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/delivery-trace.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/monitor-handler/message-handler.conversation-authz.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 205[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/setup-surface.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/format.test.ts [2m([22m[2m51 tests[22m[2m)[22m[32m 47[2mms[22m[39m
+ [32m✓[39m [30m[43m extension-msteams [49m[39m extensions/msteams/src/graph-group-management.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+[vitest] still running with no output for 30000ms.
+[vitest] still running with no output for 60000ms.
+[vitest] still running with no output for 90000ms.
+[vitest] no output for 120000ms; terminating stalled Vitest process group.
+[vitest] no-output process diagnostics begin (pid=803161)
+[vitest] process: pid=803161 ppid=803154 pgid=803161 elapsed=02:41 state=S cpu=27.8% rss_kb=2075724 wchan=futex_ comm=other
+[vitest] process tree: pgid=803161 members=1
+[vitest] process tree: pid=803161 ppid=803154 pgid=803161 elapsed=02:41 state=Z cpu=27.8% rss_kb=0 wchan=- comm=other
+[vitest] fd summary: unavailable
+[vitest] FAILED (exit 143)
+[test] FAILED (exit 143)

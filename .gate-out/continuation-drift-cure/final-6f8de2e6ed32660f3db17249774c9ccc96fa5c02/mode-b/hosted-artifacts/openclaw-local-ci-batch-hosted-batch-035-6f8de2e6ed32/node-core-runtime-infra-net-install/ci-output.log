@@ -1,0 +1,70 @@
+
+=== ENV user=runner arch=x86_64 cpus=2 mem=7GB ===
+node=v24.17.0 npm=11.13.0
+Preparing pnpm@11.15.1+sha512.81350b07e53c9538a02f1f2303b4290fa2d7be04e56e2a970c4cc4b417dc761de196edabd49d55c7dc9580db81007c44143e4e3d7e462b3000d23c255122d065 for immediate activation...
+pnpm=11.15.1
+pnpm store-dir=/home/runner/work/_temp/openclaw-local-ci-pnpm-store
+
+=== validating preinstalled dependency tree ===
+deps_preinstalled=validated
+pnpm_verify_deps_before_run=false
+
+=== deps:shrinkwrap reconcile skipped for test-shard ===
+
+=== GATE: test shard (core-runtime-infra-net-install) ===
+
+=== restoring upstream-faithful bundled-plugin discovery ===
+[test] starting test/vitest/vitest.infra.config.ts
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/runner/work/_temp/ci-batch-work-32642373348-1-hosted-batch-035/shard-2-core-runtime-infra-net-install[39m
+
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/fetch-guard.ssrf.test.ts [2m([22m[2m109 tests[22m[2m)[22m[33m 6776[2mms[22m[39m
+     [33m[2m✓[22m[39m applies 'the default loopback policy' to the real dashboard document-readiness consumer [33m 6261[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/npm-managed-root.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 272[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/undici-global-dispatcher.test.ts [2m([22m[2m33 tests[22m[2m)[22m[33m 1150[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/install-package-dir.test.ts [2m([22m[2m17 tests[22m[2m)[22m[33m 1100[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/proxy/proxy-lifecycle.test.ts [2m([22m[2m38 tests[22m[2m)[22m[32m 75[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/install-source-utils.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 87[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/proxy/proxy-validation.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 64[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/proxy-fetch.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 102[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/npm-install-env.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 182[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/ssrf.dispatcher.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 74[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/ssrf.pinning.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 60[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/npm-pack-install.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 45[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/undici-runtime.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 51[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/install-safe-path.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 59[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/pinned-dispatcher-pool.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/brew.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 77[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/runtime-fetch.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 59[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/installed-apps.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 52[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/install-flow.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/install-target.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 45[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/proxy/managed-proxy-undici.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/install-from-npm-spec.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/net/guarded-body-stream.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/npm-integrity.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/install-source-utils.chmod.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/binaries.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m26 passed[39m[22m[90m (26)[39m
+[2m      Tests [22m [1m[32m438 passed[39m[22m[90m (438)[39m
+[2m   Start at [22m 13:41:40
+[2m   Duration [22m 24.81s[2m (transform 7.62s, setup 8.59s, import 2.13s, tests 10.63s, environment 3ms)[22m
+
+[test] passed 1 Vitest shard in 25.47s
+GATE_OK: test shard (core-runtime-infra-net-install) (27s)
+
+=== RESULTS SUMMARY ===
+
+# openclaw-local-ci / core-runtime-infra-net-install - PASS (karmaterminal/openclaw@6f8de2e6ed32660f3db17249774c9ccc96fa5c02)
+
+## Gates
+- PASS `test shard (core-runtime-infra-net-install)` - 27s
+
+## Tests
+- passed: 438
+
+_full per-gate logs: `gate-*.log` in this artifact_
+
+
+=== RESULT rc=0 conclusion=pass ===

@@ -1,0 +1,40 @@
+{
+  "target": {
+    "id": "Function:src/agents/tools/request-compaction-tool.ts:createRequestCompactionTool",
+    "name": "createRequestCompactionTool",
+    "type": "Function",
+    "filePath": "src/agents/tools/request-compaction-tool.ts"
+  },
+  "direction": "upstream",
+  "impactedCount": 28,
+  "risk": "HIGH",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 5,
+    "processes_affected": 0,
+    "modules_affected": 3
+  },
+  "byDepthCounts": {
+    "1": 5,
+    "2": 5,
+    "3": 18
+  },
+  "affected_processes": [],
+  "affected_modules": [
+    {
+      "name": "Tools",
+      "hits": 9,
+      "impact": "direct"
+    },
+    {
+      "name": "Agents",
+      "hits": 3,
+      "impact": "indirect"
+    },
+    {
+      "name": "Plugins",
+      "hits": 1,
+      "impact": "indirect"
+    }
+  ]
+}

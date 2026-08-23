@@ -1,0 +1,28 @@
+{
+  "repo": "karmaterminal/openclaw",
+  "ref": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+  "sha": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+  "mode": "test-shard",
+  "shard": "agentic-plugins",
+  "configs": [
+    "test/vitest/vitest.plugins.config.ts"
+  ],
+  "conclusion": "pass",
+  "rc": 0,
+  "gates": [
+    {
+      "name": "test shard (agentic-plugins)",
+      "rc": 0,
+      "ok": true,
+      "seconds": 595
+    }
+  ],
+  "tests": {
+    "passed": 3819,
+    "failed": 0
+  },
+  "failure_count": 0,
+  "failures": [],
+  "flakes_greened_count": 0,
+  "flakes_greened": []
+}

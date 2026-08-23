@@ -1,0 +1,306 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-85651-continuation-drift-cure-candidate-20260823[39m
+
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-session-sqlite.test.ts [2m([22m[2m87 tests[22m[2m | [22m[33m2 skipped[39m[2m)[22m[33m 14541[2mms[22m[39m
+     [33m[2m✓[22m[39m imports zero legacy records without parsing canonical entry JSON [33m 306[2mms[22m[39m
+     [33m[2m✓[22m[39m migrates a dormant historical agent database before all-agent import compaction [33m 369[2mms[22m[39m
+     [33m[2m✓[22m[39m compacts migrated agent SQLite databases and reports reclaimed pages [33m 317[2mms[22m[39m
+     [33m[2m✓[22m[39m repairs canonical index corruption in place during recovery [33m 307[2mms[22m[39m
+     [33m[2m✓[22m[39m partitions the retired top-level store without guessing unscoped ownership [33m 458[2mms[22m[39m
+     [33m[2m✓[22m[39m imports shared custom stores into per-agent SQLite targets [33m 357[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-session-canonical-keys.memory.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 2542[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps entry JSON streaming under a low child heap [33m 2541[2mms[22m[39m
+│
+◇  Doctor warnings ────────────────────────────────────────────────────────────────────────╮
+│                                                                                          │
+│  - Agent main database                                                                   │
+│    /tmp/openclaw-delivery-legacy-schema-arMkRK/agents/main/agent/openclaw-agent.sqlite:  │
+│    OpenClaw agent database                                                               │
+│    /tmp/openclaw-delivery-legacy-schema-arMkRK/agents/main/agent/openclaw-agent.sqlite   │
+│    uses schema version 8; run openclaw doctor --fix to migrate                           │
+│    persisted media before using it.                                                      │
+│                                                                                          │
+├──────────────────────────────────────────────────────────────────────────────────────────╯
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-session-delivery-state.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 2603[2mms[22m[39m
+     [33m[2m✓[22m[39m migrates a copied realistic store without touching the source or canonical row bytes [33m 324[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-session-transcript-labels.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 2177[2mms[22m[39m
+│
+◇  Heartbeat task migration preview ──────────────────────────────────╮
+│                                                                     │
+│  2 tasks in                                                         │
+│  /tmp/openclaw-heartbeat-task-migration-dsitP3/cron/jobs.json will  │
+│  become independently scheduled cron jobs for agent "main".         │
+│                                                                     │
+├─────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────╮
+│                                                                │
+│  Converted 2 heartbeat tasks into cron jobs for agent "main".  │
+│                                                                │
+├────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor warnings ─────────────────────────────────────────────────────╮
+│                                                                       │
+│  Agent "main" scratch changed during task migration; no changes were  │
+│  committed.                                                           │
+│                                                                       │
+├───────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor warnings ─────────────────────────────────────────────────────╮
+│                                                                       │
+│  Agent "main" scratch changed during task migration; no changes were  │
+│  committed.                                                           │
+│                                                                       │
+├───────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────╮
+│                                                                │
+│  Converted 2 heartbeat tasks into cron jobs for agent "main".  │
+│                                                                │
+├────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────╮
+│                                                                │
+│  Converted 2 heartbeat tasks into cron jobs for agent "main".  │
+│                                                                │
+├────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor warnings ────────────────────────────────────────────────────────╮
+│                                                                          │
+│  Agent "main" legacy task timestamps could not be cleared after          │
+│  migration: simulated post-commit crash. Cron jobs remain authoritative  │
+│  and a rerun is safe.                                                    │
+│                                                                          │
+├──────────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────╮
+│                                                                │
+│  Converted 2 heartbeat tasks into cron jobs for agent "main".  │
+│                                                                │
+├────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────╮
+│                                                                │
+│  Converted 3 heartbeat tasks into cron jobs for agent "main".  │
+│                                                                │
+├────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor warnings ───────────────────────────────────────────────────────╮
+│                                                                         │
+│  Agent "main" heartbeat tasks were not migrated: tasks: block contains  │
+│  an incomplete name/interval/prompt entry.                              │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ──────────────────────────────────────────────╮
+│                                                               │
+│  Converted 1 heartbeat task into cron jobs for agent "main".  │
+│                                                               │
+├───────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ──────────────────────────────────────────────╮
+│                                                               │
+│  Converted 1 heartbeat task into cron jobs for agent "main".  │
+│                                                               │
+├───────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────╮
+│                                                                │
+│  Converted 2 heartbeat tasks into cron jobs for agent "main".  │
+│                                                                │
+├────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────╮
+│                                                                │
+│  Converted 2 heartbeat tasks into cron jobs for agent "main".  │
+│                                                                │
+├────────────────────────────────────────────────────────────────╯
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-heartbeat-task-migration.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 2395[2mms[22m[39m
+     [33m[2m✓[22m[39m does not migrate older shared state while detecting heartbeat tasks [33m 374[2mms[22m[39m
+│
+◇  Heartbeat migration preview ──────────────────────────────────────────╮
+│                                                                        │
+│  /tmp/openclaw-heartbeat-migration-wnqbgY/workspace/HEARTBEAT.md will  │
+│  migrate into scratch for Heartbeat (main).                            │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────────────╮
+│                                                                        │
+│  Migrated                                                              │
+│  /tmp/openclaw-heartbeat-migration-wnqbgY/workspace/HEARTBEAT.md into  │
+│  cron scratch for Heartbeat (main).                                    │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────╯
+│
+◇  Heartbeat migration preview ──────────────────────────────────────────╮
+│                                                                        │
+│  /tmp/openclaw-heartbeat-migration-SJr6ot/workspace/HEARTBEAT.md will  │
+│  migrate into scratch for Heartbeat (main).                            │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────────────╮
+│                                                                        │
+│  Migrated                                                              │
+│  /tmp/openclaw-heartbeat-migration-SJr6ot/workspace/HEARTBEAT.md into  │
+│  cron scratch for Heartbeat (main).                                    │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor warnings ─────────────────────────────────────────────────────╮
+│                                                                       │
+│  Agent "main" already has different cron scratch;                     │
+│  /tmp/openclaw-heartbeat-migration-SJr6ot/workspace/HEARTBEAT.md was  │
+│  left unchanged.                                                      │
+│                                                                       │
+├───────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────────────╮
+│                                                                        │
+│  Migrated                                                              │
+│  /tmp/openclaw-heartbeat-migration-U7RkKM/workspace/HEARTBEAT.md into  │
+│  cron scratch for Heartbeat (main).                                    │
+│  Migrated                                                              │
+│  /tmp/openclaw-heartbeat-migration-U7RkKM/workspace/HEARTBEAT.md into  │
+│  cron scratch for Heartbeat (ops).                                     │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────────────╮
+│                                                                        │
+│  Migrated                                                              │
+│  /tmp/openclaw-heartbeat-migration-SDUNTr/workspace/HEARTBEAT.md into  │
+│  cron scratch for Heartbeat (main).                                    │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────────────╮
+│                                                                        │
+│  Migrated                                                              │
+│  /tmp/openclaw-heartbeat-migration-7nn0az/workspace/HEARTBEAT.md into  │
+│  cron scratch for Heartbeat (main).                                    │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor warnings ─────────────────────────────────────────────────────╮
+│                                                                       │
+│  Agent "main" scratch was explicitly unset;                           │
+│  /tmp/openclaw-heartbeat-migration-7nn0az/workspace/HEARTBEAT.md was  │
+│  left unchanged.                                                      │
+│                                                                       │
+├───────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor warnings ─────────────────────────────────────────────────────╮
+│                                                                       │
+│  /tmp/openclaw-heartbeat-migration-NSV66u/workspace/HEARTBEAT.md was  │
+│  not migrated: HEARTBEAT.md changed before the migration claim was    │
+│  acquired. Rerun doctor to retry safely.                              │
+│                                                                       │
+├───────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor warnings ─────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                               │
+│  /tmp/openclaw-heartbeat-migration-poEyZS/workspace/HEARTBEAT.md was                                                          │
+│  not migrated: HEARTBEAT.md was recreated during migration; the claimed                                                       │
+│  original is preserved at                                                                                                     │
+│  /tmp/openclaw-heartbeat-migration-poEyZS/workspace/HEARTBEAT.md.doctor-importing-802549-f6c6ffcd2d78.conflict-1787494793100  │
+│  | EEXIST: file already exists, link                                                                                          │
+│  '/tmp/openclaw-heartbeat-migration-poEyZS/workspace/HEARTBEAT.md.doctor-importing-802549-f6c6ffcd2d78'                       │
+│  -> '/tmp/openclaw-heartbeat-migration-poEyZS/workspace/HEARTBEAT.md' |                                                       │
+│  EEXIST. Rerun doctor to retry safely.                                                                                        │
+│                                                                                                                               │
+├───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────────────╮
+│                                                                        │
+│  Migrated                                                              │
+│  /tmp/openclaw-heartbeat-migration-zKMbXo/workspace/HEARTBEAT.md into  │
+│  cron scratch for Heartbeat (main).                                    │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor warnings ────────────────────────────────────────────────────╮
+│                                                                      │
+│  Agent "main" HEARTBEAT.md was not migrated: a migration claim for   │
+│  /tmp/openclaw-heartbeat-migration-D74uud/workspace/HEARTBEAT.md is  │
+│  held by running process 1; wait for that doctor run to finish       │
+│                                                                      │
+├──────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ───────────────────────────────────────────────────────╮
+│                                                                        │
+│  Migrated                                                              │
+│  /tmp/openclaw-heartbeat-migration-1bpwNy/workspace/HEARTBEAT.md into  │
+│  cron scratch for Heartbeat (main).                                    │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────╯
+│
+◇  Doctor warnings ──────────────────────────────────────────────────╮
+│                                                                    │
+│  Agent "main" HEARTBEAT.md was not migrated: HEARTBEAT.md symlink  │
+│  target escapes the agent workspace                                │
+│                                                                    │
+├────────────────────────────────────────────────────────────────────╯
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-heartbeat-scratch-migration.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 1245[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-session-canonical-keys.retention.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 1287[2mms[22m[39m
+     [33m[2m✓[22m[39m copies only a cross-store winner and archives its stale same-store duplicate [33m 1027[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-session-transcript-headers.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 1191[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-session-incognito-key-repair.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 691[2mms[22m[39m
+     [33m[2m✓[22m[39m renames durable collisions and every key-bearing linkage idempotently [33m 313[2mms[22m[39m
+│
+◇  Heartbeat cadence migration preview ───────────────╮
+│                                                     │
+│  Create heartbeat monitor for agent "main" at 15m.  │
+│                                                     │
+├─────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ────────────────────────────────────╮
+│                                                     │
+│  Create heartbeat monitor for agent "main" at 15m.  │
+│                                                     │
+├─────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ────────────────────────────────────╮
+│                                                     │
+│  Update heartbeat monitor for agent "main" at 45m.  │
+│                                                     │
+├─────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ────────────────────────────────────╮
+│                                                     │
+│  Create heartbeat monitor for agent "main" at 30m.  │
+│                                                     │
+├─────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ─────────────────────────────────────╮
+│                                                      │
+│  Create heartbeat monitor for agent "alpha" at 15m.  │
+│  Create heartbeat monitor for agent "beta" at 20m.   │
+│                                                      │
+├──────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ─────────────────────────────────────╮
+│                                                      │
+│  Update heartbeat monitor for agent "alpha" at 45m.  │
+│  Create heartbeat monitor for agent "gamma" at 30m.  │
+│  Remove stale heartbeat monitor for agent "beta".    │
+│                                                      │
+├──────────────────────────────────────────────────────╯
+│
+◇  Doctor changes ────────────────────────────────────╮
+│                                                     │
+│  Create heartbeat monitor for agent "main" at 15m.  │
+│                                                     │
+├─────────────────────────────────────────────────────╯
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-heartbeat-cadence-migration.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 571[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-session-state-providers.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 562[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-session-snapshots.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 266[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-heartbeat-session-target.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 209[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-session-transcripts.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-session-sqlite-github-issue.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m15 passed[39m[22m[90m (15)[39m
+[2m      Tests [22m [1m[32m210 passed[39m[22m[2m | [22m[33m2 skipped[39m[90m (212)[39m
+[2m   Start at [22m 07:19:21
+[2m   Duration [22m 42.14s[2m (transform 7.75s, setup 423ms, import 11.19s, tests 30.32s, environment 0ms)[22m

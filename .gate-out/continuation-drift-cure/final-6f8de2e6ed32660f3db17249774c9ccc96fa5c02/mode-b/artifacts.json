@@ -1,0 +1,1465 @@
+{
+  "total_count": 73,
+  "artifacts": [
+    {
+      "id": 9494708087,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0NzA4MDg3",
+      "name": "openclaw-local-ci-aggregate-6f8de2e6ed32",
+      "size_in_bytes": 52440717,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494708087",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494708087/zip",
+      "expired": false,
+      "digest": "sha256:fc7f137a6cb02e7e51b9e54ac3c92ef45ea423c23bc3dbff241451e5c9f1a355",
+      "created_at": "2026-08-23T14:24:58Z",
+      "updated_at": "2026-08-23T14:24:58Z",
+      "expires_at": "2026-09-06T14:24:50Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494675173,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0Njc1MTcz",
+      "name": "openclaw-local-ci-batch-hosted-batch-050-6f8de2e6ed32",
+      "size_in_bytes": 52857,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494675173",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494675173/zip",
+      "expired": false,
+      "digest": "sha256:630c6b27c272e78e68c9c738559a47f7de77c26eaf7634edc0332c70300eb009",
+      "created_at": "2026-08-23T14:22:24Z",
+      "updated_at": "2026-08-23T14:22:24Z",
+      "expires_at": "2026-09-06T14:22:23Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494303317,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MzAzMzE3",
+      "name": "openclaw-local-ci-batch-local-batch-067-6f8de2e6ed32",
+      "size_in_bytes": 49839,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494303317",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494303317/zip",
+      "expired": false,
+      "digest": "sha256:ed8bbb5bdfa0705fc260183652637298a4413ac394a95e53857c5866e5b28dcc",
+      "created_at": "2026-08-23T13:54:38Z",
+      "updated_at": "2026-08-23T13:54:38Z",
+      "expires_at": "2026-09-06T13:54:37Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494272663,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MjcyNjYz",
+      "name": "openclaw-local-ci-batch-dist-batch-068-6f8de2e6ed32",
+      "size_in_bytes": 43326,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494272663",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494272663/zip",
+      "expired": false,
+      "digest": "sha256:a2734cc2aa22a2355b92b840b240edd139a129a80972931c7abf3145e6f0607d",
+      "created_at": "2026-08-23T13:52:12Z",
+      "updated_at": "2026-08-23T13:52:12Z",
+      "expires_at": "2026-09-06T13:52:11Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494206632,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MjA2NjMy",
+      "name": "openclaw-local-ci-batch-hosted-batch-009-6f8de2e6ed32",
+      "size_in_bytes": 38260,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494206632",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494206632/zip",
+      "expired": false,
+      "digest": "sha256:bb456e1f59dd78208f71d9a804418661d3a3893186e0aded69dc439e33735d62",
+      "created_at": "2026-08-23T13:47:08Z",
+      "updated_at": "2026-08-23T13:47:08Z",
+      "expires_at": "2026-09-06T13:47:07Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494206480,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MjA2NDgw",
+      "name": "openclaw-local-ci-batch-local-batch-064-6f8de2e6ed32",
+      "size_in_bytes": 29508,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494206480",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494206480/zip",
+      "expired": false,
+      "digest": "sha256:85c99900a3153c64c39777ee33a96525d9e03add30c040aa342e7fc8191c3354",
+      "created_at": "2026-08-23T13:47:07Z",
+      "updated_at": "2026-08-23T13:47:07Z",
+      "expires_at": "2026-09-06T13:47:06Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494202429,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MjAyNDI5",
+      "name": "openclaw-local-ci-batch-dist-batch-069-6f8de2e6ed32",
+      "size_in_bytes": 7059,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494202429",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494202429/zip",
+      "expired": false,
+      "digest": "sha256:e3d3be66a104704a1731b68266c866b6efc4a5b4c267b0a0244d9d2051661dcf",
+      "created_at": "2026-08-23T13:46:49Z",
+      "updated_at": "2026-08-23T13:46:49Z",
+      "expires_at": "2026-09-06T13:46:48Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494191314,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MTkxMzE0",
+      "name": "openclaw-local-ci-batch-hosted-batch-002-6f8de2e6ed32",
+      "size_in_bytes": 31023,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494191314",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494191314/zip",
+      "expired": false,
+      "digest": "sha256:42ec414f8280058a3c55dd8c00ae11eb63952c0f88c859c8b9e069da63283a5f",
+      "created_at": "2026-08-23T13:46:00Z",
+      "updated_at": "2026-08-23T13:46:00Z",
+      "expires_at": "2026-09-06T13:46:00Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494185499,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MTg1NDk5",
+      "name": "openclaw-local-ci-batch-hosted-batch-004-6f8de2e6ed32",
+      "size_in_bytes": 52852,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494185499",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494185499/zip",
+      "expired": false,
+      "digest": "sha256:ff6a4f5c7efbd65848a6362526a7f01e01f0b6e2a742cfb0ae5399518e58e428",
+      "created_at": "2026-08-23T13:45:33Z",
+      "updated_at": "2026-08-23T13:45:33Z",
+      "expires_at": "2026-09-06T13:45:32Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494173420,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MTczNDIw",
+      "name": "openclaw-local-ci-batch-local-batch-066-6f8de2e6ed32",
+      "size_in_bytes": 51353,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494173420",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494173420/zip",
+      "expired": false,
+      "digest": "sha256:30e00f184d63586fca64cc2e0b025855c2ab01a7f4b17f6e4c50659d36aa2cbb",
+      "created_at": "2026-08-23T13:44:38Z",
+      "updated_at": "2026-08-23T13:44:38Z",
+      "expires_at": "2026-09-06T13:44:37Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494158843,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MTU4ODQz",
+      "name": "openclaw-local-ci-batch-hosted-batch-055-6f8de2e6ed32",
+      "size_in_bytes": 73016,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494158843",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494158843/zip",
+      "expired": false,
+      "digest": "sha256:28a9258aaa5bbbd225ebfac0791773372fa6a304e36f4f3957db482b4aeab0b6",
+      "created_at": "2026-08-23T13:43:32Z",
+      "updated_at": "2026-08-23T13:43:32Z",
+      "expires_at": "2026-09-06T13:43:31Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494147784,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MTQ3Nzg0",
+      "name": "openclaw-local-ci-batch-local-batch-065-6f8de2e6ed32",
+      "size_in_bytes": 39089,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494147784",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494147784/zip",
+      "expired": false,
+      "digest": "sha256:991c095871734a8f14dbf2f8b67e1ab1b3c5c36b4f2492caa02c2c11f14192bc",
+      "created_at": "2026-08-23T13:42:43Z",
+      "updated_at": "2026-08-23T13:42:43Z",
+      "expires_at": "2026-09-06T13:42:42Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494141646,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MTQxNjQ2",
+      "name": "openclaw-local-ci-batch-hosted-batch-035-6f8de2e6ed32",
+      "size_in_bytes": 39029,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494141646",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494141646/zip",
+      "expired": false,
+      "digest": "sha256:fbc71e5732caa326785f9920c2755350a5eb8a324390d7a6a071f9e5fc10b25a",
+      "created_at": "2026-08-23T13:42:15Z",
+      "updated_at": "2026-08-23T13:42:15Z",
+      "expires_at": "2026-09-06T13:42:14Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494130930,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MTMwOTMw",
+      "name": "openclaw-local-ci-batch-local-batch-061-6f8de2e6ed32",
+      "size_in_bytes": 13937,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494130930",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494130930/zip",
+      "expired": false,
+      "digest": "sha256:2c328fb58f18848f026e85d40cda9f8cf00408b3e31df2cd55dbba9a3c458d5b",
+      "created_at": "2026-08-23T13:41:26Z",
+      "updated_at": "2026-08-23T13:41:26Z",
+      "expires_at": "2026-09-06T13:41:25Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494119905,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MTE5OTA1",
+      "name": "openclaw-local-ci-batch-hosted-batch-020-6f8de2e6ed32",
+      "size_in_bytes": 32729,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494119905",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494119905/zip",
+      "expired": false,
+      "digest": "sha256:3f78d2eb59a83ff859f7490fc0b77533154c116dc5fb5b423a5741c79fd5202c",
+      "created_at": "2026-08-23T13:40:34Z",
+      "updated_at": "2026-08-23T13:40:34Z",
+      "expires_at": "2026-09-06T13:40:33Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494115110,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MTE1MTEw",
+      "name": "openclaw-local-ci-batch-hosted-batch-054-6f8de2e6ed32",
+      "size_in_bytes": 33625,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494115110",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494115110/zip",
+      "expired": false,
+      "digest": "sha256:6dee0c1ad848402d649fa08f285d5d055c4e93a6f2e93167c8104d6e94180a7f",
+      "created_at": "2026-08-23T13:40:10Z",
+      "updated_at": "2026-08-23T13:40:10Z",
+      "expires_at": "2026-09-06T13:40:09Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494104063,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MTA0MDYz",
+      "name": "openclaw-local-ci-batch-hosted-batch-013-6f8de2e6ed32",
+      "size_in_bytes": 30824,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494104063",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494104063/zip",
+      "expired": false,
+      "digest": "sha256:805df3ca51b76a8048f557c0eb5e20facc490f17101830079a02ebeae797c9e4",
+      "created_at": "2026-08-23T13:39:17Z",
+      "updated_at": "2026-08-23T13:39:17Z",
+      "expires_at": "2026-09-06T13:39:17Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494101679,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MTAxNjc5",
+      "name": "openclaw-local-ci-batch-hosted-batch-031-6f8de2e6ed32",
+      "size_in_bytes": 29350,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494101679",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494101679/zip",
+      "expired": false,
+      "digest": "sha256:5abf3ed6cafed09001523b5efbcf17763c657342c5e7f0b997c685159555de99",
+      "created_at": "2026-08-23T13:39:06Z",
+      "updated_at": "2026-08-23T13:39:06Z",
+      "expires_at": "2026-09-06T13:39:05Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494094180,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDk0MTgw",
+      "name": "openclaw-local-ci-batch-hosted-batch-047-6f8de2e6ed32",
+      "size_in_bytes": 47269,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494094180",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494094180/zip",
+      "expired": false,
+      "digest": "sha256:406b6d3cfb20686fc284be865f589a6bb71cd536b952d54c78126d7e50ea6380",
+      "created_at": "2026-08-23T13:38:28Z",
+      "updated_at": "2026-08-23T13:38:28Z",
+      "expires_at": "2026-09-06T13:38:27Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494094058,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDk0MDU4",
+      "name": "openclaw-local-ci-dist-runtime-6f8de2e6ed32",
+      "size_in_bytes": 49034070,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494094058",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494094058/zip",
+      "expired": false,
+      "digest": "sha256:25925551084655f5e99e2a7ad65bd5368b3bbe1d68d231d50c74498b858b4908",
+      "created_at": "2026-08-23T13:38:28Z",
+      "updated_at": "2026-08-23T13:38:28Z",
+      "expires_at": "2026-08-24T13:38:18Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494092985,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDkyOTg1",
+      "name": "openclaw-local-ci-batch-local-batch-063-6f8de2e6ed32",
+      "size_in_bytes": 8325,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494092985",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494092985/zip",
+      "expired": false,
+      "digest": "sha256:834fee0bcc6bbd69bd4a6a240ced8c5b50bd12f626ee8a6364d3500843d1e684",
+      "created_at": "2026-08-23T13:38:22Z",
+      "updated_at": "2026-08-23T13:38:22Z",
+      "expires_at": "2026-09-06T13:38:21Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494092004,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDkyMDA0",
+      "name": "openclaw-local-ci-batch-hosted-batch-040-6f8de2e6ed32",
+      "size_in_bytes": 37617,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494092004",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494092004/zip",
+      "expired": false,
+      "digest": "sha256:14a83fc653c0b3bb6ce578a40e3a050f0b6b4b52b79bca748a194aeba8d114c6",
+      "created_at": "2026-08-23T13:38:18Z",
+      "updated_at": "2026-08-23T13:38:18Z",
+      "expires_at": "2026-09-06T13:38:16Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494091873,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDkxODcz",
+      "name": "openclaw-local-ci-static-6f8de2e6ed32",
+      "size_in_bytes": 11179,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494091873",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494091873/zip",
+      "expired": false,
+      "digest": "sha256:a67fde245b72997bd6eaa108f298e8c07a4a91510e98fea08b6852137337c2b5",
+      "created_at": "2026-08-23T13:38:17Z",
+      "updated_at": "2026-08-23T13:38:17Z",
+      "expires_at": "2026-09-06T13:38:16Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494089959,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDg5OTU5",
+      "name": "openclaw-local-ci-batch-hosted-batch-022-6f8de2e6ed32",
+      "size_in_bytes": 41720,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494089959",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494089959/zip",
+      "expired": false,
+      "digest": "sha256:2dbd3305f756b96d79a53a02db771b5a6e81a164a57e4dd07e233a969a1abadc",
+      "created_at": "2026-08-23T13:38:08Z",
+      "updated_at": "2026-08-23T13:38:08Z",
+      "expires_at": "2026-09-06T13:38:07Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494083833,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDgzODMz",
+      "name": "openclaw-local-ci-batch-hosted-batch-010-6f8de2e6ed32",
+      "size_in_bytes": 18592,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494083833",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494083833/zip",
+      "expired": false,
+      "digest": "sha256:51ec1a8258bea95cfac014384ff003e6d3b38a172d8d4b3be1d235b58ad857cf",
+      "created_at": "2026-08-23T13:37:38Z",
+      "updated_at": "2026-08-23T13:37:38Z",
+      "expires_at": "2026-09-06T13:37:37Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494083274,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDgzMjc0",
+      "name": "openclaw-local-ci-batch-hosted-batch-001-6f8de2e6ed32",
+      "size_in_bytes": 17138,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494083274",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494083274/zip",
+      "expired": false,
+      "digest": "sha256:6aba45102f05b364d84678c4836e171d0fe176be0b45b888f45ffcc6d5839c99",
+      "created_at": "2026-08-23T13:37:35Z",
+      "updated_at": "2026-08-23T13:37:35Z",
+      "expires_at": "2026-09-06T13:37:35Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494083005,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDgzMDA1",
+      "name": "openclaw-local-ci-batch-hosted-batch-043-6f8de2e6ed32",
+      "size_in_bytes": 43606,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494083005",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494083005/zip",
+      "expired": false,
+      "digest": "sha256:fa76f1d4b1ccf6baed0a62d6afc4fdd87eccb49faf2a661d811381972dce0d48",
+      "created_at": "2026-08-23T13:37:34Z",
+      "updated_at": "2026-08-23T13:37:34Z",
+      "expires_at": "2026-09-06T13:37:33Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494081938,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDgxOTM4",
+      "name": "openclaw-local-ci-batch-hosted-batch-033-6f8de2e6ed32",
+      "size_in_bytes": 29311,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494081938",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494081938/zip",
+      "expired": false,
+      "digest": "sha256:fb17e07fe59405e39f229baf0baab5130a2f6dadc42c35858229c8b68922196e",
+      "created_at": "2026-08-23T13:37:29Z",
+      "updated_at": "2026-08-23T13:37:29Z",
+      "expires_at": "2026-09-06T13:37:28Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494078488,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDc4NDg4",
+      "name": "openclaw-local-ci-batch-hosted-batch-052-6f8de2e6ed32",
+      "size_in_bytes": 38092,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494078488",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494078488/zip",
+      "expired": false,
+      "digest": "sha256:741ebf4c70795ac2b4e494041494ea08a458ba81fa8e76de4eb30d2d187782dc",
+      "created_at": "2026-08-23T13:37:12Z",
+      "updated_at": "2026-08-23T13:37:12Z",
+      "expires_at": "2026-09-06T13:37:12Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494077714,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDc3NzE0",
+      "name": "openclaw-local-ci-batch-hosted-batch-039-6f8de2e6ed32",
+      "size_in_bytes": 31086,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494077714",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494077714/zip",
+      "expired": false,
+      "digest": "sha256:2d50130f5e7a967a782e0c21cb1bfb03354ac9481a975cabeaedcd362fe7a477",
+      "created_at": "2026-08-23T13:37:09Z",
+      "updated_at": "2026-08-23T13:37:09Z",
+      "expires_at": "2026-09-06T13:37:08Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494076582,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDc2NTgy",
+      "name": "openclaw-local-ci-batch-hosted-batch-053-6f8de2e6ed32",
+      "size_in_bytes": 32438,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494076582",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494076582/zip",
+      "expired": false,
+      "digest": "sha256:bada38a128ee0779bed879be150e057e95fa98739c5003706ab79dd3994c3bab",
+      "created_at": "2026-08-23T13:37:04Z",
+      "updated_at": "2026-08-23T13:37:04Z",
+      "expires_at": "2026-09-06T13:37:03Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494076343,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDc2MzQz",
+      "name": "openclaw-local-ci-batch-hosted-batch-045-6f8de2e6ed32",
+      "size_in_bytes": 36087,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494076343",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494076343/zip",
+      "expired": false,
+      "digest": "sha256:d59a6db8c637c34d3440c7cd89039878a77f125ead454474ef215f3c455e8f81",
+      "created_at": "2026-08-23T13:37:03Z",
+      "updated_at": "2026-08-23T13:37:03Z",
+      "expires_at": "2026-09-06T13:37:02Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494076146,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDc2MTQ2",
+      "name": "openclaw-local-ci-batch-hosted-batch-026-6f8de2e6ed32",
+      "size_in_bytes": 29840,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494076146",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494076146/zip",
+      "expired": false,
+      "digest": "sha256:0c30587739e9fd9ddc81a51e0b6473d99222ac341a9606bb60a8e92b5779e9a5",
+      "created_at": "2026-08-23T13:37:02Z",
+      "updated_at": "2026-08-23T13:37:02Z",
+      "expires_at": "2026-09-06T13:37:01Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494072546,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDcyNTQ2",
+      "name": "openclaw-local-ci-batch-hosted-batch-034-6f8de2e6ed32",
+      "size_in_bytes": 32023,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494072546",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494072546/zip",
+      "expired": false,
+      "digest": "sha256:873bc8749a88950afd7f9082185d1ebcfe90fedb43f50e0944825fc8bba38f62",
+      "created_at": "2026-08-23T13:36:45Z",
+      "updated_at": "2026-08-23T13:36:45Z",
+      "expires_at": "2026-09-06T13:36:44Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494072286,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDcyMjg2",
+      "name": "openclaw-local-ci-batch-hosted-batch-042-6f8de2e6ed32",
+      "size_in_bytes": 35485,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494072286",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494072286/zip",
+      "expired": false,
+      "digest": "sha256:9d8d6446a78e88f44822b12025131b897bb526550f17c4d8ea7dc0c92f17871f",
+      "created_at": "2026-08-23T13:36:44Z",
+      "updated_at": "2026-08-23T13:36:44Z",
+      "expires_at": "2026-09-06T13:36:43Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494072182,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDcyMTgy",
+      "name": "openclaw-local-ci-batch-hosted-batch-041-6f8de2e6ed32",
+      "size_in_bytes": 30167,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494072182",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494072182/zip",
+      "expired": false,
+      "digest": "sha256:0c55353262bfec17594019acc1ed71fc4c1903eba970113c99c9ed890172ff42",
+      "created_at": "2026-08-23T13:36:43Z",
+      "updated_at": "2026-08-23T13:36:43Z",
+      "expires_at": "2026-09-06T13:36:42Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494072154,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDcyMTU0",
+      "name": "openclaw-local-ci-batch-local-batch-062-6f8de2e6ed32",
+      "size_in_bytes": 14089,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494072154",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494072154/zip",
+      "expired": false,
+      "digest": "sha256:889c13c04e233b1aad11dced3a0b63729532d6aa028a70a88c59aa09c38d9aad",
+      "created_at": "2026-08-23T13:36:43Z",
+      "updated_at": "2026-08-23T13:36:43Z",
+      "expires_at": "2026-09-06T13:36:42Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494070037,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDcwMDM3",
+      "name": "openclaw-local-ci-batch-hosted-batch-021-6f8de2e6ed32",
+      "size_in_bytes": 30111,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494070037",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494070037/zip",
+      "expired": false,
+      "digest": "sha256:3a2d53fae9f9400f738c0ed13b2744d8bd6dfb6c196748366fb5c89d7a780d7e",
+      "created_at": "2026-08-23T13:36:32Z",
+      "updated_at": "2026-08-23T13:36:32Z",
+      "expires_at": "2026-09-06T13:36:31Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494069956,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDY5OTU2",
+      "name": "openclaw-local-ci-batch-hosted-batch-012-6f8de2e6ed32",
+      "size_in_bytes": 33685,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494069956",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494069956/zip",
+      "expired": false,
+      "digest": "sha256:6865a3170387bcbea9fc97377530c5cfe941d029ea67a1c9f1f917f30e7803c3",
+      "created_at": "2026-08-23T13:36:32Z",
+      "updated_at": "2026-08-23T13:36:32Z",
+      "expires_at": "2026-09-06T13:36:31Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494068928,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDY4OTI4",
+      "name": "openclaw-local-ci-batch-hosted-batch-011-6f8de2e6ed32",
+      "size_in_bytes": 26168,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494068928",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494068928/zip",
+      "expired": false,
+      "digest": "sha256:172294cc2972ef283fb8f8581c83a00f1fbe03bbc5205f9837b5f16b058c9058",
+      "created_at": "2026-08-23T13:36:27Z",
+      "updated_at": "2026-08-23T13:36:27Z",
+      "expires_at": "2026-09-06T13:36:26Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494067938,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDY3OTM4",
+      "name": "openclaw-local-ci-batch-hosted-batch-025-6f8de2e6ed32",
+      "size_in_bytes": 23376,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494067938",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494067938/zip",
+      "expired": false,
+      "digest": "sha256:0907524bab92460df7da960dcfe2b2e8a1a8b7beedb912de4bc0cdfd6c373ea6",
+      "created_at": "2026-08-23T13:36:23Z",
+      "updated_at": "2026-08-23T13:36:23Z",
+      "expires_at": "2026-09-06T13:36:22Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494066584,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDY2NTg0",
+      "name": "openclaw-local-ci-batch-hosted-batch-048-6f8de2e6ed32",
+      "size_in_bytes": 24795,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494066584",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494066584/zip",
+      "expired": false,
+      "digest": "sha256:fadf7aabc55851cfa970e5c4592174d10a4f09c07dbeeef7d37abe7fc2112a61",
+      "created_at": "2026-08-23T13:36:16Z",
+      "updated_at": "2026-08-23T13:36:16Z",
+      "expires_at": "2026-09-06T13:36:16Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494060754,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDYwNzU0",
+      "name": "openclaw-local-ci-batch-hosted-batch-051-6f8de2e6ed32",
+      "size_in_bytes": 61850,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494060754",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494060754/zip",
+      "expired": false,
+      "digest": "sha256:b528299ef69ab3936bd31b5dbbc1243d31350f2067721ce3571c1d32764539b3",
+      "created_at": "2026-08-23T13:35:50Z",
+      "updated_at": "2026-08-23T13:35:50Z",
+      "expires_at": "2026-09-06T13:35:49Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494060260,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDYwMjYw",
+      "name": "openclaw-local-ci-batch-hosted-batch-005-6f8de2e6ed32",
+      "size_in_bytes": 27081,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494060260",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494060260/zip",
+      "expired": false,
+      "digest": "sha256:d5051b2fdd1fdf5e3491cbeeb56c7302df002d00b226b5d87abb216d869bf9bd",
+      "created_at": "2026-08-23T13:35:48Z",
+      "updated_at": "2026-08-23T13:35:48Z",
+      "expires_at": "2026-09-06T13:35:47Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494055260,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDU1MjYw",
+      "name": "openclaw-local-ci-batch-hosted-batch-028-6f8de2e6ed32",
+      "size_in_bytes": 25466,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494055260",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494055260/zip",
+      "expired": false,
+      "digest": "sha256:d39f91fd549f92c2583304f96251ea9e1427857c006b1299191300da0814d8e3",
+      "created_at": "2026-08-23T13:35:25Z",
+      "updated_at": "2026-08-23T13:35:25Z",
+      "expires_at": "2026-09-06T13:35:24Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494051986,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDUxOTg2",
+      "name": "openclaw-local-ci-batch-hosted-batch-008-6f8de2e6ed32",
+      "size_in_bytes": 19851,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494051986",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494051986/zip",
+      "expired": false,
+      "digest": "sha256:e641cdb5a6cf37154a899e46f7ddfd9c8b87bcf61f93d4e04f1f4d50c6242d37",
+      "created_at": "2026-08-23T13:35:09Z",
+      "updated_at": "2026-08-23T13:35:09Z",
+      "expires_at": "2026-09-06T13:35:08Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494051935,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDUxOTM1",
+      "name": "openclaw-local-ci-batch-hosted-batch-027-6f8de2e6ed32",
+      "size_in_bytes": 24464,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494051935",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494051935/zip",
+      "expired": false,
+      "digest": "sha256:dd9353ce35e2b15296007a795f33ecbdab09c6e9e58e48f16a928ba1d2a642ef",
+      "created_at": "2026-08-23T13:35:09Z",
+      "updated_at": "2026-08-23T13:35:09Z",
+      "expires_at": "2026-09-06T13:35:09Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494048406,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDQ4NDA2",
+      "name": "openclaw-local-ci-batch-hosted-batch-007-6f8de2e6ed32",
+      "size_in_bytes": 35995,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494048406",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494048406/zip",
+      "expired": false,
+      "digest": "sha256:e2b3c1b1195788111824dc2c87bbbc891114c75521004965c6c709d3d6ecc5ac",
+      "created_at": "2026-08-23T13:34:53Z",
+      "updated_at": "2026-08-23T13:34:53Z",
+      "expires_at": "2026-09-06T13:34:52Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494047019,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDQ3MDE5",
+      "name": "openclaw-local-ci-batch-hosted-batch-029-6f8de2e6ed32",
+      "size_in_bytes": 21683,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494047019",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494047019/zip",
+      "expired": false,
+      "digest": "sha256:6dfa7fb078558a3264e50aba69b9dc51d496032dc91f5ab7646fa840f4603c0c",
+      "created_at": "2026-08-23T13:34:46Z",
+      "updated_at": "2026-08-23T13:34:46Z",
+      "expires_at": "2026-09-06T13:34:45Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494041664,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDQxNjY0",
+      "name": "openclaw-local-ci-batch-hosted-batch-049-6f8de2e6ed32",
+      "size_in_bytes": 24541,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494041664",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494041664/zip",
+      "expired": false,
+      "digest": "sha256:c27f30f5e9d6651f4162eae8379eeee5b76825df59c65a49fafe414474d789fa",
+      "created_at": "2026-08-23T13:34:21Z",
+      "updated_at": "2026-08-23T13:34:21Z",
+      "expires_at": "2026-09-06T13:34:21Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494041395,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDQxMzk1",
+      "name": "openclaw-local-ci-batch-hosted-batch-044-6f8de2e6ed32",
+      "size_in_bytes": 18595,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494041395",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494041395/zip",
+      "expired": false,
+      "digest": "sha256:38b96caf6048d05127f9fc69946e0fd5dd184f6ade479dba065ce093d5cc39ea",
+      "created_at": "2026-08-23T13:34:20Z",
+      "updated_at": "2026-08-23T13:34:20Z",
+      "expires_at": "2026-09-06T13:34:19Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494041133,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDQxMTMz",
+      "name": "openclaw-local-ci-batch-hosted-batch-037-6f8de2e6ed32",
+      "size_in_bytes": 41691,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494041133",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494041133/zip",
+      "expired": false,
+      "digest": "sha256:4f03ef6c3b3538cacdecbbfdc8c25a619121373f5946147fc4bf4b7f8b5252a2",
+      "created_at": "2026-08-23T13:34:19Z",
+      "updated_at": "2026-08-23T13:34:19Z",
+      "expires_at": "2026-09-06T13:34:18Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494039238,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDM5MjM4",
+      "name": "openclaw-local-ci-batch-hosted-batch-017-6f8de2e6ed32",
+      "size_in_bytes": 24494,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494039238",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494039238/zip",
+      "expired": false,
+      "digest": "sha256:bd9070c54687db28f992867b8952f91a15b493600d65dc7c253ee2e6b58ead0a",
+      "created_at": "2026-08-23T13:34:10Z",
+      "updated_at": "2026-08-23T13:34:10Z",
+      "expires_at": "2026-09-06T13:34:09Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494038940,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDM4OTQw",
+      "name": "openclaw-local-ci-batch-local-batch-056-6f8de2e6ed32",
+      "size_in_bytes": 13750,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494038940",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494038940/zip",
+      "expired": false,
+      "digest": "sha256:bb17124a07c6969ca42fc206f05ef9da479a2a6afb7be8e11f0798d0c250963e",
+      "created_at": "2026-08-23T13:34:09Z",
+      "updated_at": "2026-08-23T13:34:09Z",
+      "expires_at": "2026-09-06T13:34:08Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494038407,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDM4NDA3",
+      "name": "openclaw-local-ci-batch-hosted-batch-019-6f8de2e6ed32",
+      "size_in_bytes": 21323,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494038407",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494038407/zip",
+      "expired": false,
+      "digest": "sha256:ff8d8a000a758384e97c45b36c37dcf80b93233021927fd0d0cf16fa2fd91136",
+      "created_at": "2026-08-23T13:34:06Z",
+      "updated_at": "2026-08-23T13:34:06Z",
+      "expires_at": "2026-09-06T13:34:05Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494034609,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDM0NjA5",
+      "name": "openclaw-local-ci-batch-hosted-batch-003-6f8de2e6ed32",
+      "size_in_bytes": 15406,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494034609",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494034609/zip",
+      "expired": false,
+      "digest": "sha256:88d7b3ff56af688b7901684cc9850f5986f3ebefff7d060e7eef5fa0effde9c7",
+      "created_at": "2026-08-23T13:33:49Z",
+      "updated_at": "2026-08-23T13:33:49Z",
+      "expires_at": "2026-09-06T13:33:48Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494033594,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDMzNTk0",
+      "name": "openclaw-local-ci-batch-hosted-batch-018-6f8de2e6ed32",
+      "size_in_bytes": 30836,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494033594",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494033594/zip",
+      "expired": false,
+      "digest": "sha256:8764ab22be316f41b27854f266498b2bfd883788f60ccd8c9d136da4002867f4",
+      "created_at": "2026-08-23T13:33:44Z",
+      "updated_at": "2026-08-23T13:33:44Z",
+      "expires_at": "2026-09-06T13:33:43Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494030272,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDMwMjcy",
+      "name": "openclaw-local-ci-batch-hosted-batch-016-6f8de2e6ed32",
+      "size_in_bytes": 34639,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494030272",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494030272/zip",
+      "expired": false,
+      "digest": "sha256:515971e83ffb649e1e2d16662c44682b178e63fead0dca43267f60f7a767fad5",
+      "created_at": "2026-08-23T13:33:29Z",
+      "updated_at": "2026-08-23T13:33:29Z",
+      "expires_at": "2026-09-06T13:33:29Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494029835,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDI5ODM1",
+      "name": "openclaw-local-ci-batch-hosted-batch-006-6f8de2e6ed32",
+      "size_in_bytes": 38291,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494029835",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494029835/zip",
+      "expired": false,
+      "digest": "sha256:ea97ae745bc48fc08610b02bbf438a8488f386fdeed2f79c48f02d91ebebd9f5",
+      "created_at": "2026-08-23T13:33:27Z",
+      "updated_at": "2026-08-23T13:33:27Z",
+      "expires_at": "2026-09-06T13:33:27Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494029732,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDI5NzMy",
+      "name": "openclaw-local-ci-batch-hosted-batch-038-6f8de2e6ed32",
+      "size_in_bytes": 20976,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494029732",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494029732/zip",
+      "expired": false,
+      "digest": "sha256:ab390caca05c9a8ea01ee0b0adf65b29d40e3cc384aaf67f4b6856783bb1f624",
+      "created_at": "2026-08-23T13:33:27Z",
+      "updated_at": "2026-08-23T13:33:27Z",
+      "expires_at": "2026-09-06T13:33:26Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494024275,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDI0Mjc1",
+      "name": "openclaw-local-ci-batch-hosted-batch-014-6f8de2e6ed32",
+      "size_in_bytes": 19326,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494024275",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494024275/zip",
+      "expired": false,
+      "digest": "sha256:5938b0a55be5e1720ef6786bc67652a6ed70f2f36e98a0f29488338052558aa4",
+      "created_at": "2026-08-23T13:33:03Z",
+      "updated_at": "2026-08-23T13:33:03Z",
+      "expires_at": "2026-09-06T13:33:03Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494022548,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDIyNTQ4",
+      "name": "openclaw-local-ci-batch-hosted-batch-046-6f8de2e6ed32",
+      "size_in_bytes": 21429,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494022548",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494022548/zip",
+      "expired": false,
+      "digest": "sha256:f9ac772db442187c8527c6e2c23086737654217400e0a22c3e6fc10a189003d3",
+      "created_at": "2026-08-23T13:32:56Z",
+      "updated_at": "2026-08-23T13:32:56Z",
+      "expires_at": "2026-09-06T13:32:55Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494020762,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDIwNzYy",
+      "name": "openclaw-local-ci-batch-hosted-batch-015-6f8de2e6ed32",
+      "size_in_bytes": 18023,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494020762",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494020762/zip",
+      "expired": false,
+      "digest": "sha256:2b427863564c02fd4c34347c5ad2b9840ef63fe8dd7c07b45d9114f276d49826",
+      "created_at": "2026-08-23T13:32:48Z",
+      "updated_at": "2026-08-23T13:32:48Z",
+      "expires_at": "2026-09-06T13:32:47Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494020627,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDIwNjI3",
+      "name": "openclaw-local-ci-batch-hosted-batch-032-6f8de2e6ed32",
+      "size_in_bytes": 35989,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494020627",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494020627/zip",
+      "expired": false,
+      "digest": "sha256:1735d49de0c0b9c7590ce2c19f99727cd509a31cb0baae8129ac599d4143a8a2",
+      "created_at": "2026-08-23T13:32:47Z",
+      "updated_at": "2026-08-23T13:32:47Z",
+      "expires_at": "2026-09-06T13:32:47Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494019986,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDE5OTg2",
+      "name": "openclaw-local-ci-batch-local-batch-058-6f8de2e6ed32",
+      "size_in_bytes": 14138,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494019986",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494019986/zip",
+      "expired": false,
+      "digest": "sha256:459c8bd3f6e8f3fd817c8c448aceebff3c51850b4e34260965c37bbfb1ff2fe9",
+      "created_at": "2026-08-23T13:32:44Z",
+      "updated_at": "2026-08-23T13:32:44Z",
+      "expires_at": "2026-09-06T13:32:43Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494015635,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDE1NjM1",
+      "name": "openclaw-local-ci-batch-hosted-batch-036-6f8de2e6ed32",
+      "size_in_bytes": 17116,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494015635",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494015635/zip",
+      "expired": false,
+      "digest": "sha256:b366bd0f99403d14d20774f8c4f8f66a593496c0c724aca8a49e8b2eea3ce235",
+      "created_at": "2026-08-23T13:32:25Z",
+      "updated_at": "2026-08-23T13:32:25Z",
+      "expires_at": "2026-09-06T13:32:24Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494014535,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDE0NTM1",
+      "name": "openclaw-local-ci-batch-hosted-batch-030-6f8de2e6ed32",
+      "size_in_bytes": 16215,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494014535",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494014535/zip",
+      "expired": false,
+      "digest": "sha256:c4774cc9e683465bb87a2d3cd4e9ada64fa13fcf77ffecdedbd7ef206daf9faf",
+      "created_at": "2026-08-23T13:32:20Z",
+      "updated_at": "2026-08-23T13:32:20Z",
+      "expires_at": "2026-09-06T13:32:20Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494010196,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDEwMTk2",
+      "name": "openclaw-local-ci-batch-hosted-batch-023-6f8de2e6ed32",
+      "size_in_bytes": 18143,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494010196",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494010196/zip",
+      "expired": false,
+      "digest": "sha256:e30c5b4fe5a8636cea2a9113561f246b135516040d22902288459e01b39b3e42",
+      "created_at": "2026-08-23T13:32:00Z",
+      "updated_at": "2026-08-23T13:32:00Z",
+      "expires_at": "2026-09-06T13:32:00Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494009723,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDA5NzIz",
+      "name": "openclaw-local-ci-batch-hosted-batch-024-6f8de2e6ed32",
+      "size_in_bytes": 12947,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494009723",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494009723/zip",
+      "expired": false,
+      "digest": "sha256:acc418714ee42f7ec4ba32925d0ce170c285893a4b908cc5221cedb60ae38ea2",
+      "created_at": "2026-08-23T13:31:58Z",
+      "updated_at": "2026-08-23T13:31:58Z",
+      "expires_at": "2026-09-06T13:31:58Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9494006685,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDk0MDA2Njg1",
+      "name": "openclaw-local-ci-batch-local-batch-059-6f8de2e6ed32",
+      "size_in_bytes": 17602,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494006685",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9494006685/zip",
+      "expired": false,
+      "digest": "sha256:18112ea2583c04e9b715721d89f17963d0cd85e6fa22595daf0642fd42cd338d",
+      "created_at": "2026-08-23T13:31:45Z",
+      "updated_at": "2026-08-23T13:31:45Z",
+      "expires_at": "2026-09-06T13:31:44Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9493990831,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDkzOTkwODMx",
+      "name": "openclaw-local-ci-batch-local-batch-060-6f8de2e6ed32",
+      "size_in_bytes": 15556,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9493990831",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9493990831/zip",
+      "expired": false,
+      "digest": "sha256:51241bbd9a0b4d727e373453a8806833bb1ac21fbb94633e0b8a83c65593f32f",
+      "created_at": "2026-08-23T13:30:36Z",
+      "updated_at": "2026-08-23T13:30:36Z",
+      "expires_at": "2026-09-06T13:30:34Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9493988534,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDkzOTg4NTM0",
+      "name": "openclaw-local-ci-batch-local-batch-057-6f8de2e6ed32",
+      "size_in_bytes": 14005,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9493988534",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9493988534/zip",
+      "expired": false,
+      "digest": "sha256:1e28a7bddb0fac41ce360831e9a709949b5978a8811af92f80c620bba21b4189",
+      "created_at": "2026-08-23T13:30:25Z",
+      "updated_at": "2026-08-23T13:30:25Z",
+      "expires_at": "2026-09-06T13:30:24Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    },
+    {
+      "id": 9493949305,
+      "node_id": "MDg6QXJ0aWZhY3Q5NDkzOTQ5MzA1",
+      "name": "openclaw-local-ci-routing-plan-6f8de2e6ed32",
+      "size_in_bytes": 118505,
+      "url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9493949305",
+      "archive_download_url": "https://api.github.com/repos/karmaterminal/openclaw-bootstrap/actions/artifacts/9493949305/zip",
+      "expired": false,
+      "digest": "sha256:b3f9a90b7007ba58afd3a59a1fda07d12dc9a0ff0b17ae8cb360996384d6d8ce",
+      "created_at": "2026-08-23T13:27:25Z",
+      "updated_at": "2026-08-23T13:27:25Z",
+      "expires_at": "2026-09-06T13:27:24Z",
+      "workflow_run": {
+        "id": 32642373348,
+        "repository_id": 1158756966,
+        "head_repository_id": 1158756966,
+        "head_branch": "main",
+        "head_sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+      }
+    }
+  ]
+}

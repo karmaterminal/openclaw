@@ -1,0 +1,77 @@
+{
+  "include": [
+    {
+      "batch_id": "dist-batch-068",
+      "batch_name": "core-runtime-tui-pty",
+      "check_name": "core-runtime-tui-pty",
+      "lane": "self-hosted-dist",
+      "execution_class": "self-hosted",
+      "shard_count": 1,
+      "requires_dist": true,
+      "exclusive": true,
+      "max_concurrent_shards": 1,
+      "planned_shard_seconds": 134,
+      "planned_job_seconds_serial": 214,
+      "planned_job_seconds_concurrent": 214,
+      "shards": [
+        {
+          "kind": "node-dist",
+          "shard_group": "node-dist",
+          "artifact_prefix": "dist",
+          "check_name": "checks-node-core-runtime-tui-pty",
+          "shard_name": "core-runtime-tui-pty",
+          "configs": [
+            "test/vitest/vitest.tui-pty.config.ts"
+          ],
+          "includePatterns": null,
+          "requires_dist": true,
+          "planner_runner": "blacksmith-4vcpu-ubuntu-2404",
+          "planner_env": {
+            "OPENCLAW_TUI_PTY_INCLUDE_LOCAL": "1",
+            "OPENCLAW_TUI_PTY_USE_BUILT_CLI": "1"
+          },
+          "execution_class": "self-hosted",
+          "lane": "self-hosted-dist",
+          "capability_class": "hermetic",
+          "weight_class": "exclusive",
+          "weight_seconds": 134
+        }
+      ]
+    },
+    {
+      "batch_id": "dist-batch-069",
+      "batch_name": "core-support-boundary",
+      "check_name": "core-support-boundary",
+      "lane": "self-hosted-dist",
+      "execution_class": "self-hosted",
+      "shard_count": 1,
+      "requires_dist": true,
+      "exclusive": false,
+      "max_concurrent_shards": 1,
+      "planned_shard_seconds": 134,
+      "planned_job_seconds_serial": 214,
+      "planned_job_seconds_concurrent": 214,
+      "shards": [
+        {
+          "kind": "node-dist",
+          "shard_group": "node-dist",
+          "artifact_prefix": "dist",
+          "check_name": "checks-node-core-support-boundary",
+          "shard_name": "core-support-boundary",
+          "configs": [
+            "test/vitest/vitest.boundary.config.ts"
+          ],
+          "includePatterns": null,
+          "requires_dist": true,
+          "planner_runner": "blacksmith-8vcpu-ubuntu-2404",
+          "planner_env": null,
+          "execution_class": "self-hosted",
+          "lane": "self-hosted-dist",
+          "capability_class": "hermetic",
+          "weight_class": "standard",
+          "weight_seconds": 134
+        }
+      ]
+    }
+  ]
+}

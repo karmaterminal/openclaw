@@ -1,0 +1,34 @@
+{
+  "target": {
+    "id": "Function:src/auto-reply/reply/agent-runner-embedded-candidate.ts:runEmbeddedFallbackCandidate",
+    "name": "runEmbeddedFallbackCandidate",
+    "type": "Function",
+    "filePath": "src/auto-reply/reply/agent-runner-embedded-candidate.ts"
+  },
+  "direction": "upstream",
+  "impactedCount": 3,
+  "risk": "LOW",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 2,
+    "processes_affected": 0,
+    "modules_affected": 2
+  },
+  "byDepthCounts": {
+    "1": 2,
+    "2": 1
+  },
+  "affected_processes": [],
+  "affected_modules": [
+    {
+      "name": "Server-methods",
+      "hits": 1,
+      "impact": "direct"
+    },
+    {
+      "name": "Command",
+      "hits": 1,
+      "impact": "direct"
+    }
+  ]
+}

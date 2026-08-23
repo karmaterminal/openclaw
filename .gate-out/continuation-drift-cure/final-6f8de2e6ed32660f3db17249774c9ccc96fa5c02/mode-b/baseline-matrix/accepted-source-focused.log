@@ -1,0 +1,89 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-continuation-current-upstream-absorb[39m
+
+ [31m❯[39m [30m[42m commands [49m[39m src/commands/doctor-lint.test.ts [2m([22m[2m25 tests[22m[2m | [22m[31m1 failed[39m[2m | [22m[33m24 skipped[39m[2m)[22m[33m 9703[2mms[22m[39m
+     [2m[90m↓[39m[22m bases exit code on the selected severity threshold
+     [2m[90m↓[39m[22m keeps Gateway-owned secret degradation observable through '--only JSON'
+     [2m[90m↓[39m[22m keeps Gateway-owned secret degradation observable through '--only human text'
+     [2m[90m↓[39m[22m keeps Gateway-owned secret degradation observable through '--all JSON'
+     [2m[90m↓[39m[22m keeps Gateway-owned secret degradation observable through '--all human text'
+     [2m[90m↓[39m[22m keeps Gateway-owned secret degradation observable through 'default JSON'
+     [2m[90m↓[39m[22m keeps Gateway-owned secret degradation observable through 'default human text'
+     [2m[90m↓[39m[22m does not expose deep mode to extension health check context
+     [2m[90m↓[39m[22m emits structured JSON for invalid config snapshots
+     [2m[90m↓[39m[22m rejects unknown --only health check ids instead of reporting a false-clean run
+     [2m[90m↓[39m[22m reports disabled Codex plugin routes through doctor lint
+     [2m[90m↓[39m[22m runs core contribution checks plus registered extension checks
+[31m     [31m×[31m reports an actionable Crabbox profile finding before dispatch[39m[33m 9700[2mms[22m[39m
+     [2m[90m↓[39m[22m fails informational findings when severity-min is explicit
+     [2m[90m↓[39m[22m does not require shared state inspection for an unrelated selected check
+     [2m[90m↓[39m[22m keeps mixed selected checks on a fully isolated state view
+     [2m[90m↓[39m[22m does not inspect plugin state when no semantic index exists
+     [2m[90m↓[39m[22m keeps relevant deferred plugin inspection off the source state database
+     [2m[90m↓[39m[22m fails closed when a semantic index needs plugin state that cannot be prepared
+     [2m[90m↓[39m[22m emits one structured failure when relevant plugin state cleanup does not complete
+     [2m[90m↓[39m[22m 'rejects extension checks that reuse o…'
+     [2m[90m↓[39m[22m 'rejects registered core-kind checks t…'
+     [2m[90m↓[39m[22m 'rejects extension checks that claim u…'
+     [2m[90m↓[39m[22m 'rejects registered core-kind checks t…'
+     [2m[90m↓[39m[22m rejects invalid severity thresholds
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m [30m[42m commands [49m[39m src/commands/doctor-lint.test.ts[2m > [22mrunDoctorLintCli[2m > [22mreports an actionable Crabbox profile finding before dispatch
+[31m[1mError[22m: Cannot find module '/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-continuation-current-upstream-absorb/node_modules/@openclaw/ai/dist/internal/openai-responses-payload-policy.mjs'[39m
+[36m [2m❯[22m Module._resolveFilename src/plugins/plugin-sdk-native-resolver.ts:[2m364:12[22m[39m
+    [90m362|[39m       [35mreturn[39m aliasTarget[33m;[39m
+    [90m363|[39m     }
+    [90m364|[39m     return previousResolveFilename?.(request, parent, isMain, options)…
+    [90m   |[39m            [31m^[39m
+    [90m365|[39m   }) satisfies [33mResolveFilename[39m[33m;[39m
+    [90m366|[39m   moduleWithResolver[33m.[39m[34mregisterHooks[39m[33m?.[39m({
+[90m [2m❯[22m resolve src/plugins/plugin-sdk-native-resolver.ts:[2m375:14[22m[39m
+[90m [2m❯[22m jitiResolve ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:176713[22m[39m
+[90m [2m❯[22m jitiRequire ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:178658[22m[39m
+[90m [2m❯[22m ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:187397[22m[39m
+[90m [2m❯[22m dist/session-accessor.sqlite-transcript-store-_233dHy0.js:[2m20:37[22m[39m
+[90m [2m❯[22m eval_evalModule ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:184467[22m[39m
+[90m [2m❯[22m jitiRequire ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:179335[22m[39m
+[90m [2m❯[22m ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:187397[22m[39m
+[90m [2m❯[22m dist/session-accessor.sqlite-owner-DonR6bhs.js:[2m17:52[22m[39m
+[90m [2m❯[22m eval_evalModule ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:184467[22m[39m
+[90m [2m❯[22m jitiRequire ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:179335[22m[39m
+[90m [2m❯[22m ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:187397[22m[39m
+[90m [2m❯[22m dist/session-accessor.sqlite-lifecycle-I_gk_qvz.js:[2m13:43[22m[39m
+[90m [2m❯[22m eval_evalModule ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:184467[22m[39m
+[90m [2m❯[22m jitiRequire ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:179335[22m[39m
+[90m [2m❯[22m ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:187397[22m[39m
+[90m [2m❯[22m dist/session-accessor-Dy3lqHWI.js:[2m36:47[22m[39m
+[90m [2m❯[22m eval_evalModule ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:184467[22m[39m
+[90m [2m❯[22m jitiRequire ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:179335[22m[39m
+[90m [2m❯[22m ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:187397[22m[39m
+[90m [2m❯[22m dist/codex-route-warnings-Dh8GOjLJ.js:[2m15:32[22m[39m
+[90m [2m❯[22m eval_evalModule ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:184467[22m[39m
+[90m [2m❯[22m jitiRequire ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:179335[22m[39m
+[90m [2m❯[22m ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:187397[22m[39m
+[90m [2m❯[22m dist/doctor-core-checks-DE2qfUu9.js:[2m20:35[22m[39m
+[90m [2m❯[22m eval_evalModule ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:184467[22m[39m
+[90m [2m❯[22m jitiRequire ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:179335[22m[39m
+[90m [2m❯[22m ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:187397[22m[39m
+[90m [2m❯[22m dist/health-Ctq_1mg3.js:[2m3:1[22m[39m
+[90m [2m❯[22m eval_evalModule ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:184467[22m[39m
+[90m [2m❯[22m jitiRequire ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:179335[22m[39m
+[90m [2m❯[22m ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:187397[22m[39m
+[90m [2m❯[22m dist/extensions/crabbox/doctor-health-api.js:[2m6:1[22m[39m
+[90m [2m❯[22m eval_evalModule ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:184467[22m[39m
+[90m [2m❯[22m jitiRequire ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:179335[22m[39m
+[90m [2m❯[22m ../../openclaw/node_modules/jiti/dist/jiti.cjs:[2m1:187397[22m[39m
+[90m [2m❯[22m loadWithSourceTransform src/plugins/plugin-module-loader-cache.ts:[2m229:43[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[33m24 skipped[39m[90m (25)[39m
+[2m   Start at [22m 06:47:23
+[2m   Duration [22m 21.96s[2m (transform 9.79s, setup 1.07s, import 10.93s, tests 9.70s, environment 0ms)[22m
+
+[vitest] FAILED (exit 1)
+[test] FAILED (exit 1)

@@ -1,0 +1,91 @@
+{
+  "repo": "karmaterminal/openclaw",
+  "ref": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+  "sha": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+  "mode": "test-shard",
+  "shard": "core-runtime-tui-pty",
+  "configs": [
+    "test/vitest/vitest.tui-pty.config.ts"
+  ],
+  "conclusion": "fail",
+  "rc": 1,
+  "gates": [
+    {
+      "name": "test shard (core-runtime-tui-pty)",
+      "rc": 1,
+      "ok": false,
+      "seconds": 520
+    }
+  ],
+  "tests": {
+    "passed": 87,
+    "failed": 13
+  },
+  "failure_count": 12,
+  "failures": [
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > launches openclaw chat as local mode through a real PTY"
+    },
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > launches openclaw terminal as local mode through a real PTY"
+    },
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > sends the initial message supplied to openclaw tui through a real local PTY"
+    },
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > prints local usage costs without submitting a model request"
+    },
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > drives and steers the real local backend with a mocked model endpoint"
+    },
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > creates and adopts a fresh local session through a real PTY"
+    },
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > lists local session history through a real PTY"
+    },
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > keeps whitespace-prefixed bang input in chat after local shell approval"
+    },
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > confirms and renders local shell output, then extinguishes descendants before TUI exit"
+    },
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > repairs isolated config through the approved built CLI and resumes local chat"
+    },
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > authenticates a manifest-discovered provider and resumes the unchanged local model"
+    },
+    {
+      "gate": "test shard (core-runtime-tui-pty)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > renders safe validation-loop abort diagnostics through the real local backend"
+    }
+  ],
+  "flakes_greened_count": 1,
+  "flakes_greened": [
+    "tui-pty  src/tui/tui-pty-harness.e2e.test.ts > TUI PTY harness > preserves xAI account limit errors in terminal output"
+  ]
+}

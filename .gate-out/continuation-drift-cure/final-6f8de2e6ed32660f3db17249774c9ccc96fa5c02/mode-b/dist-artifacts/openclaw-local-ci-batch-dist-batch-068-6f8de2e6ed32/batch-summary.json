@@ -1,0 +1,18 @@
+{
+  "mode": "test-shard-batch",
+  "aggregate_skip": true,
+  "shard": "dist-batch-068",
+  "conclusion": "failure",
+  "failure_count": 1,
+  "shards_seen": 1,
+  "host_slots": 1,
+  "shard_dirs": [
+    "dist-core-runtime-tui-pty"
+  ],
+  "failures": [
+    {
+      "dir": "dist-core-runtime-tui-pty",
+      "reason": "rc=1"
+    }
+  ]
+}

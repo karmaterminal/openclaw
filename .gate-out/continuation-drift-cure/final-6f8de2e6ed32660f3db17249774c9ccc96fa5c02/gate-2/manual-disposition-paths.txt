@@ -1,0 +1,10 @@
+config/assertion-safety-baseline.txt
+src/agents/embedded-agent-runner/run/attempt-client-tools.ts
+src/agents/embedded-agent-subscribe.handlers.tools.completion.ts
+src/agents/embedded-agent-subscribe.handlers.ts
+src/agents/embedded-agent-subscribe.ts
+src/agents/subagents/registry/subagent-registry.lifecycle-retry-grace.e2e.test.ts
+src/auto-reply/reply/agent-runner-embedded-candidate.continuation.test.ts
+src/infra/heartbeat-runner-scheduler.ts
+src/infra/heartbeat-wake.ts
+tmp-drop-me-claude.md

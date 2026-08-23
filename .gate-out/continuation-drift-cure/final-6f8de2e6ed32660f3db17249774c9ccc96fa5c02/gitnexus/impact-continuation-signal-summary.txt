@@ -1,0 +1,65 @@
+{
+  "target": {
+    "id": "Function:src/auto-reply/continuation/signal.ts:parseContinuationSignal",
+    "name": "parseContinuationSignal",
+    "type": "Function",
+    "filePath": "src/auto-reply/continuation/signal.ts"
+  },
+  "direction": "upstream",
+  "impactedCount": 24,
+  "risk": "CRITICAL",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 3,
+    "processes_affected": 0,
+    "modules_affected": 8
+  },
+  "byDepthCounts": {
+    "1": 3,
+    "2": 7,
+    "3": 14
+  },
+  "affected_processes": [],
+  "affected_modules": [
+    {
+      "name": "Agents",
+      "hits": 5,
+      "impact": "indirect"
+    },
+    {
+      "name": "Reply",
+      "hits": 4,
+      "impact": "indirect"
+    },
+    {
+      "name": "Run",
+      "hits": 3,
+      "impact": "indirect"
+    },
+    {
+      "name": "Continuation",
+      "hits": 2,
+      "impact": "direct"
+    },
+    {
+      "name": "Auto-reply",
+      "hits": 1,
+      "impact": "indirect"
+    },
+    {
+      "name": "Memory-lancedb",
+      "hits": 1,
+      "impact": "indirect"
+    },
+    {
+      "name": "Server-methods",
+      "hits": 1,
+      "impact": "indirect"
+    },
+    {
+      "name": "Cli-runner",
+      "hits": 1,
+      "impact": "indirect"
+    }
+  ]
+}

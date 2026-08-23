@@ -1,0 +1,8 @@
+authority_blobs=12/12
+baseline_files=4277
+baseline_assertions=13483
+gate2_manual=10/10
+gate25_semantic=16/16
+gate27_mixed=317/317
+gate27_total_dispositions=319
+continuity_changed_and_renewed=1/1

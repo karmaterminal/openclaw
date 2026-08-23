@@ -1,0 +1,395 @@
+{
+  "target": {
+    "id": "Function:src/infra/heartbeat-wake.ts:requestHeartbeatRaw",
+    "name": "requestHeartbeatRaw",
+    "type": "Function",
+    "filePath": "src/infra/heartbeat-wake.ts"
+  },
+  "direction": "upstream",
+  "impactedCount": 37,
+  "risk": "CRITICAL",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 37,
+    "processes_affected": 0,
+    "modules_affected": 7
+  },
+  "byDepthCounts": {
+    "1": 37
+  },
+  "affected_processes": [],
+  "affected_modules": [
+    {
+      "name": "Infra",
+      "hits": 14,
+      "impact": "direct"
+    },
+    {
+      "name": "Server",
+      "hits": 3,
+      "impact": "direct"
+    },
+    {
+      "name": "Tasks",
+      "hits": 3,
+      "impact": "direct"
+    },
+    {
+      "name": "Server-methods",
+      "hits": 2,
+      "impact": "direct"
+    },
+    {
+      "name": "Agents",
+      "hits": 1,
+      "impact": "direct"
+    },
+    {
+      "name": "Events",
+      "hits": 1,
+      "impact": "direct"
+    },
+    {
+      "name": "Runtime",
+      "hits": 1,
+      "impact": "direct"
+    }
+  ],
+  "byDepth": {
+    "1": [
+      {
+        "depth": 1,
+        "id": "Function:src/plugin-sdk/heartbeat-runtime.ts:requestHeartbeat",
+        "name": "requestHeartbeat",
+        "filePath": "src/plugin-sdk/heartbeat-runtime.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/agents/bash-tools.exec-runtime.ts:maybeNotifyOnExit",
+        "name": "maybeNotifyOnExit",
+        "filePath": "src/agents/bash-tools.exec-runtime.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/agents/bash-tools.test.ts:drainPendingHeartbeatWakes",
+        "name": "drainPendingHeartbeatWakes",
+        "filePath": "src/agents/bash-tools.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/plugins/runtime/runtime-system.ts:requestHeartbeat",
+        "name": "requestHeartbeat",
+        "filePath": "src/plugins/runtime/runtime-system.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/plugins/runtime/runtime-system.ts:requestHeartbeatNow",
+        "name": "requestHeartbeatNow",
+        "filePath": "src/plugins/runtime/runtime-system.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/sessions/session-state-notices.ts:enqueueSessionStateNotice",
+        "name": "enqueueSessionStateNotice",
+        "filePath": "src/sessions/session-state-notices.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/tasks/task-registry-delivery.ts:queueTaskSystemEvent",
+        "name": "queueTaskSystemEvent",
+        "filePath": "src/tasks/task-registry-delivery.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/tasks/task-registry-delivery.ts:queueBlockedTaskFollowup",
+        "name": "queueBlockedTaskFollowup",
+        "filePath": "src/tasks/task-registry-delivery.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/tasks/task-registry.test.ts:flushHeartbeatWakeRequests",
+        "name": "flushHeartbeatWakeRequests",
+        "filePath": "src/tasks/task-registry.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/agents/subagents/spawn/acp-spawn-parent-stream.ts:wake",
+        "name": "wake",
+        "filePath": "src/agents/subagents/spawn/acp-spawn-parent-stream.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/gateway/server-methods/system.ts:system-event",
+        "name": "system-event",
+        "filePath": "src/gateway/server-methods/system.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/gateway/server-restart-sentinel-delivery.ts:enqueueRestartSentinelWake",
+        "name": "enqueueRestartSentinelWake",
+        "filePath": "src/gateway/server-restart-sentinel-delivery.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:test/e2e/qa-lab/runtime/heartbeat-active-hours-runtime.ts:pokeScheduledHeartbeat",
+        "name": "pokeScheduledHeartbeat",
+        "filePath": "test/e2e/qa-lab/runtime/heartbeat-active-hours-runtime.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/gateway/server/hooks.ts:dispatchWakeHook",
+        "name": "dispatchWakeHook",
+        "filePath": "src/gateway/server/hooks.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/gateway/server/hooks.ts:dispatchAgentHook",
+        "name": "dispatchAgentHook",
+        "filePath": "src/gateway/server/hooks.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/gateway/server/hooks.ts:reportHookFailure",
+        "name": "reportHookFailure",
+        "filePath": "src/gateway/server/hooks.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/infra/heartbeat-runner.active-hours-schedule.e2e.test.ts:pokeIntervalWake",
+        "name": "pokeIntervalWake",
+        "filePath": "src/infra/heartbeat-runner.active-hours-schedule.e2e.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/infra/heartbeat-runner.scheduler.test-support.ts:expectWakeDispatch",
+        "name": "expectWakeDispatch",
+        "filePath": "src/infra/heartbeat-runner.scheduler.test-support.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/infra/heartbeat-runner.scheduler.test.ts:pokeIntervalWake",
+        "name": "pokeIntervalWake",
+        "filePath": "src/infra/heartbeat-runner.scheduler.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/infra/heartbeat-runner.scheduler.test.ts:expectWakeDispatch",
+        "name": "expectWakeDispatch",
+        "filePath": "src/infra/heartbeat-runner.scheduler.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/infra/heartbeat-runner.stale-exec.test.ts:requestExecWake",
+        "name": "requestExecWake",
+        "filePath": "src/infra/heartbeat-runner.stale-exec.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/infra/heartbeat-runner.targeted-unscheduled-wake.test.ts:expectWakeDispatch",
+        "name": "expectWakeDispatch",
+        "filePath": "src/infra/heartbeat-runner.targeted-unscheduled-wake.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/infra/heartbeat-wake-concurrency.test.ts:requestTarget",
+        "name": "requestTarget",
+        "filePath": "src/infra/heartbeat-wake-concurrency.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/infra/heartbeat-wake.test.ts:expectRetryAfterDefaultDelay",
+        "name": "expectRetryAfterDefaultDelay",
+        "filePath": "src/infra/heartbeat-wake.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/infra/heartbeat-wake.test.ts:requestPeriod",
+        "name": "requestPeriod",
+        "filePath": "src/infra/heartbeat-wake.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/infra/heartbeat-wake.test.ts:requestTask",
+        "name": "requestTask",
+        "filePath": "src/infra/heartbeat-wake.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/infra/heartbeat-wake.ts:requestHeartbeatNow",
+        "name": "requestHeartbeatNow",
+        "filePath": "src/infra/heartbeat-wake.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/infra/heartbeat-wake.transcript-context.test.ts",
+        "name": "heartbeat-wake.transcript-context.test.ts",
+        "filePath": "src/infra/heartbeat-wake.transcript-context.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/infra/heartbeat-wake.test.ts",
+        "name": "heartbeat-wake.test.ts",
+        "filePath": "src/infra/heartbeat-wake.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/infra/heartbeat-wake.preemption.test.ts",
+        "name": "heartbeat-wake.preemption.test.ts",
+        "filePath": "src/infra/heartbeat-wake.preemption.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/infra/heartbeat-wake.lifecycle.test.ts",
+        "name": "heartbeat-wake.lifecycle.test.ts",
+        "filePath": "src/infra/heartbeat-wake.lifecycle.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/infra/heartbeat-wake-concurrency.test.ts",
+        "name": "heartbeat-wake-concurrency.test.ts",
+        "filePath": "src/infra/heartbeat-wake-concurrency.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/infra/heartbeat-runner.targeted-unscheduled-wake.test.ts",
+        "name": "heartbeat-runner.targeted-unscheduled-wake.test.ts",
+        "filePath": "src/infra/heartbeat-runner.targeted-unscheduled-wake.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/infra/heartbeat-runner.stale-exec.test.ts",
+        "name": "heartbeat-runner.stale-exec.test.ts",
+        "filePath": "src/infra/heartbeat-runner.stale-exec.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/infra/heartbeat-runner.scheduler.test.ts",
+        "name": "heartbeat-runner.scheduler.test.ts",
+        "filePath": "src/infra/heartbeat-runner.scheduler.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/infra/heartbeat-runner.scheduler.targeted-wake.test.ts",
+        "name": "heartbeat-runner.scheduler.targeted-wake.test.ts",
+        "filePath": "src/infra/heartbeat-runner.scheduler.targeted-wake.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "File:src/infra/heartbeat-runner.scheduler-owner-resolution.test.ts",
+        "name": "heartbeat-runner.scheduler-owner-resolution.test.ts",
+        "filePath": "src/infra/heartbeat-runner.scheduler-owner-resolution.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,3 @@
+$ node scripts/run-oxlint.mjs --openclaw-focused-config --config config/oxlint/boundary-guards.json ui/src
+Found 0 warnings and 0 errors.
+Finished in 2.0s on 2293 files with 4 rules using 20 threads.

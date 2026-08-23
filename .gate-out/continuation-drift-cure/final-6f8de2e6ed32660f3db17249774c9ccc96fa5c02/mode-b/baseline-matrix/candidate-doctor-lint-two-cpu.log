@@ -1,0 +1,15 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-85651-continuation-drift-cure-candidate-20260823[39m
+
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-lint.test.ts [2m([22m[2m25 tests[22m[2m)[22m[33m 12272[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps Gateway-owned secret degradation observable through '--only JSON' [33m 5626[2mms[22m[39m
+     [33m[2m✓[22m[39m reports an actionable Crabbox profile finding before dispatch [33m 1365[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps mixed selected checks on a fully isolated state view [33m 1503[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps relevant deferred plugin inspection off the source state database [33m 1399[2mms[22m[39m
+     [33m[2m✓[22m[39m fails closed when a semantic index needs plugin state that cannot be prepared [33m 518[2mms[22m[39m
+     [33m[2m✓[22m[39m emits one structured failure when relevant plugin state cleanup does not complete [33m 1354[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m25 passed[39m[22m[90m (25)[39m
+[2m   Start at [22m 06:59:45
+[2m   Duration [22m 17.46s[2m (transform 6.64s, setup 475ms, import 4.51s, tests 12.27s, environment 0ms)[22m

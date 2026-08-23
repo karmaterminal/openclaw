@@ -1,0 +1,204 @@
+{
+  "processes": [
+    {
+      "id": "proc_8_handletoolexecutione",
+      "summary": "HandleToolExecutionEnd → NormalizeNullableString",
+      "priority": 0.052,
+      "symbol_count": 2,
+      "process_type": "cross_community",
+      "step_count": 8
+    },
+    {
+      "id": "proc_26_handletoolexecutione",
+      "summary": "HandleToolExecutionEnd → ReadNormalizedSessionKeyCache",
+      "priority": 0.052,
+      "symbol_count": 2,
+      "process_type": "cross_community",
+      "step_count": 7
+    },
+    {
+      "id": "proc_27_handletoolexecutione",
+      "summary": "HandleToolExecutionEnd → MayContainCasePreservingPeer",
+      "priority": 0.052,
+      "symbol_count": 2,
+      "process_type": "cross_community",
+      "step_count": 7
+    },
+    {
+      "id": "proc_259_handletoolexecutione",
+      "summary": "HandleToolExecutionEnd → Wake",
+      "priority": 0.043,
+      "symbol_count": 1,
+      "process_type": "cross_community",
+      "step_count": 4
+    }
+  ],
+  "process_symbols": [
+    {
+      "id": "Function:src/agents/tools/ask-user-tool.ts:buildAskUserQuestionId",
+      "name": "buildAskUserQuestionId",
+      "filePath": "src/agents/tools/ask-user-tool.ts",
+      "startLine": 110,
+      "endLine": 119,
+      "module": "Tools",
+      "process_id": "proc_8_handletoolexecutione",
+      "step_index": 3
+    },
+    {
+      "id": "Function:src/agents/tools/ask-user-tool.ts:cancelAskUserPromptDelivery",
+      "name": "cancelAskUserPromptDelivery",
+      "filePath": "src/agents/tools/ask-user-tool.ts",
+      "startLine": 382,
+      "endLine": 389,
+      "module": "Tools",
+      "process_id": "proc_8_handletoolexecutione",
+      "step_index": 2
+    }
+  ],
+  "definitions": [
+    {
+      "id": "Const:src/infra/diagnostic-events.ts:ASYNC_DIAGNOSTIC_EVENT_TYPES",
+      "name": "ASYNC_DIAGNOSTIC_EVENT_TYPES",
+      "filePath": "src/infra/diagnostic-events.ts",
+      "startLine": 1027,
+      "endLine": 1048
+    },
+    {
+      "id": "Const:src/infra/diagnostic-events.ts:PRIORITY_ASYNC_DIAGNOSTIC_EVENT_TYPES",
+      "name": "PRIORITY_ASYNC_DIAGNOSTIC_EVENT_TYPES",
+      "filePath": "src/infra/diagnostic-events.ts",
+      "startLine": 1049,
+      "endLine": 1059
+    },
+    {
+      "id": "File:src/infra/diagnostic-events.ts",
+      "name": "diagnostic-events.ts",
+      "filePath": "src/infra/diagnostic-events.ts"
+    },
+    {
+      "id": "Const:src/agents/subagents/completion/subagent-completion-delivery.ts:generation",
+      "name": "generation",
+      "filePath": "src/agents/subagents/completion/subagent-completion-delivery.ts",
+      "startLine": 110,
+      "endLine": 110
+    },
+    {
+      "id": "Const:src/agents/subagents/completion/subagent-completion-delivery.ts:windowStartedAt",
+      "name": "windowStartedAt",
+      "filePath": "src/agents/subagents/completion/subagent-completion-delivery.ts",
+      "startLine": 111,
+      "endLine": 111
+    },
+    {
+      "id": "Const:src/agents/subagents/completion/subagent-completion-delivery.ts:deadlineAt",
+      "name": "deadlineAt",
+      "filePath": "src/agents/subagents/completion/subagent-completion-delivery.ts",
+      "startLine": 112,
+      "endLine": 112
+    },
+    {
+      "id": "Function:src/logging/diagnostic-run-activity.ts:recordToolEnded",
+      "name": "recordToolEnded",
+      "filePath": "src/logging/diagnostic-run-activity.ts",
+      "startLine": 297,
+      "endLine": 309,
+      "module": "Logging"
+    },
+    {
+      "id": "Function:src/logging/diagnostic-run-activity.ts:startDiagnosticRunActivityTracking",
+      "name": "startDiagnosticRunActivityTracking",
+      "filePath": "src/logging/diagnostic-run-activity.ts",
+      "startLine": 706,
+      "endLine": 754,
+      "module": "Logging"
+    },
+    {
+      "id": "File:src/logging/diagnostic-run-activity.ts",
+      "name": "diagnostic-run-activity.ts",
+      "filePath": "src/logging/diagnostic-run-activity.ts"
+    },
+    {
+      "id": "Function:src/agents/tools/media-generate-background-shared.ts:scheduleMediaGenerationTaskCompletion",
+      "name": "scheduleMediaGenerationTaskCompletion",
+      "filePath": "src/agents/tools/media-generate-background-shared.ts",
+      "startLine": 458,
+      "endLine": 582,
+      "module": "Registry"
+    },
+    {
+      "id": "Function:src/agents/tools/media-generate-background-shared.ts:runBackgroundWork",
+      "name": "runBackgroundWork",
+      "filePath": "src/agents/tools/media-generate-background-shared.ts",
+      "startLine": 470,
+      "endLine": 579,
+      "module": "Tasks"
+    },
+    {
+      "id": "File:src/agents/tools/media-generate-background-shared.ts",
+      "name": "media-generate-background-shared.ts",
+      "filePath": "src/agents/tools/media-generate-background-shared.ts"
+    },
+    {
+      "id": "Function:src/agents/subagents/registry/subagent-registry-lifecycle-delivery.ts:refreshPendingFinalDeliveryPayload",
+      "name": "refreshPendingFinalDeliveryPayload",
+      "filePath": "src/agents/subagents/registry/subagent-registry-lifecycle-delivery.ts",
+      "startLine": 530,
+      "endLine": 547
+    },
+    {
+      "id": "Const:src/agents/subagents/registry/subagent-registry-lifecycle-delivery.ts:refreshPendingFinalDeliveryPayload",
+      "name": "refreshPendingFinalDeliveryPayload",
+      "filePath": "src/agents/subagents/registry/subagent-registry-lifecycle-delivery.ts",
+      "startLine": 530,
+      "endLine": 547
+    },
+    {
+      "id": "File:src/agents/subagents/registry/subagent-registry-lifecycle-delivery.ts",
+      "name": "subagent-registry-lifecycle-delivery.ts",
+      "filePath": "src/agents/subagents/registry/subagent-registry-lifecycle-delivery.ts"
+    },
+    {
+      "id": "Const:src/agents/command/attempt-execution.cli.test.ts:SUBAGENT_ANNOUNCE_EMBEDDED_DELIVERY_CASES",
+      "name": "SUBAGENT_ANNOUNCE_EMBEDDED_DELIVERY_CASES",
+      "filePath": "src/agents/command/attempt-execution.cli.test.ts",
+      "startLine": 257,
+      "endLine": 288
+    },
+    {
+      "id": "Const:src/agents/command/attempt-execution.cli.test.ts:onExecutionStarted",
+      "name": "onExecutionStarted",
+      "filePath": "src/agents/command/attempt-execution.cli.test.ts",
+      "startLine": 788,
+      "endLine": 788
+    },
+    {
+      "id": "File:src/agents/command/attempt-execution.cli.test.ts",
+      "name": "attempt-execution.cli.test.ts",
+      "filePath": "src/agents/command/attempt-execution.cli.test.ts"
+    },
+    {
+      "id": "Function:src/agents/embedded-agent-runner/run-state.ts:evictPriorLifecycleEmbeddedRuns",
+      "name": "evictPriorLifecycleEmbeddedRuns",
+      "filePath": "src/agents/embedded-agent-runner/run-state.ts",
+      "startLine": 152,
+      "endLine": 215
+    },
+    {
+      "id": "Function:src/agents/embedded-agent-runner/run-state.ts:setActiveEmbeddedRunLifecycleGeneration",
+      "name": "setActiveEmbeddedRunLifecycleGeneration",
+      "filePath": "src/agents/embedded-agent-runner/run-state.ts",
+      "startLine": 252,
+      "endLine": 264,
+      "module": "Run"
+    }
+  ],
+  "timing": {
+    "vector": 5.4,
+    "bm25": 2558.3,
+    "merge": 0.3,
+    "symbol_lookup": 119.2,
+    "ranking": 0.1,
+    "formatting": 0.1,
+    "wall": 2678.8
+  }
+}

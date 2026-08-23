@@ -1,0 +1,6 @@
+{
+  "findings": [],
+  "overall_correctness": "patch is correct",
+  "overall_explanation": "The change consistently makes stale tool completions explicit, prevents stale terminal handling from re-registering trusted no-start evidence, preserves the extracted lifecycle wrapper\u2019s prior execution behavior, supplies the newly required runLane in the continuation test, and keeps the lifecycle E2E cleanup type-only. No actionable P0/P1 defect is evident in the bundle.",
+  "overall_confidence": 0.93
+}

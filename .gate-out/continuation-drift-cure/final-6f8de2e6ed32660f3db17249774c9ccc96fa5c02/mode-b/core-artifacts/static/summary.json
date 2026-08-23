@@ -1,0 +1,47 @@
+{
+  "repo": "karmaterminal/openclaw",
+  "ref": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+  "sha": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+  "mode": "static-gates",
+  "shard": null,
+  "configs": [],
+  "conclusion": "pass",
+  "rc": 0,
+  "gates": [
+    {
+      "name": "check (typecheck+lint+duplicates+guards)",
+      "rc": 0,
+      "ok": true,
+      "seconds": 352
+    },
+    {
+      "name": "lint:ui:no-raw-window-open",
+      "rc": 0,
+      "ok": true,
+      "seconds": 3
+    },
+    {
+      "name": "protocol:gen",
+      "rc": 0,
+      "ok": true,
+      "seconds": 1
+    },
+    {
+      "name": "plugins:assets:build",
+      "rc": 0,
+      "ok": true,
+      "seconds": 1
+    },
+    {
+      "name": "build:strict-smoke",
+      "rc": 0,
+      "ok": true,
+      "seconds": 214
+    }
+  ],
+  "tests": null,
+  "failure_count": 0,
+  "failures": [],
+  "flakes_greened_count": 0,
+  "flakes_greened": []
+}

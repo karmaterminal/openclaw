@@ -1,0 +1,3 @@
+gate2_manual=10/10
+gate25_semantic=16/16
+gate27_mixed=317/317

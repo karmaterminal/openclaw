@@ -1,0 +1,153 @@
+{
+  "processes": [],
+  "process_symbols": [],
+  "definitions": [
+    {
+      "id": "Const:src/gateway/terminal/gateway-transport.ts:TERMINAL_EVENT_EXIT",
+      "name": "TERMINAL_EVENT_EXIT",
+      "filePath": "src/gateway/terminal/gateway-transport.ts",
+      "startLine": 6,
+      "endLine": 6
+    },
+    {
+      "id": "Function:src/gateway/terminal/gateway-transport.ts:createTerminalSessionTransport",
+      "name": "createTerminalSessionTransport",
+      "filePath": "src/gateway/terminal/gateway-transport.ts",
+      "startLine": 9,
+      "endLine": 21
+    },
+    {
+      "id": "File:src/gateway/terminal/gateway-transport.ts",
+      "name": "gateway-transport.ts",
+      "filePath": "src/gateway/terminal/gateway-transport.ts"
+    },
+    {
+      "id": "Const:src/gateway/server-restart-sentinel-agent-delivery.ts:log",
+      "name": "log",
+      "filePath": "src/gateway/server-restart-sentinel-agent-delivery.ts",
+      "startLine": 49,
+      "endLine": 49
+    },
+    {
+      "id": "Const:src/gateway/server-restart-sentinel-agent-delivery.ts:AGENT_DELIVERY_OWNERSHIP_RETRY_MS",
+      "name": "AGENT_DELIVERY_OWNERSHIP_RETRY_MS",
+      "filePath": "src/gateway/server-restart-sentinel-agent-delivery.ts",
+      "startLine": 50,
+      "endLine": 50
+    },
+    {
+      "id": "File:src/gateway/server-restart-sentinel-agent-delivery.ts",
+      "name": "server-restart-sentinel-agent-delivery.ts",
+      "filePath": "src/gateway/server-restart-sentinel-agent-delivery.ts"
+    },
+    {
+      "id": "Property:apps/android/app/src/main/java/ai/openclaw/app/chat/ChatCommandOutbox.kt:ChatOutboxScope.sessionKey",
+      "name": "sessionKey",
+      "filePath": "apps/android/app/src/main/java/ai/openclaw/app/chat/ChatCommandOutbox.kt",
+      "startLine": 124,
+      "endLine": 124
+    },
+    {
+      "id": "Class:apps/android/app/src/main/java/ai/openclaw/app/chat/ChatCommandOutbox.kt:ChatOutboxItem",
+      "name": "ChatOutboxItem",
+      "filePath": "apps/android/app/src/main/java/ai/openclaw/app/chat/ChatCommandOutbox.kt",
+      "startLine": 92,
+      "endLine": 120
+    },
+    {
+      "id": "Class:apps/android/app/src/main/java/ai/openclaw/app/chat/ChatCommandOutbox.kt:ChatOutboxScope",
+      "name": "ChatOutboxScope",
+      "filePath": "apps/android/app/src/main/java/ai/openclaw/app/chat/ChatCommandOutbox.kt",
+      "startLine": 123,
+      "endLine": 126
+    },
+    {
+      "id": "Function:src/infra/session-delivery-queue-storage.ts:markSessionDeliverySettlement",
+      "name": "markSessionDeliverySettlement",
+      "filePath": "src/infra/session-delivery-queue-storage.ts",
+      "startLine": 491,
+      "endLine": 529,
+      "module": "Infra"
+    },
+    {
+      "id": "Function:src/infra/session-delivery-queue-storage.ts:moveSessionDeliveryToFailed",
+      "name": "moveSessionDeliveryToFailed",
+      "filePath": "src/infra/session-delivery-queue-storage.ts",
+      "startLine": 630,
+      "endLine": 658,
+      "module": "Infra"
+    },
+    {
+      "id": "File:src/infra/session-delivery-queue-storage.ts",
+      "name": "session-delivery-queue-storage.ts",
+      "filePath": "src/infra/session-delivery-queue-storage.ts"
+    },
+    {
+      "id": "Function:src/auto-reply/continuation/work-terminal-notice.ts:deliverPendingTerminalNotice",
+      "name": "deliverPendingTerminalNotice",
+      "filePath": "src/auto-reply/continuation/work-terminal-notice.ts",
+      "startLine": 79,
+      "endLine": 155,
+      "module": "Continuation"
+    },
+    {
+      "id": "Function:src/auto-reply/continuation/work-terminal-notice.ts:drainPendingTerminalNotices",
+      "name": "drainPendingTerminalNotices",
+      "filePath": "src/auto-reply/continuation/work-terminal-notice.ts",
+      "startLine": 234,
+      "endLine": 251,
+      "module": "Continuation"
+    },
+    {
+      "id": "File:src/auto-reply/continuation/work-terminal-notice.ts",
+      "name": "work-terminal-notice.ts",
+      "filePath": "src/auto-reply/continuation/work-terminal-notice.ts"
+    },
+    {
+      "id": "Function:src/infra/restart-sentinel-store.ts:decodeRestartSentinelRow",
+      "name": "decodeRestartSentinelRow",
+      "filePath": "src/infra/restart-sentinel-store.ts",
+      "startLine": 365,
+      "endLine": 428,
+      "module": "Infra"
+    },
+    {
+      "id": "Function:src/infra/restart-sentinel-store.ts:readRestartSentinelRowForKeySync",
+      "name": "readRestartSentinelRowForKeySync",
+      "filePath": "src/infra/restart-sentinel-store.ts",
+      "startLine": 430,
+      "endLine": 462,
+      "module": "Infra"
+    },
+    {
+      "id": "File:src/infra/restart-sentinel-store.ts",
+      "name": "restart-sentinel-store.ts",
+      "filePath": "src/infra/restart-sentinel-store.ts"
+    },
+    {
+      "id": "Function:src/auto-reply/continuation/work-terminal-notice.durability.test.ts:restorePendingNoticeFlag",
+      "name": "restorePendingNoticeFlag",
+      "filePath": "src/auto-reply/continuation/work-terminal-notice.durability.test.ts",
+      "startLine": 145,
+      "endLine": 161,
+      "module": "Tasks"
+    },
+    {
+      "id": "Function:src/auto-reply/continuation/work-terminal-notice.durability.test.ts:simulateGatewayRestart",
+      "name": "simulateGatewayRestart",
+      "filePath": "src/auto-reply/continuation/work-terminal-notice.durability.test.ts",
+      "startLine": 164,
+      "endLine": 167,
+      "module": "Tasks"
+    }
+  ],
+  "timing": {
+    "vector": 5,
+    "bm25": 2579.2,
+    "merge": 0.2,
+    "symbol_lookup": 126.4,
+    "ranking": 0,
+    "formatting": 0,
+    "wall": 2706.6
+  }
+}

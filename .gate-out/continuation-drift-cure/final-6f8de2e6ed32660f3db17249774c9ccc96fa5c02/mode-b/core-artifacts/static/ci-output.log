@@ -1,0 +1,351 @@
+
+=== ENV user=figs arch=x86_64 cpus=20 mem=62GB ===
+node=v24.17.0 npm=11.13.0
+Preparing pnpm@11.15.1+sha512.81350b07e53c9538a02f1f2303b4290fa2d7be04e56e2a970c4cc4b417dc761de196edabd49d55c7dc9580db81007c44143e4e3d7e462b3000d23c255122d065 for immediate activation...
+pnpm=11.15.1
+pnpm store-dir=/home/figs/actions-runner/_work/_temp/openclaw-local-ci-pnpm-store
+
+=== pnpm install --frozen-lockfile ===
+Scope: all 171 workspace projects
+✓ Lockfile passes supply-chain policies (verified 15h ago)
+Lockfile is up to date, resolution step is skipped
+Packages: +1320
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 0, reused 0, downloaded 1, added 0
+Progress: resolved 0, reused 0, downloaded 431, added 152
+Progress: resolved 0, reused 0, downloaded 550, added 242
+[WARN] Tarball download average speed 4 KiB/s (size 7 KiB) is below 50 KiB/s: https://registry.npmjs.org/@oxc-project/types/-/types-0.140.0.tgz (GET)
+Progress: resolved 0, reused 0, downloaded 1030, added 437
+Progress: resolved 0, reused 0, downloaded 1270, added 745
+[WARN] Tarball download average speed 6 KiB/s (size 18 KiB) is below 50 KiB/s: https://registry.npmjs.org/@smithy/node-http-handler/-/node-http-handler-4.9.11.tgz (GET)
+Progress: resolved 0, reused 0, downloaded 1282, added 1314
+Progress: resolved 0, reused 0, downloaded 1283, added 1314
+Progress: resolved 0, reused 0, downloaded 1284, added 1316
+Progress: resolved 0, reused 0, downloaded 1285, added 1316
+Progress: resolved 0, reused 0, downloaded 1285, added 1317
+Progress: resolved 0, reused 0, downloaded 1287, added 1319
+Progress: resolved 0, reused 0, downloaded 1288, added 1320, done
+node_modules/@google/genai preinstall$ echo 'preinstall: no-op'
+node_modules/node-pty install$ node scripts/prebuild.js || node-gyp rebuild
+node_modules/@google/genai preinstall: preinstall: no-op
+node_modules/@google/genai preinstall: Done
+.../@matrix-org/matrix-sdk-crypto-nodejs postinstall$ node download-lib.js
+node_modules/esbuild postinstall$ node install.js
+node_modules/node-pty install: [32m> Checking prebuilds...[0m
+node_modules/node-pty install: Done
+node_modules/node-pty postinstall$ node scripts/post-install.js
+.../@matrix-org/matrix-sdk-crypto-nodejs postinstall: Downloading lib matrix-sdk-crypto.linux-x64-gnu.node from https://github.com/matrix-org/matrix-rust-sdk-crypto-nodejs/releases/download/v0.6.1/matrix-sdk-crypto.linux-x64-gnu.node
+node_modules/@tloncorp/tlon-skill postinstall$ node scripts/postinstall.js
+node_modules/node-pty postinstall: [32m> Cleaning release folder...[0m
+node_modules/node-pty postinstall: [32m> Moving conpty.dll...[0m
+node_modules/node-pty postinstall:   SKIPPED (not Windows)
+node_modules/esbuild postinstall: Done
+node_modules/node-pty postinstall: Done
+node_modules/@tloncorp/tlon-skill postinstall: [tlon-skill] Binary ready: /home/figs/actions-runner/_work/_temp/openclaw-local-ci-32642373348-XRhZHt/node_modules/@tloncorp/tlon-skill-linux-x64/tlon
+node_modules/@tloncorp/tlon-skill postinstall: Done
+node_modules/baileys preinstall$ node ./engine-requirements.js
+node_modules/baileys preinstall: Done
+.../@matrix-org/matrix-sdk-crypto-nodejs postinstall: Download Completed
+.../@matrix-org/matrix-sdk-crypto-nodejs postinstall: Done
+
+dependencies:
++ @openclaw/ai 2026.8.1 <- packages/ai
+
+devDependencies:
++ @openclaw/session-url-contract 0.0.0-private <- packages/session-url-contract
+
+. preinstall$ node scripts/preinstall-package-manager-warning.mjs
+. preinstall: Done
+. postinstall$ node scripts/postinstall-bundled-plugins.mjs
+. postinstall: Done
+. prepare$ node scripts/prepare-git-hooks.mjs
+. prepare: Done
+Done in 12.3s using pnpm v11.15.1
+install_seconds=13
+
+=== deps:shrinkwrap reconcile (ephemeral, not committed) ===
+warn: shrinkwrap reconcile failed (continuing)
+
+=== GATE: check (typecheck+lint+duplicates+guards) ===
+$ node --import tsx scripts/check.mts
+
+[check] preflight guards
+$ node scripts/check-no-conflict-markers.mjs
+$ node --import tsx scripts/check-no-deprecated-channel-access.ts
+$ node --import tsx scripts/tool-display.ts --check
+$ node --import tsx scripts/check-assertion-safety-ratchet.mts
+$ node scripts/generate-npm-package-lock.mjs --all
+$ node --import tsx scripts/check-database-first-legacy-stores.mts
+$ node --import tsx scripts/check-doctor-deprecation-registry.ts
+$ node --import tsx scripts/check-runtime-sidecar-loaders.mts
+$ node --import tsx scripts/check-max-lines-ratchet.mts
+$ node --import tsx scripts/generate-host-env-security-policy-swift.mts --check
+$ node --import tsx scripts/check-media-download-helper-roundtrip.mts
+$ node --disable-warning=ExperimentalWarning scripts/check-script-erasability.mjs
+$ node --import tsx scripts/check-extension-wildcard-reexports.mts
+$ node --import tsx scripts/check-package-patches.mts
+$ node --import tsx scripts/check-changelog-attributions.mts
+$ node --import tsx scripts/check-plugin-sdk-wildcard-reexports.mts
+$ node scripts/check-duplicates.mjs --coverage
+$ node security/opengrep/check-rule-metadata.mjs
+[doctor-deprecation-registry] OK as of 2026-08-23
+tool-display snapshot is up to date
+OK apps/macos/Sources/OpenClaw/HostEnvSecurityPolicy.generated.swift
+check-opengrep-rule-metadata: /home/figs/actions-runner/_work/_temp/openclaw-local-ci-32642373348-XRhZHt/security/opengrep/precise.yml ok
+No plugin-sdk wildcard re-exports found in extension API barrels.
+No guarded extension wildcard re-exports found.
+Validating 94 npm package locks with 4 jobs.
+[dup:check] target coverage ok
+[script-erasability] checked 520 TypeScript implementation files
+PASS package patch guard: no new pnpm patches; 2 approved patches allowlisted.
+OK: bundled plugin production code avoids deprecated channel runtime and access seams.
+assertion SAFETY ratchet OK: 4277 files, 13483 grandfathered assertions.
+runtime-sidecar-loaders: local runtime sidecar loaders look OK.
+max-lines ratchet OK: 897 grandfathered suppressions.
+OPENCLAW_* count 501/501
+.: npm package lock validated.
+extensions/acpx: npm package lock validated.
+extensions/amazon-bedrock: npm package lock validated.
+extensions/amazon-bedrock-mantle: npm package lock validated.
+extensions/anthropic-vertex: npm package lock validated.
+extensions/arcee: npm package lock validated.
+extensions/baseten: npm package lock validated.
+extensions/brave: npm package lock validated.
+extensions/buzz: npm package lock validated.
+extensions/byteplus: npm package lock validated.
+extensions/cerebras: npm package lock validated.
+extensions/chutes: npm package lock validated.
+extensions/clickclack: npm package lock validated.
+extensions/cloudflare-ai-gateway: npm package lock validated.
+extensions/codex: npm package lock validated.
+extensions/cohere: npm package lock validated.
+extensions/comfy: npm package lock validated.
+extensions/copilot: npm package lock validated.
+extensions/deepinfra: npm package lock validated.
+extensions/deepseek: npm package lock validated.
+extensions/diagnostics-otel: npm package lock validated.
+extensions/diagnostics-prometheus: npm package lock validated.
+extensions/diffs: npm package lock validated.
+extensions/diffs-language-pack: npm package lock validated.
+extensions/discord: npm package lock validated.
+extensions/duckduckgo: npm package lock validated.
+extensions/exa: npm package lock validated.
+extensions/featherless: npm package lock validated.
+extensions/feishu: npm package lock validated.
+extensions/firecrawl: npm package lock validated.
+extensions/fireworks: npm package lock validated.
+extensions/fish-audio-speech: npm package lock validated.
+extensions/gmi: npm package lock validated.
+extensions/google-meet: npm package lock validated.
+extensions/googlechat: npm package lock validated.
+extensions/gradium: npm package lock validated.
+extensions/groq: npm package lock validated.
+extensions/imessage: npm package lock validated.
+extensions/inworld: npm package lock validated.
+extensions/irc: npm package lock validated.
+extensions/kilocode: npm package lock validated.
+extensions/kimi-coding: npm package lock validated.
+extensions/line: npm package lock validated.
+extensions/llama-cpp: npm package lock validated.
+extensions/lobster: npm package lock validated.
+extensions/longcat: npm package lock validated.
+extensions/matrix: npm package lock validated.
+extensions/mattermost: npm package lock validated.
+extensions/memory-lancedb: npm package lock validated.
+extensions/meta: npm package lock validated.
+extensions/mistral: npm package lock validated.
+extensions/moonshot: npm package lock validated.
+extensions/msteams: npm package lock validated.
+extensions/mxc: npm package lock validated.
+extensions/nextcloud-talk: npm package lock validated.
+extensions/nostr: npm package lock validated.
+extensions/novita: npm package lock validated.
+extensions/opencode: npm package lock validated.
+extensions/opencode-go: npm package lock validated.
+extensions/openshell: npm package lock validated.
+extensions/parallel: npm package lock validated.
+extensions/perplexity: npm package lock validated.
+extensions/pixverse: npm package lock validated.
+extensions/qianfan: npm package lock validated.
+extensions/qwen: npm package lock validated.
+extensions/raft: npm package lock validated.
+extensions/searxng: npm package lock validated.
+extensions/signal: npm package lock validated.
+extensions/slack: npm package lock validated.
+extensions/sms: npm package lock validated.
+extensions/stepfun: npm package lock validated.
+extensions/synology-chat: npm package lock validated.
+extensions/synthetic: npm package lock validated.
+extensions/tavily: npm package lock validated.
+extensions/teams-meetings: npm package lock validated.
+extensions/tencent: npm package lock validated.
+extensions/tlon: npm package lock validated.
+extensions/tokenjuice: npm package lock validated.
+extensions/twitch: npm package lock validated.
+extensions/venice: npm package lock validated.
+extensions/vercel-ai-gateway: npm package lock validated.
+extensions/voice-call: npm package lock validated.
+extensions/volcengine: npm package lock validated.
+extensions/voyage: npm package lock validated.
+extensions/vydra: npm package lock validated.
+extensions/whatsapp: npm package lock validated.
+extensions/xiaomi: npm package lock validated.
+extensions/zai: npm package lock validated.
+extensions/zalo: npm package lock validated.
+extensions/zalouser: npm package lock validated.
+extensions/zoom-meetings: npm package lock validated.
+packages/ai: npm package lock validated.
+packages/gateway-client: npm package lock validated.
+packages/gateway-protocol: npm package lock validated.
+Database-first legacy-store guard passed.
+
+[check] typecheck
+$ pnpm tsgo:core && pnpm tsgo:ui && pnpm tsgo:extensions
+$ node scripts/run-tsgo.mjs -p tsconfig.core.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core.tsbuildinfo
+$ node scripts/run-tsgo.mjs -p tsconfig.ui.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/ui.tsbuildinfo
+$ node scripts/run-tsgo.mjs -p tsconfig.extensions.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions.tsbuildinfo
+$ node scripts/run-tsgo.mjs -p tsconfig.scripts.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/scripts.tsbuildinfo
+$ node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.test.root.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/test-root.tsbuildinfo
+
+[check] lint
+$ node --import tsx scripts/run-lint.mts
+control-ui-i18n: raw-copy: baseline entries=78
+control-ui-i18n: source: keys=5622 literal_references=6457 template_prefix_references=64
+[oxlint] shard concurrency 3 (cpus=20, memGB=62)
+[oxlint:core] starting
+[oxlint:extensions] starting
+[oxlint:scripts] starting
+[oxlint:scripts] finished
+[oxlint:core] still running after 30s
+[oxlint:extensions] still running after 30s
+[oxlint:core] still running after 60s
+[oxlint:extensions] still running after 60s
+[oxlint:core] still running after 90s
+[oxlint:extensions] still running after 90s
+[oxlint:extensions] finished
+[oxlint:core] still running after 120s
+[oxlint:core] finished
+$ oxfmt --check
+Checking formatting...
+
+All matched files use the correct format.
+Finished in 6160ms on 30236 files using 20 threads.
+
+[check] policy guards
+$ node --import tsx scripts/check-pairing-account-scope.mts
+$ node --import tsx scripts/check-no-runtime-action-load-config.mts
+$ node --import tsx scripts/check-wrapper-shadowing.mts
+$ node --import tsx scripts/check-import-cycles.ts
+$ node --import tsx scripts/check-no-pairing-store-group-auth.mts
+$ node --import tsx scripts/check-temp-path-guardrails.ts
+$ node --import tsx scripts/check-webhook-auth-body-order.mts
+$ node --import tsx scripts/check-deprecated-api-usage.mts
+wrapper shadowing guard passed.
+deprecated API usage guard passed
+Import cycle check: 0 runtime value cycle(s).
+GATE_OK: check (typecheck+lint+duplicates+guards) (352s)
+
+=== GATE: lint:ui:no-raw-window-open ===
+$ node scripts/run-oxlint.mjs --openclaw-focused-config --config config/oxlint/boundary-guards.json ui/src
+Found 0 warnings and 0 errors.
+Finished in 2.0s on 2293 files with 4 rules using 20 threads.
+GATE_OK: lint:ui:no-raw-window-open (3s)
+
+=== GATE: protocol:gen ===
+$ node --import tsx scripts/protocol-gen.ts
+wrote /home/figs/actions-runner/_work/_temp/openclaw-local-ci-32642373348-XRhZHt/dist/protocol.schema.json
+GATE_OK: protocol:gen (1s)
+
+=== GATE: plugins:assets:build ===
+$ node --import tsx scripts/bundled-plugin-assets.mts --phase build
+[canvas] build: node scripts/bundle-a2ui.mjs
+[log] <DIR>/a2ui.bundle.js  chunk │ size: 399.96 kB
+[log] <DIR>/a2ui-v0.9.bundle.js  chunk │ size: 615.66 kB
+[log]
+[success] rolldown v1.2.0 Finished in 98.03 ms
+[diffs] build: node --import tsx ../../scripts/build-diffs-viewer-runtime.mts curated
+[diffs-language-pack] build: node --import tsx ../../scripts/build-diffs-viewer-runtime.mts full
+[discord] build: node --import tsx ../../scripts/build-discord-activity-sdk.mts
+GATE_OK: plugins:assets:build (1s)
+
+=== GATE: build:strict-smoke ===
+$ pnpm plugins:assets:build && node --import tsx scripts/tsdown-build.mts && node --import tsx scripts/check-cli-bootstrap-imports.mts && node scripts/runtime-postbuild.mjs && node --import tsx scripts/build-stamp.mts && node --import tsx scripts/runtime-postbuild-stamp.mts && node --import tsx scripts/run-with-env.mts OPENCLAW_PLUGIN_SDK_CANONICAL_DTS=1 -- node --import tsx scripts/write-plugin-sdk-entry-dts.ts && node --import tsx scripts/check-plugin-sdk-exports.mts
+$ node --import tsx scripts/bundled-plugin-assets.mts --phase build
+[canvas] build: node scripts/bundle-a2ui.mjs
+A2UI bundle up to date; skipping.
+[diffs] build: node --import tsx ../../scripts/build-diffs-viewer-runtime.mts curated
+[diffs-language-pack] build: node --import tsx ../../scripts/build-diffs-viewer-runtime.mts full
+[discord] build: node --import tsx ../../scripts/build-discord-activity-sdk.mts
+[tsdown-build] invocation 1/11 finished in 2.4s
+[tsdown-build] invocation 2/11 finished in 10.2s
+node_modules/playwright-core/lib/coreBundle.js (65821:28) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+       [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/playwright-core/lib/coreBundle.js:65821:29 [38;5;246m][0m
+       [38;5;246m│[0m
+ [38;5;246m65821 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mc[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249mv[0m[38;5;249ma[0m[38;5;249ml[0m[38;5;249mu[0m[38;5;249me[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249m`[0m[38;5;249m([0m[38;5;249m$[0m[38;5;249m{[0m[38;5;249me[0m[38;5;249mx[0m[38;5;249mp[0m[38;5;249mr[0m[38;5;249m}[0m[38;5;249m)[0m[38;5;249m`[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m      │[0m                             ──┬─
+ [38;5;240m      │[0m                               ╰─── Use of direct `eval` here.
+ [38;5;240m      │[0m
+ [38;5;240m      │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m───────╯[0m
+
+node_modules/playwright-core/lib/coreBundle.js (65828:28) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+       [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/playwright-core/lib/coreBundle.js:65828:29 [38;5;246m][0m
+       [38;5;246m│[0m
+ [38;5;246m65828 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mc[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249mv[0m[38;5;249ma[0m[38;5;249ml[0m[38;5;249mu[0m[38;5;249me[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249m`[0m[38;5;249m([0m[38;5;249m$[0m[38;5;249m{[0m[38;5;249me[0m[38;5;249mx[0m[38;5;249mp[0m[38;5;249mr[0m[38;5;249m}[0m[38;5;249m)[0m[38;5;249m`[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m      │[0m                             ──┬─
+ [38;5;240m      │[0m                               ╰─── Use of direct `eval` here.
+ [38;5;240m      │[0m
+ [38;5;240m      │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m───────╯[0m
+
+node_modules/web-tree-sitter/web-tree-sitter.js (2343:30) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/web-tree-sitter/web-tree-sitter.js:2343:31 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m2343 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mA[0m[38;5;249mS[0m[38;5;249mM[0m[38;5;249m_[0m[38;5;249mC[0m[38;5;249mO[0m[38;5;249mN[0m[38;5;249mS[0m[38;5;249mT[0m[38;5;249mS[0m[38;5;249m[[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249ma[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m][0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249mf[0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mc[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m     │[0m                               ──┬─
+ [38;5;240m     │[0m                                 ╰─── Use of direct `eval` here.
+ [38;5;240m     │[0m
+ [38;5;240m     │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m──────╯[0m
+
+node_modules/web-tree-sitter/web-tree-sitter.js (2366:32) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/web-tree-sitter/web-tree-sitter.js:2366:33 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m2366 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mm[0m[38;5;249mo[0m[38;5;249md[0m[38;5;249mu[0m[38;5;249ml[0m[38;5;249me[0m[38;5;249mE[0m[38;5;249mx[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249ms[0m[38;5;249m[[0m[38;5;249mn[0m[38;5;249ma[0m[38;5;249mm[0m[38;5;249me[0m[38;5;249m][0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249mf[0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mc[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m     │[0m                                 ──┬─
+ [38;5;240m     │[0m                                   ╰─── Use of direct `eval` here.
+ [38;5;240m     │[0m
+ [38;5;240m     │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m──────╯[0m
+
+[tsdown-build] invocation 3/11 finished in 6.4s
+[tsdown-build] invocation 4/11 finished in 20.7s
+[tsdown-build] invocation 5/11 finished in 23.0s
+[tsdown-build] invocation 6/11 finished in 22.3s
+[tsdown-build] invocation 7/11 finished in 21.3s
+[tsdown-build] invocation 8/11 finished in 23.4s
+[tsdown-build] invocation 9/11 finished in 21.5s
+[tsdown-build] invocation 10/11 finished in 22.5s
+[tsdown-build] invocation 11/11 finished in 23.3s
+CLI bootstrap import guard passed.
+[plugin-control-plane-loads] verified 35 built modules with native require and checked doctor closures
+runtime-postbuild: 11 phases completed in 2177ms (slowest: built plugin control-plane loads 1782ms)
+Public plugin SDK declaration graph: 3133207/5315536 bytes (5250000-byte ratchet + 65536-byte output variance).
+OK: All 147 public plugin-sdk subpaths verified.
+GATE_OK: build:strict-smoke (214s)
+
+=== RESULTS SUMMARY ===
+
+# openclaw-local-ci - PASS (karmaterminal/openclaw@6f8de2e6ed32660f3db17249774c9ccc96fa5c02)
+
+## Gates
+- PASS `check (typecheck+lint+duplicates+guards)` - 352s
+- PASS `lint:ui:no-raw-window-open` - 3s
+- PASS `protocol:gen` - 1s
+- PASS `plugins:assets:build` - 1s
+- PASS `build:strict-smoke` - 214s
+
+_full per-gate logs: `gate-*.log` in this artifact_
+
+
+=== RESULT rc=0 conclusion=pass ===

@@ -1,0 +1,72 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-85651-continuation-drift-cure-candidate-20260823[39m
+
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/default-agent-role-materialization.write.test.ts [2m([22m[2m16 tests[22m[2m)[22m[33m 12218[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves env references and includes and is idempotent after persistence [33m 1511[2mms[22m[39m
+     [33m[2m✓[22m[39m pins a replaced sole fixed-store owner only when the store is unchanged: true [33m 315[2mms[22m[39m
+     [33m[2m✓[22m[39m pins a replaced sole fixed-store owner only when the store is unchanged: false [33m 304[2mms[22m[39m
+     [33m[2m✓[22m[39m drops a persisted fixed-store owner when switching to another fixed store [33m 340[2mms[22m[39m
+     [33m[2m✓[22m[39m drops a persisted fixed-store owner when switching to a per-agent store [33m 338[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps an explicitly supplied owner when switching fixed stores [33m 344[2mms[22m[39m
+     [33m[2m✓[22m[39m pins the survivor's previous workspace during a generic roster collapse [33m 331[2mms[22m[39m
+     [33m[2m✓[22m[39m does nothing when the owner is unchanged during generic roster writes [33m 337[2mms[22m[39m
+     [33m[2m✓[22m[39m replaces a legacy list when persisting explicit ownership [33m 854[2mms[22m[39m
+     [33m[2m✓[22m[39m assigns only ownerless cron rows before retiring the retained legacy owner [33m 4831[2mms[22m[39m
+     [33m[2m✓[22m[39m assigns ownerless jobs in an unmigrated legacy cron file [33m 674[2mms[22m[39m
+     [33m[2m✓[22m[39m leaves the legacy owner marker intact when a cron row is corrupt [33m 617[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves migrated legacy ownership during an unrelated write [33m 734[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/codex-route-warnings.test.ts [2m([22m[2m132 tests[22m[2m)[22m[33m 10107[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps Codex disabled when implicit defaults resolve to a configured provider [33m 1804[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps the Codex plugin disabled when a bare model resolves to a configured provider [33m 1571[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps the Codex plugin disabled when a bare model case-insensitively resolves to a configured provider [33m 1562[2mms[22m[39m
+     [33m[2m✓[22m[39m re-enables the Codex plugin when a provider-prefixed catalog model does not claim a bare model [33m 3729[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves legacy provider catalog runtime pins while repairing listed-agent legacy refs [33m 1318[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/stale-auth-order.test.ts [2m([22m[2m53 tests[22m[2m)[22m[33m 7406[2mms[22m[39m
+     [33m[2m✓[22m[39m uses the live owner after a registered database pathname is recreated [33m 323[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/cron/schema-safety.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 3646[2mms[22m[39m
+     [33m[2m✓[22m[39m fails closed without mutation during legacy cron health collection [33m 442[2mms[22m[39m
+     [33m[2m✓[22m[39m fails closed without mutation during interactive legacy cron repair [33m 430[2mms[22m[39m
+     [33m[2m✓[22m[39m fails closed without mutation during non-interactive legacy cron repair [33m 426[2mms[22m[39m
+     [33m[2m✓[22m[39m fails closed without mutation during Codex cron migration planning [33m 427[2mms[22m[39m
+     [33m[2m✓[22m[39m fails closed without mutation during Codex cron migration commit [33m 428[2mms[22m[39m
+     [33m[2m✓[22m[39m fails closed in non-interactive repair when no legacy files remain [33m 415[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves active WAL artifacts while rejecting the future schema [33m 433[2mms[22m[39m
+     [33m[2m✓[22m[39m fails closed if the schema advances between inspection and repair [33m 644[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/cron/index.test.ts [2m([22m[2m66 tests[22m[2m)[22m[33m 1162[2mms[22m[39m
+     [33m[2m✓[22m[39m reports legacy cron store, run-log, and payload findings without mutating files [33m 394[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/plugin-registry-migration.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 1013[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/missing-configured-plugin-install.load-path.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/active-tool-schema-warnings.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 376[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/pristine-startup-state.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/config-flow-steps.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/plugin-dependency-cleanup.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/invalid-plugin-config.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 76[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/repair-sequencing.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 82[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/cron/warnings.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/channel-legacy-config-migrate.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/legacy-config-migrations.qqbot.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/context-engine-host-compat.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/empty-allowlist-scan.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/exec-safe-bins.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/channel-doctor.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/bundled-plugin-load-paths.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/channel-capabilities.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/allowfrom-fallback-migration.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/legacy-config-write-ownership.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 289[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/codex-native-assets.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/plugin-runtime-symlinks.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/legacy-oauth-sidecar.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/deprecation-compat.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/startup-plugin-convergence-plan.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/channel-capabilities.packaged.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/empty-allowlist-policy.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/shared/allowlist-policy-repair.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/finalize-config-flow.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/emit-notes.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/cron/legacy-repair.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 127[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor/cron/dreaming-payload-migration.constants-drift.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m36 passed[39m[22m[90m (36)[39m
+[2m      Tests [22m [1m[32m507 passed[39m[22m[90m (507)[39m
+[2m   Start at [22m 07:20:11
+[2m   Duration [22m 43.91s[2m (transform 4.21s, setup 494ms, import 6.41s, tests 36.77s, environment 0ms)[22m

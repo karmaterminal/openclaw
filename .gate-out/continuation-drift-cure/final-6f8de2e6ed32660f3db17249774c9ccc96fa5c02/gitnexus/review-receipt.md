@@ -1,0 +1,34 @@
+## GitNexus review receipt
+
+- Exact worktree: `/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-85651-continuation-drift-cure-candidate-20260823`
+- Index identity/freshness: GitNexus `1.6.9`; indexed and current commit both `6f8de2e6ed32660f3db17249774c9ccc96fa5c02`; 452,035 nodes, 2,471,444 edges, 24,407 clusters, and 300 flows.
+- Base SHA: `ab7d5c92ace7029727d9bacb537b069be9c32f03`
+- Head SHA: `6f8de2e6ed32660f3db17249774c9ccc96fa5c02`
+- Changed files: 1,067
+- Changed symbols: 5,393
+- Affected processes: 21
+- detect_changes receipt: `detect-changes.txt`; risk `CRITICAL` by breadth.
+- Impact receipts: ten exact symbols, each with summary and complete depth-one output:
+  - `handleToolExecutionEnd`: 21 impacted, one direct, `LOW`;
+  - `createEmbeddedToolLifecycle`: 36 impacted, one direct, `HIGH`;
+  - `requestHeartbeatRaw`: 83 impacted, 37 direct, `CRITICAL`;
+  - `createContinueWorkTool`: 25 impacted, three direct, `HIGH`;
+  - `createContinueDelegateTool`: 28 impacted, six direct, `HIGH`;
+  - `createRequestCompactionTool`: 28 impacted, five direct, `HIGH`;
+  - `parseContinuationSignal`: 24 impacted, three direct, `CRITICAL`;
+  - `runEmbeddedFallbackCandidate`: three impacted, two direct, `LOW`;
+  - `deliverPendingTerminalNotice`: seven impacted, three direct, `LOW`;
+  - sibling pending-lifecycle `schedule`: three direct wrappers, `LOW`.
+- Key-symbol context receipts: tool completion, extracted tool lifecycle, raw heartbeat wake, continuation signal parsing, terminal notice delivery, and subagent pending-lifecycle scheduling under `context-*.txt`.
+- Depth-one dependents outside diff: three of 64. All three are the unchanged `scheduleCancellation`, `scheduleError`, and `scheduleTimeout` wrappers in `src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts`; all other direct dependents are within the candidate delta.
+- Covered flows: tool start/end and trusted no-start handling; continuation signal parsing and all three model tools; raw heartbeat callers and continuation trust routing; embedded fallback lane threading; durable terminal notices; subagent retry-grace scheduling. Gate 2.5 canonical owners, exact-head changed checks, mandatory autoreview, and Mode-B provide execution coverage.
+- Missing coverage:
+  - GitNexus skipped six files larger than 512 KB, identified as generated, release documentation, or binary/vendored assets.
+  - The resident MCP process uses LadybugDB storage version 40 while GitNexus `1.6.9` writes version 42. The MCP call therefore could not open this new index. The exact GitNexus CLI backend from the same `1.6.9` installation ran `detect-changes`, `impact`, `context`, and `query`; no non-GitNexus substitute was used.
+  - Semantic embeddings were intentionally disabled. Exact symbol and call-graph results remain available; concept queries without process hits were supplemented by exact context and impact calls.
+- Dependency contract proof: sibling Codex source at `400ee190c30d5e4a88549c070a2335311f0baa91` was inspected directly. `codex-rs/app-server-protocol/src/protocol/v2/item.rs:227` defines typed tool items; `item.rs:1228` and `item.rs:1302` define separate started/completed lifecycle notifications; `codex-rs/app-server-protocol/src/protocol/thread_history.rs:720` and `thread_history.rs:765` map dynamic/MCP start and terminal status independently. This supports preserving explicit implementation-start and terminal-completion facts rather than deriving one from the other.
+- Risk: `CRITICAL` by changed-surface breadth; the highest direct hub is `requestHeartbeatRaw` with 37 callers. The continuation tool creators and extracted lifecycle owner are `HIGH`; repaired completion and fallback boundaries are narrow.
+- Findings: no P0/P1 graph finding. Direct callers, exact contexts, complete gate ledgers, and focused owners align with the candidate. The remaining merge risk is breadth and operational acceptance, not a discovered missing caller or dropped flow.
+- Recommendation: accept the GitNexus exact-diff review only together with complete Gate 2/2.5/2.7 receipts, the classified Mode-B receipt, and final independent readiness review.
+- Reviewer: GitNexus `1.6.9` exact-worktree analysis, interpreted by the lane lead.
+- Timestamp: `2026-08-23T14:15:00Z`

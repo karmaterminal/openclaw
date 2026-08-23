@@ -1,0 +1,41 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Function:src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts:schedule",
+    "name": "schedule",
+    "kind": "Function",
+    "filePath": "src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts",
+    "startLine": 46,
+    "endLine": 93
+  },
+  "epistemic": "exact",
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Function:src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts:scheduleCancellation",
+        "name": "scheduleCancellation",
+        "filePath": "src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts"
+      },
+      {
+        "uid": "Function:src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts:scheduleError",
+        "name": "scheduleError",
+        "filePath": "src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts"
+      },
+      {
+        "uid": "Function:src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts:scheduleTimeout",
+        "name": "scheduleTimeout",
+        "filePath": "src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts"
+      }
+    ]
+  },
+  "outgoing": {
+    "calls": [
+      {
+        "uid": "Function:src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts:clearKind",
+        "name": "clearKind",
+        "filePath": "src/agents/subagents/registry/subagent-registry-pending-lifecycle.ts"
+      }
+    ]
+  },
+  "processes": []
+}

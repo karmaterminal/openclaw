@@ -1,0 +1,5 @@
+M	scripts/e2e/lib/doctor-install-switch/scenario.sh
+M	scripts/e2e/update-channel-switch-docker.sh
+M	src/agents/workspace.bootstrap-cache.test.ts
+M	src/agents/workspace.ts
+M	test/scripts/docker-build-helper.test.ts

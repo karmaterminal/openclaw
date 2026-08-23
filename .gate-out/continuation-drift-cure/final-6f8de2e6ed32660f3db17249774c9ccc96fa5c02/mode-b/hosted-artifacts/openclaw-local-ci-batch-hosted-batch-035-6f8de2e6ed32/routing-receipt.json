@@ -1,0 +1,139 @@
+{
+  "receipt_kind": "shard-execution-routing-receipt",
+  "vehicle": "openclaw-bootstrap#1341",
+  "routing_contract_version": "2.0.0",
+  "ruleset_digest": "sha256:9ac20d0d5ad7c5dd63fbc9fd03fb40929fc70932c743f31cb1d79382badbef5d",
+  "planner_digest": "sha256:00998116b58eb9be21491129a6ecfeb6816694ba71c9c813f7cda68abd82fc32",
+  "target": {
+    "repo": "karmaterminal/openclaw",
+    "ref": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+    "sha": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02"
+  },
+  "workflow": {
+    "repo": "karmaterminal/openclaw-bootstrap",
+    "sha": "6dd6c3a7712c8ae02937a29054525b2ddacb89c1"
+  },
+  "batch": {
+    "batch_id": "hosted-batch-035",
+    "batch_name": "agentic-plugins+2more",
+    "check_name": "hosted(agentic-plugins,agentic-commands-doctor,…)",
+    "lane": "hosted",
+    "selected_execution_class": "hosted",
+    "shard_count": 3,
+    "max_concurrent_shards": 2,
+    "resolved_slots": 2,
+    "requires_dist": false
+  },
+  "worker": {
+    "runner_name": "GitHub Actions 1000475547",
+    "runner_environment": "github-hosted",
+    "runner_os": "Linux",
+    "runner_arch": "X64"
+  },
+  "execution": {
+    "run_id": "32642373348",
+    "run_attempt": 1,
+    "job": "test-shard-hosted-early",
+    "started_at": "2026-08-23T13:29:10Z",
+    "completed_at": "2026-08-23T13:42:09Z",
+    "queue_seconds": null,
+    "runtime_seconds": 779,
+    "rc": 1,
+    "step_outcome": "failure",
+    "conclusion": "failure",
+    "resource_usage": {
+      "collector": "gnu-time-v",
+      "user_cpu_seconds": 914.69,
+      "system_cpu_seconds": 140.62,
+      "total_cpu_seconds": 1055.31,
+      "peak_rss_kb": 4418420,
+      "raw_file": "batch-resource-usage.txt"
+    }
+  },
+  "shards": [
+    {
+      "check_name": "checks-node-agentic-plugins",
+      "shard_name": "agentic-plugins",
+      "kind": "node-core",
+      "capability_class": "hermetic",
+      "weight_class": "standard",
+      "weight_seconds": 155,
+      "requires_dist": false,
+      "selected_execution_class": "hosted",
+      "lane": "hosted",
+      "result": "success",
+      "rc": 0,
+      "tests": {
+        "passed": 3819,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "retry_count": 0,
+      "results_dir": "node-agentic-plugins",
+      "resource_usage": {
+        "collector": "gnu-time-v",
+        "user_cpu_seconds": 583.05,
+        "system_cpu_seconds": 57.46,
+        "total_cpu_seconds": 640.51,
+        "peak_rss_kb": 4418420,
+        "raw_file": "node-agentic-plugins/resource-usage.txt"
+      }
+    },
+    {
+      "check_name": "checks-node-agentic-commands-doctor",
+      "shard_name": "agentic-commands-doctor",
+      "kind": "node-core",
+      "capability_class": "hermetic",
+      "weight_class": "small",
+      "weight_seconds": 54,
+      "requires_dist": false,
+      "selected_execution_class": "hosted",
+      "lane": "hosted",
+      "result": "failure",
+      "rc": 1,
+      "tests": {
+        "passed": 341,
+        "failed": 1
+      },
+      "failure_count": 1,
+      "retry_count": 0,
+      "results_dir": "node-agentic-commands-doctor",
+      "resource_usage": {
+        "collector": "gnu-time-v",
+        "user_cpu_seconds": 279.63,
+        "system_cpu_seconds": 20.31,
+        "total_cpu_seconds": 299.94,
+        "peak_rss_kb": 1985132,
+        "raw_file": "node-agentic-commands-doctor/resource-usage.txt"
+      }
+    },
+    {
+      "check_name": "checks-node-core-runtime-infra-net-install",
+      "shard_name": "core-runtime-infra-net-install",
+      "kind": "node-core",
+      "capability_class": "hermetic",
+      "weight_class": "small",
+      "weight_seconds": 7,
+      "requires_dist": false,
+      "selected_execution_class": "hosted",
+      "lane": "hosted",
+      "result": "success",
+      "rc": 0,
+      "tests": {
+        "passed": 438,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "retry_count": 0,
+      "results_dir": "node-core-runtime-infra-net-install",
+      "resource_usage": {
+        "collector": "gnu-time-v",
+        "user_cpu_seconds": 30.13,
+        "system_cpu_seconds": 5.93,
+        "total_cpu_seconds": 36.06,
+        "peak_rss_kb": 471532,
+        "raw_file": "node-core-runtime-infra-net-install/resource-usage.txt"
+      }
+    }
+  ]
+}

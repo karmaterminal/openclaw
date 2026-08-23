@@ -1,0 +1,93 @@
+# drift-cure-gate.primitive-cores.txt
+#
+# CANONICAL FEATURE CURE-REGION FILE LIST — source-of-truth for Gate 2
+# (PR-DRIFT-CURE-GATES-RUNBOOK.md — Cure-bytes preserved).
+#
+# These feature bytes MUST remain preserved across PR-head → CANDIDATE_SHA in
+# any drift-cure cycle: either the whole blob is byte-identical, or the
+# candidate blob is the exact projection of the named upstream delta onto
+# PR-head. Operator-determined cure-region lists invite the
+# "I-read-100-lines-of-a-file-and-declared-it-cure-region" failure-mode. This
+# list is the deterministic gate input.
+#
+# Format:
+# - One path per line, relative to karmaterminal/openclaw repo root
+# - Prefix a removed/renamed path with `!` to require that path to remain absent
+#   from CANDIDATE_SHA
+# - `# comment` lines and blank lines are stripped at read-time
+# - PATTERN SEMANTICS (production resolver is `git ls-tree -r --name-only <SHA> -- <pattern>`):
+#   - EXPLICIT FILE PATHS work: `src/agents/tools/continue-work-tool.ts`
+#   - DIRECTORY-RECURSION via dir-as-pathspec works, but feature-core lists
+#     SHOULD prefer explicit files so unrelated files in a large directory do
+#     not become false Gate 2 failures.
+#   - **TAIL-GLOB `*` AS FILENAME-FRAGMENT IS NOT SUPPORTED** by git pathspec on this command.
+#     `src/agents/tools/continue-work-tool*` resolves to 0 files (NOT 3). Verified at byte:
+#     `git ls-tree -r --name-only HEAD -- 'src/agents/tools/continue-work-tool*'` → empty.
+#     Use explicit file paths instead. 🪨 Rune `1510042016` substrate-of-record.
+#   - `:(glob)` pathspec magic also fails on `git ls-tree --` ("pathspec magic not supported").
+#
+# UPDATING THIS LIST:
+# - Treat as part of the feature surface — changes via PR with cohort cosign
+# - When the feature surface expands (new tools / new helpers / new wiring),
+#   add to this list as part of the SAME PR that adds the surface
+# - When the feature surface contracts (deprecation / removal), remove from
+#   this list as part of the SAME PR that removes the surface
+# - Out-of-band edits to this file are operator-error class
+#
+# CURRENT SCOPE: PR #85651 continuation-tools feature
+# (continue_work / continue_delegate / request_compaction)
+
+# ─── Continuation tool surface (explicit enumeration — tail-glob `*` NOT supported by production resolver) ───
+src/agents/openclaw-tools.ts
+src/agents/tools/continue-work-tool.ts
+src/agents/tools/continue-work-tool.test.ts
+src/agents/tools/continue-work-tool.boundary.test.ts
+src/agents/tools/continue-delegate-tool.ts
+src/agents/tools/continue-delegate-tool.test.ts
+src/agents/tools/continue-delegate-tool.crosssession-gate.test.ts
+src/agents/tools/request-compaction-tool.ts
+src/agents/tools/request-compaction-tool.test.ts
+src/agents/tools/request-compaction-tool.callsite-threading.test.ts
+src/agents/tools/request-compaction-tool.classifier-emission.test.ts
+src/agents/tools/request-compaction-tool.volitional-threading.test.ts
+src/agents/tools/continuation-tools-registration.test.ts
+
+# ─── Embedded agent runner (current PR #85651 file inventory, explicit) ───
+src/agents/embedded-agent-runner/compact-reasons.test.ts
+src/agents/embedded-agent-runner/compact-reasons.ts
+src/agents/embedded-agent-runner/compact.hooks.harness.ts
+src/agents/embedded-agent-runner/compact.hooks.test.ts
+src/agents/embedded-agent-runner/compact.ts
+src/agents/embedded-agent-runner/compact.types.ts
+src/agents/embedded-agent-runner/run.continuation-opts-forward.test.ts
+src/agents/embedded-agent-runner/run.overflow-compaction.harness.ts
+src/agents/embedded-agent-runner/run.overflow-compaction.loop.test.ts
+src/agents/embedded-agent-runner/run.ts
+src/agents/embedded-agent-runner/run/assistant-failover.ts
+src/agents/embedded-agent-runner/run/attempt-tool-construction-plan.ts
+src/agents/embedded-agent-runner/run/attempt.ts
+src/agents/embedded-agent-runner/run/failover-policy.ts
+src/agents/embedded-agent-runner/run/params.ts
+src/agents/embedded-agent-runner/system-prompt.ts
+
+# ─── CLI wiring (preaction hook for continuation tool registration) ──────
+src/cli/program/preaction.ts
+
+# ─── Usage helpers (codex finding #4; renamed by upstream UI refactor) ───
+!ui/src/ui/usage-helpers.ts
+ui/src/pages/usage/helpers.ts
+
+# ─── UI config surface (codex finding #2; split by upstream UI refactor) ─
+!ui/src/ui/controllers/config.ts
+!ui/src/lib/config/index.ts
+ui/src/lib/config/config-draft-model.ts
+ui/src/lib/config/config-gateway-operations.ts
+ui/src/lib/config/config-state-model.ts
+ui/src/lib/config/config-write-coordinator.ts
+ui/src/lib/config/runtime-config-capability.ts
+
+# ─── macOS node-mode runtime (codex finding #1) ──────────────────────────
+apps/macos/Sources/OpenClaw/NodeMode/MacNodeRuntime.swift
+
+# ─── Future-extension hooks (add patterns here as feature surface grows) ─
+# (intentionally empty — extend via PR with cohort cosign)

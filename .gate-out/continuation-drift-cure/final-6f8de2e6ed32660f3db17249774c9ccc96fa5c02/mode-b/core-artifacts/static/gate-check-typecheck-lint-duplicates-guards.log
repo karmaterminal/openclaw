@@ -1,0 +1,176 @@
+$ node --import tsx scripts/check.mts
+
+[check] preflight guards
+$ node scripts/check-no-conflict-markers.mjs
+$ node --import tsx scripts/check-no-deprecated-channel-access.ts
+$ node --import tsx scripts/tool-display.ts --check
+$ node --import tsx scripts/check-assertion-safety-ratchet.mts
+$ node scripts/generate-npm-package-lock.mjs --all
+$ node --import tsx scripts/check-database-first-legacy-stores.mts
+$ node --import tsx scripts/check-doctor-deprecation-registry.ts
+$ node --import tsx scripts/check-runtime-sidecar-loaders.mts
+$ node --import tsx scripts/check-max-lines-ratchet.mts
+$ node --import tsx scripts/generate-host-env-security-policy-swift.mts --check
+$ node --import tsx scripts/check-media-download-helper-roundtrip.mts
+$ node --disable-warning=ExperimentalWarning scripts/check-script-erasability.mjs
+$ node --import tsx scripts/check-extension-wildcard-reexports.mts
+$ node --import tsx scripts/check-package-patches.mts
+$ node --import tsx scripts/check-changelog-attributions.mts
+$ node --import tsx scripts/check-plugin-sdk-wildcard-reexports.mts
+$ node scripts/check-duplicates.mjs --coverage
+$ node security/opengrep/check-rule-metadata.mjs
+[doctor-deprecation-registry] OK as of 2026-08-23
+tool-display snapshot is up to date
+OK apps/macos/Sources/OpenClaw/HostEnvSecurityPolicy.generated.swift
+check-opengrep-rule-metadata: /home/figs/actions-runner/_work/_temp/openclaw-local-ci-32642373348-XRhZHt/security/opengrep/precise.yml ok
+No plugin-sdk wildcard re-exports found in extension API barrels.
+No guarded extension wildcard re-exports found.
+Validating 94 npm package locks with 4 jobs.
+[dup:check] target coverage ok
+[script-erasability] checked 520 TypeScript implementation files
+PASS package patch guard: no new pnpm patches; 2 approved patches allowlisted.
+OK: bundled plugin production code avoids deprecated channel runtime and access seams.
+assertion SAFETY ratchet OK: 4277 files, 13483 grandfathered assertions.
+runtime-sidecar-loaders: local runtime sidecar loaders look OK.
+max-lines ratchet OK: 897 grandfathered suppressions.
+OPENCLAW_* count 501/501
+.: npm package lock validated.
+extensions/acpx: npm package lock validated.
+extensions/amazon-bedrock: npm package lock validated.
+extensions/amazon-bedrock-mantle: npm package lock validated.
+extensions/anthropic-vertex: npm package lock validated.
+extensions/arcee: npm package lock validated.
+extensions/baseten: npm package lock validated.
+extensions/brave: npm package lock validated.
+extensions/buzz: npm package lock validated.
+extensions/byteplus: npm package lock validated.
+extensions/cerebras: npm package lock validated.
+extensions/chutes: npm package lock validated.
+extensions/clickclack: npm package lock validated.
+extensions/cloudflare-ai-gateway: npm package lock validated.
+extensions/codex: npm package lock validated.
+extensions/cohere: npm package lock validated.
+extensions/comfy: npm package lock validated.
+extensions/copilot: npm package lock validated.
+extensions/deepinfra: npm package lock validated.
+extensions/deepseek: npm package lock validated.
+extensions/diagnostics-otel: npm package lock validated.
+extensions/diagnostics-prometheus: npm package lock validated.
+extensions/diffs: npm package lock validated.
+extensions/diffs-language-pack: npm package lock validated.
+extensions/discord: npm package lock validated.
+extensions/duckduckgo: npm package lock validated.
+extensions/exa: npm package lock validated.
+extensions/featherless: npm package lock validated.
+extensions/feishu: npm package lock validated.
+extensions/firecrawl: npm package lock validated.
+extensions/fireworks: npm package lock validated.
+extensions/fish-audio-speech: npm package lock validated.
+extensions/gmi: npm package lock validated.
+extensions/google-meet: npm package lock validated.
+extensions/googlechat: npm package lock validated.
+extensions/gradium: npm package lock validated.
+extensions/groq: npm package lock validated.
+extensions/imessage: npm package lock validated.
+extensions/inworld: npm package lock validated.
+extensions/irc: npm package lock validated.
+extensions/kilocode: npm package lock validated.
+extensions/kimi-coding: npm package lock validated.
+extensions/line: npm package lock validated.
+extensions/llama-cpp: npm package lock validated.
+extensions/lobster: npm package lock validated.
+extensions/longcat: npm package lock validated.
+extensions/matrix: npm package lock validated.
+extensions/mattermost: npm package lock validated.
+extensions/memory-lancedb: npm package lock validated.
+extensions/meta: npm package lock validated.
+extensions/mistral: npm package lock validated.
+extensions/moonshot: npm package lock validated.
+extensions/msteams: npm package lock validated.
+extensions/mxc: npm package lock validated.
+extensions/nextcloud-talk: npm package lock validated.
+extensions/nostr: npm package lock validated.
+extensions/novita: npm package lock validated.
+extensions/opencode: npm package lock validated.
+extensions/opencode-go: npm package lock validated.
+extensions/openshell: npm package lock validated.
+extensions/parallel: npm package lock validated.
+extensions/perplexity: npm package lock validated.
+extensions/pixverse: npm package lock validated.
+extensions/qianfan: npm package lock validated.
+extensions/qwen: npm package lock validated.
+extensions/raft: npm package lock validated.
+extensions/searxng: npm package lock validated.
+extensions/signal: npm package lock validated.
+extensions/slack: npm package lock validated.
+extensions/sms: npm package lock validated.
+extensions/stepfun: npm package lock validated.
+extensions/synology-chat: npm package lock validated.
+extensions/synthetic: npm package lock validated.
+extensions/tavily: npm package lock validated.
+extensions/teams-meetings: npm package lock validated.
+extensions/tencent: npm package lock validated.
+extensions/tlon: npm package lock validated.
+extensions/tokenjuice: npm package lock validated.
+extensions/twitch: npm package lock validated.
+extensions/venice: npm package lock validated.
+extensions/vercel-ai-gateway: npm package lock validated.
+extensions/voice-call: npm package lock validated.
+extensions/volcengine: npm package lock validated.
+extensions/voyage: npm package lock validated.
+extensions/vydra: npm package lock validated.
+extensions/whatsapp: npm package lock validated.
+extensions/xiaomi: npm package lock validated.
+extensions/zai: npm package lock validated.
+extensions/zalo: npm package lock validated.
+extensions/zalouser: npm package lock validated.
+extensions/zoom-meetings: npm package lock validated.
+packages/ai: npm package lock validated.
+packages/gateway-client: npm package lock validated.
+packages/gateway-protocol: npm package lock validated.
+Database-first legacy-store guard passed.
+
+[check] typecheck
+$ pnpm tsgo:core && pnpm tsgo:ui && pnpm tsgo:extensions
+$ node scripts/run-tsgo.mjs -p tsconfig.core.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/core.tsbuildinfo
+$ node scripts/run-tsgo.mjs -p tsconfig.ui.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/ui.tsbuildinfo
+$ node scripts/run-tsgo.mjs -p tsconfig.extensions.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/extensions.tsbuildinfo
+$ node scripts/run-tsgo.mjs -p tsconfig.scripts.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/scripts.tsbuildinfo
+$ node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.test.root.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/test-root.tsbuildinfo
+
+[check] lint
+$ node --import tsx scripts/run-lint.mts
+control-ui-i18n: raw-copy: baseline entries=78
+control-ui-i18n: source: keys=5622 literal_references=6457 template_prefix_references=64
+[oxlint] shard concurrency 3 (cpus=20, memGB=62)
+[oxlint:core] starting
+[oxlint:extensions] starting
+[oxlint:scripts] starting
+[oxlint:scripts] finished
+[oxlint:core] still running after 30s
+[oxlint:extensions] still running after 30s
+[oxlint:core] still running after 60s
+[oxlint:extensions] still running after 60s
+[oxlint:core] still running after 90s
+[oxlint:extensions] still running after 90s
+[oxlint:extensions] finished
+[oxlint:core] still running after 120s
+[oxlint:core] finished
+$ oxfmt --check
+Checking formatting...
+
+All matched files use the correct format.
+Finished in 6160ms on 30236 files using 20 threads.
+
+[check] policy guards
+$ node --import tsx scripts/check-pairing-account-scope.mts
+$ node --import tsx scripts/check-no-runtime-action-load-config.mts
+$ node --import tsx scripts/check-wrapper-shadowing.mts
+$ node --import tsx scripts/check-import-cycles.ts
+$ node --import tsx scripts/check-no-pairing-store-group-auth.mts
+$ node --import tsx scripts/check-temp-path-guardrails.ts
+$ node --import tsx scripts/check-webhook-auth-body-order.mts
+$ node --import tsx scripts/check-deprecated-api-usage.mts
+wrapper shadowing guard passed.
+deprecated API usage guard passed
+Import cycle check: 0 runtime value cycle(s).

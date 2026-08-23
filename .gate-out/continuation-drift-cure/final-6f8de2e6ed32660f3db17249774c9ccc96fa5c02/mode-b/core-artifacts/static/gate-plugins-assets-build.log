@@ -1,0 +1,9 @@
+$ node --import tsx scripts/bundled-plugin-assets.mts --phase build
+[canvas] build: node scripts/bundle-a2ui.mjs
+[log] <DIR>/a2ui.bundle.js  chunk │ size: 399.96 kB
+[log] <DIR>/a2ui-v0.9.bundle.js  chunk │ size: 615.66 kB
+[log]
+[success] rolldown v1.2.0 Finished in 98.03 ms
+[diffs] build: node --import tsx ../../scripts/build-diffs-viewer-runtime.mts curated
+[diffs-language-pack] build: node --import tsx ../../scripts/build-diffs-viewer-runtime.mts full
+[discord] build: node --import tsx ../../scripts/build-discord-activity-sdk.mts

@@ -1,0 +1,14 @@
+agents-embedded-run exit=0
+agents-core-isolated exit=0
+agents-core exit=0
+agents-tools exit=0
+cron exit=0
+gateway-methods exit=0
+gateway-server exit=0
+infra exit=0
+unit-fast exit=0
+unit-src exit=0
+ui-e2e exit=0
+ui exit=0
+agents-lifecycle-e2e exit=0
+overall=0

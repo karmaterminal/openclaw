@@ -1,0 +1,40 @@
+{
+  "target": {
+    "id": "Function:src/agents/tools/continue-delegate-tool.ts:createContinueDelegateTool",
+    "name": "createContinueDelegateTool",
+    "type": "Function",
+    "filePath": "src/agents/tools/continue-delegate-tool.ts"
+  },
+  "direction": "upstream",
+  "impactedCount": 28,
+  "risk": "HIGH",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 6,
+    "processes_affected": 0,
+    "modules_affected": 3
+  },
+  "byDepthCounts": {
+    "1": 6,
+    "2": 4,
+    "3": 18
+  },
+  "affected_processes": [],
+  "affected_modules": [
+    {
+      "name": "Tools",
+      "hits": 8,
+      "impact": "direct"
+    },
+    {
+      "name": "Agents",
+      "hits": 3,
+      "impact": "indirect"
+    },
+    {
+      "name": "Plugins",
+      "hits": 1,
+      "impact": "indirect"
+    }
+  ]
+}

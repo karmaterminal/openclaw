@@ -1,0 +1,58 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Function:src/agents/embedded-agent-subscribe.handlers.tools.ts:createEmbeddedToolLifecycle",
+    "name": "createEmbeddedToolLifecycle",
+    "kind": "Function",
+    "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.ts",
+    "startLine": 19,
+    "endLine": 69
+  },
+  "epistemic": "exact",
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Function:src/agents/embedded-agent-subscribe.ts:subscribeEmbeddedAgentSession",
+        "name": "subscribeEmbeddedAgentSession",
+        "filePath": "src/agents/embedded-agent-subscribe.ts"
+      }
+    ]
+  },
+  "outgoing": {
+    "calls": [
+      {
+        "uid": "Function:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:handleToolExecutionEnd",
+        "name": "handleToolExecutionEnd",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-subscribe.handlers.tools.start.ts:handleToolExecutionStart",
+        "name": "handleToolExecutionStart",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.start.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-tool-results.ts:buildToolLifecycleErrorResult",
+        "name": "buildToolLifecycleErrorResult",
+        "filePath": "src/agents/embedded-agent-tool-results.ts"
+      },
+      {
+        "uid": "Function:src/agents/tool-result-error.ts:registerTrustedToolNoStartError",
+        "name": "registerTrustedToolNoStartError",
+        "filePath": "src/agents/tool-result-error.ts"
+      },
+      {
+        "uid": "Function:src/agents/tool-result-error.ts:consumeTrustedToolNoStartError",
+        "name": "consumeTrustedToolNoStartError",
+        "filePath": "src/agents/tool-result-error.ts"
+      }
+    ],
+    "accesses": [
+      {
+        "uid": "Const:src/agents/embedded-agent-subscribe.handlers.tools.ts:executionStarted",
+        "name": "executionStarted",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.ts"
+      }
+    ]
+  },
+  "processes": []
+}

@@ -1,0 +1,148 @@
+{
+  "processes": [],
+  "process_symbols": [],
+  "definitions": [
+    {
+      "id": "Function:src/agents/openclaw-tools.continuation-registration.test.ts:buildRequestCompactionOpts",
+      "name": "buildRequestCompactionOpts",
+      "filePath": "src/agents/openclaw-tools.continuation-registration.test.ts",
+      "startLine": 31,
+      "endLine": 37
+    },
+    {
+      "id": "Const:src/agents/openclaw-tools.continuation-registration.test.ts:CONTINUATION_TOOLS",
+      "name": "CONTINUATION_TOOLS",
+      "filePath": "src/agents/openclaw-tools.continuation-registration.test.ts",
+      "startLine": 29,
+      "endLine": 29
+    },
+    {
+      "id": "File:src/agents/openclaw-tools.continuation-registration.test.ts",
+      "name": "openclaw-tools.continuation-registration.test.ts",
+      "filePath": "src/agents/openclaw-tools.continuation-registration.test.ts"
+    },
+    {
+      "id": "Function:src/agents/embedded-agent-runner/run.continuation-opts-forward.test.ts:resetContinueDelegateTurnBudgetMock",
+      "name": "resetContinueDelegateTurnBudgetMock",
+      "filePath": "src/agents/embedded-agent-runner/run.continuation-opts-forward.test.ts",
+      "startLine": 12,
+      "endLine": 12
+    },
+    {
+      "id": "Const:src/agents/embedded-agent-runner/run.continuation-opts-forward.test.ts:resetContinueDelegateTurnBudgetMock",
+      "name": "resetContinueDelegateTurnBudgetMock",
+      "filePath": "src/agents/embedded-agent-runner/run.continuation-opts-forward.test.ts",
+      "startLine": 12,
+      "endLine": 12
+    },
+    {
+      "id": "File:src/agents/embedded-agent-runner/run.continuation-opts-forward.test.ts",
+      "name": "run.continuation-opts-forward.test.ts",
+      "filePath": "src/agents/embedded-agent-runner/run.continuation-opts-forward.test.ts"
+    },
+    {
+      "id": "Const:src/infra/continuation-tracer.ts:CONTINUATION_SIGNAL_KINDS",
+      "name": "CONTINUATION_SIGNAL_KINDS",
+      "filePath": "src/infra/continuation-tracer.ts",
+      "startLine": 40,
+      "endLine": 47
+    },
+    {
+      "id": "File:src/infra/continuation-tracer.ts",
+      "name": "continuation-tracer.ts",
+      "filePath": "src/infra/continuation-tracer.ts"
+    },
+    {
+      "id": "Method:src/infra/continuation-tracer.ts:startSpan#2",
+      "name": "startSpan",
+      "filePath": "src/infra/continuation-tracer.ts",
+      "startLine": 319,
+      "endLine": 319,
+      "module": "Infra"
+    },
+    {
+      "id": "Const:src/agents/tools/continue-delegate-tool.ts:log",
+      "name": "log",
+      "filePath": "src/agents/tools/continue-delegate-tool.ts",
+      "startLine": 46,
+      "endLine": 46
+    },
+    {
+      "id": "Const:src/agents/tools/continue-delegate-tool.ts:DELEGATE_MODES",
+      "name": "DELEGATE_MODES",
+      "filePath": "src/agents/tools/continue-delegate-tool.ts",
+      "startLine": 48,
+      "endLine": 48
+    },
+    {
+      "id": "File:src/agents/tools/continue-delegate-tool.ts",
+      "name": "continue-delegate-tool.ts",
+      "filePath": "src/agents/tools/continue-delegate-tool.ts"
+    },
+    {
+      "id": "Function:src/auto-reply/continuation/signal.ts:isContinuationDelegateFanoutMode",
+      "name": "isContinuationDelegateFanoutMode",
+      "filePath": "src/auto-reply/continuation/signal.ts",
+      "startLine": 22,
+      "endLine": 26
+    },
+    {
+      "id": "Function:src/auto-reply/continuation/signal.ts:parseContinuationSignal",
+      "name": "parseContinuationSignal",
+      "filePath": "src/auto-reply/continuation/signal.ts",
+      "startLine": 208,
+      "endLine": 296,
+      "module": "Continuation"
+    },
+    {
+      "id": "File:src/auto-reply/continuation/signal.ts",
+      "name": "signal.ts",
+      "filePath": "src/auto-reply/continuation/signal.ts"
+    },
+    {
+      "id": "Function:src/auto-reply/continuation/delegate-store.ts:revalidatePendingDelegateForSpawn",
+      "name": "revalidatePendingDelegateForSpawn",
+      "filePath": "src/auto-reply/continuation/delegate-store.ts",
+      "startLine": 47,
+      "endLine": 111,
+      "module": "Continuation"
+    },
+    {
+      "id": "Function:src/auto-reply/continuation/delegate-store.ts:enqueuePendingDelegate",
+      "name": "enqueuePendingDelegate",
+      "filePath": "src/auto-reply/continuation/delegate-store.ts",
+      "startLine": 114,
+      "endLine": 129,
+      "module": "Continuation"
+    },
+    {
+      "id": "File:src/auto-reply/continuation/delegate-store.ts",
+      "name": "delegate-store.ts",
+      "filePath": "src/auto-reply/continuation/delegate-store.ts"
+    },
+    {
+      "id": "Function:src/auto-reply/continuation/delegate-flow-store.ts:delegateGoal",
+      "name": "delegateGoal",
+      "filePath": "src/auto-reply/continuation/delegate-flow-store.ts",
+      "startLine": 230,
+      "endLine": 240
+    },
+    {
+      "id": "Function:src/auto-reply/continuation/delegate-flow-store.ts:rejectCorruptDelegateFlow",
+      "name": "rejectCorruptDelegateFlow",
+      "filePath": "src/auto-reply/continuation/delegate-flow-store.ts",
+      "startLine": 683,
+      "endLine": 705,
+      "module": "Continuation"
+    }
+  ],
+  "timing": {
+    "vector": 7.1,
+    "bm25": 2530.2,
+    "merge": 0.3,
+    "symbol_lookup": 142.7,
+    "ranking": 0,
+    "formatting": 0,
+    "wall": 2684.1
+  }
+}

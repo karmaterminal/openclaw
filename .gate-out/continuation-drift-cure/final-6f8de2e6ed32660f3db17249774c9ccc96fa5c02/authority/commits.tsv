@@ -1,0 +1,3 @@
+repository	commit	local_ref	remote_url
+karmaterminal/openclaw-bootstrap	6dd6c3a7712c8ae02937a29054525b2ddacb89c1	refs/authority/openclaw-bootstrap/main-6dd6c3a	https://github.com/karmaterminal/openclaw-bootstrap.git
+karmaterminal/frond-scribe	49b50571d16704c2ac6017404cecb27ee5bc8b80	refs/authority/frond-scribe/main-49b5057	https://github.com/karmaterminal/frond-scribe.git

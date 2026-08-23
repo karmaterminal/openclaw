@@ -1,0 +1,196 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Function:src/infra/heartbeat-wake.ts:requestHeartbeatRaw",
+    "name": "requestHeartbeatRaw",
+    "kind": "Function",
+    "filePath": "src/infra/heartbeat-wake.ts",
+    "startLine": 691,
+    "endLine": 720
+  },
+  "epistemic": "exact",
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Function:src/plugin-sdk/heartbeat-runtime.ts:requestHeartbeat",
+        "name": "requestHeartbeat",
+        "filePath": "src/plugin-sdk/heartbeat-runtime.ts"
+      },
+      {
+        "uid": "Function:src/agents/bash-tools.exec-runtime.ts:maybeNotifyOnExit",
+        "name": "maybeNotifyOnExit",
+        "filePath": "src/agents/bash-tools.exec-runtime.ts"
+      },
+      {
+        "uid": "Function:src/agents/bash-tools.test.ts:drainPendingHeartbeatWakes",
+        "name": "drainPendingHeartbeatWakes",
+        "filePath": "src/agents/bash-tools.test.ts"
+      },
+      {
+        "uid": "Function:src/plugins/runtime/runtime-system.ts:requestHeartbeat",
+        "name": "requestHeartbeat",
+        "filePath": "src/plugins/runtime/runtime-system.ts"
+      },
+      {
+        "uid": "Function:src/plugins/runtime/runtime-system.ts:requestHeartbeatNow",
+        "name": "requestHeartbeatNow",
+        "filePath": "src/plugins/runtime/runtime-system.ts"
+      },
+      {
+        "uid": "Function:src/sessions/session-state-notices.ts:enqueueSessionStateNotice",
+        "name": "enqueueSessionStateNotice",
+        "filePath": "src/sessions/session-state-notices.ts"
+      },
+      {
+        "uid": "Function:src/gateway/server/hooks.ts:dispatchWakeHook",
+        "name": "dispatchWakeHook",
+        "filePath": "src/gateway/server/hooks.ts"
+      },
+      {
+        "uid": "Function:src/gateway/server/hooks.ts:dispatchAgentHook",
+        "name": "dispatchAgentHook",
+        "filePath": "src/gateway/server/hooks.ts"
+      },
+      {
+        "uid": "Function:src/gateway/server/hooks.ts:reportHookFailure",
+        "name": "reportHookFailure",
+        "filePath": "src/gateway/server/hooks.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-runner.active-hours-schedule.e2e.test.ts:pokeIntervalWake",
+        "name": "pokeIntervalWake",
+        "filePath": "src/infra/heartbeat-runner.active-hours-schedule.e2e.test.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-runner.scheduler.test-support.ts:expectWakeDispatch",
+        "name": "expectWakeDispatch",
+        "filePath": "src/infra/heartbeat-runner.scheduler.test-support.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-runner.scheduler.test.ts:pokeIntervalWake",
+        "name": "pokeIntervalWake",
+        "filePath": "src/infra/heartbeat-runner.scheduler.test.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-runner.scheduler.test.ts:expectWakeDispatch",
+        "name": "expectWakeDispatch",
+        "filePath": "src/infra/heartbeat-runner.scheduler.test.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-runner.stale-exec.test.ts:requestExecWake",
+        "name": "requestExecWake",
+        "filePath": "src/infra/heartbeat-runner.stale-exec.test.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-runner.targeted-unscheduled-wake.test.ts:expectWakeDispatch",
+        "name": "expectWakeDispatch",
+        "filePath": "src/infra/heartbeat-runner.targeted-unscheduled-wake.test.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-wake-concurrency.test.ts:requestTarget",
+        "name": "requestTarget",
+        "filePath": "src/infra/heartbeat-wake-concurrency.test.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-wake.test.ts:expectRetryAfterDefaultDelay",
+        "name": "expectRetryAfterDefaultDelay",
+        "filePath": "src/infra/heartbeat-wake.test.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-wake.test.ts:requestPeriod",
+        "name": "requestPeriod",
+        "filePath": "src/infra/heartbeat-wake.test.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-wake.test.ts:requestTask",
+        "name": "requestTask",
+        "filePath": "src/infra/heartbeat-wake.test.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-wake.ts:requestHeartbeatNow",
+        "name": "requestHeartbeatNow",
+        "filePath": "src/infra/heartbeat-wake.ts"
+      },
+      {
+        "uid": "File:src/infra/heartbeat-wake.transcript-context.test.ts",
+        "name": "heartbeat-wake.transcript-context.test.ts",
+        "filePath": "src/infra/heartbeat-wake.transcript-context.test.ts"
+      },
+      {
+        "uid": "File:src/infra/heartbeat-wake.test.ts",
+        "name": "heartbeat-wake.test.ts",
+        "filePath": "src/infra/heartbeat-wake.test.ts"
+      },
+      {
+        "uid": "File:src/infra/heartbeat-wake.preemption.test.ts",
+        "name": "heartbeat-wake.preemption.test.ts",
+        "filePath": "src/infra/heartbeat-wake.preemption.test.ts"
+      },
+      {
+        "uid": "File:src/infra/heartbeat-wake.lifecycle.test.ts",
+        "name": "heartbeat-wake.lifecycle.test.ts",
+        "filePath": "src/infra/heartbeat-wake.lifecycle.test.ts"
+      },
+      {
+        "uid": "File:src/infra/heartbeat-wake-concurrency.test.ts",
+        "name": "heartbeat-wake-concurrency.test.ts",
+        "filePath": "src/infra/heartbeat-wake-concurrency.test.ts"
+      },
+      {
+        "uid": "File:src/infra/heartbeat-runner.targeted-unscheduled-wake.test.ts",
+        "name": "heartbeat-runner.targeted-unscheduled-wake.test.ts",
+        "filePath": "src/infra/heartbeat-runner.targeted-unscheduled-wake.test.ts"
+      },
+      {
+        "uid": "File:src/infra/heartbeat-runner.stale-exec.test.ts",
+        "name": "heartbeat-runner.stale-exec.test.ts",
+        "filePath": "src/infra/heartbeat-runner.stale-exec.test.ts"
+      },
+      {
+        "uid": "File:src/infra/heartbeat-runner.scheduler.test.ts",
+        "name": "heartbeat-runner.scheduler.test.ts",
+        "filePath": "src/infra/heartbeat-runner.scheduler.test.ts"
+      },
+      {
+        "uid": "File:src/infra/heartbeat-runner.scheduler.targeted-wake.test.ts",
+        "name": "heartbeat-runner.scheduler.targeted-wake.test.ts",
+        "filePath": "src/infra/heartbeat-runner.scheduler.targeted-wake.test.ts"
+      },
+      {
+        "uid": "File:src/infra/heartbeat-runner.scheduler-owner-resolution.test.ts",
+        "name": "heartbeat-runner.scheduler-owner-resolution.test.ts",
+        "filePath": "src/infra/heartbeat-runner.scheduler-owner-resolution.test.ts"
+      }
+    ]
+  },
+  "outgoing": {
+    "calls": [
+      {
+        "uid": "Function:packages/normalization-core/src/number-coercion.ts:resolveTimerTimeoutMs",
+        "name": "resolveTimerTimeoutMs",
+        "filePath": "packages/normalization-core/src/number-coercion.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-wake.ts:hasTrustedContinuationHeartbeatWake",
+        "name": "hasTrustedContinuationHeartbeatWake",
+        "filePath": "src/infra/heartbeat-wake.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-wake.ts:queuePendingWakeReason",
+        "name": "queuePendingWakeReason",
+        "filePath": "src/infra/heartbeat-wake.ts"
+      },
+      {
+        "uid": "Function:src/infra/heartbeat-wake.ts:schedule",
+        "name": "schedule",
+        "filePath": "src/infra/heartbeat-wake.ts"
+      },
+      {
+        "uid": "Function:src/config/sessions/transcript-write-context.ts:runWithoutOwnedSessionTranscriptWrites",
+        "name": "runWithoutOwnedSessionTranscriptWrites",
+        "filePath": "src/config/sessions/transcript-write-context.ts"
+      }
+    ]
+  },
+  "processes": []
+}

@@ -1,0 +1,48 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Function:src/auto-reply/continuation/signal.ts:parseContinuationSignal",
+    "name": "parseContinuationSignal",
+    "kind": "Function",
+    "filePath": "src/auto-reply/continuation/signal.ts",
+    "startLine": 208,
+    "endLine": 296
+  },
+  "epistemic": "exact",
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Function:src/auto-reply/continuation/signal.ts:stripContinuationSignal",
+        "name": "stripContinuationSignal",
+        "filePath": "src/auto-reply/continuation/signal.ts"
+      },
+      {
+        "uid": "File:src/auto-reply/continuation/signal-parser.test.ts",
+        "name": "signal-parser.test.ts",
+        "filePath": "src/auto-reply/continuation/signal-parser.test.ts"
+      },
+      {
+        "uid": "File:src/auto-reply/continuation/rfc-contract.scenario.test.ts",
+        "name": "rfc-contract.scenario.test.ts",
+        "filePath": "src/auto-reply/continuation/rfc-contract.scenario.test.ts"
+      }
+    ]
+  },
+  "outgoing": {
+    "accesses": [
+      {
+        "uid": "Const:src/auto-reply/continuation/signal.ts:taskBody",
+        "name": "taskBody",
+        "filePath": "src/auto-reply/continuation/signal.ts"
+      }
+    ],
+    "calls": [
+      {
+        "uid": "Function:src/auto-reply/continuation/signal.ts:parseDelegateBodyDirectives",
+        "name": "parseDelegateBodyDirectives",
+        "filePath": "src/auto-reply/continuation/signal.ts"
+      }
+    ]
+  },
+  "processes": []
+}

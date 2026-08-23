@@ -1,0 +1,152 @@
+{
+  "processes": [],
+  "process_symbols": [],
+  "definitions": [
+    {
+      "id": "Const:src/infra/heartbeat-wake.ts:TRUSTED_CONTINUATION_ROUTING_MARKER",
+      "name": "TRUSTED_CONTINUATION_ROUTING_MARKER",
+      "filePath": "src/infra/heartbeat-wake.ts",
+      "startLine": 58,
+      "endLine": 58
+    },
+    {
+      "id": "Function:src/infra/heartbeat-wake.ts:requestHeartbeatRaw",
+      "name": "requestHeartbeatRaw",
+      "filePath": "src/infra/heartbeat-wake.ts",
+      "startLine": 691,
+      "endLine": 720,
+      "module": "Infra"
+    },
+    {
+      "id": "File:src/infra/heartbeat-wake.ts",
+      "name": "heartbeat-wake.ts",
+      "filePath": "src/infra/heartbeat-wake.ts"
+    },
+    {
+      "id": "Const:src/sessions/session-state-notices.ts:SESSION_STATE_CONTEXT_PREFIX",
+      "name": "SESSION_STATE_CONTEXT_PREFIX",
+      "filePath": "src/sessions/session-state-notices.ts",
+      "startLine": 5,
+      "endLine": 5
+    },
+    {
+      "id": "Const:src/sessions/session-state-notices.ts:SESSION_STATE_WAKE_COALESCE_MS",
+      "name": "SESSION_STATE_WAKE_COALESCE_MS",
+      "filePath": "src/sessions/session-state-notices.ts",
+      "startLine": 6,
+      "endLine": 6
+    },
+    {
+      "id": "File:src/sessions/session-state-notices.ts",
+      "name": "session-state-notices.ts",
+      "filePath": "src/sessions/session-state-notices.ts"
+    },
+    {
+      "id": "Const:src/auto-reply/heartbeat.ts:HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS",
+      "name": "HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS",
+      "filePath": "src/auto-reply/heartbeat.ts",
+      "startLine": 12,
+      "endLine": 13
+    },
+    {
+      "id": "Const:src/auto-reply/heartbeat.ts:HEARTBEAT_RESPONSE_TOOL_PROMPT",
+      "name": "HEARTBEAT_RESPONSE_TOOL_PROMPT",
+      "filePath": "src/auto-reply/heartbeat.ts",
+      "startLine": 14,
+      "endLine": 14
+    },
+    {
+      "id": "Const:src/auto-reply/heartbeat.ts:HEARTBEAT_TRANSCRIPT_PROMPT",
+      "name": "HEARTBEAT_TRANSCRIPT_PROMPT",
+      "filePath": "src/auto-reply/heartbeat.ts",
+      "startLine": 15,
+      "endLine": 15
+    },
+    {
+      "id": "Function:src/infra/heartbeat-wake-lifecycle.ts:getHeartbeatWakeAbortSignal",
+      "name": "getHeartbeatWakeAbortSignal",
+      "filePath": "src/infra/heartbeat-wake-lifecycle.ts",
+      "startLine": 19,
+      "endLine": 21,
+      "module": "Infra"
+    },
+    {
+      "id": "Function:src/infra/heartbeat-wake-lifecycle.ts:getActiveHeartbeatWakeContext",
+      "name": "getActiveHeartbeatWakeContext",
+      "filePath": "src/infra/heartbeat-wake-lifecycle.ts",
+      "startLine": 24,
+      "endLine": 26
+    },
+    {
+      "id": "File:src/infra/heartbeat-wake-lifecycle.ts",
+      "name": "heartbeat-wake-lifecycle.ts",
+      "filePath": "src/infra/heartbeat-wake-lifecycle.ts"
+    },
+    {
+      "id": "Function:src/cron/service/wake.ts:requestCronHeartbeat",
+      "name": "requestCronHeartbeat",
+      "filePath": "src/cron/service/wake.ts",
+      "startLine": 12,
+      "endLine": 23,
+      "module": "Service"
+    },
+    {
+      "id": "Function:src/cron/service/wake.ts:wake",
+      "name": "wake",
+      "filePath": "src/cron/service/wake.ts",
+      "startLine": 26,
+      "endLine": 106,
+      "module": "Server-methods"
+    },
+    {
+      "id": "File:src/cron/service/wake.ts",
+      "name": "wake.ts",
+      "filePath": "src/cron/service/wake.ts"
+    },
+    {
+      "id": "Const:src/infra/heartbeat-outcome-store.ts:HEARTBEAT_OUTCOME_WAKE_REASON_MAX_CHARS",
+      "name": "HEARTBEAT_OUTCOME_WAKE_REASON_MAX_CHARS",
+      "filePath": "src/infra/heartbeat-outcome-store.ts",
+      "startLine": 15,
+      "endLine": 15
+    },
+    {
+      "id": "Function:src/infra/heartbeat-outcome-store.ts:persistHeartbeatOutcome",
+      "name": "persistHeartbeatOutcome",
+      "filePath": "src/infra/heartbeat-outcome-store.ts",
+      "startLine": 91,
+      "endLine": 157,
+      "module": "Sessions"
+    },
+    {
+      "id": "File:src/infra/heartbeat-outcome-store.ts",
+      "name": "heartbeat-outcome-store.ts",
+      "filePath": "src/infra/heartbeat-outcome-store.ts"
+    },
+    {
+      "id": "Function:extensions/feishu/src/doctor-contract.ts:normalizeFeishuLegacyConfigEntries",
+      "name": "normalizeFeishuLegacyConfigEntries",
+      "filePath": "extensions/feishu/src/doctor-contract.ts",
+      "startLine": 121,
+      "endLine": 140,
+      "module": "Config"
+    },
+    {
+      "id": "Function:extensions/feishu/src/doctor-contract.ts:normalizeEntry",
+      "name": "normalizeEntry",
+      "filePath": "extensions/feishu/src/doctor-contract.ts",
+      "startLine": 129,
+      "endLine": 138,
+      "module": "Cluster_5215"
+    }
+  ],
+  "timing": {
+    "vector": 6,
+    "bm25": 2616.3,
+    "merge": 0.2,
+    "symbol_lookup": 115.5,
+    "ranking": 0,
+    "formatting": 0,
+    "wall": 2732.8
+  }
+}

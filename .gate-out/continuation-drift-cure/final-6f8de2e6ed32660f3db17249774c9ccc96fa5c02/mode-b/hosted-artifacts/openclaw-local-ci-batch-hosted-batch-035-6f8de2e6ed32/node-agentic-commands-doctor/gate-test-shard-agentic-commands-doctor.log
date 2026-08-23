@@ -1,0 +1,238 @@
+[test] starting test/vitest/vitest.commands.config.ts
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/runner/work/_temp/ci-batch-work-32642373348-1-hosted-batch-035/shard-1-agentic-commands-doctor[39m
+
+[vitest] still running with no output for 30000ms.
+[vitest] still running with no output for 60000ms.
+[vitest] still running with no output for 90000ms.
+[vitest] still running with no output for 120000ms.
+[vitest] still running with no output for 150000ms.
+[vitest] still running with no output for 180000ms.
+[vitest] still running with no output for 210000ms.
+[vitest] still running with no output for 240000ms.
+ [31m❯[39m [30m[42m commands [49m[39m src/commands/doctor-lint.test.ts [2m([22m[2m25 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 241809[2mms[22m[39m
+     [33m[2m✓[22m[39m bases exit code on the selected severity threshold [33m 6032[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps Gateway-owned secret degradation observable through '--only JSON' [33m 24478[2mms[22m[39m
+     [32m✓[39m keeps Gateway-owned secret degradation observable through '--only human text'[32m 4[2mms[22m[39m
+     [32m✓[39m keeps Gateway-owned secret degradation observable through '--all JSON'[32m 3[2mms[22m[39m
+     [32m✓[39m keeps Gateway-owned secret degradation observable through '--all human text'[32m 3[2mms[22m[39m
+     [32m✓[39m keeps Gateway-owned secret degradation observable through 'default JSON'[32m 2[2mms[22m[39m
+     [32m✓[39m keeps Gateway-owned secret degradation observable through 'default human text'[32m 3[2mms[22m[39m
+     [32m✓[39m does not expose deep mode to extension health check context[32m 10[2mms[22m[39m
+     [32m✓[39m emits structured JSON for invalid config snapshots[32m 3[2mms[22m[39m
+     [32m✓[39m rejects unknown --only health check ids instead of reporting a false-clean run[32m 7[2mms[22m[39m
+     [32m✓[39m reports disabled Codex plugin routes through doctor lint[32m 230[2mms[22m[39m
+     [32m✓[39m runs core contribution checks plus registered extension checks[32m 7[2mms[22m[39m
+[31m     [31m×[31m reports an actionable Crabbox profile finding before dispatch[39m[33m 200924[2mms[22m[39m
+     [32m✓[39m fails informational findings when severity-min is explicit[32m 13[2mms[22m[39m
+     [32m✓[39m does not require shared state inspection for an unrelated selected check[32m 10[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps mixed selected checks on a fully isolated state view [33m 3103[2mms[22m[39m
+     [33m[2m✓[22m[39m does not inspect plugin state when no semantic index exists [33m 409[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps relevant deferred plugin inspection off the source state database [33m 2526[2mms[22m[39m
+     [33m[2m✓[22m[39m fails closed when a semantic index needs plugin state that cannot be prepared [33m 1639[2mms[22m[39m
+     [33m[2m✓[22m[39m emits one structured failure when relevant plugin state cleanup does not complete [33m 2368[2mms[22m[39m
+     [32m✓[39m 'rejects extension checks that reuse o…'[32m 8[2mms[22m[39m
+     [32m✓[39m 'rejects registered core-kind checks t…'[32m 5[2mms[22m[39m
+     [32m✓[39m 'rejects extension checks that claim u…'[32m 5[2mms[22m[39m
+     [32m✓[39m 'rejects registered core-kind checks t…'[32m 8[2mms[22m[39m
+     [32m✓[39m rejects invalid severity thresholds[32m 1[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-security.test.ts [2m([22m[2m32 tests[22m[2m)[22m[33m 2313[2mms[22m[39m
+     [33m[2m✓[22m[39m warns when tools.exec is broader than host exec defaults [33m 464[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-post-upgrade.test.ts [2m([22m[2m25 tests[22m[2m)[22m[33m 626[2mms[22m[39m
+     [33m[2m✓[22m[39m reads the canonical SQLite plugin index by default [33m 471[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-update.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 88[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-tools-md-migration.test.ts [2m([22m[2m25 tests[22m[2m)[22m[33m 633[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-sqlite-maintenance-lock.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 170[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-sandbox.warns-sandbox-enabled-without-docker.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+│
+◇  Shell completion ──────────────────────────────────────────────╮
+│                                                                 │
+│  Shell completion installed. Restart your shell or run: source  │
+│  ~/.bash_profile                                                │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ─────────────────────────────────────────────────╮
+│                                                                    │
+│  Shell completion installed. Restart your shell or run: source     │
+│  '/home/runner/.oc-ci-tmp/oc2572-1.KewDtG/tmp/openclaw doctor zsh  │
+│  profile-FZMLC6/.zshrc'                                            │
+│                                                                    │
+├────────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ──────────────────────────────────────────────────╮
+│                                                                     │
+│  Shell completion installed. Restart your shell or run: source      │
+│  '/home/runner/.oc-ci-tmp/oc2572-1.KewDtG/tmp/openclaw doctor fish  │
+│  profile-ipEXI2/fish/config.fish'                                   │
+│                                                                     │
+├─────────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ────────────────────────────────────────────────╮
+│                                                                   │
+│  Your bash profile uses slow dynamic completion (source <(...)).  │
+│  Upgrading to cached completion for faster shell startup...       │
+│                                                                   │
+├───────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ────────────────────────────────────────────────────────────────╮
+│                                                                                   │
+│  Shell completion not upgraded:                                                   │
+│  /home/runner/.oc-ci-tmp/oc2572-1.KewDtG/tmp/openclaw-doctor-home-98mBD9/.bashrc  │
+│  is not writable. Run `openclaw completion --install` against a                   │
+│  writable profile file.                                                           │
+│                                                                                   │
+├───────────────────────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ────────────────────────────────────────────────╮
+│                                                                   │
+│  Your bash profile uses slow dynamic completion (source <(...)).  │
+│  Upgrading to cached completion for faster shell startup...       │
+│                                                                   │
+├───────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ────────────────────────────────────────────────────────────────╮
+│                                                                                   │
+│  Shell completion not upgraded:                                                   │
+│  /home/runner/.oc-ci-tmp/oc2572-1.KewDtG/tmp/openclaw-doctor-home-VGuluB/.bashrc  │
+│  is not writable. Run `openclaw completion --install` against a                   │
+│  writable profile file.                                                           │
+│                                                                                   │
+├───────────────────────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ────────────────────────────────────────────────╮
+│                                                                   │
+│  Your bash profile uses slow dynamic completion (source <(...)).  │
+│  Upgrading to cached completion for faster shell startup...       │
+│                                                                   │
+├───────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ────────────────────────────────────────────────────────────────╮
+│                                                                                   │
+│  Shell completion not upgraded:                                                   │
+│  /home/runner/.oc-ci-tmp/oc2572-1.KewDtG/tmp/openclaw-doctor-home-fcs7Cx/.bashrc  │
+│  is not writable. Run `openclaw completion --install` against a                   │
+│  writable profile file.                                                           │
+│                                                                                   │
+├───────────────────────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ──────────────────────────────────────────────────────────────────────╮
+│                                                                                         │
+│  Shell completion not installed:                                                        │
+│  /home/runner/.oc-ci-tmp/oc2572-1.KewDtG/tmp/openclaw-doctor-home-GEWPAX/.bash_profile  │
+│  is not writable. Run `openclaw completion --install` against a                         │
+│  writable profile file.                                                                 │
+│                                                                                         │
+├─────────────────────────────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ──────────────────────────────────────────────────────────────────────╮
+│                                                                                         │
+│  Shell completion not installed:                                                        │
+│  /home/runner/.oc-ci-tmp/oc2572-1.KewDtG/tmp/openclaw-doctor-home-zd0jmP/.bash_profile  │
+│  is not writable. Run `openclaw completion --install` against a                         │
+│  writable profile file.                                                                 │
+│                                                                                         │
+├─────────────────────────────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ──────────────────────────────────────────────────────────────────────╮
+│                                                                                         │
+│  Shell completion not installed:                                                        │
+│  /home/runner/.oc-ci-tmp/oc2572-1.KewDtG/tmp/openclaw-doctor-home-4qmHAs/.bash_profile  │
+│  is not writable. Run `openclaw completion --install` against a                         │
+│  writable profile file.                                                                 │
+│                                                                                         │
+├─────────────────────────────────────────────────────────────────────────────────────────╯
+│
+◇  Shell completion ────────────────────────────────────────────────╮
+│                                                                   │
+│  Your bash profile uses slow dynamic completion (source <(...)).  │
+│  Upgrading to cached completion for faster shell startup...       │
+│                                                                   │
+├───────────────────────────────────────────────────────────────────╯
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-completion.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 92[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-retired-phone-control.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 1819[2mms[22m[39m
+     [33m[2m✓[22m[39m removes journal-owned allows and the exact setup deny seed [33m 416[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-sandbox-legacy-registry.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 1412[2mms[22m[39m
+     [33m[2m✓[22m[39m migrates legacy monolithic container and browser registry files after explicit repair [33m 438[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-model-catalog-credentials.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 4034[2mms[22m[39m
+     [33m[2m✓[22m[39m copies config, root, and plugin catalog keys before runtime retires plaintext [33m 1641[2mms[22m[39m
+     [33m[2m✓[22m[39m never overwrites an occupied default profile while preserving the catalog key [33m 395[2mms[22m[39m
+     [33m[2m✓[22m[39m recognizes profile references inherited from the shared main store [33m 338[2mms[22m[39m
+     [33m[2m✓[22m[39m scans an explicit multi-agent roster without requiring a legacy default [33m 840[2mms[22m[39m
+     [33m[2m✓[22m[39m allocates a global config profile that child stores cannot shadow [33m 530[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-node-hosting-preconditions.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 2952[2mms[22m[39m
+     [33m[2m✓[22m[39m warns when 'identity-header auth alone' [33m 418[2mms[22m[39m
+     [33m[2m✓[22m[39m warns when 'every configured agent resolves to an…' [33m 373[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-ui.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 159[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-usage-cost-cache.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 739[2mms[22m[39m
+     [33m[2m✓[22m[39m removes retired usage rows from every registered agent database [33m 695[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-agent-memory-schema.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 1939[2mms[22m[39m
+     [33m[2m✓[22m[39m moves inline recall metadata, preserves rows, and lists the durable repair [33m 666[2mms[22m[39m
+     [33m[2m✓[22m[39m is idempotent on a second doctor fix run [33m 475[2mms[22m[39m
+     [33m[2m✓[22m[39m leaves a fresh canonical database untouched [33m 355[2mms[22m[39m
+     [33m[2m✓[22m[39m continues canonical index maintenance on a pre-provenance database [33m 443[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-external-cli-profiles.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-disk-space.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-host-desktop.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-ui.repair.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 47[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-install-policy.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 167[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-bootstrap-size.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-tailscale.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-web-fetch-proxy.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-prompter.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-volatile-fs.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-sandbox.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-main-session-recovery.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 688[2mms[22m[39m
+     [33m[2m✓[22m[39m warns about a tombstone without offering stale repair [33m 586[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-command-owner.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-install.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m [30m[42m commands [49m[39m src/commands/doctor-channel-ingress.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 402[2mms[22m[39m
+     [33m[2m✓[22m[39m mentions affected channel accounts and the inspection command [33m 401[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m [30m[42m commands [49m[39m src/commands/doctor-lint.test.ts[2m > [22mrunDoctorLintCli[2m > [22mreports an actionable Crabbox profile finding before dispatch
+[31m[1mError[22m: Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+[36m [2m❯[22m src/commands/doctor-lint.test.ts:[2m433:3[22m[39m
+    [90m431|[39m   })[33m;[39m
+    [90m432|[39m
+    [90m433|[39m   it("reports an actionable Crabbox profile finding before dispatch", …
+    [90m   |[39m   [31m^[39m
+    [90m434|[39m     [35mconst[39m binary [33m=[39m [32m"/nonexistent/path/to/crabbox"[39m[33m;[39m
+    [90m435|[39m     mocks[33m.[39mreadConfigFileSnapshot[33m.[39m[34mmockResolvedValue[39m({
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m30 passed[39m[22m[90m (31)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m341 passed[39m[22m[90m (342)[39m
+[2m   Start at [22m 13:30:39
+[2m   Duration [22m 294.15s[2m (transform 44.77s, setup 2.44s, import 30.40s, tests 260.29s, environment 0ms)[22m
+
+
+::error file=/home/runner/work/_temp/ci-batch-work-32642373348-1-hosted-batch-035/shard-1-agentic-commands-doctor/src/commands/doctor-lint.test.ts,title=[commands] src/commands/doctor-lint.test.ts > runDoctorLintCli > reports an actionable Crabbox profile finding before dispatch,line=433,column=3::Error: Test timed out in 120000ms.%0AIf this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".%0A ❯ src/commands/doctor-lint.test.ts:433:3%0A%0A
+[test] failed 1 Vitest shard in 295.66s
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/runner/work/_temp/ci-batch-work-32642373348-1-hosted-batch-035/shard-1-agentic-commands-doctor[39m
+
+[vitest] still running with no output for 30000ms.
+[vitest] still running with no output for 60000ms.
+[vitest] still running with no output for 90000ms.
+[vitest] still running with no output for 120000ms.
+[vitest] still running with no output for 150000ms.
+[vitest] still running with no output for 180000ms.
+[vitest] still running with no output for 210000ms.
+[vitest] still running with no output for 240000ms.
+[vitest] still running with no output for 270000ms.
+[vitest] no output for 300000ms; terminating stalled Vitest process group.
+[vitest] no-output process diagnostics begin (pid=3486)
+[vitest] process: pid=3486 ppid=3479 pgid=3486 elapsed=05:00 state=Z cpu=3.8% rss_kb=0 wchan=- comm=other
+[vitest] process tree: pgid=3486 members=2
+[vitest] process tree: pid=3527 ppid=1 pgid=3486 elapsed=05:00 state=Z cpu=73.2% rss_kb=0 wchan=- comm=other
+[vitest] process tree: pid=5011 ppid=3527 pgid=3486 elapsed=00:00 state=Z cpu=81.0% rss_kb=0 wchan=- comm=other
+[vitest] fd summary: unavailable
+[vitest] FAILED (exit 143)
+[test] FAILED (exit 143)
+TEST_GATE: 1 deterministic test FAIL -> FAIL

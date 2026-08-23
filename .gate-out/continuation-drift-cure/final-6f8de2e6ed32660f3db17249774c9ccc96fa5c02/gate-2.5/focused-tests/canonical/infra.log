@@ -1,0 +1,11 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-85651-continuation-drift-cure-candidate-20260823[39m
+
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/heartbeat-runner.returns-default-unset.test.ts [2m([22m[2m58 tests[22m[2m)[22m[33m 2679[2mms[22m[39m
+     [33m[2m✓[22m[39m applies scratch gating rules across content states and triggers [33m 689[2mms[22m[39m
+ [32m✓[39m [30m[42m infra [49m[39m src/infra/heartbeat-runner.targeted-unscheduled-wake.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[32m64 passed[39m[22m[90m (64)[39m
+[2m   Start at [22m 06:13:27
+[2m   Duration [22m 9.75s[2m (transform 4.10s, setup 599ms, import 6.32s, tests 2.69s, environment 0ms)[22m

@@ -1,0 +1,209 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Function:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:handleToolExecutionEnd",
+    "name": "handleToolExecutionEnd",
+    "kind": "Function",
+    "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts",
+    "startLine": 112,
+    "endLine": 715
+  },
+  "epistemic": "exact",
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Function:src/agents/embedded-agent-subscribe.handlers.tools.ts:createEmbeddedToolLifecycle",
+        "name": "createEmbeddedToolLifecycle",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.ts"
+      }
+    ]
+  },
+  "outgoing": {
+    "calls": [
+      {
+        "uid": "Function:src/agents/accepted-session-spawn.ts:normalizeAcceptedSessionSpawnResult",
+        "name": "normalizeAcceptedSessionSpawnResult",
+        "filePath": "src/agents/accepted-session-spawn.ts"
+      },
+      {
+        "uid": "Function:src/agents/agent-tools.before-tool-call.state.ts:consumeAdjustedParamsForToolCall",
+        "name": "consumeAdjustedParamsForToolCall",
+        "filePath": "src/agents/agent-tools.before-tool-call.state.ts"
+      },
+      {
+        "uid": "Function:src/agents/agent-tools.before-tool-call.state.ts:consumePreExecutionBlockedToolCall",
+        "name": "consumePreExecutionBlockedToolCall",
+        "filePath": "src/agents/agent-tools.before-tool-call.state.ts"
+      },
+      {
+        "uid": "Function:src/agents/agent-tools.before-tool-call.state.ts:consumeTrackedToolExecutionStarted",
+        "name": "consumeTrackedToolExecutionStarted",
+        "filePath": "src/agents/agent-tools.before-tool-call.state.ts"
+      },
+      {
+        "uid": "Function:src/agents/agent-tools.before-tool-call.state.ts:consumeStructuredReplaySafeToolCall",
+        "name": "consumeStructuredReplaySafeToolCall",
+        "filePath": "src/agents/agent-tools.before-tool-call.state.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-helpers/messaging-dedupe.ts:normalizeTextForComparison",
+        "name": "normalizeTextForComparison",
+        "filePath": "src/agents/embedded-agent-helpers/messaging-dedupe.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-message-delivery.ts:isDeliveredCoreCurrentChannelWidgetResult",
+        "name": "isDeliveredCoreCurrentChannelWidgetResult",
+        "filePath": "src/agents/embedded-agent-message-delivery.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-message-delivery.ts:readEmbeddedMessageDeliveryFact",
+        "name": "readEmbeddedMessageDeliveryFact",
+        "filePath": "src/agents/embedded-agent-message-delivery.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-message-tool-source-reply.ts:resolveMessageToolSourceReplyFinal",
+        "name": "resolveMessageToolSourceReplyFinal",
+        "filePath": "src/agents/embedded-agent-message-tool-source-reply.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-message-tool-source-reply.ts:readMessageToolSourceReplyText",
+        "name": "readMessageToolSourceReplyText",
+        "filePath": "src/agents/embedded-agent-message-tool-source-reply.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-message-tool-source-reply.ts:isDeliveredMessagingToolResult",
+        "name": "isDeliveredMessagingToolResult",
+        "filePath": "src/agents/embedded-agent-message-tool-source-reply.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-message-tool-source-reply.ts:isDeliveredMessageToolOnlySourceReplyResult",
+        "name": "isDeliveredMessageToolOnlySourceReplyResult",
+        "filePath": "src/agents/embedded-agent-message-tool-source-reply.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-messaging-extraction.ts:extractMessagingToolSourceReplyPayload",
+        "name": "extractMessagingToolSourceReplyPayload",
+        "filePath": "src/agents/embedded-agent-messaging-extraction.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-messaging-extraction.ts:extractMessagingToolSend",
+        "name": "extractMessagingToolSend",
+        "filePath": "src/agents/embedded-agent-messaging-extraction.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-messaging-extraction.ts:extractMessagingToolSendResult",
+        "name": "extractMessagingToolSendResult",
+        "filePath": "src/agents/embedded-agent-messaging-extraction.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-messaging.ts:isMessagingTool",
+        "name": "isMessagingTool",
+        "filePath": "src/agents/embedded-agent-messaging.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-messaging.ts:isPluginNativeMessagingTool",
+        "name": "isPluginNativeMessagingTool",
+        "filePath": "src/agents/embedded-agent-messaging.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-messaging.ts:isMessagingToolSendAction",
+        "name": "isMessagingToolSendAction",
+        "filePath": "src/agents/embedded-agent-messaging.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-messaging.ts:isMessagingToolTargetEvidenceAction",
+        "name": "isMessagingToolTargetEvidenceAction",
+        "filePath": "src/agents/embedded-agent-messaging.ts"
+      },
+      {
+        "uid": "Function:src/agents/embedded-agent-runner/replay-state.ts:mergeEmbeddedRunReplayState",
+        "name": "mergeEmbeddedRunReplayState",
+        "filePath": "src/agents/embedded-agent-runner/replay-state.ts"
+      }
+    ],
+    "accesses": [
+      {
+        "uid": "Const:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:toolName",
+        "name": "toolName",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts"
+      },
+      {
+        "uid": "Const:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:hideFromChannelProgress",
+        "name": "hideFromChannelProgress",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts"
+      },
+      {
+        "uid": "Const:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:toolCallId",
+        "name": "toolCallId",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts"
+      },
+      {
+        "uid": "Const:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:runId",
+        "name": "runId",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts"
+      },
+      {
+        "uid": "Const:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:runId",
+        "name": "runId",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts"
+      },
+      {
+        "uid": "Const:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:runId",
+        "name": "runId",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts"
+      },
+      {
+        "uid": "Const:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:runId",
+        "name": "runId",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts"
+      },
+      {
+        "uid": "Const:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:runId",
+        "name": "runId",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts"
+      },
+      {
+        "uid": "Const:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:runId",
+        "name": "runId",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts"
+      },
+      {
+        "uid": "Const:src/agents/embedded-agent-subscribe.handlers.tools.completion.ts:runId",
+        "name": "runId",
+        "filePath": "src/agents/embedded-agent-subscribe.handlers.tools.completion.ts"
+      }
+    ]
+  },
+  "processes": [
+    {
+      "id": "proc_8_handletoolexecutione",
+      "name": "HandleToolExecutionEnd → NormalizeNullableString",
+      "step_index": 1,
+      "step_count": 8
+    },
+    {
+      "id": "proc_26_handletoolexecutione",
+      "name": "HandleToolExecutionEnd → ReadNormalizedSessionKeyCache",
+      "step_index": 1,
+      "step_count": 7
+    },
+    {
+      "id": "proc_27_handletoolexecutione",
+      "name": "HandleToolExecutionEnd → MayContainCasePreservingPeer",
+      "step_index": 1,
+      "step_count": 7
+    },
+    {
+      "id": "proc_259_handletoolexecutione",
+      "name": "HandleToolExecutionEnd → Wake",
+      "step_index": 1,
+      "step_count": 4
+    },
+    {
+      "id": "proc_144_handletoolexecutione",
+      "name": "HandleToolExecutionEnd → ReadToolErrorField",
+      "step_index": 1,
+      "step_count": 5
+    }
+  ]
+}

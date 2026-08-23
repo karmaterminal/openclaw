@@ -1,0 +1,55 @@
+{
+  "target": {
+    "id": "Function:src/auto-reply/reply/agent-runner-embedded-candidate.ts:runEmbeddedFallbackCandidate",
+    "name": "runEmbeddedFallbackCandidate",
+    "type": "Function",
+    "filePath": "src/auto-reply/reply/agent-runner-embedded-candidate.ts"
+  },
+  "direction": "upstream",
+  "impactedCount": 2,
+  "risk": "LOW",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 2,
+    "processes_affected": 0,
+    "modules_affected": 2
+  },
+  "byDepthCounts": {
+    "1": 2
+  },
+  "affected_processes": [],
+  "affected_modules": [
+    {
+      "name": "Server-methods",
+      "hits": 1,
+      "impact": "direct"
+    },
+    {
+      "name": "Command",
+      "hits": 1,
+      "impact": "direct"
+    }
+  ],
+  "byDepth": {
+    "1": [
+      {
+        "depth": 1,
+        "id": "Function:src/auto-reply/reply/agent-runner-embedded-candidate.continuation.test.ts:runCandidate",
+        "name": "runCandidate",
+        "filePath": "src/auto-reply/reply/agent-runner-embedded-candidate.continuation.test.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      },
+      {
+        "depth": 1,
+        "id": "Function:src/auto-reply/reply/agent-runner-fallback-candidate.ts:runCandidate",
+        "name": "runCandidate",
+        "filePath": "src/auto-reply/reply/agent-runner-fallback-candidate.ts",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      }
+    ]
+  }
+}

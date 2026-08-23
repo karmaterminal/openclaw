@@ -1,0 +1,12 @@
+{
+  "repo": "karmaterminal/openclaw",
+  "ref": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+  "sha": "6f8de2e6ed32660f3db17249774c9ccc96fa5c02",
+  "mode": "test-shard",
+  "kind": "node-core",
+  "shard_group": "node-core",
+  "shard": "core-runtime-infra-net-install",
+  "check_name": "checks-node-core-runtime-infra-net-install",
+  "rc": 0,
+  "conclusion": "success"
+}
