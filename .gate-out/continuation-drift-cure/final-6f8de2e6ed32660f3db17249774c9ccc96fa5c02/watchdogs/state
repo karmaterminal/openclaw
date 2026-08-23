@@ -1,0 +1,7 @@
+phase=gate-5
+candidate=6f8de2e6ed32660f3db17249774c9ccc96fa5c02
+command=mandatory-stop-proof-095f5b96e63587c277daccd886b0e958422e86ac
+worktree=/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-85651-continuation-drift-cure-candidate-20260823
+branch=frond-scribe/20260823/assembly-85651-continuation-drift-cure
+remote_ref=refs/heads/frond-scribe/20260823/assembly-85651-continuation-drift-cure
+active=0

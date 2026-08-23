@@ -229,6 +229,8 @@ was context only and never a source.
   fresh synchronous independent reviewers.
 - Independent evidence review found arithmetic, authority-path, wording, and
   continuity defects; all were corrected and independently rechecked.
+- The in-agent and dispatcher watchdogs observed `active=0` and stopped cleanly
+  at Gate 5; their final receipts are committed under `watchdogs/`.
 
 **Mandatory stop:** Gate 5 packet prepared. Gate 6 and presentation movement are
 not authorized.
