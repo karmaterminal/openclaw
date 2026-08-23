@@ -26,7 +26,7 @@ import {
   registerSessionBindingAdapter,
 } from "../../infra/outbound/session-binding-service.js";
 import {
-  enqueueSystemEvent,
+  enqueueSystemEventRaw as enqueueSystemEvent,
   peekSystemEvents,
   resetSystemEventsForTest,
 } from "../../infra/system-events.js";
@@ -3291,6 +3291,8 @@ describe("initSessionState preserves behavior overrides across /new and /reset",
       thinkingLevel: "high",
       reasoningLevel: "low",
       label: "telegram-priority",
+      lastContextPressureBand: 95,
+      pendingPostCompactionDelegates: [{ task: "carry notes", createdAt: 1 }],
     } as const;
     const cases = await runExplicitResetCases({
       storePath,
@@ -3303,7 +3305,20 @@ describe("initSessionState preserves behavior overrides across /new and /reset",
       expect(result.isNewSession, name).toBe(true);
       expect(result.resetTriggered, name).toBe(true);
       expect(result.sessionId, name).toBe(existingSessionId);
-      expectEntryFields(result.sessionEntry, overrides, name);
+      expectEntryFields(
+        result.sessionEntry,
+        {
+          verboseLevel: overrides.verboseLevel,
+          thinkingLevel: overrides.thinkingLevel,
+          reasoningLevel: overrides.reasoningLevel,
+          label: overrides.label,
+        },
+        name,
+      );
+      // Reset keeps durable transcript identity upstream, while continuation
+      // telemetry and queued post-compaction work must not leak into the new turn.
+      expect(result.sessionEntry.lastContextPressureBand, name).toBeUndefined();
+      expect(result.sessionEntry.pendingPostCompactionDelegates, name).toBeUndefined();
     }
   });
 

@@ -1,21 +1,13 @@
+import type { ToolDisplayConfig } from "./tool-display-config.types.js";
 /**
  * Tool display metadata registry.
  *
  * Agent UIs use this config to map tool names/actions to stable titles,
  * icons, and detail keys without embedding presentation data in tool handlers.
  */
-import type { ToolDisplaySpec as ToolDisplaySpecBase } from "./tool-display-common.js";
-import { MESSAGE_TOOL_DISPLAY_SPEC } from "./tool-display-message-config.js";
-
-type ToolDisplaySpec = ToolDisplaySpecBase & {
-  emoji?: string;
-};
-
-type ToolDisplayConfig = {
-  version: number;
-  fallback: ToolDisplaySpec;
-  tools: Record<string, ToolDisplaySpec>;
-};
+import { CONTINUATION_TOOL_DISPLAY_CONFIG } from "./tool-display-continuation-config.js";
+import { MESSAGE_TOOL_DISPLAY_CONFIG } from "./tool-display-message-config.js";
+import { SESSION_TOOL_DISPLAY_CONFIG } from "./tool-display-session-config.js";
 
 /** Static display metadata for known tools plus fallback detail-key selection. */
 export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
@@ -349,143 +341,7 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "Tool Call",
       detailKeys: [],
     },
-    session_status: {
-      emoji: "📊",
-      title: "Session Status",
-      detailKeys: ["sessionKey", "model"],
-    },
-    github_publish: {
-      emoji: "🔀",
-      title: "GitHub Publish",
-      detailKeys: ["title"],
-    },
-    github_identity_status: {
-      emoji: "🔐",
-      title: "GitHub Identity Status",
-      detailKeys: [],
-    },
-    sessions: {
-      emoji: "🗂️",
-      title: "Session Settings",
-      actions: {
-        patch: {
-          label: "update",
-          detailKeys: ["sessionKey", "label", "pinned", "archived", "model", "thinkingLevel"],
-        },
-        group_list: { label: "groups" },
-        group_set: { label: "set groups", detailKeys: ["names"] },
-        group_rename: { label: "rename group", detailKeys: ["name", "to"] },
-        group_delete: { label: "delete group", detailKeys: ["name"] },
-      },
-    },
-    sessions_list: {
-      emoji: "🗂️",
-      title: "Sessions",
-      detailKeys: [
-        "kinds",
-        "label",
-        "agentId",
-        "search",
-        "limit",
-        "activeMinutes",
-        "includeDerivedTitles",
-        "includeLastMessage",
-        "messageLimit",
-      ],
-    },
-    conversations_list: {
-      emoji: "💬",
-      title: "Conversations",
-      detailKeys: ["channel", "limit"],
-    },
-    conversations_send: {
-      emoji: "📨",
-      title: "Conversation Send",
-      detailKeys: ["conversationRef"],
-    },
-    conversations_turn: {
-      emoji: "↔️",
-      title: "Conversation Turn",
-      detailKeys: ["conversationRef", "timeoutSeconds"],
-    },
-    sessions_send: {
-      emoji: "📨",
-      title: "Session Send",
-      detailKeys: ["label", "sessionKey", "agentId", "timeoutSeconds"],
-    },
-    sessions_history: {
-      emoji: "🧾",
-      title: "Session History",
-      detailKeys: ["sessionKey", "limit", "includeTools"],
-    },
-    sessions_search: {
-      emoji: "🔎",
-      title: "Session Search",
-      detailKeys: ["query", "sessionKey", "limit"],
-    },
-    transcripts: {
-      emoji: "🎙️",
-      title: "Transcripts",
-      actions: {
-        start: {
-          label: "start",
-          detailKeys: [
-            "sessionId",
-            "title",
-            "providerId",
-            "accountId",
-            "guildId",
-            "channelId",
-            "meetingUrl",
-          ],
-        },
-        stop: {
-          label: "stop",
-          detailKeys: ["sessionId"],
-        },
-        status: {
-          label: "status",
-        },
-        import: {
-          label: "import",
-          detailKeys: ["sessionId", "title", "providerId", "meetingUrl", "speakerLabel"],
-        },
-        summarize: {
-          label: "summarize",
-          detailKeys: ["sessionId"],
-        },
-      },
-    },
-    sessions_spawn: {
-      emoji: "🧑‍🔧",
-      title: "Sub-agent",
-      detailKeys: ["label", "task", "agentId", "model", "thinking", "runTimeoutSeconds", "cleanup"],
-    },
-    agents_wait: { emoji: "⏳", title: "Wait for Agents", detailKeys: ["ids", "timeoutSeconds"] },
-    structured_output: { emoji: "🧾", title: "Structured Output", detailKeys: ["result"] },
-    subagents: {
-      emoji: "🤖",
-      title: "Subagents",
-      actions: {
-        list: {
-          label: "list",
-          detailKeys: ["recentMinutes"],
-        },
-        kill: {
-          label: "kill",
-          detailKeys: ["target"],
-        },
-        steer: {
-          label: "steer",
-          detailKeys: ["target"],
-        },
-      },
-    },
-    agents_list: {
-      emoji: "🧭",
-      title: "Agents",
-      detailKeys: [],
-    },
+    ...SESSION_TOOL_DISPLAY_CONFIG,
     memory_search: {
       emoji: "🧠",
       title: "Memory Search",
@@ -511,7 +367,7 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "Code Execution",
       detailKeys: ["task"],
     },
-    message: MESSAGE_TOOL_DISPLAY_SPEC,
+    ...MESSAGE_TOOL_DISPLAY_CONFIG,
     apply_patch: {
       emoji: "🩹",
       title: "Apply Patch",
@@ -586,5 +442,6 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
     },
     sessions_yield: { emoji: "⏸️", title: "Yield" },
     tts: { emoji: "🔊", title: "TTS", detailKeys: ["text", "channel"] },
+    ...CONTINUATION_TOOL_DISPLAY_CONFIG,
   },
 };

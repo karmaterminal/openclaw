@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { heartbeatLog } from "./heartbeat-runner-config.js";
 import { startHeartbeatRunner } from "./heartbeat-runner.js";
-import { requestHeartbeat } from "./heartbeat-wake.js";
+import { requestHeartbeatRaw } from "./heartbeat-wake.js";
 
 const TEST_SCHEDULER_SEED = "heartbeat-owner-resolution-test-seed";
 
@@ -29,7 +29,7 @@ describe("startHeartbeatRunner ambient owner resolution", () => {
       runOnce,
       stableSchedulerSeed: TEST_SCHEDULER_SEED,
     });
-    requestHeartbeat({ source: "manual", intent: "manual", reason: "manual", coalesceMs: 0 });
+    requestHeartbeatRaw({ source: "manual", intent: "manual", reason: "manual", coalesceMs: 0 });
     await vi.advanceTimersByTimeAsync(1);
 
     expect(runOnce).toHaveBeenCalledOnce();

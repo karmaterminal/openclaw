@@ -15,6 +15,7 @@ import {
 } from "./agent-tools.before-tool-call.js";
 import { resolveOpenClawPluginToolsForOptions } from "./openclaw-plugin-tools.js";
 import { filterToolsByClientCaps } from "./openclaw-tools.client-caps.js";
+import { createOpenClawContinuationTools } from "./openclaw-tools.continuation.js";
 import {
   isToolExplicitlyAllowedByFactoryPolicy,
   mergeFactoryPolicyList,
@@ -117,6 +118,8 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
   const spawnWorkspaceDir = resolveWorkspaceRoot(options?.spawnWorkspaceDir ?? workspaceDir);
   options?.recordToolPrepStage?.("openclaw-tools:session-workspace");
   const widgetPresentation = resolveWidgetPresentationForRun(options);
+  // Scheduled turns keep delivery routing live, but Gateway authorization remains bound to the
+  // authenticated creator account captured in the immutable scheduled authority envelope.
   const gatewayCallerAccountId = options?.gatewayCallerAccountId ?? options?.agentAccountId;
   const runtimeWebTools = getActiveRuntimeWebToolsMetadataFromState();
   const sandbox =
@@ -505,7 +508,8 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
             config: resolvedConfig,
             senderIsOwner: options?.senderIsOwner,
           }),
-          // Keep the in-process caller so materialized agent roots retain their creation stamp.
+          // No explicit callGateway: the tool defaults to the same in-process
+          // caller, preserving the trusted creation stamp for agent roots.
           createSessionsSendTool({
             agentId: sessionAgentId,
             agentSessionKey: options?.agentSessionKey,
@@ -576,6 +580,21 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
       },
     }),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
+    ...createOpenClawContinuationTools({
+      config: resolvedConfig,
+      agentSessionKey: options?.agentSessionKey,
+      runSessionKey: options?.runSessionKey,
+      sessionId: options?.sessionId,
+      runId: options?.runId,
+      workspaceDir,
+      sandboxRoot: options?.sandboxRoot,
+      sandboxFsBridge: options?.sandboxFsBridge,
+      sandboxWritable: options?.sandboxWritable,
+      drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
+      disableContinuationTools: options?.disableContinuationTools,
+      continueWorkOpts: options?.continueWorkOpts,
+      requestCompactionOpts: options?.requestCompactionOpts,
+    }),
   ];
   options?.recordToolPrepStage?.("openclaw-tools:core-tool-list");
   let allTools = tools;

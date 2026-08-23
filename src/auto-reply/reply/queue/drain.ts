@@ -403,6 +403,7 @@ function collectQueuedPromptMedia(
 type FollowupRuntimeMetadata = Pick<
   FollowupRun,
   | "currentInboundEventKind"
+  | "currentInboundEventTimestampMs"
   | "currentInboundAudio"
   | "currentInboundContext"
   | "explicitSkillSelections"
@@ -655,6 +656,7 @@ function collectRuntimeMetadata(
   ];
   return {
     currentInboundEventKind: currentTurnSource?.currentInboundEventKind,
+    currentInboundEventTimestampMs: currentTurnSource?.currentInboundEventTimestampMs,
     currentInboundAudio: currentTurnSource?.currentInboundAudio,
     currentInboundContext: collectCurrentInboundContext(items),
     explicitSkillSelections:

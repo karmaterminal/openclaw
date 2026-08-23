@@ -89,6 +89,13 @@ export type RegisterSubagentRunParams = {
   /** Required when direct dispatch suppresses Gateway tracking. Out-of-process launches keep
       Gateway's existing best-effort CLI policy; other callers create a best-effort row here. */
   taskRowOwnership?: "required" | "gateway_best_effort";
+  silentAnnounce?: boolean;
+  wakeOnReturn?: boolean;
+  drainsContinuationDelegateQueue?: boolean;
+  continuationTargetSessionKey?: string;
+  continuationTargetSessionKeys?: string[];
+  continuationFanoutMode?: "tree" | "all";
+  traceparent?: string;
   gatewayContextResolver?: GatewayContextResolver;
 };
 
@@ -182,7 +189,15 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
       attachmentsDir: registerParams.attachmentsDir,
       attachmentsRootDir: registerParams.attachmentsRootDir,
       retainAttachmentsOnKeep: registerParams.retainAttachmentsOnKeep,
+      silentAnnounce: registerParams.silentAnnounce,
+      wakeOnReturn: registerParams.wakeOnReturn,
+      drainsContinuationDelegateQueue: registerParams.drainsContinuationDelegateQueue,
+      continuationTargetSessionKey: registerParams.continuationTargetSessionKey,
+      continuationTargetSessionKeys: registerParams.continuationTargetSessionKeys,
+      continuationFanoutMode: registerParams.continuationFanoutMode,
+      ...(registerParams.traceparent ? { traceparent: registerParams.traceparent } : {}),
     });
+    const previousEntry = this.options.runs.get(runId);
     this.options.runs.set(runId, entry);
     bindGatewayContextResolver(entry, registerParams.gatewayContextResolver);
     const killReconciliationSnapshots = this.markOlderKillReconciliationsSuperseded(entry);
@@ -197,7 +212,11 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
       ...[...killReconciliationSnapshots.keys()].map((candidate) => candidate.runId),
     ];
     const rollbackRegistration = () => {
-      this.options.runs.delete(runId);
+      if (previousEntry) {
+        this.options.runs.set(runId, previousEntry);
+      } else {
+        this.options.runs.delete(runId);
+      }
       this.restoreKillReconciliationSnapshots(killReconciliationSnapshots);
     };
     const restoreDurableRegistration = () => {
@@ -252,10 +271,10 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
         }
       } catch (error) {
         if (registerParams.taskRowOwnership !== "required") {
+          // ACP/default: keep the durable registry row. Secondary task-runtime
+          // faults must not unwind an already-persisted registration.
           log.warn("Failed to create background task for subagent run", { runId, error });
         } else {
-          // Direct dispatch suppressed Gateway's CLI fallback. Persist the rollback before
-          // asking the caller to abort; if that write fails, memory must match durable state.
           rollbackRegistration();
           try {
             this.options.persistOrThrow(...registeredRunIds);
@@ -264,7 +283,12 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
             // Durable state still owns this registration. Keep reconciliation active so
             // caller cleanup can terminalize it instead of leaving a phantom run.
             activateRegistrationLifecycle();
-            throw rollbackError;
+            const aggregateError = new AggregateError(
+              [error, rollbackError],
+              `Subagent task registration and rollback persistence both failed: ${runId}`,
+            );
+            aggregateError.cause = error;
+            throw aggregateError;
           }
           throw error;
         }

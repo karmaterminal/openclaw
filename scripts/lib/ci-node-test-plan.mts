@@ -1305,6 +1305,7 @@ function resolveInfraShardName(file: string): string {
   if (
     name.startsWith("archive") ||
     name.startsWith("backup") ||
+    name.startsWith("continuation-tracer") ||
     name.startsWith("diagnostic") ||
     name.startsWith("diagnostics")
   ) {
@@ -1422,9 +1423,11 @@ function resolveInfraShardName(file: string): string {
   }
   if (
     name.startsWith("agent-events") ||
+    name.startsWith("chain-budget") ||
     name.startsWith("event-session") ||
     name.startsWith("infra-") ||
     name.startsWith("non-fatal") ||
+    name.startsWith("substrate-capability") ||
     name.startsWith("supervisor") ||
     name.startsWith("unhandled")
   ) {

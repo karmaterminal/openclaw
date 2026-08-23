@@ -94,6 +94,12 @@ async function handleChatSendWithOptions(
     finishAbortedChatSend();
     return;
   }
+  const markTerminalBroadcasted = () => {
+    if (activeRunAbort.entry) {
+      activeRunAbort.entry.chatTerminalBroadcasted = true;
+    }
+  };
+
   // Attachment preparation can suspend. Recheck immediately before the
   // synchronous ACK path so aborts and hot routing reloads cannot cross it.
   if (sessionRoutingChanged(context.getRuntimeConfig())) {
@@ -289,6 +295,7 @@ async function handleChatSendWithOptions(
         preAckReplyContextPromise,
         replyContextFieldsPromise,
       },
+      markTerminalBroadcasted,
       request: normalizedRequest.value,
       session: preparedSession.value,
       terminalizeRestartSafeAdmission,
@@ -304,6 +311,7 @@ async function handleChatSendWithOptions(
       admission: admitted.value,
       context,
       error: err,
+      markTerminalBroadcasted,
       respond,
       session: preparedSession.value,
       terminalizeRestartSafeAdmission,

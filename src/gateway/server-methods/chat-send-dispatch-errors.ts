@@ -29,6 +29,7 @@ export async function handleChatSendSetupError(params: {
   >;
   context: GatewayRequestContext;
   error: unknown;
+  markTerminalBroadcasted: () => void;
   respond: RespondFn;
   session: Pick<PreparedChatSendSession, "agentId" | "clientRunId" | "sessionKey">;
   terminalizeRestartSafeAdmission: (state: {
@@ -69,6 +70,7 @@ export async function handleChatSendSetupError(params: {
     entry: { ts: Date.now(), ok: false, payload, error },
   });
   params.respond(false, payload, error, { runId: clientRunId, error: formatForLog(params.error) });
+  params.markTerminalBroadcasted();
   broadcastChatError({
     context: params.context,
     runId: clientRunId,
@@ -86,6 +88,7 @@ export function createChatSendDispatchErrorLifecycle(params: {
   >;
   context: GatewayRequestContext;
   isQueuedFollowupEnqueued: () => boolean;
+  markTerminalBroadcasted: () => void;
   persistUserTurnTranscript: () => Promise<unknown>;
   session: Pick<
     PreparedChatSendSession,
@@ -101,6 +104,7 @@ export function createChatSendDispatchErrorLifecycle(params: {
     admission,
     context,
     isQueuedFollowupEnqueued,
+    markTerminalBroadcasted,
     persistUserTurnTranscript,
     session,
     terminalizeRestartSafeAdmission,
@@ -129,6 +133,7 @@ export function createChatSendDispatchErrorLifecycle(params: {
             payload: { runId: clientRunId, status: "ok" as const },
           },
         });
+        markTerminalBroadcasted();
         broadcastChatFinal({
           context,
           runId: clientRunId,
@@ -252,6 +257,7 @@ export function createChatSendDispatchErrorLifecycle(params: {
           error,
         },
       });
+      markTerminalBroadcasted();
       broadcastChatError({
         context,
         runId: clientRunId,

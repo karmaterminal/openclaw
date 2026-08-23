@@ -5,6 +5,10 @@
  */
 
 import { extractErrorCode, formatErrorMessage } from "../infra/errors.js";
+import {
+  enqueueSystemEventEntryRaw as enqueueSystemEventEntryInternal,
+  enqueueSystemEventRaw as enqueueSystemEventInternal,
+} from "../infra/system-events.js";
 export * from "./delivery-queue-runtime.js";
 
 export * from "../infra/backoff.js";
@@ -282,21 +286,60 @@ export {
   type SecretFileReadResult,
 } from "../infra/secret-file.js";
 export * from "../infra/secure-random.js";
+// Security: the bare `export *` re-exported the RAW
+// `enqueueSystemEvent` / `enqueueSystemEventEntry`, which honor `trusted: true`.
+// A plugin importing them from this deprecated public barrel could bypass the
+// SDK boundary wrappers entirely and attach trusted-only session or
+// delegate-artifact provenance. Re-export everything EXCEPT the two raw
+// producers, and replace them with forced-untrusted wrappers (mirrors
+// system-event-runtime / channel-runtime) so a legacy plugin cannot bypass via
+// this subpath.
+export type { SystemEvent } from "../infra/system-events.js";
 export {
-  consumeSelectedSystemEventEntries,
-  consumeSystemEventEntries,
-  drainSystemEventEntries,
-  drainSystemEvents,
-  enqueueSystemEvent,
-  enqueueSystemEventEntry,
-  hasSystemEvents,
   isSystemEventContextChanged,
+  drainSystemEventEntries,
+  consumeSystemEventEntries,
+  consumeSelectedSystemEventEntries,
+  drainSystemEvents,
+  removeSystemEvents,
   peekSystemEventEntries,
   peekSystemEvents,
-  resetSystemEventsForTest,
+  hasSystemEvents,
   resolveSystemEventDeliveryContext,
-  type SystemEvent,
+  resetSystemEventsForTest,
 } from "../infra/system-events.js";
+
+/**
+ * Untrusted by construction — force `trusted: false` so a plugin importing this
+ * deprecated barrel cannot attach trusted-only provenance, and strip
+ * `sessionDeliveryAckId` / `sessionDeliveryAckStateDir` so a plugin cannot forge
+ * session-delivery ack ids to reach `deleteDeliveryQueueEntry` at an
+ * attacker-controlled path. Trusted internal producers use the direct
+ * `infra/system-events` import.
+ */
+export function enqueueSystemEvent(
+  text: string,
+  options: Parameters<typeof enqueueSystemEventInternal>[1],
+): boolean {
+  return enqueueSystemEventInternal(text, {
+    ...options,
+    trusted: false,
+    sessionDeliveryAckId: undefined,
+    sessionDeliveryAckStateDir: undefined,
+  });
+}
+
+export function enqueueSystemEventEntry(
+  text: string,
+  options: Parameters<typeof enqueueSystemEventEntryInternal>[1],
+): ReturnType<typeof enqueueSystemEventEntryInternal> {
+  return enqueueSystemEventEntryInternal(text, {
+    ...options,
+    trusted: false,
+    sessionDeliveryAckId: undefined,
+    sessionDeliveryAckStateDir: undefined,
+  });
+}
 export * from "../infra/system-message.ts";
 export * from "../infra/tmp-openclaw-dir.js";
 export * from "../infra/transport-ready.js";

@@ -6,10 +6,10 @@ import { startAcpSpawnParentStreamRelay } from "../agents/subagents/spawn/acp-sp
 import { resetCronActiveJobs } from "../cron/active-jobs.js";
 import { emitAgentEvent, resetAgentEventsForTest } from "../infra/agent-events.js";
 import { registerAgentRunContext } from "../infra/agent-run-registry.js";
+import type { HeartbeatWakeRequest } from "../infra/heartbeat-wake-contracts.js";
 import {
-  requestHeartbeat,
+  requestHeartbeatRaw as requestHeartbeat,
   setHeartbeatWakeHandler,
-  type HeartbeatWakeRequest,
 } from "../infra/heartbeat-wake.js";
 import { executeSqliteQueryTakeFirstSync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import type { SessionBindingRecord } from "../infra/outbound/session-binding-service.js";
@@ -204,8 +204,8 @@ function configureTaskRegistryMaintenanceRuntimeForTest(params: {
     listSessionBindingsBySession: () => params.sessionBindings ?? [],
     closeAcpSession: params.closeAcpSession,
     unbindSessionBindings: params.unbindSessionBindings,
-    listSessionEntries: () => [],
-    resolveStorePath: () => "",
+    listSessionEntriesCore: () => [],
+    resolveSessionStorePathCore: () => "",
     parseAgentSessionKey: () => null as ParsedAgentSessionKey | null,
     isCronJobActive: () => false,
     getAgentRunContext: () => undefined,
@@ -349,6 +349,13 @@ function requireTaskById(taskId: string): TaskRecord {
     throw new Error(`Expected task ${taskId}`);
   }
   return task;
+}
+
+function compareTaskStatusTuple(
+  left: readonly [string, string],
+  right: readonly [string, string],
+): number {
+  return left[0].localeCompare(right[0]) || left[1].localeCompare(right[1]);
 }
 
 function sentMessageCall(callIndex = 0): Record<string, unknown> {
@@ -714,6 +721,70 @@ describe("task-registry", () => {
         data: { phase: "end", endedAt: 200 },
       });
       expect(upsert).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("terminalizes mirrored subagent and cli child rows for the same child run", async () => {
+    await withTaskRegistryTempDir(async () => {
+      resetTaskRegistryMemoryForTest();
+
+      const runId = "continuation-delegate-4df63444dc0f9b7dc64d762152b88cf9";
+      const parentSessionKey = "agent:main:discord:channel:000000000000000001";
+      const childSessionKey = "agent:main:subagent:continuation-4df63444dc0f9b7dc64d762152b88cf9";
+      const task = "continuation depth-2 child branch";
+      const cliTask = createTaskFixture("cli", {
+        runId,
+        sourceId: runId,
+        requesterSessionKey: childSessionKey,
+        ownerKey: childSessionKey,
+        childSessionKey,
+        task,
+        status: "running",
+      });
+      const mirroredTask = createTaskFixture("subagent", {
+        runId,
+        sourceId: runId,
+        requesterSessionKey: parentSessionKey,
+        ownerKey: parentSessionKey,
+        childSessionKey,
+        task,
+        status: "running",
+        deliveryStatus: "pending",
+      });
+      const flow = createTaskFlowForTask({ task: mirroredTask });
+      linkTaskToFlowById({ taskId: mirroredTask.taskId, flowId: flow.flowId });
+
+      const updated = finalizeTaskRecordByRunId({
+        runId,
+        sessionKey: childSessionKey,
+        status: "failed",
+        endedAt: 1_000,
+        error:
+          "child failed: invalid continue_delegate routing; choose explicit targetSessionKey OR fanoutMode, not both",
+        terminalSummary: "invalid continue_delegate routing",
+      });
+
+      expect(
+        updated
+          .map((record) => [record.taskId, record.status] as const)
+          .toSorted(compareTaskStatusTuple),
+      ).toEqual(
+        [[cliTask.taskId, "failed"] as const, [mirroredTask.taskId, "failed"] as const].toSorted(
+          compareTaskStatusTuple,
+        ),
+      );
+      expect(getTaskById(cliTask.taskId)).toMatchObject({
+        status: "failed",
+        error: expect.stringContaining("invalid continue_delegate routing"),
+      });
+      expect(getTaskById(mirroredTask.taskId)).toMatchObject({
+        status: "failed",
+        terminalSummary: "invalid continue_delegate routing",
+      });
+      expect(getTaskFlowById(flow.flowId)).toMatchObject({
+        status: "failed",
+        endedAt: 1_000,
+      });
     });
   });
 
@@ -3608,8 +3679,8 @@ describe("task-registry", () => {
           entry: undefined,
           storeReadFailed: false,
         }),
-        listSessionEntries: () => [],
-        resolveStorePath: () => "",
+        listSessionEntriesCore: () => [],
+        resolveSessionStorePathCore: () => "",
         parseAgentSessionKey: () => null,
         isCronJobActive: () => false,
         getAgentRunContext: () => undefined,

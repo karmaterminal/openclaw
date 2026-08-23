@@ -79,7 +79,7 @@ export function createSubagentRegistryRestorer(config: {
     timeoutMs: number;
     expectedSessionId?: string;
     expectedLifecycleRevision?: string;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   cleanupCollectorLaunchResources: (
     entry: SubagentRunRecord,
     options?: { isCurrent?: () => boolean },
@@ -114,6 +114,12 @@ export function createSubagentRegistryRestorer(config: {
   // pending because mergeOnly correctly reports them as existing on retry.
   let restoredRowsPending = false;
   let restoreRetryTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Single ownership predicate for the restored queued launch: both the failure
+  // settlement path and the scheduler seam must agree on whether this exact row
+  // still owns the queued work before either holds or releases its FIFO slot.
+  const ownsRestoredQueuedLaunch = (runId: string, entry: SubagentRunRecord) =>
+    runs.get(runId) === entry && entry.execution.status === "queued";
 
   function clearRestoreRetryTimer() {
     if (restoreRetryTimer) {
@@ -200,7 +206,12 @@ export function createSubagentRegistryRestorer(config: {
     for (const [runId, entry] of runs) {
       // Restart recovery exclusively owns receipt-bearing source rows until it
       // remaps or terminalizes them. Generic resume would wait on an obsolete run.
-      if (entry.execution.restartRecovery || entry.killIntent || entry.killReconciliation) {
+      if (
+        entry.acceptedSteerDispatch ||
+        entry.execution.restartRecovery ||
+        entry.killIntent ||
+        entry.killReconciliation
+      ) {
         continue;
       }
       if (entry.collect && entry.execution.status === "queued") {
@@ -228,6 +239,7 @@ export function createSubagentRegistryRestorer(config: {
           entry.requesterAgentId,
         );
         const currentSwarmConfig = resolveSwarmConfig(cfg, entry.requesterAgentId);
+        let launchAcceptanceObserved = false;
         let launchTerminationConfirmed = false;
         let launchLifecycleGeneration: string | undefined;
         enqueueSwarmRun({
@@ -255,6 +267,7 @@ export function createSubagentRegistryRestorer(config: {
                   ? { allowModelOverride: true, scopes: [ADMIN_SCOPE] }
                   : undefined,
               );
+              launchAcceptanceObserved = true;
               const gatewayRunId = readGatewayRunId(response) ?? runId;
               try {
                 if (!startQueuedSubagentRun(runId, gatewayRunId, launchLifecycleGeneration)) {
@@ -263,14 +276,13 @@ export function createSubagentRegistryRestorer(config: {
                   );
                 }
               } catch (error) {
-                await terminateAcceptedRestoredCollectorRun({
+                launchTerminationConfirmed = await terminateAcceptedRestoredCollectorRun({
                   entry,
                   gatewayRunId,
                   timeoutMs: launch.timeoutMs,
                   expectedSessionId: cleanupSessionEntry?.sessionId,
                   expectedLifecycleRevision: cleanupSessionEntry?.lifecycleRevision,
                 });
-                launchTerminationConfirmed = true;
                 throw error;
               }
             });
@@ -278,6 +290,9 @@ export function createSubagentRegistryRestorer(config: {
           onStartFailure: (error) => {
             if (error instanceof GatewayDrainingError) {
               return false;
+            }
+            if (launchAcceptanceObserved && !launchTerminationConfirmed) {
+              return !ownsRestoredQueuedLaunch(runId, entry);
             }
             return failAndCleanupRestoredQueuedRun(
               runId,
@@ -359,7 +374,7 @@ export function createSubagentRegistryRestorer(config: {
     expectedSessionId?: string,
     expectedLifecycleRevision?: string,
   ): Promise<boolean> {
-    if (runs.get(runId) !== entry || entry.execution.status !== "queued") {
+    if (!ownsRestoredQueuedLaunch(runId, entry)) {
       return true;
     }
     const claim: RestoredQueuedFailureSettlementClaim = {

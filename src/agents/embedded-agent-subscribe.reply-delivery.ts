@@ -11,7 +11,10 @@ import {
   hasAssistantVisibleReply,
   readPendingToolMediaReply,
 } from "./embedded-agent-subscribe.handlers.messages.replies.js";
-import type { EmbeddedAgentSubscribeContext } from "./embedded-agent-subscribe.handlers.types.js";
+import type {
+  EmbeddedAgentSubscribeContext,
+  EmbeddedAgentSubscribeState,
+} from "./embedded-agent-subscribe.handlers.types.js";
 import type { SubscribeEmbeddedAgentSessionParams } from "./embedded-agent-subscribe.types.js";
 
 type ReplyDeliveryParams = {
@@ -22,7 +25,7 @@ type ReplyDeliveryParams = {
 
 export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams) {
   const assistantTexts = state.assistantTexts;
-  const pendingBlockReplyTasks = new Set<Promise<void>>();
+  const pendingBlockReplyTasks = new Map<Promise<void>, number>();
   const pendingPartialReplyTasks = new Set<Promise<void>>();
   const shouldAllowSilentTurnText = (text: string | undefined) =>
     Boolean(text && isSilentReplyText(text, SILENT_REPLY_TOKEN));
@@ -89,11 +92,89 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     state.deferredAssistantEvents.length = 0;
   };
   const deferredToolMediaReplies = new WeakSet<BlockReplyPayload>();
+  const deferredBlockReplyCallbacks = new WeakMap<BlockReplyPayload, () => void>();
+  const failedBlockReplies: Array<{
+    payload: BlockReplyPayload;
+    options?: { assistantMessageIndex?: number };
+    onDelivered?: () => void;
+    deliveryGeneration: number;
+    deliveryKey: string;
+    deliverySequence: number;
+  }> = [];
+  const exhaustedBlockReplyKeys = new Set<string>();
+  let blockReplyDeliveryGeneration = 0;
+  let blockReplyDeliverySequence = 0;
+  let resolveBlockReplyDeliveryInvalidation: () => void = () => {};
+  let blockReplyDeliveryInvalidation = new Promise<void>((resolve) => {
+    resolveBlockReplyDeliveryInvalidation = resolve;
+  });
+  const blockReplyDeliveryKey = (
+    payload: BlockReplyPayload,
+    options?: { assistantMessageIndex?: number },
+  ) =>
+    JSON.stringify([
+      options?.assistantMessageIndex,
+      payload.text ?? "",
+      payload.mediaUrls ?? [],
+      payload.audioAsVoice === true,
+      payload.replyToId ?? "",
+      payload.replyToTag === true,
+      payload.replyToCurrent === true,
+      payload.isReasoning === true,
+    ]);
+  const mergeAssistantReplyDirectives = (
+    current: EmbeddedAgentSubscribeState["lastDeliveredAssistantReplyDirectives"],
+    payload: BlockReplyPayload,
+  ) => {
+    const mediaUrls = Array.from(
+      new Set([...(current?.mediaUrls ?? []), ...(payload.mediaUrls ?? [])]),
+    );
+    if (
+      mediaUrls.length === 0 &&
+      !payload.audioAsVoice &&
+      !payload.replyToId &&
+      !payload.replyToTag &&
+      !payload.replyToCurrent
+    ) {
+      return current;
+    }
+    return {
+      mediaUrls: mediaUrls.length ? mediaUrls : undefined,
+      audioAsVoice: current?.audioAsVoice || payload.audioAsVoice || undefined,
+      replyToId: payload.replyToId ?? current?.replyToId,
+      replyToTag: current?.replyToTag || payload.replyToTag || undefined,
+      replyToCurrent: current?.replyToCurrent || payload.replyToCurrent || undefined,
+    };
+  };
+  const recordDeliveredAssistantReplyDirectives = (payload: BlockReplyPayload) => {
+    state.lastDeliveredAssistantReplyDirectives = mergeAssistantReplyDirectives(
+      state.lastDeliveredAssistantReplyDirectives,
+      payload,
+    );
+  };
+  const recordDeferredAssistantReplyDirectives = (payload: BlockReplyPayload) => {
+    state.deferredAssistantReplyDirectives = mergeAssistantReplyDirectives(
+      state.deferredAssistantReplyDirectives,
+      payload,
+    );
+  };
   const emitBlockReplySafely = (
     payload: Parameters<NonNullable<SubscribeEmbeddedAgentSessionParams["onBlockReply"]>>[0],
     options?: { assistantMessageIndex?: number },
+    onDelivered?: () => void,
+    retrying = false,
+    deliveryGeneration = blockReplyDeliveryGeneration,
+    deliveryKey = blockReplyDeliveryKey(payload, options),
+    deliverySequence = blockReplyDeliverySequence++,
   ): boolean => {
     if (!params.onBlockReply) {
+      return false;
+    }
+    if (deliveryGeneration !== blockReplyDeliveryGeneration) {
+      return false;
+    }
+    if (!retrying && exhaustedBlockReplyKeys.has(deliveryKey)) {
+      log.warn("block reply callback retry already exhausted");
       return false;
     }
     try {
@@ -111,24 +192,70 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
         ? params.onBlockReply(taggedPayload, context)
         : params.onBlockReply(taggedPayload);
       if (!isPromiseLike<void>(maybeTask)) {
+        if (deliveryGeneration === blockReplyDeliveryGeneration) {
+          exhaustedBlockReplyKeys.delete(deliveryKey);
+          onDelivered?.();
+        }
         return true;
       }
-      const task = Promise.resolve(maybeTask).catch((err: unknown) => {
-        log.warn(`block reply callback failed: ${String(err)}`);
-      });
-      pendingBlockReplyTasks.add(task);
+      const task = Promise.resolve(maybeTask).then(
+        () => {
+          if (deliveryGeneration === blockReplyDeliveryGeneration) {
+            exhaustedBlockReplyKeys.delete(deliveryKey);
+            onDelivered?.();
+          }
+        },
+        (err: unknown) => {
+          log.warn(`block reply callback failed: ${String(err)}`);
+          if (deliveryGeneration !== blockReplyDeliveryGeneration) {
+            return;
+          }
+          if (!retrying) {
+            failedBlockReplies.push({
+              payload,
+              options,
+              onDelivered,
+              deliveryGeneration,
+              deliveryKey,
+              deliverySequence,
+            });
+          } else {
+            exhaustedBlockReplyKeys.add(deliveryKey);
+          }
+        },
+      );
+      pendingBlockReplyTasks.set(task, deliveryGeneration);
       void task.finally(() => {
         pendingBlockReplyTasks.delete(task);
       });
       return true;
     } catch (err) {
       log.warn(`block reply callback failed: ${String(err)}`);
+      if (deliveryGeneration !== blockReplyDeliveryGeneration) {
+        return false;
+      }
+      if (!retrying) {
+        failedBlockReplies.push({
+          payload,
+          options,
+          onDelivered,
+          deliveryGeneration,
+          deliveryKey,
+          deliverySequence,
+        });
+      } else {
+        exhaustedBlockReplyKeys.add(deliveryKey);
+      }
       return false;
     }
   };
   const emitBlockReply = (
     payload: BlockReplyPayload,
-    options?: { assistantMessageIndex?: number; consumePendingToolMedia?: boolean },
+    options?: {
+      assistantMessageIndex?: number;
+      consumePendingToolMedia?: boolean;
+      onDelivered?: () => void;
+    },
   ) => {
     const withAssistantDirectives = consumePendingAssistantReplyDirectivesIntoReply(state, payload);
     const consumesPendingToolMedia =
@@ -149,16 +276,28 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
       if (consumesPendingToolMedia) {
         deferredToolMediaReplies.add(taggedPayload);
       }
+      if (!taggedPayload.isReasoning) {
+        recordDeferredAssistantReplyDirectives(taggedPayload);
+        if (taggedPayload.text) {
+          state.deferredBlockReplyTexts.push(taggedPayload.text);
+        }
+      }
+      if (options?.onDelivered) {
+        deferredBlockReplyCallbacks.set(taggedPayload, options.onDelivered);
+      }
       state.deferredBlockReplies.push(taggedPayload);
       return;
     }
-    const emitted = emitBlockReplySafely(taggedPayload, options);
-    if (emitted && !taggedPayload.isReasoning && hasAssistantVisibleReply(taggedPayload)) {
-      state.visibleBlockReplyCount += 1;
-      if (consumesPendingToolMedia) {
-        state.hasToolMediaBlockReply = true;
+    emitBlockReplySafely(taggedPayload, options, () => {
+      if (!taggedPayload.isReasoning && hasAssistantVisibleReply(taggedPayload)) {
+        recordDeliveredAssistantReplyDirectives(taggedPayload);
+        state.visibleBlockReplyCount += 1;
+        if (consumesPendingToolMedia) {
+          state.hasToolMediaBlockReply = true;
+        }
       }
-    }
+      options?.onDelivered?.();
+    });
   };
   const flushDeferredBlockReplies = () => {
     if (state.deferredBlockReplies.length === 0) {
@@ -166,17 +305,97 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     }
     const deferred = state.deferredBlockReplies.splice(0);
     for (const payload of deferred) {
-      const emitted = emitBlockReplySafely(payload);
-      if (emitted && !payload.isReasoning && hasAssistantVisibleReply(payload)) {
-        state.visibleBlockReplyCount += 1;
-        if (deferredToolMediaReplies.has(payload)) {
-          state.hasToolMediaBlockReply = true;
+      const onDelivered = deferredBlockReplyCallbacks.get(payload);
+      emitBlockReplySafely(payload, undefined, () => {
+        if (!payload.isReasoning && hasAssistantVisibleReply(payload)) {
+          recordDeliveredAssistantReplyDirectives(payload);
+          state.visibleBlockReplyCount += 1;
+          if (deferredToolMediaReplies.has(payload)) {
+            state.hasToolMediaBlockReply = true;
+          }
         }
-      }
+        onDelivered?.();
+      });
     }
+    state.deferredAssistantReplyDirectives = undefined;
+    state.deferredBlockReplyTexts = [];
   };
   const clearDeferredBlockReplies = () => {
     state.deferredBlockReplies.length = 0;
+    state.deferredAssistantReplyDirectives = undefined;
+    state.deferredBlockReplyTexts = [];
+  };
+
+  // Continuation retry state (generation counter, invalidation promise,
+  // failed/exhausted keys) lives at factory scope so emitBlockReplySafely and
+  // these settle/retry closures share one owner; the parent drives them via the
+  // returned object during compaction retries.
+  const currentPendingBlockReplyTasks = () =>
+    Array.from(pendingBlockReplyTasks)
+      .filter(([, generation]) => generation === blockReplyDeliveryGeneration)
+      .map(([task]) => task);
+  const waitForPendingBlockReplies = (): Promise<void> =>
+    (async () => {
+      const deliveryGeneration = blockReplyDeliveryGeneration;
+      const deliveryInvalidation = blockReplyDeliveryInvalidation;
+      let pending = currentPendingBlockReplyTasks();
+      while (pending.length > 0) {
+        if (deliveryGeneration !== blockReplyDeliveryGeneration) {
+          return;
+        }
+        await Promise.race([
+          Promise.allSettled(pending).then(() => undefined),
+          deliveryInvalidation,
+        ]);
+        if (deliveryGeneration !== blockReplyDeliveryGeneration) {
+          return;
+        }
+        pending = currentPendingBlockReplyTasks();
+      }
+    })();
+  const settleBlockReplyDeliveries = (options?: {
+    retryFailures?: boolean;
+  }): void | Promise<void> => {
+    if (currentPendingBlockReplyTasks().length > 0) {
+      return waitForPendingBlockReplies().then(() => settleBlockReplyDeliveries(options));
+    }
+    if (!options?.retryFailures || failedBlockReplies.length === 0) {
+      return;
+    }
+    const failed = failedBlockReplies
+      .splice(0)
+      .toSorted((left, right) => left.deliverySequence - right.deliverySequence);
+    for (const entry of failed) {
+      emitBlockReplySafely(
+        entry.payload,
+        entry.options,
+        entry.onDelivered,
+        true,
+        entry.deliveryGeneration,
+        entry.deliveryKey,
+        entry.deliverySequence,
+      );
+    }
+    if (currentPendingBlockReplyTasks().length > 0 || failedBlockReplies.length > 0) {
+      return settleBlockReplyDeliveries(options);
+    }
+  };
+  const invalidateBlockReplyDeliveries = () => {
+    blockReplyDeliveryGeneration += 1;
+    resolveBlockReplyDeliveryInvalidation();
+    blockReplyDeliveryInvalidation = new Promise<void>((resolve) => {
+      resolveBlockReplyDeliveryInvalidation = resolve;
+    });
+    for (const [task, generation] of pendingBlockReplyTasks) {
+      if (generation !== blockReplyDeliveryGeneration) {
+        pendingBlockReplyTasks.delete(task);
+      }
+    }
+  };
+  const getBlockReplyDeliveryGeneration = () => blockReplyDeliveryGeneration;
+  const resetBlockReplyFailures = () => {
+    failedBlockReplies.length = 0;
+    exhaustedBlockReplyKeys.clear();
   };
 
   const rememberAssistantText = (text: string) => {
@@ -231,8 +450,9 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     text: string;
     addedDuringMessage: boolean;
     chunkerHasBuffered: boolean;
+    reconcileCurrentMessage?: boolean;
   }) => {
-    const { text, addedDuringMessage, chunkerHasBuffered } = args;
+    const { text, addedDuringMessage, chunkerHasBuffered, reconcileCurrentMessage } = args;
 
     // A run-budget timeout flush may already have committed partial text for
     // this message. When message_end later finalizes the complete text, replace
@@ -248,7 +468,9 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
 
     // If we're not streaming block replies, ensure the final payload includes
     // the final text even when interim streaming was enabled.
-    if (state.includeReasoning && text && !params.onBlockReply) {
+    if (reconcileCurrentMessage && addedDuringMessage) {
+      replaceCurrentAssistantText(text);
+    } else if (state.includeReasoning && text && !params.onBlockReply) {
       replaceCurrentAssistantText(text);
       state.suppressBlockChunks = true;
     } else if (!addedDuringMessage && !chunkerHasBuffered && text) {
@@ -278,15 +500,21 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     assistantTexts,
     clearDeferredAssistantEvents,
     clearDeferredBlockReplies,
+    currentPendingBlockReplyTasks,
     emitAssistantStreamData,
     emitBlockReply,
     finalizeAssistantTexts,
     flushDeferredAssistantEvents,
     flushDeferredBlockReplies,
+    getBlockReplyDeliveryGeneration,
+    invalidateBlockReplyDeliveries,
     pendingBlockReplyTasks,
     pushAssistantText,
     replaceCurrentAssistantText,
+    resetBlockReplyFailures,
+    settleBlockReplyDeliveries,
     shouldSkipAssistantText,
+    waitForPendingBlockReplies,
     waitForPendingEvents,
   };
 }

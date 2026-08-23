@@ -239,6 +239,7 @@ export function createAgentTurnService({
       } = content;
       let resolvedSessionId = requestedSessionId;
       let sessionEntry: SessionEntry | undefined;
+      let sessionContinuationTraceparent: string | undefined;
       let effectiveBootstrapContextRunKind = request.bootstrapContextRunKind;
       let restoredCronContinuation: RestoredCronContinuation | undefined;
       let restoredCronContinuationIdentity:
@@ -473,6 +474,7 @@ export function createAgentTurnService({
           return;
         }
         sessionEntry = persistedSession.sessionEntry;
+        sessionContinuationTraceparent = persistedSession.consumedContinuationTraceparent;
         resolvedSessionId = persistedSession.resolvedSessionId;
         sessionPersistedBeforeGatewayAdmission =
           persistedSession.sessionPersistedBeforeGatewayAdmission;
@@ -583,6 +585,7 @@ export function createAgentTurnService({
         cfg,
         cfgForAgent,
         sessionEntry,
+        sessionContinuationTraceparent,
         resolvedSessionKey,
         requestedSessionKey,
         resolvedSessionId,

@@ -77,6 +77,7 @@ import {
 } from "./session-canonical-key.js";
 import { preserveSqliteSameKeySessionRolloverLineage } from "./session-entry-lineage.js";
 import { buildSessionCreationStamp } from "./session-entry-provenance.js";
+import { mergeSessionEntry, mergeSessionEntryPreserveActivity } from "./session-entry-runtime.js";
 import { kickSessionHistoryDiskBudgetMaintenance } from "./session-history-eviction.js";
 import { resolveSessionStorePathForScope } from "./session-store-path.js";
 import { resolveDeliveryProvenCanonicalSessionKey } from "./store-entry.js";
@@ -85,7 +86,6 @@ import {
   withOwnedSessionTranscriptWriterFence,
 } from "./transcript-write-context.js";
 import type { GroupKeyResolution, InternalSessionEntry as SessionEntry } from "./types.js";
-import { mergeSessionEntry, mergeSessionEntryPreserveActivity } from "./types.js";
 
 // Public entry API. Async preparation precedes BEGIN; commit revalidates repository snapshots.
 

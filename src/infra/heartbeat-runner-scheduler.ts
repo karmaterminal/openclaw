@@ -17,7 +17,7 @@ import {
   tryResolveAmbientHeartbeatAgentId,
   type HeartbeatConfig,
 } from "./heartbeat-runner-config.js";
-import { runHeartbeatOnce } from "./heartbeat-runner-run.js";
+import { runHeartbeatOnceCore } from "./heartbeat-runner-run.js";
 import {
   computeNextHeartbeatPhaseDueMs,
   resolveHeartbeatPhaseMs,
@@ -25,14 +25,16 @@ import {
   seekNextActivePhaseDueMs,
 } from "./heartbeat-schedule.js";
 import { resolveHeartbeatIntervalMs } from "./heartbeat-summary.js";
+import type {
+  HeartbeatRunResult,
+  HeartbeatWakeHandler,
+  HeartbeatWakeIntent,
+  HeartbeatWakeRequest,
+} from "./heartbeat-wake-contracts.js";
 import { isConfiguredHeartbeatAgent, isTargetedUnscheduledWake } from "./heartbeat-wake-policy.js";
 import {
   areHeartbeatsEnabled,
   HEARTBEAT_SKIP_NO_PENDING_EVENT,
-  type HeartbeatRunResult,
-  type HeartbeatWakeHandler,
-  type HeartbeatWakeIntent,
-  type HeartbeatWakeRequest,
   isRetryableHeartbeatSkipReason,
   setHeartbeatWakeHandler,
 } from "./heartbeat-wake.js";
@@ -59,16 +61,16 @@ export type HeartbeatRunner = {
   updateConfig: (cfg: OpenClawConfig) => void;
 };
 
-export function startHeartbeatRunner(opts: {
+export function startHeartbeatRunnerScheduled(opts: {
   cfg?: OpenClawConfig;
   readCurrentConfig?: () => OpenClawConfig;
   runtime?: RuntimeEnv;
   abortSignal?: AbortSignal;
-  runOnce?: typeof runHeartbeatOnce;
+  runOnce?: typeof runHeartbeatOnceCore;
   stableSchedulerSeed?: string;
 }): HeartbeatRunner {
   const runtime = opts.runtime ?? defaultRuntime;
-  const runOnce = opts.runOnce ?? runHeartbeatOnce;
+  const runOnce = opts.runOnce ?? runHeartbeatOnceCore;
   // Interval cadence is owned by the system cron monitor jobs (one per
   // heartbeat agent, converged by the gateway); this runner only executes
   // wakes. `nextDueMs` survives as the cooldown gate for event-driven wakes.

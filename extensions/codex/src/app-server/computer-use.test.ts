@@ -3,7 +3,10 @@ import path from "node:path";
 // Codex tests cover computer use plugin behavior.
 import { createRequireRecord } from "openclaw/plugin-sdk/test-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveCodexAppServerRuntimeOptions } from "./config.js";
+import {
+  resolveCodexAppServerRuntimeOptions,
+  withMcpElicitationsApprovalPolicy,
+} from "./config.js";
 import { acquireCodexNativeConfigFence } from "./native-config-fence.js";
 import { resolveCodexNativeConfigFenceKey } from "./shared-client.js";
 import { createClientHarness, useAutoCleanupTempDirTracker } from "./test-support.js";
@@ -366,7 +369,7 @@ describe("Codex Computer Use setup", () => {
         input: [],
         developerInstructions: "OpenClaw Computer Use readiness probe",
         sandbox: "danger-full-access",
-        approvalPolicy: "never",
+        approvalPolicy: withMcpElicitationsApprovalPolicy("never"),
         ephemeral: true,
       },
       { timeoutMs: 60_000 },

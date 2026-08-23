@@ -14,6 +14,9 @@ export type GatewayModelThinkingProfile = {
   thinkingDefault: ThinkLevel;
 };
 
+// Store-target shapes live on a registry-free leaf (session-utils-store-target.ts)
+// so spawn/runtime can import them without pulling the session-utils barrel.
+
 export type SessionActorProfileIdentity = {
   label?: string;
   avatarUrl?: string;
@@ -31,18 +34,6 @@ export type SessionListRowContext = {
 };
 
 export type SessionListRowContextProvider = () => SessionListRowContext;
-
-export type GatewaySessionStoreTarget = {
-  agentId: string;
-  storePath: string;
-  canonicalKey: string;
-  storeKeys: string[];
-};
-
-export type GatewaySessionStoreTargetWithStore = GatewaySessionStoreTarget & {
-  canonicalValidationError?: Error;
-  store: Record<string, SessionEntry>;
-};
 
 export function createSessionRowModelCacheKey(
   provider: string | undefined,

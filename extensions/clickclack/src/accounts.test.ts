@@ -1,7 +1,7 @@
 // Clickclack tests cover accounts plugin behavior.
 import fs from "node:fs";
 import path from "node:path";
-import { withTempDir } from "openclaw/plugin-sdk/test-env";
+import { withTestDir } from "openclaw/plugin-sdk/test-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   listClickClackAccountIds,
@@ -154,6 +154,7 @@ describe("ClickClack account resolution", () => {
       defaultTo: "channel:general",
       enabled: true,
       agentActivity: false,
+      nativeProgress: false,
       commandMenu: true,
       discussions: {
         enabled: false,
@@ -164,7 +165,6 @@ describe("ClickClack account resolution", () => {
       mentionPatterns: [],
       model: undefined,
       name: undefined,
-      nativeProgress: false,
       reconnectMs: 1_500,
       replyMode: "agent",
       requireMention: false,
@@ -199,7 +199,7 @@ describe("ClickClack account resolution", () => {
   });
 
   it("reads tokenFile credentials without overriding a named account token", async () => {
-    await withTempDir("clickclack-token-", async (tempDir) => {
+    await withTestDir("clickclack-token-", async (tempDir) => {
       const tokenFile = path.join(tempDir, "token");
       fs.writeFileSync(tokenFile, "  file-token  \n", "utf8");
       const cfg = {
@@ -225,7 +225,7 @@ describe("ClickClack account resolution", () => {
   });
 
   it("isolates unavailable root and account token files without falling back", async () => {
-    await withTempDir("clickclack-unavailable-token-", async (tempDir) => {
+    await withTestDir("clickclack-unavailable-token-", async (tempDir) => {
       const missingRootFile = path.join(tempDir, "missing-root-token");
       const missingAccountFile = path.join(tempDir, "missing-account-token");
       const missingDefaultFile = path.join(tempDir, "missing-default-token");
@@ -267,7 +267,7 @@ describe("ClickClack account resolution", () => {
   });
 
   it("degrades empty and unsafe token files without exposing their filesystem paths", async () => {
-    await withTempDir("clickclack-invalid-token-", async (tempDir) => {
+    await withTestDir("clickclack-invalid-token-", async (tempDir) => {
       const emptyFile = path.join(tempDir, "empty-token");
       fs.writeFileSync(emptyFile, "  \n", "utf8");
       const invalidFiles: Array<[string, "invalid-path" | "symlink"]> = [
@@ -353,6 +353,7 @@ describe("ClickClack account resolution", () => {
       defaultTo: "channel:general",
       enabled: true,
       agentActivity: false,
+      nativeProgress: false,
       commandMenu: true,
       discussions: {
         enabled: false,
@@ -363,7 +364,6 @@ describe("ClickClack account resolution", () => {
       mentionPatterns: [],
       model: "openai/gpt-5.4-mini",
       name: undefined,
-      nativeProgress: false,
       reconnectMs: 1_500,
       replyMode: "model",
       requireMention: false,

@@ -1134,6 +1134,9 @@ async function createCodexSideToolBridge(input: {
         currentChannelId: input.params.currentChannelId,
       }).channelId,
       sandbox,
+      // A /btw fork has no ownership of the parent turn lifecycle, so it must
+      // not expose continuation or compaction controls from that parent.
+      disableContinuationTools: true,
       ...(toolConstructionPlan ? { toolConstructionPlan } : {}),
       emitBeforeToolCallDiagnostics: false,
       modelHasVision: runtimeModel.input?.includes("image") ?? false,

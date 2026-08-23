@@ -23,10 +23,14 @@ import { safeRemoveAttachmentsDir } from "./subagent-registry-helpers.js";
 import { SubagentWaitManager } from "./subagent-registry-run-wait.js";
 import type {
   RequesterSettleWakeState,
+  SubagentAcceptedSteerDispatch,
   SubagentRestartRecoveryReceipt,
   SubagentRunRecord,
 } from "./subagent-registry.types.js";
-import { nextSubagentRunGeneration } from "./subagent-run-generation.js";
+import {
+  compareSubagentRunGeneration,
+  nextSubagentRunGeneration,
+} from "./subagent-run-generation.js";
 import {
   getSubagentSessionRuntimeMs,
   getSubagentSessionStartedAt,
@@ -69,6 +73,8 @@ export class SubagentRecoveryManager extends SubagentWaitManager {
   readonly clearSubagentRunSteerRestart = (
     runId: string,
     expected?: SubagentRunRecord,
+    acceptedDispatch?: SubagentAcceptedSteerDispatch,
+    requirePersistence = false,
   ): boolean => {
     const key = runId.trim();
     if (!key) {
@@ -78,7 +84,36 @@ export class SubagentRecoveryManager extends SubagentWaitManager {
     if (!entry || (expected && entry !== expected)) {
       return false;
     }
+    if (acceptedDispatch && entry.acceptedSteerDispatch !== acceptedDispatch) {
+      return false;
+    }
+    const previousSuppressAnnounceReason = entry.suppressAnnounceReason;
+    const previousAcceptedSteerDispatch = entry.acceptedSteerDispatch;
+    const persistClear = () => {
+      try {
+        if (requirePersistence) {
+          this.options.persistOrThrow(entry.runId);
+        } else {
+          this.options.persist(entry.runId);
+        }
+        return true;
+      } catch (error) {
+        entry.suppressAnnounceReason = previousSuppressAnnounceReason;
+        entry.acceptedSteerDispatch = previousAcceptedSteerDispatch;
+        log.warn("failed to persist steer dispatch ownership cleanup", {
+          error,
+          runId: entry.runId,
+        });
+        this.options.startSweeper();
+        this.options.scheduleSweep({ delayMs: 1_000 });
+        return false;
+      }
+    };
     if (entry.suppressAnnounceReason !== "steer-restart") {
+      if (acceptedDispatch) {
+        entry.acceptedSteerDispatch = undefined;
+        return persistClear();
+      }
       return true;
     }
     if (typeof entry.execution.endedAt === "number") {
@@ -116,7 +151,10 @@ export class SubagentRecoveryManager extends SubagentWaitManager {
       }
     }
     entry.suppressAnnounceReason = undefined;
-    this.options.persist(entry.runId);
+    entry.acceptedSteerDispatch = undefined;
+    if (!persistClear()) {
+      return false;
+    }
     // If the interrupted run already finished while suppression was active, retry
     // cleanup now so completion output is not lost when restart dispatch fails.
     this.options.resumedRuns.delete(key);
@@ -124,6 +162,71 @@ export class SubagentRecoveryManager extends SubagentWaitManager {
       this.options.resumeSubagentRun(key);
     }
     return true;
+  };
+
+  readonly recordAcceptedSubagentSteerDispatch = (recordParams: {
+    runId: string;
+    expected: SubagentRunRecord;
+    gatewayRunId: string;
+    phase?: SubagentAcceptedSteerDispatch["phase"];
+    lifecycleGeneration?: string;
+    expectedSessionId?: string;
+    expectedLifecycleRevision?: string;
+  }):
+    | {
+        status: "persisted" | "pending-persistence";
+        ownerRunId: string;
+        owner: SubagentRunRecord;
+        dispatch: SubagentAcceptedSteerDispatch;
+      }
+    | { status: "rejected" } => {
+    const runId = recordParams.runId.trim();
+    const gatewayRunId = recordParams.gatewayRunId.trim();
+    if (!runId || !gatewayRunId) {
+      return { status: "rejected" };
+    }
+    const exactEntry = this.options.runs.get(runId);
+    const entry =
+      exactEntry === recordParams.expected
+        ? exactEntry
+        : [...this.options.getRunsForChildSession(recordParams.expected.childSessionKey)]
+            .toSorted(compareSubagentRunGeneration)
+            .at(-1);
+    const owner = entry ?? recordParams.expected;
+    if (!entry && !this.options.runs.has(owner.runId)) {
+      // The accepted run still needs a durable cleanup owner even if concurrent
+      // lifecycle cleanup removed its source row.
+      this.options.runs.set(owner.runId, owner);
+    }
+    const acceptedSteerDispatch = {
+      gatewayRunId,
+      phase: recordParams.phase,
+      lifecycleGeneration: recordParams.lifecycleGeneration?.trim() || undefined,
+      expectedSessionId: recordParams.expectedSessionId?.trim() || undefined,
+      expectedLifecycleRevision: recordParams.expectedLifecycleRevision?.trim() || undefined,
+    };
+    owner.acceptedSteerDispatch = acceptedSteerDispatch;
+    let result: "persisted" | "pending-persistence" = "persisted";
+    try {
+      // The Gateway may accept this exact run as soon as dispatch starts. Keep its
+      // in-memory owner authoritative if persistence is temporarily unavailable.
+      this.options.persistOrThrow(owner.runId);
+    } catch (error) {
+      result = "pending-persistence";
+      log.warn("failed to persist accepted steer dispatch; retaining live owner", {
+        error,
+        runId: owner.runId,
+        gatewayRunId,
+      });
+    }
+    this.options.startSweeper();
+    this.options.scheduleSweep({ delayMs: 1_000 });
+    return {
+      status: result,
+      ownerRunId: owner.runId,
+      owner,
+      dispatch: acceptedSteerDispatch,
+    };
   };
 
   readonly replaceSubagentRunAfterSteer = (replaceParams: {
@@ -265,6 +368,7 @@ export class SubagentRecoveryManager extends SubagentWaitManager {
       cleanupCompletedAt: undefined,
       cleanupHandled: false,
       suppressAnnounceReason: undefined,
+      acceptedSteerDispatch: undefined,
       terminalOwner: undefined,
       killReconciliation: undefined,
       killIntent: undefined,

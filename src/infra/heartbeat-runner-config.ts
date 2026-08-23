@@ -22,7 +22,7 @@ import { loadOrCreateDeviceIdentity } from "./device-identity.js";
 import { resolveActiveHoursTimezone } from "./heartbeat-active-hours.js";
 import { tryResolveAmbientHeartbeatAgentId } from "./heartbeat-agent-resolution.js";
 import { resolveHeartbeatIntervalMs } from "./heartbeat-summary.js";
-import type { HeartbeatWakeSource } from "./heartbeat-wake.js";
+import type { HeartbeatWakeSource } from "./heartbeat-wake-contracts.js";
 
 export const heartbeatLog = createSubsystemLogger("gateway/heartbeat");
 

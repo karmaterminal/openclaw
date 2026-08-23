@@ -78,6 +78,7 @@ const hoisted = vi.hoisted(() => {
   const resolveStorePathMock = vi.fn();
   const resolveSessionTranscriptFileMock = vi.fn();
   const areHeartbeatsEnabledMock = vi.fn();
+  const requestHeartbeatNowMock = vi.fn();
   const getChannelPluginMock = vi.fn();
   const getLoadedChannelPluginMock = vi.fn();
   const normalizeChannelIdMock = vi.fn((channelId: string) => {
@@ -127,7 +128,7 @@ const hoisted = vi.hoisted(() => {
       return Object.entries(store).map(([sessionKey, entry]) => ({ sessionKey, entry }));
     };
     return {
-      listSessionEntries: listMockEntries,
+      listSessionEntriesCore: listMockEntries,
       listSessionEntriesReadOnly: listMockEntries,
       loadSessionEntry: loadMockEntry,
       loadSessionEntryReadOnly: loadMockEntry,
@@ -175,6 +176,7 @@ const hoisted = vi.hoisted(() => {
     resolveStorePathMock,
     resolveSessionTranscriptFileMock,
     areHeartbeatsEnabledMock,
+    requestHeartbeatNowMock,
     getChannelPluginMock,
     getLoadedChannelPluginMock,
     normalizeChannelIdMock,
@@ -240,6 +242,7 @@ vi.mock("../../../gateway/call.js", () => ({
 
 vi.mock("../../../infra/heartbeat-wake.js", () => ({
   areHeartbeatsEnabled: hoisted.areHeartbeatsEnabledMock,
+  requestHeartbeatNow: hoisted.requestHeartbeatNowMock,
 }));
 
 vi.mock("./acp-spawn-parent-stream.js", () => ({
@@ -711,6 +714,7 @@ describe("spawnAcpDirect", () => {
     acpRuntimeRegistryTesting.resetAcpRuntimeBackendsForTests();
     replaceSpawnConfig(createDefaultSpawnConfig());
     hoisted.areHeartbeatsEnabledMock.mockReset().mockReturnValue(true);
+    hoisted.requestHeartbeatNowMock.mockReset();
     hoisted.getChannelPluginMock.mockReset().mockReturnValue(undefined);
     hoisted.getLoadedChannelPluginMock.mockReset().mockReturnValue(undefined);
     hoisted.cleanupFailedAcpSpawnMock.mockReset().mockResolvedValue(undefined);

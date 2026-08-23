@@ -18,7 +18,9 @@ import { getReplyPayloadMetadata } from "../reply-payload.js";
 import { handleGoalCommand } from "./commands-goal.js";
 import { buildFastReplyCommandContext, initFastReplySessionState } from "./get-reply-fast-path.js";
 import {
+  emptyAliasIndex,
   markCompleteReplyConfig,
+  registerFastReplySessionStore,
   withFastReplyConfig,
 } from "./get-reply-fast-path.test-support.js";
 import {
@@ -36,11 +38,6 @@ registerGetReplyBaselineBypass();
 
 type LoadModelCatalogFn =
   typeof import("../../agents/prepared-model-catalog.js").loadPreparedModelCatalog;
-type ModelAliasIndex = import("../../agents/model-selection.js").ModelAliasIndex;
-
-function emptyAliasIndex(): ModelAliasIndex {
-  return { byAlias: new Map(), byKey: new Map() };
-}
 
 const mocks = vi.hoisted(() => ({
   buildStatusReply: vi.fn(),
@@ -83,6 +80,7 @@ let resolveDefaultModelMock: typeof import("./directive-handling.defaults.js").r
 let resolveModelRefFromStringMock: typeof import("../../agents/model-selection.js").resolveModelRefFromString;
 let loadConfigMock: typeof import("../../config/config.js").getRuntimeConfig;
 let runPreparedReplyMock: typeof import("./get-reply-run.js").runPreparedReply;
+const testSessionStore = registerFastReplySessionStore();
 
 async function loadGetReplyRuntimeForTest() {
   ({ getReplyFromConfig } = await loadGetReplyModuleForTest({ cacheKey: import.meta.url }));
@@ -322,7 +320,9 @@ describe("getReplyFromConfig fast test bootstrap", () => {
   });
 
   it("marks configs through withFastReplyConfig()", async () => {
-    const cfg = withFastReplyConfig({ session: { store: "/tmp/sessions.json" } } as OpenClawConfig);
+    const cfg = withFastReplyConfig({
+      session: { store: testSessionStore() },
+    } as OpenClawConfig);
 
     await expect(getReplyFromConfig(buildGetReplyCtx(), undefined, cfg)).resolves.toEqual({
       text: "ok",
@@ -759,7 +759,7 @@ describe("getReplyFromConfig fast test bootstrap", () => {
   });
 
   it("uses native command target session keys during fast bootstrap", () => {
-    const storePath = "/tmp/sessions.json";
+    const storePath = testSessionStore();
     const result = initFastReplySessionState({
       ctx: buildGetReplyCtx({
         SessionKey: "telegram:slash:123",
@@ -786,7 +786,7 @@ describe("getReplyFromConfig fast test bootstrap", () => {
           actor: { type: "human", id: "profile-ada" },
         },
       }),
-      cfg: { session: { store: "/tmp/sessions.json" } } as OpenClawConfig,
+      cfg: { session: { store: testSessionStore() } } as OpenClawConfig,
       agentId: "main",
       commandAuthorized: true,
       workspaceDir: "/tmp/workspace",
@@ -839,7 +839,7 @@ describe("getReplyFromConfig fast test bootstrap", () => {
         SessionKey: "agent:main:telegram:payload",
       }),
       cfg: {
-        session: { store: "/tmp/sessions.json", resetTriggers: ["/new"] },
+        session: { store: testSessionStore(), resetTriggers: ["/new"] },
       } as OpenClawConfig,
       agentId: "main",
       commandAuthorized: true,
@@ -860,7 +860,7 @@ describe("getReplyFromConfig fast test bootstrap", () => {
         SessionKey: "agent:main:telegram:empty-raw",
       }),
       cfg: {
-        session: { store: "/tmp/sessions.json", resetTriggers: ["/new"] },
+        session: { store: testSessionStore(), resetTriggers: ["/new"] },
       } as OpenClawConfig,
       agentId: "main",
       commandAuthorized: true,

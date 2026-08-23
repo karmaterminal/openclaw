@@ -65,6 +65,7 @@ export async function finalizeChatSendSourceReplies(params: {
   deliveredReplies: readonly DeliveredReply[];
   emitFirstAssistantServerTiming: () => void;
   hasReturnedAgentErrorPayloads: boolean;
+  markTerminalBroadcasted: () => void;
   session: Pick<
     PreparedChatSendSession,
     "agentId" | "backingSessionId" | "cfg" | "clientRunId" | "sessionKey" | "sessionLoadOptions"
@@ -76,6 +77,7 @@ export async function finalizeChatSendSourceReplies(params: {
     deliveredReplies,
     emitFirstAssistantServerTiming,
     hasReturnedAgentErrorPayloads,
+    markTerminalBroadcasted,
     session,
   } = params;
   const { agentId, backingSessionId, cfg, clientRunId, sessionKey, sessionLoadOptions } = session;
@@ -294,6 +296,7 @@ export async function finalizeChatSendSourceReplies(params: {
   if (hasVisibleAssistantFinalMessage(message)) {
     emitFirstAssistantServerTiming();
   }
+  markTerminalBroadcasted();
   broadcastChatFinal({
     context,
     runId: clientRunId,

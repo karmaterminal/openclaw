@@ -11,7 +11,7 @@ import {
 } from "../../agents/embedded-agent-runner/runs.js";
 import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runner/runs.test-support.js";
 import type { InboundEventKind } from "../../channels/inbound-event/kind.js";
-import { clearRuntimeConfigSnapshot } from "../../config/config.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
@@ -458,6 +458,9 @@ describe("runReplyAgent auto-compaction token update", () => {
       sessionEntry,
       config: options?.config,
     });
+    if (options?.config) {
+      setRuntimeConfigSnapshot(options.config);
+    }
     return runReplyAgent({
       commandBody: "hello",
       followupRun,
@@ -670,6 +673,26 @@ describe("runReplyAgent auto-compaction token update", () => {
     ).toBeUndefined();
   });
 
+  it("keeps continuation-only direct replies silent", async () => {
+    const result = await runEmptyDirectReply(
+      {
+        payloads: [],
+        meta: { agentMeta: {}, finalAssistantRawText: "CONTINUE_WORK:5" },
+      },
+      {
+        config: {
+          agents: {
+            defaults: {
+              continuation: { enabled: true },
+            },
+          },
+        },
+      },
+    );
+
+    expect(result).toBeUndefined();
+  });
+
   it("surfaces terminal direct failures after runtime compaction progress", async () => {
     const onBlockReply = vi.fn();
     const result = await runEmptyDirectReply(
@@ -782,9 +805,11 @@ describe("runReplyAgent auto-compaction token update", () => {
 
       vi.mocked(scheduleFollowupDrain).mockImplementation((key) => {
         const events = peekSystemEvents(key);
-        expect(events).toHaveLength(1);
+        expect(events).toHaveLength(2);
         expect(events[0]).toContain("Read the queued workspace startup file.");
         expect(events[0]).toContain("Never skip startup context after compaction.");
+        expect(events[1]).toContain("[system:post-compaction] Session compacted");
+        expect(events[1]).toContain("Queued 0 post-compaction delegate(s)");
       });
 
       const { typing, sessionCtx, resolvedQueue, followupRun } = createBaseRun({
@@ -1795,7 +1820,7 @@ describe("runReplyAgent Active Memory inline debug", () => {
     expect(traceText).toContain("stopReason=end_turn");
     expect(traceText).toContain("refusal=no");
     expect(traceText).toContain("🔎 Context Management:");
-    expect(traceText).toContain("sessionCompactions=4");
+    expect(traceText).toContain("sessionCompactions=3");
     expect(traceText).toContain("lastTurnCompactions=1");
     expect(traceText).toContain("🔎 Model Input (User Role):");
     expect(traceText).toContain("🔎 Model Output (Assistant Role):");

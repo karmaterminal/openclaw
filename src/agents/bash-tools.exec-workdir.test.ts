@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveExecWorkdir } from "./bash-tools.exec-workdir.js";
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
 
-async function withTempDir(run: (dir: string) => Promise<void>) {
+async function withTestDir(run: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "openclaw-exec-workdir-"));
   try {
     await run(dir);
@@ -61,7 +61,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects missing explicit local workdirs without fallback", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const missing = path.join(workspaceDir, "missing");
       await expect(
         resolveExecWorkdir({
@@ -73,7 +73,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects file explicit local workdirs", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const fileWorkdir = path.join(workspaceDir, "not-dir");
       await writeFile(fileWorkdir, "not a directory");
 
@@ -87,7 +87,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("resolves valid explicit local workdirs", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "gateway",
@@ -98,7 +98,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("uses configured local cwd when workdir is omitted", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "gateway",
@@ -109,7 +109,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("treats exact empty workdir as omitted when a local cwd default exists", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "gateway",
@@ -121,7 +121,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("treats exact empty workdir as omitted when no local cwd default exists", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       vi.spyOn(process, "cwd").mockReturnValue(workspaceDir);
 
       await expect(
@@ -134,7 +134,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("uses current cwd for omitted local workdir only when no default exists", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       vi.spyOn(process, "cwd").mockReturnValue(workspaceDir);
 
       await expect(
@@ -158,7 +158,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects missing configured local cwd without falling back to current cwd", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const missingDefault = path.join(workspaceDir, "missing-default");
       vi.spyOn(process, "cwd").mockReturnValue(workspaceDir);
 
@@ -172,7 +172,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("uses the sandbox workspace when sandbox workdir is omitted", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",
@@ -188,7 +188,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("treats exact empty workdir as omitted for sandbox hosts", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",
@@ -205,7 +205,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects missing explicit sandbox workdirs", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",
@@ -217,7 +217,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects missing configured sandbox workdirs", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",
@@ -229,7 +229,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects file sandbox workdirs", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await writeFile(path.join(workspaceDir, "not-dir"), "not a directory");
 
       await expect(
@@ -243,8 +243,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects sandbox workdirs that escape the workspace", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (outsideDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (outsideDir) => {
         await expect(
           resolveExecWorkdir({
             host: "sandbox",
@@ -257,7 +257,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects sandbox workdirs with parent-directory segments", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",
@@ -277,8 +277,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects sandbox workdir symlinks that escape the workspace", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (outsideDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (outsideDir) => {
         await symlink(outsideDir, path.join(workspaceDir, "escape"), "dir");
 
         await expect(
@@ -293,7 +293,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("resolves relative sandbox workdirs under the workspace", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const srcDir = path.join(workspaceDir, "src");
       await mkdir(srcDir);
 
@@ -313,7 +313,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("supports custom sandbox container workdir prefixes", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const projectDir = path.join(workspaceDir, "project");
       await mkdir(projectDir);
 
@@ -336,8 +336,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("resolves sandbox-skills workdirs via approved read-only mounts", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (skillsMountDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (skillsMountDir) => {
         const skillDir = path.join(skillsMountDir, "test-repro-skill");
         await mkdir(skillDir);
         await mkdir(
@@ -370,8 +370,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("resolves sandbox-skills subdirectories via approved read-only mounts", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (skillsMountDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (skillsMountDir) => {
         const toolsDir = path.join(skillsMountDir, "test-repro-skill", "tools");
         await mkdir(toolsDir, { recursive: true });
 
@@ -400,9 +400,9 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("uses the most specific approved mount regardless of input order", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (broadMountDir) => {
-        await withTempDir(async (skillsMountDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (broadMountDir) => {
+        await withTestDir(async (skillsMountDir) => {
           const skillDir = path.join(skillsMountDir, "demo");
           await mkdir(skillDir);
           await mkdir(path.join(broadMountDir, "sandbox-skills", "skills", "demo"), {
@@ -439,8 +439,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("resolves the exact approved mount root", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (skillsMountDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (skillsMountDir) => {
         await expect(
           resolveExecWorkdir({
             host: "sandbox",
@@ -466,8 +466,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects sandbox-skills workdirs when the mount host path is missing", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (skillsMountDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (skillsMountDir) => {
         // No subdirectory created under skillsMountDir — path doesn't exist
 
         await expect(
@@ -493,8 +493,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("still resolves primary workspace paths when approved mounts don't match", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (skillsMountDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (skillsMountDir) => {
         const srcDir = path.join(workspaceDir, "src");
         await mkdir(srcDir);
         const projectDir = path.join(workspaceDir, "project");
@@ -548,8 +548,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("falls back to primary mapping when no approved mounts are defined", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (skillsMountDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (skillsMountDir) => {
         const skillDir = path.join(skillsMountDir, "test-skill");
         await mkdir(skillDir);
 
@@ -568,8 +568,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("does not match sibling paths outside an approved mount prefix", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (skillsMountDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (skillsMountDir) => {
         await mkdir(path.join(skillsMountDir, "demo"));
 
         await expect(
@@ -595,9 +595,9 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects symlink escape from containerMount host root", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (skillsMountDir) => {
-        await withTempDir(async (outsideDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (skillsMountDir) => {
+        await withTestDir(async (outsideDir) => {
           const skillDir = path.join(skillsMountDir, "test-skill");
           await mkdir(skillDir);
           // Symlink under skills mount pointing outside
@@ -627,7 +627,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("lets backend-validated sandboxes use remote-only container workdirs", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",
@@ -644,7 +644,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("normalizes backend-validated sandbox workdir roots with trailing slashes", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",
@@ -663,7 +663,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("lets backend-validated sandboxes use declared alternate remote roots", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const validateWorkdir = vi.fn(async (workdir: string) => workdir);
 
       await expect(
@@ -686,7 +686,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("resolves relative backend-validated sandbox workdirs under the remote workspace", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",
@@ -703,7 +703,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("keeps existing relative backend-validated sandbox workdirs aligned with the local mirror", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const localDir = path.join(workspaceDir, "src");
       await mkdir(localDir);
       const validateWorkdir = vi.fn(async (workdir: string) => workdir);
@@ -725,8 +725,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("maps backend-validated skill workdirs to their mounted host root", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (skillsMountDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (skillsMountDir) => {
         const containerRoot = "/remote/workspace/.openclaw/sandbox-skills/skills";
         const mountedSkillDir = path.join(skillsMountDir, "test-skill");
         const shadowSkillDir = path.join(
@@ -766,8 +766,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("prefers backend skill mounts over an overlapping host workspace path", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (skillsMountDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (skillsMountDir) => {
         const containerRoot = path.join(workspaceDir, ".openclaw", "sandbox-skills", "skills");
         const mountedSkillDir = path.join(skillsMountDir, "test-skill");
         const shadowSkillDir = path.join(containerRoot, "test-skill");
@@ -798,7 +798,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("defers stale relative backend-validated sandbox workdirs to the backend", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const localFile = path.join(workspaceDir, "build");
       await writeFile(localFile, "stale local mirror file");
       const validateWorkdir = vi.fn(async (workdir: string) => workdir);
@@ -820,7 +820,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("accepts backend-validated absolute workdirs when the remote workspace root is slash", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",
@@ -839,7 +839,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("maps host workspace paths for backend-validated sandboxes when they exist locally", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const localDir = path.join(workspaceDir, "src");
       await mkdir(localDir);
 
@@ -859,7 +859,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("defers missing absolute backend workdirs to remote validation when roots overlap", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const missingRemoteDir = path.join(workspaceDir, "generated");
       const validateWorkdir = vi.fn(async (workdir: string) => workdir);
 
@@ -883,7 +883,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("maps missing absolute host workspace paths before backend validation", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const missingRemoteDir = path.join(workspaceDir, "generated");
       const validateWorkdir = vi.fn(async (workdir: string) => workdir);
 
@@ -906,8 +906,8 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects backend-validated sandbox host paths that symlink outside the workspace", async () => {
-    await withTempDir(async (workspaceDir) => {
-      await withTempDir(async (outsideDir) => {
+    await withTestDir(async (workspaceDir) => {
+      await withTestDir(async (outsideDir) => {
         const escape = path.join(workspaceDir, "escape");
         await symlink(outsideDir, escape, "dir");
 
@@ -926,7 +926,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("prefers existing host workspace paths over matching backend container prefixes", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       const localDir = path.join(workspaceDir, "src");
       await mkdir(localDir);
 
@@ -948,7 +948,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects backend-validated sandbox workdirs outside local and remote workspace roots", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",
@@ -963,7 +963,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects backend-validated sandbox workdirs with parent-directory segments", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",
@@ -978,7 +978,7 @@ describe("resolveExecWorkdir", () => {
   });
 
   it("rejects backend-validated sandbox workdirs when the backend validator fails", async () => {
-    await withTempDir(async (workspaceDir) => {
+    await withTestDir(async (workspaceDir) => {
       await expect(
         resolveExecWorkdir({
           host: "sandbox",

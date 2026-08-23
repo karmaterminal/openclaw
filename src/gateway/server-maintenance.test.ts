@@ -78,6 +78,7 @@ function createMaintenanceTimerDeps() {
     logHealth: { info: vi.fn(), error: vi.fn() },
     runWorktreeGc: vi.fn(async () => undefined),
     runDeliveryQueueMediaGc: vi.fn(async () => undefined),
+    runDelegateArtifactGc: vi.fn(async () => 0),
     runManagedOutgoingMediaGc: cleanupManagedOutgoingMediaRecordsMock,
   };
 }
@@ -157,12 +158,14 @@ async function stopMaintenanceTimers(timers: {
   startMediaCleanup: () => void;
   stopMediaCleanup: () => Promise<"drained" | "timed-out">;
   worktreeCleanup: NodeJS.Timeout;
+  delegateArtifactCleanup: NodeJS.Timeout;
   skillCuratorCleanup: () => void;
 }) {
   clearInterval(timers.tickInterval);
   clearInterval(timers.healthInterval);
   clearInterval(timers.dedupeCleanup);
   clearInterval(timers.worktreeCleanup);
+  clearInterval(timers.delegateArtifactCleanup);
   await timers.stopMediaCleanup();
   timers.skillCuratorCleanup();
 }

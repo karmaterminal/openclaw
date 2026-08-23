@@ -27,6 +27,15 @@ import {
 } from "./install-npm-fixtures.js";
 
 const SCRIPT_PATH = "scripts/install.sh";
+const HIDE_ARCH_PACKAGE_MANAGER = `
+command() {
+  if [[ "\${1:-}" == "-v" && "\${2:-}" == "pacman" ]]; then
+    return 1
+  fi
+  builtin command "$@"
+}
+is_arch_linux() { return 1; }
+`;
 
 function runInstallShell(script: string, env: NodeJS.ProcessEnv = {}) {
   const home = mkdtempSync(join(tmpdir(), "openclaw-install-home-"));
@@ -585,6 +594,7 @@ NODE
     const result = runInstallShell(`
       set -euo pipefail
       source "${SCRIPT_PATH}"
+      ${HIDE_ARCH_PACKAGE_MANAGER}
       OS=linux
       require_sudo() { :; }
       install_build_tools_linux() { return 0; }
@@ -663,6 +673,7 @@ NODE
     const result = runInstallShell(`
       set -euo pipefail
       source "${SCRIPT_PATH}"
+      ${HIDE_ARCH_PACKAGE_MANAGER}
       OS=linux
       NODE_FAKE_VERSION=v20.15.1
       require_sudo() { :; }
@@ -705,6 +716,7 @@ NODE
     const result = runInstallShell(`
       set -euo pipefail
       source "${SCRIPT_PATH}"
+      ${HIDE_ARCH_PACKAGE_MANAGER}
       OS=linux
       NODE_FAKE_VERSION=v20.15.1
       require_sudo() { :; }
@@ -751,6 +763,7 @@ NODE
     const result = runInstallShell(`
       set -euo pipefail
       source "${SCRIPT_PATH}"
+      ${HIDE_ARCH_PACKAGE_MANAGER}
       OS=linux
       require_sudo() { :; }
       install_build_tools_linux() { return 0; }
@@ -790,6 +803,7 @@ NODE
     const result = runInstallShell(`
       set -euo pipefail
       source "${SCRIPT_PATH}"
+      ${HIDE_ARCH_PACKAGE_MANAGER}
       OS=linux
       require_sudo() { :; }
       install_build_tools_linux() { return 0; }

@@ -53,6 +53,7 @@ import {
   rewriteSqliteTranscriptEventRowsInTransaction,
 } from "./session-accessor.sqlite-transcript-store.js";
 import type { SessionTranscriptWriteTransactionContext } from "./session-accessor.types.js";
+import { mergeSessionEntry } from "./session-entry-runtime.js";
 import type {
   SessionTranscriptTurnExpectedState,
   SessionTranscriptTurnLifecyclePatch,
@@ -67,7 +68,6 @@ import {
   withOwnedSessionTranscriptWriterFence,
 } from "./transcript-write-context.js";
 import type { InternalSessionEntry, SessionEntry } from "./types.js";
-import { mergeSessionEntry } from "./types.js";
 
 // Transcript write owner. Queue coordination surrounds synchronous SQLite commit sections.
 
