@@ -17,4 +17,8 @@
   structurally possible.
 
 Disposition: target policy permits preparing Gate 5 intent but does not
-authorize presentation mutation. All presentation movement remains deferred.
+authorize presentation mutation. The fast-forward is not presentation-clean:
+it would publish 140 `.gate-out/` files plus `tmp-drop-me-claude.md`. Later figs
+shape review must explicitly accept retaining those bytes or require a new
+clean candidate and complete reproof; no rebase, squash, or silent strip is
+allowed. All presentation movement remains deferred.

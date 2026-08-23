@@ -81,3 +81,13 @@ Per the workorder's red-classification rule, Mode-B is accepted as a complete,
 baseline-classified broad receipt with two infrastructure findings and zero
 candidate finding. No candidate amendment, retry masking, timeout increase, or
 assertion weakening was used.
+
+### Durable artifact scope
+
+The proof ref commits the merged 69/69 routing receipt, aggregate JSON/Markdown,
+job timings, routing/static plan, both failed-batch raw artifacts, and baseline
+proof. Successful per-batch raw directories remain in the GitHub Actions
+artifact and the lane worktree but are not duplicated into the proof ref.
+GitHub retention is 14 days. Future auditors must use
+`aggregate/routing-receipts.json` as the durable all-batch contract rather than
+assuming every successful batch log is committed.
