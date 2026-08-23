@@ -182,4 +182,51 @@ describe("channel ingress pending disposition drain", () => {
       drain.dispose();
     });
   });
+
+  it("retains a row when its policy hook throws and continues draining", async () => {
+    await withTempState(async (stateDir) => {
+      const clock = 1_000;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "poison-policy",
+        { text: "still valid work", kind: "addressed" },
+        { laneKey: "channel:a", receivedAt: clock },
+      );
+      await queue.enqueue(
+        "other-lane",
+        { text: "unrelated work", kind: "addressed" },
+        { laneKey: "channel:b", receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const onLog = vi.fn();
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        startLimit: 2,
+        onLog,
+        resolvePendingDisposition: (event) => {
+          if (event.id === "poison-policy") {
+            throw new Error("policy fixture failed");
+          }
+          return null;
+        },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 2 });
+      await drain.waitForIdle();
+      expect(adopted.toSorted()).toEqual(["other-lane", "poison-policy"]);
+      expect(onLog).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "pending disposition failed for event poison-policy; retaining for claim-time handling",
+        ),
+      );
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      drain.dispose();
+    });
+  });
 });

@@ -60,6 +60,7 @@ type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
     derivedLaneKey: string,
   ) => boolean;
   log: (message: string) => void;
+  formatError: (error: unknown) => string;
 };
 
 export type AppliedIngressPendingDispositions<TPayload, TMetadata> = {
@@ -88,10 +89,19 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
   const blockedLaneKeys = new Set<string>();
   for (const event of params.pending) {
     const laneKey = resolveLaneKey(event, params.deriveLaneKey, params.reconcileStoredLaneKey);
-    const disposition = await params.resolvePendingDisposition(event, {
-      laneKey,
-      now: params.dispositionNow,
-    });
+    let disposition: ChannelIngressPendingDisposition | null | undefined;
+    try {
+      disposition = await params.resolvePendingDisposition(event, {
+        laneKey,
+        now: params.dispositionNow,
+      });
+    } catch (error) {
+      params.log(
+        `ingress drain: pending disposition failed for event ${event.id}; retaining for claim-time handling: ${params.formatError(error)}`,
+      );
+      retained.push(event);
+      continue;
+    }
     if (!disposition) {
       retained.push(event);
       continue;

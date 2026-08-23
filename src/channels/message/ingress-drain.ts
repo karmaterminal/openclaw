@@ -329,7 +329,11 @@ export function createChannelIngressDrain<
         }
         await applyFailureDisposition(state.claim, new Error("turn-abandoned"));
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        log(
+          `ingress drain: failed to settle ${outcome} event ${state.eventId}; holding claim: ${formatError(error)}`,
+        );
+      });
   };
 
   const createLifecycle = (
@@ -592,6 +596,7 @@ export function createChannelIngressDrain<
       deriveLaneKey: options.deriveLaneKey,
       reconcileStoredLaneKey: options.reconcileStoredLaneKey,
       log,
+      formatError,
     });
     const { eligiblePending, claimedLaneKeys, retryDelayedLaneKeys } = resolveIngressDrainLaneState(
       {
