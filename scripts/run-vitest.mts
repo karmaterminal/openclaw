@@ -31,6 +31,7 @@ import {
   forwardSignalToVitestProcessGroup,
   installVitestProcessGroupCleanup,
   shouldUseDetachedVitestProcessGroup,
+  terminateVitestProcessGroupForTimeout,
 } from "./vitest-process-group.mts";
 
 type VitestFs = {
@@ -1070,7 +1071,6 @@ export function installVitestNoOutputWatchdog(params: {
   streams?: Array<WatchdogStream | null>;
   timeoutMs: number | null;
   heartbeatMs?: number | null;
-  label?: string;
   forceKillAfterMs?: number;
   log?: (message: string) => void;
   onTimeout?: () => void;
@@ -1092,8 +1092,6 @@ export function installVitestNoOutputWatchdog(params: {
       : null;
   const streams =
     params.streams?.filter((stream): stream is WatchdogStream => stream !== null) ?? [];
-  const label = params.label?.trim();
-  const suffix = label ? ` (${label})` : "";
 
   let active = true;
   let silenceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1133,7 +1131,7 @@ export function installVitestNoOutputWatchdog(params: {
         return;
       }
       silentForMs += heartbeatMs;
-      params.log?.(`[vitest] still running with no output for ${silentForMs}ms${suffix}.`);
+      params.log?.(`[vitest] still running with no output for ${silentForMs}ms.`);
       if (silentForMs + heartbeatMs < timeoutMs) {
         scheduleHeartbeatTimer();
       }
@@ -1154,9 +1152,8 @@ export function installVitestNoOutputWatchdog(params: {
       clearHeartbeatTimer();
       timedOut = true;
       params.log?.(
-        `[vitest] no output for ${timeoutMs}ms; terminating stalled Vitest process group${suffix}.`,
+        `[vitest] no output for ${timeoutMs}ms; terminating stalled Vitest process group.`,
       );
-      params.onTimeout?.();
       if (forceKillAfterMs > 0) {
         clearForceKillTimer();
         forceKillTimer = setTimeoutFn(() => {
@@ -1164,11 +1161,12 @@ export function installVitestNoOutputWatchdog(params: {
             return;
           }
           params.log?.(
-            `[vitest] process group still alive after ${forceKillAfterMs}ms; sending SIGKILL${suffix}.`,
+            `[vitest] process group still alive after ${forceKillAfterMs}ms; sending SIGKILL.`,
           );
           params.onForceKill?.();
         }, forceKillAfterMs);
       }
+      params.onTimeout?.();
     }, timeoutMs);
   };
 
@@ -1255,16 +1253,15 @@ export function spawnWatchedVitestProcess({
   pnpmArgs,
   spawnParams,
   env,
-  label,
   onNoOutputTimeout,
 }: {
   pnpmArgs: string[];
   spawnParams: PnpmRunnerParams;
   env: NodeJS.ProcessEnv;
-  label?: string;
   onNoOutputTimeout?: () => void;
 }) {
   let forwardedSignal: NodeSignal | null = null;
+  let diagnosticsCompletion: Promise<void> | null = null;
   const child = spawnVitestProcess({
     pnpmArgs,
     spawnParams,
@@ -1281,17 +1278,19 @@ export function spawnWatchedVitestProcess({
     streams: [child.stdout, child.stderr],
     timeoutMs: resolveVitestNoOutputTimeoutMs(env),
     heartbeatMs: resolveVitestNoOutputHeartbeatMs(env),
-    label,
     log: (message) => {
       console.error(message);
     },
     onTimeout: () => {
-      onNoOutputTimeout?.();
-      forwardSignalToVitestProcessGroup({
+      const termination = terminateVitestProcessGroupForTimeout({
         child,
-        signal: "SIGTERM",
         kill: process.kill.bind(process),
+        log: (message) => {
+          console.error(message);
+        },
+        onTimeout: onNoOutputTimeout,
       });
+      diagnosticsCompletion = termination.diagnostics;
     },
     onForceKill: () => {
       forwardSignalToVitestProcessGroup({
@@ -1323,7 +1322,8 @@ export function spawnWatchedVitestProcess({
     }),
     forwardedOutput,
   ])
-    .then(([{ code, signal }]) => {
+    .then(async ([{ code, signal }]) => {
+      await diagnosticsCompletion;
       const result = unhandledErrors.finish();
       if (result) {
         writeVitestUnhandledErrorSummary(result, env);
@@ -1415,7 +1415,6 @@ async function main(
         ],
         spawnParams: resolveVitestSpawnParams(spawnEnv),
         env: spawnEnv,
-        label: guardedVitestArgs.join(" "),
       }),
     );
     if (exitCode !== 0) {

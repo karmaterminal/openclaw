@@ -870,11 +870,17 @@
   margin-top: 8px;
 }
 
+.chat-tool-card__widget-host {
+  width: 100%;
+}
+
 .chat-tool-card__preview {
   position: relative;
-  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-  border-radius: var(--radius-md);
-  background: var(--card);
+  width: 100%;
+  max-width: 100%;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
   overflow: hidden;
 }
 
@@ -885,7 +891,7 @@
 
 /* MCP Apps are responsive documents, so give them the assistant column instead
    of letting the content-sized reply bubble collapse their iframe to ~300px. */
-.chat-group.assistant .chat-bubble:has(> .chat-tool-card__preview[data-content-kind="mcp-app"]) {
+.chat-group.assistant .chat-bubble:has(> .chat-tool-card__widget-host) {
   align-self: stretch;
   width: 100%;
 }
@@ -911,12 +917,19 @@
 }
 
 .chat-tool-card__widget-actions::part(menu) {
-  min-width: 176px;
+  min-width: 164px;
+  max-width: 208px;
   padding: var(--menu-padding);
   border: 1px solid var(--overlay-border);
   border-radius: var(--menu-radius);
   background: var(--bg-elevated);
   box-shadow: var(--overlay-shadow);
+}
+
+.chat-tool-card__widget-actions .session-menu__item {
+  min-height: 32px;
+  padding-inline: 7px;
+  font-size: calc(13px * var(--control-ui-text-scale));
 }
 
 .chat-tool-card__widget-actions-trigger,
@@ -990,6 +1003,22 @@
      flashing white in dark mode. Documents from the pre-token wrapper assumed
      white; accepted tradeoff — they are transient (32-doc LRU) and age out. */
   background: var(--card);
+}
+
+.chat-tool-card__widget-raw {
+  width: 100%;
+}
+
+.chat-tool-card__widget-raw > .chat-tool-card__raw {
+  margin-top: 8px;
+}
+
+.chat-tool-card__widget-raw .chat-tool-card__raw-toggle {
+  display: none;
+}
+
+.chat-tool-card__widget-raw .chat-tool-card__raw-body {
+  margin-top: 0;
 }
 
 .chat-tool-card__raw-toggle {
@@ -1084,16 +1113,10 @@
 }
 
 /* ── Activity group (a turn's run of tool rows) ── */
-/* Keep the activity summary, call bubbles, and flat result rows on one width.
-   Include the role classes so this wins over the generic tool-group rule. */
-.chat-group.tool.chat-group--activity .chat-group-messages {
-  max-width: var(--chat-message-max-width, min(760px, 100%));
-}
-
 .chat-activity-group {
   width: 100%;
   min-width: 0;
-  max-width: 100%;
+  max-width: var(--chat-message-max-width, min(760px, 100%));
 }
 
 .chat-activity-group__summary {
@@ -1169,6 +1192,23 @@
    from the prompt and final reply. */
 .chat-group--work {
   padding-block: 9px;
+}
+
+@keyframes chat-work-settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .chat-group--work {
+    animation: chat-work-settle-in 200ms var(--ease-out) both;
+  }
 }
 
 .chat-work-group .chat-activity-group__label {
@@ -2301,7 +2341,6 @@ openclaw-tooltip.chat-tasks-status__preview {
   color: var(--text);
   font-size: 11px;
   line-height: 1.45;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 

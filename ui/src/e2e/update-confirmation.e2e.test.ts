@@ -27,26 +27,38 @@ function confirmationCopy(page: Page) {
   return page.locator("openclaw-modal-dialog");
 }
 
-async function openUpdateCard(page: Page, baseUrl: string) {
+function confirmationDialog(page: Page) {
+  return page.getByRole("dialog", { name: "Update Gateway", exact: true });
+}
+
+async function openUpdateCard(page: Page, baseUrl: string, compact = false) {
   const gateway = await installMockGateway(page, {
     methodResponses: { "update.run": UPDATE_RUN_RESPONSE },
   });
   expect((await page.goto(`${baseUrl}chat`))?.status()).toBe(200);
   await gateway.waitForRequest("chat.startup");
   await gateway.emitGatewayEvent("update.available", { updateAvailable: UPDATE_AVAILABLE });
-  const updateButton = page.locator(
-    '[data-attention-kind="updateAvailable"] .sidebar-attention__open:visible',
+  if (compact) {
+    await page.locator(".chat-header-session-menu__trigger").click();
+    const updateButton = page.getByText("Update available v2.0.0", { exact: true });
+    await updateButton.waitFor({ timeout: 10_000 });
+    return { compact, gateway, updateButton };
+  }
+  await page.locator(".sidebar-issues-button").click();
+  const updateIssue = page.locator(
+    'openclaw-sidebar-update-card[data-attention-kind="updateAvailable"]',
   );
+  await updateIssue.locator("summary").click();
+  const updateButton = updateIssue.locator(".sidebar-update-card__action");
   await updateButton.waitFor({ timeout: 10_000 });
-  return { gateway, updateButton };
+  return { compact, gateway, updateButton };
 }
 
-async function openConfirmationFromAlert(page: Page, updateButton: Locator) {
+async function openConfirmation(page: Page, updateButton: Locator, compact = false) {
   await updateButton.click();
-  const action = page
-    .locator(".custodian__alert-card")
-    .getByRole("button", { name: "Update and restart", exact: true });
-  await action.click();
+  if (compact) {
+    await page.getByRole("button", { name: "Update now", exact: true }).click();
+  }
 }
 
 suite.define(() => {
@@ -60,9 +72,9 @@ suite.define(() => {
           path: path.join(PROOF_DIR, "01-update-affordance-light.png"),
         });
 
-        await openConfirmationFromAlert(page, updateButton);
+        await openConfirmation(page, updateButton);
 
-        const dialog = page.getByRole("dialog");
+        const dialog = confirmationDialog(page);
         await dialog.waitFor();
         expect(await dialog.getAttribute("aria-label")).toBe("Update Gateway");
         const dialogText = await confirmationCopy(page).textContent();
@@ -98,9 +110,14 @@ suite.define(() => {
           viewport: variant.viewport,
         },
         async ({ page }) => {
-          const { gateway, updateButton } = await openUpdateCard(page, suite.server.baseUrl);
-          await openConfirmationFromAlert(page, updateButton);
-          await page.getByRole("dialog").waitFor();
+          const compact = variant.viewport.width < 600;
+          const { gateway, updateButton } = await openUpdateCard(
+            page,
+            suite.server.baseUrl,
+            compact,
+          );
+          await openConfirmation(page, updateButton, compact);
+          await confirmationDialog(page).waitFor();
           expect(
             await confirmationCopy(page)
               .getByRole("button", { name: "Update and restart", exact: true })
@@ -124,15 +141,15 @@ suite.define(() => {
       { locale: "en-US", serviceWorkers: "block", viewport: { height: 720, width: 1280 } },
       async ({ page }) => {
         const { gateway, updateButton } = await openUpdateCard(page, suite.server.baseUrl);
-        await openConfirmationFromAlert(page, updateButton);
-        await page.getByRole("dialog").waitFor();
+        await openConfirmation(page, updateButton);
+        await confirmationDialog(page).waitFor();
 
         if (dismiss === "Escape") {
           await page.keyboard.press("Escape");
         } else {
           await page.getByRole("button", { name: "Cancel", exact: true }).click();
         }
-        await page.getByRole("dialog").waitFor({ state: "detached" });
+        await confirmationDialog(page).waitFor({ state: "detached" });
 
         expect(await gateway.getRequests("update.run")).toHaveLength(0);
       },
@@ -147,12 +164,7 @@ suite.define(() => {
 
         await updateButton.focus();
         await page.keyboard.press("Enter");
-        const alertAction = page
-          .locator(".custodian__alert-card")
-          .getByRole("button", { name: "Update and restart", exact: true });
-        await alertAction.focus();
-        await page.keyboard.press("Enter");
-        const dialog = page.getByRole("dialog");
+        const dialog = confirmationDialog(page);
         await dialog.waitFor();
 
         // The keypress that opened the dialog lands on Cancel, never on the confirm action.
@@ -188,8 +200,8 @@ suite.define(() => {
       { locale: "en-US", serviceWorkers: "block", viewport: { height: 720, width: 1280 } },
       async ({ page }) => {
         const { gateway, updateButton } = await openUpdateCard(page, suite.server.baseUrl);
-        await openConfirmationFromAlert(page, updateButton);
-        await page.getByRole("dialog").waitFor();
+        await openConfirmation(page, updateButton);
+        await confirmationDialog(page).waitFor();
 
         await confirmationCopy(page)
           .getByRole("button", { name: "Update and restart", exact: true })
@@ -233,7 +245,7 @@ suite.define(() => {
         await gateway.emitGatewayEvent("update.available", { updateAvailable: UPDATE_AVAILABLE });
         await page.getByRole("button", { name: "Update now", exact: true }).click();
 
-        const dialog = page.getByRole("dialog");
+        const dialog = confirmationDialog(page);
         await dialog.waitFor();
         expect(await confirmationCopy(page).textContent()).toContain(
           "Installed v1.0.0 · Available v2.0.0",
