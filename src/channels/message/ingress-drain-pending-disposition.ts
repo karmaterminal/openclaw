@@ -21,7 +21,8 @@ export type ChannelIngressPendingDispositionContext = {
  * The record is the row as stored: its payload has not been through the channel
  * payload codec, which runs at claim time. Narrow before reading it and retain
  * anything unreadable so the canonical claim-time invalid-event path owns it.
- * Throwing aborts the whole drain pass, so a corrupt row must never throw here.
+ * A thrown policy error is logged and retained for claim-time handling without
+ * aborting the drain pass; hooks should still remain total and fail open.
  *
  * The commit is CAS-fenced. A concurrent claim can win the race, in which case
  * the row is retained, its lane is blocked for this pass, and no committed
