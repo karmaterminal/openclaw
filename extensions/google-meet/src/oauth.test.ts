@@ -1,5 +1,4 @@
 // Google Meet tests cover oauth plugin behavior.
-import { lookup } from "node:dns/promises";
 import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,8 +6,6 @@ import {
   resolveGoogleMeetAccessToken,
   waitForGoogleMeetAuthCode,
 } from "./oauth.js";
-
-const GOOGLE_MEET_CALLBACK_PORT = 8085;
 
 async function occupyPort(port: number): Promise<Server | null> {
   const server = createServer();
@@ -29,50 +26,12 @@ async function occupyPort(port: number): Promise<Server | null> {
 }
 
 async function closeServer(server: Server): Promise<void> {
-  if (!server.listening) {
-    return;
-  }
   await new Promise<void>((resolve) => {
     server.close(() => {
       resolve();
     });
-    server.closeAllConnections?.();
   });
 }
-
-async function isCallbackPortAvailable(): Promise<boolean> {
-  const addresses = [
-    ...new Set(
-      (
-        await lookup("localhost", {
-          all: true,
-          verbatim: true,
-        })
-      ).map(({ address }) => address),
-    ),
-  ];
-  const servers: Server[] = [];
-  try {
-    for (const address of addresses) {
-      const server = createServer();
-      servers.push(server);
-      await new Promise<void>((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(GOOGLE_MEET_CALLBACK_PORT, address, resolve);
-      });
-    }
-    return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("EADDRINUSE")) {
-      return false;
-    }
-    throw error;
-  } finally {
-    await Promise.all(servers.map(closeServer));
-  }
-}
-
-const callbackPortAvailable = await isCallbackPortAvailable();
 
 describe("Google Meet OAuth", () => {
   afterEach(() => {
@@ -249,7 +208,7 @@ describe("Google Meet OAuth", () => {
   });
 
   it("falls back to manual paste when the local callback port is occupied", async () => {
-    const blocker = await occupyPort(GOOGLE_MEET_CALLBACK_PORT);
+    const blocker = await occupyPort(8085);
     try {
       const state = "state-token";
       const lines: string[] = [];
@@ -271,21 +230,18 @@ describe("Google Meet OAuth", () => {
     }
   });
 
-  it.skipIf(!callbackPortAvailable)(
-    "propagates non-listener callback failures without manual fallback",
-    async () => {
-      const promptInput = vi.fn(async () => "unused");
-      await expect(
-        waitForGoogleMeetAuthCode({
-          state: "state-token",
-          manual: false,
-          timeoutMs: 1,
-          authUrl: "https://accounts.google.com/o/oauth2/v2/auth?x=1",
-          promptInput,
-          writeLine: () => {},
-        }),
-      ).rejects.toThrow(/timeout/i);
-      expect(promptInput).not.toHaveBeenCalled();
-    },
-  );
+  it("propagates non-listener callback failures without manual fallback", async () => {
+    const promptInput = vi.fn(async () => "unused");
+    await expect(
+      waitForGoogleMeetAuthCode({
+        state: "state-token",
+        manual: false,
+        timeoutMs: 1,
+        authUrl: "https://accounts.google.com/o/oauth2/v2/auth?x=1",
+        promptInput,
+        writeLine: () => {},
+      }),
+    ).rejects.toThrow(/timeout/i);
+    expect(promptInput).not.toHaveBeenCalled();
+  });
 });

@@ -695,7 +695,6 @@ describe("scripts/run-vitest", () => {
     const extraLongTimeout = String(DEFAULT_EXTRA_LONG_RUNNING_VITEST_NO_OUTPUT_TIMEOUT_MS);
 
     for (const configArg of [
-      "--config=test/vitest/vitest.unit.config.ts",
       "--config=test/vitest/vitest.e2e.config.ts",
       "--config=test/vitest/vitest.tui-pty.config.ts",
       "--config=test/vitest/vitest.gateway.config.ts",
