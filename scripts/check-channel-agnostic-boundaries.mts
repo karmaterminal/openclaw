@@ -22,9 +22,11 @@ const acpCoreProtectedSources = [
   path.join(repoRoot, "src", "infra", "outbound", "conversation-id.ts"),
 ];
 
-const channelCoreProtectedSources = [
+export const channelCoreProtectedSources = [
+  path.join(repoRoot, "src", "channels", "message", "ingress-drain-claim-settlement.ts"),
   path.join(repoRoot, "src", "channels", "message", "ingress-drain.ts"),
   path.join(repoRoot, "src", "channels", "message", "ingress-drain-pending-disposition.ts"),
+  path.join(repoRoot, "src", "channels", "message", "ingress-drain-state.ts"),
   path.join(repoRoot, "src", "channels", "thread-bindings-policy.ts"),
   path.join(repoRoot, "src", "channels", "thread-bindings-messages.ts"),
   path.join(repoRoot, "src", "sessions", "send-policy.ts"),

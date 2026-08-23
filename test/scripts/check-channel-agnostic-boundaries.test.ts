@@ -1,6 +1,7 @@
 // Check Channel Agnostic Boundaries tests cover check channel agnostic boundaries script behavior.
 import { describe, expect, it } from "vitest";
 import {
+  channelCoreProtectedSources,
   findChannelAgnosticBoundaryViolations,
   findAcpUserFacingChannelNameViolations,
   findChannelCoreReverseDependencyViolations,
@@ -8,6 +9,17 @@ import {
 } from "../../scripts/check-channel-agnostic-boundaries.mts";
 
 describe("check-channel-agnostic-boundaries", () => {
+  it("protects every ingress drain ownership module", () => {
+    expect(channelCoreProtectedSources.map((source) => source.split("/").at(-1))).toEqual(
+      expect.arrayContaining([
+        "ingress-drain.ts",
+        "ingress-drain-claim-settlement.ts",
+        "ingress-drain-pending-disposition.ts",
+        "ingress-drain-state.ts",
+      ]),
+    );
+  });
+
   it("flags direct channel module imports", () => {
     const source = `
       import { getThreadBindingManager } from "../discord/monitor/thread-bindings.js";
