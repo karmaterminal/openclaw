@@ -39,7 +39,6 @@ import { resolveDiscordPreflightChannelAccess } from "./message-handler.prefligh
 import { resolveDiscordPreflightChannelContext } from "./message-handler.preflight-channel-context.js";
 import { buildDiscordMessagePreflightContext } from "./message-handler.preflight-context.js";
 import {
-  hasRawDiscordUserMention,
   isBoundThreadBotSystemMessage,
   isDiscordThreadChannelMessage,
   resolveDiscordMentionState,
@@ -63,6 +62,7 @@ import type {
   DiscordMessagePreflightContext,
   DiscordMessagePreflightParams,
 } from "./message-handler.preflight.types.js";
+import { hasRawDiscordUserMention } from "./message-handler.raw-mention.js";
 import { resolveDiscordPreflightRoute } from "./message-handler.routing-preflight.js";
 import {
   resolveDiscordChannelInfo,
