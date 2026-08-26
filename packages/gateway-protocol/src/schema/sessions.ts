@@ -1,8 +1,8 @@
 // Gateway Protocol schema module defines protocol validation shapes.
 import type { Static } from "typebox";
 import { Type } from "typebox";
+import { AgentParamsSchema } from "./agent.js";
 import { closedObject } from "./closed-object.js";
-import { DiagnosticContextSchema } from "./diagnostic-context.js";
 import { ErrorShapeSchema } from "./frames.js";
 import { ChatAttachmentsSchema } from "./logs-chat.js";
 import { PluginJsonValueSchema } from "./plugins.js";
@@ -511,7 +511,7 @@ export const SessionsSendParamsSchema = closedObject({
   thinking: Type.Optional(Type.String()),
   attachments: Type.Optional(ChatAttachmentsSchema),
   timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
-  diagnosticContext: Type.Optional(DiagnosticContextSchema),
+  diagnosticContext: AgentParamsSchema.properties.diagnosticContext,
   idempotencyKey: Type.Optional(NonEmptyString),
 });
 

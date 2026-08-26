@@ -80,12 +80,3 @@ export type {
   StartSpanOptions,
   Tracer,
 } from "../infra/continuation-tracer.js";
-export {
-  CONTINUATION_FINGERPRINT_SALT_MIN_BYTES,
-  createContinuationCorrelationResolver,
-} from "../infra/continuation-telemetry.js";
-export type {
-  ContinuationCorrelationAttributes,
-  ContinuationCorrelationResolver,
-  ContinuationCorrelationSource,
-} from "../infra/continuation-telemetry.js";

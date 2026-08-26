@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createContinuationCorrelationResolver } from "../api.js";
-import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapter.js";
+import {
+  createContinuationCorrelationResolver,
+  createContinuationOtelTracerAdapter,
+} from "./continuation-tracer-adapter.js";
 import { createDiagnosticsTraceRuntime } from "./service-traces.js";
 
 describe("diagnostics OTel telemetry attributes", () => {

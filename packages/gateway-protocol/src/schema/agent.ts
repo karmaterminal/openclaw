@@ -2,9 +2,19 @@
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import { closedObject } from "./closed-object.js";
-import { DiagnosticContextSchema } from "./diagnostic-context.js";
 import { internalProtocolField } from "./internal-fields.js";
 import { InputProvenanceSchema, NonEmptyString, SessionLabelString } from "./primitives.js";
+
+// AgentParams owns the closed context shape; sibling ingress schemas reuse its
+// property so marker validation cannot drift across RPC methods.
+const DiagnosticContextSchema = closedObject({
+  proof: closedObject({
+    runId: Type.String({ pattern: "^[a-f0-9]{16}$" }),
+    rowId: Type.String({ pattern: "^[A-Z][A-Z0-9-]{2,63}$" }),
+    candidateSha: Type.String({ pattern: "^[a-f0-9]{40}$" }),
+    harnessRef: Type.String({ pattern: "^[a-f0-9]{40}$" }),
+  }),
+});
 
 // Gateway protocol is a published package boundary, so runtime-owned internal
 // event and trace literals are mirrored here instead of importing root src.

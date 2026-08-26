@@ -1,8 +1,10 @@
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
-import {
-  DiagnosticContextSchema,
-  type DiagnosticContext,
-} from "../../packages/gateway-protocol/src/schema/diagnostic-context.js";
+import { AgentParamsSchema } from "../../packages/gateway-protocol/src/schema/agent.js";
+
+const DiagnosticContextSchema = AgentParamsSchema.properties.diagnosticContext;
+export type DiagnosticContext = NonNullable<Static<typeof AgentParamsSchema>["diagnosticContext"]>;
+export type DiagnosticProofContext = DiagnosticContext["proof"];
 
 export type DiagnosticContextSpanAttributes = {
   readonly "openclaw.proof.run_id"?: string;
@@ -42,8 +44,3 @@ export function diagnosticContextSpanAttributes(
     "openclaw.proof.synthetic": true,
   };
 }
-
-export type {
-  DiagnosticContext,
-  DiagnosticProofContext,
-} from "../../packages/gateway-protocol/src/schema/diagnostic-context.js";

@@ -1,9 +1,9 @@
 // Gateway Protocol schema module defines protocol validation shapes.
 import type { Static } from "typebox";
 import { Type } from "typebox";
+import { AgentParamsSchema } from "./agent.js";
 import { CHAT_HISTORY_MAX_ENTRIES } from "./chat-history-constants.js";
 import { closedObject } from "./closed-object.js";
-import { DiagnosticContextSchema } from "./diagnostic-context.js";
 import { ChatSendSessionKeyString, InputProvenanceSchema, NonEmptyString } from "./primitives.js";
 
 /** Cursor-based request for the gateway log tail endpoint. */
@@ -171,7 +171,7 @@ export const ChatSendParamsSchema = closedObject({
   // the Gateway steers the session's direct run or starts a turn when idle.
   expectedLeafEntryId: Type.Optional(Type.Union([NonEmptyString, Type.Null()])),
   expectedSessionRoutingContract: Type.Optional(NonEmptyString),
-  diagnosticContext: Type.Optional(DiagnosticContextSchema),
+  diagnosticContext: AgentParamsSchema.properties.diagnosticContext,
   idempotencyKey: NonEmptyString,
 });
 

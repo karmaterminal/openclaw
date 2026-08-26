@@ -39,7 +39,7 @@ import { isBlockedObjectKey } from "./prototype-keys.js";
 
 export type DiagnosticSessionState = "idle" | "processing" | "waiting";
 
-export type DiagnosticTelemetryAttributes = DiagnosticContextSpanAttributes;
+type DiagnosticTelemetryAttributes = DiagnosticContextSpanAttributes;
 
 type DiagnosticBaseEvent = {
   ts: number;
@@ -929,7 +929,7 @@ export type DiagnosticEventInput = DiagnosticNonSecurityEventPayload extends inf
     : never
   : never;
 
-export type UntrustedDiagnosticEventInput = DiagnosticEventInput extends infer Event
+type UntrustedDiagnosticEventInput = DiagnosticEventInput extends infer Event
   ? Event extends DiagnosticEventInput
     ? Omit<Event, "diagnosticContext">
     : never

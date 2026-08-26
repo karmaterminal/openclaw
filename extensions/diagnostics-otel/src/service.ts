@@ -19,12 +19,12 @@ import {
   waitForDiagnosticEventsDrained,
 } from "openclaw/plugin-sdk/diagnostic-runtime";
 import { registerUnhandledRejectionHandler } from "openclaw/plugin-sdk/runtime-env";
+import type { DiagnosticTraceContext, OpenClawPluginService } from "../api.js";
 import {
   CONTINUATION_FINGERPRINT_SALT_MIN_BYTES,
   createContinuationCorrelationResolver,
-} from "../api.js";
-import type { DiagnosticTraceContext, OpenClawPluginService } from "../api.js";
-import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapter.js";
+  createContinuationOtelTracerAdapter,
+} from "./continuation-tracer-adapter.js";
 import { resetContinuationTracerIfOwned } from "./continuation-tracer-ownership.js";
 import {
   DEFAULT_SERVICE_NAME,

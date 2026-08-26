@@ -7,11 +7,11 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 import type {
-  ContinuationCorrelationResolver,
   DiagnosticEventMetadata,
   DiagnosticEventPayload,
   DiagnosticTraceContext,
 } from "../api.js";
+import type { ContinuationCorrelationResolver } from "./continuation-tracer-adapter.js";
 import { redactOtelAttributes } from "./service-attributes.js";
 import { MAX_RETAINED_TRUSTED_SPAN_CONTEXTS } from "./service-constants.js";
 import {
