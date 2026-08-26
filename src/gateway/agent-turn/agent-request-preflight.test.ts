@@ -21,6 +21,9 @@ function runPreflight(
     cached?: boolean;
     completed?: boolean;
     ended?: boolean;
+    diagnosticContext?: {
+      proof: { runId: string; rowId: string; candidateSha: string; harnessRef: string };
+    };
   },
 ) {
   const sessionKey = "agent:worker:subagent:collector";
@@ -84,6 +87,7 @@ function runPreflight(
       sessionKey,
       idempotencyKey: options?.idempotencyKey ?? "collector-run",
       lane: "subagent",
+      ...(options?.diagnosticContext ? { diagnosticContext: options.diagnosticContext } : {}),
       ...(options?.includeCollectorFields === false ? {} : { swarmCollector, swarmOutputSchema }),
     },
     io,
@@ -107,6 +111,25 @@ describe("agent request Swarm preflight", () => {
   beforeEach(() => {
     subagentRuns.clear();
     vi.spyOn(sessionAccessor, "loadSessionEntry").mockReturnValue(undefined);
+  });
+
+  it("freezes a validated proof context on direct agent requests", () => {
+    const diagnosticContext = {
+      proof: {
+        runId: "0123456789abcdef",
+        rowId: "R-OBS-PROOF-MARKER",
+        candidateSha: "a".repeat(40),
+        harnessRef: "b".repeat(40),
+      },
+    };
+    const { result } = runPreflight(undefined, true, {
+      diagnosticContext,
+      includeCollectorFields: false,
+    });
+
+    expect(result?.diagnosticContext).toEqual(diagnosticContext);
+    expect(Object.isFrozen(result?.diagnosticContext)).toBe(true);
+    expect(Object.isFrozen(result?.diagnosticContext?.proof)).toBe(true);
   });
 
   it("rejects malformed and non-object structured output schemas", () => {
