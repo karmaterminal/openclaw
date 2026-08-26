@@ -313,6 +313,14 @@ describe("subagent registry persistence", () => {
         startedAt: 111,
         endedAt: 222,
       });
+    const diagnosticContext = {
+      proof: {
+        runId: "0123456789abcdef",
+        rowId: "R-OBS-PROOF-MARKER",
+        candidateSha: "a".repeat(40),
+        harnessRef: "b".repeat(40),
+      },
+    } as const;
     registerSubagentRun({
       runId: "run-silent",
       childSessionKey: "agent:main:subagent:silent-test",
@@ -323,6 +331,7 @@ describe("subagent registry persistence", () => {
       silentAnnounce: true,
       wakeOnReturn: true,
       traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+      diagnosticContext,
     });
     await writeChildSessionEntry({
       sessionKey: "agent:main:subagent:silent-test",
@@ -333,11 +342,13 @@ describe("subagent registry persistence", () => {
       silentAnnounce?: boolean;
       wakeOnReturn?: boolean;
       traceparent?: string;
+      diagnosticContext?: typeof diagnosticContext;
     }>(registryPath, "run-silent");
     expect(run).toMatchObject({
       silentAnnounce: true,
       wakeOnReturn: true,
       traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+      diagnosticContext,
     });
     restartRegistry();
     releaseInitialWait?.({
@@ -352,6 +363,7 @@ describe("subagent registry persistence", () => {
           silentAnnounce: true,
           wakeOnReturn: true,
           traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+          diagnosticContext,
         }),
       );
     });

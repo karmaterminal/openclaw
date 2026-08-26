@@ -936,6 +936,9 @@ export async function runAgentAttempt(params: {
               preparedRunAdmission: params.preparedRunAdmission,
               sessionId: params.sessionId,
               sessionKey: params.sessionKey,
+              ...(params.opts.diagnosticContext
+                ? { diagnosticContext: params.opts.diagnosticContext }
+                : {}),
               sessionTarget: params.sessionTarget,
               sessionEntry: params.sessionEntry,
               chatType: params.sessionEntry?.chatType,

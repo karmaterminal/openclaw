@@ -298,8 +298,10 @@ vi.mock("../../infra/system-events.js", () => ({
 }));
 
 vi.mock("../../infra/continuation-tracer.js", () => ({
+  emitContinuationDisabledSpan: vi.fn(),
   emitContinuationWorkFireSpan: emitContinuationWorkFireSpanMock,
   emitContinuationWorkSpan: vi.fn(),
+  emitContinuationWorkTerminalSpan: vi.fn(),
   resolveContinuationTraceparent: resolveContinuationTraceparentMock,
 }));
 

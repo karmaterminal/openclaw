@@ -140,6 +140,8 @@ describe("continuation-tracer :: emitContinuationDisabledSpan helper", () => {
       "reason.length": 21,
       "reason.hash": expect.stringMatching(REASON_HASH_RE),
       "reason.redacted": false,
+      "continuation.outcome": "rejected-cap",
+      "continuation.outcome.reason": "cap.chain",
     });
     expectNoAttributeValueContains(span.options?.attributes, "fan out three queries");
     expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);
@@ -162,6 +164,8 @@ describe("continuation-tracer :: emitContinuationDisabledSpan helper", () => {
       "disabled.reason": "cap.chain",
       "signal.kind": "bracket-work",
       "continuation.disabled": true,
+      "continuation.outcome": "rejected-cap",
+      "continuation.outcome.reason": "cap.chain",
     });
     expect(attrs).not.toHaveProperty("chain.id");
     expect(attrs).not.toHaveProperty("delegate.delivery");
@@ -212,6 +216,7 @@ describe("continuation-tracer :: emitContinuationDisabledSpan helper", () => {
       "reason.length": reason.length,
       "reason.hash": expect.stringMatching(REASON_HASH_RE),
       "reason.redacted": false,
+      "continuation.outcome": "rejected-cap",
       "continuation.disabled": true,
     });
     expectNoAttributeValueContains(
@@ -372,6 +377,7 @@ describe("continuation-tracer :: emitContinuationDelegateFireSpan helper", () =>
       "reason.length": 21,
       "reason.hash": expect.stringMatching(REASON_HASH_RE),
       "reason.redacted": false,
+      "continuation.outcome": "fired",
     });
     expectNoAttributeValueContains(span.options?.attributes, "fan out three queries");
     expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);

@@ -46,6 +46,35 @@ describe("normalizeChatSendRequest", () => {
     });
   });
 
+  it("freezes a validated proof context without changing the organic request shape", () => {
+    const diagnosticContext = {
+      proof: {
+        runId: "0123456789abcdef",
+        rowId: "R-OBS-PROOF-MARKER",
+        candidateSha: "a".repeat(40),
+        harnessRef: "b".repeat(40),
+      },
+    } as const;
+
+    expect(
+      normalizeChatSendRequest({
+        params: validParams({ diagnosticContext }),
+        client: null,
+      }),
+    ).toMatchObject({
+      ok: true,
+      value: {
+        diagnosticContext,
+      },
+    });
+    expect(normalizeChatSendRequest({ params: validParams(), client: null })).toMatchObject({
+      ok: true,
+      value: {
+        p: expect.not.objectContaining({ diagnosticContext: expect.anything() }),
+      },
+    });
+  });
+
   it("rejects an empty text-and-attachment request", () => {
     const result = normalizeChatSendRequest({
       params: validParams({ message: "  " }),

@@ -35,7 +35,12 @@ const observedSubordinateAdmissionClosed: boolean[] = [];
 const continuationEnabledForTest = true;
 const capturedReplyTraceparents: Array<string | undefined> = [];
 const bumpWorkRevisionOnReply = false;
-const { emitContinuationWorkFireSpanMock, resolveContinuationTraceparentMock } = vi.hoisted(() => ({
+const {
+  emitContinuationDisabledSpanMock,
+  emitContinuationWorkFireSpanMock,
+  resolveContinuationTraceparentMock,
+} = vi.hoisted(() => ({
+  emitContinuationDisabledSpanMock: vi.fn(),
   emitContinuationWorkFireSpanMock: vi.fn(),
   resolveContinuationTraceparentMock: vi.fn((traceparent: string | undefined) => traceparent),
 }));
@@ -304,8 +309,10 @@ vi.mock("../../infra/system-events.js", () => ({
 }));
 
 vi.mock("../../infra/continuation-tracer.js", () => ({
+  emitContinuationDisabledSpan: emitContinuationDisabledSpanMock,
   emitContinuationWorkFireSpan: emitContinuationWorkFireSpanMock,
   emitContinuationWorkSpan: vi.fn(),
+  emitContinuationWorkTerminalSpan: vi.fn(),
   resolveContinuationTraceparent: resolveContinuationTraceparentMock,
 }));
 
@@ -749,6 +756,7 @@ describe("maxPendingWork cap (Guard 1)", () => {
     vi.useFakeTimers({ now: 1_000_000 });
     mockFlows.clear();
     flowCounter = 0;
+    emitContinuationDisabledSpanMock.mockReset();
     resetContinuationWorkDispatchForTests();
   });
   afterEach(() => {
@@ -788,10 +796,25 @@ describe("maxPendingWork cap (Guard 1)", () => {
       chainState: baseChain,
       request: { delaySeconds: 1, reason: "over the pending cap" },
       config: capped,
+      originRunId: "run-pending-cap",
+      originTurnId: "session-pending-cap",
+      signalOrigin: "typed-tool",
     });
 
     expect(result.scheduled).toBe(false);
     expect(result.capped).toBe(true);
+    expect(emitContinuationDisabledSpanMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        disabledReason: "cap.pending_work",
+        signalKind: "work",
+        telemetry: {
+          origin: "typed-tool",
+          kind: "work",
+          runId: "run-pending-cap",
+          sessionId: "session-pending-cap",
+        },
+      }),
+    );
   });
 
   it("batch ends early on pending-cap but preserves earlier scheduled elections (partial-success)", async () => {

@@ -1,5 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getReplyPayloadMetadata } from "../../../auto-reply/reply-payload.js";
+import {
+  resetContinuationTracer,
+  setContinuationTracer,
+  type Span,
+  type SpanAttributes,
+  type StartSpanOptions,
+} from "../../../infra/continuation-tracer.js";
 import { createTestAdmittedRunContext } from "../../admitted-run-context.test-support.js";
 import {
   buildEmbeddedRunnerAssistant,
@@ -14,6 +21,24 @@ import { resolveEmbeddedRunAttemptTerminalState } from "./terminal-outcome.js";
 const backendMocks = vi.hoisted(() => ({
   runSettledFinalization: vi.fn(),
 }));
+const finalizationSpans: Array<{ name: string; attributes: Record<string, unknown> }> = [];
+
+function installFinalizationTracer() {
+  setContinuationTracer({
+    startSpan(name: string, options?: StartSpanOptions): Span {
+      const recorded = { name, attributes: { ...options?.attributes } };
+      finalizationSpans.push(recorded);
+      return {
+        setAttributes(attributes: SpanAttributes) {
+          Object.assign(recorded.attributes, attributes);
+        },
+        setStatus() {},
+        recordException() {},
+        end() {},
+      };
+    },
+  });
+}
 
 vi.mock("./backend.js", () => ({
   runEmbeddedSettledTurnFinalizationWithBackend: backendMocks.runSettledFinalization,
@@ -94,6 +119,14 @@ function finalizationInput(attempt: ReturnType<typeof settledFailedAttempt>) {
         terminalReplyExpectation: "required",
         timeoutMs: 60_000,
         sourceReplyDeliveryMode: "message_tool_only",
+        diagnosticContext: {
+          proof: {
+            runId: "0123456789abcdef",
+            rowId: "R-OBS-TERMINAL-OUTCOME",
+            candidateSha: "a".repeat(40),
+            harnessRef: "b".repeat(40),
+          },
+        },
       },
       provider: "openai",
       model: "gpt-5.6-luna",
@@ -131,6 +164,12 @@ function finalizationInput(attempt: ReturnType<typeof settledFailedAttempt>) {
 describe("prepareTerminalWithSettledTurnFinalization", () => {
   beforeEach(() => {
     backendMocks.runSettledFinalization.mockReset();
+    finalizationSpans.length = 0;
+    installFinalizationTracer();
+  });
+
+  afterEach(() => {
+    resetContinuationTracer();
   });
 
   it("replaces a settled failed-tool warning with failure-honest final output", async () => {
@@ -190,6 +229,47 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
       message: "post-processing error",
       fatalForCron: true,
     });
+    expect(finalizationSpans).toEqual([
+      expect.objectContaining({
+        name: "continuation.finalization",
+        attributes: expect.objectContaining({
+          "continuation.outcome": "finalized",
+          "continuation.outcome.reason": "finalization.answered",
+          "continuation.finalization.status": "succeeded",
+          "continuation.payload.bytes": Buffer.byteLength(
+            "The exec tool failed: post-processing error.",
+            "utf8",
+          ),
+          "openclaw.proof.row_id": "R-OBS-TERMINAL-OUTCOME",
+        }),
+      }),
+    ]);
+  });
+
+  it("records a completed-empty finalization as a canonical zero payload", async () => {
+    const attempt = settledFailedAttempt();
+    const emptyAssistant = buildEmbeddedRunnerAssistant({ content: [] });
+    backendMocks.runSettledFinalization.mockResolvedValueOnce({
+      outcome: "empty",
+      result: {
+        assistant: emptyAssistant,
+        usage: emptyAssistant.usage,
+        diagnosticTrace: { traceId: "trace-empty", spanId: "span-empty" },
+      },
+    });
+
+    const result = await prepareTerminalWithSettledTurnFinalization(finalizationInput(attempt));
+
+    expect(result.finalizationOutcome).toBe("completed-empty");
+    expect(finalizationSpans[0]).toMatchObject({
+      name: "continuation.finalization",
+      attributes: {
+        "continuation.outcome": "zero-payload",
+        "continuation.outcome.reason": "finalization.empty",
+        "continuation.finalization.status": "succeeded",
+        "continuation.payload.bytes": 0,
+      },
+    });
   });
 
   it("preserves the settled runtime context window through isolated finalization", async () => {
@@ -237,5 +317,13 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
     expect(result.finalizationOutcome).toBe("failed");
     expect(result.attempt).toBe(attempt);
     expect(result.prepared.payloadsWithToolMedia?.[0]).toMatchObject({ isError: true });
+    expect(finalizationSpans[0]).toMatchObject({
+      name: "continuation.finalization",
+      attributes: {
+        "continuation.outcome": "finalization-failed",
+        "continuation.outcome.reason": "finalization.failed",
+        "continuation.finalization.status": "failed",
+      },
+    });
   });
 });

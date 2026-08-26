@@ -34,7 +34,7 @@ export function normalizeDiagnosticContext(value: unknown): DiagnosticContext | 
 export function diagnosticContextSpanAttributes(
   context: DiagnosticContext | undefined,
 ): DiagnosticContextSpanAttributes {
-  const proof = context?.proof;
+  const proof = normalizeDiagnosticContext(context)?.proof;
   if (!proof) {
     return {};
   }

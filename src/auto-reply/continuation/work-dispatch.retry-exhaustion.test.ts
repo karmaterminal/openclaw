@@ -290,8 +290,10 @@ vi.mock("../../infra/session-delivery-queue-storage.js", () => ({
 }));
 
 vi.mock("../../infra/continuation-tracer.js", () => ({
+  emitContinuationDisabledSpan: vi.fn(),
   emitContinuationWorkFireSpan: emitContinuationWorkFireSpanMock,
   emitContinuationWorkSpan: vi.fn(),
+  emitContinuationWorkTerminalSpan: vi.fn(),
   resolveContinuationTraceparent: resolveContinuationTraceparentMock,
 }));
 

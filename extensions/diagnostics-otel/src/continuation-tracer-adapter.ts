@@ -33,6 +33,7 @@ import {
 } from "@opentelemetry/api";
 import {
   parseDiagnosticTraceparent,
+  type ContinuationCorrelationResolver,
   type ContinuationSpan,
   type ContinuationSpanAttributes,
   type ContinuationSpanStatus,
@@ -54,6 +55,7 @@ export const CONTINUATION_OTEL_TRACER_NAME = "openclaw.continuation";
 
 type ContinuationOtelTracerAdapterOptions = {
   tracerProvider?: Pick<OtelTracerProvider, "getTracer">;
+  correlationAttributes?: ContinuationCorrelationResolver;
   resolveParentContext?: (traceContext: DiagnosticTraceContext) => Context | undefined;
   resolveSpanContext?: (traceContext: DiagnosticTraceContext) => SpanContext | undefined;
 };
@@ -178,7 +180,13 @@ export function createContinuationOtelTracerAdapter(
     },
     startSpan(name: string, options?: ContinuationStartSpanOptions): ContinuationSpan {
       const otelOpts: OtelSpanOptions = {};
-      const mappedAttrs = spanAttributesToOtel(options?.attributes);
+      const correlationAttributes = options?.correlation
+        ? adapterOptions.correlationAttributes?.(options.correlation)
+        : undefined;
+      const mappedAttrs = spanAttributesToOtel({
+        ...options?.attributes,
+        ...correlationAttributes,
+      });
       if (mappedAttrs) {
         otelOpts.attributes = mappedAttrs;
       }

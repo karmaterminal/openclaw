@@ -10,6 +10,7 @@ import {
   continuationProvenanceAttributes,
   continuationTerminalAttributes,
   type ContinuationFinalizationStatus,
+  type ContinuationCorrelationSource,
   type ContinuationOutcome,
   type ContinuationOutcomeReason,
   type ContinuationPrimitive,
@@ -319,6 +320,11 @@ export type StartSpanOptions = {
    */
   attributes?: SpanAttributes;
   /**
+   * Private correlation input for exporter-owned salted fingerprints. Adapters
+   * must never copy either raw identifier directly into span attributes.
+   */
+  correlation?: ContinuationCorrelationSource;
+  /**
    * W3C `traceparent` to anchor the span to an existing trace across deferred
    * or cross-process hops. When omitted, concrete adapters may inherit their
    * process-local active context and otherwise start a new trace. The
@@ -597,6 +603,20 @@ function continuationDelegateSpanAttributes(
   };
 }
 
+function continuationCorrelationOption(
+  telemetry: ContinuationTelemetryContext | undefined,
+): Pick<StartSpanOptions, "correlation"> {
+  if (!telemetry?.runId && !telemetry?.sessionId) {
+    return {};
+  }
+  return {
+    correlation: {
+      ...(telemetry.runId ? { runId: telemetry.runId } : {}),
+      ...(telemetry.sessionId ? { sessionId: telemetry.sessionId } : {}),
+    },
+  };
+}
+
 export function setContinuationSpanTerminal(
   span: Span,
   terminal: {
@@ -613,6 +633,7 @@ export function startContinuationDelegateSpan(args: ContinuationDelegateSpanArgs
   try {
     const span = getContinuationTracer().startSpan("continuation.delegate.dispatch", {
       attributes: continuationDelegateSpanAttributes(args),
+      ...continuationCorrelationOption(args.telemetry),
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     // Diagnostics must never break the delegate loop: the concrete adapter span
@@ -661,6 +682,7 @@ export function emitContinuationWorkSpan(args: {
     };
     const span = getContinuationTracer().startSpan("continuation.work", {
       attributes: attrs,
+      ...continuationCorrelationOption(args.telemetry),
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus("OK");
@@ -787,6 +809,7 @@ export function emitContinuationDisabledSpan(args: {
     };
     const span = getContinuationTracer().startSpan("continuation.disabled", {
       attributes: attrs,
+      ...continuationCorrelationOption(args.telemetry),
     });
     span.setStatus("OK");
     span.end();
@@ -874,6 +897,7 @@ export function emitContinuationDelegateFireSpan(args: {
     };
     const span = getContinuationTracer().startSpan("continuation.delegate.fire", {
       attributes: attrs,
+      ...continuationCorrelationOption(args.telemetry),
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus("OK");
@@ -946,6 +970,7 @@ export function emitContinuationWorkFireSpan(args: {
     };
     const span = getContinuationTracer().startSpan("continuation.work.fire", {
       attributes: attrs,
+      ...continuationCorrelationOption(args.telemetry),
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus("OK");
@@ -1002,6 +1027,7 @@ export function emitContinuationQueueDrainSpan(args: {
     };
     const span = getContinuationTracer().startSpan("continuation.queue.drain", {
       attributes: attrs,
+      ...continuationCorrelationOption(args.telemetry),
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus("OK");
@@ -1051,6 +1077,7 @@ export function emitContinuationFanoutSpan(args: {
     };
     const span = getContinuationTracer().startSpan("continuation.queue.fanout", {
       attributes: attrs,
+      ...continuationCorrelationOption(args.telemetry),
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus("OK");
@@ -1115,6 +1142,7 @@ export function emitContinuationCompactionReleasedSpan(args: {
 
     const span = getContinuationTracer().startSpan("continuation.compaction.released", {
       attributes: attrs,
+      ...continuationCorrelationOption(args.telemetry),
       ...(args.traceparent !== undefined ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus("OK");
@@ -1143,6 +1171,7 @@ export function emitContinuationWorkTerminalSpan(args: {
     };
     const span = getContinuationTracer().startSpan("continuation.work.terminal", {
       attributes: attrs,
+      ...continuationCorrelationOption(args.telemetry),
       ...(args.traceparent ? { traceparent: args.traceparent } : {}),
     });
     const failed =
@@ -1177,6 +1206,7 @@ export function emitContinuationFinalizationSpan(args: {
     };
     const span = getContinuationTracer().startSpan("continuation.finalization", {
       attributes: attrs,
+      ...continuationCorrelationOption(args.telemetry),
       ...(args.traceparent ? { traceparent: args.traceparent } : {}),
     });
     span.setStatus(args.status === "failed" ? "ERROR" : "OK");

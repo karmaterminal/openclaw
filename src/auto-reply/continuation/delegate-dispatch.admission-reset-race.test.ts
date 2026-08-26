@@ -1,9 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  resetContinuationTracer,
+  setContinuationTracer,
+  type Span,
+  type SpanAttributes,
+  type StartSpanOptions,
+} from "../../infra/continuation-tracer.js";
 
 const mockFlows = new Map<string, Record<string, unknown>>();
 const spawnSubagentDirectMock = vi.fn();
 const acceptedChildSessionKeys = new Set<string>();
 let flowIdCounter = 0;
+const recordedSpans: Array<{ name: string; attributes: Record<string, unknown> }> = [];
+
+function installRecordingTracer() {
+  setContinuationTracer({
+    startSpan(name: string, options?: StartSpanOptions): Span {
+      const recorded = { name, attributes: { ...options?.attributes } };
+      recordedSpans.push(recorded);
+      return {
+        setAttributes(attributes: SpanAttributes) {
+          Object.assign(recorded.attributes, attributes);
+        },
+        setStatus() {},
+        recordException() {},
+        end() {},
+      };
+    },
+  });
+}
 
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
@@ -132,11 +157,14 @@ beforeEach(() => {
   mockFlows.clear();
   acceptedChildSessionKeys.clear();
   flowIdCounter = 0;
+  recordedSpans.length = 0;
+  installRecordingTracer();
   spawnSubagentDirectMock.mockReset().mockResolvedValue({ status: "accepted" });
 });
 
 afterEach(() => {
   resetContinuationDispatchClaimsForTests();
+  resetContinuationTracer();
   resetDelegateDispatchHedgesForTests();
   mockFlows.clear();
   acceptedChildSessionKeys.clear();
@@ -145,7 +173,20 @@ afterEach(() => {
 describe("delegate dispatch admission reset race", () => {
   it("closes post-fence delegate admission when reset durably cancels the source", async () => {
     const sessionKey = "agent:main:delegate-reset-after-fence";
-    const delegate = enqueuePendingDelegate(sessionKey, { task: "must not spawn after reset" });
+    const delegate = enqueuePendingDelegate(sessionKey, {
+      task: "must not spawn after reset",
+      signalOrigin: "typed-tool",
+      originRunId: "run-reset-race",
+      originSessionId: "session-reset-race",
+      diagnosticContext: {
+        proof: {
+          runId: "0123456789abcdef",
+          rowId: "R-OBS-TERMINAL-OUTCOME",
+          candidateSha: "a".repeat(40),
+          harnessRef: "b".repeat(40),
+        },
+      },
+    });
     if (!delegate) {
       throw new Error("expected durable delegate");
     }
@@ -193,6 +234,17 @@ describe("delegate dispatch admission reset race", () => {
     expect(mockFlows.get(delegate.flowId!)?.status).toBe("cancelled");
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
     expect(acceptedChildSessionKeys.size).toBe(0);
+    expect(
+      recordedSpans.find((span) => span.name === "continuation.delegate.dispatch"),
+    ).toMatchObject({
+      attributes: {
+        "continuation.signal.origin": "typed-tool",
+        "continuation.signal.kind": "delegate",
+        "continuation.outcome": "cancelled",
+        "continuation.outcome.reason": "dispatch.cancelled",
+        "openclaw.proof.row_id": "R-OBS-TERMINAL-OUTCOME",
+      },
+    });
 
     await recoverPendingContinuationDelegates();
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);

@@ -294,8 +294,10 @@ vi.mock("../../infra/system-events.js", () => ({
 }));
 
 vi.mock("../../infra/continuation-tracer.js", () => ({
+  emitContinuationDisabledSpan: vi.fn(),
   emitContinuationWorkFireSpan: emitContinuationWorkFireSpanMock,
   emitContinuationWorkSpan: vi.fn(),
+  emitContinuationWorkTerminalSpan: vi.fn(),
   resolveContinuationTraceparent: resolveContinuationTraceparentMock,
 }));
 
@@ -935,6 +937,14 @@ describe("durable continuation_work dispatch", () => {
 
   it("re-arms a delayed continue_work election after simulated gateway restart", async () => {
     const sessionKey = "agent:main:main";
+    const diagnosticContext = {
+      proof: {
+        runId: "0123456789abcdef",
+        rowId: "R-OBS-PROOF-MARKER",
+        candidateSha: "a".repeat(40),
+        harnessRef: "b".repeat(40),
+      },
+    } as const;
     mockSessionStore[sessionKey] = { sessionKey };
     await scheduleContinuationWork({
       sessionKey,
@@ -947,6 +957,10 @@ describe("durable continuation_work dispatch", () => {
       request: { delaySeconds: 1, reason: "restart proof" },
       config,
       parentRunId: "run-1",
+      originRunId: "run-observed",
+      originTurnId: "session-observed",
+      signalOrigin: "typed-tool",
+      diagnosticContext,
     });
     expect(turnGrants).toHaveLength(0);
 
@@ -966,9 +980,21 @@ describe("durable continuation_work dispatch", () => {
         options: expect.objectContaining({
           continuationTrigger: "work-wake",
           parentRunId: "run-1",
+          diagnosticContext,
         }),
       }),
     ]);
+    expect(emitContinuationWorkFireSpanMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        telemetry: {
+          origin: "typed-tool",
+          kind: "work",
+          runId: "run-observed",
+          sessionId: "session-observed",
+          diagnosticContext,
+        },
+      }),
+    );
     expect(systemEvents).toEqual([]);
   });
 

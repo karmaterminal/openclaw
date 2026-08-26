@@ -288,24 +288,28 @@ describe("continuation-tracer :: contract pin", () => {
     const tracer = getContinuationTracer();
     tracer.startSpan("continuation.work");
     tracer.startSpan("continuation.work.fire");
+    tracer.startSpan("continuation.work.terminal");
     tracer.startSpan("continuation.delegate.dispatch");
     tracer.startSpan("continuation.delegate.fire");
     tracer.startSpan("continuation.queue.enqueue");
     tracer.startSpan("continuation.queue.fanout");
     tracer.startSpan("continuation.queue.drain");
     tracer.startSpan("continuation.compaction.released");
+    tracer.startSpan("continuation.finalization");
     tracer.startSpan("continuation.disabled");
     tracer.startSpan("heartbeat");
 
     expect(recorded).toEqual([
       "continuation.work",
       "continuation.work.fire",
+      "continuation.work.terminal",
       "continuation.delegate.dispatch",
       "continuation.delegate.fire",
       "continuation.queue.enqueue",
       "continuation.queue.fanout",
       "continuation.queue.drain",
       "continuation.compaction.released",
+      "continuation.finalization",
       "continuation.disabled",
       "heartbeat",
     ]);
@@ -370,12 +374,14 @@ describe("continuation-tracer :: contract pin", () => {
     const names: ContinuationSpanName[] = [
       "continuation.work",
       "continuation.work.fire",
+      "continuation.work.terminal",
       "continuation.delegate.dispatch",
       "continuation.delegate.fire",
       "continuation.queue.enqueue",
       "continuation.queue.fanout",
       "continuation.queue.drain",
       "continuation.compaction.released",
+      "continuation.finalization",
       "continuation.disabled",
       "heartbeat",
     ];
@@ -474,6 +480,8 @@ describe("continuation-tracer :: emitContinuationWorkSpan helper", () => {
       "reason.length": 15,
       "reason.hash": expect.stringMatching(REASON_HASH_RE),
       "reason.redacted": false,
+      "continuation.outcome": "scheduled",
+      "continuation.outcome.reason": "dispatch.accepted",
     });
     expectNoAttributeValueContains(span.options?.attributes, "more work to do");
     expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);
@@ -507,6 +515,8 @@ describe("continuation-tracer :: emitContinuationWorkSpan helper", () => {
     expect(expectDefined(spans.at(0), "work span").options?.attributes).toEqual({
       "delay.ms": 5000,
       "chain.step.remaining": 0,
+      "continuation.outcome": "scheduled",
+      "continuation.outcome.reason": "dispatch.accepted",
     });
   });
 

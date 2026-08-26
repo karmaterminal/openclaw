@@ -1,7 +1,9 @@
 // Diagnostics Otel API module exposes the plugin public contract.
 export {
+  CONTINUATION_FINGERPRINT_SALT_MIN_BYTES,
   createChildDiagnosticTraceContext,
   createDiagnosticTraceContext,
+  createContinuationCorrelationResolver,
   emitDiagnosticEvent,
   formatDiagnosticTraceparent,
   getContinuationTracer,
@@ -17,6 +19,7 @@ export {
   type DiagnosticEventPayload,
   type DiagnosticEventPrivateData,
   type DiagnosticTraceContext,
+  type ContinuationCorrelationResolver,
   type Span as ContinuationSpan,
   type SpanAttributes as ContinuationSpanAttributes,
   type SpanAttributeValue as ContinuationSpanAttributeValue,

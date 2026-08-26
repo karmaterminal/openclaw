@@ -570,4 +570,48 @@ describe("sessions.send completed subagent follow-up status", () => {
       expect(respondMock.mock.calls.at(0)?.[0]).toBe(true);
     });
   }
+
+  it("threads a validated diagnostic context through the canonical chat.send adapter", async () => {
+    const sessionKey = "agent:main:main";
+    const diagnosticContext = {
+      proof: {
+        runId: "0123456789abcdef",
+        rowId: "R-OBS-PROOF-MARKER",
+        candidateSha: "a".repeat(40),
+        harnessRef: "b".repeat(40),
+      },
+    } as const;
+    loadSessionEntryMock.mockReturnValue({
+      cfg: {},
+      canonicalKey: sessionKey,
+      storePath: "/tmp/sessions.json",
+      entry: { sessionId: "sess-observed" },
+    });
+    chatSendMock.mockImplementation(async ({ respond }: { respond: RespondFn }) => {
+      respond(true, { runId: "run-observed", status: "started" }, undefined, undefined);
+    });
+
+    await expectDefined(
+      sessionMessagingHandlers["sessions.send"],
+      'sessionMessagingHandlers["sessions.send"] test invariant',
+    )({
+      req: { id: "req-observed" } as never,
+      params: {
+        key: sessionKey,
+        message: "run observed turn",
+        idempotencyKey: "run-observed",
+        diagnosticContext,
+      },
+      respond: vi.fn() as unknown as RespondFn,
+      context: createRequestContext(),
+      client: null,
+      isWebchatConnect: () => false,
+    });
+
+    expect(chatSendMock.mock.calls.at(0)?.[0]?.params).toMatchObject({
+      sessionKey,
+      idempotencyKey: "run-observed",
+      diagnosticContext,
+    });
+  });
 });

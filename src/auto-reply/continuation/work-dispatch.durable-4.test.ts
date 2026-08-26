@@ -29,8 +29,13 @@ const observedSubordinateAdmissionClosed: boolean[] = [];
 let continuationEnabledForTest = true;
 const capturedReplyTraceparents: Array<string | undefined> = [];
 let bumpWorkRevisionOnReply = false;
-const { emitContinuationWorkFireSpanMock, resolveContinuationTraceparentMock } = vi.hoisted(() => ({
+const {
+  emitContinuationWorkFireSpanMock,
+  emitContinuationWorkTerminalSpanMock,
+  resolveContinuationTraceparentMock,
+} = vi.hoisted(() => ({
   emitContinuationWorkFireSpanMock: vi.fn(),
+  emitContinuationWorkTerminalSpanMock: vi.fn(),
   resolveContinuationTraceparentMock: vi.fn((traceparent: string | undefined) => traceparent),
 }));
 
@@ -294,8 +299,10 @@ vi.mock("../../infra/system-events.js", () => ({
 }));
 
 vi.mock("../../infra/continuation-tracer.js", () => ({
+  emitContinuationDisabledSpan: vi.fn(),
   emitContinuationWorkFireSpan: emitContinuationWorkFireSpanMock,
   emitContinuationWorkSpan: vi.fn(),
+  emitContinuationWorkTerminalSpan: emitContinuationWorkTerminalSpanMock,
   resolveContinuationTraceparent: resolveContinuationTraceparentMock,
 }));
 
@@ -595,6 +602,7 @@ describe("durable continuation_work dispatch", () => {
     capturedReplyTraceparents.length = 0;
     bumpWorkRevisionOnReply = false;
     emitContinuationWorkFireSpanMock.mockReset();
+    emitContinuationWorkTerminalSpanMock.mockReset();
     resolveContinuationTraceparentMock
       .mockReset()
       .mockImplementation((traceparent: string | undefined) => traceparent);
@@ -882,6 +890,17 @@ describe("durable continuation_work dispatch", () => {
       dueAt: Date.now(),
       maxChainLength: 200,
       reason: "Holding off-board and standing by.",
+      signalOrigin: "bracket",
+      originRunId: "run-noop-rearm",
+      originTurnId: "session-noop-rearm",
+      diagnosticContext: {
+        proof: {
+          runId: "0123456789abcdef",
+          rowId: "R-OBS-TERMINAL-OUTCOME",
+          candidateSha: "a".repeat(40),
+          harnessRef: "b".repeat(40),
+        },
+      },
     });
 
     const result = await dispatchPendingContinuationWork({ sessionKey });
@@ -896,6 +915,21 @@ describe("durable continuation_work dispatch", () => {
     expect(flow?.endedAt).toBeDefined();
     expect(String(flow?.currentStep)).toContain("superseded");
     expect(systemEvents).toHaveLength(0);
+    expect(emitContinuationWorkTerminalSpanMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: "superseded",
+        reason: "flow.superseded",
+        telemetry: expect.objectContaining({
+          origin: "bracket",
+          kind: "work",
+          runId: "run-noop-rearm",
+          sessionId: "session-noop-rearm",
+          diagnosticContext: expect.objectContaining({
+            proof: expect.objectContaining({ rowId: "R-OBS-TERMINAL-OUTCOME" }),
+          }),
+        }),
+      }),
+    );
   });
 
   it("does not let a busy slow hedge delay another continuation due sooner", async () => {

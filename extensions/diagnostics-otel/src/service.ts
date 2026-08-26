@@ -19,11 +19,16 @@ import {
   waitForDiagnosticEventsDrained,
 } from "openclaw/plugin-sdk/diagnostic-runtime";
 import { registerUnhandledRejectionHandler } from "openclaw/plugin-sdk/runtime-env";
+import {
+  CONTINUATION_FINGERPRINT_SALT_MIN_BYTES,
+  createContinuationCorrelationResolver,
+} from "../api.js";
 import type { DiagnosticTraceContext, OpenClawPluginService } from "../api.js";
 import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapter.js";
 import { resetContinuationTracerIfOwned } from "./continuation-tracer-ownership.js";
 import {
   DEFAULT_SERVICE_NAME,
+  OPENCLAW_OTEL_FINGERPRINT_SALT_ENV,
   OTEL_EXPORTER_OTLP_ENDPOINT_ENV,
   OTEL_EXPORTER_OTLP_LOGS_ENDPOINT_ENV,
   OTEL_EXPORTER_OTLP_LOGS_PROTOCOL_ENV,
@@ -398,6 +403,14 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       if (!tracesActive && !metricsActive && !logsActive) {
         return;
       }
+      const correlationAttributes = createContinuationCorrelationResolver(
+        process.env[OPENCLAW_OTEL_FINGERPRINT_SALT_ENV],
+      );
+      if (tracesActive && !correlationAttributes) {
+        ctx.logger.info(
+          `diagnostics-otel: continuation fingerprints disabled; set ${OPENCLAW_OTEL_FINGERPRINT_SALT_ENV} to a fleet-stable secret of at least ${CONTINUATION_FINGERPRINT_SALT_MIN_BYTES} UTF-8 bytes`,
+        );
+      }
 
       const hasOwnedOtlpSignal = ownedOtlpSignals.length > 0;
       const sharedEnvEndpoint = hasOwnedOtlpSignal
@@ -579,7 +592,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const tracer = traceProvider
         ? traceProvider.getTracer("openclaw")
         : trace.getTracer("openclaw");
-      const diagnosticsTrace = createDiagnosticsTraceRuntime(tracer);
+      const diagnosticsTrace = createDiagnosticsTraceRuntime(tracer, correlationAttributes);
       stopActiveTrustedSpans = diagnosticsTrace.stopActiveTrustedSpans;
       const diagnosticMetrics = createDiagnosticsMetrics(meter, otel.metricNamePrefix);
 
@@ -617,6 +630,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       if (tracesActive) {
         const continuationTracer = createContinuationOtelTracerAdapter({
           ...(traceProvider ? { tracerProvider: traceProvider } : {}),
+          ...(correlationAttributes ? { correlationAttributes } : {}),
           resolveSpanContext: diagnosticsTrace.resolveTrustedSpanContext,
           resolveParentContext: diagnosticsTrace.resolveTrustedParentContext,
         });

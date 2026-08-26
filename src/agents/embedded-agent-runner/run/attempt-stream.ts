@@ -389,6 +389,7 @@ export function installEmbeddedAttemptStreamGuards(input: {
       ? { contextWindowReferenceTokens: attempt.contextWindowInfo.referenceTokens }
       : {}),
     trace: input.runTrace,
+    ...(attempt.diagnosticContext ? { diagnosticContext: attempt.diagnosticContext } : {}),
     contentCapture: resolveDiagnosticModelContentCapturePolicy(attempt.config),
     nextCallId: () => `${attempt.runId}:model:${(diagnosticModelCallSeq += 1)}`,
     ownerGeneration: input.diagnosticOwner.generation,

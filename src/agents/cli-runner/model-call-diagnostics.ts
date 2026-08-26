@@ -354,6 +354,9 @@ export function createClaudeCliModelCallDiagnostics(params: {
     callId: `${params.context.params.runId}:claude-cli:${crypto.randomUUID()}`,
     ...(params.context.params.sessionKey ? { sessionKey: params.context.params.sessionKey } : {}),
     sessionId: params.context.params.sessionId,
+    ...(params.context.params.diagnosticContext
+      ? { diagnosticContext: params.context.params.diagnosticContext }
+      : {}),
     provider:
       params.context.backendResolved.modelProvider ??
       params.context.params.modelProvider ??

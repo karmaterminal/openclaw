@@ -7,6 +7,7 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 import type {
+  ContinuationCorrelationResolver,
   DiagnosticEventMetadata,
   DiagnosticEventPayload,
   DiagnosticTraceContext,
@@ -20,7 +21,10 @@ import {
 } from "./service-trace-context.js";
 import type { TrustedSpanAliasOwner } from "./service-types.js";
 
-export function createDiagnosticsTraceRuntime(tracer: Tracer) {
+export function createDiagnosticsTraceRuntime(
+  tracer: Tracer,
+  correlationAttributes?: ContinuationCorrelationResolver,
+) {
   const activeTrustedSpans = new Map<string, ReturnType<typeof tracer.startSpan>>();
   const activeTrustedSpanAliases = new Map<
     string,
@@ -433,6 +437,9 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
       spanAttrs["openclaw.trigger"] = evt.trigger;
     }
     Object.assign(spanAttrs, evt.telemetry);
+    if (correlationAttributes) {
+      Object.assign(spanAttrs, correlationAttributes(evt));
+    }
   };
 
   const paramsSummaryAttrs = (

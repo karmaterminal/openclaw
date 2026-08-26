@@ -47,10 +47,12 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     if (!tracesEnabled || !metadata.trusted) {
       return;
     }
+    const spanAttrs: Record<string, string | number | boolean> = harnessRunMetricAttrs(evt);
+    addRunAttrs(spanAttrs, evt);
     trackTrustedSpan(
       evt,
       metadata,
-      spanWithDuration("openclaw.harness.run", harnessRunMetricAttrs(evt), undefined, {
+      spanWithDuration("openclaw.harness.run", spanAttrs, undefined, {
         parentContext: activeTrustedParentContext(evt, metadata),
         startTimeMs: evt.ts,
       }),
@@ -77,6 +79,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     if (typeof evt.yieldDetected === "boolean") {
       spanAttrs["openclaw.harness.yield_detected"] = evt.yieldDetected;
     }
+    addRunAttrs(spanAttrs, evt);
     if (evt.itemLifecycle) {
       spanAttrs["openclaw.harness.items.started"] = evt.itemLifecycle.startedCount;
       spanAttrs["openclaw.harness.items.completed"] = evt.itemLifecycle.completedCount;
@@ -134,6 +137,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
       ...(redactedError ? { "openclaw.error": redactedError } : {}),
       ...(evt.cleanupFailed ? { "openclaw.harness.cleanup_failed": true } : {}),
     };
+    addRunAttrs(spanAttrs, evt);
     const trustedTrace = trustedTraceContext(evt, metadata);
     const trackedSpan = trustedTrace?.spanId
       ? activeTrustedSpans.get(trustedTrace.spanId)

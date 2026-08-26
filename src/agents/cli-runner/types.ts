@@ -26,6 +26,7 @@ import type { SessionSystemPromptReport } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { ContextEngine } from "../../context-engine/types.js";
 import type { CronScheduledToolCallerOrigin } from "../../cron/scheduled-tool-policy.js";
+import type { DiagnosticContext } from "../../infra/diagnostic-context.js";
 import type { ExecMode } from "../../infra/exec-approvals.js";
 import type { ImageContent } from "../../llm/types.js";
 import type { MediaFact } from "../../media/media-facts.js";
@@ -79,6 +80,7 @@ export type RunCliAgentParams = {
   sessionManager?: SessionManager;
   sessionId: string;
   sessionKey?: string;
+  diagnosticContext?: DiagnosticContext;
   chatType?: ChatType;
   sessionTarget?: SessionTranscriptRuntimeTarget;
   /** Session identity used only for sandbox and tool-policy resolution. */

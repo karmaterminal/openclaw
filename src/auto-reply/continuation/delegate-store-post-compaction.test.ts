@@ -364,6 +364,42 @@ describe("post-compaction delegate staging", () => {
     });
   });
 
+  it("preserves only validated observability context across post-compaction recovery", () => {
+    const diagnosticContext = {
+      proof: {
+        runId: "0123456789abcdef",
+        rowId: "R-OBS-PROOF-MARKER",
+        candidateSha: "a".repeat(40),
+        harnessRef: "b".repeat(40),
+      },
+    } as const;
+    stagePostCompactionTaskFlowDelegate("session-observed", {
+      task: "observed compaction shard",
+      stagedAt: 20_000,
+      signalOrigin: "post-compaction",
+      originRunId: "run-origin",
+      originSessionId: "session-origin",
+      diagnosticContext,
+    });
+
+    const claimed = expectDefined(
+      claimStagedPostCompactionTaskFlowDelegates("session-observed")[0],
+      "observed post-compaction delegate",
+    );
+    expect(claimed).toMatchObject({
+      signalOrigin: "post-compaction",
+      originRunId: "run-origin",
+      originSessionId: "session-origin",
+      diagnosticContext,
+    });
+    expect(mockFlows.get(claimed.flowId!)?.stateJson).toMatchObject({
+      signalOrigin: "post-compaction",
+      originRunId: "run-origin",
+      originSessionId: "session-origin",
+      diagnosticContext,
+    });
+  });
+
   it("does not mix regular and post-compaction delegates", () => {
     enqueuePendingDelegate("session-1", { task: "regular" });
     stagePostCompactionTaskFlowDelegate("session-1", { task: "post-compact", stagedAt: 1000 });

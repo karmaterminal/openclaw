@@ -216,6 +216,9 @@ describe("continuation-tracer :: emitContinuationCompactionReleasedSpan helper",
       "signal.kind": "compaction-release",
       "compaction.released": 3,
       "compaction.id": 1,
+      "continuation.signal.origin": "post-compaction",
+      "continuation.signal.kind": "compaction",
+      "continuation.outcome": "fired",
     });
     expect(span.statusCalls).toEqual([{ status: "OK", message: undefined }]);
     expect(span.ended).toBe(true);
@@ -320,23 +323,24 @@ describe("continuation-tracer :: CONTINUATION_SIGNAL_KINDS SSOT pin", () => {
     expect(kinds).toHaveLength(6);
   });
 
-  it("ContinuationDisabledSignalKind narrows to exactly 3 disabled-span signal kinds (type-level pin)", () => {
-    // Compile-time pin: Extract<> narrows to exactly the 3 disabled-span signal kinds.
+  it("ContinuationDisabledSignalKind narrows to exactly 4 disabled-span signal kinds (type-level pin)", () => {
+    // Compile-time pin: Extract<> narrows to exactly the disabled-span signal kinds.
     const disabled: ContinuationDisabledSignalKind[] = [
+      "work",
       "bracket-work",
       "bracket-delegate",
       "tool-delegate",
     ];
-    expect(disabled).toHaveLength(3);
+    expect(disabled).toHaveLength(4);
     // Runtime confirmation: these are a subset of CONTINUATION_SIGNAL_KINDS.
     for (const d of disabled) {
       expect(CONTINUATION_SIGNAL_KINDS).toContain(d);
     }
-    // "work", "compaction-release", and "heartbeat" must NOT be assignable to ContinuationDisabledSignalKind.
+    // "compaction-release" and "heartbeat" must NOT be assignable to ContinuationDisabledSignalKind.
     // This is a compile-time invariant; the runtime assertion below is a belt-and-suspenders
     // guard that the Extract<> narrows correctly.
     const disabledSet = new Set<string>(disabled);
-    expect(disabledSet.has("work")).toBe(false);
+    expect(disabledSet.has("work")).toBe(true);
     expect(disabledSet.has("compaction-release")).toBe(false);
     expect(disabledSet.has("heartbeat")).toBe(false);
   });

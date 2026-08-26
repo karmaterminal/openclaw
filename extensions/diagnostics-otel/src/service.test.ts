@@ -272,7 +272,10 @@ import {
 } from "../api.js";
 import { CONTINUATION_OTEL_TRACER_NAME } from "./continuation-tracer-adapter.js";
 import { resetContinuationTracerIfOwned } from "./continuation-tracer-ownership.js";
-import { MAX_RETAINED_TRUSTED_SPAN_CONTEXTS } from "./service-constants.js";
+import {
+  MAX_RETAINED_TRUSTED_SPAN_CONTEXTS,
+  OPENCLAW_OTEL_FINGERPRINT_SALT_ENV,
+} from "./service-constants.js";
 import {
   createExporterHealthEventEmitter,
   type ExporterHealthUpdate,
@@ -325,6 +328,7 @@ const OTEL_PROTOCOL_ENV_KEYS = [
   "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL",
 ] as const;
 const OTEL_PROVIDER_ENV_KEYS = [
+  OPENCLAW_OTEL_FINGERPRINT_SALT_ENV,
   "OTEL_BSP_EXPORT_TIMEOUT",
   "OTEL_BSP_MAX_EXPORT_BATCH_SIZE",
   "OTEL_BSP_MAX_QUEUE_SIZE",
@@ -4532,15 +4536,25 @@ describe("diagnostics-otel service", () => {
 
   test("exports run, model call, and tool execution lifecycle spans", async () => {
     await startServiceFixture(["traces", "metrics"]);
+    const diagnosticContext = {
+      proof: {
+        runId: "0123456789abcdef",
+        rowId: "R-OBS-PROOF-MARKER",
+        candidateSha: "a".repeat(40),
+        harnessRef: "b".repeat(40),
+      },
+    } as const;
 
-    emitEvent("run.completed", {
+    emitTrustedEvent("run.completed", {
       runId: "run-1",
       sessionKey: "session-key",
+      diagnosticContext,
       ...MODEL_FIXTURE,
       channel: "webchat",
       trace: createTestTrace(SPAN_ID),
     });
-    emitEvent("model.call.completed", {
+    emitTrustedEvent("model.call.completed", {
+      diagnosticContext,
       api: "completions",
       transport: "http",
       requestPayloadBytes: 1234,
@@ -4565,7 +4579,7 @@ describe("diagnostics-otel service", () => {
       },
       trace: createTestTrace(CHILD_SPAN_ID, SPAN_ID),
     });
-    emitEvent("harness.run.completed", {
+    emitTrustedEvent("harness.run.completed", {
       runId: "run-1",
       sessionKey: "session-key",
       sessionId: "session-1",
@@ -4574,11 +4588,13 @@ describe("diagnostics-otel service", () => {
       channel: "qa",
       harnessId: "codex",
       pluginId: "codex-plugin",
+      diagnosticContext,
       resultClassification: "reasoning-only",
       yieldDetected: true,
       itemLifecycle: { startedCount: 3, completedCount: 2, activeCount: 1 },
     });
-    await emitEventAndFlush("tool.execution.error", {
+    await emitTrustedEventAndFlush("tool.execution.error", {
+      diagnosticContext,
       toolCallId: "tool-1",
       paramsSummary: { kind: "object" },
       errorCode: "429",
@@ -4590,6 +4606,20 @@ describe("diagnostics-otel service", () => {
     expect(spanNames).toContain("openclaw.model.call");
     expect(spanNames).toContain("openclaw.harness.run");
     expect(spanNames).toContain("openclaw.tool.execution");
+    for (const spanName of [
+      "openclaw.run",
+      "openclaw.model.call",
+      "openclaw.harness.run",
+      "openclaw.tool.execution",
+    ]) {
+      expect(startedSpanOptions(spanName)?.attributes).toMatchObject({
+        "openclaw.proof.run_id": diagnosticContext.proof.runId,
+        "openclaw.proof.row_id": diagnosticContext.proof.rowId,
+        "openclaw.proof.candidate_sha": diagnosticContext.proof.candidateSha,
+        "openclaw.proof.harness_ref": diagnosticContext.proof.harnessRef,
+        "openclaw.proof.synthetic": true,
+      });
+    }
 
     const runOptions = startedSpanOptions("openclaw.run");
     expect(runOptions?.attributes?.["openclaw.outcome"]).toBe("completed");
@@ -6818,6 +6848,8 @@ describe("diagnostics-otel service", () => {
     });
 
     test("installs the OTEL adapter on start when traces are enabled, resets on stop", async () => {
+      const salt = "test-fleet-correlation-salt-32-bytes";
+      process.env[OPENCLAW_OTEL_FINGERPRINT_SALT_ENV] = salt;
       expect(getContinuationTracer()).toBe(noopTracer);
       const service = createDiagnosticsOtelService();
       const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
@@ -6825,6 +6857,21 @@ describe("diagnostics-otel service", () => {
       expect(getContinuationTracer()).not.toBe(noopTracer);
       expect(traceProviderGetTracer).toHaveBeenCalledWith("openclaw");
       expect(traceProviderGetTracer).toHaveBeenCalledWith(CONTINUATION_OTEL_TRACER_NAME);
+      getContinuationTracer().startSpan("continuation.work", {
+        correlation: {
+          runId: "raw-run-id",
+          sessionId: "raw-session-id",
+        },
+      });
+      const attributes = startedSpanOptions("continuation.work")?.attributes;
+      expect(attributes).toMatchObject({
+        "continuation.origin.run.fingerprint": expect.stringMatching(/^[a-f0-9]{16}$/u),
+        "continuation.session.fingerprint": expect.stringMatching(/^[a-f0-9]{16}$/u),
+        "continuation.turn.fingerprint": expect.stringMatching(/^[a-f0-9]{16}$/u),
+      });
+      expect(JSON.stringify(attributes)).not.toContain("raw-run-id");
+      expect(JSON.stringify(attributes)).not.toContain("raw-session-id");
+      expect(JSON.stringify(attributes)).not.toContain(salt);
       await service.stop?.(ctx);
       expect(getContinuationTracer()).toBe(noopTracer);
     });

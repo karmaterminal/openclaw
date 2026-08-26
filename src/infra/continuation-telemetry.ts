@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import type { DiagnosticContext } from "./diagnostic-context.js";
 import {
   diagnosticContextSpanAttributes,
@@ -71,9 +71,13 @@ export type ContinuationFinalizationStatus = (typeof CONTINUATION_FINALIZATION_S
 export type ContinuationTelemetryContext = {
   origin: ContinuationSignalOrigin;
   kind: ContinuationPrimitive;
+} & ContinuationCorrelationSource & {
+    diagnosticContext?: DiagnosticContext;
+  };
+
+export type ContinuationCorrelationSource = {
   runId?: string;
   sessionId?: string;
-  diagnosticContext?: DiagnosticContext;
 };
 
 export type ContinuationCorrelationAttributes = {
@@ -97,33 +101,56 @@ export type ContinuationTerminalAttributes = {
 
 const CONTINUATION_FINGERPRINT_HEX_LENGTH = 16;
 const CONTINUATION_FINGERPRINT_DOMAIN = "openclaw.continuation.telemetry.v1";
+export const CONTINUATION_FINGERPRINT_SALT_MIN_BYTES = 32;
 
-function continuationFingerprint(kind: "run" | "session" | "turn", values: readonly string[]) {
-  return createHash("sha256")
+function continuationFingerprint(
+  salt: string,
+  kind: "run" | "session" | "turn",
+  values: readonly string[],
+) {
+  return createHmac("sha256", salt)
     .update(JSON.stringify([CONTINUATION_FINGERPRINT_DOMAIN, kind, ...values]))
     .digest("hex")
     .slice(0, CONTINUATION_FINGERPRINT_HEX_LENGTH);
 }
 
-export function continuationCorrelationAttributes(params: {
-  runId?: string;
-  sessionId?: string;
-}): ContinuationCorrelationAttributes {
-  const runId = params.runId?.trim();
-  const sessionId = params.sessionId?.trim();
+export function continuationCorrelationAttributes(
+  salt: string,
+  source: ContinuationCorrelationSource,
+): ContinuationCorrelationAttributes {
+  const runId = source.runId?.trim();
+  const sessionId = source.sessionId?.trim();
   return {
     ...(runId
-      ? { "continuation.origin.run.fingerprint": continuationFingerprint("run", [runId]) }
+      ? { "continuation.origin.run.fingerprint": continuationFingerprint(salt, "run", [runId]) }
       : {}),
     ...(sessionId
-      ? { "continuation.session.fingerprint": continuationFingerprint("session", [sessionId]) }
+      ? {
+          "continuation.session.fingerprint": continuationFingerprint(salt, "session", [sessionId]),
+        }
       : {}),
     ...(runId && sessionId
       ? {
-          "continuation.turn.fingerprint": continuationFingerprint("turn", [sessionId, runId]),
+          "continuation.turn.fingerprint": continuationFingerprint(salt, "turn", [
+            sessionId,
+            runId,
+          ]),
         }
       : {}),
   };
+}
+
+export type ContinuationCorrelationResolver = (
+  source: ContinuationCorrelationSource,
+) => ContinuationCorrelationAttributes;
+
+export function createContinuationCorrelationResolver(
+  salt: string | undefined,
+): ContinuationCorrelationResolver | undefined {
+  if (!salt || Buffer.byteLength(salt, "utf8") < CONTINUATION_FINGERPRINT_SALT_MIN_BYTES) {
+    return undefined;
+  }
+  return (source) => continuationCorrelationAttributes(salt, source);
 }
 
 export function continuationProvenanceAttributes(
@@ -132,7 +159,6 @@ export function continuationProvenanceAttributes(
   return {
     "continuation.signal.origin": context.origin,
     "continuation.signal.kind": context.kind,
-    ...continuationCorrelationAttributes(context),
     ...diagnosticContextSpanAttributes(context.diagnosticContext),
   };
 }

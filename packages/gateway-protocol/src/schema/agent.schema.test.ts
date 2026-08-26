@@ -1,7 +1,10 @@
+import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
 import { validateAgentParams as validate } from "../validator-registry.js";
 import { AgentParamsSchema } from "./agent.js";
 import { internalProtocolField, stripInternalProtocolFields } from "./internal-fields.js";
+import { ChatSendParamsSchema } from "./logs-chat.js";
+import { SessionsSendParamsSchema } from "./sessions.js";
 
 describe("AgentParamsSchema", () => {
   const baseParams = {
@@ -101,5 +104,83 @@ describe("AgentParamsSchema", () => {
       traceparent: "not-a-traceparent",
     });
     expect(valid).toBe(false);
+  });
+
+  it("admits one closed proof context on every run ingress used by the harness", () => {
+    const diagnosticContext = {
+      proof: {
+        runId: "0123456789abcdef",
+        rowId: "R-OBS-PROOF-MARKER",
+        candidateSha: "a".repeat(40),
+        harnessRef: "b".repeat(40),
+      },
+    };
+
+    expect(Value.Check(AgentParamsSchema, { ...baseParams, diagnosticContext })).toBe(true);
+    expect(
+      Value.Check(ChatSendParamsSchema, {
+        sessionKey: "agent:main:main",
+        message: "run proof",
+        idempotencyKey: "proof-chat",
+        diagnosticContext,
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(SessionsSendParamsSchema, {
+        key: "agent:main:main",
+        message: "run proof",
+        diagnosticContext,
+      }),
+    ).toBe(true);
+  });
+
+  it.each([
+    [
+      "arbitrary marker attributes",
+      {
+        proof: {
+          runId: "0123456789abcdef",
+          rowId: "R-OBS-PROOF-MARKER",
+          candidateSha: "a".repeat(40),
+          harnessRef: "b".repeat(40),
+          arbitraryAttribute: "openclaw.injected",
+        },
+      },
+    ],
+    [
+      "non-digest proof run id",
+      {
+        proof: {
+          runId: "private-run-id",
+          rowId: "R-OBS-PROOF-MARKER",
+          candidateSha: "a".repeat(40),
+          harnessRef: "b".repeat(40),
+        },
+      },
+    ],
+    [
+      "unbounded row id",
+      {
+        proof: {
+          runId: "0123456789abcdef",
+          rowId: `R-${"X".repeat(64)}`,
+          candidateSha: "a".repeat(40),
+          harnessRef: "b".repeat(40),
+        },
+      },
+    ],
+    [
+      "mutable candidate ref",
+      {
+        proof: {
+          runId: "0123456789abcdef",
+          rowId: "R-OBS-PROOF-MARKER",
+          candidateSha: "main",
+          harnessRef: "b".repeat(40),
+        },
+      },
+    ],
+  ])("rejects %s", (_name, diagnosticContext) => {
+    expect(Value.Check(AgentParamsSchema, { ...baseParams, diagnosticContext })).toBe(false);
   });
 });

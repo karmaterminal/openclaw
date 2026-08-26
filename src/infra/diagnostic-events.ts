@@ -4,10 +4,6 @@ import type { EmbeddedAgentExecutionPhase } from "../agents/embedded-agent-runne
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { TalkBrain, TalkEventType, TalkMode, TalkTransport } from "../talk/talk-events.js";
 import {
-  continuationCorrelationAttributes,
-  type ContinuationCorrelationAttributes,
-} from "./continuation-telemetry.js";
-import {
   diagnosticContextSpanAttributes,
   normalizeDiagnosticContext,
   type DiagnosticContext,
@@ -43,8 +39,7 @@ import { isBlockedObjectKey } from "./prototype-keys.js";
 
 export type DiagnosticSessionState = "idle" | "processing" | "waiting";
 
-export type DiagnosticTelemetryAttributes = ContinuationCorrelationAttributes &
-  DiagnosticContextSpanAttributes;
+export type DiagnosticTelemetryAttributes = DiagnosticContextSpanAttributes;
 
 type DiagnosticBaseEvent = {
   ts: number;
@@ -716,6 +711,7 @@ type DiagnosticModelCallBaseEvent = DiagnosticBaseEvent & {
   callId: string;
   sessionKey?: string;
   sessionId?: string;
+  diagnosticContext?: DiagnosticContext;
   provider: string;
   model: string;
   api?: string;
@@ -1356,16 +1352,20 @@ function dispatchAsyncDiagnosticDropSummary(state: DiagnosticEventsGlobalState):
   state.asyncDroppedTrustedEvents = 0;
   state.asyncDroppedUntrustedEvents = 0;
   state.asyncDroppedPriorityEvents = 0;
-  const event = enrichDiagnosticEvent(state, {
-    type: "diagnostic.async_queue.dropped",
-    droppedEvents,
-    ...(droppedTrustedEvents > 0 ? { droppedTrustedEvents } : {}),
-    ...(droppedUntrustedEvents > 0 ? { droppedUntrustedEvents } : {}),
-    ...(droppedPriorityEvents > 0 ? { droppedPriorityEvents } : {}),
-    queueLength: state.asyncQueue.length,
-    maxQueueLength: MAX_ASYNC_DIAGNOSTIC_EVENTS,
-    drainBatchSize: MAX_ASYNC_DIAGNOSTIC_EVENTS_PER_TURN,
-  });
+  const event = enrichDiagnosticEvent(
+    state,
+    {
+      type: "diagnostic.async_queue.dropped",
+      droppedEvents,
+      ...(droppedTrustedEvents > 0 ? { droppedTrustedEvents } : {}),
+      ...(droppedUntrustedEvents > 0 ? { droppedUntrustedEvents } : {}),
+      ...(droppedPriorityEvents > 0 ? { droppedPriorityEvents } : {}),
+      queueLength: state.asyncQueue.length,
+      maxQueueLength: MAX_ASYNC_DIAGNOSTIC_EVENTS,
+      drainBatchSize: MAX_ASYNC_DIAGNOSTIC_EVENTS_PER_TURN,
+    },
+    true,
+  );
   dispatchDiagnosticEvent(state, event, createInternalDiagnosticMetadata(false));
 }
 
@@ -1387,6 +1387,7 @@ export async function waitForDiagnosticEventsDrained(): Promise<void> {
 function enrichDiagnosticEvent(
   state: DiagnosticEventsGlobalState,
   event: DiagnosticDispatchInput,
+  trusted: boolean,
 ): DiagnosticEventPayload {
   const enriched = {} as DiagnosticEventPayload & Record<string, unknown>;
   for (const [key, value] of Object.entries(event as Record<string, unknown>)) {
@@ -1395,17 +1396,15 @@ function enrichDiagnosticEvent(
     }
     enriched[key] = value;
   }
-  const diagnosticContext = normalizeDiagnosticContext(enriched.diagnosticContext);
+  const diagnosticContext = trusted
+    ? normalizeDiagnosticContext(enriched.diagnosticContext)
+    : undefined;
   if (diagnosticContext) {
     enriched.diagnosticContext = diagnosticContext;
   } else {
     delete enriched.diagnosticContext;
   }
   const telemetry = {
-    ...continuationCorrelationAttributes({
-      runId: typeof enriched.runId === "string" ? enriched.runId : undefined,
-      sessionId: typeof enriched.sessionId === "string" ? enriched.sessionId : undefined,
-    }),
     ...diagnosticContextSpanAttributes(diagnosticContext),
   };
   if (Object.keys(telemetry).length > 0) {
@@ -1448,7 +1447,7 @@ function emitDiagnosticEventWithTrust(
     return;
   }
 
-  const enriched = enrichDiagnosticEvent(state, event);
+  const enriched = enrichDiagnosticEvent(state, event, trusted);
   const { hostPluginId, internal = false, privateData } = options;
   const trustedTraceContext = options.trustedTraceContext === true;
   const metadata: InternalDiagnosticEventMetadata = {
@@ -1573,7 +1572,7 @@ export function emitTrustedSkillUsedDiagnosticEvent(
     return;
   }
   const queued = {
-    event: enrichDiagnosticEvent(state, event),
+    event: enrichDiagnosticEvent(state, event, true),
     metadata: { trusted: true },
     privateData,
     trustedListenersOnly: true,

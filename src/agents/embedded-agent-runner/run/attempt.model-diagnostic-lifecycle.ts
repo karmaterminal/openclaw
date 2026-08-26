@@ -2,6 +2,7 @@ import { withProviderAcceptanceObserver, type ProviderAcceptance } from "@opencl
 import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { fireAndForgetBoundedHook } from "../../../hooks/fire-and-forget.js";
+import type { DiagnosticContext } from "../../../infra/diagnostic-context.js";
 import {
   diagnosticErrorCategory,
   diagnosticErrorFailureKind,
@@ -40,6 +41,7 @@ export type ModelCallDiagnosticContext = {
   runId: string;
   sessionKey?: string;
   sessionId?: string;
+  diagnosticContext?: DiagnosticContext;
   provider: string;
   model: string;
   api?: string;
@@ -128,6 +130,7 @@ function baseModelCallEvent(
     callId,
     ...(ctx.sessionKey && { sessionKey: ctx.sessionKey }),
     ...(ctx.sessionId && { sessionId: ctx.sessionId }),
+    ...(ctx.diagnosticContext ? { diagnosticContext: ctx.diagnosticContext } : {}),
     provider: ctx.provider,
     model: ctx.model,
     ...(ctx.api && { api: ctx.api }),
