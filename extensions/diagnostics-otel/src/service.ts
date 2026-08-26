@@ -28,7 +28,6 @@ import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapt
 import { resetContinuationTracerIfOwned } from "./continuation-tracer-ownership.js";
 import {
   DEFAULT_SERVICE_NAME,
-  OPENCLAW_OTEL_FINGERPRINT_SALT_ENV,
   OTEL_EXPORTER_OTLP_ENDPOINT_ENV,
   OTEL_EXPORTER_OTLP_LOGS_ENDPOINT_ENV,
   OTEL_EXPORTER_OTLP_LOGS_PROTOCOL_ENV,
@@ -404,11 +403,11 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         return;
       }
       const correlationAttributes = createContinuationCorrelationResolver(
-        process.env[OPENCLAW_OTEL_FINGERPRINT_SALT_ENV],
+        process.env.OPENCLAW_GATEWAY_TOKEN,
       );
       if (tracesActive && !correlationAttributes) {
         ctx.logger.info(
-          `diagnostics-otel: continuation fingerprints disabled; set ${OPENCLAW_OTEL_FINGERPRINT_SALT_ENV} to a fleet-stable secret of at least ${CONTINUATION_FINGERPRINT_SALT_MIN_BYTES} UTF-8 bytes`,
+          `diagnostics-otel: continuation fingerprints disabled; set the existing OPENCLAW_GATEWAY_TOKEN runtime secret to at least ${CONTINUATION_FINGERPRINT_SALT_MIN_BYTES} UTF-8 bytes`,
         );
       }
 

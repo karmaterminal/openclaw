@@ -272,10 +272,7 @@ import {
 } from "../api.js";
 import { CONTINUATION_OTEL_TRACER_NAME } from "./continuation-tracer-adapter.js";
 import { resetContinuationTracerIfOwned } from "./continuation-tracer-ownership.js";
-import {
-  MAX_RETAINED_TRUSTED_SPAN_CONTEXTS,
-  OPENCLAW_OTEL_FINGERPRINT_SALT_ENV,
-} from "./service-constants.js";
+import { MAX_RETAINED_TRUSTED_SPAN_CONTEXTS } from "./service-constants.js";
 import {
   createExporterHealthEventEmitter,
   type ExporterHealthUpdate,
@@ -328,7 +325,7 @@ const OTEL_PROTOCOL_ENV_KEYS = [
   "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL",
 ] as const;
 const OTEL_PROVIDER_ENV_KEYS = [
-  OPENCLAW_OTEL_FINGERPRINT_SALT_ENV,
+  "OPENCLAW_GATEWAY_TOKEN",
   "OTEL_BSP_EXPORT_TIMEOUT",
   "OTEL_BSP_MAX_EXPORT_BATCH_SIZE",
   "OTEL_BSP_MAX_QUEUE_SIZE",
@@ -6849,7 +6846,7 @@ describe("diagnostics-otel service", () => {
 
     test("installs the OTEL adapter on start when traces are enabled, resets on stop", async () => {
       const salt = "test-fleet-correlation-salt-32-bytes";
-      process.env[OPENCLAW_OTEL_FINGERPRINT_SALT_ENV] = salt;
+      process.env.OPENCLAW_GATEWAY_TOKEN = salt;
       expect(getContinuationTracer()).toBe(noopTracer);
       const service = createDiagnosticsOtelService();
       const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
