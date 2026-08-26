@@ -259,6 +259,14 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
       ? { recipientContext: params.delegate.recipientContext }
       : {}),
     ...(params.delegate.model ? { model: params.delegate.model } : {}),
+    ...(params.delegate.signalOrigin ? { signalOrigin: params.delegate.signalOrigin } : {}),
+    ...(params.delegate.originRunId ? { originRunId: params.delegate.originRunId } : {}),
+    ...(params.delegate.originSessionId
+      ? { originSessionId: params.delegate.originSessionId }
+      : {}),
+    ...(params.delegate.diagnosticContext
+      ? { diagnosticContext: params.delegate.diagnosticContext }
+      : {}),
     ...(params.delegate.attachments && params.delegate.attachments.length > 0
       ? { attachments: params.delegate.attachments }
       : {}),

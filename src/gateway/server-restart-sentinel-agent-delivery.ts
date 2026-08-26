@@ -489,6 +489,7 @@ export async function deliverQueuedGeneratedMediaAgentTurn(params: {
         sourceReplyDeliveryMode,
         ...(continuationTrigger ? { continuationTrigger } : {}),
         ...(traceparent ? { traceparent } : {}),
+        ...(entry.diagnosticContext ? { diagnosticContext: entry.diagnosticContext } : {}),
         disableMessageTool: true,
         forceRestartSafeTools: true,
         idempotencyKey: queuedRunId,

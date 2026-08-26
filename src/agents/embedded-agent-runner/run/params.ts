@@ -17,6 +17,7 @@ import type { SessionEntry, SessionToolOverrides } from "../../../config/session
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import type { GroupToolPolicyConfig } from "../../../config/types.tools.js";
 import type { CronRuntimeAuthority } from "../../../cron/runtime-authority.js";
+import type { DiagnosticContext } from "../../../infra/diagnostic-context.js";
 import type { ImageContent } from "../../../llm/types.js";
 import type { MediaFact } from "../../../media/media-facts.js";
 import type { PromptImageOrderEntry } from "../../../media/prompt-image-order.js";
@@ -96,6 +97,8 @@ export type RunEmbeddedAgentParams = {
   sessionPersistence?: "durable" | "detached";
   sessionId: string;
   sessionKey?: string;
+  /** Closed public-safe diagnostics metadata inherited from the admitted run. */
+  diagnosticContext?: DiagnosticContext;
   /** Storage-neutral transcript/session target. Defaults to sessionId/sessionKey/agentId. */
   sessionTarget?: AgentRunSessionTarget;
   /** Immutable gateway lifecycle ownership captured when this execution was admitted. */

@@ -6,6 +6,7 @@
 import type { ContinuationTrigger } from "../../../auto-reply/get-reply-options.types.js";
 import { completionRequiresMessageToolDelivery } from "../../../auto-reply/reply/completion-delivery-policy.js";
 import { isContinuationHeartbeatEquivalent } from "../../../auto-reply/reply/run-provenance.js";
+import type { DiagnosticContext } from "../../../infra/diagnostic-context.js";
 import { normalizeDiagnosticTraceparent } from "../../../infra/diagnostic-trace-context.js";
 import { scheduleSessionDelivery } from "../../../infra/session-delivery-queue-runtime.js";
 import {
@@ -106,6 +107,7 @@ export async function deliverSubagentAnnouncement(params: {
   signal?: AbortSignal;
   continuationTriggerOverride?: ContinuationTrigger;
   traceparent?: string;
+  diagnosticContext?: DiagnosticContext;
   resolveGatewayContext?: import("../../../gateway/server-methods/types.js").GatewayContextResolver;
 }): Promise<SubagentAnnounceDeliveryResult> {
   const sourceOwnerChanged = () => params.isSourceSessionEffectsAllowed?.() === false;
@@ -181,6 +183,7 @@ export async function deliverSubagentAnnouncement(params: {
         ...expectedMedia,
         ...(continuationTrigger ? { continuationTrigger } : {}),
         ...(traceparent ? { traceparent, traceparentProvenance: "internal" as const } : {}),
+        ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
         idempotencyKey: `${params.directIdempotencyKey}:agent-loop`,
       } as const;
       const queued = params.sourceRunId
@@ -273,6 +276,7 @@ export async function deliverSubagentAnnouncement(params: {
         expectsCompletionMessage: params.expectsCompletionMessage,
         continuationTriggerOverride: params.continuationTriggerOverride,
         ...(params.traceparent ? { traceparent: params.traceparent } : {}),
+        ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
         requireVisibleReply: params.requireVisibleReply,
         onDeliveryResult: params.onDeliveryResult,
         signal: params.signal,

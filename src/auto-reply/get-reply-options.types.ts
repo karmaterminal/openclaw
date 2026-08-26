@@ -2,6 +2,7 @@ import type { FastMode } from "@openclaw/normalization-core/string-coerce";
 /** Public option types for reply generation callbacks, streaming, and delivery policy. */
 import type { ExecutionIdentityAdmissionToken } from "../audit/execution-identity-admission.js";
 import type { AgentPlanStep } from "../channels/streaming.js";
+import type { DiagnosticContext } from "../infra/diagnostic-context.js";
 import type { ImageContent } from "../llm/types.js";
 import type { MediaFact } from "../media/media-facts.js";
 import type { PromptImageOrderEntry } from "../media/prompt-image-order.js";
@@ -119,6 +120,8 @@ export type GetReplyOptions = {
   runId?: string;
   /** Parent run id when this run was spawned by a previous agent turn. */
   parentRunId?: string;
+  /** Closed public-safe diagnostics metadata propagated with this turn. */
+  diagnosticContext?: DiagnosticContext;
   /** Explicit command lane for the embedded run's turn execution. */
   lane?: string;
   /** Stable provider prompt-cache affinity key; distinct from run id/idempotency. */

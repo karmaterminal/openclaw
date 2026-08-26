@@ -375,6 +375,7 @@ export async function spawnSubagentDirect(
         launchAuthorization,
         swarmSchedulerGroupKey,
         swarmMaxConcurrent: swarmConfig.maxConcurrent,
+        ...(ctx.diagnosticContext ? { diagnosticContext: ctx.diagnosticContext } : {}),
       });
     if (params.drainsContinuationDelegateQueue) {
       childLaunch.request.drainsContinuationDelegateQueue = true;
@@ -593,6 +594,7 @@ export async function spawnSubagentDirect(
             ? { continuationFanoutMode: params.continuationFanoutMode }
             : {}),
           ...(params.traceparent ? { traceparent: params.traceparent } : {}),
+          ...(ctx.diagnosticContext ? { diagnosticContext: ctx.diagnosticContext } : {}),
         };
       },
       assertRegistrationAdmission: () =>

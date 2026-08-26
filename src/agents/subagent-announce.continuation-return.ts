@@ -6,6 +6,7 @@ import type { ContinuationTrigger } from "../auto-reply/get-reply-options.types.
 import { listSessionEntriesCore } from "../config/sessions/session-accessor.js";
 import { resolveAllAgentSessionStoreTargetsSync } from "../config/sessions/targets.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { DiagnosticContext } from "../infra/diagnostic-context.js";
 import {
   markTrustedContinuationHeartbeatWake,
   requestHeartbeatNow,
@@ -80,12 +81,14 @@ export async function routeSubagentContinuationReturn(params: {
   continuationTargetSessionKeys?: string[];
   continuationFanoutMode?: "tree" | "all";
   traceparent?: string;
+  diagnosticContext?: DiagnosticContext;
   registryRuntime?: RegistryReturnRuntime;
 }): Promise<{
   handled: boolean;
   deferred?: boolean;
   continuationTriggerOverride?: ContinuationTrigger;
   traceparent?: string;
+  diagnosticContext?: DiagnosticContext;
 }> {
   const completionTrace = resolveCompletionTraceContext({
     traceparent: params.traceparent,
@@ -252,5 +255,6 @@ export async function routeSubagentContinuationReturn(params: {
         : "subagent-return"
       : undefined,
     traceparent: completionTrace.traceparent,
+    ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
   };
 }

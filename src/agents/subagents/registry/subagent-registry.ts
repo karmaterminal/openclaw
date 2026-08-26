@@ -194,6 +194,7 @@ const subagentLifecycleController = new SubagentLifecycleController({
       continuationTargetSessionKeys: entry?.continuationTargetSessionKeys,
       continuationFanoutMode: entry?.continuationFanoutMode,
       ...(entry?.traceparent ? { traceparent: entry.traceparent } : {}),
+      ...(entry?.diagnosticContext ? { diagnosticContext: entry.diagnosticContext } : {}),
     });
   },
   maybeWakeRequesterAfterAllChildrenSettled: (args) =>

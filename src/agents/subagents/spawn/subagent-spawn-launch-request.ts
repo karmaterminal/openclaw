@@ -1,3 +1,4 @@
+import type { DiagnosticContext } from "../../../infra/diagnostic-context.js";
 import { stringifyRouteThreadId } from "../../../plugin-sdk/channel-route.js";
 import type { BootstrapContextMode } from "../../bootstrap-files.js";
 import { normalizeSpawnedRunMetadata } from "../../spawned-context.js";
@@ -44,6 +45,7 @@ export function buildSubagentLaunchRequest(params: {
   launchAuthorization?: SubagentLaunchAuthorization;
   swarmSchedulerGroupKey?: string;
   swarmMaxConcurrent: number;
+  diagnosticContext?: DiagnosticContext;
 }): {
   childLaunch: {
     request: Record<string, unknown>;
@@ -112,6 +114,7 @@ export function buildSubagentLaunchRequest(params: {
     thinking: params.thinkingOverride,
     timeout: params.runTimeoutSeconds,
     label: params.label,
+    ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
     ...(bootstrapContextMode
       ? {
           bootstrapContextMode,

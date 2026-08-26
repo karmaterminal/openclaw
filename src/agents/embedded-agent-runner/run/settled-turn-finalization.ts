@@ -1,4 +1,5 @@
 import { markReplyPayloadForSourceSuppressionDelivery } from "../../../auto-reply/reply-payload.js";
+import { emitContinuationFinalizationSpan } from "../../../infra/continuation-tracer.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
 import { resolveSettledTurnFinalizationText } from "../../harness/settled-turn-finalization-result.js";
 import type {
@@ -97,6 +98,13 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
 
   const runParams = input.terminalBase.runParams;
   const errorContext = input.terminalBase.activeErrorContext;
+  const telemetry = {
+    origin: "tool-call" as const,
+    kind: "work" as const,
+    runId: runParams.runId,
+    sessionId: runParams.sessionId,
+    ...(runParams.diagnosticContext ? { diagnosticContext: runParams.diagnosticContext } : {}),
+  };
   log.warn(
     `settled post-tool turn lacked a final answer: runId=${runParams.runId} sessionId=${runParams.sessionId} ` +
       `provider=${errorContext.provider}/${errorContext.model} — running isolated finalization`,
@@ -145,6 +153,15 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
       failureSignal: settledFailureSignal,
       terminalToolFailure: settledTerminalToolFailure,
     };
+    const payloadBytes = Buffer.byteLength(attempt.assistantTexts.join(""), "utf8");
+    emitContinuationFinalizationSpan({
+      telemetry,
+      outcome: finalization.outcome === "empty" ? "zero-payload" : "finalized",
+      reason: finalization.outcome === "empty" ? "finalization.empty" : "finalization.answered",
+      status: "succeeded",
+      payloadBytes,
+      log: (message) => log.warn(message),
+    });
     return {
       attempt,
       attemptAssistant: attempt.currentAttemptAssistant,
@@ -163,6 +180,13 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
       `settled-turn finalization failed closed: runId=${runParams.runId} sessionId=${runParams.sessionId} ` +
         `provider=${errorContext.provider}/${errorContext.model} error=${formatErrorMessage(error)}`,
     );
+    emitContinuationFinalizationSpan({
+      telemetry,
+      outcome: "finalization-failed",
+      reason: "finalization.failed",
+      status: "failed",
+      log: (message) => log.warn(message),
+    });
     return {
       ...initial,
       prepared,

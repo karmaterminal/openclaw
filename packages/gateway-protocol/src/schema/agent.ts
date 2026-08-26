@@ -2,6 +2,7 @@
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import { closedObject } from "./closed-object.js";
+import { DiagnosticContextSchema } from "./diagnostic-context.js";
 import { internalProtocolField } from "./internal-fields.js";
 import { InputProvenanceSchema, NonEmptyString, SessionLabelString } from "./primitives.js";
 
@@ -366,6 +367,7 @@ export const AgentParamsSchema = closedObject({
   forceRestartSafeTools: Type.Optional(Type.Boolean()),
   forceCodeModeTools: Type.Optional(Type.Boolean()),
   voiceWakeTrigger: Type.Optional(Type.String()),
+  diagnosticContext: Type.Optional(DiagnosticContextSchema),
   idempotencyKey: NonEmptyString,
   label: Type.Optional(SessionLabelString),
   drainsContinuationDelegateQueue: internalProtocolField(

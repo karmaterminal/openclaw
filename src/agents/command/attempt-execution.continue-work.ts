@@ -1,6 +1,8 @@
 import { sanitizeForLog } from "../../../packages/terminal-core/src/ansi.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { ContinuationSignalOrigin } from "../../infra/continuation-telemetry.js";
+import type { DiagnosticContext } from "../../infra/diagnostic-context.js";
 import { generateChainId } from "../../infra/secure-random.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -52,6 +54,8 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   runResult: EmbeddedAgentRunResult;
   originRunId: string;
   originTurnId: string;
+  signalOrigin: ContinuationSignalOrigin;
+  diagnosticContext?: DiagnosticContext;
 }): Promise<void> {
   const [
     { resolveLiveContinuationRuntimeConfig },
@@ -370,6 +374,8 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         // would let orphan recovery reap the row after its electing turn settles.
         originRunId: params.originRunId,
         originTurnId: params.originTurnId,
+        signalOrigin: params.signalOrigin,
+        ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
         log: (message) => log.info(message),
       });
       result.cappedCount += unreservedRequestCount;

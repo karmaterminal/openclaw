@@ -178,6 +178,11 @@ async function handleSessionSend(params: {
         thinking: (p as { thinking?: string }).thinking,
         attachments: (p as { attachments?: unknown[] }).attachments,
         timeoutMs: (p as { timeoutMs?: number }).timeoutMs,
+        diagnosticContext: (
+          p as {
+            diagnosticContext?: import("../../infra/diagnostic-context.js").DiagnosticContext;
+          }
+        ).diagnosticContext,
         idempotencyKey,
         ...(params.queueMode ? { queueMode: params.queueMode } : {}),
       },

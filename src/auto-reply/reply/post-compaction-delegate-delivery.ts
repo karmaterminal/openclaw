@@ -23,7 +23,12 @@ import {
 } from "../../config/sessions/session-accessor.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { resolveContinuationTraceparent } from "../../infra/continuation-tracer.js";
+import {
+  emitContinuationDisabledSpan,
+  resolveContinuationTraceparent,
+  setContinuationSpanTerminal,
+  startContinuationDelegateSpan,
+} from "../../infra/continuation-tracer.js";
 import { generateChainId } from "../../infra/secure-random.js";
 import {
   SessionDeliveryDeadLetteredError,
@@ -480,6 +485,15 @@ export async function deliverQueuedPostCompactionDelegate(
   deps: PostCompactionDelegateDeliveryDeps = defaultPostCompactionDelegateDeliveryDeps,
 ): Promise<void> {
   const entryTraceparent = resolveQueuedPostCompactionTraceparent(params.entry);
+  const telemetry = {
+    origin: params.entry.signalOrigin ?? ("post-compaction" as const),
+    kind: "delegate" as const,
+    ...(params.entry.originRunId ? { runId: params.entry.originRunId } : {}),
+    ...(params.entry.originSessionId ? { sessionId: params.entry.originSessionId } : {}),
+    ...(params.entry.diagnosticContext
+      ? { diagnosticContext: params.entry.diagnosticContext }
+      : {}),
+  };
   const cfg = deps.getRuntimeConfig();
   const agentId = deps.resolveSessionAgentId({
     sessionKey: params.entry.sessionKey,
@@ -562,6 +576,17 @@ export async function deliverQueuedPostCompactionDelegate(
       params.entry,
       `Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached.`,
     );
+    emitContinuationDisabledSpan({
+      chainId: sessionEntry?.continuationChainId,
+      chainStepRemaining: Math.max(0, maxCompactionChainLength - currentCompactionChainCount),
+      disabledReason: "cap.cost",
+      signalKind: "bracket-delegate",
+      delegateDelivery: "immediate",
+      delegateMode: "post-compaction",
+      reason: params.entry.task,
+      telemetry,
+      log: deps.log,
+    });
     removeRejectedArtifactPolicy();
     return;
   }
@@ -582,6 +607,17 @@ export async function deliverQueuedPostCompactionDelegate(
       params.entry,
       `Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}).`,
     );
+    emitContinuationDisabledSpan({
+      chainId: sessionEntry?.continuationChainId,
+      chainStepRemaining: Math.max(0, maxCompactionChainLength - currentCompactionChainCount),
+      disabledReason: "policy.cross_session_targeting",
+      signalKind: "bracket-delegate",
+      delegateDelivery: "immediate",
+      delegateMode: "post-compaction",
+      reason: params.entry.task,
+      telemetry,
+      log: deps.log,
+    });
     removeRejectedArtifactPolicy();
     return;
   }
@@ -646,6 +682,27 @@ export async function deliverQueuedPostCompactionDelegate(
       deps.loadSessionEntry({ storePath, sessionKey: params.entry.sessionKey }),
     ownerSessionKey: params.entry.sessionKey,
   });
+  const dispatchSpan = startContinuationDelegateSpan({
+    chainId: compactionChainId,
+    chainStepRemaining: Math.max(0, maxCompactionChainLength - nextCompactionChainCount),
+    delayMs: 0,
+    delivery: "immediate",
+    delegateMode: "post-compaction",
+    reason: params.entry.task,
+    telemetry,
+    traceparent: entryTraceparent,
+    log: deps.log,
+  });
+  let dispatchTerminalRecorded = false;
+  const recordDispatchTerminal = (
+    outcome: Parameters<typeof setContinuationSpanTerminal>[1]["outcome"],
+    reason: Parameters<typeof setContinuationSpanTerminal>[1]["reason"],
+    status: "OK" | "ERROR",
+  ) => {
+    setContinuationSpanTerminal(dispatchSpan, { outcome, reason });
+    dispatchSpan.setStatus(status);
+    dispatchTerminalRecorded = true;
+  };
   let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
   try {
     const spawnFence = deps.revalidatePendingDelegateForSpawn(
@@ -661,6 +718,7 @@ export async function deliverQueuedPostCompactionDelegate(
       deps.log(
         `[continuation:post-compaction-spawn-fenced] reason=${spawnFence.reason} flowId=${params.entry.sourceFlowId ?? "unknown"} entryId=${params.entry.id}`,
       );
+      recordDispatchTerminal("superseded", "dispatch.superseded", "ERROR");
       throw new SessionDeliveryDeadLetteredError(spawnFence.summary);
     }
 
@@ -701,11 +759,15 @@ export async function deliverQueuedPostCompactionDelegate(
         agentAccountId: params.entry.deliveryContext?.accountId,
         agentTo: params.entry.deliveryContext?.to,
         agentThreadId: params.entry.deliveryContext?.threadId,
+        ...(params.entry.diagnosticContext
+          ? { diagnosticContext: params.entry.diagnosticContext }
+          : {}),
         continuationDelegateAdmission: activeDispatch.authority,
       },
     );
     if (spawnResult.status === "cancelled") {
       removeRejectedArtifactPolicy();
+      recordDispatchTerminal("cancelled", "dispatch.cancelled", "ERROR");
       throw new SessionDeliveryDeadLetteredError(
         spawnResult.error ?? "Continuation delegate admission cancelled.",
       );
@@ -722,8 +784,10 @@ export async function deliverQueuedPostCompactionDelegate(
           `Post-compaction delegate spawn forbidden: ${spawnResult.error ?? "delegation was not accepted"}.`,
         );
         removeRejectedArtifactPolicy();
+        recordDispatchTerminal("rejected-policy", "dispatch.rejected", "ERROR");
         return;
       }
+      recordDispatchTerminal("failed", "dispatch.failed", "ERROR");
       throw new Error(`post-compaction delegate spawn ${spawnResult.status}`);
     }
     rollbackAcceptedSpawn = spawnResult.rollbackAccepted;
@@ -769,8 +833,13 @@ export async function deliverQueuedPostCompactionDelegate(
       },
     );
     rollbackAcceptedSpawn = undefined;
+    recordDispatchTerminal("scheduled", "dispatch.accepted", "OK");
   } finally {
+    if (!dispatchTerminalRecorded) {
+      recordDispatchTerminal("finalization-failed", "finalization.failed", "ERROR");
+    }
     await rollbackAcceptedSpawn?.();
     activeDispatch.release();
+    dispatchSpan.end();
   }
 }

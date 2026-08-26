@@ -24,6 +24,7 @@ import { resolveAgentIdFromSessionKey, resolveSessionStorePathCore } from "../co
 import { updateSessionEntry } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveContinuationTraceparent } from "../infra/continuation-tracer.js";
+import type { DiagnosticContext } from "../infra/diagnostic-context.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../infra/system-events.js";
 import { defaultRuntime } from "../runtime.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
@@ -191,6 +192,7 @@ async function scheduleSubagentSelfContinuationWork(params: {
   childRunId: string;
   delayMs?: number;
   traceparent?: string;
+  diagnosticContext?: DiagnosticContext;
 }): Promise<void> {
   try {
     if (hasLiveOrRecentlyDispatchedContinuationWork(params.childSessionKey)) {
@@ -211,7 +213,9 @@ async function scheduleSubagentSelfContinuationWork(params: {
       ],
       config,
       originRunId: params.childRunId,
-      originTurnId: params.childSessionKey,
+      ...(childEntry?.sessionId ? { originTurnId: childEntry.sessionId } : {}),
+      signalOrigin: "bracket",
+      ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
       log: (message) => defaultRuntime.log(message),
     });
     if (result.scheduledCount === 0) {
@@ -261,10 +265,17 @@ export async function coordinateSubagentContinuation(params: {
   silentAnnounce?: boolean;
   wakeOnReturn?: boolean;
   traceparent?: string;
+  diagnosticContext?: DiagnosticContext;
   loadEntry: (
     sessionKey: string,
     options?: { refresh?: boolean },
-  ) => (ContinuationChainSource & { inputTokens?: number; outputTokens?: number }) | undefined;
+  ) =>
+    | (ContinuationChainSource & {
+        inputTokens?: number;
+        outputTokens?: number;
+        sessionId?: string;
+      })
+    | undefined;
   invalidateSessionEntry: (sessionKey: string) => void;
 }): Promise<{
   findings: string;
@@ -319,6 +330,7 @@ export async function coordinateSubagentContinuation(params: {
 
   let bracketReserved = false;
   let delayedBracketDrainArmed = false;
+  const childSessionId = params.loadEntry(params.childSessionKey)?.sessionId;
   const continuationResult = stripContinuationSignal(findings);
   if (continuationResult.signal?.kind === "work") {
     findings = continuationResult.text || "(no output)";
@@ -331,6 +343,7 @@ export async function coordinateSubagentContinuation(params: {
         ? { delayMs: continuationResult.signal.delayMs }
         : {}),
       ...(traceparent ? { traceparent } : {}),
+      ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
     });
   } else if (continuationResult.signal?.kind === "delegate") {
     findings = continuationResult.text || "(no output)";
@@ -353,6 +366,10 @@ export async function coordinateSubagentContinuation(params: {
         ...(internalTraceparent
           ? { traceparent: internalTraceparent, traceparentProvenance: "internal" as const }
           : {}),
+        signalOrigin: "post-compaction",
+        originRunId: params.childRunId,
+        ...(childSessionId ? { originSessionId: childSessionId } : {}),
+        ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
         ...(signal.model ? { model: signal.model } : {}),
       });
       enqueueSystemEvent(
@@ -412,6 +429,7 @@ export async function coordinateSubagentContinuation(params: {
               agentAccountId: params.targetRequesterOrigin?.accountId ?? undefined,
               agentTo: params.targetRequesterOrigin?.to ?? undefined,
               agentThreadId: params.targetRequesterOrigin?.threadId ?? undefined,
+              ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
             },
           );
           if (spawnResult.status === "accepted") {
@@ -450,6 +468,10 @@ export async function coordinateSubagentContinuation(params: {
             : {}),
           ...(signal.fanoutMode ? { fanoutMode: signal.fanoutMode } : {}),
           ...(internalTraceparent ? { traceparent: internalTraceparent } : {}),
+          signalOrigin: "bracket",
+          originRunId: params.childRunId,
+          ...(childSessionId ? { originSessionId: childSessionId } : {}),
+          ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
           ...(signal.model ? { model: signal.model } : {}),
           spawnRequesterSessionKey: params.targetRequesterSessionKey,
           ...(params.targetRequesterOrigin?.channel

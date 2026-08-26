@@ -2,6 +2,7 @@
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import { closedObject } from "./closed-object.js";
+import { DiagnosticContextSchema } from "./diagnostic-context.js";
 import { ErrorShapeSchema } from "./frames.js";
 import { ChatAttachmentsSchema } from "./logs-chat.js";
 import { PluginJsonValueSchema } from "./plugins.js";
@@ -510,6 +511,7 @@ export const SessionsSendParamsSchema = closedObject({
   thinking: Type.Optional(Type.String()),
   attachments: Type.Optional(ChatAttachmentsSchema),
   timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
+  diagnosticContext: Type.Optional(DiagnosticContextSchema),
   idempotencyKey: Type.Optional(NonEmptyString),
 });
 

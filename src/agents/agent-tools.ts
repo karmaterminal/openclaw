@@ -14,6 +14,7 @@ import type { InboundEventKind } from "../channels/inbound-event/kind.js";
 import type { ModelCompatConfig } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GroupToolPolicyConfig } from "../config/types.tools.js";
+import type { DiagnosticContext } from "../infra/diagnostic-context.js";
 import type { DiagnosticTraceContext } from "../infra/diagnostic-trace-context.js";
 import { resolveEventSessionRoutingPolicy } from "../infra/event-session-routing.js";
 import { applyExecPolicyLayer } from "../infra/exec-policy.js";
@@ -210,6 +211,8 @@ type OpenClawCodingToolsOptions = {
   approvalReviewerDeviceId?: string;
   /** Diagnostic trace context for hook/log correlation during this run. */
   trace?: DiagnosticTraceContext;
+  /** Closed public-safe diagnostics metadata inherited from the run. */
+  diagnosticContext?: DiagnosticContext;
   /** What initiated this run (for trigger-specific tool restrictions). */
   trigger?: string;
   /** Stable cron job identifier populated for cron-triggered runs. */
@@ -1025,6 +1028,7 @@ function createOpenClawCodingToolsInternal(options?: OpenClawCodingToolsOptions)
     sessionKey: options?.sessionKey,
     sessionId: options?.sessionId,
     runId: options?.runId,
+    diagnosticContext: options?.diagnosticContext,
     trigger: options?.trigger,
     approvalReviewerDeviceId: options?.approvalReviewerDeviceId,
     channelId: options?.hookChannelId ?? options?.currentChannelId,

@@ -11,6 +11,10 @@ import {
 } from "../../../packages/gateway-protocol/src/index.js";
 import type { QueueMode } from "../../../packages/gateway-protocol/src/schema/logs-chat.js";
 import { isBtwRequestText } from "../../auto-reply/reply/btw-command.js";
+import {
+  normalizeDiagnosticContext,
+  type DiagnosticContext,
+} from "../../infra/diagnostic-context.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
 import { normalizeInputProvenance } from "../../sessions/input-provenance.js";
 import { isBrowserCopilotClient, isOperatorUiClient } from "../../utils/message-channel.js";
@@ -55,6 +59,7 @@ type ChatSendRequestParams = {
   suppressCommandInterpretation?: boolean;
   expectedLeafEntryId?: string | null;
   expectedSessionRoutingContract?: string;
+  diagnosticContext?: DiagnosticContext;
   idempotencyKey: string;
 };
 
@@ -74,6 +79,7 @@ export type NormalizedChatSendRequest = {
   normalizedAttachments: ChatAttachment[];
   rawMessage: string;
   reconnectResumeRequested: boolean;
+  diagnosticContext?: DiagnosticContext;
 };
 
 type NormalizeChatSendRequestResult =
@@ -166,6 +172,7 @@ export function normalizeChatSendRequest(params: {
   const turnKind =
     !suppressCommandInterpretation && isBtwRequestText(inboundMessage) ? "btw" : "main";
   const normalizedAttachments = normalizeRpcAttachmentsToChatAttachments(p.attachments);
+  const diagnosticContext = normalizeDiagnosticContext(p.diagnosticContext);
   const rawMessage = inboundMessage.trim();
   if (!rawMessage && normalizedAttachments.length === 0) {
     return { ok: false, error: "message or attachment required" };
@@ -189,6 +196,7 @@ export function normalizeChatSendRequest(params: {
       normalizedAttachments,
       rawMessage,
       reconnectResumeRequested: controlUiReconnectResume.resumeRequested,
+      ...(diagnosticContext ? { diagnosticContext } : {}),
     },
   };
 }

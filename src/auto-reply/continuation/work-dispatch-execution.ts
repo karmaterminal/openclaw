@@ -375,6 +375,7 @@ async function driveContinuationTurn(
         continuationTrigger: "work-wake",
         abortSignal: signal,
         parentRunId: work.parentRunId,
+        ...(work.diagnosticContext ? { diagnosticContext: work.diagnosticContext } : {}),
         lane: continuationLane,
         typingPolicy: "system_event",
         suppressTyping: true,
@@ -527,6 +528,13 @@ export async function executePendingContinuationWork(
       delayMs: work.delayMs,
       fireDeferredMs,
       reason: work.reason,
+      telemetry: {
+        origin: work.signalOrigin ?? "typed-tool",
+        kind: "work",
+        ...(work.originRunId ? { runId: work.originRunId } : {}),
+        ...(work.originTurnId ? { sessionId: work.originTurnId } : {}),
+        ...(work.diagnosticContext ? { diagnosticContext: work.diagnosticContext } : {}),
+      },
       traceparent: outboundTraceparent,
       log: (message) => log.info(message),
     });

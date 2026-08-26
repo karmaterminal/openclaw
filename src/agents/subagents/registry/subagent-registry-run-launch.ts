@@ -1,9 +1,10 @@
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
-/** Owns subagent registration and queued collector launch transitions. */
 import {
   getAgentEventLifecycleGeneration,
   isAgentEventLifecycleGenerationCurrent,
 } from "../../../infra/agent-events.js";
+/** Owns subagent registration and queued collector launch transitions. */
+import type { DiagnosticContext } from "../../../infra/diagnostic-context.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { bindGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
 import {
@@ -96,6 +97,7 @@ export type RegisterSubagentRunParams = {
   continuationTargetSessionKeys?: string[];
   continuationFanoutMode?: "tree" | "all";
   traceparent?: string;
+  diagnosticContext?: DiagnosticContext;
   gatewayContextResolver?: GatewayContextResolver;
 };
 
@@ -237,6 +239,9 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
       continuationTargetSessionKeys: registerParams.continuationTargetSessionKeys,
       continuationFanoutMode: registerParams.continuationFanoutMode,
       ...(registerParams.traceparent ? { traceparent: registerParams.traceparent } : {}),
+      ...(registerParams.diagnosticContext
+        ? { diagnosticContext: registerParams.diagnosticContext }
+        : {}),
     });
     const previousEntry = this.options.runs.get(runId);
     const attempted = { runId, childSessionKey, generation, createdAt: now };

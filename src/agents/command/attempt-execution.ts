@@ -1291,6 +1291,7 @@ export async function runAgentAttempt(params: {
     preparedRunAdmission: params.preparedRunAdmission,
     sessionId: params.sessionId,
     sessionKey: params.sessionKey,
+    ...(params.opts.diagnosticContext ? { diagnosticContext: params.opts.diagnosticContext } : {}),
     chatType: params.sessionEntry?.chatType,
     contextWindow: params.sessionEntry?.contextWindow,
     sessionTarget: params.sessionTarget,
@@ -1504,6 +1505,10 @@ export async function runAgentAttempt(params: {
           runResult: embeddedRunResult,
           originRunId: params.runId,
           originTurnId: params.sessionId,
+          signalOrigin: extraction.fromBracket ? "bracket" : "typed-tool",
+          ...(params.opts.diagnosticContext
+            ? { diagnosticContext: params.opts.diagnosticContext }
+            : {}),
         });
       }
     } catch (err) {

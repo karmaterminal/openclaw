@@ -359,6 +359,7 @@ export function prepareEmbeddedAttemptToolBase(params: {
           onToolOutcome: attempt.onToolOutcome,
           isTurnTainted: attempt.isTurnTainted,
           allocateToolOutcomeOrdinal: attempt.allocateToolOutcomeOrdinal,
+          diagnosticContext: attempt.diagnosticContext,
           skillsSnapshot: params.skillsSnapshot,
           disableContinuationTools: attempt.disableContinuationTools,
           continueWorkOpts: attempt.continueWorkOpts,

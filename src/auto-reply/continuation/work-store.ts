@@ -7,6 +7,11 @@
  * delivered.
  */
 
+import type {
+  ContinuationOutcome,
+  ContinuationOutcomeReason,
+} from "../../infra/continuation-telemetry.js";
+import { emitContinuationWorkTerminalSpan } from "../../infra/continuation-tracer.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
 import {
@@ -33,6 +38,27 @@ import {
 } from "./work-flow-state.js";
 
 const log = createSubsystemLogger("continuation/work-store");
+
+function emitWorkTerminal(
+  work: PendingContinuationWork,
+  outcome: ContinuationOutcome,
+  reason: ContinuationOutcomeReason,
+): void {
+  emitContinuationWorkTerminalSpan({
+    chainId: work.chainId,
+    outcome,
+    reason,
+    telemetry: {
+      origin: work.signalOrigin ?? "typed-tool",
+      kind: "work",
+      ...(work.originRunId ? { runId: work.originRunId } : {}),
+      ...(work.originTurnId ? { sessionId: work.originTurnId } : {}),
+      ...(work.diagnosticContext ? { diagnosticContext: work.diagnosticContext } : {}),
+    },
+    traceparent: work.traceparent,
+    log: (message) => log.warn(message),
+  });
+}
 
 type PendingWorkDeliveryCommitResult = Readonly<
   | { applied: true; work: PendingContinuationWork }
@@ -67,6 +93,7 @@ export function revalidatePendingWorkForTurn(
 }
 
 function finalizeDeliveredWorkFlow(flow: TaskFlowRecord, state: PendingWorkState): void {
+  const work = workToRuntime(flow, state, "running");
   const now = Date.now();
   const foldedActive = state.disposition === "folded-active";
   const { recoveryDueAt: _recoveryDueAt, ...terminalState } = state;
@@ -94,7 +121,13 @@ function finalizeDeliveredWorkFlow(flow: TaskFlowRecord, state: PendingWorkState
     log.warn(
       `[continuation:work-delivered-finish-not-committed] flowId=${flow.flowId} expectedRevision=${flow.revision}`,
     );
+    return;
   }
+  emitWorkTerminal(
+    work,
+    foldedActive ? "folded" : "delivered",
+    foldedActive ? "flow.folded" : "flow.granted",
+  );
 }
 
 export function enqueuePendingWork(work: PendingContinuationWork): PendingContinuationWork | null {
@@ -290,7 +323,13 @@ export function finalizeAnchorPendingWork(
  */
 function finishContinuationWorkFlow(
   work: PendingContinuationWork,
-  params: { currentStep: string; stateExtra?: Record<string, unknown>; notCommittedTag: string },
+  params: {
+    currentStep: string;
+    stateExtra?: Record<string, unknown>;
+    notCommittedTag: string;
+    outcome: ContinuationOutcome;
+    reason: ContinuationOutcomeReason;
+  },
 ): boolean {
   if (!work.flowId || work.expectedRevision === undefined) {
     return false;
@@ -316,8 +355,10 @@ function finishContinuationWorkFlow(
     log.warn(
       `[continuation:${params.notCommittedTag}] flowId=${work.flowId} expectedRevision=${work.expectedRevision}`,
     );
+    return false;
   }
-  return finished.applied;
+  emitWorkTerminal(work, params.outcome, params.reason);
+  return true;
 }
 
 export function markPendingWorkTurnGranted(work: PendingContinuationWork): boolean {
@@ -327,6 +368,8 @@ export function markPendingWorkTurnGranted(work: PendingContinuationWork): boole
     // the granted record never carries stale retry state.
     stateExtra: { busySkipCount: 0 },
     notCommittedTag: "work-finish-not-committed",
+    outcome: "delivered",
+    reason: "flow.granted",
   });
 }
 
@@ -343,6 +386,8 @@ export function markPendingWorkFolded(
       busySkipCount: 0,
     },
     notCommittedTag: "work-fold-not-committed",
+    outcome: "folded",
+    reason: "flow.folded",
   });
 }
 
@@ -495,13 +540,14 @@ export function reconcileUndeliverableGrantedWork(work: PendingContinuationWork)
     endedAt: now,
   });
   if (finished.applied) {
+    emitWorkTerminal(work, "delivered", "flow.granted");
     return;
   }
   const latest = getTaskFlowById(work.flowId);
   if (!latest || latest.status !== "running" || latest.cancelRequestedAt != null) {
     return;
   }
-  failFlow({
+  const failed = failFlow({
     flowId: latest.flowId,
     expectedRevision: latest.revision,
     currentStep: "Continuation turn executed; delivered-mark lost revision race",
@@ -509,6 +555,9 @@ export function reconcileUndeliverableGrantedWork(work: PendingContinuationWork)
       "Provider turn already ran; parking non-retryable to prevent restart-gap replay.",
     updatedAt: Date.now(),
   });
+  if (failed.applied) {
+    emitWorkTerminal(work, "failed", "flow.failed");
+  }
 }
 
 export function requeuePendingWork(
@@ -591,14 +640,17 @@ export function requeuePendingWork(
 export function markPendingWorkFailed(
   work: PendingContinuationWork,
   summary: string,
-  options: { terminalNoticePending?: "retry-exhausted" } = {},
+  options: {
+    terminalNoticePending?: "retry-exhausted";
+    outcome?: Extract<ContinuationOutcome, "failed" | "cleanup-failed" | "finalization-failed">;
+  } = {},
 ): boolean {
   if (!work.flowId || work.expectedRevision === undefined) {
     return false;
   }
   const current = getTaskFlowById(work.flowId);
   const state = (current ? decodeWorkState(current) : undefined) ?? buildFallbackWorkState(work);
-  return failFlow({
+  const failed = failFlow({
     flowId: work.flowId,
     expectedRevision: work.expectedRevision,
     currentStep: "Continuation work wake failed",
@@ -607,7 +659,11 @@ export function markPendingWorkFailed(
       ? { stateJson: { ...state, terminalNoticePending: options.terminalNoticePending } }
       : {}),
     updatedAt: Date.now(),
-  }).applied;
+  });
+  if (failed.applied) {
+    emitWorkTerminal(work, options.outcome ?? "failed", "flow.failed");
+  }
+  return failed.applied;
 }
 
 /**
@@ -692,6 +748,8 @@ export function markPendingWorkSuperseded(work: PendingContinuationWork, summary
   return finishContinuationWorkFlow(work, {
     currentStep: `superseded: ${summary}`.slice(0, 200),
     notCommittedTag: "work-supersede-not-committed",
+    outcome: "superseded",
+    reason: "flow.superseded",
   });
 }
 
@@ -741,6 +799,8 @@ export function markPendingWorkReaped(work: PendingContinuationWork, summary: st
   return finishContinuationWorkFlow(work, {
     currentStep: `reaped: ${summary}`.slice(0, 200),
     notCommittedTag: "work-reap-not-committed",
+    outcome: "evaporated",
+    reason: "flow.reaped",
   });
 }
 

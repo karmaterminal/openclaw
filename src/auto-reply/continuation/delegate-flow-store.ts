@@ -2,6 +2,8 @@ import { z } from "zod";
 import { validateSubagentAttachments } from "../../agents/subagents/spawn/subagent-attachments.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { CONTINUATION_SIGNAL_ORIGINS } from "../../infra/continuation-telemetry.js";
+import { normalizeDiagnosticContext } from "../../infra/diagnostic-context.js";
 import {
   DIAGNOSTIC_TRACEPARENT_PATTERN,
   normalizeDiagnosticTraceparent,
@@ -146,6 +148,13 @@ const PendingDelegateStateSchema = z
       .optional(),
     traceparent: TraceparentStateSchema,
     traceparentProvenance: z.literal("internal").optional(),
+    signalOrigin: z.enum(CONTINUATION_SIGNAL_ORIGINS).optional(),
+    originRunId: z.string().min(1).optional(),
+    originSessionId: z.string().min(1).optional(),
+    diagnosticContext: z
+      .unknown()
+      .transform((value) => normalizeDiagnosticContext(value))
+      .optional(),
     model: z.string().min(1).optional(),
     releasedAt: z.number().int().nonnegative().optional(),
     childSessionKey: z.string().min(1).optional(),
@@ -307,6 +316,10 @@ function encodeDelegateState(
     ...(delegate.returnOptions ? { returnOptions: delegate.returnOptions } : {}),
     ...(delegate.recipientContext ? { recipientContext: delegate.recipientContext } : {}),
     ...(traceparent ? { traceparent, traceparentProvenance: "internal" as const } : {}),
+    ...(delegate.signalOrigin ? { signalOrigin: delegate.signalOrigin } : {}),
+    ...(delegate.originRunId ? { originRunId: delegate.originRunId } : {}),
+    ...(delegate.originSessionId ? { originSessionId: delegate.originSessionId } : {}),
+    ...(delegate.diagnosticContext ? { diagnosticContext: delegate.diagnosticContext } : {}),
     ...(delegate.model ? { model: delegate.model } : {}),
     ...(delegate.chainTokensFold !== undefined
       ? { chainTokensFold: delegate.chainTokensFold }
@@ -417,6 +430,10 @@ export function decodeDelegateFlow(flow: TaskFlowRecord): PendingContinuationDel
     ...(state.traceparent && state.traceparentProvenance === "internal"
       ? { traceparent: state.traceparent }
       : {}),
+    ...(state.signalOrigin ? { signalOrigin: state.signalOrigin } : {}),
+    ...(state.originRunId ? { originRunId: state.originRunId } : {}),
+    ...(state.originSessionId ? { originSessionId: state.originSessionId } : {}),
+    ...(state.diagnosticContext ? { diagnosticContext: state.diagnosticContext } : {}),
     ...(state.model ? { model: state.model } : {}),
     ...(state.chainTokensFold !== undefined ? { chainTokensFold: state.chainTokensFold } : {}),
     ...(state.persistedChainState ? { persistedChainState: state.persistedChainState } : {}),

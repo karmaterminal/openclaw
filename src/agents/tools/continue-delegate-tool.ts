@@ -22,6 +22,7 @@ import {
 import type { PendingContinuationDelegate } from "../../auto-reply/continuation/types.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import { formatActiveContinuationTraceparent } from "../../infra/continuation-tracer.js";
+import type { DiagnosticContext } from "../../infra/diagnostic-context.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { readSnakeCaseParamRaw } from "../../param-key.js";
 import {
@@ -390,6 +391,9 @@ function prepareAcceptedDelegateArtifactPolicy(params: {
  */
 export function createContinueDelegateTool(opts: {
   agentSessionKey?: string;
+  runId?: string;
+  sessionId?: string;
+  diagnosticContext?: DiagnosticContext;
   prepareArtifactPolicy?: typeof prepareDelegateArtifactPolicy;
 }): AnyAgentTool {
   return {
@@ -546,6 +550,10 @@ export function createContinueDelegateTool(opts: {
           ...targetingFields,
           ...artifactReturnFields,
           ...traceContextFields,
+          signalOrigin: "typed-tool",
+          ...(opts.runId ? { originRunId: opts.runId } : {}),
+          ...(opts.sessionId ? { originSessionId: opts.sessionId } : {}),
+          ...(opts.diagnosticContext ? { diagnosticContext: opts.diagnosticContext } : {}),
           ...modelField,
         };
         const flow = stagePostCompactionTaskFlowDelegate(sessionKey, {
@@ -592,6 +600,10 @@ export function createContinueDelegateTool(opts: {
         ...targetingFields,
         ...artifactReturnFields,
         ...traceContextFields,
+        signalOrigin: "typed-tool",
+        ...(opts.runId ? { originRunId: opts.runId } : {}),
+        ...(opts.sessionId ? { originSessionId: opts.sessionId } : {}),
+        ...(opts.diagnosticContext ? { diagnosticContext: opts.diagnosticContext } : {}),
         ...modelField,
       };
       const flow = enqueuePendingDelegate(sessionKey, delegate);

@@ -1,7 +1,10 @@
 /** Durable same-session continuation_work dispatch. */
 
 import type { SubagentRunLiveness } from "../../agents/subagents/registry/subagent-run-liveness.js";
-import { emitContinuationWorkSpan } from "../../infra/continuation-tracer.js";
+import {
+  emitContinuationDisabledSpan,
+  emitContinuationWorkSpan,
+} from "../../infra/continuation-tracer.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -645,6 +648,24 @@ export async function scheduleContinuationWork(
     params.log?.(
       `[continuation:work-rejected] ${budgetCheck} for ${params.sessionKey}: ${params.chainState.currentChainCount}/${params.config.maxChainLength}`,
     );
+    emitContinuationDisabledSpan({
+      chainId: params.chainState.chainId,
+      chainStepRemaining: Math.max(
+        0,
+        params.config.maxChainLength - params.chainState.currentChainCount,
+      ),
+      disabledReason: budgetCheck === "chain-capped" ? "cap.chain" : "cap.cost",
+      signalKind: params.signalOrigin === "bracket" ? "bracket-work" : "work",
+      reason: params.request.reason,
+      telemetry: {
+        origin: params.signalOrigin ?? "typed-tool",
+        kind: "work",
+        ...(params.originRunId ? { runId: params.originRunId } : {}),
+        ...(params.originTurnId ? { sessionId: params.originTurnId } : {}),
+        ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
+      },
+      log: params.log,
+    });
     return { scheduled: false, capped: true, chainState: params.chainState };
   }
 
@@ -661,6 +682,24 @@ export async function scheduleContinuationWork(
     params.log?.(
       `[continuation:work-rejected] pending-capped for ${params.sessionKey}: ${pending}/${params.config.maxPendingWork}`,
     );
+    emitContinuationDisabledSpan({
+      chainId: params.chainState.chainId,
+      chainStepRemaining: Math.max(
+        0,
+        params.config.maxChainLength - params.chainState.currentChainCount,
+      ),
+      disabledReason: "cap.pending_work",
+      signalKind: params.signalOrigin === "bracket" ? "bracket-work" : "work",
+      reason: params.request.reason,
+      telemetry: {
+        origin: params.signalOrigin ?? "typed-tool",
+        kind: "work",
+        ...(params.originRunId ? { runId: params.originRunId } : {}),
+        ...(params.originTurnId ? { sessionId: params.originTurnId } : {}),
+        ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
+      },
+      log: params.log,
+    });
     return { scheduled: false, capped: true, chainState: params.chainState };
   }
 
@@ -707,6 +746,8 @@ export async function scheduleContinuationWork(
     ...(params.request.traceparent ? { traceparent: params.request.traceparent } : {}),
     ...(params.originRunId ? { originRunId: params.originRunId } : {}),
     ...(params.originTurnId ? { originTurnId: params.originTurnId } : {}),
+    ...(params.signalOrigin ? { signalOrigin: params.signalOrigin } : {}),
+    ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
     ...(electingTurnActive ? { anchorPending: true } : { anchorFinalizedAt: electedAt }),
     ...(idleRetry ? { idleRetry } : {}),
   };
@@ -723,6 +764,13 @@ export async function scheduleContinuationWork(
     chainStepRemaining: params.config.maxChainLength - hop,
     delayMs,
     reason: params.request.reason,
+    telemetry: {
+      origin: params.signalOrigin ?? "typed-tool",
+      kind: "work",
+      ...(params.originRunId ? { runId: params.originRunId } : {}),
+      ...(params.originTurnId ? { sessionId: params.originTurnId } : {}),
+      ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
+    },
     traceparent: params.request.traceparent,
     log: (message) => params.log?.(message),
   });
@@ -786,6 +834,10 @@ export async function scheduleContinuationWorkBatch(
       ...(params.parentRunId !== undefined ? { parentRunId: params.parentRunId } : {}),
       ...(params.originRunId !== undefined ? { originRunId: params.originRunId } : {}),
       ...(params.originTurnId !== undefined ? { originTurnId: params.originTurnId } : {}),
+      ...(params.signalOrigin !== undefined ? { signalOrigin: params.signalOrigin } : {}),
+      ...(params.diagnosticContext !== undefined
+        ? { diagnosticContext: params.diagnosticContext }
+        : {}),
       ...(params.onFlowEnqueued ? { onFlowEnqueued: params.onFlowEnqueued } : {}),
       ...(params.log ? { log: params.log } : {}),
     });

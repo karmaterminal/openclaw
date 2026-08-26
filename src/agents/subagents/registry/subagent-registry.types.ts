@@ -1,5 +1,6 @@
 import type { SubagentEndReason } from "../../../context-engine/types.js";
 /** Persisted execution, completion, delivery, and attachment state for child runs. */
+import type { DiagnosticContext } from "../../../infra/diagnostic-context.js";
 import type { DeliveryContext } from "../../../utils/delivery-context.types.js";
 import type { AgentRunTerminalReplySnapshot } from "../../agent-run-terminal-reply.js";
 import type { AgentRunSessionTarget } from "../../run-session-target.js";
@@ -315,6 +316,8 @@ export type SubagentRunRecord = {
   continuationFanoutMode?: "tree" | "all";
   /** Continuation: producer span carrier available to child completion paths. */
   traceparent?: string;
+  /** Closed public-safe diagnostics metadata inherited by the child run. */
+  diagnosticContext?: DiagnosticContext;
   /** Collector-mode runs remain waitable and never announce to the requester. */
   collect?: boolean;
   /** Stable spawning-session owner for caps, scheduling, and wait authorization. */

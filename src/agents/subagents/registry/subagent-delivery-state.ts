@@ -1,3 +1,4 @@
+import { normalizeDiagnosticContext } from "../../../infra/diagnostic-context.js";
 import { normalizeAgentRunTerminalReplySnapshot } from "../../agent-run-terminal-reply.js";
 import type {
   SubagentCompletionDeliveryState,
@@ -6,6 +7,7 @@ import type {
 } from "./subagent-registry.types.js";
 
 export function normalizeSubagentRunState(entry: SubagentRunRecord): SubagentRunRecord {
+  entry.diagnosticContext = normalizeDiagnosticContext(entry.diagnosticContext);
   const taskRunId = typeof entry.taskRunId === "string" ? entry.taskRunId.trim() : "";
   entry.taskRunId = taskRunId || undefined;
   const requesterTurnRunId =

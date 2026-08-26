@@ -1,5 +1,6 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { z } from "zod";
+import type { DiagnosticContext } from "./diagnostic-context.js";
 
 interface AttachmentRef {
   kind: "blob-sha256";
@@ -10,6 +11,7 @@ interface AttachmentRef {
 export type QueuedSessionDeliveryPayloadMetadata = {
   traceparent?: string;
   traceparentProvenance?: "internal";
+  diagnosticContext?: DiagnosticContext;
   attachments?: AttachmentRef[];
 };
 

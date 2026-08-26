@@ -1,5 +1,6 @@
 import type { AgentInternalEvent } from "../../agents/internal-events.js";
 import type { ContinuationTrigger } from "../../auto-reply/types.js";
+import type { DiagnosticContext } from "../../infra/diagnostic-context.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
 
 export type AgentRunRequest = {
@@ -60,4 +61,5 @@ export type AgentRunRequest = {
   drainsContinuationDelegateQueue?: boolean;
   continuationTrigger?: ContinuationTrigger;
   traceparent?: string;
+  diagnosticContext?: DiagnosticContext;
 };

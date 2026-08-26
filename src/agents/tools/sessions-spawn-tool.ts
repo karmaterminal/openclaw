@@ -11,6 +11,7 @@ import {
 } from "../../channels/thread-bindings-policy.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { DiagnosticContext } from "../../infra/diagnostic-context.js";
 import { resolveSnakeCaseParamKey } from "../../param-key.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import {
@@ -298,6 +299,7 @@ export function createSessionsSpawnTool(
     /** Explicit agent ID override for cron/hook sessions where session key parsing may not work. */
     requesterAgentIdOverride?: string;
     requesterRunId?: string;
+    diagnosticContext?: DiagnosticContext;
     swarmCollector?: boolean;
     /** Backend-derived parent incarnation; never sourced from model arguments. */
     expectedParentSessionId?: string;
@@ -617,6 +619,7 @@ export function createSessionsSpawnTool(
             inheritedToolAllowlist: opts?.inheritedToolAllowlist,
             inheritedToolDenylist: opts?.inheritedToolDenylist,
             requesterRunId: opts?.requesterRunId,
+            ...(opts?.diagnosticContext ? { diagnosticContext: opts.diagnosticContext } : {}),
           },
           parentExecutionIdentityToken,
         ),

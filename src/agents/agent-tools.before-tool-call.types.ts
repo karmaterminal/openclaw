@@ -5,6 +5,7 @@
  */
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ToolLoopDetectionConfig } from "../config/types.tools.js";
+import type { DiagnosticContext } from "../infra/diagnostic-context.js";
 import type { DiagnosticToolTerminalReason } from "../infra/diagnostic-events.js";
 import type { DiagnosticTraceContext } from "../infra/diagnostic-trace-context.js";
 import type {
@@ -40,6 +41,7 @@ export type HookContext = {
   /** Ephemeral session UUID — regenerated on /new and /reset. */
   sessionId?: string;
   runId?: string;
+  diagnosticContext?: DiagnosticContext;
   /** What initiated this run, used to reject approvals on unattended surfaces. */
   trigger?: string;
   /** Device-scoped operator session allowed to review approvals initiated by this run. */

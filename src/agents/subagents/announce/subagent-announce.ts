@@ -1,6 +1,7 @@
 /** Coordinates child output capture, completion routing, and cleanup. */
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../../auto-reply/tokens.js";
+import type { DiagnosticContext } from "../../../infra/diagnostic-context.js";
 import { defaultRuntime } from "../../../runtime.js";
 import { isCronSessionKey } from "../../../sessions/session-key-utils.js";
 import {
@@ -126,6 +127,7 @@ export async function runSubagentAnnounceFlow(params: {
   continuationTargetSessionKeys?: string[];
   continuationFanoutMode?: "tree" | "all";
   traceparent?: string;
+  diagnosticContext?: DiagnosticContext;
   onBeforeDeleteChildSession?: () => boolean;
   resolveGatewayContext?: import("../../../gateway/server-methods/types.js").GatewayContextResolver;
 }): Promise<SubagentAnnounceFlowOutcome> {
@@ -527,6 +529,7 @@ export async function runSubagentAnnounceFlow(params: {
       silentAnnounce: params.silentAnnounce,
       wakeOnReturn: params.wakeOnReturn,
       traceparent: params.traceparent,
+      diagnosticContext: params.diagnosticContext,
       loadEntry: readSessionEntryByKey,
       invalidateSessionEntry,
     });
@@ -601,6 +604,7 @@ export async function runSubagentAnnounceFlow(params: {
       continuationTargetSessionKeys: params.continuationTargetSessionKeys,
       continuationFanoutMode: params.continuationFanoutMode,
       traceparent: params.traceparent,
+      diagnosticContext: params.diagnosticContext,
       // Resolve the reads lazily: building this object eagerly would touch the
       // read-module namespace on every announce, including flows that never
       // reach the continuation-return router.
@@ -682,6 +686,9 @@ export async function runSubagentAnnounceFlow(params: {
       signal: params.signal,
       continuationTriggerOverride: returnRoute.continuationTriggerOverride,
       ...(returnRoute.traceparent ? { traceparent: returnRoute.traceparent } : {}),
+      ...(returnRoute.diagnosticContext
+        ? { diagnosticContext: returnRoute.diagnosticContext }
+        : {}),
       resolveGatewayContext: params.resolveGatewayContext,
     });
     reportDeliveryResult(delivery);

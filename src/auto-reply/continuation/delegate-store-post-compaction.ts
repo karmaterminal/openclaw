@@ -31,6 +31,10 @@ export function stagePostCompactionTaskFlowDelegate(
     ...(delegate.returnOptions ? { returnOptions: delegate.returnOptions } : {}),
     ...(delegate.recipientContext ? { recipientContext: delegate.recipientContext } : {}),
     ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
+    ...(delegate.signalOrigin ? { signalOrigin: delegate.signalOrigin } : {}),
+    ...(delegate.originRunId ? { originRunId: delegate.originRunId } : {}),
+    ...(delegate.originSessionId ? { originSessionId: delegate.originSessionId } : {}),
+    ...(delegate.diagnosticContext ? { diagnosticContext: delegate.diagnosticContext } : {}),
     ...(delegate.model ? { model: delegate.model } : {}),
   };
   return delegateFlowRecords.create({
@@ -273,6 +277,10 @@ export function stagePostCompactionDelegate(
     ...(delegate.traceparent && delegate.traceparentProvenance === "internal"
       ? { traceparent: delegate.traceparent }
       : {}),
+    ...(delegate.signalOrigin ? { signalOrigin: delegate.signalOrigin } : {}),
+    ...(delegate.originRunId ? { originRunId: delegate.originRunId } : {}),
+    ...(delegate.originSessionId ? { originSessionId: delegate.originSessionId } : {}),
+    ...(delegate.diagnosticContext ? { diagnosticContext: delegate.diagnosticContext } : {}),
     ...(delegate.model ? { model: delegate.model } : {}),
   });
 }
@@ -312,6 +320,18 @@ export function consumeStagedPostCompactionDelegates(
     if (claimed.traceparent) {
       delegate.traceparent = claimed.traceparent;
       delegate.traceparentProvenance = "internal";
+    }
+    if (claimed.signalOrigin) {
+      delegate.signalOrigin = claimed.signalOrigin;
+    }
+    if (claimed.originRunId) {
+      delegate.originRunId = claimed.originRunId;
+    }
+    if (claimed.originSessionId) {
+      delegate.originSessionId = claimed.originSessionId;
+    }
+    if (claimed.diagnosticContext) {
+      delegate.diagnosticContext = claimed.diagnosticContext;
     }
     if (claimed.model) {
       delegate.model = claimed.model;

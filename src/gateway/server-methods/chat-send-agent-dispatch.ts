@@ -262,6 +262,7 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
                 changes.forEach((change) => emitSessionsChanged(context, change)),
               replyOptions: {
                 runId: clientRunId,
+                diagnosticContext: request.diagnosticContext,
                 skillWorkshopProposalRevision,
                 ...(cronCreatorAuthority
                   ? { cronCreatorAuthorityCapability: cronCreatorAuthority }

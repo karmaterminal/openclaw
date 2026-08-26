@@ -413,6 +413,7 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
       runId?: string;
       sessionKey?: string;
       sessionId?: string;
+      telemetry?: Extract<DiagnosticEventPayload, { type: "run.started" }>["telemetry"];
       provider?: string;
       model?: string;
       channel?: string;
@@ -431,6 +432,7 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
     if (evt.trigger) {
       spanAttrs["openclaw.trigger"] = evt.trigger;
     }
+    Object.assign(spanAttrs, evt.telemetry);
   };
 
   const paramsSummaryAttrs = (

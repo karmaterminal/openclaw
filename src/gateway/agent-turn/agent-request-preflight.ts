@@ -12,6 +12,10 @@ import { resolveSwarmConfig } from "../../agents/subagents/swarm/swarm-config.js
 import { validateStructuredOutputSchema } from "../../agents/subagents/swarm/swarm-output-schema.js";
 import { resolveSessionStorePathCore } from "../../config/sessions.js";
 import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
+import {
+  normalizeDiagnosticContext,
+  type DiagnosticContext,
+} from "../../infra/diagnostic-context.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import {
   isMainSessionRestartRecoveryInputProvenance,
@@ -55,6 +59,7 @@ export type AgentRequestPreflight = {
   isOneShotModelRun: boolean;
   isRawModelRun: boolean;
   agentDedupeKeys: string[];
+  diagnosticContext?: DiagnosticContext;
 };
 
 export function prepareAgentRequestPreflight(params: {
@@ -244,6 +249,7 @@ export function prepareAgentRequestPreflight(params: {
     return undefined;
   }
   const inputProvenance = normalizeInputProvenance(request.inputProvenance);
+  const diagnosticContext = normalizeDiagnosticContext(request.diagnosticContext);
   const isRestartRecoveryResumeRun =
     canUseInternalRuntimeHandoff && isMainSessionRestartRecoveryInputProvenance(inputProvenance);
   if (
@@ -306,5 +312,6 @@ export function prepareAgentRequestPreflight(params: {
     isOneShotModelRun,
     isRawModelRun,
     agentDedupeKeys,
+    ...(diagnosticContext ? { diagnosticContext } : {}),
   };
 }

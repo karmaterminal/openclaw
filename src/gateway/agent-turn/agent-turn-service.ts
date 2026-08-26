@@ -129,6 +129,7 @@ export function createAgentTurnService({
       isOneShotModelRun,
       isRawModelRun,
       agentDedupeKeys,
+      diagnosticContext,
     } = preflight;
     // Cached replay returns before a new lifecycle generation is observed, matching
     // the idempotency path that preceded this service extraction.
@@ -614,6 +615,7 @@ export function createAgentTurnService({
         imageOrder,
         media,
         inputProvenance,
+        diagnosticContext,
         runId,
         agentDedupeKeys,
         spawnedBy: spawnedByValue,

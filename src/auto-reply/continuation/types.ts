@@ -8,6 +8,8 @@
  * the rest of the continuation surface is built on.
  */
 
+import type { ContinuationSignalOrigin } from "../../infra/continuation-telemetry.js";
+import type { DiagnosticContext } from "../../infra/diagnostic-context.js";
 import type { InlineAttachment, InlineAttachmentMount } from "../../shared/inline-attachments.js";
 import type {
   ContinuationCrossSessionTargetingPolicy,
@@ -84,6 +86,10 @@ export type PendingContinuationDelegate = {
     purpose: string;
   };
   traceparent?: string;
+  signalOrigin?: ContinuationSignalOrigin;
+  originRunId?: string;
+  originSessionId?: string;
+  diagnosticContext?: DiagnosticContext;
   /**
    * Optional provider/model override forwarded to the spawned delegate.
    * Omitted => inherit the dispatching session's model.
@@ -207,6 +213,10 @@ export type StagedPostCompactionDelegate = {
     purpose: string;
   };
   traceparent?: string;
+  signalOrigin?: ContinuationSignalOrigin;
+  originRunId?: string;
+  originSessionId?: string;
+  diagnosticContext?: DiagnosticContext;
   /** Optional provider/model override; omitted => inherit parent. */
   model?: string;
 };
@@ -265,6 +275,8 @@ export type ContinuationWorkScheduleParams = {
   parentRunId?: string;
   originRunId?: string;
   originTurnId?: string;
+  signalOrigin?: ContinuationSignalOrigin;
+  diagnosticContext?: DiagnosticContext;
   onFlowEnqueued?: (flowId: string) => void;
   log?: (message: string) => void;
 };

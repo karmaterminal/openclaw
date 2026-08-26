@@ -1,3 +1,4 @@
+import type { DiagnosticContext } from "../../../infra/diagnostic-context.js";
 import type { FastMode } from "../../../shared/fast-mode.js";
 import type {
   SpawnSubagentContextMode,
@@ -99,6 +100,7 @@ export type SpawnSubagentContext = {
   inheritedToolAllowlist?: string[];
   inheritedToolDenylist?: string[];
   requesterRunId?: string;
+  diagnosticContext?: DiagnosticContext;
   continuationDelegateAdmission?: SpawnSubagentAdmissionAuthority;
 };
 

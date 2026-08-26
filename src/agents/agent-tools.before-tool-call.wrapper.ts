@@ -331,6 +331,7 @@ export function wrapToolWithBeforeToolCallHook(
         ...(ctx?.runId && { runId: ctx.runId }),
         ...(ctx?.sessionKey && { sessionKey: ctx.sessionKey }),
         ...(ctx?.sessionId && { sessionId: ctx.sessionId }),
+        ...(ctx?.diagnosticContext && { diagnosticContext: ctx.diagnosticContext }),
         ...(ctx?.agentId && { agentId: ctx.agentId }),
         ...(trace && { trace }),
         toolName: normalizedToolName,

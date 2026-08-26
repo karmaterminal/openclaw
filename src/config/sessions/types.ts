@@ -14,6 +14,8 @@ import type {
   CronScheduledToolCallerOrigin,
   CronScheduledToolPolicy,
 } from "../../cron/scheduled-tool-policy.js";
+import type { ContinuationSignalOrigin } from "../../infra/continuation-telemetry.js";
+import type { DiagnosticContext } from "../../infra/diagnostic-context.js";
 import type { ChannelRouteRef } from "../../plugin-sdk/channel-route.js";
 import type { InlineAttachment, InlineAttachmentMount } from "../../shared/inline-attachments.js";
 import type { SessionBoardFace } from "../../shared/session-types.js";
@@ -317,6 +319,10 @@ export type SessionPostCompactionDelegate = {
     purpose: string;
   };
   traceparent?: string;
+  signalOrigin?: ContinuationSignalOrigin;
+  originRunId?: string;
+  originSessionId?: string;
+  diagnosticContext?: DiagnosticContext;
   /** Persisted proof that traceparent came from a runtime-owned capture boundary. */
   traceparentProvenance?: "internal";
   /** Optional provider/model override forwarded to the released delegate; omitted => inherit parent. */

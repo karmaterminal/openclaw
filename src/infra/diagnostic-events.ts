@@ -4,6 +4,16 @@ import type { EmbeddedAgentExecutionPhase } from "../agents/embedded-agent-runne
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { TalkBrain, TalkEventType, TalkMode, TalkTransport } from "../talk/talk-events.js";
 import {
+  continuationCorrelationAttributes,
+  type ContinuationCorrelationAttributes,
+} from "./continuation-telemetry.js";
+import {
+  diagnosticContextSpanAttributes,
+  normalizeDiagnosticContext,
+  type DiagnosticContext,
+  type DiagnosticContextSpanAttributes,
+} from "./diagnostic-context.js";
+import {
   resetInternalDiagnosticEventListenerPresence,
   setInternalDiagnosticEventListenerCounts,
   type InternalDiagnosticEventInterest,
@@ -33,10 +43,14 @@ import { isBlockedObjectKey } from "./prototype-keys.js";
 
 export type DiagnosticSessionState = "idle" | "processing" | "waiting";
 
+export type DiagnosticTelemetryAttributes = ContinuationCorrelationAttributes &
+  DiagnosticContextSpanAttributes;
+
 type DiagnosticBaseEvent = {
   ts: number;
   seq: number;
   trace?: DiagnosticTraceContext;
+  telemetry?: DiagnosticTelemetryAttributes;
 };
 
 export type DiagnosticUsageEvent = DiagnosticBaseEvent & {
@@ -547,6 +561,7 @@ type DiagnosticToolExecutionBaseEvent = DiagnosticBaseEvent & {
   runId?: string;
   sessionKey?: string;
   sessionId?: string;
+  diagnosticContext?: DiagnosticContext;
   agentId?: string;
   /** Authoritative lifecycle time from the tool runtime, when it exposes one. */
   sourceTimestampMs?: number;
@@ -632,6 +647,7 @@ type DiagnosticRunBaseEvent = DiagnosticBaseEvent & {
   runId: string;
   sessionKey?: string;
   sessionId?: string;
+  diagnosticContext?: DiagnosticContext;
   provider?: string;
   model?: string;
   trigger?: string;
@@ -660,6 +676,7 @@ type DiagnosticHarnessRunBaseEvent = DiagnosticBaseEvent & {
   runId: string;
   sessionKey?: string;
   sessionId?: string;
+  diagnosticContext?: DiagnosticContext;
   provider?: string;
   model?: string;
   trigger?: string;
@@ -1377,6 +1394,22 @@ function enrichDiagnosticEvent(
       continue;
     }
     enriched[key] = value;
+  }
+  const diagnosticContext = normalizeDiagnosticContext(enriched.diagnosticContext);
+  if (diagnosticContext) {
+    enriched.diagnosticContext = diagnosticContext;
+  } else {
+    delete enriched.diagnosticContext;
+  }
+  const telemetry = {
+    ...continuationCorrelationAttributes({
+      runId: typeof enriched.runId === "string" ? enriched.runId : undefined,
+      sessionId: typeof enriched.sessionId === "string" ? enriched.sessionId : undefined,
+    }),
+    ...diagnosticContextSpanAttributes(diagnosticContext),
+  };
+  if (Object.keys(telemetry).length > 0) {
+    enriched.telemetry = telemetry;
   }
   enriched.trace ??= getActiveDiagnosticTraceContext();
   state.seq += 1;

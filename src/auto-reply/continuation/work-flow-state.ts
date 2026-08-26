@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { CONTINUATION_SIGNAL_ORIGINS } from "../../infra/continuation-telemetry.js";
+import { normalizeDiagnosticContext } from "../../infra/diagnostic-context.js";
 import { normalizeDiagnosticTraceparent } from "../../infra/diagnostic-trace-context-pure.js";
 import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
 
@@ -29,6 +31,11 @@ const PendingWorkStateSchema = z.object({
   anchorFinalizedAt: z.number().int().nonnegative().optional(),
   originRunId: z.string().optional(),
   originTurnId: z.string().optional(),
+  signalOrigin: z.enum(CONTINUATION_SIGNAL_ORIGINS).optional(),
+  diagnosticContext: z
+    .unknown()
+    .transform((value) => normalizeDiagnosticContext(value))
+    .optional(),
   releasedAt: z.number().int().nonnegative().optional(),
   deliveredAt: z.number().int().nonnegative().optional(),
   turnGrantedAt: z.number().int().nonnegative().optional(),
@@ -92,6 +99,8 @@ export type PendingContinuationWork = {
   anchorFinalizedAt?: number;
   originRunId?: string;
   originTurnId?: string;
+  signalOrigin?: (typeof CONTINUATION_SIGNAL_ORIGINS)[number];
+  diagnosticContext?: ReturnType<typeof normalizeDiagnosticContext>;
   deliveredAt?: number;
   foldedAt?: number;
   overdueByMs?: number;
@@ -152,6 +161,8 @@ export function encodeWorkState(work: PendingContinuationWork): PendingWorkState
     ...(traceparent ? { traceparent, traceparentProvenance: "internal" as const } : {}),
     ...(work.originRunId ? { originRunId: work.originRunId } : {}),
     ...(work.originTurnId ? { originTurnId: work.originTurnId } : {}),
+    ...(work.signalOrigin ? { signalOrigin: work.signalOrigin } : {}),
+    ...(work.diagnosticContext ? { diagnosticContext: work.diagnosticContext } : {}),
     // a continue_work captured during an active turn parks on the
     // end-of-turn lifecycle event from the moment it is enqueued, so the marker
     // must survive the durable write (not just live on the runtime object).
@@ -178,6 +189,8 @@ export function buildFallbackWorkState(work: PendingContinuationWork): PendingWo
     ...(work.anchorFinalizedAt !== undefined ? { anchorFinalizedAt: work.anchorFinalizedAt } : {}),
     ...(work.originRunId ? { originRunId: work.originRunId } : {}),
     ...(work.originTurnId ? { originTurnId: work.originTurnId } : {}),
+    ...(work.signalOrigin ? { signalOrigin: work.signalOrigin } : {}),
+    ...(work.diagnosticContext ? { diagnosticContext: work.diagnosticContext } : {}),
   };
 }
 
@@ -215,6 +228,8 @@ export function workToRuntime(
       : {}),
     ...(state.originRunId ? { originRunId: state.originRunId } : {}),
     ...(state.originTurnId ? { originTurnId: state.originTurnId } : {}),
+    ...(state.signalOrigin ? { signalOrigin: state.signalOrigin } : {}),
+    ...(state.diagnosticContext ? { diagnosticContext: state.diagnosticContext } : {}),
     ...(state.deliveredAt !== undefined ? { deliveredAt: state.deliveredAt } : {}),
     ...(state.foldedAt !== undefined ? { foldedAt: state.foldedAt } : {}),
     ...(state.overdueByMs !== undefined ? { overdueByMs: state.overdueByMs } : {}),

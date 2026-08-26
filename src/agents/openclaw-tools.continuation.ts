@@ -14,6 +14,7 @@ type OpenClawContinuationToolOptions = Pick<
   OpenClawToolsOptions,
   | "drainsContinuationDelegateQueue"
   | "disableContinuationTools"
+  | "diagnosticContext"
   | "continueWorkOpts"
   | "requestCompactionOpts"
 >;
@@ -61,7 +62,14 @@ export function createOpenClawContinuationTools(
     );
   }
   if (options.drainsContinuationDelegateQueue !== false) {
-    tools.push(createContinueDelegateTool({ agentSessionKey: liveSessionKey }));
+    tools.push(
+      createContinueDelegateTool({
+        agentSessionKey: liveSessionKey,
+        runId: options.runId,
+        sessionId: options.sessionId,
+        diagnosticContext: options.diagnosticContext,
+      }),
+    );
   }
   if (options.requestCompactionOpts) {
     tools.push(

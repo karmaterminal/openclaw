@@ -8,6 +8,7 @@ import type { PromptMode } from "../../agents/system-prompt.types.js";
 import type { SourceReplyDeliveryMode } from "../../auto-reply/get-reply-options.types.js";
 import type { ContinuationTrigger } from "../../auto-reply/types.js";
 import type { ChannelOutboundTargetMode } from "../../channels/plugins/types.public.js";
+import type { DiagnosticContext } from "../../infra/diagnostic-context.js";
 import type { MediaFact } from "../../media/media-facts.js";
 import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
 import type { PluginHookChannelContext } from "../../plugins/hook-types.js";
@@ -147,6 +148,8 @@ export type AgentCommandOpts = {
   drainsContinuationDelegateQueue?: boolean;
   /** Inherited continuation trace context for this run. */
   traceparent?: string;
+  /** Closed public-safe diagnostics metadata propagated with this run. */
+  diagnosticContext?: DiagnosticContext;
   /** Immutable gateway lifecycle ownership captured when this run was admitted. */
   lifecycleGeneration?: string;
   /** Called once when the selected runtime actually admits the prompt for execution. */

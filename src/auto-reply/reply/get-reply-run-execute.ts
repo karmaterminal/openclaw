@@ -531,6 +531,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       skipProviderRuntimeHints: useFastReplyRuntime,
       allowEmptyAssistantReplyAsSilent,
       terminalReplyExpectation,
+      ...(opts?.diagnosticContext ? { diagnosticContext: opts.diagnosticContext } : {}),
       suppressTranscriptOnlyAssistantPersistence: isRoomEvent,
       ...(opts?.skillWorkshopProposalRevision
         ? {

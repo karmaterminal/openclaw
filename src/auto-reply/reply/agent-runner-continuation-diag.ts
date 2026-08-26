@@ -1,3 +1,4 @@
+import type { ContinuationTelemetryContext } from "../../infra/continuation-telemetry.js";
 import { emitContinuationDisabledSpan } from "../../infra/continuation-tracer.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -16,6 +17,7 @@ export function emitBracketContinuationRejected(params: {
   disabledReason: "cap.chain" | "cap.cost";
   logMessage: string;
   systemEventMessage: string;
+  telemetry: ContinuationTelemetryContext;
 }): void {
   const {
     sessionKey,
@@ -49,6 +51,7 @@ export function emitBracketContinuationRejected(params: {
     signalKind: isDelegate ? "bracket-delegate" : "bracket-work",
     delegateDelivery,
     delegateMode,
+    telemetry: params.telemetry,
     log: defaultRuntime.log,
   });
 }

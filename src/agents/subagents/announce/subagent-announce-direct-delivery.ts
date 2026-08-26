@@ -4,6 +4,7 @@
 import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
 import type { ContinuationTrigger } from "../../../auto-reply/get-reply-options.types.js";
 import { completionRequiresMessageToolDelivery } from "../../../auto-reply/reply/completion-delivery-policy.js";
+import type { DiagnosticContext } from "../../../infra/diagnostic-context.js";
 import { stringifyRouteThreadId } from "../../../plugin-sdk/channel-route.js";
 import { defaultRuntime } from "../../../runtime.js";
 import {
@@ -109,6 +110,7 @@ export async function sendSubagentAnnounceDirectly(params: {
   requesterIsSubagent: boolean;
   continuationTriggerOverride?: ContinuationTrigger;
   traceparent?: string;
+  diagnosticContext?: DiagnosticContext;
   onDeliveryResult?: (delivery: SubagentAnnounceDeliveryResult) => void;
   signal?: AbortSignal;
   resolveGatewayContext?: import("../../../gateway/server-methods/types.js").GatewayContextResolver;
@@ -347,6 +349,7 @@ export async function sendSubagentAnnounceDirectly(params: {
         : {}),
       continuationTrigger: params.continuationTriggerOverride,
       ...(params.traceparent ? { traceparent: params.traceparent } : {}),
+      ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
       idempotencyKey: params.directIdempotencyKey,
     };
     let directAnnounceResponse: unknown;

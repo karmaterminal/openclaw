@@ -20,10 +20,12 @@ import {
   type InlineAttachment,
   type InlineAttachmentMount,
 } from "../shared/inline-attachments.js";
+import { CONTINUATION_SIGNAL_ORIGINS } from "./continuation-telemetry.js";
 import type {
   DeliveryQueueCompletionRetention,
   DeliveryQueueEntryLoadResult,
 } from "./delivery-queue-sqlite.js";
+import { normalizeDiagnosticContext } from "./diagnostic-context.js";
 import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
 import {
   hasOnlyGenericAttachmentRefs,
@@ -154,6 +156,9 @@ type QueuedPostCompactionDelegatePayload = {
     purpose: string;
   };
   model?: string;
+  signalOrigin?: (typeof CONTINUATION_SIGNAL_ORIGINS)[number];
+  originRunId?: string;
+  originSessionId?: string;
   attachments?: InlineAttachment[];
   attachAs?: InlineAttachmentMount;
   sourceFlowId?: string;
@@ -286,6 +291,10 @@ const QueuedInputProvenanceSchema = z
 const QueuedGenericCommonSchema = {
   traceparent: z.string().optional(),
   traceparentProvenance: z.literal("internal").optional(),
+  diagnosticContext: z
+    .unknown()
+    .transform((value) => normalizeDiagnosticContext(value))
+    .optional(),
   attachments: z.array(z.unknown()).optional(),
   maxRetries: z.number().int().nonnegative().optional(),
   completionRetention: z.literal("permanent").optional(),
@@ -445,6 +454,9 @@ const QueuedPostCompactionDelegateSchema = z
       .strict()
       .optional(),
     model: z.string().trim().min(1).optional(),
+    signalOrigin: z.enum(CONTINUATION_SIGNAL_ORIGINS).optional(),
+    originRunId: z.string().trim().min(1).optional(),
+    originSessionId: z.string().trim().min(1).optional(),
     attachments: z
       .array(QueuedInlineAttachmentSchema)
       .max(50)
@@ -465,6 +477,10 @@ const QueuedPostCompactionDelegateSchema = z
     idempotencyKey: z.string().optional(),
     traceparent: z.string().optional(),
     traceparentProvenance: z.literal("internal").optional(),
+    diagnosticContext: z
+      .unknown()
+      .transform((value) => normalizeDiagnosticContext(value))
+      .optional(),
     maxRetries: z.number().int().nonnegative().optional(),
     completionRetention: z.literal("permanent").optional(),
     id: z.string().min(1),
@@ -669,6 +685,12 @@ export function normalizeQueuedSessionDeliveryTraceparent(
       ? normalizeDiagnosticTraceparent(payload.traceparent)
       : undefined;
   const normalizedPayload: QueuedSessionDeliveryPayload = { ...payload };
+  const diagnosticContext = normalizeDiagnosticContext(payload.diagnosticContext);
+  if (diagnosticContext) {
+    normalizedPayload.diagnosticContext = diagnosticContext;
+  } else {
+    delete normalizedPayload.diagnosticContext;
+  }
   if (normalizedTraceparent) {
     normalizedPayload.traceparent = normalizedTraceparent;
     if (payload.kind === "postCompactionDelegate") {

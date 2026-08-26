@@ -24,6 +24,7 @@ import {
 } from "../../auto-reply/reply/source-turn-id.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { DiagnosticContext } from "../../infra/diagnostic-context.js";
 import { formatErrorMessageWithCode } from "../../infra/errors.js";
 import type { MediaFact } from "../../media/media-facts.js";
 import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
@@ -88,6 +89,7 @@ export function startAgentRunExecution(params: {
   imageOrder: PromptImageOrderEntry[];
   media: MediaFact[];
   inputProvenance?: InputProvenance;
+  diagnosticContext?: DiagnosticContext;
   runId: string;
   agentDedupeKeys: readonly string[];
   spawnedBy?: string;
@@ -396,6 +398,7 @@ export function startAgentRunExecution(params: {
               suppressPromptPersistence: prepared.userTurn.suppressPromptPersistence,
               userTurnTranscriptRecorder,
               cleanupBundleMcpOnRunEnd: params.request.cleanupBundleMcpOnRunEnd,
+              diagnosticContext: params.diagnosticContext,
               // Raw RPC callers cannot opt into continuation queue ownership or
               // classify an ordinary run as a continuation-triggered handoff.
               drainsContinuationDelegateQueue: trustedContinuationRuntimeHandoff

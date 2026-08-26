@@ -7,6 +7,16 @@
 import { createHash } from "node:crypto";
 import { redactToolPayloadText } from "../logging/redact.js";
 import {
+  continuationProvenanceAttributes,
+  continuationTerminalAttributes,
+  type ContinuationFinalizationStatus,
+  type ContinuationOutcome,
+  type ContinuationOutcomeReason,
+  type ContinuationPrimitive,
+  type ContinuationSignalOrigin,
+  type ContinuationTelemetryContext,
+} from "./continuation-telemetry.js";
+import {
   formatDiagnosticTraceparent,
   getActiveDiagnosticTraceContext,
   normalizeDiagnosticTraceparent,
@@ -52,12 +62,12 @@ export type ContinuationSignalKind = (typeof CONTINUATION_SIGNAL_KINDS)[number];
 
 /**
  * Subset of {@link ContinuationSignalKind} that may appear on `continuation.disabled` spans.
- * Excludes `"work"` and `"compaction-release"` because those signal families
- * are never rejected by the disabled-span helper.
+ * Excludes `"compaction-release"` because release events are never rejected by
+ * the disabled-span helper.
  */
 export type ContinuationDisabledSignalKind = Extract<
   ContinuationSignalKind,
-  "bracket-work" | "bracket-delegate" | "tool-delegate"
+  "work" | "bracket-work" | "bracket-delegate" | "tool-delegate"
 >;
 
 /**
@@ -131,6 +141,30 @@ export type ContinuationSpanAttrs = {
    * @see ContinuationDisabledSignalKind — narrowed subset for disabled spans
    */
   readonly "signal.kind"?: ContinuationSignalKind;
+  /** Accepted-entry origin on continuation and finalization spans. */
+  readonly "continuation.signal.origin"?: ContinuationSignalOrigin;
+  /** Continuation primitive independent of its input origin. */
+  readonly "continuation.signal.kind"?: ContinuationPrimitive;
+  /** Public-safe, domain-separated correlation with the originating agent run. */
+  readonly "continuation.origin.run.fingerprint"?: string;
+  /** Public-safe, domain-separated correlation with the originating session. */
+  readonly "continuation.session.fingerprint"?: string;
+  /** Public-safe, domain-separated correlation with the originating user-visible turn. */
+  readonly "continuation.turn.fingerprint"?: string;
+  /** Canonical terminal outcome shared by continuation and finalization spans. */
+  readonly "continuation.outcome"?: ContinuationOutcome;
+  /** Closed reason enum bound to continuation.outcome. */
+  readonly "continuation.outcome.reason"?: ContinuationOutcomeReason;
+  /** Payload byte count only; payload content is never exported. */
+  readonly "continuation.payload.bytes"?: number;
+  /** Canonical finalization status. */
+  readonly "continuation.finalization.status"?: ContinuationFinalizationStatus;
+  /** Validated proof-run identity; raw model or session data is never accepted here. */
+  readonly "openclaw.proof.run_id"?: string;
+  readonly "openclaw.proof.row_id"?: string;
+  readonly "openclaw.proof.candidate_sha"?: string;
+  readonly "openclaw.proof.harness_ref"?: string;
+  readonly "openclaw.proof.synthetic"?: boolean;
   /**
    * Only set on `continuation.delegate.fire` spans.
    * Wall-clock ms between `setTimeout` arming (immediately before the
@@ -215,12 +249,14 @@ export type ContinuationSpanAttrs = {
 export type ContinuationSpanName =
   | "continuation.work"
   | "continuation.work.fire"
+  | "continuation.work.terminal"
   | "continuation.delegate.dispatch"
   | "continuation.delegate.fire"
   | "continuation.queue.enqueue"
   | "continuation.queue.fanout"
   | "continuation.queue.drain"
   | "continuation.compaction.released"
+  | "continuation.finalization"
   | "continuation.disabled"
   | "heartbeat";
 
@@ -519,6 +555,7 @@ type ContinuationDelegateSpanArgs = {
   delivery: "immediate" | "timer";
   delegateMode?: string | undefined;
   reason?: string | undefined;
+  telemetry?: ContinuationTelemetryContext | undefined;
   traceparent?: string | undefined;
   log?: (message: string) => void;
 };
@@ -556,7 +593,20 @@ function continuationDelegateSpanAttributes(
     ...(args.chainId !== undefined && { "chain.id": args.chainId }),
     ...(args.delegateMode !== undefined && { "delegate.mode": args.delegateMode }),
     ...continuationReasonAttributes(args.reason),
+    ...(args.telemetry ? continuationProvenanceAttributes(args.telemetry) : {}),
   };
+}
+
+export function setContinuationSpanTerminal(
+  span: Span,
+  terminal: {
+    outcome: ContinuationOutcome;
+    reason?: ContinuationOutcomeReason;
+    payloadBytes?: number;
+    finalizationStatus?: ContinuationFinalizationStatus;
+  },
+): void {
+  span.setAttributes(continuationTerminalAttributes(terminal));
 }
 
 export function startContinuationDelegateSpan(args: ContinuationDelegateSpanArgs): Span {
@@ -593,6 +643,7 @@ export function emitContinuationWorkSpan(args: {
   chainStepRemaining: number;
   delayMs: number;
   reason?: string | undefined;
+  telemetry?: ContinuationTelemetryContext | undefined;
   traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
@@ -602,6 +653,11 @@ export function emitContinuationWorkSpan(args: {
       "chain.step.remaining": Math.max(0, args.chainStepRemaining),
       ...(args.chainId !== undefined && { "chain.id": args.chainId }),
       ...continuationReasonAttributes(args.reason),
+      ...(args.telemetry ? continuationProvenanceAttributes(args.telemetry) : {}),
+      ...continuationTerminalAttributes({
+        outcome: "scheduled",
+        reason: "dispatch.accepted",
+      }),
     };
     const span = getContinuationTracer().startSpan("continuation.work", {
       attributes: attrs,
@@ -649,11 +705,16 @@ export function emitContinuationDelegateSpan(args: {
   delivery: "immediate" | "timer";
   delegateMode?: string | undefined;
   reason?: string | undefined;
+  telemetry?: ContinuationTelemetryContext | undefined;
   traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
   try {
     const span = startContinuationDelegateSpan(args);
+    setContinuationSpanTerminal(span, {
+      outcome: "scheduled",
+      reason: "dispatch.accepted",
+    });
     span.setStatus("OK");
     span.end();
   } catch (err) {
@@ -697,11 +758,13 @@ export function emitContinuationDisabledSpan(args: {
     | "cap.chain"
     | "cap.cost"
     | "cap.delegates_per_turn"
+    | "cap.pending_work"
     | "policy.cross_session_targeting";
   signalKind: ContinuationDisabledSignalKind;
   delegateDelivery?: "immediate" | "timer" | undefined;
   delegateMode?: string | undefined;
   reason?: string | undefined;
+  telemetry?: ContinuationTelemetryContext | undefined;
   log?: (message: string) => void;
 }): void {
   try {
@@ -716,6 +779,11 @@ export function emitContinuationDisabledSpan(args: {
       }),
       ...(args.delegateMode !== undefined && { "delegate.mode": args.delegateMode }),
       ...continuationReasonAttributes(args.reason),
+      ...(args.telemetry ? continuationProvenanceAttributes(args.telemetry) : {}),
+      ...continuationTerminalAttributes({
+        outcome: args.disabledReason.startsWith("cap.") ? "rejected-cap" : "rejected-policy",
+        reason: args.disabledReason,
+      }),
     };
     const span = getContinuationTracer().startSpan("continuation.disabled", {
       attributes: attrs,
@@ -777,6 +845,7 @@ export function emitContinuationDelegateFireSpan(args: {
   delayMs: number;
   fireDeferredMs: number;
   reason?: string | undefined;
+  telemetry?: ContinuationTelemetryContext | undefined;
   traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
@@ -800,6 +869,8 @@ export function emitContinuationDelegateFireSpan(args: {
       "delegate.delivery": "timer",
       "delegate.mode": args.delegateMode,
       ...continuationReasonAttributes(args.reason),
+      ...(args.telemetry ? continuationProvenanceAttributes(args.telemetry) : {}),
+      ...continuationTerminalAttributes({ outcome: "fired" }),
     };
     const span = getContinuationTracer().startSpan("continuation.delegate.fire", {
       attributes: attrs,
@@ -848,6 +919,7 @@ export function emitContinuationWorkFireSpan(args: {
   delayMs: number;
   fireDeferredMs: number;
   reason?: string | undefined;
+  telemetry?: ContinuationTelemetryContext | undefined;
   traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
@@ -869,6 +941,8 @@ export function emitContinuationWorkFireSpan(args: {
       "delay.ms": Math.round(args.delayMs),
       "fire.deferred_ms": Math.max(0, Math.floor(args.fireDeferredMs)),
       ...continuationReasonAttributes(args.reason),
+      ...(args.telemetry ? continuationProvenanceAttributes(args.telemetry) : {}),
+      ...continuationTerminalAttributes({ outcome: "fired" }),
     };
     const span = getContinuationTracer().startSpan("continuation.work.fire", {
       attributes: attrs,
@@ -901,6 +975,7 @@ export function emitContinuationWorkFireSpan(args: {
 export function emitContinuationQueueDrainSpan(args: {
   drainedCount: number;
   drainedContinuationCount: number;
+  telemetry?: ContinuationTelemetryContext | undefined;
   traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
@@ -917,6 +992,13 @@ export function emitContinuationQueueDrainSpan(args: {
     const attrs: ContinuationSpanAttrs = {
       "queue.drained_count": drainedCount,
       "queue.drained_continuation_count": drainedContinuationCount,
+      ...continuationProvenanceAttributes(
+        args.telemetry ?? { origin: "queue-drain", kind: "work" },
+      ),
+      ...continuationTerminalAttributes({
+        outcome: drainedCount === 0 ? "no-op" : "delivered",
+        reason: drainedCount === 0 ? "queue.empty" : "queue.drained",
+      }),
     };
     const span = getContinuationTracer().startSpan("continuation.queue.drain", {
       attributes: attrs,
@@ -934,6 +1016,7 @@ export function emitContinuationFanoutSpan(args: {
   targetSessionKeys: readonly string[];
   deliveredCount: number;
   chainStepRemaining?: number | undefined;
+  telemetry?: ContinuationTelemetryContext | undefined;
   traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
@@ -958,6 +1041,13 @@ export function emitContinuationFanoutSpan(args: {
       ...(args.chainStepRemaining !== undefined
         ? { "chain.step.remaining": Math.max(0, args.chainStepRemaining) }
         : {}),
+      ...continuationProvenanceAttributes(
+        args.telemetry ?? { origin: "queue-drain", kind: "delegate" },
+      ),
+      ...continuationTerminalAttributes({
+        outcome: deliveredCount === 0 ? "no-op" : "delivered",
+        reason: deliveredCount === 0 ? "queue.empty" : "queue.drained",
+      }),
     };
     const span = getContinuationTracer().startSpan("continuation.queue.fanout", {
       attributes: attrs,
@@ -988,6 +1078,7 @@ export function emitContinuationFanoutSpan(args: {
 export function emitContinuationCompactionReleasedSpan(args: {
   releasedCount: number;
   compactionId?: number;
+  telemetry?: ContinuationTelemetryContext | undefined;
   traceparent?: string | undefined;
   log?: (message: string) => void;
 }): void {
@@ -1014,6 +1105,12 @@ export function emitContinuationCompactionReleasedSpan(args: {
       "signal.kind": "compaction-release",
       "compaction.released": releasedCount,
       ...(compactionIdValid ? { "compaction.id": compactionId } : {}),
+      ...continuationProvenanceAttributes(
+        args.telemetry ?? { origin: "post-compaction", kind: "compaction" },
+      ),
+      ...continuationTerminalAttributes({
+        outcome: releasedCount === 0 ? "no-op" : "fired",
+      }),
     };
 
     const span = getContinuationTracer().startSpan("continuation.compaction.released", {
@@ -1024,5 +1121,67 @@ export function emitContinuationCompactionReleasedSpan(args: {
     span.end();
   } catch (err) {
     args.log?.(`Failed to emit continuation.compaction.released span: ${String(err)}`);
+  }
+}
+
+export function emitContinuationWorkTerminalSpan(args: {
+  chainId?: string | undefined;
+  telemetry?: ContinuationTelemetryContext | undefined;
+  outcome: ContinuationOutcome;
+  reason?: ContinuationOutcomeReason;
+  traceparent?: string | undefined;
+  log?: (message: string) => void;
+}): void {
+  try {
+    const attrs: ContinuationSpanAttrs = {
+      ...(args.chainId ? { "chain.id": args.chainId } : {}),
+      ...(args.telemetry ? continuationProvenanceAttributes(args.telemetry) : {}),
+      ...continuationTerminalAttributes({
+        outcome: args.outcome,
+        reason: args.reason,
+      }),
+    };
+    const span = getContinuationTracer().startSpan("continuation.work.terminal", {
+      attributes: attrs,
+      ...(args.traceparent ? { traceparent: args.traceparent } : {}),
+    });
+    const failed =
+      args.outcome === "failed" ||
+      args.outcome === "cleanup-failed" ||
+      args.outcome === "finalization-failed";
+    span.setStatus(failed ? "ERROR" : "OK");
+    span.end();
+  } catch (err) {
+    args.log?.(`Failed to emit continuation.work.terminal span: ${String(err)}`);
+  }
+}
+
+export function emitContinuationFinalizationSpan(args: {
+  telemetry?: ContinuationTelemetryContext | undefined;
+  outcome: ContinuationOutcome;
+  reason: ContinuationOutcomeReason;
+  status: ContinuationFinalizationStatus;
+  payloadBytes?: number | undefined;
+  traceparent?: string | undefined;
+  log?: (message: string) => void;
+}): void {
+  try {
+    const attrs: ContinuationSpanAttrs = {
+      ...(args.telemetry ? continuationProvenanceAttributes(args.telemetry) : {}),
+      ...continuationTerminalAttributes({
+        outcome: args.outcome,
+        reason: args.reason,
+        payloadBytes: args.payloadBytes,
+        finalizationStatus: args.status,
+      }),
+    };
+    const span = getContinuationTracer().startSpan("continuation.finalization", {
+      attributes: attrs,
+      ...(args.traceparent ? { traceparent: args.traceparent } : {}),
+    });
+    span.setStatus(args.status === "failed" ? "ERROR" : "OK");
+    span.end();
+  } catch (err) {
+    args.log?.(`Failed to emit continuation.finalization span: ${String(err)}`);
   }
 }

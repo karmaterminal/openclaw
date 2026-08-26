@@ -245,6 +245,9 @@ export async function runEmbeddedFallbackCandidate(params: {
         groupSpace: normalizeOptionalString(turn.sessionCtx.GroupSpace),
         ...senderContext,
         ...runBaseParams,
+        ...(turn.followupRun.run.diagnosticContext
+          ? { diagnosticContext: turn.followupRun.run.diagnosticContext }
+          : {}),
         contextWindow: turn.getActiveSessionEntry()?.contextWindow,
         lane: params.runLane,
         provider: embeddedRunProvider,

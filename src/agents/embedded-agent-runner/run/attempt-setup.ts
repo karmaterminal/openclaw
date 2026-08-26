@@ -599,6 +599,7 @@ export function startEmbeddedAttemptDiagnostics(params: EmbeddedRunAttemptParams
     runId: params.runId,
     ...(params.sessionKey && { sessionKey: params.sessionKey }),
     ...(params.sessionId && { sessionId: params.sessionId }),
+    ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
     provider: params.provider,
     model: params.modelId,
     trigger: params.trigger,

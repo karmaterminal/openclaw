@@ -550,6 +550,7 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
             config: resolvedConfig,
             requesterAgentIdOverride: sessionAgentId,
             requesterRunId: options?.runId,
+            diagnosticContext: options?.diagnosticContext,
             swarmCollector: options?.swarmCollector,
             workspaceDir: spawnWorkspaceDir,
             inheritedToolAllowlist: options?.inheritedToolAllowlist,

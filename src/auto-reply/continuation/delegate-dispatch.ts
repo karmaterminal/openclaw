@@ -22,10 +22,12 @@ import { isSpawnSubagentAdmissionCancelledError } from "../../agents/subagents/s
 import { spawnSubagentDirect } from "../../agents/subagents/spawn/subagent-spawn.js";
 import type { SpawnSubagentContext } from "../../agents/subagents/spawn/subagent-spawn.js";
 import { getRuntimeConfig } from "../../config/config.js";
+import type { ContinuationTelemetryContext } from "../../infra/continuation-telemetry.js";
 import {
   emitContinuationDelegateFireSpan,
   emitContinuationDisabledSpan,
   resolveContinuationTraceparent,
+  setContinuationSpanTerminal,
   startContinuationDelegateSpan,
 } from "../../infra/continuation-tracer.js";
 import { generateChainId } from "../../infra/secure-random.js";
@@ -67,6 +69,24 @@ import { hasCrossSessionDelegateTargeting } from "./targeting-pure.js";
 import type { PendingContinuationDelegate } from "./types.js";
 
 export { resetDelegateDispatchHedgesForTests } from "./delegate-dispatch-hedge.js";
+
+function delegateTelemetry(delegate: PendingContinuationDelegate): ContinuationTelemetryContext {
+  return {
+    origin:
+      delegate.signalOrigin ??
+      (delegate.mode === "post-compaction" ? "post-compaction" : "typed-tool"),
+    kind: "delegate",
+    ...(delegate.originRunId ? { runId: delegate.originRunId } : {}),
+    ...(delegate.originSessionId ? { sessionId: delegate.originSessionId } : {}),
+    ...(delegate.diagnosticContext ? { diagnosticContext: delegate.diagnosticContext } : {}),
+  };
+}
+
+function delegateDisabledSignalKind(
+  delegate: PendingContinuationDelegate,
+): "bracket-delegate" | "tool-delegate" {
+  return delegate.signalOrigin === "bracket" ? "bracket-delegate" : "tool-delegate";
+}
 
 const log = createSubsystemLogger("continuation/delegate-dispatch");
 
@@ -306,6 +326,17 @@ export async function dispatchToolDelegates(
       },
     );
     terminalizeRejectedDelegate(failedDelegate, summary);
+    emitContinuationDisabledSpan({
+      chainId: currentChainId,
+      chainStepRemaining: Math.max(0, maxChainLength - currentChainCount),
+      disabledReason: "cap.delegates_per_turn",
+      signalKind: delegateDisabledSignalKind(dropped),
+      delegateDelivery: dropped.delayMs && dropped.delayMs > 0 ? "timer" : "immediate",
+      delegateMode: dropped.mode ?? "normal",
+      reason: dropped.task,
+      telemetry: delegateTelemetry(dropped),
+      log: (message) => log.info(message),
+    });
     enqueueSystemEvent(`[continuation] ${summary} Task: ${dropped.task}`, {
       sessionKey,
       trusted: true,
@@ -371,6 +402,7 @@ export async function dispatchToolDelegates(
         delegateDelivery,
         delegateMode,
         reason: delegate.task,
+        telemetry: delegateTelemetry(delegate),
         log: (message) => log.info(message),
       });
       rejected++;
@@ -418,6 +450,17 @@ export async function dispatchToolDelegates(
         },
       );
       terminalizeRejectedDelegate(failedDelegate, summary);
+      emitContinuationDisabledSpan({
+        chainId: budgetChainState.chainId,
+        chainStepRemaining: Math.max(0, maxChainLength - budgetChainState.currentChainCount),
+        disabledReason: budgetCheck === "chain-capped" ? "cap.chain" : "cap.cost",
+        signalKind: delegateDisabledSignalKind(delegate),
+        delegateDelivery: delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate",
+        delegateMode: delegate.mode ?? "normal",
+        reason: delegate.task,
+        telemetry: delegateTelemetry(delegate),
+        log: (message) => log.info(message),
+      });
       enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
         sessionKey,
         trusted: true,
@@ -468,6 +511,7 @@ export async function dispatchToolDelegates(
       agentAccountId: delegate.spawnRequesterAccountId ?? ctx.agentAccountId,
       agentTo: delegate.spawnRequesterTo ?? ctx.agentTo,
       agentThreadId: delegate.spawnRequesterThreadId ?? ctx.agentThreadId,
+      ...(delegate.diagnosticContext ? { diagnosticContext: delegate.diagnosticContext } : {}),
     };
 
     let dispatchSpan: ReturnType<typeof startContinuationDelegateSpan> | undefined;
@@ -488,6 +532,7 @@ export async function dispatchToolDelegates(
           delayMs: delegateDelayMs,
           fireDeferredMs: Date.now() - (delegate.firstArmedAt ?? Date.now()),
           reason: delegate.task,
+          telemetry: delegateTelemetry(delegate),
           traceparent: outboundTraceparent,
           log: (message) => log.info(message),
         });
@@ -499,6 +544,7 @@ export async function dispatchToolDelegates(
         delivery: delegateDelivery,
         delegateMode,
         reason: delegate.task,
+        telemetry: delegateTelemetry(delegate),
         traceparent: outboundTraceparent,
         log: (message) => log.info(message),
       });
@@ -521,10 +567,18 @@ export async function dispatchToolDelegates(
             `[continuation:delegate-accept-finalize-failed] flowId=${delegate.flowId ?? "unknown"} session=${sessionKey} leaving row recoverable: ${errorMessage}`,
           );
           dispatchSpan.setStatus("ERROR", errorMessage);
+          setContinuationSpanTerminal(dispatchSpan, {
+            outcome: "finalization-failed",
+            reason: "finalization.failed",
+          });
           rejected++;
           continue;
         }
         dispatchSpan.setStatus("OK");
+        setContinuationSpanTerminal(dispatchSpan, {
+          outcome: "scheduled",
+          reason: "dispatch.accepted",
+        });
         commitPlannedChainState(dispatchChainId);
         continue;
       }
@@ -542,6 +596,10 @@ export async function dispatchToolDelegates(
         );
         removeRejectedArtifactPolicy(delegate);
         dispatchSpan.setStatus("ERROR", spawnFence.summary);
+        setContinuationSpanTerminal(dispatchSpan, {
+          outcome: "superseded",
+          reason: "dispatch.superseded",
+        });
         enqueueSystemEvent(`[continuation] ${spawnFence.summary} Task: ${delegate.task}`, {
           sessionKey,
           trusted: true,
@@ -614,15 +672,27 @@ export async function dispatchToolDelegates(
               `[continuation:delegate-accept-finalize-failed] flowId=${delegate.flowId ?? "unknown"} session=${sessionKey} accepted child rolled back: ${errorMessage}`,
             );
             dispatchSpan.setStatus("ERROR", errorMessage);
+            setContinuationSpanTerminal(dispatchSpan, {
+              outcome: "finalization-failed",
+              reason: "finalization.failed",
+            });
             rejected++;
             continue;
           }
         }
         dispatchSpan.setStatus("OK");
+        setContinuationSpanTerminal(dispatchSpan, {
+          outcome: "scheduled",
+          reason: "dispatch.accepted",
+        });
         commitPlannedChainState(dispatchChainId);
       } else if (result.status === "cancelled") {
         removeRejectedArtifactPolicy(delegate);
         dispatchSpan.setStatus("ERROR", result.error ?? "delegate admission cancelled");
+        setContinuationSpanTerminal(dispatchSpan, {
+          outcome: "cancelled",
+          reason: "dispatch.cancelled",
+        });
         rejected++;
       } else {
         const reasonText = result.error ?? "delegation was not accepted.";
@@ -641,6 +711,10 @@ export async function dispatchToolDelegates(
           }
           armManagedSpawnRetry();
           dispatchSpan.setStatus("ERROR", reasonText);
+          setContinuationSpanTerminal(dispatchSpan, {
+            outcome: "failed",
+            reason: "dispatch.failed",
+          });
           enqueueSystemEvent(
             `[continuation] ${summary}; managed work was deferred for retry. Task: ${delegate.task}`,
             {
@@ -657,6 +731,10 @@ export async function dispatchToolDelegates(
         );
         terminalizeRejectedDelegate(failedDelegate, summary);
         dispatchSpan.setStatus("ERROR", reasonText);
+        setContinuationSpanTerminal(dispatchSpan, {
+          outcome: result.status === "forbidden" ? "rejected-policy" : "failed",
+          reason: result.status === "forbidden" ? "dispatch.rejected" : "dispatch.failed",
+        });
         enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
           sessionKey,
           trusted: true,
@@ -668,6 +746,12 @@ export async function dispatchToolDelegates(
       if (isSpawnSubagentAdmissionCancelledError(err)) {
         removeRejectedArtifactPolicy(delegate);
         dispatchSpan?.setStatus("ERROR", err.message);
+        if (dispatchSpan) {
+          setContinuationSpanTerminal(dispatchSpan, {
+            outcome: "cancelled",
+            reason: "dispatch.cancelled",
+          });
+        }
         rejected++;
         continue;
       }
@@ -675,6 +759,12 @@ export async function dispatchToolDelegates(
         const message = formatErrorMessage(err.originalError);
         dispatchSpan?.recordException(err.originalError);
         dispatchSpan?.setStatus("ERROR", message);
+        if (dispatchSpan) {
+          setContinuationSpanTerminal(dispatchSpan, {
+            outcome: "finalization-failed",
+            reason: "finalization.failed",
+          });
+        }
         log.warn(
           `[continuation:delegate-terminal-chain-persist-failed] error=${message} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
         );
@@ -684,6 +774,12 @@ export async function dispatchToolDelegates(
       const summary = `DELEGATE spawn failed: ${message}`;
       dispatchSpan?.recordException(err);
       dispatchSpan?.setStatus("ERROR", message);
+      if (dispatchSpan) {
+        setContinuationSpanTerminal(dispatchSpan, {
+          outcome: "failed",
+          reason: "dispatch.failed",
+        });
+      }
       log.info(`[continuation:delegate-spawn-failed] error=${message} session=${sessionKey}`);
       if (managedArtifacts && spawnAttempted) {
         if (
