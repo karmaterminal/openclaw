@@ -5,6 +5,7 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import {
   ErrorCodes,
   errorShape,
+  type SessionsSendParams,
   validateSessionsSendParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { resolveSessionWorkStartError, type SessionEntry } from "../../config/sessions.js";
@@ -124,17 +125,14 @@ async function handleSessionSend(params: {
   ) {
     return;
   }
-  const p = params.params;
-  const key = requireSessionKey((p as { key?: unknown }).key, params.respond);
+  // SAFETY: assertValidParams validated this object against SessionsSendParamsSchema above.
+  const p = params.params as SessionsSendParams;
+  const key = requireSessionKey(p.key, params.respond);
   if (!key) {
     return;
   }
   const cfg = params.context.getRuntimeConfig();
-  const requestedAgent = resolveRequestedGlobalAgentId(
-    cfg,
-    key,
-    (p as { agentId?: string }).agentId,
-  );
+  const requestedAgent = resolveRequestedGlobalAgentId(cfg, key, p.agentId);
   if (!requestedAgent.ok) {
     params.respond(false, undefined, requestedAgent.error);
     return;
@@ -158,7 +156,7 @@ async function handleSessionSend(params: {
     );
     return;
   }
-  const rawIdempotencyKey = (p as { idempotencyKey?: string }).idempotencyKey;
+  const rawIdempotencyKey = p.idempotencyKey;
   const explicitIdempotencyKey =
     typeof rawIdempotencyKey === "string" && rawIdempotencyKey.trim()
       ? rawIdempotencyKey.trim()
@@ -174,15 +172,11 @@ async function handleSessionSend(params: {
       params: {
         sessionKey: canonicalKey,
         ...(requestedAgentId ? { agentId: requestedAgentId } : {}),
-        message: (p as { message: string }).message,
-        thinking: (p as { thinking?: string }).thinking,
-        attachments: (p as { attachments?: unknown[] }).attachments,
-        timeoutMs: (p as { timeoutMs?: number }).timeoutMs,
-        diagnosticContext: (
-          p as {
-            diagnosticContext?: import("../../infra/diagnostic-context.js").DiagnosticContext;
-          }
-        ).diagnosticContext,
+        message: p.message,
+        thinking: p.thinking,
+        attachments: p.attachments,
+        timeoutMs: p.timeoutMs,
+        diagnosticContext: p.diagnosticContext,
         idempotencyKey,
         ...(params.queueMode ? { queueMode: params.queueMode } : {}),
       },
@@ -328,7 +322,7 @@ async function handleSessionSend(params: {
       await reactivateCompletedSubagentSession({
         sessionKey: canonicalKey,
         runId: startedRunId,
-        task: (p as { message: string }).message,
+        task: p.message,
       });
     }
     emitSessionsChanged(params.context, {
