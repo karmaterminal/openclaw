@@ -136,6 +136,7 @@ export async function spawnSubagentDirect(
       reservation: admissionReservation,
       childDepth,
       maxSpawnDepth,
+      continuationTargetSessionKeys,
     },
     childIdem: resolvedChildIdem,
   } = requestResolution.resolved;
@@ -586,9 +587,7 @@ export async function spawnSubagentDirect(
           ...(params.continuationTargetSessionKey
             ? { continuationTargetSessionKey: params.continuationTargetSessionKey }
             : {}),
-          ...(params.continuationTargetSessionKeys?.length
-            ? { continuationTargetSessionKeys: params.continuationTargetSessionKeys }
-            : {}),
+          ...(continuationTargetSessionKeys?.length ? { continuationTargetSessionKeys } : {}),
           ...(params.continuationFanoutMode
             ? { continuationFanoutMode: params.continuationFanoutMode }
             : {}),
