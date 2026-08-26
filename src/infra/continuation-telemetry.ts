@@ -27,14 +27,10 @@ export const CONTINUATION_OUTCOMES = [
   "evaporated",
   "rejected-cap",
   "rejected-policy",
-  "rejected-threshold",
   "no-op",
   "zero-payload",
-  "cleanup-failed",
   "finalization-failed",
   "cancelled",
-  "interrupted",
-  "disabled",
   "failed",
 ] as const;
 export type ContinuationOutcome = (typeof CONTINUATION_OUTCOMES)[number];
@@ -50,7 +46,6 @@ export const CONTINUATION_OUTCOME_REASONS = [
   "cap.delegates_per_turn",
   "cap.pending_work",
   "policy.cross_session_targeting",
-  "threshold.noop_rearm",
   "queue.drained",
   "queue.empty",
   "flow.granted",
@@ -61,19 +56,20 @@ export const CONTINUATION_OUTCOME_REASONS = [
   "finalization.answered",
   "finalization.empty",
   "finalization.failed",
-  "finalization.skipped",
 ] as const;
 export type ContinuationOutcomeReason = (typeof CONTINUATION_OUTCOME_REASONS)[number];
 
 export const CONTINUATION_FINALIZATION_STATUSES = ["succeeded", "failed", "skipped"] as const;
 export type ContinuationFinalizationStatus = (typeof CONTINUATION_FINALIZATION_STATUSES)[number];
 
-export type ContinuationTelemetryContext = {
+export type ContinuationSpanContext = ContinuationCorrelationSource & {
+  diagnosticContext?: DiagnosticContext;
+};
+
+export type ContinuationTelemetryContext = ContinuationSpanContext & {
   origin: ContinuationSignalOrigin;
   kind: ContinuationPrimitive;
-} & ContinuationCorrelationSource & {
-    diagnosticContext?: DiagnosticContext;
-  };
+};
 
 export type ContinuationCorrelationSource = {
   runId?: string;
@@ -97,6 +93,32 @@ export type ContinuationTerminalAttributes = {
   readonly "continuation.outcome.reason"?: ContinuationOutcomeReason;
   readonly "continuation.payload.bytes"?: number;
   readonly "continuation.finalization.status"?: ContinuationFinalizationStatus;
+};
+
+export type ContinuationTerminal = (
+  | { outcome: "scheduled"; reason: "dispatch.accepted" }
+  | { outcome: "fired"; reason?: never }
+  | { outcome: "delivered"; reason: "queue.drained" | "flow.granted" }
+  | { outcome: "finalized"; reason: "finalization.answered" }
+  | { outcome: "folded"; reason: "flow.folded" }
+  | { outcome: "superseded"; reason: "dispatch.superseded" | "flow.superseded" }
+  | { outcome: "evaporated"; reason: "flow.reaped" }
+  | {
+      outcome: "rejected-cap";
+      reason: "cap.chain" | "cap.cost" | "cap.delegates_per_turn" | "cap.pending_work";
+    }
+  | {
+      outcome: "rejected-policy";
+      reason: "dispatch.rejected" | "policy.cross_session_targeting";
+    }
+  | { outcome: "no-op"; reason?: "queue.empty" }
+  | { outcome: "zero-payload"; reason: "finalization.empty" }
+  | { outcome: "finalization-failed"; reason: "finalization.failed" }
+  | { outcome: "cancelled"; reason: "dispatch.cancelled" }
+  | { outcome: "failed"; reason: "dispatch.failed" | "flow.failed" }
+) & {
+  payloadBytes?: number;
+  finalizationStatus?: ContinuationFinalizationStatus;
 };
 
 const CONTINUATION_FINGERPRINT_HEX_LENGTH = 16;
@@ -163,12 +185,9 @@ export function continuationProvenanceAttributes(
   };
 }
 
-export function continuationTerminalAttributes(params: {
-  outcome: ContinuationOutcome;
-  reason?: ContinuationOutcomeReason;
-  payloadBytes?: number;
-  finalizationStatus?: ContinuationFinalizationStatus;
-}): ContinuationTerminalAttributes {
+export function continuationTerminalAttributes(
+  params: ContinuationTerminal,
+): ContinuationTerminalAttributes {
   return {
     "continuation.outcome": params.outcome,
     ...(params.reason ? { "continuation.outcome.reason": params.reason } : {}),

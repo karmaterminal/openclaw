@@ -23,6 +23,7 @@ import {
 } from "../../config/sessions/session-accessor.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { ContinuationTerminal } from "../../infra/continuation-telemetry.js";
 import {
   emitContinuationDisabledSpan,
   resolveContinuationTraceparent,
@@ -494,6 +495,10 @@ export async function deliverQueuedPostCompactionDelegate(
       ? { diagnosticContext: params.entry.diagnosticContext }
       : {}),
   };
+  const disabledSignalKind =
+    telemetry.origin === "typed-tool" || telemetry.origin === "tool-call"
+      ? "tool-delegate"
+      : "bracket-delegate";
   const cfg = deps.getRuntimeConfig();
   const agentId = deps.resolveSessionAgentId({
     sessionKey: params.entry.sessionKey,
@@ -579,8 +584,8 @@ export async function deliverQueuedPostCompactionDelegate(
     emitContinuationDisabledSpan({
       chainId: sessionEntry?.continuationChainId,
       chainStepRemaining: Math.max(0, maxCompactionChainLength - currentCompactionChainCount),
-      disabledReason: "cap.cost",
-      signalKind: "bracket-delegate",
+      disabledReason: "cap.chain",
+      signalKind: disabledSignalKind,
       delegateDelivery: "immediate",
       delegateMode: "post-compaction",
       reason: params.entry.task,
@@ -610,8 +615,8 @@ export async function deliverQueuedPostCompactionDelegate(
     emitContinuationDisabledSpan({
       chainId: sessionEntry?.continuationChainId,
       chainStepRemaining: Math.max(0, maxCompactionChainLength - currentCompactionChainCount),
-      disabledReason: "policy.cross_session_targeting",
-      signalKind: "bracket-delegate",
+      disabledReason: "cap.cost",
+      signalKind: disabledSignalKind,
       delegateDelivery: "immediate",
       delegateMode: "post-compaction",
       reason: params.entry.task,
@@ -646,6 +651,17 @@ export async function deliverQueuedPostCompactionDelegate(
       params.entry,
       "Post-compaction delegate rejected: cross-session targeting was disabled at delivery time.",
     );
+    emitContinuationDisabledSpan({
+      chainId: sessionEntry?.continuationChainId,
+      chainStepRemaining: Math.max(0, maxCompactionChainLength - currentCompactionChainCount),
+      disabledReason: "policy.cross_session_targeting",
+      signalKind: disabledSignalKind,
+      delegateDelivery: "immediate",
+      delegateMode: "post-compaction",
+      reason: params.entry.task,
+      telemetry,
+      log: deps.log,
+    });
     return;
   }
 
@@ -694,12 +710,8 @@ export async function deliverQueuedPostCompactionDelegate(
     log: deps.log,
   });
   let dispatchTerminalRecorded = false;
-  const recordDispatchTerminal = (
-    outcome: Parameters<typeof setContinuationSpanTerminal>[1]["outcome"],
-    reason: Parameters<typeof setContinuationSpanTerminal>[1]["reason"],
-    status: "OK" | "ERROR",
-  ) => {
-    setContinuationSpanTerminal(dispatchSpan, { outcome, reason });
+  const recordDispatchTerminal = (terminal: ContinuationTerminal, status: "OK" | "ERROR") => {
+    setContinuationSpanTerminal(dispatchSpan, terminal);
     dispatchSpan.setStatus(status);
     dispatchTerminalRecorded = true;
   };
@@ -718,7 +730,7 @@ export async function deliverQueuedPostCompactionDelegate(
       deps.log(
         `[continuation:post-compaction-spawn-fenced] reason=${spawnFence.reason} flowId=${params.entry.sourceFlowId ?? "unknown"} entryId=${params.entry.id}`,
       );
-      recordDispatchTerminal("superseded", "dispatch.superseded", "ERROR");
+      recordDispatchTerminal({ outcome: "superseded", reason: "dispatch.superseded" }, "ERROR");
       throw new SessionDeliveryDeadLetteredError(spawnFence.summary);
     }
 
@@ -767,7 +779,7 @@ export async function deliverQueuedPostCompactionDelegate(
     );
     if (spawnResult.status === "cancelled") {
       removeRejectedArtifactPolicy();
-      recordDispatchTerminal("cancelled", "dispatch.cancelled", "ERROR");
+      recordDispatchTerminal({ outcome: "cancelled", reason: "dispatch.cancelled" }, "ERROR");
       throw new SessionDeliveryDeadLetteredError(
         spawnResult.error ?? "Continuation delegate admission cancelled.",
       );
@@ -784,10 +796,13 @@ export async function deliverQueuedPostCompactionDelegate(
           `Post-compaction delegate spawn forbidden: ${spawnResult.error ?? "delegation was not accepted"}.`,
         );
         removeRejectedArtifactPolicy();
-        recordDispatchTerminal("rejected-policy", "dispatch.rejected", "ERROR");
+        recordDispatchTerminal(
+          { outcome: "rejected-policy", reason: "dispatch.rejected" },
+          "ERROR",
+        );
         return;
       }
-      recordDispatchTerminal("failed", "dispatch.failed", "ERROR");
+      recordDispatchTerminal({ outcome: "failed", reason: "dispatch.failed" }, "ERROR");
       throw new Error(`post-compaction delegate spawn ${spawnResult.status}`);
     }
     rollbackAcceptedSpawn = spawnResult.rollbackAccepted;
@@ -833,12 +848,22 @@ export async function deliverQueuedPostCompactionDelegate(
       },
     );
     rollbackAcceptedSpawn = undefined;
-    recordDispatchTerminal("scheduled", "dispatch.accepted", "OK");
+    recordDispatchTerminal({ outcome: "scheduled", reason: "dispatch.accepted" }, "OK");
   } finally {
     if (!dispatchTerminalRecorded) {
-      recordDispatchTerminal("finalization-failed", "finalization.failed", "ERROR");
+      recordDispatchTerminal(
+        { outcome: "finalization-failed", reason: "finalization.failed" },
+        "ERROR",
+      );
     }
-    await rollbackAcceptedSpawn?.();
+    try {
+      await rollbackAcceptedSpawn?.();
+    } catch (error) {
+      // Preserve the existing claim-release failure semantics while still
+      // terminating the instrumentation span on rollback failure.
+      dispatchSpan.end();
+      throw error;
+    }
     activeDispatch.release();
     dispatchSpan.end();
   }

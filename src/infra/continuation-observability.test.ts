@@ -289,11 +289,11 @@ describe("continuation observability contracts", () => {
       "scheduled",
       "fired",
       "rejected-cap",
-      "no-op",
-      "delivered",
+      undefined,
+      undefined,
     ]);
     expect(spans[2]?.attributes["continuation.outcome.reason"]).toBe("cap.chain");
-    expect(spans[3]?.attributes["continuation.outcome.reason"]).toBe("queue.empty");
+    expect(spans[3]?.attributes).not.toHaveProperty("continuation.outcome.reason");
     expect(spans.every((span) => span.ended)).toBe(true);
   });
 
@@ -309,7 +309,10 @@ describe("continuation observability contracts", () => {
       provider: "external",
       model: "external",
       diagnosticContext: { proof },
-    });
+      telemetry: {
+        "openclaw.proof.run_id": "attacker-marker",
+      },
+    } as never);
     await waitForDiagnosticEventsDrained();
     stop();
 

@@ -18,16 +18,12 @@ export function normalizeDiagnosticContext(value: unknown): DiagnosticContext | 
   }
   const proof = value.proof;
   return Object.freeze({
-    ...(proof
-      ? {
-          proof: Object.freeze({
-            runId: proof.runId,
-            rowId: proof.rowId,
-            candidateSha: proof.candidateSha,
-            harnessRef: proof.harnessRef,
-          }),
-        }
-      : {}),
+    proof: Object.freeze({
+      runId: proof.runId,
+      rowId: proof.rowId,
+      candidateSha: proof.candidateSha,
+      harnessRef: proof.harnessRef,
+    }),
   });
 }
 

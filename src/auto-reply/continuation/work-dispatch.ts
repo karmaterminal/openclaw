@@ -1,6 +1,7 @@
 /** Durable same-session continuation_work dispatch. */
 
 import type { SubagentRunLiveness } from "../../agents/subagents/registry/subagent-run-liveness.js";
+import type { ContinuationTelemetryContext } from "../../infra/continuation-telemetry.js";
 import {
   emitContinuationDisabledSpan,
   emitContinuationWorkSpan,
@@ -47,6 +48,26 @@ import {
   supersedeQueuedTurnEndParkedWork,
 } from "./work-store.js";
 import { drainPendingTerminalNotices } from "./work-terminal-notice.js";
+
+function workDisabledSignalKind(
+  origin: ContinuationWorkScheduleParams["signalOrigin"],
+): "bracket-work" | "work" {
+  return origin === undefined || origin === "typed-tool" || origin === "tool-call"
+    ? "work"
+    : "bracket-work";
+}
+
+function scheduledWorkTelemetry(
+  params: ContinuationWorkScheduleParams,
+): ContinuationTelemetryContext {
+  return {
+    origin: params.signalOrigin ?? "typed-tool",
+    kind: "work",
+    ...(params.originRunId ? { runId: params.originRunId } : {}),
+    ...(params.originTurnId ? { sessionId: params.originTurnId } : {}),
+    ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
+  };
+}
 
 const log = createSubsystemLogger("continuation/work-dispatch");
 const HEDGE_DISPATCH_FAILURE_RETRY_MS = 30_000;
@@ -655,15 +676,9 @@ export async function scheduleContinuationWork(
         params.config.maxChainLength - params.chainState.currentChainCount,
       ),
       disabledReason: budgetCheck === "chain-capped" ? "cap.chain" : "cap.cost",
-      signalKind: params.signalOrigin === "bracket" ? "bracket-work" : "work",
+      signalKind: workDisabledSignalKind(params.signalOrigin),
       reason: params.request.reason,
-      telemetry: {
-        origin: params.signalOrigin ?? "typed-tool",
-        kind: "work",
-        ...(params.originRunId ? { runId: params.originRunId } : {}),
-        ...(params.originTurnId ? { sessionId: params.originTurnId } : {}),
-        ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
-      },
+      telemetry: scheduledWorkTelemetry(params),
       log: params.log,
     });
     return { scheduled: false, capped: true, chainState: params.chainState };
@@ -689,15 +704,9 @@ export async function scheduleContinuationWork(
         params.config.maxChainLength - params.chainState.currentChainCount,
       ),
       disabledReason: "cap.pending_work",
-      signalKind: params.signalOrigin === "bracket" ? "bracket-work" : "work",
+      signalKind: workDisabledSignalKind(params.signalOrigin),
       reason: params.request.reason,
-      telemetry: {
-        origin: params.signalOrigin ?? "typed-tool",
-        kind: "work",
-        ...(params.originRunId ? { runId: params.originRunId } : {}),
-        ...(params.originTurnId ? { sessionId: params.originTurnId } : {}),
-        ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
-      },
+      telemetry: scheduledWorkTelemetry(params),
       log: params.log,
     });
     return { scheduled: false, capped: true, chainState: params.chainState };
@@ -764,13 +773,7 @@ export async function scheduleContinuationWork(
     chainStepRemaining: params.config.maxChainLength - hop,
     delayMs,
     reason: params.request.reason,
-    telemetry: {
-      origin: params.signalOrigin ?? "typed-tool",
-      kind: "work",
-      ...(params.originRunId ? { runId: params.originRunId } : {}),
-      ...(params.originTurnId ? { sessionId: params.originTurnId } : {}),
-      ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
-    },
+    telemetry: scheduledWorkTelemetry(params),
     traceparent: params.request.traceparent,
     log: (message) => params.log?.(message),
   });

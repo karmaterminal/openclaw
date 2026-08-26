@@ -619,9 +619,9 @@ function decodeLoadedSessionDelivery(
         result.entryJson,
       );
     }
-    const traceparentNormalized = normalizeQueuedSessionDeliveryTraceparent(attachmentNormalized);
-    // SAFETY: normalizeQueuedSessionDeliveryTraceparent only rewrites traceparent fields, preserving all other input properties including the identity fields QueuedSessionDelivery adds.
-    const normalized = traceparentNormalized as QueuedSessionDelivery;
+    const metadataNormalized = normalizeQueuedSessionDeliveryMetadata(attachmentNormalized);
+    // SAFETY: metadata normalization preserves the identity fields QueuedSessionDelivery adds.
+    const normalized = metadataNormalized as QueuedSessionDelivery;
     return { status: "loaded", entry: normalized };
   }
   const parsed = QueuedPostCompactionDelegateSchema.safeParse(result.entry);
@@ -676,7 +676,7 @@ export function normalizeSessionDeliveryForPersistence(
   return parsed.data as QueuedSessionDelivery;
 }
 
-export function normalizeQueuedSessionDeliveryTraceparent(
+export function normalizeQueuedSessionDeliveryMetadata(
   payload: QueuedSessionDeliveryPayload,
 ): QueuedSessionDeliveryPayload {
   const normalizedTraceparent =

@@ -925,7 +925,13 @@ type DiagnosticNonSecurityEventPayload = Exclude<DiagnosticEventPayload, Diagnos
 
 export type DiagnosticEventInput = DiagnosticNonSecurityEventPayload extends infer Event
   ? Event extends DiagnosticEventPayload
-    ? Omit<Event, "seq" | "ts">
+    ? Omit<Event, "seq" | "telemetry" | "ts">
+    : never
+  : never;
+
+export type UntrustedDiagnosticEventInput = DiagnosticEventInput extends infer Event
+  ? Event extends DiagnosticEventInput
+    ? Omit<Event, "diagnosticContext">
     : never
   : never;
 
@@ -1404,6 +1410,7 @@ function enrichDiagnosticEvent(
   } else {
     delete enriched.diagnosticContext;
   }
+  delete enriched.telemetry;
   const telemetry = {
     ...diagnosticContextSpanAttributes(diagnosticContext),
   };
@@ -1532,17 +1539,17 @@ function dispatchTrustedToolExecutionEvent(
 }
 
 /** Emits an untrusted diagnostic event from external/plugin-facing code. */
-export function emitDiagnosticEvent(event: DiagnosticEventInput) {
+export function emitDiagnosticEvent(event: UntrustedDiagnosticEventInput) {
   emitDiagnosticEventWithTrust(event, false);
 }
 
 /** Emits an untrusted event whose trace context came from OpenClaw-owned scope. */
-export function emitDiagnosticEventWithTrustedTraceContext(event: DiagnosticEventInput) {
+export function emitDiagnosticEventWithTrustedTraceContext(event: UntrustedDiagnosticEventInput) {
   emitDiagnosticEventWithTrust(event, false, { trustedTraceContext: true });
 }
 
 /** Emits an untrusted diagnostic event tagged as internal dispatcher provenance. */
-export function emitInternalDiagnosticEvent(event: DiagnosticEventInput) {
+export function emitInternalDiagnosticEvent(event: UntrustedDiagnosticEventInput) {
   emitDiagnosticEventWithTrust(event, false, { internal: true });
 }
 

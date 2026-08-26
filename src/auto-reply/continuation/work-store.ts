@@ -7,10 +7,7 @@
  * delivered.
  */
 
-import type {
-  ContinuationOutcome,
-  ContinuationOutcomeReason,
-} from "../../infra/continuation-telemetry.js";
+import type { ContinuationTerminal } from "../../infra/continuation-telemetry.js";
 import { emitContinuationWorkTerminalSpan } from "../../infra/continuation-tracer.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
@@ -39,15 +36,10 @@ import {
 
 const log = createSubsystemLogger("continuation/work-store");
 
-function emitWorkTerminal(
-  work: PendingContinuationWork,
-  outcome: ContinuationOutcome,
-  reason: ContinuationOutcomeReason,
-): void {
+function emitWorkTerminal(work: PendingContinuationWork, terminal: ContinuationTerminal): void {
   emitContinuationWorkTerminalSpan({
     chainId: work.chainId,
-    outcome,
-    reason,
+    ...terminal,
     telemetry: {
       origin: work.signalOrigin ?? "typed-tool",
       kind: "work",
@@ -125,8 +117,9 @@ function finalizeDeliveredWorkFlow(flow: TaskFlowRecord, state: PendingWorkState
   }
   emitWorkTerminal(
     work,
-    foldedActive ? "folded" : "delivered",
-    foldedActive ? "flow.folded" : "flow.granted",
+    foldedActive
+      ? { outcome: "folded", reason: "flow.folded" }
+      : { outcome: "delivered", reason: "flow.granted" },
   );
 }
 
@@ -327,8 +320,7 @@ function finishContinuationWorkFlow(
     currentStep: string;
     stateExtra?: Record<string, unknown>;
     notCommittedTag: string;
-    outcome: ContinuationOutcome;
-    reason: ContinuationOutcomeReason;
+    terminal: ContinuationTerminal;
   },
 ): boolean {
   if (!work.flowId || work.expectedRevision === undefined) {
@@ -357,7 +349,7 @@ function finishContinuationWorkFlow(
     );
     return false;
   }
-  emitWorkTerminal(work, params.outcome, params.reason);
+  emitWorkTerminal(work, params.terminal);
   return true;
 }
 
@@ -368,8 +360,7 @@ export function markPendingWorkTurnGranted(work: PendingContinuationWork): boole
     // the granted record never carries stale retry state.
     stateExtra: { busySkipCount: 0 },
     notCommittedTag: "work-finish-not-committed",
-    outcome: "delivered",
-    reason: "flow.granted",
+    terminal: { outcome: "delivered", reason: "flow.granted" },
   });
 }
 
@@ -386,8 +377,7 @@ export function markPendingWorkFolded(
       busySkipCount: 0,
     },
     notCommittedTag: "work-fold-not-committed",
-    outcome: "folded",
-    reason: "flow.folded",
+    terminal: { outcome: "folded", reason: "flow.folded" },
   });
 }
 
@@ -540,7 +530,7 @@ export function reconcileUndeliverableGrantedWork(work: PendingContinuationWork)
     endedAt: now,
   });
   if (finished.applied) {
-    emitWorkTerminal(work, "delivered", "flow.granted");
+    emitWorkTerminal(work, { outcome: "delivered", reason: "flow.granted" });
     return;
   }
   const latest = getTaskFlowById(work.flowId);
@@ -556,7 +546,7 @@ export function reconcileUndeliverableGrantedWork(work: PendingContinuationWork)
     updatedAt: Date.now(),
   });
   if (failed.applied) {
-    emitWorkTerminal(work, "failed", "flow.failed");
+    emitWorkTerminal(work, { outcome: "failed", reason: "flow.failed" });
   }
 }
 
@@ -640,10 +630,7 @@ export function requeuePendingWork(
 export function markPendingWorkFailed(
   work: PendingContinuationWork,
   summary: string,
-  options: {
-    terminalNoticePending?: "retry-exhausted";
-    outcome?: Extract<ContinuationOutcome, "failed" | "cleanup-failed" | "finalization-failed">;
-  } = {},
+  options: { terminalNoticePending?: "retry-exhausted" } = {},
 ): boolean {
   if (!work.flowId || work.expectedRevision === undefined) {
     return false;
@@ -661,7 +648,7 @@ export function markPendingWorkFailed(
     updatedAt: Date.now(),
   });
   if (failed.applied) {
-    emitWorkTerminal(work, options.outcome ?? "failed", "flow.failed");
+    emitWorkTerminal(work, { outcome: "failed", reason: "flow.failed" });
   }
   return failed.applied;
 }
@@ -748,8 +735,7 @@ export function markPendingWorkSuperseded(work: PendingContinuationWork, summary
   return finishContinuationWorkFlow(work, {
     currentStep: `superseded: ${summary}`.slice(0, 200),
     notCommittedTag: "work-supersede-not-committed",
-    outcome: "superseded",
-    reason: "flow.superseded",
+    terminal: { outcome: "superseded", reason: "flow.superseded" },
   });
 }
 
@@ -799,8 +785,7 @@ export function markPendingWorkReaped(work: PendingContinuationWork, summary: st
   return finishContinuationWorkFlow(work, {
     currentStep: `reaped: ${summary}`.slice(0, 200),
     notCommittedTag: "work-reap-not-committed",
-    outcome: "evaporated",
-    reason: "flow.reaped",
+    terminal: { outcome: "evaporated", reason: "flow.reaped" },
   });
 }
 

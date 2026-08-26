@@ -244,6 +244,8 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
         }),
       }),
     ]);
+    expect(finalizationSpans[0]?.attributes).not.toHaveProperty("continuation.signal.origin");
+    expect(finalizationSpans[0]?.attributes).not.toHaveProperty("continuation.signal.kind");
   });
 
   it("records a completed-empty finalization as a canonical zero payload", async () => {

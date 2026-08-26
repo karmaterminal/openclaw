@@ -24,7 +24,7 @@ import {
 } from "./session-delivery-queue-attachment-metadata.js";
 import {
   decodeSessionDeliveryResult,
-  normalizeQueuedSessionDeliveryTraceparent,
+  normalizeQueuedSessionDeliveryMetadata,
   normalizeSessionDeliveryForPersistence,
   type QueuedSessionDelivery as CoreQueuedSessionDelivery,
   type QueuedSessionDeliveryPayload as CoreQueuedSessionDeliveryPayload,
@@ -172,7 +172,7 @@ export function prepareClaimedSessionDelivery(
   initialAttemptLeaseMs: number,
   now = Date.now(),
 ): QueuedSessionDelivery {
-  const payload = normalizeQueuedSessionDeliveryTraceparent(params);
+  const payload = normalizeQueuedSessionDeliveryMetadata(params);
   return normalizeSessionDeliveryForStorage({
     ...payload,
     retainOnFailure: true,
@@ -320,7 +320,7 @@ export async function enqueueSessionDeliveryWithStatus(
   params: QueuedSessionDeliveryPayload,
   stateDir?: string,
 ): Promise<SessionDeliveryEnqueueResult> {
-  const payload = normalizeQueuedSessionDeliveryTraceparent(params);
+  const payload = normalizeQueuedSessionDeliveryMetadata(params);
   const id = buildEntryId(payload.idempotencyKey);
 
   const entry = normalizeSessionDeliveryForStorage({

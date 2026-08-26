@@ -20,7 +20,7 @@ export const DiagnosticProofContextSchema = closedObject({
  * schema-owned. Callers cannot inject arbitrary span attribute names or values.
  */
 export const DiagnosticContextSchema = closedObject({
-  proof: Type.Optional(DiagnosticProofContextSchema),
+  proof: DiagnosticProofContextSchema,
 });
 
 export type DiagnosticProofContext = Static<typeof DiagnosticProofContextSchema>;

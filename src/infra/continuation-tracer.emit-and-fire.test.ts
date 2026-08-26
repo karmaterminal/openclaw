@@ -774,6 +774,8 @@ describe("continuation-tracer :: emitContinuationQueueDrainSpan helper", () => {
     // No `continuation.disabled` attr on empty drain — drain has no gate.
     expect(attrs["continuation.disabled"]).toBeUndefined();
     expect(attrs["disabled.reason"]).toBeUndefined();
+    expect(attrs["continuation.outcome"]).toBeUndefined();
+    expect(attrs["continuation.outcome.reason"]).toBeUndefined();
   });
 
   it("parents drain spans to the supplied traceparent when a drained entry carries one", () => {

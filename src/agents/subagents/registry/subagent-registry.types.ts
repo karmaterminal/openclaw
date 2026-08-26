@@ -1,5 +1,5 @@
-import type { SubagentEndReason } from "../../../context-engine/types.js";
 /** Persisted execution, completion, delivery, and attachment state for child runs. */
+import type { SubagentEndReason } from "../../../context-engine/types.js";
 import type { DiagnosticContext } from "../../../infra/diagnostic-context.js";
 import type { DeliveryContext } from "../../../utils/delivery-context.types.js";
 import type { AgentRunTerminalReplySnapshot } from "../../agent-run-terminal-reply.js";

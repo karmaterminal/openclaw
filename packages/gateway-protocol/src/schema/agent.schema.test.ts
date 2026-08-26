@@ -135,6 +135,7 @@ describe("AgentParamsSchema", () => {
   });
 
   it.each([
+    ["empty diagnostics context", {}],
     [
       "arbitrary marker attributes",
       {

@@ -21,6 +21,13 @@ import * as sessionStoreModule from "../../config/sessions/store-writer-state.js
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
+  resetContinuationTracer,
+  setContinuationTracer,
+  type Span,
+  type SpanAttributes,
+  type StartSpanOptions,
+} from "../../infra/continuation-tracer.js";
+import {
   enqueuePostCompactionDelegateDelivery as enqueuePostCompactionDelegateDeliveryQueue,
   loadPendingSessionDelivery,
   SessionDeliveryDeadLetteredError,
@@ -71,6 +78,25 @@ vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (impo
 
 const cfg: OpenClawConfig = {};
 const VALID_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+const recordedSpans: Array<{ name: string; attributes: Record<string, unknown> }> = [];
+
+function installRecordingTracer(): void {
+  recordedSpans.length = 0;
+  setContinuationTracer({
+    startSpan(name: string, options?: StartSpanOptions): Span {
+      const recorded = { name, attributes: { ...options?.attributes } };
+      recordedSpans.push(recorded);
+      return {
+        setAttributes(attributes: SpanAttributes) {
+          Object.assign(recorded.attributes, attributes);
+        },
+        setStatus() {},
+        recordException() {},
+        end() {},
+      };
+    },
+  });
+}
 
 const defaultRuntimeConfig: ContinuationRuntimeConfig = {
   enabled: true,
@@ -325,6 +351,7 @@ function readSessionStore(storePath: string): Record<string, SessionEntry> {
 }
 
 afterEach(() => {
+  resetContinuationTracer();
   vi.useRealTimers();
   assertDelegateArtifactPolicyPreparedMock.mockClear();
   removeUnacceptedDelegateArtifactPolicyMock.mockClear();
@@ -782,6 +809,7 @@ describe("post-compaction delegate dispatch extraction", () => {
 
   it("rejects queued delivery when the compaction chain length is already capped", async () => {
     await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      installRecordingTracer();
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: { sessionId: "session", updatedAt: 1, continuationChainCount: 2 },
@@ -824,11 +852,21 @@ describe("post-compaction delegate dispatch extraction", () => {
         "Post-compaction delegate rejected: chain length 2 reached.",
         "Post-compaction delegate rejected",
       );
+      expect(recordedSpans).toContainEqual(
+        expect.objectContaining({
+          name: "continuation.disabled",
+          attributes: expect.objectContaining({
+            "continuation.outcome": "rejected-cap",
+            "continuation.outcome.reason": "cap.chain",
+          }),
+        }),
+      );
     });
   });
 
   it("rejects queued delivery when continuation tokens exceed the cost cap", async () => {
     await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      installRecordingTracer();
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, {
         main: { sessionId: "session", updatedAt: 1, continuationChainTokens: 11 },
@@ -871,11 +909,21 @@ describe("post-compaction delegate dispatch extraction", () => {
         "Post-compaction delegate rejected: cost cap exceeded (11 > 10).",
         "Post-compaction delegate rejected",
       );
+      expect(recordedSpans).toContainEqual(
+        expect.objectContaining({
+          name: "continuation.disabled",
+          attributes: expect.objectContaining({
+            "continuation.outcome": "rejected-cap",
+            "continuation.outcome.reason": "cap.cost",
+          }),
+        }),
+      );
     });
   });
 
   it("rejects an enabled-at-stage cross-session queued delegate when disabled at delivery", async () => {
     await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      installRecordingTracer();
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: 1 } });
       const {
@@ -921,6 +969,15 @@ describe("post-compaction delegate dispatch extraction", () => {
         },
         "Post-compaction delegate rejected: cross-session targeting was disabled at delivery time.",
         "Post-compaction delegate rejected",
+      );
+      expect(recordedSpans).toContainEqual(
+        expect.objectContaining({
+          name: "continuation.disabled",
+          attributes: expect.objectContaining({
+            "continuation.outcome": "rejected-policy",
+            "continuation.outcome.reason": "policy.cross_session_targeting",
+          }),
+        }),
       );
     });
   });

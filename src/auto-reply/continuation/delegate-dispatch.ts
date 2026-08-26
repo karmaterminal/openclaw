@@ -85,7 +85,11 @@ function delegateTelemetry(delegate: PendingContinuationDelegate): ContinuationT
 function delegateDisabledSignalKind(
   delegate: PendingContinuationDelegate,
 ): "bracket-delegate" | "tool-delegate" {
-  return delegate.signalOrigin === "bracket" ? "bracket-delegate" : "tool-delegate";
+  return delegate.signalOrigin === undefined ||
+    delegate.signalOrigin === "typed-tool" ||
+    delegate.signalOrigin === "tool-call"
+    ? "tool-delegate"
+    : "bracket-delegate";
 }
 
 const log = createSubsystemLogger("continuation/delegate-dispatch");
@@ -731,10 +735,12 @@ export async function dispatchToolDelegates(
         );
         terminalizeRejectedDelegate(failedDelegate, summary);
         dispatchSpan.setStatus("ERROR", reasonText);
-        setContinuationSpanTerminal(dispatchSpan, {
-          outcome: result.status === "forbidden" ? "rejected-policy" : "failed",
-          reason: result.status === "forbidden" ? "dispatch.rejected" : "dispatch.failed",
-        });
+        setContinuationSpanTerminal(
+          dispatchSpan,
+          result.status === "forbidden"
+            ? { outcome: "rejected-policy", reason: "dispatch.rejected" }
+            : { outcome: "failed", reason: "dispatch.failed" },
+        );
         enqueueSystemEvent(`[continuation] ${summary} Task: ${delegate.task}`, {
           sessionKey,
           trusted: true,
@@ -742,16 +748,21 @@ export async function dispatchToolDelegates(
         rejected++;
       }
     } catch (err) {
+      const admissionCancelled = isSpawnSubagentAdmissionCancelledError(err);
+      if (dispatchSpan) {
+        setContinuationSpanTerminal(
+          dispatchSpan,
+          admissionCancelled
+            ? { outcome: "cancelled", reason: "dispatch.cancelled" }
+            : err instanceof DelegateTerminalChainStatePersistError
+              ? { outcome: "finalization-failed", reason: "finalization.failed" }
+              : { outcome: "failed", reason: "dispatch.failed" },
+        );
+      }
       await rollbackAcceptedSpawn?.();
-      if (isSpawnSubagentAdmissionCancelledError(err)) {
+      if (admissionCancelled) {
         removeRejectedArtifactPolicy(delegate);
         dispatchSpan?.setStatus("ERROR", err.message);
-        if (dispatchSpan) {
-          setContinuationSpanTerminal(dispatchSpan, {
-            outcome: "cancelled",
-            reason: "dispatch.cancelled",
-          });
-        }
         rejected++;
         continue;
       }
@@ -759,12 +770,6 @@ export async function dispatchToolDelegates(
         const message = formatErrorMessage(err.originalError);
         dispatchSpan?.recordException(err.originalError);
         dispatchSpan?.setStatus("ERROR", message);
-        if (dispatchSpan) {
-          setContinuationSpanTerminal(dispatchSpan, {
-            outcome: "finalization-failed",
-            reason: "finalization.failed",
-          });
-        }
         log.warn(
           `[continuation:delegate-terminal-chain-persist-failed] error=${message} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
         );
@@ -774,12 +779,6 @@ export async function dispatchToolDelegates(
       const summary = `DELEGATE spawn failed: ${message}`;
       dispatchSpan?.recordException(err);
       dispatchSpan?.setStatus("ERROR", message);
-      if (dispatchSpan) {
-        setContinuationSpanTerminal(dispatchSpan, {
-          outcome: "failed",
-          reason: "dispatch.failed",
-        });
-      }
       log.info(`[continuation:delegate-spawn-failed] error=${message} session=${sessionKey}`);
       if (managedArtifacts && spawnAttempted) {
         if (

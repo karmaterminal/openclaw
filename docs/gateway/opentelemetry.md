@@ -558,10 +558,9 @@ the prompt or reason:
 
 Continuation and finalization spans use the closed `continuation.outcome` enum:
 `scheduled`, `fired`, `delivered`, `finalized`, `folded`, `superseded`,
-`evaporated`, `rejected-cap`, `rejected-policy`, `rejected-threshold`, `no-op`,
-`zero-payload`, `cleanup-failed`, `finalization-failed`, `cancelled`,
-`interrupted`, `disabled`, or `failed`. `continuation.outcome.reason` is also a
-closed enum, `continuation.payload.bytes` reports only a byte count, and
+`evaporated`, `rejected-cap`, `rejected-policy`, `no-op`, `zero-payload`,
+`finalization-failed`, `cancelled`, or `failed`. `continuation.outcome.reason` is
+also a closed enum, `continuation.payload.bytes` reports only a byte count, and
 `continuation.finalization.status` is `succeeded`, `failed`, or `skipped`.
 
 ### Proof-run markers

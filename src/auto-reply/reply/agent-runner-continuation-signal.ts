@@ -1,5 +1,6 @@
 import { spawnSubagentDirect } from "../../agents/subagents/spawn/subagent-spawn.js";
 import type { SessionEntry } from "../../config/sessions.js";
+import type { ContinuationTelemetryContext } from "../../infra/continuation-telemetry.js";
 import {
   emitContinuationDisabledSpan,
   resolveContinuationTraceparent,
@@ -79,6 +80,12 @@ export async function handleContinuationSignal(context: {
   const continuationRuntimeConfig = resolveLiveContinuationRuntimeConfig(cfg);
   const signalOrigin = continuationExtractionFromBracket ? "bracket" : "typed-tool";
   const diagnosticContext = followupRun.run.diagnosticContext;
+  const telemetryBase: Omit<ContinuationTelemetryContext, "kind"> = {
+    origin: signalOrigin,
+    runId,
+    sessionId: followupRun.run.sessionId,
+    ...(diagnosticContext ? { diagnosticContext } : {}),
+  };
   if (
     continuationRuntimeConfig.enabled &&
     effectiveContinuationSignal &&
@@ -139,13 +146,7 @@ export async function handleContinuationSignal(context: {
         chainId: activeSessionEntry?.continuationChainId,
         chainStepRemaining: Math.max(0, maxChainLength - allocatedChainHop),
         disabledReason: "cap.chain",
-        telemetry: {
-          origin: signalOrigin,
-          kind: effectiveContinuationSignal.kind,
-          runId,
-          sessionId: followupRun.run.sessionId,
-          ...(diagnosticContext ? { diagnosticContext } : {}),
-        },
+        telemetry: { ...telemetryBase, kind: effectiveContinuationSignal.kind },
         logMessage: `Continuation chain capped at ${maxChainLength} for session ${sessionKey}`,
         systemEventMessage: `[continuation] Bracket continuation rejected: chain length ${maxChainLength} reached.`,
       });
@@ -163,13 +164,7 @@ export async function handleContinuationSignal(context: {
           chainId: activeSessionEntry?.continuationChainId,
           chainStepRemaining: Math.max(0, maxChainLength - allocatedChainHop),
           disabledReason: "cap.cost",
-          telemetry: {
-            origin: signalOrigin,
-            kind: effectiveContinuationSignal.kind,
-            runId,
-            sessionId: followupRun.run.sessionId,
-            ...(diagnosticContext ? { diagnosticContext } : {}),
-          },
+          telemetry: { ...telemetryBase, kind: effectiveContinuationSignal.kind },
           logMessage: `Continuation cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}) for session ${sessionKey}`,
           systemEventMessage: `[continuation] Bracket continuation rejected: cost cap exceeded (${accumulatedChainTokens} > ${costCapTokens}).`,
         });
@@ -212,7 +207,7 @@ export async function handleContinuationSignal(context: {
               chainId: activeSessionEntry?.continuationChainId,
               chainStepRemaining: Math.max(0, maxChainLength - details.plannedHop),
               disabledReason: "policy.cross_session_targeting",
-              signalKind: "bracket-delegate",
+              signalKind: signalOrigin === "bracket" ? "bracket-delegate" : "tool-delegate",
               delegateDelivery: details.delegateDelivery,
               delegateMode: details.silentWake
                 ? "silent-wake"
@@ -220,13 +215,7 @@ export async function handleContinuationSignal(context: {
                   ? "silent"
                   : "normal",
               reason: details.task,
-              telemetry: {
-                origin: signalOrigin,
-                kind: "delegate",
-                runId,
-                sessionId: followupRun.run.sessionId,
-                ...(diagnosticContext ? { diagnosticContext } : {}),
-              },
+              telemetry: { ...telemetryBase, kind: "delegate" },
               log: (message) => defaultRuntime.log(message),
             });
             bracketTokensAccumulated = false;
@@ -284,13 +273,7 @@ export async function handleContinuationSignal(context: {
                   delayMs: 0,
                   delivery: "immediate",
                   delegateMode,
-                  telemetry: {
-                    origin: signalOrigin,
-                    kind: "delegate",
-                    runId,
-                    sessionId: followupRun.run.sessionId,
-                    ...(diagnosticContext ? { diagnosticContext } : {}),
-                  },
+                  telemetry: { ...telemetryBase, kind: "delegate" },
                   traceparent: outboundTraceparent,
                   log: (message) => defaultRuntime.log(message),
                 });
@@ -371,20 +354,14 @@ export async function handleContinuationSignal(context: {
               );
               dispatchSpan?.setStatus("ERROR", reasonText);
               if (dispatchSpan) {
-                setContinuationSpanTerminal(dispatchSpan, {
-                  outcome:
-                    spawnResult.status === "cancelled"
-                      ? "cancelled"
-                      : spawnResult.status === "forbidden"
-                        ? "rejected-policy"
-                        : "failed",
-                  reason:
-                    spawnResult.status === "cancelled"
-                      ? "dispatch.cancelled"
-                      : spawnResult.status === "forbidden"
-                        ? "dispatch.rejected"
-                        : "dispatch.failed",
-                });
+                setContinuationSpanTerminal(
+                  dispatchSpan,
+                  spawnResult.status === "cancelled"
+                    ? { outcome: "cancelled", reason: "dispatch.cancelled" }
+                    : spawnResult.status === "forbidden"
+                      ? { outcome: "rejected-policy", reason: "dispatch.rejected" }
+                      : { outcome: "failed", reason: "dispatch.failed" },
+                );
               }
               enqueueSystemEvent(
                 `[continuation] DELEGATE spawn ${spawnResult.status}: ${reasonEcho} Use sessions_spawn manually. Original task: ${taskEcho}`,

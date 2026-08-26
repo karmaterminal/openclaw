@@ -99,8 +99,6 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
   const runParams = input.terminalBase.runParams;
   const errorContext = input.terminalBase.activeErrorContext;
   const telemetry = {
-    origin: "tool-call" as const,
-    kind: "work" as const,
     runId: runParams.runId,
     sessionId: runParams.sessionId,
     ...(runParams.diagnosticContext ? { diagnosticContext: runParams.diagnosticContext } : {}),
@@ -154,11 +152,13 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
       terminalToolFailure: settledTerminalToolFailure,
     };
     const payloadBytes = Buffer.byteLength(attempt.assistantTexts.join(""), "utf8");
+    const finalizationTerminal =
+      finalization.outcome === "empty"
+        ? ({ outcome: "zero-payload", reason: "finalization.empty" } as const)
+        : ({ outcome: "finalized", reason: "finalization.answered" } as const);
     emitContinuationFinalizationSpan({
       telemetry,
-      outcome: finalization.outcome === "empty" ? "zero-payload" : "finalized",
-      reason: finalization.outcome === "empty" ? "finalization.empty" : "finalization.answered",
-      status: "succeeded",
+      ...finalizationTerminal,
       payloadBytes,
       log: (message) => log.warn(message),
     });
@@ -184,7 +184,6 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
       telemetry,
       outcome: "finalization-failed",
       reason: "finalization.failed",
-      status: "failed",
       log: (message) => log.warn(message),
     });
     return {

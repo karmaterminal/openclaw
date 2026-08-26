@@ -7,7 +7,12 @@ import type {
 } from "./subagent-registry.types.js";
 
 export function normalizeSubagentRunState(entry: SubagentRunRecord): SubagentRunRecord {
-  entry.diagnosticContext = normalizeDiagnosticContext(entry.diagnosticContext);
+  const diagnosticContext = normalizeDiagnosticContext(entry.diagnosticContext);
+  if (diagnosticContext) {
+    entry.diagnosticContext = diagnosticContext;
+  } else {
+    delete entry.diagnosticContext;
+  }
   const taskRunId = typeof entry.taskRunId === "string" ? entry.taskRunId.trim() : "";
   entry.taskRunId = taskRunId || undefined;
   const requesterTurnRunId =

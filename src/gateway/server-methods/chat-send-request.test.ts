@@ -56,17 +56,21 @@ describe("normalizeChatSendRequest", () => {
       },
     } as const;
 
-    expect(
-      normalizeChatSendRequest({
-        params: validParams({ diagnosticContext }),
-        client: null,
-      }),
-    ).toMatchObject({
+    const result = normalizeChatSendRequest({
+      params: validParams({ diagnosticContext }),
+      client: null,
+    });
+    expect(result).toMatchObject({
       ok: true,
       value: {
         diagnosticContext,
       },
     });
+    if (!result.ok) {
+      throw new Error("expected normalized proof context");
+    }
+    expect(Object.isFrozen(result.value.diagnosticContext)).toBe(true);
+    expect(Object.isFrozen(result.value.diagnosticContext?.proof)).toBe(true);
     expect(normalizeChatSendRequest({ params: validParams(), client: null })).toMatchObject({
       ok: true,
       value: {

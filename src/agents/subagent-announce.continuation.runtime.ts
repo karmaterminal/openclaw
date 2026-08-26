@@ -213,7 +213,7 @@ async function scheduleSubagentSelfContinuationWork(params: {
       ],
       config,
       originRunId: params.childRunId,
-      ...(childEntry?.sessionId ? { originTurnId: childEntry.sessionId } : {}),
+      originTurnId: params.childSessionKey,
       signalOrigin: "bracket",
       ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
       log: (message) => defaultRuntime.log(message),
@@ -269,13 +269,7 @@ export async function coordinateSubagentContinuation(params: {
   loadEntry: (
     sessionKey: string,
     options?: { refresh?: boolean },
-  ) =>
-    | (ContinuationChainSource & {
-        inputTokens?: number;
-        outputTokens?: number;
-        sessionId?: string;
-      })
-    | undefined;
+  ) => (ContinuationChainSource & { inputTokens?: number; outputTokens?: number }) | undefined;
   invalidateSessionEntry: (sessionKey: string) => void;
 }): Promise<{
   findings: string;
@@ -330,7 +324,6 @@ export async function coordinateSubagentContinuation(params: {
 
   let bracketReserved = false;
   let delayedBracketDrainArmed = false;
-  const childSessionId = params.loadEntry(params.childSessionKey)?.sessionId;
   const continuationResult = stripContinuationSignal(findings);
   if (continuationResult.signal?.kind === "work") {
     findings = continuationResult.text || "(no output)";
@@ -368,7 +361,7 @@ export async function coordinateSubagentContinuation(params: {
           : {}),
         signalOrigin: "post-compaction",
         originRunId: params.childRunId,
-        ...(childSessionId ? { originSessionId: childSessionId } : {}),
+        originSessionId: params.childSessionKey,
         ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
         ...(signal.model ? { model: signal.model } : {}),
       });
@@ -470,7 +463,7 @@ export async function coordinateSubagentContinuation(params: {
           ...(internalTraceparent ? { traceparent: internalTraceparent } : {}),
           signalOrigin: "bracket",
           originRunId: params.childRunId,
-          ...(childSessionId ? { originSessionId: childSessionId } : {}),
+          originSessionId: params.childSessionKey,
           ...(params.diagnosticContext ? { diagnosticContext: params.diagnosticContext } : {}),
           ...(signal.model ? { model: signal.model } : {}),
           spawnRequesterSessionKey: params.targetRequesterSessionKey,

@@ -1,9 +1,9 @@
+/** Owns subagent registration and queued collector launch transitions. */
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
 import {
   getAgentEventLifecycleGeneration,
   isAgentEventLifecycleGenerationCurrent,
 } from "../../../infra/agent-events.js";
-/** Owns subagent registration and queued collector launch transitions. */
 import type { DiagnosticContext } from "../../../infra/diagnostic-context.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { bindGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
