@@ -4,7 +4,6 @@ import {
   matchesMentionWithExplicit,
 } from "openclaw/plugin-sdk/channel-inbound";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
-import { findCodeRegions, isInsideCode } from "openclaw/plugin-sdk/text-chunking";
 import { isDiscordThreadChannelType } from "../channel-type.js";
 import type { Message } from "../internal/discord.js";
 import type { DiscordMessagePreflightParams } from "./message-handler.preflight.types.js";
