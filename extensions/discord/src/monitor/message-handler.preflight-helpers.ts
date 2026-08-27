@@ -4,9 +4,10 @@ import {
   matchesMentionWithExplicit,
 } from "openclaw/plugin-sdk/channel-inbound";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
-import { ChannelType, type Message } from "../internal/discord.js";
+import { isDiscordThreadChannelType } from "../channel-type.js";
+import type { Message } from "../internal/discord.js";
+import type { DiscordChannelInfo } from "./message-channel-info.js";
 import type { DiscordMessagePreflightParams } from "./message-handler.preflight.types.js";
-import type { DiscordChannelInfo } from "./message-utils.js";
 
 const DISCORD_BOUND_THREAD_SYSTEM_PREFIXES = ["⚙️", "🤖", "🧰"];
 
@@ -31,14 +32,6 @@ type BoundThreadLookupRecordLike = {
     webhookId?: string | null;
   };
 };
-
-function isDiscordThreadChannelType(type: ChannelType | undefined): boolean {
-  return (
-    type === ChannelType.PublicThread ||
-    type === ChannelType.PrivateThread ||
-    type === ChannelType.AnnouncementThread
-  );
-}
 
 export function isDiscordThreadChannelMessage(params: {
   isGuildMessage: boolean;

@@ -1,6 +1,7 @@
 import type { Locator, Page } from "playwright";
 import { expect, it } from "vitest";
 import type { ControlUiBuildInfo } from "../build-info.ts";
+import { waitForControlUiGatewayReady } from "../test-helpers/control-ui-e2e-readiness.ts";
 import {
   captureUnionProof,
   createSidebarFooterProofSuite,
@@ -43,6 +44,9 @@ async function assertSingleAccountTarget(page: Page, sidebar: Locator) {
 
 async function assertIdentityMenuContract(sidebar: Locator, menu: Locator) {
   expect(await menu.locator('wa-dropdown-item[value="command:recent-activity"]').count()).toBe(0);
+  expect(
+    await menu.evaluate((dropdown) => dropdown.closest("openclaw-menu-surface") !== null),
+  ).toBe(false);
 }
 
 async function runAccountFooterProof(page: Page, sidebar: Locator, branch: "feature" | "main") {
@@ -69,6 +73,26 @@ async function runAccountFooterProof(page: Page, sidebar: Locator, branch: "feat
     )?.trim();
     const buildPrefix = branch === "main" ? "git@0123456" : "feat/sidebar-f…@0123456";
     expect(buildLabel?.startsWith(`${buildPrefix} · `)).toBe(true);
+    const buildLink = menu.getByRole("link", { name: "Control UI build details" });
+    const buildTooltip = sidebar.locator("openclaw-sidebar-build-chip openclaw-tooltip wa-tooltip");
+    const buildTooltipCard = sidebar.locator(".sidebar-build-hover-card");
+    await page.clock.install();
+    await buildLink.hover();
+    await page.clock.runFor(300);
+    await page.mouse.move(0, 0);
+    await page.clock.runFor(300);
+    expect(await buildTooltip.getAttribute("open")).toBeNull();
+    await buildLink.hover();
+    await page.clock.runFor(600);
+    await expect.poll(() => buildTooltip.getAttribute("open")).not.toBeNull();
+    await page.clock.resume();
+    await captureUnionProof(page, "build-chip-hover-intent", `${branch}-${theme}-intent-open.png`, [
+      footer,
+      menuSurface,
+      buildTooltipCard,
+    ]);
+    await page.mouse.move(0, 0);
+    await buildTooltipCard.waitFor({ state: "hidden" });
     await captureUnionProof(page, "sidebar-account-footer", `${branch}-${theme}-menu-default.png`, [
       footer,
       menuSurface,
@@ -135,10 +159,86 @@ const suite = createSidebarFooterProofSuite(
 );
 
 suite.define(() => {
+  it("shows visible offline retry and immediate announced-restart states", async () => {
+    const opened = await openSidebarFooterProofPage(suite);
+    try {
+      const { gateway, page, sidebar } = opened;
+      const footer = sidebar.locator(".sidebar-footer-bar");
+      await setSidebarProofTheme(page, "dark");
+      await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+      await waitForControlUiGatewayReady(page);
+
+      await gateway.setOnline(false);
+      // The offline pill waits out the store's 2s offline-stability debounce.
+      const offline = footer.locator("button.sidebar-footer-bar__status");
+      await offline.waitFor({ state: "visible", timeout: 10_000 });
+      expect(await offline.textContent()).toContain("Offline");
+      expect(await offline.textContent()).toContain("Reconnecting…");
+      await expect.poll(() => page.title()).toContain("(Disconnected)");
+      await captureUnionProof(page, "sidebar-account-footer", "feature-dark-offline.png", [footer]);
+
+      const socketCount = await gateway.getSocketCount();
+      await offline.click();
+      await expect
+        .poll(() => gateway.getSocketCount(), { timeout: 10_000 })
+        .toBeGreaterThan(socketCount);
+
+      await gateway.setOnline(true);
+      await expect
+        .poll(() => footer.locator(".sidebar-footer-bar__status").count(), { timeout: 10_000 })
+        .toBe(0);
+      await expect.poll(() => page.title()).not.toContain("Disconnected");
+      await gateway.emitGatewayEvent("shutdown", {
+        reason: "gateway restart",
+        restartExpectedMs: 5_000,
+      });
+      const restarting = footer.locator(".sidebar-footer-bar__status--restarting");
+      await restarting.waitFor({ state: "visible" });
+      expect(await restarting.textContent()).toBe("Restarting…");
+      await captureUnionProof(page, "sidebar-account-footer", "feature-dark-restarting.png", [
+        footer,
+      ]);
+    } finally {
+      await suite.closeBrowserContext(opened.context);
+    }
+  });
+
   it("keeps the feature account target, identity menu, and visual states coherent", async () => {
     const opened = await openSidebarFooterProofPage(suite);
     try {
       await runAccountFooterProof(opened.page, opened.sidebar, "feature");
+    } finally {
+      await suite.closeBrowserContext(opened.context);
+    }
+  });
+
+  it("navigates from the build link without opening its hovercard", async () => {
+    const opened = await openSidebarFooterProofPage(suite);
+    try {
+      const { page, sidebar } = opened;
+      await sidebar.locator(".sidebar-identity-card").click();
+      const buildLink = sidebar.getByRole("link", {
+        name: "Control UI build details",
+        exact: true,
+      });
+      const tooltip = sidebar.locator("openclaw-sidebar-build-chip openclaw-tooltip wa-tooltip");
+      await tooltip.evaluate((element) => {
+        document.documentElement.dataset.buildTooltipOpenedByClick = "false";
+        element.addEventListener(
+          "wa-show",
+          () => {
+            document.documentElement.dataset.buildTooltipOpenedByClick = "true";
+          },
+          { once: true },
+        );
+      });
+
+      await buildLink.click();
+
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/settings/about");
+      expect(await page.locator("html").getAttribute("data-build-tooltip-opened-by-click")).toBe(
+        "false",
+      );
     } finally {
       await suite.closeBrowserContext(opened.context);
     }
