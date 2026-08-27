@@ -705,6 +705,7 @@ export function createChannelIngressDrain<
       onPendingDispositionCommitted: options.onPendingDispositionCommitted,
       deriveLaneKey: options.deriveLaneKey,
       reconcileStoredLaneKey: options.reconcileStoredLaneKey,
+      formatError,
       log,
     });
     const { eligiblePending, claimedLaneKeys, retryDelayedLaneKeys } = resolveIngressDrainLaneState(

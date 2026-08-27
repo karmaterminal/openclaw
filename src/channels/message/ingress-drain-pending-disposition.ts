@@ -38,8 +38,8 @@ export type ResolveChannelIngressPendingDisposition<TPayload, TMetadata> = (
 
 /**
  * Fires only after a disposition was durably committed, exactly once per
- * settled row. Use it for the operator receipt; the terminal write already
- * happened, so it must not decide anything.
+ * settled row. Observer failures are reported after the terminal write and
+ * cannot affect delivery.
  */
 export type OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata> = (
   record: ChannelIngressQueueRecord<TPayload, TMetadata>,
@@ -59,6 +59,7 @@ type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
     storedLaneKey: string,
     derivedLaneKey: string,
   ) => boolean;
+  formatError: (error: unknown) => string;
   log: (message: string) => void;
 };
 
@@ -109,10 +110,16 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
         blockedLaneKeys.add(laneKey);
         continue;
       }
-      await params.onPendingDispositionCommitted?.(event, disposition, {
-        laneKey,
-        now: params.dispositionNow,
-      });
+      try {
+        await params.onPendingDispositionCommitted?.(event, disposition, {
+          laneKey,
+          now: params.dispositionNow,
+        });
+      } catch (error) {
+        params.log(
+          `ingress drain: pending disposition observer failed for event ${event.id}: ${params.formatError(error)}`,
+        );
+      }
     }
   }
   return { pending: retained, blockedLaneKeys };

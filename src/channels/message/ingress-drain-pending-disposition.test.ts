@@ -1,4 +1,3 @@
-// Pending-disposition drain tests cover multi-drain CAS fencing.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
 import type { ResolveChannelIngressPendingDisposition } from "./ingress-drain-pending-disposition.js";
@@ -175,6 +174,64 @@ describe("channel ingress pending disposition drain", () => {
       expect(offered).toEqual([["held", "later"], ["later"]]);
       expect(await queue.listPending({ limit: "all" })).toEqual([]);
       expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      drain.dispose();
+    });
+  });
+
+  it.each([
+    {
+      name: "throws",
+      observe: () => {
+        throw new Error("receipt observer failed");
+      },
+    },
+    {
+      name: "rejects",
+      observe: async () => {
+        throw new Error("receipt observer failed");
+      },
+    },
+  ])("keeps draining fresh work when the committed observer $name", async ({ observe }) => {
+    await withTempState(async (stateDir) => {
+      const laneKey = "channel:discord-room";
+      const clock = STALE_AMBIENT_PENDING_MS + 1;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "stale-ambient",
+        { text: "old room history", kind: "ambient" },
+        { laneKey, receivedAt: 0 },
+      );
+      await queue.enqueue(
+        "fresh-addressed",
+        { text: "@openclaw current diagnostic ask", kind: "addressed" },
+        { laneKey, receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const logs: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        startLimit: 1,
+        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
+        onPendingDispositionCommitted: observe,
+        onLog: (message) => logs.push(message),
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      await expect(drain.drainOnce()).resolves.toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["fresh-addressed"]);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+        { id: "stale-ambient", reason: "stale-ambient-backlog" },
+      ]);
+      expect(logs).toEqual([
+        "ingress drain: pending disposition observer failed for event stale-ambient: receipt observer failed",
+      ]);
       drain.dispose();
     });
   });
