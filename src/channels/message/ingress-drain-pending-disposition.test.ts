@@ -1,4 +1,3 @@
-// Pending-disposition drain tests cover multi-drain CAS fencing.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
 import type { ResolveChannelIngressPendingDisposition } from "./ingress-drain-pending-disposition.js";

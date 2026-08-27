@@ -60,8 +60,8 @@ type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
     storedLaneKey: string,
     derivedLaneKey: string,
   ) => boolean;
-  log: (message: string) => void;
   formatError: (error: unknown) => string;
+  log: (message: string) => void;
 };
 
 type AppliedIngressPendingDispositions<TPayload, TMetadata> = {
