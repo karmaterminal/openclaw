@@ -178,4 +178,109 @@ describe("channel ingress pending disposition drain", () => {
       drain.dispose();
     });
   });
+
+  it("retains a row when its policy hook throws and continues draining", async () => {
+    await withTempState(async (stateDir) => {
+      const clock = 1_000;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "poison-policy",
+        { text: "still valid work", kind: "addressed" },
+        { laneKey: "channel:a", receivedAt: clock },
+      );
+      await queue.enqueue(
+        "other-lane",
+        { text: "unrelated work", kind: "addressed" },
+        { laneKey: "channel:b", receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const onLog = vi.fn();
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        startLimit: 2,
+        onLog,
+        resolvePendingDisposition: (event) => {
+          if (event.id === "poison-policy") {
+            throw new Error("policy fixture failed");
+          }
+          return null;
+        },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 2 });
+      await drain.waitForIdle();
+      expect(adopted.toSorted()).toEqual(["other-lane", "poison-policy"]);
+      expect(onLog).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "pending disposition failed for event poison-policy; retaining for claim-time handling",
+        ),
+      );
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      drain.dispose();
+    });
+  });
+
+  it.each([
+    {
+      name: "throws",
+      observe: () => {
+        throw new Error("receipt observer failed");
+      },
+    },
+    {
+      name: "rejects",
+      observe: async () => {
+        throw new Error("receipt observer failed");
+      },
+    },
+  ])("keeps draining fresh work when the committed observer $name", async ({ observe }) => {
+    await withTempState(async (stateDir) => {
+      const laneKey = "channel:discord-room";
+      const clock = STALE_AMBIENT_PENDING_MS + 1;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue(
+        "stale-ambient",
+        { text: "old room history", kind: "ambient" },
+        { laneKey, receivedAt: 0 },
+      );
+      await queue.enqueue(
+        "fresh-addressed",
+        { text: "@openclaw current diagnostic ask", kind: "addressed" },
+        { laneKey, receivedAt: clock },
+      );
+
+      const adopted: string[] = [];
+      const logs: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        startLimit: 1,
+        resolvePendingDisposition: resolveStaleAmbientPendingDisposition,
+        onPendingDispositionCommitted: observe,
+        onLog: (message) => logs.push(message),
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      await expect(drain.drainOnce()).resolves.toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["fresh-addressed"]);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+        { id: "stale-ambient", reason: "stale-ambient-backlog" },
+      ]);
+      expect(logs).toEqual([
+        "ingress drain: pending disposition observer failed for event stale-ambient: receipt observer failed",
+      ]);
+      drain.dispose();
+    });
+  });
 });

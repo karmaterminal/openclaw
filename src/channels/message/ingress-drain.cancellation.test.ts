@@ -102,6 +102,42 @@ describe("channel ingress drain cancellation", () => {
     });
   });
 
+  it("logs when cancel settlement cannot release its held claim", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createTestIngressQueue(stateDir);
+      await queue.enqueue("evt-cancel-write-failure", { text: "x" }, { laneKey: "l1" });
+      queue.release = vi.fn(async () => {
+        throw new Error("release write failed");
+      });
+
+      let lifecycle: ChannelIngressDispatchLifecycle | undefined;
+      const onLog = vi.fn();
+      const abortController = new AbortController();
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        onLog,
+        abortSignal: abortController.signal,
+        dispatchClaimedEvent: async (_event, value) => {
+          lifecycle = value;
+          value.onDeferred();
+          return { kind: "deferred" };
+        },
+      });
+
+      await drain.drainOnce();
+      await vi.waitFor(() => expect(lifecycle).toBeDefined());
+      abortController.abort();
+      await expectDefined(lifecycle?.onCancelled, "cancel callback")();
+
+      expect(onLog).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "failed to settle cancelled event evt-cancel-write-failure; holding claim: release write failed",
+        ),
+      );
+      drain.dispose();
+    });
+  });
+
   it("mixed capable and legacy fan-in cancel stays budget-free while genuine abandon terminalizes", async () => {
     await withTempState(async (stateDir) => {
       let clock = 1;

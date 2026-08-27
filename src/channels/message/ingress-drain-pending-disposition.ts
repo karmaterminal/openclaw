@@ -21,7 +21,8 @@ type ChannelIngressPendingDispositionContext = {
  * The record is the row as stored: its payload has not been through the channel
  * payload codec, which runs at claim time. Narrow before reading it and retain
  * anything unreadable so the canonical claim-time invalid-event path owns it.
- * Throwing aborts the whole drain pass, so a corrupt row must never throw here.
+ * A thrown policy error is logged and retained for claim-time handling without
+ * aborting the drain pass; hooks should still remain total and fail open.
  *
  * The commit is CAS-fenced. A concurrent claim can win the race, in which case
  * the row is retained, its lane is blocked for this pass, and no committed
@@ -38,8 +39,8 @@ export type ResolveChannelIngressPendingDisposition<TPayload, TMetadata> = (
 
 /**
  * Fires only after a disposition was durably committed, exactly once per
- * settled row. Use it for the operator receipt; the terminal write already
- * happened, so it must not decide anything.
+ * settled row. Observer failures are reported after the terminal write and
+ * cannot affect delivery.
  */
 export type OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata> = (
   record: ChannelIngressQueueRecord<TPayload, TMetadata>,
@@ -60,6 +61,7 @@ type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
     derivedLaneKey: string,
   ) => boolean;
   log: (message: string) => void;
+  formatError: (error: unknown) => string;
 };
 
 type AppliedIngressPendingDispositions<TPayload, TMetadata> = {
@@ -88,10 +90,19 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
   const blockedLaneKeys = new Set<string>();
   for (const event of params.pending) {
     const laneKey = resolveLaneKey(event, params.deriveLaneKey, params.reconcileStoredLaneKey);
-    const disposition = await params.resolvePendingDisposition(event, {
-      laneKey,
-      now: params.dispositionNow,
-    });
+    let disposition: ChannelIngressPendingDisposition | null | undefined;
+    try {
+      disposition = await params.resolvePendingDisposition(event, {
+        laneKey,
+        now: params.dispositionNow,
+      });
+    } catch (error) {
+      params.log(
+        `ingress drain: pending disposition failed for event ${event.id}; retaining for claim-time handling: ${params.formatError(error)}`,
+      );
+      retained.push(event);
+      continue;
+    }
     if (!disposition) {
       retained.push(event);
       continue;
@@ -109,10 +120,16 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
         blockedLaneKeys.add(laneKey);
         continue;
       }
-      await params.onPendingDispositionCommitted?.(event, disposition, {
-        laneKey,
-        now: params.dispositionNow,
-      });
+      try {
+        await params.onPendingDispositionCommitted?.(event, disposition, {
+          laneKey,
+          now: params.dispositionNow,
+        });
+      } catch (error) {
+        params.log(
+          `ingress drain: pending disposition observer failed for event ${event.id}: ${params.formatError(error)}`,
+        );
+      }
     }
   }
   return { pending: retained, blockedLaneKeys };

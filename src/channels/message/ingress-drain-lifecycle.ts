@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { ActiveHandlerState } from "./ingress-drain-state.js";
 
 const ingressCancelCompat = new AsyncLocalStorage<true>();
 
@@ -14,37 +13,6 @@ export function runIngressCancelCompat<T>(fn: () => T): T {
 
 export function isIngressCancelCompat(): boolean {
   return ingressCancelCompat.getStore() === true;
-}
-
-export function createIngressSettleOwner<TPayload, TMetadata>(
-  state: ActiveHandlerState<TPayload, TMetadata>,
-  removeActive: (state: ActiveHandlerState<TPayload, TMetadata>) => void,
-): (fn: () => Promise<void>) => Promise<void> {
-  let settlePromise: Promise<void> | undefined;
-  let settled = false;
-  return async (fn) => {
-    if (settled) {
-      return;
-    }
-    if (settlePromise) {
-      await settlePromise;
-      return;
-    }
-    settlePromise = (async () => {
-      // Only mark settled after the tombstone/fail/release write commits.
-      // Write failure must keep heartbeat + in-memory ownership (wedged > duplicated).
-      await fn();
-      settled = true;
-      state.phase = "settled";
-      removeActive(state);
-    })();
-    try {
-      await settlePromise;
-    } catch (err) {
-      settlePromise = undefined;
-      throw err;
-    }
-  };
 }
 
 /** Full pre-adoption -> adoption ownership lifecycle for one claimed event. */

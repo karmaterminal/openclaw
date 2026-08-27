@@ -167,7 +167,13 @@ function readDiscordIngressPendingRow(payload: unknown): DiscordIngressPendingRo
     return null;
   }
   const rawMessage = payload.rawMessage;
-  if (!readDiscordMessageFacts(rawMessage)) {
+  if (!isRecord(rawMessage) || !readDiscordMessageFacts(rawMessage)) {
+    return null;
+  }
+  if (
+    (rawMessage.content != null && typeof rawMessage.content !== "string") ||
+    (rawMessage.mentions != null && !Array.isArray(rawMessage.mentions))
+  ) {
     return null;
   }
   const gatewayMessage = rawMessage as DiscordGatewayMessage;
@@ -339,9 +345,13 @@ function isDiscordAddressedMessage(rawMessage: DiscordGatewayMessage, botUserId?
     return true;
   }
   return (
-    rawMessage.mentions?.some((user) => user.id === botId) ||
+    (Array.isArray(rawMessage.mentions) &&
+      rawMessage.mentions.some((user) => isRecord(user) && nonEmptyString(user.id) === botId)) ||
     rawMessage.referenced_message?.author?.id === botId ||
-    hasRawDiscordUserMention(rawMessage.content ?? "", botId)
+    hasRawDiscordUserMention(
+      typeof rawMessage.content === "string" ? rawMessage.content : "",
+      botId,
+    )
   );
 }
 
@@ -419,6 +429,7 @@ async function matchesConfiguredDiscordMentionText(
   params: {
     cfg?: OpenClawConfig;
     discordConfig?: DiscordAccountConfig | null;
+    onRuntimeError?: (error: unknown) => void;
   },
 ): Promise<boolean> {
   const text = typeof rawMessage.content === "string" ? rawMessage.content : "";
@@ -449,8 +460,9 @@ async function matchesConfiguredDiscordMentionText(
         return true;
       }
     }
-  } catch {
+  } catch (error) {
     // Missing or rejected regex state makes addressability unproven, not ambient.
+    params.onRuntimeError?.(error);
     return true;
   }
   return false;
@@ -483,6 +495,7 @@ async function hasUnresolvedDiscordAddressForm(
     cfg?: OpenClawConfig;
     discordConfig?: DiscordAccountConfig | null;
     threadBindings?: DiscordThreadBindingLookup;
+    onMentionRuntimeError?: (error: unknown) => void;
   },
 ): Promise<boolean> {
   // Pre-claim rows do not have route/preflight facts. Preserve rows when a
@@ -491,7 +504,11 @@ async function hasUnresolvedDiscordAddressForm(
     hasHydrateableDiscordReplyReference(rawMessage) ||
     hasBoundThread(rawMessage, params.threadBindings) ||
     hasCachedThreadChannel(rawMessage) ||
-    (await matchesConfiguredDiscordMentionText(rawMessage, params))
+    (await matchesConfiguredDiscordMentionText(rawMessage, {
+      cfg: params.cfg,
+      discordConfig: params.discordConfig,
+      onRuntimeError: params.onMentionRuntimeError,
+    }))
   );
 }
 
@@ -508,6 +525,7 @@ export function createDiscordIngressMonitor(params: {
   queue?: ChannelIngressQueue<DiscordIngressPayload>;
   now?: () => number;
 }): DiscordIngressMonitor {
+  let mentionRuntimeFailureReported = false;
   const queue =
     params.queue ??
     getDiscordRuntime().state.openChannelIngressQueue<DiscordIngressPayload>({
@@ -608,6 +626,17 @@ export function createDiscordIngressMonitor(params: {
             cfg: params.cfg,
             discordConfig: params.discordConfig,
             threadBindings: params.threadBindings,
+            onMentionRuntimeError: (error) => {
+              if (mentionRuntimeFailureReported) {
+                return;
+              }
+              mentionRuntimeFailureReported = true;
+              params.runtime.error?.(
+                danger(
+                  `discord ingress: mention runtime unavailable; retaining pending rows: ${formatErrorMessage(error)}`,
+                ),
+              );
+            },
           })
         ) {
           return null;
