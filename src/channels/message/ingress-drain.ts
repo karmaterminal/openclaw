@@ -20,11 +20,21 @@ import {
   isLiveLocalIngressDrainOwner,
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
-import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
+import {
+  createIngressSettleOwner,
+  isIngressCancelCompat,
+  type ChannelIngressDispatchLifecycle,
+} from "./ingress-drain-lifecycle.js";
+import {
+  applyIngressPendingDispositions,
+  type OnChannelIngressPendingDispositionCommitted,
+  type ResolveChannelIngressPendingDisposition,
+} from "./ingress-drain-pending-disposition.js";
 import {
   activeClaimKey,
   IngressAdoptionLostError,
   isIngressAdoptionLostError,
+  resolveIngressDrainLaneState,
   resolveLaneKey,
   sortedKeys,
   type ActiveHandlerState,
@@ -40,7 +50,6 @@ import {
   DEFAULT_INGRESS_RETRY_BASE_MS,
   DEFAULT_INGRESS_RETRY_MAX_MS,
   resolveIngressFailureDisposition,
-  resolveIngressRetryDelayMs,
   type IngressNonRetryableFailure,
   type IngressRetryPolicyConfig,
 } from "./ingress-retry-policy.js";
@@ -83,6 +92,8 @@ export type CreateChannelIngressDrainOptions<
     storedLaneKey: string,
     derivedLaneKey: string,
   ) => boolean;
+  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
+  onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
   ownerId?: string;
   adoptionStallTimeoutMs?: number;
   claimLeaseMs?: number;
@@ -137,6 +148,9 @@ export function createChannelIngressDrain<
   const log = (message: string) => {
     options.onLog?.(message);
   };
+
+  const resolveRecordLaneKey = (record: ChannelIngressQueueRecord<TPayload, TMetadata>): string =>
+    resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey);
 
   const clearStallTimer = (state: ActiveHandlerState<TPayload, TMetadata>) => {
     if (state.stallTimer) {
@@ -358,36 +372,6 @@ export function createChannelIngressDrain<
     await releaseClaim(claim, { lastError: disposition.message });
   };
 
-  const createSettleOwner = (
-    state: ActiveHandlerState<TPayload, TMetadata>,
-  ): ((fn: () => Promise<void>) => Promise<void>) => {
-    let settlePromise: Promise<void> | undefined;
-    let settled = false;
-    return async (fn) => {
-      if (settled) {
-        return;
-      }
-      if (settlePromise) {
-        await settlePromise;
-        return;
-      }
-      settlePromise = (async () => {
-        // Only mark settled after the tombstone/fail/release write commits.
-        // Write failure must keep heartbeat + in-memory ownership (wedged > duplicated).
-        await fn();
-        settled = true;
-        state.phase = "settled";
-        removeActive(state);
-      })();
-      try {
-        await settlePromise;
-      } catch (err) {
-        settlePromise = undefined;
-        throw err;
-      }
-    };
-  };
-
   const armStallWatchdog = (state: ActiveHandlerState<TPayload, TMetadata>) => {
     clearStallTimer(state);
     state.stallTimer = setTimeout(() => {
@@ -423,9 +407,9 @@ export function createChannelIngressDrain<
     state.stallTimer.unref?.();
   };
 
-  const releaseUnadopted = async (
+  const settleUnadopted = async (
     state: ActiveHandlerState<TPayload, TMetadata>,
-    releaseOptions: { lastError?: string; recordAttempt?: boolean },
+    outcome: "cancelled" | "abandoned",
   ) => {
     if (state.phase !== "deferred" && state.phase !== "dispatching") {
       return;
@@ -436,7 +420,11 @@ export function createChannelIngressDrain<
     clearStallTimer(state);
     await state
       .settleOnce(async () => {
-        await releaseClaim(state.claim, releaseOptions);
+        if (outcome === "cancelled") {
+          await releaseClaim(state.claim, { recordAttempt: false });
+          return;
+        }
+        await applyFailureDisposition(state.claim, new Error("turn-abandoned"));
       })
       .catch(() => undefined);
   };
@@ -504,10 +492,15 @@ export function createChannelIngressDrain<
       onCancelled: async () => {
         // Cancellation means ownership ended before delivery, so preserve every
         // prior retry fact while reopening the canonical row for replacement.
-        await releaseUnadopted(state, { recordAttempt: false });
+        await settleUnadopted(state, "cancelled");
       },
       onAbandoned: async () => {
-        await releaseUnadopted(state, { lastError: "turn-abandoned" });
+        // Mixed fan-in cancel falls back to onAbandoned when a source predates
+        // onCancelled. That path is still cancellation: do not charge budget.
+        // A genuine un-admitted turn takes the same bounded disposition as
+        // onFailed, or it retries forever and holds the head of its FIFO lane.
+        const outcome = isIngressCancelCompat() ? "cancelled" : "abandoned";
+        await settleUnadopted(state, outcome);
       },
     };
   };
@@ -546,7 +539,7 @@ export function createChannelIngressDrain<
       task: Promise.resolve(),
       settleOnce: async () => {},
     } as ActiveHandlerState<TPayload, TMetadata>;
-    state.settleOnce = createSettleOwner(state);
+    state.settleOnce = createIngressSettleOwner(state, removeActive);
     const lifecycle = createLifecycle(state);
     armStallWatchdog(state);
     armClaimRefresh(state);
@@ -686,53 +679,48 @@ export function createChannelIngressDrain<
 
     await recoverStaleClaims();
 
-    const pending = await queue.listPending({ limit: "all", orderBy });
-    const claims = await queue.listClaims();
-    const activeLaneKeys = new Set(laneOwnerByKey.keys());
-    const claimedLaneKeys = new Set(
-      claims
-        .filter((claim) => {
-          const state = activeByClaim.get(activeClaimKey(claim));
-          return !(
-            state?.phase === "deferred" &&
-            !state.occupiesLane &&
-            !state.guillotined &&
-            !state.superseded
-          );
-        })
-        .map((claim) =>
-          resolveLaneKey(claim, options.deriveLaneKey, options.reconcileStoredLaneKey),
-        ),
+    const dispositionNow = now();
+    const pendingDispositionResult = await applyIngressPendingDispositions({
+      pending: await queue.listPending({ limit: "all", orderBy }),
+      dispositionNow,
+      queue,
+      resolvePendingDisposition: options.resolvePendingDisposition,
+      onPendingDispositionCommitted: options.onPendingDispositionCommitted,
+      deriveLaneKey: options.deriveLaneKey,
+      reconcileStoredLaneKey: options.reconcileStoredLaneKey,
+      log,
+    });
+    const { eligiblePending, claimedLaneKeys, retryDelayedLaneKeys } = resolveIngressDrainLaneState(
+      {
+        pending: pendingDispositionResult.pending,
+        claims: await queue.listClaims(),
+        activeByClaim,
+        retryPolicy: options.retryPolicy,
+        now: dispositionNow,
+        resolveLaneKey: resolveRecordLaneKey,
+      },
     );
-    const retryDelayedLaneKeys = new Set<string>();
-    for (const event of pending) {
-      if (resolveIngressRetryDelayMs(event, options.retryPolicy, now()) > 0) {
-        retryDelayedLaneKeys.add(
-          resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey),
-        );
-      }
-    }
-
     // Deterministic blocked set for claimNext lane serialization.
     const blockedLaneKeys = new Set<string>([
-      ...sortedKeys(activeLaneKeys),
+      ...sortedKeys(laneOwnerByKey.keys()),
       ...sortedKeys(claimedLaneKeys),
       ...sortedKeys(retryDelayedLaneKeys),
+      ...sortedKeys(pendingDispositionResult.blockedLaneKeys),
     ]);
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
     // Free the lane in blockedLaneKeys so claimNext can take the superseding event.
-    for (const event of pending) {
+    for (const event of eligiblePending) {
       if (shouldStop()) {
         break;
       }
-      const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
+      const laneKey = resolveRecordLaneKey(event);
       if (await supersedeActiveIfNeeded(event, laneKey)) {
         blockedLaneKeys.delete(laneKey);
       }
     }
 
-    const candidateIds = new Set(pending.map((event) => event.id));
+    const candidateIds = new Set(eligiblePending.map((event) => event.id));
     let started = 0;
     while (started < startLimit) {
       if (shouldStop()) {
@@ -759,11 +747,7 @@ export function createChannelIngressDrain<
         await queue.release(claimed, { recordAttempt: false });
         break;
       }
-      const laneKey = resolveLaneKey(
-        claimed,
-        options.deriveLaneKey,
-        options.reconcileStoredLaneKey,
-      );
+      const laneKey = resolveRecordLaneKey(claimed);
       const existing = laneOwnerByKey.get(laneKey);
       if (existing && existing.phase !== "settled") {
         if (await supersedeActiveIfNeeded(claimed, laneKey)) {
