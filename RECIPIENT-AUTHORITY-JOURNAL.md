@@ -40,3 +40,20 @@ The mandatory index advanced farther but exited `1` because vendored `tree-sitte
 unloadable, causing 1,125 Swift files to be skipped. The command produced no `.gitnexus` directory
 or creditable registered alias. Per the renewed hard gate, work stopped before every named graph
 query and before any product/test inspection or edit.
+
+## 2026-08-27: reviewed v1.6.10 scale gate blocked
+
+The reviewed GitNexus candidate `90f97c2c8130db42e606c4b99e6201007b00c9c9` was cloned into a
+dedicated checkout, installed and built under Node 24, and verified clean. Its LadybugDB, Kotlin,
+and Swift native modules all loaded directly; hashes and ancestry are in `GITNEXUS-PREFLIGHT.md`.
+
+The fresh exact-4f85 scale index nevertheless failed the workorder contract. With the mandated
+`GITNEXUS_SKIP_OPTIONAL_GRAMMARS=1`, v1.6.10 explicitly disables optional grammars at runtime,
+skipping the entire 1,125-file Swift and 441-file Kotlin surfaces before exiting `1`. No terminal
+graph counts or registered alias were produced. Peak RSS was 13,147,132 KiB and wall time was
+2:49.40.
+
+The 8.6G partial parse artifact was inspected and removed from the dedicated exact-4f85 target.
+That checkout and the product lane remain clean. This is a material candidate verdict: it cannot
+satisfy the required OpenClaw-scale retained-Swift graph gate with the mandated environment.
+Product/test implementation remains at zero bytes.

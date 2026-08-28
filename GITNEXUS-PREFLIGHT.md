@@ -116,3 +116,69 @@ Skipping 1125 swift file(s) — swift parser not available
 No `.gitnexus` output was created and no registry artifact was found. Consequently the required
 alias is not creditable, and no query, context, or impact call was attempted. The instruction for
 any further index/query failure requires another hard stop before product inspection or edits.
+
+## 2026-08-27 reviewed v1.6.10 candidate
+
+Candidate of record:
+
+- Repository: `karmaterminal/GitNexus`
+- Branch: `codeagent/gitnexus-upstream-sync-20260828`
+- Head: `90f97c2c8130db42e606c4b99e6201007b00c9c9`
+- Version: `1.6.10`
+- Integration commit: `673b8ed92bf26baebcdf9dcb401d56a94577269c`
+- Integration parents:
+  `3c1e686edfc1acaac882927cada121ddd7c47bcc` and
+  `6088d2e309de134688cb465fc76988ce801e06c6`
+- Dedicated checkout:
+  `/home/figs/flesh_beast_best_beast/source/GitNexus-129388-90f97c2c`
+- CLI:
+  `/home/figs/flesh_beast_best_beast/source/GitNexus-129388-90f97c2c/gitnexus/dist/cli/index.js`
+
+The candidate was installed and built only in the dedicated checkout. Because the runner's bundled
+`npm` launcher has a broken relative module path, a session-local wrapper invoked its exact npm CLI
+with Node `v24.18.0`; candidate source and lockfiles remained clean.
+
+Native loads and hashes:
+
+| Artifact                                                                         | Load   | SHA-256                                                            |
+| -------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------ |
+| `gitnexus/node_modules/@ladybugdb/core/lbugjs.node`                              | loaded | `2e7f7e899990d8eab58079763358c99315c37c6e2d8c4936db878ca1f62c0c0d` |
+| `gitnexus/vendor/tree-sitter-kotlin/prebuilds/linux-x64/tree-sitter-kotlin.node` | loaded | `220f109e4e2ce3f27e5889bd326cf7dc1ec83c5a99ec022f60f023c240fc52a8` |
+| `gitnexus/vendor/tree-sitter-swift/prebuilds/linux-x64/tree-sitter-swift.node`   | loaded | `9376099fff5847941bac216afa7142d7b3e98d8c2e5bc8c8c2de486693eeeaf6` |
+
+The index target was clean and detached at exact product SHA
+`4f85d9974f6b9b180dc2304fdf672bbca154da66`, with no pre-existing `.gitnexus`.
+The reviewed candidate was then invoked with the required command shape:
+
+```bash
+GITNEXUS_SKIP_OPTIONAL_GRAMMARS=1 /usr/bin/time -v \
+  /home/figs/actions-runner/actions-runner/externals.2.336.0/node24/bin/node \
+  /home/figs/flesh_beast_best_beast/source/GitNexus-129388-90f97c2c/gitnexus/dist/cli/index.js \
+  analyze --index-only --skip-git \
+  --name openclaw-129388-recipient-authority-4f85 \
+  --workers 12 --worker-timeout 60 .
+```
+
+Hard-stop result:
+
+- Process exit: `1`
+- Wall duration: `2:49.40`
+- User/system CPU: `1516.97s` / `51.26s`
+- Peak RSS: `13,147,132 KiB`
+- Swift skipped: `1,125` files
+- Kotlin skipped: `441` files
+- Reason: candidate `1.6.10` treats `GITNEXUS_SKIP_OPTIONAL_GRAMMARS=1` as a runtime opt-out even
+  when the verified native parsers load successfully.
+- Terminal symbol/relationship/process counts: none; analysis stopped before a successful terminal
+  summary.
+- Partial artifact size: `8.6G`; it contained parse-cache and parsed-file worker output, not a
+  readable registered index.
+- Registry alias: absent from candidate `list` output.
+
+The required retained TypeScript/JavaScript/Swift surface and clean terminal completion therefore
+failed. The inspected partial `.gitnexus` directory was removed from the exact target, restoring its
+clean tracked/untracked state. The full log is retained outside the repository at
+`files/gitnexus-analyze-90f97c2c.log` in this Copilot session.
+
+Per the hard gate, no recipient-authority graph queries, implementation-file reads, product/test
+edits, or design verdict followed.

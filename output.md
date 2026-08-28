@@ -41,3 +41,17 @@ skips 1,125 Swift files. It creates no `.gitnexus` output or registered alias.
 
 The lane therefore remains **BLOCKED before product edits**. No graph query, product/test read or
 edit, focused test, post-edit detection, proof proposal, or acceptance CI was eligible to run.
+
+## Reviewed candidate result
+
+GitNexus candidate `90f97c2c8130db42e606c4b99e6201007b00c9c9` (`1.6.10`) was installed and built
+in a dedicated checkout under Node 24. LadybugDB, Kotlin, and Swift native loads passed.
+
+The fresh exact-4f85 index failed after 2:49 with peak RSS 13,147,132 KiB. Under the required
+`GITNEXUS_SKIP_OPTIONAL_GRAMMARS=1`, the candidate deliberately disabled and skipped 1,125 Swift
+files and 441 Kotlin files, then exited `1` without terminal graph counts or the required registered
+alias. The inspected 8.6G partial artifact was removed.
+
+**Verdict: BLOCKED before product edits.** The required graph queries and all downstream product,
+test, proof-row, detect-changes, savegame, and acceptance work were prohibited by the failed
+retained-Swift scale gate. CI path remains `focused-only` with no product test eligible to run.
