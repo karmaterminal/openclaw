@@ -22,7 +22,7 @@ import {
   loadPluginManifestRegistryCore,
   resetPluginRuntimeStateForTest,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
-import { withTestDir } from "openclaw/plugin-sdk/test-env";
+import { withTempDir } from "openclaw/plugin-sdk/test-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCopilotTestHostCapabilities } from "./host-capability.test-support.js";
 import { createCopilotToolBridge as createCopilotToolBridgeImpl } from "./tool-bridge.js";
@@ -269,7 +269,7 @@ describe("createCopilotToolBridge", () => {
   });
 
   it("preserves prepared manifest-profile grants across direct and cataloged surfaces", async () => {
-    await withTestDir("openclaw-copilot-profile-tools-", async (pluginRoot) => {
+    await withTempDir("openclaw-copilot-profile-tools-", async (pluginRoot) => {
       const pluginId = "profile-probe-plugin";
       const profiledToolName = "profile_probe";
       const siblingToolName = "profile_sibling";
@@ -1359,7 +1359,7 @@ describe("createCopilotToolBridge", () => {
   // OpenClaw attempt would suppress. These tests pin the contract.
   describe("tool-surface gating (PR #86155 [P1] round-6)", () => {
     it("submits the exact conversation-policy-filtered catalog to the SDK", async () => {
-      await withTestDir("openclaw-copilot-policy-", async (workspaceDir) => {
+      await withTempDir("openclaw-copilot-policy-", async (workspaceDir) => {
         const result = await createCopilotToolBridge({
           attemptParams: {
             conversationToolPolicy: {
@@ -1678,6 +1678,28 @@ describe("createCopilotToolBridge", () => {
         toolConstructionPlan?: { includeOpenClawTools?: boolean };
       };
       expect(options?.toolConstructionPlan?.includeOpenClawTools).toBe(true);
+    });
+
+    it("constructs shell tools through the shared glob-aware plan", async () => {
+      const createOpenClawCodingTools = vi.fn(async () => [
+        makeTool({ name: "exec" }),
+        makeTool({ name: "read" }),
+      ]);
+      const result = await createCopilotToolBridge({
+        attemptParams: { toolsAllow: ["exec*"] } as never,
+        createOpenClawCodingTools,
+      });
+      expect(result.sourceTools.map((tool) => tool.name)).toEqual(["exec"]);
+      const options = (createOpenClawCodingTools.mock.calls[0] as unknown[] | undefined)?.[0] as {
+        toolConstructionPlan?: {
+          includeBaseCodingTools?: boolean;
+          includeShellTools?: boolean;
+        };
+      };
+      expect(options?.toolConstructionPlan).toMatchObject({
+        includeBaseCodingTools: false,
+        includeShellTools: true,
+      });
     });
 
     it("does not keep apply_patch for a write-only allowlist", async () => {
