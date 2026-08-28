@@ -117,7 +117,7 @@ No `.gitnexus` output was created and no registry artifact was found. Consequent
 alias is not creditable, and no query, context, or impact call was attempted. The instruction for
 any further index/query failure requires another hard stop before product inspection or edits.
 
-## 2026-08-27 reviewed v1.6.10 candidate
+## 2026-08-27 reviewed v1.6.10 candidate: superseded harness invocation
 
 Candidate of record:
 
@@ -159,7 +159,7 @@ GITNEXUS_SKIP_OPTIONAL_GRAMMARS=1 /usr/bin/time -v \
   --workers 12 --worker-timeout 60 .
 ```
 
-Hard-stop result:
+Rejected harness result:
 
 - Process exit: `1`
 - Wall duration: `2:49.40`
@@ -175,10 +175,63 @@ Hard-stop result:
   readable registered index.
 - Registry alias: absent from candidate `list` output.
 
-The required retained TypeScript/JavaScript/Swift surface and clean terminal completion therefore
-failed. The inspected partial `.gitnexus` directory was removed from the exact target, restoring its
-clean tracked/untracked state. The full log is retained outside the repository at
+This invocation cannot classify the candidate because the harness itself disabled the required
+grammars. The inspected partial `.gitnexus` directory was removed from the exact target, restoring
+its clean tracked/untracked state. The full log is retained outside the repository at
 `files/gitnexus-analyze-90f97c2c.log` in this Copilot session.
 
-Per the hard gate, no recipient-authority graph queries, implementation-file reads, product/test
-edits, or design verdict followed.
+No recipient-authority graph queries, implementation-file reads, product/test edits, or design
+verdict followed this rejected invocation.
+
+## 2026-08-27 corrected enabled-grammar scale gate
+
+The scale gate was rerun from a fresh shell after explicitly unsetting
+`GITNEXUS_SKIP_OPTIONAL_GRAMMARS` and proving the variable absent. Before the run:
+
+- Product lane local/tracking/server refs matched receipt-only head
+  `00a06e894c052671ecec6cf2b9594562736be5f0`, and the tree was clean.
+- GitNexus candidate remained clean at exact `90f97c2c8130db42e606c4b99e6201007b00c9c9`.
+- Index target remained clean at exact `4f85d9974f6b9b180dc2304fdf672bbca154da66`.
+- Node was `v24.18.0`.
+- LadybugDB, vendored Kotlin, and vendored Swift loaded directly under that Node runtime.
+- No prior `.gitnexus` artifact existed.
+
+Corrected command:
+
+```bash
+unset GITNEXUS_SKIP_OPTIONAL_GRAMMARS
+/usr/bin/time -v \
+  /home/figs/actions-runner/actions-runner/externals.2.336.0/node24/bin/node \
+  /home/figs/flesh_beast_best_beast/source/GitNexus-129388-90f97c2c/gitnexus/dist/cli/index.js \
+  analyze --index-only --skip-git \
+  --name openclaw-129388-recipient-authority-4f85 \
+  --workers 12 --worker-timeout 60 .
+```
+
+Genuine blocker receipt:
+
+- Process exit: `1`
+- Wall duration: `4:10.46`
+- User/system CPU: `1855.95s` / `57.13s`
+- Peak RSS: `13,920,712 KiB`
+- Signals delivered: `0`
+- Swaps: `0`
+- Parser runtime skip/error messages: none
+- Expected large-file exclusions: 6 files over 512KB, including generated localization/catalog
+  artifacts; these are the normal analyzer size filter rather than a parser cascade.
+- Terminal symbol/relationship/process counts: none; the process returned nonzero before its
+  terminal summary.
+- Partial artifact: `9.2G`, containing only `parse-cache`, `parsedfile-cache`, and
+  `parsedfile-store`.
+- Index DB/metadata/error file: absent.
+- Registry alias: absent from candidate `list`.
+- Failure diagnostics: no explicit error beyond the terminal exit was emitted to captured combined
+  stdout/stderr.
+
+The required readable/registered index was not produced despite both required grammars being
+enabled and directly loadable. This satisfies the corrected workorder's genuine nonzero-exit
+blocker condition. The inspected partial artifact was removed, restoring the exact target to a
+clean state. The complete combined output is retained outside the repository at
+`files/gitnexus-analyze-90f97c2c-enabled.log`.
+
+No graph query or product/test implementation read/edit followed.

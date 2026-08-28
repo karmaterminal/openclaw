@@ -41,19 +41,33 @@ unloadable, causing 1,125 Swift files to be skipped. The command produced no `.g
 or creditable registered alias. Per the renewed hard gate, work stopped before every named graph
 query and before any product/test inspection or edit.
 
-## 2026-08-27: reviewed v1.6.10 scale gate blocked
+## 2026-08-27: reviewed v1.6.10 skipped-grammar invocation superseded
 
 The reviewed GitNexus candidate `90f97c2c8130db42e606c4b99e6201007b00c9c9` was cloned into a
 dedicated checkout, installed and built under Node 24, and verified clean. Its LadybugDB, Kotlin,
 and Swift native modules all loaded directly; hashes and ancestry are in `GITNEXUS-PREFLIGHT.md`.
 
-The fresh exact-4f85 scale index nevertheless failed the workorder contract. With the mandated
-`GITNEXUS_SKIP_OPTIONAL_GRAMMARS=1`, v1.6.10 explicitly disables optional grammars at runtime,
-skipping the entire 1,125-file Swift and 441-file Kotlin surfaces before exiting `1`. No terminal
-graph counts or registered alias were produced. Peak RSS was 13,147,132 KiB and wall time was
-2:49.40.
+The first fresh exact-4f85 invocation inherited `GITNEXUS_SKIP_OPTIONAL_GRAMMARS=1`. v1.6.10
+explicitly disables optional grammars at runtime under that setting, so it skipped the entire
+1,125-file Swift and 441-file Kotlin surfaces before exiting `1`. Peak RSS was 13,147,132 KiB and
+wall time was 2:49.40.
 
 The 8.6G partial parse artifact was inspected and removed from the dedicated exact-4f85 target.
-That checkout and the product lane remain clean. This is a material candidate verdict: it cannot
-satisfy the required OpenClaw-scale retained-Swift graph gate with the mandated environment.
-Product/test implementation remains at zero bytes.
+That checkout and the product lane remained clean. This result is explicitly superseded as a
+rejected harness invocation; disabling the required grammar cannot support a candidate verdict.
+
+## 2026-08-27: corrected enabled-grammar scale gate blocked
+
+The variable was explicitly unset in a fresh shell and verified absent. Exact candidate/target/lane
+identity and all three native loads were reconfirmed. The full analyze then ran with Kotlin and
+Swift enabled.
+
+It exited `1` after 4:10.46 with peak RSS 13,920,712 KiB, no signal, no swap, and no parser
+skip/error cascade. It emitted no explicit failure diagnostic or terminal graph counts. The 9.2G
+partial output contained parse caches/stores only: no database, metadata, error record, or registry
+alias.
+
+This corrected run is the accepted blocker: a genuine nonzero exit with required grammars enabled,
+directly loadable, and no readable index produced. The partial artifact was inspected and removed.
+Product/test implementation remains at zero bytes, so graph queries and all implementation work
+remain prohibited.
