@@ -15,3 +15,18 @@ or proof is claimed. See `GITNEXUS-PREFLIGHT.md` for exact refs, command, and fa
 
 Limit: the current GitHub identity also received HTTP 404 when resolving prior run `33130949624`;
 that prior run is not credited as lane evidence.
+
+## 2026-08-27: repaired-byte retry blocked
+
+The orchestrator materialized the missing LadybugDB native byte and directed a retry. The byte was
+verified under the exact pinned fork and Node runtime, and corrected repository identities resolved
+the prior product CI and docs refs successfully.
+
+The unchanged mandatory index command then failed on a second pinned-fork native dependency:
+`tree-sitter-kotlin` has no Linux x64 Node 24 ABI 137 build in the installed dependency tree. The
+renewed workorder explicitly requires another stop if the exact repaired fork still fails.
+Accordingly, no `.gitnexus` output or registry alias is credited, no required query ran, and no
+product/test design or implementation work began.
+
+Correction to the prior limit: run `33130949624` is in `openclaw/openclaw`, where it resolves as a
+successful CI run for exact product SHA `4f85d9974f6b9b180dc2304fdf672bbca154da66`.

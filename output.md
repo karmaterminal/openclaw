@@ -21,3 +21,14 @@ Validation completed only for the pre-edit substrate and identity:
 
 Uncertainty: the GitNexus fork installation must be restored by its owner and the entire mandatory
 pre-edit index/query gate rerun from exact base before implementation can begin.
+
+## Retry result
+
+The orchestrator restored the missing LadybugDB byte, whose presence and SHA-256 were verified. The
+exact mandatory index was retried under the pinned Node 24 runtime and failed again, this time
+because `tree-sitter-kotlin` has no installed native build for Linux x64 Node ABI 137.
+
+The lane remains **BLOCKED before product edits**. The second failure also precedes all graph queries,
+focused tests, post-edit detection, and acceptance CI. The upstream product run and docs ref now
+resolve under their corrected repository identities, but they do not satisfy the missing lane
+GitNexus gate.

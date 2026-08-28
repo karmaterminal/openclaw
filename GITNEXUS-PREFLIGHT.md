@@ -55,3 +55,37 @@ To repair:
 The workorder says any indexing failure is a hard stop. The suggested installer was not run. No
 global or upstream GitNexus fallback was used, none of the required pre-edit queries were attempted,
 and no product or test bytes were edited.
+
+## 2026-08-27 repair retry
+
+The orchestrator rebuilt only the pinned fork dependency and directed the lane to retry. Before the
+retry:
+
+- Local `HEAD`, tracking, and server refs all matched
+  `70cbd14d1a2e608469758c227178ac62ada19cf3`; its parent remained exact product base
+  `4f85d9974f6b9b180dc2304fdf672bbca154da66`.
+- The tracked tree was clean.
+- The dependency clone remained clean at exact base, all three manifest/lock/workspace blobs
+  matched the product worktree, and the required `node_modules` symlink was unchanged.
+- The pinned fork origin, HEAD, CLI version, and Node version remained exact.
+- The repaired native byte existed at
+  `/home/figs/flesh_beast_best_beast/source/GitNexus/gitnexus/node_modules/@ladybugdb/core/lbugjs.node`,
+  was 27,740,456 bytes, and had SHA-256
+  `1e4a305ac4d5b48e20e81ea404aa460623f64b93cd443352fa8894e543c05f3c`.
+- Exact upstream product CI run `33130949624` resolved in `openclaw/openclaw` as successful at
+  `4f85d9974f6b9b180dc2304fdf672bbca154da66`.
+- Exact docs main resolved in `karmaterminal/karmaterminal-openclaw-docs` as
+  `1d023b1b9e48edcb409ddceda8988532ef1efc7d`; the pinned proof corpus resolved there.
+
+The exact mandatory index command was rerun unchanged. It failed with exit status `1` before
+creating a creditable index:
+
+```text
+Error: No native build was found for platform=linux arch=x64 runtime=node abi=137 uv=1 libc=glibc node=24.18.0
+    loaded from: /home/figs/flesh_beast_best_beast/source/GitNexus/gitnexus/node_modules/tree-sitter-kotlin
+```
+
+The renewed instruction again requires a hard stop if the repaired exact fork fails. No alternate
+runtime, rebuild, package reconciliation, global CLI, graph fallback, product inspection, or
+product/test edit was attempted. The required registry, query, context, and impact gates therefore
+remain unsatisfied.
