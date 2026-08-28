@@ -89,3 +89,30 @@ The renewed instruction again requires a hard stop if the repaired exact fork fa
 runtime, rebuild, package reconciliation, global CLI, graph fallback, product inspection, or
 product/test edit was attempted. The required registry, query, context, and impact gates therefore
 remain unsatisfied.
+
+## 2026-08-27 complete native rebuild retry
+
+The orchestrator rebuilt all dependencies in the pinned fork under Node `v24.18.0` with
+`GITNEXUS_SKIP_OPTIONAL_GRAMMARS=1`. Exact clean lane, server/tracking equality, dependency clone
+equality, and the required `node_modules` symlink were reverified.
+
+Native artifacts verified before the retry:
+
+| Artifact      | Path                                                                                                                                                  | SHA-256                                                            |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| LadybugDB     | `/home/figs/flesh_beast_best_beast/source/GitNexus/gitnexus/node_modules/@ladybugdb/core/lbugjs.node`                                                 | `1e4a305ac4d5b48e20e81ea404aa460623f64b93cd443352fa8894e543c05f3c` |
+| Kotlin parser | `/home/figs/flesh_beast_best_beast/source/GitNexus/gitnexus/node_modules/tree-sitter-kotlin/build/Release/obj.target/tree_sitter_kotlin_binding.node` | `d298e442621171a38c8c929407a1dfbcbee2af1805c4b7d57a47ba671db6ccf7` |
+
+The exact mandatory command was rerun unchanged. Both repaired dependencies loaded, but the command
+still exited `1`:
+
+```text
+[gitnexus] Swift parsing disabled: vendored `tree-sitter-swift` (under
+`gitnexus/vendor/tree-sitter-swift`) failed to load.
+Cannot find module 'tree-sitter-swift'
+Skipping 1125 swift file(s) — swift parser not available
+```
+
+No `.gitnexus` output was created and no registry artifact was found. Consequently the required
+alias is not creditable, and no query, context, or impact call was attempted. The instruction for
+any further index/query failure requires another hard stop before product inspection or edits.

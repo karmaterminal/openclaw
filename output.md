@@ -32,3 +32,12 @@ The lane remains **BLOCKED before product edits**. The second failure also prece
 focused tests, post-edit detection, and acceptance CI. The upstream product run and docs ref now
 resolve under their corrected repository identities, but they do not satisfy the missing lane
 GitNexus gate.
+
+## Complete rebuild retry result
+
+Both specifically requested native artifacts now exist and their hashes are recorded. Nevertheless,
+the exact index still exits `1` because the pinned fork cannot load vendored `tree-sitter-swift` and
+skips 1,125 Swift files. It creates no `.gitnexus` output or registered alias.
+
+The lane therefore remains **BLOCKED before product edits**. No graph query, product/test read or
+edit, focused test, post-edit detection, proof proposal, or acceptance CI was eligible to run.

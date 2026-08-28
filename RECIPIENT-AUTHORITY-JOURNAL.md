@@ -30,3 +30,13 @@ product/test design or implementation work began.
 
 Correction to the prior limit: run `33130949624` is in `openclaw/openclaw`, where it resolves as a
 successful CI run for exact product SHA `4f85d9974f6b9b180dc2304fdf672bbca154da66`.
+
+## 2026-08-27: complete native rebuild retry blocked
+
+The full pinned-fork rebuild supplied working LadybugDB and Kotlin native artifacts; their exact
+paths and SHA-256 hashes are recorded in `GITNEXUS-PREFLIGHT.md`.
+
+The mandatory index advanced farther but exited `1` because vendored `tree-sitter-swift` remained
+unloadable, causing 1,125 Swift files to be skipped. The command produced no `.gitnexus` directory
+or creditable registered alias. Per the renewed hard gate, work stopped before every named graph
+query and before any product/test inspection or edit.
