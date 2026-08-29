@@ -331,8 +331,14 @@ describe("feishuPlugin actions", () => {
 
   it.each([
     {
-      name: "file-backed default provider",
+      name: "selected env default shadows file provider",
       provider: { source: "file", path: "/unused" },
+      allowed: true,
+    },
+    {
+      name: "non-default file provider",
+      provider: { source: "file", path: "/unused" },
+      defaultEnv: "other-env",
       allowed: false,
     },
     {
@@ -348,34 +354,38 @@ describe("feishuPlugin actions", () => {
   ] satisfies Array<{
     name: string;
     provider: FeishuSecretProviderConfig;
+    defaultEnv?: string;
     allowed: boolean;
-  }>)("enforces root SecretRef policy during discovery: $name", ({ provider, allowed }) => {
-    vi.stubEnv("FEISHU_DISCOVERY_SECRET", "ambient-secret");
-    try {
-      const discovery = describeFeishuMessageTool({
-        secrets: {
-          defaults: { env: "corp-env" },
-          providers: { "corp-env": provider },
-        },
-        channels: {
-          feishu: {
-            enabled: true,
-            appId: "cli_main",
-            appSecret: { source: "env", id: "FEISHU_DISCOVERY_SECRET" },
+  }>)(
+    "enforces root SecretRef policy during discovery: $name",
+    ({ provider, defaultEnv = "corp-env", allowed }) => {
+      vi.stubEnv("FEISHU_DISCOVERY_SECRET", "ambient-secret");
+      try {
+        const discovery = describeFeishuMessageTool({
+          secrets: {
+            defaults: { env: defaultEnv },
+            providers: { "corp-env": provider },
           },
-        },
-      } as OpenClawConfig);
+          channels: {
+            feishu: {
+              enabled: true,
+              appId: "cli_main",
+              appSecret: { source: "env", provider: "corp-env", id: "FEISHU_DISCOVERY_SECRET" },
+            },
+          },
+        });
 
-      expect(discovery?.capabilities).toEqual(allowed ? ["presentation"] : []);
-      if (allowed) {
-        expect(discovery?.actions).toContain("send");
-      } else {
-        expect(discovery?.actions).toEqual([]);
+        expect(discovery?.capabilities).toEqual(allowed ? ["presentation"] : []);
+        if (allowed) {
+          expect(discovery?.actions).toContain("send");
+        } else {
+          expect(discovery?.actions).toEqual([]);
+        }
+      } finally {
+        vi.unstubAllEnvs();
       }
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
+    },
+  );
 
   it("declares native chat IDs as delivery targets for guarded message mutations", () => {
     for (const action of ["edit", "pin", "unpin"] as const) {
@@ -1464,18 +1474,36 @@ describe("feishuPlugin actions", () => {
     ).toBe(false);
   });
 
-  it("does not render callback action buttons as Feishu quick commands", async () => {
+  it.each(
+    ["send", "thread-reply"].flatMap((action) =>
+      ["alone", "with text", "with native buttons"].map((layout) => ({ action, layout })),
+    ),
+  )("preserves unsupported button labels $layout on $action", async ({ action, layout }) => {
     sendCardFeishuMock.mockResolvedValueOnce({ messageId: "om_card", chatId: "oc_group_1" });
 
     await feishuPlugin.actions?.handleAction?.({
-      action: "send",
+      action,
       params: {
         to: "chat:oc_group_1",
+        ...(action === "thread-reply" ? { messageId: "om_root" } : {}),
+        ...(layout === "with text" ? { text: "Choose an action" } : {}),
         presentation: {
           blocks: [
             {
               type: "buttons",
-              buttons: [{ label: "Inspect", action: { type: "callback", value: "inspect:123" } }],
+              buttons: [
+                { label: "Inspect", action: { type: "callback", value: "inspect:123" } },
+                ...(layout === "with native buttons"
+                  ? [
+                      { label: "Help", action: { type: "command", command: "/help" } },
+                      {
+                        label: "Details <one> & more",
+                        action: { type: "callback", value: "/opaque-details" },
+                      },
+                      { label: "Docs", action: { type: "url", url: "https://example.com" } },
+                    ]
+                  : []),
+              ],
             },
           ],
         },
@@ -1491,8 +1519,79 @@ describe("feishuPlugin actions", () => {
     );
     const card = requireRecord(sendCardArgs.card, "card");
     const elements = requireArray(requireRecord(card.body, "card body").elements, "card elements");
-    expect(elements).toEqual([{ tag: "markdown", content: "- Inspect" }]);
+    expect(elements).toEqual([
+      ...(layout === "with text" ? [{ tag: "markdown", content: "Choose an action" }] : []),
+      { tag: "markdown", content: "- Inspect" },
+      ...(layout === "with native buttons"
+        ? [
+            expect.objectContaining({
+              tag: "button",
+              text: { tag: "plain_text", content: "Help" },
+              behaviors: [
+                {
+                  type: "callback",
+                  value: { oc: "ocf1", k: "quick", a: "feishu.payload.button", q: "/help" },
+                },
+              ],
+            }),
+            { tag: "markdown", content: "- Details &lt;one&gt; &amp; more" },
+            expect.objectContaining({
+              tag: "button",
+              text: { tag: "plain_text", content: "Docs" },
+              behaviors: [{ type: "open_url", default_url: "https://example.com" }],
+            }),
+          ]
+        : []),
+    ]);
   });
+
+  it.each(["send", "thread-reply"])(
+    "keeps disabled command and link buttons non-interactive on %s",
+    async (action) => {
+      sendCardFeishuMock.mockResolvedValueOnce({ messageId: "om_card", chatId: "oc_group_1" });
+      await feishuPlugin.actions?.handleAction?.({
+        action,
+        params: {
+          to: "chat:oc_group_1",
+          ...(action === "thread-reply" ? { messageId: "om_root" } : {}),
+          presentation: {
+            blocks: [
+              {
+                type: "buttons",
+                buttons: [
+                  {
+                    label: "Unavailable [command](https://example.com/label)",
+                    disabled: true,
+                    action: { type: "command", command: "/help" },
+                  },
+                  {
+                    label: "Unavailable link",
+                    disabled: true,
+                    action: { type: "url", url: "https://example.com" },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        cfg,
+        accountId: undefined,
+        toolContext: {},
+      } as never);
+      const sendCardArgs = requireRecord(
+        mockCallArg(sendCardFeishuMock, 0, 0, "sendCardFeishu"),
+        "send card args",
+      );
+      const card = requireRecord(sendCardArgs.card, "card");
+      expect(requireRecord(card.body, "card body").elements).toEqual([
+        {
+          tag: "markdown",
+          content: "- Unavailable \\[command\\]\\(https://example.com/label\\)",
+        },
+        { tag: "markdown", content: "- Unavailable link" },
+      ]);
+    },
+  );
 
   it("renders legacy web_app presentation buttons as native Feishu link buttons", async () => {
     sendCardFeishuMock.mockResolvedValueOnce({ messageId: "om_card", chatId: "oc_group_1" });

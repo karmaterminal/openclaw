@@ -88,7 +88,7 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
 
   readonly sessionProjection = new SidebarSessionProjection();
   readonly sessionData = new SessionDataController(this);
-  private readonly sessionPullRequestIndicators = new SessionPullRequestIndicatorsController(this, {
+  readonly sessionPullRequests = new SessionPullRequestIndicatorsController(this, {
     getConnected: () => this.connected,
     getRows: () =>
       mergeAdoptedSessionPullRequestRows({
@@ -142,6 +142,10 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
   }
 
   private readonly sessionOwnerFilter = new SessionOwnerFilterController(this, () => this.context);
+
+  sidebarSessionOwnerFilter() {
+    return this.sessionOwnerFilter;
+  }
 
   get sessionOwnerFilterId(): string | null {
     return this.sessionOwnerFilter.ownerId;
@@ -207,10 +211,6 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
     if (this.sessionProjection.promoteCreatedSession(sessionKey)) {
       this.requestUpdate();
     }
-  }
-
-  sessionPullRequestIndicatorState(sessionKey: string, worktreeId: string) {
-    return this.sessionPullRequestIndicators.state(sessionKey, worktreeId);
   }
 
   override updated(changedProperties: PropertyValues<this>) {
@@ -466,24 +466,6 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
     }
   }
 
-  readonly replaceCurrentSession = (sessionKey: string) => {
-    const row = this.findSidebarSessionByKey(sessionKey);
-    const face = resolveSessionPreferredFace(row);
-    const target = sessionNavigationTarget({
-      face,
-      sessionKey,
-      fallbackAgentId: this.selectedAgentIdForSessions(),
-      basePath: this.basePath,
-      row,
-      mainKey: this.sessionMainKey(),
-      preferenceDerivedFace: true,
-    });
-    this.setApplicationSession(sessionKey, this.selectedAgentIdForSessions());
-    if (isSessionRouteId(this.activeRouteId)) {
-      this.onNavigate?.(face, target.options);
-    }
-  };
-
   /** Chip switching selects the agent and refreshes its session list. */
   protected readonly expandAgent = (agentId: string) => {
     const context = this.context;
@@ -622,6 +604,7 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
       sessionData: this.sessionData,
       selectedAgentId: selected,
       statusFilter: this.sessionsStatusFilter,
+      deletionState: (key, agentId) => this.context?.sessions.deletionState(key, agentId),
       archiveVisibility: (key) => this.context?.sessions.archiveVisibility(key),
     });
     const rowsByKey = new Map(rows.map((row) => [row.key, row]));

@@ -51,6 +51,13 @@ function scenario(): ControlUiMockGatewayScenario {
       "browser.request": {
         cases: [{ match: { method: "GET", path: "/tabs" }, response: { running: true, tabs: [] } }],
       },
+      "desktop.observe": {
+        transport: "rfb",
+        wsPath: "/desktop/observe?token=rail-tabs",
+        expiresAtMs: 60_000,
+        control: false,
+        auth: "vnc-password",
+      },
       "environments.list": {
         environments: [{ id: "gateway", type: "local", status: "available", desktop: true }],
       },
@@ -458,7 +465,9 @@ suite.define(() => {
           await sidePanel(page).locator('[data-panel-slot="companion"]:not([hidden])').waitFor();
           await openFromPlus(page, "Desktop");
           await sidePanel(page).locator('[data-panel-slot="desktop"]:not([hidden])').waitFor();
-          await sidePanel(page).getByText("Desktop sources", { exact: true }).waitFor();
+          const desktopObserve = await gateway.waitForRequest("desktop.observe");
+          expect(desktopObserve.params).toEqual({ source: { kind: "host" }, control: false });
+          await sidePanel(page).getByLabel("VNC password", { exact: true }).waitFor();
           await captureRichPanel(page, `rails-tabs-desktop-${themeMode}`);
           expect(await tabLabels(page)).toEqual([
             "Files",
@@ -801,19 +810,17 @@ suite.define(() => {
           await page.keyboard.press("Meta+Shift+B");
           await expect.poll(async () => (await tabLabels(page)).at(-1)).toBe("Files");
           await page.keyboard.press("Control+Backquote");
-          await expect.poll(async () => (await tabLabels(page)).includes("Terminal")).toBe(false);
+          await expect
+            .poll(() =>
+              sidePanel(page)
+                .locator(":scope > .side-panel__header wa-tab[active] .tabstrip-tab__label")
+                .textContent(),
+            )
+            .toContain("Terminal");
           await page.keyboard.press("Control+Backquote");
-          await expect.poll(async () => (await tabLabels(page)).at(-1)).toBe("Terminal");
+          await expect.poll(async () => (await tabLabels(page)).includes("Terminal")).toBe(false);
 
-          for (const label of [
-            "Review",
-            "Tasks",
-            "Browser",
-            "Side chat",
-            "Desktop",
-            "Files",
-            "Terminal",
-          ]) {
+          for (const label of ["Review", "Tasks", "Browser", "Side chat", "Desktop", "Files"]) {
             await sidePanel(page)
               .locator(":scope > .side-panel__header")
               .getByRole("button", { name: `Close ${label}`, exact: true })

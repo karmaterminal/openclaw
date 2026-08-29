@@ -96,6 +96,19 @@ describe("memory search config", () => {
     restoreRegisteredEmbeddingProviders(registeredEmbeddingProvidersSnapshot);
   });
 
+  it("bounds the embedding cache with a built-in default", () => {
+    // #111382 purged `memory.search.cache.maxEntries` from the config contract and replaced it
+    // with an unset built-in default, so pruneEmbeddingCacheIfNeeded early-returned on
+    // `!max` and memory_embedding_cache grew without limit (openclaw/openclaw#114612).
+    const resolved = resolveMemorySearchConfig(
+      asConfig({ memory: { search: {} }, agents: { defaults: {} } }),
+      "main",
+    );
+
+    expect(resolved?.cache.enabled).toBe(true);
+    expect(resolved?.cache.maxEntries).toBeGreaterThan(0);
+  });
+
   function configWithDefaultProvider(provider: string): OpenClawConfig {
     return asConfig({
       memory: {
@@ -502,7 +515,7 @@ describe("memory search config", () => {
       },
     });
 
-    expect(resolveMemorySearchSyncConfig(cfg, "main")).toEqual({
+    expect(resolveMemorySearchSyncConfig(cfg, "main")).toStrictEqual({
       onSessionStart: true,
       onSearch: true,
       watch: true,
@@ -517,22 +530,23 @@ describe("memory search config", () => {
     });
   });
 
-  it("keeps the fixed embedding batch timeout unset", () => {
-    const cfg = asConfig({
-      memory: {
-        search: {
-          provider: "openai",
-        },
-      },
+  it("keeps resolved defaults isolated across calls and sync-only consumers", () => {
+    const cfg = configWithDefaultProvider("openai");
+    const resolved = resolveMemorySearchConfig(cfg, "main")!;
+    const expected = structuredClone(resolved);
+    expect(resolved.cache).toStrictEqual({ enabled: true, maxEntries: 50_000 });
 
-      agents: {
-        defaults: {},
-      },
-    });
+    resolved.chunking.tokens = 1;
+    resolved.chunking.overlap = 0;
+    resolved.sync.watch = false;
+    resolved.sync.sessions.deltaBytes = 0;
+    resolved.query.hybrid.vectorWeight = 0;
+    resolved.query.hybrid.mmr.lambda = 0;
+    resolved.query.hybrid.temporalDecay.halfLifeDays = 1;
+    resolved.cache.enabled = false;
 
-    expect(
-      resolveMemorySearchSyncConfig(cfg, "main")?.embeddingBatchTimeoutSeconds,
-    ).toBeUndefined();
+    expect(resolveMemorySearchConfig(cfg, "main")).toStrictEqual(expected);
+    expect(resolveMemorySearchSyncConfig(cfg, "main")).toStrictEqual(expected.sync);
   });
 
   it("merges defaults and overrides", () => {
