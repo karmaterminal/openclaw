@@ -65,6 +65,7 @@ type PackageManifestLifecycle = {
   restorePackageManifest: (cwd: string) => Promise<unknown>;
 };
 type PackageOptions = RunOptions & {
+  bundlePlugins?: string[];
   allowUnreleasedChangelog?: unknown;
   extractAiRuntime?: (tarballPath: string, destination: string) => Promise<unknown>;
   normalizeTarballModes?: (tarballPath: string) => Promise<unknown>;
@@ -226,6 +227,7 @@ function resolvePackedOpenClawFileName(value: string) {
 export function parseArgs(argv: string[]) {
   const args = argv;
   const options = {
+    bundlePlugins: [] as string[],
     allowUnreleasedChangelog: false,
     outputDir: "",
     outputName: "",
@@ -250,6 +252,13 @@ export function parseArgs(argv: string[]) {
     const arg = args[index];
     if (arg === "--allow-unreleased-changelog") {
       setOnce(arg, "allowUnreleasedChangelog", true);
+    } else if (arg === "--bundle-plugin") {
+      options.bundlePlugins.push(readOptionValue(args, index, arg));
+      index += 1;
+    } else if (arg?.startsWith("--bundle-plugin=")) {
+      options.bundlePlugins.push(
+        readEqualsOptionValue(arg.slice("--bundle-plugin=".length), "--bundle-plugin"),
+      );
     } else if (arg === "--output-dir") {
       setOnce("--output-dir", "outputDir", readOptionValue(args, index, arg));
       index += 1;
@@ -319,7 +328,8 @@ function run(command: string, args: string[], cwd: string, options: RunOptions =
     );
     const useProcessGroup = process.platform !== "win32";
     const env = options.env ?? process.env;
-    // Keep POSIX command selection stable; only Windows needs explicit npm/pnpm shim handling.
+    // POSIX callers own PATH; retain that selection while supporting Corepack-only builders.
+    const npmExecPath = process.platform === "win32" ? env.npm_execpath : "";
     const invocation: {
       args: string[];
       command: string;
@@ -327,8 +337,8 @@ function run(command: string, args: string[], cwd: string, options: RunOptions =
       shell: boolean;
       windowsVerbatimArguments?: boolean;
     } =
-      process.platform === "win32" && command === "pnpm"
-        ? resolvePnpmRunner({ cwd, env, npmExecPath: env.npm_execpath, pnpmArgs: args })
+      command === "pnpm"
+        ? resolvePnpmRunner({ cwd, env, npmExecPath, pnpmArgs: args })
         : process.platform === "win32" && command === "npm"
           ? resolveNpmRunner({ env, npmArgs: args })
           : { args, command, shell: false };
@@ -488,6 +498,12 @@ export async function buildPackageArtifacts(
   };
   for (const envName of PACKAGE_BUILD_PLUGIN_SELECTION_ENV_NAMES) {
     delete buildEnv[envName];
+  }
+  if (packageOptions.bundlePlugins?.length) {
+    // Default frozen-ref harnesses must load without source-only composition dependencies.
+    const { resolvePackageBundledPlugins } = await import("./lib/package-bundled-plugins.mts");
+    const selectedPlugins = resolvePackageBundledPlugins(sourceDir, packageOptions.bundlePlugins);
+    buildEnv[DOCKER_SELECTED_PLUGIN_BUILD_IDS_ENV] = selectedPlugins.map(({ id }) => id).join(",");
   }
   const timeoutMs = resolveTimeoutMs(
     "OPENCLAW_DOCKER_PACKAGE_BUILD_TIMEOUT_MS",
@@ -849,10 +865,10 @@ async function normalizeOpenClawTarballModes(tarballPath: string) {
     await fs.rm(normalizedPath, { force: true });
     await run(
       "tar",
-      ["-czf", path.basename(normalizedPath), "-C", stageDir, ...stageRootEntries],
+      ["--no-xattrs", "-czf", path.basename(normalizedPath), "-C", stageDir, ...stageRootEntries],
       path.dirname(normalizedPath),
       {
-        // macOS bsdtar must not add AppleDouble (._*) sidecar entries.
+        // BSD tar has separate PAX xattr and AppleDouble (._*) metadata paths.
         env: { ...process.env, COPYFILE_DISABLE: "1" },
         timeoutMs,
       },
@@ -988,8 +1004,16 @@ export async function packOpenClawPackageForDocker(
   let packReceiptDir: string | undefined;
   try {
     let cleanupBundledAiRuntime = async () => {};
+    let cleanupBundledPlugins = async () => {};
     try {
       await cleanPackedOpenClawTarballs(outputPath);
+      if (packageOptions.bundlePlugins?.length) {
+        const { preparePackageBundledPlugins } = await import("./lib/package-bundled-plugins.mts");
+        cleanupBundledPlugins = await preparePackageBundledPlugins(
+          sourcePath,
+          packageOptions.bundlePlugins,
+        );
+      }
       cleanupBundledAiRuntime = await prepareBundledAiRuntime(
         sourcePath,
         outputPath,
@@ -1020,12 +1044,16 @@ export async function packOpenClawPackageForDocker(
       try {
         await cleanupBundledAiRuntime();
       } finally {
-        await restorePackageSourceArtifacts(
-          sourcePath,
-          restoreDocsMap,
-          restoreManifest,
-          restoreChangelog,
-        );
+        try {
+          await cleanupBundledPlugins();
+        } finally {
+          await restorePackageSourceArtifacts(
+            sourcePath,
+            restoreDocsMap,
+            restoreManifest,
+            restoreChangelog,
+          );
+        }
       }
     }
     // Scan the emptied pnpm destination instead of trusting its absolute-path output.
@@ -1119,13 +1147,14 @@ async function main() {
   await fs.mkdir(outputDir, { recursive: true });
 
   if (!options.skipBuild) {
-    await buildPackageArtifacts(sourceDir);
+    await buildPackageArtifacts(sourceDir, { bundlePlugins: options.bundlePlugins });
   }
 
   console.error("==> Writing OpenClaw package inventory");
   await writePackageInventoryForDocker(sourceDir);
 
   const tarball = await packOpenClawPackageForDocker(sourceDir, outputDir, {
+    bundlePlugins: options.bundlePlugins,
     allowUnreleasedChangelog: options.allowUnreleasedChangelog,
     outputName: options.outputName,
     packJsonPath: options.packJson,
