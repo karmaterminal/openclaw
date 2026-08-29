@@ -30,3 +30,18 @@ settle owner, extracted claim writer, deferred heartbeat, delayed lane
 ordering, and shutdown/restart facts to survive while the component keeps
 genuine abandonment on bounded failure disposition and all cancellation paths
 budget-free.
+
+## 2026-08-30T00:05Z - Conflict ownership decisions
+
+The real no-ff merge of pinned upstream produced exactly the two conflicts
+predicted by the currency report.
+
+| Path | Resolution | Ownership reason |
+| --- | --- | --- |
+| `src/channels/message/ingress-drain-lifecycle.ts` | Removed the component's duplicate `createIngressSettleOwner`; retained the upstream owner in `ingress-drain-state.ts`. Kept both `onDeferredHeartbeat` and optional `onCancelled` in the reply binding. | Settlement state belongs with upstream's drain-state owner. The reply-lane lifecycle must propagate both upstream liveness and component cancellation identity. |
+| `src/channels/message/ingress-drain.ts` | Imported upstream's extracted `createIngressWriter`, imported `createIngressSettleOwner` from drain state, and retained only cancellation-compat detection from the lifecycle module. Kept upstream's current claim/settlement, lane-ordering, heartbeat, and restart flow. | Claim writes belong to `ingress-claim-writes.ts`; settle-once belongs to `ingress-drain-state.ts`. Genuine abandonment remains a failure disposition, while explicit or legacy-fallback cancellation uses a budget-free release. |
+
+The auto-merged Plugin SDK fan-in retains upstream deferred-heartbeat fan-out
+and unrelated identifier-authentication coverage. Its mixed modern/legacy
+cancel fallback runs legacy `onAbandoned` under the component's scoped
+cancel-compat context, without relabeling direct abandonment.

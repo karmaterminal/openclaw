@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { ActiveHandlerState } from "./ingress-drain-state.js";
 
 const ingressCancelCompat = new AsyncLocalStorage<true>();
 
@@ -16,37 +15,6 @@ export function isIngressCancelCompat(): boolean {
   return ingressCancelCompat.getStore() === true;
 }
 
-export function createIngressSettleOwner<TPayload, TMetadata>(
-  state: ActiveHandlerState<TPayload, TMetadata>,
-  removeActive: (state: ActiveHandlerState<TPayload, TMetadata>) => void,
-): (fn: () => Promise<void>) => Promise<void> {
-  let settlePromise: Promise<void> | undefined;
-  let settled = false;
-  return async (fn) => {
-    if (settled) {
-      return;
-    }
-    if (settlePromise) {
-      await settlePromise;
-      return;
-    }
-    settlePromise = (async () => {
-      // Only mark settled after the tombstone/fail/release write commits.
-      // Write failure must keep heartbeat + in-memory ownership (wedged > duplicated).
-      await fn();
-      settled = true;
-      state.phase = "settled";
-      removeActive(state);
-    })();
-    try {
-      await settlePromise;
-    } catch (err) {
-      settlePromise = undefined;
-      throw err;
-    }
-  };
-}
-
 /** Full pre-adoption -> adoption ownership lifecycle for one claimed event. */
 export type ChannelIngressDispatchLifecycle = {
   /** Pre-adoption only. After adopt the drain treats this signal as inert. */
@@ -61,6 +29,8 @@ export type ChannelIngressDispatchLifecycle = {
    * Claim remains held until adopted or abandoned.
    */
   onDeferred: () => void;
+  /** Deferred reply-lane admission is still waiting behind an active turn. */
+  onDeferredHeartbeat?: () => void;
   /**
    * Durable adoption finalization is in progress (e.g. settlement hold while
    * committing dedupe). Clears the pre-adoption stall watchdog so a timeout
@@ -87,6 +57,7 @@ export function bindIngressLifecycleToReplyOptions(lifecycle: ChannelIngressDisp
     onAdopted: () => void | Promise<void>;
     onDeferred: () => void;
     onCancelled?: () => void | Promise<void>;
+    onDeferredHeartbeat?: () => void;
     onAbandoned: () => void | Promise<void>;
     abortSignal: AbortSignal;
   };
@@ -99,6 +70,7 @@ export function bindIngressLifecycleToReplyOptions(lifecycle: ChannelIngressDisp
       // Debounce/fan-in cancel uses this object. Omitting onCancelled made
       // cancel fall back to onAbandoned and charge the retry budget.
       ...(lifecycle.onCancelled ? { onCancelled: lifecycle.onCancelled } : {}),
+      onDeferredHeartbeat: lifecycle.onDeferredHeartbeat,
       onAbandoned: lifecycle.onAbandoned,
       abortSignal: lifecycle.abortSignal,
     },
