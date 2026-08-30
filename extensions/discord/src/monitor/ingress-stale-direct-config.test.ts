@@ -342,6 +342,30 @@ describe("Discord direct-configured stale ingress", () => {
     );
   });
 
+  it("preserves stale rows when an unresolved channel-name override may disable mentions", async () => {
+    const clock = 1_780_000_075_000;
+    const rawMessage = createRawMessage("name-configured-direct-open", "channel-by-name", {
+      guild_id: "guild-1",
+      channel_type: ChannelType.GuildText,
+      content: "ordinary old room text",
+      timestamp: new Date(clock - 16 * 60 * 1_000).toISOString(),
+    } as RawMessageOverrides);
+
+    await expectDispatches({
+      rawMessage,
+      clock,
+      guildEntries: {
+        "guild-1": {
+          requireMention: true,
+          channels: {
+            "*": { enabled: true, requireMention: true },
+            "always-on-room": { enabled: true, requireMention: false },
+          },
+        },
+      },
+    });
+  });
+
   it.each([
     [STALE_MS, "dispatches"],
     [STALE_MS + 1, "dead-letters"],
