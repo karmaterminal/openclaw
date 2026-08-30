@@ -168,7 +168,7 @@ function readDiscordIngressPendingRow(payload: unknown): DiscordIngressPendingRo
     return null;
   }
   const rawMessage = payload.rawMessage;
-  if (!readDiscordMessageFacts(rawMessage)) {
+  if (!isRecord(rawMessage) || !readDiscordMessageFacts(rawMessage)) {
     return null;
   }
   if (
