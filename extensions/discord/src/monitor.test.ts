@@ -4,7 +4,7 @@ import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { danger } from "openclaw/plugin-sdk/runtime-env";
 import { createRequireRecord, typedCases } from "openclaw/plugin-sdk/test-fixtures";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ChannelType, type Guild } from "./internal/discord.js";
+import { ChannelType, type Client, type Guild } from "./internal/discord.js";
 import { mapGatewayDispatchData } from "./internal/gateway-dispatch.js";
 import {
   allowListMatches,
@@ -106,6 +106,10 @@ describe("registerDiscordListener", () => {
 });
 
 describe("DiscordMessageListener", () => {
+  const client = {
+    getGatewayChannelType: () => undefined,
+  } as unknown as Client;
+
   async function flushAsyncWork() {
     await Promise.resolve();
     await Promise.resolve();
@@ -124,7 +128,7 @@ describe("DiscordMessageListener", () => {
       {} as unknown as Parameters<
         import("./monitor/listeners.js").DiscordMessageListener["handle"]
       >[0],
-      {} as unknown as import("./internal/discord.js").Client,
+      client,
     );
 
     await flushAsyncWork();
@@ -154,13 +158,13 @@ describe("DiscordMessageListener", () => {
       {} as unknown as Parameters<
         import("./monitor/listeners.js").DiscordMessageListener["handle"]
       >[0],
-      {} as unknown as import("./internal/discord.js").Client,
+      client,
     );
     const secondHandle = listener.handle(
       {} as unknown as Parameters<
         import("./monitor/listeners.js").DiscordMessageListener["handle"]
       >[0],
-      {} as unknown as import("./internal/discord.js").Client,
+      client,
     );
 
     await flushAsyncWork();
@@ -187,7 +191,7 @@ describe("DiscordMessageListener", () => {
       {} as unknown as Parameters<
         import("./monitor/listeners.js").DiscordMessageListener["handle"]
       >[0],
-      {} as unknown as import("./internal/discord.js").Client,
+      client,
     );
     await flushAsyncWork();
     expect(logger.error).toHaveBeenCalledWith(danger("discord handler failed: Error: boom"));
@@ -208,7 +212,7 @@ describe("DiscordMessageListener", () => {
       {} as unknown as Parameters<
         import("./monitor/listeners.js").DiscordMessageListener["handle"]
       >[0],
-      {} as unknown as import("./internal/discord.js").Client,
+      client,
     );
     deferred.resolve();
     await expect(handlePromise).resolves.toBeUndefined();
