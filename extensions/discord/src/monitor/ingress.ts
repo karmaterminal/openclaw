@@ -419,6 +419,16 @@ function canExpireDiscordStaleAmbientBacklog(
       })
     : null;
 
+  const configuredChannels = guildInfo?.channels;
+  const hasExactChannelConfig =
+    channelId && configuredChannels ? Object.hasOwn(configuredChannels, channelId) : false;
+  const hasUnresolvedNamedChannelConfig =
+    !channelInfo.name &&
+    !hasExactChannelConfig &&
+    Object.keys(configuredChannels ?? {}).some((key) => key !== "*");
+  if (hasUnresolvedNamedChannelConfig) {
+    return false;
+  }
   if (hasConfiguredDiscordChannels(guildInfo) && channelConfig?.allowed === false) {
     return false;
   }
