@@ -81,7 +81,7 @@ function startMonitor(params: {
     client: {} as never,
     runtime,
     botUserId: BOT_USER_ID,
-    guildEntries: { [GUILD_ID]: { requireMention: false } },
+    guildEntries: { [GUILD_ID]: { requireMention: true } },
     now: () => FROZEN_NOW,
     queue: params.queue,
     dispatch: async (event: { id?: string }, lifecycle: DiscordIngressLifecycle) => {

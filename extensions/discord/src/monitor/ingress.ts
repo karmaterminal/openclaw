@@ -31,6 +31,7 @@ import {
   normalizeDiscordSlug,
   resolveDiscordChannelConfigWithFallback,
   resolveDiscordGuildEntry,
+  resolveDiscordShouldRequireMention,
   type DiscordGuildEntryResolved,
 } from "./allow-list.js";
 import { resolveDiscordChannelInfoSafe } from "./channel-access.js";
@@ -408,10 +409,12 @@ function canExpireDiscordStaleAmbientBacklog(
   if (hasConfiguredDiscordChannels(guildInfo) && channelConfig?.allowed === false) {
     return false;
   }
-  // Freshness is independent of room activation. Mention-gating still decides
-  // who may speak; it must not keep day-old ambient rows claimable on
-  // direct-open rooms. Unknown, thread, and DM rows already failed open above.
-  return true;
+  return resolveDiscordShouldRequireMention({
+    isGuildMessage: true,
+    isThread: false,
+    channelConfig,
+    guildInfo,
+  });
 }
 
 async function matchesConfiguredDiscordMentionText(

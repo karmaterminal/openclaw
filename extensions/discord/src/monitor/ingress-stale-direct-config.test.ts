@@ -89,6 +89,16 @@ function directOpenGuildEntries(channelId = DIRECT_OPEN_CHANNEL_ID): DiscordGuil
   };
 }
 
+function mentionGatedGuildEntries(channelId = DIRECT_OPEN_CHANNEL_ID): DiscordGuildEntries {
+  return {
+    "guild-1": {
+      channels: {
+        [channelId]: { enabled: true, requireMention: true },
+      },
+    },
+  };
+}
+
 async function withQueue<T>(
   now: () => number,
   fn: (queue: ChannelIngressQueue<DiscordIngressPayload>) => Promise<T>,
@@ -190,7 +200,7 @@ async function expectFailsAsAmbient(params: {
       const monitor = createMonitor({
         queue,
         now: () => params.clock,
-        guildEntries: params.guildEntries,
+        guildEntries: params.guildEntries ?? mentionGatedGuildEntries(params.rawMessage.channel_id),
         dispatch,
       });
       monitor.start();
@@ -274,7 +284,7 @@ describe("Discord direct-configured stale ingress", () => {
     );
   });
 
-  it("dead-letters stale authoritative raw non-thread backlog before fresh addressed work", async () => {
+  it("preserves stale authoritative direct-open backlog before fresh addressed work", async () => {
     const clock = 1_780_000_050_000;
     const staleId = `stale-non-thread-${DIRECT_OPEN_CHANNEL_ID}-a`;
     const freshId = `fresh-non-thread-${DIRECT_OPEN_CHANNEL_ID}-b`;
@@ -322,22 +332,9 @@ describe("Discord direct-configured stale ingress", () => {
         });
         monitor.start();
         try {
-          await vi.waitFor(() => expect(dispatched).toEqual([freshId]));
-          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-            { id: staleId, reason: "stale-ambient-backlog" },
-          ]);
-          expect(log).toHaveBeenCalledTimes(1);
-          expect(log.mock.calls[0]?.[0]).toEqual(
-            expect.objectContaining({
-              eventId: staleId,
-              sourceEventId: staleId,
-              laneKey: `channel:${DIRECT_OPEN_CHANNEL_ID}`,
-              channelId: DIRECT_OPEN_CHANNEL_ID,
-              disposition: "failed",
-              reason: "stale-ambient-backlog",
-            }),
-          );
-          expect(JSON.stringify(log.mock.calls[0]?.[0])).not.toContain("ordinary old room text");
+          await vi.waitFor(() => expect(dispatched).toEqual([staleId, freshId]));
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+          expect(log).not.toHaveBeenCalled();
         } finally {
           await monitor.stop();
         }
@@ -356,11 +353,18 @@ describe("Discord direct-configured stale ingress", () => {
       content: "ordinary old room text",
       timestamp: new Date(clock - ageMs).toISOString(),
     } as RawMessageOverrides);
-    const guildEntries = directOpenGuildEntries(rawMessage.channel_id);
     if (expected === "dispatches") {
-      await expectDispatches({ rawMessage, clock, guildEntries });
+      await expectDispatches({
+        rawMessage,
+        clock,
+        guildEntries: mentionGatedGuildEntries(rawMessage.channel_id),
+      });
     } else {
-      await expectFailsAsAmbient({ rawMessage, clock, guildEntries });
+      await expectFailsAsAmbient({
+        rawMessage,
+        clock,
+        guildEntries: mentionGatedGuildEntries(rawMessage.channel_id),
+      });
     }
   });
 
@@ -386,6 +390,7 @@ describe("Discord direct-configured stale ingress", () => {
         const firstMonitor = createMonitor({
           queue,
           now: () => clock,
+          guildEntries: mentionGatedGuildEntries(),
           dispatch: firstDispatch,
         });
         firstMonitor.start();
@@ -412,6 +417,7 @@ describe("Discord direct-configured stale ingress", () => {
         const replayMonitor = createMonitor({
           queue,
           now: () => clock,
+          guildEntries: mentionGatedGuildEntries(),
           dispatch: async (event, lifecycle: DiscordIngressLifecycle) => {
             if (!event.id) {
               throw new Error("expected dispatched Discord event id");
