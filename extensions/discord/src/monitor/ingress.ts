@@ -171,6 +171,19 @@ function readDiscordIngressPendingRow(payload: unknown): DiscordIngressPendingRo
   if (!readDiscordMessageFacts(rawMessage)) {
     return null;
   }
+  if (
+    typeof rawMessage.content !== "string" ||
+    typeof rawMessage.timestamp !== "string" ||
+    !Array.isArray(rawMessage.mentions) ||
+    !rawMessage.mentions.every(isRecord) ||
+    !Array.isArray(rawMessage.attachments) ||
+    !rawMessage.attachments.every(isRecord) ||
+    typeof rawMessage.mention_everyone !== "boolean" ||
+    (rawMessage.message_reference != null && !isRecord(rawMessage.message_reference)) ||
+    (rawMessage.referenced_message != null && !isRecord(rawMessage.referenced_message))
+  ) {
+    return null;
+  }
   const gatewayMessage = rawMessage as DiscordGatewayMessage;
   const payloadReceivedAt = payload.receivedAt;
   return {
@@ -242,7 +255,7 @@ function isDiscordGuildMessage(rawMessage: DiscordGatewayMessage): boolean {
 }
 
 function hasPotentialDiscordAudioAttachment(rawMessage: DiscordGatewayMessage): boolean {
-  for (const attachment of rawMessage.attachments ?? []) {
+  for (const attachment of rawMessage.attachments) {
     const contentType = nonEmptyString(attachment.content_type ?? attachment.contentType);
     if (contentType?.startsWith("audio/")) {
       return true;
@@ -340,9 +353,9 @@ function isDiscordAddressedMessage(rawMessage: DiscordGatewayMessage, botUserId?
     return true;
   }
   return (
-    rawMessage.mentions?.some((user) => user.id === botId) ||
+    rawMessage.mentions.some((user) => user.id === botId) ||
     rawMessage.referenced_message?.author?.id === botId ||
-    hasRawDiscordUserMention(rawMessage.content ?? "", botId)
+    hasRawDiscordUserMention(rawMessage.content, botId)
   );
 }
 

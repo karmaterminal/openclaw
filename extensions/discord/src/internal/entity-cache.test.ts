@@ -112,6 +112,42 @@ describe("DiscordEntityCache eviction", () => {
 });
 
 describe("DiscordEntityCache gateway invalidation", () => {
+  it("tracks channel types from guild and thread lifecycle events", () => {
+    const { cache } = makeCache({ ttlMs: 60_000 });
+
+    cache.invalidateForGatewayEvent(GatewayDispatchEvents.GuildCreate, {
+      channels: [{ id: "guild-channel", type: 0 }],
+      threads: [{ id: "guild-thread", type: 11 }],
+    });
+    expect(cache.getGatewayChannelType("guild-channel")).toBe(0);
+    expect(cache.getGatewayChannelType("guild-thread")).toBe(11);
+
+    cache.invalidateForGatewayEvent(GatewayDispatchEvents.ChannelUpdate, {
+      id: "guild-channel",
+      type: 2,
+    });
+    cache.invalidateForGatewayEvent(GatewayDispatchEvents.ThreadDelete, {
+      id: "guild-thread",
+    });
+    expect(cache.getGatewayChannelType("guild-channel")).toBe(2);
+    expect(cache.getGatewayChannelType("guild-thread")).toBeUndefined();
+
+    cache.invalidateForGatewayEvent(GatewayDispatchEvents.Ready, {});
+    expect(cache.getGatewayChannelType("guild-channel")).toBeUndefined();
+  });
+
+  it("bounds gateway channel metadata by the cache entry limit", () => {
+    const { cache } = makeCache({ maxEntries: 2 });
+
+    for (const id of ["channel-1", "channel-2", "channel-3"]) {
+      cache.invalidateForGatewayEvent(GatewayDispatchEvents.ChannelCreate, { id, type: 0 });
+    }
+
+    expect(cache.getGatewayChannelType("channel-1")).toBeUndefined();
+    expect(cache.getGatewayChannelType("channel-2")).toBe(0);
+    expect(cache.getGatewayChannelType("channel-3")).toBe(0);
+  });
+
   it("invalidates only the updated guild's normalized emoji list", async () => {
     const { cache } = makeCache({ ttlMs: 60_000 });
     const fetchEmojis = vi.fn(async () => [{ name: "party", identifier: "party:1" }]);

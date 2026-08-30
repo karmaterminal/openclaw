@@ -82,6 +82,22 @@ describe("Discord durable ingress corrupt pending rows", () => {
       name: "payload with an identity-less message",
       payload: { version: 1, receivedAt: FROZEN_NOW, rawMessage: { content: "no ids" } },
     },
+    {
+      name: "payload with a malformed mentions collection",
+      payload: {
+        version: 1,
+        receivedAt: FROZEN_NOW,
+        rawMessage: { ...createAddressedMessage("corrupt-row"), mentions: {} },
+      },
+    },
+    {
+      name: "payload with a malformed attachments collection",
+      payload: {
+        version: 1,
+        receivedAt: FROZEN_NOW,
+        rawMessage: { ...createAddressedMessage("corrupt-row"), attachments: {} },
+      },
+    },
   ])(
     "fails a $name through invalid-event and still admits the next fresh same-lane message",
     async ({ payload }) => {
