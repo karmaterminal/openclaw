@@ -108,3 +108,31 @@ transport-boundary proof that abandonment crosses a live channel boundary,
 reaches the age/attempt ceiling, dead-letters, and releases the follower. The
 existing owner-boundary corpus rows transpose; transport and actual
 channel-flow rows require refire on the later presentation successor.
+
+## 2026-08-30T00:30Z - Independent review and broad-CI disposition
+
+Independent Codex autoreview of the candidate against pinned upstream returned
+no actionable findings and judged the patch correct with confidence `0.93`.
+
+Mode-B could not produce broad acceptance:
+
+1. Runs `33283095698` and `33283166730` used product
+   `e1ddbbc8561b3fcf707e50bf315eaecf949a7fb5` and workflow
+   `2a853a94dd4ac8c2734091161a89d4f2c4ed17a7`. Both failed closed in
+   preflight before shard planning and exposed zero-byte preflight logs.
+2. Run `33283236705` used the same product and current workflow
+   `e768ccc2e1e0887be455e6880db0bff91a1dfddd`. It built the 167-shard
+   planner matrix, then failed closed before routing any shard.
+3. Reproducing that workflow's exact routing command against its uploaded
+   planner matrix exits `78`: shard
+   `agentic-gateway-core-runtime` / check
+   `checks-node-agentic-gateway-core-runtime` is absent from the digest-bound
+   routing ruleset. No available reviewed bootstrap branch classifies it.
+
+This is a bootstrap routing-currency blocker, not a green or classified product
+run. The lane therefore closes as `focused-only`; it does not claim Mode-B
+acceptance. Updating the separate bootstrap routing ruleset would widen beyond
+the bounded OpenClaw absorb.
+
+The resolved product behavior is ready for scribe review, with broad CI and
+the previously named real transport-boundary proof still outstanding.
