@@ -140,3 +140,42 @@ Generated surfaces were regenerated from the merged owners. Prompt snapshot
 check reports all 7 files current. Plugin SDK surface reports 148 public
 entrypoints, 4,374 exports, 2,598 callable exports, 1,141 deprecated exports,
 50 wildcard reexports, and zero forbidden package subpaths.
+
+## 2026-08-29 - Section 3: blocked Gate 2 composition
+
+The current pinned primitive-core contract is internally unsatisfiable for the
+compaction hook test/harness pair:
+
+1. The exact accepted `compact.hooks.test.ts` blob calls
+   `resetCompactHooksHarnessMocks()` with no workspace argument.
+2. The exact upstream projection of `compact.hooks.harness.ts` changes that
+   helper to require `workspaceDir` and immediately evaluates
+   `join(workspaceDir, "agents/main/agent")`.
+3. Keeping the semantic merged test makes Knip and runtime composition valid,
+   but Gate 2 rejects the test blob because the upstream patch conflicts and
+   cannot project exactly.
+4. Restoring the exact accepted test makes Gate 2 green, but Knip reports the
+   upstream harness's two exported history mocks unused, and the focused
+   compaction hook suite fails all 154 cases before test execution with
+   `ERR_INVALID_ARG_TYPE` at the missing workspace argument.
+
+This is not repairable inside the current workorder without changing the
+canonical primitive inventory, granting an explicit Gate 2 exception, or
+weakening the gate through a test-only transform/compatibility shim. The latter
+options violate the runbook and repository doctrine. The lane therefore stops
+`BLOCKED`, not `READY_FOR_SCRIBE_REVIEW`.
+
+Static gates reached the dead-export scan. Every preceding changed-path gate
+was green: conflict markers, max-lines ratchet, assertion safety, changelog
+attribution, doctor registry, extension/plugin boundaries, duplicate coverage,
+coercion helpers, dependency pins, format after the one repaired import-order
+file, npm lock, prompt snapshots, doctor contracts, channel metadata, SQLite
+baseline, Plugin SDK exports/surface/deprecation/boundaries, wrapper shadowing,
+and package patches. The remaining Knip failure is the exact contradiction
+above, not an inherited parent failure: upstream's test consumes both exports,
+while the accepted candidate has neither harness export.
+
+The local `git fsck --no-dangling` probe also encountered pre-existing invalid
+reflog entries on unrelated shared branch
+`codeagent/124337-bounded-43a7-absorb-20260829`; no refs or reflogs outside this
+lane were modified.
