@@ -1,5 +1,4 @@
-// Fixed-semantics fossil for karmaterminal/openclaw#1246.
-// Desired contract: stale temporal validity is independent of mention-gating.
+// Regression matrix for openclaw/openclaw#121204.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -183,12 +182,12 @@ async function expectSettledWithoutDispatch(params: {
   expect(await params.queue.listPending({ limit: "all" })).toEqual([]);
 }
 
-describe("Discord direct-open stale ingress fossil (#1246)", () => {
+describe("Discord stale ambient policy (#121204)", () => {
   afterEach(() => {
     closeOpenClawStateDatabaseForTest();
   });
 
-  it("settles stale direct-open ambient without provider, typing, agent turn, or visible delivery", async () => {
+  it("preserves stale direct-open ambient for ordinary delivery", async () => {
     await withQueue(async (queue) => {
       const staleAt = FROZEN_NOW - STALE_MS;
       const stale = createRawMessage("1246-stale-ambient", CHANNEL_ID, {
@@ -209,11 +208,8 @@ describe("Discord direct-open stale ingress fossil (#1246)", () => {
       });
       monitor.start();
       try {
-        await expectSettledWithoutDispatch({
-          queue,
-          dispatched,
-          ids: ["1246-stale-ambient"],
-        });
+        await vi.waitFor(() => expect(dispatched).toEqual(["1246-stale-ambient"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       } finally {
         await monitor.stop();
       }
@@ -289,6 +285,14 @@ describe("Discord direct-open stale ingress fossil (#1246)", () => {
   });
 
   it.each([
+    {
+      name: "group dm",
+      id: "1246-preserve-group-dm",
+      overrides: {
+        channel_type: ChannelType.GroupDM,
+      },
+      channelKind: "non-thread" as const,
+    },
     {
       name: "direct bot mention",
       id: "1246-preserve-mention",
@@ -402,7 +406,7 @@ describe("Discord direct-open stale ingress fossil (#1246)", () => {
       const dispatched: string[] = [];
       const monitor = startMonitor({
         queue,
-        guildEntries: directOpenGuildEntries(),
+        guildEntries: mentionGatedGuildEntries(),
         dispatch: async (event, lifecycle) => {
           dispatched.push(event.id ?? "missing");
           await lifecycle.onAdopted();
@@ -417,6 +421,35 @@ describe("Discord direct-open stale ingress fossil (#1246)", () => {
             expect.objectContaining({ id: fixture.id, reason: "stale-ambient-backlog" }),
           ]),
         );
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("preserves stale rows when configured guild policy cannot be resolved", async () => {
+    await withQueue(async (queue) => {
+      const staleAt = FROZEN_NOW - STALE_MS;
+      const stale = createRawMessage("121204-unresolved-policy", CHANNEL_ID, {
+        guild_id: GUILD_ID,
+        channel_type: ChannelType.GuildText,
+        timestamp: new Date(staleAt).toISOString(),
+      });
+      await enqueueRow(queue, stale, { receivedAt: staleAt, channelKind: "non-thread" });
+
+      const dispatched: string[] = [];
+      const monitor = startMonitor({
+        queue,
+        guildEntries: { "different-guild": { requireMention: true } },
+        dispatch: async (event, lifecycle) => {
+          dispatched.push(event.id ?? "missing");
+          await lifecycle.onAdopted();
+        },
+      });
+      monitor.start();
+      try {
+        await vi.waitFor(() => expect(dispatched).toEqual(["121204-unresolved-policy"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       } finally {
         await monitor.stop();
       }
@@ -450,7 +483,7 @@ describe("Discord direct-open stale ingress fossil (#1246)", () => {
       const dispatched: string[] = [];
       const monitor = startMonitor({
         queue,
-        guildEntries: directOpenGuildEntries(),
+        guildEntries: mentionGatedGuildEntries(),
         dispatch: async (event, lifecycle) => {
           dispatched.push(event.id ?? "missing");
           await lifecycle.onAdopted();
@@ -469,7 +502,7 @@ describe("Discord direct-open stale ingress fossil (#1246)", () => {
     });
   });
 
-  it("settles durable stale direct-open rows after restart without an agent turn", async () => {
+  it("preserves durable stale direct-open rows after restart", async () => {
     await withQueue(async (queue) => {
       const staleAt = FROZEN_NOW - STALE_MS;
       const stale = createRawMessage("1246-restart-stale", CHANNEL_ID, {
@@ -493,18 +526,15 @@ describe("Discord direct-open stale ingress fossil (#1246)", () => {
       });
       monitor.start();
       try {
-        await expectSettledWithoutDispatch({
-          queue,
-          dispatched,
-          ids: ["1246-restart-stale"],
-        });
+        await vi.waitFor(() => expect(dispatched).toEqual(["1246-restart-stale"]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       } finally {
         await monitor.stop();
       }
     });
   });
 
-  it("does not let retry or re-enqueue reanimate a stale-settled direct-open row", async () => {
+  it("does not let retry or re-enqueue reanimate a stale-settled mention-gated row", async () => {
     await withQueue(async (queue) => {
       const staleAt = FROZEN_NOW - STALE_MS;
       const stale = createRawMessage("1246-retry-stale", CHANNEL_ID, {
@@ -517,7 +547,7 @@ describe("Discord direct-open stale ingress fossil (#1246)", () => {
       const dispatched: string[] = [];
       const first = startMonitor({
         queue,
-        guildEntries: directOpenGuildEntries(),
+        guildEntries: mentionGatedGuildEntries(),
         dispatch: async (event, lifecycle) => {
           dispatched.push(event.id ?? "missing");
           await lifecycle.onAdopted();
@@ -543,7 +573,7 @@ describe("Discord direct-open stale ingress fossil (#1246)", () => {
 
       const second = startMonitor({
         queue,
-        guildEntries: directOpenGuildEntries(),
+        guildEntries: mentionGatedGuildEntries(),
         dispatch: async (event, lifecycle) => {
           dispatched.push(`retry:${event.id ?? "missing"}`);
           await lifecycle.onAdopted();
