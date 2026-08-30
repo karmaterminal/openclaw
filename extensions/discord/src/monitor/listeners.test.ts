@@ -26,7 +26,7 @@ function firstErrorMessage(logger: ReturnType<typeof createLogger>): string {
 }
 
 function fakeEvent(channelId: string) {
-  return { channel_id: channelId } as never;
+  return { channel_id: channelId, channel_type: 0 } as never;
 }
 
 async function flushAsyncWork() {
@@ -35,6 +35,22 @@ async function flushAsyncWork() {
 }
 
 describe("DiscordMessageListener", () => {
+  it("adds the gateway-cached channel type before durable admission", async () => {
+    const handler = vi.fn(async () => {});
+    const listener = new DiscordMessageListener(handler as never);
+    const client = {
+      getGatewayChannelType: vi.fn(() => 11),
+    };
+
+    await listener.handle({ channel_id: "thread-1" } as never, client as never);
+
+    expect(client.getGatewayChannelType).toHaveBeenCalledWith("thread-1");
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({ channel_id: "thread-1", channel_type: 11 }),
+      client,
+    );
+  });
+
   it("waits for handler completion", async () => {
     let resolveHandler: (() => void) | undefined;
     const handlerDone = new Promise<void>((resolve) => {

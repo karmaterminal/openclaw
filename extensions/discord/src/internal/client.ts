@@ -168,6 +168,10 @@ export class Client {
     return await this.entityCache.fetchGuildEmojis(guildId, fetcher);
   }
 
+  getGatewayChannelType(channelId: string): number | undefined {
+    return this.entityCache.getGatewayChannelType(channelId);
+  }
+
   async deployCommands(options: DeployCommandOptions = {}) {
     return await this.commandDeployer.deploy(options);
   }

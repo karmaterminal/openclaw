@@ -21,6 +21,7 @@ const DEFAULT_SWEEP_INTERVAL_MS = 30_000;
 
 export class DiscordEntityCache {
   private readonly entries = new Map<string, CacheEntry<unknown>>();
+  private readonly gatewayChannelTypes = new Map<string, number>();
   private lastSweepAt = 0;
 
   constructor(
@@ -69,10 +70,18 @@ export class DiscordEntityCache {
     return await this.fetchCached(`guild-emojis:${guildId}`, fetcher);
   }
 
+  getGatewayChannelType(channelId: string): number | undefined {
+    return this.gatewayChannelTypes.get(channelId);
+  }
+
   invalidateForGatewayEvent(type: string, data: unknown): void {
     const raw = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+    const ready: string = GatewayDispatchEvents.Ready;
+    const guildCreate: string = GatewayDispatchEvents.GuildCreate;
+    const channelCreate: string = GatewayDispatchEvents.ChannelCreate;
     const channelUpdate: string = GatewayDispatchEvents.ChannelUpdate;
     const channelDelete: string = GatewayDispatchEvents.ChannelDelete;
+    const threadCreate: string = GatewayDispatchEvents.ThreadCreate;
     const threadUpdate: string = GatewayDispatchEvents.ThreadUpdate;
     const threadDelete: string = GatewayDispatchEvents.ThreadDelete;
     const guildUpdate: string = GatewayDispatchEvents.GuildUpdate;
@@ -80,6 +89,24 @@ export class DiscordEntityCache {
     const guildMemberAdd: string = GatewayDispatchEvents.GuildMemberAdd;
     const guildMemberRemove: string = GatewayDispatchEvents.GuildMemberRemove;
     const guildMemberUpdate: string = GatewayDispatchEvents.GuildMemberUpdate;
+    if (type === ready) {
+      this.gatewayChannelTypes.clear();
+    }
+    if (type === guildCreate) {
+      this.recordGatewayChannelTypes(raw.channels);
+      this.recordGatewayChannelTypes(raw.threads);
+    }
+    if (
+      type === channelCreate ||
+      type === channelUpdate ||
+      type === threadCreate ||
+      type === threadUpdate
+    ) {
+      this.recordGatewayChannelType(raw);
+    }
+    if (type === channelDelete || type === threadDelete) {
+      this.deleteGatewayChannelType(raw.id);
+    }
     if (
       type === channelUpdate ||
       type === channelDelete ||
@@ -101,6 +128,36 @@ export class DiscordEntityCache {
         this.entries.delete(`member:${guildId}:${user.id}`);
         this.entries.delete(`user:${user.id}`);
       }
+    }
+  }
+
+  private recordGatewayChannelTypes(value: unknown): void {
+    if (!Array.isArray(value)) {
+      return;
+    }
+    for (const channel of value) {
+      if (channel && typeof channel === "object") {
+        this.recordGatewayChannelType(channel as Record<string, unknown>);
+      }
+    }
+  }
+
+  private recordGatewayChannelType(channel: Record<string, unknown>): void {
+    if (typeof channel.id === "string" && typeof channel.type === "number") {
+      this.gatewayChannelTypes.set(channel.id, channel.type);
+      while (this.gatewayChannelTypes.size > (this.params.maxEntries ?? DEFAULT_MAX_ENTRIES)) {
+        const oldest = this.gatewayChannelTypes.keys().next().value;
+        if (oldest === undefined) {
+          break;
+        }
+        this.gatewayChannelTypes.delete(oldest);
+      }
+    }
+  }
+
+  private deleteGatewayChannelType(id: unknown): void {
+    if (typeof id === "string") {
+      this.gatewayChannelTypes.delete(id);
     }
   }
 

@@ -72,7 +72,11 @@ export class DiscordMessageListener extends MessageCreateListener {
     // This awaits only the durable append. Agent dispatch remains detached behind
     // the ingress drain, so later gateway events never wait for a model turn.
     try {
-      await this.handler(data, client);
+      const channelType = data.channel_type ?? client.getGatewayChannelType(data.channel_id);
+      await this.handler(
+        channelType === undefined ? data : { ...data, channel_type: channelType },
+        client,
+      );
     } catch (err) {
       const logger = this.logger ?? discordEventQueueLog;
       logger.error(danger(`discord handler failed: ${String(err)}`));
