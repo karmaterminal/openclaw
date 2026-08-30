@@ -47,6 +47,16 @@ function createAddressedMessage(id: string): APIMessage {
   } as unknown as APIMessage;
 }
 
+function createStaleAmbientMessage(id: string, channelId = CHANNEL_ID): APIMessage {
+  return {
+    ...createAddressedMessage(id),
+    channel_id: channelId,
+    content: "ordinary room chatter",
+    mentions: [],
+    timestamp: new Date(FROZEN_NOW - 60 * 60 * 1_000).toISOString(),
+  };
+}
+
 async function withQueue<T>(
   fn: (queue: ChannelIngressQueue<DiscordIngressPayload>) => Promise<T>,
 ): Promise<T> {
@@ -71,16 +81,22 @@ describe("Discord durable ingress corrupt pending rows", () => {
   });
 
   it.each([
-    { name: "json null payload", payload: null },
-    { name: "primitive payload", payload: 42 },
-    { name: "payload without a message", payload: { version: 1, receivedAt: FROZEN_NOW } },
+    { name: "json null payload", payload: null, expectedReason: "invalid-event" },
+    { name: "primitive payload", payload: 42, expectedReason: "invalid-event" },
+    {
+      name: "payload without a message",
+      payload: { version: 1, receivedAt: FROZEN_NOW },
+      expectedReason: "invalid-event",
+    },
     {
       name: "payload with a null message",
       payload: { version: 1, receivedAt: FROZEN_NOW, rawMessage: null },
+      expectedReason: "invalid-event",
     },
     {
       name: "payload with an identity-less message",
       payload: { version: 1, receivedAt: FROZEN_NOW, rawMessage: { content: "no ids" } },
+      expectedReason: "invalid-event",
     },
     {
       name: "payload with a malformed mentions collection",
@@ -89,6 +105,7 @@ describe("Discord durable ingress corrupt pending rows", () => {
         receivedAt: FROZEN_NOW,
         rawMessage: { ...createAddressedMessage("corrupt-row"), mentions: {} },
       },
+      expectedReason: "invalid-event",
     },
     {
       name: "payload with a malformed attachments collection",
@@ -97,10 +114,51 @@ describe("Discord durable ingress corrupt pending rows", () => {
         receivedAt: FROZEN_NOW,
         rawMessage: { ...createAddressedMessage("corrupt-row"), attachments: {} },
       },
+      expectedReason: "invalid-event",
+    },
+    {
+      name: "payload with an unsupported stored version",
+      payload: {
+        version: 2,
+        receivedAt: FROZEN_NOW,
+        rawMessage: createStaleAmbientMessage("corrupt-row"),
+        channelKind: "non-thread",
+      },
+      expectedReason: "invalid-event",
+    },
+    {
+      name: "payload whose event identity differs from its record",
+      payload: {
+        version: 1,
+        receivedAt: FROZEN_NOW,
+        rawMessage: createStaleAmbientMessage("different-event"),
+        channelKind: "non-thread",
+      },
+      expectedReason: "invalid-event",
+    },
+    {
+      name: "payload whose lane identity differs from its record",
+      payload: {
+        version: 1,
+        receivedAt: FROZEN_NOW,
+        rawMessage: createStaleAmbientMessage("corrupt-row", "different-channel"),
+        channelKind: "non-thread",
+      },
+      expectedReason: "invalid-event",
+    },
+    {
+      name: "valid stale ambient payload",
+      payload: {
+        version: 1,
+        receivedAt: FROZEN_NOW,
+        rawMessage: createStaleAmbientMessage("corrupt-row"),
+        channelKind: "non-thread",
+      },
+      expectedReason: "stale-ambient-backlog",
     },
   ])(
-    "fails a $name through invalid-event and still admits the next fresh same-lane message",
-    async ({ payload }) => {
+    "settles a $name as $expectedReason and still admits the next fresh same-lane message",
+    async ({ payload, expectedReason }) => {
       await withQueue(async (queue) => {
         const staleReceivedAt = FROZEN_NOW - 60 * 60 * 1_000;
         await queue.enqueue("corrupt-row", payload as unknown as DiscordIngressPayload, {
@@ -121,7 +179,7 @@ describe("Discord durable ingress corrupt pending rows", () => {
           client: {} as never,
           runtime,
           botUserId: BOT_USER_ID,
-          guildEntries: { [GUILD_ID]: { requireMention: false } },
+          guildEntries: { [GUILD_ID]: { requireMention: true } },
           now: () => FROZEN_NOW,
           queue,
           dispatch: async (event: { id?: string }, lifecycle: DiscordIngressLifecycle) => {
@@ -134,7 +192,7 @@ describe("Discord durable ingress corrupt pending rows", () => {
           await vi.waitFor(async () => {
             expect(dispatched).toEqual(["fresh-row"]);
             expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
-              { id: "corrupt-row", reason: "invalid-event" },
+              { id: "corrupt-row", reason: expectedReason },
             ]);
           });
           expect(await queue.listPending({ limit: "all" })).toEqual([]);
