@@ -137,14 +137,16 @@ export class DiscordEntityCache {
     }
     for (const channel of value) {
       if (channel && typeof channel === "object") {
-        this.recordGatewayChannelType(channel as Record<string, unknown>);
+        this.recordGatewayChannelType(channel);
       }
     }
   }
 
-  private recordGatewayChannelType(channel: Record<string, unknown>): void {
-    if (typeof channel.id === "string" && typeof channel.type === "number") {
-      this.gatewayChannelTypes.set(channel.id, channel.type);
+  private recordGatewayChannelType(channel: object): void {
+    const id = "id" in channel ? channel.id : undefined;
+    const type = "type" in channel ? channel.type : undefined;
+    if (typeof id === "string" && typeof type === "number") {
+      this.gatewayChannelTypes.set(id, type);
       while (this.gatewayChannelTypes.size > (this.params.maxEntries ?? DEFAULT_MAX_ENTRIES)) {
         const oldest = this.gatewayChannelTypes.keys().next().value;
         if (oldest === undefined) {
