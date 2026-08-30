@@ -13,10 +13,10 @@ type ChannelIngressPendingDispositionContext = {
 };
 
 /**
- * Optional channel policy hook, called once per pending row per drain pass,
- * before any claim. Return a disposition to settle the row terminally instead of
- * dispatching it; return null/undefined to retain it as a normal claim
- * candidate.
+ * Optional channel policy hook, called before claim for each row in the drain
+ * pass's bounded disposition window. Return a disposition to settle the row
+ * terminally instead of dispatching it; return null/undefined to retain it as a
+ * normal claim candidate.
  *
  * The record is the row as stored: its payload has not been through the channel
  * payload codec, which runs at claim time. Narrow before reading it and retain
@@ -50,6 +50,8 @@ export type OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata> = (
 type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
   pending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
   dispositionNow: number;
+  maxEvents: number;
+  shouldStop: () => boolean;
   queue: Pick<ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>, "fail">;
   resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
   onPendingDispositionCommitted?: OnChannelIngressPendingDispositionCommitted<TPayload, TMetadata>;
@@ -87,7 +89,10 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
   }
   const retained: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
   const blockedLaneKeys = new Set<string>();
-  for (const event of params.pending) {
+  for (const event of params.pending.slice(0, params.maxEvents)) {
+    if (params.shouldStop()) {
+      break;
+    }
     const laneKey = resolveLaneKey(event, params.deriveLaneKey, params.reconcileStoredLaneKey);
     const disposition = await params.resolvePendingDisposition(event, {
       laneKey,

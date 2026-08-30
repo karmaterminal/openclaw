@@ -579,6 +579,8 @@ export function createChannelIngressDrain<
     const pendingDispositionResult = await applyIngressPendingDispositions({
       pending: await queue.listPending({ limit: "all", orderBy }),
       dispositionNow,
+      maxEvents: scanLimit,
+      shouldStop,
       queue,
       resolvePendingDisposition: options.resolvePendingDisposition,
       onPendingDispositionCommitted: options.onPendingDispositionCommitted,

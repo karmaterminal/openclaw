@@ -235,4 +235,54 @@ describe("channel ingress pending disposition drain", () => {
       drain.dispose();
     });
   });
+
+  it("bounds pre-claim disposition work per drain pass", async () => {
+    await withTempState(async (stateDir) => {
+      const clock = STALE_AMBIENT_PENDING_MS + 100;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      for (let index = 0; index < 3; index += 1) {
+        await queue.enqueue(
+          `stale-${index}`,
+          { text: "old room history", kind: "ambient" },
+          { laneKey: "channel:stale", receivedAt: index + 1 },
+        );
+      }
+      await queue.enqueue(
+        "other-lane",
+        { text: "@openclaw current diagnostic ask", kind: "addressed" },
+        { laneKey: "channel:other", receivedAt: 10 },
+      );
+
+      const offered: string[] = [];
+      const adopted: string[] = [];
+      const drain = createChannelIngressDrain<Payload>({
+        queue,
+        now: () => clock,
+        scanLimit: 2,
+        startLimit: 2,
+        resolvePendingDisposition: (event, context) => {
+          offered.push(event.id);
+          return resolveStaleAmbientPendingDisposition(event, context);
+        },
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          adopted.push(event.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      const firstPass = await drain.drainOnce();
+      expect(offered).toEqual(["stale-0", "stale-1"]);
+      expect(firstPass).toEqual({ started: 0 });
+      expect((await queue.listPending({ limit: "all" })).map((event) => event.id)).toEqual([
+        "stale-2",
+        "other-lane",
+      ]);
+
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(offered).toEqual(["stale-0", "stale-1", "stale-2", "other-lane"]);
+      expect(adopted).toEqual(["other-lane"]);
+      drain.dispose();
+    });
+  });
 });
