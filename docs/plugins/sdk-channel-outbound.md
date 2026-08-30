@@ -87,9 +87,10 @@ The drain has no opinion about what a disposition means. It applies what the
 channel returns and reports what it committed, so the seam stays
 channel-agnostic.
 
-**Timing.** `resolvePendingDisposition` runs once per pending row per drain
-pass, before `claimNext` and before any lane-blocking or retry-delay scan. It
-does not run for rows already claimed by this or another worker.
+**Timing.** `resolvePendingDisposition` runs for each row in the pass's bounded
+disposition window, before `claimNext` and before any lane-blocking or
+retry-delay scan. Scanning may stop before `maxEvents`, and the callback does
+not run for rows already claimed by this or another worker.
 
 **Payload state.** The record is the row exactly as stored. Its payload has not
 been through the `payload` codec — that runs at claim time — so it may be any

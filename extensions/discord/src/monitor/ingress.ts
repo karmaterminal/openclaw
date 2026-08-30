@@ -11,6 +11,7 @@ import {
   createChannelIngressMonitor,
   DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
   type ChannelIngressQueue,
+  type ChannelIngressQueueRecord,
   type ChannelIngressMonitorDeliveryResult,
   type ChannelIngressMonitorLifecycle,
 } from "openclaw/plugin-sdk/channel-outbound";
@@ -81,6 +82,11 @@ type DiscordIngressPendingRow = {
   payloadReceivedAt: number | null;
   channelKind: DiscordIngressChannelKind | undefined;
 };
+
+type DiscordIngressStoredRecord = Pick<
+  ChannelIngressQueueRecord<DiscordIngressPayload>,
+  "id" | "laneKey" | "payload"
+>;
 
 export type DiscordIngressLifecycle = Omit<ChannelIngressMonitorLifecycle, "admission">;
 
@@ -159,16 +165,28 @@ function decodeDiscordIngressChannelKind(value: unknown): DiscordIngressChannelK
 }
 
 /**
- * Pending rows are unvalidated stored bytes: the payload codec only runs at claim
- * time. Null means the row is corrupt rather than a policy question, so the
- * caller must leave it to the canonical claim-time invalid-event owner.
+ * Shared stored-row decoder for claim and pre-claim policy. Null means the row
+ * is not admissible policy input, so pre-claim callers must leave it to the
+ * canonical claim-time invalid-event owner.
  */
-function readDiscordIngressPendingRow(payload: unknown): DiscordIngressPendingRow | null {
+function readDiscordIngressPendingRow(
+  record: DiscordIngressStoredRecord,
+): DiscordIngressPendingRow | null {
+  const payload: unknown = record.payload;
   if (!isRecord(payload)) {
     return null;
   }
+  if (payload.version !== DISCORD_INGRESS_PAYLOAD_VERSION) {
+    return null;
+  }
   const rawMessage = payload.rawMessage;
-  if (!isRecord(rawMessage) || !readDiscordMessageFacts(rawMessage)) {
+  const facts = readDiscordMessageFacts(rawMessage);
+  if (
+    !isRecord(rawMessage) ||
+    !facts ||
+    facts.eventId !== record.id ||
+    facts.laneKey !== record.laneKey
+  ) {
     return null;
   }
   if (
@@ -198,16 +216,16 @@ function readDiscordIngressPendingRow(payload: unknown): DiscordIngressPendingRo
   };
 }
 
-function decodeDiscordIngressPayload(
-  payload: DiscordIngressPayload,
-  claimedId: string,
-): { version: unknown; body: DiscordIngressBody } {
-  const row = readDiscordIngressPendingRow(payload);
+function decodeDiscordIngressPayload(record: DiscordIngressStoredRecord): {
+  version: unknown;
+  body: DiscordIngressBody;
+} {
+  const row = readDiscordIngressPendingRow(record);
   if (!row) {
-    throw new DiscordIngressPayloadError(`Discord ingress payload ${claimedId} is invalid`);
+    throw new DiscordIngressPayloadError(`Discord ingress payload ${record.id} is invalid`);
   }
   return {
-    version: (payload as Partial<DiscordIngressPayload>).version,
+    version: record.payload.version,
     body: {
       receivedAt: row.payloadReceivedAt as number,
       rawMessage: row.rawMessage,
@@ -558,7 +576,7 @@ export function createDiscordIngressMonitor(params: {
       },
       deserialize: (body) => body.rawMessage,
       encode: ({ body }) => ({ version: DISCORD_INGRESS_PAYLOAD_VERSION, ...body }),
-      decode: (payload, { claim }) => decodeDiscordIngressPayload(payload, claim.id),
+      decode: (_payload, { claim }) => decodeDiscordIngressPayload(claim),
       createClaimError: (kind) =>
         new DiscordIngressPayloadError(
           kind === "invalid-version"
@@ -585,7 +603,7 @@ export function createDiscordIngressMonitor(params: {
     appendRetryDelaysMs: [0],
     drain: {
       onPendingDispositionCommitted: (record, disposition, context) => {
-        const row = readDiscordIngressPendingRow(record.payload);
+        const row = readDiscordIngressPendingRow(record);
         if (!row || disposition.kind !== "fail" || disposition.reason !== "stale-ambient-backlog") {
           return;
         }
@@ -609,7 +627,7 @@ export function createDiscordIngressMonitor(params: {
         );
       },
       resolvePendingDisposition: async (record, context) => {
-        const row = readDiscordIngressPendingRow(record.payload);
+        const row = readDiscordIngressPendingRow(record);
         if (!row) {
           // A stored payload this cannot narrow is corrupt, not a policy
           // question. Retaining it hands the row to the canonical claim-time
