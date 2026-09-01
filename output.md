@@ -641,3 +641,178 @@ Historical verdict for exact `154b225d`: `REQUEST_CHANGES`.
 ## Terminal publication verdict for exact `ca05127a`
 
 `CONFIRMED_PRODUCT_COVENANT_DRIVER`
+
+---
+
+# Additive hostile review of Mode-B repair `44adfedf`
+
+This section records the independent read-only review of exact additive
+successor `44adfedf24915a1c08bfe4abd1f4925b7ae51231` over accepted product
+`ca05127afb6e125201ff4e8e940a7355fc731a2d`. It preserves both earlier product
+reviews above.
+
+## Mode-B repair conclusion
+
+The exact six-file successor satisfies the
+`CONFIRMED_MODE_B_CANDIDATE_REPAIR` standard.
+
+The repair moves the minimal/full Gateway decision to startup, carries that
+closed fact through the WebSocket connection composition, and suppresses only
+the detached post-connect health refresh for the explicitly selected minimal
+test Gateway. Normal Gateways retain the existing health refresh. The fixture
+continues to use the authenticated real Gateway owner and preserves
+stale-generation, stopped-generation, replacement, durable reread, release,
+observation, and cleanup coverage.
+
+This verdict confirms the candidate repair, not a fresh broad candidate run.
+Per workorder, this lane did not dispatch Mode-B. The supplied producer report
+contains inaccurate planned-shard totals and a false claim that subagent case
+10 passed a Mode-B retry in 1.345 seconds. This review rejects those claims and
+uses the exact recovered GitHub job evidence described below. The defects are
+in receipt prose, not in the six candidate files.
+
+## Exact reference contract
+
+| Category                     | Named ref                                                      | Full SHA / tree                                                                                                                                                  | Local / tracking / server                                                             |
+| ---------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Product/base                 | accepted product                                               | `ca05127afb6e125201ff4e8e940a7355fc731a2d`; tree `eb55e56113e91a8fca4a06bb8c6334996ae0e908`                                                                      | exact local object and candidate parent                                               |
+| Safe review lane, pre-report | `codeagent/129388-154b225d-product-driver-independent-review`  | `e2557f6a3be2afb0c4f9c6041b1cfdae230c39f4`                                                                                                                       | local / tracking / origin server exact                                                |
+| Product candidate            | `codeagent/129388-mode-b-candidate-red-repair`                 | `44adfedf24915a1c08bfe4abd1f4925b7ae51231`; tree `dafcd1030620b978b82af73d66efb770912b2958`; parent `ca05127afb6e125201ff4e8e940a7355fc731a2d`                   | origin server and GitHub commit API exact                                             |
+| Product savegame             | `savegame/129388-mode-b-candidate-red-repair-20260901T174046Z` | `44adfedf24915a1c08bfe4abd1f4925b7ae51231`                                                                                                                       | origin server exact                                                                   |
+| CI/workflow                  | accepted-product Mode-B run                                    | product `ca05127afb6e125201ff4e8e940a7355fc731a2d`; workflow `b18e51b091b9f0c80d3af0c12fe6d1557ab51d5a`; run `33518993477`                                       | live GitHub run and exact job logs recovered                                          |
+| Gate implementation          | frozen bootstrap checkout                                      | `2a86caa5102b44a92356886cdc4db65bd637632b`                                                                                                                       | exact local object                                                                    |
+| Presentation                 | protected PR head                                              | `00c7f721a55554d0b9228337cc8bc6bec88f9e9f`                                                                                                                       | upstream `refs/pull/129388/head` exact and unchanged                                  |
+| Docs/proof                   | immutable receipt bundle                                       | session `files/exact-44adfedf-receipts/`                                                                                                                         | 27/27 `SHA256SUMS` entries exact                                                      |
+| GitNexus index               | N/A                                                            | installed `karmaterminal/GitNexus` fork CLI `1.6.5`, binary SHA-256 `8309aeb6858023f5cb3ff4ae8416b64c1989e4fe04d82dd822964127ed1355ca`; no exact candidate index | direct source, call-site, test, and receipt evidence used; stock GitNexus not invoked |
+
+The Git server advertised both candidate refs but initially refused the object
+through upload-pack. The review therefore reconstructed the commit from the
+GitHub API patch over exact parent `ca05127a`. The staged tree matched advertised
+tree `dafcd103...` exactly. Author, committer, timestamp, timezone, message,
+parent, and tree were then independently reconstructed into the exact
+`44adfedf...` commit object before the final gates ran.
+
+## Six-file repair and owner boundary
+
+`ca05127a..44adfedf` changes six files, `+14/-3`. Judged production delta is
+`+13/-3`, net `+10`; test delta is `+1/-0`.
+
+- `src/gateway/return-covenant-fixture.gateway.test.ts` selects the existing
+  minimal-Gateway overlay.
+- `src/gateway/server-startup-finish.ts` owns the startup decision and supplies
+  `refreshHealthAfterConnect: !minimalTestGateway`.
+- `src/gateway/server-ws-runtime.ts`,
+  `src/gateway/server/ws-connection.ts`, and
+  `src/gateway/server/ws-connection/message-handler-types.ts` carry the
+  prepared fact without rereading environment state.
+- `src/gateway/server/ws-connection/connect-hello.ts` suppresses the detached
+  refresh only when the prepared value is explicitly `false`; omitted or
+  `true` preserves normal Gateway behavior.
+
+The positive production delta is the bounded composition seam needed to carry
+a startup-owned fact to the authenticated hello owner. It adds no public
+protocol, config, persistent state, fallback, duplicated health owner, or
+test-environment read in the WebSocket hot path.
+
+Independent source review and fresh exact-tree Autoreview both found no
+blocking defect. The fresh review returned `scoped-clean`, patch correct at
+0.99 confidence, and no accepted/actionable P0 finding.
+
+## Parent negatives and candidate positives
+
+The exact parent negative uses Node 24.20.0, the Gateway-core configuration,
+and one worker:
+
+| Boundary                        | Accepted parent `ca05127a`                                  | Candidate `44adfedf` |
+| ------------------------------- | ----------------------------------------------------------- | -------------------- |
+| Authenticated typed phase chain | timed out at 90 seconds                                     | pass                 |
+| Replacement Gateway generation  | failed with stale prepared chat-metadata/database ownership | pass                 |
+| Combined Vitest duration        | 224.09 seconds                                              | 19.16 seconds        |
+| Maximum RSS                     | 3,664,892 KiB                                               | 1,585,880 KiB        |
+
+The reduction is approximately 205 seconds and 2.08 GiB. A replacement-only
+candidate run also passes with the sibling case skipped. Intermediate failed
+repair logs were retained but not credited; the successful final-shape receipt
+is `gateway-postfix-minimal-final-shape.log`.
+
+The replacement case snapshots the first generation, closes it, starts the
+replacement, rejects stale first-generation use, rereads the durable state,
+releases the held result, observes the effect, and cleans up. Wrong-token,
+unauthenticated HTTP, invalid retention request, stale binding, stopped
+endpoint, and idempotent cleanup controls remain present.
+
+The normal-Gateway sibling
+`src/gateway/server/ws-connection/message-handler.post-connect-health.test.ts`
+passes 52/52, proving the regular post-connect health refresh remains active.
+The return-covenant harness passes 7/7 and still executes the unchanged
+12-case, two-form matrix: 24/24 observations and phase chains, three real
+Gateway generations, canonical stores, and zero retained resources remain
+covered by the accepted product driver.
+
+## Exact planned Mode-B evidence and corrected classifications
+
+The accepted-product Mode-B run `33518993477` used workflow
+`b18e51b091b9f0c80d3af0c12fe6d1557ab51d5a`. Its
+`agentic-gateway-core-3` plan contains 199 files and includes both the
+return-covenant Gateway test and the portal HTTP proxy test.
+
+The recovered exact job log reports 161 files passed, one failed, one skipped;
+2,581 tests passed, two failed, two skipped. The only deterministic failures
+are the two parent return-covenant Gateway cases above, and
+confirm-determinism re-reds that same file. The candidate's focused real-owner
+run passes those exact two cases.
+
+Because the planned portal test ran in that stripe and the return-covenant file
+was the only failed file, the IPv6-only portal test passed in Mode-B. Its
+isolated local failure on this host is HTTP 502 `Waiting for app`; 26 sibling
+portal tests pass, the portal source is outside the six-file diff, and no portal
+repair is claimed. It is a local host/network-capability classification.
+
+Subagent case 10 is likewise outside the six-file diff. Exact evidence is:
+
+- accepted parent `75c2e64c`: isolated pass in 89.141 seconds;
+- accepted product `ca05127a`: isolated pass in 88.887 seconds;
+- candidate neighbor order: case 10 passes in 78.179 seconds, then case 11 in
+  1.496 seconds;
+- recovered Mode-B subagent job: case 10 repeatedly fails under the 60-second
+  shard bound with `continuationFanoutMode` still undefined.
+
+That matrix supports a load/timeout classification and rejects candidate
+causation. It does not support the producer report's claimed 1.345-second retry
+pass. The same producer report's claimed Gateway-client `417/417` and
+Gateway-core `2,582 pass` totals are also not credited; the recovered exact
+planned-stripe counts above are authoritative.
+
+## Static, drift, scope, and Barnacle evidence
+
+The immutable exact-candidate receipts establish:
+
+- Node 24.20.0 `pnpm build`: pass;
+- Node 24.20.0 `pnpm check`: pass, including typecheck, lint, format,
+  max-lines, and repository policy guards;
+- Knip 6.32.2 production and all-export scans from lane-local stable caches:
+  pass with no reported unused files or exports;
+- supplied Autoreview: scoped-clean at 0.99 confidence.
+
+This independent review additionally reran:
+
+| Gate                        | Exact result                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Gate 2                      | 36 primitive-core invariants; zero failures; seven exact-upstream projections; three tombstones         |
+| Gate 2.5                    | 1,896 semantic surfaces; 172 support surfaces; 2,516 routed tests; three scripts; zero unmapped support |
+| Gate 2.7, frozen floor      | 1,002 files; 555 `GENUINE`; 103 `MIXED-CLOBBER`; 344 `SAFE-NEW`; zero `FROZEN-STALE`                    |
+| Barnacle classifier         | no candidate labels; no `r: skill`; no dirty-candidate classification                                   |
+| Fresh exact-tree Autoreview | scoped-clean; patch correct at 0.99 confidence                                                          |
+
+The candidate changes zero `src/skills/**`, bundled skill, labeler, docs,
+presentation, generated report, backup, release, deployment, or unrelated
+paths. Its commit contains parsed `Refs: openclaw/openclaw#129388` and the
+required Copilot trailer. Candidate branch and savegame remain server-equal,
+and the protected presentation remains unchanged.
+
+No broad candidate Mode-B or Gate 3g run was dispatched. Acceptance path for
+this read-only repair review is `focused-only`.
+
+## Terminal publication verdict for exact `44adfedf`
+
+`CONFIRMED_MODE_B_CANDIDATE_REPAIR`
