@@ -1,6 +1,49 @@
 # Detached hostile review: bounded absorb `ca919539`
 
-Verdict: `CONFIRMED_BOUNDED_ABSORB_CA919539`
+Verdict: `REQUEST_CHANGES_BOUNDED_ABSORB_CA919539`
+
+## Additive correction after delayed audit completion
+
+The replacement conflict auditor completed after the initial report commit and found two
+absorb-authored defects. Both findings were independently reproduced at the exact
+candidate. This section and the corrected verdict supersede the earlier no-defect
+conclusions below while preserving the original receipt history.
+
+### P0: generic commentary item identity dropped
+
+The merge resolution for
+`src/agents/embedded-agent-subscribe.handlers.messages.stream.ts` took the first-parent
+implementation and failed to forward-port upstream's generic commentary identity from
+`2e3f7340`. Upstream derives the generic commentary `itemId` with
+`resolveAssistantStreamItemId({ message })`; the candidate's relocated
+`emitResolvedCommentaryDisplay` callers pass only
+`ctx.state.lastAssistantStreamItemId`, which is absent for this generic signed segment.
+
+Reachable behavior: generic commentary reaches preamble delivery without its stable
+`itemId`, so the live row cannot be keyed to the persisted fallback row and may survive
+as a duplicate. The absorbed upstream regression test fails at the candidate:
+
+`src/agents/embedded-agent-subscribe.subscribe-embedded-agent-session.reasoning-delivery.test.ts:371`
+
+Expected `itemId: "generic-commentary-item"`; the emitted preamble has no `itemId`.
+
+Smallest repair envelope: forward the generic non-Responses identity derivation into the
+relocated commentary emission path, preserving the Responses item behavior, and make the
+existing absorbed regression test pass.
+
+### P1: heartbeat silence lost by max-lines extraction
+
+`3e44ceda` extracted `buildTerminalEmptyInteractiveReplyPayload` in
+`src/auto-reply/reply/agent-runner-result-payloads.ts:204` but hardcoded
+`isHeartbeat: false` at line 210. The replaced call site passed the live `isHeartbeat`
+value. On heartbeat turns the earlier `emptyInteractiveReplyPayload` is intentionally
+undefined, so the new fallback executes with the wrong value and can emit the interactive
+"I finished the turn, but it did not produce a visible reply" failure instead of
+remaining silent.
+
+Smallest repair envelope: parameterize the extracted helper with `isHeartbeat` (or retain
+the original live value at the first call site) while keeping the intentionally
+non-heartbeat second call explicit, and add a heartbeat no-visible-reply regression test.
 
 ## Immutable object receipt
 
@@ -124,16 +167,19 @@ dispositions compose rather than overwrite owners:
 - Reply delivery combines callback retry/terminal accounting with auto-delivered media
   URL settlement; media-only and visible-reply discriminants remain separate.
 
-No absorb-authored correctness defect was found.
+Two absorb-authored correctness defects were found after the delayed audit completed; see
+the additive correction above.
 
 ## Cleanup commits
 
 - `b311b7f8` is type composition only: it restores the reply-delivery option shape and
   removes a stale explicit session-entry annotation/import. Production behavior is
   unchanged.
-- `3e44ceda` extracts/reflows existing result-payload, Gateway test, heartbeat, and DB
-  schema expressions to remain within the existing max-lines budget. The max-lines
-  ratchet remains 873 suppressions; no suppression or budget was added.
+- `3e44ceda` extracts/reflows result-payload, Gateway test, heartbeat, and DB schema
+  expressions to remain within the existing max-lines budget. The max-lines ratchet
+  remains 873 suppressions and no suppression or budget was added, but the
+  result-payload extraction is not behavior-neutral because it hardcodes
+  `isHeartbeat: false`.
 - `ca919539` only reformats `resolveAgentTextThrottleStream`; the conditional expression
   and return type are unchanged.
 
@@ -170,12 +216,13 @@ All commands used Node `v24.17.0` with serial Vitest ownership:
 - Before-tool adjusted-parameter owner: 18/18 passed. The E2E wrapper setup was
   independently blocked before test execution by another lane's shared
   `.artifacts/run-node-build.lock`; no candidate assertion failed.
-- Subscriber lifecycle: 52/52 passed.
+- Subscriber lifecycle: the selected lifecycle suite passed 52/52, but the absorbed
+  generic-commentary identity regression fails 1/1 when run directly.
 - Reply runner result payloads: 20/20 passed.
 - Barnacle policy suite: 47/47 passed.
 - `pnpm config:docs:check`, assertion-safety, max-lines, production Knip,
   `pnpm check`, and `pnpm build` all passed.
 
-The existing Autoreview finding was adjudicated against exact source, call sites, model
-message framing, and tests. Rerunning the same model review against an unchanged byte
-would not add independent evidence.
+The existing trusted-system-text Autoreview finding remains a false positive after exact
+source, call-site, model-role, and test adjudication. The independent conflict audit,
+however, found the two separate absorb-authored defects recorded above.
