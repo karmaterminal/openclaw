@@ -1,6 +1,82 @@
 # Detached hostile review: bounded absorb `ca919539`
 
-Verdict: `REQUEST_CHANGES_BOUNDED_ABSORB_CA919539`
+Verdict: `CONFIRMED_BOUNDED_ABSORB_1A13E801`
+
+## Additive rereview of repair `1a13e801`
+
+This section supersedes the request-changes verdict below while preserving the
+original candidate and review history. The exact repair commit is
+`1a13e80181232f58bf43cc4deda9ce6ae3325344`, tree
+`3309ccc3870a9f81d26a009818e667e63b26f6e5`, with sole parent
+`ca919539579f6f745243757de22fbb8c400b9343`. The named producer branch resolved
+to that exact commit. Its additive delta is exactly four files, 38 insertions
+and 9 deletions:
+
+1. `src/agents/embedded-agent-subscribe.handlers.messages.lifecycle.ts`
+2. `src/agents/embedded-agent-subscribe.handlers.messages.update.ts`
+3. `src/auto-reply/reply/agent-runner-result-payloads.ts`
+4. `src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts`
+
+### Commentary identity repair
+
+The update and final lifecycle paths now compute the same `commentaryItemId`.
+Both prefer the provider/state-owned `lastAssistantStreamItemId`; only
+non-Responses messages fall back to the existing
+`resolveAssistantStreamItemId({ message })` signature parser. Responses
+messages retain their prior state/content-index identity path and are not
+assigned a generic signature fallback.
+
+The derived ID is used both to scope cumulative provider content and to emit the
+resolved commentary display. No new cast, type assertion, identity parser, or
+fallback row is introduced. The existing generic-commentary owner drives
+message start, update, and final emission with signed ID
+`generic-commentary-item`. It now passes. The update emits one keyed preamble;
+the final sees the same resolved text and `emitCommentaryDisplayTransition`
+suppresses the equal snapshot, so no duplicate live/fallback row is emitted.
+The adjacent Responses, Anthropic, stream-item, and phase owners also pass.
+
+### Heartbeat silence repair
+
+`buildTerminalEmptyInteractiveReplyPayload` now accepts an explicit boolean.
+The ordinary no-visible-payload fallback passes the live `isHeartbeat`, so an
+empty heartbeat with the reasoning presentation lane enabled returns no payload
+and remains silent. The later post-stream fallback retains explicit `false`,
+preserving the intentional interactive failure when a non-heartbeat turn
+streams reasoning or commentary but produces no terminal payload.
+
+The new heartbeat regression passes, as do the existing empty interactive,
+disabled presentation-lane, and explicit streamed reasoning/commentary
+fallback cases. The test helper adds typed optional booleans and conditional
+option construction only; it does not weaken assertions or production types.
+
+### Validation and invariant receipt
+
+All direct tests ran serially under Node `v24.17.0`:
+
+- commentary delivery: 26/26;
+- update/commentary identity owners: 47/47;
+- focused heartbeat, empty-interactive, and disabled-lane cases: 6/6;
+- explicit non-heartbeat streamed reasoning/commentary fallback: 2/2.
+
+`pnpm check`, `pnpm build`, production Knip, config baseline check, assertion
+safety, max-lines, and Barnacle 47/47 all pass. Build emitted no
+`INEFFECTIVE_DYNAMIC_IMPORT` warning. A bounded commit-mode Autoreview at P1
+returned scoped-clean with no accepted P0/P1 finding.
+
+The prior Gate 2, Gate 2.5, and Gate 2.7 receipts remain applicable by exact
+ancestry and materiality: the repair is a one-commit overlay on the reviewed
+candidate, its complete four-file delta was inspected, and every changed
+runtime owner plus the relevant changed/existing tests was rerun directly.
+There is no generated, composite, proof, documentation, deployment, or
+presentation delta to reclassify. `src/skills/**` remains exact at tree
+`92df50bdb2336b47b8b18a5e951375328bfb40b9`; `.github/labeler.yml` remains
+exact at blob `6178ed2468afd3a66066ccdb229fa581c96ce9ec`; protected presentation remains
+`00c7f721a55554d0b9228337cc8bc6bec88f9e9f`, tree
+`55e2dc3b66ae909b37f948f4f96ebe9988cb8aae`.
+
+The two absorb-authored defects recorded below are repaired without collateral
+behavior change. The trusted-system-text Autoreview finding remains a false
+positive and is unaffected by this repair.
 
 ## Additive correction after delayed audit completion
 
