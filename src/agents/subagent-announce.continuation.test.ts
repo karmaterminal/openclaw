@@ -310,6 +310,9 @@ describe("subagent announce continuation chaining", () => {
     });
 
     expect(mocked.spawnSubagentDirectMock).not.toHaveBeenCalled();
+    expect(findContinuationDelegateFlowByOriginRun("ownerless-base", "ownerless-base-run")).toBe(
+      undefined,
+    );
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringMatching(
         /stage=(session-owner-resolution|terminal-token-admission).*ownerReceipt=absent.*(AgentSelectionRequiredError|source session owner is unavailable)/,
