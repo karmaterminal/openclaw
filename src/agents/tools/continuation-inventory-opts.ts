@@ -22,6 +22,7 @@ export function buildInventoryContinuationToolOpts(continuationEnabled: boolean)
   requestCompactionOpts?: {
     sessionId: string;
     getContextUsage: () => number | null;
+    contextUsageOrigin: "inventory_stub";
     triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason: string }>;
   };
 } {
@@ -39,6 +40,7 @@ export function buildInventoryContinuationToolOpts(continuationEnabled: boolean)
     requestCompactionOpts: {
       sessionId: "<inventory-only>",
       getContextUsage: () => null,
+      contextUsageOrigin: "inventory_stub",
       triggerCompaction: async () => ({
         ok: false,
         compacted: false,

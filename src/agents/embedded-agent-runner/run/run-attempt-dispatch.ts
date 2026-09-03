@@ -277,6 +277,7 @@ export async function dispatchEmbeddedRunAttempt(input: {
   const requestCompactionOpts = params.requestCompactionOpts
     ? {
         ...params.requestCompactionOpts,
+        contextUsageOrigin: "live_runner" as const,
         getContextUsage: () =>
           getLiveContextUsage?.() ?? params.requestCompactionOpts?.getContextUsage() ?? null,
         bindLiveContextUsage(getContextUsage: () => number | null) {
