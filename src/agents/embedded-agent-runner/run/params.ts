@@ -486,6 +486,7 @@ export type RunEmbeddedAgentParams = {
   requestCompactionOpts?: {
     sessionId?: string;
     getContextUsage: () => number | null;
+    contextUsageOrigin?: RequestCompactionToolOpts["contextUsageOrigin"];
     triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
     /** Rebind context measurement to the active AgentSession after creation. */
     bindLiveContextUsage?: (getContextUsage: () => number | null) => void;

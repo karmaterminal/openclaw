@@ -121,6 +121,33 @@ describe("request_compaction tool — classifier emission", () => {
     expect(thresholdLogs[0]?.message).not.toContain("private working-state detail");
   });
 
+  it("logs whether unknown context came from a live runner", async () => {
+    const triggerCompaction = vi.fn(async () => ({ ok: true, compacted: true }));
+    const tool = createRequestCompactionTool(
+      buildOpts({
+        getContextUsage: () => null,
+        contextUsageOrigin: "live_runner",
+        triggerCompaction,
+      }),
+    );
+
+    const result = (await tool.execute("call-context-unknown", { reason: REASON }))?.details;
+
+    expect(result).toEqual({
+      status: "rejected",
+      guard: "context_threshold",
+      reason:
+        "Context usage is unknown for this session; request_compaction is unavailable on inventory-only paths.",
+    });
+    expect(triggerCompaction).not.toHaveBeenCalled();
+    expect(capturedLogs).toContainEqual({
+      level: "debug",
+      message:
+        `[request_compaction:context-unknown] source=live_runner ` +
+        `session=${SESSION_KEY} sessionId=${SESSION_ID}`,
+    });
+  });
+
   it("warn log on resolve-with-failure includes code=<classifier-result> and the raw reason", async () => {
     const tool = createRequestCompactionTool(
       buildOpts({
