@@ -1,7 +1,9 @@
 import { resolveContextTokensForModel } from "../../agents/context.js";
 import type { EmbeddedAgentCompactResult } from "../../agents/embedded-agent-runner/types.js";
 import {
+  SESSION_TOTAL_TOKENS_VERSION,
   resolveFreshSessionTotalTokens,
+  resolveSessionTotalTokens,
   type SessionEntry,
   type SessionPostCompactionDelegate,
 } from "../../config/sessions.js";
@@ -114,25 +116,105 @@ export async function releaseQueuedCompactionTolerant(
   }
 }
 
-export function computeRequestCompactionContextUsage(params: {
+type RequestCompactionContextUsageParams = {
   entry: SessionEntry | undefined;
   cfg: OpenClawConfig | undefined;
   provider: string;
   model: string;
-}): number | null {
-  const freshTotalTokens = resolveFreshSessionTotalTokens(params.entry);
-  if (freshTotalTokens === undefined) {
-    return null;
-  }
-  const contextWindow =
-    params.entry?.contextTokens ??
+};
+
+function resolveRequestCompactionContextWindow(params: RequestCompactionContextUsageParams) {
+  const entryContextWindow = params.entry?.contextTokens;
+  const resolvedContextWindow =
+    entryContextWindow ??
     resolveContextTokensForModel({
       cfg: params.cfg,
       provider: params.provider,
       model: params.model,
       allowAsyncLoad: false,
     });
-  return typeof contextWindow === "number" && contextWindow > 0
-    ? freshTotalTokens / contextWindow
-    : null;
+  return {
+    contextWindow:
+      typeof resolvedContextWindow === "number" && resolvedContextWindow > 0
+        ? resolvedContextWindow
+        : null,
+    contextWindowSource:
+      typeof resolvedContextWindow !== "number" || resolvedContextWindow <= 0
+        ? "unresolved"
+        : entryContextWindow === resolvedContextWindow
+          ? (params.entry?.contextTokensSource ?? "session_entry")
+          : "model_resolver",
+  };
+}
+
+export function inspectRequestCompactionContextUsage(params: RequestCompactionContextUsageParams) {
+  const freshTotalTokens = resolveFreshSessionTotalTokens(params.entry);
+  const { contextWindow, contextWindowSource } = resolveRequestCompactionContextWindow(params);
+
+  return {
+    contextUsage:
+      freshTotalTokens !== undefined && contextWindow !== null
+        ? freshTotalTokens / contextWindow
+        : null,
+    entryPresent: params.entry !== undefined,
+    totalTokens: params.entry?.totalTokens ?? null,
+    totalTokensFresh: params.entry?.totalTokensFresh ?? null,
+    totalTokensVersion: params.entry?.totalTokensVersion ?? null,
+    contextWindow,
+    contextWindowSource,
+  };
+}
+
+/**
+ * Builds the `getContextUsageDiagnostics` payload for a persisted-session
+ * (session-store fallback) `request_compaction` callsite. Shared by the
+ * spawn-init and followup-runner callsites so the persisted-snapshot /
+ * null-cause derivation lives in one place.
+ */
+export function buildPersistedContextUsageDiagnostics(
+  params: RequestCompactionContextUsageParams & {
+    callbackSessionId?: string;
+    callbackSessionKey?: string;
+  },
+) {
+  const snapshot = inspectRequestCompactionContextUsage(params);
+  const validTotalTokens = resolveSessionTotalTokens(params.entry);
+  const persistedNullCause = !snapshot.entryPresent
+    ? ("missing_entry" as const)
+    : params.entry?.totalTokens == null
+      ? ("missing_total_tokens" as const)
+      : validTotalTokens === undefined
+        ? ("invalid_total_tokens" as const)
+        : snapshot.totalTokensFresh !== true
+          ? ("stale_total_tokens" as const)
+          : snapshot.totalTokensVersion !== SESSION_TOTAL_TOKENS_VERSION
+            ? ("total_tokens_version_mismatch" as const)
+            : snapshot.contextWindow === null
+              ? ("unresolved_model_context" as const)
+              : undefined;
+  return {
+    usageSource:
+      snapshot.contextUsage === null ? ("unavailable" as const) : ("persisted_fallback" as const),
+    callbackSessionId: params.callbackSessionId,
+    callbackSessionKey: params.callbackSessionKey,
+    entryPresent: snapshot.entryPresent,
+    totalTokens: snapshot.totalTokens,
+    totalTokensFresh: snapshot.totalTokensFresh,
+    totalTokensVersion: snapshot.totalTokensVersion,
+    contextWindow: snapshot.contextWindow,
+    contextWindowSource: snapshot.contextWindowSource,
+    nullCause: persistedNullCause,
+    persistedNullCause,
+  };
+}
+
+export function computeRequestCompactionContextUsage(
+  params: RequestCompactionContextUsageParams,
+): number | null {
+  const freshTotalTokens = resolveFreshSessionTotalTokens(params.entry);
+  if (freshTotalTokens === undefined) {
+    return null;
+  }
+  const { contextWindow } = resolveRequestCompactionContextWindow(params);
+  return contextWindow === null ? null : freshTotalTokens / contextWindow;
 }

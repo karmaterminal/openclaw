@@ -23,6 +23,13 @@ export function buildInventoryContinuationToolOpts(continuationEnabled: boolean)
     sessionId: string;
     getContextUsage: () => number | null;
     contextUsageOrigin: "inventory_stub";
+    getContextUsageDiagnostics: () => {
+      usageSource: "inventory_stub";
+      callbackSessionId: string;
+      entryPresent: false;
+      contextWindowSource: "inventory_stub";
+      nullCause: "inventory_stub";
+    };
     triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason: string }>;
   };
 } {
@@ -41,6 +48,13 @@ export function buildInventoryContinuationToolOpts(continuationEnabled: boolean)
       sessionId: "<inventory-only>",
       getContextUsage: () => null,
       contextUsageOrigin: "inventory_stub",
+      getContextUsageDiagnostics: () => ({
+        usageSource: "inventory_stub",
+        callbackSessionId: "<inventory-only>",
+        entryPresent: false,
+        contextWindowSource: "inventory_stub",
+        nullCause: "inventory_stub",
+      }),
       triggerCompaction: async () => ({
         ok: false,
         compacted: false,

@@ -1,6 +1,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
-import { createRequestCompactionTool } from "../tools/request-compaction-tool.js";
+import {
+  createRequestCompactionTool,
+  type RequestCompactionToolOpts,
+} from "../tools/request-compaction-tool.js";
 import { makeAttemptResult } from "./run.overflow-compaction.fixture.js";
 import {
   loadRunOverflowCompactionHarness,
@@ -145,6 +148,17 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
       sessionId: "session-868-compaction",
       contextUsageOrigin: "live_runner" as const,
       getContextUsage: () => 0.005,
+      getContextUsageDiagnostics: () => ({
+        usageSource: "persisted_fallback" as const,
+        callbackSessionId: "session-868-compaction",
+        callbackSessionKey: "agent:main:subagent:first-turn",
+        entryPresent: true,
+        totalTokens: 1,
+        totalTokensFresh: true,
+        totalTokensVersion: 1,
+        contextWindow: 200,
+        contextWindowSource: "session_entry",
+      }),
       triggerCompaction: vi.fn(async () => ({ ok: true, compacted: true })),
     };
 
@@ -160,7 +174,18 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
     const attemptParams = mockedRunEmbeddedAttempt.mock.calls[0]?.[0] as {
       requestCompactionOpts?: typeof requestCompactionOpts & {
         contextUsageOrigin?: "live_runner" | "inventory_stub";
-        bindLiveContextUsage?: (getContextUsage: () => number | null) => void;
+        getContextUsageDiagnostics?: RequestCompactionToolOpts["getContextUsageDiagnostics"];
+        bindLiveContextUsage?: (
+          getContextUsage: () => number | null,
+          getContextUsageDiagnostics: () => {
+            usageSource: "live_in_flight" | "unavailable";
+            callbackSessionId: string;
+            callbackSessionKey: string;
+            liveTokens: number | null;
+            liveContextWindow: number;
+            liveNullCause?: "live_context_unavailable";
+          },
+        ) => void;
       };
     };
     expect(attemptParams.requestCompactionOpts?.triggerCompaction).toBe(
@@ -169,14 +194,57 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
     expect(attemptParams.requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
     expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0.005);
 
-    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(() => null);
+    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(
+      () => null,
+      () => ({
+        usageSource: "unavailable",
+        callbackSessionId: "session-868-compaction",
+        callbackSessionKey: "agent:main:subagent:first-turn",
+        liveTokens: null,
+        liveContextWindow: 100,
+        liveNullCause: "live_context_unavailable",
+      }),
+    );
     expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0.005);
+    expect(attemptParams.requestCompactionOpts?.getContextUsageDiagnostics?.()).toMatchObject({
+      usageSource: "persisted_fallback",
+      contextWindow: 200,
+      contextWindowSource: "session_entry",
+      liveTokens: null,
+      liveContextWindow: 100,
+      liveNullCause: "live_context_unavailable",
+    });
 
-    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(() => 0);
+    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(
+      () => 0,
+      () => ({
+        usageSource: "live_in_flight",
+        callbackSessionId: "session-868-compaction",
+        callbackSessionKey: "agent:main:subagent:first-turn",
+        liveTokens: 0,
+        liveContextWindow: 100,
+      }),
+    );
     expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0);
 
-    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(() => 0.12);
+    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(
+      () => 0.12,
+      () => ({
+        usageSource: "live_in_flight",
+        callbackSessionId: "session-868-compaction",
+        callbackSessionKey: "agent:main:subagent:first-turn",
+        liveTokens: 12,
+        liveContextWindow: 100,
+      }),
+    );
     expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0.12);
+    expect(attemptParams.requestCompactionOpts?.getContextUsageDiagnostics?.()).toMatchObject({
+      usageSource: "live_in_flight",
+      callbackSessionId: "session-868-compaction",
+      callbackSessionKey: "agent:main:subagent:first-turn",
+      liveTokens: 12,
+      liveContextWindow: 100,
+    });
 
     const tool = createRequestCompactionTool({
       agentSessionKey: "agent:main:subagent:first-turn",

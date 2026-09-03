@@ -249,12 +249,26 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
           sessionId?: string;
           contextUsageOrigin?: "live_runner" | "inventory_stub";
           getContextUsage: () => number | null;
+          getContextUsageDiagnostics?: RequestCompactionToolOpts["getContextUsageDiagnostics"];
           triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
         };
       }
     )?.requestCompactionOpts;
     expect(requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
     expect(requestCompactionOpts?.getContextUsage()).toBeNull();
+    expect(requestCompactionOpts?.getContextUsageDiagnostics?.()).toMatchObject({
+      usageSource: "unavailable",
+      callbackSessionId: sessionEntry.sessionId,
+      callbackSessionKey: sessionKey,
+      entryPresent: true,
+      totalTokens: null,
+      totalTokensFresh: null,
+      totalTokensVersion: null,
+      contextWindow: null,
+      contextWindowSource: "unresolved",
+      nullCause: "missing_total_tokens",
+      persistedNullCause: "missing_total_tokens",
+    });
     if (!requestCompactionOpts) {
       throw new Error("expected first-turn requestCompactionOpts");
     }

@@ -396,6 +396,7 @@ type OpenClawCodingToolsOptions = {
     sessionId?: string;
     getContextUsage: () => number | null;
     contextUsageOrigin?: RequestCompactionToolOpts["contextUsageOrigin"];
+    getContextUsageDiagnostics?: RequestCompactionToolOpts["getContextUsageDiagnostics"];
     triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
   };
   /** Side-effect-free runtime completion claimant composed with the durable subagent claim. */

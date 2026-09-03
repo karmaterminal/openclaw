@@ -179,6 +179,7 @@ export type OpenClawToolsOptions = {
     sessionId?: string;
     getContextUsage: () => number | null;
     contextUsageOrigin?: RequestCompactionToolOpts["contextUsageOrigin"];
+    getContextUsageDiagnostics?: RequestCompactionToolOpts["getContextUsageDiagnostics"];
     triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
   };
   /** Allow plugin tools for this tool set to late-bind the gateway subagent. */

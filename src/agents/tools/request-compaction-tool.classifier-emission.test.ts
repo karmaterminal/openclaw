@@ -127,6 +127,21 @@ describe("request_compaction tool — classifier emission", () => {
       buildOpts({
         getContextUsage: () => null,
         contextUsageOrigin: "live_runner",
+        getContextUsageDiagnostics: () => ({
+          usageSource: "unavailable",
+          callbackSessionId: SESSION_ID,
+          callbackSessionKey: SESSION_KEY,
+          entryPresent: true,
+          totalTokens: null,
+          totalTokensFresh: null,
+          totalTokensVersion: null,
+          contextWindow: 272_000,
+          contextWindowSource: "active_model",
+          liveTokens: null,
+          liveContextWindow: 272_000,
+          nullCause: "live_context_unavailable",
+          persistedNullCause: "missing_total_tokens",
+        }),
         triggerCompaction,
       }),
     );
@@ -140,6 +155,17 @@ describe("request_compaction tool — classifier emission", () => {
         "Context usage is unknown for this session; request_compaction is unavailable on inventory-only paths.",
     });
     expect(triggerCompaction).not.toHaveBeenCalled();
+    expect(capturedLogs).toContainEqual({
+      level: "debug",
+      message:
+        `[request_compaction:context-source] origin=live_runner usageSource=unavailable ` +
+        `session=${SESSION_KEY} runId=none sessionId=${SESSION_ID} ` +
+        `callbackSessionKey=${SESSION_KEY} callbackSessionId=${SESSION_ID} ` +
+        "entryPresent=true totalTokens=none totalTokensFresh=none " +
+        "totalTokensVersion=none contextWindow=272000 contextWindowSource=active_model " +
+        "liveTokens=none liveContextWindow=272000 nullCause=live_context_unavailable " +
+        "persistedNullCause=missing_total_tokens liveNullCause=none",
+    });
     expect(capturedLogs).toContainEqual({
       level: "debug",
       message:
