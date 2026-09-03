@@ -137,7 +137,7 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
     expect(attemptParams.continueWorkOpts).toBe(continueWorkOpts);
   });
 
-  it("forwards requestCompactionOpts to runEmbeddedAttempt", async () => {
+  it("forwards requestCompactionOpts with live context rebinding", async () => {
     mockedRunEmbeddedAttempt.mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
 
     const requestCompactionOpts = {
@@ -156,9 +156,23 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
 
     expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(1);
     const attemptParams = mockedRunEmbeddedAttempt.mock.calls[0]?.[0] as {
-      requestCompactionOpts?: typeof requestCompactionOpts;
+      requestCompactionOpts?: typeof requestCompactionOpts & {
+        bindLiveContextUsage?: (getContextUsage: () => number | null) => void;
+      };
     };
-    expect(attemptParams.requestCompactionOpts).toBe(requestCompactionOpts);
+    expect(attemptParams.requestCompactionOpts?.triggerCompaction).toBe(
+      requestCompactionOpts.triggerCompaction,
+    );
+    expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0.005);
+
+    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(() => null);
+    expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0.005);
+
+    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(() => 0);
+    expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0);
+
+    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(() => 0.12);
+    expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0.12);
   });
 
   it("forwards explicit continuation-tool disablement to runEmbeddedAttempt", async () => {
@@ -206,7 +220,9 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
       drainsContinuationDelegateQueue?: boolean;
     };
     expect(attemptParams.continueWorkOpts).toBe(continueWorkOpts);
-    expect(attemptParams.requestCompactionOpts).toBe(requestCompactionOpts);
+    expect(attemptParams.requestCompactionOpts?.triggerCompaction).toBe(
+      requestCompactionOpts.triggerCompaction,
+    );
     expect(attemptParams.drainsContinuationDelegateQueue).toBe(true);
   });
 
