@@ -1,4 +1,5 @@
 import { ToolInputError } from "./common.js";
+import type { RequestCompactionToolBinding } from "./request-compaction-tool.js";
 
 /**
  * Stub continuation-tool callbacks for inventory/catalog build paths
@@ -19,19 +20,7 @@ import { ToolInputError } from "./common.js";
  */
 export function buildInventoryContinuationToolOpts(continuationEnabled: boolean): {
   continueWorkOpts?: { requestContinuation: () => void };
-  requestCompactionOpts?: {
-    sessionId: string;
-    getContextUsage: () => number | null;
-    contextUsageOrigin: "inventory_stub";
-    getContextUsageDiagnostics: () => {
-      usageSource: "inventory_stub";
-      callbackSessionId: string;
-      entryPresent: false;
-      contextWindowSource: "inventory_stub";
-      nullCause: "inventory_stub";
-    };
-    triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason: string }>;
-  };
+  requestCompactionOpts?: RequestCompactionToolBinding;
 } {
   if (!continuationEnabled) {
     return {};

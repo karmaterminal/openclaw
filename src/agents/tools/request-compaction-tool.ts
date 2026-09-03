@@ -79,6 +79,31 @@ const RequestCompactionToolSchema = Type.Object({
 // Options
 // ---------------------------------------------------------------------------
 
+export type RequestCompactionPersistedNullCause =
+  | "missing_entry"
+  | "missing_total_tokens"
+  | "invalid_total_tokens"
+  | "stale_total_tokens"
+  | "total_tokens_version_mismatch"
+  | "unresolved_model_context";
+
+export type RequestCompactionContextUsageDiagnostics = {
+  usageSource: "live_in_flight" | "persisted_fallback" | "unavailable" | "inventory_stub";
+  callbackSessionId?: string;
+  callbackSessionKey?: string;
+  entryPresent?: boolean;
+  totalTokens?: number | null;
+  totalTokensFresh?: boolean | null;
+  totalTokensVersion?: number | null;
+  contextWindow?: number | null;
+  contextWindowSource?: string;
+  liveTokens?: number | null;
+  liveContextWindow?: number | null;
+  nullCause?: RequestCompactionPersistedNullCause | "inventory_stub" | "live_context_unavailable";
+  persistedNullCause?: RequestCompactionPersistedNullCause;
+  liveNullCause?: "live_context_unavailable";
+};
+
 export type RequestCompactionToolOpts = {
   /** Current session key (e.g. "telegram:12345"). */
   agentSessionKey?: string;
@@ -94,36 +119,7 @@ export type RequestCompactionToolOpts = {
   getContextUsage: () => number | null;
   /** Identifies whether context measurement came from a live runner or inventory stub. */
   contextUsageOrigin?: "live_runner" | "inventory_stub";
-  getContextUsageDiagnostics?: () => {
-    usageSource: "live_in_flight" | "persisted_fallback" | "unavailable" | "inventory_stub";
-    callbackSessionId?: string;
-    callbackSessionKey?: string;
-    entryPresent?: boolean;
-    totalTokens?: number | null;
-    totalTokensFresh?: boolean | null;
-    totalTokensVersion?: number | null;
-    contextWindow?: number | null;
-    contextWindowSource?: string;
-    liveTokens?: number | null;
-    liveContextWindow?: number | null;
-    nullCause?:
-      | "inventory_stub"
-      | "live_context_unavailable"
-      | "missing_entry"
-      | "missing_total_tokens"
-      | "invalid_total_tokens"
-      | "stale_total_tokens"
-      | "total_tokens_version_mismatch"
-      | "unresolved_model_context";
-    persistedNullCause?:
-      | "missing_entry"
-      | "missing_total_tokens"
-      | "invalid_total_tokens"
-      | "stale_total_tokens"
-      | "total_tokens_version_mismatch"
-      | "unresolved_model_context";
-    liveNullCause?: "live_context_unavailable";
-  };
+  getContextUsageDiagnostics?: () => RequestCompactionContextUsageDiagnostics;
   /**
    * Async function that triggers compaction. Injected so the tool does not
    * import the heavy compaction module directly. The caller provides a
@@ -134,6 +130,15 @@ export type RequestCompactionToolOpts = {
   ) => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
   enqueueSystemEvent?: typeof enqueueSystemEvent;
 };
+
+export type RequestCompactionToolBinding = Pick<
+  RequestCompactionToolOpts,
+  | "sessionId"
+  | "getContextUsage"
+  | "contextUsageOrigin"
+  | "getContextUsageDiagnostics"
+  | "triggerCompaction"
+>;
 
 function formatErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
