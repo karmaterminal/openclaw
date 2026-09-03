@@ -92,6 +92,8 @@ export type RequestCompactionToolOpts = {
    * Injected so the tool does not reach into session internals.
    */
   getContextUsage: () => number | null;
+  /** Identifies whether context measurement came from a live runner or inventory stub. */
+  contextUsageOrigin?: "live_runner" | "inventory_stub";
   /**
    * Async function that triggers compaction. Injected so the tool does not
    * import the heavy compaction module directly. The caller provides a
@@ -201,7 +203,10 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       // ----- Guard 1: Context threshold -----
       const contextUsage = opts.getContextUsage();
       if (contextUsage === null) {
-        log.debug(`[request_compaction:context-unknown] session=${sessionKey}`);
+        log.debug(
+          `[request_compaction:context-unknown] source=${opts.contextUsageOrigin ?? "unspecified"} ` +
+            `session=${sessionKey} sessionId=${opts.sessionId}`,
+        );
         return jsonResult({
           status: "rejected",
           guard: "context_threshold",

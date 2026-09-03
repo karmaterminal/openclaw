@@ -158,12 +158,14 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
     expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(1);
     const attemptParams = mockedRunEmbeddedAttempt.mock.calls[0]?.[0] as {
       requestCompactionOpts?: typeof requestCompactionOpts & {
+        contextUsageOrigin?: "live_runner" | "inventory_stub";
         bindLiveContextUsage?: (getContextUsage: () => number | null) => void;
       };
     };
     expect(attemptParams.requestCompactionOpts?.triggerCompaction).toBe(
       requestCompactionOpts.triggerCompaction,
     );
+    expect(attemptParams.requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
     expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0.005);
 
     attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(() => null);

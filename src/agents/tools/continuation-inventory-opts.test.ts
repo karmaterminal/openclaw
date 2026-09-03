@@ -10,6 +10,7 @@ describe("buildInventoryContinuationToolOpts", () => {
     const opts = buildInventoryContinuationToolOpts(true);
     expect(opts.continueWorkOpts?.requestContinuation).toBeTypeOf("function");
     expect(opts.requestCompactionOpts?.getContextUsage).toBeTypeOf("function");
+    expect(opts.requestCompactionOpts?.contextUsageOrigin).toBe("inventory_stub");
     expect(opts.requestCompactionOpts?.triggerCompaction).toBeTypeOf("function");
   });
 
