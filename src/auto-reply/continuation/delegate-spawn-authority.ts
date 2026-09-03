@@ -55,22 +55,20 @@ export function registerContinuationDelegateDispatchClaim(params: {
   ownerAgentId: string;
   release: () => void;
 } {
-  const { flowId, expectedRevision } = params.delegate;
+  const { controller, delegate, ownerSession, ownerSessionKey } = params;
+  const { flowId, expectedRevision } = delegate;
   if ((flowId === undefined) !== (expectedRevision === undefined)) {
     throw new SpawnSubagentAdmissionCancelledError(
       "Continuation delegate source metadata is incomplete.",
     );
   }
   const lifecycleGeneration = getAgentEventLifecycleGeneration();
-  const ownerIdentity = params.ownerSession.load();
+  const ownerIdentity = ownerSession.load();
   const activeClaim = registerContinuationDispatchClaim({
-    sessionKey: params.ownerSessionKey,
+    sessionKey: ownerSessionKey,
     flowId,
   });
-  const assertCurrent = (
-    _boundary?: string,
-    source: DelegateClaim | null = params.delegate,
-  ): void => {
+  const assertCurrent = (_boundary?: string, source: DelegateClaim | null = delegate): void => {
     if (
       activeClaim.controller.signal.aborted ||
       !activeClaim.isActive() ||
@@ -79,12 +77,12 @@ export function registerContinuationDelegateDispatchClaim(params: {
       throw new SpawnSubagentAdmissionCancelledError("Continuation delegate admission closed.");
     }
     if (flowId !== undefined && source) {
-      const fence = revalidatePendingDelegateForSpawn(source, params.controller);
+      const fence = revalidatePendingDelegateForSpawn(source, controller);
       if (!fence.allowed) {
         throw new SpawnSubagentAdmissionCancelledError(fence.summary);
       }
     }
-    if (ownerIdentity && !isSameOwnerLifecycle(params.ownerSession.load(), ownerIdentity)) {
+    if (ownerIdentity && !isSameOwnerLifecycle(ownerSession.load(), ownerIdentity)) {
       throw new SpawnSubagentAdmissionCancelledError(
         "Continuation delegate source session lifecycle changed.",
       );
@@ -94,12 +92,12 @@ export function registerContinuationDelegateDispatchClaim(params: {
     authority: {
       signal: activeClaim.controller.signal,
       source: {
-        ownerSessionKey: params.ownerSessionKey,
+        ownerSessionKey,
         ...(flowId !== undefined ? { flowId, expectedRevision } : {}),
       },
       assertCurrent,
     },
-    ownerAgentId: params.ownerSession.agentId,
+    ownerAgentId: ownerSession.agentId,
     release: activeClaim.release,
   };
 }

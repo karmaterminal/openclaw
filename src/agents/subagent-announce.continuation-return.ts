@@ -274,13 +274,14 @@ export async function routeSubagentContinuationReturn(params: {
       trusted: true,
       ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
     };
+    const requesterEventOptions = params.targetRequesterAgentId
+      ? withSystemEventOwner(eventOptions, params.targetRequesterAgentId)
+      : eventOptions;
     enqueueSystemEvent(
       params.triggerMessagesBySessionKey?.get(params.targetRequesterSessionKey) ||
         params.triggerMessage ||
         `[continuation:enrichment-return] Delegate completed: ${params.taskLabel}`,
-      params.targetRequesterAgentId
-        ? withSystemEventOwner(eventOptions, params.targetRequesterAgentId)
-        : eventOptions,
+      requesterEventOptions,
     );
     continuationLog.info(
       `[continuation:enrichment-return] Delivered to ${params.targetRequesterSessionKey} from ${params.childSessionKey}`,
