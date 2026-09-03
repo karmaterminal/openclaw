@@ -39,6 +39,16 @@ async function getComputeRequestCompactionContextUsage() {
     .computeRequestCompactionContextUsage;
 }
 
+async function getInspectRequestCompactionContextUsage() {
+  return (await import("./agent-runner-post-compaction-release.js"))
+    .inspectRequestCompactionContextUsage;
+}
+
+async function getBuildPersistedContextUsageDiagnostics() {
+  return (await import("./agent-runner-post-compaction-release.js"))
+    .buildPersistedContextUsageDiagnostics;
+}
+
 function makeEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
   return {
     sessionId: "session-id-default",
@@ -55,6 +65,115 @@ const CFG = { runtime: { id: "cfg-test" } } as never;
 
 beforeEach(() => {
   state.resolveContextTokensForModelMock.mockReset();
+});
+
+describe("inspectRequestCompactionContextUsage", () => {
+  it("reports stale entry and resolved model-window provenance", async () => {
+    const inspect = await getInspectRequestCompactionContextUsage();
+    state.resolveContextTokensForModelMock.mockReturnValue(272_000);
+
+    expect(
+      inspect({
+        entry: makeEntry({
+          totalTokens: 32_000,
+          totalTokensFresh: false,
+          totalTokensVersion: 1,
+        }),
+        cfg: CFG,
+        provider: PROVIDER,
+        model: MODEL,
+      }),
+    ).toEqual({
+      contextUsage: null,
+      entryPresent: true,
+      totalTokens: 32_000,
+      totalTokensFresh: false,
+      totalTokensVersion: 1,
+      contextWindow: 272_000,
+      contextWindowSource: "model_resolver",
+    });
+  });
+
+  it("reports session-entry window provenance", async () => {
+    const inspect = await getInspectRequestCompactionContextUsage();
+
+    expect(
+      inspect({
+        entry: makeEntry({
+          totalTokens: 10_000,
+          contextTokens: 100_000,
+          contextTokensSource: "runtime",
+        }),
+        cfg: CFG,
+        provider: PROVIDER,
+        model: MODEL,
+      }),
+    ).toEqual({
+      contextUsage: 0.1,
+      entryPresent: true,
+      totalTokens: 10_000,
+      totalTokensFresh: true,
+      totalTokensVersion: 1,
+      contextWindow: 100_000,
+      contextWindowSource: "runtime",
+    });
+    expect(state.resolveContextTokensForModelMock).not.toHaveBeenCalled();
+  });
+
+  it("matches the gating path when entry contextTokens is zero", async () => {
+    const inspect = await getInspectRequestCompactionContextUsage();
+    state.resolveContextTokensForModelMock.mockReturnValue(256_000);
+
+    expect(
+      inspect({
+        entry: makeEntry({ totalTokens: 10_000, contextTokens: 0 }),
+        cfg: CFG,
+        provider: PROVIDER,
+        model: MODEL,
+      }),
+    ).toMatchObject({
+      contextUsage: null,
+      contextWindow: null,
+      contextWindowSource: "unresolved",
+    });
+    expect(state.resolveContextTokensForModelMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("buildPersistedContextUsageDiagnostics", () => {
+  it("classifies invalid tokens and version mismatch with machine-readable causes", async () => {
+    const build = await getBuildPersistedContextUsageDiagnostics();
+
+    expect(
+      build({
+        entry: makeEntry({ totalTokens: -1, contextTokens: 100_000 }),
+        cfg: CFG,
+        provider: PROVIDER,
+        model: MODEL,
+      }),
+    ).toMatchObject({
+      usageSource: "unavailable",
+      nullCause: "invalid_total_tokens",
+      persistedNullCause: "invalid_total_tokens",
+    });
+
+    expect(
+      build({
+        entry: makeEntry({
+          totalTokens: 10_000,
+          totalTokensVersion: undefined,
+          contextTokens: 100_000,
+        }),
+        cfg: CFG,
+        provider: PROVIDER,
+        model: MODEL,
+      }),
+    ).toMatchObject({
+      usageSource: "unavailable",
+      nullCause: "total_tokens_version_mismatch",
+      persistedNullCause: "total_tokens_version_mismatch",
+    });
+  });
 });
 
 describe("computeRequestCompactionContextUsage: freshness contract (axis a)", () => {

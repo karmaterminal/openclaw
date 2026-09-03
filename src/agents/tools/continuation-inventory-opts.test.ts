@@ -17,6 +17,13 @@ describe("buildInventoryContinuationToolOpts", () => {
   it("stub getContextUsage returns null (no live usage on inventory paths)", () => {
     const opts = buildInventoryContinuationToolOpts(true);
     expect(opts.requestCompactionOpts?.getContextUsage()).toBeNull();
+    expect(opts.requestCompactionOpts?.getContextUsageDiagnostics()).toEqual({
+      usageSource: "inventory_stub",
+      callbackSessionId: "<inventory-only>",
+      entryPresent: false,
+      contextWindowSource: "inventory_stub",
+      nullCause: "inventory_stub",
+    });
   });
 
   it("stub requestContinuation throws a clear error (registered-but-not-runnable; no silent success)", () => {

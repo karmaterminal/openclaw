@@ -94,6 +94,36 @@ export type RequestCompactionToolOpts = {
   getContextUsage: () => number | null;
   /** Identifies whether context measurement came from a live runner or inventory stub. */
   contextUsageOrigin?: "live_runner" | "inventory_stub";
+  getContextUsageDiagnostics?: () => {
+    usageSource: "live_in_flight" | "persisted_fallback" | "unavailable" | "inventory_stub";
+    callbackSessionId?: string;
+    callbackSessionKey?: string;
+    entryPresent?: boolean;
+    totalTokens?: number | null;
+    totalTokensFresh?: boolean | null;
+    totalTokensVersion?: number | null;
+    contextWindow?: number | null;
+    contextWindowSource?: string;
+    liveTokens?: number | null;
+    liveContextWindow?: number | null;
+    nullCause?:
+      | "inventory_stub"
+      | "live_context_unavailable"
+      | "missing_entry"
+      | "missing_total_tokens"
+      | "invalid_total_tokens"
+      | "stale_total_tokens"
+      | "total_tokens_version_mismatch"
+      | "unresolved_model_context";
+    persistedNullCause?:
+      | "missing_entry"
+      | "missing_total_tokens"
+      | "invalid_total_tokens"
+      | "stale_total_tokens"
+      | "total_tokens_version_mismatch"
+      | "unresolved_model_context";
+    liveNullCause?: "live_context_unavailable";
+  };
   /**
    * Async function that triggers compaction. Injected so the tool does not
    * import the heavy compaction module directly. The caller provides a
@@ -202,6 +232,25 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 
       // ----- Guard 1: Context threshold -----
       const contextUsage = opts.getContextUsage();
+      const contextDiagnostics = opts.getContextUsageDiagnostics?.();
+      log.debug(
+        `[request_compaction:context-source] origin=${opts.contextUsageOrigin ?? "unspecified"} ` +
+          `usageSource=${contextDiagnostics?.usageSource ?? "unavailable"} ` +
+          `session=${sessionKey} runId=${opts.runId ?? "none"} sessionId=${opts.sessionId} ` +
+          `callbackSessionKey=${contextDiagnostics?.callbackSessionKey ?? "none"} ` +
+          `callbackSessionId=${contextDiagnostics?.callbackSessionId ?? "none"} ` +
+          `entryPresent=${contextDiagnostics?.entryPresent ?? false} ` +
+          `totalTokens=${contextDiagnostics?.totalTokens ?? "none"} ` +
+          `totalTokensFresh=${contextDiagnostics?.totalTokensFresh ?? "none"} ` +
+          `totalTokensVersion=${contextDiagnostics?.totalTokensVersion ?? "none"} ` +
+          `contextWindow=${contextDiagnostics?.contextWindow ?? "none"} ` +
+          `contextWindowSource=${contextDiagnostics?.contextWindowSource ?? "none"} ` +
+          `liveTokens=${contextDiagnostics?.liveTokens ?? "none"} ` +
+          `liveContextWindow=${contextDiagnostics?.liveContextWindow ?? "none"} ` +
+          `nullCause=${contextDiagnostics?.nullCause ?? "none"} ` +
+          `persistedNullCause=${contextDiagnostics?.persistedNullCause ?? "none"} ` +
+          `liveNullCause=${contextDiagnostics?.liveNullCause ?? "none"}`,
+      );
       if (contextUsage === null) {
         log.debug(
           `[request_compaction:context-unknown] source=${opts.contextUsageOrigin ?? "unspecified"} ` +

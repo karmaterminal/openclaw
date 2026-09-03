@@ -274,13 +274,54 @@ export async function dispatchEmbeddedRunAttempt(input: {
   // Tool construction precedes AgentSession creation, so bridge the live
   // measurement through a per-attempt rebinding closure.
   let getLiveContextUsage: (() => number | null) | undefined;
+  let getLiveContextUsageDiagnostics:
+    | NonNullable<NonNullable<typeof params.requestCompactionOpts>["getContextUsageDiagnostics"]>
+    | undefined;
+  let resolvedUsageSource: "live_in_flight" | "persisted_fallback" | "unavailable" = "unavailable";
   const requestCompactionOpts = params.requestCompactionOpts
     ? {
         ...params.requestCompactionOpts,
-        getContextUsage: () =>
-          getLiveContextUsage?.() ?? params.requestCompactionOpts?.getContextUsage() ?? null,
-        bindLiveContextUsage(getContextUsage: () => number | null) {
+        getContextUsage: () => {
+          const liveUsage = getLiveContextUsage?.() ?? null;
+          if (liveUsage !== null) {
+            resolvedUsageSource = "live_in_flight";
+            return liveUsage;
+          }
+          const persistedUsage = params.requestCompactionOpts?.getContextUsage() ?? null;
+          resolvedUsageSource = persistedUsage === null ? "unavailable" : "persisted_fallback";
+          return persistedUsage;
+        },
+        getContextUsageDiagnostics: () => {
+          const persisted = params.requestCompactionOpts?.getContextUsageDiagnostics?.();
+          const live = getLiveContextUsageDiagnostics?.();
+          if (resolvedUsageSource === "live_in_flight") {
+            return {
+              ...persisted,
+              ...live,
+              usageSource: resolvedUsageSource,
+              nullCause: undefined,
+            };
+          }
+          return {
+            ...persisted,
+            liveTokens: live?.liveTokens,
+            liveContextWindow: live?.liveContextWindow,
+            liveNullCause: live?.liveNullCause,
+            usageSource: resolvedUsageSource,
+            nullCause:
+              resolvedUsageSource === "persisted_fallback"
+                ? persisted?.nullCause
+                : (persisted?.nullCause ?? live?.liveNullCause),
+          };
+        },
+        bindLiveContextUsage(
+          getContextUsage: () => number | null,
+          getContextUsageDiagnostics: NonNullable<
+            NonNullable<typeof params.requestCompactionOpts>["getContextUsageDiagnostics"]
+          >,
+        ) {
           getLiveContextUsage = getContextUsage;
+          getLiveContextUsageDiagnostics = getContextUsageDiagnostics;
         },
       }
     : undefined;

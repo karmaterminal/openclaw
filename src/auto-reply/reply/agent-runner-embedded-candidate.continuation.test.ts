@@ -67,6 +67,20 @@ vi.mock("./agent-runner-event-handler.js", () => ({
 
 vi.mock("./agent-runner-post-compaction-release.js", () => ({
   computeRequestCompactionContextUsage: () => 0.75,
+  buildPersistedContextUsageDiagnostics: (params: {
+    callbackSessionId?: string;
+    callbackSessionKey?: string;
+  }) => ({
+    usageSource: "persisted_fallback",
+    callbackSessionId: params.callbackSessionId,
+    callbackSessionKey: params.callbackSessionKey,
+    entryPresent: true,
+    totalTokens: 75,
+    totalTokensFresh: true,
+    totalTokensVersion: null,
+    contextWindow: 100,
+    contextWindowSource: "session_entry",
+  }),
   releaseQueuedCompactionTolerant: mocks.releaseQueuedCompactionTolerant,
 }));
 
@@ -198,6 +212,17 @@ describe("runEmbeddedFallbackCandidate continuation callbacks", () => {
     const onCompactionCount = vi.fn();
     mocks.runEmbeddedAgent.mockImplementationOnce(async (options: RunEmbeddedAgentParams) => {
       expect(options.requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
+      expect(options.requestCompactionOpts?.getContextUsageDiagnostics?.()).toMatchObject({
+        usageSource: "persisted_fallback",
+        callbackSessionId: "session-fallback",
+        callbackSessionKey: "agent:main:fallback",
+        entryPresent: true,
+        totalTokens: 75,
+        totalTokensFresh: true,
+        totalTokensVersion: null,
+        contextWindow: 100,
+        contextWindowSource: "session_entry",
+      });
       options.continueWorkOpts?.requestContinuation({
         reason: "continue after fallback",
         delaySeconds: 5,

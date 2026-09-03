@@ -413,12 +413,29 @@ export async function runEmbeddedAttempt(
             },
             onSessionCreated: (createdSession) => {
               session = createdSession;
-              params.requestCompactionOpts?.bindLiveContextUsage?.(() => {
-                const percent = createdSession.getContextUsage()?.percent;
-                return typeof percent === "number" && Number.isFinite(percent)
-                  ? percent / 100
-                  : null;
-              });
+              params.requestCompactionOpts?.bindLiveContextUsage?.(
+                () => {
+                  const percent = createdSession.getContextUsage()?.percent;
+                  return typeof percent === "number" && Number.isFinite(percent)
+                    ? percent / 100
+                    : null;
+                },
+                () => {
+                  const usage = createdSession.getContextUsage();
+                  const contextAvailable =
+                    typeof usage?.percent === "number" && Number.isFinite(usage.percent);
+                  return {
+                    usageSource: contextAvailable ? "live_in_flight" : "unavailable",
+                    callbackSessionId: params.sessionId,
+                    callbackSessionKey: params.sessionKey,
+                    contextWindow: usage?.contextWindow ?? null,
+                    contextWindowSource: "active_model",
+                    liveTokens: usage?.tokens ?? null,
+                    liveContextWindow: usage?.contextWindow ?? null,
+                    liveNullCause: contextAvailable ? undefined : "live_context_unavailable",
+                  };
+                },
+              );
             },
             onSessionManagerCreated: (createdSessionManager) => {
               sessionManager = createdSessionManager;

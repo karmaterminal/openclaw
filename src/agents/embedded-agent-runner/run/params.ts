@@ -487,9 +487,15 @@ export type RunEmbeddedAgentParams = {
     sessionId?: string;
     getContextUsage: () => number | null;
     contextUsageOrigin?: RequestCompactionToolOpts["contextUsageOrigin"];
+    getContextUsageDiagnostics?: RequestCompactionToolOpts["getContextUsageDiagnostics"];
     triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
     /** Rebind context measurement to the active AgentSession after creation. */
-    bindLiveContextUsage?: (getContextUsage: () => number | null) => void;
+    bindLiveContextUsage?: (
+      getContextUsage: () => number | null,
+      getContextUsageDiagnostics: NonNullable<
+        RequestCompactionToolOpts["getContextUsageDiagnostics"]
+      >,
+    ) => void;
   };
   /** Mark explicit one-shot local CLI runs so plugin tools can release resources promptly. */
   oneShotCliRun?: boolean;
