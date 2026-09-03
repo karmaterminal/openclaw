@@ -82,6 +82,45 @@ describe("request_compaction tool — classifier emission", () => {
     vi.restoreAllMocks();
   });
 
+  it("rejects below 70% without compaction and logs the safe threshold event exactly once", async () => {
+    const triggerCompaction = vi.fn(async () => ({ ok: true, compacted: true }));
+    const tool = createRequestCompactionTool(
+      buildOpts({
+        getContextUsage: () => 0.69,
+        triggerCompaction,
+      }),
+    );
+
+    const result = (
+      await tool.execute("call-below-threshold", {
+        reason: REASON,
+        focus: "private working-state detail",
+      })
+    )?.details;
+
+    expect(result).toEqual({
+      status: "rejected",
+      guard: "context_threshold",
+      contextUsage: 69,
+      threshold: 70,
+      reason:
+        "Context usage (69%) is below the minimum threshold (70%). Compaction is not needed yet.",
+    });
+    expect(triggerCompaction).not.toHaveBeenCalled();
+
+    const thresholdLogs = capturedLogs.filter((entry) =>
+      entry.message.includes("[request_compaction:below-threshold]"),
+    );
+    expect(thresholdLogs).toEqual([
+      {
+        level: "debug",
+        message: `[request_compaction:below-threshold] session=${SESSION_KEY} usage=69.0%`,
+      },
+    ]);
+    expect(thresholdLogs[0]?.message).not.toContain(REASON);
+    expect(thresholdLogs[0]?.message).not.toContain("private working-state detail");
+  });
+
   it("warn log on resolve-with-failure includes code=<classifier-result> and the raw reason", async () => {
     const tool = createRequestCompactionTool(
       buildOpts({
