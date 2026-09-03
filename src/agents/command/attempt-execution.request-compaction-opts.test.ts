@@ -18,6 +18,10 @@ import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createTestPreparedRunAdmission } from "../admitted-run-context.test-support.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
+import {
+  createRequestCompactionTool,
+  type RequestCompactionToolOpts,
+} from "../tools/request-compaction-tool.js";
 import { runAgentAttempt } from "./attempt-execution.js";
 
 const runEmbeddedAgentMock = vi.hoisted(() => vi.fn());
@@ -194,6 +198,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
           requestCompactionOpts?: {
             sessionId?: string;
             getContextUsage?: unknown;
+            contextUsageOrigin?: unknown;
             triggerCompaction?: unknown;
           };
         }
@@ -203,6 +208,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     // subagent's turn-1 tool list even though continuation is enabled.
     expect(callArgs?.requestCompactionOpts).toBeDefined();
     expect(typeof callArgs?.requestCompactionOpts?.getContextUsage).toBe("function");
+    expect(callArgs?.requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
     expect(typeof callArgs?.requestCompactionOpts?.triggerCompaction).toBe("function");
     expect(callArgs?.requestCompactionOpts?.sessionId).toBe(sessionEntry.sessionId);
   });
@@ -232,6 +238,43 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     // (synchronous, matching computeRequestCompactionContextUsage).
     const result = callArgs?.requestCompactionOpts?.getContextUsage();
     expect(result === null || typeof result === "number").toBe(true);
+  });
+
+  it("identifies the rejected-base first-turn callback as live with unavailable context", async () => {
+    await runEmbeddedAttempt(makeContinuationEnabledConfig());
+
+    const requestCompactionOpts = (
+      runEmbeddedAgentMock.mock.calls[0]?.[0] as {
+        requestCompactionOpts?: {
+          sessionId?: string;
+          contextUsageOrigin?: "live_runner" | "inventory_stub";
+          getContextUsage: () => number | null;
+          triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
+        };
+      }
+    )?.requestCompactionOpts;
+    expect(requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
+    expect(requestCompactionOpts?.getContextUsage()).toBeNull();
+    if (!requestCompactionOpts) {
+      throw new Error("expected first-turn requestCompactionOpts");
+    }
+
+    const tool = createRequestCompactionTool({
+      agentSessionKey: sessionKey,
+      ...requestCompactionOpts,
+    });
+    const result = (
+      await tool.execute("call-first-turn-base", {
+        reason: "rejected-base callback-origin control",
+      })
+    )?.details;
+
+    expect(result).toEqual({
+      status: "rejected",
+      guard: "context_threshold",
+      reason:
+        "Context usage is unknown for this session; request_compaction is unavailable on inventory-only paths.",
+    });
   });
 
   // A successful turn-1 volitional compaction must run the same

@@ -143,6 +143,7 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
 
     const requestCompactionOpts = {
       sessionId: "session-868-compaction",
+      contextUsageOrigin: "live_runner" as const,
       getContextUsage: () => 0.005,
       triggerCompaction: vi.fn(async () => ({ ok: true, compacted: true })),
     };
