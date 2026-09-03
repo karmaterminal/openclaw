@@ -1,5 +1,9 @@
 import { resolveContextTokensForModel } from "../../agents/context.js";
 import type { EmbeddedAgentCompactResult } from "../../agents/embedded-agent-runner/types.js";
+import type {
+  RequestCompactionContextUsageDiagnostics,
+  RequestCompactionPersistedNullCause,
+} from "../../agents/tools/request-compaction-tool.js";
 import {
   SESSION_TOTAL_TOKENS_VERSION,
   resolveFreshSessionTotalTokens,
@@ -123,7 +127,22 @@ type RequestCompactionContextUsageParams = {
   model: string;
 };
 
-function resolveRequestCompactionContextWindow(params: RequestCompactionContextUsageParams) {
+type RequestCompactionContextWindow = {
+  contextWindow: number | null;
+  contextWindowSource: string;
+};
+
+type RequestCompactionContextUsageSnapshot = RequestCompactionContextWindow & {
+  contextUsage: number | null;
+  entryPresent: boolean;
+  totalTokens: number | null;
+  totalTokensFresh: boolean | null;
+  totalTokensVersion: number | null;
+};
+
+function resolveRequestCompactionContextWindow(
+  params: RequestCompactionContextUsageParams,
+): RequestCompactionContextWindow {
   const entryContextWindow = params.entry?.contextTokens;
   const resolvedContextWindow =
     entryContextWindow ??
@@ -133,21 +152,26 @@ function resolveRequestCompactionContextWindow(params: RequestCompactionContextU
       model: params.model,
       allowAsyncLoad: false,
     });
+  if (typeof resolvedContextWindow !== "number" || resolvedContextWindow <= 0) {
+    return {
+      contextWindow: null,
+      contextWindowSource: "unresolved",
+    };
+  }
+
+  const contextWindowSource =
+    entryContextWindow === resolvedContextWindow
+      ? (params.entry?.contextTokensSource ?? "session_entry")
+      : "model_resolver";
   return {
-    contextWindow:
-      typeof resolvedContextWindow === "number" && resolvedContextWindow > 0
-        ? resolvedContextWindow
-        : null,
-    contextWindowSource:
-      typeof resolvedContextWindow !== "number" || resolvedContextWindow <= 0
-        ? "unresolved"
-        : entryContextWindow === resolvedContextWindow
-          ? (params.entry?.contextTokensSource ?? "session_entry")
-          : "model_resolver",
+    contextWindow: resolvedContextWindow,
+    contextWindowSource,
   };
 }
 
-export function inspectRequestCompactionContextUsage(params: RequestCompactionContextUsageParams) {
+export function inspectRequestCompactionContextUsage(
+  params: RequestCompactionContextUsageParams,
+): RequestCompactionContextUsageSnapshot {
   const freshTotalTokens = resolveFreshSessionTotalTokens(params.entry);
   const { contextWindow, contextWindowSource } = resolveRequestCompactionContextWindow(params);
 
@@ -176,25 +200,26 @@ export function buildPersistedContextUsageDiagnostics(
     callbackSessionId?: string;
     callbackSessionKey?: string;
   },
-) {
+): RequestCompactionContextUsageDiagnostics {
   const snapshot = inspectRequestCompactionContextUsage(params);
   const validTotalTokens = resolveSessionTotalTokens(params.entry);
-  const persistedNullCause = !snapshot.entryPresent
-    ? ("missing_entry" as const)
-    : params.entry?.totalTokens == null
-      ? ("missing_total_tokens" as const)
-      : validTotalTokens === undefined
-        ? ("invalid_total_tokens" as const)
-        : snapshot.totalTokensFresh !== true
-          ? ("stale_total_tokens" as const)
-          : snapshot.totalTokensVersion !== SESSION_TOTAL_TOKENS_VERSION
-            ? ("total_tokens_version_mismatch" as const)
-            : snapshot.contextWindow === null
-              ? ("unresolved_model_context" as const)
-              : undefined;
+  let persistedNullCause: RequestCompactionPersistedNullCause | undefined;
+  if (!snapshot.entryPresent) {
+    persistedNullCause = "missing_entry";
+  } else if (params.entry?.totalTokens == null) {
+    persistedNullCause = "missing_total_tokens";
+  } else if (validTotalTokens === undefined) {
+    persistedNullCause = "invalid_total_tokens";
+  } else if (snapshot.totalTokensFresh !== true) {
+    persistedNullCause = "stale_total_tokens";
+  } else if (snapshot.totalTokensVersion !== SESSION_TOTAL_TOKENS_VERSION) {
+    persistedNullCause = "total_tokens_version_mismatch";
+  } else if (snapshot.contextWindow === null) {
+    persistedNullCause = "unresolved_model_context";
+  }
+
   return {
-    usageSource:
-      snapshot.contextUsage === null ? ("unavailable" as const) : ("persisted_fallback" as const),
+    usageSource: snapshot.contextUsage === null ? "unavailable" : "persisted_fallback",
     callbackSessionId: params.callbackSessionId,
     callbackSessionKey: params.callbackSessionKey,
     entryPresent: snapshot.entryPresent,

@@ -17,7 +17,7 @@ import type { SpawnedToolContext } from "./spawned-context.js";
 import type { ToolFsPolicy } from "./tool-fs-policy.js";
 import type { ContinueWorkRequest } from "./tools/continue-work-tool.js";
 import type { CronToolOptions } from "./tools/cron-tool.types.js";
-import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
+import type { RequestCompactionToolBinding } from "./tools/request-compaction-tool.js";
 
 export type OpenClawToolsOptions = {
   sandboxBrowserBridgeUrl?: string;
@@ -167,13 +167,7 @@ export type OpenClawToolsOptions = {
     requestContinuation: (request: ContinueWorkRequest) => void;
   };
   /** Closures for request_compaction when continuation is enabled. */
-  requestCompactionOpts?: {
-    sessionId?: string;
-    getContextUsage: () => number | null;
-    contextUsageOrigin?: RequestCompactionToolOpts["contextUsageOrigin"];
-    getContextUsageDiagnostics?: RequestCompactionToolOpts["getContextUsageDiagnostics"];
-    triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
-  };
+  requestCompactionOpts?: RequestCompactionToolBinding;
   /** Allow plugin tools for this tool set to late-bind the gateway subagent. */
   allowGatewaySubagentBinding?: boolean;
 } & SpawnedToolContext &

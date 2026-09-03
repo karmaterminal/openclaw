@@ -16,6 +16,7 @@ import {
   createAdmittedGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
 } from "../../tools/gateway-caller-context.js";
+import type { RequestCompactionContextUsageDiagnostics } from "../../tools/request-compaction-tool.js";
 import type { SystemAgentToolOptions } from "../../tools/system-agent-tool.js";
 import { prepareExecApprovalContinuationForAttempt } from "./attempt-exec-approval-continuation.js";
 import { applyResolvedToolPromptFinalizer } from "./attempt-prompt-support.js";
@@ -274,9 +275,7 @@ export async function dispatchEmbeddedRunAttempt(input: {
   // Tool construction precedes AgentSession creation, so bridge the live
   // measurement through a per-attempt rebinding closure.
   let getLiveContextUsage: (() => number | null) | undefined;
-  let getLiveContextUsageDiagnostics:
-    | NonNullable<NonNullable<typeof params.requestCompactionOpts>["getContextUsageDiagnostics"]>
-    | undefined;
+  let getLiveContextUsageDiagnostics: (() => RequestCompactionContextUsageDiagnostics) | undefined;
   let resolvedUsageSource: "live_in_flight" | "persisted_fallback" | "unavailable" = "unavailable";
   const requestCompactionOpts = params.requestCompactionOpts
     ? {
@@ -316,9 +315,7 @@ export async function dispatchEmbeddedRunAttempt(input: {
         },
         bindLiveContextUsage(
           getContextUsage: () => number | null,
-          getContextUsageDiagnostics: NonNullable<
-            NonNullable<typeof params.requestCompactionOpts>["getContextUsageDiagnostics"]
-          >,
+          getContextUsageDiagnostics: () => RequestCompactionContextUsageDiagnostics,
         ) {
           getLiveContextUsage = getContextUsage;
           getLiveContextUsageDiagnostics = getContextUsageDiagnostics;

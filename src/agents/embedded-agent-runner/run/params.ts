@@ -61,7 +61,10 @@ import type { ScheduledToolPolicyContext } from "../../scheduled-tool-policy.js"
 import type { SessionManager } from "../../sessions/index.js";
 import type { TrustedSubagentCompletionHandoff } from "../../subagents/announce/subagent-announce-handoff.js";
 import type { SilentReplyPromptMode, PromptMode } from "../../system-prompt.types.js";
-import type { RequestCompactionToolOpts } from "../../tools/request-compaction-tool.js";
+import type {
+  RequestCompactionContextUsageDiagnostics,
+  RequestCompactionToolBinding,
+} from "../../tools/request-compaction-tool.js";
 import type { EmbeddedAgentExecutionPhase } from "../execution-phase.js";
 import type { BlockReplyFlushContext } from "../types.js";
 import type { AuthProfileFailurePolicy } from "./auth-profile-failure-policy.types.js";
@@ -483,18 +486,11 @@ export type RunEmbeddedAgentParams = {
    */
   cleanupBundleMcpOnRunEnd?: boolean;
   /** Continuation: request_compaction tool opts (injected from execution context). */
-  requestCompactionOpts?: {
-    sessionId?: string;
-    getContextUsage: () => number | null;
-    contextUsageOrigin?: RequestCompactionToolOpts["contextUsageOrigin"];
-    getContextUsageDiagnostics?: RequestCompactionToolOpts["getContextUsageDiagnostics"];
-    triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
+  requestCompactionOpts?: RequestCompactionToolBinding & {
     /** Rebind context measurement to the active AgentSession after creation. */
     bindLiveContextUsage?: (
       getContextUsage: () => number | null,
-      getContextUsageDiagnostics: NonNullable<
-        RequestCompactionToolOpts["getContextUsageDiagnostics"]
-      >,
+      getContextUsageDiagnostics: () => RequestCompactionContextUsageDiagnostics,
     ) => void;
   };
   /** Mark explicit one-shot local CLI runs so plugin tools can release resources promptly. */

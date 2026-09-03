@@ -123,7 +123,7 @@ import {
 } from "./tools/cron-tool.js";
 import type { CronToolOptions } from "./tools/cron-tool.types.js";
 import { wrapToolWithGatewayCallerIdentity } from "./tools/gateway-caller-context.js";
-import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
+import type { RequestCompactionToolBinding } from "./tools/request-compaction-tool.js";
 
 const MEMORY_FLUSH_ALLOWED_TOOL_NAMES = new Set(["read", "write"]);
 
@@ -380,13 +380,7 @@ type OpenClawCodingToolsOptions = {
   /** Callback invoked when sessions_yield tool is called. */
   onYield?: (message: string, acknowledgment?: string) => Promise<void> | void;
   /** Continuation: request_compaction tool opts (injected from execution context). */
-  requestCompactionOpts?: {
-    sessionId?: string;
-    getContextUsage: () => number | null;
-    contextUsageOrigin?: RequestCompactionToolOpts["contextUsageOrigin"];
-    getContextUsageDiagnostics?: RequestCompactionToolOpts["getContextUsageDiagnostics"];
-    triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
-  };
+  requestCompactionOpts?: RequestCompactionToolBinding;
   /** Side-effect-free runtime completion claimant composed with the durable subagent claim. */
   claimYieldCompletion?: () => boolean | Promise<boolean>;
   /** Optional instrumentation callback for tool preparation stage timing. */
