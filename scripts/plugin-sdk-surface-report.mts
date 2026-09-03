@@ -340,8 +340,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +4: canonical node CLI option, envelope, presentation, and error owners.
       // +1: Gateway caller ownership for standalone browser routing.
       // +1: canonical temporal context renderer for plugin-owned agent harnesses.
+      // +1: canonical user-turn operational metadata restoration for native harnesses.
       // Net merge: upstream additions and continuation exports settle at the current surface.
-      4387,
+      4388,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -456,8 +457,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +4: canonical node CLI option, envelope, presentation, and error owners.
       // +1: Gateway caller ownership for standalone browser routing.
       // +1: canonical temporal context renderer for plugin-owned agent harnesses.
+      // +1: canonical user-turn operational metadata restoration for native harnesses.
       // Net merge: overlapping upstream additions and continuation callables settle here.
-      2609,
+      2610,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

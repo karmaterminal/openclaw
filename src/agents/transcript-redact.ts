@@ -32,6 +32,7 @@ import {
   shouldPreserveTranscriptImagePayload,
 } from "./transcript-redact-images.js";
 import { sanitizeCompactionReplayState } from "./transcript-redact-replay.js";
+import { stripInvalidatedTranscriptUserMetadata } from "./transcript-redact-user-metadata.js";
 
 function resolveTranscriptLoggingConfig(cfg?: OpenClawConfig) {
   const configuredLogging = readLoggingConfig();
@@ -718,14 +719,13 @@ function redactTranscriptStructuredValue(
     next ??= { ...source };
     next[key] = redacted;
   }
-  // Redacted source facts no longer identify the producer's sender. Keep display
-  // redaction, but never qualify the replacement bytes as a person or remote actor.
-  if (
-    fieldKey === "__openclaw" &&
-    next &&
-    (next.senderIdentity !== source.senderIdentity || next.senderId !== source.senderId)
-  ) {
-    delete next.senderIdentity;
+  if (next) {
+    next = stripInvalidatedTranscriptUserMetadata({
+      fieldKey,
+      location,
+      source,
+      redacted: next,
+    });
   }
   seen.delete(value);
   return next ?? value;

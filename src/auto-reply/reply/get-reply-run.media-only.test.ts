@@ -29,11 +29,8 @@ import {
   buildInboundUserContextPrefix,
   resolveInboundUserContextPromptJoiner,
 } from "./inbound-meta.js";
-import {
-  REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS,
-  createReplyOperation,
-  getActiveReplyRunCount,
-} from "./reply-run-registry.js";
+import { REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS, createReplyOperation } from "./reply-run-registry.js";
+import { getActiveReplyRunCount } from "./reply-run-registry.registry.js";
 import { testing as replyRunTesting } from "./reply-run-registry.test-support.js";
 import { routeReply } from "./route-reply.runtime.js";
 import type { PreparedFormattedSystemEvents } from "./session-system-event-adoption.js";
@@ -3233,7 +3230,7 @@ describe("runPreparedReply media-only handling", () => {
       return sessionEntry?.authProfileOverride
         ? {
             profileId: sessionEntry.authProfileOverride,
-            source: sessionEntry.authProfileOverrideSource ?? "user",
+            source: sessionEntry.authProfileOverrideSource === "auto" ? "auto" : "user",
             routeRequirement: undefined,
           }
         : undefined;

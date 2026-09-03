@@ -6,7 +6,7 @@ import {
   isAgentEventLifecycleGenerationCurrent,
 } from "../../../infra/agent-events.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
-import { INTERNAL_MESSAGE_CHANNEL } from "../../../utils/message-channel.js";
+import { INTERNAL_PROVENANCE_SOURCE_CHANNEL } from "../../../sessions/input-provenance.js";
 import { buildAnnounceIdempotencyKey } from "../../announce-idempotency.js";
 import { terminateAcceptedCollectorRun } from "../spawn/subagent-spawn-cleanup.js";
 import {
@@ -230,7 +230,7 @@ export async function wakeSubagentRunAfterDescendants(
             inputProvenance: {
               kind: "inter_session",
               sourceSessionKey: params.childSessionKey,
-              sourceChannel: INTERNAL_MESSAGE_CHANNEL,
+              sourceChannel: INTERNAL_PROVENANCE_SOURCE_CHANNEL,
               sourceTool: "subagent_announce",
             },
             idempotencyKey: wakeDispatchId,

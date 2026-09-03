@@ -2,12 +2,16 @@
  * Cleanup helper for subagent sessions. It deletes child session state through
  * the gateway and preserves lifecycle-hook behavior for session-mode spawns.
  */
+import type { SessionsDeleteParams } from "../../../../packages/gateway-protocol/src/index.js";
 import { SESSION_LIFECYCLE_CHANGED_ERROR_REASON } from "../../../config/sessions/lifecycle.js";
-import type { callGateway } from "../../../gateway/call.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import type { SpawnSubagentMode } from "../spawn/subagent-spawn.types.js";
 
-type CallGateway = (options: Parameters<typeof callGateway>[0]) => Promise<unknown>;
+type CallGateway = (options: {
+  method: "sessions.delete";
+  params: SessionsDeleteParams;
+  timeoutMs: number;
+}) => Promise<unknown>;
 type SubagentSessionCleanupOutcome = "deleted" | "changed" | "failed";
 
 function isSessionLifecycleChangedGatewayError(error: unknown): boolean {

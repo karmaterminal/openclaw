@@ -103,6 +103,7 @@ export async function prepareReplyAgentPayloads(state: {
     runResult,
     selectedModel,
     selectedProvider,
+    sessionModel,
     terminalFailurePayload,
     usage,
     verboseEnabled,
@@ -360,8 +361,8 @@ export async function prepareReplyAgentPayloads(state: {
         phase: "fallback",
         selectedProvider,
         selectedModel,
-        activeProvider: providerUsed,
-        activeModel: modelUsed,
+        activeProvider: sessionModel.provider,
+        activeModel: sessionModel.model,
         reasonSummary: fallbackTransition.reasonSummary,
         attemptSummaries: fallbackTransition.attemptSummaries,
         attempts: fallbackAttempts,
@@ -371,8 +372,8 @@ export async function prepareReplyAgentPayloads(state: {
       fallbackNoticeText = buildFallbackNotice({
         selectedProvider,
         selectedModel,
-        activeProvider: providerUsed,
-        activeModel: modelUsed,
+        activeProvider: sessionModel.provider,
+        activeModel: sessionModel.model,
         attempts: fallbackAttempts,
         cfg,
       });
@@ -387,8 +388,8 @@ export async function prepareReplyAgentPayloads(state: {
         phase: "fallback_cleared",
         selectedProvider,
         selectedModel,
-        activeProvider: providerUsed,
-        activeModel: modelUsed,
+        activeProvider: sessionModel.provider,
+        activeModel: sessionModel.model,
         previousActiveModel: fallbackTransition.previousState.activeModel,
       },
     });
@@ -624,7 +625,6 @@ export async function prepareReplyAgentPayloads(state: {
       throw new Error("accepted continuation status could not be prepared for delivery");
     }
     const settlement: PendingContinuationSettlement = {
-      statusPayload,
       settle: async (statusDelivered) => {
         const { settleRequesterAfterSessionSpawns } =
           await import("../../agents/subagents/registry/subagent-registry.js");

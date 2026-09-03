@@ -132,7 +132,10 @@ async function runEmbeddedAgentInternal(
     sessionKey: paramsBase.sessionKey,
     agentId: paramsBase.agentId,
   });
-  assertAgentHarnessRunAdmission({ ...paramsBase, sessionKey: effectiveSessionKey });
+  const sessionAdmission = assertAgentHarnessRunAdmission({
+    ...paramsBase,
+    sessionKey: effectiveSessionKey,
+  });
   const runSessionTarget = await resolveAgentRunSessionTarget({
     ...paramsBase,
     missingSessionKey: "create",
@@ -477,6 +480,7 @@ async function runEmbeddedAgentInternal(
 
           return await executePreparedEmbeddedRun({
             runParams: params,
+            sessionAdmission,
             contextEngineAgentId,
             provider,
             modelId,

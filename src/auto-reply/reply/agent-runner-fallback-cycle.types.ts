@@ -103,7 +103,7 @@ export type AgentFallbackCycleParams = {
   runtimeConfig: OpenClawConfig;
   liveModelSwitchRuntimeEntry?: Pick<
     SessionEntry,
-    "agentHarnessId" | "agentRuntimeOverride" | "modelSelectionLocked"
+    "agentHarnessId" | "agentRuntimeOverride" | "modelSelectionLocked" | "pluginOwnerId"
   >;
   runId: string;
   runAbortSignal?: AbortSignal;

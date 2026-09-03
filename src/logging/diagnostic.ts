@@ -65,7 +65,6 @@ import {
 } from "./diagnostic-session-state.js";
 import {
   installDiagnosticStabilityFatalHook,
-  resetDiagnosticStabilityBundleForTest,
   uninstallDiagnosticStabilityFatalHook,
 } from "./diagnostic-stability-bundle.js";
 import {
@@ -1456,7 +1455,6 @@ function resetDiagnosticStateForTest(): void {
   resetDiagnosticMemoryForTest();
   resetDiagnosticPhasesForTest();
   resetDiagnosticStabilityRecorderForTest();
-  resetDiagnosticStabilityBundleForTest();
 }
 
 const testing = {
