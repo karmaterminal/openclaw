@@ -271,6 +271,19 @@ export async function dispatchEmbeddedRunAttempt(input: {
     sessionKey: params.sessionKey,
     toolsAllow: params.toolsAllow,
   });
+  // Tool construction precedes AgentSession creation, so bridge the live
+  // measurement through a per-attempt rebinding closure.
+  let getLiveContextUsage: (() => number | null) | undefined;
+  const requestCompactionOpts = params.requestCompactionOpts
+    ? {
+        ...params.requestCompactionOpts,
+        getContextUsage: () =>
+          getLiveContextUsage?.() ?? params.requestCompactionOpts?.getContextUsage() ?? null,
+        bindLiveContextUsage(getContextUsage: () => number | null) {
+          getLiveContextUsage = getContextUsage;
+        },
+      }
+    : undefined;
   const attemptParams: EmbeddedRunAttemptInternalParams = {
     permissionChange: input.permissionChange,
     admittedRunContext: params.admittedRunContext,
@@ -283,7 +296,7 @@ export async function dispatchEmbeddedRunAttempt(input: {
     drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,
     disableContinuationTools: params.disableContinuationTools,
     continueWorkOpts: params.continueWorkOpts,
-    requestCompactionOpts: params.requestCompactionOpts,
+    requestCompactionOpts,
     conversationRecall: params.conversationRecall,
     promptCacheKey: params.promptCacheKey,
     sandboxSessionKey: params.sandboxSessionKey,

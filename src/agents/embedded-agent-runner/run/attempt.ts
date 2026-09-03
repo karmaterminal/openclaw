@@ -413,6 +413,12 @@ export async function runEmbeddedAttempt(
             },
             onSessionCreated: (createdSession) => {
               session = createdSession;
+              params.requestCompactionOpts?.bindLiveContextUsage?.(() => {
+                const percent = createdSession.getContextUsage()?.percent;
+                return typeof percent === "number" && Number.isFinite(percent)
+                  ? percent / 100
+                  : null;
+              });
             },
             onSessionManagerCreated: (createdSessionManager) => {
               sessionManager = createdSessionManager;
