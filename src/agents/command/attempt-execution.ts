@@ -1265,6 +1265,7 @@ export async function runAgentAttempt(params: {
   const requestCompactionOpts = continuationEnabled
     ? {
         sessionId: params.sessionId,
+        contextUsageOrigin: "live_runner" as const,
         getContextUsage: () =>
           computeRequestCompactionContextUsage({
             entry: params.sessionEntry,

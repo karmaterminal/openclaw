@@ -197,6 +197,7 @@ describe("runEmbeddedFallbackCandidate continuation callbacks", () => {
     mocks.releaseQueuedCompactionTolerant.mockClear();
     const onCompactionCount = vi.fn();
     mocks.runEmbeddedAgent.mockImplementationOnce(async (options: RunEmbeddedAgentParams) => {
+      expect(options.requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
       options.continueWorkOpts?.requestContinuation({
         reason: "continue after fallback",
         delaySeconds: 5,

@@ -234,6 +234,7 @@ export async function runEmbeddedFallbackCandidate(
         requestCompactionOpts: continuationEnabled
           ? {
               sessionId: turn.followupRun.run.sessionId,
+              contextUsageOrigin: "live_runner" as const,
               getContextUsage: () =>
                 computeRequestCompactionContextUsage({
                   entry: turn.getActiveSessionEntry(),
