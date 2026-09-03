@@ -11,7 +11,6 @@ import {
 import { deriveContinuationDelegateChildSessionKeyFromParent } from "../../agents/subagent-continuation-ids.js";
 import { isSpawnSubagentAdmissionCancelledError } from "../../agents/subagents/spawn/subagent-spawn-contract.js";
 import { spawnSubagentDirect } from "../../agents/subagents/spawn/subagent-spawn.js";
-import type { SpawnSubagentContext } from "../../agents/subagents/spawn/subagent-spawn.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import {
   emitContinuationDelegateFireSpan,
@@ -441,9 +440,6 @@ export async function dispatchToolDelegates(
       currentChainId = chainId ?? currentChainId;
     };
 
-    // Own mode wins; otherwise inherit the parent chain's silent/wake policy so a
-    // default-mode delegate spawned under a silent/wake chain stays internal
-    // instead of announcing (mirrors the subagent-announce chain-hop guards).
     const ownSilent = delegate.mode === "silent" || delegate.mode === "silent-wake";
     const ownWake = delegate.mode === "silent-wake";
     const canInheritMode = delegate.mode === undefined;
@@ -455,23 +451,13 @@ export async function dispatchToolDelegates(
     const delegateMode = silentWake ? "silent-wake" : silent ? "silent" : "normal";
     const delegateDelayMs = delegate.delayMs ?? 0;
     const delegateDelivery: "immediate" | "timer" = delegateDelayMs > 0 ? "timer" : "immediate";
-
-    const spawnCtx: SpawnSubagentContext = {
-      agentSessionKey: sessionKey,
-      ...(delegate.originRunId ? { requesterTurnRunId: delegate.originRunId } : {}),
-      agentChannel: ctx.agentChannel,
-      agentAccountId: ctx.agentAccountId,
-      agentTo: ctx.agentTo,
-      agentThreadId: ctx.agentThreadId,
-    };
-
     let dispatchSpan: ReturnType<typeof startContinuationDelegateSpan> | undefined;
     let spawnAttempted = false;
     let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
     const activeDispatch = registerContinuationDelegateDispatchClaim({
       controller: "pending",
       delegate,
-      loadOwnerSessionEntry: createContinuationOwnerSessionLoader(sessionKey),
+      ownerSession: createContinuationOwnerSessionLoader(sessionKey, ctx.ownerAgentId),
       ownerSessionKey: sessionKey,
     });
     try {
@@ -581,7 +567,13 @@ export async function dispatchToolDelegates(
           ...(spawnTraceparent ? { traceparent: spawnTraceparent } : {}),
         },
         {
-          ...spawnCtx,
+          agentSessionKey: sessionKey,
+          requesterAgentIdOverride: activeDispatch.ownerAgentId,
+          ...(delegate.originRunId ? { requesterTurnRunId: delegate.originRunId } : {}),
+          agentChannel: ctx.agentChannel,
+          agentAccountId: ctx.agentAccountId,
+          agentTo: ctx.agentTo,
+          agentThreadId: ctx.agentThreadId,
           continuationDelegateAdmission: activeDispatch.authority,
         },
       );

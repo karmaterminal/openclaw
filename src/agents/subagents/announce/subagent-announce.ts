@@ -85,6 +85,7 @@ export type SubagentAnnounceFlowOutcome = NonNullable<
 
 export async function runSubagentAnnounceFlow(params: {
   childSessionKey: string;
+  childAgentId?: string;
   childRunId: string;
   requesterSessionKey: string;
   requesterAgentId?: string;
@@ -133,6 +134,7 @@ export async function runSubagentAnnounceFlow(params: {
   resolveGatewayContext?: import("../../../gateway/server-methods/types.js").GatewayContextResolver;
 }): Promise<SubagentAnnounceFlowOutcome> {
   let announceOutcome: SubagentAnnounceFlowOutcome = "retryable";
+  let failureStage = "session-owner-resolution";
   const expectsCompletionMessage = params.expectsCompletionMessage === true;
   const announceType = params.announceType ?? "subagent task";
   let shouldDeleteChildSession = params.cleanup === "delete";
@@ -179,7 +181,7 @@ export async function runSubagentAnnounceFlow(params: {
     let targetRequesterOrigin = normalizeDeliveryContext(params.requesterOrigin);
     const childSessionEntry = !childSessionEffectsAllowed()
       ? undefined
-      : readSessionEntryByKey(params.childSessionKey);
+      : loadSessionEntryByKey(params.childSessionKey, params.childAgentId);
     childSessionId =
       typeof childSessionEntry?.sessionId === "string" && childSessionEntry.sessionId.trim()
         ? childSessionEntry.sessionId.trim()
@@ -520,9 +522,11 @@ export async function runSubagentAnnounceFlow(params: {
       findings = `${findings}\n\n[Descendant completions]\n${childCompletionFindings}`;
     }
     const continuationRuntime = await loadSubagentContinuationRuntime();
+    failureStage = "terminal-token-admission";
     const continuation = await continuationRuntime.coordinateSubagentContinuation({
       cfg,
       childSessionKey: params.childSessionKey,
+      childAgentId: params.childAgentId,
       childRunId: params.childRunId,
       targetRequesterSessionKey,
       targetRequesterOrigin,
@@ -532,7 +536,15 @@ export async function runSubagentAnnounceFlow(params: {
       silentAnnounce: params.silentAnnounce,
       wakeOnReturn: params.wakeOnReturn,
       traceparent: params.traceparent,
-      loadEntry: readSessionEntryByKey,
+      loadEntry: (sessionKey, options) => {
+        if (sessionKey === params.childSessionKey) {
+          return loadSessionEntryByKey(sessionKey, params.childAgentId);
+        }
+        if (sessionKey === targetRequesterSessionKey) {
+          return loadSessionEntryByKey(sessionKey, targetRequesterAgentId);
+        }
+        return readSessionEntryByKey(sessionKey, options);
+      },
       invalidateSessionEntry,
     });
     findings = continuation.findings;
@@ -595,6 +607,7 @@ export async function runSubagentAnnounceFlow(params: {
         statsLine,
         artifactProjections,
       });
+    failureStage = "return-routing";
     const returnRoute = await continuationRuntime.routeSubagentContinuationReturn({
       cfg,
       continuationEnabled: continuation.continuationEnabled,
@@ -610,6 +623,7 @@ export async function runSubagentAnnounceFlow(params: {
       childSessionKey: params.childSessionKey,
       childRunId: params.childRunId,
       targetRequesterSessionKey,
+      targetRequesterAgentId,
       silentAnnounce: params.silentAnnounce,
       wakeOnReturn: params.wakeOnReturn,
       continuationTargetSessionKey: params.continuationTargetSessionKey,
@@ -634,6 +648,7 @@ export async function runSubagentAnnounceFlow(params: {
       return "delivered";
     }
 
+    failureStage = "completion-delivery";
     // Send to the requester session. For nested subagents this is an internal
     // follow-up injection (deliver=false) so the orchestrator receives it.
     let directOrigin = targetRequesterOrigin;
@@ -709,7 +724,15 @@ export async function runSubagentAnnounceFlow(params: {
       );
     }
   } catch (err) {
-    defaultRuntime.error?.(`Subagent announce failed: ${String(err)}`);
+    defaultRuntime.error?.(
+      `Subagent announce failed: stage=${failureStage} originSession=${
+        params.childSessionKey.startsWith("agent:") ? "agent-scoped" : "unscoped"
+      } childOwnerSource=${
+        params.childAgentId ? "persisted" : "derived"
+      } ownerReceipt=${params.childAgentId ? "present" : "absent"} requesterOwnerSource=${
+        params.requesterAgentId ? "persisted" : "derived"
+      } ${String(err)}`,
+    );
     // Best-effort follow-ups; ignore failures to avoid breaking the caller response.
   } finally {
     // The spawn label is persisted at run start (agent request `label` →

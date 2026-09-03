@@ -27,20 +27,32 @@ type OwnerLifecycleIdentity = Pick<SessionEntry, "lifecycleRevision" | "sessionI
 
 export function createContinuationOwnerSessionLoader(
   ownerSessionKey: string,
-): () => SessionEntry | undefined {
+  expectedAgentId?: string,
+): {
+  agentId: string;
+  load: () => SessionEntry | undefined;
+} {
   const cfg = getRuntimeConfig();
-  const agentId = resolveSessionAgentId({ sessionKey: ownerSessionKey, config: cfg });
+  const agentId = resolveSessionAgentId({
+    sessionKey: ownerSessionKey,
+    config: cfg,
+    agentId: expectedAgentId,
+  });
   const storePath = resolveSessionStorePathCore(cfg.session?.store, { agentId });
-  return () => loadSessionEntry({ storePath, sessionKey: ownerSessionKey });
+  return {
+    agentId,
+    load: () => loadSessionEntry({ storePath, sessionKey: ownerSessionKey }),
+  };
 }
 
 export function registerContinuationDelegateDispatchClaim(params: {
   controller: DelegateSpawnFenceController;
   delegate: DelegateClaim;
-  loadOwnerSessionEntry: () => SessionEntry | undefined;
+  ownerSession: ReturnType<typeof createContinuationOwnerSessionLoader>;
   ownerSessionKey: string;
 }): {
   authority: SpawnSubagentAdmissionAuthority;
+  ownerAgentId: string;
   release: () => void;
 } {
   const { flowId, expectedRevision } = params.delegate;
@@ -50,7 +62,7 @@ export function registerContinuationDelegateDispatchClaim(params: {
     );
   }
   const lifecycleGeneration = getAgentEventLifecycleGeneration();
-  const ownerIdentity = params.loadOwnerSessionEntry();
+  const ownerIdentity = params.ownerSession.load();
   const activeClaim = registerContinuationDispatchClaim({
     sessionKey: params.ownerSessionKey,
     flowId,
@@ -72,13 +84,10 @@ export function registerContinuationDelegateDispatchClaim(params: {
         throw new SpawnSubagentAdmissionCancelledError(fence.summary);
       }
     }
-    if (ownerIdentity) {
-      const currentOwner = params.loadOwnerSessionEntry();
-      if (!isSameOwnerLifecycle(currentOwner, ownerIdentity)) {
-        throw new SpawnSubagentAdmissionCancelledError(
-          "Continuation delegate source session lifecycle changed.",
-        );
-      }
+    if (ownerIdentity && !isSameOwnerLifecycle(params.ownerSession.load(), ownerIdentity)) {
+      throw new SpawnSubagentAdmissionCancelledError(
+        "Continuation delegate source session lifecycle changed.",
+      );
     }
   };
   return {
@@ -90,6 +99,7 @@ export function registerContinuationDelegateDispatchClaim(params: {
       },
       assertCurrent,
     },
+    ownerAgentId: params.ownerSession.agentId,
     release: activeClaim.release,
   };
 }

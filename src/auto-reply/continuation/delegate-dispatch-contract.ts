@@ -3,6 +3,8 @@ import type { ContinuationRuntimeConfig } from "./types.js";
 
 export type DelegateDispatchContext = {
   sessionKey: string;
+  /** Trusted owner captured by the originating run; never model-supplied. */
+  ownerAgentId?: string;
   agentChannel?: string;
   agentAccountId?: string;
   agentTo?: string;

@@ -553,8 +553,10 @@ export const startSubagentAnnounceCleanupFlow = (
 
   const announceParams: Parameters<RunSubagentAnnounceFlow>[0] = {
     childSessionKey: pendingPayload.childSessionKey,
+    childAgentId: pendingPayload.childAgentId,
     childRunId: pendingPayload.childRunId,
     requesterSessionKey: pendingPayload.requesterSessionKey,
+    requesterAgentId: pendingPayload.requesterAgentId,
     requesterOrigin,
     requesterDisplayKey: pendingPayload.requesterDisplayKey,
     task: pendingPayload.task,

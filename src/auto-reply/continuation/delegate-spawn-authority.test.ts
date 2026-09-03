@@ -15,8 +15,11 @@ describe("continuation delegate claim construction", () => {
       registerContinuationDelegateDispatchClaim({
         controller: "pending",
         delegate: { task: "must not leak a claim" },
-        loadOwnerSessionEntry: () => {
-          throw new Error("owner store unavailable");
+        ownerSession: {
+          agentId: "main",
+          load: () => {
+            throw new Error("owner store unavailable");
+          },
         },
         ownerSessionKey,
       }),
@@ -24,5 +27,35 @@ describe("continuation delegate claim construction", () => {
 
     abortContinuationDispatchClaims(ownerSessionKey);
     expect(abortSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns the persisted owner and revalidates its lifecycle before spawn boundaries", () => {
+    const ownerSessionKey = "agent:main:owner";
+    let current = {
+      sessionId: "session-1",
+      lifecycleRevision: "revision-1",
+      updatedAt: 1,
+    };
+    const claim = registerContinuationDelegateDispatchClaim({
+      controller: "pending",
+      delegate: { task: "owned delegate" },
+      ownerSession: {
+        agentId: "main",
+        load: () => current,
+      },
+      ownerSessionKey,
+    });
+
+    expect(claim.ownerAgentId).toBe("main");
+    expect(() => claim.authority.assertCurrent("gateway-dispatch")).not.toThrow();
+    current = {
+      sessionId: "session-2",
+      lifecycleRevision: "revision-2",
+      updatedAt: 2,
+    };
+    expect(() => claim.authority.assertCurrent("registry-acceptance")).toThrow(
+      "Continuation delegate source session lifecycle changed.",
+    );
+    claim.release();
   });
 });

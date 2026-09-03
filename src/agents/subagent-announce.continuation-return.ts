@@ -17,6 +17,7 @@ import {
   requestHeartbeatNow,
 } from "../infra/heartbeat-wake.js";
 import type { DelegateArtifactDeliveryReceipt } from "../infra/session-delivery-queue-storage.js";
+import { withSystemEventOwner } from "../infra/system-event-ownership.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { defaultRuntime } from "../runtime.js";
@@ -79,6 +80,7 @@ export async function routeSubagentContinuationReturn(params: {
   childSessionKey: string;
   childRunId: string;
   targetRequesterSessionKey: string;
+  targetRequesterAgentId?: string;
   silentAnnounce?: boolean;
   wakeOnReturn?: boolean;
   continuationTargetSessionKey?: string;
@@ -267,15 +269,18 @@ export async function routeSubagentContinuationReturn(params: {
         `[continuation/silent-wake] wakeOnReturn=true target=${params.targetRequesterSessionKey} silentAnnounce=true`,
       );
     }
+    const eventOptions = {
+      sessionKey: params.targetRequesterSessionKey,
+      trusted: true,
+      ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
+    };
     enqueueSystemEvent(
       params.triggerMessagesBySessionKey?.get(params.targetRequesterSessionKey) ||
         params.triggerMessage ||
         `[continuation:enrichment-return] Delegate completed: ${params.taskLabel}`,
-      {
-        sessionKey: params.targetRequesterSessionKey,
-        trusted: true,
-        ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
-      },
+      params.targetRequesterAgentId
+        ? withSystemEventOwner(eventOptions, params.targetRequesterAgentId)
+        : eventOptions,
     );
     continuationLog.info(
       `[continuation:enrichment-return] Delivered to ${params.targetRequesterSessionKey} from ${params.childSessionKey}`,
@@ -284,6 +289,7 @@ export async function routeSubagentContinuationReturn(params: {
       requestHeartbeatNow(
         markTrustedContinuationHeartbeatWake({
           sessionKey: params.targetRequesterSessionKey,
+          ...(params.targetRequesterAgentId ? { agentId: params.targetRequesterAgentId } : {}),
           reason: "silent-wake-enrichment",
           parentRunId: params.childRunId,
         }),

@@ -29,8 +29,11 @@ export function parseContinuationRecipientAuthorityBinding(
 
 export function captureContinuationRecipientAuthorities(
   sessionKeys: readonly string[],
+  fallbackAgentId?: string,
 ): ContinuationRecipientAuthorityBinding {
-  const defaultAgentId = resolveDefaultAgentId(getRuntimeConfig());
+  const needsFallback = sessionKeys.some((sessionKey) => !sessionKey.startsWith("agent:"));
+  const defaultAgentId =
+    fallbackAgentId ?? (needsFallback ? resolveDefaultAgentId(getRuntimeConfig()) : undefined);
   const recipients = normalizeContinuationTargetKeys(sessionKeys).map((sessionKey) => ({
     sessionKey,
     authority: captureSessionRecipientAuthority({
@@ -46,6 +49,7 @@ export function createContinuationRecipientAuthorityBinding(params: {
   targetSessionKey?: string;
   targetSessionKeys?: readonly string[];
   fanoutMode?: "tree" | "all";
+  requesterAgentId?: string;
 }): ContinuationRecipientAuthorityBinding {
   if (params.fanoutMode) {
     return { version: 1, selection: "pending", fanoutMode: params.fanoutMode };
@@ -56,6 +60,7 @@ export function createContinuationRecipientAuthorityBinding(params: {
   ]);
   return captureContinuationRecipientAuthorities(
     explicitTargets.length > 0 ? explicitTargets : [params.requesterSessionKey],
+    params.requesterAgentId,
   );
 }
 

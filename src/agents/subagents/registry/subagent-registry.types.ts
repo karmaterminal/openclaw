@@ -43,9 +43,11 @@ export type SubagentProgressOrigin = {
 
 export type PendingFinalDeliveryPayload = {
   requesterSessionKey: string;
+  requesterAgentId?: string;
   requesterOrigin?: DeliveryContext;
   requesterDisplayKey: string;
   childSessionKey: string;
+  childAgentId?: string;
   childRunId: string;
   task: string;
   label?: string;
@@ -254,6 +256,8 @@ export type SubagentRunRecord = {
   requesterDisplayKey: string;
   /** Effective requester agent, including cron/hook overrides not encoded in the session key. */
   requesterAgentId?: string;
+  /** Validated child-session owner captured at spawn; never supplied by the model. */
+  agentId?: string;
   task: string;
   taskName?: string;
   cleanup: "delete" | "keep";
@@ -356,6 +360,7 @@ export type SubagentRunReadRecord = Pick<
   | "controllerSessionKey"
   | "requesterSessionKey"
   | "requesterAgentId"
+  | "agentId"
   | "model"
   | "generation"
   | "createdAt"

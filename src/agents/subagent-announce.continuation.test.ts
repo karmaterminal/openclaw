@@ -86,6 +86,7 @@ vi.mock("../plugins/hook-runner-global.js", () => ({
   }),
 }));
 
+import { findContinuationDelegateFlowByOriginRun } from "../auto-reply/continuation/delegate-flow-store.js";
 import { drainFormattedSystemEvents } from "../auto-reply/reply/session-system-events.js";
 import {
   setRuntimeConfigSnapshot,
@@ -100,6 +101,7 @@ import {
 } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { drainSystemEventEntries } from "../infra/system-events.js";
+import { defaultRuntime } from "../runtime.js";
 import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 import * as subagentSpawn from "./subagents/spawn/subagent-spawn.js";
 
@@ -135,16 +137,22 @@ function makeBaseConfig(overrides?: {
   maxChainLength?: number;
   maxDelayMs?: number;
   costCapTokens?: number;
+  multiAgent?: boolean;
+  crossSessionTargeting?: "disabled" | "enabled";
 }): OpenClawConfig {
   return {
     session: { mainKey: "main", scope: "per-sender" as const },
     agents: {
+      ...(overrides?.multiAgent ? { list: [{ id: "main" }, { id: "helper" }] } : {}),
       defaults: {
         continuation: {
           enabled: true,
           maxChainLength: overrides?.maxChainLength ?? 10,
           minDelayMs: 0,
           maxDelayMs: overrides?.maxDelayMs ?? 10_000,
+          ...(overrides?.crossSessionTargeting
+            ? { crossSessionTargeting: overrides.crossSessionTargeting }
+            : {}),
           ...(typeof overrides?.costCapTokens === "number"
             ? { costCapTokens: overrides.costCapTokens }
             : {}),
@@ -201,31 +209,42 @@ describe("subagent announce continuation chaining", () => {
     maxDelayMs?: number;
     costCapTokens?: number;
     requesterSessionKey?: string;
+    requesterAgentId?: string;
+    childAgentId?: string;
+    writeChildEntry?: boolean;
+    multiAgent?: boolean;
+    crossSessionTargeting?: "disabled" | "enabled";
     wakeOnReturn?: boolean;
   }) {
     // Write the child entry into the session store
     const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
-    await replaceSessionEntry(
-      { agentId: "main", sessionKey: params.childSessionKey, storePath },
-      {
-        sessionId: `${params.childSessionKey}-session`,
-        updatedAt: Date.now(),
-        inputTokens: 0,
-        outputTokens: 0,
-      },
-    );
+    if (params.writeChildEntry !== false) {
+      await replaceSessionEntry(
+        { agentId: "main", sessionKey: params.childSessionKey, storePath },
+        {
+          sessionId: `${params.childSessionKey}-session`,
+          updatedAt: Date.now(),
+          inputTokens: 0,
+          outputTokens: 0,
+        },
+      );
+    }
 
     // Update config if needed
     if (
       typeof params.maxChainLength === "number" ||
       typeof params.maxDelayMs === "number" ||
-      typeof params.costCapTokens === "number"
+      typeof params.costCapTokens === "number" ||
+      params.multiAgent === true ||
+      params.crossSessionTargeting !== undefined
     ) {
       setRuntimeConfigSnapshot(
         makeBaseConfig({
           maxChainLength: params.maxChainLength,
           maxDelayMs: params.maxDelayMs,
           costCapTokens: params.costCapTokens,
+          multiAgent: params.multiAgent,
+          crossSessionTargeting: params.crossSessionTargeting,
         }),
       );
     }
@@ -234,6 +253,8 @@ describe("subagent announce continuation chaining", () => {
       childSessionKey: params.childSessionKey,
       childRunId: `${params.childSessionKey}-run`,
       requesterSessionKey: params.requesterSessionKey ?? "agent:main:main",
+      requesterAgentId: params.requesterAgentId,
+      childAgentId: params.childAgentId,
       requesterDisplayKey: "main",
       requesterOrigin: { channel: "discord", to: "channel:123" },
       task: `${params.childTaskPrefix} delegated task`,
@@ -259,6 +280,7 @@ describe("subagent announce continuation chaining", () => {
       reply: "step complete\n[[CONTINUE_DELEGATE: do step 1]]",
       maxChainLength: 2,
     });
+
     await new Promise((r) => {
       setTimeout(r, 50);
     });
@@ -266,6 +288,74 @@ describe("subagent announce continuation chaining", () => {
     expect(mocked.spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
     expect(mocked.spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
       task: expect.stringContaining("[continuation:chain-hop:1]"),
+    });
+  });
+
+  it("rejects the ownerless multi-agent completion base before delegate admission", async () => {
+    await writeSessionStore({
+      "agent:main:owned-parent": {
+        sessionId: "owned-parent-session",
+        continuationChainTokens: 0,
+      },
+    });
+    const errorSpy = vi.spyOn(defaultRuntime, "error").mockImplementation(() => {});
+
+    await runContinuationAnnounce({
+      childSessionKey: "ownerless-base",
+      childTaskPrefix: "",
+      requesterSessionKey: "owned-parent",
+      reply: "step complete\n[[CONTINUE_DELEGATE: must not spawn]]",
+      multiAgent: true,
+      writeChildEntry: false,
+    });
+
+    expect(mocked.spawnSubagentDirectMock).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /stage=(session-owner-resolution|terminal-token-admission).*ownerReceipt=absent.*(AgentSelectionRequiredError|source session owner is unavailable)/,
+      ),
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("propagates the validated child owner through token admission and keeps target return-only", async () => {
+    const childSessionKey = "agent:main:subagent:owned-successor";
+    const childRunId = `${childSessionKey}-run`;
+    const errorSpy = vi.spyOn(defaultRuntime, "error").mockImplementation(() => {});
+    await writeSessionStore({
+      "agent:main:owned-parent": {
+        sessionId: "owned-parent-session",
+        continuationChainTokens: 0,
+      },
+    });
+
+    await runContinuationAnnounce({
+      childSessionKey,
+      childTaskPrefix: "",
+      requesterSessionKey: "owned-parent",
+      requesterAgentId: "main",
+      childAgentId: "main",
+      reply: "step complete\n[[CONTINUE_DELEGATE: owned successor | target=agent:helper:return]]",
+      multiAgent: true,
+      crossSessionTargeting: "enabled",
+    });
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    await vi.waitFor(
+      () => {
+        expect(mocked.spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 2_000, interval: 10 },
+    );
+    expect(mocked.spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      continuationTargetSessionKey: "agent:helper:return",
+    });
+    expect(mocked.spawnSubagentDirectMock.mock.calls[0]?.[1]).toMatchObject({
+      agentSessionKey: childSessionKey,
+      requesterAgentIdOverride: "main",
+    });
+    expect(findContinuationDelegateFlowByOriginRun(childSessionKey, childRunId)).toMatchObject({
+      status: "succeeded",
     });
   });
 
