@@ -711,9 +711,7 @@ export function createAgentEventHandler({
     clearPendingTerminalLifecycleError(evt.runId, evt.lifecycleGeneration);
     const chatSendStillActive = isChatSendRunActive(evt.runId);
     const chatSendAlreadySettled =
-      opts?.chatSendWasActive === true &&
-      !chatSendStillActive &&
-      wasChatSendTerminalBroadcasted(evt.runId);
+      !chatSendStillActive && wasChatSendTerminalBroadcasted(evt.runId);
     const terminalOutcome = buildAgentRunTerminalOutcomeFromLifecycleEvent({
       phase: lifecyclePhase,
       data: evt.data,
@@ -735,9 +733,18 @@ export function createAgentEventHandler({
       timeoutPhase: evt.data?.timeoutPhase,
       error: evt.data?.error,
     });
+    const bufferedTerminalReply = resolveBufferedChatTextState(clientRunId, evt.runId, {
+      final: true,
+      suppressLeadFragments: false,
+    });
+    const lifecycleOwnsCommittedReply =
+      terminalState === "done" &&
+      Boolean(bufferedTerminalReply.text) &&
+      !bufferedTerminalReply.shouldSuppressSilent;
     const chatSendOwnsTerminal =
       opts?.skipChatSendOwnedTerminal === true &&
       chatSendStillActive &&
+      !lifecycleOwnsCommittedReply &&
       !yieldedWaiting &&
       (lifecyclePhase === "error" ||
         classifiedTerminalState === "done" ||
@@ -785,6 +792,7 @@ export function createAgentEventHandler({
               yielded: yieldedWaiting ? true : undefined,
               terminalFrameOwnedElsewhere: chatSendOwnsTerminal || undefined,
               errorObservation: evt.data?.errorObservation,
+              resolvedTextState: bufferedTerminalReply,
             },
           );
           if (!chatSendOwnsTerminal && opts?.chatSendWasActive && chatSendStillActive) {
@@ -810,9 +818,9 @@ export function createAgentEventHandler({
       if (!evt.contextClaimId) {
         clearRunContextForEvent(evt);
       }
-      if (chatSendOwnsTerminal && isChatSendRunActive(evt.runId)) {
-        // The post-dispatch chat.send owner emits the terminal next. Preserve the
-        // latest lifecycle sequence so clients cannot reject that terminal as stale.
+      if (chatSendOwnsTerminal || (chatSendStillActive && lifecycleOwnsCommittedReply)) {
+        // Post-dispatch chat.send may still publish a notice or terminal. Preserve
+        // the lifecycle watermark so clients cannot reject that payload as stale.
         const terminalSeq = Math.max(
           agentRunSeq.get(evt.runId) ?? evt.seq,
           agentRunSeq.get(clientRunId) ?? 0,
@@ -1179,12 +1187,15 @@ export function createAgentEventHandler({
       yielded?: true;
       terminalFrameOwnedElsewhere?: true;
       errorObservation?: unknown;
+      resolvedTextState?: { text: string; shouldSuppressSilent: boolean };
     },
   ) => {
-    const { text, shouldSuppressSilent } = resolveBufferedChatTextState(clientRunId, sourceRunId, {
-      final: true,
-      suppressLeadFragments: false,
-    });
+    const { text, shouldSuppressSilent } =
+      opts?.resolvedTextState ??
+      resolveBufferedChatTextState(clientRunId, sourceRunId, {
+        final: true,
+        suppressLeadFragments: false,
+      });
     // Flush any paced delta so streaming clients receive the complete text
     // before the final event.
     // Only flush if the buffered text differs from the last broadcast to avoid duplicates.

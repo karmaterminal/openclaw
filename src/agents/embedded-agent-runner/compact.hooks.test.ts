@@ -1580,6 +1580,38 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
     });
   });
 
+  it("prefers the latest persisted session permission policy", async () => {
+    await upsertSessionEntryCore(
+      { agentId: "main", sessionKey: TEST_SESSION_KEY, storePath: defaultStorePath },
+      {
+        sessionId: TEST_SESSION_ID,
+        updatedAt: 2,
+        permissionMode: "guarded",
+        sessionRoot: join(TEST_WORKSPACE_DIR, "persisted-workspace"),
+      },
+    );
+
+    await compactEmbeddedAgentSessionDirect(
+      wrappedCompactionArgs({
+        permissionMode: "full",
+        sessionRoot: join(TEST_WORKSPACE_DIR, "captured-workspace"),
+        sessionEntry: {
+          sessionId: TEST_SESSION_ID,
+          permissionMode: "workspace",
+          sessionRoot: join(TEST_WORKSPACE_DIR, "stale-workspace"),
+        },
+      }),
+    );
+
+    const toolOptions = expectRecordFields(mockCallArg(createOpenClawCodingToolsMock), {
+      sessionPermissionPolicy: {
+        mode: "guarded",
+        root: join(TEST_WORKSPACE_DIR, "persisted-workspace"),
+      },
+    });
+    expect(toolOptions.exec).toEqual(expect.objectContaining({ mode: "ask" }));
+  });
+
   it.each([
     { execMode: "deny", permissionMode: "read-only", expectedExecMode: "deny" },
     { execMode: "allowlist", permissionMode: "guarded", expectedExecMode: "ask" },

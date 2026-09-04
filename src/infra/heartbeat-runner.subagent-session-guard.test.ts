@@ -155,7 +155,7 @@ describe("runHeartbeatOnce", () => {
       );
 
       expect(replySpy).toHaveBeenCalledTimes(1);
-      const [replyParams] = requireFirstMockCall(replySpy, "reply") as Parameters<typeof replySpy>;
+      const [replyParams] = expectDefined(replySpy.mock.calls[0], "reply call");
       expect(replyParams?.SessionKey).toBe(subagentSessionKey);
     });
   });
@@ -218,7 +218,7 @@ describe("runHeartbeatOnce", () => {
       );
 
       expect(replySpy).toHaveBeenCalledTimes(1);
-      const [replyParams] = requireFirstMockCall(replySpy, "reply") as Parameters<typeof replySpy>;
+      const [replyParams] = expectDefined(replySpy.mock.calls[0], "reply call");
       expect(replyParams?.SessionKey).toBe(mainSessionKey);
     });
   });
@@ -298,7 +298,7 @@ describe("runHeartbeatOnce", () => {
       );
 
       expect(replySpy).toHaveBeenCalledTimes(1);
-      const [replyParams] = requireFirstMockCall(replySpy, "reply") as Parameters<typeof replySpy>;
+      const [replyParams] = expectDefined(replySpy.mock.calls[0], "reply call");
       expect(replyParams?.SessionKey).toBe(opsMainSessionKey);
       expect(peekSystemEventEntries("agent:main:subagent:demo")).toHaveLength(1);
       expect(peekSystemEventEntries(opsMainSessionKey)).toStrictEqual([]);
