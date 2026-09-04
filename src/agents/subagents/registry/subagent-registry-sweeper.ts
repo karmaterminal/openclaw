@@ -52,6 +52,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
   let scheduledTimer: NodeJS.Timeout | null = null;
   let scheduledAt = Number.POSITIVE_INFINITY;
   let acceptedSteerCursor: string | undefined;
+  let acceptedSpawnRollbackCursor: string | undefined;
 
   function start() {
     if (intervalStarted) {
@@ -628,10 +629,10 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
       }
       const acceptedSpawnRollbackCandidate = selectNextAcceptedSteerCandidate(
         acceptedSpawnRollbackCandidates,
-        acceptedSteerCursor,
+        acceptedSpawnRollbackCursor,
       );
       if (acceptedSpawnRollbackCandidate) {
-        acceptedSteerCursor = acceptedSpawnRollbackCandidate.runId;
+        acceptedSpawnRollbackCursor = acceptedSpawnRollbackCandidate.runId;
         await reconcileAcceptedSpawnRollback({
           ...acceptedSpawnRollbackCandidate,
           runs,
@@ -666,6 +667,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
       scheduledAt = Number.POSITIVE_INFINITY;
       recovery.reset();
       acceptedSteerCursor = undefined;
+      acceptedSpawnRollbackCursor = undefined;
       rerunRequested = false;
       intervalStarted = false;
       sweepInProgress = false;

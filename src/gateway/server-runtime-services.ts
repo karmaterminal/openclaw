@@ -349,7 +349,9 @@ function startPendingSessionDeliveryRuntime(params: {
   };
 }
 
-function recoverPendingContinuations(params: { log: GatewayRuntimeServiceLogger }): void {
+function startPendingContinuationRecovery(params: {
+  log: GatewayRuntimeServiceLogger;
+}): () => Promise<void> {
   // Delegate recovery must run before same-session continue_work recovery to
   // preserve normal post-turn ordering when a restart happens after both were
   // queued in the same turn.
@@ -358,8 +360,14 @@ function recoverPendingContinuations(params: { log: GatewayRuntimeServiceLogger 
   // recovery only resets rows that were already `running` at process start, so a
   // live release claiming a row during the startup window is not requeued.
   const recoveryArmedAt = Date.now();
+  let stopped = false;
+  let recovery: Promise<void> | undefined;
+  let stopPromise: Promise<void> | undefined;
   const timer = setTimeout(() => {
-    void (async () => {
+    if (stopped) {
+      return;
+    }
+    recovery = runWithGatewayIndependentRootWorkAdmission(async () => {
       const [delegateRecoveryModule, workModule] = await Promise.all([
         import("../auto-reply/continuation/delegate-dispatch-recovery.js"),
         import("../auto-reply/continuation/work-dispatch.js"),
@@ -420,9 +428,17 @@ function recoverPendingContinuations(params: { log: GatewayRuntimeServiceLogger 
           `replayed sessions=${workSummary.sessions} dispatched=${workSummary.dispatched} failed=${workSummary.failed} reaped=${workSummary.reaped} terminalNotices=${workSummary.terminalNotices}`,
         );
       }
-    })().catch((err: unknown) => params.log.error(`Continuation recovery failed: ${String(err)}`));
+    }, "runtime:continuation-recovery").catch((err: unknown) =>
+      params.log.error(`Continuation recovery failed: ${String(err)}`),
+    );
   }, 1_400);
   timer.unref?.();
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+    stopPromise ??= recovery ?? Promise.resolve();
+    return stopPromise;
+  };
 }
 
 /** Activates background gateway services after core runtime startup is ready. */
@@ -508,15 +524,16 @@ export function activateGatewayScheduledServices(params: {
     cfg: params.cfgAtStart,
     log: params.log,
   });
-  recoverPendingContinuations({
+  const stopContinuationRecovery = startPendingContinuationRecovery({
     log: params.log,
   });
   let deliveryRecoveryStopPromise: Promise<void> | undefined;
   const stopDeliveryRecovery = () => {
-    // Both owners fence synchronously before the close prelude awaits either.
+    // All recovery owners fence synchronously before teardown awaits them.
     deliveryRecoveryStopPromise ??= Promise.all([
       stopOutboundDeliveryRecovery(),
       stopSessionDeliveryRuntime(),
+      stopContinuationRecovery(),
     ]).then(() => {});
     return deliveryRecoveryStopPromise;
   };

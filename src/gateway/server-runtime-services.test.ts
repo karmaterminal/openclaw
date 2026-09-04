@@ -67,6 +67,28 @@ describe("server-runtime-services", () => {
     hoisted.drainPendingDeliveries.mockReset();
     hoisted.drainPendingDeliveries.mockResolvedValue(undefined);
     hoisted.recoverPendingRestartContinuationDeliveries.mockClear();
+    hoisted.recoverPendingContinuationDelegates.mockClear();
+    hoisted.recoverPendingContinuationDelegates.mockResolvedValue({
+      sessions: 0,
+      dispatched: 0,
+      rejected: 0,
+    });
+    hoisted.requeueAwaitingNextCompactionDelegates.mockClear();
+    hoisted.requeueAwaitingNextCompactionDelegates.mockResolvedValue({ requeued: 0 });
+    hoisted.recoverAndReleaseStagedPostCompactionDelegates.mockClear();
+    hoisted.recoverAndReleaseStagedPostCompactionDelegates.mockResolvedValue({
+      sessions: 0,
+      dispatched: 0,
+      failed: 0,
+    });
+    hoisted.recoverPendingContinuationWork.mockClear();
+    hoisted.recoverPendingContinuationWork.mockResolvedValue({
+      sessions: 0,
+      dispatched: 0,
+      failed: 0,
+      reaped: 0,
+      terminalNotices: 0,
+    });
     hoisted.deliverQueuedSessionDelivery.mockClear();
     hoisted.settleQueuedSessionDelivery.mockClear();
     hoisted.deliverOutboundPayloads.mockClear();
@@ -537,6 +559,47 @@ describe("server-runtime-services", () => {
       await vi.advanceTimersByTimeAsync(0);
       vi.doMock("./server-restart-sentinel.js", () => exports);
     }
+  });
+
+  it("cancels delayed continuation recovery before shutdown settles", async () => {
+    vi.useFakeTimers();
+    const { services } = activateScheduledServicesForTest({ startCron: false });
+
+    services.heartbeatRunner.stop();
+    await services.stopDeliveryRecovery();
+    await vi.advanceTimersByTimeAsync(1_400);
+    await vi.dynamicImportSettled();
+
+    expect(hoisted.recoverPendingContinuationDelegates).not.toHaveBeenCalled();
+    expect(hoisted.recoverPendingContinuationWork).not.toHaveBeenCalled();
+  });
+
+  it("joins active continuation recovery before shutdown settles", async () => {
+    vi.useFakeTimers();
+    const pendingRecovery = createDeferredCore<{
+      sessions: number;
+      dispatched: number;
+      rejected: number;
+    }>();
+    hoisted.recoverPendingContinuationDelegates.mockReturnValueOnce(pendingRecovery.promise);
+    const { services } = activateScheduledServicesForTest({ startCron: false });
+
+    await vi.advanceTimersByTimeAsync(1_400);
+    await waitForFast(() =>
+      expect(hoisted.recoverPendingContinuationDelegates).toHaveBeenCalledOnce(),
+    );
+    let stopped = false;
+    const stopPromise = services.stopDeliveryRecovery().then(() => {
+      stopped = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stopped).toBe(false);
+
+    pendingRecovery.resolve({ sessions: 0, dispatched: 0, rejected: 0 });
+    await stopPromise;
+    expect(stopped).toBe(true);
+    expect(hoisted.recoverPendingContinuationWork).toHaveBeenCalledOnce();
+    services.heartbeatRunner.stop();
   });
 
   it("schedules pending session deliveries when startup recovery fails", async () => {

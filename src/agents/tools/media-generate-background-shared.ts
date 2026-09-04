@@ -7,7 +7,6 @@ import crypto from "node:crypto";
 import { getCliSessionBinding } from "../../config/sessions/cli-session-binding.js";
 import { loadSessionEntryReadOnly } from "../../config/sessions/session-accessor.js";
 import { runWithoutOwnedSessionTranscriptWrites } from "../../config/sessions/transcript-write-context.js";
-import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { clearAgentRunContext, registerAgentRunContext } from "../../infra/agent-run-registry.js";
 import { formatActiveContinuationTraceparent } from "../../infra/continuation-tracer.js";
 import { formatErrorMessage } from "../../infra/errors.js";
@@ -126,7 +125,6 @@ type FailMediaGenerationTaskRunParams = {
 };
 
 type WakeMediaGenerationTaskCompletionParams = {
-  config?: OpenClawConfig;
   handle: MediaGenerationTaskHandle | null;
   status: "ok" | "error";
   statusLabel: string;
@@ -455,7 +453,6 @@ export function scheduleMediaGenerationTaskCompletion<
   handle: MediaGenerationTaskHandle | null;
   scheduleBackgroundWork: MediaGenerateBackgroundScheduler;
   progressSummary: string;
-  config?: OpenClawConfig;
   toolName: string;
   run: () => Promise<T>;
   onWakeFailure: (message: string, meta?: Record<string, unknown>) => void;
@@ -473,7 +470,6 @@ export function scheduleMediaGenerationTaskCompletion<
         const wakeOutcome = await wakeMediaGenerationTaskCompletionWithRetry({
           wake: async () =>
             await params.lifecycle.wakeTaskCompletion({
-              config: params.config,
               handle: params.handle,
               status: "error",
               statusLabel: "failed",
@@ -517,7 +513,6 @@ export function scheduleMediaGenerationTaskCompletion<
       const wakeOutcome = await wakeMediaGenerationTaskCompletionWithRetry({
         wake: async () =>
           await params.lifecycle.wakeTaskCompletion({
-            config: params.config,
             handle: params.handle,
             status: "ok",
             statusLabel: "completed successfully",

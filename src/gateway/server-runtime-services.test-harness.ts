@@ -44,6 +44,24 @@ const runtimeServiceMocks = vi.hoisted(() => {
     ),
     drainPendingDeliveries: vi.fn<DrainPendingDeliveries>(async () => undefined),
     recoverPendingRestartContinuationDeliveries: vi.fn(async () => undefined),
+    recoverPendingContinuationDelegates: vi.fn(async () => ({
+      sessions: 0,
+      dispatched: 0,
+      rejected: 0,
+    })),
+    requeueAwaitingNextCompactionDelegates: vi.fn(async () => ({ requeued: 0 })),
+    recoverAndReleaseStagedPostCompactionDelegates: vi.fn(async () => ({
+      sessions: 0,
+      dispatched: 0,
+      failed: 0,
+    })),
+    recoverPendingContinuationWork: vi.fn(async () => ({
+      sessions: 0,
+      dispatched: 0,
+      failed: 0,
+      reaped: 0,
+      terminalNotices: 0,
+    })),
     deliverQueuedSessionDelivery: vi.fn(async () => undefined),
     settleQueuedSessionDelivery: vi.fn(async () => undefined),
     deliverOutboundPayloads: vi.fn(),
@@ -93,6 +111,18 @@ vi.mock("./server-restart-sentinel.js", () => ({
   recoverPendingRestartContinuationDeliveries:
     runtimeServiceMocks.recoverPendingRestartContinuationDeliveries,
   settleQueuedSessionDelivery: runtimeServiceMocks.settleQueuedSessionDelivery,
+}));
+
+vi.mock("../auto-reply/continuation/delegate-dispatch-recovery.js", () => ({
+  recoverPendingContinuationDelegates: runtimeServiceMocks.recoverPendingContinuationDelegates,
+  requeueAwaitingNextCompactionDelegates:
+    runtimeServiceMocks.requeueAwaitingNextCompactionDelegates,
+  recoverAndReleaseStagedPostCompactionDelegates:
+    runtimeServiceMocks.recoverAndReleaseStagedPostCompactionDelegates,
+}));
+
+vi.mock("../auto-reply/continuation/work-dispatch.js", () => ({
+  recoverPendingContinuationWork: runtimeServiceMocks.recoverPendingContinuationWork,
 }));
 
 vi.mock("./channel-health-monitor.js", () => ({
