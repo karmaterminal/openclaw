@@ -5500,7 +5500,7 @@ describe("agent event handler", () => {
     ).toHaveLength(1);
   });
 
-  it("suppresses a lifecycle terminal after the chat.send terminal marker survives cleanup", () => {
+  it("does not duplicate a terminal after chat.send registration cleanup", () => {
     const {
       broadcast,
       nodeSendToSession,
@@ -5512,6 +5512,7 @@ describe("agent event handler", () => {
       resolveSessionKeyForRun: () => "session-chat-send",
       lifecycleErrorRetryGraceMs: 0,
       isChatSendRunActive: () => false,
+      wasChatSendActiveAtTerminalObservation: () => false,
       wasChatSendTerminalBroadcasted: (runId) => runId === "run-chat-send",
     });
     registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
@@ -5549,6 +5550,7 @@ describe("agent event handler", () => {
     const { broadcast, clearAgentRunContext, agentRunSeq, handler } = createHarness({
       resolveSessionKeyForRun: () => "session-chat-send",
       isChatSendRunActive: () => false,
+      wasChatSendActiveAtTerminalObservation: (runId) => runId === "run-chat-send",
       wasChatSendTerminalBroadcasted: () => false,
     });
     registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
@@ -5705,7 +5707,7 @@ describe("agent event handler", () => {
       markTerminalBroadcasted: () => {
         terminalBroadcasted = true;
       },
-      terminalAlreadyBroadcasted: terminalBroadcasted,
+      terminalAlreadyBroadcasted: false,
     });
 
     expect(
@@ -5716,12 +5718,11 @@ describe("agent event handler", () => {
     expect(terminalBroadcasted).toBe(true);
   });
 
-  it("publishes buffered terminal text once before chat.send settles", () => {
+  it("publishes deferred terminal text before chat.send settles", () => {
     let terminalBroadcasted = false;
     const { broadcast, nodeSendToSession, chatRunState, agentRunSeq, handler } = createHarness({
       resolveSessionKeyForRun: () => "session-chat-send",
-      isChatSendRunActive: (runId) => !terminalBroadcasted && runId === "run-chat-send",
-      wasChatSendActiveAtTerminalObservation: (runId) => runId === "run-chat-send",
+      isChatSendRunActive: (runId) => runId === "run-chat-send",
       wasChatSendTerminalBroadcasted: () => terminalBroadcasted,
       markChatSendTerminalBroadcasted: () => {
         terminalBroadcasted = true;
@@ -5741,13 +5742,11 @@ describe("agent event handler", () => {
     expect(chatDeltaTexts(broadcast)).toEqual([text]);
     expect(
       chatBroadcastCalls(broadcast)
-        .map(([, payload]) => payload as { message?: unknown; state?: string })
+        .map(([, payload]) => payload as { state?: string })
         .filter((payload) => payload.state === "final"),
     ).toEqual([
       expect.objectContaining({
-        message: expect.objectContaining({
-          content: [expect.objectContaining({ text })],
-        }),
+        message: expect.objectContaining({ content: [{ type: "text", text }] }),
       }),
     ]);
     expect(terminalBroadcasted).toBe(true);
@@ -5774,6 +5773,7 @@ describe("agent event handler", () => {
         ([, payload]) => (payload as { state?: string }).state === "final",
       ),
     ).toHaveLength(1);
+    expect(terminalBroadcasted).toBe(true);
   });
 
   it("does not invent a successful final before a lifecycle terminal is observed", () => {
@@ -5839,6 +5839,7 @@ describe("agent event handler", () => {
       registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
 
       emitAgentEvents(handler, "run-chat-send", [
+        ["assistant", { text: "partial answer" }],
         [
           "tool",
           {
@@ -5864,7 +5865,7 @@ describe("agent event handler", () => {
       ).toHaveLength(0);
       expect(chatRunState.registry.peek("run-chat-send")).toBeUndefined();
       expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
-      expect(agentRunSeq.get("run-chat-send")).toBe(2);
+      expect(agentRunSeq.get("run-chat-send")).toBe(3);
 
       const context = createDirectChatContext({
         agentRunSeq,
@@ -5886,7 +5887,7 @@ describe("agent event handler", () => {
       const abortPayloads = chatBroadcastCalls(broadcast)
         .map(([, payload]) => payload as { seq?: number; state?: string })
         .filter((payload) => payload.state === "aborted");
-      expect(abortPayloads).toEqual([expect.objectContaining({ seq: 3 })]);
+      expect(abortPayloads).toEqual([expect.objectContaining({ seq: 4 })]);
       expect(agentRunSeq.has("run-chat-send")).toBe(false);
     },
   );

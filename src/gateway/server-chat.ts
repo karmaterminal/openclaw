@@ -710,7 +710,8 @@ export function createAgentEventHandler({
     }
     clearPendingTerminalLifecycleError(evt.runId, evt.lifecycleGeneration);
     const chatSendStillActive = isChatSendRunActive(evt.runId);
-    const chatSendAlreadySettled = wasChatSendTerminalBroadcasted(evt.runId);
+    const chatSendAlreadySettled =
+      !chatSendStillActive && wasChatSendTerminalBroadcasted(evt.runId);
     const terminalOutcome = buildAgentRunTerminalOutcomeFromLifecycleEvent({
       phase: lifecyclePhase,
       data: evt.data,
@@ -732,14 +733,22 @@ export function createAgentEventHandler({
       timeoutPhase: evt.data?.timeoutPhase,
       error: evt.data?.error,
     });
+    const bufferedTerminalReply = resolveBufferedChatTextState(clientRunId, evt.runId, {
+      final: true,
+      suppressLeadFragments: false,
+    });
+    const lifecycleOwnsCommittedReply =
+      terminalState === "done" &&
+      Boolean(bufferedTerminalReply.text) &&
+      !bufferedTerminalReply.shouldSuppressSilent;
     const chatSendOwnsTerminal =
       opts?.skipChatSendOwnedTerminal === true &&
       chatSendStillActive &&
+      !lifecycleOwnsCommittedReply &&
       !yieldedWaiting &&
       (lifecyclePhase === "error" ||
         classifiedTerminalState === "done" ||
         validationAbortErrorMessage !== undefined);
-    let lifecycleTerminalBroadcasted = false;
     let terminalPersistence: Promise<void> | undefined;
 
     if (
@@ -760,7 +769,7 @@ export function createAgentEventHandler({
         const terminalRunId = finished?.clientRunId ?? eventRunId;
         const terminalAgentId = finished?.agentId ?? sessionAgentId;
         if (!chatSendAlreadySettled) {
-          lifecycleTerminalBroadcasted = emitChatTerminal(
+          emitChatTerminal(
             terminalSessionKey,
             terminalRunId,
             evt.runId,
@@ -783,9 +792,10 @@ export function createAgentEventHandler({
               yielded: yieldedWaiting ? true : undefined,
               terminalFrameOwnedElsewhere: chatSendOwnsTerminal || undefined,
               errorObservation: evt.data?.errorObservation,
+              resolvedTextState: bufferedTerminalReply,
             },
           );
-          if (lifecycleTerminalBroadcasted && opts?.chatSendWasActive && chatSendStillActive) {
+          if (!chatSendOwnsTerminal && opts?.chatSendWasActive && chatSendStillActive) {
             markChatSendTerminalBroadcasted?.({
               runId: evt.runId,
               clientRunId: terminalRunId,
@@ -808,9 +818,9 @@ export function createAgentEventHandler({
       if (!evt.contextClaimId) {
         clearRunContextForEvent(evt);
       }
-      if (chatSendOwnsTerminal && !lifecycleTerminalBroadcasted && isChatSendRunActive(evt.runId)) {
-        // The post-dispatch chat.send owner emits the terminal next. Preserve the
-        // latest lifecycle sequence so clients cannot reject that terminal as stale.
+      if (chatSendOwnsTerminal || (chatSendStillActive && lifecycleOwnsCommittedReply)) {
+        // Post-dispatch chat.send may still publish a notice or terminal. Preserve
+        // the lifecycle watermark so clients cannot reject that payload as stale.
         const terminalSeq = Math.max(
           agentRunSeq.get(evt.runId) ?? evt.seq,
           agentRunSeq.get(clientRunId) ?? 0,
@@ -1177,12 +1187,15 @@ export function createAgentEventHandler({
       yielded?: true;
       terminalFrameOwnedElsewhere?: true;
       errorObservation?: unknown;
+      resolvedTextState?: { text: string; shouldSuppressSilent: boolean };
     },
-  ): boolean => {
-    const { text, shouldSuppressSilent } = resolveBufferedChatTextState(clientRunId, sourceRunId, {
-      final: true,
-      suppressLeadFragments: false,
-    });
+  ) => {
+    const { text, shouldSuppressSilent } =
+      opts?.resolvedTextState ??
+      resolveBufferedChatTextState(clientRunId, sourceRunId, {
+        final: true,
+        suppressLeadFragments: false,
+      });
     // Flush any paced delta so streaming clients receive the complete text
     // before the final event.
     // Only flush if the buffered text differs from the last broadcast to avoid duplicates.
@@ -1191,12 +1204,10 @@ export function createAgentEventHandler({
       shouldSuppressSilent,
     });
     chatRunState.clearRun(clientRunId);
-    const hasDefinitiveBufferedSuccess =
-      jobState === "done" && Boolean(text) && !shouldSuppressSilent;
-    // A buffered successful answer is already definitive. Publish it here so
-    // chat.send cannot replace it with a later empty terminal after commit.
-    if (opts?.terminalFrameOwnedElsewhere && !hasDefinitiveBufferedSuccess) {
-      return false;
+    // Lifecycle owns final buffer projection even when chat.send owns the terminal frame.
+    // Returning before broadcast preserves that split without dropping deferred text.
+    if (opts?.terminalFrameOwnedElsewhere) {
+      return;
     }
     const spawnedBy = resolveSpawnedBy(sessionKey);
     if (jobState !== "error") {
@@ -1222,7 +1233,7 @@ export function createAgentEventHandler({
             : undefined,
       };
       sendChatPayload(sessionKey, payload, opts);
-      return true;
+      return;
     }
     const errorDetail = projectChatErrorDetail(opts?.errorObservation);
     const payload = {
@@ -1238,7 +1249,6 @@ export function createAgentEventHandler({
       ...(stopReason && { stopReason }),
     };
     sendChatPayload(sessionKey, payload, opts);
-    return true;
   };
 
   const sendAgentPayload = (

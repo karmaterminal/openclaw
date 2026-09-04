@@ -346,9 +346,12 @@ export async function finalizeChatSendSourceReplies(
     hasReturnedAgentErrorPayloads: boolean;
     markTerminalBroadcasted: () => void;
     suppressFinal?: boolean;
+    terminalAlreadyBroadcasted?: boolean;
   },
 ): Promise<boolean> {
-  const { suppressFinal } = params;
+  // A terminal already broadcast by the lifecycle observer suppresses the settled
+  // final exactly the way a failed turn does.
+  const suppressFinal = params.suppressFinal === true || params.terminalAlreadyBroadcasted === true;
   const result = await finalizeChatSendAgentReplyPayloads({
     accountId: params.accountId,
     context: params.context,

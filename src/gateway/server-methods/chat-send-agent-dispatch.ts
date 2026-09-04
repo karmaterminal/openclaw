@@ -539,6 +539,7 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
               markTerminalBroadcasted,
               session,
               suppressFinal: runtimeFailed,
+              terminalAlreadyBroadcasted: activeRunAbort.entry?.chatTerminalBroadcasted === true,
             });
           }
           finalizeChatSendAgentOutcome({

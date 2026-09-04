@@ -257,6 +257,8 @@ export async function compactEmbeddedAgentSessionDirect(
   const requestedParams: CompactEmbeddedAgentSessionParamsWithSessionFile = {
     ...paramsBase,
     sessionEntry: entry ? projectPublicSessionEntry(entry) : undefined,
+    // The latest persisted entry outranks the captured request, which outranks the
+    // request's own (possibly stale) session entry snapshot.
     permissionMode:
       entry?.permissionMode ?? paramsBase.permissionMode ?? paramsBase.sessionEntry?.permissionMode,
     sessionRoot:
