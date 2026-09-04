@@ -119,7 +119,8 @@ describe("Testbox lease freshness", () => {
       } else {
         args = [`--blacksmith-${field}`, "changed"];
       }
-      expect(() => fixture.prepare(args)).toThrow(`is stale (${field})`);
+      const staleFields = field === "baseSha" ? "baseSha, headSha" : field;
+      expect(() => fixture.prepare(args)).toThrow(`is stale (${staleFields})`);
       expect(readFileSync(fixture.statePath, "utf8")).toBe(saved);
     },
   );
