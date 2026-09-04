@@ -187,7 +187,7 @@ export async function completeReplyAgentRun(input: {
       provider: providerUsed,
       model: modelUsed,
       runner: isCliProvider(providerUsed, cfg) ? "cli" : "embedded",
-      exhausted: fallbackExhausted,
+      exhausted: fallbackExhausted || isHookBlockedRun,
     });
     const requestShaping = {
       authMode:
