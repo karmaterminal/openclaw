@@ -51,6 +51,7 @@ import {
   resolveRunAfterAutoFallbackPrimaryProbeRecheck,
 } from "./agent-runner-auto-fallback.js";
 import { handleAgentExecutionError } from "./agent-runner-error-handler.js";
+import { recordAgentTurnExecutionOutcome } from "./agent-runner-execution-outcome.js";
 import type {
   AgentTurnCompaction,
   AgentTurnExecutionResult,
@@ -67,7 +68,6 @@ import {
   executeAgentFallbackCycle,
   type AgentFallbackCycleState,
 } from "./agent-runner-fallback-cycle.js";
-import { recordMessageToolOnlyRunOutcome } from "./agent-runner-message-tool-outcome.js";
 import { createAgentTurnPresentation } from "./agent-runner-presentation.js";
 import { createAgentTurnTimingTracker } from "./agent-runner-turn-timing.js";
 import { resolveQueuedReplyRuntimeConfig } from "./agent-runner-utils.js";
@@ -705,7 +705,7 @@ async function executeAgentTurnOutcome(params: AgentTurnParams): Promise<AgentTu
   }
 }
 
-/** Runs the agent turn and records its message-tool-only visible-outcome fact once. */
+/** Runs the agent turn and records its execution and message-tool delivery outcomes. */
 export async function executeAgentTurn(params: AgentTurnParams): Promise<AgentTurnExecutionResult> {
   if (params.replyOperation) {
     // Cancellation stops execution, but the exact owner must finish committed accounting first.
@@ -715,18 +715,10 @@ export async function executeAgentTurn(params: AgentTurnParams): Promise<AgentTu
   const executionParams = { ...params, opts: { ...params.opts, runId } };
   try {
     const result = await executeAgentTurnOutcome(executionParams);
-    if (result.outcome.kind !== "aborted") {
-      executionParams.opts?.onAgentRunTerminalOutcome?.(
-        result.outcome.kind === "rejected" || result.outcome.status === "failed"
-          ? "failed"
-          : "completed",
-      );
-    }
-    recordMessageToolOnlyRunOutcome(executionParams, result);
+    recordAgentTurnExecutionOutcome(executionParams, result);
     return result;
   } catch (error) {
-    executionParams.opts?.onAgentRunTerminalOutcome?.("failed");
-    recordMessageToolOnlyRunOutcome(executionParams, undefined);
+    recordAgentTurnExecutionOutcome(executionParams, undefined);
     throw error;
   }
 }

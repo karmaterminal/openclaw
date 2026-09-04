@@ -42,6 +42,11 @@ import {
 import { createChatSendReplyDispatch } from "./chat-send-reply-dispatch.js";
 import { finalizeChatSendDispatchedReplies } from "./chat-send-reply-finalization.js";
 import type { NormalizedChatSendRequest } from "./chat-send-request.js";
+import {
+  classifyAcceptedChatSendFailure,
+  runAcceptedChatSendDispatch,
+  waitForAcceptedChatSendRetry,
+} from "./chat-send-retry.js";
 import type { PreparedChatSendSession } from "./chat-send-session.js";
 import { finalizeChatSendSourceReplies } from "./chat-send-source-finalization.js";
 import { createChatSendTurnAdoptionLifecycle } from "./chat-send-turn-adoption.js";
@@ -150,6 +155,7 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
     expectedLeafEntryId,
     requestedSessionId,
     resolvedSessionModel,
+    storePath,
     selectedAgent,
     sessionKey,
   } = session;
@@ -206,8 +212,20 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
     hasCronCreatorAuthority: cronCreatorAuthority !== undefined,
     retainWorkAdmission: retainGatewayWorkAdmission,
   });
+  let acceptedMessageInjection = false;
+  const classifyDispatchFailure = (error: unknown) =>
+    classifyAcceptedChatSendFailure({
+      error,
+      phase: "post-ack",
+      executionStarted: agentRunStarted,
+      sideEffectsObserved:
+        acceptedMessageInjection ||
+        messageInjectionAttempt !== undefined ||
+        replyDispatch.deliveredReplies.length > 0,
+    });
   const dispatchErrorLifecycle = createChatSendDispatchErrorLifecycle({
     admission,
+    classifyFailure: classifyDispatchFailure,
     context,
     isQueuedFollowupEnqueued: queuedFollowup.isEnqueued,
     markTerminalBroadcasted,
@@ -241,7 +259,6 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
   }
   emitServerTiming("dispatch-started");
   let firstAssistantServerTimingEmitted = false;
-  let acceptedMessageInjection = false;
   const emitFirstAssistantServerTiming = () => {
     if (firstAssistantServerTimingEmitted || chatSendTiming?.firstAssistantEventSent) {
       return;
@@ -436,13 +453,24 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
               },
             });
           };
+          const dispatchWithRetry = () =>
+            runAcceptedChatSendDispatch({
+              operation: dispatchInbound,
+              classify: classifyDispatchFailure,
+              waitForRetry: (error) =>
+                waitForAcceptedChatSendRetry(
+                  { agentId, sessionKey, storePath },
+                  error,
+                  activeRunAbort.controller.signal,
+                ),
+            });
           const dispatchResult = await (cronCreatorAuthority && externalAuthorityAdmission
             ? externalAuthorityAdmission.run(
                 cronCreatorAuthority,
-                dispatchInbound,
+                dispatchWithRetry,
                 activeRunAbort.controller.signal,
               )
-            : dispatchInbound());
+            : dispatchWithRetry());
           if (dispatchResult.beforeAgentRunBlocked === true) {
             userTurnRecorder.markBlocked();
           }

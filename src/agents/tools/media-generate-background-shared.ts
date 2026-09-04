@@ -36,24 +36,16 @@ import { loadRequesterSessionEntry } from "../subagents/announce/subagent-announ
 import { resolveAnnounceOrigin } from "../subagents/announce/subagent-announce-origin.js";
 import {
   type MediaGenerationCompletionWakeOutcome,
+  type MediaGenerationTaskHandle,
+  retainBlockedMediaReferences,
   wakeMediaGenerationTaskCompletion,
 } from "./media-generate-background-completion.js";
+export type { MediaGenerationTaskHandle } from "./media-generate-background-completion.js";
 
 const log = createSubsystemLogger("agents/tools/media-generate-background-shared");
 const MEDIA_GENERATION_TASK_KEEPALIVE_INTERVAL_MS = 60_000;
 const MEDIA_GENERATION_COMPLETION_HANDOFF_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000] as const;
 const MEDIA_GENERATION_COMPLETION_HANDOFF_TIMEOUT_MS = 120_000;
-
-/** Handle for a detached media generation task registered in the task ledger. */
-export type MediaGenerationTaskHandle = {
-  taskId: string;
-  runId: string;
-  requesterSessionKey: string;
-  requesterAgentId?: string;
-  requesterOrigin?: DeliveryContext;
-  taskLabel: string;
-  traceparent?: string;
-};
 
 /** Schedules detached media generation work. */
 export type MediaGenerateBackgroundScheduler = (work: () => Promise<void>) => void;
@@ -558,6 +550,7 @@ export function scheduleMediaGenerationTaskCompletion<
         },
       );
     }
+    terminalResult = retainBlockedMediaReferences(terminalResult, executed.attachments);
     try {
       params.lifecycle.completeTaskRun({
         handle: params.handle,

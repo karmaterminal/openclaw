@@ -14,7 +14,7 @@ import type { RuntimeEnv } from "../runtime.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { openClawStateDatabaseCache } from "../state/openclaw-state-db-cache.js";
 import { resolveDatabasePath } from "../state/openclaw-state-db-maintenance.js";
-import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
+import { createAuthRateLimiter } from "./auth-rate-limit.js";
 import { resolveGatewayAuth } from "./auth.js";
 import { createDesktopSessionRegistry } from "./desktop/session-registry.js";
 import { isLoopbackHost } from "./net.js";
@@ -40,19 +40,6 @@ type GatewayLogger = ReturnType<typeof createSubsystemLogger>;
 type ChannelRuntime = ReturnType<
   (typeof import("../plugins/runtime/runtime-channel.js"))["createRuntimeChannel"]
 >;
-
-type AuthRateLimitConfig = Parameters<typeof createAuthRateLimiter>[0];
-
-function createGatewayAuthRateLimiters(rateLimitConfig: AuthRateLimitConfig | undefined): {
-  rateLimiter: AuthRateLimiter;
-  browserRateLimiter: AuthRateLimiter;
-} {
-  // Remote non-browser and HTTP attempts keep the normal loopback exemption.
-  const rateLimiter = createAuthRateLimiter(rateLimitConfig ?? {});
-  // Browser-origin WebSocket attempts are always throttled, including loopback.
-  const browserRateLimiter = createAuthRateLimiter({ ...rateLimitConfig, exemptLoopback: false });
-  return { rateLimiter, browserRateLimiter };
-}
 
 type GatewayStartupChannelPlugin = {
   id: ChannelId;
@@ -110,6 +97,7 @@ export async function prepareGatewayKernelState(params: {
     ambientAutostartSuppressedChannelIds,
     minimalTestGateway,
     pluginGatewayContext,
+    resolvePluginGatewayContext,
   } = bootstrap;
   const pluginRuntime = {
     registry: pluginBootstrap.pluginRegistry,
@@ -150,7 +138,7 @@ export async function prepareGatewayKernelState(params: {
         return await workerModule.createGatewayWorkerEnvironmentRuntime({
           getPluginRegistry: () => pluginRuntime.registry,
           getPortalRuntime: () => pluginGatewayContext.current,
-          resolveGatewayContext: () => pluginGatewayContext.current,
+          resolveGatewayContext: resolvePluginGatewayContext,
           desktopSessionRegistry,
           nodeDesktopStreamBroker,
           startup: workerEnvironmentStartup,
@@ -349,10 +337,13 @@ export async function prepareGatewayKernelState(params: {
   const initialHooksConfig = runtimeConfig.hooksConfig;
   const initialHookClientIpConfig = resolveHookClientIpConfig(cfgAtStart);
 
-  // Create auth rate limiters used by connect/auth flows.
   const rateLimitConfig = cfgAtStart.gateway?.auth?.rateLimit;
-  const { rateLimiter: authRateLimiter, browserRateLimiter: browserAuthRateLimiter } =
-    createGatewayAuthRateLimiters(rateLimitConfig);
+  const authRateLimiter = createAuthRateLimiter(rateLimitConfig);
+  // Browser-origin attempts are throttled even when local CLI clients are exempt.
+  const browserAuthRateLimiter = createAuthRateLimiter({
+    ...rateLimitConfig,
+    exemptLoopback: false,
+  });
   const nodeReapprovalCoordinator = createNodeReapprovalCoordinator(rateLimitConfig);
 
   const controlUiRootLifecycle = await startupTrace.measure("control-ui.root", () =>
@@ -465,7 +456,7 @@ export async function prepareGatewayKernelState(params: {
     getRuntimeConfig,
     bindHost,
     port,
-    controlUiEnabled,
+    controlUiEnabled: opts.controlUiEnabled,
     controlUiBasePath,
     controlUiRoot: controlUiRootLifecycle.state,
     openAiChatCompletionsEnabled: opts.openAiChatCompletionsEnabled,
@@ -482,7 +473,7 @@ export async function prepareGatewayKernelState(params: {
     pluginRegistry: pluginRuntime.registry,
     getPluginRouteRegistry: () => pluginRuntime.registry,
     isStartupPluginRuntimeReady: () => startupState.sidecarsReady,
-    getGatewayRequestContext: () => pluginGatewayContext.current,
+    getGatewayRequestContext: resolvePluginGatewayContext,
     deps,
     log,
     logHooks,
@@ -545,7 +536,6 @@ export async function prepareGatewayKernelState(params: {
     listStartupChannelGatewayMethods,
     listActiveGatewayMethods,
     bindHost,
-    controlUiEnabled,
     controlUiRootLifecycle,
     controlUiBasePath,
     resolvedAuth,

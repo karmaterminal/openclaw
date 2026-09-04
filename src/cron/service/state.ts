@@ -117,6 +117,7 @@ export type CronServiceDeps = {
     state: unknown;
     streamBatch?: string;
     abortSignal?: AbortSignal;
+    executionIdentity?: CronExecutionIdentityAdmission;
   }) => Promise<CronTriggerEvaluationResult>;
   /** Default agent id for jobs without an agent id. */
   defaultAgentId?: string;
@@ -257,6 +258,7 @@ export type CronServiceDeps = {
     job: CronStoredJob;
     streamBatch?: string;
     abortSignal?: AbortSignal;
+    executionIdentity?: CronExecutionIdentityAdmission;
   }) => Promise<
     {
       delivered?: boolean;

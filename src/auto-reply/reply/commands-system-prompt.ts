@@ -301,7 +301,6 @@ export async function resolveCommandsSystemPromptBundle(
     config: params.cfg,
     agentId: sessionAgentId,
     workspaceDir,
-    defaultThinkLevel: params.resolvedThinkLevel,
     reasoningLevel: params.resolvedReasoningLevel,
     extraSystemPrompt: undefined,
     ownerNumbers: undefined,

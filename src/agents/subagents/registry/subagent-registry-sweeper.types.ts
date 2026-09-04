@@ -59,6 +59,7 @@ export type SubagentRegistrySweeperParams = {
   getRunsForCollectorGroup: (
     requester: string,
     group: string,
+    requesterAgentId?: string,
   ) => Iterable<[string, SubagentRunRecord]>;
   warn: (message: string, meta?: Record<string, unknown>) => void;
 };

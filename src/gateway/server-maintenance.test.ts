@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   isGatewayWorkAdmissionClosed,
   onGatewaySuspendAdmissionChange,
@@ -320,7 +321,7 @@ describe("startGatewayMaintenanceTimers", () => {
     const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const timers = startGatewayMaintenanceTimers({
       ...createMaintenanceTimerDeps(),
-      mediaCleanupTtlMs: MEDIA_CLEANUP_TTL_MS,
+      getRuntimeConfig: () => ({ attachments: { ttlHours: 24 } }),
     });
 
     await vi.advanceTimersByTimeAsync(60 * 60_000);
@@ -472,13 +473,14 @@ describe("startGatewayMaintenanceTimers", () => {
     await stopMaintenanceTimers(timers);
   });
 
-  it("adds configured attachment cleanup to playback maintenance", async () => {
+  it("updates attachment cleanup policy between sweeps without restarting maintenance", async () => {
     vi.useFakeTimers();
     const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
+    let config: OpenClawConfig = { attachments: { ttlHours: 24 } };
 
     const timers = startGatewayMaintenanceTimers({
       ...createMaintenanceTimerDeps(),
-      mediaCleanupTtlMs: MEDIA_CLEANUP_TTL_MS,
+      getRuntimeConfig: () => config,
     });
     timers.startMediaCleanup();
 
@@ -493,14 +495,21 @@ describe("startGatewayMaintenanceTimers", () => {
     await vi.waitFor(() => {
       expect(cleanupManagedOutgoingMediaRecordsMock).toHaveBeenCalled();
     });
+    config = { attachments: { ttlHours: 2 } };
     await vi.advanceTimersByTimeAsync(60 * 60_000);
     expect(prunePlaybackTranscodeCacheMock).toHaveBeenCalledTimes(2);
     expect(pruneOutboundMediaMock).not.toHaveBeenCalled();
     expect(cleanOldMediaMock).toHaveBeenCalledTimes(2);
-    expect(cleanOldMediaMock).toHaveBeenLastCalledWith(MEDIA_CLEANUP_TTL_MS, {
+    expect(cleanOldMediaMock).toHaveBeenLastCalledWith(2 * 60 * 60_000, {
       recursive: true,
       pruneEmptyDirs: true,
     });
+
+    config = {};
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+    expect(cleanOldMediaMock).toHaveBeenCalledTimes(2);
+    expect(pruneOutboundMediaMock).toHaveBeenCalledOnce();
+    expect(prunePlaybackTranscodeCacheMock).toHaveBeenCalledTimes(3);
 
     await stopMaintenanceTimers(timers);
   });
@@ -516,7 +525,7 @@ describe("startGatewayMaintenanceTimers", () => {
 
     const timers = startGatewayMaintenanceTimers({
       ...deps,
-      mediaCleanupTtlMs: MEDIA_CLEANUP_TTL_MS,
+      getRuntimeConfig: () => ({ attachments: { ttlHours: 24 } }),
     });
     timers.startMediaCleanup();
 
@@ -542,7 +551,7 @@ describe("startGatewayMaintenanceTimers", () => {
 
     const timers = startGatewayMaintenanceTimers({
       ...deps,
-      mediaCleanupTtlMs: MEDIA_CLEANUP_TTL_MS,
+      getRuntimeConfig: () => ({ attachments: { ttlHours: 24 } }),
     });
     timers.startMediaCleanup();
 
@@ -612,7 +621,7 @@ describe("startGatewayMaintenanceTimers", () => {
 
     const timers = startGatewayMaintenanceTimers({
       ...createMaintenanceTimerDeps(),
-      mediaCleanupTtlMs: MEDIA_CLEANUP_TTL_MS,
+      getRuntimeConfig: () => ({ attachments: { ttlHours: 24 } }),
     });
     timers.startMediaCleanup();
 
@@ -724,7 +733,7 @@ describe("startGatewayMaintenanceTimers", () => {
     const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
     const timers = startGatewayMaintenanceTimers({
       ...createMaintenanceTimerDeps(),
-      mediaCleanupTtlMs: MEDIA_CLEANUP_TTL_MS,
+      getRuntimeConfig: () => ({ attachments: { ttlHours: 24 } }),
     });
     timers.startMediaCleanup();
     await vi.waitFor(() => {

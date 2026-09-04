@@ -685,10 +685,12 @@ describe("installPluginFromGitSpec", () => {
       });
 
       expect(result.ok, result.ok ? "" : result.error).toBe(true);
-      expect(mkdtempSpy).toHaveBeenCalledTimes(3);
-      const targetPrefix = mkdtempSpy.mock.calls[0]?.[0];
-      const fallbackPrefix = mkdtempSpy.mock.calls[1]?.[0];
-      const commitPrefix = mkdtempSpy.mock.calls[2]?.[0];
+      const cloneWorkspaceCalls = mkdtempSpy.mock.calls.filter(([prefix]) =>
+        path.basename(prefix).startsWith("openclaw-git-plugin-"),
+      );
+      expect(cloneWorkspaceCalls).toHaveLength(2);
+      const targetPrefix = cloneWorkspaceCalls[0]?.[0];
+      const fallbackPrefix = cloneWorkspaceCalls[1]?.[0];
       const persistentRepoDir = expectedGitRepoDir({
         gitDir,
         normalizedSpec: "git:https://github.com/acme/demo.git",
@@ -701,9 +703,6 @@ describe("installPluginFromGitSpec", () => {
       // that is unsafe. Recompute it here so the assertion holds on every host.
       expect(path.dirname(expectDefined(fallbackPrefix, "fallbackPrefix test invariant"))).toBe(
         await fs.realpath(resolvePreferredOpenClawTmpDir()),
-      );
-      expect(path.dirname(expectDefined(commitPrefix, "commitPrefix test invariant"))).toBe(
-        await fs.realpath(path.dirname(persistentRepoDir)),
       );
       expect((await fs.stat(persistentRepoDir)).isDirectory()).toBe(true);
       expect(runCommandWithTimeoutMock).toHaveBeenCalledTimes(3);

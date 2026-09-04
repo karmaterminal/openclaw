@@ -31,6 +31,7 @@ import {
 } from "./queue.test-helpers.js";
 import { resolveFollowupDeliveryContextKey } from "./queue/drain.js";
 import { clearFollowupQueue, getExistingFollowupQueue } from "./queue/state.js";
+import type { ReplyOperationRunState } from "./reply-operation-run-state.js";
 
 type InternalFollowupRun = FollowupRun & {
   currentTurnImagesPrepared?: true;
@@ -320,13 +321,17 @@ describe("followup queue collect routing", () => {
       `test-collect-same-to-${Date.now()}`,
     );
 
-    enqueueRoutedRuns(
-      key,
-      settings,
-      { originatingChannel: "slack", originatingTo: "channel:A", originatingChatType: "channel" },
-      "one",
-      "two",
-    );
+    const receipts: ReplyOperationRunState[] = [{}, {}];
+    for (const [index, receipt] of receipts.entries()) {
+      const run = createRun({
+        prompt: String(index + 1),
+        originatingChannel: "slack",
+        originatingTo: "channel:A",
+        originatingChatType: "channel",
+      });
+      run.replyOperationRunStates = [receipt];
+      enqueueFollowupRun(key, run, settings);
+    }
 
     await drainRecordedQueue(key, runFollowup, done);
     expect(calls[0]?.prompt).toContain("[Queued messages while agent was busy]");
@@ -334,6 +339,9 @@ describe("followup queue collect routing", () => {
     expect(calls[0]?.originatingTo).toBe("channel:A");
     expect(calls[0]?.originatingChatType).toBe("channel");
     expect(calls[0]?.currentInboundEventTimestampMs).toBeUndefined();
+    expect(calls[0]?.replyOperationRunStates).toEqual(receipts);
+    expect(calls[0]?.replyOperationRunStates?.[0]).toBe(receipts[0]);
+    expect(calls[0]?.replyOperationRunStates?.[1]).toBe(receipts[1]);
   });
 
   it("collects Slack top-level messages when reply anchors are disabled", async () => {

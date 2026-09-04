@@ -1,6 +1,8 @@
 import { DEFAULT_HEARTBEAT_ACK_MAX_CHARS } from "../auto-reply/heartbeat.js";
-import { resolveReplyOperationAgentTurn } from "../auto-reply/reply/reply-operation-agent-turn-state.js";
-import { resolveReplyOperationRunState } from "../auto-reply/reply/reply-operation-run-state.js";
+import {
+  resolveReplyOperationAgentTurn,
+  resolveReplyOperationRunState,
+} from "../auto-reply/reply/reply-operation-run-state.js";
 import { resolveResponsePrefixTemplate } from "../auto-reply/reply/response-prefix-template.js";
 import { resolveSourceReplyDeliveryMode } from "../auto-reply/reply/source-reply-delivery-mode.js";
 import { HEARTBEAT_TOKEN } from "../auto-reply/tokens.js";
@@ -115,9 +117,6 @@ export async function runHeartbeatOnceCore(opts: HeartbeatRunOptions): Promise<H
     policySessionKey: outboundPolicySessionKey,
   });
   const outboundIdentity = resolveAgentOutboundIdentity(cfg, agentId);
-  const canAttemptHeartbeatOk = Boolean(
-    visibility.showOk && delivery.channel !== "none" && delivery.to,
-  );
   const hasChatDelivery = Boolean(
     delivery.channel !== "none" && delivery.to && (visibility.showAlerts || visibility.showOk),
   );
@@ -148,7 +147,7 @@ export async function runHeartbeatOnceCore(opts: HeartbeatRunOptions): Promise<H
         })
       : undefined;
   const maybeSendHeartbeatOk = async () => {
-    if (!canAttemptHeartbeatOk || delivery.channel === "none" || !delivery.to) {
+    if (!visibility.showOk || delivery.channel === "none" || !delivery.to) {
       return false;
     }
     try {

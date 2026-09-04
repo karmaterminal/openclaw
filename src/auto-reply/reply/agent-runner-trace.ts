@@ -5,7 +5,7 @@ import type { FailoverReason } from "../../agents/failover/signal.js";
 import { deriveContextPromptTokens } from "../../agents/usage.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { readLatestSessionUsageFromTranscriptAsync } from "../../gateway/session-transcript-readers.js";
-import { formatTokenCount } from "../../utils/usage-format.js";
+import { formatTokenCount } from "../../utils/token-format.js";
 import type { ReplyPayload } from "../types.js";
 import { INBOUND_CONTEXT_MARKER } from "./inbound-context-marker.js";
 

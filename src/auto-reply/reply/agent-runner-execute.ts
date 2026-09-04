@@ -8,6 +8,7 @@ import type { SessionEntry } from "../../config/sessions.js";
 import { patchSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { logVerbose } from "../../globals.js";
 import { withBeforeAgentReplyObserver } from "../../plugins/before-agent-reply.js";
+import { getGatewayContextResolver } from "../../plugins/runtime/gateway-request-scope.js";
 import { defaultRuntime } from "../../runtime.js";
 import { readSessionInputProfileId } from "../../sessions/session-participant-input.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
@@ -39,8 +40,7 @@ import {
 import type { FollowupRun } from "./queue.js";
 import type { ReplyMediaContext } from "./reply-media-paths.js";
 import { isReplyOperationSuperseded } from "./reply-operation-abort.js";
-import { recordReplyOperationAgentTurn } from "./reply-operation-agent-turn-state.js";
-import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
+import { recordReplyOperationAgentTurn } from "./reply-operation-run-state.js";
 import type { ReplyOperation } from "./reply-run-registry.js";
 import { resolveReplyToMode } from "./reply-threading.js";
 import { createReplyRestartRecoveryClaimController } from "./restart-recovery-claim.js";
@@ -264,6 +264,7 @@ export async function executePreparedReplyAgentRun(
   }
 
   const runFollowupTurn = createFollowupRunner({
+    resolveGatewayContext: getGatewayContextResolver(replyOperation),
     opts,
     typing,
     typingMode,
@@ -465,15 +466,9 @@ export async function executePreparedReplyAgentRun(
   );
   const operationSuperseded = isReplyOperationSuperseded(replyOperation);
   recordReplyOperationAgentTurn(
-    resolveReplyOperationRunState(opts),
-    operationSuperseded
-      ? "superseded"
-      : runOutcome.outcome.kind === "rejected"
-        ? "failed"
-        : runOutcome.outcome.kind === "aborted"
-          ? "cancelled"
-          : runOutcome.outcome.status,
+    followupRun.replyOperationRunStates,
     replyOperation,
+    runOutcome.outcome,
   );
   activeSessionEntry = getActiveSessionEntry();
   const activeIsNewSession = getActiveIsNewSession();
