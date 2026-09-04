@@ -257,6 +257,10 @@ export async function compactEmbeddedAgentSessionDirect(
   const requestedParams: CompactEmbeddedAgentSessionParamsWithSessionFile = {
     ...paramsBase,
     sessionEntry: entry ? projectPublicSessionEntry(entry) : undefined,
+    permissionMode:
+      entry?.permissionMode ?? paramsBase.permissionMode ?? paramsBase.sessionEntry?.permissionMode,
+    sessionRoot:
+      entry?.sessionRoot ?? paramsBase.sessionRoot ?? paramsBase.sessionEntry?.sessionRoot,
     agentHarnessId: lockedHarnessRuntime ?? paramsBase.agentHarnessId,
     modelSelectionLocked: entry?.modelSelectionLocked ?? paramsBase.modelSelectionLocked,
     agentId: runSessionTarget.agentId,
