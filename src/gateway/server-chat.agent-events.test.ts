@@ -5707,7 +5707,7 @@ describe("agent event handler", () => {
       markTerminalBroadcasted: () => {
         terminalBroadcasted = true;
       },
-      terminalAlreadyBroadcasted: false,
+      terminalAlreadyBroadcasted: terminalBroadcasted,
     });
 
     expect(
@@ -5718,11 +5718,16 @@ describe("agent event handler", () => {
     expect(terminalBroadcasted).toBe(true);
   });
 
-  it("flushes deferred terminal text before chat.send broadcasts the successful final", () => {
+  it("publishes buffered terminal text once before chat.send settles", () => {
     let terminalBroadcasted = false;
     const { broadcast, nodeSendToSession, chatRunState, agentRunSeq, handler } = createHarness({
       resolveSessionKeyForRun: () => "session-chat-send",
-      isChatSendRunActive: (runId) => runId === "run-chat-send",
+      isChatSendRunActive: (runId) => !terminalBroadcasted && runId === "run-chat-send",
+      wasChatSendActiveAtTerminalObservation: (runId) => runId === "run-chat-send",
+      wasChatSendTerminalBroadcasted: () => terminalBroadcasted,
+      markChatSendTerminalBroadcasted: () => {
+        terminalBroadcasted = true;
+      },
     });
     registerChatRun(chatRunState, "run-chat-send", "session-chat-send", "run-chat-send");
 
@@ -5737,10 +5742,17 @@ describe("agent event handler", () => {
     emitLifecycleEnd(handler, "run-chat-send");
     expect(chatDeltaTexts(broadcast)).toEqual([text]);
     expect(
-      chatBroadcastCalls(broadcast).filter(
-        ([, payload]) => (payload as { state?: string }).state === "final",
-      ),
-    ).toHaveLength(0);
+      chatBroadcastCalls(broadcast)
+        .map(([, payload]) => payload as { message?: unknown; state?: string })
+        .filter((payload) => payload.state === "final"),
+    ).toEqual([
+      expect.objectContaining({
+        message: expect.objectContaining({
+          content: [expect.objectContaining({ text })],
+        }),
+      }),
+    ]);
+    expect(terminalBroadcasted).toBe(true);
 
     finalizeChatSendAgentOutcome({
       context: createDirectChatContext({
@@ -5756,21 +5768,14 @@ describe("agent event handler", () => {
       markTerminalBroadcasted: () => {
         terminalBroadcasted = true;
       },
-      terminalAlreadyBroadcasted: false,
+      terminalAlreadyBroadcasted: terminalBroadcasted,
     });
 
-    const finalPayload = chatBroadcastCalls(broadcast)
-      .map(
-        ([, payload]) =>
-          payload as {
-            message?: unknown;
-            seq?: number;
-            state?: string;
-          },
-      )
-      .find((payload) => payload.state === "final");
-    expect(finalPayload).toEqual(expect.objectContaining({ message: undefined, seq: 3 }));
-    expect(terminalBroadcasted).toBe(true);
+    expect(
+      chatBroadcastCalls(broadcast).filter(
+        ([, payload]) => (payload as { state?: string }).state === "final",
+      ),
+    ).toHaveLength(1);
   });
 
   it("does not invent a successful final before a lifecycle terminal is observed", () => {

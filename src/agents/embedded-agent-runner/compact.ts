@@ -254,9 +254,18 @@ export async function compactEmbeddedAgentSessionDirect(
     }));
   const entry = loadSessionEntryReadOnly({ ...runSessionTarget, readConsistency: "latest" });
   const lockedHarnessRuntime = resolveSessionPinnedHarnessId(entry);
+  const persistedSessionEntry = entry ? projectPublicSessionEntry(entry) : undefined;
   const requestedParams: CompactEmbeddedAgentSessionParamsWithSessionFile = {
     ...paramsBase,
-    sessionEntry: entry ? projectPublicSessionEntry(entry) : undefined,
+    sessionEntry: persistedSessionEntry ?? paramsBase.sessionEntry,
+    permissionMode:
+      persistedSessionEntry?.permissionMode ??
+      paramsBase.permissionMode ??
+      paramsBase.sessionEntry?.permissionMode,
+    sessionRoot:
+      persistedSessionEntry?.sessionRoot ??
+      paramsBase.sessionRoot ??
+      paramsBase.sessionEntry?.sessionRoot,
     agentHarnessId: lockedHarnessRuntime ?? paramsBase.agentHarnessId,
     modelSelectionLocked: entry?.modelSelectionLocked ?? paramsBase.modelSelectionLocked,
     agentId: runSessionTarget.agentId,
