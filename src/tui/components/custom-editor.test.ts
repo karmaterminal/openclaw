@@ -78,6 +78,21 @@ describe("CustomEditor", () => {
     expect(onAltUp).toHaveBeenCalledOnce();
   });
 
+  it("expires local abort recovery after its 100ms one-shot window", () => {
+    const tui = { requestRender: vi.fn() } as unknown as TUI;
+    const editor = new CustomEditor(tui, editorTheme);
+    const onAltUp = vi.fn();
+    editor.onAltUp = onAltUp;
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+
+    editor.recoverNextLegacyAltPrintable();
+    now.mockReturnValue(1_101);
+    editor.handleInput("\u001bp");
+
+    expect(editor.getText()).toBe("");
+    expect(onAltUp).toHaveBeenCalledOnce();
+  });
+
   it("routes alt+up to the dequeue handler", () => {
     const tui = { requestRender: vi.fn() } as unknown as TUI;
     const editor = new CustomEditor(tui, editorTheme);

@@ -2271,6 +2271,7 @@ describe("EmbeddedTuiBackend", () => {
         sessionKey: "agent:main:main",
         agentId: "main",
         state: "aborted",
+        abortOrigin: "tool-validation",
         errorMessage: "edit tool validation failed: edits: must have required properties edits",
       },
     });
@@ -2339,6 +2340,7 @@ describe("EmbeddedTuiBackend", () => {
         sessionKey: "agent:main:main",
         agentId: "main",
         state: "aborted",
+        abortOrigin: "tool-validation",
         errorMessage: "edit tool validation failed: invalid arguments",
       },
     });
@@ -2488,6 +2490,7 @@ describe("EmbeddedTuiBackend", () => {
           sessionKey: "agent:main:main",
           agentId: "main",
           state: "aborted",
+          abortOrigin: "tool-validation",
           errorMessage: "edit tool validation failed: invalid arguments",
         },
       },
@@ -3931,8 +3934,17 @@ describe("EmbeddedTuiBackend", () => {
     });
 
     const backend = new EmbeddedTuiBackend();
+    const events = captureBackendEvents(backend);
     backend.start();
     await sendMainChat(backend, "long task", "run-abort-1");
+    registeredListener?.({
+      runId: "run-abort-1",
+      stream: "tool",
+      data: {
+        phase: "result",
+        toolErrorSummary: "edit tool validation failed: invalid arguments",
+      },
+    });
 
     const result = await backend.abortChat({
       sessionKey: "agent:main:main",
@@ -3942,6 +3954,18 @@ describe("EmbeddedTuiBackend", () => {
 
     expect(result).toEqual({ ok: true, aborted: true, runIds: ["run-abort-1"] });
     expect(capturedSignal?.aborted).toBe(true);
+    const abortedEvent = events.find(
+      (event) =>
+        event.event === "chat" &&
+        (event.payload as { runId?: string; state?: string }).runId === "run-abort-1" &&
+        (event.payload as { state?: string }).state === "aborted",
+    );
+    expect(abortedEvent?.payload).toMatchObject({
+      runId: "run-abort-1",
+      state: "aborted",
+      errorMessage: "edit tool validation failed: invalid arguments",
+    });
+    expect(abortedEvent?.payload).not.toHaveProperty("abortOrigin");
   });
 
   it("keeps local BTW runs alive during a session-scoped abort", async () => {

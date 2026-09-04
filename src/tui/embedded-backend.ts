@@ -114,6 +114,7 @@ import type {
   TuiSessionCreateOptions,
 } from "./tui-backend.js";
 import { formatTuiErrorMessage } from "./tui-formatters.js";
+import type { TuiChatAbortOrigin } from "./tui-types.js";
 
 const TUI_STATE_BY_TERMINAL_CLASSIFICATION = {
   success: undefined,
@@ -1187,6 +1188,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
     state: "final" | "aborted" | "error",
     detail?: string,
     terminalState: "provisional" | "final" = "final",
+    abortOrigin?: TuiChatAbortOrigin,
   ) {
     this.clearPendingLifecycleError(runId);
     if (run.terminalState === "final" || run.terminalState === terminalState) {
@@ -1219,6 +1221,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
       ...(state !== "final" && (detail || (state === "aborted" && run.toolErrorSummary))
         ? { errorMessage: formatTuiErrorMessage(detail ?? run.toolErrorSummary) }
         : {}),
+      ...(abortOrigin ? { abortOrigin } : {}),
     });
   }
 
@@ -1235,6 +1238,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
     options: {
       visibleText?: string;
       terminalOutcome?: AgentRunTerminalOutcome;
+      abortOrigin?: TuiChatAbortOrigin;
     } = {},
   ): boolean {
     const terminalError =
@@ -1269,7 +1273,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
     ) {
       this.scheduleChatError(runId, run, diagnostic);
     } else {
-      this.emitChatTerminal(runId, run, state, diagnostic);
+      this.emitChatTerminal(runId, run, state, diagnostic, "final", options.abortOrigin);
     }
     return true;
   }
@@ -1373,6 +1377,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
         run,
         { ...evt.data, aborted: true, toolErrorSummary: run.toolErrorSummary },
         {
+          abortOrigin: "tool-validation",
           terminalOutcome: buildAgentRunTerminalOutcome({
             status: "error",
             stopReason: "aborted",

@@ -2,7 +2,6 @@
 import {
   hasSessionProjectionAcceptedFinal,
   reduceSessionProjectionRunEvent,
-  type SessionProjectionRunStatus,
 } from "../../packages/gateway-client/src/session-projection.js";
 import {
   formatPrimitiveString,
@@ -57,16 +56,15 @@ type EventHandlerChatLog = {
   dropAssistant: (runId: string) => void;
 };
 
-type EventHandlerTui = { requestRender(force?: boolean): void; recoverEsc?(yes: boolean): void };
+type RecoverEsc = (runId: string, validationAbort: boolean) => void;
+type EventHandlerTui = { requestRender(force?: boolean): void; recoverEsc?: RecoverEsc };
 
 type EventHandlerBtwPresenter = {
   showResult: (params: { question: string; text: string; isError?: boolean }) => void;
   clear: () => void;
 };
 
-function isFailedTuiRunStatus(status: SessionProjectionRunStatus | undefined): boolean {
-  return status === "aborted" || status === "error" || status === "timeout";
-}
+const FAILED_RUN_STATES = new Set(["aborted", "error", "timeout"]);
 
 type EventHandlerContext = {
   chatLog: EventHandlerChatLog;
@@ -206,8 +204,9 @@ export function createEventHandlers(context: EventHandlerContext) {
       return;
     }
     const previousProjectedRun = reducedRun.previousRun;
+    const previousStatus = previousProjectedRun?.status;
     state.sessionProjection = reducedRun.projection;
-    if (evt.state === "final" && isFailedTuiRunStatus(previousProjectedRun?.status)) {
+    if (evt.state === "final" && previousStatus && FAILED_RUN_STATES.has(previousStatus)) {
       const hasRecoverableFinalText =
         Boolean(extractTuiAbortedText(evt.message, state.showThinking).trim()) ||
         streamAssembler.hasDisplayText(evt.runId);
@@ -218,7 +217,7 @@ export function createEventHandlers(context: EventHandlerContext) {
         return;
       }
     }
-    if (evt.state === "aborted" && previousProjectedRun?.status === "aborted") {
+    if (evt.state === "aborted" && previousStatus === "aborted") {
       clearStaleStreamingIfNoTrackedRunRemains();
       return;
     }
@@ -354,7 +353,8 @@ export function createEventHandlers(context: EventHandlerContext) {
     if (evt.state === "aborted") {
       forgetLocalBtwRunId?.(evt.runId);
       const wasActiveRun = state.activeChatRunId === evt.runId;
-      tui.recoverEsc?.(Boolean(localMode && wasActiveRun && evt.errorMessage));
+      const localAbort = localMode === true && wasActiveRun;
+      tui.recoverEsc?.(evt.runId, localAbort && evt.abortOrigin === "tool-validation");
       // Determine content from the message and stream, not the user-visible
       // fallbacks: attachment-only aborts remain cancellation diagnostics.
       const hasDisplayableAbortedText =
