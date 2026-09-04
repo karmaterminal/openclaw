@@ -29,6 +29,7 @@ import {
   createDeliveredWake,
   createOrphanedRequiredDelivery,
   writeChildSession,
+  writeSubagentSessionEntry,
 } from "./subagent-registry.persistence.test-support.js";
 import {
   loadSubagentRegistryFromSqlite,
