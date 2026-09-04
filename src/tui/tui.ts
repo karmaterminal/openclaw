@@ -1543,7 +1543,16 @@ async function runTuiUnlocked(opts: RunTuiOptions): Promise<TuiResult> {
   } = createEventHandlers({
     chatLog,
     btw,
-    tui,
+    // Adapter, not a mutated pi-tui instance: the handlers only render and arm
+    // the local-abort Escape recovery owned by the editor.
+    tui: {
+      requestRender: (force) => tui.requestRender(force),
+      recoverEsc: (yes) => {
+        if (yes) {
+          editor.recoverNextLegacyAltPrintable();
+        }
+      },
+    },
     state,
     localMode: isLocalMode,
     setActivityStatus,

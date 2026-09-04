@@ -2,6 +2,7 @@ import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/i
 import { clearAgentRunContext } from "../../infra/agent-run-registry.js";
 import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { setGatewayDedupeEntry } from "../agent-turn/agent-job.js";
+import type { ChatTerminalState } from "../chat-abort.js";
 import { chatAbortMarkerTimestampMs } from "../server-chat-state.js";
 import { persistGatewaySessionLifecycleEvent } from "../session-lifecycle-state.js";
 import { tryResolveSessionCompatibilityOwnerAgentId } from "../session-request-agent.js";
@@ -31,7 +32,7 @@ export async function handleChatSendSetupError(params: {
   >;
   context: GatewayRequestContext;
   error: unknown;
-  markTerminalBroadcasted: () => void;
+  markTerminalBroadcasted: (state: ChatTerminalState) => void;
   respond: RespondFn;
   session: Pick<PreparedChatSendSession, "agentId" | "clientRunId" | "sessionKey">;
   terminalizeRestartSafeAdmission: (state: RestartSafeChatTerminalState) => Promise<boolean>;
@@ -71,7 +72,7 @@ export async function handleChatSendSetupError(params: {
     });
   }
   params.respond(false, payload, error, { runId: clientRunId, error: formatForLog(params.error) });
-  params.markTerminalBroadcasted();
+  params.markTerminalBroadcasted("error");
   broadcastChatError({
     context: params.context,
     runId: clientRunId,
@@ -89,7 +90,7 @@ export function createChatSendDispatchErrorLifecycle(params: {
   >;
   context: GatewayRequestContext;
   isQueuedFollowupEnqueued: () => boolean;
-  markTerminalBroadcasted: () => void;
+  markTerminalBroadcasted: (state: ChatTerminalState) => void;
   isReplyDispatchRun?: () => boolean;
   persistUserTurnTranscript: () => Promise<unknown>;
   session: Pick<
@@ -132,7 +133,7 @@ export function createChatSendDispatchErrorLifecycle(params: {
             payload: { runId: clientRunId, status: "ok" as const },
           },
         });
-        markTerminalBroadcasted();
+        markTerminalBroadcasted("final");
         broadcastChatFinal({
           context,
           runId: clientRunId,
@@ -255,7 +256,7 @@ export function createChatSendDispatchErrorLifecycle(params: {
           error,
         },
       });
-      markTerminalBroadcasted();
+      markTerminalBroadcasted("error");
       broadcastChatError({
         context,
         runId: clientRunId,

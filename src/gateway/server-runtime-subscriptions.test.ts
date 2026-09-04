@@ -467,6 +467,7 @@ describe("startGatewayEventSubscriptions", () => {
     options?.markChatSendTerminalBroadcasted?.({
       runId: "run-chat-send",
       clientRunId: "run-chat-send",
+      state: "error",
     });
 
     expect(entry.chatTerminalBroadcasted).toBe(true);

@@ -21,6 +21,7 @@ import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transc
 import { extractTextFromChatContent } from "../../shared/chat-content.js";
 import type { SkillWorkshopProposalRevisionConstraint } from "../../skills/workshop/types.js";
 import { isOperatorUiClient } from "../../utils/message-channel.js";
+import type { ChatTerminalState } from "../chat-abort.js";
 import { discardPreparedInboundMedia } from "../chat-attachments.js";
 import { authorizeGatewaySessionCreation, resolveCreatorSandbox } from "../operator-role-policy.js";
 import type { ChatRunTiming } from "../server-chat-state.js";
@@ -137,10 +138,15 @@ async function handleChatSendWithOptions(
     finishAbortedChatSend();
     return;
   }
-  const markTerminalBroadcasted = () => {
-    if (activeRunAbort.entry) {
-      activeRunAbort.entry.chatTerminalBroadcasted = true;
+  const markTerminalBroadcasted = (state: ChatTerminalState) => {
+    if (!activeRunAbort.entry) {
+      context.logGateway.warn(
+        `chat terminal state was not recorded because the run entry was already cleared: runId=${clientRunId} state=${state}`,
+      );
+      return;
     }
+    activeRunAbort.entry.chatTerminalBroadcasted = true;
+    activeRunAbort.entry.chatTerminalState = state;
   };
 
   // Attachment preparation can suspend. Recheck immediately before the

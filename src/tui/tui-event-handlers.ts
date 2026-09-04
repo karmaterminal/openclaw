@@ -57,7 +57,7 @@ type EventHandlerChatLog = {
   dropAssistant: (runId: string) => void;
 };
 
-type EventHandlerTui = { requestRender: (force?: boolean) => void };
+type EventHandlerTui = { requestRender(force?: boolean): void; recoverEsc?(yes: boolean): void };
 
 type EventHandlerBtwPresenter = {
   showResult: (params: { question: string; text: string; isError?: boolean }) => void;
@@ -354,6 +354,7 @@ export function createEventHandlers(context: EventHandlerContext) {
     if (evt.state === "aborted") {
       forgetLocalBtwRunId?.(evt.runId);
       const wasActiveRun = state.activeChatRunId === evt.runId;
+      tui.recoverEsc?.(Boolean(localMode && wasActiveRun && evt.errorMessage));
       // Determine content from the message and stream, not the user-visible
       // fallbacks: attachment-only aborts remain cancellation diagnostics.
       const hasDisplayableAbortedText =

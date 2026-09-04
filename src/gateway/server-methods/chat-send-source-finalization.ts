@@ -7,6 +7,7 @@ import {
   appendLocalMediaParentRoots,
   getAgentScopedMediaLocalRoots,
 } from "../../media/local-roots.js";
+import type { ChatTerminalState } from "../chat-abort.js";
 import { attachManagedOutgoingMediaToMessage } from "../managed-image-attachments.js";
 import { loadSessionEntry } from "../session-utils.js";
 import { formatForLog } from "../ws-log.js";
@@ -59,7 +60,7 @@ type FinalizeChatSendAgentRepliesBase = {
   accountId: string | undefined;
   context: GatewayRequestContext;
   emitFirstAssistantServerTiming: () => void;
-  markTerminalBroadcasted?: () => void;
+  markTerminalBroadcasted?: (state: ChatTerminalState) => void;
   session: Pick<
     PreparedChatSendSession,
     "agentId" | "backingSessionId" | "cfg" | "clientRunId" | "sessionKey" | "sessionLoadOptions"
@@ -327,7 +328,7 @@ async function finalizeChatSendAgentReplyPayloads(
     if (hasVisibleAssistantFinalMessage(message)) {
       emitFirstAssistantServerTiming();
     }
-    markTerminalBroadcasted?.();
+    markTerminalBroadcasted?.("final");
     broadcastChatFinal({
       context,
       runId: clientRunId,
@@ -344,7 +345,7 @@ export async function finalizeChatSendSourceReplies(
   params: FinalizeChatSendAgentRepliesBase & {
     deliveredReplies: readonly DeliveredReply[];
     hasReturnedAgentErrorPayloads: boolean;
-    markTerminalBroadcasted: () => void;
+    markTerminalBroadcasted: (state: ChatTerminalState) => void;
     suppressFinal?: boolean;
     terminalAlreadyBroadcasted?: boolean;
   },

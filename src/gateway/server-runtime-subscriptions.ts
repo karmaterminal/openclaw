@@ -275,12 +275,13 @@ export function startGatewayEventSubscriptions(params: {
             resolveRunToolErrorSummary: ({ runId, clientRunId }) =>
               params.chatAbortControllers.get(runId)?.toolErrorSummary ??
               params.chatAbortControllers.get(clientRunId)?.toolErrorSummary,
-            markChatSendTerminalBroadcasted: ({ runId, clientRunId }) => {
+            markChatSendTerminalBroadcasted: ({ runId, clientRunId, state }) => {
               const entry =
                 params.chatAbortControllers.get(runId) ??
                 params.chatAbortControllers.get(clientRunId);
               if (entry && entry.kind !== "agent") {
                 entry.chatTerminalBroadcasted = true;
+                entry.chatTerminalState = state;
               }
             },
             resolveActiveLifecycleGenerationForRun: (runId) =>

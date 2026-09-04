@@ -5776,6 +5776,109 @@ describe("agent event handler", () => {
     expect(terminalBroadcasted).toBe(true);
   });
 
+  it("lets a settled reply error supersede a lifecycle-owned successful terminal", () => {
+    let terminalBroadcasted = false;
+    let terminalState: "final" | "aborted" | "error" | undefined;
+    const { broadcast, nodeSendToSession, chatRunState, agentRunSeq, handler } = createHarness({
+      resolveSessionKeyForRun: () => "session-chat-send",
+      isChatSendRunActive: (runId) => !terminalBroadcasted && runId === "run-chat-send",
+      wasChatSendTerminalBroadcasted: () => terminalBroadcasted,
+      markChatSendTerminalBroadcasted: (terminal) => {
+        terminalBroadcasted = true;
+        terminalState = terminal.state;
+      },
+    });
+    registerChatRun(chatRunState, "run-chat-send", "session-chat-send", "run-chat-send");
+    registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
+
+    emitAgentEvents(handler, "run-chat-send", [
+      ["assistant", { text: "HEARTBEAT_OK" }],
+      ["lifecycle", { phase: "end", stopReason: "stop" }],
+    ]);
+
+    expect(
+      chatBroadcastCalls(broadcast)
+        .map(([, payload]) => payload as { seq?: number; state?: string })
+        .filter((payload) => payload.state === "final"),
+    ).toEqual([expect.objectContaining({ seq: 2 })]);
+    expect(terminalBroadcasted).toBe(true);
+    expect(agentRunSeq.get("run-chat-send")).toBe(2);
+
+    const fallbackText =
+      "I finished the turn, but it did not produce a visible reply. Please try again.";
+    finalizeChatSendAgentOutcome({
+      context: createDirectChatContext({
+        agentRunSeq,
+        broadcast,
+        chatRunState,
+        nodeSendToSession,
+      }),
+      runId: "run-chat-send",
+      sessionKey: "session-chat-send",
+      hasReturnedAgentErrorPayloads: true,
+      broadcastedSourceReplyFinal: false,
+      markTerminalBroadcasted: (state) => {
+        terminalBroadcasted = true;
+        terminalState = state ?? terminalState;
+      },
+      terminalAlreadyBroadcasted: terminalBroadcasted,
+      terminalAlreadyBroadcastedState: terminalState,
+      returnedAgentErrorMessage: fallbackText,
+      runtimeClassification: "failure",
+    });
+
+    const terminalPayloads = chatBroadcastCalls(broadcast)
+      .map(([, payload]) => payload as { errorMessage?: string; seq?: number; state?: string })
+      .filter((payload) => payload.state === "final" || payload.state === "error");
+    expect(terminalPayloads).toEqual([
+      expect.objectContaining({ seq: 2, state: "final" }),
+      expect.objectContaining({ errorMessage: fallbackText, seq: 3, state: "error" }),
+    ]);
+    expect(terminalState).toBe("error");
+  });
+
+  it("projects a late validation diagnostic as an error after lifecycle success", () => {
+    let terminalState: "final" | "aborted" | "error" | undefined = "final";
+    const { broadcast, nodeSendToSession, chatRunState, agentRunSeq } = createHarness();
+    agentRunSeq.set("run-chat-send", 2);
+    const validationSummary = "edit tool validation failed: edits: must be an array";
+
+    finalizeChatSendAgentOutcome({
+      context: createDirectChatContext({
+        agentRunSeq,
+        broadcast,
+        chatRunState,
+        nodeSendToSession,
+      }),
+      runId: "run-chat-send",
+      sessionKey: "session-chat-send",
+      hasReturnedAgentErrorPayloads: true,
+      broadcastedSourceReplyFinal: false,
+      markTerminalBroadcasted: (state) => {
+        terminalState = state;
+      },
+      terminalAlreadyBroadcasted: true,
+      terminalAlreadyBroadcastedState: terminalState,
+      returnedAgentErrorMessage: "LLM request failed.",
+      runtimeClassification: "failure",
+      toolErrorSummary: validationSummary,
+    });
+
+    expect(
+      chatBroadcastCalls(broadcast).map(
+        ([, payload]) => payload as { errorMessage?: string; seq?: number; state?: string },
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        errorMessage: validationSummary,
+        seq: 3,
+        state: "error",
+      }),
+    ]);
+    expect(chatRunState.hasAbortMarker("run-chat-send")).toBe(false);
+    expect(terminalState).toBe("error");
+  });
+
   it("does not invent a successful final before a lifecycle terminal is observed", () => {
     let terminalBroadcasted = false;
     const { broadcast, nodeSendToSession, chatRunState, agentRunSeq } = createHarness();

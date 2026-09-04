@@ -2,6 +2,7 @@ import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/i
 import type { AgentRunTerminalOutcome } from "../../agents/agent-run-terminal-outcome.js";
 import { readToolValidationErrorSummary } from "../../agents/tool-error-summary.js";
 import { setGatewayDedupeEntry } from "../agent-turn/agent-job.js";
+import type { ChatTerminalState } from "../chat-abort.js";
 import { createChatAbortMarker } from "../server-chat-state.js";
 import { buildAbortedChatSendPayload } from "./chat-abort-authorization.js";
 import { broadcastChatAborted, broadcastChatError, broadcastChatFinal } from "./chat-broadcast.js";
@@ -20,8 +21,9 @@ export function finalizeChatSendAgentOutcome(params: {
   hasReturnedAgentErrorPayloads: boolean;
   broadcastedSourceReplyFinal: boolean;
   successfulFinalOwnedElsewhere?: boolean;
-  markTerminalBroadcasted: () => void;
+  markTerminalBroadcasted: (state: ChatTerminalState) => void;
   terminalAlreadyBroadcasted?: boolean;
+  terminalAlreadyBroadcastedState?: ChatTerminalState;
   returnedAgentErrorMessage?: string;
   runtimeClassification?: "cancellation" | "failure" | "success" | "timeout";
   runtimeOutcome?: Pick<AgentRunTerminalOutcome, "endedAt" | "stopReason">;
@@ -33,29 +35,33 @@ export function finalizeChatSendAgentOutcome(params: {
   const validationAbortErrorMessage = hasReturnedAgentError
     ? readToolValidationErrorSummary(params.toolErrorSummary)
     : undefined;
-  const hasUnbroadcastAgentError =
-    hasReturnedAgentError && !alreadyAborted && !params.terminalAlreadyBroadcasted;
+  const terminalErrorMessage = validationAbortErrorMessage ?? params.returnedAgentErrorMessage;
+  const terminalAlreadyBroadcasted = params.terminalAlreadyBroadcasted === true;
+  const supersedesSuccessfulTerminal =
+    terminalAlreadyBroadcasted && params.terminalAlreadyBroadcastedState === "final";
   const shouldBroadcastValidationAbort =
-    hasUnbroadcastAgentError && validationAbortErrorMessage !== undefined;
-  const shouldBroadcastAgentError = hasUnbroadcastAgentError && !shouldBroadcastValidationAbort;
+    hasReturnedAgentError &&
+    !alreadyAborted &&
+    !terminalAlreadyBroadcasted &&
+    validationAbortErrorMessage !== undefined;
+  // An error also supersedes an already-broadcast successful final: the run
+  // terminalized as "final" before the host-authored failure reply settled.
+  const shouldBroadcastAgentError =
+    hasReturnedAgentError &&
+    !alreadyAborted &&
+    ((!terminalAlreadyBroadcasted && validationAbortErrorMessage === undefined) ||
+      supersedesSuccessfulTerminal);
   const shouldBroadcastSuccessfulFinal =
     params.context.agentRunSeq.has(params.runId) &&
     !hasReturnedAgentError &&
     !alreadyAborted &&
-    !params.terminalAlreadyBroadcasted &&
+    !terminalAlreadyBroadcasted &&
     !params.successfulFinalOwnedElsewhere;
-
-  if (
-    shouldBroadcastValidationAbort ||
-    shouldBroadcastAgentError ||
-    shouldBroadcastSuccessfulFinal
-  ) {
-    params.markTerminalBroadcasted();
-  }
 
   // A validated tool summary is already the authoritative safe terminal result.
   // It must win over the generic agent error returned after dispatch.
   if (shouldBroadcastValidationAbort) {
+    params.markTerminalBroadcasted("aborted");
     params.context.chatRunState.getOrCreate(params.runId).abortMarker = createChatAbortMarker();
     broadcastChatAborted({
       context: params.context,
@@ -65,14 +71,16 @@ export function finalizeChatSendAgentOutcome(params: {
       errorMessage: validationAbortErrorMessage,
     });
   } else if (shouldBroadcastAgentError) {
+    params.markTerminalBroadcasted("error");
     broadcastChatError({
       context: params.context,
       runId: params.runId,
       sessionKey: params.sessionKey,
       agentId: params.agentId,
-      errorMessage: params.returnedAgentErrorMessage,
+      errorMessage: terminalErrorMessage,
     });
   } else if (shouldBroadcastSuccessfulFinal) {
+    params.markTerminalBroadcasted("final");
     broadcastChatFinal({
       context: params.context,
       runId: params.runId,
@@ -85,7 +93,6 @@ export function finalizeChatSendAgentOutcome(params: {
     return;
   }
 
-  const terminalErrorMessage = validationAbortErrorMessage ?? params.returnedAgentErrorMessage;
   const returnedAgentError = hasReturnedAgentError
     ? errorShape(ErrorCodes.UNAVAILABLE, terminalErrorMessage ?? "agent returned an error payload")
     : undefined;

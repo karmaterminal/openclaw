@@ -8,14 +8,17 @@ import { classifyAgentRunTerminalOutcome } from "../../agents/agent-run-terminal
 import { resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
 import { dispatchInboundMessageWithProjectedDispatcher } from "../../auto-reply/dispatch.js";
 import type { ReplyDispatchRun } from "../../auto-reply/get-reply-options.types.js";
-import { isReplyPayloadStatusNotice } from "../../auto-reply/reply-payload.js";
+import {
+  getReplyPayloadMetadata,
+  isReplyPayloadStatusNotice,
+} from "../../auto-reply/reply-payload.js";
 import type { ReplyMessageInjectionAttempt } from "../../auto-reply/reply/reply-run-registry.js";
 import { readAgentRunTerminalOutcome } from "../../channels/turn/agent-run-terminal-outcome.js";
 import type { PrepareAssistantTranscriptMessage } from "../../config/sessions/transcript-assistant-delivery.js";
 import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
 import type { SkillWorkshopProposalRevisionConstraint } from "../../skills/workshop/types.js";
 import { isOperatorUiClient } from "../../utils/message-channel.js";
-import { updateChatRunProvider } from "../chat-abort.js";
+import { updateChatRunProvider, type ChatTerminalState } from "../chat-abort.js";
 import { discardPreparedInboundMedia } from "../chat-attachments.js";
 import { chatRunBelongsToSelectedAgent } from "../chat-run-owner.js";
 import type { ChatRunTiming } from "../server-chat-state.js";
@@ -82,7 +85,7 @@ type StartChatDispatchParams = {
    * run. The dispatch block that consumes it was moved here by upstream
    * 22b3c2530f1, so the latch has to be threaded in rather than closed over.
    */
-  markTerminalBroadcasted: () => void;
+  markTerminalBroadcasted: (state: ChatTerminalState) => void;
   request: NormalizedChatSendRequest;
   session: PreparedChatSendSession;
   terminalizeRestartSafeAdmission: (
@@ -484,10 +487,18 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
                 (kind === "final" && payload.isError === true) ||
                 isReplyPayloadStatusNotice(payload),
             );
+          // A host-authored failure reply (e.g. the invisible-reply fallback) must
+          // still surface as an error after a successful recorded outcome.
+          const hasHostAuthoredFailurePayload = returnedAgentErrorPayloads.some(
+            (payload) => getReplyPayloadMetadata(payload)?.agentRunFailureReply === true,
+          );
           const hasReturnedAgentError = runtimeClassification
-            ? runtimeFailed
+            ? runtimeFailed || hasHostAuthoredFailurePayload
             : returnedAgentErrorPayloads.length > 0 &&
               (agentRunStarted || !isInternalTextSlashCommandTurn);
+          const genericAgentErrorMessage = runtimeFailed
+            ? "agent run failed"
+            : "agent returned an error payload";
           const returnedAgentErrorMessage =
             runtimeOutcome?.error ??
             (formatReturnedAgentErrors(
@@ -495,7 +506,7 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
                 .map((payload) => payload.text?.trim())
                 .filter((text): text is string => Boolean(text)),
             ) ||
-              (runtimeFailed ? "agent run failed" : undefined));
+              (runtimeFailed || hasReturnedAgentError ? genericAgentErrorMessage : undefined));
           if (
             !userTurnRecorder.hasPersisted() &&
             !userTurnRecorder.isBlocked() &&
@@ -552,6 +563,7 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
             successfulFinalOwnedElsewhere: queuedFollowup.isEnqueued(),
             markTerminalBroadcasted,
             terminalAlreadyBroadcasted: activeRunAbort.entry?.chatTerminalBroadcasted === true,
+            terminalAlreadyBroadcastedState: activeRunAbort.entry?.chatTerminalState,
             returnedAgentErrorMessage,
             runtimeClassification,
             runtimeOutcome,
@@ -574,7 +586,7 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
       if (queuedFollowup.isEnqueued() && !context.chatRunState.hasAbortMarker(clientRunId)) {
         // Successful queue admission ends this client run. The later
         // aggregate/followup owns its own run id.
-        markTerminalBroadcasted();
+        markTerminalBroadcasted("final");
         broadcastChatFinal({
           context,
           runId: clientRunId,

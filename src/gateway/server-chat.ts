@@ -39,6 +39,7 @@ import {
 } from "../sessions/session-key-utils.js";
 import { resolveAssistantEventPhase } from "../shared/chat-message-content.js";
 import { setSafeTimeout } from "../utils/timer-delay.js";
+import type { ChatTerminalState } from "./chat-abort.js";
 import {
   projectLiveAssistantBufferedText,
   resolveAssistantLiveChatInput,
@@ -91,6 +92,11 @@ const CHAT_STATE_BY_TERMINAL_CLASSIFICATION = {
   timeout: "error",
   cancellation: "aborted",
   failure: "error",
+} as const;
+const CHAT_PAYLOAD_STATE_BY_CHAT_STATE = {
+  done: "final",
+  aborted: "aborted",
+  error: "error",
 } as const;
 const RESTART_RECOVERY_LIFECYCLE_PHASES = new Set(["start", "end", "error"]);
 
@@ -346,7 +352,11 @@ export type AgentEventHandlerOptions = {
     runId: string;
     clientRunId: string;
   }) => string | undefined;
-  markChatSendTerminalBroadcasted?: (params: { runId: string; clientRunId: string }) => void;
+  markChatSendTerminalBroadcasted?: (params: {
+    runId: string;
+    clientRunId: string;
+    state: ChatTerminalState;
+  }) => void;
   clearTrackedActiveRun?: (params: {
     runId: string;
     clientRunId: string;
@@ -799,6 +809,7 @@ export function createAgentEventHandler({
             markChatSendTerminalBroadcasted?.({
               runId: evt.runId,
               clientRunId: terminalRunId,
+              state: CHAT_PAYLOAD_STATE_BY_CHAT_STATE[terminalState],
             });
           }
         }
