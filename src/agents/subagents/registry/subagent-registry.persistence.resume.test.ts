@@ -111,8 +111,18 @@ describe("subagent registry persistence resume", () => {
       .mockReturnValue(() => undefined);
   });
 
-  const withRegistryState = <T>(run: (stateDir: string) => Promise<T>) => {
-    const stateDir = tempDirs.make("openclaw-subagent-");
+  function withRegistryState<T>(run: (stateDir: string) => Promise<T>): Promise<T>;
+  function withRegistryState<T>(stateDir: string, run: () => Promise<T>): Promise<T>;
+  function withRegistryState<T>(
+    stateDirOrRun: string | ((stateDir: string) => Promise<T>),
+    explicitRun?: () => Promise<T>,
+  ): Promise<T> {
+    const stateDir =
+      typeof stateDirOrRun === "string" ? stateDirOrRun : tempDirs.make("openclaw-subagent-");
+    const run = typeof stateDirOrRun === "string" ? explicitRun : () => stateDirOrRun(stateDir);
+    if (!run) {
+      throw new Error("Expected a registry persistence test callback.");
+    }
     return withSubagentRegistryPersistenceState(
       {
         stateDir,
@@ -135,9 +145,9 @@ describe("subagent registry persistence resume", () => {
           registryStateDbModule.closeOpenClawStateDatabaseForTest();
         },
       },
-      () => run(stateDir),
+      run,
     );
-  };
+  }
 
   it.each([
     { name: "announcing", expectsCompletionMessage: true },
