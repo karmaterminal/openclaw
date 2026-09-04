@@ -5500,7 +5500,7 @@ describe("agent event handler", () => {
     ).toHaveLength(1);
   });
 
-  it("does not emit a lifecycle error observed before chat.send settled during lazy dispatch", () => {
+  it("suppresses a lifecycle terminal after the chat.send terminal marker survives cleanup", () => {
     const {
       broadcast,
       nodeSendToSession,
@@ -5512,7 +5512,6 @@ describe("agent event handler", () => {
       resolveSessionKeyForRun: () => "session-chat-send",
       lifecycleErrorRetryGraceMs: 0,
       isChatSendRunActive: () => false,
-      wasChatSendActiveAtTerminalObservation: (runId) => runId === "run-chat-send",
       wasChatSendTerminalBroadcasted: (runId) => runId === "run-chat-send",
     });
     registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
@@ -5550,7 +5549,6 @@ describe("agent event handler", () => {
     const { broadcast, clearAgentRunContext, agentRunSeq, handler } = createHarness({
       resolveSessionKeyForRun: () => "session-chat-send",
       isChatSendRunActive: () => false,
-      wasChatSendActiveAtTerminalObservation: (runId) => runId === "run-chat-send",
       wasChatSendTerminalBroadcasted: () => false,
     });
     registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });

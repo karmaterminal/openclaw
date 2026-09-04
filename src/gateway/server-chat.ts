@@ -710,10 +710,7 @@ export function createAgentEventHandler({
     }
     clearPendingTerminalLifecycleError(evt.runId, evt.lifecycleGeneration);
     const chatSendStillActive = isChatSendRunActive(evt.runId);
-    const chatSendAlreadySettled =
-      opts?.chatSendWasActive === true &&
-      !chatSendStillActive &&
-      wasChatSendTerminalBroadcasted(evt.runId);
+    const chatSendAlreadySettled = wasChatSendTerminalBroadcasted(evt.runId);
     const terminalOutcome = buildAgentRunTerminalOutcomeFromLifecycleEvent({
       phase: lifecyclePhase,
       data: evt.data,

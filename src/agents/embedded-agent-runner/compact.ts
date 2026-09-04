@@ -257,7 +257,7 @@ export async function compactEmbeddedAgentSessionDirect(
   const persistedSessionEntry = entry ? projectPublicSessionEntry(entry) : undefined;
   const requestedParams: CompactEmbeddedAgentSessionParamsWithSessionFile = {
     ...paramsBase,
-    sessionEntry: persistedSessionEntry ?? paramsBase.sessionEntry,
+    sessionEntry: persistedSessionEntry,
     permissionMode:
       persistedSessionEntry?.permissionMode ??
       paramsBase.permissionMode ??
