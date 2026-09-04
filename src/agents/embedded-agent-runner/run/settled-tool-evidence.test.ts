@@ -284,6 +284,27 @@ describe("runEmbeddedAgent incomplete-turn safety", () => {
     },
   );
 
+  it("does not finalize after an authoritative current-source delivery fact", () => {
+    const emptyStopAssistant = makeLastAssistant();
+    const instruction = resolveSettledToolTerminalContinuationInstruction(
+      makeSettledContinuationParams(
+        {
+          assistantTexts: [],
+          toolMetas: [{ toolName: "message" }],
+          itemLifecycle: { startedCount: 1, completedCount: 1, activeCount: 0 },
+          // Terminal preparation can retain this current-run authority fact even
+          // when a compact target record is not available to the recovery path.
+          didDeliverSourceReplyViaMessageTool: true,
+          lastAssistant: emptyStopAssistant,
+          currentAttemptAssistant: emptyStopAssistant,
+        },
+        { allowEmptyStopContinuation: true },
+      ),
+    );
+
+    expect(instruction).toBeNull();
+  });
+
   it.each([
     {
       label: "external abort",

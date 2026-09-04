@@ -94,7 +94,11 @@ export function hasCompletedMessagingToolDeliveryEvidence(
 ): boolean {
   return (
     resolveExplicitFinalSourceReplyDeliveryEvidence(result) ??
-    hasMessagingToolDeliveryEvidence(result)
+    // A current-source message_tool_only delivery may survive terminal preparation
+    // only as its authoritative delivery fact. Treat that fact as completion when
+    // no progress/final marker says otherwise, or settled-turn recovery can append
+    // a synthetic fallback after the real reply has already reached the source.
+    (hasCompletedSourceReplyDeliveryEvidence(result) || hasMessagingToolDeliveryEvidence(result))
   );
 }
 
