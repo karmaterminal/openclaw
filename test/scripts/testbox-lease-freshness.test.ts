@@ -43,6 +43,12 @@ describe("Testbox lease freshness", () => {
     ).toEqual(["headSha"]);
   });
 
+  it("ignores the retired working-tree-clean field in legacy fingerprints", () => {
+    expect(
+      testboxLeaseStaleReasons({ ...fingerprint, workingTreeClean: true }, fingerprint),
+    ).toEqual([]);
+  });
+
   it("rejects unknown provenance schemas", () => {
     expect(testboxLeaseStaleReasons({ ...fingerprint, version: 2 }, fingerprint)).toEqual([
       "state schema",

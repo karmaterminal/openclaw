@@ -95,7 +95,6 @@ export function testboxLeaseStaleReasons(saved: unknown, current: unknown) {
   return [
     "baseSha",
     "headSha",
-    "workingTreeClean",
     "dependencyDigest",
     "environmentDigest",
     "workflow",
