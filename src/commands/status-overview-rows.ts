@@ -225,6 +225,7 @@ export function buildStatusAllOverviewRows(params: {
   osLabel: string;
   configPath: string;
   secretDiagnosticsCount: number;
+  updateValue?: string;
   updateRestartValue?: string | null;
   agentStatus: {
     bootstrapPendingCount: number;
@@ -238,6 +239,7 @@ export function buildStatusAllOverviewRows(params: {
 }) {
   return buildStatusOverviewRowsFromSurface({
     surface: params.surface,
+    updateValue: params.updateValue,
     tailscaleBackendState: params.tailscaleBackendState,
     includeBackendStateWhenOff: true,
     includeBackendStateWhenOn: true,

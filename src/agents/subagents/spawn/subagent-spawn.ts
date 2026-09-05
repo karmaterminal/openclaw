@@ -129,6 +129,7 @@ export async function spawnSubagentDirect(
   const childIdem = params.continuationDelegateFlowId
     ? deriveContinuationDelegateChildRunId(params.continuationDelegateFlowId)
     : resolvedChildIdem;
+
   let threadBindingReady = false;
   let hasBoundThreadDeliveryOrigin = false;
   let childRunId: string = childIdem;
@@ -207,6 +208,7 @@ export async function spawnSubagentDirect(
         ...provisionalSessionIdentity,
       });
     const preparedSpawnContext = await prepareSubagentSessionContext({
+      assertActive,
       cfg,
       contextMode,
       requesterAgentId,
@@ -244,8 +246,10 @@ export async function spawnSubagentDirect(
         childSessionKey,
       };
     }
+
     if (requestThreadBinding) {
       const bindResult = await bindThreadForSubagentSpawn({
+        assertActive,
         cfg,
         childSessionKey,
         agentId: targetAgentId,
@@ -322,6 +326,7 @@ export async function spawnSubagentDirect(
     let attachmentRootDir: string | undefined;
 
     const materializedAttachments = await materializeSubagentAttachments({
+      assertActive,
       config: cfg,
       targetAgentId,
       workspaceDir: spawnedCwd ?? spawnedWorkspaceDir,
@@ -374,7 +379,13 @@ export async function spawnSubagentDirect(
     if (params.traceparent) {
       childLaunch.request.traceparent = params.traceparent;
     }
-    const launchChildRun = async () => {
+    recordSubagentSpawned({
+      childSessionKey,
+      childRunId,
+      requesterSessionKey: requesterInternalKey,
+      agentId: targetAgentId,
+    });
+    const launchChildRun = async (assertDispatchCurrent?: () => void) => {
       ctx.continuationDelegateAdmission?.assertCurrent("gateway-dispatch");
       registerSubagentTraceparentHandoff({
         idempotencyKey: childIdem,
@@ -385,6 +396,7 @@ export async function spawnSubagentDirect(
         withSubagentGatewayExecutionIdentity(
           {
             method: "agent",
+            assertDispatchCurrent,
             params: childLaunch.request,
             timeoutMs: childLaunch.timeoutMs,
           },
@@ -441,6 +453,7 @@ export async function spawnSubagentDirect(
           params.lightContext && preparedSpawnContext.mode === "isolated"
             ? ({ status: "ok", preparation: undefined } as const)
             : await prepareContextEngineSubagentSpawn({
+                assertActive,
                 cfg,
                 context: preparedSpawnContext,
                 requesterInternalKey,
@@ -453,13 +466,10 @@ export async function spawnSubagentDirect(
         return { contextEnginePreparation: result.preparation };
       },
       async dispatchTurn() {
-        // Initialize returned its rollback handle. Refusal here follows dispatch
-        // cleanup instead of losing that handle through initialize failure.
-        assertActive?.();
         if (params.collect) {
           return { runId: childIdem };
         }
-        const launch = await launchChildRun();
+        const launch = await launchChildRun(assertActive);
         taskRowOwnership = launch.taskRowOwnership;
         acceptedChildRunId = readGatewayRunId(launch.response) ?? childIdem;
         recordSessionParticipantBestEffort({
@@ -524,11 +534,11 @@ export async function spawnSubagentDirect(
     };
     const pipelineResult = await runSpawnPipeline({
       adapter,
+      assertActive,
       admissionReservation,
       progressOrigin,
       progressSessionKey: requesterInternalKey,
       buildRegistration: (_state, runId) => {
-        assertActive?.();
         if (params.collect) {
           const latestAdmission = resolveAdmission();
           if (!latestAdmission.ok) {
@@ -696,7 +706,7 @@ export async function spawnSubagentDirect(
         [envelope.acceptedNote, preparedSpawnContext.forkFallbackNote].filter(Boolean).join(" ") ||
         undefined,
       ...resolvedModelMetadata,
-      modelApplied: resolvedModel ? true : undefined,
+      modelApplied: plan.modelApplied || (resolvedModel ? true : undefined),
       rollbackAccepted: pipelineResult.rollbackAccepted,
       attachments: attachmentsReceipt,
     };

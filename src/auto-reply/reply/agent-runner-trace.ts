@@ -3,7 +3,6 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { FailoverReason } from "../../agents/failover/signal.js";
 import { deriveContextPromptTokens } from "../../agents/usage.js";
-import type { SessionEntry } from "../../config/sessions.js";
 import { readLatestSessionUsageFromTranscriptAsync } from "../../gateway/session-transcript-readers.js";
 import { formatTokenCount } from "../../utils/token-format.js";
 import type { ReplyPayload } from "../types.js";
@@ -600,7 +599,6 @@ function formatRawTraceSummaryLine(params: {
 }
 
 export function buildInlineRawTracePayload(params: {
-  entry: SessionEntry | undefined;
   rawUserText?: string;
   rawAssistantText?: string;
   sessionUsage?: {
@@ -642,10 +640,7 @@ export function buildInlineRawTracePayload(params: {
   toolSummary?: TraceToolSummaryView;
   completion?: TraceCompletionView;
   contextManagement?: TraceContextManagementView;
-}): ReplyPayload | undefined {
-  if (params.entry?.traceLevel !== "raw") {
-    return undefined;
-  }
+}): ReplyPayload {
   const resolvedPromptTokens = deriveContextPromptTokens({
     lastCallUsage: params.lastCallUsage,
     promptTokens: params.promptTokens,

@@ -132,9 +132,7 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
   // Scheduled turns keep delivery routing live, but Gateway authorization remains bound to the
   // authenticated creator account captured in the immutable scheduled authority envelope.
   const inlineWidgetClientAvailable = options?.clientCaps?.includes("inline-widgets") === true;
-  const widgetSessionKey = normalizeOptionalString(
-    options?.runSessionKey ?? options?.agentSessionKey,
-  );
+  const sessionKey = normalizeOptionalString(options?.runSessionKey ?? options?.agentSessionKey);
   const gatewayCallerAccountId = options?.gatewayCallerAccountId ?? options?.agentAccountId;
   const runtimeWebTools = getActiveRuntimeWebToolsMetadataFromState();
   const sandbox =
@@ -162,7 +160,6 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
     sessionKey: mediaGenerationAgentSessionKey,
     onYield: options?.onYield,
   });
-  const taskKey = normalizeOptionalString(options?.runSessionKey ?? options?.agentSessionKey);
   const imageTool =
     options?.agentDir &&
     resolveImageToolFactoryAvailable({
@@ -329,8 +326,8 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
     scheduledWidgetExplicitlyAllowed &&
     !inlineWidgetClientAvailable &&
     !widgetPresentation.currentChannelPresenter &&
-    Boolean(widgetSessionKey) &&
-    !isCronRunSessionKey(widgetSessionKey);
+    Boolean(sessionKey) &&
+    !isCronRunSessionKey(sessionKey);
   const includeMessageTool =
     !embedded ||
     options?.sourceReplyDeliveryMode === "message_tool_only" ||
@@ -351,7 +348,8 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
     agentId: sessionAgentId,
   })
     ? createProgressCardTool({
-        agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
+        agentSessionKey: sessionKey,
+        agentId: sessionAgentId,
       })
     : null;
   const transcriptsTool = resolveTranscriptsTool(resolvedConfig, sessionAgentId, options);
@@ -424,9 +422,9 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
                 createPortalTool(),
               ]),
         ]),
-    ...(!embedded && taskKey && options?.taskSuggestionDeliveryMode === "gateway"
+    ...(!embedded && sessionKey && options?.taskSuggestionDeliveryMode === "gateway"
       ? createTaskSuggestionTools({
-          sessionKey: taskKey,
+          sessionKey,
           agentId: sessionAgentId,
           cwd: resolveWorkspaceRoot(options?.cwd ?? options?.workspaceDir ?? inferredWorkspaceDir),
         })
@@ -440,7 +438,7 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
           createShowWidgetTool({
             sessionId: options?.sessionId,
             agentId: sessionAgentId,
-            agentSessionKey: widgetSessionKey,
+            agentSessionKey: sessionKey,
             inlineHostEnabled: isCoreCanvasHostEnabled(resolvedConfig),
             inlineClientAvailable: inlineWidgetClientAvailable,
             pinnedOnly: scheduledPinnedWidgetOnly,
@@ -492,7 +490,7 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
       sessionAgentId,
       config: resolvedConfig,
     }),
-    ...(options?.sandboxed && !options.skillWorkshop?.libraryAuthoring
+    ...((options?.sandboxed && !options.skillWorkshop?.libraryAuthoring) || !resolvedConfig
       ? []
       : [
           createConfiguredSkillWorkshopTool({

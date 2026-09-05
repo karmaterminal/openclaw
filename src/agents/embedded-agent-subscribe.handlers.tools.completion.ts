@@ -181,7 +181,6 @@ export async function handleToolExecutionEnd(
   // Settled/custom producers use their terminal fact; policy blocks override racing wrappers.
   const executionStarted =
     (trackedExecutionStarted ?? evt.executionStarted ?? true) && !executionPrevented;
-  const attemptedPotentialSideEffect = !callSummary.replaySafe && executionStarted;
   const meta = callSummary.meta;
   const asyncStarted = !isToolError && isAsyncStartedToolResult(sanitizedResult);
   const asyncTaskIds = asyncStarted ? readAsyncStartedTaskIds(sanitizedResult) : {};
@@ -231,6 +230,7 @@ export async function handleToolExecutionEnd(
     toolCallId,
     toolName,
     arguments: startArgs,
+    result,
     ...(meta ? { meta } : {}),
     executionStarted,
     replaySafe: callSummary.replaySafe,
@@ -261,7 +261,7 @@ export async function handleToolExecutionEnd(
   if (asyncStarted) {
     ctx.state.hadDeterministicSideEffect = true;
   }
-  if (attemptedPotentialSideEffect || acceptedSessionSpawn || asyncStarted) {
+  if (terminal.sideEffectEvidence || acceptedSessionSpawn || asyncStarted) {
     ctx.state.replayState = mergeEmbeddedRunReplayState(ctx.state.replayState, {
       replayInvalid: true,
       hadPotentialSideEffects: true,

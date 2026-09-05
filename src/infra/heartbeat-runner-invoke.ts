@@ -13,11 +13,13 @@ import {
   resolveHeartbeatScratchProposalFromReplyResult,
   resolveHeartbeatToolResponseFromReplyResult,
 } from "../auto-reply/heartbeat-tool-response.js";
+import { prepareReplyConversation } from "../auto-reply/reply/prompt-session-context.js";
 import {
   REPLY_OPERATION_RUN_STATE,
   resolveReplyOperationAgentTurn,
   type ReplyOperationRunState,
 } from "../auto-reply/reply/reply-operation-run-state.js";
+import { withReplySystemEventContext } from "../auto-reply/reply/system-event-session-key.js";
 import { writeCronJobScratch } from "../cron/scratch-store.js";
 import { resolveCronJobsStorePathFromConfig } from "../cron/store.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
@@ -52,36 +54,47 @@ export async function invokeHeartbeatAgentRun(
     opts.deps?.getReplyFromConfig ??
     (await loadHeartbeatRunnerRuntime()).getHeartbeatReplyFromConfig;
   const heartbeatWakeAbortSignal = getHeartbeatWakeAbortSignal();
-  const replyOpts = {
-    isHeartbeat: true,
-    [REPLY_OPERATION_RUN_STATE]: replyOperationRunState,
-    ...(heartbeatModelOverride ? { heartbeatModelOverride } : {}),
-    suppressToolErrorWarnings: false,
-    ...(usesHeartbeatResponseTool ? { enableHeartbeatTool: true, forceHeartbeatTool: true } : {}),
-    ...(usesHeartbeatResponseTool ? { sourceReplyDeliveryMode: "message_tool_only" as const } : {}),
-    ...(heartbeatWakeAbortSignal ? { abortSignal: heartbeatWakeAbortSignal } : {}),
-    // Heartbeat timeout is a per-run override so user turns keep the global default.
-    timeoutOverrideSeconds: resolveHeartbeatTimeoutOverrideSeconds(cfg, heartbeat),
-    bootstrapContextMode: heartbeat?.lightContext === true ? ("lightweight" as const) : undefined,
-    onModelSelected: replyPrefix.onModelSelected,
-  };
-  const replyResult = await getReplyFromConfig(
+  const heartbeatContext = {
+    Body: appendCronStyleCurrentTimeLine(prompt, cfg, startedAt),
+    From: sender,
+    To: sender,
+    OriginatingChannel:
+      !suppressOriginatingContext && delivery.channel !== "none" ? delivery.channel : undefined,
+    OriginatingTo: !suppressOriginatingContext ? delivery.to : undefined,
+    AccountId: delivery.accountId,
+    ChatType: delivery.chatType,
+    MessageThreadId: delivery.threadId,
+    InternalTurnSource: hasExecCompletion ? "exec" : hasCronEvents ? "cron" : "heartbeat",
+    SessionKey: runSessionKey,
+    AgentId: agentId,
+  } satisfies Parameters<typeof getReplyFromConfig>[0];
+  const replyOpts = withReplySystemEventContext(
     {
-      Body: appendCronStyleCurrentTimeLine(prompt, cfg, startedAt),
-      From: sender,
-      To: sender,
-      OriginatingChannel:
-        !suppressOriginatingContext && delivery.channel !== "none" ? delivery.channel : undefined,
-      OriginatingTo: !suppressOriginatingContext ? delivery.to : undefined,
-      AccountId: delivery.accountId,
-      MessageThreadId: delivery.threadId,
-      InternalTurnSource: hasExecCompletion ? "exec" : hasCronEvents ? "cron" : "heartbeat",
-      SessionKey: runSessionKey,
-      AgentId: agentId,
+      isHeartbeat: true,
+      replyConversation: prepareReplyConversation({
+        ctx: heartbeatContext,
+        sessionEntry: suppressOriginatingContext ? undefined : prepared.conversationEntry,
+        isHeartbeat: true,
+      }),
+      [REPLY_OPERATION_RUN_STATE]: replyOperationRunState,
+      ...(heartbeatModelOverride ? { heartbeatModelOverride } : {}),
+      suppressToolErrorWarnings: false,
+      ...(usesHeartbeatResponseTool ? { enableHeartbeatTool: true, forceHeartbeatTool: true } : {}),
+      ...(usesHeartbeatResponseTool
+        ? { sourceReplyDeliveryMode: "message_tool_only" as const }
+        : {}),
+      ...(heartbeatWakeAbortSignal ? { abortSignal: heartbeatWakeAbortSignal } : {}),
+      // Heartbeat timeout is a per-run override so user turns keep the global default.
+      timeoutOverrideSeconds: resolveHeartbeatTimeoutOverrideSeconds(cfg, heartbeat),
+      bootstrapContextMode: heartbeat?.lightContext === true ? ("lightweight" as const) : undefined,
+      onModelSelected: replyPrefix.onModelSelected,
     },
-    replyOpts,
-    cfg,
+    {
+      sessionKey: prepared.inspectsRunQueue ? prepared.sessionKey : runSessionKey,
+      events: prepared.inspectsRunQueue ? prepared.genericEvents : [],
+    },
   );
+  const replyResult = await getReplyFromConfig(heartbeatContext, replyOpts, cfg);
   const agentTurnStatus = resolveReplyOperationAgentTurn(replyOperationRunState);
   if (agentTurnStatus === "superseded" || agentTurnStatus === "cancelled") {
     return { kind: agentTurnStatus === "superseded" ? "preempted" : "cancelled" } as const;

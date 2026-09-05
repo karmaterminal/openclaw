@@ -998,7 +998,7 @@ describe("openclaw agent database", () => {
 
     expect(() =>
       runOpenClawStateWriteTransaction(
-        (database) => assertAgentDeletionPathFence(database.db, fence),
+        (database) => assertAgentDeletionPathFence(database, fence),
         { env },
       ),
     ).toThrow("deletion journal changed");
@@ -2338,6 +2338,10 @@ describe("openclaw agent database", () => {
       openOpenClawAgentDatabase({ agentId: "worker-2", env, path: database.path }),
     ).toThrow("initialization close failed");
     close.mockRestore();
+    expect(inspectOpenClawAgentDatabaseOwner(database.path)).toEqual({
+      status: "owned",
+      agentId: "worker-1",
+    });
     expect(() => assertNoOpenClawAgentDatabaseLeases("worker-2", { env })).toThrow(
       "database is still open",
     );
@@ -3089,12 +3093,14 @@ describe("openclaw agent database", () => {
     const second = openOpenClawAgentDatabase({ agentId: "worker-2", env, path: secondPath });
 
     expect(closeOpenClawAgentDatabaseByPath(path.join(stateDir, "missing.sqlite"))).toBe(false);
+    expect(closeOpenClawAgentDatabaseByPath(firstPath, "worker-2")).toBe(false);
     expect(first.db.isOpen).toBe(true);
     expect(second.db.isOpen).toBe(true);
 
     expect(
       closeOpenClawAgentDatabaseByPath(
         path.join(stateDir, "relocated", "nested", "..", "first.sqlite"),
+        "worker-1",
       ),
     ).toBe(true);
     expect(first.db.isOpen).toBe(false);
@@ -3230,7 +3236,6 @@ describe("openclaw agent database", () => {
     );
     try {
       expect(disposeOpenClawAgentDatabaseByPath(original.path, { env })).toBe(true);
-      deletion.commit();
       expect(original.db.isOpen).toBe(false);
       expect(listOpenClawRegisteredAgentDatabases({ env })).toEqual([]);
       fs.mkdirSync(path.dirname(archivedDir), { recursive: true });
@@ -4608,12 +4613,11 @@ describe("openclaw agent database", () => {
       env: { OPENCLAW_STATE_DIR: stateDir },
     });
     const databasePath = database.path;
+    const expectedOwner = { status: "owned", agentId: "worker-1" };
+    expect(inspectOpenClawAgentDatabaseOwner(databasePath)).toEqual(expectedOwner);
     closeOpenClawAgentDatabasesForTest();
 
-    expect(inspectOpenClawAgentDatabaseOwner(databasePath)).toEqual({
-      status: "owned",
-      agentId: "worker-1",
-    });
+    expect(inspectOpenClawAgentDatabaseOwner(databasePath)).toEqual(expectedOwner);
   });
 
   it.each([null, "", "   "])(

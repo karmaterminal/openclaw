@@ -1,13 +1,4 @@
-import { getRuntimeConfig } from "../../../config/config.js";
-import {
-  resolveAgentIdFromSessionKey,
-  resolveSessionStorePathCore,
-} from "../../../config/sessions.js";
-import {
-  loadSessionEntry,
-  patchSessionEntryCore,
-} from "../../../config/sessions/session-accessor.js";
-import type { SessionEntry } from "../../../config/sessions/types.js";
+import { patchSessionEntryCore } from "../../../config/sessions/session-accessor.js";
 import { readSessionMessagesAsync } from "../../../gateway/session-transcript-readers.js";
 import * as agentEvents from "../../../infra/agent-events.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
@@ -16,28 +7,34 @@ import {
   beginSessionWorkAdmission,
   cancelSessionWorkAdmissionHandoff,
 } from "../../../sessions/session-lifecycle-admission.js";
-import { reconcileAcceptedRecovery } from "../../subagent-registry-restart-recovery-accepted.js";
-import type {
-  RestartRecoveryParams,
-  RestartRecoveryResult,
-} from "../../subagent-registry-restart-recovery-types.js";
 import {
   formatSubagentRecoveryWedgedReason,
   isSubagentRecoveryWedgedEntry,
 } from "./subagent-recovery-state.js";
+import { reconcileAcceptedRecovery } from "./subagent-registry-restart-recovery-accepted.js";
 import {
   assertRestartRecoverySnapshotCurrent,
   buildRestartRecoveryIdempotencyKey,
   buildRestartRecoveryResumeMessage,
   getRestartRecoveryReplayError,
+  isRetiredRunningSubagent,
   isRestartRecoveryLifecycleCurrent,
 } from "./subagent-registry-restart-recovery-helpers.js";
 import { readSubagentRecoveryTranscriptMessage } from "./subagent-registry-restart-recovery-message.js";
+import {
+  confirmAcceptedRecoveryResumption,
+  loadSubagentRecoverySession,
+} from "./subagent-registry-restart-recovery-session.js";
+import type {
+  RestartRecoveryParams,
+  RestartRecoveryResult,
+} from "./subagent-registry-restart-recovery-types.js";
 import { isStaleUnendedSubagentRun } from "./subagent-run-liveness.js";
 import { getSubagentSessionStartedAt } from "./subagent-session-metrics.js";
+
 const MAX_RECOVERY_ATTEMPTS = 2;
 const RECOVERY_ATTEMPT_WINDOW_MS = 2 * 60_000;
-
+const TERMINAL_RESUMPTION_NOTICE_RETRY_WINDOW_MS = 2 * 60_000;
 export type { RestartRecoveryParams, RestartRecoveryResult };
 
 export async function recoverInterruptedSubagentRow(
@@ -46,6 +43,68 @@ export async function recoverInterruptedSubagentRow(
   const recoveryLifecycleGeneration = agentEvents.getAgentEventLifecycleGeneration();
   const isRecoveryAttemptLifecycleCurrent = () =>
     agentEvents.isAgentEventLifecycleGenerationCurrent(recoveryLifecycleGeneration);
+  const childSessionKey = params.entry.childSessionKey.trim();
+  if (!childSessionKey) {
+    return { status: "ignored" };
+  }
+  const pendingNotice = params.entry.resumptionNotice;
+  if (pendingNotice) {
+    const isNoticeOwnerCurrent = () =>
+      isRecoveryAttemptLifecycleCurrent() &&
+      params.isCurrent(params.runId, params.entry) &&
+      params.entry.resumptionNotice === pendingNotice;
+    const confirmed = await confirmAcceptedRecoveryResumption({
+      childSessionKey,
+      gatewayRuntime: params.gatewayRuntime,
+      idempotencyKey: pendingNotice.idempotencyKey,
+      isOwnerCurrent: isNoticeOwnerCurrent,
+      owner: params.entry,
+      warn: params.warn,
+    });
+    if (!isNoticeOwnerCurrent()) {
+      return { status: "handled" };
+    }
+    const endedAt = params.entry.execution.endedAt;
+    const terminalNoticeExpired =
+      typeof endedAt === "number" &&
+      params.now - endedAt >= TERMINAL_RESUMPTION_NOTICE_RETRY_WINDOW_MS;
+    if (confirmed || terminalNoticeExpired) {
+      if (!confirmed) {
+        params.warn("subagent restart recovery exhausted its resumption notice window", {
+          runId: params.runId,
+          childSessionKey,
+        });
+      }
+      try {
+        if (
+          !params.clearPendingNotice({
+            runId: params.runId,
+            expected: params.entry,
+            idempotencyKey: pendingNotice.idempotencyKey,
+          })
+        ) {
+          return { status: "deferred" };
+        }
+      } catch (error) {
+        params.warn("subagent restart recovery could not clear its resumption notice debt", {
+          runId: params.runId,
+          childSessionKey,
+          error,
+        });
+        return { status: "deferred" };
+      }
+      if (typeof endedAt === "number") {
+        return params.resumeAcceptedRecovery({ runId: params.runId, expected: params.entry })
+          ? { status: "accepted" }
+          : { status: "deferred" };
+      }
+    } else if (!isRetiredRunningSubagent(params.entry)) {
+      return { status: "deferred" };
+    }
+    if (!isRetiredRunningSubagent(params.entry)) {
+      return { status: "handled" };
+    }
+  }
   const initialRecoveryReceipt = params.entry.execution.restartRecovery;
   const legacyRestartTimeout =
     params.entry.execution.outcome?.status === "timeout" &&
@@ -78,18 +137,16 @@ export async function recoverInterruptedSubagentRow(
     return { status: "ignored" };
   }
 
-  const childSessionKey = params.entry.childSessionKey.trim();
-  if (!childSessionKey) {
-    return { status: "ignored" };
-  }
   try {
-    const agentId = resolveAgentIdFromSessionKey(childSessionKey);
-    const storePath = resolveSessionStorePathCore(getRuntimeConfig().session?.store, { agentId });
-    const sessionEntry = loadSessionEntry({
-      storePath,
-      sessionKey: childSessionKey,
-      clone: false,
+    const session = await loadSubagentRecoverySession({
+      entry: params.entry,
+      isOwnerCurrent: isRecoverySourceCurrent,
+      now: params.now,
     });
+    if (!session) {
+      return { status: "deferred" };
+    }
+    const { agentId, storePath, sessionEntry } = session;
     const recovery = sessionEntry?.subagentRecovery;
     const attempts =
       typeof recovery?.lastAttemptAt === "number" &&
@@ -120,8 +177,10 @@ export async function recoverInterruptedSubagentRow(
         currentSessionId: sessionEntry?.sessionId,
         currentSessionLifecycleRevision: sessionEntry?.lifecycleRevision,
         clearAcceptedRecovery: params.clearAcceptedRecovery,
+        clearPendingNotice: params.clearPendingNotice,
         entry: params.entry,
         getRun: params.getRun,
+        gatewayRuntime: params.gatewayRuntime,
         isCurrent: params.isCurrent,
         now: params.now,
         receipt: currentRecoveryReceipt,
@@ -193,7 +252,7 @@ export async function recoverInterruptedSubagentRow(
         : undefined;
     if (blockedReason) {
       if (!alreadyWedged) {
-        let wedged: SessionEntry | null;
+        let wedged: Awaited<ReturnType<typeof patchSessionEntryCore>>;
         try {
           wedged = await patchSessionEntryCore(
             { storePath, sessionKey: childSessionKey },
@@ -490,8 +549,10 @@ export async function recoverInterruptedSubagentRow(
       currentSessionId: sessionId,
       currentSessionLifecycleRevision: sessionEntry.lifecycleRevision,
       clearAcceptedRecovery: params.clearAcceptedRecovery,
+      clearPendingNotice: params.clearPendingNotice,
       entry: params.entry,
       getRun: params.getRun,
+      gatewayRuntime: params.gatewayRuntime,
       isCurrent: params.isCurrent,
       now: Date.now(),
       receipt: restartRecovery,

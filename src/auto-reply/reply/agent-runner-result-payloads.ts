@@ -106,7 +106,6 @@ export async function prepareReplyAgentPayloads(state: {
     sessionModel,
     terminalFailurePayload,
     usage,
-    verboseEnabled,
   } = accounting;
   let { activeSessionEntry, didLogHeartbeatStrip } = accounting;
   const deliberateSilentTerminalReply = hasDeliberateSilentTerminalReply(runResult);
@@ -275,11 +274,16 @@ export async function prepareReplyAgentPayloads(state: {
   const isPayloadLaneEnabled = (payload: ReplyPayload): boolean =>
     (payload.isReasoning !== true || opts?.reasoningPayloadsEnabled === true) &&
     (payload.isCommentary !== true || opts?.commentaryPayloadsEnabled === true);
+  const isGeneratedToolWarning = (payload: ReplyPayload) =>
+    getReplyPayloadMetadata(payload)?.toolErrorWarning !== undefined;
   const applyFinalReplyToMode = (payload: ReplyPayload) => {
     const payloadLaneEnabled = isPayloadLaneEnabled(payload);
     const isFilteredPayload =
       normalizeReplyPayload(payload, { applyChannelTransforms: false }) === null;
-    return !payloadLaneEnabled || isFilteredPayload ? payload : applyDeliveredReplyToMode(payload);
+    const shouldDeferToolWarning = yieldAcknowledgmentPayload && isGeneratedToolWarning(payload);
+    return !payloadLaneEnabled || isFilteredPayload || shouldDeferToolWarning
+      ? payload
+      : applyDeliveredReplyToMode(payload);
   };
   const buildFinalPayloads = (payloads: ReplyPayload[]) =>
     buildReplyPayloads({
@@ -452,18 +456,29 @@ export async function prepareReplyAgentPayloads(state: {
   const payloadResult = await buildFinalPayloads(payloadCandidates);
   let { replyPayloads } = payloadResult;
   didLogHeartbeatStrip = payloadResult.didLogHeartbeatStrip;
-  const hasTerminalReplyPayload = replyPayloads.some(
+  const replyPayloadsWithoutToolWarnings = yieldAcknowledgmentPayload
+    ? replyPayloads.filter((payload) => !isGeneratedToolWarning(payload))
+    : replyPayloads;
+  const hasTerminalReplyPayload = replyPayloadsWithoutToolWarnings.some(
     (payload) =>
       isReplyPayloadTerminalContent(payload) &&
       normalizeReplyPayload(payload, { applyChannelTransforms: false }) !== null,
   );
+  if (yieldAcknowledgmentPayload && hasTerminalReplyPayload) {
+    replyPayloads = replyPayloadsWithoutToolWarnings;
+  }
   if (shouldDeliverTerminalFailure && !hasTerminalReplyPayload && terminalFailurePayload) {
     const terminalPayloadResult = await buildFinalPayloads([terminalFailurePayload]);
     replyPayloads = [...replyPayloads, ...terminalPayloadResult.replyPayloads];
     didLogHeartbeatStrip = terminalPayloadResult.didLogHeartbeatStrip;
   } else if (yieldAcknowledgmentPayload && !hasTerminalReplyPayload) {
     const acknowledgmentResult = await buildFinalPayloads([yieldAcknowledgmentPayload]);
-    replyPayloads = [...replyPayloads, ...acknowledgmentResult.replyPayloads];
+    replyPayloads =
+      acknowledgmentResult.replyPayloads.length > 0
+        ? [...replyPayloadsWithoutToolWarnings, ...acknowledgmentResult.replyPayloads]
+        : replyPayloads.map((payload) =>
+            isGeneratedToolWarning(payload) ? applyFinalReplyToMode(payload) : payload,
+          );
     didLogHeartbeatStrip = acknowledgmentResult.didLogHeartbeatStrip;
   } else if (hasSpecificFallbackFailure && !hasTerminalReplyPayload) {
     const silentFallbackFailurePayload = await returnSilentFallbackFailureIfNeeded();
@@ -715,12 +730,15 @@ export async function prepareReplyAgentPayloads(state: {
     replyUsageState,
   });
 
-  if (verboseEnabled) {
+  // Refresh inherited verbosity even when it started off: session preferences
+  // and plugin diagnostics may change while the model runs.
+  if (followupRun.run.verboseLevelOverride !== "off" || followupRun.run.traceAuthorized === true) {
     activeSessionEntry = refreshSessionEntryFromStore({
       storePath,
       sessionKey,
       fallbackEntry: activeSessionEntry,
       activeSessionStore,
+      expectedGeneration: accounting.expectedSession,
     });
   }
 

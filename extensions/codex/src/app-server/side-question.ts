@@ -30,7 +30,7 @@ import { readStringField as readString } from "openclaw/plugin-sdk/string-coerce
 import { resolveCodexAppServerForModelProvider } from "./app-server-policy.js";
 import { handleCodexAppServerApprovalRequest } from "./approval-bridge.js";
 import {
-  isCodexAlreadyTerminalInterruptError,
+  interruptCodexTurnAndWaitBestEffort,
   retireUnsafeCodexTurnClientBestEffort,
   unsubscribeCodexThreadBestEffort,
 } from "./attempt-client-cleanup.js";
@@ -125,7 +125,11 @@ import {
   type CodexSandboxExecEnvironment,
 } from "./sandbox-exec-server.js";
 import { resolveCodexNativeExecutionBlock } from "./sandbox-guard.js";
-import { sessionBindingIdentity, type CodexAppServerBindingStore } from "./session-binding.js";
+import {
+  sessionBindingIdentity,
+  resolveCodexSessionBinding,
+  type CodexAppServerBindingStore,
+} from "./session-binding.js";
 import {
   applyCodexSessionPermissionPolicy,
   CODEX_SESSION_PERMISSION_EXEC_MODES,
@@ -207,7 +211,15 @@ export async function runCodexAppServerSideQuestion(
     agentId: params.agentId,
     config: params.cfg,
   });
-  const binding = options.bindingStore.read(bindingIdentity);
+  const hostCapabilities = params.hostCapabilities;
+  const { binding, assertCurrent } = await resolveCodexSessionBinding({
+    bindingStore: options.bindingStore,
+    identity: bindingIdentity,
+    config: params.cfg,
+    storePath: params.storePath,
+    assertCurrent: hostCapabilities.assertActive,
+    signal: params.opts?.abortSignal,
+  });
   if (!binding?.threadId) {
     throw new Error(
       "Codex /btw needs an active Codex thread. Send a normal message first, then try /btw again.",
@@ -492,6 +504,7 @@ export async function runCodexAppServerSideQuestion(
       return;
     }
     await releaseSandboxEnvironment();
+    assertCurrent();
     const environment = await ensureCodexSandboxExecServerEnvironment({
       client: targetClient,
       sandbox: params.sandbox ?? null,
@@ -515,6 +528,7 @@ export async function runCodexAppServerSideQuestion(
   };
 
   try {
+    assertCurrent();
     const autoApproveMcpTools = shouldAutoApproveCodexAppServerApprovals(appServer);
     const projectedMcpServers = loadCodexBundleMcpApprovalConfig({
       workspaceDir: agentWorkspaceDir,
@@ -712,6 +726,7 @@ export async function runCodexAppServerSideQuestion(
           loopDetectionPreToolUseRelay: appServer.loopDetectionPreToolUseRelay,
           signal: runAbortController.signal,
           hostCapabilities: sideRunParams.hostCapabilities,
+          assertCurrent,
           onPreToolUseFailure: (failure) => {
             if (nativePreToolUseFailureFallbackActive) {
               emitNativePreToolUseFailure(failure);
@@ -747,11 +762,21 @@ export async function runCodexAppServerSideQuestion(
       run: async (forkClient, requestOptions) =>
         options.bindingStore.withLease(bindingIdentity, async () => {
           const assertCurrentBinding = () => {
-            params.hostCapabilities.assertActive();
+            assertCurrent();
             runAbortController.signal.throwIfAborted();
             if (!isDeepStrictEqual(options.bindingStore.read(bindingIdentity), binding)) {
               throw new Error("Codex side-question binding changed before fork");
             }
+          };
+          const currentRequestOptions = () => {
+            const scoped = requestOptions();
+            return {
+              ...scoped,
+              assertCurrent: () => {
+                scoped.assertCurrent();
+                assertCurrentBinding();
+              },
+            };
           };
           assertCurrentBinding();
           if (binding.connectionScope === "supervision") {
@@ -761,7 +786,7 @@ export async function runCodexAppServerSideQuestion(
                 threadId: binding.threadId,
                 includeTurns: false,
               },
-              requestOptions(),
+              currentRequestOptions(),
             );
             assertCurrentBinding();
             assertCodexSupervisionThreadLineage(binding, thread);
@@ -776,7 +801,7 @@ export async function runCodexAppServerSideQuestion(
               configCwd: executionCwd,
               request: (method, requestParams) => {
                 assertCurrentBinding();
-                return forkClient.request(method, requestParams, requestOptions());
+                return forkClient.request(method, requestParams, currentRequestOptions());
               },
             }).finally(assertCurrentBinding);
             pluginAppPolicyContext = refreshed.policyContext;
@@ -819,7 +844,7 @@ export async function runCodexAppServerSideQuestion(
                 excludeTurns: true,
                 threadSource: "user",
               },
-              requestOptions(),
+              currentRequestOptions(),
             ),
           );
           if (!response.thread.id.trim() || response.thread.id === binding.threadId) {
@@ -829,6 +854,7 @@ export async function runCodexAppServerSideQuestion(
           childThreadId = response.thread.id;
           childClient = forkClient;
           try {
+            assertCurrentBinding();
             if (
               supervisionModelSelection &&
               (response.model !== supervisionModelSelection.model ||
@@ -846,7 +872,7 @@ export async function runCodexAppServerSideQuestion(
               ...scoped,
               signal: runAbortController.signal,
               assertCurrent: () => {
-                params.hostCapabilities.assertActive();
+                assertCurrent();
                 runAbortController.signal.throwIfAborted();
                 scoped.assertCurrent();
               },
@@ -914,7 +940,11 @@ export async function runCodexAppServerSideQuestion(
                   },
                 }),
           },
-          { timeoutMs: appServer.requestTimeoutMs, signal: runAbortController.signal },
+          {
+            timeoutMs: appServer.requestTimeoutMs,
+            signal: runAbortController.signal,
+            assertCurrent,
+          },
         )
         .catch((error: unknown) => {
           if (isCodexAppServerIndeterminateRequestCancellationError(error)) {
@@ -925,6 +955,7 @@ export async function runCodexAppServerSideQuestion(
         }),
     );
     turnId = turnResponse.turn.id;
+    assertCurrent();
     collector.setTurn(sideThreadId, turnId);
     nativeToolLifecycleProjector = new CodexNativeToolLifecycleProjector(
       { ...sideRunParams, agentId: sessionAgentId },
@@ -956,6 +987,7 @@ export async function runCodexAppServerSideQuestion(
       throw error;
     }
     const trimmed = text.trim();
+    assertCurrent();
     if (!trimmed) {
       throw new Error("Codex /btw completed without an answer.");
     }
@@ -1041,6 +1073,7 @@ function registerCodexSideNativeHookRelay(params: {
   loopDetectionPreToolUseRelay: boolean;
   signal: AbortSignal;
   hostCapabilities: EmbeddedRunAttemptParamsV2["hostCapabilities"];
+  assertCurrent: () => void;
   onPreToolUseFailure: (failure: CodexNativePreToolUseFailure) => void;
 }): NativeHookRelayRegistrationHandle | undefined {
   if (params.options.enabled === false) {
@@ -1065,7 +1098,7 @@ function registerCodexSideNativeHookRelay(params: {
     }),
     signal: params.signal,
     runBeforeToolCall: params.hostCapabilities.runBeforeToolCall,
-    assertActive: params.hostCapabilities.assertActive,
+    assertActive: params.assertCurrent,
     onPreToolUseFailure: params.onPreToolUseFailure,
     command: {
       timeoutMs: params.options.gatewayTimeoutMs,
@@ -1395,19 +1428,15 @@ async function cleanupCodexSideThread(
     return;
   }
   if (params.interrupt && params.turnId !== undefined) {
-    try {
-      await client.request(
-        "turn/interrupt",
-        { threadId: params.threadId, turnId: params.turnId },
-        { timeoutMs: params.timeoutMs },
-      );
-    } catch (error) {
-      if (!isCodexAlreadyTerminalInterruptError(error)) {
-        embeddedAgentLog.debug("codex /btw side thread interrupt cleanup failed", { error });
-        await retireUnsafeCodexTurnClientBestEffort(client, "side turn interrupt");
-        // An unconfirmed native turn must never lose its only visible subscription.
-        return;
-      }
+    const confirmed = await interruptCodexTurnAndWaitBestEffort(client, {
+      threadId: params.threadId,
+      turnId: params.turnId,
+      timeoutMs: params.timeoutMs,
+    });
+    if (!confirmed) {
+      await retireUnsafeCodexTurnClientBestEffort(client, "side turn interrupt");
+      // An unconfirmed native turn must never lose its only visible subscription.
+      return;
     }
   }
   if (

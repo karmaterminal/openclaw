@@ -124,6 +124,7 @@ export async function resetReplyRunSession(params: {
       nextEntry,
       nextSessionFile,
       previousEntry: prevEntry,
+      workspaceDir: params.followupRun.run.workspaceDir,
       sessionKey: params.sessionKey,
       storePath: params.storePath,
     });

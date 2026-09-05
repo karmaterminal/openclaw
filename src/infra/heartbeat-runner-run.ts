@@ -213,6 +213,7 @@ export async function runHeartbeatOnceCore(opts: HeartbeatRunOptions): Promise<H
       wake,
       prepared,
       outcome,
+      replyPayloadSource: agentRun.replyPayload,
       maybeSendHeartbeatOk,
       outboundSession,
       outboundIdentity,

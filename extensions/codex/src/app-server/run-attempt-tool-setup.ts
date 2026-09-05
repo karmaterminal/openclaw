@@ -274,8 +274,9 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
   let nativeSpecs: CodexDynamicToolSpec[] | undefined;
   if (hasCodexNativeToolCatalog(mutable.startupBinding)) {
     runAbortController.signal.throwIfAborted();
-    params.hostCapabilities.assertActive();
+    connection.assertCurrent();
     const client = await connection.attemptClientFactory({
+      assertCurrent: connection.assertCurrent,
       startOptions: connection.appServer.start,
       authProfileId: connection.startupClientAuthProfileId,
       agentDir,
@@ -290,7 +291,7 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
         agentDir,
         assertCurrent: () => {
           runAbortController.signal.throwIfAborted();
-          params.hostCapabilities.assertActive();
+          connection.assertCurrent();
         },
       });
     } finally {

@@ -13,6 +13,7 @@ import { getPluginToolMeta } from "../plugins/tool-metadata.js";
 import { recordRunSkillUsage } from "../skills/runtime/run-usage.js";
 import { copyBeforeToolCallWrapperMetadata } from "./agent-tool-metadata.js";
 import {
+  captureAgentToolExecutionBudget,
   copyAgentToolSourceExecutionGuard,
   runAgentToolSourceExecutionGuard,
 } from "./agent-tool-source-execution-guard.js";
@@ -264,6 +265,7 @@ export function wrapToolWithBeforeToolCallHook(
     return tool;
   }
   const toolName = tool.name || "tool";
+  const admitExecution = captureAgentToolExecutionBudget();
   const diagnosticIdentity = resolveToolDiagnosticIdentity(tool);
   const hookOptions: BeforeToolCallDiagnosticOptions = {
     ...options,
@@ -491,6 +493,7 @@ export function wrapToolWithBeforeToolCallHook(
       // steering awaits. Recheck at the final synchronous source boundary.
       signal?.throwIfAborted();
       runAgentToolSourceExecutionGuard(tool);
+      admitExecution?.();
       onImplementationStart?.();
       recordAdjustedParamsForToolCall(toolCallId, executeParams, ctx?.runId);
       const eventBase = buildEventBase(executeParams);
@@ -662,21 +665,11 @@ export function wrapToolWithBeforeToolCallHook(
     }
   };
   copyBeforeToolCallWrapperMetadata(tool, wrappedTool);
-  Object.defineProperty(wrappedTool, BEFORE_TOOL_CALL_WRAPPED, {
-    value: true,
-    enumerable: true,
-  });
-  Object.defineProperty(wrappedTool, BEFORE_TOOL_CALL_DIAGNOSTIC_OPTIONS, {
-    value: hookOptions,
-    enumerable: false,
-  });
-  Object.defineProperty(wrappedTool, BEFORE_TOOL_CALL_SOURCE_TOOL, {
-    value: tool,
-    enumerable: false,
-  });
-  Object.defineProperty(wrappedTool, BEFORE_TOOL_CALL_HOOK_CONTEXT, {
-    value: ctx,
-    enumerable: false,
+  Object.defineProperties(wrappedTool, {
+    [BEFORE_TOOL_CALL_WRAPPED]: { value: true, enumerable: true },
+    [BEFORE_TOOL_CALL_DIAGNOSTIC_OPTIONS]: { value: hookOptions, enumerable: false },
+    [BEFORE_TOOL_CALL_SOURCE_TOOL]: { value: tool, enumerable: false },
+    [BEFORE_TOOL_CALL_HOOK_CONTEXT]: { value: ctx, enumerable: false },
   });
   return wrappedTool;
 }

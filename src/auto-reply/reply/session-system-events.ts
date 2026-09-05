@@ -196,6 +196,7 @@ export async function prepareFormattedSystemEvents(params: {
   isMainSession: boolean;
   isNewSession: boolean;
   suppressHeartbeatOwnedEvents?: boolean;
+  events?: readonly SystemEvent[];
 }): Promise<PreparedFormattedSystemEvents> {
   const summaryLines: string[] = [];
   const blocks: PreparedSystemEventBlock[] = [];
@@ -203,8 +204,13 @@ export async function prepareFormattedSystemEvents(params: {
   // so the heartbeat path can consume and deliver them.
   // Upstream scopes queued events to the owning agent before generic selection;
   // keep that ownership filter ahead of our delivery-ack/session filtering.
+  // Heartbeat turns pass a prepared generic selection so dedicated reminders
+  // never leak into this consume window.
   let selected = selectGenericSystemEvents(
-    selectAgentSystemEvents(peekSystemEventEntries(params.sessionKey), params.agentId),
+    selectAgentSystemEvents(
+      params.events ?? peekSystemEventEntries(params.sessionKey),
+      params.agentId,
+    ),
     { suppressHeartbeatOwnedEvents: params.suppressHeartbeatOwnedEvents },
   );
   // Storage must resolve under the SAME agent the ownership filter selected for,

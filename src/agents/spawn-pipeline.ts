@@ -104,6 +104,7 @@ class SpawnRegistrationOwnershipError extends Error {
 
 type SpawnPipelineParams<TState> = {
   adapter: SpawnBackendAdapter<TState>;
+  assertActive?: () => void;
   admissionReservation?: { release: () => void };
   buildRegistration: (state: TState, runId: string) => RegisterSubagentRunInput;
   hookRunner?: SubagentLifecycleHookRunner | null;
@@ -141,6 +142,7 @@ async function executeSpawnPipeline<TState>(
 ): Promise<SpawnPipelineResult<TState>> {
   let state: TState;
   try {
+    params.assertActive?.();
     state = await params.adapter.initialize();
   } catch (error) {
     await params.adapter.cleanupOnFailure({ phase: "initialize", error });
@@ -149,6 +151,9 @@ async function executeSpawnPipeline<TState>(
 
   let runId: string;
   try {
+    // Retain initialization's rollback handle before checking a parent that
+    // may have closed while the backend was preparing its child.
+    params.assertActive?.();
     ({ runId } = await params.adapter.dispatchTurn(state));
   } catch (error) {
     await params.adapter.cleanupOnFailure({ phase: "dispatch", state, error });
@@ -214,6 +219,7 @@ async function executeSpawnPipeline<TState>(
   try {
     // Keep construction and registration in one synchronous section so callers
     // can revalidate shared admission state without an interleaving await.
+    params.assertActive?.();
     registration = params.buildRegistration(state, runId);
     params.assertRegistrationAdmission?.();
     const registrationResult = registerSubagentRun(registration);

@@ -923,7 +923,7 @@ export async function runAgentAttempt(params: {
             throw createAgentRunSupersededAbortError();
           }
         }
-        params.deferredLifecycle?.handoffToCli();
+        const diagnosticOwner = params.deferredLifecycle?.handoffToCli();
         const cliSessionBinding = getCliSessionBinding(params.sessionEntry, cliExecutionProvider);
         const cliProcessCwd = params.cwd ? resolveUserPath(params.cwd) : params.workspaceDir;
         const cliContinuationBody = params.opts.execApprovalContinuationPromptRange
@@ -1048,6 +1048,7 @@ export async function runAgentAttempt(params: {
           return await runWithDiagnosticTraceparent(params.opts.traceparent, () =>
             runCliAgent({
               preparedRunAdmission: params.preparedRunAdmission,
+              diagnosticOwner,
               sessionId: params.sessionId,
               sessionKey: params.sessionKey,
               sessionTarget: params.sessionTarget,
@@ -1191,7 +1192,6 @@ export async function runAgentAttempt(params: {
                       ) {
                         return false;
                       }
-
                       log.warn(
                         `CLI session stalled, arming forked recovery: provider=${sanitizeForLog(cliExecutionProvider)} sessionKey=${forkStoreParams.sessionKey}`,
                       );

@@ -351,8 +351,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +4: observed session query, result, snapshot, and subscription contracts.
       // +2: browser-safe Date timestamp validation and UTF-16 truncation primitives.
       // +3: capability catalog descriptors, entry factories, and native host context.
-      // Net merge: upstream additions and continuation exports settle at the current surface.
-      4448,
+      // Continuation +17 from merge-base plus independent upstream +4.
+      4452,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -474,8 +474,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: final callable-tool availability projection for native harnesses.
       // +4: defineFeatureContract, createFeatureClient, defineFeaturePlugin, defineControlUiPlugin.
       // +2: browser-safe Date timestamp validation and UTF-16 truncation primitives.
-      // Net merge: overlapping upstream additions and continuation callables settle here.
-      2621,
+      // Continuation +5 from merge-base plus independent upstream +4.
+      2625,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

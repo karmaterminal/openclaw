@@ -1,8 +1,4 @@
 import crypto from "node:crypto";
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { resolveModelFallbackAvailability } from "../../agents/agent-scope.js";
-import { resolveModelAuthMode } from "../../agents/model-auth.js";
-import { isCliProvider } from "../../agents/model-selection.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { updateSessionEntry } from "../../config/sessions/session-accessor.js";
 import { emitContinuationCompactionReleasedSpan } from "../../infra/continuation-tracer.js";
@@ -13,24 +9,14 @@ import { setReplyPayloadMetadata } from "../reply-payload.js";
 import type { ReplyPayload } from "../types.js";
 import { scheduleReplyContinuation } from "./agent-runner-continuation-schedule.js";
 import {
-  buildInlinePluginStatusPayload,
   markBeforeAgentRunBlockedPayloads,
   resolveReplyRunDeliveryContext,
   resolveSourceReplyPolicy,
   normalizeAssistantFinalDeliveryText,
 } from "./agent-runner-core.js";
 import type { accountAgentTurn } from "./agent-runner-result-accounting.js";
+import { buildReplyDiagnosticsPayload } from "./agent-runner-result-diagnostics.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
-import {
-  accumulateSessionUsageFromTranscript,
-  buildInlineRawTracePayload,
-  derivePromptSegments,
-  type TraceCompletionView,
-  type TraceContextManagementView,
-  type TracePromptSegmentView,
-  type TraceToolSummaryView,
-  mergeExecutionTrace,
-} from "./agent-runner-trace.js";
 import { appendUsageLine } from "./agent-runner-usage-line.js";
 import {
   buildRecoverablePendingFinalDeliveryText,
@@ -85,17 +71,11 @@ export async function completeReplyAgentRun(input: {
   } = context;
   const {
     autoCompactionCount,
-    contextTokensUsed,
     continuationExtractionFromBracket,
     continuationWorkReason,
     effectiveContinuationSignal,
     effectiveContinueWorkRequests,
-    fallbackAttempts,
-    fallbackExhausted,
     internalBracketTraceparent,
-    modelUsed,
-    promptTokens,
-    providerUsed,
     runId,
     runResult,
     usage,
@@ -173,142 +153,23 @@ export async function completeReplyAgentRun(input: {
     : (runResult.meta?.finalAssistantRawText ?? runResult.meta?.finalAssistantVisibleText);
   if (!wasSilentContinuation) {
     const prefixPayloads = [...prefixNotices];
-    const rawUserText = isHookBlockedRun
-      ? runResult.meta?.finalPromptText
-      : (runResult.meta?.finalPromptText ??
-        sessionCtx.CommandBody ??
-        sessionCtx.RawBody ??
-        sessionCtx.BodyForAgent ??
-        sessionCtx.Body);
-    const traceAuthorized = followupRun.run.traceAuthorized === true;
-    const executionTrace = mergeExecutionTrace({
-      fallbackAttempts,
-      executionTrace: runResult.meta?.executionTrace,
-      provider: providerUsed,
-      model: modelUsed,
-      runner: isCliProvider(providerUsed, cfg) ? "cli" : "embedded",
-      exhausted: fallbackExhausted || isHookBlockedRun,
+    const trailingPluginStatusPayload = await buildReplyDiagnosticsPayload({
+      activeSessionEntry,
+      followupRun,
+      accounting,
+      cfg,
+      storePath,
+      userText:
+        sessionCtx.commandText ||
+        sessionCtx.agentText ||
+        sessionCtx.CommandBody ||
+        sessionCtx.RawBody ||
+        sessionCtx.BodyForAgent ||
+        sessionCtx.Body,
+      resolvedVerboseLevel,
+      resolvedBlockStreamingBreak,
+      preflightCompactionApplied,
     });
-    const requestShaping = {
-      authMode:
-        runResult.meta?.requestShaping?.authMode ??
-        (cfg?.models?.providers && providerUsed in cfg.models.providers
-          ? (resolveModelAuthMode(providerUsed, cfg, undefined, {
-              workspaceDir: followupRun.run.workspaceDir,
-            }) ?? undefined)
-          : undefined),
-      thinking:
-        runResult.meta?.requestShaping?.thinking ??
-        normalizeOptionalString(followupRun.run.thinkLevel),
-      reasoning:
-        runResult.meta?.requestShaping?.reasoning ??
-        normalizeOptionalString(followupRun.run.reasoningLevel),
-      verbose:
-        runResult.meta?.requestShaping?.verbose ?? normalizeOptionalString(resolvedVerboseLevel),
-      trace:
-        runResult.meta?.requestShaping?.trace ??
-        normalizeOptionalString(activeSessionEntry?.traceLevel),
-      fallbackEligible:
-        runResult.meta?.requestShaping?.fallbackEligible ??
-        resolveModelFallbackAvailability({
-          cfg: cfg ?? {},
-          agentId: followupRun.run.agentId,
-          sessionKey: followupRun.run.sessionKey,
-          hasSessionModelOverride: followupRun.run.hasSessionModelOverride === true,
-          modelOverrideSource: followupRun.run.modelOverrideSource,
-          hasAutoFallbackProvenance: followupRun.run.hasAutoFallbackProvenance === true,
-          modelSelectionLocked: followupRun.run.modelSelectionLocked,
-        }).kind === "active",
-      blockStreaming:
-        runResult.meta?.requestShaping?.blockStreaming ??
-        normalizeOptionalString(resolvedBlockStreamingBreak),
-    };
-    const promptSegments =
-      (runResult.meta?.promptSegments as TracePromptSegmentView[] | undefined) ??
-      derivePromptSegments(rawUserText);
-    const toolSummary = runResult.meta?.toolSummary as TraceToolSummaryView | undefined;
-    const completion =
-      (runResult.meta?.completion as TraceCompletionView | undefined) ??
-      (runResult.meta?.stopReason
-        ? {
-            stopReason: runResult.meta.stopReason,
-            finishReason: runResult.meta.stopReason,
-            ...(runResult.meta.stopReason.toLowerCase().includes("refusal")
-              ? { refusal: true }
-              : {}),
-          }
-        : undefined);
-    const contextManagement = {
-      ...(typeof activeSessionEntry?.compactionCount === "number"
-        ? { sessionCompactions: activeSessionEntry.compactionCount }
-        : {}),
-      ...(typeof runResult.meta?.contextManagement?.lastTurnCompactions === "number"
-        ? { lastTurnCompactions: runResult.meta.contextManagement.lastTurnCompactions }
-        : typeof runResult.meta?.agentMeta?.compactionCount === "number"
-          ? { lastTurnCompactions: runResult.meta.agentMeta.compactionCount }
-          : {}),
-      ...(runResult.meta?.contextManagement &&
-      typeof runResult.meta.contextManagement.preflightCompactionApplied === "boolean"
-        ? {
-            preflightCompactionApplied: runResult.meta.contextManagement.preflightCompactionApplied,
-          }
-        : preflightCompactionApplied
-          ? { preflightCompactionApplied }
-          : {}),
-      ...(runResult.meta?.contextManagement &&
-      typeof runResult.meta.contextManagement.postCompactionContextInjected === "boolean"
-        ? {
-            postCompactionContextInjected:
-              runResult.meta.contextManagement.postCompactionContextInjected,
-          }
-        : {}),
-    } satisfies TraceContextManagementView;
-    const sessionUsage =
-      traceAuthorized && activeSessionEntry?.traceLevel === "raw"
-        ? await accumulateSessionUsageFromTranscript({
-            agentId: followupRun.run.agentId,
-            sessionId: runResult.meta?.agentMeta?.sessionId ?? followupRun.run.sessionId,
-            sessionKey: followupRun.run.sessionKey,
-            storePath,
-            sessionFile: followupRun.run.sessionFile,
-          })
-        : undefined;
-    const traceEnabledForSender =
-      traceAuthorized &&
-      (activeSessionEntry?.traceLevel === "on" || activeSessionEntry?.traceLevel === "raw");
-    const shouldAppendTracePayload = verboseEnabled || traceEnabledForSender;
-    let trailingPluginStatusPayload: ReplyPayload | undefined;
-    if (shouldAppendTracePayload) {
-      const pluginStatusPayload = buildInlinePluginStatusPayload({
-        entry: activeSessionEntry,
-        includeTraceLines: traceEnabledForSender,
-      });
-      const rawTracePayload =
-        traceAuthorized && activeSessionEntry?.traceLevel === "raw"
-          ? buildInlineRawTracePayload({
-              entry: activeSessionEntry,
-              rawUserText,
-              rawAssistantText,
-              sessionUsage,
-              usage: runResult.meta?.agentMeta?.usage,
-              lastCallUsage: runResult.meta?.agentMeta?.lastCallUsage,
-              provider: providerUsed,
-              model: modelUsed,
-              contextLimit: contextTokensUsed,
-              promptTokens,
-              executionTrace,
-              requestShaping,
-              promptSegments,
-              toolSummary,
-              completion,
-              contextManagement,
-            })
-          : undefined;
-      trailingPluginStatusPayload =
-        pluginStatusPayload && rawTracePayload
-          ? { text: `${pluginStatusPayload.text}\n\n${rawTracePayload.text}` }
-          : (pluginStatusPayload ?? rawTracePayload);
-    }
     if (prefixPayloads.length > 0) {
       finalPayloads = [...prefixPayloads, ...finalPayloads];
     }

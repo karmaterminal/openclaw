@@ -1,20 +1,16 @@
 /** Session update helpers for skill snapshots and completed compaction accounting. */
 import crypto from "node:crypto";
-import { clearAllCliSessions } from "../../agents/cli-session.js";
 import type { EmbeddedAgentCompactResult } from "../../agents/embedded-agent-runner/types.js";
 import {
   type ExecPolicyOverrides,
   resolveNodeExecEligibility,
 } from "../../agents/exec-defaults.js";
-import {
-  SESSION_TOTAL_TOKENS_VERSION,
-  mergeSessionEntry,
-  type SessionEntry,
-} from "../../config/sessions.js";
+import { mergeSessionEntry, type SessionEntry } from "../../config/sessions.js";
 import {
   patchSessionEntryCore,
   updateSessionEntry,
 } from "../../config/sessions/session-accessor.js";
+import { projectCompactionAccountingPatch } from "../../config/sessions/session-entry-projection.js";
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { isFastTestRuntimeEnv } from "../../infra/env.js";
@@ -277,36 +273,15 @@ export async function incrementCompactionCount(params: {
       return null;
     }
     // The writer-serialized row owns the count, not the caller's pre-await cache.
-    const patch: Partial<InternalSessionEntry> = {
-      compactionCount: (current.compactionCount ?? 0) + incrementBy,
+    return projectCompactionAccountingPatch(current, {
+      amount: incrementBy,
+      compactionKind: params.compactionKind,
+      now,
+      tokensAfter,
+      newSessionId: params.newSessionId,
+      sessionKey,
       transcriptByteCompactionLatch: params.transcriptByteCompactionLatch,
-      updatedAt: now,
-      lastContextPressureBand: undefined,
-      ...(incrementBy > 0 ? { contextBudgetStatus: undefined } : {}),
-    };
-    if (params.compactionKind === "context-engine") {
-      clearAllCliSessions(patch);
-    }
-    if (params.newSessionId && params.newSessionId !== current.sessionId) {
-      patch.sessionId = params.newSessionId;
-      patch.usageFamilyKey = current.usageFamilyKey ?? sessionKey;
-      patch.usageFamilySessionIds = Array.from(
-        new Set([...(current.usageFamilySessionIds ?? []), current.sessionId, params.newSessionId]),
-      );
-    }
-    if (tokensAfter !== undefined) {
-      patch.totalTokens = tokensAfter;
-      patch.totalTokensFresh = true;
-      patch.totalTokensVersion = SESSION_TOTAL_TOKENS_VERSION;
-      patch.inputTokens = undefined;
-      patch.outputTokens = undefined;
-      patch.cacheRead = undefined;
-      patch.cacheWrite = undefined;
-    } else if (incrementBy > 0) {
-      patch.totalTokensFresh = false;
-      patch.totalTokensVersion = undefined;
-    }
-    return patch;
+    });
   };
   if (storePath) {
     let committed = false;

@@ -40,6 +40,7 @@ const restartRecoveryLoader = createLazyImportLoader(
   () => import("./subagent-registry-restart-recovery.js"),
 );
 const killRuntimeLoader = createLazyImportLoader(() => import("./subagent-control.runtime.js"));
+type SubagentRunManager = ReturnType<typeof createSubagentRunManager>;
 
 export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperParams) {
   const { runs, resumedRuns } = params;
@@ -111,6 +112,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
     getGatewayRuntime: params.getGatewayRecoveryRuntime,
     abandonLaunch: params.abandonSubagentRestartRecoveryLaunch,
     clearAcceptedRecovery: params.clearAcceptedSubagentRestartRecovery,
+    clearPendingNotice: params.clearPendingSubagentRecoveryNotice,
     resumeAcceptedRecovery: params.resumeSettledSubagentRestartRecovery,
     replaceRun: params.replaceSubagentRunAfterSteer,
     markLaunchAttempted: params.markSubagentRestartRecoveryLaunchAttempted,
@@ -267,7 +269,8 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
           continue;
         }
         if (
-          (entry.execution.restartRecovery?.phase === "accepted" ||
+          (entry.resumptionNotice !== undefined ||
+            entry.execution.restartRecovery?.phase === "accepted" ||
             entry.terminalOwner === "interrupted-recovery" ||
             (!getAgentRunContext(runId) && typeof entry.execution.endedAt !== "number")) &&
           (await recovery.recover(runId, entry, now))

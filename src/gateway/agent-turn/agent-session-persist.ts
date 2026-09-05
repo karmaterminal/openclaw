@@ -84,6 +84,7 @@ type AgentSessionPersistResult = {
 };
 
 export async function persistAgentSessionPhase(params: {
+  assertAdmissionCurrent?: () => void;
   request: AgentRunRequest;
   cfg: OpenClawConfig;
   storePath: string;
@@ -426,6 +427,7 @@ export async function persistAgentSessionPhase(params: {
             takeCacheOwnership: true,
             maintenanceConfig: params.maintenanceConfig,
             assertCommitAllowed: () => {
+              params.assertAdmissionCurrent?.();
               if (createdNewEntry) {
                 assertPreparedSkillLibrarySelection(params.creation.skillLibrarySelections);
               }

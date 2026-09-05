@@ -634,6 +634,7 @@ async function runSweepSample(childCount: number): Promise<Sample> {
     settleFailedQueuedSubagentLaunch,
     clearPendingLifecycleError: () => {},
     clearPendingLifecycleTimeout: () => {},
+    clearPendingSubagentRecoveryNotice: () => true,
     sweepPendingLifecycle: () => {},
     completeSubagentRunWithRecovery: async () => {
       lostContextCompletions += 1;

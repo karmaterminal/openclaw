@@ -8,7 +8,6 @@ import {
   capCompactionSummary,
   MAX_COMPACTION_SUMMARY_CHARS,
   SUMMARY_TRUNCATED_MARKER,
-  TURN_PREFIX_SUMMARIZATION_PROMPT,
 } from "../../../packages/agent-core/src/harness/compaction/compaction.js";
 import {
   computeFileLists,
@@ -1229,7 +1228,7 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
                   ...llmSummaryParams,
                   messages: pruned.droppedMessagesList,
                   maxChunkTokens: droppedMaxChunkTokens,
-                  customInstructions: structuredInstructions,
+                  summaryPrompt: { kind: "custom", instructions: structuredInstructions },
                   previousSummary,
                 });
               } catch (droppedError) {
@@ -1304,9 +1303,8 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
                   ...llmSummaryParams,
                   messages: messagesToSummarize,
                   maxChunkTokens,
-                  customInstructions: [structuredInstructions, correctiveInstructions]
-                    .filter(Boolean)
-                    .join("\n\n"),
+                  summaryPrompt: { kind: "custom", instructions: structuredInstructions },
+                  customInstructions: correctiveInstructions,
                   previousSummary: effectivePreviousSummary,
                 })
               : buildStructuredFallbackSummary(effectivePreviousSummary);
@@ -1321,11 +1319,8 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
               ...llmSummaryParams,
               messages: turnPrefixMessages,
               maxChunkTokens,
-              customInstructions: [
-                TURN_PREFIX_SUMMARIZATION_PROMPT,
-                splitTurnFocus,
-                correctiveInstructions,
-              ]
+              summaryPrompt: { kind: "turn-prefix" },
+              customInstructions: [splitTurnFocus, correctiveInstructions]
                 .filter(Boolean)
                 .join("\n\n"),
               previousSummary: undefined,

@@ -9,6 +9,8 @@ export {
   getTaskFlowById,
   listTaskFlowsForOwnerKey,
   listTaskFlowRecords,
+  prepareTaskMirroredFlowSync,
+  publishTaskFlowAfterAtomicStore,
   requestFlowCancel,
   reloadTaskFlowRegistryFromStore,
   resolveTaskFlowForLookupToken,

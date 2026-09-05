@@ -20,8 +20,9 @@ import { normalizeVerboseLevel } from "../thinking.js";
 import type { ReplyPayload } from "../types.js";
 import { scheduleReplyContinuation } from "./agent-runner-continuation-schedule.js";
 import { createReplyContinuationController } from "./agent-runner-continuation.js";
-import { resolveFallbackOriginModel } from "./agent-runner-core.js";
+import { refreshSessionEntryFromStore, resolveFallbackOriginModel } from "./agent-runner-core.js";
 import type { AgentTurnCompaction } from "./agent-runner-execution.types.js";
+import { buildReplyDiagnosticsPayload } from "./agent-runner-result-diagnostics.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
 import type { AdmittedFollowupTurn, FollowupRunnerParams } from "./followup-turn-admission.js";
 import type { FollowupExecutionResult } from "./followup-turn-execution.js";
@@ -515,6 +516,12 @@ export async function accountFollowupTurn(params: {
     getActiveSessionEntry,
     setActiveSessionEntry: (entry) => turn.session.publish(entry),
   });
+  const resolvedVerboseLevel =
+    normalizeVerboseLevel(
+      turn.queued.run.verboseLevelOverride ??
+        turn.session.current()?.verboseLevel ??
+        turn.queued.run.verboseLevel,
+    ) ?? "off";
   const accounting = await accountAgentTurn({
     activeSessionEntry: turn.session.current(),
     activeSessionStore: turn.sessionStore,
@@ -531,9 +538,7 @@ export async function accountFollowupTurn(params: {
     replyOperation: turn.operation,
     preflightCompactionApplied: turn.preflightCompactionApplied,
     replySessionKey: turn.queued.run.sessionKey ?? defaults.sessionKey ?? sessionKey,
-    resolvedVerboseLevel:
-      normalizeVerboseLevel(turn.session.current()?.verboseLevel ?? turn.queued.run.verboseLevel) ??
-      "off",
+    resolvedVerboseLevel,
     execution: settled,
     runId: execution.execution.runId,
     runStartedAt: execution.runStartedAt,
@@ -618,5 +623,26 @@ export async function accountFollowupTurn(params: {
     getActiveSessionEntry,
   });
   turn.session.publish(getActiveSessionEntry());
-  return { ...accounting, compactionNotice };
+  if (turn.queued.run.verboseLevelOverride !== "off" || turn.queued.run.traceAuthorized === true) {
+    turn.session.publish(
+      refreshSessionEntryFromStore({
+        storePath,
+        sessionKey,
+        fallbackEntry: turn.session.current(),
+        expectedGeneration: accounting.expectedSession,
+      }),
+    );
+  }
+  const diagnosticsPayload = await buildReplyDiagnosticsPayload({
+    activeSessionEntry: turn.session.current(),
+    followupRun: turn.queued,
+    accounting,
+    cfg: turn.config,
+    storePath,
+    userText: turn.queued.prompt,
+    resolvedVerboseLevel,
+    resolvedBlockStreamingBreak: turn.queued.run.blockReplyBreak,
+    preflightCompactionApplied: turn.preflightCompactionApplied,
+  });
+  return { ...accounting, compactionNotice, diagnosticsPayload };
 }

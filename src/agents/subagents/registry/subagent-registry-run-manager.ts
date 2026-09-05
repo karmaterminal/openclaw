@@ -354,6 +354,10 @@ class SubagentRunManager extends SubagentLaunchManager {
       entry.killReconciliation = {
         killedAt:
           existingKillIntent?.requestedAt ?? existingKillReconciliation?.killedAt ?? taskEndedAt,
+        taskCancellationAccepted:
+          existingKillIntent || existingKillReconciliation?.taskCancellationAccepted === true
+            ? true
+            : undefined,
         suppressTaskDelivery:
           existingKillIntent?.suppressTaskDelivery === true ||
           existingKillReconciliation?.suppressTaskDelivery === true ||
