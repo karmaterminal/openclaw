@@ -861,7 +861,9 @@ export function createAgentEventHandler({
     // Payload dispatch owns its chat terminal and registration until delivery
     // settles; lifecycle observers still receive the runtime's terminal below.
     if (!replyDispatchOwnsCompletion) {
-      chatRunState.clearRun(clientRunId);
+      if (!chatSendOwnsTerminal) {
+        chatRunState.clearRun(clientRunId);
+      }
       if (suppressRestartRecoveryProjection && chatLink) {
         chatRunState.registry.remove(evt.runId, clientRunId, sessionKey);
       }
@@ -1262,13 +1264,13 @@ export function createAgentEventHandler({
     // Flush any paced delta so streaming clients receive the complete text
     // before the final event.
     // Only flush if the buffered text differs from the last broadcast to avoid duplicates.
+    flushBufferedAgentDeltaIfNeeded(clientRunId);
     flushBufferedChatDeltaIfNeeded(sessionKey, opts?.agentId, clientRunId, sourceRunId, seq, opts, {
       text,
       shouldSuppressSilent,
     });
-    chatRunState.clearRun(clientRunId);
-    // Lifecycle owns final buffer projection even when chat.send owns the terminal frame.
-    // Returning before broadcast preserves that split without dropping deferred text.
+    // Delegated terminal ownership still needs live paced text until that owner
+    // publishes and settles. Clearing here would erase the remaining flush state.
     if (opts?.terminalFrameOwnedElsewhere) {
       return;
     }

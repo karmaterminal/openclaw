@@ -21,7 +21,6 @@ import {
   inflateDeliveryQueueEntry,
   inflateDeliveryQueueEntryResult,
   type DeliveryQueueEntryLoadResult,
-  type DeliveryQueueSqliteRow,
 } from "./delivery-queue-sqlite-codec.js";
 import type { DeliveryQueueEntryState } from "./delivery-queue-sqlite.types.js";
 import {

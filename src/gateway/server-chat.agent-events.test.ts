@@ -6005,6 +6005,109 @@ describe("agent event handler", () => {
     expect(terminalBroadcasted).toBe(true);
   });
 
+  it("flushes buffered agent and chat tails before terminal publication then clears the run", () => {
+    let now = 20_000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const { broadcast, chatRunState, handler } = createHarness({
+      resolveSessionKeyForRun: () => "session-1",
+    });
+    registerChatRun(chatRunState, "run-1", "session-1", "client-1");
+    registerAgentRunContext("run-1", { sessionKey: "session-1" });
+
+    emitAgentEvent(handler, "run-1", "assistant", { text: "tail-one", delta: "tail-one" });
+    now = 20_050;
+    emitAgentEvent(
+      handler,
+      "run-1",
+      "assistant",
+      { text: "tail-one tail-two", delta: " tail-two" },
+      { seq: 2 },
+    );
+    expect(chatRunState.runs.has("client-1")).toBe(true);
+
+    emitLifecycleEnd(handler, "run-1", 3);
+
+    const chatStates = chatBroadcastCalls(broadcast).map(
+      ([, payload]) => (payload as { state?: string }).state,
+    );
+    const agentBeforeTerminal = broadcast.mock.calls.findIndex(([event, payload]) => {
+      const data = payload as { stream?: string; data?: { delta?: string; text?: string } };
+      return event === "agent" && data.stream === "assistant";
+    });
+    const chatFinalIndex = broadcast.mock.calls.findIndex(
+      ([event, payload]) => event === "chat" && (payload as { state?: string }).state === "final",
+    );
+    expect(chatStates.includes("delta")).toBe(true);
+    expect(chatStates.indexOf("delta")).toBeLessThan(chatStates.indexOf("final"));
+    expect(agentBeforeTerminal).toBeGreaterThanOrEqual(0);
+    expect(chatFinalIndex).toBeGreaterThan(agentBeforeTerminal);
+    expect(chatRunState.runs.has("client-1")).toBe(false);
+    nowSpy.mockRestore();
+  });
+
+  it("keeps live paced text through delegated terminal ownership until settlement", () => {
+    let now = 20_000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+    let terminalBroadcasted = false;
+    const { broadcast, nodeSendToSession, chatRunState, agentRunSeq, handler } = createHarness({
+      resolveSessionKeyForRun: () => "session-chat-send",
+      isChatSendRunActive: (runId) => !terminalBroadcasted && runId === "run-chat-send",
+      wasChatSendActiveAtTerminalObservation: (runId) => runId === "run-chat-send",
+      wasChatSendTerminalBroadcasted: () => terminalBroadcasted,
+      markChatSendTerminalBroadcasted: () => {
+        terminalBroadcasted = true;
+      },
+    });
+    registerChatRun(chatRunState, "run-chat-send", "session-chat-send", "run-chat-send");
+    registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
+    emitAgentEvent(handler, "run-chat-send", "thinking", { text: "hmm", delta: "hmm" });
+    now = 20_050;
+    emitAgentEvent(
+      handler,
+      "run-chat-send",
+      "thinking",
+      { text: "hmm more", delta: " more" },
+      { seq: 2 },
+    );
+    expect(chatRunState.runs.get("run-chat-send")?.agentText?.thinking).toBeDefined();
+
+    emitLifecycleEnd(handler, "run-chat-send", 3);
+
+    expect(
+      chatBroadcastCalls(broadcast).filter(
+        ([, payload]) => (payload as { state?: string }).state === "final",
+      ),
+    ).toHaveLength(0);
+    expect(chatRunState.runs.has("run-chat-send")).toBe(true);
+    expect(chatRunState.runs.get("run-chat-send")?.agentText).toBeDefined();
+
+    finalizeChatSendAgentOutcome({
+      context: createDirectChatContext({
+        agentRunSeq,
+        broadcast,
+        chatRunState,
+        nodeSendToSession,
+      }),
+      runId: "run-chat-send",
+      sessionKey: "session-chat-send",
+      hasReturnedAgentErrorPayloads: true,
+      broadcastedSourceReplyFinal: false,
+      markTerminalBroadcasted: () => {
+        terminalBroadcasted = true;
+      },
+      terminalAlreadyBroadcasted: terminalBroadcasted,
+      returnedAgentErrorMessage:
+        "I finished the turn, but it did not produce a visible reply. Please try again.",
+    });
+
+    expect(
+      chatBroadcastCalls(broadcast).some(
+        ([, payload]) => (payload as { state?: string }).state === "error",
+      ),
+    ).toBe(true);
+    nowSpy.mockRestore();
+  });
+
   it("lets a settled reply error supersede a lifecycle-owned successful terminal", () => {
     let terminalBroadcasted = false;
     let terminalState: "final" | "aborted" | "error" | undefined;

@@ -1,3 +1,4 @@
+import { resolveAgentWorkspaceDir } from "../../../agents/agent-scope.js";
 import { createDefaultDeps } from "../../../cli/deps.js";
 import {
   appendTranscriptMessage,
@@ -121,6 +122,7 @@ export async function transitionReturnCovenantCase(params: {
         resetBoundary: {
           context: "clear",
           reason: state.casePlan.id === "allowed-ordinary-new" ? "new" : "reset",
+          cwd: resolveAgentWorkspaceDir(context.config, "proof"),
         },
         buildNextEntry: ({ currentEntry }) => ({
           ...currentEntry,

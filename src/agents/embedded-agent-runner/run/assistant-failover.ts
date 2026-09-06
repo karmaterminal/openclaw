@@ -25,7 +25,6 @@ import {
   resolveRunFailoverDecision,
   type AssistantFailoverDecision,
 } from "./failover-policy.js";
-import type { EmbeddedRunTerminalState } from "./terminal-outcome.js";
 
 type AssistantFailoverOutcome =
   | {
@@ -43,8 +42,13 @@ type AssistantFailoverOutcome =
       overloadProfileRotations: number;
       error: FailoverError;
     };
+function resolveShortWindowRateLimitRetry(message: string | undefined): boolean {
+  const window = classifyRateLimitWindow(message);
+  return window.kind === "short";
+}
+
 export function isShortWindowRateLimitMessage(message: string | undefined): boolean {
-  return classifyRateLimitWindow(message).kind === "short";
+  return resolveShortWindowRateLimitRetry(message);
 }
 
 /**
@@ -55,7 +59,7 @@ export function isShortWindowRateLimitMessage(message: string | undefined): bool
 export async function handleAssistantFailover(params: {
   initialDecision: AssistantFailoverDecision;
   terminal: AgentRunAttemptTerminal;
-  terminalState: EmbeddedRunTerminalState;
+  signalOwnedInterruption: boolean;
   fallbackConfigured: boolean;
   failoverFailure: boolean;
   failoverReason: FailoverReason | null;
@@ -108,13 +112,12 @@ export async function handleAssistantFailover(params: {
   }) => Promise<boolean>;
 }): Promise<AssistantFailoverOutcome> {
   const terminal = projectAgentRunAttemptTerminal(params.terminal);
-  const { outcome: terminalOutcome, signalOwnedInterruption } = params.terminalState;
   // Routing reasons group several HTTP failures; retain the provider's status
   // when constructing the error so fallback summaries do not invent a timeout.
   const assistantStatus = params.lastAssistant
     ? buildAssistantFailoverSignal(params.lastAssistant).status
     : undefined;
-  const externalAbort = terminal.externalAbort || signalOwnedInterruption;
+  const externalAbort = terminal.externalAbort || params.signalOwnedInterruption;
   let overloadProfileRotations = params.overloadProfileRotations;
   let decision = params.initialDecision;
   const sameModelTransientRetry = (): AssistantFailoverOutcome => ({
@@ -130,7 +133,7 @@ export async function handleAssistantFailover(params: {
 
   const canRetryRateLimit =
     params.failoverReason !== "rate_limit" ||
-    isShortWindowRateLimitMessage(params.lastAssistant?.errorMessage);
+    resolveShortWindowRateLimitRetry(params.lastAssistant?.errorMessage);
   // A silent idle timeout carries no classifiable provider error, so it
   // arrives with a null reason; consult the retry owner as a timeout so the
   // quiet same-model replay stays budgeted by the single transient owner
@@ -264,7 +267,7 @@ export async function handleAssistantFailover(params: {
       stage: "assistant",
       allowFormatRetry: params.cloudCodeAssistFormatError,
       terminal: params.terminal,
-      signalOwnedInterruption,
+      signalOwnedInterruption: params.signalOwnedInterruption,
       fallbackConfigured: params.fallbackConfigured,
       failoverFailure: params.failoverFailure,
       failoverReason: params.failoverReason,
@@ -273,90 +276,102 @@ export async function handleAssistantFailover(params: {
     });
   }
 
-  if (decision.action === "surface_error") {
-    params.logAssistantFailoverDecision("surface_error", {
+  if (decision.action === "fallback_model") {
+    const message = resolveAssistantFailoverErrorMessage(params);
+    const status =
+      assistantStatus ??
+      resolveFailoverStatus(decision.reason) ??
+      (isTimeoutErrorMessage(message) ? 408 : undefined);
+    params.logAssistantFailoverDecision("fallback_model", {
+      status,
       retryCount: params.getTransientRetryCount(),
       profileRotationCount: overloadProfileRotations,
     });
-  }
-  // Surface only current provider failures; aborts, timeout payload synthesis,
-  // and stale classified text retain the normal payload path.
-  if (
-    decision.action === "fallback_model" ||
-    (decision.action === "surface_error" &&
-      !externalAbort &&
-      !terminal.timedOut &&
-      params.failoverFailure)
-  ) {
-    const message = resolveAssistantFailoverErrorMessage(params);
-    const reason = resolveSurfaceErrorReason(decision.reason, params);
-    const status =
-      assistantStatus ??
-      resolveFailoverStatus(reason) ??
-      (isTimeoutErrorMessage(message) ? 408 : undefined);
-    if (decision.action === "fallback_model") {
-      params.logAssistantFailoverDecision("fallback_model", {
-        status,
-        retryCount: params.getTransientRetryCount(),
-        profileRotationCount: overloadProfileRotations,
-      });
-    }
+    const shouldSuspend =
+      Boolean(params.sessionKey) &&
+      (decision.reason === "rate_limit" || decision.reason === "billing");
+
     return {
       action: "throw",
       overloadProfileRotations,
       error: new FailoverError(message, {
-        reason,
+        reason: decision.reason,
         provider: params.activeErrorContext.provider,
         model: params.activeErrorContext.model,
         profileId: params.lastProfileId,
         authMode: params.authMode,
         status,
         rawError: params.lastAssistant?.errorMessage?.trim(),
-        // Retry reason "timeout" also includes 5xx; only the terminal owner records a deadline.
-        timeout:
-          terminalOutcome.status === "timeout"
-            ? {
-                timeoutPhase: terminalOutcome.timeoutPhase,
-                providerStarted: terminalOutcome.providerStarted,
-              }
-            : undefined,
-        suspend: Boolean(params.sessionKey) && (reason === "rate_limit" || reason === "billing"),
+        suspend: shouldSuspend,
       }),
     };
   }
 
-  // Cross-provider timeout cure (upstream contract per #86134 / d6b7fe8615):
-  // when the current candidate times out with fallback configured and no
-  // concrete assistant failure to drive a failoverFailure throw above, drive
-  // the next-provider attempt via a FailoverError("LLM request timed out.")
-  // throw rather than letting the run resolve with a timeout payload that
-  // stalls the fallback chain. `lastAssistant` is already candidate-scoped
-  // upstream (sessionAssistantForCandidate) so it is undefined here for the
-  // cross-provider case — resolveAssistantFailoverErrorMessage will pick the
-  // timeout branch, not the stale prior-provider error message.
-  if (
-    decision.action === "surface_error" &&
-    !externalAbort &&
-    terminal.timedOut &&
-    !terminal.timedOutDuringCompaction &&
-    !terminal.timedOutDuringToolExecution &&
-    params.fallbackConfigured &&
-    !params.failoverFailure
-  ) {
-    const message = resolveAssistantFailoverErrorMessage(params);
-    const status = isTimeoutErrorMessage(message) ? 408 : undefined;
-    return {
-      action: "throw",
-      overloadProfileRotations,
-      error: new FailoverError(message, {
-        reason: "timeout",
-        provider: params.activeErrorContext.provider,
-        model: params.activeErrorContext.model,
-        profileId: params.lastProfileId,
-        status,
-        rawError: params.lastAssistant?.errorMessage?.trim(),
-      }),
-    };
+  if (decision.action === "surface_error") {
+    params.logAssistantFailoverDecision("surface_error", {
+      retryCount: params.getTransientRetryCount(),
+      profileRotationCount: overloadProfileRotations,
+    });
+    // Only current provider failures throw here. External aborts, timeout
+    // payload synthesis, and stale classified text without failoverFailure
+    // keep the normal payload path.
+    if (!externalAbort && !terminal.timedOut && params.failoverFailure) {
+      const message = resolveAssistantFailoverErrorMessage(params);
+      const reason = resolveSurfaceErrorReason(decision.reason, params);
+      const status =
+        assistantStatus ??
+        resolveFailoverStatus(reason) ??
+        (isTimeoutErrorMessage(message) ? 408 : undefined);
+      const shouldSuspend =
+        Boolean(params.sessionKey) && (reason === "rate_limit" || reason === "billing");
+
+      return {
+        action: "throw",
+        overloadProfileRotations,
+        error: new FailoverError(message, {
+          reason,
+          provider: params.activeErrorContext.provider,
+          model: params.activeErrorContext.model,
+          profileId: params.lastProfileId,
+          authMode: params.authMode,
+          status,
+          rawError: params.lastAssistant?.errorMessage?.trim(),
+          suspend: shouldSuspend,
+        }),
+      };
+    }
+    // Cross-provider timeout cure (upstream contract per #86134 / d6b7fe8615):
+    // when the current candidate times out with fallback configured and no
+    // concrete assistant failure to drive a failoverFailure throw above, drive
+    // the next-provider attempt via a FailoverError("LLM request timed out.")
+    // throw rather than letting the run resolve with a timeout payload that
+    // stalls the fallback chain. `lastAssistant` is already candidate-scoped
+    // upstream (sessionAssistantForCandidate) so it is undefined here for the
+    // cross-provider case — resolveAssistantFailoverErrorMessage will pick the
+    // timeout branch, not the stale prior-provider error message.
+    if (
+      !externalAbort &&
+      terminal.timedOut &&
+      !terminal.timedOutDuringCompaction &&
+      !terminal.timedOutDuringToolExecution &&
+      params.fallbackConfigured &&
+      !params.failoverFailure
+    ) {
+      const message = resolveAssistantFailoverErrorMessage(params);
+      const status = isTimeoutErrorMessage(message) ? 408 : undefined;
+      return {
+        action: "throw",
+        overloadProfileRotations,
+        error: new FailoverError(message, {
+          reason: "timeout",
+          provider: params.activeErrorContext.provider,
+          model: params.activeErrorContext.model,
+          profileId: params.lastProfileId,
+          status,
+          rawError: params.lastAssistant?.errorMessage?.trim(),
+        }),
+      };
+    }
   }
 
   params.logAssistantFailoverDecision("continue_normal", {

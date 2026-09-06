@@ -16,7 +16,6 @@ import { parseAgentSessionKey } from "../../routing/session-key.js";
 import {
   MAX_INLINE_ATTACHMENT_MIME_TYPE_BYTES,
   MAX_INLINE_ATTACHMENT_MOUNT_PATH_BYTES,
-  type InlineAttachment,
 } from "../../shared/inline-attachments.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import { captureAgentToolSourceExecutionGuard } from "../agent-tool-source-execution-guard.js";

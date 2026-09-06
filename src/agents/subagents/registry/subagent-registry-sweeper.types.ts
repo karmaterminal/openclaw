@@ -33,6 +33,7 @@ export type SubagentRegistrySweeperParams = {
   getGatewayRecoveryRuntime: () => GatewayRecoveryRuntime | undefined;
   abandonSubagentRestartRecoveryLaunch: SubagentRunManager["abandonSubagentRestartRecoveryLaunch"];
   clearAcceptedSubagentRestartRecovery: SubagentRunManager["clearAcceptedSubagentRestartRecovery"];
+  clearPendingSubagentRecoveryNotice: SubagentRunManager["clearPendingSubagentRecoveryNotice"];
   resumeSettledSubagentRestartRecovery: SubagentRunManager["resumeSettledSubagentRestartRecovery"];
   replaceSubagentRunAfterSteer: SubagentRunManager["replaceSubagentRunAfterSteer"];
   markSubagentRestartRecoveryLaunchAttempted: SubagentRunManager["markSubagentRestartRecoveryLaunchAttempted"];
