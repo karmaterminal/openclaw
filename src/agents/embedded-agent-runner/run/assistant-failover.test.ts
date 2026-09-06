@@ -605,6 +605,32 @@ describe("handleAssistantFailover", () => {
 
       expect(outcome.action).toBe("continue_normal");
     });
+
+    it("keeps owner timeout facts on the overload rotation-cap FailoverError", async () => {
+      const outcome = await handleAssistantFailover(
+        makeParams({
+          initialDecision: { action: "rotate_profile", reason: "overloaded" },
+          failoverReason: "overloaded",
+          terminal: { kind: "timeout", phase: "prompt", source: "runtime" },
+          fallbackConfigured: true,
+          overloadProfileRotations: 3,
+          billingFailure: false,
+        }),
+      );
+
+      const error = expectThrownFailoverError(outcome);
+      expect(error.reason).toBe("overloaded");
+      expect(error.timeout).toEqual({ timeoutPhase: "provider", providerStarted: true });
+      const fields = resolveAgentRunErrorLifecycleFields(error, undefined);
+      expect(fields).toEqual({
+        stopReason: "timeout",
+        timeoutPhase: "provider",
+        providerStarted: true,
+      });
+      expect(
+        buildAgentRunTerminalOutcomeFromLifecycleEvent({ phase: "error", data: fields }).reason,
+      ).toBe("hard_timeout");
+    });
   });
 
   describe("surface_error branch (openclaw#70124)", () => {

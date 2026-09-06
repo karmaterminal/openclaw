@@ -110,6 +110,7 @@ export async function handleAssistantFailover(params: {
     failoverProvider: string;
     failoverModel: string;
     logFallbackDecision: (decision: "fallback_model", extra?: { status?: number }) => void;
+    timeout?: FailoverError["timeout"];
   }) => Promise<boolean>;
 }): Promise<AssistantFailoverOutcome> {
   const terminal = projectAgentRunAttemptTerminal(params.terminal);
@@ -216,6 +217,8 @@ export async function handleAssistantFailover(params: {
               profileId: params.lastProfileId,
               status,
               rawError: params.lastAssistant?.errorMessage?.trim(),
+              // Routing reason stays overloaded; timeout identity is the owner object.
+              timeout,
             },
           ),
         };
@@ -231,6 +234,7 @@ export async function handleAssistantFailover(params: {
         failoverProvider: params.activeErrorContext.provider,
         failoverModel: params.activeErrorContext.model,
         logFallbackDecision: params.logAssistantFailoverDecision,
+        timeout,
       });
     } else {
       rotated = await params.advanceAuthProfile();

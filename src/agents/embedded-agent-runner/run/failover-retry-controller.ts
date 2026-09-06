@@ -32,6 +32,7 @@ type RateLimitAuthProfileContext = {
   failoverProvider: string;
   failoverModel: string;
   logFallbackDecision: (decision: "fallback_model", extra?: { status?: number }) => void;
+  timeout?: FailoverError["timeout"];
 };
 
 export function createEmbeddedRunFailoverRetryController(input: {
@@ -174,6 +175,8 @@ export function createEmbeddedRunFailoverRetryController(input: {
             sessionId: input.getSessionId(),
             lane: globalLane,
             status,
+            // Cap throws before handleAssistantFailover; keep the owner's timeout object.
+            timeout: context.timeout,
           },
         );
       }

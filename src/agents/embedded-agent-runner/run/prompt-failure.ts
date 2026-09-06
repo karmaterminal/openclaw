@@ -78,6 +78,7 @@ export async function handleEmbeddedPromptFailure(input: {
     failoverProvider: string;
     failoverModel: string;
     logFallbackDecision: ReturnType<typeof createFailoverDecisionLogger>;
+    timeout?: FailoverError["timeout"];
   }) => Promise<boolean>;
   maybeMarkAuthProfileFailure: (failure: {
     profileId?: string;
@@ -249,6 +250,7 @@ export async function handleEmbeddedPromptFailure(input: {
         failoverProvider: input.provider,
         failoverModel: input.modelId,
         logFallbackDecision: logFailoverDecision,
+        timeout: failoverContext.timeout,
       });
     } else {
       rotated = await input.advanceAuthProfile();
