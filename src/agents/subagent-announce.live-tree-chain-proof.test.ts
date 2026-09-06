@@ -122,6 +122,7 @@ import { getSubagentRunByRunId } from "./subagents/registry/subagent-registry.js
 import {
   releaseSubagentRun,
   resetSubagentRegistryForTests,
+  testing as subagentRegistryTesting,
 } from "./subagents/registry/subagent-registry.test-helpers.js";
 import { getSubagentDepthFromSessionStore } from "./subagents/spawn/subagent-depth.js";
 import { spawnSubagentDirect } from "./subagents/spawn/subagent-spawn.js";
@@ -243,6 +244,11 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
 
     resetAgentEventsForTest();
     resetSubagentRegistryForTests();
+    // This fixture opens no browser tabs. Keep unrelated plugin activation out
+    // of the bounded continuation handoff; browser cleanup has owner tests.
+    subagentRegistryTesting.setDepsForTest({
+      cleanupBrowserSessionsForLifecycleEnd: async () => {},
+    });
     resetTaskFlowRegistryForTests({ persist: false });
     resetDelegateStoreForTests();
     resetContinueDelegateTurnAdmissionForTests();
@@ -267,6 +273,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     resetContinueDelegateTurnAdmissionForTests();
     resetTaskFlowRegistryForTests({ persist: false });
     resetSubagentRegistryForTests();
+    subagentRegistryTesting.setDepsForTest();
     resetAgentEventsForTest();
     resetContinuationTracer();
     resetDiagnosticTraceContextForTest();
@@ -386,9 +393,11 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
       4_000,
     );
     const requesterRuns = listSubagentRunsForRequester(hop1ChildSessionKey);
-    const hop2Run = requesterRuns.find((entry) =>
+    const hop2Runs = requesterRuns.filter((entry) =>
       entry.task.includes("[continuation:chain-hop:2]"),
     );
+    expect(hop2Runs).toHaveLength(1);
+    const [hop2Run] = hop2Runs;
 
     if (!hop2Run) {
       throw new Error("expected one registered depth-2 delegate");
@@ -489,8 +498,15 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     const recoveryRunId = recoveredIntermediate.runId;
     expect(getSubagentRunByRunId(hop1RunId)).toBeUndefined();
     expect(recoveredIntermediate.task).toContain(grandchildDone);
+    expect(recoveredIntermediate.requesterSessionKey).toBe(rootSessionKey);
+    expect(recoveredIntermediate.controllerSessionKey).toBe(rootSessionKey);
     expect(recoveredIntermediate.continuationTargetSessionKeys).toEqual([rootSessionKey]);
     expect(recoveredIntermediate.continuationFanoutMode).toBe("tree");
+    expect(
+      listSubagentRunsForRequester(rootSessionKey).filter(
+        (entry) => entry.childSessionKey === hop1ChildSessionKey,
+      ),
+    ).toEqual([recoveredIntermediate]);
 
     const recoveryStartedAt = Date.now() - 250;
     const recoveryEndedAt = Date.now();
@@ -548,6 +564,14 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
         entry.task.includes("[continuation:chain-hop:2]"),
       ),
     ).toHaveLength(1);
+    expect(
+      listSubagentRunsForRequester(rootSessionKey).filter(
+        (entry) => entry.childSessionKey === hop1ChildSessionKey,
+      ),
+    ).toHaveLength(1);
+    expect(
+      callGatewayMock.mock.calls.filter(([request]) => request.method === "agent"),
+    ).toHaveLength(2);
     expect(listTaskFlowsForOwnerKey(hop1ChildSessionKey)).toEqual([
       expect.objectContaining({ status: "succeeded" }),
     ]);
