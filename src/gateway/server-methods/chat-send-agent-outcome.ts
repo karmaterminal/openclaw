@@ -72,12 +72,16 @@ export function finalizeChatSendAgentOutcome(params: {
     });
   } else if (shouldBroadcastAgentError) {
     params.markTerminalBroadcasted("error");
+    // Carry the already-derived timeout class into the one terminal error
+    // frame. Re-inferring from message text or omitting errorKind would
+    // publish a truthful-once but unclassified ACP timeout.
     broadcastChatError({
       context: params.context,
       runId: params.runId,
       sessionKey: params.sessionKey,
       agentId: params.agentId,
       errorMessage: terminalErrorMessage,
+      ...(params.runtimeClassification === "timeout" ? { errorKind: "timeout" as const } : {}),
     });
   } else if (shouldBroadcastSuccessfulFinal) {
     params.markTerminalBroadcasted("final");
