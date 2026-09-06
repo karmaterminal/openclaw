@@ -237,6 +237,7 @@ function createContinuationRun(params: {
       skillsSnapshot: {},
       provider: "anthropic",
       model: "claude",
+      thinkingCatalog: [{ provider: "anthropic", id: "claude", input: ["text"] }],
       thinkLevel: "low",
       verboseLevel: "off",
       elevatedLevel: "off",
