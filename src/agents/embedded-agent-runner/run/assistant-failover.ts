@@ -25,6 +25,7 @@ import {
   resolveRunFailoverDecision,
   type AssistantFailoverDecision,
 } from "./failover-policy.js";
+import type { EmbeddedRunTerminalState } from "./terminal-outcome.js";
 
 type AssistantFailoverOutcome =
   | {
@@ -59,7 +60,7 @@ export function isShortWindowRateLimitMessage(message: string | undefined): bool
 export async function handleAssistantFailover(params: {
   initialDecision: AssistantFailoverDecision;
   terminal: AgentRunAttemptTerminal;
-  signalOwnedInterruption: boolean;
+  terminalState: EmbeddedRunTerminalState;
   fallbackConfigured: boolean;
   failoverFailure: boolean;
   failoverReason: FailoverReason | null;
@@ -112,12 +113,21 @@ export async function handleAssistantFailover(params: {
   }) => Promise<boolean>;
 }): Promise<AssistantFailoverOutcome> {
   const terminal = projectAgentRunAttemptTerminal(params.terminal);
+  const { outcome: terminalOutcome, signalOwnedInterruption } = params.terminalState;
   // Routing reasons group several HTTP failures; retain the provider's status
   // when constructing the error so fallback summaries do not invent a timeout.
   const assistantStatus = params.lastAssistant
     ? buildAssistantFailoverSignal(params.lastAssistant).status
     : undefined;
-  const externalAbort = terminal.externalAbort || params.signalOwnedInterruption;
+  const externalAbort = terminal.externalAbort || signalOwnedInterruption;
+  // Retry reason "timeout" also includes 5xx; only the terminal owner records a deadline.
+  const timeout =
+    terminalOutcome.status === "timeout"
+      ? {
+          timeoutPhase: terminalOutcome.timeoutPhase,
+          providerStarted: terminalOutcome.providerStarted,
+        }
+      : undefined;
   let overloadProfileRotations = params.overloadProfileRotations;
   let decision = params.initialDecision;
   const sameModelTransientRetry = (): AssistantFailoverOutcome => ({
@@ -267,7 +277,7 @@ export async function handleAssistantFailover(params: {
       stage: "assistant",
       allowFormatRetry: params.cloudCodeAssistFormatError,
       terminal: params.terminal,
-      signalOwnedInterruption: params.signalOwnedInterruption,
+      signalOwnedInterruption,
       fallbackConfigured: params.fallbackConfigured,
       failoverFailure: params.failoverFailure,
       failoverReason: params.failoverReason,
@@ -302,6 +312,7 @@ export async function handleAssistantFailover(params: {
         authMode: params.authMode,
         status,
         rawError: params.lastAssistant?.errorMessage?.trim(),
+        timeout,
         suspend: shouldSuspend,
       }),
     };
@@ -336,6 +347,7 @@ export async function handleAssistantFailover(params: {
           authMode: params.authMode,
           status,
           rawError: params.lastAssistant?.errorMessage?.trim(),
+          timeout,
           suspend: shouldSuspend,
         }),
       };
@@ -369,6 +381,7 @@ export async function handleAssistantFailover(params: {
           profileId: params.lastProfileId,
           status,
           rawError: params.lastAssistant?.errorMessage?.trim(),
+          timeout,
         }),
       };
     }
