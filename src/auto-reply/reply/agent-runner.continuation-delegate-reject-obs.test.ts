@@ -45,39 +45,13 @@ vi.mock("../../agents/model-fallback-runner.js", () => ({
   }) => runWithModelFallbackMock(params),
 }));
 
-vi.mock("../../agents/embedded-agent-runner/run-entry.js", () => ({
-  runEmbeddedAgentEntry: async (params: {
-    selection: { provider: string; model: string };
-    runCandidate: (
-      provider: string,
-      model: string,
-      options: Record<string, unknown>,
-    ) => Promise<unknown>;
-  }) => {
-    const { provider, model } = params.selection;
-    const fallback = await runWithModelFallbackMock({
-      provider,
-      model,
-      runCandidate: (nextProvider: string, nextModel: string) =>
-        params.runCandidate(nextProvider, nextModel, {
-          isFallbackRetry: false,
-          modelRoutingProvenance: {
-            requestedProvider: provider,
-            requestedModel: model,
-            stage: "initial",
-          },
-          contextEngineLogicalTurnLease: {},
-          onContextEngineTurnCandidate: () => {},
-        }),
-    });
-    return {
-      ...fallback,
-      outcome: "completed",
-      terminal: { metadata: {} },
-      settleSessionOverride: async () => {},
-    };
-  },
-}));
+vi.mock("../../agents/embedded-agent-runner/run-entry.js", async () => {
+  const { createSuccessfulEmbeddedAgentEntryMock } =
+    await import("./agent-runner-entry.test-support.js");
+  return {
+    runEmbeddedAgentEntry: createSuccessfulEmbeddedAgentEntryMock(() => runWithModelFallbackMock),
+  };
+});
 
 vi.mock("../../agents/model-fallback-attempt.js", () => ({
   isFallbackSummaryError: (err: unknown) =>
