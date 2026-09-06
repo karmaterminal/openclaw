@@ -28,7 +28,6 @@ import { registerSubagentTraceparentHandoff } from "../../subagent-traceparent-h
 import { getGatewayToolCallerIdentity } from "../../tools/gateway-caller-context.js";
 import {
   buildContinuationSessionPatch,
-  persistInitialChildRuntimeState,
   type ContinuationSpawnParams,
 } from "../announce/subagent-announce.runtime.js";
 import {
@@ -185,6 +184,7 @@ export async function spawnSubagentDirect(
       inheritedToolAllowlist: ctx.inheritedToolAllowlist,
       inheritedToolDenylist: ctx.inheritedToolDenylist,
       modelPatch: plan.initialSessionPatch,
+      continuationPatch: buildContinuationSessionPatch(params),
       swarmGroupId,
       collect: params.collect === true,
       outputSchema: params.outputSchema,
@@ -230,20 +230,6 @@ export async function spawnSubagentDirect(
       provisionalSessionIdentity = {
         expectedSessionId: childEntry.sessionId,
         expectedLifecycleRevision: childEntry.lifecycleRevision,
-      };
-    }
-    const runtimeStatePersistError = await persistInitialChildRuntimeState({
-      cfg,
-      childSessionKey,
-      resolvedModel,
-      continuationPatch: buildContinuationSessionPatch(params),
-    });
-    if (runtimeStatePersistError) {
-      await cleanupCreatedSession();
-      return {
-        status: "error",
-        error: runtimeStatePersistError,
-        childSessionKey,
       };
     }
 

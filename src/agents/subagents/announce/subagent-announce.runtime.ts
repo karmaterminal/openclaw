@@ -7,13 +7,7 @@
 import { loadSessionEntry } from "../../../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import { normalizeDiagnosticTraceparent } from "../../../infra/diagnostic-trace-context-pure.js";
-import { summarizeSpawnError } from "../../spawn-error.js";
 import type { SubagentRunRecord } from "../registry/subagent-registry.types.js";
-import { splitModelRef } from "../spawn/subagent-spawn-plan.js";
-import {
-  resolveGatewaySessionStoreTarget,
-  upsertSessionEntryCore,
-} from "../spawn/subagent-spawn.runtime.js";
 
 export { resolveContinuationRuntimeConfig } from "../../../auto-reply/continuation/config.js";
 export { dispatchGatewayMethodInProcess } from "../../../gateway/server-plugin-in-process-dispatch.js";
@@ -71,35 +65,6 @@ export function buildContinuationSessionPatch(
     }
   }
   return patch;
-}
-export async function persistInitialChildRuntimeState(params: {
-  cfg: Parameters<typeof resolveGatewaySessionStoreTarget>[0]["cfg"];
-  childSessionKey: string;
-  resolvedModel?: string;
-  continuationPatch: Partial<SessionEntry>;
-}): Promise<string | undefined> {
-  const { provider, model } = splitModelRef(params.resolvedModel);
-  const patch: Partial<SessionEntry> = {
-    ...params.continuationPatch,
-    ...(model ? { model } : {}),
-    ...(provider ? { modelProvider: provider } : {}),
-  };
-  if (Object.keys(patch).length === 0) {
-    return undefined;
-  }
-  try {
-    const target = resolveGatewaySessionStoreTarget({
-      cfg: params.cfg,
-      key: params.childSessionKey,
-    });
-    await upsertSessionEntryCore(
-      { storePath: target.storePath, sessionKey: target.canonicalKey },
-      patch,
-    );
-    return undefined;
-  } catch (error) {
-    return summarizeSpawnError(error);
-  }
 }
 
 export function readSubagentSessionEntry(storePath: string, sessionKey: string) {

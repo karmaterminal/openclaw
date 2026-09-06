@@ -1904,6 +1904,13 @@ describe("spawnSubagentDirect seam flow", () => {
         task: "inspect the spawn seam",
         model: "openai/gpt-5.4",
         traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+        drainsContinuationDelegateQueue: true,
+        continuationChainState: {
+          count: 7,
+          startedAt: 1_783_520_000_000,
+          tokens: 12_345,
+          chainId: "chain-from-parent",
+        },
       },
       {
         agentSessionKey: "agent:main:main",
@@ -1934,6 +1941,19 @@ describe("spawnSubagentDirect seam flow", () => {
       createdVia: "spawn",
       createdActor: { type: "agent", id: "main" },
       createdAt: expect.any(Number),
+      model: "gpt-5.4",
+      modelProvider: "openai",
+      modelOverride: "gpt-5.4",
+      providerOverride: "openai",
+      modelOverrideSource: "user",
+      modelOverrideRouteResolution: "resolved",
+      subagentRole: "orchestrator",
+      subagentControlScope: "children",
+      continuationTraceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+      continuationChainCount: 7,
+      continuationChainStartedAt: 1_783_520_000_000,
+      continuationChainTokens: 12_345,
+      continuationChainId: "chain-from-parent",
     });
     const registerInput = firstRegisteredSubagentRun();
     const requesterOrigin = requireRecord(registerInput.requesterOrigin);
