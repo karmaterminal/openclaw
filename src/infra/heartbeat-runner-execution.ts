@@ -329,7 +329,7 @@ export async function resolveHeartbeatWakeStage(opts: HeartbeatRunOptions) {
   } as const;
 }
 
-export type StageResult<T, K extends string> = Extract<Awaited<T>, { kind: K }>;
+type StageResult<T, K extends string> = Extract<Awaited<T>, { kind: K }>;
 export type ReadyHeartbeatWake = StageResult<ReturnType<typeof resolveHeartbeatWakeStage>, "ready">;
 
 export async function prepareHeartbeatRunStage(wake: ReadyHeartbeatWake) {
