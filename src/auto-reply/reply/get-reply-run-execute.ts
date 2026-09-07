@@ -43,6 +43,7 @@ import { hasInboundAudio } from "./inbound-media.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
 import { resolveReplyToMode } from "./reply-threading.js";
 import { resolveRoutedDeliveryThreadId } from "./routed-delivery-thread.js";
+import { settleManagedSystemEventsAfterTurnAdoption } from "./session-system-event-adoption.js";
 import {
   bindSourceReplyDeliveryRuntime,
   createSourceReplyDeliveryRuntime,
@@ -62,12 +63,9 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     thinkLevelOverride,
     thinkingCatalog,
     skillsSnapshot,
-    prefixedCommandBody,
-    queuedBody,
-    transcriptBody,
-    transcriptCommandBody,
     promptMedia,
     currentInboundContext,
+    adoptPreparedSystemEvents,
     isRoomEvent,
     providedReplyOperation,
     preparedSessionState,
@@ -88,6 +86,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     params,
     runtimePolicySessionKey,
     isHeartbeat,
+    isContinuationWake,
     traceRunPhase,
     promptSessionCtx,
     inboundEventKind,
@@ -255,6 +254,27 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
   });
   const inputProvenance = ctx.InputProvenance ?? sessionCtx.InputProvenance;
   const userTurnTimestamp = normalizeMessageTimestampMs(ctx.Timestamp);
+  let adoptedSystemEvents: Extract<
+    ReturnType<typeof adoptPreparedSystemEvents>,
+    { kind: "adopted" }
+  >;
+  for (;;) {
+    const adoption = adoptPreparedSystemEvents();
+    if (adoption.kind === "adopted") {
+      adoptedSystemEvents = adoption;
+      break;
+    }
+    await traceRunPhase("reply.settle_stale_system_event_authority", adoption.settle);
+  }
+  // Keep prompt bytes and adoption receipts inside this synchronous section:
+  // any future awaited preparation belongs before the authority recheck above.
+  const {
+    prefixedCommandBody,
+    queuedBody,
+    transcriptBody,
+    transcriptCommandBody,
+    managedSystemEventDeliveries,
+  } = adoptedSystemEvents;
   // prompt-prelude substitutes MEDIA_ONLY_USER_TEXT as transcriptBody for
   // bodyless turns; storage stays bare (the LLM boundary re-injects it), while
   // room-event lines that merely contain the marker keep their real text.
@@ -298,6 +318,9 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
           text: userTurnTranscriptText,
           senderIsOwner: command.senderIsOwner,
           ...(sourceTurnId ? { idempotencyKey: sourceTurnId } : {}),
+          ...(managedSystemEventDeliveries.size > 0
+            ? { sessionDeliveryAckIds: [...managedSystemEventDeliveries.keys()] }
+            : {}),
           ...(inputProvenance && !isHeartbeat ? { provenance: inputProvenance } : {}),
           ...(isHeartbeat
             ? { provenance: { kind: "internal_system" as const, sourceTool: "heartbeat" } }
@@ -345,6 +368,24 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
   const replyPolicyChannel =
     (replyRoute.channel as OriginatingChannelType | undefined) ??
     (messageProvider as OriginatingChannelType | undefined);
+  const originalTurnAdoptionLifecycle = opts?.turnAdoptionLifecycle;
+  const effectiveTurnAdoptionLifecycle =
+    managedSystemEventDeliveries.size > 0
+      ? {
+          ...originalTurnAdoptionLifecycle,
+          onAdopted: async () => {
+            await settleManagedSystemEventsAfterTurnAdoption({
+              deliveries: managedSystemEventDeliveries.values(),
+              persistedMessage: userTurnTranscriptRecorder?.getPersistedMessage?.(),
+              onTurnAdopted: originalTurnAdoptionLifecycle?.onAdopted,
+            });
+          },
+        }
+      : originalTurnAdoptionLifecycle;
+  const effectiveOpts =
+    effectiveTurnAdoptionLifecycle === opts?.turnAdoptionLifecycle
+      ? opts
+      : { ...opts, turnAdoptionLifecycle: effectiveTurnAdoptionLifecycle };
   const queuedToolsAllow = opts?.toolsAllow ? [...opts.toolsAllow] : opts?.toolsAllow;
   const queuedToolIntersections = opts?.toolsAllow
     ? readToolAllowlistIntersection(opts.toolsAllow)
@@ -358,6 +399,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     transcriptPrompt: transcriptCommandBody,
     ...(userTurnTranscriptRecorder ? { userTurnTranscriptRecorder } : {}),
     currentInboundEventKind: inboundEventKind,
+    ...(userTurnTimestamp ? { currentInboundEventTimestampMs: userTurnTimestamp } : {}),
     currentInboundAudio: hasInboundAudio(sessionCtx),
     channelAdmissionEvidence:
       readChannelContextAdmissionEvidence(ctx) ?? readChannelContextAdmissionEvidence(sessionCtx),
@@ -365,7 +407,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     explicitSkillSelections: params.explicitSkillSelections,
     ...(queuedFollowupAbortSignal ? { abortSignal: queuedFollowupAbortSignal } : {}),
     deliveryCorrelations: opts?.queuedDeliveryCorrelations,
-    turnAdoptionLifecycle: opts?.turnAdoptionLifecycle,
+    turnAdoptionLifecycle: effectiveTurnAdoptionLifecycle,
     ...(opts?.onFollowupQueueDisposition
       ? { onQueueDisposition: opts.onFollowupQueueDisposition }
       : {}),
@@ -592,11 +634,11 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       opts:
         authorityRunId || cronCreatorAuthorityCapability
           ? {
-              ...opts,
+              ...effectiveOpts,
               ...(authorityRunId ? { runId: authorityRunId } : {}),
               ...(cronCreatorAuthorityCapability ? { cronCreatorAuthorityCapability } : {}),
             }
-          : opts,
+          : effectiveOpts,
       typing,
       sessionEntry: preparedSessionState.sessionEntry,
       sessionStore,
@@ -615,6 +657,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       typingMode,
       resetTriggered: effectiveResetTriggered,
       replyThreadingOverride,
+      isContinuationWake,
       replyOperation: providedReplyOperation,
     });
   // The scope surrounds the whole immediate turn, including provider fallbacks.

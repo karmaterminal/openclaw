@@ -31,6 +31,15 @@ import { linkPnpmBootstrapShellTools } from "./test-helpers.js";
 
 const SCRIPT_PATH = "scripts/install.sh";
 const nodeExecutable = requireNodeTool("node");
+const HIDE_ARCH_PACKAGE_MANAGER = `
+command() {
+  if [[ "\${1:-}" == "-v" && "\${2:-}" == "pacman" ]]; then
+    return 1
+  fi
+  builtin command "$@"
+}
+is_arch_linux() { return 1; }
+`;
 
 function runInstallShell(script: string, env: NodeJS.ProcessEnv = {}) {
   const home = mkdtempSync(join(tmpdir(), "openclaw-install-home-"));
@@ -633,6 +642,7 @@ NODE
     const result = runInstallShell(`
       set -euo pipefail
       source "${SCRIPT_PATH}"
+      ${HIDE_ARCH_PACKAGE_MANAGER}
       OS=linux
       require_sudo() { :; }
       install_build_tools_linux() { return 0; }
@@ -711,6 +721,7 @@ NODE
     const result = runInstallShell(`
       set -euo pipefail
       source "${SCRIPT_PATH}"
+      ${HIDE_ARCH_PACKAGE_MANAGER}
       OS=linux
       NODE_FAKE_VERSION=v20.15.1
       require_sudo() { :; }
@@ -753,6 +764,7 @@ NODE
     const result = runInstallShell(`
       set -euo pipefail
       source "${SCRIPT_PATH}"
+      ${HIDE_ARCH_PACKAGE_MANAGER}
       OS=linux
       NODE_FAKE_VERSION=v20.15.1
       require_sudo() { :; }
@@ -888,6 +900,7 @@ NODE
     const result = runInstallShell(`
       set -euo pipefail
       source "${SCRIPT_PATH}"
+      ${HIDE_ARCH_PACKAGE_MANAGER}
       OS=linux
       require_sudo() { :; }
       install_build_tools_linux() { return 0; }
@@ -927,6 +940,7 @@ NODE
     const result = runInstallShell(`
       set -euo pipefail
       source "${SCRIPT_PATH}"
+      ${HIDE_ARCH_PACKAGE_MANAGER}
       OS=linux
       require_sudo() { :; }
       install_build_tools_linux() { return 0; }
@@ -3482,7 +3496,7 @@ EOF
     chmodSync(join(home, ".bash_profile"), 0o000);
 
     try {
-      const shellScript = `source "${SCRIPT_PATH}"; ensure_user_local_bin_on_path`;
+      const shellCommand = `source "${SCRIPT_PATH}"; ensure_user_local_bin_on_path`;
       let result: ReturnType<typeof spawnSync>;
       if (process.getuid?.() === 0) {
         chmodSync(tmp, 0o755);
@@ -3491,7 +3505,7 @@ EOF
         chownSync(join(home, ".bash_login"), 65534, 65534);
         result = spawnSync(
           "setpriv",
-          ["--reuid=65534", "--regid=65534", "--clear-groups", "bash", "-c", shellScript],
+          ["--reuid=65534", "--regid=65534", "--clear-groups", "bash", "-c", shellCommand],
           {
             encoding: "utf8",
             env: {
@@ -3506,7 +3520,7 @@ EOF
           },
         );
       } else {
-        result = runInstallShell(shellScript, {
+        result = runInstallShell(shellCommand, {
           HOME: home,
           PATH: "/usr/bin:/bin",
           SHELL: "/bin/bash",
@@ -3563,7 +3577,7 @@ EOF
     chmodSync(profile, 0o400);
 
     try {
-      const shellScript = `source "${SCRIPT_PATH}"; persist_path_line_to_profile "$HOME/.profile" 'export PATH="$HOME/.local/bin:$PATH"'`;
+      const shellCommand = `source "${SCRIPT_PATH}"; persist_path_line_to_profile "$HOME/.profile" 'export PATH="$HOME/.local/bin:$PATH"'`;
       let result: ReturnType<typeof spawnSync>;
       if (process.getuid?.() === 0) {
         chmodSync(tmp, 0o755);
@@ -3571,7 +3585,7 @@ EOF
         chownSync(profile, 65534, 65534);
         result = spawnSync(
           "setpriv",
-          ["--reuid=65534", "--regid=65534", "--clear-groups", "bash", "-c", shellScript],
+          ["--reuid=65534", "--regid=65534", "--clear-groups", "bash", "-c", shellCommand],
           {
             encoding: "utf8",
             env: {
@@ -3585,7 +3599,7 @@ EOF
           },
         );
       } else {
-        result = runInstallShell(shellScript, { HOME: home, PATH: "/usr/bin:/bin" });
+        result = runInstallShell(shellCommand, { HOME: home, PATH: "/usr/bin:/bin" });
       }
 
       expect(result.status).toBe(0);

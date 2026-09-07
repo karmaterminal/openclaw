@@ -1,4 +1,5 @@
 import { readAssistantThinkingAppend } from "@openclaw/ai/internal/shared";
+import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import type { InlineCodeState } from "../../packages/markdown-core/src/code-spans.js";
 import {
@@ -101,7 +102,8 @@ type StreamRenderingParams = {
   blockChunker: EmbeddedAgentSubscribeContext["blockChunker"];
   emitBlockReply: EmbeddedAgentSubscribeContext["emitBlockReply"];
   flushAssistantStream: EmbeddedAgentSubscribeContext["flushAssistantStream"];
-  pendingBlockReplyTasks: Set<Promise<void>>;
+  settleBlockReplyDeliveries: (options?: { retryFailures?: boolean }) => void | Promise<void>;
+  currentPendingBlockReplyTasks: () => Promise<void>[];
   pushAssistantText: (text: string, normalizedText?: string) => void;
   shouldSkipAssistantText: (text: string, normalizedText?: string) => boolean;
 };
@@ -113,7 +115,8 @@ export function createStreamRendering({
   blockChunker,
   emitBlockReply,
   flushAssistantStream,
-  pendingBlockReplyTasks,
+  settleBlockReplyDeliveries,
+  currentPendingBlockReplyTasks,
   pushAssistantText,
   shouldSkipAssistantText,
 }: StreamRenderingParams) {
@@ -360,6 +363,7 @@ export function createStreamRendering({
     text: string,
     options?: {
       assistantMessageIndex?: number;
+      deferPendingToolMedia?: boolean;
       final?: boolean;
       completeMarkdownChunk?: boolean;
       finalReply?: ReplyDirectiveParseResult;
@@ -388,10 +392,7 @@ export function createStreamRendering({
       return;
     }
     const markBlockReplyTextHandled = () => {
-      if (blockReplyText) {
-        state.lastBlockReplyText = blockReplyText;
-        state.lastDeliveredBlockReplyText = blockReplyText;
-      }
+      state.lastBlockReplyText = blockReplyText;
       state.toolExecutionSinceLastBlockReply = false;
     };
     if (hasMessageToolOnlySourceDelivery()) {
@@ -476,7 +477,12 @@ export function createStreamRendering({
         pendingText = options.finalReply.text;
         chunk = chunk.trimStart();
       }
-      splitResult = { ...splitResult, ...options.finalReply, text: pendingText };
+      splitResult = {
+        ...splitResult,
+        ...options.finalReply,
+        text: pendingText,
+        audioAsVoice: options.finalReply.audioAsVoice ?? splitResult?.audioAsVoice,
+      };
     }
     if (!splitResult) {
       if (slicedPrefixReplay) {
@@ -506,6 +512,17 @@ export function createStreamRendering({
       }
       return;
     }
+    const deliveredTextSlot =
+      cleanedText.length > 0 ? state.deliveredBlockReplyTexts.push("") - 1 : undefined;
+    if (cleanedText && deliveredTextSlot !== undefined) {
+      state.attemptedBlockReplyTexts?.splice(deliveredTextSlot, 0, cleanedText);
+    }
+    const markBlockReplyTextDelivered = () => {
+      state.lastDeliveredBlockReplyText = blockReplyText;
+      if (cleanedText && deliveredTextSlot !== undefined) {
+        state.deliveredBlockReplyTexts[deliveredTextSlot] = cleanedText;
+      }
+    };
     pushAssistantText(chunk, normalizedChunk);
     emitBlockReply(
       {
@@ -519,7 +536,12 @@ export function createStreamRendering({
       {
         assistantMessageIndex: options?.assistantMessageIndex ?? state.assistantMessageIndex,
         consumePendingToolMedia:
-          options?.finalReply !== undefined || Boolean(mediaUrls?.length || audioAsVoice),
+          (options?.final === true &&
+            options.deferPendingToolMedia !== true &&
+            !/(?:^|\n)\s*MEDIA:/iu.test(blockReplyText)) ||
+          options?.finalReply !== undefined ||
+          Boolean(mediaUrls?.length || audioAsVoice),
+        onDelivered: markBlockReplyTextDelivered,
       },
     );
     markBlockReplyTextHandled();
@@ -539,6 +561,12 @@ export function createStreamRendering({
     if (!params.onBlockReply) {
       return undefined;
     }
+    const settlement = settleBlockReplyDeliveries({
+      retryFailures: options?.retryFailures,
+    });
+    if (isPromiseLike<void>(settlement)) {
+      return Promise.resolve(settlement).then(() => flushBlockReplyBuffer(options));
+    }
     let pendingChunk: string | undefined;
     if (blockChunker.hasBuffered()) {
       blockChunker.drain({
@@ -553,6 +581,7 @@ export function createStreamRendering({
           pendingChunk = text;
         },
       });
+      blockChunker.reset();
     }
     if (pendingChunk !== undefined || options?.final) {
       // Only the final chunk can select attachments or consume fallback tool
@@ -562,14 +591,12 @@ export function createStreamRendering({
         completeMarkdownChunk: options?.final === true,
       });
     }
-    if (pendingBlockReplyTasks.size === 0) {
-      return undefined;
+    if (currentPendingBlockReplyTasks().length === 0) {
+      return;
     }
-    return (async () => {
-      while (pendingBlockReplyTasks.size > 0) {
-        await Promise.allSettled(pendingBlockReplyTasks);
-      }
-    })();
+    return settleBlockReplyDeliveries({
+      retryFailures: options?.retryFailures,
+    });
   };
 
   const emitReasoningStream: EmbeddedAgentSubscribeContext["emitReasoningStream"] = (
@@ -640,7 +667,10 @@ export function createStreamRendering({
     }
   };
 
-  const resetAssistantMessageState = (nextAssistantTextBaseline: number) => {
+  const resetAssistantMessageState = (
+    nextAssistantTextBaseline: number,
+    options?: { preserveReplyDirectiveState?: boolean },
+  ) => {
     flushAssistantStream();
     state.deltaBuffer = "";
     state.streamBlockText = "";
@@ -669,11 +699,25 @@ export function createStreamRendering({
     state.assistantMessageIndex += 1;
     state.lastAssistantStreamContentIndex = undefined;
     state.lastAssistantStreamItemId = undefined;
-    state.assistantTextBaseline = nextAssistantTextBaseline;
+    state.lastAssistantTextMessageIndex = -1;
+    state.lastAssistantTextNormalized = undefined;
+    state.lastAssistantTextTrimmed = undefined;
+    if (!options?.preserveReplyDirectiveState) {
+      state.assistantTextBaseline = nextAssistantTextBaseline;
+      state.deliveredBlockReplyTexts = [];
+      state.attemptedBlockReplyTexts = [];
+      state.deferredBlockReplyTexts = [];
+    }
+    state.pendingAssistantReplyDirectives = undefined;
+    if (!options?.preserveReplyDirectiveState) {
+      state.deferredAssistantReplyDirectives = undefined;
+      state.lastDeliveredAssistantReplyDirectives = undefined;
+    }
   };
 
   return {
     consumePartialReplyDirectives,
+    consumeReplyDirectives: replyDirectiveAccumulator.consume,
     resetBlockReplyDirectives: replyDirectiveAccumulator.reset,
     resetPartialReplyDirectives,
     emitBlockChunk,

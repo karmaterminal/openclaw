@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import {
   getReplyPayloadMetadata,
   markReplyPayloadForSourceSuppressionDelivery,
@@ -14,6 +15,9 @@ import {
   consumePendingToolMediaIntoReply,
   hasAssistantVisibleReply,
   readPendingToolMediaReply,
+  recordDeferredAssistantReplyDirectives,
+  recordDeliveredAssistantReplyDirectives,
+  recordDeliveredAutoMedia,
   restorePendingToolMediaReply,
 } from "./embedded-agent-subscribe.handlers.messages.replies.js";
 import type {
@@ -54,7 +58,7 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
   const assistantTexts = state.assistantTexts;
   const deferredAssistantScopes: AssistantStreamScope[] = [];
   const lastEmittedCommentaryByItem = new Map<string, string>();
-  const pendingBlockReplyTasks = new Set<Promise<void>>();
+  const pendingBlockReplyTasks = new Map<Promise<void>, number>();
   const pendingPartialReplyTasks = new Set<Promise<void>>();
   let streamScope: AssistantStreamScope = {};
   const drainPartialReply = (scope: AssistantStreamScope) => {
@@ -261,49 +265,153 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     BlockReplyPayload,
     { pendingToolMedia: BlockReplyPayload; autoDeliveryMediaUrls: string[] }
   >();
+  const deferredBlockReplyCallbacks = new WeakMap<BlockReplyPayload, () => void>();
+  const failedBlockReplies: Array<{
+    payload: BlockReplyPayload;
+    options?: {
+      assistantMessageIndex?: number;
+      pendingToolMedia?: BlockReplyPayload | null;
+      autoDeliveryMediaUrls?: string[];
+    };
+    onDelivered?: () => void;
+    deliveryGeneration: number;
+    deliveryKey: string;
+    deliverySequence: number;
+  }> = [];
+  const exhaustedBlockReplyKeys = new Set<string>();
+  let blockReplyDeliveryGeneration = 0;
+  let blockReplyDeliverySequence = 0;
+  let resolveBlockReplyDeliveryInvalidation: () => void = () => {};
+  let blockReplyDeliveryInvalidation = new Promise<void>((resolve) => {
+    resolveBlockReplyDeliveryInvalidation = resolve;
+  });
+  const blockReplyDeliveryKey = (
+    payload: BlockReplyPayload,
+    options?: { assistantMessageIndex?: number },
+  ) =>
+    JSON.stringify([
+      options?.assistantMessageIndex,
+      payload.text ?? "",
+      payload.mediaUrls ?? [],
+      payload.audioAsVoice === true,
+      payload.replyToId ?? "",
+      payload.replyToTag === true,
+      payload.replyToCurrent === true,
+      payload.isReasoning === true,
+    ]);
   const emitBlockReplySafely = (
     payload: Parameters<NonNullable<SubscribeEmbeddedAgentSessionParams["onBlockReply"]>>[0],
     options?: {
+      assistantMessageIndex?: number;
       pendingToolMedia?: BlockReplyPayload | null;
       autoDeliveryMediaUrls?: string[];
     },
-  ): void => {
+    onDelivered?: () => void,
+    retrying = false,
+    deliveryGeneration = blockReplyDeliveryGeneration,
+    deliveryKey = blockReplyDeliveryKey(payload, options),
+    deliverySequence = blockReplyDeliverySequence++,
+  ): boolean => {
     if (!params.onBlockReply) {
-      return;
+      return false;
     }
-    const recordDeliveredReply = () => {
-      if (!payload.isReasoning && hasAssistantVisibleReply(payload)) {
-        state.visibleBlockReplyCount += 1;
-        if (options?.pendingToolMedia) {
-          state.pendingToolMediaDeliveryFailed = false;
-          state.hasToolMediaBlockReply = true;
-        }
-        for (const url of options?.autoDeliveryMediaUrls ?? []) {
-          state.toolAutoDeliveryMediaUrls.delete(url);
-        }
-      }
-    };
+    if (deliveryGeneration !== blockReplyDeliveryGeneration) {
+      return false;
+    }
+    if (!retrying && exhaustedBlockReplyKeys.has(deliveryKey)) {
+      log.warn("block reply callback retry already exhausted");
+      return false;
+    }
     const recordDeliveryFailure = () => {
       if (options?.pendingToolMedia) {
         restorePendingToolMediaReply(state, options.pendingToolMedia);
       }
     };
-    const assistantMessageIndex = getReplyPayloadMetadata(payload)?.assistantMessageIndex;
-    runBestEffortCallback({
-      callback: () =>
-        assistantMessageIndex === undefined
-          ? params.onBlockReply?.(payload)
-          : params.onBlockReply?.(payload, { assistantMessageIndex }),
-      label: "block reply",
-      log,
-      pending: pendingBlockReplyTasks,
-      onSuccess: recordDeliveredReply,
-      onError: recordDeliveryFailure,
-    });
+    try {
+      const taggedPayload =
+        options?.assistantMessageIndex !== undefined
+          ? setReplyPayloadMetadata(payload, {
+              assistantMessageIndex: options.assistantMessageIndex,
+            })
+          : payload;
+      const assistantMessageIndex =
+        options?.assistantMessageIndex ??
+        getReplyPayloadMetadata(taggedPayload)?.assistantMessageIndex;
+      const context = assistantMessageIndex === undefined ? undefined : { assistantMessageIndex };
+      const maybeTask = context
+        ? params.onBlockReply(taggedPayload, context)
+        : params.onBlockReply(taggedPayload);
+      if (!isPromiseLike<void>(maybeTask)) {
+        if (deliveryGeneration === blockReplyDeliveryGeneration) {
+          exhaustedBlockReplyKeys.delete(deliveryKey);
+          onDelivered?.();
+        }
+        return true;
+      }
+      const task = Promise.resolve(maybeTask).then(
+        () => {
+          if (deliveryGeneration === blockReplyDeliveryGeneration) {
+            exhaustedBlockReplyKeys.delete(deliveryKey);
+            onDelivered?.();
+          }
+        },
+        () => {
+          recordDeliveryFailure();
+          if (deliveryGeneration !== blockReplyDeliveryGeneration) {
+            return;
+          }
+          if (options?.pendingToolMedia) {
+            return;
+          }
+          if (!retrying) {
+            failedBlockReplies.push({
+              payload,
+              options,
+              onDelivered,
+              deliveryGeneration,
+              deliveryKey,
+              deliverySequence,
+            });
+          } else {
+            exhaustedBlockReplyKeys.add(deliveryKey);
+          }
+        },
+      );
+      pendingBlockReplyTasks.set(task, deliveryGeneration);
+      void task.finally(() => {
+        pendingBlockReplyTasks.delete(task);
+      });
+      return true;
+    } catch {
+      recordDeliveryFailure();
+      if (deliveryGeneration !== blockReplyDeliveryGeneration) {
+        return false;
+      }
+      if (options?.pendingToolMedia) {
+        return false;
+      }
+      if (!retrying) {
+        failedBlockReplies.push({
+          payload,
+          options,
+          onDelivered,
+          deliveryGeneration,
+          deliveryKey,
+          deliverySequence,
+        });
+      } else {
+        exhaustedBlockReplyKeys.add(deliveryKey);
+      }
+      return false;
+    }
   };
   const emitBlockReply = (
     payload: BlockReplyPayload,
-    options?: { assistantMessageIndex?: number; consumePendingToolMedia?: boolean },
+    options?: {
+      assistantMessageIndex?: number;
+      consumePendingToolMedia?: boolean;
+      onDelivered?: () => void;
+    },
   ) => {
     flushAssistantStream();
     const withAssistantDirectives = consumePendingAssistantReplyDirectivesIntoReply(state, payload);
@@ -329,7 +437,7 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
         pendingToolMedia?.attachments?.[index] ?? {},
       ]),
     );
-    const blockPayload =
+    const blockPayload: BlockReplyPayload =
       autoDeliveryMediaUrls.length === 0
         ? withToolMedia
         : markReplyPayloadForSourceSuppressionDelivery({
@@ -356,19 +464,142 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
           autoDeliveryMediaUrls,
         });
       }
+      if (!taggedPayload.isReasoning) {
+        recordDeferredAssistantReplyDirectives(state, taggedPayload);
+        if (taggedPayload.text) {
+          state.deferredBlockReplyTexts.push(taggedPayload.text);
+        }
+      }
+      if (options?.onDelivered) {
+        deferredBlockReplyCallbacks.set(taggedPayload, options.onDelivered);
+      }
       state.deferredBlockReplies.push(taggedPayload);
       return;
     }
-    emitBlockReplySafely(taggedPayload, { pendingToolMedia, autoDeliveryMediaUrls });
+    emitBlockReplySafely(
+      taggedPayload,
+      { ...options, pendingToolMedia, autoDeliveryMediaUrls },
+      () => {
+        if (!taggedPayload.isReasoning && hasAssistantVisibleReply(taggedPayload)) {
+          recordDeliveredAssistantReplyDirectives(state, taggedPayload);
+          state.visibleBlockReplyCount += 1;
+          if (pendingToolMedia) {
+            state.pendingToolMediaDeliveryFailed = false;
+            state.hasToolMediaBlockReply = true;
+          }
+          recordDeliveredAutoMedia(state, autoDeliveryMediaUrls);
+        }
+        options?.onDelivered?.();
+      },
+    );
   };
   const flushDeferredBlockReplies = () => {
-    for (const payload of state.deferredBlockReplies.splice(0)) {
-      const deferredToolMedia = deferredToolMediaReplies.get(payload);
-      emitBlockReplySafely(payload, deferredToolMedia);
+    if (state.deferredBlockReplies.length === 0) {
+      return;
     }
+    const deferred = state.deferredBlockReplies.splice(0);
+    for (const payload of deferred) {
+      const onDelivered = deferredBlockReplyCallbacks.get(payload);
+      const deferredToolMedia = deferredToolMediaReplies.get(payload);
+      const pendingToolMedia = deferredToolMedia?.pendingToolMedia;
+      emitBlockReplySafely(payload, deferredToolMedia, () => {
+        if (!payload.isReasoning && hasAssistantVisibleReply(payload)) {
+          recordDeliveredAssistantReplyDirectives(state, payload);
+          state.visibleBlockReplyCount += 1;
+          if (pendingToolMedia) {
+            state.pendingToolMediaDeliveryFailed = false;
+            state.hasToolMediaBlockReply = true;
+          }
+          recordDeliveredAutoMedia(state, deferredToolMedia?.autoDeliveryMediaUrls);
+        }
+        onDelivered?.();
+      });
+    }
+    state.deferredAssistantReplyDirectives = undefined;
+    state.deferredBlockReplyTexts = [];
   };
   const clearDeferredBlockReplies = () => {
     state.deferredBlockReplies.length = 0;
+    state.deferredAssistantReplyDirectives = undefined;
+    state.deferredBlockReplyTexts = [];
+  };
+
+  // Continuation retry state (generation counter, invalidation promise,
+  // failed/exhausted keys) lives at factory scope so emitBlockReplySafely and
+  // these settle/retry closures share one owner; the parent drives them via the
+  // returned object during compaction retries.
+  const currentPendingBlockReplyTasks = () =>
+    Array.from(pendingBlockReplyTasks)
+      .filter(([, generation]) => generation === blockReplyDeliveryGeneration)
+      .map(([task]) => task);
+  const waitForPendingBlockReplies = (): Promise<void> =>
+    (async () => {
+      const deliveryGeneration = blockReplyDeliveryGeneration;
+      const deliveryInvalidation = blockReplyDeliveryInvalidation;
+      let pending = currentPendingBlockReplyTasks();
+      while (pending.length > 0) {
+        if (deliveryGeneration !== blockReplyDeliveryGeneration) {
+          return;
+        }
+        await Promise.race([
+          Promise.allSettled(pending).then(() => undefined),
+          deliveryInvalidation,
+        ]);
+        if (deliveryGeneration !== blockReplyDeliveryGeneration) {
+          if (!params.blockReplyChunking && params.onBlockReplyFlush) {
+            await Promise.allSettled(pending);
+            if (params.blockReplyBreak === "message_end") {
+              await params.onBlockReplyFlush({ reason: "message_end" });
+            }
+          }
+          return;
+        }
+        pending = currentPendingBlockReplyTasks();
+      }
+    })();
+  const settleBlockReplyDeliveries = (options?: {
+    retryFailures?: boolean;
+  }): void | Promise<void> => {
+    if (currentPendingBlockReplyTasks().length > 0) {
+      return waitForPendingBlockReplies().then(() => settleBlockReplyDeliveries(options));
+    }
+    if (!options?.retryFailures || failedBlockReplies.length === 0) {
+      return;
+    }
+    const failed = failedBlockReplies
+      .splice(0)
+      .toSorted((left, right) => left.deliverySequence - right.deliverySequence);
+    for (const entry of failed) {
+      emitBlockReplySafely(
+        entry.payload,
+        entry.options,
+        entry.onDelivered,
+        true,
+        entry.deliveryGeneration,
+        entry.deliveryKey,
+        entry.deliverySequence,
+      );
+    }
+    if (currentPendingBlockReplyTasks().length > 0 || failedBlockReplies.length > 0) {
+      return settleBlockReplyDeliveries(options);
+    }
+  };
+  const invalidateBlockReplyDeliveries = () => {
+    blockReplyDeliveryGeneration += 1;
+    resolveBlockReplyDeliveryInvalidation();
+    blockReplyDeliveryInvalidation = new Promise<void>((resolve) => {
+      resolveBlockReplyDeliveryInvalidation = resolve;
+    });
+    for (const [task, generation] of pendingBlockReplyTasks) {
+      if (generation !== blockReplyDeliveryGeneration) {
+        pendingBlockReplyTasks.delete(task);
+      }
+    }
+  };
+  const getBlockReplyDeliveryGeneration = () => blockReplyDeliveryGeneration;
+  const resetBlockReplyFailures = () => {
+    failedBlockReplies.length = 0;
+    exhaustedBlockReplyKeys.clear();
   };
 
   const rememberAssistantText = (text: string, normalizedText?: string) => {
@@ -426,8 +657,9 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     text: string;
     addedDuringMessage: boolean;
     chunkerHasBuffered: boolean;
+    reconcileCurrentMessage?: boolean;
   }) => {
-    const { text, addedDuringMessage, chunkerHasBuffered } = args;
+    const { text, addedDuringMessage, chunkerHasBuffered, reconcileCurrentMessage } = args;
 
     // A run-budget timeout flush may already have committed partial text for
     // this message. When message_end later finalizes the complete text, replace
@@ -443,7 +675,9 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
 
     // If we're not streaming block replies, ensure the final payload includes
     // the final text even when interim streaming was enabled.
-    if (state.includeReasoning && text && !params.onBlockReply) {
+    if (reconcileCurrentMessage && addedDuringMessage) {
+      replaceCurrentAssistantText(text);
+    } else if (state.includeReasoning && text && !params.onBlockReply) {
       replaceCurrentAssistantText(text);
       state.suppressBlockChunks = true;
     } else if (!addedDuringMessage && !chunkerHasBuffered && text) {
@@ -473,15 +707,21 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     assistantTexts,
     clearAssistantStream,
     clearDeferredBlockReplies,
+    currentPendingBlockReplyTasks,
     emitAssistantStreamData,
     emitBlockReply,
     finalizeAssistantTexts,
     flushAssistantStream,
     flushDeferredBlockReplies,
+    getBlockReplyDeliveryGeneration,
+    invalidateBlockReplyDeliveries,
     pendingBlockReplyTasks,
     pushAssistantText,
     replaceCurrentAssistantText,
+    resetBlockReplyFailures,
+    settleBlockReplyDeliveries,
     shouldSkipAssistantText,
+    waitForPendingBlockReplies,
     waitForPendingEvents,
   };
 }

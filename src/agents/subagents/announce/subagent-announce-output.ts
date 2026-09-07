@@ -29,6 +29,7 @@ import {
   resolveAgentIdFromSessionKey,
   resolveSessionStorePathCore,
 } from "./subagent-announce.runtime.js";
+import type { SubagentRunOutcome } from "./subagent-run-outcome.js";
 import { assistantCallsSessionsYield, isSessionsYieldToolResult } from "./subagent-yield-output.js";
 
 const FAST_TEST_RETRY_INTERVAL_MS = 8;
@@ -85,14 +86,6 @@ type AgentWaitResult = {
   pendingError?: boolean;
   timeoutPhase?: string;
   providerStarted?: boolean;
-};
-
-export type SubagentRunOutcome = {
-  status: "ok" | "error" | "timeout" | "unknown";
-  error?: string;
-  startedAt?: number;
-  endedAt?: number;
-  elapsedMs?: number;
 };
 
 export function withSubagentOutcomeTiming(

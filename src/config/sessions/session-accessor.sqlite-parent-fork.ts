@@ -12,8 +12,8 @@ import {
   scanSessionTranscriptTree,
   selectSessionTranscriptTreePathNodes,
 } from "./transcript-tree.js";
-import type { SessionEntry } from "./types.js";
 import { resolveFreshSessionTotalTokens } from "./types.js";
+import type { SessionEntry } from "./types.js";
 
 export type ParentForkSourceTranscript = {
   appendMode?: "side";

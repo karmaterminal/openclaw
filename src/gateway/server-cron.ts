@@ -74,7 +74,7 @@ import {
   resolveHeartbeatForWake,
   resolveHeartbeatTimeoutOverrideSeconds,
 } from "../infra/heartbeat-runner-config.js";
-import { runHeartbeatOnce } from "../infra/heartbeat-runner-run.js";
+import { runHeartbeatOnceCore } from "../infra/heartbeat-runner-run.js";
 import {
   requestHeartbeat,
   requestHeartbeatAndWait,
@@ -882,7 +882,7 @@ export function buildGatewayCronService(params: {
     runHeartbeatOnce: async (opts) => {
       const { runtimeConfig, wake } = resolveCronHeartbeatWake(opts, true);
       const { getReplyFromConfig: _getReplyFromConfig, ...heartbeatDeps } = params.deps;
-      return await runHeartbeatOnce({
+      return await runHeartbeatOnceCore({
         cfg: runtimeConfig,
         ...wake,
         // Preserve ownership across this adapter so the wake does not self-block on

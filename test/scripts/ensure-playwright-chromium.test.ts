@@ -10,6 +10,7 @@ import {
   shouldRequirePlaywrightChromiumFromArgv,
 } from "../../scripts/ensure-playwright-chromium.mts";
 
+const noPnpmPath = "/openclaw-test-no-pnpm";
 const playwrightCli = path.join(
   path.dirname(createRequire(path.resolve("ui/package.json")).resolve("playwright/package.json")),
   "cli.js",
@@ -103,7 +104,7 @@ describe("ensurePlaywrightChromium", () => {
     expect(
       ensurePlaywrightChromium({
         cwd: "/repo",
-        env: { PATH: "/bin" },
+        env: { PATH: noPnpmPath },
         executablePath: "/cache/chromium/chrome",
         existsSync: (candidatePath: string) =>
           candidatePath === "/usr/bin/chromium-browser" ||
@@ -158,7 +159,7 @@ describe("ensurePlaywrightChromium", () => {
       env: {
         INIT_CWD: callerDirectory,
         OPENCLAW_TESTBOX: "1",
-        PATH: "/bin",
+        PATH: noPnpmPath,
         PLAYWRIGHT_BROWSERS_PATH: ".artifacts/playwright-browsers",
       },
       executablePath,
@@ -183,7 +184,7 @@ describe("ensurePlaywrightChromium", () => {
     { configuredPath: "/shared/playwright", label: "an absolute cache path" },
     { configuredPath: "0", label: "Playwright's package-local cache sentinel" },
   ])("preserves $label for sibling browser dependency installs", ({ configuredPath }) => {
-    const env: NodeJS.ProcessEnv = { INIT_CWD: "/repo", PATH: "/bin" };
+    const env: NodeJS.ProcessEnv = { INIT_CWD: "/repo", PATH: noPnpmPath };
     if (configuredPath !== undefined) {
       env.PLAYWRIGHT_BROWSERS_PATH = configuredPath;
     }
@@ -216,7 +217,7 @@ describe("ensurePlaywrightChromium", () => {
       ensurePlaywrightChromium({
         cwd: "/repo",
         ensureFfmpeg: true,
-        env: { PATH: "/bin" },
+        env: { PATH: noPnpmPath },
         executablePath: "/cache/chromium/chrome",
         existsSync: (candidatePath: string) => candidatePath === "/usr/bin/chromium-browser",
         log: (line: string) => logs.push(line),
@@ -229,7 +230,7 @@ describe("ensurePlaywrightChromium", () => {
     });
     expect(spawnSync).toHaveBeenCalledWith(process.execPath, [playwrightCli, "install", "ffmpeg"], {
       cwd: path.resolve("/repo", "ui"),
-      env: { PATH: "/bin" },
+      env: { PATH: noPnpmPath },
       shell: false,
       stdio: "pipe",
     });
@@ -284,7 +285,7 @@ describe("ensurePlaywrightChromium", () => {
     expect(
       ensurePlaywrightChromium({
         cwd: "/repo",
-        env: { PATH: "/bin" },
+        env: { PATH: noPnpmPath },
         executablePath: "/cache/chromium/chrome",
         existsSync: () => ++existsCalls > 1,
         platform: "linux",
@@ -298,7 +299,7 @@ describe("ensurePlaywrightChromium", () => {
       [playwrightCli, "install", "chromium"],
       {
         cwd: path.resolve("/repo", "ui"),
-        env: { PATH: "/bin" },
+        env: { PATH: noPnpmPath },
         shell: false,
         stdio: "pipe",
       },
@@ -317,7 +318,7 @@ describe("ensurePlaywrightChromium", () => {
     expect(
       ensurePlaywrightChromium({
         cwd: "/repo",
-        env: { PATH: "/bin" },
+        env: { PATH: noPnpmPath },
         executablePath: "/cache/chromium/chrome",
         existsSync: () => true,
         getuid: () => 0,
@@ -333,7 +334,7 @@ describe("ensurePlaywrightChromium", () => {
       [playwrightCli, "install", "chromium"],
       {
         cwd: path.resolve("/repo", "ui"),
-        env: { PATH: "/bin" },
+        env: { PATH: noPnpmPath },
         shell: false,
         stdio: "pipe",
       },
@@ -344,7 +345,7 @@ describe("ensurePlaywrightChromium", () => {
       [playwrightCli, "install", "--with-deps", "chromium"],
       {
         cwd: path.resolve("/repo", "ui"),
-        env: { PATH: "/bin" },
+        env: { PATH: noPnpmPath },
         shell: false,
         stdio: "pipe",
       },
@@ -363,7 +364,7 @@ describe("ensurePlaywrightChromium", () => {
     expect(
       ensurePlaywrightChromium({
         cwd: "/repo",
-        env: { CI: "1", PATH: "/bin" },
+        env: { CI: "1", PATH: noPnpmPath },
         executablePath: "/cache/chromium/chrome",
         existsSync: () => ++existsCalls > 1,
         getuid: () => 501,
@@ -380,7 +381,7 @@ describe("ensurePlaywrightChromium", () => {
       [playwrightCli, "install", "chromium"],
       {
         cwd: path.resolve("/repo", "ui"),
-        env: { CI: "1", PATH: "/bin" },
+        env: { CI: "1", PATH: noPnpmPath },
         shell: false,
         stdio: "pipe",
       },
@@ -391,7 +392,7 @@ describe("ensurePlaywrightChromium", () => {
       [playwrightCli, "install", "--with-deps", "chromium"],
       {
         cwd: path.resolve("/repo", "ui"),
-        env: { CI: "1", PATH: "/bin" },
+        env: { CI: "1", PATH: noPnpmPath },
         shell: false,
         stdio: "pipe",
       },
@@ -422,7 +423,7 @@ describe("ensurePlaywrightChromium", () => {
     expect(
       ensurePlaywrightChromium({
         cwd: "/repo",
-        env: { CI: "1", PATH: "/bin" },
+        env: { CI: "1", PATH: noPnpmPath },
         executablePath: "/cache/chromium/chrome",
         existsSync: (candidatePath: string) =>
           installedSystemChromium && candidatePath === "/usr/bin/chromium-browser",
@@ -458,7 +459,7 @@ describe("ensurePlaywrightChromium", () => {
     expect(
       ensurePlaywrightChromium({
         cwd: "/repo",
-        env: { PATH: "/bin" },
+        env: { PATH: noPnpmPath },
         executablePath: "/cache/chromium/chrome",
         existsSync: () => true,
         getuid: () => 501,
@@ -481,7 +482,7 @@ describe("ensurePlaywrightChromium", () => {
     expect(
       ensurePlaywrightChromium({
         cwd: "/repo",
-        env: { PATH: "/bin" },
+        env: { PATH: noPnpmPath },
         executablePath: "/cache/chromium/chrome",
         existsSync: () => true,
         platform: "linux",
@@ -499,7 +500,7 @@ describe("ensurePlaywrightChromium", () => {
       [playwrightCli, "install", "chromium"],
       {
         cwd: path.resolve("/repo", "ui"),
-        env: { PATH: "/bin" },
+        env: { PATH: noPnpmPath },
         shell: false,
         stdio: "pipe",
       },
@@ -552,7 +553,7 @@ describe("ensurePlaywrightChromium", () => {
     expect(
       installLinuxSystemChromiumPackage({
         cwd: "/repo",
-        env: { PATH: "/bin" },
+        env: { PATH: noPnpmPath },
         getuid: () => 501,
         platform: "linux",
         spawnSync,

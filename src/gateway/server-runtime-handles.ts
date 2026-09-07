@@ -30,6 +30,7 @@ export type GatewayServerMutableState = {
   discovery: GatewayDiscovery | null;
   maintenance: GatewayMaintenanceHandles | null;
   stopMediaCleanup: () => Promise<MediaCleanupStopResult>;
+  delegateArtifactCleanup: ReturnType<typeof setInterval> | null;
   heartbeatRunner: HeartbeatRunner;
   stopDeliveryRecovery: () => Promise<void>;
   stopGatewayUpdateCheck: () => Promise<void>;
@@ -54,6 +55,7 @@ export function createGatewayServerMutableState(): GatewayServerMutableState {
     discovery: null,
     maintenance: null,
     stopMediaCleanup: () => waitForMediaCleanupDrains({ timeoutMs: MEDIA_CLEANUP_STOP_TIMEOUT_MS }),
+    delegateArtifactCleanup: null,
     heartbeatRunner: createNoopHeartbeatRunner(),
     stopDeliveryRecovery: async () => {},
     stopGatewayUpdateCheck: async () => {},

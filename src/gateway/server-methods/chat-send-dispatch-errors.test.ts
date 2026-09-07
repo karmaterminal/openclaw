@@ -46,6 +46,7 @@ describe("handleChatSendSetupError", () => {
         removeChatRun: vi.fn(),
       } as never,
       error: new SessionTranscriptProjectionUnavailableError("sess-main"),
+      markTerminalBroadcasted: vi.fn(),
       respond,
       session: {
         agentId: "main",
@@ -144,6 +145,7 @@ describe("createChatSendDispatchErrorLifecycle", () => {
           } as never,
           isQueuedFollowupEnqueued: () => false,
           isAgentRunStarted: () => false,
+          markTerminalBroadcasted: vi.fn(),
           persistUserTurnTranscript,
           session: {
             agentId: target.agentId,
@@ -256,6 +258,7 @@ describe("createChatSendDispatchErrorLifecycle", () => {
     const broadcast = vi.fn();
     const cleanupAdmittedRun = vi.fn();
     const removeChatRun = vi.fn();
+    const markTerminalBroadcasted = vi.fn();
     const warn = vi.fn();
     const dedupe = new Map();
     const lifecycle = createChatSendDispatchErrorLifecycle({
@@ -282,6 +285,7 @@ describe("createChatSendDispatchErrorLifecycle", () => {
       } as never,
       isQueuedFollowupEnqueued: () => true,
       isAgentRunStarted: () => false,
+      markTerminalBroadcasted,
       persistUserTurnTranscript: vi.fn(),
       session: {
         agentId: "main",
@@ -310,6 +314,10 @@ describe("createChatSendDispatchErrorLifecycle", () => {
       "chat",
       expect.objectContaining({ runId: "run-1", state: "final" }),
       { sessionKeys: ["agent:main:main"] },
+    );
+    expect(markTerminalBroadcasted).toHaveBeenCalledOnce();
+    expect(markTerminalBroadcasted.mock.invocationCallOrder[0]).toBeLessThan(
+      broadcast.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
     expect(cleanupAdmittedRun).toHaveBeenCalledOnce();
     expect(removeChatRun).toHaveBeenCalledWith("run-1", "run-1", "agent:main:main");
@@ -381,6 +389,7 @@ describe("createChatSendDispatchErrorLifecycle", () => {
         } as never,
         isQueuedFollowupEnqueued: () => false,
         isAgentRunStarted: () => false,
+        markTerminalBroadcasted: vi.fn(),
         persistUserTurnTranscript: vi.fn(),
         session: {
           agentId: "main",
@@ -449,6 +458,7 @@ describe("createChatSendDispatchErrorLifecycle", () => {
       } as never,
       isQueuedFollowupEnqueued: () => false,
       isAgentRunStarted: () => false,
+      markTerminalBroadcasted: vi.fn(),
       persistUserTurnTranscript: vi.fn(),
       session: {
         agentId: "main",
@@ -519,6 +529,7 @@ describe("createChatSendDispatchErrorLifecycle", () => {
       } as never,
       isQueuedFollowupEnqueued: () => false,
       isAgentRunStarted: () => true,
+      markTerminalBroadcasted: vi.fn(),
       persistUserTurnTranscript: vi.fn(),
       session: {
         agentId: "main",
@@ -604,6 +615,7 @@ describe("createChatSendDispatchErrorLifecycle", () => {
         } as never,
         isQueuedFollowupEnqueued: () => false,
         isAgentRunStarted: () => false,
+        markTerminalBroadcasted: vi.fn(),
         persistUserTurnTranscript: vi.fn(),
         session: {
           agentId: "ops",

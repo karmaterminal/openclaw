@@ -98,6 +98,7 @@ type GatewayWsSharedHandlerParams = {
   gatewayMethods: string[];
   events: string[];
   refreshHealthSnapshot: GatewayRequestContext["refreshHealthSnapshot"];
+  refreshHealthAfterConnect?: boolean;
 };
 
 export type AttachGatewayWsConnectionHandlerParams = GatewayWsSharedHandlerParams & {
@@ -141,6 +142,7 @@ export function attachGatewayWsConnectionHandler(params: AttachGatewayWsConnecti
     gatewayMethods,
     events,
     refreshHealthSnapshot,
+    refreshHealthAfterConnect,
     logGateway,
     logHealth,
     logWsControl,
@@ -691,6 +693,7 @@ export function attachGatewayWsConnectionHandler(params: AttachGatewayWsConnecti
       buildRequestContext,
       nodeLifecycleDispatch,
       refreshHealthSnapshot,
+      ...(refreshHealthAfterConnect === undefined ? {} : { refreshHealthAfterConnect }),
       originCheckMetrics,
       logHealth,
     });

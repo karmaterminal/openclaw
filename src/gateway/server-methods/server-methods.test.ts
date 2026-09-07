@@ -1363,6 +1363,22 @@ describe("projectChatDisplayMessages", () => {
         },
       ],
     },
+    {
+      name: "redacts raw validation text from structured assistant errors",
+      message: {
+        content: [
+          { type: "text", text: 'Received arguments: {"secret":"value"}' },
+          {
+            type: "toolCall",
+            id: "call-1",
+            name: "edit",
+            arguments: { secret: "value" },
+          },
+        ],
+        errorMessage: privateError,
+      },
+      content: safeFailureContent,
+    },
   ];
 
   it.each(displayErrorCases)("$name", ({ message, content, visibleText }) => {
@@ -1491,6 +1507,33 @@ describe("projectChatDisplayMessages", () => {
       expect(JSON.stringify(result)).not.toContain("secret.internal.example");
     },
   );
+
+  it("projects raw validation-loop assistant errors as a generic safe failure", () => {
+    const result = projectChatDisplayMessages([
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: 'Stopped after 2 identical failed edit tool calls. Received arguments: {"secret":"value"}',
+          },
+        ],
+        stopReason: "error",
+        timestamp: 1,
+      },
+    ]);
+
+    expect(result).toEqual([
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "The agent run failed before producing a reply." }],
+        stopReason: "error",
+        timestamp: 1,
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("Received arguments");
+    expect(JSON.stringify(result)).not.toContain("secret");
+  });
 
   it.each([undefined, ""])(
     "projects repaired stream errors with errorMessage %j as a generic safe failure",
@@ -5017,8 +5060,9 @@ describe("gateway healthHandlers.health cache freshness", () => {
       prefix: "openclaw-health-cached-dq-",
     });
     try {
-      const { moveDeliveryQueueEntryToFailed, upsertDeliveryQueueEntry } =
-        await import("../../infra/delivery-queue-sqlite.js");
+      const { upsertDeliveryQueueEntry } = await import("../../infra/delivery-queue-sqlite.js");
+      const { moveDeliveryQueueEntryToFailedForTest } =
+        await import("../../infra/delivery-queue-test-support.js");
       const cachedPressure = [
         {
           channelId: "slack",
@@ -5037,7 +5081,7 @@ describe("gateway healthHandlers.health cache freshness", () => {
         queueName: "outbound",
         entry: { id: "dead-1", enqueuedAt: 1_000, retryCount: 5, retainOnFailure: true },
       });
-      moveDeliveryQueueEntryToFailed("outbound", "dead-1");
+      moveDeliveryQueueEntryToFailedForTest("outbound", "dead-1");
       const { createChannelIngressQueue } = await import("../../channels/message/ingress-queue.js");
       const { DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS } =
         await import("../../channels/message/ingress-retry-policy.js");
