@@ -1032,6 +1032,33 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     expect(sessionStore[sessionKey]?.continuationChainCount).toBeUndefined();
   });
 
+  it("does not schedule spawn-init continuations after an aborted turn", async () => {
+    runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
+      const opts = (
+        callArgs as {
+          continueWorkOpts?: {
+            requestContinuation: (req: { reason: string; delaySeconds: number }) => void;
+          };
+        }
+      ).continueWorkOpts;
+      opts?.requestContinuation({ reason: "cancelled spawn-init request", delaySeconds: 30 });
+      return {
+        ...makeEmbeddedResult(),
+        meta: {
+          ...makeEmbeddedResult().meta,
+          aborted: true,
+          stopReason: "stop",
+        },
+      } satisfies EmbeddedAgentRunResult;
+    });
+
+    await runEmbeddedAttempt(makeContinuationEnabledConfig());
+
+    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
+    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
+    expect(sessionStore[sessionKey]?.continuationChainCount).toBeUndefined();
+  });
+
   it("lets bracket continue_work use the configured default delay when a tool delay also exists", async () => {
     runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
       const opts = (
