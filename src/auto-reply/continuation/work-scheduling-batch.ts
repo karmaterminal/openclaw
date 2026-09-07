@@ -19,6 +19,8 @@ export async function scheduleContinuationWorkBatchWith(
   let supersededFlows: readonly TaskFlowRecord[] | undefined;
   const { priorParkedFlows, pendingCapacityExclusionFlowIds } =
     prepareContinuationWorkBatchReplacement(params);
+  const replacePriorParkedWork =
+    params.priorParkedFlowsToSupersede !== undefined || params.coalescePriorParkedWork !== false;
   for (const request of params.requests) {
     if (params.abortSignal?.aborted) {
       return {
@@ -38,7 +40,7 @@ export async function scheduleContinuationWorkBatchWith(
       ...(params.originRunId !== undefined ? { originRunId: params.originRunId } : {}),
       ...(params.originTurnId !== undefined ? { originTurnId: params.originTurnId } : {}),
       pendingCapacityExclusionFlowIds,
-      replaceQueuedTurnEndParkedWork: scheduledCount === 0,
+      replaceQueuedTurnEndParkedWork: scheduledCount === 0 && replacePriorParkedWork,
       ...(scheduledCount === 0 && priorParkedFlows.length > 0
         ? { priorParkedFlowsToSupersede: priorParkedFlows }
         : {}),

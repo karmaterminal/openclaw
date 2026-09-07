@@ -893,4 +893,25 @@ describe("maxPendingWork cap (Guard 1)", () => {
     expect(result.scheduled).toBe(true);
     expect(result.capped).toBe(false);
   });
+
+  it("preserves prior parked work when cross-turn coalescing is disabled", async () => {
+    const coalesceSessionKey = "agent:main:coalesce-disabled";
+    activeSessions.add(coalesceSessionKey);
+    const cappedConfig = { ...config, maxPendingWork: 2 };
+    await scheduleContinuationWorkBatch({
+      sessionKey: coalesceSessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      requests: [{ reason: "prior parked work", delaySeconds: 0 }],
+      config: cappedConfig,
+    });
+    await scheduleContinuationWorkBatch({
+      sessionKey: coalesceSessionKey,
+      chainState: { currentChainCount: 1, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      requests: [{ reason: "independent parked work", delaySeconds: 0 }],
+      config: cappedConfig,
+      coalescePriorParkedWork: false,
+    });
+
+    expect([...mockFlows.values()].filter((flow) => flow.status === "queued")).toHaveLength(2);
+  });
 });
