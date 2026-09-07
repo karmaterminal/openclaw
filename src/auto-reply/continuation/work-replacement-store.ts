@@ -148,7 +148,11 @@ export function enqueuePendingWorkReplacing(params: {
         ownerKey: params.work.sessionKey,
         controllerId: CONTINUATION_WORK_CONTROLLER_ID,
         statuses: ["queued", "running"],
-        expectedFlowIds: ownerFlows.map((flow) => flow.flowId),
+        expectedFlows: ownerFlows.map((flow) => ({
+          flowId: flow.flowId,
+          revision: flow.revision,
+          status: flow.status,
+        })),
         excludeCancelRequested: true,
       },
     });

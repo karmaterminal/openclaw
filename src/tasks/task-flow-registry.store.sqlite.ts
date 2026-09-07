@@ -315,20 +315,34 @@ export function upsertTaskFlowRegistryRecordsToSqlite(write: TaskFlowRegistryAto
     if (write.ownerCondition) {
       let query = getFlowRegistryKysely(db)
         .selectFrom("flow_runs")
-        .select("flow_id")
+        .select(["flow_id", "revision", "status"])
         .where("owner_key", "=", write.ownerCondition.ownerKey)
         .where("controller_id", "=", write.ownerCondition.controllerId)
         .where("status", "in", write.ownerCondition.statuses);
       if (write.ownerCondition.excludeCancelRequested) {
         query = query.where("cancel_requested_at", "is", null);
       }
-      const currentFlowIds = executeSqliteQuerySync(db, query)
-        .rows.map((row) => row.flow_id)
-        .toSorted();
-      const expectedFlowIds = [...write.ownerCondition.expectedFlowIds].toSorted();
+      const currentFlows = executeSqliteQuerySync(db, query)
+        .rows.map((row) => ({
+          flowId: row.flow_id,
+          revision: normalizeSqliteNumber(row.revision) ?? 0,
+          status: parseTaskFlowStatus(row.status),
+        }))
+        .toSorted((left, right) => left.flowId.localeCompare(right.flowId));
+      const expectedFlows = [...write.ownerCondition.expectedFlows].toSorted((left, right) =>
+        left.flowId.localeCompare(right.flowId),
+      );
       if (
-        currentFlowIds.length !== expectedFlowIds.length ||
-        currentFlowIds.some((flowId, index) => flowId !== expectedFlowIds[index])
+        currentFlows.length !== expectedFlows.length ||
+        currentFlows.some((flow, index) => {
+          const expected = expectedFlows[index];
+          return (
+            !expected ||
+            flow.flowId !== expected.flowId ||
+            flow.revision !== expected.revision ||
+            flow.status !== expected.status
+          );
+        })
       ) {
         return;
       }

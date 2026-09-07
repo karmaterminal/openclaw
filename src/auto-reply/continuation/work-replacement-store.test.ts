@@ -218,4 +218,59 @@ describe("continuation work replacement store", () => {
       ]);
     });
   });
+
+  it("rejects a queued owner that becomes running inside ordinary admission", async () => {
+    await withOpenClawTestState({ label: "work-replacement-status-race" }, async (state) => {
+      process.env.OPENCLAW_STATE_DIR = state.stateDir;
+      const sessionKey = "agent:main:status-race";
+      let atomicCalls = 0;
+      runtimeState.beforeAtomicCreate = () => {
+        atomicCalls += 1;
+        if (atomicCalls === 1) {
+          expect(
+            enqueuePendingWork(
+              createWork({
+                sessionKey,
+                reason: "concurrent queued work",
+                electedAt: Date.now(),
+                parked: false,
+              }),
+            ),
+          ).not.toBeNull();
+          return;
+        }
+        runtimeState.beforeAtomicCreate = undefined;
+        const concurrent = findFlow(sessionKey, "concurrent queued work");
+        if (!concurrent) {
+          throw new Error("expected concurrent queued flow");
+        }
+        expect(
+          updateFlowRecordByIdExpectedRevision({
+            flowId: concurrent.flowId,
+            expectedRevision: concurrent.revision,
+            patch: { status: "running" },
+          }).applied,
+        ).toBe(true);
+      };
+      const { enqueuePendingWorkReplacing } = await import("./work-replacement-store.js");
+
+      const result = enqueuePendingWorkReplacing({
+        work: createWork({
+          sessionKey,
+          reason: "rejected overlapping work",
+          electedAt: Date.now() + 1,
+          parked: false,
+        }),
+        summary: "ordinary enqueue",
+        maxPendingWork: 8,
+        replaceParkedWork: false,
+        expectedPriorFlowIds: [],
+        expectedRunningFlowIds: [],
+      });
+
+      expect(result).toMatchObject({ applied: false, reason: "revision_conflict" });
+      expect(findFlow(sessionKey, "concurrent queued work")).toMatchObject({ status: "running" });
+      expect(findFlow(sessionKey, "rejected overlapping work")).toBeUndefined();
+    });
+  });
 });
