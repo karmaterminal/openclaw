@@ -158,12 +158,15 @@ export type PendingWorkReplacementRollbackResult = {
 function listUnresolvedCreatedFlowIds(flowIds: readonly string[]): string[] {
   return flowIds.filter((flowId) => {
     const flow = getTaskFlowById(flowId);
-    return (
-      flow !== undefined &&
-      flow.status !== "failed" &&
-      flow.status !== "cancelled" &&
-      flow.status !== "lost"
-    );
+    if (
+      !flow ||
+      flow.status === "failed" ||
+      flow.status === "cancelled" ||
+      flow.status === "lost"
+    ) {
+      return false;
+    }
+    return flow.status === "running" || flow.cancelRequestedAt == null;
   });
 }
 
@@ -175,18 +178,23 @@ function listUnrestoredPriorFlowIds(priorFlows: readonly TaskFlowRecord[]): stri
 
 function requestCancelForUnresolvedActiveFlows(flowIds: readonly string[]): void {
   for (const flowId of flowIds) {
-    const flow = getTaskFlowById(flowId);
-    if (
-      !flow ||
-      (flow.status !== "queued" && flow.status !== "running") ||
-      flow.cancelRequestedAt != null
-    ) {
-      continue;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const flow = getTaskFlowById(flowId);
+      if (
+        !flow ||
+        (flow.status !== "queued" && flow.status !== "running") ||
+        flow.cancelRequestedAt != null
+      ) {
+        break;
+      }
+      const cancelled = requestFlowCancel({
+        flowId,
+        expectedRevision: flow.revision,
+      });
+      if (cancelled.applied) {
+        break;
+      }
     }
-    requestFlowCancel({
-      flowId,
-      expectedRevision: flow.revision,
-    });
   }
 }
 
@@ -323,7 +331,7 @@ export function rollbackPendingWorkReplacement(params: {
   requestCancelForUnresolvedActiveFlows(lastUnresolvedCreatedFlowIds);
   return {
     applied: false,
-    unresolvedCreatedFlowIds: lastUnresolvedCreatedFlowIds,
+    unresolvedCreatedFlowIds: listUnresolvedCreatedFlowIds(params.createdFlowIds),
     unrestoredPriorFlowIds: lastUnrestoredPriorFlowIds,
   };
 }

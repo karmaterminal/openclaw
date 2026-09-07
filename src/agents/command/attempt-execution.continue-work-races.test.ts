@@ -28,6 +28,7 @@ const taskFlowRuntimeState = vi.hoisted(() => ({
   beforeFailFlow: undefined as ((flowId: string) => void) | undefined,
   beforeAtomicCreate: undefined as (() => void) | undefined,
   beforeAtomicUpdate: undefined as (() => void) | undefined,
+  beforeRequestFlowCancel: undefined as ((flowId: string) => void) | undefined,
   atomicCreateCalls: 0,
   failAtomicCreateCall: undefined as number | undefined,
   failAtomicUpdate: false,
@@ -62,6 +63,10 @@ vi.mock("../../tasks/task-flow-runtime-internal.js", async (importOriginal) => {
         return { applied: false, reason: "persist_failed" as const };
       }
       return actual.updateTaskFlowsAtomically(params);
+    },
+    requestFlowCancel: (params: Parameters<typeof actual.requestFlowCancel>[0]) => {
+      taskFlowRuntimeState.beforeRequestFlowCancel?.(params.flowId);
+      return actual.requestFlowCancel(params);
     },
   };
 });
@@ -159,6 +164,7 @@ describe("spawn-init continuation cancellation races", () => {
     taskFlowRuntimeState.beforeFailFlow = undefined;
     taskFlowRuntimeState.beforeAtomicCreate = undefined;
     taskFlowRuntimeState.beforeAtomicUpdate = undefined;
+    taskFlowRuntimeState.beforeRequestFlowCancel = undefined;
     taskFlowRuntimeState.atomicCreateCalls = 0;
     taskFlowRuntimeState.failAtomicCreateCall = undefined;
     taskFlowRuntimeState.failAtomicUpdate = false;
@@ -880,6 +886,19 @@ describe("spawn-init continuation cancellation races", () => {
     await enqueuePriorParkedWork("second prior parked work");
     sessionAccessorState.failPatchCall = 2;
     taskFlowRuntimeState.failAtomicUpdate = true;
+    taskFlowRuntimeState.beforeRequestFlowCancel = (flowId) => {
+      taskFlowRuntimeState.beforeRequestFlowCancel = undefined;
+      const flow = getTaskFlowById(flowId);
+      if (!flow) {
+        throw new Error("expected queued replacement before cancellation");
+      }
+      const bumped = updateFlowRecordByIdExpectedRevision({
+        flowId,
+        expectedRevision: flow.revision,
+        patch: { currentStep: "concurrent cancellation revision" },
+      });
+      expect(bumped.applied).toBe(true);
+    };
 
     await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
 
