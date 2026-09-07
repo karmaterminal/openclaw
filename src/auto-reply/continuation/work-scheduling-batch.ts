@@ -26,6 +26,7 @@ export async function scheduleContinuationWorkBatchWith(
         cappedCount: params.requests.length - scheduledCount,
         capped: false,
         chainState,
+        ...(supersededFlows ? { supersededFlows } : {}),
       };
     }
     const result = await scheduleWork({

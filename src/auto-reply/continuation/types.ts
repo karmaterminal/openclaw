@@ -261,7 +261,7 @@ export type ContinuationWorkScheduleResult =
       scheduled: true;
       capped: false;
       chainState: ChainState;
-      supersededFlows?: readonly TaskFlowRecord[];
+      supersededFlows: readonly TaskFlowRecord[];
     };
 
 export type ContinuationWorkBatchResult = {

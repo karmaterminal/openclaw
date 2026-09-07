@@ -70,6 +70,7 @@ export function enqueuePendingWorkReplacing(params: {
   work: PendingContinuationWork;
   summary: string;
   maxPendingWork: number;
+  replaceParkedWork: boolean;
 }): PendingWorkReplacementResult {
   const state = encodeWorkState(params.work);
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -77,9 +78,11 @@ export function enqueuePendingWorkReplacing(params: {
       (flow) =>
         isContinuationWorkFlow(flow) && flow.status === "queued" && flow.cancelRequestedAt == null,
     );
-    const priorFlows = queuedFlows.filter(
-      (flow) => decodeWorkState(flow)?.idleRetry?.trigger === "reply-run-ended",
-    );
+    const priorFlows = params.replaceParkedWork
+      ? queuedFlows.filter(
+          (flow) => decodeWorkState(flow)?.idleRetry?.trigger === "reply-run-ended",
+        )
+      : [];
     const priorFlowIds = new Set(priorFlows.map((flow) => flow.flowId));
     if (
       queuedFlows.filter((flow) => !priorFlowIds.has(flow.flowId)).length >= params.maxPendingWork
@@ -95,7 +98,7 @@ export function enqueuePendingWorkReplacing(params: {
         prior.status !== "queued" ||
         priorState?.idleRetry?.trigger !== "reply-run-ended"
       ) {
-        return { applied: false, reason: "invalid_prior", flowId: prior.flowId };
+        return { applied: false, capped: false, reason: "invalid_prior", flowId: prior.flowId };
       }
       updates.push({
         flowId: prior.flowId,

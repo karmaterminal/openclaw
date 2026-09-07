@@ -895,6 +895,46 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     expect(queued).toHaveLength(2);
   });
 
+  it("retains the exact superseded snapshot when cancellation stops a batch mid-flight", async () => {
+    const sessionKey = "agent:main:coalesce-cancelled-batch";
+    mockSessionStore[sessionKey] = { sessionKey };
+    activeSessions.add(sessionKey);
+    await scheduleContinuationWorkBatch({
+      sessionKey,
+      chainState: {
+        currentChainCount: 0,
+        chainStartedAt: Date.now(),
+        accumulatedChainTokens: 0,
+      },
+      requests: [{ reason: "prior parked work", delaySeconds: 0 }],
+      config: immediateConfig,
+    });
+    const abort = new AbortController();
+
+    const result = await scheduleContinuationWorkBatch({
+      sessionKey,
+      chainState: {
+        currentChainCount: 1,
+        chainStartedAt: Date.now(),
+        accumulatedChainTokens: 0,
+      },
+      requests: [
+        { reason: "first replacement", delaySeconds: 0 },
+        { reason: "cancelled second replacement", delaySeconds: 0 },
+      ],
+      config: immediateConfig,
+      abortSignal: abort.signal,
+      onFlowEnqueued: () => abort.abort("stop after first replacement"),
+    });
+
+    expect(result).toMatchObject({ scheduledCount: 1, cappedCount: 1 });
+    expect(result.supersededFlows).toEqual([
+      expect.objectContaining({
+        stateJson: expect.objectContaining({ reason: "prior parked work" }),
+      }),
+    ]);
+  });
+
   it("folds matured delayed active-overlap work into the active turn instead of stacking later naked wakes", async () => {
     const sessionKey = "agent:main:fold-active";
     mockSessionStore[sessionKey] = { sessionKey };

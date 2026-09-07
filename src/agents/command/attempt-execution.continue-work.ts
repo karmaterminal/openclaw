@@ -288,7 +288,8 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         const state = isContinuationWorkFlow(flow) ? decodeWorkState(flow) : undefined;
         return flow.status === "queued" && state?.idleRetry?.trigger === "reply-run-ended";
       });
-      let supersededPriorParkedFlows = priorParkedFlows;
+      let supersededPriorParkedFlows: readonly (typeof priorParkedFlows)[number][] =
+        priorParkedFlows;
       let replacementApplied = false;
       failCreatedWork = (summary) => {
         if (replacementApplied) {
@@ -440,7 +441,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
         log: (message) => log.info(message),
       });
-      supersededPriorParkedFlows = result.supersededFlows ?? priorParkedFlows;
+      supersededPriorParkedFlows = result.supersededFlows ?? [];
       replacementApplied ||= supersededPriorParkedFlows.length > 0;
       result.cappedCount += unreservedRequestCount;
       result.capped ||= unreservedRequestCount > 0;

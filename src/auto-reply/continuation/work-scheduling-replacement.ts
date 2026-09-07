@@ -10,7 +10,6 @@ import {
   enqueuePendingWorkReplacing,
   listQueuedTurnEndParkedWork,
 } from "./work-replacement-store.js";
-import { enqueuePendingWork } from "./work-store.js";
 
 type ScheduledWorkEnqueueResult =
   | {
@@ -32,23 +31,10 @@ export function enqueueContinuationWorkForSchedule(params: {
     | "sessionKey"
   >;
 }): ScheduledWorkEnqueueResult {
-  const priorFlows = params.schedule.priorParkedFlowsToSupersede;
-  if (!priorFlows || priorFlows.length === 0) {
-    if (
-      params.schedule.replaceQueuedTurnEndParkedWork !== false &&
-      params.work.idleRetry?.trigger === "reply-run-ended"
-    ) {
-      return enqueueParkedContinuationWork(params);
-    }
-    const work = enqueuePendingWork(params.work);
-    return work
-      ? { scheduled: true, work, supersededFlows: [] }
-      : { scheduled: false, capped: false, chainState: params.schedule.chainState };
-  }
-  return enqueueParkedContinuationWork(params);
+  return enqueueContinuationWorkAtomically(params);
 }
 
-function enqueueParkedContinuationWork(params: {
+function enqueueContinuationWorkAtomically(params: {
   work: PendingContinuationWork;
   schedule: Pick<
     ContinuationWorkScheduleParams,
@@ -59,6 +45,7 @@ function enqueueParkedContinuationWork(params: {
     work: params.work,
     summary: "Superseded by a newer continue_work election after its replacement became durable.",
     maxPendingWork: params.schedule.config.maxPendingWork,
+    replaceParkedWork: params.schedule.replaceQueuedTurnEndParkedWork !== false,
   });
   if (!replacement.applied) {
     if (replacement.capped) {

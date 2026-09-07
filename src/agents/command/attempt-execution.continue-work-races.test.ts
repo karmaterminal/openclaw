@@ -549,6 +549,7 @@ describe("spawn-init continuation cancellation races", () => {
       },
       summary: "superseded by concurrent empty-owner replacement",
       maxPendingWork: 8,
+      replaceParkedWork: true,
     });
 
     expect(result.applied).toBe(true);
@@ -623,6 +624,92 @@ describe("spawn-init continuation cancellation races", () => {
     expect(findFlowByReason(flows, "newest replacement work")).toMatchObject({
       status: "failed",
     });
+  });
+
+  it("does not restore a stale original when retry superseded an exact empty owner set", async () => {
+    await enqueuePriorParkedWork("original prior parked work");
+    sessionAccessorState.failPatchCall = 2;
+    taskFlowRuntimeState.beforeAtomicCreate = () => {
+      taskFlowRuntimeState.beforeAtomicCreate = undefined;
+      const original = findFlowByReason(
+        listTaskFlowsForOwnerKey(sessionKey),
+        "original prior parked work",
+      );
+      if (!original) {
+        throw new Error("expected original prior parked flow");
+      }
+      const finished = finishFlow({
+        flowId: original.flowId,
+        expectedRevision: original.revision,
+        currentStep: "completed independently before retry",
+      });
+      expect(finished.applied).toBe(true);
+    };
+
+    await expect(
+      schedule([{ reason: "replacement after empty refresh", delaySeconds: 30 }]),
+    ).rejects.toThrow();
+
+    const { resetTaskFlowRegistryForTests } =
+      await import("../../tasks/task-runtime.test-helpers.js");
+    resetTaskFlowRegistryForTests({ persist: false });
+    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    expect(findFlowByReason(flows, "original prior parked work")).toMatchObject({
+      status: "succeeded",
+      currentStep: "completed independently before retry",
+    });
+    expect(findFlowByReason(flows, "replacement after empty refresh")).toMatchObject({
+      status: "failed",
+    });
+  });
+
+  it("enforces maxPendingWork transactionally for ordinary enqueues", async () => {
+    const { enqueuePendingWorkReplacing } =
+      await import("../../auto-reply/continuation/work-replacement-store.js");
+    taskFlowRuntimeState.beforeAtomicCreate = () => {
+      taskFlowRuntimeState.beforeAtomicCreate = undefined;
+      const now = Date.now();
+      expect(
+        enqueuePendingWork({
+          sessionKey,
+          hop: 1,
+          delayMs: 30_000,
+          electedAt: now,
+          dueAt: now + 30_000,
+          maxChainLength: 200,
+          chainStartedAt: now,
+          accumulatedChainTokens: 0,
+          reason: "concurrent ordinary work",
+          anchorFinalizedAt: now,
+        }),
+      ).not.toBeNull();
+    };
+    const now = Date.now();
+
+    const result = enqueuePendingWorkReplacing({
+      work: {
+        sessionKey,
+        hop: 2,
+        delayMs: 30_000,
+        electedAt: now + 1,
+        dueAt: now + 30_001,
+        maxChainLength: 200,
+        chainStartedAt: now,
+        accumulatedChainTokens: 0,
+        reason: "capped ordinary work",
+        anchorFinalizedAt: now + 1,
+      },
+      summary: "ordinary enqueue",
+      maxPendingWork: 1,
+      replaceParkedWork: false,
+    });
+
+    expect(result).toEqual({ applied: false, capped: true });
+    expect(listTaskFlowsForOwnerKey(sessionKey)).toEqual([
+      expect.objectContaining({
+        stateJson: expect.objectContaining({ reason: "concurrent ordinary work" }),
+      }),
+    ]);
   });
 
   it("still cancels the replacement when partial prior-wake restoration loses its revision", async () => {

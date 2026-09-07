@@ -363,27 +363,63 @@ function cloneFlow(flow: MockFlow): MockFlow {
   return { ...flow };
 }
 
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn((params: Partial<MockFlow> & { ownerKey: string }) => {
-    const now = Date.now();
-    const flow: MockFlow = {
-      flowId: `flow-${++flowCounter}`,
-      syncMode: "managed",
-      ownerKey: params.ownerKey,
-      chainId: params.chainId,
-      controllerId: params.controllerId ?? "tests/controller",
-      status: params.status ?? "queued",
-      notifyPolicy: "silent",
-      goal: params.goal ?? "goal",
-      currentStep: params.currentStep,
-      stateJson: params.stateJson,
-      revision: 0,
-      createdAt: params.createdAt ?? now,
-      updatedAt: params.updatedAt ?? params.createdAt ?? now,
-    };
-    mockFlows.set(flow.flowId, flow);
+function createMockFlow(params: Partial<MockFlow> & { ownerKey: string }): MockFlow {
+  const now = Date.now();
+  const flow: MockFlow = {
+    flowId: `flow-${++flowCounter}`,
+    syncMode: "managed",
+    ownerKey: params.ownerKey,
+    chainId: params.chainId,
+    controllerId: params.controllerId ?? "tests/controller",
+    status: params.status ?? "queued",
+    notifyPolicy: "silent",
+    goal: params.goal ?? "goal",
+    currentStep: params.currentStep,
+    stateJson: params.stateJson,
+    revision: 0,
+    createdAt: params.createdAt ?? now,
+    updatedAt: params.updatedAt ?? params.createdAt ?? now,
+  };
+  mockFlows.set(flow.flowId, flow);
+  return cloneFlow(flow);
+}
+
+function updateMockFlowsAtomically(
+  updates: Array<{ flowId: string; expectedRevision: number; patch: Partial<MockFlow> }>,
+) {
+  for (const update of updates) {
+    const flow = mockFlows.get(update.flowId);
+    if (!flow || flow.revision !== update.expectedRevision) {
+      return {
+        applied: false as const,
+        reason: flow ? ("revision_conflict" as const) : ("not_found" as const),
+      };
+    }
+  }
+  const flows = updates.map((update) => {
+    const flow = mockFlows.get(update.flowId)!;
+    Object.assign(flow, update.patch, { revision: flow.revision + 1 });
     return cloneFlow(flow);
-  }),
+  });
+  return { applied: true as const, flows };
+}
+
+vi.mock("../../tasks/task-flow-registry.js", () => ({
+  createManagedTaskFlow: vi.fn(createMockFlow),
+  createManagedTaskFlowWithAtomicUpdates: vi.fn(
+    (params: {
+      create: Partial<MockFlow> & { ownerKey: string };
+      updates: Array<{ flowId: string; expectedRevision: number; patch: Partial<MockFlow> }>;
+    }) => {
+      const updated = updateMockFlowsAtomically(params.updates);
+      if (!updated.applied) {
+        return updated;
+      }
+      const created = createMockFlow(params.create);
+      return { applied: true, created, updated: updated.flows };
+    },
+  ),
+  updateTaskFlowsAtomically: vi.fn(updateMockFlowsAtomically),
   listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
     Array.from(
       [...mockFlows.values()].filter((flow) => flow.ownerKey === ownerKey),

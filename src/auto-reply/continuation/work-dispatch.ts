@@ -734,9 +734,7 @@ export async function scheduleContinuationWork(
     scheduled: true,
     capped: false,
     chainState: nextState,
-    ...(enqueueResult.supersededFlows.length > 0
-      ? { supersededFlows: enqueueResult.supersededFlows }
-      : {}),
+    supersededFlows: enqueueResult.supersededFlows,
   };
 }
 
