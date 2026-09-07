@@ -519,8 +519,13 @@ describe("runReplyAgent :: continuation.work span", () => {
     const run = createContinuationRun({
       sessionKey: "continuation-delegate-incomplete-replay-unsafe",
     });
-    runEmbeddedAgentMock.mockImplementationOnce(async () => {
-      enqueuePendingDelegate(run.sessionKey, { task: "unsafe delegate" });
+    runEmbeddedAgentMock.mockImplementationOnce(async (args: unknown) => {
+      const attempt = args as { runId: string; sessionId: string };
+      enqueuePendingDelegate(run.sessionKey, {
+        task: "unsafe delegate",
+        originRunId: attempt.runId,
+        originTurnId: attempt.sessionId,
+      });
       return {
         payloads: [{ text: "Agent could not generate a response.", isError: true }],
         meta: {
