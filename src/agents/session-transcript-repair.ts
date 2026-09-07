@@ -323,8 +323,9 @@ function repairToolCallInputs(
         messageChanged = true;
       }
       if (isRawToolCallBlock(workBlock)) {
-        // SAFETY: the guard above establishes the transcript tool-call shape.
-        const sanitized = sanitizeTranscriptToolCallBlock(workBlock as RawToolCallBlock);
+        const sanitized = sanitizeTranscriptToolCallBlock(
+          workBlock as RawToolCallBlock, // SAFETY: the guard establishes this shape.
+        );
         if (sanitized !== workBlock) {
           changed = true;
           messageChanged = true;
