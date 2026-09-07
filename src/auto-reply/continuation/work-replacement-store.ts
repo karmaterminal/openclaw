@@ -3,6 +3,7 @@ import type { TaskFlowAtomicUpdate } from "../../tasks/task-flow-runtime-interna
 import {
   createManagedTaskFlowWithAtomicUpdates,
   getTaskFlowById,
+  requestFlowCancel,
   updateTaskFlowsAtomically,
 } from "../../tasks/task-flow-runtime-internal.js";
 import { abortContinuationDispatchClaim } from "./continuation-dispatch-claims.js";
@@ -40,7 +41,7 @@ export function buildFinishedWorkPatch(
 }
 
 export type PendingWorkReplacementResult =
-  | { applied: true; work: PendingContinuationWork }
+  | { applied: true; work: PendingContinuationWork; supersededCount: number }
   | {
       applied: false;
       reason: ContinuationWorkReplacementFailure;
@@ -53,50 +54,69 @@ export function enqueuePendingWorkReplacing(params: {
   summary: string;
 }): PendingWorkReplacementResult {
   const state = encodeWorkState(params.work);
-  const now = Date.now();
-  const updates: TaskFlowAtomicUpdate[] = [];
-  for (const prior of params.priorFlows) {
-    const priorState = decodeWorkState(prior);
-    if (
-      !isContinuationWorkFlow(prior) ||
-      prior.status !== "queued" ||
-      priorState?.idleRetry?.trigger !== "reply-run-ended"
-    ) {
-      return { applied: false, reason: "invalid_prior", flowId: prior.flowId };
+  let priorFlows = params.priorFlows;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const now = Date.now();
+    const updates: TaskFlowAtomicUpdate[] = [];
+    for (const prior of priorFlows) {
+      const priorState = decodeWorkState(prior);
+      if (
+        !isContinuationWorkFlow(prior) ||
+        prior.status !== "queued" ||
+        priorState?.idleRetry?.trigger !== "reply-run-ended"
+      ) {
+        return { applied: false, reason: "invalid_prior", flowId: prior.flowId };
+      }
+      updates.push({
+        flowId: prior.flowId,
+        expectedRevision: prior.revision,
+        patch: buildFinishedWorkPatch(priorState, {
+          currentStep: `superseded: ${params.summary}`.slice(0, 200),
+          now,
+        }),
+      });
     }
-    updates.push({
-      flowId: prior.flowId,
-      expectedRevision: prior.revision,
-      patch: buildFinishedWorkPatch(priorState, {
-        currentStep: `superseded: ${params.summary}`.slice(0, 200),
-        now,
-      }),
+    const result = createManagedTaskFlowWithAtomicUpdates({
+      create: {
+        ownerKey: params.work.sessionKey,
+        ...(params.work.chainId ? { chainId: params.work.chainId } : {}),
+        controllerId: CONTINUATION_WORK_CONTROLLER_ID,
+        notifyPolicy: "silent",
+        goal: workGoal(params.work),
+        currentStep: "Queued for same-session continuation wake",
+        stateJson: state,
+        createdAt: params.work.electedAt,
+      },
+      updates,
     });
-  }
-  const result = createManagedTaskFlowWithAtomicUpdates({
-    create: {
-      ownerKey: params.work.sessionKey,
-      ...(params.work.chainId ? { chainId: params.work.chainId } : {}),
-      controllerId: CONTINUATION_WORK_CONTROLLER_ID,
-      notifyPolicy: "silent",
-      goal: workGoal(params.work),
-      currentStep: "Queued for same-session continuation wake",
-      stateJson: state,
-      createdAt: params.work.electedAt,
-    },
-    updates,
-  });
-  if (!result.applied) {
+    if (result.applied) {
+      return {
+        applied: true,
+        work: workToRuntime(result.created, state, "queued"),
+        supersededCount: result.updated.length,
+      };
+    }
+    if (attempt === 0 && (result.reason === "not_found" || result.reason === "revision_conflict")) {
+      priorFlows = priorFlows.flatMap((prior) => {
+        const current = getTaskFlowById(prior.flowId);
+        const currentState = current ? decodeWorkState(current) : undefined;
+        return current &&
+          isContinuationWorkFlow(current) &&
+          current.status === "queued" &&
+          current.cancelRequestedAt == null &&
+          currentState?.idleRetry?.trigger === "reply-run-ended"
+          ? [current]
+          : [];
+      });
+      continue;
+    }
     return {
       applied: false,
       reason: result.reason,
       ...(result.flowId ? { flowId: result.flowId } : {}),
     };
   }
-  return {
-    applied: true,
-    work: workToRuntime(result.created, state, "queued"),
-  };
+  return { applied: false, reason: "revision_conflict" };
 }
 
 export type PendingWorkReplacementRollbackResult = {
@@ -121,6 +141,19 @@ function listUnrestoredPriorFlowIds(priorFlows: readonly TaskFlowRecord[]): stri
   return priorFlows
     .filter((prior) => getTaskFlowById(prior.flowId)?.status !== "queued")
     .map((prior) => prior.flowId);
+}
+
+function requestCancelForUnresolvedRunningFlows(flowIds: readonly string[]): void {
+  for (const flowId of flowIds) {
+    const flow = getTaskFlowById(flowId);
+    if (!flow || flow.status !== "running" || flow.cancelRequestedAt != null) {
+      continue;
+    }
+    requestFlowCancel({
+      flowId,
+      expectedRevision: flow.revision,
+    });
+  }
 }
 
 export function rollbackPendingWorkReplacement(params: {
@@ -190,9 +223,14 @@ export function rollbackPendingWorkReplacement(params: {
     }
 
     if (unsafeCreatedOwner) {
+      const cleanup = updateTaskFlowsAtomically(updates);
+      const unresolved = listUnresolvedCreatedFlowIds(params.createdFlowIds);
+      if (!cleanup.applied) {
+        requestCancelForUnresolvedRunningFlows(unresolved);
+      }
       return {
         applied: false,
-        unresolvedCreatedFlowIds,
+        unresolvedCreatedFlowIds: listUnresolvedCreatedFlowIds(params.createdFlowIds),
         unrestoredPriorFlowIds: listUnrestoredPriorFlowIds(params.priorFlows),
       };
     }
@@ -239,6 +277,7 @@ export function rollbackPendingWorkReplacement(params: {
     lastUnresolvedCreatedFlowIds = listUnresolvedCreatedFlowIds(params.createdFlowIds);
     lastUnrestoredPriorFlowIds = listUnrestoredPriorFlowIds(params.priorFlows);
   }
+  requestCancelForUnresolvedRunningFlows(lastUnresolvedCreatedFlowIds);
   return {
     applied: false,
     unresolvedCreatedFlowIds: lastUnresolvedCreatedFlowIds,

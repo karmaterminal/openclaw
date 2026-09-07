@@ -257,7 +257,7 @@ export type ContinuationWorkScheduleResult =
       replacementFailure?: ContinuationWorkReplacementFailure;
       replacementFailureFlowId?: string;
     }
-  | { scheduled: true; capped: false; chainState: ChainState };
+  | { scheduled: true; capped: false; chainState: ChainState; supersededCount?: number };
 
 export type ContinuationWorkBatchResult = {
   scheduledCount: number;

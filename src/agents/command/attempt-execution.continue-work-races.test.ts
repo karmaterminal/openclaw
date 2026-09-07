@@ -375,7 +375,7 @@ describe("spawn-init continuation cancellation races", () => {
     expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
   });
 
-  it("leaves a concurrently cancelled prior wake untouched when atomic replacement loses CAS", async () => {
+  it("retries around a concurrently cancelled prior wake without reviving it", async () => {
     await enqueuePriorParkedWork("prior parked work");
     taskFlowRuntimeState.beforeAtomicCreate = () => {
       taskFlowRuntimeState.beforeAtomicCreate = undefined;
@@ -391,18 +391,18 @@ describe("spawn-init continuation cancellation races", () => {
       expect(cancelled.applied).toBe(true);
     };
 
-    await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
+    await schedule([{ reason: "replacement work", delaySeconds: 30 }]);
 
     const flows = listTaskFlowsForOwnerKey(sessionKey);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({
       status: "queued",
       cancelRequestedAt: expect.any(Number),
     });
-    expect(findFlowByReason(flows, "replacement work")).toBeUndefined();
-    expectRestoredChainState();
+    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
+    expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
   });
 
-  it("does not partially supersede prior wakes when one replacement CAS fails", async () => {
+  it("retries the whole replacement transition when one prior CAS advances", async () => {
     await enqueuePriorParkedWork("first prior parked work");
     await enqueuePriorParkedWork("second prior parked work");
     taskFlowRuntimeState.beforeAtomicCreate = () => {
@@ -422,17 +422,17 @@ describe("spawn-init continuation cancellation races", () => {
       expect(bumped.applied).toBe(true);
     };
 
-    await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
+    await schedule([{ reason: "replacement work", delaySeconds: 30 }]);
 
     const flows = listTaskFlowsForOwnerKey(sessionKey);
     expect(findFlowByReason(flows, "first prior parked work")).toMatchObject({
-      status: "queued",
+      status: "succeeded",
     });
     expect(findFlowByReason(flows, "second prior parked work")).toMatchObject({
-      status: "queued",
+      status: "succeeded",
     });
-    expect(findFlowByReason(flows, "replacement work")).toBeUndefined();
-    expectRestoredChainState();
+    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
+    expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
   });
 
   it("still cancels the replacement when partial prior-wake restoration loses its revision", async () => {
@@ -528,14 +528,14 @@ describe("spawn-init continuation cancellation races", () => {
     expect(findFlowByReason(flows, "second replacement work")).toMatchObject({ status: "failed" });
   });
 
-  it("does not restore prior work after the replacement has already succeeded", async () => {
+  it("cleans up safe siblings without restoring prior work after one replacement succeeded", async () => {
     await enqueuePriorParkedWork("prior parked work");
     sessionAccessorState.failPatchCall = 2;
     taskFlowRuntimeState.beforeAtomicUpdate = () => {
       taskFlowRuntimeState.beforeAtomicUpdate = undefined;
       const replacement = findFlowByReason(
         listTaskFlowsForOwnerKey(sessionKey),
-        "replacement work",
+        "second replacement work",
       );
       if (!replacement) {
         throw new Error("expected replacement flow");
@@ -548,11 +548,22 @@ describe("spawn-init continuation cancellation races", () => {
       expect(finished.applied).toBe(true);
     };
 
-    await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
+    await expect(
+      schedule([
+        { reason: "first replacement work", delaySeconds: 30 },
+        { reason: "second replacement work", delaySeconds: 30 },
+      ]),
+    ).rejects.toThrow();
 
+    const { resetTaskFlowRegistryForTests } =
+      await import("../../tasks/task-runtime.test-helpers.js");
+    resetTaskFlowRegistryForTests({ persist: false });
     const flows = listTaskFlowsForOwnerKey(sessionKey);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "succeeded" });
-    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "succeeded" });
+    expect(findFlowByReason(flows, "first replacement work")).toMatchObject({ status: "failed" });
+    expect(findFlowByReason(flows, "second replacement work")).toMatchObject({
+      status: "succeeded",
+    });
   });
 
   it("does not publish partial rollback state when atomic persistence fails", async () => {
@@ -572,5 +583,36 @@ describe("spawn-init continuation cancellation races", () => {
     });
     expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
     expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
+  });
+
+  it("marks an unresolved running replacement cancelled when atomic rollback keeps failing", async () => {
+    await enqueuePriorParkedWork("prior parked work");
+    sessionAccessorState.failPatchCall = 2;
+    taskFlowRuntimeState.failAtomicUpdate = true;
+    taskFlowRuntimeState.beforeAtomicUpdate = () => {
+      taskFlowRuntimeState.beforeAtomicUpdate = undefined;
+      const replacement = findFlowByReason(
+        listTaskFlowsForOwnerKey(sessionKey),
+        "replacement work",
+      );
+      if (!replacement) {
+        throw new Error("expected replacement flow");
+      }
+      const running = updateFlowRecordByIdExpectedRevision({
+        flowId: replacement.flowId,
+        expectedRevision: replacement.revision,
+        patch: { status: "running" },
+      });
+      expect(running.applied).toBe(true);
+    };
+
+    await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
+
+    expect(
+      findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "replacement work"),
+    ).toMatchObject({
+      status: "running",
+      cancelRequestedAt: expect.any(Number),
+    });
   });
 });

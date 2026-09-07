@@ -37,12 +37,12 @@ import {
   finalizeAnchorPendingWork,
   hasPendingIdleRetryWork,
   listPendingWorkSessionKeysForRecovery,
+  listQueuedTurnEndParkedWork,
   markPendingWorkSuperseded,
   peekSoonestQueuedWorkDueAt,
   peekSoonestRunningWorkRecoveryDueAt,
   peekSoonestUnmaturedWorkDueAt,
   queuedPendingWorkCount,
-  supersedeQueuedTurnEndParkedWork,
 } from "./work-store.js";
 import { drainPendingTerminalNotices } from "./work-terminal-notice.js";
 
@@ -763,7 +763,12 @@ export async function scheduleContinuationWork(
     // can start the next turn; the timer fires on the next event-loop tick.
     armNextWorkTimer(params.sessionKey, enqueued.dueAt);
   }
-  return { scheduled: true, capped: false, chainState: nextState };
+  return {
+    scheduled: true,
+    capped: false,
+    chainState: nextState,
+    ...(replacementResult ? { supersededCount: replacementResult.supersededCount } : {}),
+  };
 }
 
 /**
@@ -784,24 +789,18 @@ export async function scheduleContinuationWorkBatch(
 ): Promise<ContinuationWorkBatchResult> {
   let chainState = params.chainState;
   let scheduledCount = 0;
-  // cross-turn coalesce: a new model turn's election(s) supersede any
-  // still-queued end-of-turn-parked wake from a PRIOR turn for this session. The
-  // courtesy/hold/ack repeat loop never accumulates rows — the newest election
-  // carries the live intent and fires once at finalization. Folded BEFORE the
-  // batch loop so distinct elections WITHIN this turn are preserved; only
-  // prior-turn parked duplicates are folded.
-  const folded =
-    params.coalescePriorParkedWork === false
-      ? 0
-      : supersedeQueuedTurnEndParkedWork(
-          params.sessionKey,
-          "Superseded by a newer continue_work election before its end-of-turn wake fired.",
-        );
-  if (folded > 0) {
-    params.log?.(
-      `[continuation:work-turn-end-parked-coalesced] session=${params.sessionKey} folded=${folded}`,
-    );
-  }
+  const priorParkedFlows =
+    params.priorParkedFlowsToSupersede ??
+    (params.coalescePriorParkedWork === false
+      ? []
+      : listQueuedTurnEndParkedWork(params.sessionKey));
+  const pendingCapacityExclusionFlowIds =
+    priorParkedFlows.length === 0
+      ? params.pendingCapacityExclusionFlowIds
+      : new Set([
+          ...(params.pendingCapacityExclusionFlowIds ?? []),
+          ...priorParkedFlows.map((flow) => flow.flowId),
+        ]);
   for (const request of params.requests) {
     if (params.abortSignal?.aborted) {
       return {
@@ -819,9 +818,9 @@ export async function scheduleContinuationWorkBatch(
       ...(params.parentRunId !== undefined ? { parentRunId: params.parentRunId } : {}),
       ...(params.originRunId !== undefined ? { originRunId: params.originRunId } : {}),
       ...(params.originTurnId !== undefined ? { originTurnId: params.originTurnId } : {}),
-      pendingCapacityExclusionFlowIds: params.pendingCapacityExclusionFlowIds,
-      ...(scheduledCount === 0 && params.priorParkedFlowsToSupersede
-        ? { priorParkedFlowsToSupersede: params.priorParkedFlowsToSupersede }
+      pendingCapacityExclusionFlowIds,
+      ...(scheduledCount === 0 && priorParkedFlows.length > 0
+        ? { priorParkedFlowsToSupersede: priorParkedFlows }
         : {}),
       ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
       ...(params.onFlowEnqueued ? { onFlowEnqueued: params.onFlowEnqueued } : {}),
@@ -838,6 +837,11 @@ export async function scheduleContinuationWorkBatch(
           ? { replacementFailureFlowId: result.replacementFailureFlowId }
           : {}),
       };
+    }
+    if (result.supersededCount) {
+      params.log?.(
+        `[continuation:work-turn-end-parked-coalesced] session=${params.sessionKey} folded=${result.supersededCount}`,
+      );
     }
     chainState = result.chainState;
     scheduledCount += 1;
