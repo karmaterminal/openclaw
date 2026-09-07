@@ -28,6 +28,8 @@ import { createTestPreparedRunAdmission } from "../admitted-run-context.test-sup
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 import { runAgentAttempt } from "./attempt-execution.js";
 
+const workStoreTestSupportPath = "../../auto-reply/continuation/work-store.test-support.js";
+
 function findFlowByReason(
   flows: readonly TaskFlowRecord[],
   reason: string,
@@ -78,10 +80,8 @@ vi.mock("../../auto-reply/continuation/lazy.runtime.js", async (importOriginal) 
         if (!args[0].originRunId || !args[0].originTurnId) {
           throw new Error("same-origin test requires scheduling provenance");
         }
-        const { enqueuePendingWork } =
-          await import("../../auto-reply/continuation/work-store.test-support.js");
         const now = Date.now();
-        enqueuePendingWork({
+        (await import(workStoreTestSupportPath)).enqueuePendingWork({
           sessionKey: args[0].sessionKey,
           hop: 99,
           delayMs: 30_000,
@@ -255,10 +255,8 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
   }
 
   async function enqueuePriorParkedWork(reason: string) {
-    const { enqueuePendingWork } =
-      await import("../../auto-reply/continuation/work-store.test-support.js");
     const now = Date.now();
-    const work = enqueuePendingWork({
+    const work = (await import(workStoreTestSupportPath)).enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 30_000,
