@@ -261,6 +261,7 @@ export type ContinuationWorkScheduleParams = {
   parentRunId?: string;
   originRunId?: string;
   originTurnId?: string;
+  abortSignal?: AbortSignal;
   onFlowEnqueued?: (flowId: string) => void;
   log?: (message: string) => void;
 };

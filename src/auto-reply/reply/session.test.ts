@@ -664,7 +664,7 @@ describe("initSessionState guarded initialization", () => {
     ).toContain("preserve the failed transcript");
   });
 
-  it("reports a committed reset as successful when reply cancellation throws", async () => {
+  it("retries retained cancellation through a repeated committed reset", async () => {
     const storePath = await createStorePath("openclaw-session-init-reset-cancel-failure-");
     const sessionKey = "agent:main:matrix:channel:cancel-failure";
     const sessionId = "committed-reset-session";
@@ -680,8 +680,12 @@ describe("initSessionState guarded initialization", () => {
         },
       },
     });
+    let cancellationAttempts = 0;
     const cancel = vi.fn(() => {
-      throw new Error("backend cancellation failed");
+      cancellationAttempts += 1;
+      if (cancellationAttempts <= 3) {
+        throw new Error("backend cancellation failed");
+      }
     });
     const activeReply = createReplyOperation({
       sessionKey,
@@ -690,28 +694,36 @@ describe("initSessionState guarded initialization", () => {
     });
     activeReply.attachBackend({ kind: "embedded", cancel, isStreaming: () => false });
     activeReply.setPhase("running");
+    const createResetParams = () => ({
+      ctx: {
+        Body: "/new",
+        RawBody: "/new",
+        CommandBody: "/new",
+        From: "@owner:example.test",
+        To: "!cancel-failure:example.test",
+        ChatType: "channel",
+        SessionKey: sessionKey,
+        Provider: "matrix",
+        Surface: "matrix",
+      },
+      cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
+      commandAuthorized: true,
+    });
 
     try {
-      const reset = await initSessionState({
-        ctx: {
-          Body: "/new",
-          RawBody: "/new",
-          CommandBody: "/new",
-          From: "@owner:example.test",
-          To: "!cancel-failure:example.test",
-          ChatType: "channel",
-          SessionKey: sessionKey,
-          Provider: "matrix",
-          Surface: "matrix",
-        },
-        cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
-        commandAuthorized: true,
-      });
+      await expect(initSessionState(createResetParams())).rejects.toThrow(
+        "Reply backend cancellation failed after 3 attempts",
+      );
 
-      expect(reset.resetTriggered).toBe(true);
-      expect(reset.sessionEntry.mainRestartRecovery).toBeUndefined();
       expect(loadSessionEntry({ storePath, sessionKey })?.mainRestartRecovery).toBeUndefined();
       expect(cancel).toHaveBeenCalledWith("restart");
+      expect(cancel).toHaveBeenCalledTimes(3);
+      expect(replyRunRegistry.isActive(sessionKey)).toBe(true);
+
+      await expect(initSessionState(createResetParams())).rejects.toThrow(
+        "reply session initialization conflicted",
+      );
+      expect(cancel).toHaveBeenCalledTimes(4);
       expect(replyRunRegistry.isActive(sessionKey)).toBe(false);
     } finally {
       activeReply.complete();

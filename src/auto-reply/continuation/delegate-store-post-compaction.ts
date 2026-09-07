@@ -13,6 +13,8 @@ import {
 import { scrubCancellationRequestedDelegateFlows } from "./delegate-store.js";
 import type { PendingContinuationDelegate, StagedPostCompactionDelegate } from "./types.js";
 
+export type PostCompactionDelegateRequeueResult = "requeued" | "authoritative" | "missing";
+
 /** Stage the TaskFlow-domain value used by the tool and recovery dispatcher. */
 export function stagePostCompactionTaskFlowDelegate(
   sessionKey: string,
@@ -48,18 +50,21 @@ export function stagePostCompactionTaskFlowDelegate(
 
 export function requeueReleasedPostCompactionTaskFlowDelegate(
   delegate: Pick<PendingContinuationDelegate, "flowId" | "expectedRevision" | "task">,
-): boolean {
-  if (!delegate.flowId || delegate.expectedRevision === undefined) {
-    return false;
+): PostCompactionDelegateRequeueResult {
+  if (!delegate.flowId) {
+    return "missing";
   }
   const flow = delegateFlowRecords.get(delegate.flowId);
-  if (!flow || !isPostCompactionDelegateFlow(flow) || flow.status !== "running") {
-    return false;
+  if (!flow || !isPostCompactionDelegateFlow(flow)) {
+    return "missing";
+  }
+  if (delegate.expectedRevision === undefined || flow.status !== "running") {
+    return "authoritative";
   }
   const currentDelegate = decodeDelegateFlow(flow);
   if (!currentDelegate) {
     rejectCorruptDelegateFlow(flow, { kind: "post-compaction", sessionKey: flow.ownerKey });
-    return false;
+    return "authoritative";
   }
   const result = delegateFlowRecords.update({
     flowId: flow.flowId,
@@ -76,7 +81,12 @@ export function requeueReleasedPostCompactionTaskFlowDelegate(
       updatedAt: Date.now(),
     },
   });
-  return result.applied;
+  if (result.applied) {
+    return "requeued";
+  }
+  return result.current && isPostCompactionDelegateFlow(result.current)
+    ? "authoritative"
+    : "missing";
 }
 
 export function requeueAwaitingNextCompactionDelegatesRaw(options: {
@@ -96,7 +106,7 @@ export function requeueAwaitingNextCompactionDelegatesRaw(options: {
       continue;
     }
     const delegate = decodeDelegateFlow(flow);
-    if (delegate && requeueReleasedPostCompactionTaskFlowDelegate(delegate)) {
+    if (delegate && requeueReleasedPostCompactionTaskFlowDelegate(delegate) === "requeued") {
       requeued += 1;
     }
   }
@@ -340,7 +350,7 @@ export function consumeStagedPostCompactionDelegates(
 
 export function requeueReleasedPostCompactionDelegate(
   delegate: Pick<SessionPostCompactionDelegate, "flowId" | "expectedRevision" | "task">,
-): boolean {
+): PostCompactionDelegateRequeueResult {
   return requeueReleasedPostCompactionTaskFlowDelegate(delegate);
 }
 

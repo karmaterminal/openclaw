@@ -5,11 +5,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { createReplyOperation } from "../../auto-reply/reply/reply-run-registry.js";
 import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import { resetAgentEventsForTest } from "../../infra/agent-events.js";
+import { peekSystemEventEntries, resetSystemEventsForTest } from "../../infra/system-events.js";
 import type { AgentHarness } from "../harness/types.js";
 import {
   codexHarnessSupportsKnownProviders,
   expectLogExcludes,
-  expectLogIncludes,
   expectMockCallFields,
   expectRecordFields,
   mockCallArg,
@@ -50,9 +50,12 @@ function mockOverflowRetrySuccess(params: {
     mockResolvedValueOnce: (value: ReturnType<typeof makeAttemptResult>) => unknown;
   };
   compactDirect: {
-    mockResolvedValueOnce: (value: ReturnType<typeof makeCompactionSuccess>) => unknown;
+    mockImplementationOnce: (
+      implementation: () => Promise<ReturnType<typeof makeCompactionSuccess>>,
+    ) => unknown;
   };
   overflowMessage?: string;
+  beforeCompact?: () => void;
 }) {
   const overflowError = makeOverflowError(params.overflowMessage);
 
@@ -60,13 +63,14 @@ function mockOverflowRetrySuccess(params: {
     makeAttemptResult({ terminal: { kind: "failed", source: "prompt", error: overflowError } }),
   );
   params.runEmbeddedAttempt.mockResolvedValueOnce(makeAttemptResult());
-  params.compactDirect.mockResolvedValueOnce(
-    makeCompactionSuccess({
+  params.compactDirect.mockImplementationOnce(async () => {
+    params.beforeCompact?.();
+    return makeCompactionSuccess({
       summary: "Compacted session",
       firstKeptEntryId: "entry-5",
       tokensBefore: 150000,
-    }),
-  );
+    });
+  });
 
   return overflowError;
 }
@@ -100,6 +104,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
     fixture = await createSharedRunIntegrationSession();
     overflowBaseRunParams = fixture.runParams;
     resetAgentEventsForTest();
+    resetSystemEventsForTest();
     resetRunOverflowCompactionHarnessMocks();
     mockedBuildEmbeddedRunPayloads.mockReturnValue([{ text: "ok" }]);
   });
@@ -109,16 +114,35 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
       await fixture?.cleanup();
     } finally {
       fixture = undefined;
+      resetSystemEventsForTest();
     }
   });
 
   it("passes trigger=overflow when retrying compaction after context overflow", async () => {
+    const config = {
+      agents: {
+        defaults: {
+          continuation: {
+            enabled: true,
+            contextPressureThreshold: 0.8,
+          },
+        },
+      },
+    };
     mockOverflowRetrySuccess({
       runEmbeddedAttempt: mockedRunEmbeddedAttempt,
       compactDirect: mockedCompactDirect,
+      beforeCompact: () => {
+        expect(loadSessionEntry(overflowBaseRunParams.sessionTarget!)).toMatchObject({
+          lastContextPressureBand: 95,
+        });
+      },
     });
 
-    await runEmbeddedAgent(overflowBaseRunParams);
+    await runEmbeddedAgent({
+      ...overflowBaseRunParams,
+      config,
+    });
 
     expect(mockedCompactDirect).toHaveBeenCalledTimes(1);
     const compactParams = expectMockCallFields(mockedCompactDirect, {
@@ -132,21 +156,68 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
       trigger: "overflow",
       authProfileId: "test-profile",
     });
-    expectLogIncludes(mockedLog.warn, "[context-pressure:fire] mid-turn trigger=overflow");
+    const pressureEvents = peekSystemEventEntries(overflowBaseRunParams.sessionKey).filter(
+      (event) => event.text.includes("[system:context-pressure]"),
+    );
+    expect(pressureEvents).toHaveLength(1);
+    expect(pressureEvents[0]?.text).toContain("preserve critical working state");
+    expect(pressureEvents[0]?.text).not.toContain("continue_delegate");
   });
 
-  it("uses the canonical session identity when sessionKey is empty on overflow path", async () => {
+  it("does not enqueue overflow pressure guidance when continuation is disabled", async () => {
+    const config = {
+      agents: {
+        defaults: {
+          continuation: {
+            enabled: false,
+            contextPressureThreshold: 0.8,
+          },
+        },
+      },
+    };
     mockOverflowRetrySuccess({
       runEmbeddedAttempt: mockedRunEmbeddedAttempt,
       compactDirect: mockedCompactDirect,
     });
 
-    await runEmbeddedAgent({ ...overflowBaseRunParams, sessionKey: "" });
+    await runEmbeddedAgent({
+      ...overflowBaseRunParams,
+      config,
+    });
 
-    expectLogIncludes(
-      mockedLog.warn,
-      `[context-pressure:fire] mid-turn trigger=overflow attempt=1/3 tokens=?k/200k sessionKey=${overflowBaseRunParams.sessionTarget.sessionKey}`,
+    expect(
+      peekSystemEventEntries(overflowBaseRunParams.sessionKey).filter((event) =>
+        event.text.includes("[system:context-pressure]"),
+      ),
+    ).toHaveLength(0);
+    expect(loadSessionEntry(overflowBaseRunParams.sessionTarget!)).not.toHaveProperty(
+      "lastContextPressureBand",
     );
+  });
+
+  it("uses the canonical session identity when sessionKey is empty on overflow path", async () => {
+    const config = {
+      agents: {
+        defaults: {
+          continuation: {
+            enabled: true,
+            contextPressureThreshold: 0.8,
+          },
+        },
+      },
+    };
+    mockOverflowRetrySuccess({
+      runEmbeddedAttempt: mockedRunEmbeddedAttempt,
+      compactDirect: mockedCompactDirect,
+    });
+
+    await runEmbeddedAgent({ ...overflowBaseRunParams, sessionKey: "", config });
+
+    expect(
+      peekSystemEventEntries(overflowBaseRunParams.sessionTarget.sessionKey).some((event) =>
+        event.text.includes("[system:context-pressure]"),
+      ),
+    ).toBe(true);
     expectLogExcludes(mockedLog.warn, "[session-key:missing] site=pi-runner.overflow-compaction");
   });
 

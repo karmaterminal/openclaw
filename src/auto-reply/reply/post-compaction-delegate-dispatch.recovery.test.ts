@@ -152,7 +152,7 @@ function createDispatchDeps(options?: {
   const finalizeStagedPostCompactionDelegates = vi.fn(
     (flowIds: readonly (string | undefined)[]) => flowIds.filter(Boolean).length,
   );
-  const requeueReleasedPostCompactionDelegate = vi.fn(() => false);
+  const requeueReleasedPostCompactionDelegate = vi.fn(() => "missing" as const);
   const stagePostCompactionDelegate = vi.fn();
   const deps: PostCompactionDelegateDispatchDeps = {
     consumeStagedPostCompactionDelegates: vi.fn(() => options?.staged ?? []),
@@ -526,9 +526,8 @@ describe("post-compaction delegate dispatch extraction", () => {
     // Two staged rows are claimed; the first delegate's delivery enqueue fails
     // so it lands in the preserve list, and the session-store re-stage then
     // throws. The dispatch must re-stage the preserved delegate as a fresh
-    // queued TaskFlow row AND finalize the claimed rows — leaving them `running`
-    // would let listRecoverableStagedPostCompactionDelegates replay
-    // already-delivered / re-staged delegates as duplicates on the next startup.
+    // queued TaskFlow row. The source is reported missing, so only the
+    // successfully handed-off second claim remains eligible for finalization.
     const staged: SessionPostCompactionDelegate[] = [
       { ...delegate("staged one"), flowId: "flow-1" },
       { ...delegate("staged two"), flowId: "flow-2" },
@@ -559,9 +558,9 @@ describe("post-compaction delegate dispatch extraction", () => {
     // The preserved delegate is re-staged as a fresh durable queued row.
     const stageCalls = vi.mocked(deps["stagePostCompactionDelegate"]).mock.calls;
     expect(stageCalls).toHaveLength(1);
-    // The claimed rows are finished so recovery cannot replay them.
+    // Only the claim whose source still exists is finalized.
     const finalizeCalls = vi.mocked(deps["finalizeStagedPostCompactionDelegates"]).mock.calls;
-    expect(finalizeCalls).toContainEqual([["flow-1", "flow-2"]]);
+    expect(finalizeCalls).toContainEqual([["flow-2"]]);
     // Preserve list drained: the caller's finally must not re-stage a second time.
     expect(preserve).toHaveLength(0);
   });
@@ -581,7 +580,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       staged,
       rejectEnqueueAt: 0,
     });
-    requeueReleasedPostCompactionDelegate.mockReturnValueOnce(true);
+    requeueReleasedPostCompactionDelegate.mockReturnValueOnce("requeued");
 
     const result = await dispatchPostCompactionDelegates(
       {

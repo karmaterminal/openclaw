@@ -65,10 +65,28 @@ describe("channel ingress pending disposition", () => {
     });
   });
 
-  it("fences a disposition CAS race without blocking unrelated lanes", async () => {
+  it.each([
+    {
+      name: "policy evaluation",
+      expectedLog:
+        "ingress drain: pending disposition policy failed for event broken on lane:a: policy unavailable",
+      rejects: true,
+    },
+    {
+      name: "dead-letter write",
+      expectedLog:
+        "ingress drain: pending disposition write failed for event broken on lane:a: storage unavailable",
+      rejects: true,
+    },
+    {
+      name: "false-return CAS loss",
+      expectedLog: "ingress drain: pending disposition lost race for event broken",
+      rejects: false,
+    },
+  ])("contains a $name failure to its lane", async ({ name, expectedLog, rejects }) => {
     await withTempState(async (stateDir) => {
       const queue = createTestIngressQueue(stateDir);
-      await queue.enqueue("raced", { text: "old ambient" }, { laneKey: "lane:a", receivedAt: 0 });
+      await queue.enqueue("broken", { text: "old ambient" }, { laneKey: "lane:a", receivedAt: 0 });
       await queue.enqueue(
         "same-lane",
         { text: "later work" },
@@ -80,30 +98,65 @@ describe("channel ingress pending disposition", () => {
         { laneKey: "lane:b", receivedAt: 2 },
       );
       const fail = queue.fail.bind(queue);
-      queue.fail = vi.fn(async (...args: Parameters<typeof queue.fail>) =>
-        args[0] === "raced" ? false : await fail(...args),
-      );
+      const failAttempts: string[] = [];
+      queue.fail = vi.fn(async (...args: Parameters<typeof queue.fail>) => {
+        failAttempts.push(args[0]);
+        if (args[0] === "broken") {
+          if (name === "dead-letter write") {
+            throw new Error("storage unavailable");
+          }
+          if (name === "false-return CAS loss") {
+            return false;
+          }
+        }
+        return await fail(...args);
+      });
       const adopted: string[] = [];
+      const logs: string[] = [];
+      const resolved: string[] = [];
       const drain = createChannelIngressDrain({
         queue,
         now: () => 10,
-        resolvePendingDisposition: (record) =>
-          record.id === "raced"
-            ? { kind: "fail", reason: "stale-ambient-backlog", message: "stale ambient row" }
-            : null,
+        onLog: (message) => logs.push(message),
+        resolvePendingDisposition: (record) => {
+          resolved.push(record.id);
+          if (name === "policy evaluation") {
+            if (record.id === "broken") {
+              throw new Error("policy unavailable");
+            }
+          }
+          if (record.id === "other-lane") {
+            return null;
+          }
+          return {
+            kind: "fail",
+            reason: "stale-ambient-backlog",
+            message: "stale ambient row",
+          };
+        },
         dispatchClaimedEvent: async (claim, lifecycle) => {
           adopted.push(claim.id);
           await lifecycle.onAdopted();
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      if (rejects) {
+        await expect(drain.drainOnce()).rejects.toThrow(
+          "ingress drain: 1 pending disposition failure(s)",
+        );
+      } else {
+        await expect(drain.drainOnce()).resolves.toEqual({ started: 1 });
+      }
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane"]);
       expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual([
-        "raced",
+        "broken",
         "same-lane",
       ]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      expect(resolved).toEqual(["broken", "other-lane"]);
+      expect(failAttempts).toEqual(name === "policy evaluation" ? [] : ["broken"]);
+      expect(logs).toContain(expectedLog);
       drain.dispose();
     });
   });

@@ -1,5 +1,3 @@
-import { requireSessionKeyOrSkip } from "../../../infra/session-keys.js";
-import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../../infra/system-events.js";
 import { deriveContextPromptTokens, normalizeUsage } from "../../usage.js";
 import { runPostCompactionSideEffects } from "../compaction-hooks.js";
 import { log } from "../logger.js";
@@ -9,6 +7,7 @@ import {
   type EmbeddedRunCompactionRecoveryInput,
 } from "./compaction-runtime.js";
 import { createRunRecoveryDiagId } from "./helpers.js";
+import { emitRecoveryContextPressure } from "./recovery-context-pressure.js";
 
 const MAX_TIMEOUT_COMPACTION_ATTEMPTS = 2;
 
@@ -68,26 +67,7 @@ export async function recoverEmbeddedRunTimeout(
       `[timeout-compaction] LLM timed out with high prompt token usage (${Math.round(tokenUsedRatio * 100)}%); ` +
         `attempting compaction before retry (attempt ${input.state.timeoutCompactionAttempts}/${MAX_TIMEOUT_COMPACTION_ATTEMPTS}) diagId=${timeoutDiagId}`,
     );
-    log.warn(
-      `[context-pressure:fire] mid-turn trigger=timeout ratio=${Math.round(tokenUsedRatio * 100)}% ` +
-        `tokens=${Math.round((lastTurnPromptTokens ?? 0) / 1000)}k/${Math.round(input.contextTokenBudget / 1000)}k ` +
-        `sessionKey=${input.runParams.sessionKey ?? input.runParams.sessionId}`,
-    );
-    const timeoutSessionKey = requireSessionKeyOrSkip(
-      input.runParams,
-      log,
-      "pi-runner.timeout-compaction",
-    );
-    if (timeoutSessionKey) {
-      enqueueSystemEvent(
-        `[system:context-pressure] Mid-turn compaction triggered at ${Math.round(tokenUsedRatio * 100)}% ` +
-          `context (${Math.round((lastTurnPromptTokens ?? 0) / 1000)}k/${Math.round(input.contextTokenBudget / 1000)}k tokens). ` +
-          "Your last reply hit the provider timeout ceiling. Consider evacuating working state " +
-          "earlier via continue_delegate(post-compaction) or memory files so the next turn starts " +
-          "with room to grow.",
-        { sessionKey: timeoutSessionKey },
-      );
-    }
+    await emitRecoveryContextPressure(input, lastTurnPromptTokens ?? 0);
     const { result: timeoutCompactResult, previousSessionId } = await compactEmbeddedRunForRecovery(
       input,
       {

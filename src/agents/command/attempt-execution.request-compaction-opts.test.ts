@@ -145,7 +145,10 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  async function runEmbeddedAttempt(cfg: OpenClawConfig) {
+  async function runEmbeddedAttempt(
+    cfg: OpenClawConfig,
+    opts: Parameters<typeof runAgentAttempt>[0]["opts"] = {},
+  ) {
     await runAgentAttempt({
       preparedRunAdmission: createTestPreparedRunAdmission("run-test"),
       pluginGeneration: undefined,
@@ -170,7 +173,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
       resolvedThinkLevel: "medium",
       timeoutMs: 1_000,
       runId: "run-917-trap",
-      opts: {} as Parameters<typeof runAgentAttempt>[0]["opts"],
+      opts,
       runContext: {} as Parameters<typeof runAgentAttempt>[0]["runContext"],
       spawnedBy: undefined,
       messageChannel: undefined,
@@ -293,19 +296,29 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     await triggerCompaction!({ trigger: "volitional" });
     expect(releaseQueuedCompactionTolerantMock).not.toHaveBeenCalled();
   });
-});
 
-// Cross-layer spawn-init plumbing sentinel:
-//   - turn-2+ followup-runner continueWorkOpts coverage
-//   - turn-1 runAgentAttempt continueWorkOpts coverage
-//   - turn-1 runAgentAttempt requestCompactionOpts coverage in this file
-// Together these prevent one continuation tool from being wired while its
-// sibling remains unavailable on the same code path.
-describe("spawn-init continuation tool plumbing parity", () => {
-  it("documents both sibling spawn-init continuation tool sites (sentinel only)", () => {
-    // Intentional no-op assertion; the real coverage lives in the two
-    // file-specific tests. Keeping the sibling sites named together makes
-    // asymmetric plumbing regressions easier to spot.
-    expect(true).toBe(true);
+  it("does not release post-compaction delegates after cancellation wins", async () => {
+    const abort = new AbortController();
+    let resolveCompaction: ((result: { ok: boolean; compacted: boolean }) => void) | undefined;
+    compactEmbeddedAgentSessionMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCompaction = resolve;
+      }),
+    );
+
+    await runEmbeddedAttempt(makeContinuationEnabledConfig(), { abortSignal: abort.signal });
+    const triggerCompaction = (
+      runEmbeddedAgentMock.mock.calls[0]?.[0] as {
+        requestCompactionOpts?: {
+          triggerCompaction: (req: { trigger: string }) => Promise<unknown>;
+        };
+      }
+    )?.requestCompactionOpts?.triggerCompaction;
+    const pending = triggerCompaction!({ trigger: "volitional" });
+    abort.abort("test cancellation during compaction");
+    resolveCompaction?.({ ok: true, compacted: true });
+
+    await pending;
+    expect(releaseQueuedCompactionTolerantMock).not.toHaveBeenCalled();
   });
 });
