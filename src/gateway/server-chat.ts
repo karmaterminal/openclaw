@@ -377,6 +377,11 @@ export type AgentEventHandlerOptions = {
     persistence: Promise<void>;
   }) => void;
   resolveActiveLifecycleGenerationForRun?: (runId: string) => string | undefined;
+  updateRunToolErrorSummary?: (params: {
+    runId: string;
+    clientRunId: string;
+    summary: string | undefined;
+  }) => void;
   resolveSessionActiveRunState?: (params: {
     requestedKey: string;
     canonicalKey: string;
@@ -477,6 +482,7 @@ export function createAgentEventHandler({
   settleTrackedTerminal,
   trackTrackedRunTerminalPersistence,
   resolveActiveLifecycleGenerationForRun = () => undefined,
+  updateRunToolErrorSummary,
   resolveSessionActiveRunState,
 }: AgentEventHandlerOptions): AgentEventHandler {
   const shouldProcessOwnedEvent = (evt: AgentEventRuntimePayload): boolean => {
@@ -789,11 +795,12 @@ export function createAgentEventHandler({
     const chatSendOwnsTerminal =
       opts?.skipChatSendOwnedTerminal === true &&
       chatSendStillActive &&
-      !lifecycleOwnsCommittedReply &&
       !yieldedWaiting &&
-      (lifecyclePhase === "error" ||
-        classifiedTerminalState === "done" ||
-        validationAbortErrorMessage !== undefined);
+      (!chatLink ||
+        (!lifecycleOwnsCommittedReply &&
+          (lifecyclePhase === "error" ||
+            classifiedTerminalState === "done" ||
+            validationAbortErrorMessage !== undefined)));
     let terminalPersistence: Promise<void> | undefined;
 
     if (
@@ -866,7 +873,10 @@ export function createAgentEventHandler({
       if (!evt.contextClaimId) {
         clearRunContextForEvent(evt);
       }
-      if (chatSendOwnsTerminal || (chatSendStillActive && lifecycleOwnsCommittedReply)) {
+      if (
+        chatLink &&
+        (chatSendOwnsTerminal || (chatSendStillActive && lifecycleOwnsCommittedReply))
+      ) {
         // Post-dispatch chat.send may still publish a notice or terminal. Preserve
         // the lifecycle watermark so clients cannot reject that payload as stale.
         const terminalSeq = Math.max(
@@ -1598,6 +1608,9 @@ export function createAgentEventHandler({
       );
     }
     agentRunSeq.set(evt.runId, evt.seq);
+    if (evt.stream === "assistant") {
+      updateRunToolErrorSummary?.({ runId: evt.runId, clientRunId, summary: undefined });
+    }
     if (evt.stream === "plan" && evt.data?.phase === "update") {
       const steps = normalizeAgentPlanSteps(evt.data.steps) ?? [];
       const explanation =
@@ -1650,6 +1663,15 @@ export function createAgentEventHandler({
     }
     if (isToolEvent) {
       const toolPhase = typeof evt.data?.phase === "string" ? evt.data.phase : "";
+      if (toolPhase === "start") {
+        updateRunToolErrorSummary?.({ runId: evt.runId, clientRunId, summary: undefined });
+      } else if (toolPhase === "result") {
+        updateRunToolErrorSummary?.({
+          runId: evt.runId,
+          clientRunId,
+          summary: readToolValidationErrorSummary(evt.data?.toolErrorSummary),
+        });
+      }
       // Flush pending assistant text before tool-start events so clients can
       // render complete pre-tool text above tool cards (not truncated by delta throttle).
       if (

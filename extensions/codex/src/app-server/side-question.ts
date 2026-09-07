@@ -1273,6 +1273,7 @@ async function createCodexSideToolBridge(input: {
       config: input.params.cfg,
       preparedModelRuntime: input.params.preparedModelRuntime,
       abortSignal: input.signal,
+      disableContinuationTools: true,
       modelProvider: runtimeModel.provider,
       modelId: input.params.model,
       modelCompat:

@@ -178,7 +178,7 @@ describe("subagent registry recovery scheduling", () => {
     vi.useFakeTimers();
     resetGatewayWorkAdmission();
     agentEvents.lifecycleCurrent = true;
-    recoverRow.mockReset();
+    recoverRow.mockReset().mockResolvedValue({ status: "handled" });
     getAgentRunContext.mockReset().mockReturnValue(undefined);
     killRuntime.abortEmbeddedAgentRun.mockReset().mockReturnValue(false);
     killRuntime.isEmbeddedAgentRunActive.mockReset().mockReturnValue(false);
@@ -245,6 +245,11 @@ describe("subagent registry recovery scheduling", () => {
       ...run(),
       runId: "requester-settle-row",
       childSessionKey: "agent:main:subagent:requester-settle",
+      execution: {
+        status: "terminal" as const,
+        endedAt: Date.now() - 1_000,
+        outcome: { status: "ok" as const },
+      },
       requesterSettleWake: {
         status: "pending" as const,
         attemptCount: 0,
