@@ -42,6 +42,13 @@ type PriorChainState = {
   chainId: string | undefined;
 };
 
+function normalizeCleanupError(error: unknown, fallback: string): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+  return new Error(typeof error === "string" ? error : fallback);
+}
+
 export async function scheduleSpawnInitContinueWorkWake(params: {
   sessionKey: string;
   sessionEntry: SessionEntry | undefined;
@@ -352,7 +359,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         return unresolvedFlowIds;
       };
       failCreatedWork = (summary) => {
-        const cleanupErrors: unknown[] = [];
+        const cleanupErrors: Error[] = [];
         const unresolvedFlowIds: string[] = [];
         for (const flowId of createdFlowIds) {
           let resolved = false;
@@ -429,8 +436,9 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
             ),
           );
         }
-        if (cleanupErrors.length === 1) {
-          throw cleanupErrors[0];
+        const [cleanupError] = cleanupErrors;
+        if (cleanupErrors.length === 1 && cleanupError) {
+          throw cleanupError;
         }
         if (cleanupErrors.length > 1) {
           throw new AggregateError(cleanupErrors, "continuation flow cleanup failed");
@@ -472,19 +480,20 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   }
 
   const failCreatedWorkAndRestoreReservation = async (summary: string): Promise<void> => {
-    const errors: unknown[] = [];
+    const errors: Error[] = [];
     try {
       failCreatedWork?.(summary);
     } catch (error) {
-      errors.push(error);
+      errors.push(normalizeCleanupError(error, "continuation flow cleanup failed"));
     }
     try {
       await restorePriorChainState();
     } catch (error) {
-      errors.push(error);
+      errors.push(normalizeCleanupError(error, "continuation chain rollback failed"));
     }
-    if (errors.length === 1) {
-      throw errors[0];
+    const [error] = errors;
+    if (errors.length === 1 && error) {
+      throw error;
     }
     if (errors.length > 1) {
       throw new AggregateError(errors, "continuation wake cleanup and chain rollback both failed");
@@ -586,11 +595,15 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     );
   }
   if (supersessionError) {
+    const normalizedSupersessionError = normalizeCleanupError(
+      supersessionError,
+      "prior parked-wake supersession failed",
+    );
     enqueueSystemEvent(
       "[continuation] A newer continue_work wake was cancelled because prior parked-wake supersession did not commit.",
       { sessionKey: params.sessionKey, trusted: true },
     );
-    const compensationErrors: unknown[] = [supersessionError];
+    const compensationErrors: Error[] = [normalizedSupersessionError];
     const unrestoredPriorFlowIds = restoreSupersededPriorParkedWork?.() ?? [];
     if (unrestoredPriorFlowIds.length > 0) {
       compensationErrors.push(
@@ -604,11 +617,13 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         "continue_work replacement cancelled because prior parked-wake supersession did not commit.",
       );
     } catch (cleanupError) {
-      compensationErrors.push(cleanupError);
+      compensationErrors.push(
+        normalizeCleanupError(cleanupError, "replacement continuation cleanup failed"),
+      );
     }
     if (compensationErrors.length > 1) {
       throw new AggregateError(compensationErrors, "prior parked-wake compensation failed");
     }
-    throw supersessionError;
+    throw normalizedSupersessionError;
   }
 }
