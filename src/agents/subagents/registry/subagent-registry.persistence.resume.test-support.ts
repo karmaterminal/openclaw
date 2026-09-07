@@ -204,7 +204,7 @@ export function createRestoredWakeRuns(params: {
         ...(params.activationSettlement
           ? {
               requesterTurnRunId: `requester-turn-${index}`,
-              requesterTurnYielded: params.requesterYielded,
+              ...(params.requesterYielded ? { requesterTurnYielded: true as const } : {}),
               taskRunId: runId,
             }
           : {}),
