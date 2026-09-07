@@ -52,6 +52,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   runResult: EmbeddedAgentRunResult;
   originRunId: string;
   originTurnId: string;
+  abortSignal?: AbortSignal;
 }): Promise<void> {
   const [
     { resolveLiveContinuationRuntimeConfig },
@@ -65,6 +66,9 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     import("../../config/sessions/session-accessor.js"),
   ]);
 
+  if (params.abortSignal?.aborted) {
+    return;
+  }
   const continuationConfig = resolveLiveContinuationRuntimeConfig(params.cfg);
   if (!continuationConfig.enabled) {
     log.info(
@@ -218,6 +222,10 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
       throw error;
     }
   };
+  if (params.abortSignal?.aborted) {
+    await restorePriorChainState();
+    return;
+  }
 
   const liveSchedulingConfig = resolveLiveContinuationRuntimeConfig(params.cfg);
   if (!liveSchedulingConfig.enabled) {
@@ -232,6 +240,10 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   const reservedRequests = params.requests.slice(0, reservedRequestCount);
   const unreservedRequestCount = params.requests.length - reservedRequests.length;
   const { checkContinuationBudget } = await import("../../auto-reply/continuation/scheduler.js");
+  if (params.abortSignal?.aborted) {
+    await restorePriorChainState();
+    return;
+  }
   const liveBudgetRejection =
     reservedRequests.length > 0
       ? checkContinuationBudget({
@@ -384,6 +396,11 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     }
   }
 
+  if (params.abortSignal?.aborted) {
+    failCreatedWork?.("continue_work scheduling cancelled with its originating turn.");
+    await restorePriorChainState();
+    return;
+  }
   if (result.cappedCount > 0 && params.requests.length > 1) {
     enqueueSystemEvent(
       `[continuation] ${result.cappedCount} of ${params.requests.length} continue_work elections were not scheduled (chain/cost/pending cap).`,
@@ -447,6 +464,11 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     throw error;
   }
 
+  if (params.abortSignal?.aborted) {
+    failCreatedWork?.("continue_work scheduling cancelled with its originating turn.");
+    await restorePriorChainState();
+    return;
+  }
   let unresolvedPriorFlowIds: string[];
   try {
     unresolvedPriorFlowIds = supersedePriorParkedWork?.() ?? [];

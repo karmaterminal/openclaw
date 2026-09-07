@@ -1363,7 +1363,18 @@ export async function runAgentAttempt(params: {
               trigger: request.trigger,
               diagId: request.diagId,
               traceparent: request.traceparent,
+              abortSignal: params.opts.abortSignal,
             });
+            if (params.opts.abortSignal?.aborted) {
+              if (params.sessionKey) {
+                failQueuedDelegatesCreatedAtOrAfter(
+                  params.sessionKey,
+                  runStartedAt,
+                  "Continuation delegate election ignored because the spawn-init turn was cancelled.",
+                );
+              }
+              return result;
+            }
             if (result.ok && result.compacted) {
               const releaseOriginatingTo = params.opts.replyTo ?? params.opts.to;
               const releaseMessageProvider = params.opts.messageProvider ?? params.messageChannel;
@@ -1380,6 +1391,7 @@ export async function runAgentAttempt(params: {
                 ...(params.opts.threadId != null
                   ? { originatingThreadId: params.opts.threadId }
                   : {}),
+                abortSignal: params.opts.abortSignal,
                 run: {
                   agentId: params.sessionAgentId,
                   agentDir: params.agentDir,
@@ -1665,6 +1677,7 @@ export async function runAgentAttempt(params: {
           runResult: embeddedRunResult,
           originRunId: params.runId,
           originTurnId: params.sessionId,
+          abortSignal: params.opts.abortSignal,
         });
       }
     } catch (err) {

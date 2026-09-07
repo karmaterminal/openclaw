@@ -48,6 +48,8 @@ const sessionAccessorState = vi.hoisted(() => ({
   replaceChainBeforePatchCall: undefined as number | undefined,
   replacementChainId: undefined as string | undefined,
   runtimeConfigAfterPatch: undefined as OpenClawConfig | undefined,
+  abortAfterPatchCall: undefined as number | undefined,
+  abortController: undefined as AbortController | undefined,
 }));
 
 vi.mock("../../auto-reply/continuation/lazy.runtime.js", async (importOriginal) => {
@@ -114,6 +116,9 @@ vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => {
         );
       }
       const result = await actual.patchSessionEntryCore(...args);
+      if (sessionAccessorState.patchCalls === sessionAccessorState.abortAfterPatchCall) {
+        sessionAccessorState.abortController?.abort("test cancellation after reservation");
+      }
       if (sessionAccessorState.runtimeConfigAfterPatch) {
         setRuntimeConfigSnapshot(sessionAccessorState.runtimeConfigAfterPatch);
         sessionAccessorState.runtimeConfigAfterPatch = undefined;
@@ -172,6 +177,16 @@ function makeEmbeddedResult(): EmbeddedAgentRunResult {
       },
     },
   };
+}
+
+function requestContinueWork(
+  callArgs: unknown,
+  request: { reason: string; delaySeconds: number },
+): void {
+  const opts = callArgs as {
+    continueWorkOpts?: { requestContinuation: (value: typeof request) => void };
+  };
+  opts.continueWorkOpts?.requestContinuation(request);
 }
 
 function makeContinuationEnabledConfig(): OpenClawConfig {
@@ -274,6 +289,8 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     sessionAccessorState.replaceChainBeforePatchCall = undefined;
     sessionAccessorState.replacementChainId = undefined;
     sessionAccessorState.runtimeConfigAfterPatch = undefined;
+    sessionAccessorState.abortAfterPatchCall = undefined;
+    sessionAccessorState.abortController = undefined;
     runEmbeddedAgentMock.mockResolvedValue(makeEmbeddedResult());
     sessionEntry = {
       sessionId: "session-embedded",
@@ -302,7 +319,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
   async function runEmbeddedAttempt(
     cfg: OpenClawConfig,
-    options: { durableSessionStore?: boolean } = {},
+    options: { durableSessionStore?: boolean; abortSignal?: AbortSignal } = {},
   ) {
     setRuntimeConfigSnapshot(cfg);
     const durableSessionStore = options.durableSessionStore !== false;
@@ -330,7 +347,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
       resolvedThinkLevel: "medium",
       timeoutMs: 1_000,
       runId: "run-746-trap",
-      opts: {} as Parameters<typeof runAgentAttempt>[0]["opts"],
+      opts: { abortSignal: options.abortSignal } as Parameters<typeof runAgentAttempt>[0]["opts"],
       runContext: {} as Parameters<typeof runAgentAttempt>[0]["runContext"],
       spawnedBy: undefined,
       messageChannel: undefined,
@@ -377,14 +394,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
   it("persists spawn-init continue_work chain state to the session store", async () => {
     runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
-      const opts = (
-        callArgs as {
-          continueWorkOpts?: {
-            requestContinuation: (req: { reason: string; delaySeconds: number }) => void;
-          };
-        }
-      ).continueWorkOpts;
-      opts?.requestContinuation({ reason: "persist budgets", delaySeconds: 30 });
+      requestContinueWork(callArgs, { reason: "persist budgets", delaySeconds: 30 });
       return makeEmbeddedResult();
     });
 
@@ -400,14 +410,10 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
   it("does not schedule spawn-init work when continuation is disabled during the turn", async () => {
     runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
-      const opts = (
-        callArgs as {
-          continueWorkOpts?: {
-            requestContinuation: (req: { reason: string; delaySeconds: number }) => void;
-          };
-        }
-      ).continueWorkOpts;
-      opts?.requestContinuation({ reason: "disabled before scheduling", delaySeconds: 30 });
+      requestContinueWork(callArgs, {
+        reason: "disabled before scheduling",
+        delaySeconds: 30,
+      });
       setRuntimeConfigSnapshot(makeContinuationDisabledConfig());
       return makeEmbeddedResult();
     });
@@ -421,14 +427,10 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
   it("rolls back spawn-init reservation when continuation is disabled during persistence", async () => {
     runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
-      const opts = (
-        callArgs as {
-          continueWorkOpts?: {
-            requestContinuation: (req: { reason: string; delaySeconds: number }) => void;
-          };
-        }
-      ).continueWorkOpts;
-      opts?.requestContinuation({ reason: "disabled during reservation", delaySeconds: 30 });
+      requestContinueWork(callArgs, {
+        reason: "disabled during reservation",
+        delaySeconds: 30,
+      });
       sessionAccessorState.runtimeConfigAfterPatch = makeContinuationDisabledConfig();
       return makeEmbeddedResult();
     });
@@ -443,16 +445,34 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     });
   });
 
+  it("rolls back spawn-init reservation when cancellation wins during persistence", async () => {
+    const abort = new AbortController();
+    sessionAccessorState.abortAfterPatchCall = 1;
+    sessionAccessorState.abortController = abort;
+    runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
+      requestContinueWork(callArgs, {
+        reason: "cancelled reservation",
+        delaySeconds: 30,
+      });
+      return makeEmbeddedResult();
+    });
+
+    await runEmbeddedAttempt(makeContinuationEnabledConfig(), { abortSignal: abort.signal });
+
+    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
+    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
+    expect(sessionStore[sessionKey]).toMatchObject({
+      continuationChainCount: 0,
+      continuationChainTokens: 0,
+    });
+  });
+
   it("reserves spawn-init chain state before creating durable work", async () => {
     runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
-      const opts = (
-        callArgs as {
-          continueWorkOpts?: {
-            requestContinuation: (req: { reason: string; delaySeconds: number }) => void;
-          };
-        }
-      ).continueWorkOpts;
-      opts?.requestContinuation({ reason: "requires durable reservation", delaySeconds: 30 });
+      requestContinueWork(callArgs, {
+        reason: "requires durable reservation",
+        delaySeconds: 30,
+      });
       sessionAccessorState.failPatch = true;
       return makeEmbeddedResult();
     });
@@ -471,14 +491,10 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
   it("surfaces scheduling failure while retaining the durable reservation", async () => {
     runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
-      const opts = (
-        callArgs as {
-          continueWorkOpts?: {
-            requestContinuation: (req: { reason: string; delaySeconds: number }) => void;
-          };
-        }
-      ).continueWorkOpts;
-      opts?.requestContinuation({ reason: "synthetic schedule failure", delaySeconds: 30 });
+      requestContinueWork(callArgs, {
+        reason: "synthetic schedule failure",
+        delaySeconds: 30,
+      });
       continuationRuntimeState.failScheduling = true;
       return makeEmbeddedResult();
     });
@@ -500,14 +516,10 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
   it("surfaces rollback failure while retaining the durable reservation", async () => {
     runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
-      const opts = (
-        callArgs as {
-          continueWorkOpts?: {
-            requestContinuation: (req: { reason: string; delaySeconds: number }) => void;
-          };
-        }
-      ).continueWorkOpts;
-      opts?.requestContinuation({ reason: "synthetic rollback failure", delaySeconds: 30 });
+      requestContinueWork(callArgs, {
+        reason: "synthetic rollback failure",
+        delaySeconds: 30,
+      });
       sessionAccessorState.runtimeConfigAfterPatch = makeContinuationDisabledConfig();
       sessionAccessorState.failPatchCall = 2;
       return makeEmbeddedResult();
@@ -1152,15 +1164,5 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     // a timer; we don't assert on the timer itself here (covered by the
     // existing continuation-state test suite), only on the wiring invariant.
     expect(runEmbeddedAgentMock).toHaveBeenCalledTimes(1);
-  });
-});
-
-// Cross-layer drift guard:
-//   - turn-2+ followup-runner plumbing is pinned by followup-runner.test.ts
-//   - turn-1 spawn-init plumbing is pinned by this file
-describe("cross-layer drift-catch sentinel", () => {
-  it("documents both continuation plumbing sites", () => {
-    // The real behavior coverage lives in the two owner-specific test files.
-    expect(true).toBe(true);
   });
 });
