@@ -28,6 +28,8 @@ const taskFlowRuntimeState = vi.hoisted(() => ({
   beforeFailFlow: undefined as ((flowId: string) => void) | undefined,
   beforeAtomicCreate: undefined as (() => void) | undefined,
   beforeAtomicUpdate: undefined as (() => void) | undefined,
+  atomicCreateCalls: 0,
+  failAtomicCreateCall: undefined as number | undefined,
   failAtomicUpdate: false,
 }));
 const sessionAccessorState = vi.hoisted(() => ({
@@ -47,7 +49,11 @@ vi.mock("../../tasks/task-flow-runtime-internal.js", async (importOriginal) => {
     createManagedTaskFlowWithAtomicUpdates: (
       params: Parameters<typeof actual.createManagedTaskFlowWithAtomicUpdates>[0],
     ) => {
+      taskFlowRuntimeState.atomicCreateCalls += 1;
       taskFlowRuntimeState.beforeAtomicCreate?.();
+      if (taskFlowRuntimeState.atomicCreateCalls === taskFlowRuntimeState.failAtomicCreateCall) {
+        return { applied: false, reason: "persist_failed" as const };
+      }
       return actual.createManagedTaskFlowWithAtomicUpdates(params);
     },
     updateTaskFlowsAtomically: (params: Parameters<typeof actual.updateTaskFlowsAtomically>[0]) => {
@@ -153,6 +159,8 @@ describe("spawn-init continuation cancellation races", () => {
     taskFlowRuntimeState.beforeFailFlow = undefined;
     taskFlowRuntimeState.beforeAtomicCreate = undefined;
     taskFlowRuntimeState.beforeAtomicUpdate = undefined;
+    taskFlowRuntimeState.atomicCreateCalls = 0;
+    taskFlowRuntimeState.failAtomicCreateCall = undefined;
     taskFlowRuntimeState.failAtomicUpdate = false;
     sessionAccessorState.afterPatchCall = undefined;
     sessionAccessorState.failPatchCall = undefined;
@@ -803,6 +811,27 @@ describe("spawn-init continuation cancellation races", () => {
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "queued" });
     expect(findFlowByReason(flows, "first replacement work")).toMatchObject({ status: "failed" });
     expect(findFlowByReason(flows, "second replacement work")).toMatchObject({ status: "failed" });
+  });
+
+  it("rolls back earlier durable work when a later batch enqueue fails", async () => {
+    await enqueuePriorParkedWork("prior parked work");
+    taskFlowRuntimeState.failAtomicCreateCall = 2;
+
+    await expect(
+      schedule([
+        { reason: "first replacement work", delaySeconds: 30 },
+        { reason: "failed second replacement work", delaySeconds: 30 },
+      ]),
+    ).rejects.toThrow("prior parked-wake supersession did not commit");
+
+    const { resetTaskFlowRegistryForTests } =
+      await import("../../tasks/task-runtime.test-helpers.js");
+    resetTaskFlowRegistryForTests({ persist: false });
+    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "queued" });
+    expect(findFlowByReason(flows, "first replacement work")).toMatchObject({ status: "failed" });
+    expect(findFlowByReason(flows, "failed second replacement work")).toBeUndefined();
+    expectRestoredChainState();
   });
 
   it("cleans up safe siblings without restoring prior work after one replacement succeeded", async () => {

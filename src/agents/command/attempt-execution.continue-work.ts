@@ -455,17 +455,6 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     }
   }
 
-  if (result.replacementFailure) {
-    enqueueSystemEvent(
-      "[continuation] A newer continue_work wake was not scheduled because prior parked-wake supersession did not commit.",
-      { sessionKey: params.sessionKey, trusted: true },
-    );
-    await restorePriorChainState();
-    throw new Error(
-      `prior parked-wake supersession did not commit (${result.replacementFailure})${result.replacementFailureFlowId ? ` for flow ${result.replacementFailureFlowId}` : ""}`,
-    );
-  }
-
   const failCreatedWorkAndRestoreReservation = async (summary: string): Promise<void> => {
     const errors: Error[] = [];
     try {
@@ -486,6 +475,19 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
       throw new AggregateError(errors, "continuation wake cleanup and chain rollback both failed");
     }
   };
+
+  if (result.replacementFailure) {
+    enqueueSystemEvent(
+      "[continuation] A newer continue_work wake was not scheduled because prior parked-wake supersession did not commit.",
+      { sessionKey: params.sessionKey, trusted: true },
+    );
+    await failCreatedWorkAndRestoreReservation(
+      "continue_work replacement cancelled because parked-wake supersession did not commit.",
+    );
+    throw new Error(
+      `prior parked-wake supersession did not commit (${result.replacementFailure})${result.replacementFailureFlowId ? ` for flow ${result.replacementFailureFlowId}` : ""}`,
+    );
+  }
 
   if (params.abortSignal?.aborted) {
     await failCreatedWorkAndRestoreReservation(
