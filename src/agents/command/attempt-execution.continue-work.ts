@@ -262,8 +262,6 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
       : null;
   let result: Awaited<ReturnType<typeof scheduleContinuationWorkBatch>>;
   let failCreatedWork: ((summary: string) => void) | undefined;
-  let supersedePriorParkedWork: (() => string[]) | undefined;
-  let restoreSupersededPriorParkedWork: (() => string[]) | undefined;
   const createdFlowIds: string[] = [];
   if (reservedRequests.length === 0 || liveBudgetRejection) {
     result = {
@@ -275,10 +273,10 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   } else {
     try {
       const [
-        { failFlow, getTaskFlowById, listTaskFlowsForOwnerKey, requestFlowCancel, resumeFlow },
+        { failFlow, getTaskFlowById, listTaskFlowsForOwnerKey, requestFlowCancel },
         { abortContinuationDispatchClaim },
-        { decodeWorkState, isContinuationWorkFlow, workToRuntime },
-        { markPendingWorkSuperseded },
+        { decodeWorkState, isContinuationWorkFlow },
+        { rollbackPendingWorkReplacement },
       ] = await Promise.all([
         import("../../tasks/task-flow-runtime-internal.js"),
         import("../../auto-reply/continuation/continuation-dispatch-claims.js"),
@@ -286,79 +284,48 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         import("../../auto-reply/continuation/work-store.js"),
       ]);
       const existingFlows = listTaskFlowsForOwnerKey(params.sessionKey);
-      const priorParkedFlows = existingFlows.flatMap((flow) => {
+      const priorParkedFlows = existingFlows.filter((flow) => {
         const state = isContinuationWorkFlow(flow) ? decodeWorkState(flow) : undefined;
-        return flow.status === "queued" && state?.idleRetry?.trigger === "reply-run-ended"
-          ? [
-              {
-                flowId: flow.flowId,
-                revision: flow.revision,
-                currentStep: flow.currentStep,
-                stateJson: flow.stateJson,
-              },
-            ]
-          : [];
+        return flow.status === "queued" && state?.idleRetry?.trigger === "reply-run-ended";
       });
-      const supersededPriorParkedFlows: typeof priorParkedFlows = [];
-      supersedePriorParkedWork = () => {
-        const unresolvedFlowIds: string[] = [];
-        for (const priorParked of priorParkedFlows) {
-          const flow = getTaskFlowById(priorParked.flowId);
-          if (!flow || flow.status !== "queued" || !isContinuationWorkFlow(flow)) {
-            continue;
-          }
-          const state = decodeWorkState(flow);
-          if (state?.idleRetry?.trigger !== "reply-run-ended") {
-            continue;
-          }
-          if (
-            flow.revision !== priorParked.revision ||
-            !markPendingWorkSuperseded(
-              workToRuntime(flow, state, "queued"),
-              "Superseded by a newer continue_work election after its chain state finalized.",
-            )
-          ) {
-            unresolvedFlowIds.push(flow.flowId);
-          } else {
-            supersededPriorParkedFlows.push(priorParked);
-          }
-        }
-        return unresolvedFlowIds;
-      };
-      restoreSupersededPriorParkedWork = () => {
-        const unresolvedFlowIds: string[] = [];
-        for (const priorParked of supersededPriorParkedFlows) {
-          try {
-            const flow = getTaskFlowById(priorParked.flowId);
-            if (
-              !flow ||
-              flow.status !== "succeeded" ||
-              flow.revision !== priorParked.revision + 1 ||
-              !isContinuationWorkFlow(flow)
-            ) {
-              unresolvedFlowIds.push(priorParked.flowId);
-              continue;
-            }
-            const restored = resumeFlow({
-              flowId: flow.flowId,
-              expectedRevision: flow.revision,
-              status: "queued",
-              currentStep: priorParked.currentStep,
-              stateJson: priorParked.stateJson,
-            });
-            if (!restored.applied) {
-              unresolvedFlowIds.push(priorParked.flowId);
-            }
-          } catch (error) {
-            unresolvedFlowIds.push(priorParked.flowId);
-            log.warn(
-              `[continuation] Failed while restoring partially superseded parked work for session ${sanitizeForLog(params.sessionKey)} flow=${sanitizeForLog(priorParked.flowId)}: ${sanitizeForLog(String(error))}`,
+      let replacementApplied = false;
+      failCreatedWork = (summary) => {
+        if (replacementApplied) {
+          const rollback = rollbackPendingWorkReplacement({
+            sessionKey: params.sessionKey,
+            createdFlowIds,
+            priorFlows: priorParkedFlows,
+            originRunId: params.originRunId,
+            originTurnId: params.originTurnId,
+            summary,
+          });
+          const cleanupErrors: Error[] = [];
+          if (rollback.unresolvedCreatedFlowIds.length > 0) {
+            cleanupErrors.push(
+              new Error(
+                `failed to terminalize continuation flow(s): ${rollback.unresolvedCreatedFlowIds.join(", ")}`,
+              ),
             );
           }
+          if (rollback.unrestoredPriorFlowIds.length > 0) {
+            cleanupErrors.push(
+              new Error(
+                `failed to restore prior continuation flow(s): ${rollback.unrestoredPriorFlowIds.join(", ")}`,
+              ),
+            );
+          }
+          if (!rollback.applied && cleanupErrors.length === 0) {
+            cleanupErrors.push(new Error("atomic continuation replacement rollback failed"));
+          }
+          const [cleanupError] = cleanupErrors;
+          if (cleanupErrors.length === 1 && cleanupError) {
+            throw cleanupError;
+          }
+          if (cleanupErrors.length > 1) {
+            throw new AggregateError(cleanupErrors, "continuation replacement rollback failed");
+          }
+          return;
         }
-        return unresolvedFlowIds;
-      };
-      failCreatedWork = (summary) => {
         const cleanupErrors: Error[] = [];
         const unresolvedFlowIds: string[] = [];
         for (const flowId of createdFlowIds) {
@@ -460,7 +427,11 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         config: liveSchedulingConfig,
         coalescePriorParkedWork: false,
         pendingCapacityExclusionFlowIds: new Set(priorParkedFlows.map((flow) => flow.flowId)),
-        onFlowEnqueued: (flowId) => createdFlowIds.push(flowId),
+        priorParkedFlowsToSupersede: priorParkedFlows,
+        onFlowEnqueued: (flowId) => {
+          createdFlowIds.push(flowId);
+          replacementApplied ||= priorParkedFlows.length > 0;
+        },
         // Same-session own-turn work has no spawning parent. Adding parentRunId
         // would let orphan recovery reap the row after its electing turn settles.
         originRunId: params.originRunId,
@@ -478,6 +449,17 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
       );
       throw error;
     }
+  }
+
+  if (result.replacementFailure) {
+    await restorePriorChainState();
+    enqueueSystemEvent(
+      "[continuation] A newer continue_work wake was not scheduled because prior parked-wake supersession did not commit.",
+      { sessionKey: params.sessionKey, trusted: true },
+    );
+    throw new Error(
+      `prior parked-wake supersession did not commit (${result.replacementFailure})${result.replacementFailureFlowId ? ` for flow ${result.replacementFailureFlowId}` : ""}`,
+    );
   }
 
   const failCreatedWorkAndRestoreReservation = async (summary: string): Promise<void> => {
@@ -576,55 +558,5 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
       "continue_work scheduling cancelled with its originating turn.",
     );
     return;
-  }
-  let supersessionError: unknown;
-  let unresolvedPriorFlowIds: string[] = [];
-  try {
-    unresolvedPriorFlowIds = supersedePriorParkedWork?.() ?? [];
-  } catch (error) {
-    supersessionError = error;
-    log.warn(
-      `[continuation] Failed while superseding prior parked work after spawn-init chain finalization for session ${sanitizeForLog(params.sessionKey)}: ${sanitizeForLog(String(error))}`,
-    );
-  }
-  if (unresolvedPriorFlowIds.length > 0) {
-    supersessionError = new Error(
-      `could not supersede prior parked continuation flow(s): ${unresolvedPriorFlowIds.join(", ")}`,
-    );
-    log.warn(
-      `[continuation] Could not supersede prior parked flow(s) after spawn-init chain finalization for session ${sanitizeForLog(params.sessionKey)}: ${unresolvedPriorFlowIds.map(sanitizeForLog).join(", ")}`,
-    );
-  }
-  if (supersessionError) {
-    const normalizedSupersessionError = normalizeCleanupError(
-      supersessionError,
-      "prior parked-wake supersession failed",
-    );
-    enqueueSystemEvent(
-      "[continuation] A newer continue_work wake was cancelled because prior parked-wake supersession did not commit.",
-      { sessionKey: params.sessionKey, trusted: true },
-    );
-    const compensationErrors: Error[] = [normalizedSupersessionError];
-    const unrestoredPriorFlowIds = restoreSupersededPriorParkedWork?.() ?? [];
-    if (unrestoredPriorFlowIds.length > 0) {
-      compensationErrors.push(
-        new Error(
-          `could not restore partially superseded prior continuation flow(s): ${unrestoredPriorFlowIds.join(", ")}`,
-        ),
-      );
-    }
-    try {
-      await failCreatedWorkAndRestoreReservation(
-        "continue_work replacement cancelled because prior parked-wake supersession did not commit.",
-      );
-    } catch (cleanupError) {
-      compensationErrors.push(
-        normalizeCleanupError(cleanupError, "replacement continuation cleanup failed"),
-      );
-    }
-    if (compensationErrors.length > 1) {
-      throw new AggregateError(compensationErrors, "prior parked-wake compensation failed");
-    }
-    throw normalizedSupersessionError;
   }
 }

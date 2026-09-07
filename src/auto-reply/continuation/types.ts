@@ -10,6 +10,7 @@
 
 import type { ContinuationRecipientAuthorityBinding } from "../../config/sessions/session-recipient-authority-types.js";
 import type { InlineAttachment, InlineAttachmentMount } from "../../shared/inline-attachments.js";
+import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
 import type {
   ContinuationCrossSessionTargetingPolicy,
   ContinuationDelegateFanoutMode,
@@ -243,7 +244,13 @@ export type ChainState = {
 };
 
 export type ContinuationWorkScheduleResult =
-  | { scheduled: false; capped: boolean; chainState: ChainState }
+  | {
+      scheduled: false;
+      capped: boolean;
+      chainState: ChainState;
+      replacementFailure?: "not_found" | "revision_conflict" | "persist_failed" | "invalid_prior";
+      replacementFailureFlowId?: string;
+    }
   | { scheduled: true; capped: false; chainState: ChainState };
 
 export type ContinuationWorkBatchResult = {
@@ -251,6 +258,8 @@ export type ContinuationWorkBatchResult = {
   cappedCount: number;
   capped: boolean;
   chainState: ChainState;
+  replacementFailure?: "not_found" | "revision_conflict" | "persist_failed" | "invalid_prior";
+  replacementFailureFlowId?: string;
 };
 
 export type ContinuationWorkScheduleParams = {
@@ -262,6 +271,7 @@ export type ContinuationWorkScheduleParams = {
   originRunId?: string;
   originTurnId?: string;
   pendingCapacityExclusionFlowIds?: ReadonlySet<string>;
+  priorParkedFlowsToSupersede?: readonly TaskFlowRecord[];
   abortSignal?: AbortSignal;
   onFlowEnqueued?: (flowId: string) => void;
   log?: (message: string) => void;

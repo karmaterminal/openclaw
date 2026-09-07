@@ -33,6 +33,7 @@ import type { ContinuationWorkReasonCategory, PendingContinuationWork } from "./
 import {
   consumePendingWork,
   enqueuePendingWork,
+  enqueuePendingWorkReplacing,
   finalizeAnchorPendingWork,
   hasPendingIdleRetryWork,
   listPendingWorkSessionKeysForRecovery,
@@ -713,7 +714,28 @@ export async function scheduleContinuationWork(
     ...(electingTurnActive ? { anchorPending: true } : { anchorFinalizedAt: electedAt }),
     ...(idleRetry ? { idleRetry } : {}),
   };
-  const enqueued = enqueuePendingWork(work);
+  const replacementResult =
+    params.priorParkedFlowsToSupersede && params.priorParkedFlowsToSupersede.length > 0
+      ? enqueuePendingWorkReplacing({
+          work,
+          priorFlows: params.priorParkedFlowsToSupersede,
+          summary:
+            "Superseded by a newer continue_work election after its replacement became durable.",
+        })
+      : undefined;
+  if (replacementResult && !replacementResult.applied) {
+    params.log?.(
+      `[continuation:work-replacement-not-committed] session=${params.sessionKey} reason=${replacementResult.reason}${replacementResult.flowId ? ` flowId=${replacementResult.flowId}` : ""}`,
+    );
+    return {
+      scheduled: false,
+      capped: false,
+      chainState: params.chainState,
+      replacementFailure: replacementResult.reason,
+      ...(replacementResult.flowId ? { replacementFailureFlowId: replacementResult.flowId } : {}),
+    };
+  }
+  const enqueued = replacementResult?.work ?? enqueuePendingWork(work);
   if (!enqueued) {
     return { scheduled: false, capped: false, chainState: params.chainState };
   }
@@ -798,6 +820,9 @@ export async function scheduleContinuationWorkBatch(
       ...(params.originRunId !== undefined ? { originRunId: params.originRunId } : {}),
       ...(params.originTurnId !== undefined ? { originTurnId: params.originTurnId } : {}),
       pendingCapacityExclusionFlowIds: params.pendingCapacityExclusionFlowIds,
+      ...(scheduledCount === 0 && params.priorParkedFlowsToSupersede
+        ? { priorParkedFlowsToSupersede: params.priorParkedFlowsToSupersede }
+        : {}),
       ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
       ...(params.onFlowEnqueued ? { onFlowEnqueued: params.onFlowEnqueued } : {}),
       ...(params.log ? { log: params.log } : {}),
@@ -808,6 +833,10 @@ export async function scheduleContinuationWorkBatch(
         cappedCount: params.requests.length - scheduledCount,
         capped: result.capped,
         chainState,
+        ...(result.replacementFailure ? { replacementFailure: result.replacementFailure } : {}),
+        ...(result.replacementFailureFlowId
+          ? { replacementFailureFlowId: result.replacementFailureFlowId }
+          : {}),
       };
     }
     chainState = result.chainState;

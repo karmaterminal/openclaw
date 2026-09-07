@@ -9,15 +9,19 @@
 
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
+import type { TaskFlowAtomicUpdate } from "../../tasks/task-flow-runtime-internal.js";
 import {
   createManagedTaskFlow,
+  createManagedTaskFlowWithAtomicUpdates,
   failFlow,
   finishFlow,
   getTaskFlowById,
   listTaskFlowRecords,
   listTaskFlowsForOwnerKey,
+  updateTaskFlowsAtomically,
   updateFlowRecordByIdExpectedRevision,
 } from "../../tasks/task-flow-runtime-internal.js";
+import { abortContinuationDispatchClaim } from "./continuation-dispatch-claims.js";
 import {
   CONTINUATION_WORK_CONTROLLER_ID,
   buildFallbackWorkState,
@@ -110,6 +114,220 @@ export function enqueuePendingWork(work: PendingContinuationWork): PendingContin
     createdAt: work.electedAt,
   });
   return flow ? workToRuntime(flow, state, "queued") : null;
+}
+
+function buildFinishedWorkPatch(
+  state: PendingWorkState,
+  params: { currentStep: string; stateExtra?: Record<string, unknown>; now: number },
+): TaskFlowAtomicUpdate["patch"] {
+  const { idleRetry: _idleRetry, recoveryDueAt: _recoveryDueAt, ...terminalState } = state;
+  return {
+    status: "succeeded",
+    currentStep: params.currentStep,
+    stateJson: {
+      ...terminalState,
+      turnGrantedAt: params.now,
+      ...params.stateExtra,
+    },
+    waitJson: null,
+    blockedTaskId: null,
+    blockedSummary: null,
+    endedAt: params.now,
+    updatedAt: params.now,
+  };
+}
+
+export type PendingWorkReplacementResult =
+  | { applied: true; work: PendingContinuationWork }
+  | {
+      applied: false;
+      reason: "not_found" | "revision_conflict" | "persist_failed" | "invalid_prior";
+      flowId?: string;
+    };
+
+export function enqueuePendingWorkReplacing(params: {
+  work: PendingContinuationWork;
+  priorFlows: readonly TaskFlowRecord[];
+  summary: string;
+}): PendingWorkReplacementResult {
+  const state = encodeWorkState(params.work);
+  const now = Date.now();
+  const updates: TaskFlowAtomicUpdate[] = [];
+  for (const prior of params.priorFlows) {
+    const priorState = decodeWorkState(prior);
+    if (
+      !isContinuationWorkFlow(prior) ||
+      prior.status !== "queued" ||
+      priorState?.idleRetry?.trigger !== "reply-run-ended"
+    ) {
+      return { applied: false, reason: "invalid_prior", flowId: prior.flowId };
+    }
+    updates.push({
+      flowId: prior.flowId,
+      expectedRevision: prior.revision,
+      patch: buildFinishedWorkPatch(priorState, {
+        currentStep: `superseded: ${params.summary}`.slice(0, 200),
+        now,
+      }),
+    });
+  }
+  const result = createManagedTaskFlowWithAtomicUpdates({
+    create: {
+      ownerKey: params.work.sessionKey,
+      ...(params.work.chainId ? { chainId: params.work.chainId } : {}),
+      controllerId: CONTINUATION_WORK_CONTROLLER_ID,
+      notifyPolicy: "silent",
+      goal: workGoal(params.work),
+      currentStep: "Queued for same-session continuation wake",
+      stateJson: state,
+      createdAt: params.work.electedAt,
+    },
+    updates,
+  });
+  if (!result.applied) {
+    return {
+      applied: false,
+      reason: result.reason,
+      ...(result.flowId ? { flowId: result.flowId } : {}),
+    };
+  }
+  return {
+    applied: true,
+    work: workToRuntime(result.created, state, "queued"),
+  };
+}
+
+export type PendingWorkReplacementRollbackResult = {
+  applied: boolean;
+  unresolvedCreatedFlowIds: string[];
+  unrestoredPriorFlowIds: string[];
+};
+
+export function rollbackPendingWorkReplacement(params: {
+  sessionKey: string;
+  createdFlowIds: readonly string[];
+  priorFlows: readonly TaskFlowRecord[];
+  originRunId?: string;
+  originTurnId?: string;
+  summary: string;
+}): PendingWorkReplacementRollbackResult {
+  let lastUnresolvedCreatedFlowIds: string[] = [];
+  let lastUnrestoredPriorFlowIds: string[] = [];
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const updates: TaskFlowAtomicUpdate[] = [];
+    const unresolvedCreatedFlowIds: string[] = [];
+    const unrestoredPriorFlowIds: string[] = [];
+    let unsafeCreatedOwner = false;
+    const now = Date.now();
+
+    for (const flowId of params.createdFlowIds) {
+      const flow = getTaskFlowById(flowId);
+      if (
+        !flow ||
+        flow.status === "failed" ||
+        flow.status === "cancelled" ||
+        flow.status === "lost"
+      ) {
+        continue;
+      }
+      const state = isContinuationWorkFlow(flow) ? decodeWorkState(flow) : undefined;
+      if (
+        !state ||
+        state.originRunId !== params.originRunId ||
+        state.originTurnId !== params.originTurnId ||
+        flow.status === "succeeded"
+      ) {
+        unsafeCreatedOwner = true;
+        unresolvedCreatedFlowIds.push(flowId);
+        continue;
+      }
+      if (flow.status !== "queued" && flow.status !== "running") {
+        unsafeCreatedOwner = true;
+        unresolvedCreatedFlowIds.push(flowId);
+        continue;
+      }
+      if (flow.status === "running") {
+        abortContinuationDispatchClaim({
+          sessionKey: params.sessionKey,
+          flowId,
+          reason: params.summary,
+        });
+      }
+      updates.push({
+        flowId,
+        expectedRevision: flow.revision,
+        patch: {
+          status: "failed",
+          currentStep: "spawn-init continuation finalization failed",
+          stateJson: flow.stateJson,
+          waitJson: null,
+          blockedTaskId: null,
+          blockedSummary: params.summary,
+          endedAt: now,
+          updatedAt: now,
+        },
+      });
+    }
+
+    if (unsafeCreatedOwner) {
+      return {
+        applied: false,
+        unresolvedCreatedFlowIds,
+        unrestoredPriorFlowIds: params.priorFlows.map((flow) => flow.flowId),
+      };
+    }
+
+    for (const prior of params.priorFlows) {
+      const flow = getTaskFlowById(prior.flowId);
+      if (flow?.status === "queued" && flow.revision === prior.revision) {
+        continue;
+      }
+      if (
+        !flow ||
+        !isContinuationWorkFlow(flow) ||
+        flow.status !== "succeeded" ||
+        flow.revision !== prior.revision + 1
+      ) {
+        unrestoredPriorFlowIds.push(prior.flowId);
+        continue;
+      }
+      updates.push({
+        flowId: flow.flowId,
+        expectedRevision: flow.revision,
+        patch: {
+          status: "queued",
+          currentStep: prior.currentStep,
+          stateJson: prior.stateJson,
+          waitJson: null,
+          blockedTaskId: null,
+          blockedSummary: null,
+          cancelRequestedAt: null,
+          endedAt: null,
+          updatedAt: now,
+        },
+      });
+    }
+
+    const result = updateTaskFlowsAtomically(updates);
+    if (result.applied) {
+      return {
+        applied: true,
+        unresolvedCreatedFlowIds,
+        unrestoredPriorFlowIds,
+      };
+    }
+    lastUnresolvedCreatedFlowIds = [
+      ...new Set([...unresolvedCreatedFlowIds, ...params.createdFlowIds]),
+    ];
+    lastUnrestoredPriorFlowIds = [
+      ...new Set([...unrestoredPriorFlowIds, ...params.priorFlows.map((flow) => flow.flowId)]),
+    ];
+  }
+  return {
+    applied: false,
+    unresolvedCreatedFlowIds: lastUnresolvedCreatedFlowIds,
+    unrestoredPriorFlowIds: lastUnrestoredPriorFlowIds,
+  };
 }
 
 export function listPendingWorkSessionKeysForRecovery(): string[] {
@@ -299,18 +517,18 @@ function finishContinuationWorkFlow(
   const state = current ? decodeWorkState(current) : undefined;
   const now = Date.now();
   const baseState: PendingWorkState = state ?? buildFallbackWorkState(work);
-  const { idleRetry: _idleRetry, recoveryDueAt: _recoveryDueAt, ...terminalState } = baseState;
+  const patch = buildFinishedWorkPatch(baseState, {
+    currentStep: params.currentStep,
+    ...(params.stateExtra ? { stateExtra: params.stateExtra } : {}),
+    now,
+  });
   const finished = finishFlow({
     flowId: work.flowId,
     expectedRevision: work.expectedRevision,
-    currentStep: params.currentStep,
-    stateJson: {
-      ...terminalState,
-      turnGrantedAt: now,
-      ...params.stateExtra,
-    },
-    updatedAt: now,
-    endedAt: now,
+    currentStep: patch.currentStep,
+    stateJson: patch.stateJson,
+    updatedAt: patch.updatedAt,
+    endedAt: patch.endedAt ?? now,
   });
   if (!finished.applied) {
     log.warn(

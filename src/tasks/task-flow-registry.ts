@@ -27,7 +27,7 @@ type TaskFlowRegistryRestoreState =
   | { status: "failed"; error: Error; message: string };
 let taskFlowRegistryRestoreState: TaskFlowRegistryRestoreState = { status: "uninitialized" };
 
-type FlowRecordPatch = Omit<
+export type FlowRecordPatch = Omit<
   Partial<
     Pick<
       TaskFlowRecord,
@@ -102,6 +102,32 @@ export type TaskFlowUpdateResult =
       reason: "not_found" | "revision_conflict" | "persist_failed";
       current?: TaskFlowRecord;
     };
+
+export type TaskFlowAtomicUpdate = {
+  flowId: string;
+  expectedRevision: number;
+  patch: FlowRecordPatch;
+};
+
+export type TaskFlowAtomicUpdateResult =
+  | {
+      applied: true;
+      flows: TaskFlowRecord[];
+    }
+  | {
+      applied: false;
+      reason: "not_found" | "revision_conflict" | "persist_failed";
+      flowId?: string;
+      current?: TaskFlowRecord;
+    };
+
+export type TaskFlowAtomicCreateResult =
+  | {
+      applied: true;
+      created: TaskFlowRecord;
+      updated: TaskFlowRecord[];
+    }
+  | Exclude<TaskFlowAtomicUpdateResult, { applied: true }>;
 
 type TaskFlowSyncResult =
   | {
@@ -324,13 +350,18 @@ export function reloadTaskFlowRegistryFromStore(): void {
   ensureTaskFlowRegistryReady();
 }
 
-function createFlowSnapshotWith(next?: TaskFlowRecord, deletedFlowId?: string) {
+function createFlowSnapshotWith(
+  next?: TaskFlowRecord | readonly TaskFlowRecord[],
+  deletedFlowId?: string,
+) {
   const snapshot = new Map(snapshotFlowRecords(flows).map((flow) => [flow.flowId, flow]));
   if (deletedFlowId) {
     snapshot.delete(deletedFlowId);
   }
   if (next) {
-    snapshot.set(next.flowId, cloneFlowRecord(next));
+    for (const flow of Array.isArray(next) ? next : [next]) {
+      snapshot.set(flow.flowId, cloneFlowRecord(flow));
+    }
   }
   return snapshot;
 }
@@ -488,6 +519,97 @@ function createFlowRecord(params: CreateFlowRecordParams): TaskFlowRecord | null
   return writeFlowRecord(record);
 }
 
+function prepareTaskFlowAtomicUpdates(
+  updates: readonly TaskFlowAtomicUpdate[],
+):
+  | { applied: true; entries: Array<{ current: TaskFlowRecord; next: TaskFlowRecord }> }
+  | Exclude<TaskFlowAtomicUpdateResult, { applied: true }> {
+  const seenFlowIds = new Set<string>();
+  const entries: Array<{ current: TaskFlowRecord; next: TaskFlowRecord }> = [];
+  for (const update of updates) {
+    if (seenFlowIds.has(update.flowId)) {
+      return {
+        applied: false,
+        reason: "revision_conflict",
+        flowId: update.flowId,
+        current: flows.get(update.flowId),
+      };
+    }
+    seenFlowIds.add(update.flowId);
+    const current = flows.get(update.flowId);
+    if (!current) {
+      return { applied: false, reason: "not_found", flowId: update.flowId };
+    }
+    if (current.revision !== update.expectedRevision) {
+      return {
+        applied: false,
+        reason: "revision_conflict",
+        flowId: update.flowId,
+        current: cloneFlowRecord(current),
+      };
+    }
+    entries.push({
+      current,
+      next: applyFlowPatch(current, update.patch),
+    });
+  }
+  return { applied: true, entries };
+}
+
+function commitTaskFlowAtomicChanges(params: {
+  created?: TaskFlowRecord;
+  updates: readonly TaskFlowAtomicUpdate[];
+}): TaskFlowAtomicCreateResult | TaskFlowAtomicUpdateResult {
+  ensureTaskFlowRegistryReady();
+  const prepared = prepareTaskFlowAtomicUpdates(params.updates);
+  if (!prepared.applied) {
+    return prepared;
+  }
+  const changed = [
+    ...prepared.entries.map((entry) => entry.next),
+    ...(params.created ? [params.created] : []),
+  ];
+  try {
+    getTaskFlowRegistryStore().saveSnapshot({
+      flows: createFlowSnapshotWith(changed),
+    });
+  } catch (error) {
+    log.warn("Failed to persist atomic task-flow changes", {
+      createdFlowId: params.created?.flowId,
+      updatedFlowIds: params.updates.map((update) => update.flowId),
+      error,
+    });
+    return { applied: false, reason: "persist_failed" };
+  }
+
+  for (const flow of changed) {
+    flows.set(flow.flowId, flow);
+  }
+  for (const entry of prepared.entries) {
+    emitFlowRegistryObserverEvent(() => ({
+      kind: "upserted",
+      flow: cloneFlowRecord(entry.next),
+      previous: cloneFlowRecord(entry.current),
+    }));
+  }
+  const created = params.created;
+  if (created) {
+    emitFlowRegistryObserverEvent(() => ({
+      kind: "upserted",
+      flow: cloneFlowRecord(created),
+    }));
+    return {
+      applied: true,
+      created: cloneFlowRecord(created),
+      updated: prepared.entries.map((entry) => cloneFlowRecord(entry.next)),
+    };
+  }
+  return {
+    applied: true,
+    flows: prepared.entries.map((entry) => cloneFlowRecord(entry.next)),
+  };
+}
+
 // chainId is threaded through createManagedTaskFlow via FlowRecordCreateFields,
 // so flow_runs.chain_id is populated on the common managed-flow create path,
 // not just when callers bypass via createFlowRecord directly.
@@ -501,6 +623,27 @@ export function createManagedTaskFlow(
     syncMode: "managed",
     controllerId: assertControllerId(params.controllerId),
   });
+}
+
+export function createManagedTaskFlowWithAtomicUpdates(params: {
+  create: FlowRecordCreateFields & { controllerId: string };
+  updates: readonly TaskFlowAtomicUpdate[];
+}): TaskFlowAtomicCreateResult {
+  const created = buildFlowRecord({
+    ...params.create,
+    syncMode: "managed",
+    controllerId: assertControllerId(params.create.controllerId),
+  });
+  return commitTaskFlowAtomicChanges({
+    created,
+    updates: params.updates,
+  }) as TaskFlowAtomicCreateResult;
+}
+
+export function updateTaskFlowsAtomically(
+  updates: readonly TaskFlowAtomicUpdate[],
+): TaskFlowAtomicUpdateResult {
+  return commitTaskFlowAtomicChanges({ updates }) as TaskFlowAtomicUpdateResult;
 }
 
 export function createTaskFlowForTask(params: {

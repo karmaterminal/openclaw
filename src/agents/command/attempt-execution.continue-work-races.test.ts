@@ -23,10 +23,13 @@ import { scheduleSpawnInitContinueWorkWake } from "./attempt-execution.continue-
 
 const taskFlowRuntimeState = vi.hoisted(() => ({
   beforeFailFlow: undefined as ((flowId: string) => void) | undefined,
-  beforeResumeFlow: undefined as ((flowId: string) => void) | undefined,
+  beforeAtomicCreate: undefined as (() => void) | undefined,
+  beforeAtomicUpdate: undefined as (() => void) | undefined,
+  failAtomicUpdate: false,
 }));
 const sessionAccessorState = vi.hoisted(() => ({
   afterPatchCall: undefined as ((call: number) => void | Promise<void>) | undefined,
+  failPatchCall: undefined as number | undefined,
   patchCalls: 0,
 }));
 
@@ -38,9 +41,18 @@ vi.mock("../../tasks/task-flow-runtime-internal.js", async (importOriginal) => {
       taskFlowRuntimeState.beforeFailFlow?.(params.flowId);
       return actual.failFlow(params);
     },
-    resumeFlow: (params: Parameters<typeof actual.resumeFlow>[0]) => {
-      taskFlowRuntimeState.beforeResumeFlow?.(params.flowId);
-      return actual.resumeFlow(params);
+    createManagedTaskFlowWithAtomicUpdates: (
+      params: Parameters<typeof actual.createManagedTaskFlowWithAtomicUpdates>[0],
+    ) => {
+      taskFlowRuntimeState.beforeAtomicCreate?.();
+      return actual.createManagedTaskFlowWithAtomicUpdates(params);
+    },
+    updateTaskFlowsAtomically: (params: Parameters<typeof actual.updateTaskFlowsAtomically>[0]) => {
+      taskFlowRuntimeState.beforeAtomicUpdate?.();
+      if (taskFlowRuntimeState.failAtomicUpdate) {
+        return { applied: false, reason: "persist_failed" as const };
+      }
+      return actual.updateTaskFlowsAtomically(params);
     },
   };
 });
@@ -53,6 +65,9 @@ vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => {
       ...args: Parameters<typeof actual.patchSessionEntryCore>
     ): ReturnType<typeof actual.patchSessionEntryCore> => {
       sessionAccessorState.patchCalls += 1;
+      if (sessionAccessorState.patchCalls === sessionAccessorState.failPatchCall) {
+        throw new Error("synthetic continuation persistence failure");
+      }
       const result = await actual.patchSessionEntryCore(...args);
       await sessionAccessorState.afterPatchCall?.(sessionAccessorState.patchCalls);
       return result;
@@ -133,8 +148,11 @@ describe("spawn-init continuation cancellation races", () => {
     replaceSessionEntrySync({ storePath, sessionKey }, sessionEntry);
     clearSessionStoreCacheForTest();
     taskFlowRuntimeState.beforeFailFlow = undefined;
-    taskFlowRuntimeState.beforeResumeFlow = undefined;
+    taskFlowRuntimeState.beforeAtomicCreate = undefined;
+    taskFlowRuntimeState.beforeAtomicUpdate = undefined;
+    taskFlowRuntimeState.failAtomicUpdate = false;
     sessionAccessorState.afterPatchCall = undefined;
+    sessionAccessorState.failPatchCall = undefined;
     sessionAccessorState.patchCalls = 0;
     setRuntimeConfigSnapshot(makeConfig());
   });
@@ -357,10 +375,8 @@ describe("spawn-init continuation cancellation races", () => {
 
   it("rolls back the replacement when prior parked-work supersession loses its revision", async () => {
     await enqueuePriorParkedWork("prior parked work");
-    sessionAccessorState.afterPatchCall = (call) => {
-      if (call !== 2) {
-        return;
-      }
+    taskFlowRuntimeState.beforeAtomicCreate = () => {
+      taskFlowRuntimeState.beforeAtomicCreate = undefined;
       const prior = findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "prior parked work");
       if (!prior) {
         throw new Error("expected prior parked flow");
@@ -377,17 +393,15 @@ describe("spawn-init continuation cancellation races", () => {
 
     const flows = listTaskFlowsForOwnerKey(sessionKey);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "queued" });
-    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "failed" });
+    expect(findFlowByReason(flows, "replacement work")).toBeUndefined();
     expectRestoredChainState();
   });
 
-  it("restores prior wakes superseded before a later prior-wake CAS failure", async () => {
+  it("does not partially supersede prior wakes when one replacement CAS fails", async () => {
     await enqueuePriorParkedWork("first prior parked work");
     await enqueuePriorParkedWork("second prior parked work");
-    sessionAccessorState.afterPatchCall = (call) => {
-      if (call !== 2) {
-        return;
-      }
+    taskFlowRuntimeState.beforeAtomicCreate = () => {
+      taskFlowRuntimeState.beforeAtomicCreate = undefined;
       const prior = findFlowByReason(
         listTaskFlowsForOwnerKey(sessionKey),
         "second prior parked work",
@@ -412,17 +426,16 @@ describe("spawn-init continuation cancellation races", () => {
     expect(findFlowByReason(flows, "second prior parked work")).toMatchObject({
       status: "queued",
     });
-    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "failed" });
+    expect(findFlowByReason(flows, "replacement work")).toBeUndefined();
     expectRestoredChainState();
   });
 
   it("still cancels the replacement when partial prior-wake restoration loses its revision", async () => {
     await enqueuePriorParkedWork("first prior parked work");
     await enqueuePriorParkedWork("second prior parked work");
-    sessionAccessorState.afterPatchCall = (call) => {
-      if (call !== 2) {
-        return;
-      }
+    sessionAccessorState.failPatchCall = 2;
+    taskFlowRuntimeState.beforeAtomicUpdate = () => {
+      taskFlowRuntimeState.beforeAtomicUpdate = undefined;
       const prior = findFlowByReason(
         listTaskFlowsForOwnerKey(sessionKey),
         "second prior parked work",
@@ -437,19 +450,64 @@ describe("spawn-init continuation cancellation races", () => {
       });
       expect(bumped.applied).toBe(true);
     };
-    taskFlowRuntimeState.beforeResumeFlow = (flowId) => {
-      taskFlowRuntimeState.beforeResumeFlow = undefined;
-      const superseded = getTaskFlowById(flowId);
-      if (!superseded) {
-        throw new Error("expected superseded prior flow");
+
+    await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
+
+    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    expect(findFlowByReason(flows, "first prior parked work")).toMatchObject({
+      status: "queued",
+    });
+    expect(findFlowByReason(flows, "second prior parked work")).toMatchObject({
+      status: "succeeded",
+    });
+    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "failed" });
+    expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
+  });
+
+  it("aborts a replacement that starts running during atomic rollback", async () => {
+    await enqueuePriorParkedWork("prior parked work");
+    sessionAccessorState.failPatchCall = 2;
+    let wakeSignal: AbortSignal | undefined;
+    let releaseClaim = () => {};
+    taskFlowRuntimeState.beforeAtomicUpdate = () => {
+      taskFlowRuntimeState.beforeAtomicUpdate = undefined;
+      const replacement = findFlowByReason(
+        listTaskFlowsForOwnerKey(sessionKey),
+        "replacement work",
+      );
+      if (!replacement) {
+        throw new Error("expected replacement flow");
       }
-      const bumped = updateFlowRecordByIdExpectedRevision({
-        flowId,
-        expectedRevision: superseded.revision,
-        patch: { currentStep: "concurrent superseded-wake update" },
+      const running = updateFlowRecordByIdExpectedRevision({
+        flowId: replacement.flowId,
+        expectedRevision: replacement.revision,
+        patch: { status: "running" },
       });
-      expect(bumped.applied).toBe(true);
+      if (!running.applied) {
+        throw new Error("expected replacement flow to enter running state");
+      }
+      const claim = registerContinuationDispatchClaim({
+        sessionKey,
+        flowId: replacement.flowId,
+      });
+      wakeSignal = claim.controller.signal;
+      releaseClaim = claim.release;
     };
+
+    await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
+
+    releaseClaim();
+    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    expect(wakeSignal?.aborted).toBe(true);
+    expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "queued" });
+    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "failed" });
+  });
+
+  it("does not publish partial rollback state when atomic persistence fails", async () => {
+    await enqueuePriorParkedWork("first prior parked work");
+    await enqueuePriorParkedWork("second prior parked work");
+    sessionAccessorState.failPatchCall = 2;
+    taskFlowRuntimeState.failAtomicUpdate = true;
 
     await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
 
@@ -458,56 +516,9 @@ describe("spawn-init continuation cancellation races", () => {
       status: "succeeded",
     });
     expect(findFlowByReason(flows, "second prior parked work")).toMatchObject({
-      status: "queued",
-    });
-    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "failed" });
-    expectRestoredChainState();
-  });
-
-  it("continues prior-wake restoration and cancels the replacement when one restore throws", async () => {
-    await enqueuePriorParkedWork("first prior parked work");
-    await enqueuePriorParkedWork("second prior parked work");
-    await enqueuePriorParkedWork("third prior parked work");
-    let thrownRestoreFlowId: string | undefined;
-    sessionAccessorState.afterPatchCall = (call) => {
-      if (call !== 2) {
-        return;
-      }
-      const prior = findFlowByReason(
-        listTaskFlowsForOwnerKey(sessionKey),
-        "third prior parked work",
-      );
-      if (!prior) {
-        throw new Error("expected third prior parked flow");
-      }
-      const bumped = updateFlowRecordByIdExpectedRevision({
-        flowId: prior.flowId,
-        expectedRevision: prior.revision,
-        patch: { currentStep: "concurrent third prior-wake update" },
-      });
-      expect(bumped.applied).toBe(true);
-    };
-    taskFlowRuntimeState.beforeResumeFlow = (flowId) => {
-      taskFlowRuntimeState.beforeResumeFlow = undefined;
-      thrownRestoreFlowId = flowId;
-      throw new Error("synthetic prior-wake restoration failure");
-    };
-
-    await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
-
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
-    expect(thrownRestoreFlowId).toBeDefined();
-    expect(flows.find((flow) => flow.flowId === thrownRestoreFlowId)).toMatchObject({
       status: "succeeded",
     });
-    const otherSupersededPrior = ["first prior parked work", "second prior parked work"]
-      .map((reason) => findFlowByReason(flows, reason))
-      .find((flow) => flow?.flowId !== thrownRestoreFlowId);
-    expect(otherSupersededPrior).toMatchObject({ status: "queued" });
-    expect(findFlowByReason(flows, "third prior parked work")).toMatchObject({
-      status: "queued",
-    });
-    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "failed" });
-    expectRestoredChainState();
+    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
+    expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
   });
 });

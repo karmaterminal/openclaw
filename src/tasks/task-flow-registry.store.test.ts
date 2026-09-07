@@ -12,7 +12,9 @@ import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {
   createManagedTaskFlow as createManagedTaskFlowOrNull,
+  createManagedTaskFlowWithAtomicUpdates,
   getTaskFlowById,
+  listTaskFlowRecords,
   requestFlowCancel,
   setFlowWaiting,
 } from "./task-flow-registry.js";
@@ -167,6 +169,93 @@ describe("task-flow-registry store runtime", () => {
       throw new Error("Expected restored task flow");
     }
     expect(restoredFlow.goal).toBe("Restored flow");
+  });
+
+  it("commits replacement creation and prior terminalization in one durable snapshot", async () => {
+    await withFlowRegistryTempDir(async () => {
+      const prior = createManagedTaskFlow({
+        ownerKey: "agent:main:atomic-replacement",
+        controllerId: "core/continuation-work",
+        goal: "Prior parked wake",
+        stateJson: { kind: "continuation_work", reason: "prior" },
+      });
+
+      const replaced = createManagedTaskFlowWithAtomicUpdates({
+        create: {
+          ownerKey: prior.ownerKey,
+          controllerId: "core/continuation-work",
+          goal: "Replacement wake",
+          stateJson: { kind: "continuation_work", reason: "replacement" },
+        },
+        updates: [
+          {
+            flowId: prior.flowId,
+            expectedRevision: prior.revision,
+            patch: {
+              status: "succeeded",
+              currentStep: "superseded by replacement",
+              endedAt: 200,
+              updatedAt: 200,
+            },
+          },
+        ],
+      });
+      expect(replaced.applied).toBe(true);
+      if (!replaced.applied) {
+        throw new Error("expected atomic replacement to commit");
+      }
+
+      resetTaskFlowRegistryForTests({ persist: false });
+      expect(getTaskFlowById(prior.flowId)).toMatchObject({
+        status: "succeeded",
+        revision: prior.revision + 1,
+      });
+      expect(getTaskFlowById(replaced.created.flowId)).toMatchObject({
+        status: "queued",
+        revision: 0,
+      });
+    });
+  });
+
+  it("publishes neither side when atomic replacement persistence fails", () => {
+    let failWrites = false;
+    let stored = new Map<string, TaskFlowRecord>();
+    configureTaskFlowRegistryRuntime({
+      store: {
+        loadSnapshot: () => ({ flows: new Map(stored) }),
+        saveSnapshot: (snapshot) => {
+          if (failWrites) {
+            throw new Error("synthetic atomic snapshot failure");
+          }
+          stored = new Map(snapshot.flows);
+        },
+      },
+    });
+    const prior = createManagedTaskFlow({
+      ownerKey: "agent:main:failed-atomic-replacement",
+      controllerId: "core/continuation-work",
+      goal: "Prior parked wake",
+    });
+    failWrites = true;
+
+    const replaced = createManagedTaskFlowWithAtomicUpdates({
+      create: {
+        ownerKey: prior.ownerKey,
+        controllerId: "core/continuation-work",
+        goal: "Replacement wake",
+      },
+      updates: [
+        {
+          flowId: prior.flowId,
+          expectedRevision: prior.revision,
+          patch: { status: "succeeded", endedAt: 200, updatedAt: 200 },
+        },
+      ],
+    });
+
+    expect(replaced).toMatchObject({ applied: false, reason: "persist_failed" });
+    expect(listTaskFlowRecords()).toEqual([expect.objectContaining({ status: "queued" })]);
+    expect(stored.get(prior.flowId)).toMatchObject({ status: "queued" });
   });
 
   it("rejects invalid persisted flow enum values", () => {

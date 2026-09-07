@@ -2,6 +2,7 @@
 export {
   createTaskFlowForTask,
   createManagedTaskFlow,
+  createManagedTaskFlowWithAtomicUpdates,
   deleteTaskFlowRecordById,
   ensureTaskFlowRegistryReady,
   failFlow,
@@ -17,7 +18,13 @@ export {
   resumeFlow,
   setFlowWaiting,
   syncFlowFromTaskResult,
+  updateTaskFlowsAtomically,
   updateFlowRecordByIdExpectedRevision,
 } from "./task-flow-registry.js";
 
-export type { TaskFlowUpdateResult } from "./task-flow-registry.js";
+export type {
+  TaskFlowAtomicCreateResult,
+  TaskFlowAtomicUpdate,
+  TaskFlowAtomicUpdateResult,
+  TaskFlowUpdateResult,
+} from "./task-flow-registry.js";
