@@ -70,7 +70,11 @@ import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
 import { finalizeInboundContext } from "./inbound-context.js";
 import { clearSessionQueues, enqueueFollowupRun, getFollowupQueueDepth } from "./queue.js";
 import { createQueueTestRun } from "./queue.test-helpers.js";
-import { createReplyOperation, replyRunRegistry } from "./reply-run-registry.js";
+import {
+  clearReplyRunForResetBySessionId,
+  createReplyOperation,
+  replyRunRegistry,
+} from "./reply-run-registry.js";
 import { drainFormattedSystemEvents } from "./session-system-events.js";
 import { persistSessionUsageUpdate } from "./session-usage.js";
 import { resolveReplySessionPreprocessingState } from "./session.js";
@@ -680,8 +684,12 @@ describe("initSessionState guarded initialization", () => {
         },
       },
     });
+    let cancellationAttempts = 0;
     const cancel = vi.fn(() => {
-      throw new Error("backend cancellation failed");
+      cancellationAttempts += 1;
+      if (cancellationAttempts === 1) {
+        throw new Error("backend cancellation failed");
+      }
     });
     const activeReply = createReplyOperation({
       sessionKey,
@@ -712,6 +720,10 @@ describe("initSessionState guarded initialization", () => {
 
       expect(loadSessionEntry({ storePath, sessionKey })?.mainRestartRecovery).toBeUndefined();
       expect(cancel).toHaveBeenCalledWith("restart");
+      expect(replyRunRegistry.isActive(sessionKey)).toBe(true);
+
+      clearReplyRunForResetBySessionId(sessionId);
+      expect(cancel).toHaveBeenCalledTimes(2);
       expect(replyRunRegistry.isActive(sessionKey)).toBe(false);
     } finally {
       activeReply.complete();
