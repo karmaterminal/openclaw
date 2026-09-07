@@ -160,7 +160,8 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
       (event) => event.text.includes("[system:context-pressure]"),
     );
     expect(pressureEvents).toHaveLength(1);
-    expect(pressureEvents[0]?.text).toContain("continue_delegate(mode='post-compaction'");
+    expect(pressureEvents[0]?.text).toContain("preserve critical working state");
+    expect(pressureEvents[0]?.text).not.toContain("continue_delegate");
   });
 
   it("does not enqueue overflow pressure guidance when continuation is disabled", async () => {

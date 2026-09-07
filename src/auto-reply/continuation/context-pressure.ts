@@ -67,6 +67,7 @@ interface CheckSessionContextPressureParams {
   contextPressureThreshold: number | undefined;
   contextWindowTokens: number;
   earlyWarningBand?: number;
+  includeToolInstructions?: boolean;
   postCompaction?: boolean;
 }
 
@@ -86,6 +87,7 @@ function buildContextPressureEvent(params: {
   tokensK: number;
   windowK: number;
   band: PressureBand;
+  includeToolInstructions?: boolean;
   postCompaction?: boolean;
 }): string {
   if (params.postCompaction) {
@@ -93,6 +95,17 @@ function buildContextPressureEvent(params: {
       `[system:context-pressure] Post-compaction: ${params.percentUsed}% context consumed ` +
       `(${params.tokensK}k/${params.windowK}k tokens). ` +
       `Session was compacted. Working state may need rehydration.`
+    );
+  }
+
+  if (params.includeToolInstructions === false) {
+    const urgency =
+      params.band >= 95
+        ? "COMPACTION IMMINENT — preserve critical working state outside the active context before the next turn."
+        : "Preserve critical working state before upcoming compaction.";
+    return (
+      `[system:context-pressure] ${params.percentUsed}% of context window consumed ` +
+      `(${params.tokensK}k / ${params.windowK}k tokens). ${urgency}`
     );
   }
 
@@ -121,6 +134,7 @@ function evaluateSessionContextPressure(
     contextPressureThreshold,
     contextWindowTokens,
     earlyWarningBand,
+    includeToolInstructions = true,
     postCompaction = false,
   } = params;
   const threshold =
@@ -168,6 +182,7 @@ function evaluateSessionContextPressure(
     tokensK,
     windowK,
     band,
+    includeToolInstructions,
     postCompaction,
   });
 

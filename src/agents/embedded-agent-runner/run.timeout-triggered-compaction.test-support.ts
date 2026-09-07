@@ -290,6 +290,9 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
         expectedSessionId: session.runParams.sessionId,
       }),
     ]);
+    expect(firstPressureEvents[0]?.text).toMatch(/preserve critical working state/i);
+    expect(firstPressureEvents[0]?.text).not.toContain("continue_delegate");
+    expect(firstPressureEvents[0]?.text).not.toContain("request_compaction");
     const repeatedPressureEvents = systemEvents
       .peekSystemEventEntries(session.runParams.sessionKey)
       .filter((event) => event.text.includes("[system:context-pressure]"));
