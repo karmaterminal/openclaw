@@ -789,6 +789,19 @@ describe("spawn-init continuation cancellation races", () => {
       wakeSignal = claim.controller.signal;
       releaseClaim = claim.release;
     };
+    taskFlowRuntimeState.beforeRequestFlowCancel = (flowId) => {
+      taskFlowRuntimeState.beforeRequestFlowCancel = undefined;
+      const running = getTaskFlowById(flowId);
+      if (!running) {
+        throw new Error("expected running replacement before cancellation");
+      }
+      const bumped = updateFlowRecordByIdExpectedRevision({
+        flowId,
+        expectedRevision: running.revision,
+        patch: { currentStep: "concurrent running cancellation revision" },
+      });
+      expect(bumped.applied).toBe(true);
+    };
 
     await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
 

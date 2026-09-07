@@ -247,12 +247,6 @@ export function rollbackPendingWorkReplacement(params: {
           flowId,
           reason: params.summary,
         });
-        if (flow.cancelRequestedAt == null) {
-          requestFlowCancel({
-            flowId,
-            expectedRevision: flow.revision,
-          });
-        }
         unsafeCreatedOwner = true;
         unresolvedCreatedFlowIds.push(flowId);
         continue;
@@ -274,11 +268,9 @@ export function rollbackPendingWorkReplacement(params: {
     }
 
     if (unsafeCreatedOwner) {
-      const cleanup = updateTaskFlowsAtomically(updates);
+      updateTaskFlowsAtomically(updates);
       const unresolved = listUnresolvedCreatedFlowIds(params.createdFlowIds);
-      if (!cleanup.applied) {
-        requestCancelForUnresolvedActiveFlows(unresolved);
-      }
+      requestCancelForUnresolvedActiveFlows(unresolved);
       return {
         applied: false,
         unresolvedCreatedFlowIds: listUnresolvedCreatedFlowIds(params.createdFlowIds),
