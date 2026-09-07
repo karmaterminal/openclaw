@@ -107,4 +107,75 @@ describe("channel ingress pending disposition", () => {
       drain.dispose();
     });
   });
+
+  it.each([
+    {
+      name: "policy evaluation",
+      expectedLog:
+        "ingress drain: pending disposition policy failed for event broken on lane:a: policy unavailable",
+    },
+    {
+      name: "dead-letter write",
+      expectedLog:
+        "ingress drain: pending disposition write failed for event broken on lane:a: storage unavailable",
+    },
+  ])("contains a $name failure to its lane", async ({ name, expectedLog }) => {
+    await withTempState(async (stateDir) => {
+      const queue = createTestIngressQueue(stateDir);
+      await queue.enqueue("broken", { text: "old ambient" }, { laneKey: "lane:a", receivedAt: 0 });
+      await queue.enqueue(
+        "same-lane",
+        { text: "later work" },
+        { laneKey: "lane:a", receivedAt: 1 },
+      );
+      await queue.enqueue(
+        "other-lane",
+        { text: "independent" },
+        { laneKey: "lane:b", receivedAt: 2 },
+      );
+      if (name === "dead-letter write") {
+        const fail = queue.fail.bind(queue);
+        queue.fail = vi.fn(async (...args: Parameters<typeof queue.fail>) => {
+          if (args[0] === "broken") {
+            throw new Error("storage unavailable");
+          }
+          return await fail(...args);
+        });
+      }
+      const adopted: string[] = [];
+      const logs: string[] = [];
+      const drain = createChannelIngressDrain({
+        queue,
+        now: () => 10,
+        onLog: (message) => logs.push(message),
+        resolvePendingDisposition: (record) => {
+          if (record.id !== "broken") {
+            return null;
+          }
+          if (name === "policy evaluation") {
+            throw new Error("policy unavailable");
+          }
+          return {
+            kind: "fail",
+            reason: "stale-ambient-backlog",
+            message: "stale ambient row",
+          };
+        },
+        dispatchClaimedEvent: async (claim, lifecycle) => {
+          adopted.push(claim.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(adopted).toEqual(["other-lane"]);
+      expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual([
+        "broken",
+        "same-lane",
+      ]);
+      expect(logs).toContain(expectedLog);
+      drain.dispose();
+    });
+  });
 });

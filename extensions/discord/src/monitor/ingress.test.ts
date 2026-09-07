@@ -102,6 +102,7 @@ function createPolicyMonitor(params: {
   dispatch: Parameters<typeof createDiscordIngressMonitor>[0]["dispatch"];
   cfg?: OpenClawConfig;
   discordConfig?: DiscordAccountConfig;
+  guildEntries?: Parameters<typeof createDiscordIngressMonitor>[0]["guildEntries"];
   threadBindings?: { getByThreadId?: (threadId: string) => unknown };
   channelInfo?: { name?: string; parentId?: string; type: number };
 }) {
@@ -116,7 +117,7 @@ function createPolicyMonitor(params: {
     botUserId: BOT_USER_ID,
     cfg: params.cfg,
     discordConfig: params.discordConfig,
-    guildEntries: { [GUILD_ID]: {} },
+    guildEntries: params.guildEntries ?? { [GUILD_ID]: {} },
     threadBindings: params.threadBindings,
     dispatch: params.dispatch,
   });
@@ -508,6 +509,33 @@ describe("Discord durable ingress", () => {
       channelKind: "non-thread" as const,
     },
     {
+      name: "stale ambient work when the guild does not require mentions",
+      receivedAt: STALE_AT,
+      rawMessage: createRawMessage("guild-ambient", "channel-1", {
+        guild_id: GUILD_ID,
+        channel_type: ChannelType.GuildText,
+        timestamp: new Date(STALE_AT).toISOString(),
+      }),
+      channelKind: "non-thread" as const,
+      guildEntries: { [GUILD_ID]: { requireMention: false } },
+    },
+    {
+      name: "stale ambient work when the channel disables the guild mention requirement",
+      receivedAt: STALE_AT,
+      rawMessage: createRawMessage("channel-ambient", "channel-1", {
+        guild_id: GUILD_ID,
+        channel_type: ChannelType.GuildText,
+        timestamp: new Date(STALE_AT).toISOString(),
+      }),
+      channelKind: "non-thread" as const,
+      guildEntries: {
+        [GUILD_ID]: {
+          requireMention: true,
+          channels: { "channel-1": { requireMention: false } },
+        },
+      },
+    },
+    {
       name: "direct work",
       receivedAt: STALE_AT,
       rawMessage: createRawMessage("direct", "channel-1", {
@@ -669,6 +697,7 @@ describe("Discord durable ingress", () => {
     channelKind?: "non-thread" | "thread";
     cfg?: OpenClawConfig;
     discordConfig?: DiscordAccountConfig;
+    guildEntries?: Parameters<typeof createDiscordIngressMonitor>[0]["guildEntries"];
     threadBindings?: { getByThreadId?: (threadId: string) => unknown };
   }>)("keeps $name claimable", async (testCase) => {
     const { receivedAt, rawMessage, channelKind } = testCase;
@@ -686,6 +715,7 @@ describe("Discord durable ingress", () => {
         dispatch,
         cfg: testCase.cfg,
         discordConfig: testCase.discordConfig,
+        guildEntries: testCase.guildEntries,
         threadBindings: testCase.threadBindings,
       });
       monitor.start();
