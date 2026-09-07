@@ -26,8 +26,8 @@ export function enqueueContinuationWorkForSchedule(params: {
     ContinuationWorkScheduleParams,
     | "chainState"
     | "config"
-    | "log"
     | "expectedRunningFlowIds"
+    | "log"
     | "priorParkedFlowsToSupersede"
     | "replaceQueuedTurnEndParkedWork"
     | "sessionKey"
@@ -42,6 +42,7 @@ function enqueueContinuationWorkAtomically(params: {
     ContinuationWorkScheduleParams,
     | "chainState"
     | "config"
+    | "expectedRunningFlowIds"
     | "log"
     | "priorParkedFlowsToSupersede"
     | "replaceQueuedTurnEndParkedWork"
