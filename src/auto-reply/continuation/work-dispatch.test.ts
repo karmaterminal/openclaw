@@ -400,11 +400,7 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
       if (flow && flowUpdateRevisionConflictOnce) {
         flowUpdateRevisionConflictOnce = false;
         flow.revision += 1;
-        return {
-          applied: false,
-          reason: "revision_conflict",
-          current: cloneFlow(flow),
-        };
+        return { applied: false, reason: "revision_conflict", current: cloneFlow(flow) };
       }
       if (!flow || flow.revision !== params.expectedRevision) {
         return {
@@ -842,18 +838,12 @@ describe("durable continuation_work dispatch", () => {
 
   it("completes reset cancellation and transient cleanup after a revision conflict", async () => {
     const sessionKey = "agent:main:reset-revision-conflict";
-    mockSessionStore[sessionKey] = {
-      sessionId: "reset-revision-conflict-session",
-      lifecycleRevision: "reset-revision-conflict-revision",
-    };
+    const sessionId = "reset-revision-conflict-session";
+    mockSessionStore[sessionKey] = { sessionId };
     activeSessions.add(sessionKey);
     await scheduleContinuationWork({
       sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
       request: { delaySeconds: 1, reason: "cancel after revision conflict" },
       config,
     });
@@ -864,7 +854,7 @@ describe("durable continuation_work dispatch", () => {
     clearSessionResetRuntimeState([sessionKey], {
       agentId: "main",
       reason: "reset",
-      activeReplySessionId: "reset-revision-conflict-session",
+      activeReplySessionId: sessionId,
     });
     await flushAsyncWork();
 
