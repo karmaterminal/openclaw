@@ -66,7 +66,6 @@ export async function emitRecoveryContextPressure(
       contextPressureThreshold: runtimeConfig.contextPressureThreshold,
       contextWindowTokens: input.contextTokenBudget ?? 0,
       earlyWarningBand: runtimeConfig.earlyWarningBand,
-      includeToolInstructions: false,
     });
   } catch (error) {
     log.warn(

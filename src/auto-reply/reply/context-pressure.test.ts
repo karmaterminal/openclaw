@@ -405,6 +405,7 @@ describe("checkContextPressure", () => {
       sessionKey: SESSION_KEY,
       contextPressureThreshold: 0.8,
       contextWindowTokens: CONTEXT_WINDOW,
+      admittedToolNames: new Set(["continue_delegate", "request_compaction"]),
     });
     const events = peekSystemEvents(SESSION_KEY);
     expect(events.length).toBeGreaterThan(0);
@@ -415,6 +416,56 @@ describe("checkContextPressure", () => {
     expect(events[0]).toMatch(/working-state survival/);
     expect(events[0]).not.toMatch(/imminent/i);
   });
+
+  it.each([
+    { name: "unknown", admittedToolNames: undefined },
+    { name: "filtered", admittedToolNames: new Set(["message"]) },
+  ])("stays tool-agnostic when continuation tools are $name", ({ admittedToolNames }) => {
+    const entry = makeSessionEntry({ totalTokens: 95_000, totalTokensFresh: true });
+    checkContextPressure({
+      sessionEntry: entry,
+      sessionKey: SESSION_KEY,
+      contextPressureThreshold: 0.8,
+      contextWindowTokens: CONTEXT_WINDOW,
+      admittedToolNames,
+    });
+    const events = peekSystemEvents(SESSION_KEY);
+    expect(events).toHaveLength(1);
+    expect(events[0]).not.toContain("continue_delegate");
+    expect(events[0]).not.toContain("request_compaction");
+    expect(events[0]).toMatch(/preserve critical working state/i);
+  });
+
+  it.each([
+    {
+      available: "only continue_delegate",
+      admittedToolNames: new Set(["continue_delegate"]),
+      present: "continue_delegate",
+      absent: "request_compaction",
+    },
+    {
+      available: "only request_compaction",
+      admittedToolNames: new Set(["request_compaction"]),
+      present: "request_compaction",
+      absent: "continue_delegate",
+    },
+  ])(
+    "names $available without advertising the filtered tool",
+    ({ admittedToolNames, present, absent }) => {
+      const entry = makeSessionEntry({ totalTokens: 95_000, totalTokensFresh: true });
+      checkContextPressure({
+        sessionEntry: entry,
+        sessionKey: SESSION_KEY,
+        contextPressureThreshold: 0.8,
+        contextWindowTokens: CONTEXT_WINDOW,
+        admittedToolNames,
+      });
+      const events = peekSystemEvents(SESSION_KEY);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toContain(present);
+      expect(events[0]).not.toContain(absent);
+    },
+  );
 
   it("uses imminent language at 95%+ band", () => {
     const entry = makeSessionEntry({ totalTokens: 97_000, totalTokensFresh: true });

@@ -117,7 +117,7 @@ import { resolveEffectiveResetTargetSessionKey } from "./acp-reset-target.js";
 import { readBeforeResetMessages } from "./commands-reset-hooks.js";
 import { resolveConversationBindingContextFromMessage } from "./conversation-binding-input.js";
 import { normalizeInboundTextNewlines } from "./inbound-text.js";
-import { replyRunRegistry } from "./reply-run-registry.js";
+import { replyRunRegistry, retryRetainedReplyRunResetBySessionKey } from "./reply-run-registry.js";
 import { resolveRuntimePolicySessionKey } from "./runtime-policy-session-key.js";
 import {
   maybeRetireLegacyMainDeliveryRoute,
@@ -622,6 +622,9 @@ async function initSessionStateAttemptLocked(
     agentId,
     sessionKey: resolveSessionKey(sessionScope, sessionCtxForState, mainKey, agentId),
   });
+  if (resetTriggered) {
+    retryRetainedReplyRunResetBySessionKey(sessionKey);
+  }
   // CRITICAL: Skip cache to ensure fresh data when resolving session identity.
   // Stale cache (especially with multiple gateway processes or on Windows where
   // mtime granularity may miss rapid writes) can cause incorrect sessionId

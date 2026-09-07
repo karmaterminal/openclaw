@@ -70,11 +70,7 @@ import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
 import { finalizeInboundContext } from "./inbound-context.js";
 import { clearSessionQueues, enqueueFollowupRun, getFollowupQueueDepth } from "./queue.js";
 import { createQueueTestRun } from "./queue.test-helpers.js";
-import {
-  clearReplyRunForResetBySessionId,
-  createReplyOperation,
-  replyRunRegistry,
-} from "./reply-run-registry.js";
+import { createReplyOperation, replyRunRegistry } from "./reply-run-registry.js";
 import { drainFormattedSystemEvents } from "./session-system-events.js";
 import { persistSessionUsageUpdate } from "./session-usage.js";
 import { resolveReplySessionPreprocessingState } from "./session.js";
@@ -668,7 +664,7 @@ describe("initSessionState guarded initialization", () => {
     ).toContain("preserve the failed transcript");
   });
 
-  it("surfaces reply cancellation failure after committing the reset", async () => {
+  it("retries retained cancellation through a repeated committed reset", async () => {
     const storePath = await createStorePath("openclaw-session-init-reset-cancel-failure-");
     const sessionKey = "agent:main:matrix:channel:cancel-failure";
     const sessionId = "committed-reset-session";
@@ -687,7 +683,7 @@ describe("initSessionState guarded initialization", () => {
     let cancellationAttempts = 0;
     const cancel = vi.fn(() => {
       cancellationAttempts += 1;
-      if (cancellationAttempts === 1) {
+      if (cancellationAttempts <= 3) {
         throw new Error("backend cancellation failed");
       }
     });
@@ -698,32 +694,36 @@ describe("initSessionState guarded initialization", () => {
     });
     activeReply.attachBackend({ kind: "embedded", cancel, isStreaming: () => false });
     activeReply.setPhase("running");
+    const createResetParams = () => ({
+      ctx: {
+        Body: "/new",
+        RawBody: "/new",
+        CommandBody: "/new",
+        From: "@owner:example.test",
+        To: "!cancel-failure:example.test",
+        ChatType: "channel",
+        SessionKey: sessionKey,
+        Provider: "matrix",
+        Surface: "matrix",
+      },
+      cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
+      commandAuthorized: true,
+    });
 
     try {
-      await expect(
-        initSessionState({
-          ctx: {
-            Body: "/new",
-            RawBody: "/new",
-            CommandBody: "/new",
-            From: "@owner:example.test",
-            To: "!cancel-failure:example.test",
-            ChatType: "channel",
-            SessionKey: sessionKey,
-            Provider: "matrix",
-            Surface: "matrix",
-          },
-          cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
-          commandAuthorized: true,
-        }),
-      ).rejects.toThrow("backend cancellation failed");
+      await expect(initSessionState(createResetParams())).rejects.toThrow(
+        "Reply backend cancellation failed after 3 attempts",
+      );
 
       expect(loadSessionEntry({ storePath, sessionKey })?.mainRestartRecovery).toBeUndefined();
       expect(cancel).toHaveBeenCalledWith("restart");
+      expect(cancel).toHaveBeenCalledTimes(3);
       expect(replyRunRegistry.isActive(sessionKey)).toBe(true);
 
-      clearReplyRunForResetBySessionId(sessionId);
-      expect(cancel).toHaveBeenCalledTimes(2);
+      await expect(initSessionState(createResetParams())).rejects.toThrow(
+        "reply session initialization conflicted",
+      );
+      expect(cancel).toHaveBeenCalledTimes(4);
       expect(replyRunRegistry.isActive(sessionKey)).toBe(false);
     } finally {
       activeReply.complete();

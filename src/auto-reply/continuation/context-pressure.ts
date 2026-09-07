@@ -66,8 +66,8 @@ interface CheckSessionContextPressureParams {
   sessionKey: string;
   contextPressureThreshold: number | undefined;
   contextWindowTokens: number;
+  admittedToolNames?: ReadonlySet<string>;
   earlyWarningBand?: number;
-  includeToolInstructions?: boolean;
   postCompaction?: boolean;
 }
 
@@ -87,7 +87,7 @@ function buildContextPressureEvent(params: {
   tokensK: number;
   windowK: number;
   band: PressureBand;
-  includeToolInstructions?: boolean;
+  admittedToolNames?: ReadonlySet<string>;
   postCompaction?: boolean;
 }): string {
   if (params.postCompaction) {
@@ -98,7 +98,9 @@ function buildContextPressureEvent(params: {
     );
   }
 
-  if (params.includeToolInstructions === false) {
+  const hasContinueDelegate = params.admittedToolNames?.has("continue_delegate") === true;
+  const hasRequestCompaction = params.admittedToolNames?.has("request_compaction") === true;
+  if (!hasContinueDelegate && !hasRequestCompaction) {
     const urgency =
       params.band >= 95
         ? "COMPACTION IMMINENT — preserve critical working state outside the active context before the next turn."
@@ -110,14 +112,16 @@ function buildContextPressureEvent(params: {
   }
 
   const urgency =
-    params.band >= 95
+    hasContinueDelegate && hasRequestCompaction && params.band >= 95
       ? "COMPACTION IMMINENT — FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='<working-state-summary>'), THEN call request_compaction(reason='<why>') volitionally; the alternative is forced compaction at absolute context exhaustion. " +
         "The post-compaction delegate is what carries state across the seam — if you call request_compaction without staging it first, working state will NOT survive. " +
         "Both are tool calls you can make right now, this turn."
-      : params.band >= 90
+      : hasContinueDelegate && hasRequestCompaction && params.band >= 90
         ? "Context window nearly full — FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='...'), THEN call request_compaction(reason='...') volitionally; the alternative is forced compaction at absolute context exhaustion. " +
           "The post-compaction delegate fires after compaction completes and returns elective working-state to the new session — it is what carries state across the seam."
-        : "Consider continue_delegate(mode='post-compaction', task='...') to stage working-state survival for upcoming compaction, or write critical state to memory files.";
+        : hasContinueDelegate
+          ? "Consider continue_delegate(mode='post-compaction', task='...') to stage working-state survival for upcoming compaction, or write critical state to memory files."
+          : "Preserve critical working state outside the active context, then call request_compaction(reason='...') before forced compaction.";
 
   return (
     `[system:context-pressure] ${params.percentUsed}% of context window consumed ` +
@@ -133,8 +137,8 @@ function evaluateSessionContextPressure(
     sessionKey,
     contextPressureThreshold,
     contextWindowTokens,
+    admittedToolNames,
     earlyWarningBand,
-    includeToolInstructions = true,
     postCompaction = false,
   } = params;
   const threshold =
@@ -182,7 +186,7 @@ function evaluateSessionContextPressure(
     tokensK,
     windowK,
     band,
-    includeToolInstructions,
+    admittedToolNames,
     postCompaction,
   });
 
