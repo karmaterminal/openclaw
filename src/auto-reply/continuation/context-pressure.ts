@@ -11,13 +11,11 @@
  * Band dedup: equality-based. The same band doesn't fire twice consecutively,
  * but a new band (including a lower band after compaction) always fires.
  *
- * First-fire is signalled by `lastFiredBand.has(sessionKey) === false`.
- * That avoids suppressing a first crossing when the computed band is 0.
- *
  * RFC: docs/design/continue-work-signal-v2.md §4.2
  */
 
 import type { SessionEntry } from "../../config/sessions.js";
+import { patchSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 
@@ -27,15 +25,6 @@ const DEFAULT_CONTEXT_PRESSURE_THRESHOLD = 0.8;
 
 /** Pressure-band percentage returned by {@link resolveContextPressureBand}. */
 export type PressureBand = number;
-
-/**
- * Per-session dedup state: the last band that fired.
- * Reset when a new lifecycle begins (e.g., after compaction).
- *
- * Absence (`!map.has(sessionKey)`) means the session has never fired —
- * it replaces the prior `-1` magic sentinel.
- */
-const lastFiredBand = new Map<string, PressureBand>();
 
 /**
  * Resolve which pressure band the current ratio falls into.
@@ -81,19 +70,16 @@ interface CheckSessionContextPressureParams {
   postCompaction?: boolean;
 }
 
-interface CheckTokenContextPressureParams {
-  sessionKey: string;
-  totalTokens: number;
-  contextWindow: number;
-  threshold: number;
-  earlyWarningBand?: number;
-  postCompaction?: boolean;
-}
-
 interface CheckContextPressureResult {
   fired: boolean;
   band: PressureBand;
 }
+
+type SessionContextPressureEvaluation = CheckContextPressureResult & {
+  eventText?: string;
+  logMessage?: string;
+  logLevel?: "info" | "warn";
+};
 
 function buildContextPressureEvent(params: {
   percentUsed: number;
@@ -126,9 +112,9 @@ function buildContextPressureEvent(params: {
   );
 }
 
-function checkSessionContextPressure(
+function evaluateSessionContextPressure(
   params: CheckSessionContextPressureParams,
-): CheckContextPressureResult {
+): SessionContextPressureEvaluation {
   const {
     sessionEntry,
     sessionKey,
@@ -185,125 +171,94 @@ function checkSessionContextPressure(
     postCompaction,
   });
 
-  const logMessage = `[context-pressure:fire]${postCompaction ? " post-compaction" : ""} band=${band} previous=${previous ?? "none"} ratio=${percentUsed}% tokens=${tokensK}k/${windowK}k session=${sessionKey}`;
-  if (postCompaction) {
-    log.info(logMessage);
-  } else {
-    log.warn(logMessage);
-  }
-
-  enqueueSystemEvent(eventText, { sessionKey, trusted: true });
-  sessionEntry.lastContextPressureBand = band;
-  return { fired: true, band };
+  return {
+    fired: true,
+    band,
+    eventText,
+    logMessage: `[context-pressure:fire]${postCompaction ? " post-compaction" : ""} band=${band} previous=${previous ?? "none"} ratio=${percentUsed}% tokens=${tokensK}k/${windowK}k session=${sessionKey}`,
+    logLevel: postCompaction ? "info" : "warn",
+  };
 }
 
-function checkTokenContextPressure(params: CheckTokenContextPressureParams): string | null {
-  const {
-    sessionKey,
-    totalTokens,
-    contextWindow,
-    threshold,
-    earlyWarningBand,
-    postCompaction = false,
-  } = params;
-
-  if (!Number.isFinite(contextWindow) || contextWindow <= 0 || !Number.isFinite(totalTokens)) {
-    if (log.isEnabled("debug")) {
-      log.debug(
-        `[context-pressure:noop] reason=window-zero contextWindow=${contextWindow} session=${sessionKey}`,
-      );
-    }
-    return null;
+function publishSessionContextPressure(
+  params: Pick<CheckSessionContextPressureParams, "sessionEntry" | "sessionKey"> & {
+    expectedSessionId?: string;
+  },
+  evaluation: SessionContextPressureEvaluation,
+): CheckContextPressureResult {
+  if (!evaluation.fired || !evaluation.eventText || !evaluation.logMessage) {
+    return { fired: false, band: evaluation.band };
   }
-
-  const ratio = totalTokens / contextWindow;
-  const percentUsed = Math.round(ratio * 100);
-
-  if (postCompaction) {
-    const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
-    lastFiredBand.set(sessionKey, band);
-    const eventText = buildContextPressureEvent({
-      percentUsed,
-      tokensK: Math.round(totalTokens / 1000),
-      windowK: Math.round(contextWindow / 1000),
-      band,
-      postCompaction: true,
-    });
-    log.info(
-      `[context-pressure:fire] post-compaction band=${band} ratio=${percentUsed}% session=${sessionKey}`,
-    );
-    return eventText;
-  }
-
-  const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
-
-  if (band === 0 && ratio < threshold) {
-    if (log.isEnabled("debug")) {
-      log.debug(
-        `[context-pressure:noop] reason=below-threshold ratio=${percentUsed}% threshold=${Math.round(threshold * 100)}% rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} session=${sessionKey}`,
-      );
-    }
-    return null;
-  }
-
-  const previous = lastFiredBand.get(sessionKey);
-  const isFirstFire = previous === undefined;
-  if (!isFirstFire && band === previous) {
-    if (log.isEnabled("debug")) {
-      log.debug(
-        `[context-pressure:noop] reason=band-dedup band=${band} previous=${previous} ratio=${percentUsed}% session=${sessionKey}`,
-      );
-    }
-    return null;
-  }
-
-  lastFiredBand.set(sessionKey, band);
-
-  const eventText = buildContextPressureEvent({
-    percentUsed,
-    tokensK: Math.round(totalTokens / 1000),
-    windowK: Math.round(contextWindow / 1000),
-    band,
+  log[evaluation.logLevel ?? "warn"](evaluation.logMessage);
+  enqueueSystemEvent(evaluation.eventText, {
+    sessionKey: params.sessionKey,
+    trusted: true,
+    ...(params.expectedSessionId ? { expectedSessionId: params.expectedSessionId } : {}),
   });
+  params.sessionEntry.lastContextPressureBand = evaluation.band;
+  return { fired: true, band: evaluation.band };
+}
 
-  log.info(
-    `[context-pressure:fire] band=${band} previous=${previous ?? "none"} ratio=${percentUsed}% session=${sessionKey}`,
-  );
-
-  return eventText;
+function checkSessionContextPressure(
+  params: CheckSessionContextPressureParams,
+): CheckContextPressureResult {
+  return publishSessionContextPressure(params, evaluateSessionContextPressure(params));
 }
 
 /**
  * Check whether a context-pressure event should fire for the given session.
- *
- * Session-entry callers get the reply-pipeline result shape and event enqueueing.
- * Token callers get event text for lifecycle helpers that enqueue separately.
  */
 export function checkContextPressure(
   params: CheckSessionContextPressureParams,
-): CheckContextPressureResult;
-export function checkContextPressure(params: CheckTokenContextPressureParams): string | null;
-export function checkContextPressure(
-  params: CheckSessionContextPressureParams | CheckTokenContextPressureParams,
-): CheckContextPressureResult | string | null {
-  if ("sessionEntry" in params) {
-    return checkSessionContextPressure(params);
-  }
-  return checkTokenContextPressure(params);
+): CheckContextPressureResult {
+  return checkSessionContextPressure(params);
 }
 
 /**
- * Clear pressure dedup state for a session. Call after compaction completes
- * so the post-compaction lifecycle can fire fresh bands.
+ * Applies the context-pressure policy against the latest durable session row.
+ * The band is committed before the trusted event becomes visible.
  */
-export function clearContextPressureState(sessionKey: string): void {
-  lastFiredBand.delete(sessionKey);
-}
+export async function emitPersistedContextPressure(
+  params: CheckSessionContextPressureParams & {
+    continuationEnabled: boolean;
+    agentId?: string;
+    storePath: string;
+    expectedSessionId?: string;
+  },
+): Promise<CheckContextPressureResult> {
+  if (!params.continuationEnabled) {
+    return { fired: false, band: 0 };
+  }
 
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
-
-export function resetContextPressureForTests(): void {
-  lastFiredBand.clear();
+  let evaluation: SessionContextPressureEvaluation | undefined;
+  const persisted = await patchSessionEntryCore(
+    {
+      agentId: params.agentId,
+      sessionKey: params.sessionKey,
+      storePath: params.storePath,
+    },
+    (current) => {
+      if (
+        params.expectedSessionId !== undefined &&
+        current.sessionId !== params.expectedSessionId
+      ) {
+        evaluation = undefined;
+        return null;
+      }
+      evaluation = evaluateSessionContextPressure({
+        ...params,
+        sessionEntry: {
+          ...current,
+          totalTokens: params.sessionEntry.totalTokens,
+          totalTokensFresh: params.sessionEntry.totalTokensFresh,
+        },
+      });
+      return evaluation.fired ? { lastContextPressureBand: evaluation.band } : null;
+    },
+    { preserveActivity: true },
+  );
+  if (!persisted || !evaluation?.fired) {
+    return { fired: false, band: evaluation?.band ?? 0 };
+  }
+  return publishSessionContextPressure(params, evaluation);
 }

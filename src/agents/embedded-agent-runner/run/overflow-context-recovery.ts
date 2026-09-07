@@ -30,6 +30,7 @@ import {
   type EmbeddedRunCompactionRecoveryInput,
 } from "./compaction-runtime.js";
 import { createRunRecoveryDiagId } from "./helpers.js";
+import { emitRecoveryContextPressure } from "./recovery-context-pressure.js";
 import {
   isNoRealConversationCompactionNoop,
   resetNoRealConversationTokenSnapshot,
@@ -236,25 +237,7 @@ export async function recoverEmbeddedRunOverflow(
     log.warn(
       `context overflow detected (attempt ${input.state.overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}); attempting auto-compaction for ${input.provider}/${input.modelId}`,
     );
-    log.warn(
-      `[context-pressure:fire] mid-turn trigger=overflow attempt=${input.state.overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS} ` +
-        `tokens=${observedOverflowTokens !== undefined ? Math.round(observedOverflowTokens / 1000) : "?"}k/${Math.round(input.contextTokenBudget / 1000)}k ` +
-        `sessionKey=${runParams.sessionKey ?? runParams.sessionId}`,
-    );
-    const overflowSessionKey = requireSessionKeyOrSkip(
-      runParams,
-      log,
-      "pi-runner.overflow-compaction",
-    );
-    if (overflowSessionKey) {
-      enqueueSystemEvent(
-        `[system:context-pressure] Context-overflow compaction triggered mid-turn ` +
-          `(attempt ${input.state.overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}). ` +
-          "Your last reply grew the context past the model's window. Consider evacuating large " +
-          "tool results or delegated work with continue_delegate(post-compaction).",
-        { sessionKey: overflowSessionKey },
-      );
-    }
+    await emitRecoveryContextPressure(input, observedOverflowTokens ?? input.contextTokenBudget);
     const compaction = await compactEmbeddedRunForRecovery(input, {
       tokenBudget: preflightPromptBudget ?? input.contextTokenBudget,
       trigger: "overflow",

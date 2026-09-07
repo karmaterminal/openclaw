@@ -36,25 +36,33 @@ export function cancelSessionContinuations(sessionKey: string): void {
   const flows = listTaskFlowsForOwnerKey(sessionKey).filter(isResettableContinuationFlow);
   const endedAt = Date.now();
   for (const flow of flows) {
-    const result = updateFlowRecordByIdExpectedRevision({
-      flowId: flow.flowId,
-      expectedRevision: flow.revision,
-      patch: {
-        status: "cancelled",
-        currentStep: "Cancelled by session reset",
-        waitJson: null,
-        blockedTaskId: null,
-        blockedSummary: null,
-        cancelRequestedAt: endedAt,
-        endedAt,
-        updatedAt: endedAt,
-        ...(isContinuationDelegateFlow(flow)
-          ? { stateJson: scrubStoredDelegateAttachmentState(flow.stateJson) }
-          : {}),
-      },
-    });
-    if (!result.applied) {
-      throw new SessionContinuationResetError(flow.flowId, result.reason);
+    let current = flow;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = updateFlowRecordByIdExpectedRevision({
+        flowId: current.flowId,
+        expectedRevision: current.revision,
+        patch: {
+          status: "cancelled",
+          currentStep: "Cancelled by session reset",
+          waitJson: null,
+          blockedTaskId: null,
+          blockedSummary: null,
+          cancelRequestedAt: endedAt,
+          endedAt,
+          updatedAt: endedAt,
+          ...(isContinuationDelegateFlow(current)
+            ? { stateJson: scrubStoredDelegateAttachmentState(current.stateJson) }
+            : {}),
+        },
+      });
+      if (result.applied || (result.current && !isResettableContinuationFlow(result.current))) {
+        break;
+      }
+      if (result.reason === "revision_conflict" && result.current && attempt === 0) {
+        current = result.current;
+        continue;
+      }
+      throw new SessionContinuationResetError(current.flowId, result.reason);
     }
   }
 }

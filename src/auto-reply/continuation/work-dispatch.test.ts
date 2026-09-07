@@ -353,6 +353,7 @@ type MockFlow = {
 const mockFlows = new Map<string, MockFlow>();
 let flowCounter = 0;
 let flowUpdateFailureReason: string | undefined;
+let flowUpdateRevisionConflictOnce = false;
 
 function cloneFlow(flow: MockFlow): MockFlow {
   return { ...flow };
@@ -396,8 +397,21 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
       if (flowUpdateFailureReason) {
         return { applied: false, reason: flowUpdateFailureReason };
       }
+      if (flow && flowUpdateRevisionConflictOnce) {
+        flowUpdateRevisionConflictOnce = false;
+        flow.revision += 1;
+        return {
+          applied: false,
+          reason: "revision_conflict",
+          current: cloneFlow(flow),
+        };
+      }
       if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
+        return {
+          applied: false,
+          reason: flow ? "revision_conflict" : "not_found",
+          ...(flow ? { current: cloneFlow(flow) } : {}),
+        };
       }
       if (params.patch.currentStep === "Continuation wake delivered (durable mark)") {
         workTransitionEvents.push("delivered-mark-committed");
@@ -604,6 +618,7 @@ describe("durable continuation_work dispatch", () => {
     getReplyFromConfigMock.mockClear();
     continuationEnabledForTest = true;
     flowUpdateFailureReason = undefined;
+    flowUpdateRevisionConflictOnce = false;
     capturedReplyTraceparents.length = 0;
     bumpWorkRevisionOnReply = false;
     emitContinuationWorkFireSpanMock.mockReset();
@@ -823,6 +838,39 @@ describe("durable continuation_work dispatch", () => {
     expect(replyIdleWaiters.has(sessionKey)).toBe(false);
     expect(vi.getTimerCount()).toBeLessThan(timersBeforeReset);
     expect([...mockFlows.values()].at(0)?.status).toBe("cancelled");
+  });
+
+  it("completes reset cancellation and transient cleanup after a revision conflict", async () => {
+    const sessionKey = "agent:main:reset-revision-conflict";
+    mockSessionStore[sessionKey] = {
+      sessionId: "reset-revision-conflict-session",
+      lifecycleRevision: "reset-revision-conflict-revision",
+    };
+    activeSessions.add(sessionKey);
+    await scheduleContinuationWork({
+      sessionKey,
+      chainState: {
+        currentChainCount: 0,
+        chainStartedAt: Date.now(),
+        accumulatedChainTokens: 0,
+      },
+      request: { delaySeconds: 1, reason: "cancel after revision conflict" },
+      config,
+    });
+    await waitForMockWaiter(replyIdleWaiters, sessionKey);
+    const timersBeforeReset = vi.getTimerCount();
+    flowUpdateRevisionConflictOnce = true;
+
+    clearSessionResetRuntimeState([sessionKey], {
+      agentId: "main",
+      reason: "reset",
+      activeReplySessionId: "reset-revision-conflict-session",
+    });
+    await flushAsyncWork();
+
+    expect([...mockFlows.values()].at(0)?.status).toBe("cancelled");
+    expect(replyIdleWaiters.has(sessionKey)).toBe(false);
+    expect(vi.getTimerCount()).toBeLessThan(timersBeforeReset);
   });
 
   it("keeps one reply-run registry identity across election, idle retry, and execution", async () => {

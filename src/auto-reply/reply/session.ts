@@ -107,6 +107,7 @@ import {
 } from "../../utils/delivery-context.shared.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import { resolveCommandTurnTargetSessionKey } from "../command-turn-context.js";
+import { SessionContinuationResetError } from "../continuation/session-reset.js";
 import type {
   FinalizedRuntimeMsgContext,
   FinalizedTemplateContext as TemplateContext,
@@ -138,6 +139,7 @@ import {
 import {
   clearSessionResetRuntimeState,
   createSessionResetCleanupGuard,
+  SessionResetCleanupError,
   stopSessionResetSubagents,
 } from "./session-reset-cleanup.js";
 import { resolveAuthorizedSessionResetCommand } from "./session-reset-command.js";
@@ -1177,9 +1179,10 @@ async function initSessionStateAttemptLocked(
             : "reset",
       });
     } catch (error) {
-      // The replacement is already durable. Runtime cleanup is best-effort and
-      // must not turn a committed reset into a reported initialization failure.
-      log.warn(`failed to clear reset runtime state for session ${sessionKey}: ${String(error)}`);
+      if (error instanceof SessionContinuationResetError) {
+        throw new SessionResetCleanupError(error.message, { cause: error });
+      }
+      throw error;
     }
   }
   sessionEntry = committed.sessionEntry;

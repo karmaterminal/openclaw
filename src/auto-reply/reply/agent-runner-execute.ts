@@ -5,14 +5,16 @@ import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { prepareGitCoauthorAttribution } from "../../agents/git-coauthor-attribution.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
-import { patchSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { withBeforeAgentReplyObserver } from "../../plugins/before-agent-reply.js";
 import { getGatewayContextResolver } from "../../plugins/runtime/gateway-request-scope.js";
 import { defaultRuntime } from "../../runtime.js";
 import { readSessionInputProfileId } from "../../sessions/session-participant-input.js";
 import { readPendingUserTurnTranscriptAdmission } from "../../sessions/user-turn-transcript-admission.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
-import { checkContextPressure } from "../continuation/context-pressure.js";
+import {
+  checkContextPressure,
+  emitPersistedContextPressure,
+} from "../continuation/context-pressure.js";
 import { setReplyPayloadMetadata } from "../reply-payload.js";
 import type { OriginatingChannelType } from "../templating.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
@@ -278,7 +280,7 @@ export async function executePreparedReplyAgentRun(
   // wakes) so the next turn's pre-provider gate sees an up-to-date band.
   activeSessionEntry = getActiveSessionEntry() ?? activeSessionEntry;
   if (activeSessionEntry && sessionKey) {
-    const { contextPressureThreshold, earlyWarningBand } =
+    const { enabled, contextPressureThreshold, earlyWarningBand } =
       resolveLiveContinuationRuntimeConfig(cfg);
     const contextWindowTokens =
       resolveContextTokensForModel({
@@ -288,25 +290,31 @@ export async function executePreparedReplyAgentRun(
         fallbackContextTokens: activeSessionEntry.contextTokens ?? DEFAULT_CONTEXT_TOKENS,
         allowAsyncLoad: false,
       }) ?? DEFAULT_CONTEXT_TOKENS;
-    const pressureResult = checkContextPressure({
-      sessionEntry: activeSessionEntry,
-      sessionKey,
-      contextPressureThreshold,
-      contextWindowTokens,
-      earlyWarningBand,
-      postCompaction: preflightCompactionApplied,
-    });
-    if (pressureResult.fired && storePath) {
+    if (storePath) {
       try {
-        await patchSessionEntryCore(
-          { storePath, sessionKey },
-          () => ({ lastContextPressureBand: pressureResult.band }),
-          // Band bookkeeping must not count as activity; keep updatedAt stable.
-          { preserveActivity: true },
-        );
+        await emitPersistedContextPressure({
+          sessionEntry: activeSessionEntry,
+          sessionKey,
+          continuationEnabled: enabled,
+          contextPressureThreshold,
+          contextWindowTokens,
+          earlyWarningBand,
+          postCompaction: preflightCompactionApplied,
+          storePath,
+          expectedSessionId: activeSessionEntry.sessionId,
+        });
       } catch (err) {
         defaultRuntime.log(`context-pressure band persistence failed (non-fatal): ${String(err)}`);
       }
+    } else if (enabled) {
+      checkContextPressure({
+        sessionEntry: activeSessionEntry,
+        sessionKey,
+        contextPressureThreshold,
+        contextWindowTokens,
+        earlyWarningBand,
+        postCompaction: preflightCompactionApplied,
+      });
     }
   }
 
