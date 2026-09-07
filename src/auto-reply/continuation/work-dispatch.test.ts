@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createAtomicTaskFlowMocks as atomicMocks } from "./work-dispatch-flow-mock.test-support.js";
 const turnGrants: unknown[] = [];
 const systemEvents: unknown[] = [];
 const activeQueueDeliveries: unknown[] = [];
@@ -11,22 +12,19 @@ const activeSessions = new Set<string>();
 const replyIdleWaiters = new Map<string, Array<(idle: boolean) => void>>();
 const laneIdleWaiters = new Map<string, Array<(idle: boolean) => void>>();
 let mainQueueSize = 0;
-let gatewayDraining = false;
-let replyError: Error | undefined;
-let commandLaneIdleError: Error | undefined;
-let drainAfterReply = false;
+let [gatewayDraining, drainAfterReply] = [false, false];
+let replyError: Error | undefined, commandLaneIdleError: Error | undefined;
 let replyPayloadOverride: unknown;
 let activeQueueMode: "delivered" | "queued-without-proof" | "rejected" = "delivered";
-let activeQueueHandleAvailable = true;
+let [activeQueueHandleAvailable, continuationEnabledForTest] = [true, true];
 const mockSessionStore: Record<string, unknown> = {};
 const loadSessionEntryMock = vi.fn();
-let mockStorePath = "test-store";
-let observeSubordinateAdmission = false;
+let mockStorePath = "test-store",
+  observeSubordinateAdmission = false;
 const observedSubordinateAdmissionClosed: boolean[] = [];
 // test state: toggle continuation enablement (disabled-gate), capture the
 // active diagnostic traceparent at reply time (traceparent re-entry), and force
 // a revision race after the turn ran (failed durable delivered-mark).
-let continuationEnabledForTest = true;
 const capturedReplyTraceparents: Array<string | undefined> = [];
 let bumpWorkRevisionOnReply = false;
 const { emitContinuationWorkFireSpanMock, resolveContinuationTraceparentMock } = vi.hoisted(() => ({
@@ -380,6 +378,10 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
     mockFlows.set(flow.flowId, flow);
     return cloneFlow(flow);
   }),
+  ...atomicMocks(
+    () => mockFlows,
+    () => `flow-${++flowCounter}`,
+  ),
   listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
     Array.from(
       [...mockFlows.values()].filter((flow) => flow.ownerKey === ownerKey),
