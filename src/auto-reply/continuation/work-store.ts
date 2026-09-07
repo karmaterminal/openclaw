@@ -18,7 +18,6 @@ import {
   updateFlowRecordByIdExpectedRevision,
 } from "../../tasks/task-flow-runtime-internal.js";
 import {
-  CONTINUATION_WORK_CONTROLLER_ID,
   buildFallbackWorkState,
   decodeWorkState,
   isContinuationWorkFlow,
