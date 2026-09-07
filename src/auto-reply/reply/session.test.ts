@@ -63,7 +63,6 @@ import {
 import { withEnvAsync } from "../../test-utils/env.js";
 import { createSessionConversationTestRegistry } from "../../test-utils/session-conversation-registry.js";
 import { consumePendingDelegates, enqueuePendingDelegate } from "../continuation/delegate-store.js";
-import { SessionContinuationResetError } from "../continuation/session-reset.js";
 import { consumePendingWork, enqueuePendingWork } from "../continuation/work-store.js";
 import { buildCommandContext } from "./commands-context.js";
 import { maybeHandleResetCommand } from "./commands-reset.js";
@@ -72,7 +71,6 @@ import { finalizeInboundContext } from "./inbound-context.js";
 import { clearSessionQueues, enqueueFollowupRun, getFollowupQueueDepth } from "./queue.js";
 import { createQueueTestRun } from "./queue.test-helpers.js";
 import { createReplyOperation, replyRunRegistry } from "./reply-run-registry.js";
-import { SessionResetCleanupError } from "./session-reset-cleanup.js";
 import { drainFormattedSystemEvents } from "./session-system-events.js";
 import { persistSessionUsageUpdate } from "./session-usage.js";
 import { resolveReplySessionPreprocessingState } from "./session.js";
@@ -93,9 +91,6 @@ const channelSummaryMocks = vi.hoisted(() => ({
 }));
 const browserMaintenanceMocks = vi.hoisted(() => ({
   closeTrackedBrowserTabsForSessions: vi.fn(async () => 0),
-}));
-const sessionResetCleanupMocks = vi.hoisted(() => ({
-  failure: undefined as Error | undefined,
 }));
 
 type ForkSessionParamsForTest = {
@@ -141,23 +136,6 @@ vi.mock("../../plugins/hook-runner-global.js", () => ({
 vi.mock("../../infra/channel-summary.js", () => ({
   buildChannelSummary: channelSummaryMocks.buildChannelSummary,
 }));
-
-vi.mock("./session-reset-cleanup.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./session-reset-cleanup.js")>();
-  return {
-    ...actual,
-    clearSessionResetRuntimeState: (
-      ...args: Parameters<typeof actual.clearSessionResetRuntimeState>
-    ) => {
-      const failure = sessionResetCleanupMocks.failure;
-      if (failure) {
-        sessionResetCleanupMocks.failure = undefined;
-        throw failure;
-      }
-      return actual.clearSessionResetRuntimeState(...args);
-    },
-  };
-});
 
 vi.mock("../../agents/prepared-model-catalog.js", () => ({
   loadProviderScopedThinkingCatalog: vi.fn(async () => []),
@@ -485,7 +463,6 @@ function registerCurrentConversationBindingAdapterForTest(params: {
 beforeEach(() => {
   channelSummaryMocks.buildChannelSummary.mockReset().mockResolvedValue([]);
   browserMaintenanceMocks.closeTrackedBrowserTabsForSessions.mockReset().mockResolvedValue(0);
-  sessionResetCleanupMocks.failure = undefined;
   sessionBindingTesting.resetSessionBindingAdaptersForTests();
   sessionForkMocks.nextSessionId = 0;
   sessionForkMocks.resolveParentForkTokenCount.mockReset().mockImplementation(({ parentEntry }) => {
@@ -687,7 +664,7 @@ describe("initSessionState guarded initialization", () => {
     ).toContain("preserve the failed transcript");
   });
 
-  it("reports a committed reset as successful when reply cancellation throws", async () => {
+  it("surfaces reply cancellation failure after committing the reset", async () => {
     const storePath = await createStorePath("openclaw-session-init-reset-cancel-failure-");
     const sessionKey = "agent:main:matrix:channel:cancel-failure";
     const sessionId = "committed-reset-session";
@@ -715,24 +692,24 @@ describe("initSessionState guarded initialization", () => {
     activeReply.setPhase("running");
 
     try {
-      const reset = await initSessionState({
-        ctx: {
-          Body: "/new",
-          RawBody: "/new",
-          CommandBody: "/new",
-          From: "@owner:example.test",
-          To: "!cancel-failure:example.test",
-          ChatType: "channel",
-          SessionKey: sessionKey,
-          Provider: "matrix",
-          Surface: "matrix",
-        },
-        cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
-        commandAuthorized: true,
-      });
+      await expect(
+        initSessionState({
+          ctx: {
+            Body: "/new",
+            RawBody: "/new",
+            CommandBody: "/new",
+            From: "@owner:example.test",
+            To: "!cancel-failure:example.test",
+            ChatType: "channel",
+            SessionKey: sessionKey,
+            Provider: "matrix",
+            Surface: "matrix",
+          },
+          cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
+          commandAuthorized: true,
+        }),
+      ).rejects.toThrow("backend cancellation failed");
 
-      expect(reset.resetTriggered).toBe(true);
-      expect(reset.sessionEntry.mainRestartRecovery).toBeUndefined();
       expect(loadSessionEntry({ storePath, sessionKey })?.mainRestartRecovery).toBeUndefined();
       expect(cancel).toHaveBeenCalledWith("restart");
       expect(replyRunRegistry.isActive(sessionKey)).toBe(false);
@@ -4105,43 +4082,6 @@ describe("initSessionState reset triggers in Slack channels", () => {
 });
 
 describe("initSessionState preserves behavior overrides across /new and /reset", () => {
-  it("surfaces continuation cleanup failure after committing the replacement session", async () => {
-    const storePath = await createStorePath("openclaw-reset-cleanup-failure-");
-    const sessionKey = "agent:main:telegram:dm:reset-cleanup-failure";
-    await writeSessionStoreFast(storePath, {
-      [sessionKey]: {
-        sessionId: "reset-cleanup-failure-session",
-        updatedAt: 1,
-        lastContextPressureBand: 95,
-      },
-    });
-    sessionResetCleanupMocks.failure = new SessionContinuationResetError(
-      "flow-conflict",
-      "persist_failed",
-    );
-
-    await expect(
-      initSessionState({
-        ctx: {
-          Body: "/reset",
-          RawBody: "/reset",
-          CommandBody: "/reset",
-          From: "reset-cleanup-failure",
-          To: "bot",
-          ChatType: "direct",
-          SessionKey: sessionKey,
-          Provider: "telegram",
-          Surface: "telegram",
-        },
-        cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
-      }),
-    ).rejects.toBeInstanceOf(SessionResetCleanupError);
-
-    expect(loadSessionEntry({ storePath, sessionKey })).not.toHaveProperty(
-      "lastContextPressureBand",
-    );
-  });
-
   async function seedSessionStoreWithOverrides(params: {
     storePath: string;
     sessionKey: string;
