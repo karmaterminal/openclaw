@@ -342,10 +342,10 @@ function projectEmptyAssistantErrorMessages(
       visibleTexts.push(sanitized.content);
     } else if (Array.isArray(sanitized.content)) {
       for (const block of sanitized.content) {
-        if (!block || typeof block !== "object" || Array.isArray(block)) {
+        const entry = asOptionalRecord(block);
+        if (!entry) {
           continue;
         }
-        const entry = block as { type?: unknown; text?: unknown };
         if (isAssistantTextContentType(entry.type) && typeof entry.text === "string") {
           visibleTexts.push(entry.text);
         }
