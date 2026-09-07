@@ -165,6 +165,8 @@ describe("post-compaction delegate cancellation ownership", () => {
       ]);
 
       const retryDeps = createOwnerDeps();
+      const retryEnqueue = vi.fn(async () => "queue");
+      retryDeps.enqueuePostCompactionDelegateDelivery = retryEnqueue;
       await expect(
         dispatchPostCompactionDelegates(
           {
@@ -178,7 +180,7 @@ describe("post-compaction delegate cancellation ownership", () => {
           retryDeps,
         ),
       ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
-      expect(retryDeps.enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
+      expect(retryEnqueue).not.toHaveBeenCalled();
       expect(getTaskFlowById(flowId)).toMatchObject({
         status: "running",
         revision: 2,
