@@ -191,10 +191,6 @@ export function expectMockCallFields(
   return expectRecordFields(mockCallArg(mock, callIndex), expected);
 }
 
-export function expectLogIncludes(mock: { mock: { calls: unknown[][] } }, fragment: string): void {
-  expect(mock.mock.calls.map((call) => String(call[0])).join("\n")).toContain(fragment);
-}
-
 export function expectLogExcludes(mock: { mock: { calls: unknown[][] } }, fragment: string): void {
   expect(mock.mock.calls.map((call) => String(call[0])).join("\n")).not.toContain(fragment);
 }
