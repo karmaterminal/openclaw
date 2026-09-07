@@ -9,7 +9,7 @@ import { resolveSessionEntryFromStore } from "../../config/sessions/session-acce
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { logVerbose } from "../../globals.js";
 import { stagePostCompactionDelegate } from "../continuation/delegate-store-post-compaction.js";
-import type { FollowupRun } from "./queue.js";
+import { isFollowupRunAborted, type FollowupRun } from "./queue.js";
 
 export async function releaseQueuedCompactionCompletion(params: {
   activeSessionStore?: Record<string, SessionEntry>;
@@ -23,7 +23,7 @@ export async function releaseQueuedCompactionCompletion(params: {
   if (!params.compactionResult.ok || !params.compactionResult.compacted) {
     return;
   }
-  if (params.followupRun.abortSignal?.aborted) {
+  if (isFollowupRunAborted(params.followupRun)) {
     return;
   }
   if (!params.sessionKey || !params.activeSessionStore) {
@@ -52,7 +52,7 @@ export async function releaseQueuedCompactionCompletion(params: {
     tokensAfter: params.compactionResult.result?.tokensAfter,
     newSessionId: params.compactionResult.result?.sessionId,
   });
-  if (params.followupRun.abortSignal?.aborted) {
+  if (isFollowupRunAborted(params.followupRun)) {
     return;
   }
   const resolved = resolveSessionEntryFromStore({
@@ -81,7 +81,7 @@ export async function releasePostCompactionDelegatesAfterCompaction(params: {
 }): Promise<void> {
   const { dispatchPostCompactionDelegates } =
     await import("./post-compaction-delegate-dispatch.js");
-  if (params.followupRun.abortSignal?.aborted) {
+  if (isFollowupRunAborted(params.followupRun)) {
     return;
   }
   const delegatesToPreserve: SessionPostCompactionDelegate[] = [];

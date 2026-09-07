@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createDeferred } from "../../../test/helpers/promise.js";
 import * as sessionAccessorModule from "../../config/sessions/session-accessor.js";
 import * as sessionStoreModule from "../../config/sessions/store-writer-state.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
@@ -79,6 +80,7 @@ function delegate(
 }
 
 function createFollowupRun(overrides?: {
+  abortSignal?: AbortSignal;
   workspaceDir?: string;
   originatingChannel?: FollowupRun["originatingChannel"];
   originatingAccountId?: string;
@@ -88,6 +90,7 @@ function createFollowupRun(overrides?: {
   return {
     prompt: "hello",
     enqueuedAt: 1,
+    ...(overrides?.abortSignal ? { abortSignal: overrides.abortSignal } : {}),
     originatingChannel: overrides?.originatingChannel,
     originatingAccountId: overrides?.originatingAccountId,
     originatingTo: overrides?.originatingTo,
@@ -437,6 +440,133 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(enqueueSystemEvent).toHaveBeenCalledWith(
       expect.stringContaining("Context evacuation read failed: workspace locked"),
       { sessionKey: "main" },
+    );
+  });
+
+  it("requeues claimed delegates when cancellation wins during context loading", async () => {
+    const abort = new AbortController();
+    const contextStarted = createDeferred();
+    const releaseContext = createDeferred();
+    const managedDelegate: SessionPostCompactionDelegate = {
+      ...delegate("staged while context loads"),
+      flowId: "flow-context-cancelled",
+      expectedRevision: 4,
+      returnOptions: { artifacts: "required" },
+    };
+    const {
+      deps,
+      drainPostCompactionDelegateDeliveries,
+      enqueuePostCompactionDelegateDelivery,
+      enqueueSystemEvent,
+      finalizeStagedPostCompactionDelegates,
+      readPostCompactionContext,
+      requeueReleasedPostCompactionDelegate,
+    } = createDispatchDeps({ staged: [managedDelegate] });
+    requeueReleasedPostCompactionDelegate.mockReturnValue(true);
+    readPostCompactionContext.mockImplementationOnce(async () => {
+      contextStarted.resolve();
+      await releaseContext.promise;
+      return "[context] should not be emitted";
+    });
+
+    const pending = dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 1,
+        followupRun: createFollowupRun({ abortSignal: abort.signal }),
+        postCompactionDelegatesToPreserve: [],
+        sessionEntry: { sessionId: "session", updatedAt: 1 },
+        sessionKey: "main",
+      },
+      deps,
+    );
+    await contextStarted.promise;
+    abort.abort("originating turn cancelled");
+    releaseContext.resolve();
+
+    await expect(pending).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
+    expect(requeueReleasedPostCompactionDelegate).toHaveBeenCalledWith(
+      expect.objectContaining(managedDelegate),
+    );
+    expect(finalizeStagedPostCompactionDelegates).toHaveBeenCalledWith([]);
+    expect(enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
+    expect(enqueueSystemEvent).not.toHaveBeenCalled();
+    expect(drainPostCompactionDelegateDeliveries).not.toHaveBeenCalled();
+  });
+
+  it("restores extracted delegates when cancellation wins during persisted-state loading", async () => {
+    await withTestDir(
+      { prefix: "openclaw-post-compaction-extraction-cancel-" },
+      async (tempDir) => {
+        const storePath = path.join(tempDir, "sessions.json");
+        const persistedDelegate = delegate("persisted while extraction waits");
+        const sessionEntry: SessionEntry = {
+          sessionId: "session",
+          updatedAt: 1,
+          pendingPostCompactionDelegates: [persistedDelegate],
+        };
+        await seedSessionStore(storePath, { main: sessionEntry });
+
+        const abort = new AbortController();
+        const extractionStarted = createDeferred();
+        const releaseExtraction = createDeferred();
+        const originalPatchSessionEntryCore = sessionAccessorModule.patchSessionEntryCore;
+        const patchSpy = vi
+          .spyOn(sessionAccessorModule, "patchSessionEntryCore")
+          .mockImplementationOnce(async (...args) => {
+            extractionStarted.resolve();
+            await releaseExtraction.promise;
+            return originalPatchSessionEntryCore(...args);
+          });
+        const claimedDelegate: SessionPostCompactionDelegate = {
+          ...delegate("claimed while extraction waits"),
+          flowId: "flow-extraction-cancelled",
+          expectedRevision: 7,
+        };
+        const {
+          deps,
+          enqueuePostCompactionDelegateDelivery,
+          finalizeStagedPostCompactionDelegates,
+          readPostCompactionContext,
+          requeueReleasedPostCompactionDelegate,
+        } = createDispatchDeps({ staged: [claimedDelegate] });
+        requeueReleasedPostCompactionDelegate.mockImplementation(
+          (candidate) => candidate.flowId === claimedDelegate.flowId,
+        );
+
+        try {
+          const pending = dispatchPostCompactionDelegates(
+            {
+              cfg,
+              compactionCount: 1,
+              followupRun: createFollowupRun({ abortSignal: abort.signal }),
+              postCompactionDelegatesToPreserve: [],
+              sessionEntry,
+              sessionKey: "main",
+              storePath,
+            },
+            deps,
+          );
+          await extractionStarted.promise;
+          abort.abort("originating turn cancelled");
+          releaseExtraction.resolve();
+
+          await expect(pending).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
+        } finally {
+          patchSpy.mockRestore();
+        }
+
+        expect(requeueReleasedPostCompactionDelegate).toHaveBeenCalledWith(
+          expect.objectContaining(claimedDelegate),
+        );
+        expect(finalizeStagedPostCompactionDelegates).toHaveBeenCalledWith([]);
+        expect(readPostCompactionContext).not.toHaveBeenCalled();
+        expect(enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
+        expect(
+          sessionAccessorModule.loadSessionEntry({ storePath, sessionKey: "main" })
+            ?.pendingPostCompactionDelegates,
+        ).toEqual([normalizePostCompactionDelegate(persistedDelegate)]);
+      },
     );
   });
 
