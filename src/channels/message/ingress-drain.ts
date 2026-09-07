@@ -592,6 +592,7 @@ export function createChannelIngressDrain<
       resolve: options.resolvePendingDisposition,
       resolveLaneKey: (record) =>
         resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey),
+      formatError,
       log,
     });
     const pending = pendingDisposition.pending;
@@ -726,6 +727,12 @@ export function createChannelIngressDrain<
       runClaimed(claimed, laneKey);
       blockedLaneKeys.add(laneKey);
       started += 1;
+    }
+    if (pendingDisposition.errors.length > 0) {
+      throw new AggregateError(
+        pendingDisposition.errors,
+        `ingress drain: ${pendingDisposition.errors.length} pending disposition failure(s)`,
+      );
     }
     return { started };
   };

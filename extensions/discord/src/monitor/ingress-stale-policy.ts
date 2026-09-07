@@ -18,6 +18,7 @@ import {
   normalizeDiscordSlug,
   resolveDiscordChannelConfigWithFallback,
   resolveDiscordGuildEntry,
+  resolveDiscordShouldRequireMention,
   type DiscordGuildEntryResolved,
 } from "./allow-list.js";
 import { hasRawDiscordUserMention } from "./message-handler.preflight-helpers.js";
@@ -287,9 +288,16 @@ function canExpireDiscordStaleAmbientBacklog(
     scope: "channel",
   });
   if (guildInfo?.channels && Object.keys(guildInfo.channels).length > 0) {
-    return channelConfig?.allowed === true;
+    if (channelConfig?.allowed !== true) {
+      return false;
+    }
   }
-  return true;
+  return resolveDiscordShouldRequireMention({
+    isGuildMessage: true,
+    isThread: false,
+    channelConfig,
+    guildInfo,
+  });
 }
 
 export function createDiscordStaleAmbientPendingDisposition(params: {

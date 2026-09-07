@@ -167,7 +167,9 @@ describe("channel ingress pending disposition", () => {
         },
       });
 
-      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await expect(drain.drainOnce()).rejects.toThrow(
+        "ingress drain: 1 pending disposition failure(s)",
+      );
       await drain.waitForIdle();
       expect(adopted).toEqual(["other-lane"]);
       expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual([
