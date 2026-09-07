@@ -40,6 +40,7 @@ const runCliAgentMock = vi.hoisted(() => vi.fn());
 const continuationRuntimeState = vi.hoisted(() => ({
   enqueueConcurrentAfterScheduling: false,
   failScheduling: false,
+  abortBeforeScheduling: undefined as AbortController | undefined,
 }));
 const sessionAccessorState = vi.hoisted(() => ({
   failPatch: false,
@@ -48,8 +49,6 @@ const sessionAccessorState = vi.hoisted(() => ({
   replaceChainBeforePatchCall: undefined as number | undefined,
   replacementChainId: undefined as string | undefined,
   runtimeConfigAfterPatch: undefined as OpenClawConfig | undefined,
-  abortAfterPatchCall: undefined as number | undefined,
-  abortController: undefined as AbortController | undefined,
 }));
 
 vi.mock("../../auto-reply/continuation/lazy.runtime.js", async (importOriginal) => {
@@ -63,6 +62,8 @@ vi.mock("../../auto-reply/continuation/lazy.runtime.js", async (importOriginal) 
       if (continuationRuntimeState.failScheduling) {
         throw new Error("synthetic continuation scheduling failure");
       }
+      continuationRuntimeState.abortBeforeScheduling?.abort("test cancellation during scheduling");
+      continuationRuntimeState.abortBeforeScheduling = undefined;
       const result = await actual.scheduleContinuationWorkBatch(...args);
       if (continuationRuntimeState.enqueueConcurrentAfterScheduling) {
         continuationRuntimeState.enqueueConcurrentAfterScheduling = false;
@@ -116,9 +117,6 @@ vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => {
         );
       }
       const result = await actual.patchSessionEntryCore(...args);
-      if (sessionAccessorState.patchCalls === sessionAccessorState.abortAfterPatchCall) {
-        sessionAccessorState.abortController?.abort("test cancellation after reservation");
-      }
       if (sessionAccessorState.runtimeConfigAfterPatch) {
         setRuntimeConfigSnapshot(sessionAccessorState.runtimeConfigAfterPatch);
         sessionAccessorState.runtimeConfigAfterPatch = undefined;
@@ -283,14 +281,13 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     runCliAgentMock.mockReset();
     continuationRuntimeState.enqueueConcurrentAfterScheduling = false;
     continuationRuntimeState.failScheduling = false;
+    continuationRuntimeState.abortBeforeScheduling = undefined;
     sessionAccessorState.failPatch = false;
     sessionAccessorState.failPatchCall = undefined;
     sessionAccessorState.patchCalls = 0;
     sessionAccessorState.replaceChainBeforePatchCall = undefined;
     sessionAccessorState.replacementChainId = undefined;
     sessionAccessorState.runtimeConfigAfterPatch = undefined;
-    sessionAccessorState.abortAfterPatchCall = undefined;
-    sessionAccessorState.abortController = undefined;
     runEmbeddedAgentMock.mockResolvedValue(makeEmbeddedResult());
     sessionEntry = {
       sessionId: "session-embedded",
@@ -445,10 +442,9 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     });
   });
 
-  it("rolls back spawn-init reservation when cancellation wins during persistence", async () => {
+  it("rolls back spawn-init reservation when cancellation wins during scheduling", async () => {
     const abort = new AbortController();
-    sessionAccessorState.abortAfterPatchCall = 1;
-    sessionAccessorState.abortController = abort;
+    continuationRuntimeState.abortBeforeScheduling = abort;
     runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
       requestContinueWork(callArgs, {
         reason: "cancelled reservation",

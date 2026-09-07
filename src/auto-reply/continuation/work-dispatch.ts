@@ -680,6 +680,9 @@ export async function scheduleContinuationWork(
   // later unrelated turn. `reason` remains provenance/rate metadata, never an
   // admission gate.
   const replyRunRegistry = await getContinuationReplyRunRegistry();
+  if (params.abortSignal?.aborted) {
+    return { scheduled: false, capped: false, chainState: params.chainState };
+  }
   const electingTurnActive = replyRunRegistry.isActive(params.sessionKey);
   const recoveryHedgeAt = electedAt + params.config.maxDelayMs;
   const idleRetry = electingTurnActive
@@ -778,6 +781,14 @@ export async function scheduleContinuationWorkBatch(
     );
   }
   for (const request of params.requests) {
+    if (params.abortSignal?.aborted) {
+      return {
+        scheduledCount,
+        cappedCount: params.requests.length - scheduledCount,
+        capped: false,
+        chainState,
+      };
+    }
     const result = await scheduleContinuationWork({
       sessionKey: params.sessionKey,
       chainState,
@@ -786,6 +797,7 @@ export async function scheduleContinuationWorkBatch(
       ...(params.parentRunId !== undefined ? { parentRunId: params.parentRunId } : {}),
       ...(params.originRunId !== undefined ? { originRunId: params.originRunId } : {}),
       ...(params.originTurnId !== undefined ? { originTurnId: params.originTurnId } : {}),
+      ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
       ...(params.onFlowEnqueued ? { onFlowEnqueued: params.onFlowEnqueued } : {}),
       ...(params.log ? { log: params.log } : {}),
     });

@@ -382,6 +382,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         // would let orphan recovery reap the row after its electing turn settles.
         originRunId: params.originRunId,
         originTurnId: params.originTurnId,
+        ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
         log: (message) => log.info(message),
       });
       result.cappedCount += unreservedRequestCount;
