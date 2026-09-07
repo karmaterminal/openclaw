@@ -10,7 +10,6 @@ import type { OpenClawConfig } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { triggerSessionPatchHook } from "../../gateway/session-patch-hooks.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
-import { MODEL_SELECTION_LOCKED_MESSAGE } from "../../sessions/model-overrides.js";
 import {
   onSessionLifecycleEvent,
   type SessionLifecycleEvent,

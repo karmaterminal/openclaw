@@ -15,6 +15,7 @@ import { createAgentsWaitTool } from "../../tools/agents-wait-tool.js";
 import { subagentRegistryDeps } from "./subagent-registry-deps.js";
 import { getLatestSubagentRunByChildSessionKey } from "./subagent-registry-read.js";
 import { getSubagentRunsSnapshotForRead } from "./subagent-registry-state.js";
+import { expectFields } from "./subagent-registry.persistence.assertions.test-support.js";
 import {
   canonicalSubagentRunFixtures,
   cleanupSubagentRegistryPersistenceTest,
@@ -49,16 +50,6 @@ const { announceSpy } = vi.hoisted(() => ({
 vi.mock("../announce/subagent-announce.js", () => ({
   runSubagentAnnounceFlow: announceSpy,
 }));
-
-function expectFields(value: unknown, expected: Record<string, unknown>): void {
-  if (!value || typeof value !== "object") {
-    throw new Error("expected fields object");
-  }
-  const record = value as Record<string, unknown>;
-  for (const [key, expectedValue] of Object.entries(expected)) {
-    expect(record[key], key).toEqual(expectedValue);
-  }
-}
 
 describe("subagent registry persistence", () => {
   const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);

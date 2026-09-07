@@ -8,16 +8,9 @@ import {
   hasDeliberateSilentTerminalReply,
   hasIntentionalTerminalCompletion,
 } from "../../agents/embedded-agent-runner/result-fallback-classifier.js";
-import { deriveContextPromptTokens, hasBillableUsage } from "../../agents/usage.js";
 import { normalizeChatType } from "../../channels/chat-type.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
-import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
-import {
-  createChildDiagnosticTraceContext,
-  freezeDiagnosticTraceContext,
-} from "../../infra/diagnostic-trace-context.js";
 import { isSubagentSessionKey } from "../../routing/session-key.js";
-import { estimateAggregateUsageCost } from "../../utils/usage-format.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
 import { stagedPostCompactionDelegateCount } from "../continuation/delegate-store-post-compaction.js";
 import { pendingDelegateCount } from "../continuation/delegate-store.js";
@@ -47,6 +40,7 @@ import {
 } from "./agent-runner-reminder-guard.js";
 import type { accountAgentTurn } from "./agent-runner-result-accounting.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
+import { emitReplyAgentUsageDiagnostic } from "./agent-runner-usage-diagnostic.js";
 import { resolveResponseUsageLine } from "./agent-runner-usage-line.js";
 import type { PendingContinuationSettlement } from "./get-reply.types.js";
 import { attachMcpAppChannelAction } from "./mcp-app-channel-action.js";
@@ -77,7 +71,6 @@ export async function prepareReplyAgentPayloads(state: {
     replyToChannel,
     replyToMode,
     returnWithQueuedFollowupDrain,
-    runStartedAt,
     runtimePolicySessionKey,
     sessionCtx,
     sessionKey,
@@ -86,7 +79,6 @@ export async function prepareReplyAgentPayloads(state: {
   } = context;
   const {
     configuredFallbackModel,
-    contextTokensUsed,
     directlySentBlockKeys,
     directlySentBlockPayloads,
     effectiveContinuationSignal,
@@ -96,7 +88,6 @@ export async function prepareReplyAgentPayloads(state: {
     modelUsed,
     payloadArray: rawPayloadArray,
     preserveUserFacingSessionState,
-    promptTokens,
     providerUsed,
     replyUsageState,
     runId,
@@ -662,58 +653,7 @@ export async function prepareReplyAgentPayloads(state: {
 
   await signalTypingIfNeeded(guardedReplyPayloads, typingSignals);
 
-  const diagnosticUsage = runResult.meta?.agentMeta?.diagnosticUsage ?? usage;
-  if (isDiagnosticsEnabled(cfg) && hasBillableUsage(diagnosticUsage)) {
-    const input = diagnosticUsage.input ?? 0;
-    const output = diagnosticUsage.output ?? 0;
-    const cacheRead = diagnosticUsage.cacheRead ?? 0;
-    const cacheWrite = diagnosticUsage.cacheWrite ?? 0;
-    const usagePromptTokens = input + cacheRead + cacheWrite;
-    const totalTokens = diagnosticUsage.total ?? usagePromptTokens + output;
-    const contextUsedTokens = deriveContextPromptTokens({
-      lastCallUsage: runResult.meta?.agentMeta?.lastCallUsage,
-      promptTokens,
-      usage,
-    });
-    const costUsd = estimateAggregateUsageCost({
-      usage: diagnosticUsage,
-      provider: providerUsed,
-      model: modelUsed,
-      config: cfg,
-      agentDir: followupRun.run.agentDir,
-    });
-    emitTrustedDiagnosticEvent({
-      type: "model.usage",
-      ...(runResult.diagnosticTrace
-        ? {
-            trace: freezeDiagnosticTraceContext(
-              createChildDiagnosticTraceContext(runResult.diagnosticTrace),
-            ),
-          }
-        : {}),
-      sessionKey,
-      sessionId: followupRun.run.sessionId,
-      channel: replyToChannel,
-      agentId: followupRun.run.agentId,
-      provider: providerUsed,
-      model: modelUsed,
-      usage: {
-        input,
-        output,
-        cacheRead,
-        cacheWrite,
-        promptTokens: usagePromptTokens,
-        total: totalTokens,
-      },
-      lastCallUsage: runResult.meta?.agentMeta?.lastCallUsage,
-      context: {
-        limit: contextTokensUsed,
-        ...(contextUsedTokens !== undefined ? { used: contextUsedTokens } : {}),
-      },
-      costUsd,
-      durationMs: Date.now() - runStartedAt,
-    });
-  }
+  emitReplyAgentUsageDiagnostic(state);
 
   const responseUsageSessionRaw =
     activeSessionEntry?.responseUsage ??

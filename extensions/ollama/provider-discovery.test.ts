@@ -26,9 +26,6 @@ describe("Ollama provider", () => {
       ? String((input as { url?: unknown }).url)
       : String(input);
 
-  const fetchCallUrls = (fetchMock: ReturnType<typeof vi.fn>): string[] =>
-    fetchMock.mock.calls.map(([input]) => fetchInputUrl(input));
-
   const countFetchCallUrls = (fetchMock: ReturnType<typeof vi.fn>, suffix: string): number =>
     fetchMock.mock.calls.filter(([input]) => fetchInputUrl(input).endsWith(suffix)).length;
 

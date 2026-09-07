@@ -1,7 +1,6 @@
 /** Coordinates subagent registration, lifecycle, delivery, steering, recovery, and persistence. */
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import type { AgentWaitParams } from "../../../../packages/gateway-protocol/src/index.js";
-import { hasLiveOrRecentlyDispatchedContinuationWork } from "../../../auto-reply/continuation/work-store.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { callGateway } from "../../../gateway/call.js";
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
@@ -48,7 +47,7 @@ import type {
 } from "./subagent-registry-run-launch.js";
 import { createSubagentRunManager } from "./subagent-registry-run-manager.js";
 import { clearSubagentRunsReadCacheForTest } from "./subagent-registry-state.js";
-import { SUBAGENT_SUSPENDED_DELIVERY_HARD_CAP } from "./subagent-registry-suspended-delivery.js";
+import { hasContinuationWorkForSweepEntry } from "./subagent-registry-sweep-guards.js";
 import { resolveSubagentTaskForRun } from "./subagent-registry-sweep-kill.js";
 import {
   createSubagentRegistrySweeper,
@@ -65,6 +64,7 @@ import {
 } from "./subagent-session-reconciliation.js";
 
 export type { SubagentRunRecord } from "./subagent-registry.types.js";
+export { getSubagentDeliveryBacklogPressure } from "./subagent-registry-sweep-guards.js";
 const log = createSubsystemLogger("agents/subagent-registry");
 
 const subagentRegistryBootstrapState: {
@@ -77,20 +77,6 @@ const resumeRetryTimers = new Set<ReturnType<typeof setTimeout>>();
 let activeGatewayContextResolver: GatewayContextResolver | undefined;
 const SUBAGENT_ANNOUNCE_TIMEOUT_MS = 120_000;
 const GATEWAY_ADMISSION_RETRY_DELAY_MS = 1_000;
-/** Admission pressure for recoverable completion deliveries; rows are never pruned for capacity. */
-export function getSubagentDeliveryBacklogPressure(): {
-  suspended: number;
-  blocked: boolean;
-} {
-  let suspended = 0;
-  for (const entry of subagentRuns.values()) {
-    if (isDeliverySuspended(entry)) {
-      suspended += 1;
-    }
-  }
-  return { suspended, blocked: suspended >= SUBAGENT_SUSPENDED_DELIVERY_HARD_CAP };
-}
-
 // Hot lifecycle callers name every changed or removed row. Zero ids is reserved
 // for explicit full-registry replacement at restore/reset boundaries.
 function persistSubagentRuns(...runIds: string[]) {
@@ -109,22 +95,6 @@ function persistSubagentRunsOrThrow(...runIds: string[]) {
 
 function findSubagentTaskForRun(entry: SubagentRunRecord) {
   return resolveSubagentTaskForRun(getSubagentRunsForChildSession(entry.childSessionKey), entry);
-}
-
-function hasContinuationWorkForSweepEntry(entry: SubagentRunRecord): boolean {
-  if (hasLiveOrRecentlyDispatchedContinuationWork(entry.childSessionKey)) {
-    return true;
-  }
-  if (!entry.collect || !entry.groupId) {
-    return false;
-  }
-  return [...subagentRuns.values()].some(
-    (candidate) =>
-      candidate.collect === true &&
-      candidate.groupId === entry.groupId &&
-      candidate.swarmRequesterSessionKey === entry.swarmRequesterSessionKey &&
-      hasLiveOrRecentlyDispatchedContinuationWork(candidate.childSessionKey),
-  );
 }
 
 async function callGatewayForSweep<T>(request: Parameters<typeof callGateway>[0]): Promise<T> {
