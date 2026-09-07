@@ -353,7 +353,7 @@ type MockFlow = {
 const mockFlows = new Map<string, MockFlow>();
 let flowCounter = 0;
 let flowUpdateFailureReason: string | undefined;
-let flowUpdateRevisionConflictOnce = false;
+let flowUpdateRevisionConflictsRemaining = 0;
 
 function cloneFlow(flow: MockFlow): MockFlow {
   return { ...flow };
@@ -397,8 +397,8 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
       if (flowUpdateFailureReason) {
         return { applied: false, reason: flowUpdateFailureReason };
       }
-      if (flow && flowUpdateRevisionConflictOnce) {
-        flowUpdateRevisionConflictOnce = false;
+      if (flow && flowUpdateRevisionConflictsRemaining > 0) {
+        flowUpdateRevisionConflictsRemaining -= 1;
         flow.revision += 1;
         return { applied: false, reason: "revision_conflict", current: cloneFlow(flow) };
       }
@@ -614,7 +614,7 @@ describe("durable continuation_work dispatch", () => {
     getReplyFromConfigMock.mockClear();
     continuationEnabledForTest = true;
     flowUpdateFailureReason = undefined;
-    flowUpdateRevisionConflictOnce = false;
+    flowUpdateRevisionConflictsRemaining = 0;
     capturedReplyTraceparents.length = 0;
     bumpWorkRevisionOnReply = false;
     emitContinuationWorkFireSpanMock.mockReset();
@@ -836,7 +836,7 @@ describe("durable continuation_work dispatch", () => {
     expect([...mockFlows.values()].at(0)?.status).toBe("cancelled");
   });
 
-  it("completes reset cancellation and transient cleanup after a revision conflict", async () => {
+  it("completes reset cancellation and transient cleanup after revision conflicts", async () => {
     const sessionKey = "agent:main:reset-revision-conflict";
     const sessionId = "reset-revision-conflict-session";
     mockSessionStore[sessionKey] = { sessionId };
@@ -849,7 +849,7 @@ describe("durable continuation_work dispatch", () => {
     });
     await waitForMockWaiter(replyIdleWaiters, sessionKey);
     const timersBeforeReset = vi.getTimerCount();
-    flowUpdateRevisionConflictOnce = true;
+    flowUpdateRevisionConflictsRemaining = 2;
 
     clearSessionResetRuntimeState([sessionKey], {
       agentId: "main",

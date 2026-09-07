@@ -13,6 +13,8 @@ import {
 } from "./delegate-flow-store.js";
 import { isContinuationWorkFlow } from "./work-flow-state.js";
 
+const MAX_SESSION_RESET_CANCELLATION_ATTEMPTS = 8;
+
 export class SessionContinuationResetError extends Error {
   constructor(flowId: string, reason: string) {
     super(`Session reset could not cancel continuation flow ${flowId}: ${reason}. Retry.`);
@@ -37,7 +39,7 @@ export function cancelSessionContinuations(sessionKey: string): void {
   const endedAt = Date.now();
   for (const flow of flows) {
     let current = flow;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < MAX_SESSION_RESET_CANCELLATION_ATTEMPTS; attempt += 1) {
       const result = updateFlowRecordByIdExpectedRevision({
         flowId: current.flowId,
         expectedRevision: current.revision,
@@ -58,7 +60,11 @@ export function cancelSessionContinuations(sessionKey: string): void {
       if (result.applied || (result.current && !isResettableContinuationFlow(result.current))) {
         break;
       }
-      if (result.reason === "revision_conflict" && result.current && attempt === 0) {
+      if (
+        result.reason === "revision_conflict" &&
+        result.current &&
+        attempt + 1 < MAX_SESSION_RESET_CANCELLATION_ATTEMPTS
+      ) {
         current = result.current;
         continue;
       }
