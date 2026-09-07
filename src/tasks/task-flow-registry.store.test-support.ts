@@ -7,6 +7,7 @@ type TaskFlowRegistryStore = {
   loadSnapshot: () => TaskFlowRegistryStoreSnapshot;
   saveSnapshot: (snapshot: TaskFlowRegistryStoreSnapshot) => void;
   upsertFlow?: (flow: TaskFlowRecord) => void;
+  upsertFlowsAtomically?: (flows: readonly TaskFlowRecord[]) => void;
   deleteFlow?: (flowId: string) => void;
   close?: () => void;
 };

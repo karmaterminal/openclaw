@@ -532,7 +532,7 @@ function prepareTaskFlowAtomicUpdates(
         applied: false,
         reason: "revision_conflict",
         flowId: update.flowId,
-        current: flows.get(update.flowId),
+        current: cloneStructuredValue(flows.get(update.flowId)),
       };
     }
     seenFlowIds.add(update.flowId);
@@ -557,6 +557,14 @@ function prepareTaskFlowAtomicUpdates(
 }
 
 function commitTaskFlowAtomicChanges(params: {
+  created: TaskFlowRecord;
+  updates: readonly TaskFlowAtomicUpdate[];
+}): TaskFlowAtomicCreateResult;
+function commitTaskFlowAtomicChanges(params: {
+  created?: undefined;
+  updates: readonly TaskFlowAtomicUpdate[];
+}): TaskFlowAtomicUpdateResult;
+function commitTaskFlowAtomicChanges(params: {
   created?: TaskFlowRecord;
   updates: readonly TaskFlowAtomicUpdate[];
 }): TaskFlowAtomicCreateResult | TaskFlowAtomicUpdateResult {
@@ -569,10 +577,18 @@ function commitTaskFlowAtomicChanges(params: {
     ...prepared.entries.map((entry) => entry.next),
     ...(params.created ? [params.created] : []),
   ];
+  if (changed.length === 0) {
+    return { applied: true, flows: [] };
+  }
   try {
-    getTaskFlowRegistryStore().saveSnapshot({
-      flows: createFlowSnapshotWith(changed),
-    });
+    const store = getTaskFlowRegistryStore();
+    if (store.upsertFlowsAtomically) {
+      store.upsertFlowsAtomically(changed.map((flow) => cloneFlowRecord(flow)));
+    } else {
+      store.saveSnapshot({
+        flows: createFlowSnapshotWith(changed),
+      });
+    }
   } catch (error) {
     log.warn("Failed to persist atomic task-flow changes", {
       createdFlowId: params.created?.flowId,
@@ -637,13 +653,13 @@ export function createManagedTaskFlowWithAtomicUpdates(params: {
   return commitTaskFlowAtomicChanges({
     created,
     updates: params.updates,
-  }) as TaskFlowAtomicCreateResult;
+  });
 }
 
 export function updateTaskFlowsAtomically(
   updates: readonly TaskFlowAtomicUpdate[],
 ): TaskFlowAtomicUpdateResult {
-  return commitTaskFlowAtomicChanges({ updates }) as TaskFlowAtomicUpdateResult;
+  return commitTaskFlowAtomicChanges({ updates });
 }
 
 export function createTaskFlowForTask(params: {

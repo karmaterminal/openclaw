@@ -6,6 +6,7 @@ import {
   updateTaskFlowsAtomically,
 } from "../../tasks/task-flow-runtime-internal.js";
 import { abortContinuationDispatchClaim } from "./continuation-dispatch-claims.js";
+import type { ContinuationWorkReplacementFailure } from "./types.js";
 import {
   CONTINUATION_WORK_CONTROLLER_ID,
   decodeWorkState,
@@ -42,7 +43,7 @@ export type PendingWorkReplacementResult =
   | { applied: true; work: PendingContinuationWork }
   | {
       applied: false;
-      reason: "not_found" | "revision_conflict" | "persist_failed" | "invalid_prior";
+      reason: ContinuationWorkReplacementFailure;
       flowId?: string;
     };
 
@@ -103,6 +104,24 @@ export type PendingWorkReplacementRollbackResult = {
   unresolvedCreatedFlowIds: string[];
   unrestoredPriorFlowIds: string[];
 };
+
+function listUnresolvedCreatedFlowIds(flowIds: readonly string[]): string[] {
+  return flowIds.filter((flowId) => {
+    const flow = getTaskFlowById(flowId);
+    return (
+      flow !== undefined &&
+      flow.status !== "failed" &&
+      flow.status !== "cancelled" &&
+      flow.status !== "lost"
+    );
+  });
+}
+
+function listUnrestoredPriorFlowIds(priorFlows: readonly TaskFlowRecord[]): string[] {
+  return priorFlows
+    .filter((prior) => getTaskFlowById(prior.flowId)?.status !== "queued")
+    .map((prior) => prior.flowId);
+}
 
 export function rollbackPendingWorkReplacement(params: {
   sessionKey: string;
@@ -174,13 +193,13 @@ export function rollbackPendingWorkReplacement(params: {
       return {
         applied: false,
         unresolvedCreatedFlowIds,
-        unrestoredPriorFlowIds: params.priorFlows.map((flow) => flow.flowId),
+        unrestoredPriorFlowIds: listUnrestoredPriorFlowIds(params.priorFlows),
       };
     }
 
     for (const prior of params.priorFlows) {
       const flow = getTaskFlowById(prior.flowId);
-      if (flow?.status === "queued" && flow.revision === prior.revision) {
+      if (flow?.status === "queued") {
         continue;
       }
       if (
@@ -202,7 +221,7 @@ export function rollbackPendingWorkReplacement(params: {
           waitJson: null,
           blockedTaskId: null,
           blockedSummary: null,
-          cancelRequestedAt: null,
+          cancelRequestedAt: prior.cancelRequestedAt ?? null,
           endedAt: null,
           updatedAt: now,
         },
@@ -217,12 +236,8 @@ export function rollbackPendingWorkReplacement(params: {
         unrestoredPriorFlowIds,
       };
     }
-    lastUnresolvedCreatedFlowIds = [
-      ...new Set([...unresolvedCreatedFlowIds, ...params.createdFlowIds]),
-    ];
-    lastUnrestoredPriorFlowIds = [
-      ...new Set([...unrestoredPriorFlowIds, ...params.priorFlows.map((flow) => flow.flowId)]),
-    ];
+    lastUnresolvedCreatedFlowIds = listUnresolvedCreatedFlowIds(params.createdFlowIds);
+    lastUnrestoredPriorFlowIds = listUnrestoredPriorFlowIds(params.priorFlows);
   }
   return {
     applied: false,

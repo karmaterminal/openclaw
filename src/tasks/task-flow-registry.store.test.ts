@@ -171,6 +171,48 @@ describe("task-flow-registry store runtime", () => {
     expect(restoredFlow.goal).toBe("Restored flow");
   });
 
+  it("uses the targeted atomic store primitive without rewriting the registry snapshot", () => {
+    const prior: TaskFlowRecord = {
+      ...createStoredFlow(),
+      flowId: "flow-prior",
+      status: "queued",
+      revision: 0,
+      cancelRequestedAt: undefined,
+      endedAt: undefined,
+    };
+    const saveSnapshot = vi.fn();
+    const upsertFlowsAtomically = vi.fn();
+    configureTaskFlowRegistryRuntime({
+      store: {
+        loadSnapshot: () => ({ flows: new Map([[prior.flowId, prior]]) }),
+        saveSnapshot,
+        upsertFlowsAtomically,
+      },
+    });
+
+    const replaced = createManagedTaskFlowWithAtomicUpdates({
+      create: {
+        ownerKey: prior.ownerKey,
+        controllerId: "core/continuation-work",
+        goal: "Replacement wake",
+      },
+      updates: [
+        {
+          flowId: prior.flowId,
+          expectedRevision: prior.revision,
+          patch: { status: "succeeded", endedAt: 200, updatedAt: 200 },
+        },
+      ],
+    });
+
+    expect(replaced.applied).toBe(true);
+    expect(upsertFlowsAtomically).toHaveBeenCalledWith([
+      expect.objectContaining({ flowId: prior.flowId, status: "succeeded" }),
+      expect.objectContaining({ goal: "Replacement wake", status: "queued" }),
+    ]);
+    expect(saveSnapshot).not.toHaveBeenCalled();
+  });
+
   it("commits replacement creation and prior terminalization in one durable snapshot", async () => {
     await withFlowRegistryTempDir(async () => {
       const prior = createManagedTaskFlow({

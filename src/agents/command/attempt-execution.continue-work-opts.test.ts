@@ -555,6 +555,9 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
+    const { resetTaskFlowRegistryForTests } =
+      await import("../../tasks/task-runtime.test-helpers.js");
+    resetTaskFlowRegistryForTests({ persist: false });
     const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
     const flows = listTaskFlowsForOwnerKey(sessionKey);
     expect(flows).toHaveLength(1);
@@ -584,6 +587,9 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
+    const { resetTaskFlowRegistryForTests } =
+      await import("../../tasks/task-runtime.test-helpers.js");
+    resetTaskFlowRegistryForTests({ persist: false });
     const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
     const flows = listTaskFlowsForOwnerKey(sessionKey);
     expect(flows).toHaveLength(1);
@@ -641,6 +647,9 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
+    const { resetTaskFlowRegistryForTests } =
+      await import("../../tasks/task-runtime.test-helpers.js");
+    resetTaskFlowRegistryForTests({ persist: false });
     const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
     const flows = listTaskFlowsForOwnerKey(sessionKey);
     expect(flows).toHaveLength(2);

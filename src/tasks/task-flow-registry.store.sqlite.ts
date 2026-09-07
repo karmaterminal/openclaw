@@ -302,6 +302,17 @@ export function upsertTaskFlowRegistryRecordToSqlite(flow: TaskFlowRecord) {
   });
 }
 
+export function upsertTaskFlowRegistryRecordsToSqlite(flows: readonly TaskFlowRecord[]) {
+  if (flows.length === 0) {
+    return;
+  }
+  withWriteTransaction(({ db }) => {
+    for (const flow of flows) {
+      upsertTaskFlowRowInDatabase(db, bindTaskFlowRecord(flow));
+    }
+  });
+}
+
 /** Binds only the exact flow selected before admission; lifecycle settlement stays owner-native. */
 export function bindTaskFlowExecution(params: {
   admitted: AdmittedRunContext;

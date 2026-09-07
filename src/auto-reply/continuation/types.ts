@@ -243,12 +243,18 @@ export type ChainState = {
   chainId?: string;
 };
 
+export type ContinuationWorkReplacementFailure =
+  | "not_found"
+  | "revision_conflict"
+  | "persist_failed"
+  | "invalid_prior";
+
 export type ContinuationWorkScheduleResult =
   | {
       scheduled: false;
       capped: boolean;
       chainState: ChainState;
-      replacementFailure?: "not_found" | "revision_conflict" | "persist_failed" | "invalid_prior";
+      replacementFailure?: ContinuationWorkReplacementFailure;
       replacementFailureFlowId?: string;
     }
   | { scheduled: true; capped: false; chainState: ChainState };
@@ -258,7 +264,7 @@ export type ContinuationWorkBatchResult = {
   cappedCount: number;
   capped: boolean;
   chainState: ChainState;
-  replacementFailure?: "not_found" | "revision_conflict" | "persist_failed" | "invalid_prior";
+  replacementFailure?: ContinuationWorkReplacementFailure;
   replacementFailureFlowId?: string;
 };
 
