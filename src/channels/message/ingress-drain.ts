@@ -400,14 +400,18 @@ export function createChannelIngressDrain<
       onCancelled: async () => {
         // Cancellation means ownership ended before delivery, so preserve every
         // prior retry fact while reopening the canonical row for replacement.
-        await settleUnadopted(state, (claim) => releaseClaim(claim, { recordAttempt: false }));
+        await settleUnadopted(state, async (claim) => {
+          await releaseClaim(claim, { recordAttempt: false });
+        });
       },
       onAbandoned: async () => {
-        await settleUnadopted(state, (claim) =>
-          isIngressCancelCompat()
-            ? releaseClaim(claim, { recordAttempt: false })
-            : applyFailureDisposition(claim, new Error("turn-abandoned")),
-        );
+        await settleUnadopted(state, async (claim) => {
+          if (isIngressCancelCompat()) {
+            await releaseClaim(claim, { recordAttempt: false });
+            return;
+          }
+          await applyFailureDisposition(claim, new Error("turn-abandoned"));
+        });
       },
     };
   };
