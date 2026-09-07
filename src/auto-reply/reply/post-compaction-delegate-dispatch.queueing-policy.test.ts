@@ -12,7 +12,23 @@ import {
   enqueuePostCompactionDelegateDelivery as enqueuePostCompactionDelegateDeliveryQueue,
   loadPendingSessionDelivery,
 } from "../../infra/session-delivery-queue-storage.js";
+import {
+  deleteTaskFlowRecordById,
+  getTaskFlowById,
+  listTaskFlowsForOwnerKey,
+  updateFlowRecordByIdExpectedRevision,
+} from "../../tasks/task-flow-registry.js";
+import {
+  configureTaskFlowRegistryRuntime,
+  resetTaskFlowRegistryForTests,
+} from "../../tasks/task-runtime.test-helpers.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
+import {
+  consumeStagedPostCompactionDelegates,
+  finalizeStagedPostCompactionDelegates,
+  requeueReleasedPostCompactionDelegate,
+  stagePostCompactionDelegate,
+} from "../continuation/delegate-store-post-compaction.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
   deliverQueuedPostCompactionDelegate,
@@ -142,7 +158,7 @@ function createDispatchDeps(options?: {
     (flowIds: readonly (string | undefined)[]) => flowIds.filter(Boolean).length,
   );
   const rejectPostCompactionTaskFlowDelegate = vi.fn(() => true);
-  const requeueReleasedPostCompactionDelegate = vi.fn(() => false);
+  const requeueReleasedPostCompactionDelegate = vi.fn(() => "missing" as const);
   const stagePostCompactionDelegate = vi.fn();
   const deps: PostCompactionDelegateDispatchDeps = {
     consumeStagedPostCompactionDelegates: vi.fn(() => options?.staged ?? []),
@@ -290,10 +306,23 @@ function readSessionStore(storePath: string): Record<string, SessionEntry> {
   );
 }
 
+function configureInMemoryTaskFlows(): void {
+  resetTaskFlowRegistryForTests({ persist: false });
+  configureTaskFlowRegistryRuntime({
+    store: {
+      loadSnapshot: () => ({ flows: new Map() }),
+      saveSnapshot: () => {},
+      upsertFlow: () => {},
+      deleteFlow: () => {},
+    },
+  });
+}
+
 afterEach(() => {
   vi.useRealTimers();
   mockRegistryState.acceptedChildSessionKeys.clear();
   sessionStoreModule.clearSessionStoreCacheForTest();
+  resetTaskFlowRegistryForTests({ persist: false });
 });
 
 const splitLintUse = [
@@ -462,7 +491,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       readPostCompactionContext,
       requeueReleasedPostCompactionDelegate,
     } = createDispatchDeps({ staged: [managedDelegate] });
-    requeueReleasedPostCompactionDelegate.mockReturnValue(true);
+    requeueReleasedPostCompactionDelegate.mockReturnValue("requeued");
     readPostCompactionContext.mockImplementationOnce(async () => {
       contextStarted.resolve();
       await releaseContext.promise;
@@ -530,8 +559,8 @@ describe("post-compaction delegate dispatch extraction", () => {
           readPostCompactionContext,
           requeueReleasedPostCompactionDelegate,
         } = createDispatchDeps({ staged: [claimedDelegate] });
-        requeueReleasedPostCompactionDelegate.mockImplementation(
-          (candidate) => candidate.flowId === claimedDelegate.flowId,
+        requeueReleasedPostCompactionDelegate.mockImplementation((candidate) =>
+          candidate.flowId === claimedDelegate.flowId ? "requeued" : "missing",
         );
 
         try {
@@ -569,6 +598,213 @@ describe("post-compaction delegate dispatch extraction", () => {
       },
     );
   });
+
+  it.each([
+    { name: "non-artifact", returnOptions: undefined },
+    { name: "artifact", returnOptions: { artifacts: "required" as const } },
+  ])(
+    "keeps a $name delegate exclusively TaskFlow-owned when cancellation races a revision advance",
+    async ({ returnOptions }) => {
+      configureInMemoryTaskFlows();
+      const sessionKey = "agent:main:revision-advance";
+      const staged = stagePostCompactionDelegate(sessionKey, {
+        ...delegate("keep the advanced TaskFlow authoritative"),
+        ...(returnOptions ? { returnOptions } : {}),
+      });
+      const flowId = expectDefined(staged, "staged TaskFlow").flowId;
+      const abort = new AbortController();
+      const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+      const {
+        deps,
+        enqueuePostCompactionDelegateDelivery,
+        finalizeStagedPostCompactionDelegates: finalizeMock,
+        readPostCompactionContext,
+      } = createDispatchDeps();
+      deps.consumeStagedPostCompactionDelegates = consumeStagedPostCompactionDelegates;
+      deps.finalizeStagedPostCompactionDelegates = finalizeStagedPostCompactionDelegates;
+      deps.requeueReleasedPostCompactionDelegate = (claimed) => {
+        const advanced = updateFlowRecordByIdExpectedRevision({
+          flowId: expectDefined(claimed.flowId, "claimed flow id"),
+          expectedRevision: expectDefined(claimed.expectedRevision, "claimed revision"),
+          patch: { currentStep: "Concurrent owner advanced the flow" },
+        });
+        expect(advanced.applied).toBe(true);
+        return requeueReleasedPostCompactionDelegate(claimed);
+      };
+      const exactFinalize = vi.spyOn(deps, "finalizeStagedPostCompactionDelegates");
+      readPostCompactionContext.mockImplementationOnce(async () => {
+        abort.abort("originating turn cancelled");
+        return null;
+      });
+
+      await expect(
+        dispatchPostCompactionDelegates(
+          {
+            cfg,
+            compactionCount: 1,
+            followupRun: createFollowupRun({ abortSignal: abort.signal }),
+            postCompactionDelegatesToPreserve: [],
+            sessionEntry,
+            sessionKey,
+          },
+          deps,
+        ),
+      ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
+
+      expect(sessionEntry.pendingPostCompactionDelegates).toBeUndefined();
+      expect(exactFinalize).toHaveBeenCalledWith([]);
+      expect(finalizeMock).not.toHaveBeenCalled();
+      expect(listTaskFlowsForOwnerKey(sessionKey)).toEqual([
+        expect.objectContaining({
+          flowId,
+          status: "running",
+          revision: 2,
+          currentStep: "Concurrent owner advanced the flow",
+        }),
+      ]);
+
+      const retry = createDispatchDeps();
+      retry.deps.consumeStagedPostCompactionDelegates = consumeStagedPostCompactionDelegates;
+      retry.deps.finalizeStagedPostCompactionDelegates = finalizeStagedPostCompactionDelegates;
+      retry.deps.requeueReleasedPostCompactionDelegate = requeueReleasedPostCompactionDelegate;
+      await expect(
+        dispatchPostCompactionDelegates(
+          {
+            cfg,
+            compactionCount: 2,
+            followupRun: createFollowupRun(),
+            postCompactionDelegatesToPreserve: [],
+            sessionEntry,
+            sessionKey,
+          },
+          retry.deps,
+        ),
+      ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
+      expect(retry.enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
+      expect(getTaskFlowById(flowId)).toMatchObject({
+        status: "running",
+        revision: 2,
+        currentStep: "Concurrent owner advanced the flow",
+      });
+    },
+  );
+
+  it("cannot leave a pending duplicate when finalization throws after a revision advance", async () => {
+    configureInMemoryTaskFlows();
+    const sessionKey = "agent:main:revision-advance-finalize-error";
+    const staged = stagePostCompactionDelegate(
+      sessionKey,
+      delegate("keep one owner across finalization failure"),
+    );
+    const flowId = expectDefined(staged, "staged TaskFlow").flowId;
+    const abort = new AbortController();
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const { deps, readPostCompactionContext } = createDispatchDeps();
+    deps.consumeStagedPostCompactionDelegates = consumeStagedPostCompactionDelegates;
+    deps.requeueReleasedPostCompactionDelegate = (claimed) => {
+      const advanced = updateFlowRecordByIdExpectedRevision({
+        flowId: expectDefined(claimed.flowId, "claimed flow id"),
+        expectedRevision: expectDefined(claimed.expectedRevision, "claimed revision"),
+        patch: { currentStep: "Concurrent owner advanced before finalization" },
+      });
+      expect(advanced.applied).toBe(true);
+      return requeueReleasedPostCompactionDelegate(claimed);
+    };
+    deps.finalizeStagedPostCompactionDelegates = vi.fn(() => {
+      throw new Error("finalization failed");
+    });
+    readPostCompactionContext.mockImplementationOnce(async () => {
+      abort.abort("originating turn cancelled");
+      return null;
+    });
+
+    await expect(
+      dispatchPostCompactionDelegates(
+        {
+          cfg,
+          compactionCount: 1,
+          followupRun: createFollowupRun({ abortSignal: abort.signal }),
+          postCompactionDelegatesToPreserve: [],
+          sessionEntry,
+          sessionKey,
+        },
+        deps,
+      ),
+    ).rejects.toThrow("finalization failed");
+
+    expect(sessionEntry.pendingPostCompactionDelegates).toBeUndefined();
+    expect(getTaskFlowById(flowId)).toMatchObject({
+      status: "running",
+      revision: 2,
+      currentStep: "Concurrent owner advanced before finalization",
+    });
+  });
+
+  it.each([
+    { name: "non-artifact", returnOptions: undefined },
+    { name: "artifact", returnOptions: { artifacts: "required" as const } },
+  ])(
+    "preserves a $name delegate when its TaskFlow row is truly missing",
+    async ({ returnOptions }) => {
+      configureInMemoryTaskFlows();
+      const sessionKey = "agent:main:missing-source";
+      const source = {
+        ...delegate("preserve work after source loss"),
+        ...(returnOptions ? { returnOptions } : {}),
+      };
+      const staged = stagePostCompactionDelegate(sessionKey, source);
+      const flowId = expectDefined(staged, "staged TaskFlow").flowId;
+      const abort = new AbortController();
+      const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+      const { deps, readPostCompactionContext } = createDispatchDeps();
+      deps.consumeStagedPostCompactionDelegates = consumeStagedPostCompactionDelegates;
+      deps.finalizeStagedPostCompactionDelegates = finalizeStagedPostCompactionDelegates;
+      deps.requeueReleasedPostCompactionDelegate = (claimed) => {
+        expect(deleteTaskFlowRecordById(expectDefined(claimed.flowId, "claimed flow id"))).toBe(
+          true,
+        );
+        return requeueReleasedPostCompactionDelegate(claimed);
+      };
+      readPostCompactionContext.mockImplementationOnce(async () => {
+        abort.abort("originating turn cancelled");
+        return null;
+      });
+
+      await expect(
+        dispatchPostCompactionDelegates(
+          {
+            cfg,
+            compactionCount: 1,
+            followupRun: createFollowupRun({ abortSignal: abort.signal }),
+            postCompactionDelegatesToPreserve: [],
+            sessionEntry,
+            sessionKey,
+          },
+          deps,
+        ),
+      ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
+
+      expect(getTaskFlowById(flowId)).toBeUndefined();
+      expect(sessionEntry.pendingPostCompactionDelegates).toEqual([
+        expect.objectContaining({
+          task: source.task,
+          ...(returnOptions ? { returnOptions } : {}),
+          recipientAuthorityBinding: expect.objectContaining({
+            recipients: [
+              expect.objectContaining({
+                sessionKey,
+                authority: expect.objectContaining({ state: "bound" }),
+              }),
+            ],
+          }),
+        }),
+      ]);
+      expect(sessionEntry.pendingPostCompactionDelegates?.[0]).not.toHaveProperty("flowId");
+      expect(sessionEntry.pendingPostCompactionDelegates?.[0]).not.toHaveProperty(
+        "expectedRevision",
+      );
+    },
+  );
 
   it("surfaces persisted post-compaction delegate load failures without clearing local pending delegates", async () => {
     await withTestDir({ prefix: "openclaw-post-compaction-dispatch-fail-" }, async (tempDir) => {
@@ -779,7 +1015,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         runtimeConfig,
         now,
       });
-      requeueReleasedPostCompactionDelegate.mockReturnValue(true);
+      requeueReleasedPostCompactionDelegate.mockReturnValue("requeued");
 
       const result = await dispatchPostCompactionDelegates(
         {
@@ -827,6 +1063,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         maxDelegatesPerTurn: 0,
       },
     });
+    requeueReleasedPostCompactionDelegate.mockReturnValue("authoritative");
 
     await dispatchPostCompactionDelegates(
       {
@@ -937,10 +1174,7 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(sessionEntry.pendingPostCompactionDelegates).toEqual([
       normalizePostCompactionDelegate(delegate("second")),
     ]);
-    expect(finalizeStagedPostCompactionDelegates).toHaveBeenCalledWith([
-      "flow-first",
-      "flow-second",
-    ]);
+    expect(finalizeStagedPostCompactionDelegates).toHaveBeenCalledWith(["flow-first"]);
     expect(
       Math.max(...enqueuePostCompactionDelegateDelivery.mock.invocationCallOrder),
     ).toBeLessThan(finalizeStagedPostCompactionDelegates.mock.invocationCallOrder[0]!);
