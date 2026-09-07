@@ -10,3 +10,16 @@ export type TaskFlowRegistryAtomicChange = {
   flow: TaskFlowRecord;
   expectedRevision?: number;
 };
+
+export type TaskFlowRegistryAtomicOwnerCondition = {
+  ownerKey: string;
+  controllerId: string;
+  status: TaskFlowRecord["status"];
+  expectedFlowIds: readonly string[];
+  excludeCancelRequested?: boolean;
+};
+
+export type TaskFlowRegistryAtomicWrite = {
+  changes: readonly TaskFlowRegistryAtomicChange[];
+  ownerCondition?: TaskFlowRegistryAtomicOwnerCondition;
+};

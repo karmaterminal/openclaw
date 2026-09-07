@@ -26,7 +26,7 @@ import {
   type OpenClawStateDatabaseOptions,
 } from "../state/openclaw-state-db.js";
 import type {
-  TaskFlowRegistryAtomicChange,
+  TaskFlowRegistryAtomicWrite,
   TaskFlowRegistryStoreSnapshot,
 } from "./task-flow-registry.store.types.js";
 import {
@@ -305,14 +305,34 @@ export function upsertTaskFlowRegistryRecordToSqlite(flow: TaskFlowRecord) {
   });
 }
 
-export function upsertTaskFlowRegistryRecordsToSqlite(
-  changes: readonly TaskFlowRegistryAtomicChange[],
-): boolean {
+export function upsertTaskFlowRegistryRecordsToSqlite(write: TaskFlowRegistryAtomicWrite): boolean {
+  const { changes } = write;
   if (changes.length === 0) {
     return true;
   }
   let applied = false;
   withWriteTransaction(({ db }) => {
+    if (write.ownerCondition) {
+      let query = getFlowRegistryKysely(db)
+        .selectFrom("flow_runs")
+        .select("flow_id")
+        .where("owner_key", "=", write.ownerCondition.ownerKey)
+        .where("controller_id", "=", write.ownerCondition.controllerId)
+        .where("status", "=", write.ownerCondition.status);
+      if (write.ownerCondition.excludeCancelRequested) {
+        query = query.where("cancel_requested_at", "is", null);
+      }
+      const currentFlowIds = executeSqliteQuerySync(db, query)
+        .rows.map((row) => row.flow_id)
+        .toSorted();
+      const expectedFlowIds = [...write.ownerCondition.expectedFlowIds].toSorted();
+      if (
+        currentFlowIds.length !== expectedFlowIds.length ||
+        currentFlowIds.some((flowId, index) => flowId !== expectedFlowIds[index])
+      ) {
+        return;
+      }
+    }
     for (const change of changes) {
       const current = readTaskFlowRecord(db, change.flow.flowId);
       if (

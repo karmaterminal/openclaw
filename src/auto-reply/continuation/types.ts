@@ -257,7 +257,12 @@ export type ContinuationWorkScheduleResult =
       replacementFailure?: ContinuationWorkReplacementFailure;
       replacementFailureFlowId?: string;
     }
-  | { scheduled: true; capped: false; chainState: ChainState; supersededCount?: number };
+  | {
+      scheduled: true;
+      capped: false;
+      chainState: ChainState;
+      supersededFlows?: readonly TaskFlowRecord[];
+    };
 
 export type ContinuationWorkBatchResult = {
   scheduledCount: number;
@@ -266,6 +271,7 @@ export type ContinuationWorkBatchResult = {
   chainState: ChainState;
   replacementFailure?: ContinuationWorkReplacementFailure;
   replacementFailureFlowId?: string;
+  supersededFlows?: readonly TaskFlowRecord[];
 };
 
 export type ContinuationWorkScheduleParams = {
@@ -278,6 +284,7 @@ export type ContinuationWorkScheduleParams = {
   originTurnId?: string;
   pendingCapacityExclusionFlowIds?: ReadonlySet<string>;
   priorParkedFlowsToSupersede?: readonly TaskFlowRecord[];
+  replaceQueuedTurnEndParkedWork?: boolean;
   abortSignal?: AbortSignal;
   onFlowEnqueued?: (flowId: string) => void;
   log?: (message: string) => void;

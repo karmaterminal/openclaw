@@ -207,15 +207,17 @@ describe("task-flow-registry store runtime", () => {
     });
 
     expect(replaced.applied).toBe(true);
-    expect(upsertFlowsAtomically).toHaveBeenCalledWith([
-      {
-        flow: expect.objectContaining({ flowId: prior.flowId, status: "succeeded" }),
-        expectedRevision: prior.revision,
-      },
-      {
-        flow: expect.objectContaining({ goal: "Replacement wake", status: "queued" }),
-      },
-    ]);
+    expect(upsertFlowsAtomically).toHaveBeenCalledWith({
+      changes: [
+        {
+          flow: expect.objectContaining({ flowId: prior.flowId, status: "succeeded" }),
+          expectedRevision: prior.revision,
+        },
+        {
+          flow: expect.objectContaining({ goal: "Replacement wake", status: "queued" }),
+        },
+      ],
+    });
     expect(saveSnapshot).not.toHaveBeenCalled();
   });
 
@@ -282,19 +284,21 @@ describe("task-flow-registry store runtime", () => {
         updatedAt: prior.updatedAt + 1,
       };
       expect(
-        upsertTaskFlowRegistryRecordsToSqlite([
-          {
-            flow: {
-              ...prior,
-              revision: prior.revision + 1,
-              status: "succeeded",
-              endedAt: prior.updatedAt + 1,
-              updatedAt: prior.updatedAt + 1,
+        upsertTaskFlowRegistryRecordsToSqlite({
+          changes: [
+            {
+              flow: {
+                ...prior,
+                revision: prior.revision + 1,
+                status: "succeeded",
+                endedAt: prior.updatedAt + 1,
+                updatedAt: prior.updatedAt + 1,
+              },
+              expectedRevision: prior.revision,
             },
-            expectedRevision: prior.revision,
-          },
-          { flow: concurrent },
-        ]),
+            { flow: concurrent },
+          ],
+        }),
       ).toBe(true);
 
       const staleReplacement = createManagedTaskFlowWithAtomicUpdates({

@@ -288,13 +288,14 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         const state = isContinuationWorkFlow(flow) ? decodeWorkState(flow) : undefined;
         return flow.status === "queued" && state?.idleRetry?.trigger === "reply-run-ended";
       });
+      let supersededPriorParkedFlows = priorParkedFlows;
       let replacementApplied = false;
       failCreatedWork = (summary) => {
         if (replacementApplied) {
           const rollback = rollbackPendingWorkReplacement({
             sessionKey: params.sessionKey,
             createdFlowIds,
-            priorFlows: priorParkedFlows,
+            priorFlows: supersededPriorParkedFlows,
             originRunId: params.originRunId,
             originTurnId: params.originTurnId,
             summary,
@@ -439,6 +440,8 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
         log: (message) => log.info(message),
       });
+      supersededPriorParkedFlows = result.supersededFlows ?? priorParkedFlows;
+      replacementApplied ||= supersededPriorParkedFlows.length > 0;
       result.cappedCount += unreservedRequestCount;
       result.capped ||= unreservedRequestCount > 0;
     } catch (error) {

@@ -9,6 +9,7 @@ import {
   resetTaskFlowRegistryRuntimeForTests,
   type TaskFlowRegistryObserverEvent,
 } from "./task-flow-registry.store.js";
+import type { TaskFlowRegistryAtomicOwnerCondition } from "./task-flow-registry.store.types.js";
 import {
   isTerminalTaskFlow,
   type JsonValue,
@@ -559,14 +560,17 @@ function prepareTaskFlowAtomicUpdates(
 function commitTaskFlowAtomicChanges(params: {
   created: TaskFlowRecord;
   updates: readonly TaskFlowAtomicUpdate[];
+  ownerCondition?: TaskFlowRegistryAtomicOwnerCondition;
 }): TaskFlowAtomicCreateResult;
 function commitTaskFlowAtomicChanges(params: {
   created?: undefined;
   updates: readonly TaskFlowAtomicUpdate[];
+  ownerCondition?: TaskFlowRegistryAtomicOwnerCondition;
 }): TaskFlowAtomicUpdateResult;
 function commitTaskFlowAtomicChanges(params: {
   created?: TaskFlowRecord;
   updates: readonly TaskFlowAtomicUpdate[];
+  ownerCondition?: TaskFlowRegistryAtomicOwnerCondition;
 }): TaskFlowAtomicCreateResult | TaskFlowAtomicUpdateResult {
   ensureTaskFlowRegistryReady();
   const prepared = prepareTaskFlowAtomicUpdates(params.updates);
@@ -583,13 +587,16 @@ function commitTaskFlowAtomicChanges(params: {
   try {
     const store = getTaskFlowRegistryStore();
     if (store.upsertFlowsAtomically) {
-      const applied = store.upsertFlowsAtomically([
-        ...prepared.entries.map((entry) => ({
-          flow: cloneFlowRecord(entry.next),
-          expectedRevision: entry.current.revision,
-        })),
-        ...(params.created ? [{ flow: cloneFlowRecord(params.created) }] : []),
-      ]);
+      const applied = store.upsertFlowsAtomically({
+        changes: [
+          ...prepared.entries.map((entry) => ({
+            flow: cloneFlowRecord(entry.next),
+            expectedRevision: entry.current.revision,
+          })),
+          ...(params.created ? [{ flow: cloneFlowRecord(params.created) }] : []),
+        ],
+        ...(params.ownerCondition ? { ownerCondition: params.ownerCondition } : {}),
+      });
       if (!applied) {
         reloadTaskFlowRegistryFromStore();
         return { applied: false, reason: "revision_conflict" };
@@ -654,6 +661,7 @@ export function createManagedTaskFlow(
 export function createManagedTaskFlowWithAtomicUpdates(params: {
   create: FlowRecordCreateFields & { controllerId: string };
   updates: readonly TaskFlowAtomicUpdate[];
+  ownerCondition?: TaskFlowRegistryAtomicOwnerCondition;
 }): TaskFlowAtomicCreateResult {
   const created = buildFlowRecord({
     ...params.create,
@@ -663,6 +671,7 @@ export function createManagedTaskFlowWithAtomicUpdates(params: {
   return commitTaskFlowAtomicChanges({
     created,
     updates: params.updates,
+    ...(params.ownerCondition ? { ownerCondition: params.ownerCondition } : {}),
   });
 }
 

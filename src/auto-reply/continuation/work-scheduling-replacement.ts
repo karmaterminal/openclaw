@@ -16,7 +16,7 @@ type ScheduledWorkEnqueueResult =
   | {
       scheduled: true;
       work: PendingContinuationWork;
-      supersededCount: number;
+      supersededFlows: readonly TaskFlowRecord[];
     }
   | Extract<ContinuationWorkScheduleResult, { scheduled: false }>;
 
@@ -24,22 +24,46 @@ export function enqueueContinuationWorkForSchedule(params: {
   work: PendingContinuationWork;
   schedule: Pick<
     ContinuationWorkScheduleParams,
-    "chainState" | "log" | "priorParkedFlowsToSupersede" | "sessionKey"
+    | "chainState"
+    | "config"
+    | "log"
+    | "priorParkedFlowsToSupersede"
+    | "replaceQueuedTurnEndParkedWork"
+    | "sessionKey"
   >;
 }): ScheduledWorkEnqueueResult {
   const priorFlows = params.schedule.priorParkedFlowsToSupersede;
   if (!priorFlows || priorFlows.length === 0) {
+    if (
+      params.schedule.replaceQueuedTurnEndParkedWork !== false &&
+      params.work.idleRetry?.trigger === "reply-run-ended"
+    ) {
+      return enqueueParkedContinuationWork(params);
+    }
     const work = enqueuePendingWork(params.work);
     return work
-      ? { scheduled: true, work, supersededCount: 0 }
+      ? { scheduled: true, work, supersededFlows: [] }
       : { scheduled: false, capped: false, chainState: params.schedule.chainState };
   }
+  return enqueueParkedContinuationWork(params);
+}
+
+function enqueueParkedContinuationWork(params: {
+  work: PendingContinuationWork;
+  schedule: Pick<
+    ContinuationWorkScheduleParams,
+    "chainState" | "config" | "log" | "priorParkedFlowsToSupersede" | "sessionKey"
+  >;
+}): ScheduledWorkEnqueueResult {
   const replacement = enqueuePendingWorkReplacing({
     work: params.work,
-    priorFlows,
     summary: "Superseded by a newer continue_work election after its replacement became durable.",
+    maxPendingWork: params.schedule.config.maxPendingWork,
   });
   if (!replacement.applied) {
+    if (replacement.capped) {
+      return { scheduled: false, capped: true, chainState: params.schedule.chainState };
+    }
     params.schedule.log?.(
       `[continuation:work-replacement-not-committed] session=${params.schedule.sessionKey} reason=${replacement.reason}${replacement.flowId ? ` flowId=${replacement.flowId}` : ""}`,
     );
@@ -52,12 +76,12 @@ export function enqueueContinuationWorkForSchedule(params: {
     };
   }
   params.schedule.log?.(
-    `[continuation:work-turn-end-parked-coalesced] session=${params.schedule.sessionKey} folded=${replacement.supersededCount}`,
+    `[continuation:work-turn-end-parked-coalesced] session=${params.schedule.sessionKey} folded=${replacement.supersededFlows.length}`,
   );
   return {
     scheduled: true,
     work: replacement.work,
-    supersededCount: replacement.supersededCount,
+    supersededFlows: replacement.supersededFlows,
   };
 }
 
@@ -91,6 +115,7 @@ export function buildContinuationWorkBatchFailure(input: {
   scheduledCount: number;
   requestCount: number;
   chainState: ContinuationWorkBatchResult["chainState"];
+  supersededFlows?: readonly TaskFlowRecord[];
 }): ContinuationWorkBatchResult {
   return {
     scheduledCount: input.scheduledCount,
@@ -103,5 +128,6 @@ export function buildContinuationWorkBatchFailure(input: {
     ...(input.result.replacementFailureFlowId
       ? { replacementFailureFlowId: input.result.replacementFailureFlowId }
       : {}),
+    ...(input.supersededFlows ? { supersededFlows: input.supersededFlows } : {}),
   };
 }

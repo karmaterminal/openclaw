@@ -42,9 +42,15 @@ export function buildFinishedWorkPatch(
 }
 
 export type PendingWorkReplacementResult =
-  | { applied: true; work: PendingContinuationWork; supersededCount: number }
+  | {
+      applied: true;
+      work: PendingContinuationWork;
+      supersededFlows: readonly TaskFlowRecord[];
+    }
+  | { applied: false; capped: true }
   | {
       applied: false;
+      capped: false;
       reason: ContinuationWorkReplacementFailure;
       flowId?: string;
     };
@@ -62,12 +68,24 @@ export function listQueuedTurnEndParkedWork(sessionKey: string): TaskFlowRecord[
 
 export function enqueuePendingWorkReplacing(params: {
   work: PendingContinuationWork;
-  priorFlows: readonly TaskFlowRecord[];
   summary: string;
+  maxPendingWork: number;
 }): PendingWorkReplacementResult {
   const state = encodeWorkState(params.work);
-  let priorFlows = params.priorFlows;
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    const queuedFlows = listTaskFlowsForOwnerKey(params.work.sessionKey).filter(
+      (flow) =>
+        isContinuationWorkFlow(flow) && flow.status === "queued" && flow.cancelRequestedAt == null,
+    );
+    const priorFlows = queuedFlows.filter(
+      (flow) => decodeWorkState(flow)?.idleRetry?.trigger === "reply-run-ended",
+    );
+    const priorFlowIds = new Set(priorFlows.map((flow) => flow.flowId));
+    if (
+      queuedFlows.filter((flow) => !priorFlowIds.has(flow.flowId)).length >= params.maxPendingWork
+    ) {
+      return { applied: false, capped: true };
+    }
     const now = Date.now();
     const updates: TaskFlowAtomicUpdate[] = [];
     for (const prior of priorFlows) {
@@ -100,25 +118,32 @@ export function enqueuePendingWorkReplacing(params: {
         createdAt: params.work.electedAt,
       },
       updates,
+      ownerCondition: {
+        ownerKey: params.work.sessionKey,
+        controllerId: CONTINUATION_WORK_CONTROLLER_ID,
+        status: "queued",
+        expectedFlowIds: queuedFlows.map((flow) => flow.flowId),
+        excludeCancelRequested: true,
+      },
     });
     if (result.applied) {
       return {
         applied: true,
         work: workToRuntime(result.created, state, "queued"),
-        supersededCount: result.updated.length,
+        supersededFlows: priorFlows,
       };
     }
     if (attempt === 0 && (result.reason === "not_found" || result.reason === "revision_conflict")) {
-      priorFlows = listQueuedTurnEndParkedWork(params.work.sessionKey);
       continue;
     }
     return {
       applied: false,
+      capped: false,
       reason: result.reason,
       ...(result.flowId ? { flowId: result.flowId } : {}),
     };
   }
-  return { applied: false, reason: "revision_conflict" };
+  return { applied: false, capped: false, reason: "revision_conflict" };
 }
 
 export type PendingWorkReplacementRollbackResult = {
