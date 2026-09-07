@@ -42,7 +42,8 @@ import {
   retainContinuationTimerRef,
 } from "../continuation/state.js";
 import { enqueueContinuationReturnDeliveries } from "../continuation/targeting.js";
-import { consumePendingWork, enqueuePendingWork } from "../continuation/work-store.js";
+import { consumePendingWork } from "../continuation/work-store.js";
+import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
 import { createReplyOperation, replyRunRegistry } from "./reply-run-registry.js";
 import { testing as replyRunTesting } from "./reply-run-registry.test-support.js";
 import { clearSessionResetRuntimeState } from "./session-reset-cleanup.js";

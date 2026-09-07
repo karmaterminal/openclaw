@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerContinuationDispatchClaim } from "../../auto-reply/continuation/continuation-dispatch-claims.js";
 import { decodeWorkState } from "../../auto-reply/continuation/work-flow-state.js";
-import { enqueuePendingWork } from "../../auto-reply/continuation/work-store.js";
+import { enqueuePendingWork } from "../../auto-reply/continuation/work-store.test-support.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.js";

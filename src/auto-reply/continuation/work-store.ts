@@ -10,7 +10,6 @@
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
 import {
-  createManagedTaskFlow,
   failFlow,
   finishFlow,
   getTaskFlowById,
@@ -22,10 +21,8 @@ import {
   CONTINUATION_WORK_CONTROLLER_ID,
   buildFallbackWorkState,
   decodeWorkState,
-  encodeWorkState,
   isContinuationWorkFlow,
   isRecoverableWorkFlow,
-  workGoal,
   workToRuntime,
   type PendingContinuationIdleRetry,
   type PendingContinuationWork,
@@ -96,21 +93,6 @@ function finalizeDeliveredWorkFlow(flow: TaskFlowRecord, state: PendingWorkState
       `[continuation:work-delivered-finish-not-committed] flowId=${flow.flowId} expectedRevision=${flow.revision}`,
     );
   }
-}
-
-export function enqueuePendingWork(work: PendingContinuationWork): PendingContinuationWork | null {
-  const state = encodeWorkState(work);
-  const flow = createManagedTaskFlow({
-    ownerKey: work.sessionKey,
-    ...(work.chainId ? { chainId: work.chainId } : {}),
-    controllerId: CONTINUATION_WORK_CONTROLLER_ID,
-    notifyPolicy: "silent",
-    goal: workGoal(work),
-    currentStep: "Queued for same-session continuation wake",
-    stateJson: state,
-    createdAt: work.electedAt,
-  });
-  return flow ? workToRuntime(flow, state, "queued") : null;
 }
 
 export function listPendingWorkSessionKeysForRecovery(): string[] {
@@ -796,29 +778,6 @@ export function hasPendingIdleRetryWork(
 
 export function pendingWorkCount(sessionKey: string): number {
   return listTaskFlowsForOwnerKey(sessionKey).filter(isRecoverableWorkFlow).length;
-}
-
-/**
- * Count only QUEUED (future, undelivered) continuation-work flows.
- *
- * The maxPendingWork cap uses this rather than {@link pendingWorkCount}
- * (which also counts `running`). At enqueue time the currently-driving wake is
- * still `running` (it is only marked succeeded after `getReplyFromConfig`
- * returns), so counting `running` would make the active wake reject its own
- * serial successor — at `maxPendingWork:1` a normal one-at-a-time chain would
- * self-cap to zero. Counting only `queued` means the cap bounds *future pending*
- * wakes (the flood surface) without penalizing the in-flight driver.
- */
-export function queuedPendingWorkCount(
-  sessionKey: string,
-  excludedFlowIds?: ReadonlySet<string>,
-): number {
-  return listTaskFlowsForOwnerKey(sessionKey).filter(
-    (flow) =>
-      isContinuationWorkFlow(flow) &&
-      flow.status === "queued" &&
-      excludedFlowIds?.has(flow.flowId) !== true,
-  ).length;
 }
 
 export function hasLiveOrRecentlyDispatchedContinuationWork(sessionKey: string): boolean {

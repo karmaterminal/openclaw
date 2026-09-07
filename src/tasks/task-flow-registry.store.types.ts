@@ -6,7 +6,7 @@ export type TaskFlowRegistryStoreSnapshot = {
   flows: Map<string, TaskFlowRecord>;
 };
 
-export type TaskFlowRegistryAtomicChange = {
+type TaskFlowRegistryAtomicChange = {
   flow: TaskFlowRecord;
   expectedRevision?: number;
 };

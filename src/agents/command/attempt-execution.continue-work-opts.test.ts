@@ -78,7 +78,8 @@ vi.mock("../../auto-reply/continuation/lazy.runtime.js", async (importOriginal) 
         if (!args[0].originRunId || !args[0].originTurnId) {
           throw new Error("same-origin test requires scheduling provenance");
         }
-        const { enqueuePendingWork } = await import("../../auto-reply/continuation/work-store.js");
+        const { enqueuePendingWork } =
+          await import("../../auto-reply/continuation/work-store.test-support.js");
         const now = Date.now();
         enqueuePendingWork({
           sessionKey: args[0].sessionKey,
@@ -254,7 +255,8 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
   }
 
   async function enqueuePriorParkedWork(reason: string) {
-    const { enqueuePendingWork } = await import("../../auto-reply/continuation/work-store.js");
+    const { enqueuePendingWork } =
+      await import("../../auto-reply/continuation/work-store.test-support.js");
     const now = Date.now();
     const work = enqueuePendingWork({
       sessionKey,

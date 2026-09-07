@@ -6,7 +6,7 @@ import {
 import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { decodeWorkState, type PendingContinuationWork } from "./work-flow-state.js";
-import { enqueuePendingWork } from "./work-store.js";
+import { enqueuePendingWork } from "./work-store.test-support.js";
 
 const runtimeState = vi.hoisted(() => ({
   beforeAtomicCreate: undefined as (() => void) | undefined,

@@ -491,12 +491,12 @@ import {
 } from "./work-dispatch.js";
 import {
   consumePendingWork,
-  enqueuePendingWork,
   hasLiveOrRecentlyDispatchedContinuationWork,
   markPendingWorkDelivered,
   markPendingWorkFoldDelivered,
   requeuePendingWork,
 } from "./work-store.js";
+import { enqueuePendingWork } from "./work-store.test-support.js";
 
 const getReplyFromConfigMock = vi.mocked(getReplyFromConfig);
 

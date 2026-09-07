@@ -20,7 +20,7 @@ type MockFlowUpdate<T extends MockFlowBase> = {
   patch: Partial<T>;
 };
 
-export function updateMockFlowsAtomically<T extends MockFlowBase>(
+function updateMockFlowsAtomically<T extends MockFlowBase>(
   flows: Map<string, T>,
   updates: readonly MockFlowUpdate<T>[],
 ) {

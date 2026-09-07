@@ -22,9 +22,4 @@ export {
   updateFlowRecordByIdExpectedRevision,
 } from "./task-flow-registry.js";
 
-export type {
-  TaskFlowAtomicCreateResult,
-  TaskFlowAtomicUpdate,
-  TaskFlowAtomicUpdateResult,
-  TaskFlowUpdateResult,
-} from "./task-flow-registry.js";
+export type { TaskFlowAtomicUpdate, TaskFlowUpdateResult } from "./task-flow-registry.js";

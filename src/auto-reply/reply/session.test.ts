@@ -63,7 +63,8 @@ import {
 import { withEnvAsync } from "../../test-utils/env.js";
 import { createSessionConversationTestRegistry } from "../../test-utils/session-conversation-registry.js";
 import { consumePendingDelegates, enqueuePendingDelegate } from "../continuation/delegate-store.js";
-import { consumePendingWork, enqueuePendingWork } from "../continuation/work-store.js";
+import { consumePendingWork } from "../continuation/work-store.js";
+import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
 import { buildCommandContext } from "./commands-context.js";
 import { maybeHandleResetCommand } from "./commands-reset.js";
 import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
