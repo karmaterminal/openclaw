@@ -17,8 +17,6 @@ export function normalizePostCompactionDelegate(
     task: delegate.task,
     createdAt: delegate.createdAt,
     firstArmedAt,
-    ...(delegate.originRunId ? { originRunId: delegate.originRunId } : {}),
-    ...(delegate.originTurnId ? { originTurnId: delegate.originTurnId } : {}),
     ...(delegate.silent != null || legacySilentWake ? { silent } : {}),
     ...(delegate.silentWake != null || legacySilentWake ? { silentWake } : {}),
     ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),

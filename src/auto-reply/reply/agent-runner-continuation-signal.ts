@@ -80,7 +80,6 @@ export async function handleContinuationSignal(context: {
       task: effectiveContinuationSignal.task,
       createdAt: Date.now(),
       originRunId: runId,
-      originTurnId: followupRun.run.sessionId,
       ...(effectiveContinuationSignal.targetSessionKey
         ? { targetSessionKey: effectiveContinuationSignal.targetSessionKey }
         : {}),
@@ -238,7 +237,6 @@ export async function handleContinuationSignal(context: {
             enqueuePendingDelegate(sessionKey, {
               task: delegateTask,
               originRunId: runId,
-              originTurnId: followupRun.run.sessionId,
               ...(delayMs > 0 ? { delayMs } : {}),
               ...(delegateMode !== "normal" ? { mode: delegateMode } : {}),
               ...(effectiveContinuationSignal.targetSessionKey

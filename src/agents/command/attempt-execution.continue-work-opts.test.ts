@@ -12,8 +12,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decodeDelegateFlow } from "../../auto-reply/continuation/delegate-flow-store.js";
-import { enqueuePendingDelegate } from "../../auto-reply/continuation/delegate-store.js";
 import { decodeWorkState } from "../../auto-reply/continuation/work-flow-state.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
@@ -1041,59 +1039,6 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
     expect(sessionStore[sessionKey]?.continuationChainCount).toBeUndefined();
   });
-
-  it.each([
-    ["a replay-unsafe incomplete", { replayInvalid: true, error: { kind: "incomplete_turn" } }],
-    ["an aborted", { aborted: true, stopReason: "stop" }],
-  ] as const)(
-    "cancels only same-attempt delegates after %s turn, including across reload",
-    async (_label, meta) => {
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date("2026-09-07T13:00:00.000Z"));
-      runEmbeddedAgentMock.mockImplementationOnce(async () => {
-        enqueuePendingDelegate(sessionKey, {
-          task: "owned delegate",
-          originRunId: "run-746-trap",
-        });
-        enqueuePendingDelegate(sessionKey, {
-          task: "other attempt delegate",
-          originRunId: "other-run",
-        });
-        enqueuePendingDelegate(sessionKey, { task: "ambiguous same-timestamp legacy delegate" });
-        await vi.advanceTimersByTimeAsync(1);
-        enqueuePendingDelegate(sessionKey, { task: "newer legacy delegate" });
-        const result = makeEmbeddedResult();
-        return {
-          ...result,
-          meta: { ...result.meta, ...meta },
-        } satisfies EmbeddedAgentRunResult;
-      });
-
-      await runEmbeddedAttempt(makeContinuationEnabledConfig());
-
-      const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-      const assertOwnership = () => {
-        const byTask = new Map(
-          listTaskFlowsForOwnerKey(sessionKey).map((flow) => [
-            decodeDelegateFlow(flow)?.task,
-            flow,
-          ]),
-        );
-        expect(byTask.get("owned delegate")).toMatchObject({ status: "failed" });
-        expect(byTask.get("other attempt delegate")).toMatchObject({ status: "queued" });
-        expect(byTask.get("ambiguous same-timestamp legacy delegate")).toMatchObject({
-          status: "queued",
-        });
-        expect(byTask.get("newer legacy delegate")).toMatchObject({ status: "failed" });
-      };
-      assertOwnership();
-
-      const { resetTaskFlowRegistryForTests } =
-        await import("../../tasks/task-runtime.test-helpers.js");
-      resetTaskFlowRegistryForTests({ persist: false });
-      assertOwnership();
-    },
-  );
 
   it("lets bracket continue_work use the configured default delay when a tool delay also exists", async () => {
     runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {

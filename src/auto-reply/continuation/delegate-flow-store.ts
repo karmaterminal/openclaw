@@ -165,7 +165,6 @@ const PendingDelegateStateSchema = z
     inheritedSilent: z.boolean().optional(),
     inheritedWake: z.boolean().optional(),
     originRunId: z.string().min(1).optional(),
-    originTurnId: z.string().min(1).optional(),
     // Pre-cure rows may contain these overrides. Decode accepts but never projects
     // them, so restart rebinds the spawn to authoritative TaskFlow ownerKey.
     spawnRequesterSessionKey: z.string().min(1).optional(),
@@ -328,7 +327,6 @@ function encodeDelegateState(
     ...(delegate.inheritedSilent ? { inheritedSilent: true } : {}),
     ...(delegate.inheritedWake ? { inheritedWake: true } : {}),
     ...(delegate.originRunId ? { originRunId: delegate.originRunId } : {}),
-    ...(delegate.originTurnId ? { originTurnId: delegate.originTurnId } : {}),
   };
 }
 
@@ -428,7 +426,6 @@ export function decodeDelegateFlow(flow: TaskFlowRecord): PendingContinuationDel
     ...(state.inheritedSilent ? { inheritedSilent: true } : {}),
     ...(state.inheritedWake ? { inheritedWake: true } : {}),
     ...(state.originRunId ? { originRunId: state.originRunId } : {}),
-    ...(state.originTurnId ? { originTurnId: state.originTurnId } : {}),
     flowId: flow.flowId,
     expectedRevision: flow.revision,
   };

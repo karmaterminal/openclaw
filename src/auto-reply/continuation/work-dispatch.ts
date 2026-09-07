@@ -797,9 +797,7 @@ export async function scheduleContinuationWorkBatch(
       ...(params.parentRunId !== undefined ? { parentRunId: params.parentRunId } : {}),
       ...(params.originRunId !== undefined ? { originRunId: params.originRunId } : {}),
       ...(params.originTurnId !== undefined ? { originTurnId: params.originTurnId } : {}),
-      ...(params.pendingCapacityExclusionFlowIds
-        ? { pendingCapacityExclusionFlowIds: params.pendingCapacityExclusionFlowIds }
-        : {}),
+      pendingCapacityExclusionFlowIds: params.pendingCapacityExclusionFlowIds,
       ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
       ...(params.onFlowEnqueued ? { onFlowEnqueued: params.onFlowEnqueued } : {}),
       ...(params.log ? { log: params.log } : {}),

@@ -116,8 +116,6 @@ export type PendingContinuationDelegate = {
   inheritedWake?: boolean;
   /** Immutable producer identity used to deduplicate terminal-token lifecycle replay. */
   originRunId?: string;
-  /** Durable turn identity paired with originRunId for exact cancellation ownership. */
-  originTurnId?: string;
   /**
    * Internal TaskFlow metadata carried from consume → dispatch so downstream
    * spawn/release failures can flip the row from succeeded → failed without
@@ -191,7 +189,6 @@ export type StagedPostCompactionDelegate = {
   task: string;
   stagedAt: number;
   originRunId?: string;
-  originTurnId?: string;
   firstArmedAt?: number;
   attachments?: ContinuationDelegateAttachment[];
   attachAs?: ContinuationDelegateAttachAs;

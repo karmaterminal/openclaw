@@ -556,11 +556,10 @@ export function removeUnacceptedContinuationDelegate(flowId: string): void {
   delegateFlowRecords.delete(flowId);
 }
 
-export function failQueuedDelegatesOwnedByAttempt(
+export function failQueuedDelegatesOwnedByRun(
   sessionKey: string,
   owner: {
     originRunId: string;
-    originTurnId: string;
     legacyCreatedAfter: number;
   },
   blockedSummary: string,
@@ -576,11 +575,8 @@ export function failQueuedDelegatesOwnedByAttempt(
     // attempt can begin in the same millisecond.
     const ownedByAttempt =
       delegate?.originRunId !== undefined
-        ? delegate.originRunId === owner.originRunId &&
-          (delegate.originTurnId === undefined || delegate.originTurnId === owner.originTurnId)
-        : delegate?.originTurnId !== undefined
-          ? delegate.originTurnId === owner.originTurnId
-          : flow.createdAt > owner.legacyCreatedAfter;
+        ? delegate.originRunId === owner.originRunId
+        : flow.createdAt > owner.legacyCreatedAfter;
     if (!ownedByAttempt) {
       continue;
     }

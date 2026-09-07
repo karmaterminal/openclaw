@@ -524,7 +524,6 @@ describe("runReplyAgent :: continuation.work span", () => {
       enqueuePendingDelegate(run.sessionKey, {
         task: "unsafe delegate",
         originRunId: attempt.runId,
-        originTurnId: attempt.sessionId,
       });
       return {
         payloads: [{ text: "Agent could not generate a response.", isError: true }],

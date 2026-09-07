@@ -13,7 +13,7 @@ import {
 import { defaultRuntime } from "../../runtime.js";
 import { shouldPreserveUserFacingSessionStateForInputProvenance } from "../../sessions/input-provenance.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
-import { failQueuedDelegatesOwnedByAttempt } from "../continuation/delegate-store.js";
+import { failQueuedDelegatesOwnedByRun } from "../continuation/delegate-store.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
 import { resolveFallbackTransition } from "../fallback-state.js";
 import { normalizeVerboseLevel } from "../thinking.js";
@@ -215,11 +215,10 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
       );
     }
     if (sessionKey) {
-      const failedDelegateRows = failQueuedDelegatesOwnedByAttempt(
+      const failedDelegateRows = failQueuedDelegatesOwnedByRun(
         sessionKey,
         {
           originRunId: runId,
-          originTurnId: followupRun.run.sessionId,
           legacyCreatedAfter: runStartedAt,
         },
         "Continuation delegate election ignored because the enclosing turn was incomplete and replay-unsafe.",
