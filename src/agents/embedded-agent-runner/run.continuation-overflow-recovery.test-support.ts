@@ -10,7 +10,6 @@ import type { AgentHarness } from "../harness/types.js";
 import {
   codexHarnessSupportsKnownProviders,
   expectLogExcludes,
-  expectLogIncludes,
   expectMockCallFields,
   expectRecordFields,
   mockCallArg,
