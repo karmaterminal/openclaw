@@ -1,5 +1,8 @@
 import type { TaskFlowRegistryObserverEvent } from "./task-flow-registry.store.js";
-import type { TaskFlowRegistryStoreSnapshot } from "./task-flow-registry.store.types.js";
+import type {
+  TaskFlowRegistryAtomicWrite,
+  TaskFlowRegistryStoreSnapshot,
+} from "./task-flow-registry.store.types.js";
 import "./task-flow-registry.store.js";
 import type { TaskFlowRecord } from "./task-flow-registry.types.js";
 
@@ -7,6 +10,7 @@ type TaskFlowRegistryStore = {
   loadSnapshot: () => TaskFlowRegistryStoreSnapshot;
   saveSnapshot: (snapshot: TaskFlowRegistryStoreSnapshot) => void;
   upsertFlow?: (flow: TaskFlowRecord) => void;
+  upsertFlowsAtomically?: (write: TaskFlowRegistryAtomicWrite) => boolean;
   deleteFlow?: (flowId: string) => void;
   close?: () => void;
 };

@@ -118,6 +118,9 @@ export type HeartbeatRunOptions = {
   /** Persisted monitor cadence carried by a coalesced scheduled wake. */
   scheduledEveryMs?: number;
   tasks?: readonly HeartbeatScheduledTask[];
+  continuationTrigger?: "delegate-return" | "subagent-return" | "work-wake";
+  parentRunId?: string;
+  trustedTargetSessionKey?: string;
   deps?: HeartbeatDeps;
 };
 
@@ -326,7 +329,7 @@ export async function resolveHeartbeatWakeStage(opts: HeartbeatRunOptions) {
   } as const;
 }
 
-type StageResult<T, K extends string> = Extract<Awaited<T>, { kind: K }>;
+export type StageResult<T, K extends string> = Extract<Awaited<T>, { kind: K }>;
 export type ReadyHeartbeatWake = StageResult<ReturnType<typeof resolveHeartbeatWakeStage>, "ready">;
 
 export async function prepareHeartbeatRunStage(wake: ReadyHeartbeatWake) {
