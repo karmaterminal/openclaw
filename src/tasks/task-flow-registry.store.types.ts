@@ -14,7 +14,7 @@ export type TaskFlowRegistryAtomicChange = {
 export type TaskFlowRegistryAtomicOwnerCondition = {
   ownerKey: string;
   controllerId: string;
-  status: TaskFlowRecord["status"];
+  statuses: readonly TaskFlowRecord["status"][];
   expectedFlowIds: readonly string[];
   excludeCancelRequested?: boolean;
 };

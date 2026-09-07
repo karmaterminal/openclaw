@@ -41,7 +41,6 @@ import {
   peekSoonestQueuedWorkDueAt,
   peekSoonestRunningWorkRecoveryDueAt,
   peekSoonestUnmaturedWorkDueAt,
-  queuedPendingWorkCount,
 } from "./work-store.js";
 import { drainPendingTerminalNotices } from "./work-terminal-notice.js";
 
@@ -644,16 +643,6 @@ export async function scheduleContinuationWork(
   if (budgetCheck) {
     params.log?.(
       `[continuation:work-rejected] ${budgetCheck} for ${params.sessionKey}: ${params.chainState.currentChainCount}/${params.config.maxChainLength}`,
-    );
-    return { scheduled: false, capped: true, chainState: params.chainState };
-  }
-
-  // Count only queued successors so a running wake can schedule a serial successor.
-  // The replacement owner rechecks this cap inside its atomic owner transition.
-  const pending = queuedPendingWorkCount(params.sessionKey, params.pendingCapacityExclusionFlowIds);
-  if (pending >= params.config.maxPendingWork) {
-    params.log?.(
-      `[continuation:work-rejected] pending-capped for ${params.sessionKey}: ${pending}/${params.config.maxPendingWork}`,
     );
     return { scheduled: false, capped: true, chainState: params.chainState };
   }

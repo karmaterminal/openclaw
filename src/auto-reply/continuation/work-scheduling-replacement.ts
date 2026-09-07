@@ -51,6 +51,8 @@ function enqueueContinuationWorkAtomically(params: {
     summary: "Superseded by a newer continue_work election after its replacement became durable.",
     maxPendingWork: params.schedule.config.maxPendingWork,
     replaceParkedWork: params.schedule.replaceQueuedTurnEndParkedWork !== false,
+    expectedPriorFlowIds:
+      params.schedule.priorParkedFlowsToSupersede?.map((flow) => flow.flowId) ?? [],
   });
   if (!replacement.applied) {
     if (replacement.capped) {
@@ -79,7 +81,6 @@ function enqueueContinuationWorkAtomically(params: {
 
 export function prepareContinuationWorkBatchReplacement(params: ContinuationWorkBatchParams): {
   priorParkedFlows: readonly TaskFlowRecord[];
-  pendingCapacityExclusionFlowIds?: ReadonlySet<string>;
 } {
   const priorParkedFlows =
     params.priorParkedFlowsToSupersede ??
@@ -89,17 +90,10 @@ export function prepareContinuationWorkBatchReplacement(params: ContinuationWork
   if (priorParkedFlows.length === 0) {
     return {
       priorParkedFlows,
-      pendingCapacityExclusionFlowIds: params.pendingCapacityExclusionFlowIds,
     };
   }
 
-  return {
-    priorParkedFlows,
-    pendingCapacityExclusionFlowIds: new Set([
-      ...(params.pendingCapacityExclusionFlowIds ?? []),
-      ...priorParkedFlows.map((flow) => flow.flowId),
-    ]),
-  };
+  return { priorParkedFlows };
 }
 
 export function buildContinuationWorkBatchFailure(input: {

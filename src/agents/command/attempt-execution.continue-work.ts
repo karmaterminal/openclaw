@@ -428,7 +428,6 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         }),
         config: liveSchedulingConfig,
         coalescePriorParkedWork: false,
-        pendingCapacityExclusionFlowIds: new Set(priorParkedFlows.map((flow) => flow.flowId)),
         priorParkedFlowsToSupersede: priorParkedFlows,
         onFlowEnqueued: (flowId) => {
           createdFlowIds.push(flowId);

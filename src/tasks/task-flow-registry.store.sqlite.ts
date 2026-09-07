@@ -318,7 +318,7 @@ export function upsertTaskFlowRegistryRecordsToSqlite(write: TaskFlowRegistryAto
         .select("flow_id")
         .where("owner_key", "=", write.ownerCondition.ownerKey)
         .where("controller_id", "=", write.ownerCondition.controllerId)
-        .where("status", "=", write.ownerCondition.status);
+        .where("status", "in", write.ownerCondition.statuses);
       if (write.ownerCondition.excludeCancelRequested) {
         query = query.where("cancel_requested_at", "is", null);
       }

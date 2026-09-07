@@ -247,7 +247,8 @@ export type ContinuationWorkReplacementFailure =
   | "not_found"
   | "revision_conflict"
   | "persist_failed"
-  | "invalid_prior";
+  | "invalid_prior"
+  | "running_owner";
 
 export type ContinuationWorkScheduleResult =
   | {
@@ -282,7 +283,6 @@ export type ContinuationWorkScheduleParams = {
   parentRunId?: string;
   originRunId?: string;
   originTurnId?: string;
-  pendingCapacityExclusionFlowIds?: ReadonlySet<string>;
   priorParkedFlowsToSupersede?: readonly TaskFlowRecord[];
   replaceQueuedTurnEndParkedWork?: boolean;
   abortSignal?: AbortSignal;

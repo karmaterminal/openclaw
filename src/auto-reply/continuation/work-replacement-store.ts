@@ -71,13 +71,22 @@ export function enqueuePendingWorkReplacing(params: {
   summary: string;
   maxPendingWork: number;
   replaceParkedWork: boolean;
+  expectedPriorFlowIds: readonly string[];
 }): PendingWorkReplacementResult {
   const state = encodeWorkState(params.work);
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const queuedFlows = listTaskFlowsForOwnerKey(params.work.sessionKey).filter(
-      (flow) =>
-        isContinuationWorkFlow(flow) && flow.status === "queued" && flow.cancelRequestedAt == null,
-    );
+    const includeRunningOwner =
+      params.replaceParkedWork && (attempt > 0 || params.expectedPriorFlowIds.length > 0);
+    const ownerFlows = listTaskFlowsForOwnerKey(params.work.sessionKey).filter((flow) => {
+      if (!isContinuationWorkFlow(flow) || flow.cancelRequestedAt != null) {
+        return false;
+      }
+      return flow.status === "queued" || (includeRunningOwner && flow.status === "running");
+    });
+    if (includeRunningOwner && ownerFlows.some((flow) => flow.status === "running")) {
+      return { applied: false, capped: false, reason: "running_owner" };
+    }
+    const queuedFlows = ownerFlows.filter((flow) => flow.status === "queued");
     const priorFlows = params.replaceParkedWork
       ? queuedFlows.filter(
           (flow) => decodeWorkState(flow)?.idleRetry?.trigger === "reply-run-ended",
@@ -124,8 +133,8 @@ export function enqueuePendingWorkReplacing(params: {
       ownerCondition: {
         ownerKey: params.work.sessionKey,
         controllerId: CONTINUATION_WORK_CONTROLLER_ID,
-        status: "queued",
-        expectedFlowIds: queuedFlows.map((flow) => flow.flowId),
+        statuses: includeRunningOwner ? ["queued", "running"] : ["queued"],
+        expectedFlowIds: ownerFlows.map((flow) => flow.flowId),
         excludeCancelRequested: true,
       },
     });
@@ -186,6 +195,13 @@ function requestCancelForUnresolvedActiveFlows(flowIds: readonly string[]): void
         flow.cancelRequestedAt != null
       ) {
         break;
+      }
+      if (flow.status === "running") {
+        abortContinuationDispatchClaim({
+          sessionKey: flow.ownerKey,
+          flowId,
+          reason: "continuation replacement cancellation retry",
+        });
       }
       const cancelled = requestFlowCancel({
         flowId,

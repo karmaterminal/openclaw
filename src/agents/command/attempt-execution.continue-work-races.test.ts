@@ -457,6 +457,32 @@ describe("spawn-init continuation cancellation races", () => {
     expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
   });
 
+  it("fails closed when a parked owner starts running before replacement admission", async () => {
+    await enqueuePriorParkedWork("prior parked work");
+    taskFlowRuntimeState.beforeAtomicCreate = () => {
+      taskFlowRuntimeState.beforeAtomicCreate = undefined;
+      const prior = findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "prior parked work");
+      if (!prior) {
+        throw new Error("expected prior parked flow");
+      }
+      const running = updateFlowRecordByIdExpectedRevision({
+        flowId: prior.flowId,
+        expectedRevision: prior.revision,
+        patch: { status: "running" },
+      });
+      expect(running.applied).toBe(true);
+    };
+
+    await expect(
+      schedule([{ reason: "rejected replacement work", delaySeconds: 30 }]),
+    ).rejects.toThrow("running_owner");
+
+    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "running" });
+    expect(findFlowByReason(flows, "rejected replacement work")).toBeUndefined();
+    expectRestoredChainState();
+  });
+
   it("supersedes a newer parked owner discovered after the first replacement CAS loses", async () => {
     await enqueuePriorParkedWork("original prior parked work");
     taskFlowRuntimeState.beforeAtomicCreate = () => {
@@ -564,6 +590,7 @@ describe("spawn-init continuation cancellation races", () => {
       summary: "superseded by concurrent empty-owner replacement",
       maxPendingWork: 8,
       replaceParkedWork: true,
+      expectedPriorFlowIds: [],
     });
 
     expect(result.applied).toBe(true);
@@ -716,6 +743,7 @@ describe("spawn-init continuation cancellation races", () => {
       summary: "ordinary enqueue",
       maxPendingWork: 1,
       replaceParkedWork: false,
+      expectedPriorFlowIds: [],
     });
 
     expect(result).toEqual({ applied: false, capped: true });
@@ -894,11 +922,13 @@ describe("spawn-init continuation cancellation races", () => {
     });
   });
 
-  it("cancel-marks queued replacements when atomic rollback persistence fails", async () => {
+  it("aborts and cancel-marks a queued replacement that starts running during fallback", async () => {
     await enqueuePriorParkedWork("first prior parked work");
     await enqueuePriorParkedWork("second prior parked work");
     sessionAccessorState.failPatchCall = 2;
     taskFlowRuntimeState.failAtomicUpdate = true;
+    let wakeSignal: AbortSignal | undefined;
+    let releaseClaim = () => {};
     taskFlowRuntimeState.beforeRequestFlowCancel = (flowId) => {
       taskFlowRuntimeState.beforeRequestFlowCancel = undefined;
       const flow = getTaskFlowById(flowId);
@@ -908,14 +938,19 @@ describe("spawn-init continuation cancellation races", () => {
       const bumped = updateFlowRecordByIdExpectedRevision({
         flowId,
         expectedRevision: flow.revision,
-        patch: { currentStep: "concurrent cancellation revision" },
+        patch: { status: "running", currentStep: "concurrent cancellation revision" },
       });
       expect(bumped.applied).toBe(true);
+      const claim = registerContinuationDispatchClaim({ sessionKey, flowId });
+      wakeSignal = claim.controller.signal;
+      releaseClaim = claim.release;
     };
 
     await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
 
+    releaseClaim();
     const flows = listTaskFlowsForOwnerKey(sessionKey);
+    expect(wakeSignal?.aborted).toBe(true);
     expect(findFlowByReason(flows, "first prior parked work")).toMatchObject({
       status: "succeeded",
     });
@@ -923,7 +958,7 @@ describe("spawn-init continuation cancellation races", () => {
       status: "succeeded",
     });
     expect(findFlowByReason(flows, "replacement work")).toMatchObject({
-      status: "queued",
+      status: "running",
       cancelRequestedAt: expect.any(Number),
     });
     expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
