@@ -391,6 +391,7 @@ function prepareAcceptedDelegateArtifactPolicy(params: {
 export function createContinueDelegateTool(opts: {
   agentSessionKey?: string;
   runId?: string;
+  sessionId?: string;
   prepareArtifactPolicy?: typeof prepareDelegateArtifactPolicy;
 }): AnyAgentTool {
   return {
@@ -543,6 +544,8 @@ export function createContinueDelegateTool(opts: {
           task,
           mode: "post-compaction",
           firstArmedAt: acceptedAt,
+          ...(opts.runId ? { originRunId: opts.runId } : {}),
+          ...(opts.sessionId ? { originTurnId: opts.sessionId } : {}),
           ...attachmentFields,
           ...targetingFields,
           ...artifactReturnFields,
@@ -588,6 +591,7 @@ export function createContinueDelegateTool(opts: {
         task,
         delayMs,
         ...(opts.runId ? { originRunId: opts.runId } : {}),
+        ...(opts.sessionId ? { originTurnId: opts.sessionId } : {}),
         ...(artifactMode !== "forbidden" ? { firstArmedAt: acceptedAt } : {}),
         ...(mode !== "normal" ? { mode } : {}),
         ...attachmentFields,

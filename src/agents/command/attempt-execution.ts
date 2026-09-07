@@ -12,7 +12,7 @@ import { sanitizeForLog } from "../../../packages/terminal-core/src/ansi.js";
 import { ACP_TURN_TIMEOUT_DETAIL_CODE } from "../../acp/control-plane/manager.turn-timeout.js";
 import { formatAcpErrorChain } from "../../acp/runtime/errors.js";
 import { resolveAcpToolTerminalOutcome } from "../../acp/tool-status.js";
-import { failQueuedDelegatesCreatedAtOrAfter } from "../../auto-reply/continuation/delegate-store.js";
+import { failQueuedDelegatesOwnedByAttempt } from "../../auto-reply/continuation/delegate-store.js";
 import {
   computeRequestCompactionContextUsage,
   releaseQueuedCompactionTolerant,
@@ -1367,9 +1367,13 @@ export async function runAgentAttempt(params: {
             });
             if (params.opts.abortSignal?.aborted) {
               if (params.sessionKey) {
-                failQueuedDelegatesCreatedAtOrAfter(
+                failQueuedDelegatesOwnedByAttempt(
                   params.sessionKey,
-                  runStartedAt,
+                  {
+                    originRunId: params.runId,
+                    originTurnId: params.sessionId,
+                    legacyCreatedAfter: runStartedAt,
+                  },
                   "Continuation delegate election ignored because the spawn-init turn was cancelled.",
                 );
               }
@@ -1591,9 +1595,13 @@ export async function runAgentAttempt(params: {
             `[continuation] Ignoring ${attemptContinueWorkRequests.length} continue_work election(s) because the spawn-init turn was cancelled for session ${sanitizeForLog(params.sessionKey)}`,
           );
         }
-        const failedDelegateRows = failQueuedDelegatesCreatedAtOrAfter(
+        const failedDelegateRows = failQueuedDelegatesOwnedByAttempt(
           params.sessionKey,
-          runStartedAt,
+          {
+            originRunId: params.runId,
+            originTurnId: params.sessionId,
+            legacyCreatedAfter: runStartedAt,
+          },
           "Continuation delegate election ignored because the spawn-init turn was cancelled.",
         );
         if (failedDelegateRows > 0) {
@@ -1612,9 +1620,13 @@ export async function runAgentAttempt(params: {
             `[continuation] Ignoring ${attemptContinueWorkRequests.length} continue_work election(s) because the spawn-init turn was incomplete and replay-unsafe for session ${sanitizeForLog(params.sessionKey)}`,
           );
         }
-        const failedDelegateRows = failQueuedDelegatesCreatedAtOrAfter(
+        const failedDelegateRows = failQueuedDelegatesOwnedByAttempt(
           params.sessionKey,
-          runStartedAt,
+          {
+            originRunId: params.runId,
+            originTurnId: params.sessionId,
+            legacyCreatedAfter: runStartedAt,
+          },
           "Continuation delegate election ignored because the spawn-init turn was incomplete and replay-unsafe.",
         );
         if (failedDelegateRows > 0) {

@@ -656,7 +656,7 @@ export async function scheduleContinuationWork(
   // Counts only QUEUED (future) wakes — not the currently-driving `running`
   // flow — so a serial chain at maxPendingWork:1 can still schedule its own
   // successor (the active wake is excluded; see queuedPendingWorkCount).
-  const pending = queuedPendingWorkCount(params.sessionKey);
+  const pending = queuedPendingWorkCount(params.sessionKey, params.pendingCapacityExclusionFlowIds);
   if (pending >= params.config.maxPendingWork) {
     params.log?.(
       `[continuation:work-rejected] pending-capped for ${params.sessionKey}: ${pending}/${params.config.maxPendingWork}`,
@@ -797,6 +797,9 @@ export async function scheduleContinuationWorkBatch(
       ...(params.parentRunId !== undefined ? { parentRunId: params.parentRunId } : {}),
       ...(params.originRunId !== undefined ? { originRunId: params.originRunId } : {}),
       ...(params.originTurnId !== undefined ? { originTurnId: params.originTurnId } : {}),
+      ...(params.pendingCapacityExclusionFlowIds
+        ? { pendingCapacityExclusionFlowIds: params.pendingCapacityExclusionFlowIds }
+        : {}),
       ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
       ...(params.onFlowEnqueued ? { onFlowEnqueued: params.onFlowEnqueued } : {}),
       ...(params.log ? { log: params.log } : {}),

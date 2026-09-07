@@ -287,6 +287,8 @@ export type {
 export type SessionPostCompactionDelegate = {
   task: string;
   createdAt: number;
+  originRunId?: string;
+  originTurnId?: string;
   /** Stable original arm time, preserved across re-stage/restart cycles. */
   firstArmedAt?: number;
   /** Post-compaction delegates are silent by contract; persist the intent across store round trips. */

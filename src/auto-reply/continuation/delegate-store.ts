@@ -556,18 +556,32 @@ export function removeUnacceptedContinuationDelegate(flowId: string): void {
   delegateFlowRecords.delete(flowId);
 }
 
-export function failQueuedDelegatesCreatedAtOrAfter(
+export function failQueuedDelegatesOwnedByAttempt(
   sessionKey: string,
-  createdAtOrAfter: number,
+  owner: {
+    originRunId: string;
+    originTurnId: string;
+    legacyCreatedAfter: number;
+  },
   blockedSummary: string,
 ): number {
   let failed = 0;
   for (const flow of delegateFlowRecords.listForOwner(sessionKey)) {
-    if (
-      !isRecoverableContinuationDelegateFlow(flow) ||
-      flow.status !== "queued" ||
-      flow.createdAt < createdAtOrAfter
-    ) {
+    if (!isRecoverableContinuationDelegateFlow(flow) || flow.status !== "queued") {
+      continue;
+    }
+    const delegate = decodeDelegateFlow(flow);
+    // Current rows carry immutable producer identity. Only ownerless legacy
+    // rows fall back to time, and equality stays untouched because another
+    // attempt can begin in the same millisecond.
+    const ownedByAttempt =
+      delegate?.originRunId !== undefined
+        ? delegate.originRunId === owner.originRunId &&
+          (delegate.originTurnId === undefined || delegate.originTurnId === owner.originTurnId)
+        : delegate?.originTurnId !== undefined
+          ? delegate.originTurnId === owner.originTurnId
+          : flow.createdAt > owner.legacyCreatedAfter;
+    if (!ownedByAttempt) {
       continue;
     }
     const result = delegateFlowRecords.fail({

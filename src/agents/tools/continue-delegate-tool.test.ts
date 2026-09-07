@@ -140,6 +140,31 @@ describe("continue_delegate tool", () => {
     expect(JSON.stringify(tool.parameters)).not.toContain("traceparent");
   });
 
+  it.each(["normal", "post-compaction"] as const)(
+    "persists the originating run and turn for %s delegates",
+    async (mode) => {
+      const tool = createContinueDelegateTool({
+        agentSessionKey: "test-session",
+        runId: "run-owner",
+        sessionId: "turn-owner",
+      });
+
+      await executeTool(tool, 0, { task: `${mode} owned work`, mode });
+
+      const delegates =
+        mode === "post-compaction"
+          ? consumeStagedPostCompactionDelegates("test-session")
+          : consumePendingDelegates("test-session");
+      expect(delegates).toMatchObject([
+        {
+          task: `${mode} owned work`,
+          originRunId: "run-owner",
+          originTurnId: "turn-owner",
+        },
+      ]);
+    },
+  );
+
   it("persists only the closed artifact return request and preserves omission as text-only", async () => {
     setRuntimeConfigSnapshot({
       agents: {

@@ -459,6 +459,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         }),
         config: liveSchedulingConfig,
         coalescePriorParkedWork: false,
+        pendingCapacityExclusionFlowIds: new Set(priorParkedFlows.map((flow) => flow.flowId)),
         onFlowEnqueued: (flowId) => createdFlowIds.push(flowId),
         // Same-session own-turn work has no spawning parent. Adding parentRunId
         // would let orphan recovery reap the row after its electing turn settles.

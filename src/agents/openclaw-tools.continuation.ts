@@ -62,7 +62,11 @@ export function createOpenClawContinuationTools(
   }
   if (options.drainsContinuationDelegateQueue !== false) {
     tools.push(
-      createContinueDelegateTool({ agentSessionKey: liveSessionKey, runId: options.runId }),
+      createContinueDelegateTool({
+        agentSessionKey: liveSessionKey,
+        runId: options.runId,
+        sessionId: options.sessionId,
+      }),
     );
   }
   if (options.requestCompactionOpts) {

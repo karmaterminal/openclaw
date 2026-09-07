@@ -338,6 +338,23 @@ describe("spawn-init continuation cancellation races", () => {
     expectRestoredChainState();
   });
 
+  it("replaces a parked wake at the pending cap and preserves the replacement across reload", async () => {
+    await enqueuePriorParkedWork("prior parked work");
+
+    await schedule([{ reason: "replacement work", delaySeconds: 30 }], { maxPendingWork: 1 });
+
+    let flows = listTaskFlowsForOwnerKey(sessionKey);
+    expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "succeeded" });
+    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
+
+    const { resetTaskFlowRegistryForTests } =
+      await import("../../tasks/task-runtime.test-helpers.js");
+    resetTaskFlowRegistryForTests({ persist: false });
+    flows = listTaskFlowsForOwnerKey(sessionKey);
+    expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "succeeded" });
+    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
+  });
+
   it("rolls back the replacement when prior parked-work supersession loses its revision", async () => {
     await enqueuePriorParkedWork("prior parked work");
     sessionAccessorState.afterPatchCall = (call) => {

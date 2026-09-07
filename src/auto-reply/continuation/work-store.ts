@@ -841,9 +841,15 @@ export function pendingWorkCount(sessionKey: string): number {
  * self-cap to zero. Counting only `queued` means the cap bounds *future pending*
  * wakes (the flood surface) without penalizing the in-flight driver.
  */
-export function queuedPendingWorkCount(sessionKey: string): number {
+export function queuedPendingWorkCount(
+  sessionKey: string,
+  excludedFlowIds?: ReadonlySet<string>,
+): number {
   return listTaskFlowsForOwnerKey(sessionKey).filter(
-    (flow) => isContinuationWorkFlow(flow) && flow.status === "queued",
+    (flow) =>
+      isContinuationWorkFlow(flow) &&
+      flow.status === "queued" &&
+      excludedFlowIds?.has(flow.flowId) !== true,
   ).length;
 }
 

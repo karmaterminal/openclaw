@@ -26,6 +26,7 @@ export function stagePostCompactionTaskFlowDelegate(
     mode: "post-compaction",
     firstArmedAt: delegate.firstArmedAt ?? delegate.stagedAt,
     ...(delegate.originRunId ? { originRunId: delegate.originRunId } : {}),
+    ...(delegate.originTurnId ? { originTurnId: delegate.originTurnId } : {}),
     ...(delegate.attachments !== undefined ? { attachments: delegate.attachments } : {}),
     ...(delegate.attachAs !== undefined ? { attachAs: delegate.attachAs } : {}),
     ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
@@ -270,13 +271,14 @@ export function listRecoverableStagedPostCompactionDelegates(options?: {
 /** Stage the session-persistence value used by reply and delivery callers. */
 export function stagePostCompactionDelegate(
   sessionKey: string,
-  delegate: SessionPostCompactionDelegate & { originRunId?: string },
+  delegate: SessionPostCompactionDelegate,
 ) {
   const stagedAt = delegate.createdAt ?? Date.now();
   return stagePostCompactionTaskFlowDelegate(sessionKey, {
     task: delegate.task,
     stagedAt,
     ...(delegate.originRunId ? { originRunId: delegate.originRunId } : {}),
+    ...(delegate.originTurnId ? { originTurnId: delegate.originTurnId } : {}),
     firstArmedAt: delegate.firstArmedAt ?? stagedAt,
     ...(delegate.attachments !== undefined ? { attachments: delegate.attachments } : {}),
     ...(delegate.attachAs !== undefined ? { attachAs: delegate.attachAs } : {}),
@@ -309,6 +311,8 @@ export function consumeStagedPostCompactionDelegates(
       firstArmedAt,
       silent: true,
       silentWake: true,
+      ...(claimed.originRunId ? { originRunId: claimed.originRunId } : {}),
+      ...(claimed.originTurnId ? { originTurnId: claimed.originTurnId } : {}),
       ...(claimed.attachments ? { attachments: claimed.attachments } : {}),
       ...(claimed.attachAs ? { attachAs: claimed.attachAs } : {}),
     };
