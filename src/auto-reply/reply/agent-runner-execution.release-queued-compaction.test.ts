@@ -84,11 +84,12 @@ function makeSessionEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
   } as SessionEntry;
 }
 
-function makeFollowupRun(overrides?: { config?: unknown }): FollowupRun {
+function makeFollowupRun(overrides?: { abortSignal?: AbortSignal; config?: unknown }): FollowupRun {
   return {
     prompt: "p",
     summaryLine: "p",
     enqueuedAt: 1,
+    ...(overrides?.abortSignal ? { abortSignal: overrides.abortSignal } : {}),
     run: {
       agentId: "agent",
       agentDir: "/tmp/agent",
@@ -251,6 +252,49 @@ describe("releaseQueuedCompactionCompletion: session-entry-unavailable guard (br
 });
 
 describe("releaseQueuedCompactionCompletion: happy-path dispatch (branch 4)", () => {
+  it("does not dispatch when cancellation wins during compaction-count persistence", async () => {
+    const release = await getReleaseQueuedCompactionCompletion();
+    const abort = new AbortController();
+    const sessionEntry = makeSessionEntry();
+    const activeSessionStore: Record<string, SessionEntry> = { [SESSION_KEY]: sessionEntry };
+    let finishIncrement: ((value: number) => void) | undefined;
+    let markIncrementStarted: (() => void) | undefined;
+    const incrementStarted = new Promise<void>((resolve) => {
+      markIncrementStarted = resolve;
+    });
+    state.incrementRunCompactionCountMock.mockImplementationOnce(
+      async () =>
+        await new Promise<number>((resolve) => {
+          finishIncrement = resolve;
+          markIncrementStarted?.();
+        }),
+    );
+    state.resolveSessionStoreEntryMock.mockReturnValue({
+      existing: sessionEntry,
+      legacyKeys: [],
+      normalizedKey: SESSION_KEY,
+    });
+    state.dispatchPostCompactionDelegatesMock.mockResolvedValue({ queuedDelegates: 1 });
+
+    const pending = release({
+      activeSessionStore,
+      compactionResult: { ok: true, compacted: true },
+      followupRun: makeFollowupRun({ abortSignal: abort.signal }),
+      getActiveSessionEntry: () => sessionEntry,
+      sessionKey: SESSION_KEY,
+      storePath: STORE_PATH,
+    });
+    await incrementStarted;
+    abort.abort("test cancellation during compaction release");
+    finishIncrement?.(7);
+    await pending;
+
+    expect(state.incrementRunCompactionCountMock).toHaveBeenCalledOnce();
+    expect(state.resolveSessionStoreEntryMock).not.toHaveBeenCalled();
+    expect(state.dispatchPostCompactionDelegatesMock).not.toHaveBeenCalled();
+    expect(state.emitContinuationCompactionReleasedSpanMock).not.toHaveBeenCalled();
+  });
+
   it("increments compaction count, dispatches delegates, then emits released span (in order, with correct args)", async () => {
     const release = await getReleaseQueuedCompactionCompletion();
     const initialSessionEntry = makeSessionEntry({ sessionId: "session-before" });

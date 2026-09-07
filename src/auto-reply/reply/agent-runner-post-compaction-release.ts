@@ -23,6 +23,9 @@ export async function releaseQueuedCompactionCompletion(params: {
   if (!params.compactionResult.ok || !params.compactionResult.compacted) {
     return;
   }
+  if (params.followupRun.abortSignal?.aborted) {
+    return;
+  }
   if (!params.sessionKey || !params.activeSessionStore) {
     logVerbose(
       `[request_compaction:post-compaction-release-skipped] session=${params.sessionKey ?? "none"} reason=session-store-unavailable`,
@@ -49,6 +52,9 @@ export async function releaseQueuedCompactionCompletion(params: {
     tokensAfter: params.compactionResult.result?.tokensAfter,
     newSessionId: params.compactionResult.result?.sessionId,
   });
+  if (params.followupRun.abortSignal?.aborted) {
+    return;
+  }
   const resolved = resolveSessionEntryFromStore({
     store: params.activeSessionStore,
     sessionKey: params.sessionKey,
@@ -75,6 +81,9 @@ export async function releasePostCompactionDelegatesAfterCompaction(params: {
 }): Promise<void> {
   const { dispatchPostCompactionDelegates } =
     await import("./post-compaction-delegate-dispatch.js");
+  if (params.followupRun.abortSignal?.aborted) {
+    return;
+  }
   const delegatesToPreserve: SessionPostCompactionDelegate[] = [];
   const dispatchResult = await dispatchPostCompactionDelegates({
     cfg: params.followupRun.run.config,
