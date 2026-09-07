@@ -30,10 +30,10 @@ import {
   type ContinuationWorkIdleRetryTrigger,
 } from "./work-dispatch-execution.js";
 import type { ContinuationWorkReasonCategory, PendingContinuationWork } from "./work-flow-state.js";
+import { enqueuePendingWorkReplacing } from "./work-replacement-store.js";
 import {
   consumePendingWork,
   enqueuePendingWork,
-  enqueuePendingWorkReplacing,
   finalizeAnchorPendingWork,
   hasPendingIdleRetryWork,
   listPendingWorkSessionKeysForRecovery,

@@ -281,7 +281,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         import("../../tasks/task-flow-runtime-internal.js"),
         import("../../auto-reply/continuation/continuation-dispatch-claims.js"),
         import("../../auto-reply/continuation/work-flow-state.js"),
-        import("../../auto-reply/continuation/work-store.js"),
+        import("../../auto-reply/continuation/work-replacement-store.js"),
       ]);
       const existingFlows = listTaskFlowsForOwnerKey(params.sessionKey);
       const priorParkedFlows = existingFlows.filter((flow) => {
