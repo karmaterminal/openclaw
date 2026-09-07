@@ -995,7 +995,20 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     expect(result.payloads?.[0]?.text).toContain("[[CONTINUE_DELEGATE: next hop]]");
   });
 
-  it("suppresses spawn-init continuations after replay-unsafe incomplete turns", async () => {
+  it.each([
+    [
+      "a replay-unsafe incomplete",
+      {
+        replayInvalid: true,
+        error: {
+          kind: "incomplete_turn",
+          message: "Agent could not complete the turn.",
+          fallbackSafe: false,
+        },
+      },
+    ],
+    ["an aborted", { aborted: true, stopReason: "stop" }],
+  ] as const)("does not schedule spawn-init continuations after %s turn", async (_label, meta) => {
     runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
       const opts = (
         callArgs as {
@@ -1005,50 +1018,10 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
         }
       ).continueWorkOpts;
       opts?.requestContinuation({ reason: "unsafe spawn-init request", delaySeconds: 30 });
+      const result = makeEmbeddedResult();
       return {
-        payloads: [{ text: "Agent could not complete the turn.", isError: true }],
-        meta: {
-          durationMs: 1,
-          replayInvalid: true,
-          error: {
-            kind: "incomplete_turn",
-            message: "Agent could not complete the turn.",
-            fallbackSafe: false,
-          },
-          agentMeta: {
-            sessionId: "session-embedded",
-            provider: "anthropic",
-            model: "claude-sonnet-4.7",
-            usage: { input: 2, output: 3, cacheRead: 0, cacheWrite: 0, total: 5 },
-          },
-        },
-      } satisfies EmbeddedAgentRunResult;
-    });
-
-    await runEmbeddedAttempt(makeContinuationEnabledConfig());
-
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
-    expect(sessionStore[sessionKey]?.continuationChainCount).toBeUndefined();
-  });
-
-  it("does not schedule spawn-init continuations after an aborted turn", async () => {
-    runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
-      const opts = (
-        callArgs as {
-          continueWorkOpts?: {
-            requestContinuation: (req: { reason: string; delaySeconds: number }) => void;
-          };
-        }
-      ).continueWorkOpts;
-      opts?.requestContinuation({ reason: "cancelled spawn-init request", delaySeconds: 30 });
-      return {
-        ...makeEmbeddedResult(),
-        meta: {
-          ...makeEmbeddedResult().meta,
-          aborted: true,
-          stopReason: "stop",
-        },
+        ...result,
+        meta: { ...result.meta, ...meta },
       } satisfies EmbeddedAgentRunResult;
     });
 
