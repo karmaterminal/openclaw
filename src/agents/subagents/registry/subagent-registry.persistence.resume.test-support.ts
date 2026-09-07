@@ -20,10 +20,7 @@ export const FORCED_RESTART_WAKE_CASES = [
   { order: "replacement-first", runCount: 3 },
 ] as const;
 
-export function listFixtureAgentDatabases(
-  listDatabases: () => Array<{ path: string }>,
-  stateDir: string,
-) {
+function listFixtureAgentDatabases(listDatabases: () => Array<{ path: string }>, stateDir: string) {
   return listDatabases().filter((database) => isPathInside(stateDir, database.path));
 }
 
@@ -36,7 +33,7 @@ export function expectFixtureAgentDatabaseCount(
   expect(listFixtureAgentDatabases(listDatabases, stateDir), message).toHaveLength(count);
 }
 
-export async function closePersistenceResumeFixtureDatabases(params: {
+async function closePersistenceResumeFixtureDatabases(params: {
   stateDir: string;
   cleanupSessionState: (params: { stateDir: string }) => Promise<void>;
   databaseLists: ReadonlyArray<{ label: string; list: () => Array<{ path: string }> }>;

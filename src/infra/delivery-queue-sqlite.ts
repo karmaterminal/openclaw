@@ -491,27 +491,6 @@ export function pruneExpiredDeliveryQueueTombstones(
   );
 }
 
-/** Terminalize one pending row using its failure-retention ownership fact. */
-export function moveDeliveryQueueEntryToFailed(
-  queueName: string,
-  id: string,
-  stateDir?: string,
-): void {
-  const current = loadDeliveryQueueEntry(queueName, id, stateDir);
-  if (!current) {
-    throw enoent(queueName, id);
-  }
-  const result = terminalizePendingDeliveryQueueEntry({
-    queueName,
-    id,
-    entry: current,
-    stateDir,
-  });
-  if (result.status !== "terminalized") {
-    throw enoent(queueName, id);
-  }
-}
-
 type TerminalizePendingDeliveryQueueEntryParams = {
   queueName: string;
   id: string;
