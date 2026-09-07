@@ -875,7 +875,7 @@ describe("spawn-init continuation cancellation races", () => {
     });
   });
 
-  it("does not publish partial rollback state when atomic persistence fails", async () => {
+  it("cancel-marks queued replacements when atomic rollback persistence fails", async () => {
     await enqueuePriorParkedWork("first prior parked work");
     await enqueuePriorParkedWork("second prior parked work");
     sessionAccessorState.failPatchCall = 2;
@@ -890,7 +890,10 @@ describe("spawn-init continuation cancellation races", () => {
     expect(findFlowByReason(flows, "second prior parked work")).toMatchObject({
       status: "succeeded",
     });
-    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
+    expect(findFlowByReason(flows, "replacement work")).toMatchObject({
+      status: "queued",
+      cancelRequestedAt: expect.any(Number),
+    });
     expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
   });
 

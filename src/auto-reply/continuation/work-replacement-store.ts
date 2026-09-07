@@ -173,10 +173,14 @@ function listUnrestoredPriorFlowIds(priorFlows: readonly TaskFlowRecord[]): stri
     .map((prior) => prior.flowId);
 }
 
-function requestCancelForUnresolvedRunningFlows(flowIds: readonly string[]): void {
+function requestCancelForUnresolvedActiveFlows(flowIds: readonly string[]): void {
   for (const flowId of flowIds) {
     const flow = getTaskFlowById(flowId);
-    if (!flow || flow.status !== "running" || flow.cancelRequestedAt != null) {
+    if (
+      !flow ||
+      (flow.status !== "queued" && flow.status !== "running") ||
+      flow.cancelRequestedAt != null
+    ) {
       continue;
     }
     requestFlowCancel({
@@ -265,7 +269,7 @@ export function rollbackPendingWorkReplacement(params: {
       const cleanup = updateTaskFlowsAtomically(updates);
       const unresolved = listUnresolvedCreatedFlowIds(params.createdFlowIds);
       if (!cleanup.applied) {
-        requestCancelForUnresolvedRunningFlows(unresolved);
+        requestCancelForUnresolvedActiveFlows(unresolved);
       }
       return {
         applied: false,
@@ -316,7 +320,7 @@ export function rollbackPendingWorkReplacement(params: {
     lastUnresolvedCreatedFlowIds = listUnresolvedCreatedFlowIds(params.createdFlowIds);
     lastUnrestoredPriorFlowIds = listUnrestoredPriorFlowIds(params.priorFlows);
   }
-  requestCancelForUnresolvedRunningFlows(lastUnresolvedCreatedFlowIds);
+  requestCancelForUnresolvedActiveFlows(lastUnresolvedCreatedFlowIds);
   return {
     applied: false,
     unresolvedCreatedFlowIds: lastUnresolvedCreatedFlowIds,
