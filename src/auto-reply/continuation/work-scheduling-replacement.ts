@@ -38,7 +38,12 @@ function enqueueContinuationWorkAtomically(params: {
   work: PendingContinuationWork;
   schedule: Pick<
     ContinuationWorkScheduleParams,
-    "chainState" | "config" | "log" | "priorParkedFlowsToSupersede" | "sessionKey"
+    | "chainState"
+    | "config"
+    | "log"
+    | "priorParkedFlowsToSupersede"
+    | "replaceQueuedTurnEndParkedWork"
+    | "sessionKey"
   >;
 }): ScheduledWorkEnqueueResult {
   const replacement = enqueuePendingWorkReplacing({
