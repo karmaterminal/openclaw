@@ -7,14 +7,17 @@ import {
   upsertTaskFlowRegistryRecordToSqlite,
   upsertTaskFlowRegistryRecordsToSqlite,
 } from "./task-flow-registry.store.sqlite.js";
-import type { TaskFlowRegistryStoreSnapshot } from "./task-flow-registry.store.types.js";
+import type {
+  TaskFlowRegistryAtomicChange,
+  TaskFlowRegistryStoreSnapshot,
+} from "./task-flow-registry.store.types.js";
 import type { TaskFlowRecord } from "./task-flow-registry.types.js";
 
 type TaskFlowRegistryStore = {
   loadSnapshot: () => TaskFlowRegistryStoreSnapshot;
   saveSnapshot: (snapshot: TaskFlowRegistryStoreSnapshot) => void;
   upsertFlow?: (flow: TaskFlowRecord) => void;
-  upsertFlowsAtomically?: (flows: readonly TaskFlowRecord[]) => void;
+  upsertFlowsAtomically?: (changes: readonly TaskFlowRegistryAtomicChange[]) => boolean;
   deleteFlow?: (flowId: string) => void;
   close?: () => void;
 };

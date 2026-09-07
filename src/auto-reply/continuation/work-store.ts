@@ -696,16 +696,6 @@ export function markPendingWorkSuperseded(work: PendingContinuationWork, summary
   });
 }
 
-/** Lists queued cross-turn wakes eligible for atomic replacement by a newer election. */
-export function listQueuedTurnEndParkedWork(sessionKey: string): TaskFlowRecord[] {
-  return listTaskFlowsForOwnerKey(sessionKey).filter((flow) => {
-    if (!isContinuationWorkFlow(flow) || flow.status !== "queued") {
-      return false;
-    }
-    return decodeWorkState(flow)?.idleRetry?.trigger === "reply-run-ended";
-  });
-}
-
 /**
  * Reap an orphan continuation-work flow (bucket-1 cull).
  *

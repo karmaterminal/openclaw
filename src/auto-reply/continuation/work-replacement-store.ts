@@ -3,6 +3,7 @@ import type { TaskFlowAtomicUpdate } from "../../tasks/task-flow-runtime-interna
 import {
   createManagedTaskFlowWithAtomicUpdates,
   getTaskFlowById,
+  listTaskFlowsForOwnerKey,
   requestFlowCancel,
   updateTaskFlowsAtomically,
 } from "../../tasks/task-flow-runtime-internal.js";
@@ -47,6 +48,17 @@ export type PendingWorkReplacementResult =
       reason: ContinuationWorkReplacementFailure;
       flowId?: string;
     };
+
+export function listQueuedTurnEndParkedWork(sessionKey: string): TaskFlowRecord[] {
+  return listTaskFlowsForOwnerKey(sessionKey).filter((flow) => {
+    const state = isContinuationWorkFlow(flow) ? decodeWorkState(flow) : undefined;
+    return (
+      flow.status === "queued" &&
+      flow.cancelRequestedAt == null &&
+      state?.idleRetry?.trigger === "reply-run-ended"
+    );
+  });
+}
 
 export function enqueuePendingWorkReplacing(params: {
   work: PendingContinuationWork;
@@ -97,17 +109,7 @@ export function enqueuePendingWorkReplacing(params: {
       };
     }
     if (attempt === 0 && (result.reason === "not_found" || result.reason === "revision_conflict")) {
-      priorFlows = priorFlows.flatMap((prior) => {
-        const current = getTaskFlowById(prior.flowId);
-        const currentState = current ? decodeWorkState(current) : undefined;
-        return current &&
-          isContinuationWorkFlow(current) &&
-          current.status === "queued" &&
-          current.cancelRequestedAt == null &&
-          currentState?.idleRetry?.trigger === "reply-run-ended"
-          ? [current]
-          : [];
-      });
+      priorFlows = listQueuedTurnEndParkedWork(params.work.sessionKey);
       continue;
     }
     return {

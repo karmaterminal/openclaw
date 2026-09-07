@@ -30,14 +30,16 @@ import {
   type ContinuationWorkIdleRetryTrigger,
 } from "./work-dispatch-execution.js";
 import type { ContinuationWorkReasonCategory, PendingContinuationWork } from "./work-flow-state.js";
-import { enqueuePendingWorkReplacing } from "./work-replacement-store.js";
+import {
+  buildContinuationWorkBatchFailure,
+  enqueueContinuationWorkForSchedule,
+  prepareContinuationWorkBatchReplacement,
+} from "./work-scheduling-replacement.js";
 import {
   consumePendingWork,
-  enqueuePendingWork,
   finalizeAnchorPendingWork,
   hasPendingIdleRetryWork,
   listPendingWorkSessionKeysForRecovery,
-  listQueuedTurnEndParkedWork,
   markPendingWorkSuperseded,
   peekSoonestQueuedWorkDueAt,
   peekSoonestRunningWorkRecoveryDueAt,
@@ -714,35 +716,14 @@ export async function scheduleContinuationWork(
     ...(electingTurnActive ? { anchorPending: true } : { anchorFinalizedAt: electedAt }),
     ...(idleRetry ? { idleRetry } : {}),
   };
-  const replacementResult =
-    params.priorParkedFlowsToSupersede && params.priorParkedFlowsToSupersede.length > 0
-      ? enqueuePendingWorkReplacing({
-          work,
-          priorFlows: params.priorParkedFlowsToSupersede,
-          summary:
-            "Superseded by a newer continue_work election after its replacement became durable.",
-        })
-      : undefined;
-  if (replacementResult && !replacementResult.applied) {
-    params.log?.(
-      `[continuation:work-replacement-not-committed] session=${params.sessionKey} reason=${replacementResult.reason}${replacementResult.flowId ? ` flowId=${replacementResult.flowId}` : ""}`,
-    );
-    return {
-      scheduled: false,
-      capped: false,
-      chainState: params.chainState,
-      replacementFailure: replacementResult.reason,
-      ...(replacementResult.flowId ? { replacementFailureFlowId: replacementResult.flowId } : {}),
-    };
+  const enqueueResult = enqueueContinuationWorkForSchedule({ work, schedule: params });
+  if (!enqueueResult.scheduled) {
+    return enqueueResult;
   }
-  const enqueued = replacementResult?.work ?? enqueuePendingWork(work);
-  if (!enqueued) {
-    return { scheduled: false, capped: false, chainState: params.chainState };
-  }
-  if (!enqueued.flowId) {
+  if (!enqueueResult.work.flowId) {
     throw new Error("continuation work enqueue did not return a durable flow ID");
   }
-  params.onFlowEnqueued?.(enqueued.flowId);
+  params.onFlowEnqueued?.(enqueueResult.work.flowId);
   emitContinuationWorkSpan({
     chainId: params.chainState.chainId,
     chainStepRemaining: params.config.maxChainLength - hop,
@@ -757,17 +738,17 @@ export async function scheduleContinuationWork(
     );
     // Wake on the end-of-turn event; keep only a slow hedge as the lost-event net.
     registerIdleRetry(params.sessionKey, { kind: "reply-run-ended" });
-    armNextWorkTimer(params.sessionKey, enqueued.dueAt);
+    armNextWorkTimer(params.sessionKey, enqueueResult.work.dueAt);
   } else {
     // Let callers persist the advanced chain state before even zero-delay work
     // can start the next turn; the timer fires on the next event-loop tick.
-    armNextWorkTimer(params.sessionKey, enqueued.dueAt);
+    armNextWorkTimer(params.sessionKey, enqueueResult.work.dueAt);
   }
   return {
     scheduled: true,
     capped: false,
     chainState: nextState,
-    ...(replacementResult ? { supersededCount: replacementResult.supersededCount } : {}),
+    supersededCount: enqueueResult.supersededCount,
   };
 }
 
@@ -789,18 +770,8 @@ export async function scheduleContinuationWorkBatch(
 ): Promise<ContinuationWorkBatchResult> {
   let chainState = params.chainState;
   let scheduledCount = 0;
-  const priorParkedFlows =
-    params.priorParkedFlowsToSupersede ??
-    (params.coalescePriorParkedWork === false
-      ? []
-      : listQueuedTurnEndParkedWork(params.sessionKey));
-  const pendingCapacityExclusionFlowIds =
-    priorParkedFlows.length === 0
-      ? params.pendingCapacityExclusionFlowIds
-      : new Set([
-          ...(params.pendingCapacityExclusionFlowIds ?? []),
-          ...priorParkedFlows.map((flow) => flow.flowId),
-        ]);
+  const { priorParkedFlows, pendingCapacityExclusionFlowIds } =
+    prepareContinuationWorkBatchReplacement(params);
   for (const request of params.requests) {
     if (params.abortSignal?.aborted) {
       return {
@@ -827,21 +798,12 @@ export async function scheduleContinuationWorkBatch(
       ...(params.log ? { log: params.log } : {}),
     });
     if (!result.scheduled) {
-      return {
+      return buildContinuationWorkBatchFailure({
+        result,
         scheduledCount,
-        cappedCount: params.requests.length - scheduledCount,
-        capped: result.capped,
+        requestCount: params.requests.length,
         chainState,
-        ...(result.replacementFailure ? { replacementFailure: result.replacementFailure } : {}),
-        ...(result.replacementFailureFlowId
-          ? { replacementFailureFlowId: result.replacementFailureFlowId }
-          : {}),
-      };
-    }
-    if (result.supersededCount) {
-      params.log?.(
-        `[continuation:work-turn-end-parked-coalesced] session=${params.sessionKey} folded=${result.supersededCount}`,
-      );
+      });
     }
     chainState = result.chainState;
     scheduledCount += 1;

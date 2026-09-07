@@ -25,7 +25,10 @@ import {
   runOpenClawStateWriteTransaction,
   type OpenClawStateDatabaseOptions,
 } from "../state/openclaw-state-db.js";
-import type { TaskFlowRegistryStoreSnapshot } from "./task-flow-registry.store.types.js";
+import type {
+  TaskFlowRegistryAtomicChange,
+  TaskFlowRegistryStoreSnapshot,
+} from "./task-flow-registry.store.types.js";
 import {
   parseOptionalTaskFlowSyncMode,
   parseTaskFlowStatus,
@@ -302,15 +305,30 @@ export function upsertTaskFlowRegistryRecordToSqlite(flow: TaskFlowRecord) {
   });
 }
 
-export function upsertTaskFlowRegistryRecordsToSqlite(flows: readonly TaskFlowRecord[]) {
-  if (flows.length === 0) {
-    return;
+export function upsertTaskFlowRegistryRecordsToSqlite(
+  changes: readonly TaskFlowRegistryAtomicChange[],
+): boolean {
+  if (changes.length === 0) {
+    return true;
   }
+  let applied = false;
   withWriteTransaction(({ db }) => {
-    for (const flow of flows) {
-      upsertTaskFlowRowInDatabase(db, bindTaskFlowRecord(flow));
+    for (const change of changes) {
+      const current = readTaskFlowRecord(db, change.flow.flowId);
+      if (
+        change.expectedRevision === undefined
+          ? current !== undefined
+          : current?.revision !== change.expectedRevision
+      ) {
+        return;
+      }
     }
+    for (const change of changes) {
+      upsertTaskFlowRowInDatabase(db, bindTaskFlowRecord(change.flow));
+    }
+    applied = true;
   });
+  return applied;
 }
 
 /** Binds only the exact flow selected before admission; lifecycle settlement stays owner-native. */

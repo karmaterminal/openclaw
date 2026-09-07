@@ -23,6 +23,7 @@ import {
   loadTaskFlowRegistryStateFromSqlite,
   loadTaskFlowRegistryStateFromSqliteReadOnly,
   saveTaskFlowRegistryStateToSqlite,
+  upsertTaskFlowRegistryRecordsToSqlite,
 } from "./task-flow-registry.store.sqlite.js";
 import {
   parseOptionalTaskFlowSyncMode,
@@ -181,7 +182,7 @@ describe("task-flow-registry store runtime", () => {
       endedAt: undefined,
     };
     const saveSnapshot = vi.fn();
-    const upsertFlowsAtomically = vi.fn();
+    const upsertFlowsAtomically = vi.fn(() => true);
     configureTaskFlowRegistryRuntime({
       store: {
         loadSnapshot: () => ({ flows: new Map([[prior.flowId, prior]]) }),
@@ -207,8 +208,13 @@ describe("task-flow-registry store runtime", () => {
 
     expect(replaced.applied).toBe(true);
     expect(upsertFlowsAtomically).toHaveBeenCalledWith([
-      expect.objectContaining({ flowId: prior.flowId, status: "succeeded" }),
-      expect.objectContaining({ goal: "Replacement wake", status: "queued" }),
+      {
+        flow: expect.objectContaining({ flowId: prior.flowId, status: "succeeded" }),
+        expectedRevision: prior.revision,
+      },
+      {
+        flow: expect.objectContaining({ goal: "Replacement wake", status: "queued" }),
+      },
     ]);
     expect(saveSnapshot).not.toHaveBeenCalled();
   });
@@ -256,6 +262,64 @@ describe("task-flow-registry store runtime", () => {
         status: "queued",
         revision: 0,
       });
+    });
+  });
+
+  it("detects a newer durable owner before applying a stale atomic replacement", async () => {
+    await withFlowRegistryTempDir(async () => {
+      const prior = createManagedTaskFlow({
+        ownerKey: "agent:main:atomic-conflict",
+        controllerId: "core/continuation-work",
+        goal: "Prior parked wake",
+      });
+      const concurrent: TaskFlowRecord = {
+        ...prior,
+        flowId: "flow-concurrent-replacement",
+        revision: 0,
+        status: "queued",
+        goal: "Concurrent replacement",
+        createdAt: prior.createdAt + 1,
+        updatedAt: prior.updatedAt + 1,
+      };
+      expect(
+        upsertTaskFlowRegistryRecordsToSqlite([
+          {
+            flow: {
+              ...prior,
+              revision: prior.revision + 1,
+              status: "succeeded",
+              endedAt: prior.updatedAt + 1,
+              updatedAt: prior.updatedAt + 1,
+            },
+            expectedRevision: prior.revision,
+          },
+          { flow: concurrent },
+        ]),
+      ).toBe(true);
+
+      const staleReplacement = createManagedTaskFlowWithAtomicUpdates({
+        create: {
+          ownerKey: prior.ownerKey,
+          controllerId: "core/continuation-work",
+          goal: "Stale replacement",
+        },
+        updates: [
+          {
+            flowId: prior.flowId,
+            expectedRevision: prior.revision,
+            patch: { status: "succeeded", endedAt: 300, updatedAt: 300 },
+          },
+        ],
+      });
+
+      expect(staleReplacement).toMatchObject({
+        applied: false,
+        reason: "revision_conflict",
+      });
+      expect(listTaskFlowRecords()).toEqual([
+        expect.objectContaining({ flowId: concurrent.flowId, status: "queued" }),
+        expect.objectContaining({ flowId: prior.flowId, status: "succeeded" }),
+      ]);
     });
   });
 

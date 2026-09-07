@@ -557,6 +557,5 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     await failCreatedWorkAndRestoreReservation(
       "continue_work scheduling cancelled with its originating turn.",
     );
-    return;
   }
 }

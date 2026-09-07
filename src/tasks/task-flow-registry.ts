@@ -583,7 +583,17 @@ function commitTaskFlowAtomicChanges(params: {
   try {
     const store = getTaskFlowRegistryStore();
     if (store.upsertFlowsAtomically) {
-      store.upsertFlowsAtomically(changed.map((flow) => cloneFlowRecord(flow)));
+      const applied = store.upsertFlowsAtomically([
+        ...prepared.entries.map((entry) => ({
+          flow: cloneFlowRecord(entry.next),
+          expectedRevision: entry.current.revision,
+        })),
+        ...(params.created ? [{ flow: cloneFlowRecord(params.created) }] : []),
+      ]);
+      if (!applied) {
+        reloadTaskFlowRegistryFromStore();
+        return { applied: false, reason: "revision_conflict" };
+      }
     } else {
       store.saveSnapshot({
         flows: createFlowSnapshotWith(changed),

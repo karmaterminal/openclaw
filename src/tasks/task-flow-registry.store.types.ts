@@ -5,3 +5,8 @@ import type { TaskFlowRecord } from "./task-flow-registry.types.js";
 export type TaskFlowRegistryStoreSnapshot = {
   flows: Map<string, TaskFlowRecord>;
 };
+
+export type TaskFlowRegistryAtomicChange = {
+  flow: TaskFlowRecord;
+  expectedRevision?: number;
+};

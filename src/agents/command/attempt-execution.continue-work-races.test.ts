@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerContinuationDispatchClaim } from "../../auto-reply/continuation/continuation-dispatch-claims.js";
 import { decodeWorkState } from "../../auto-reply/continuation/work-flow-state.js";
+import { enqueuePendingWork } from "../../auto-reply/continuation/work-store.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.js";
@@ -194,7 +195,6 @@ describe("spawn-init continuation cancellation races", () => {
   }
 
   async function enqueuePriorParkedWork(reason: string): Promise<void> {
-    const { enqueuePendingWork } = await import("../../auto-reply/continuation/work-store.js");
     const now = Date.now();
     const work = enqueuePendingWork({
       sessionKey,
@@ -360,19 +360,27 @@ describe("spawn-init continuation cancellation races", () => {
 
   it("replaces a parked wake at the pending cap and preserves the replacement across reload", async () => {
     await enqueuePriorParkedWork("prior parked work");
+    let reloadedFlows: TaskFlowRecord[] = [];
+    sessionAccessorState.afterPatchCall = async (call) => {
+      if (call !== 2) {
+        return;
+      }
+      const { resetTaskFlowRegistryForTests } =
+        await import("../../tasks/task-runtime.test-helpers.js");
+      resetTaskFlowRegistryForTests({ persist: false });
+      reloadedFlows = listTaskFlowsForOwnerKey(sessionKey);
+    };
 
     await schedule([{ reason: "replacement work", delaySeconds: 30 }], { maxPendingWork: 1 });
 
-    let flows = listTaskFlowsForOwnerKey(sessionKey);
-    expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "succeeded" });
-    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
-
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
-    resetTaskFlowRegistryForTests({ persist: false });
-    flows = listTaskFlowsForOwnerKey(sessionKey);
-    expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "succeeded" });
-    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
+    expect(reloadedFlows.filter((flow) => flow.status === "queued")).toEqual([
+      expect.objectContaining({
+        stateJson: expect.objectContaining({ reason: "replacement work" }),
+      }),
+    ]);
+    expect(findFlowByReason(reloadedFlows, "prior parked work")).toMatchObject({
+      status: "succeeded",
+    });
   });
 
   it("retries around a concurrently cancelled prior wake without reviving it", async () => {
@@ -433,6 +441,64 @@ describe("spawn-init continuation cancellation races", () => {
     });
     expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
     expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
+  });
+
+  it("supersedes a newer parked owner discovered after the first replacement CAS loses", async () => {
+    await enqueuePriorParkedWork("original prior parked work");
+    taskFlowRuntimeState.beforeAtomicCreate = () => {
+      taskFlowRuntimeState.beforeAtomicCreate = undefined;
+      const original = findFlowByReason(
+        listTaskFlowsForOwnerKey(sessionKey),
+        "original prior parked work",
+      );
+      if (!original) {
+        throw new Error("expected original prior parked flow");
+      }
+      const superseded = finishFlow({
+        flowId: original.flowId,
+        expectedRevision: original.revision,
+        currentStep: "superseded by concurrent replacement",
+      });
+      expect(superseded.applied).toBe(true);
+      const now = Date.now();
+      expect(
+        enqueuePendingWork({
+          sessionKey,
+          hop: 2,
+          delayMs: 30_000,
+          electedAt: now,
+          dueAt: now + 60_000,
+          maxChainLength: 200,
+          chainStartedAt: now,
+          accumulatedChainTokens: 2,
+          reason: "concurrent newer parked work",
+          anchorPending: true,
+          idleRetry: {
+            trigger: "reply-run-ended",
+            reasonCategory: "follow-up-work",
+            armedAt: now,
+          },
+        }),
+      ).not.toBeNull();
+    };
+
+    await schedule([{ reason: "newest replacement work", delaySeconds: 30 }]);
+
+    const { resetTaskFlowRegistryForTests } =
+      await import("../../tasks/task-runtime.test-helpers.js");
+    resetTaskFlowRegistryForTests({ persist: false });
+    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    expect(findFlowByReason(flows, "original prior parked work")).toMatchObject({
+      status: "succeeded",
+    });
+    expect(findFlowByReason(flows, "concurrent newer parked work")).toMatchObject({
+      status: "succeeded",
+    });
+    expect(flows.filter((flow) => flow.status === "queued")).toEqual([
+      expect.objectContaining({
+        stateJson: expect.objectContaining({ reason: "newest replacement work" }),
+      }),
+    ]);
   });
 
   it("still cancels the replacement when partial prior-wake restoration loses its revision", async () => {
