@@ -608,6 +608,76 @@ describe("spawn-init continuation cancellation races", () => {
     ]);
   });
 
+  it("rejects a newly running owner discovered from an initially empty snapshot", async () => {
+    const { enqueuePendingWorkReplacing } =
+      await import("../../auto-reply/continuation/work-replacement-store.js");
+    taskFlowRuntimeState.beforeAtomicCreate = () => {
+      taskFlowRuntimeState.beforeAtomicCreate = undefined;
+      const now = Date.now();
+      const concurrent = enqueuePendingWork({
+        sessionKey,
+        hop: 1,
+        delayMs: 30_000,
+        electedAt: now,
+        dueAt: now + 60_000,
+        maxChainLength: 200,
+        chainStartedAt: now,
+        accumulatedChainTokens: 0,
+        reason: "concurrent running work",
+        anchorPending: true,
+        idleRetry: {
+          trigger: "reply-run-ended",
+          reasonCategory: "follow-up-work",
+          armedAt: now,
+        },
+      });
+      if (!concurrent?.flowId || concurrent.expectedRevision === undefined) {
+        throw new Error("expected concurrent parked flow");
+      }
+      const running = updateFlowRecordByIdExpectedRevision({
+        flowId: concurrent.flowId,
+        expectedRevision: concurrent.expectedRevision,
+        patch: { status: "running" },
+      });
+      expect(running.applied).toBe(true);
+    };
+    const now = Date.now();
+
+    const result = enqueuePendingWorkReplacing({
+      work: {
+        sessionKey,
+        hop: 2,
+        delayMs: 30_000,
+        electedAt: now + 1,
+        dueAt: now + 60_001,
+        maxChainLength: 200,
+        chainStartedAt: now,
+        accumulatedChainTokens: 0,
+        reason: "rejected newest work",
+        anchorPending: true,
+        idleRetry: {
+          trigger: "reply-run-ended",
+          reasonCategory: "follow-up-work",
+          armedAt: now + 1,
+        },
+      },
+      summary: "superseded by empty-owner replacement",
+      maxPendingWork: 8,
+      replaceParkedWork: true,
+      expectedPriorFlowIds: [],
+    });
+
+    expect(result).toMatchObject({ applied: false, reason: "running_owner" });
+    expect(
+      findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "concurrent running work"),
+    ).toMatchObject({
+      status: "running",
+    });
+    expect(
+      findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "rejected newest work"),
+    ).toBeUndefined();
+  });
+
   it("restores a newer parked owner discovered by retry when finalization fails", async () => {
     await enqueuePriorParkedWork("original prior parked work");
     sessionAccessorState.failPatchCall = 2;

@@ -455,23 +455,15 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   }
 
   const failCreatedWorkAndRestoreReservation = async (summary: string): Promise<void> => {
-    const errors: Error[] = [];
     try {
       failCreatedWork?.(summary);
     } catch (error) {
-      errors.push(normalizeCleanupError(error, "continuation flow cleanup failed"));
+      throw normalizeCleanupError(error, "continuation flow cleanup failed");
     }
     try {
       await restorePriorChainState();
     } catch (error) {
-      errors.push(normalizeCleanupError(error, "continuation chain rollback failed"));
-    }
-    const [error] = errors;
-    if (errors.length === 1 && error) {
-      throw error;
-    }
-    if (errors.length > 1) {
-      throw new AggregateError(errors, "continuation wake cleanup and chain rollback both failed");
+      throw normalizeCleanupError(error, "continuation chain rollback failed");
     }
   };
 

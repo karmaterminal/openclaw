@@ -81,7 +81,7 @@ export function enqueuePendingWorkReplacing(params: {
       if (!isContinuationWorkFlow(flow) || flow.cancelRequestedAt != null) {
         return false;
       }
-      return flow.status === "queued" || (includeRunningOwner && flow.status === "running");
+      return flow.status === "queued" || flow.status === "running";
     });
     if (includeRunningOwner && ownerFlows.some((flow) => flow.status === "running")) {
       return { applied: false, capped: false, reason: "running_owner" };
@@ -133,7 +133,7 @@ export function enqueuePendingWorkReplacing(params: {
       ownerCondition: {
         ownerKey: params.work.sessionKey,
         controllerId: CONTINUATION_WORK_CONTROLLER_ID,
-        statuses: includeRunningOwner ? ["queued", "running"] : ["queued"],
+        statuses: ["queued", "running"],
         expectedFlowIds: ownerFlows.map((flow) => flow.flowId),
         excludeCancelRequested: true,
       },
@@ -187,7 +187,7 @@ function listUnrestoredPriorFlowIds(priorFlows: readonly TaskFlowRecord[]): stri
 
 function requestCancelForUnresolvedActiveFlows(flowIds: readonly string[]): void {
   for (const flowId of flowIds) {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
       const flow = getTaskFlowById(flowId);
       if (
         !flow ||
@@ -210,6 +210,14 @@ function requestCancelForUnresolvedActiveFlows(flowIds: readonly string[]): void
       if (cancelled.applied) {
         break;
       }
+    }
+    const latest = getTaskFlowById(flowId);
+    if (latest?.status === "running") {
+      abortContinuationDispatchClaim({
+        sessionKey: latest.ownerKey,
+        flowId,
+        reason: "continuation replacement cancellation verification",
+      });
     }
   }
 }
