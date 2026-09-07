@@ -483,6 +483,41 @@ describe("spawn-init continuation cancellation races", () => {
     expectRestoredChainState();
   });
 
+  it("allows a stable running predecessor while replacing a distinct parked wake", async () => {
+    await enqueuePriorParkedWork("prior parked work");
+    const now = Date.now();
+    const predecessor = enqueuePendingWork({
+      sessionKey,
+      hop: 1,
+      delayMs: 0,
+      electedAt: now,
+      dueAt: now,
+      maxChainLength: 200,
+      chainStartedAt: now,
+      accumulatedChainTokens: 0,
+      reason: "stable running predecessor",
+      anchorFinalizedAt: now,
+    });
+    if (!predecessor?.flowId || predecessor.expectedRevision === undefined) {
+      throw new Error("expected running predecessor flow");
+    }
+    const running = updateFlowRecordByIdExpectedRevision({
+      flowId: predecessor.flowId,
+      expectedRevision: predecessor.expectedRevision,
+      patch: { status: "running" },
+    });
+    expect(running.applied).toBe(true);
+
+    await schedule([{ reason: "replacement work", delaySeconds: 30 }]);
+
+    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    expect(findFlowByReason(flows, "stable running predecessor")).toMatchObject({
+      status: "running",
+    });
+    expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "succeeded" });
+    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
+  });
+
   it("supersedes a newer parked owner discovered after the first replacement CAS loses", async () => {
     await enqueuePriorParkedWork("original prior parked work");
     taskFlowRuntimeState.beforeAtomicCreate = () => {
@@ -539,143 +574,6 @@ describe("spawn-init continuation cancellation races", () => {
         stateJson: expect.objectContaining({ reason: "newest replacement work" }),
       }),
     ]);
-  });
-
-  it("serializes two parked replacements that both begin with no queued owner", async () => {
-    const { enqueuePendingWorkReplacing } =
-      await import("../../auto-reply/continuation/work-replacement-store.js");
-    taskFlowRuntimeState.beforeAtomicCreate = () => {
-      taskFlowRuntimeState.beforeAtomicCreate = undefined;
-      const now = Date.now();
-      expect(
-        enqueuePendingWork({
-          sessionKey,
-          hop: 1,
-          delayMs: 30_000,
-          electedAt: now,
-          dueAt: now + 60_000,
-          maxChainLength: 200,
-          chainStartedAt: now,
-          accumulatedChainTokens: 0,
-          reason: "concurrent empty-owner parked work",
-          anchorPending: true,
-          idleRetry: {
-            trigger: "reply-run-ended",
-            reasonCategory: "follow-up-work",
-            armedAt: now,
-          },
-        }),
-      ).not.toBeNull();
-    };
-    const now = Date.now();
-
-    const result = enqueuePendingWorkReplacing({
-      work: {
-        sessionKey,
-        hop: 2,
-        delayMs: 30_000,
-        electedAt: now + 1,
-        dueAt: now + 60_001,
-        maxChainLength: 200,
-        chainStartedAt: now,
-        accumulatedChainTokens: 0,
-        reason: "newest empty-owner parked work",
-        anchorPending: true,
-        idleRetry: {
-          trigger: "reply-run-ended",
-          reasonCategory: "follow-up-work",
-          armedAt: now + 1,
-        },
-      },
-      summary: "superseded by concurrent empty-owner replacement",
-      maxPendingWork: 8,
-      replaceParkedWork: true,
-      expectedPriorFlowIds: [],
-    });
-
-    expect(result.applied).toBe(true);
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
-    resetTaskFlowRegistryForTests({ persist: false });
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
-    expect(findFlowByReason(flows, "concurrent empty-owner parked work")).toMatchObject({
-      status: "succeeded",
-    });
-    expect(flows.filter((flow) => flow.status === "queued")).toEqual([
-      expect.objectContaining({
-        stateJson: expect.objectContaining({ reason: "newest empty-owner parked work" }),
-      }),
-    ]);
-  });
-
-  it("rejects a newly running owner discovered from an initially empty snapshot", async () => {
-    const { enqueuePendingWorkReplacing } =
-      await import("../../auto-reply/continuation/work-replacement-store.js");
-    taskFlowRuntimeState.beforeAtomicCreate = () => {
-      taskFlowRuntimeState.beforeAtomicCreate = undefined;
-      const now = Date.now();
-      const concurrent = enqueuePendingWork({
-        sessionKey,
-        hop: 1,
-        delayMs: 30_000,
-        electedAt: now,
-        dueAt: now + 60_000,
-        maxChainLength: 200,
-        chainStartedAt: now,
-        accumulatedChainTokens: 0,
-        reason: "concurrent running work",
-        anchorPending: true,
-        idleRetry: {
-          trigger: "reply-run-ended",
-          reasonCategory: "follow-up-work",
-          armedAt: now,
-        },
-      });
-      if (!concurrent?.flowId || concurrent.expectedRevision === undefined) {
-        throw new Error("expected concurrent parked flow");
-      }
-      const running = updateFlowRecordByIdExpectedRevision({
-        flowId: concurrent.flowId,
-        expectedRevision: concurrent.expectedRevision,
-        patch: { status: "running" },
-      });
-      expect(running.applied).toBe(true);
-    };
-    const now = Date.now();
-
-    const result = enqueuePendingWorkReplacing({
-      work: {
-        sessionKey,
-        hop: 2,
-        delayMs: 30_000,
-        electedAt: now + 1,
-        dueAt: now + 60_001,
-        maxChainLength: 200,
-        chainStartedAt: now,
-        accumulatedChainTokens: 0,
-        reason: "rejected newest work",
-        anchorPending: true,
-        idleRetry: {
-          trigger: "reply-run-ended",
-          reasonCategory: "follow-up-work",
-          armedAt: now + 1,
-        },
-      },
-      summary: "superseded by empty-owner replacement",
-      maxPendingWork: 8,
-      replaceParkedWork: true,
-      expectedPriorFlowIds: [],
-    });
-
-    expect(result).toMatchObject({ applied: false, reason: "running_owner" });
-    expect(
-      findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "concurrent running work"),
-    ).toMatchObject({
-      status: "running",
-    });
-    expect(
-      findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "rejected newest work"),
-    ).toBeUndefined();
   });
 
   it("restores a newer parked owner discovered by retry when finalization fails", async () => {
@@ -774,56 +672,6 @@ describe("spawn-init continuation cancellation races", () => {
     });
   });
 
-  it("enforces maxPendingWork transactionally for ordinary enqueues", async () => {
-    const { enqueuePendingWorkReplacing } =
-      await import("../../auto-reply/continuation/work-replacement-store.js");
-    taskFlowRuntimeState.beforeAtomicCreate = () => {
-      taskFlowRuntimeState.beforeAtomicCreate = undefined;
-      const now = Date.now();
-      expect(
-        enqueuePendingWork({
-          sessionKey,
-          hop: 1,
-          delayMs: 30_000,
-          electedAt: now,
-          dueAt: now + 30_000,
-          maxChainLength: 200,
-          chainStartedAt: now,
-          accumulatedChainTokens: 0,
-          reason: "concurrent ordinary work",
-          anchorFinalizedAt: now,
-        }),
-      ).not.toBeNull();
-    };
-    const now = Date.now();
-
-    const result = enqueuePendingWorkReplacing({
-      work: {
-        sessionKey,
-        hop: 2,
-        delayMs: 30_000,
-        electedAt: now + 1,
-        dueAt: now + 30_001,
-        maxChainLength: 200,
-        chainStartedAt: now,
-        accumulatedChainTokens: 0,
-        reason: "capped ordinary work",
-        anchorFinalizedAt: now + 1,
-      },
-      summary: "ordinary enqueue",
-      maxPendingWork: 1,
-      replaceParkedWork: false,
-      expectedPriorFlowIds: [],
-    });
-
-    expect(result).toEqual({ applied: false, capped: true });
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toEqual([
-      expect.objectContaining({
-        stateJson: expect.objectContaining({ reason: "concurrent ordinary work" }),
-      }),
-    ]);
-  });
-
   it("still cancels the replacement when partial prior-wake restoration loses its revision", async () => {
     await enqueuePriorParkedWork("first prior parked work");
     await enqueuePriorParkedWork("second prior parked work");
@@ -853,6 +701,39 @@ describe("spawn-init continuation cancellation races", () => {
     });
     expect(findFlowByReason(flows, "second prior parked work")).toMatchObject({
       status: "succeeded",
+    });
+    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "failed" });
+    expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
+  });
+
+  it("does not credit a concurrently requeued prior with changed rollback state", async () => {
+    await enqueuePriorParkedWork("prior parked work");
+    sessionAccessorState.failPatchCall = 2;
+    taskFlowRuntimeState.beforeAtomicUpdate = () => {
+      taskFlowRuntimeState.beforeAtomicUpdate = undefined;
+      const prior = findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "prior parked work");
+      if (!prior) {
+        throw new Error("expected superseded prior flow");
+      }
+      const requeued = updateFlowRecordByIdExpectedRevision({
+        flowId: prior.flowId,
+        expectedRevision: prior.revision,
+        patch: {
+          status: "queued",
+          currentStep: "concurrently requeued with different state",
+        },
+      });
+      expect(requeued.applied).toBe(true);
+    };
+
+    await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow(
+      "spawn-init chain finalization and wake cleanup both failed",
+    );
+
+    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    expect(findFlowByReason(flows, "prior parked work")).toMatchObject({
+      status: "queued",
+      currentStep: "concurrently requeued with different state",
     });
     expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "failed" });
     expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);

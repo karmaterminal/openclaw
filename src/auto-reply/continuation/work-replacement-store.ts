@@ -66,24 +66,38 @@ export function listQueuedTurnEndParkedWork(sessionKey: string): TaskFlowRecord[
   });
 }
 
+export function listRunningContinuationWorkIds(sessionKey: string): string[] {
+  return listTaskFlowsForOwnerKey(sessionKey)
+    .filter(
+      (flow) =>
+        isContinuationWorkFlow(flow) && flow.status === "running" && flow.cancelRequestedAt == null,
+    )
+    .map((flow) => flow.flowId);
+}
+
 export function enqueuePendingWorkReplacing(params: {
   work: PendingContinuationWork;
   summary: string;
   maxPendingWork: number;
   replaceParkedWork: boolean;
   expectedPriorFlowIds: readonly string[];
+  expectedRunningFlowIds: readonly string[];
 }): PendingWorkReplacementResult {
   const state = encodeWorkState(params.work);
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const includeRunningOwner =
-      params.replaceParkedWork && (attempt > 0 || params.expectedPriorFlowIds.length > 0);
     const ownerFlows = listTaskFlowsForOwnerKey(params.work.sessionKey).filter((flow) => {
       if (!isContinuationWorkFlow(flow) || flow.cancelRequestedAt != null) {
         return false;
       }
       return flow.status === "queued" || flow.status === "running";
     });
-    if (includeRunningOwner && ownerFlows.some((flow) => flow.status === "running")) {
+    const expectedRunningFlowIds = new Set(params.expectedRunningFlowIds);
+    if (
+      params.replaceParkedWork &&
+      ownerFlows.some(
+        (flow) => flow.status === "running" && !expectedRunningFlowIds.has(flow.flowId),
+      )
+    ) {
       return { applied: false, capped: false, reason: "running_owner" };
     }
     const queuedFlows = ownerFlows.filter((flow) => flow.status === "queued");
@@ -183,6 +197,17 @@ function listUnrestoredPriorFlowIds(priorFlows: readonly TaskFlowRecord[]): stri
   return priorFlows
     .filter((prior) => getTaskFlowById(prior.flowId)?.status !== "queued")
     .map((prior) => prior.flowId);
+}
+
+function isExactRestoredPrior(flow: TaskFlowRecord, prior: TaskFlowRecord): boolean {
+  return (
+    flow.status === "queued" &&
+    flow.revision === prior.revision + 2 &&
+    flow.currentStep === prior.currentStep &&
+    JSON.stringify(flow.stateJson) === JSON.stringify(prior.stateJson) &&
+    flow.cancelRequestedAt === prior.cancelRequestedAt &&
+    flow.endedAt === undefined
+  );
 }
 
 function requestCancelForUnresolvedActiveFlows(flowIds: readonly string[]): void {
@@ -304,7 +329,7 @@ export function rollbackPendingWorkReplacement(params: {
 
     for (const prior of params.priorFlows) {
       const flow = getTaskFlowById(prior.flowId);
-      if (flow?.status === "queued") {
+      if (flow && isExactRestoredPrior(flow, prior)) {
         continue;
       }
       if (

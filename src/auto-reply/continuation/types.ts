@@ -284,6 +284,7 @@ export type ContinuationWorkScheduleParams = {
   originRunId?: string;
   originTurnId?: string;
   priorParkedFlowsToSupersede?: readonly TaskFlowRecord[];
+  expectedRunningFlowIds?: readonly string[];
   replaceQueuedTurnEndParkedWork?: boolean;
   abortSignal?: AbortSignal;
   onFlowEnqueued?: (flowId: string) => void;

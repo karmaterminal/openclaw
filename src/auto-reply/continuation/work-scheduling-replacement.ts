@@ -9,6 +9,7 @@ import type { PendingContinuationWork } from "./work-flow-state.js";
 import {
   enqueuePendingWorkReplacing,
   listQueuedTurnEndParkedWork,
+  listRunningContinuationWorkIds,
 } from "./work-replacement-store.js";
 
 type ScheduledWorkEnqueueResult =
@@ -26,6 +27,7 @@ export function enqueueContinuationWorkForSchedule(params: {
     | "chainState"
     | "config"
     | "log"
+    | "expectedRunningFlowIds"
     | "priorParkedFlowsToSupersede"
     | "replaceQueuedTurnEndParkedWork"
     | "sessionKey"
@@ -53,6 +55,9 @@ function enqueueContinuationWorkAtomically(params: {
     replaceParkedWork: params.schedule.replaceQueuedTurnEndParkedWork !== false,
     expectedPriorFlowIds:
       params.schedule.priorParkedFlowsToSupersede?.map((flow) => flow.flowId) ?? [],
+    expectedRunningFlowIds:
+      params.schedule.expectedRunningFlowIds ??
+      listRunningContinuationWorkIds(params.schedule.sessionKey),
   });
   if (!replacement.applied) {
     if (replacement.capped) {
@@ -81,6 +86,7 @@ function enqueueContinuationWorkAtomically(params: {
 
 export function prepareContinuationWorkBatchReplacement(params: ContinuationWorkBatchParams): {
   priorParkedFlows: readonly TaskFlowRecord[];
+  expectedRunningFlowIds: readonly string[];
 } {
   const priorParkedFlows =
     params.priorParkedFlowsToSupersede ??
@@ -90,10 +96,16 @@ export function prepareContinuationWorkBatchReplacement(params: ContinuationWork
   if (priorParkedFlows.length === 0) {
     return {
       priorParkedFlows,
+      expectedRunningFlowIds:
+        params.expectedRunningFlowIds ?? listRunningContinuationWorkIds(params.sessionKey),
     };
   }
 
-  return { priorParkedFlows };
+  return {
+    priorParkedFlows,
+    expectedRunningFlowIds:
+      params.expectedRunningFlowIds ?? listRunningContinuationWorkIds(params.sessionKey),
+  };
 }
 
 export function buildContinuationWorkBatchFailure(input: {

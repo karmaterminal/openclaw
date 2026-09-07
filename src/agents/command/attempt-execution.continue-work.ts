@@ -429,6 +429,9 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         config: liveSchedulingConfig,
         coalescePriorParkedWork: false,
         priorParkedFlowsToSupersede: priorParkedFlows,
+        expectedRunningFlowIds: existingFlows
+          .filter((flow) => isContinuationWorkFlow(flow) && flow.status === "running")
+          .map((flow) => flow.flowId),
         onFlowEnqueued: (flowId) => {
           createdFlowIds.push(flowId);
           replacementApplied ||= priorParkedFlows.length > 0;
