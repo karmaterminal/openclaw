@@ -50,6 +50,10 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
   const errors: unknown[] = [];
   for (const record of params.pending) {
     const laneKey = params.resolveLaneKey(record);
+    if (blockedLaneKeys.has(laneKey)) {
+      retained.push(record);
+      continue;
+    }
     let disposition;
     try {
       disposition = await params.resolve(record, { laneKey, now: params.now });
