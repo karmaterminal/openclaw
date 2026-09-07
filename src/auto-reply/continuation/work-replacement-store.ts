@@ -235,6 +235,15 @@ export function rollbackPendingWorkReplacement(params: {
           flowId,
           reason: params.summary,
         });
+        if (flow.cancelRequestedAt == null) {
+          requestFlowCancel({
+            flowId,
+            expectedRevision: flow.revision,
+          });
+        }
+        unsafeCreatedOwner = true;
+        unresolvedCreatedFlowIds.push(flowId);
+        continue;
       }
       updates.push({
         flowId,

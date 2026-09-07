@@ -789,8 +789,11 @@ describe("spawn-init continuation cancellation races", () => {
     releaseClaim();
     const flows = listTaskFlowsForOwnerKey(sessionKey);
     expect(wakeSignal?.aborted).toBe(true);
-    expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "queued" });
-    expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "failed" });
+    expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "succeeded" });
+    expect(findFlowByReason(flows, "replacement work")).toMatchObject({
+      status: "running",
+      cancelRequestedAt: expect.any(Number),
+    });
   });
 
   it("atomically rolls back every replacement in a partial batch and survives reload", async () => {
