@@ -156,8 +156,6 @@ function runCandidate(
     getLifecycleGeneration: () => "generation-1",
     onLifecycleGeneration: vi.fn(),
     suppressQueuedUserPersistenceForCandidate: false,
-    suppressAssistantErrorPersistenceForCandidate: false,
-    onAssistantErrorMessagePersisted: vi.fn(),
     userTurnTranscriptRecorder: undefined,
     contextEngineLogicalTurnLease: {} as never,
     onContextEngineTurnCandidate: vi.fn(),
