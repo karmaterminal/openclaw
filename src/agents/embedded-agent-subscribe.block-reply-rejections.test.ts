@@ -878,6 +878,10 @@ describe("subscribeEmbeddedAgentSession block reply rejections", () => {
       await subscription.waitForPendingEvents();
 
       expect(onBlockReply).toHaveBeenCalledTimes(2);
+      expect(onBlockReply.mock.calls.map(([payload]) => payload.mediaUrls)).toEqual([
+        ["/tmp/generated.opus"],
+        ["/tmp/generated.opus"],
+      ]);
       expect(subscription.getPendingToolMediaReply()).toEqual(expectedMedia);
       expect(subscription.getVisibleBlockReplyCount()).toBe(0);
       expect(subscription.hasToolMediaBlockReply()).toBe(false);
