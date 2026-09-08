@@ -13,12 +13,18 @@ export function createOwnerBoundContinuationEntryLoader<T extends ContinuationEn
   loadOwned: (sessionKey: string, agentId?: string) => T | undefined;
   loadFallback: (sessionKey: string, options?: { refresh?: boolean }) => T | undefined;
 }): (sessionKey: string, options?: { refresh?: boolean }) => T | undefined {
-  return (sessionKey, options) =>
-    sessionKey === params.childSessionKey
-      ? params.loadOwned(sessionKey, params.childAgentId)
-      : sessionKey === params.requesterSessionKey
-        ? params.loadOwned(sessionKey, params.requesterAgentId)
-        : params.loadFallback(sessionKey, options);
+  return function loadOwnerBoundContinuationEntry(
+    sessionKey: string,
+    options?: { refresh?: boolean },
+  ): T | undefined {
+    if (sessionKey === params.childSessionKey) {
+      return params.loadOwned(sessionKey, params.childAgentId);
+    }
+    if (sessionKey === params.requesterSessionKey) {
+      return params.loadOwned(sessionKey, params.requesterAgentId);
+    }
+    return params.loadFallback(sessionKey, options);
+  };
 }
 
 export function createSubagentAnnounceEntryReaders() {

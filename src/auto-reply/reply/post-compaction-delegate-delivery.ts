@@ -47,7 +47,10 @@ import {
   POST_COMPACTION_DELEGATE_TTL_MS,
 } from "../continuation/post-compaction-staleness.js";
 import { failReleasedPostCompactionDelegate } from "../continuation/post-compaction-taskflow-rejection.js";
-import { withContinuationOwner } from "../continuation/system-event-ownership.js";
+import {
+  bindContinuationOwner,
+  withContinuationOwner,
+} from "../continuation/system-event-ownership.js";
 import { hasCrossSessionDelegateTargeting } from "../continuation/targeting-pure.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import { normalizePostCompactionDelegate } from "./post-compaction-delegate-normalize.js";
@@ -520,8 +523,7 @@ export async function deliverQueuedPostCompactionDelegate(
     sessionKey: params.entry.sessionKey,
   });
   assertPostCompactionSourceLifecycle(params.entry, sessionEntry);
-  const ownerEventOptions = <T extends object>(options: T): T =>
-    withContinuationOwner(options, agentId);
+  const ownerEventOptions = bindContinuationOwner(agentId);
   const {
     maxChainLength: maxCompactionChainLength,
     costCapTokens: compactionCostCapTokens,
