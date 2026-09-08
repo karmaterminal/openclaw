@@ -785,25 +785,28 @@ describe("runReplyAgent :: continuation.work span", () => {
         update: (entry: SessionEntry) => Partial<SessionEntry> | null,
       ): Promise<SessionEntry | null> => {
         const patch = update(persistedEntry);
-        if (isContinuationChainPatch(patch)) {
+        const continuationPatch = isContinuationChainPatch(patch);
+        if (continuationPatch) {
           continuationPersistenceCalls += 1;
         }
-        if (continuationPersistenceCalls === 2 && isContinuationChainPatch(patch)) {
+        if (continuationPersistenceCalls === 2 && continuationPatch) {
           throw new Error("session database unavailable during reconciliation");
         }
-        setRuntimeConfigSnapshot({
-          ...run.followupRun.run.config,
-          agents: {
-            ...run.followupRun.run.config.agents,
-            defaults: {
-              ...run.followupRun.run.config.agents?.defaults,
-              continuation: {
-                ...run.followupRun.run.config.agents?.defaults?.continuation,
-                maxChainLength: 2,
+        if (continuationPersistenceCalls === 1 && continuationPatch) {
+          setRuntimeConfigSnapshot({
+            ...run.followupRun.run.config,
+            agents: {
+              ...run.followupRun.run.config.agents,
+              defaults: {
+                ...run.followupRun.run.config.agents?.defaults,
+                continuation: {
+                  ...run.followupRun.run.config.agents?.defaults?.continuation,
+                  maxChainLength: 2,
+                },
               },
             },
-          },
-        });
+          });
+        }
         if (!patch) {
           return null;
         }
