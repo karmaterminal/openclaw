@@ -12,6 +12,7 @@ import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { buildGatewaySessionRow } from "../../gateway/session-utils-row.js";
 import { disposeOpenClawAgentDatabaseByPath } from "../../state/openclaw-agent-db.js";
+import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
 import { accountAgentTurn } from "./agent-runner-result-accounting.js";
 import { createMockFollowupRun } from "./test-helpers.js";
 
@@ -46,6 +47,7 @@ async function createFixture() {
     activeSessionStore: { [sessionKey]: entry },
     blockReplyPipeline: null,
     cfg,
+    continuation: resolveContinuationRuntimeConfig(cfg),
     defaultModel: diagnostic.model,
     followupRun: createMockFollowupRun({
       run: {
@@ -58,7 +60,9 @@ async function createFixture() {
         model: diagnostic.model,
       },
     }),
+    getActiveSessionEntry: () => context.activeSessionEntry,
     isHeartbeat: false,
+    noOpRearmWakeClass: undefined,
     pendingToolTasks: new Set(),
     preflightCompactionApplied: false,
     resolvedVerboseLevel: "off",
@@ -73,6 +77,7 @@ async function createFixture() {
     },
     runId: `fallback-run-${id}`,
     runStartedAt: Date.now(),
+    replySessionKey: sessionKey,
     sessionCtx: {},
     sessionKey,
     shouldInjectGroupIntro: false,

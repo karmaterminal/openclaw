@@ -100,8 +100,9 @@ describe("channel ingress pending disposition", () => {
       const fail = queue.fail.bind(queue);
       const failAttempts: string[] = [];
       queue.fail = vi.fn(async (...args: Parameters<typeof queue.fail>) => {
-        failAttempts.push(args[0]);
-        if (args[0] === "broken") {
+        const id = typeof args[0] === "string" ? args[0] : args[0].id;
+        failAttempts.push(id);
+        if (id === "broken") {
           if (name === "dead-letter write") {
             throw new Error("storage unavailable");
           }
