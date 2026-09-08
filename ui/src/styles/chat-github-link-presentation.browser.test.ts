@@ -184,11 +184,9 @@ describeGitHubLinkPresentation("chat GitHub link presentation", () => {
   it.each(["light", "dark"] as const)(
     "paints distinct kind icons and visible hover and keyboard focus states in %s",
     async (themeMode) => {
-      const fixtureFile = path.join(fixtureDirectory, `${themeMode}-interaction.html`);
-      fs.writeFileSync(fixtureFile, fixtureDocument(themeMode), "utf8");
       const page = await browser.newPage();
       try {
-        await page.goto(`file://${fixtureFile}`);
+        await page.setContent(fixtureDocument(themeMode));
         const masks: string[] = [];
         for (const id of ["issue", "pull"]) {
           const chip = page.locator(`#${id}`);
