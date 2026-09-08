@@ -47,9 +47,11 @@ import {
   POST_COMPACTION_DELEGATE_TTL_MS,
 } from "../continuation/post-compaction-staleness.js";
 import { failReleasedPostCompactionDelegate } from "../continuation/post-compaction-taskflow-rejection.js";
+import { withContinuationOwner } from "../continuation/system-event-ownership.js";
 import { hasCrossSessionDelegateTargeting } from "../continuation/targeting-pure.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import { normalizePostCompactionDelegate } from "./post-compaction-delegate-normalize.js";
+import { assertPostCompactionSourceLifecycle } from "./post-compaction-source-lifecycle.js";
 
 export type QueuedPostCompactionDelegateDelivery = Extract<
   QueuedSessionDelivery,
@@ -377,9 +379,10 @@ async function maybeFinalizePreviouslyAcceptedDelivery(params: {
   acceptedChildSessionKey: string;
   deps: PostCompactionDelegateDeliveryDeps;
   entry: QueuedPostCompactionDelegateDelivery;
+  ownerAgentId: string;
   storePath: string;
 }): Promise<boolean> {
-  const { acceptedChildSessionKey, deps, entry, storePath } = params;
+  const { acceptedChildSessionKey, deps, entry, ownerAgentId, storePath } = params;
   if (
     !getSubagentRunByChildSessionKey(acceptedChildSessionKey) &&
     !hasLiveContinuationDelegateChildRun({
@@ -389,6 +392,8 @@ async function maybeFinalizePreviouslyAcceptedDelivery(params: {
   ) {
     return false;
   }
+  const sourceEntry = deps.loadSessionEntry({ storePath, sessionKey: entry.sessionKey });
+  assertPostCompactionSourceLifecycle(entry, sourceEntry);
   if (entry.sourceFlowId && entry.sourceExpectedRevision !== undefined) {
     const sessionEntry = deps.loadSessionEntry({ storePath, sessionKey: entry.sessionKey });
     const { expectedRevision } = await commitAcceptedPostCompactionChainCharge({
@@ -403,6 +408,10 @@ async function maybeFinalizePreviouslyAcceptedDelivery(params: {
       ...(sessionEntry ? { sessionEntry } : {}),
       storePath,
     });
+    assertPostCompactionSourceLifecycle(
+      entry,
+      deps.loadSessionEntry({ storePath, sessionKey: entry.sessionKey }),
+    );
     const committed = deps.markPendingDelegateSpawnAccepted(
       {
         flowId: entry.sourceFlowId,
@@ -424,12 +433,19 @@ async function maybeFinalizePreviouslyAcceptedDelivery(params: {
   // count it, so the replay only reclaims the delivery: preventing a duplicate
   // spawn for a child that is already live is the load-bearing job.
   const entryTraceparent = resolveQueuedPostCompactionTraceparent(entry);
+  assertPostCompactionSourceLifecycle(
+    entry,
+    deps.loadSessionEntry({ storePath, sessionKey: entry.sessionKey }),
+  );
   deps.enqueueSystemEvent(
     `[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ${entry.task}`,
-    {
-      sessionKey: entry.sessionKey,
-      ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
-    },
+    withContinuationOwner(
+      {
+        sessionKey: entry.sessionKey,
+        ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
+      },
+      ownerAgentId,
+    ),
   );
   deps.log(
     `[continuation:post-compaction-source-accepted-recovered] flowId=${entry.sourceFlowId ?? entry.id} child=${acceptedChildSessionKey}`,
@@ -467,6 +483,7 @@ export async function deliverQueuedPostCompactionDelegate(
       acceptedChildSessionKey,
       deps,
       entry: params.entry,
+      ownerAgentId: agentId,
       storePath,
     })
   ) {
@@ -502,6 +519,9 @@ export async function deliverQueuedPostCompactionDelegate(
     storePath,
     sessionKey: params.entry.sessionKey,
   });
+  assertPostCompactionSourceLifecycle(params.entry, sessionEntry);
+  const ownerEventOptions = <T extends object>(options: T): T =>
+    withContinuationOwner(options, agentId);
   const {
     maxChainLength: maxCompactionChainLength,
     costCapTokens: compactionCostCapTokens,
@@ -516,10 +536,10 @@ export async function deliverQueuedPostCompactionDelegate(
     );
     deps.enqueueSystemEvent(
       `[continuation] Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached. Task: ${params.entry.task}`,
-      {
+      ownerEventOptions({
         sessionKey: params.entry.sessionKey,
         ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
-      },
+      }),
     );
     failSourceBackedPostCompactionDelivery(
       deps,
@@ -536,10 +556,10 @@ export async function deliverQueuedPostCompactionDelegate(
     );
     deps.enqueueSystemEvent(
       `[continuation] Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}). Task: ${params.entry.task}`,
-      {
+      ownerEventOptions({
         sessionKey: params.entry.sessionKey,
         ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
-      },
+      }),
     );
     failSourceBackedPostCompactionDelivery(
       deps,
@@ -564,10 +584,10 @@ export async function deliverQueuedPostCompactionDelegate(
     );
     deps.enqueueSystemEvent(
       `[continuation] Post-compaction delegate rejected: cross-session targeting was disabled at delivery time. Task: ${params.entry.task}`,
-      {
+      ownerEventOptions({
         sessionKey: params.entry.sessionKey,
         ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
-      },
+      }),
     );
     failSourceBackedPostCompactionDelivery(
       deps,
@@ -714,6 +734,10 @@ export async function deliverQueuedPostCompactionDelegate(
       storePath,
     });
     activeDispatch.authority.assertCurrent("final-acceptance", null);
+    assertPostCompactionSourceLifecycle(
+      params.entry,
+      deps.loadSessionEntry({ storePath, sessionKey: params.entry.sessionKey }),
+    );
     if (params.entry.sourceFlowId && params.entry.sourceExpectedRevision !== undefined) {
       const spawnedChildSessionKey = spawnResult.childSessionKey ?? acceptedChildSessionKey;
       const committed = deps.markPendingDelegateSpawnAccepted(
@@ -731,12 +755,16 @@ export async function deliverQueuedPostCompactionDelegate(
       }
     }
 
+    assertPostCompactionSourceLifecycle(
+      params.entry,
+      deps.loadSessionEntry({ storePath, sessionKey: params.entry.sessionKey }),
+    );
     deps.enqueueSystemEvent(
       `[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: ${params.entry.task}`,
-      {
+      ownerEventOptions({
         sessionKey: params.entry.sessionKey,
         ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
-      },
+      }),
     );
     rollbackAcceptedSpawn = undefined;
   } finally {

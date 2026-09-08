@@ -64,6 +64,11 @@ export function registerContinuationDelegateDispatchClaim(params: {
   }
   const lifecycleGeneration = getAgentEventLifecycleGeneration();
   const ownerIdentity = ownerSession.load();
+  if (!ownerIdentity) {
+    throw new SpawnSubagentAdmissionCancelledError(
+      "Continuation delegate source session owner is unavailable.",
+    );
+  }
   const activeClaim = registerContinuationDispatchClaim({
     sessionKey: ownerSessionKey,
     flowId,
@@ -82,7 +87,7 @@ export function registerContinuationDelegateDispatchClaim(params: {
         throw new SpawnSubagentAdmissionCancelledError(fence.summary);
       }
     }
-    if (ownerIdentity && !isSameOwnerLifecycle(ownerSession.load(), ownerIdentity)) {
+    if (!isSameOwnerLifecycle(ownerSession.load(), ownerIdentity)) {
       throw new SpawnSubagentAdmissionCancelledError(
         "Continuation delegate source session lifecycle changed.",
       );

@@ -44,7 +44,6 @@ import { getSubagentDepthFromSessionStore } from "../spawn/subagent-depth.js";
 import type { SpawnSubagentMode } from "../spawn/subagent-spawn.types.js";
 import {
   deliverSubagentAnnouncement,
-  loadRequesterSessionEntry,
   loadSessionEntryByKey,
 } from "./subagent-announce-delivery.js";
 import { loadSubagentContinuationRuntime, subagentAnnounceDeps } from "./subagent-announce-deps.js";
@@ -70,6 +69,11 @@ import {
   readSubagentTimeoutProgress,
   waitForSubagentRunOutcome,
 } from "./subagent-announce-output.js";
+import {
+  createOwnerBoundContinuationEntryLoader,
+  createSubagentAnnounceEntryReaders,
+  formatSubagentAnnounceOwnerFailure,
+} from "./subagent-announce-owner-coordination.js";
 import {
   isEmbeddedAgentRunActive,
   waitForEmbeddedAgentRunEnd,
@@ -147,37 +151,8 @@ export async function runSubagentAnnounceFlow(params: {
   let childSessionId: string | undefined;
   let childSessionLifecycleRevision: string | undefined;
   try {
-    const sessionEntryCache = new Map<string, ReturnType<typeof loadSessionEntryByKey>>();
-    const requesterEntryCache = new Map<
-      string,
-      Map<string, ReturnType<typeof loadRequesterSessionEntry>>
-    >();
-    const readSessionEntryByKey = (sessionKey: string, options?: { refresh?: boolean }) => {
-      if (options?.refresh || !sessionEntryCache.has(sessionKey)) {
-        sessionEntryCache.set(sessionKey, loadSessionEntryByKey(sessionKey));
-      }
-      return sessionEntryCache.get(sessionKey);
-    };
-    const readRequesterSessionEntry = (
-      sessionKey: string,
-      agentId?: string,
-      options?: { refresh?: boolean },
-    ) => {
-      let entriesByAgent = requesterEntryCache.get(sessionKey);
-      if (!entriesByAgent) {
-        entriesByAgent = new Map();
-        requesterEntryCache.set(sessionKey, entriesByAgent);
-      }
-      const ownerKey = agentId ?? "";
-      if (options?.refresh || !entriesByAgent.has(ownerKey)) {
-        entriesByAgent.set(ownerKey, loadRequesterSessionEntry(sessionKey, agentId));
-      }
-      return entriesByAgent.get(ownerKey)!;
-    };
-    const invalidateSessionEntry = (sessionKey: string) => {
-      sessionEntryCache.delete(sessionKey);
-      requesterEntryCache.delete(sessionKey);
-    };
+    const { invalidateSessionEntry, readRequesterSessionEntry, readSessionEntryByKey } =
+      createSubagentAnnounceEntryReaders();
     let targetRequesterSessionKey = params.requesterSessionKey;
     let targetRequesterAgentId = params.requesterAgentId;
     let targetRequesterOrigin = normalizeDeliveryContext(params.requesterOrigin);
@@ -538,15 +513,14 @@ export async function runSubagentAnnounceFlow(params: {
       silentAnnounce: params.silentAnnounce,
       wakeOnReturn: params.wakeOnReturn,
       traceparent: params.traceparent,
-      loadEntry: (sessionKey, options) => {
-        if (sessionKey === params.childSessionKey) {
-          return loadSessionEntryByKey(sessionKey, params.childAgentId);
-        }
-        if (sessionKey === targetRequesterSessionKey) {
-          return loadSessionEntryByKey(sessionKey, targetRequesterAgentId);
-        }
-        return readSessionEntryByKey(sessionKey, options);
-      },
+      loadEntry: createOwnerBoundContinuationEntryLoader({
+        childSessionKey: params.childSessionKey,
+        childAgentId: params.childAgentId,
+        requesterSessionKey: targetRequesterSessionKey,
+        requesterAgentId: targetRequesterAgentId,
+        loadOwned: loadSessionEntryByKey,
+        loadFallback: readSessionEntryByKey,
+      }),
       invalidateSessionEntry,
     });
     findings = continuation.findings;
@@ -656,6 +630,7 @@ export async function runSubagentAnnounceFlow(params: {
       ...(artifactProjections ? { managedArtifactProjections: artifactProjections } : {}),
       announceId,
       childSessionKey: params.childSessionKey,
+      childAgentId: continuation.ownerAgentId,
       childRunId: params.childRunId,
       targetRequesterSessionKey,
       targetRequesterAgentId,
@@ -734,12 +709,14 @@ export async function runSubagentAnnounceFlow(params: {
       );
     }
   } catch (err) {
-    const originSession = params.childSessionKey.startsWith("agent:") ? "agent-scoped" : "unscoped";
-    const childOwnerSource = params.childAgentId ? "persisted" : "derived";
-    const ownerReceipt = params.childAgentId ? "present" : "absent";
-    const requesterOwnerSource = params.requesterAgentId ? "persisted" : "derived";
     defaultRuntime.error?.(
-      `Subagent announce failed: stage=${failureStage} originSession=${originSession} childOwnerSource=${childOwnerSource} ownerReceipt=${ownerReceipt} requesterOwnerSource=${requesterOwnerSource} ${String(err)}`,
+      formatSubagentAnnounceOwnerFailure({
+        childSessionKey: params.childSessionKey,
+        childAgentId: params.childAgentId,
+        requesterAgentId: params.requesterAgentId,
+        failureStage,
+        error: err,
+      }),
     );
     // Best-effort follow-ups; ignore failures to avoid breaking the caller response.
   } finally {

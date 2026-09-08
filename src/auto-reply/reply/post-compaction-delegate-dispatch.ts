@@ -59,6 +59,8 @@ export type PostCompactionDelegateDispatchDeps = {
   }): Promise<void>;
   enqueuePostCompactionDelegateDelivery(params: {
     sessionKey: string;
+    sourceSessionId?: string;
+    sourceLifecycleRevision?: string;
     delegate: SessionPostCompactionDelegate;
     sequence: number;
     compactionCount?: number;
@@ -393,10 +395,18 @@ export async function dispatchPostCompactionDelegates(
   }
 
   const deliveryContext = resolvePostCompactionDelegateDeliveryContext(params.followupRun);
+  const sourceEntry = params.sessionEntry ?? params.sessionStore?.[params.sessionKey];
+  if (!sourceEntry?.sessionId) {
+    throw new Error("Post-compaction delegate source session owner is unavailable.");
+  }
   const enqueueResults = await Promise.allSettled(
     releasedCompactionDelegates.map((delegate, sequence) =>
       deps.enqueuePostCompactionDelegateDelivery({
         sessionKey: params.sessionKey,
+        sourceSessionId: sourceEntry.sessionId,
+        ...(sourceEntry.lifecycleRevision
+          ? { sourceLifecycleRevision: sourceEntry.lifecycleRevision }
+          : {}),
         delegate,
         sequence,
         compactionCount: params.compactionCount,

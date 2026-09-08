@@ -100,7 +100,8 @@ import {
   replaceSessionEntry,
 } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
-import { drainSystemEventEntries } from "../infra/system-events.js";
+import { selectAgentSystemEvents } from "../infra/system-event-ownership.js";
+import { drainSystemEventEntries, peekSystemEventEntries } from "../infra/system-events.js";
 import { defaultRuntime } from "../runtime.js";
 import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 import * as subagentSpawn from "./subagents/spawn/subagent-spawn.js";
@@ -359,7 +360,27 @@ describe("subagent announce continuation chaining", () => {
     errorSpy.mockRestore();
   });
 
-  it("stamps requester owner on silent-wake heartbeat routing", async () => {
+  it("isolates child-owned continuation events from other agents", async () => {
+    const childSessionKey = "agent:main:subagent:owned-event";
+    await runContinuationAnnounce({
+      childSessionKey,
+      childTaskPrefix: "",
+      requesterAgentId: "main",
+      childAgentId: "main",
+      reply: "step complete\n[[CONTINUE_DELEGATE: owned event]]",
+      multiAgent: true,
+    });
+
+    const events = peekSystemEventEntries(childSessionKey);
+    expect(events.some((event) => event.text.includes("[continuation:delegate-spawned]"))).toBe(
+      true,
+    );
+    expect(selectAgentSystemEvents(events, "main")).toEqual(events);
+    expect(selectAgentSystemEvents(events, "helper")).toEqual([]);
+    drainSystemEventEntries(childSessionKey);
+  });
+
+  it("routes silent-wake heartbeat to the requester without changing child event ownership", async () => {
     await runContinuationAnnounce({
       childSessionKey: "agent:main:subagent:silent-owned",
       childTaskPrefix: "",

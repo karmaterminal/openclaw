@@ -33,6 +33,7 @@ import {
 } from "./post-compaction-staleness.js";
 import { rejectPostCompactionTaskFlowDelegate } from "./post-compaction-taskflow-rejection.js";
 import { checkContinuationBudget, type ChainState } from "./scheduler.js";
+import { withContinuationOwner } from "./system-event-ownership.js";
 import { hasCrossSessionDelegateTargeting } from "./targeting-pure.js";
 
 const postCompactionLog = createSubsystemLogger("continuation/compaction");
@@ -108,6 +109,12 @@ export async function dispatchStagedPostCompactionDelegates(
   const accumulatedChainTokens = options?.chainState?.accumulatedChainTokens ?? 0;
   let currentChainCount = options?.chainState?.currentChainCount ?? 0;
   let currentChainId = options?.chainState?.chainId;
+  const ownerSession = createContinuationOwnerSessionLoader(
+    sessionKey,
+    spawnCtx.requesterAgentIdOverride,
+  );
+  const ownerEventOptions = <T extends object>(eventOptions: T): T =>
+    withContinuationOwner(eventOptions, ownerSession.agentId);
 
   postCompactionLog.info(
     `[continuation:compaction-delegate] Consuming ${delegates.length} compaction delegate(s) for session ${sessionKey}`,
@@ -147,7 +154,7 @@ export async function dispatchStagedPostCompactionDelegates(
     );
     enqueueSystemEvent(
       `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-      { sessionKey, trusted: true },
+      ownerEventOptions({ sessionKey, trusted: true }),
     );
     markTerminalRejected(delegate, summary);
   };
@@ -220,7 +227,7 @@ export async function dispatchStagedPostCompactionDelegates(
     );
     enqueueSystemEvent(
       `[continuation] Post-compaction delegate rejected: maxDelegatesPerTurn exceeded (${config.maxDelegatesPerTurn}). Task: ${formatDelegateTaskForSystemEvent(dropped.task)}`,
-      { sessionKey, trusted: true },
+      ownerEventOptions({ sessionKey, trusted: true }),
     );
     emitContinuationDisabledSpan({
       chainId: undefined,
@@ -284,7 +291,7 @@ export async function dispatchStagedPostCompactionDelegates(
       );
       enqueueSystemEvent(
         `[continuation] Post-compaction delegate rejected: cross-session targeting is disabled by policy. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        { sessionKey, trusted: true },
+        ownerEventOptions({ sessionKey, trusted: true }),
       );
       emitContinuationDisabledSpan({
         chainId: undefined,
@@ -323,7 +330,7 @@ export async function dispatchStagedPostCompactionDelegates(
       );
       enqueueSystemEvent(
         `[continuation] Post-compaction delegate rejected: ${summary}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        { sessionKey, trusted: true },
+        ownerEventOptions({ sessionKey, trusted: true }),
       );
       emitContinuationDisabledSpan({
         chainId: undefined,
@@ -342,10 +349,7 @@ export async function dispatchStagedPostCompactionDelegates(
     const activeDispatch = registerContinuationDelegateDispatchClaim({
       controller: "post-compaction",
       delegate,
-      ownerSession: createContinuationOwnerSessionLoader(
-        sessionKey,
-        spawnCtx.requesterAgentIdOverride,
-      ),
+      ownerSession,
       ownerSessionKey: sessionKey,
     });
     let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
@@ -373,7 +377,7 @@ export async function dispatchStagedPostCompactionDelegates(
         );
         enqueueSystemEvent(
           `[continuation] ${spawnFence.summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          { sessionKey, trusted: true },
+          ownerEventOptions({ sessionKey, trusted: true }),
         );
         continue;
       }
@@ -451,7 +455,7 @@ export async function dispatchStagedPostCompactionDelegates(
       );
       enqueueSystemEvent(
         `[continuation] Post-compaction delegate spawn ${spawnResult.status}: ${spawnResult.error ?? "delegation was not accepted."}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        { sessionKey, trusted: true },
+        ownerEventOptions({ sessionKey, trusted: true }),
       );
       if (spawnResult.status === "forbidden") {
         markTerminalRejected(
@@ -478,7 +482,7 @@ export async function dispatchStagedPostCompactionDelegates(
       );
       enqueueSystemEvent(
         `[continuation] Post-compaction delegate spawn failed: ${String(err)}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        { sessionKey, trusted: true },
+        ownerEventOptions({ sessionKey, trusted: true }),
       );
       noteTransientFailure(delegate);
     } finally {

@@ -37,6 +37,12 @@ let updateSessionStoreForRecoveryShouldThrow = false;
 let updateSessionStoreForRecoveryRequiredWriteCalls = 0;
 let updateSessionStoreForRecoveryThrowOnRequiredWriteCall: number | undefined;
 
+const loadOwnerSession = (_target: object, sessionKey: string | symbol) =>
+  typeof sessionKey === "string"
+    ? { sessionId: `session-${sessionKey}`, lifecycleRevision: "revision-1" }
+    : undefined;
+const ownerSessionStore = new Proxy<Record<string, unknown>>({}, { get: loadOwnerSession });
+
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
@@ -314,7 +320,7 @@ beforeEach(() => {
   spawnSubagentDirectMock.mockReset().mockResolvedValue({ status: "accepted" });
   assertDelegateArtifactPolicyPreparedMock.mockClear();
   removeUnacceptedDelegateArtifactPolicyMock.mockClear();
-  loadSessionStoreForRecoveryMock.mockReset().mockReturnValue({});
+  loadSessionStoreForRecoveryMock.mockReset().mockReturnValue(ownerSessionStore);
   flowIdCounter = 0;
   listTaskFlowsShouldThrow = false;
   activeRegistryChildSessionKeys.clear();

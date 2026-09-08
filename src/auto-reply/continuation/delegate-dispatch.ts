@@ -54,6 +54,7 @@ import {
 } from "./delegate-store.js";
 import { formatDelegateTaskForSystemEvent } from "./delegate-system-event.js";
 import { checkContinuationBudget, type ChainState } from "./scheduler.js";
+import { bindContinuationOwner } from "./system-event-ownership.js";
 import { hasCrossSessionDelegateTargeting } from "./targeting-pure.js";
 import type { PendingContinuationDelegate } from "./types.js";
 
@@ -167,6 +168,8 @@ export async function dispatchToolDelegates(
   if (toolDelegates.length === 0) {
     return { dispatched: 0, rejected: 0, chainState };
   }
+  const ownerSession = createContinuationOwnerSessionLoader(sessionKey, ctx.ownerAgentId);
+  const ownerEventOptions = bindContinuationOwner(ownerSession.agentId);
 
   log.info(
     `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}`,
@@ -272,10 +275,10 @@ export async function dispatchToolDelegates(
     }
     enqueueSystemEvent(
       `[continuation] ${summary}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-      {
+      ownerEventOptions({
         sessionKey,
         trusted: true,
-      },
+      }),
     );
   }
 
@@ -295,10 +298,10 @@ export async function dispatchToolDelegates(
     terminalizeRejectedDelegate(failedDelegate, summary);
     enqueueSystemEvent(
       `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(dropped.task)}`,
-      {
+      ownerEventOptions({
         sessionKey,
         trusted: true,
-      },
+      }),
     );
   }
 
@@ -349,10 +352,10 @@ export async function dispatchToolDelegates(
       markPendingDelegateFailed(failedDelegate, summary);
       enqueueSystemEvent(
         `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        {
+        ownerEventOptions({
           sessionKey,
           trusted: true,
-        },
+        }),
       );
       emitContinuationDisabledSpan({
         chainId: undefined,
@@ -411,10 +414,10 @@ export async function dispatchToolDelegates(
       terminalizeRejectedDelegate(failedDelegate, summary);
       enqueueSystemEvent(
         `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        {
+        ownerEventOptions({
           sessionKey,
           trusted: true,
-        },
+        }),
       );
       rejected++;
       continue;
@@ -461,7 +464,7 @@ export async function dispatchToolDelegates(
     const activeDispatch = registerContinuationDelegateDispatchClaim({
       controller: "pending",
       delegate,
-      ownerSession: createContinuationOwnerSessionLoader(sessionKey, ctx.ownerAgentId),
+      ownerSession,
       ownerSessionKey: sessionKey,
     });
     try {
@@ -531,10 +534,10 @@ export async function dispatchToolDelegates(
         dispatchSpan.setStatus("ERROR", spawnFence.summary);
         enqueueSystemEvent(
           `[continuation] ${spawnFence.summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          {
+          ownerEventOptions({
             sessionKey,
             trusted: true,
-          },
+          }),
         );
         rejected++;
         continue;
@@ -590,7 +593,7 @@ export async function dispatchToolDelegates(
         );
         enqueueSystemEvent(
           `[continuation:delegate-spawned] Spawned turn ${nextHop}/${maxChainLength}: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          { sessionKey, trusted: true },
+          ownerEventOptions({ sessionKey, trusted: true }),
         );
         const acceptedChildSessionKey = result.childSessionKey ?? childSessionKey;
         const acceptedDelegate = await persistTerminalChainState(
@@ -642,10 +645,10 @@ export async function dispatchToolDelegates(
           dispatchSpan.setStatus("ERROR", reasonText);
           enqueueSystemEvent(
             `[continuation] ${summary}; managed work was deferred for retry. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-            {
+            ownerEventOptions({
               sessionKey,
               trusted: true,
-            },
+            }),
           );
           continue;
         }
@@ -658,10 +661,10 @@ export async function dispatchToolDelegates(
         dispatchSpan.setStatus("ERROR", reasonText);
         enqueueSystemEvent(
           `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          {
+          ownerEventOptions({
             sessionKey,
             trusted: true,
-          },
+          }),
         );
         rejected++;
       }
@@ -699,10 +702,10 @@ export async function dispatchToolDelegates(
         armManagedSpawnRetry();
         enqueueSystemEvent(
           `[continuation] ${summary}; managed work was deferred for retry. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          {
+          ownerEventOptions({
             sessionKey,
             trusted: true,
-          },
+          }),
         );
         continue;
       }
@@ -717,10 +720,10 @@ export async function dispatchToolDelegates(
       terminalizeRejectedDelegate(failedDelegate, summary);
       enqueueSystemEvent(
         `[continuation] ${summary}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        {
+        ownerEventOptions({
           sessionKey,
           trusted: true,
-        },
+        }),
       );
       rejected++;
     } finally {

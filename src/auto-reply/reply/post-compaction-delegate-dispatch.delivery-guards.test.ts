@@ -206,6 +206,7 @@ function createQueuedEntry(
     id: "queue-1",
     kind: "postCompactionDelegate",
     sessionKey: "main",
+    sourceSessionId: "session",
     task: "queued delegate",
     // Armed at the delivery clock: an entry stamped at epoch 1 would be ~54
     // years old and would terminalize on the RFC §4.4 stale gate instead of
@@ -536,6 +537,36 @@ describe("post-compaction delegate dispatch extraction", () => {
     });
   });
 
+  it("rejects accepted recovery after the source session lifecycle is replaced", async () => {
+    await withTestDir({ prefix: "openclaw-post-compaction-source-flow-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      await seedSessionStore(storePath, {
+        main: { sessionId: "replacement", lifecycleRevision: "revision-2", updatedAt: Date.now() },
+      });
+      const childSessionKey = deriveTestContinuationChildSessionKey("main", "pc-flow-source");
+      mockRegistryState.acceptedChildSessionKeys.add(childSessionKey);
+      const { deps, enqueueSystemEvent, markPendingDelegateSpawnAccepted, spawnSubagentDirect } =
+        createDeliveryDeps({ storePath });
+
+      await expect(
+        deliverQueuedPostCompactionDelegate(
+          {
+            entry: createQueuedEntry({
+              sourceSessionId: "original",
+              sourceLifecycleRevision: "revision-1",
+              sourceFlowId: "pc-flow-source",
+              sourceExpectedRevision: 7,
+            }),
+          },
+          deps,
+        ),
+      ).rejects.toThrow("Continuation delegate source session lifecycle changed.");
+      expect(spawnSubagentDirect).not.toHaveBeenCalled();
+      expect(markPendingDelegateSpawnAccepted).not.toHaveBeenCalled();
+      expect(enqueueSystemEvent).not.toHaveBeenCalled();
+    });
+  });
+
   it("fails source rows for forbidden delivery spawns but leaves transient spawn errors retryable", async () => {
     await withTestDir({ prefix: "openclaw-post-compaction-source-flow-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
@@ -689,6 +720,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       const deliveryId = await enqueuePostCompactionDelegateDeliveryQueue(
         {
           sessionKey: "main",
+          sourceSessionId: "session",
           delegate: {
             task: "queued delegate",
             createdAt: DELIVERY_NOW_MS,
@@ -733,6 +765,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       const deliveryId = await enqueuePostCompactionDelegateDeliveryQueue(
         {
           sessionKey: "main",
+          sourceSessionId: "session",
           delegate: {
             task: "hold while continuation is disabled",
             createdAt: DELIVERY_NOW_MS,

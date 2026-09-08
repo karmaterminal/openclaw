@@ -84,6 +84,7 @@ function createQueuedEntry(
     id: "queue-1",
     kind: "postCompactionDelegate",
     sessionKey: "main",
+    sourceSessionId: "session",
     task: "queued delegate",
     createdAt: DELIVERY_NOW_MS,
     firstArmedAt: DELIVERY_NOW_MS,

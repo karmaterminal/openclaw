@@ -147,6 +147,8 @@ type QueuedSessionDeliveryGenericPayload =
 type QueuedPostCompactionDelegatePayload = {
   kind: "postCompactionDelegate";
   sessionKey: string;
+  sourceSessionId?: string;
+  sourceLifecycleRevision?: string;
   task: string;
   createdAt: number;
   firstArmedAt?: number;
@@ -444,6 +446,8 @@ const QueuedPostCompactionDelegateSchema = z
   .object({
     kind: z.literal("postCompactionDelegate"),
     sessionKey: z.string().trim().min(1),
+    sourceSessionId: z.string().trim().min(1).optional(),
+    sourceLifecycleRevision: z.string().trim().min(1).optional(),
     task: z.string().trim().min(1).max(4096),
     createdAt: z.number(),
     firstArmedAt: z.number().optional(),

@@ -3,6 +3,7 @@ import {
   continuationRecipientAuthorityMap,
   parseContinuationRecipientAuthorityBinding,
 } from "../auto-reply/continuation/recipient-authority-binding.js";
+import { withContinuationOwner } from "../auto-reply/continuation/system-event-ownership.js";
 import {
   enqueueContinuationReturnDeliveries,
   resolveContinuationReturnTargetSessionKeys,
@@ -17,7 +18,6 @@ import {
   requestHeartbeatNow,
 } from "../infra/heartbeat-wake.js";
 import type { DelegateArtifactDeliveryReceipt } from "../infra/session-delivery-queue-storage.js";
-import { withSystemEventOwner } from "../infra/system-event-ownership.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { defaultRuntime } from "../runtime.js";
@@ -78,6 +78,7 @@ export async function routeSubagentContinuationReturn(params: {
   managedArtifactReturn?: boolean;
   announceId: string;
   childSessionKey: string;
+  childAgentId?: string;
   childRunId: string;
   targetRequesterSessionKey: string;
   targetRequesterAgentId?: string;
@@ -234,6 +235,7 @@ export async function routeSubagentContinuationReturn(params: {
           ? { chainStepRemaining: completionTrace.chainStepRemaining }
           : {}),
         ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
+        ownerAgentId: params.childAgentId,
       });
     }
     defaultRuntime.log(
@@ -274,14 +276,11 @@ export async function routeSubagentContinuationReturn(params: {
       trusted: true,
       ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
     };
-    const requesterEventOptions = params.targetRequesterAgentId
-      ? withSystemEventOwner(eventOptions, params.targetRequesterAgentId)
-      : eventOptions;
     enqueueSystemEvent(
       params.triggerMessagesBySessionKey?.get(params.targetRequesterSessionKey) ||
         params.triggerMessage ||
         `[continuation:enrichment-return] Delegate completed: ${params.taskLabel}`,
-      requesterEventOptions,
+      withContinuationOwner(eventOptions, params.childAgentId),
     );
     continuationLog.info(
       `[continuation:enrichment-return] Delivered to ${params.targetRequesterSessionKey} from ${params.childSessionKey}`,

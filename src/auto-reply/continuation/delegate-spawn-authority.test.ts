@@ -29,7 +29,49 @@ describe("continuation delegate claim construction", () => {
     expect(abortSpy).not.toHaveBeenCalled();
   });
 
-  it("returns the persisted owner and revalidates its lifecycle before spawn boundaries", () => {
+  it("rejects a missing source owner before registering a claim", () => {
+    const abortSpy = vi.spyOn(AbortController.prototype, "abort");
+    const ownerSessionKey = "agent:main:missing-owner";
+
+    expect(() =>
+      registerContinuationDelegateDispatchClaim({
+        controller: "pending",
+        delegate: { task: "must not register" },
+        ownerSession: { agentId: "main", load: () => undefined },
+        ownerSessionKey,
+      }),
+    ).toThrow("Continuation delegate source session owner is unavailable.");
+
+    abortContinuationDispatchClaims(ownerSessionKey);
+    expect(abortSpy).not.toHaveBeenCalled();
+  });
+
+  it.each(["gateway-dispatch", "final-acceptance"] as const)(
+    "rejects an owner deleted before %s",
+    (boundary) => {
+      const ownerSessionKey = `agent:main:deleted-${boundary}`;
+      let current: { sessionId: string; lifecycleRevision: string; updatedAt: number } | undefined =
+        {
+          sessionId: "session-1",
+          lifecycleRevision: "revision-1",
+          updatedAt: 1,
+        };
+      const claim = registerContinuationDelegateDispatchClaim({
+        controller: "pending",
+        delegate: { task: "owned delegate" },
+        ownerSession: { agentId: "main", load: () => current },
+        ownerSessionKey,
+      });
+      current = undefined;
+
+      expect(() => claim.authority.assertCurrent(boundary, null)).toThrow(
+        "Continuation delegate source session lifecycle changed.",
+      );
+      claim.release();
+    },
+  );
+
+  it("returns the persisted owner and rejects a replaced lifecycle", () => {
     const ownerSessionKey = "agent:main:owner";
     let current = {
       sessionId: "session-1",
