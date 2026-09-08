@@ -33,6 +33,25 @@ type TestRunEntryParams = {
   ) => Promise<EmbeddedAgentRunResult>;
 };
 
+const testDatabase = {
+  db: { isOpen: true },
+  agentId: "main",
+  path: "/tmp/openclaw-agent-runner-test.sqlite",
+};
+
+export function createCurrentTestDatabaseEntry<T>(entry: T) {
+  return {
+    entry,
+    databaseClaim: {
+      database: testDatabase,
+      identity: "agent-runner-test-database",
+      isCurrent: () => true,
+      assertCurrent: () => {},
+      release: () => {},
+    },
+  };
+}
+
 export function createSuccessfulEmbeddedAgentEntryMock(
   getRunWithModelFallback: () => TestFallbackRunner,
 ) {
