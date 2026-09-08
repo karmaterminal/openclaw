@@ -291,6 +291,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       chatLog,
       btw: (params?.btw ?? context.btw) as MockBtwPresenter & HandlerBtwPresenter,
       ...handlers,
+      setActivityStatus: context.setActivityStatus,
     };
   };
 
