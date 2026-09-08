@@ -81,6 +81,7 @@ const RequestCompactionToolSchema = Type.Object({
 
 export type RequestCompactionPersistedNullCause =
   | "missing_entry"
+  | "session_binding_mismatch"
   | "missing_total_tokens"
   | "invalid_total_tokens"
   | "stale_total_tokens"
@@ -92,6 +93,7 @@ export type RequestCompactionContextUsageDiagnostics = {
   callbackSessionId?: string;
   callbackSessionKey?: string;
   entryPresent?: boolean;
+  sessionBindingMatches?: boolean;
   totalTokens?: number | null;
   totalTokensFresh?: boolean | null;
   totalTokensVersion?: number | null;
@@ -245,6 +247,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
           `callbackSessionKey=${contextDiagnostics?.callbackSessionKey ?? "none"} ` +
           `callbackSessionId=${contextDiagnostics?.callbackSessionId ?? "none"} ` +
           `entryPresent=${contextDiagnostics?.entryPresent ?? false} ` +
+          `sessionBindingMatches=${contextDiagnostics?.sessionBindingMatches ?? "unknown"} ` +
           `totalTokens=${contextDiagnostics?.totalTokens ?? "none"} ` +
           `totalTokensFresh=${contextDiagnostics?.totalTokensFresh ?? "none"} ` +
           `totalTokensVersion=${contextDiagnostics?.totalTokensVersion ?? "none"} ` +
@@ -268,15 +271,16 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         });
       }
       if (contextUsage < MIN_CONTEXT_THRESHOLD) {
+        const threshold = Math.round(MIN_CONTEXT_THRESHOLD * 100);
         log.debug(
-          `[request_compaction:below-threshold] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}%`,
+          `[request_compaction:below-threshold] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}% threshold=${threshold}%`,
         );
         return jsonResult({
           status: "rejected",
           guard: "context_threshold",
           contextUsage: Math.round(contextUsage * 100),
-          threshold: Math.round(MIN_CONTEXT_THRESHOLD * 100),
-          reason: `Context usage (${Math.round(contextUsage * 100)}%) is below the minimum threshold (${Math.round(MIN_CONTEXT_THRESHOLD * 100)}%). Compaction is not needed yet.`,
+          threshold,
+          reason: `Context usage (${Math.round(contextUsage * 100)}%) is below the minimum threshold (${threshold}%). Compaction is not needed yet.`,
         });
       }
 

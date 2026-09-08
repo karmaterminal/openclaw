@@ -114,7 +114,7 @@ describe("request_compaction tool — classifier emission", () => {
     expect(thresholdLogs).toEqual([
       {
         level: "debug",
-        message: `[request_compaction:below-threshold] session=${SESSION_KEY} usage=69.0%`,
+        message: `[request_compaction:below-threshold] session=${SESSION_KEY} usage=69.0% threshold=70%`,
       },
     ]);
     expect(thresholdLogs[0]?.message).not.toContain(REASON);
@@ -161,7 +161,7 @@ describe("request_compaction tool — classifier emission", () => {
         `[request_compaction:context-source] origin=live_runner usageSource=unavailable ` +
         `session=${SESSION_KEY} runId=none sessionId=${SESSION_ID} ` +
         `callbackSessionKey=${SESSION_KEY} callbackSessionId=${SESSION_ID} ` +
-        "entryPresent=true totalTokens=none totalTokensFresh=none " +
+        "entryPresent=true sessionBindingMatches=unknown totalTokens=none totalTokensFresh=none " +
         "totalTokensVersion=none contextWindow=272000 contextWindowSource=active_model " +
         "liveTokens=none liveContextWindow=272000 nullCause=live_context_unavailable " +
         "persistedNullCause=missing_total_tokens liveNullCause=none",

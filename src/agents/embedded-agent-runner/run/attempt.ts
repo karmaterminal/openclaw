@@ -439,6 +439,7 @@ export async function runEmbeddedAttempt(
                     usageSource: contextAvailable ? "live_in_flight" : "unavailable",
                     callbackSessionId: params.sessionId,
                     callbackSessionKey: params.sessionKey,
+                    sessionBindingMatches: true,
                     contextWindow: usage?.contextWindow ?? null,
                     contextWindowSource: "active_model",
                     liveTokens: usage?.tokens ?? null,

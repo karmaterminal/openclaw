@@ -237,6 +237,7 @@ export async function runEmbeddedFallbackCandidate(
               getContextUsage: () =>
                 computeRequestCompactionContextUsage({
                   entry: turn.getActiveSessionEntry(),
+                  callbackSessionId: turn.followupRun.run.sessionId,
                   cfg: params.runtimeConfig,
                   provider: embeddedRunProvider,
                   model: params.model,

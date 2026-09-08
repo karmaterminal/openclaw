@@ -122,6 +122,7 @@ export async function releaseQueuedCompactionTolerant(
 
 type RequestCompactionContextUsageParams = {
   entry: SessionEntry | undefined;
+  callbackSessionId?: string;
   cfg: OpenClawConfig | undefined;
   provider: string;
   model: string;
@@ -135,6 +136,7 @@ type RequestCompactionContextWindow = {
 type RequestCompactionContextUsageSnapshot = RequestCompactionContextWindow & {
   contextUsage: number | null;
   entryPresent: boolean;
+  sessionBindingMatches: boolean;
   totalTokens: number | null;
   totalTokensFresh: boolean | null;
   totalTokensVersion: number | null;
@@ -173,14 +175,17 @@ export function inspectRequestCompactionContextUsage(
   params: RequestCompactionContextUsageParams,
 ): RequestCompactionContextUsageSnapshot {
   const freshTotalTokens = resolveFreshSessionTotalTokens(params.entry);
+  const sessionBindingMatches =
+    params.callbackSessionId === undefined || params.entry?.sessionId === params.callbackSessionId;
   const { contextWindow, contextWindowSource } = resolveRequestCompactionContextWindow(params);
 
   return {
     contextUsage:
-      freshTotalTokens !== undefined && contextWindow !== null
+      sessionBindingMatches && freshTotalTokens !== undefined && contextWindow !== null
         ? freshTotalTokens / contextWindow
         : null,
     entryPresent: params.entry !== undefined,
+    sessionBindingMatches,
     totalTokens: params.entry?.totalTokens ?? null,
     totalTokensFresh: params.entry?.totalTokensFresh ?? null,
     totalTokensVersion: params.entry?.totalTokensVersion ?? null,
@@ -196,16 +201,15 @@ export function inspectRequestCompactionContextUsage(
  * null-cause derivation lives in one place.
  */
 export function buildPersistedContextUsageDiagnostics(
-  params: RequestCompactionContextUsageParams & {
-    callbackSessionId?: string;
-    callbackSessionKey?: string;
-  },
+  params: RequestCompactionContextUsageParams & { callbackSessionKey?: string },
 ): RequestCompactionContextUsageDiagnostics {
   const snapshot = inspectRequestCompactionContextUsage(params);
   const validTotalTokens = resolveSessionTotalTokens(params.entry);
   let persistedNullCause: RequestCompactionPersistedNullCause | undefined;
   if (!snapshot.entryPresent) {
     persistedNullCause = "missing_entry";
+  } else if (!snapshot.sessionBindingMatches) {
+    persistedNullCause = "session_binding_mismatch";
   } else if (params.entry?.totalTokens == null) {
     persistedNullCause = "missing_total_tokens";
   } else if (validTotalTokens === undefined) {
@@ -223,6 +227,7 @@ export function buildPersistedContextUsageDiagnostics(
     callbackSessionId: params.callbackSessionId,
     callbackSessionKey: params.callbackSessionKey,
     entryPresent: snapshot.entryPresent,
+    sessionBindingMatches: snapshot.sessionBindingMatches,
     totalTokens: snapshot.totalTokens,
     totalTokensFresh: snapshot.totalTokensFresh,
     totalTokensVersion: snapshot.totalTokensVersion,
@@ -236,10 +241,5 @@ export function buildPersistedContextUsageDiagnostics(
 export function computeRequestCompactionContextUsage(
   params: RequestCompactionContextUsageParams,
 ): number | null {
-  const freshTotalTokens = resolveFreshSessionTotalTokens(params.entry);
-  if (freshTotalTokens === undefined) {
-    return null;
-  }
-  const { contextWindow } = resolveRequestCompactionContextWindow(params);
-  return contextWindow === null ? null : freshTotalTokens / contextWindow;
+  return inspectRequestCompactionContextUsage(params).contextUsage;
 }

@@ -1342,6 +1342,7 @@ export async function runAgentAttempt(params: {
         getContextUsage: () =>
           computeRequestCompactionContextUsage({
             entry: params.sessionEntry,
+            callbackSessionId: params.sessionId,
             cfg: params.cfg,
             provider: embeddedAgentProvider,
             model: params.modelOverride,

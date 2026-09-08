@@ -11,9 +11,9 @@
  * both schedule a next turn and reclaim context when pressure rises.
  */
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createTestPreparedRunAdmission } from "../admitted-run-context.test-support.js";
@@ -76,6 +76,8 @@ vi.mock("../embedded-agent.js", () => ({
   runEmbeddedAgent: runEmbeddedAgentMock,
 }));
 
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+
 function makeEmbeddedResult(): EmbeddedAgentRunResult {
   return {
     payloads: [{ text: "ok" }],
@@ -132,7 +134,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
   const sessionKey = "agent:main:subagent:917-trap";
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-917-trap-"));
+    tmpDir = tempDirs.make("openclaw-917-trap-");
     storePath = path.join(tmpDir, "sessions.json");
     runEmbeddedAgentMock.mockReset();
     runCliAgentMock.mockReset();
@@ -143,10 +145,6 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     } as SessionEntry;
     sessionStore = { [sessionKey]: sessionEntry };
     await fs.writeFile(storePath, JSON.stringify(sessionStore, null, 2), "utf-8");
-  });
-
-  afterEach(async () => {
-    await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
   async function runEmbeddedAttempt(cfg: OpenClawConfig) {

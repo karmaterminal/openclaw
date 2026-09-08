@@ -86,6 +86,7 @@ describe("inspectRequestCompactionContextUsage", () => {
     ).toEqual({
       contextUsage: null,
       entryPresent: true,
+      sessionBindingMatches: true,
       totalTokens: 32_000,
       totalTokensFresh: false,
       totalTokensVersion: 1,
@@ -111,6 +112,7 @@ describe("inspectRequestCompactionContextUsage", () => {
     ).toEqual({
       contextUsage: 0.1,
       entryPresent: true,
+      sessionBindingMatches: true,
       totalTokens: 10_000,
       totalTokensFresh: true,
       totalTokensVersion: 1,
@@ -141,6 +143,35 @@ describe("inspectRequestCompactionContextUsage", () => {
 });
 
 describe("buildPersistedContextUsageDiagnostics", () => {
+  it("rejects a fresh entry bound to a different session", async () => {
+    const buildDiagnostics = await getBuildPersistedContextUsageDiagnostics();
+    const compute = await getComputeRequestCompactionContextUsage();
+    const entry = makeEntry({
+      sessionId: "stale-session",
+      totalTokens: 10_000,
+      contextTokens: 100_000,
+    });
+    const params = {
+      entry,
+      callbackSessionId: "invoking-child-session",
+      callbackSessionKey: "agent:main:subagent:invoking-child",
+      cfg: CFG,
+      provider: PROVIDER,
+      model: MODEL,
+    };
+
+    expect(compute(params)).toBeNull();
+    expect(buildDiagnostics(params)).toMatchObject({
+      usageSource: "unavailable",
+      callbackSessionId: "invoking-child-session",
+      callbackSessionKey: "agent:main:subagent:invoking-child",
+      entryPresent: true,
+      sessionBindingMatches: false,
+      nullCause: "session_binding_mismatch",
+      persistedNullCause: "session_binding_mismatch",
+    });
+  });
+
   it("classifies invalid tokens and version mismatch with machine-readable causes", async () => {
     const build = await getBuildPersistedContextUsageDiagnostics();
 
