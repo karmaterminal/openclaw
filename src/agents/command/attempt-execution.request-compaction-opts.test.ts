@@ -147,7 +147,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
 
   async function runEmbeddedAttempt(
     cfg: OpenClawConfig,
-    opts: Parameters<typeof runAgentAttempt>[0]["opts"] = {},
+    opts: Partial<Parameters<typeof runAgentAttempt>[0]["opts"]> = {},
   ) {
     await runAgentAttempt({
       preparedRunAdmission: createTestPreparedRunAdmission("run-test"),
@@ -173,7 +173,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
       resolvedThinkLevel: "medium",
       timeoutMs: 1_000,
       runId: "run-917-trap",
-      opts,
+      opts: { message: "trap-test prompt", ...opts },
       runContext: {} as Parameters<typeof runAgentAttempt>[0]["runContext"],
       spawnedBy: undefined,
       messageChannel: undefined,
