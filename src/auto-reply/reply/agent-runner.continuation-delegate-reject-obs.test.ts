@@ -19,6 +19,7 @@ import {
   type Tracer,
 } from "../../infra/continuation-tracer.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
+import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { testing as replyRunRegistryTesting } from "./reply-run-registry.test-support.js";
@@ -228,6 +229,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  resetDelegateDispatchHedgesForTests();
   clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
   replyRunRegistryTesting.resetReplyRunRegistry();
@@ -285,6 +287,7 @@ function createContinuationRun(params?: {
       skillsSnapshot: {},
       provider: "anthropic",
       model: "claude",
+      thinkingCatalog: [{ provider: "anthropic", id: "claude", input: ["text"] }],
       thinkLevel: "low",
       verboseLevel: "off",
       elevatedLevel: "off",
