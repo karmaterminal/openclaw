@@ -342,36 +342,44 @@ export function handleAgentEnd(
     if (!isCurrentDeliveryGeneration()) {
       return;
     }
-    ctx.releaseDeferredReplies();
-    const flushBlockReplyBufferResult = ctx.flushBlockReplyBuffer({
-      final: true,
-      retryFailures: true,
-    });
-    finalizeAgentEnd();
-    const flushPendingMediaAndChannelResult = isPromiseLike<void>(flushBlockReplyBufferResult)
-      ? Promise.resolve(flushBlockReplyBufferResult).then(() =>
-          isCurrentDeliveryGeneration() ? flushPendingMediaAndChannel() : undefined,
-        )
-      : flushPendingMediaAndChannel();
-
-    if (isPromiseLike<void>(flushPendingMediaAndChannelResult)) {
-      return Promise.resolve(flushPendingMediaAndChannelResult).then(
-        () => (isCurrentDeliveryGeneration() ? emitLifecycleTerminalOnce() : undefined),
-        (error: unknown) => {
-          if (!isCurrentDeliveryGeneration()) {
-            return undefined;
-          }
-          const emitted = emitLifecycleTerminalOnce();
-          if (isPromiseLike<void>(emitted)) {
-            return Promise.resolve(emitted).then(() => {
-              throw error;
-            });
-          }
-          throw error;
-        },
-      );
+    const continueTerminalDelivery = () => {
+      if (!isCurrentDeliveryGeneration()) {
+        return;
+      }
+      const flushBlockReplyBufferResult = ctx.flushBlockReplyBuffer({
+        final: true,
+        retryFailures: true,
+      });
+      finalizeAgentEnd();
+      const flushPendingMediaAndChannelResult = isPromiseLike<void>(flushBlockReplyBufferResult)
+        ? Promise.resolve(flushBlockReplyBufferResult).then(() =>
+            isCurrentDeliveryGeneration() ? flushPendingMediaAndChannel() : undefined,
+          )
+        : flushPendingMediaAndChannel();
+      if (isPromiseLike<void>(flushPendingMediaAndChannelResult)) {
+        return Promise.resolve(flushPendingMediaAndChannelResult).then(
+          () => (isCurrentDeliveryGeneration() ? emitLifecycleTerminalOnce() : undefined),
+          (error: unknown) => {
+            if (!isCurrentDeliveryGeneration()) {
+              return undefined;
+            }
+            const emitted = emitLifecycleTerminalOnce();
+            if (isPromiseLike<void>(emitted)) {
+              return Promise.resolve(emitted).then(() => {
+                throw error;
+              });
+            }
+            throw error;
+          },
+        );
+      }
+      return emitLifecycleTerminalOnce();
+    };
+    const released = ctx.releaseDeferredReplies();
+    if (isPromiseLike<void>(released)) {
+      return Promise.resolve(released).then(continueTerminalDelivery);
     }
-    return emitLifecycleTerminalOnce();
+    return continueTerminalDelivery();
   };
 
   const deliverTerminalWithLifecycleErrorFallback = () => {

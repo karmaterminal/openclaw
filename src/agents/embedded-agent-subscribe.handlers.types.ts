@@ -332,7 +332,7 @@ export type EmbeddedAgentSubscribeContext = {
     },
   ) => void;
   flushAssistantStream: () => void;
-  releaseDeferredReplies: () => void;
+  releaseDeferredReplies: () => void | Promise<void>;
   clearAssistantStream: () => void;
   clearDeferredBlockReplies: () => void;
 };

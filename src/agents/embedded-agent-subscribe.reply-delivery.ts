@@ -22,6 +22,7 @@ import type {
   AssistantStreamData,
   EmbeddedAgentSubscribeContext,
 } from "./embedded-agent-subscribe.handlers.types.js";
+import { emitInSettlementOrder } from "./embedded-agent-subscribe.reply-delivery.serial.js";
 import { createAssistantTextAccumulator } from "./embedded-agent-subscribe.reply-text.js";
 import type { SubscribeEmbeddedAgentSessionParams } from "./embedded-agent-subscribe.types.js";
 import type { AgentMessage } from "./runtime/index.js";
@@ -96,8 +97,7 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
       onError: settled,
     });
   };
-  // Retry subscriptions reuse run IDs and reset message counters. Their scopes
-  // must stay distinct so a correction cannot overwrite an earlier attempt.
+  // Retry subscriptions reuse run IDs; scopes stay distinct across attempts.
   const streamId = randomUUID();
   let messageIndex = -1;
   let blockIndex = -1;
@@ -433,6 +433,31 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
       return false;
     }
   };
+  const resolveAutoDeliveryMediaUrls = (pendingToolMedia: BlockReplyPayload | null) => {
+    if (params.sourceReplyDeliveryMode !== "message_tool_only") {
+      return [];
+    }
+    const sent = new Set(state.messagingToolSentMediaUrls.map((url) => url.trim()));
+    return (pendingToolMedia?.mediaUrls ?? []).filter(
+      (url) => state.toolAutoDeliveryMediaUrls.has(url.trim()) && !sent.has(url.trim()),
+    );
+  };
+  const recordVisibleBlockReply = (
+    payload: BlockReplyPayload,
+    pendingToolMedia?: BlockReplyPayload | null,
+    autoDeliveryMediaUrls?: string[],
+  ) => {
+    if (payload.isReasoning || !hasAssistantVisibleReply(payload)) {
+      return;
+    }
+    recordDeliveredAssistantReplyDirectives(state, payload);
+    state.visibleBlockReplyCount += 1;
+    if (pendingToolMedia) {
+      state.pendingToolMediaDeliveryFailed = false;
+      state.hasToolMediaBlockReply = true;
+    }
+    recordDeliveredAutoMedia(state, autoDeliveryMediaUrls);
+  };
   const emitBlockReply = (
     payload: BlockReplyPayload,
     options?: {
@@ -451,14 +476,7 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
       options?.consumePendingToolMedia === false
         ? withAssistantDirectives
         : consumePendingToolMediaIntoReply(state, withAssistantDirectives);
-    const sentMediaUrls = new Set(state.messagingToolSentMediaUrls.map((url) => url.trim()));
-    const autoDeliveryMediaUrls =
-      params.sourceReplyDeliveryMode === "message_tool_only"
-        ? (pendingToolMedia?.mediaUrls ?? []).filter(
-            (url) =>
-              state.toolAutoDeliveryMediaUrls.has(url.trim()) && !sentMediaUrls.has(url.trim()),
-          )
-        : [];
+    const autoDeliveryMediaUrls = resolveAutoDeliveryMediaUrls(pendingToolMedia);
     const pendingAttachments = new Map(
       (pendingToolMedia?.mediaUrls ?? []).map((url, index) => [
         url.trim(),
@@ -508,23 +526,13 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
       taggedPayload,
       { ...options, pendingToolMedia, autoDeliveryMediaUrls },
       () => {
-        if (!taggedPayload.isReasoning && hasAssistantVisibleReply(taggedPayload)) {
-          recordDeliveredAssistantReplyDirectives(state, taggedPayload);
-          state.visibleBlockReplyCount += 1;
-          if (pendingToolMedia) {
-            state.pendingToolMediaDeliveryFailed = false;
-            state.hasToolMediaBlockReply = true;
-          }
-          recordDeliveredAutoMedia(state, autoDeliveryMediaUrls);
-        }
+        recordVisibleBlockReply(taggedPayload, pendingToolMedia, autoDeliveryMediaUrls);
         options?.onDelivered?.();
       },
     );
   };
-  const releaseDeferredReplies = () => {
-    // A later answer supersedes deferred tool-turn text, not completed answers
-    // to earlier user inputs, media, or reasoning. Reconcile both presentation
-    // lanes before callbacks can advance the current message boundary.
+  const releaseDeferredReplies = (): void | Promise<void> => {
+    // Later answers supersede deferred tool-turn text, not media or reasoning.
     const messageStartIndex = state.assistantMessageStartIndex;
     const isSuperseded = (index: number | undefined) =>
       index !== undefined && index < messageStartIndex && provisionalAssistantBlocks.has(index);
@@ -551,28 +559,29 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     provisionalAssistantBlocks.clear();
     state.deferBlockReplyDelivery = false;
     flushAssistantStream();
-    for (const payload of replies) {
-      if (!hasAssistantVisibleReply(payload)) {
-        continue;
-      }
-      const onDelivered = deferredBlockReplyCallbacks.get(payload);
-      const deferredToolMedia = deferredToolMediaReplies.get(payload);
-      const pendingToolMedia = deferredToolMedia?.pendingToolMedia;
-      emitBlockReplySafely(payload, deferredToolMedia, () => {
-        if (!payload.isReasoning && hasAssistantVisibleReply(payload)) {
-          recordDeliveredAssistantReplyDirectives(state, payload);
-          state.visibleBlockReplyCount += 1;
-          if (pendingToolMedia) {
-            state.pendingToolMediaDeliveryFailed = false;
-            state.hasToolMediaBlockReply = true;
-          }
-          recordDeliveredAutoMedia(state, deferredToolMedia?.autoDeliveryMediaUrls);
+    const released = emitInSettlementOrder({
+      items: replies.filter((payload) => hasAssistantVisibleReply(payload)),
+      settle: () => settleBlockReplyDeliveries(),
+      emit: (payload) => {
+        const onDelivered = deferredBlockReplyCallbacks.get(payload);
+        const toolMedia = deferredToolMediaReplies.get(payload);
+        if (toolMedia?.pendingToolMedia) {
+          emitBlockReplySafely(payload, toolMedia, () => {
+            recordVisibleBlockReply(
+              payload,
+              toolMedia.pendingToolMedia,
+              toolMedia.autoDeliveryMediaUrls,
+            );
+            onDelivered?.();
+          });
+          return;
         }
-        onDelivered?.();
-      });
-    }
+        emitBlockReply(payload, { onDelivered });
+      },
+    });
     state.deferredAssistantReplyDirectives = undefined;
     state.deferredBlockReplyTexts = [];
+    return released;
   };
   const clearDeferredBlockReplies = () => {
     state.deferredBlockReplies.length = 0;
@@ -580,10 +589,7 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     state.deferredBlockReplyTexts = [];
   };
 
-  // Continuation retry state (generation counter, invalidation promise,
-  // failed/exhausted keys) lives at factory scope so emitBlockReplySafely and
-  // these settle/retry closures share one owner; the parent drives them via the
-  // returned object during compaction retries.
+  // Retry generation/invalidation lives here with emitBlockReplySafely.
   const currentPendingBlockReplyTasks = () =>
     Array.from(pendingBlockReplyTasks)
       .filter(([, generation]) => generation === blockReplyDeliveryGeneration)
@@ -657,10 +663,8 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     failedBlockReplies.length = 0;
     exhaustedBlockReplyKeys.clear();
   };
-
   const waitForPendingEvents = async (options?: { includePartialReplies?: boolean }) => {
-    // Partial presentation stays concurrent with provider events, but terminal
-    // settlement must observe callbacks launched while the event chain drains.
+    // Terminal settlement must observe callbacks launched while events drain.
     const includePartialReplies = options?.includePartialReplies !== false;
     while (true) {
       const eventChain = state.pendingEventChain;
@@ -671,7 +675,6 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
       await Promise.allSettled([...(eventChain ? [eventChain] : []), ...partialReplyTasks]);
     }
   };
-
   return {
     assistantTexts,
     clearAssistantStream,
