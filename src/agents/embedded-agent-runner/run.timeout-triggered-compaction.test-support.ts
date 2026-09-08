@@ -1,9 +1,12 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
+import * as systemEvents from "../../infra/system-events.js";
 import type { OpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import type { AgentHarness } from "../harness/types.js";
 import { makeAttemptResult, makeCompactionSuccess } from "./run.overflow-compaction.fixture.js";
 import {
   createOverflowRunParams,
+  mockedBuildAgentRuntimePlan,
   mockedBuildEmbeddedRunPayloads,
   mockedCompactDirect,
   mockedGetApiKeyForModel,
@@ -15,6 +18,13 @@ import {
   createSharedRunIntegrationSession,
   loadSharedRunIntegrationHarness,
 } from "./run.shared-integration-harness.test-support.js";
+import {
+  clearActiveEmbeddedRun,
+  resolveEmbeddedRunAbandonment,
+  markActiveEmbeddedRunAbandoned,
+  setActiveEmbeddedRun,
+} from "./runs.js";
+import { createEmbeddedRunHandle, testing as runsTesting } from "./runs.test-support.js";
 
 let runEmbeddedAgent: Awaited<ReturnType<typeof loadSharedRunIntegrationHarness>>;
 
@@ -42,6 +52,8 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
 
   beforeEach(() => {
     resetSharedRunIntegrationHarnessMocks();
+    runsTesting.resetActiveEmbeddedRuns();
+    systemEvents.resetSystemEventsForTest();
   });
 
   afterEach(async () => {
@@ -49,6 +61,7 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
       await fixture?.cleanup();
     } finally {
       fixture = undefined;
+      systemEvents.resetSystemEventsForTest();
     }
   });
 
@@ -101,7 +114,7 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
       sessionTarget: successor,
     });
     expect(mockedRunEmbeddedAttempt.mock.calls[1]?.[0]?.prompt).toContain(
-      "Continue from the current transcript",
+      "Continue the current task from the existing transcript",
     );
     expect(mockedRunEmbeddedAttempt.mock.calls[1]?.[0]?.prompt).not.toBe(session.runParams.prompt);
     const compactParams = mockedCompactDirect.mock.calls[0]?.[0] as CompactParams | undefined;
@@ -120,6 +133,58 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
     });
     expect(result.meta.agentMeta?.compactionTokensAfter).toBe(60_000);
     expect(result.payloads).toEqual([{ text: "timeout recovery complete" }]);
+  });
+
+  it("restores terminal abandonment when retry preparation fails before registration", async () => {
+    const session = await createSharedRunIntegrationSession();
+    fixture = session;
+    const preparationError = new Error("next attempt preparation failed");
+    mockedRunEmbeddedAttempt.mockImplementationOnce(async (params) => {
+      const handle = createEmbeddedRunHandle({ runId: params.runId });
+      setActiveEmbeddedRun(params.sessionId, handle, params.sessionKey, params.sessionFile);
+      expect(
+        markActiveEmbeddedRunAbandoned({
+          sessionId: params.sessionId,
+          handle,
+          sessionKey: params.sessionKey,
+          sessionFile: params.sessionFile,
+          reason: "timeout",
+        }),
+      ).toBe(true);
+      clearActiveEmbeddedRun(params.sessionId, handle, params.sessionKey, params.sessionFile);
+      return makeAttemptResult({
+        timedOut: true,
+        lastAssistant: { usage: { input: 160_000 } } as never,
+      });
+    });
+    mockedCompactDirect.mockResolvedValueOnce(
+      makeCompactionSuccess({
+        summary: "compacted before failed retry preparation",
+        tokensBefore: 160_000,
+        tokensAfter: 60_000,
+      }),
+    );
+    const defaultBuildRuntimePlan = mockedBuildAgentRuntimePlan.getMockImplementation();
+    expect(defaultBuildRuntimePlan).toBeDefined();
+    let buildCalls = 0;
+    mockedBuildAgentRuntimePlan.mockImplementation(() => {
+      buildCalls += 1;
+      if (buildCalls === 2) {
+        throw preparationError;
+      }
+      return defaultBuildRuntimePlan!();
+    });
+
+    await expect(runEmbeddedAgent(session.runParams)).rejects.toBe(preparationError);
+
+    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledOnce();
+    expect(mockedBuildAgentRuntimePlan).toHaveBeenCalledTimes(2);
+    expect(
+      resolveEmbeddedRunAbandonment({
+        sessionId: session.runParams.sessionId,
+        sessionKey: session.runParams.sessionKey,
+      }),
+    ).toBe("timeout");
   });
 
   it("leaves timeout recovery to a forced unlocked Codex compaction owner", async () => {
@@ -165,6 +230,16 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
   it("keeps the timeout compaction cap across auth-profile rotation", async () => {
     const session = await createSharedRunIntegrationSession();
     fixture = session;
+    const config = {
+      agents: {
+        defaults: {
+          continuation: {
+            enabled: true,
+            contextPressureThreshold: 0.8,
+          },
+        },
+      },
+    };
     vi.stubEnv("ANTHROPIC_API_KEY", "");
     mockedResolveAuthProfileOrder.mockReturnValue(["profile-a", "profile-b"]);
     mockedGetApiKeyForModel.mockImplementation(async ({ profileId } = {}) => ({
@@ -180,13 +255,27 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
         lastAssistant: { usage: { input: 150_000 } } as never,
       }),
     );
-    mockedCompactDirect.mockResolvedValue({
-      ok: false,
-      compacted: false,
-      reason: "nothing to compact",
+    const firstPressureEvents: systemEvents.SystemEvent[] = [];
+    let compactionCalls = 0;
+    mockedCompactDirect.mockImplementation(async () => {
+      compactionCalls += 1;
+      if (compactionCalls === 1) {
+        firstPressureEvents.push(
+          ...systemEvents
+            .drainSystemEventEntries(session.runParams.sessionKey)
+            .filter((event) => event.text.includes("[system:context-pressure]")),
+        );
+      }
+      return {
+        ok: false,
+        compacted: false,
+        reason: "nothing to compact",
+      };
     });
-
-    const result = await runEmbeddedAgent(session.runParams);
+    const result = await runEmbeddedAgent({
+      ...session.runParams,
+      config,
+    });
 
     expect(mockedCompactDirect).toHaveBeenCalledTimes(2);
     expect(
@@ -196,6 +285,21 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
     ).toEqual(["profile-a", "profile-b"]);
     expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(3);
     expect(result.payloads?.[0]?.text).toContain("timed out");
+    expect(firstPressureEvents).toEqual([
+      expect.objectContaining({
+        expectedSessionId: session.runParams.sessionId,
+      }),
+    ]);
+    expect(firstPressureEvents[0]?.text).toMatch(/preserve critical working state/i);
+    expect(firstPressureEvents[0]?.text).not.toContain("continue_delegate");
+    expect(firstPressureEvents[0]?.text).not.toContain("request_compaction");
+    const repeatedPressureEvents = systemEvents
+      .peekSystemEventEntries(session.runParams.sessionKey)
+      .filter((event) => event.text.includes("[system:context-pressure]"));
+    expect(repeatedPressureEvents).toHaveLength(0);
+    expect(loadSessionEntry(session.runParams.sessionTarget!)).toMatchObject({
+      lastContextPressureBand: 25,
+    });
   });
 
   it("lets one silent idle timeout retry before the normal timeout surface", async () => {

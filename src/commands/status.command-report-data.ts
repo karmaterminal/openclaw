@@ -123,7 +123,7 @@ export async function buildStatusCommandReportData(params: {
   } | null;
   tableWidth: number;
   updateValue?: string;
-  updateRestartValue?: string | null;
+  updateRows?: Array<{ Item: string; Value: string }>;
 }) {
   const ok = (value: string) => theme.success(value);
   const warn = (value: string) => theme.warn(value);
@@ -149,7 +149,7 @@ export async function buildStatusCommandReportData(params: {
     resolveMemoryFtsState,
     resolveMemoryCacheSummary,
     updateValue: params.updateValue,
-    updateRestartValue: params.updateRestartValue,
+    updateRows: params.updateRows,
     continuationValue: await (async () => {
       try {
         // Route through the lazy-runtime boundary so continuation singletons

@@ -5,7 +5,7 @@ import {
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
 import { retireSessionMcpRuntime } from "../../agents/agent-bundle-mcp-tools.js";
-import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { resolveAgentWorkspaceDir, resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { clearBootstrapSnapshotOnSessionBoundary } from "../../agents/bootstrap-cache.js";
 import { clearAllCliSessions, getCliSessionBinding } from "../../agents/cli-session.js";
 import { resetRegisteredAgentHarnessSessions } from "../../agents/harness/registry.js";
@@ -107,6 +107,7 @@ import {
 } from "../../utils/delivery-context.shared.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import { resolveCommandTurnTargetSessionKey } from "../command-turn-context.js";
+import { SessionContinuationResetError } from "../continuation/session-reset.js";
 import type {
   FinalizedRuntimeMsgContext,
   FinalizedTemplateContext as TemplateContext,
@@ -116,7 +117,7 @@ import { resolveEffectiveResetTargetSessionKey } from "./acp-reset-target.js";
 import { readBeforeResetMessages } from "./commands-reset-hooks.js";
 import { resolveConversationBindingContextFromMessage } from "./conversation-binding-input.js";
 import { normalizeInboundTextNewlines } from "./inbound-text.js";
-import { replyRunRegistry } from "./reply-run-registry.js";
+import { replyRunRegistry, retryRetainedReplyRunResetBySessionKey } from "./reply-run-registry.js";
 import { resolveRuntimePolicySessionKey } from "./runtime-policy-session-key.js";
 import {
   maybeRetireLegacyMainDeliveryRoute,
@@ -135,7 +136,12 @@ import {
   canReplaceRestartTombstoneFromParent,
   prepareReplySessionParentFork,
 } from "./session-parent-fork-prepare.js";
-import { clearSessionResetRuntimeState } from "./session-reset-cleanup.js";
+import {
+  clearSessionResetRuntimeState,
+  createSessionResetCleanupGuard,
+  SessionResetCleanupError,
+  stopSessionResetSubagents,
+} from "./session-reset-cleanup.js";
 import { resolveAuthorizedSessionResetCommand } from "./session-reset-command.js";
 import {
   stripThreadFromSessionRoute,
@@ -237,7 +243,13 @@ type InitSessionStateAttemptContext = {
 
 type InitSessionStateAttemptOutcome =
   | { kind: "complete"; result: SessionInitResult }
-  | { kind: "lifecycle-mutation"; sessionId: string; sessionKey: string };
+  | {
+      kind: "lifecycle-mutation";
+      sessionId: string;
+      sessionKey: string;
+      lifecycleRevision?: string;
+      resetTriggered: boolean;
+    };
 
 function resolveSessionConversationBindingContext(
   cfg: OpenClawConfig,
@@ -484,16 +496,24 @@ async function initSessionStateAttempt(
       prepare: async () => {
         // A queued rollover may change identity or become obsolete. Recheck
         // before interrupting, then reacquire any refreshed identity first.
-        const revalidated = await runExclusiveSessionStoreWrite(
-          attemptContext.storePath,
-          async () => await initSessionStateAttemptLocked(params, attemptContext, false, undefined),
-        );
-        if (
-          revalidated.kind === "complete" ||
-          revalidated.sessionKey !== candidate.sessionKey ||
-          revalidated.sessionId !== candidate.sessionId
-        ) {
-          preparedOutcome = revalidated;
+        const revalidate = async () => {
+          const revalidated = await runExclusiveSessionStoreWrite(
+            attemptContext.storePath,
+            async () =>
+              await initSessionStateAttemptLocked(params, attemptContext, false, undefined),
+          );
+          if (
+            revalidated.kind === "complete" ||
+            revalidated.sessionKey !== candidate.sessionKey ||
+            revalidated.sessionId !== candidate.sessionId ||
+            revalidated.lifecycleRevision !== candidate.lifecycleRevision
+          ) {
+            preparedOutcome = revalidated;
+            return undefined;
+          }
+          return revalidated;
+        };
+        if (!(await revalidate())) {
           return;
         }
         const drained = await interruptSessionWorkAdmissions({
@@ -505,6 +525,24 @@ async function initSessionStateAttempt(
           throw new Error(
             `timed out draining work before reply session rollover: ${candidate.sessionKey}`,
           );
+        }
+        // A draining owner can rebind the parent. Reacquire and drain that identity
+        // before selecting any child work associated with the session.
+        const afterDrain = await revalidate();
+        if (afterDrain?.resetTriggered) {
+          // Child finalizers may need the same store writer. Drain them here,
+          // outside that lane, before an explicit reset can commit or run its tail.
+          await stopSessionResetSubagents({
+            cfg: params.cfg,
+            sessionKey: candidate.sessionKey,
+            agentId: attemptContext.agentId,
+            assertCurrent: createSessionResetCleanupGuard({
+              sessionKey: candidate.sessionKey,
+              storePath: attemptContext.storePath,
+              expectedSession: afterDrain,
+              assertCurrent: () => params.signal?.throwIfAborted(),
+            }),
+          });
         }
       },
       run: async () => {
@@ -530,7 +568,9 @@ async function initSessionStateAttemptLocked(
   params: InitSessionStateParams,
   attemptContext: InitSessionStateAttemptContext,
   staleSnapshotRetried: boolean,
-  lifecycleMutationIdentity: { sessionId: string; sessionKey: string } | undefined,
+  lifecycleMutationIdentity:
+    | { sessionId: string; sessionKey: string; lifecycleRevision?: string }
+    | undefined,
 ): Promise<InitSessionStateAttemptOutcome> {
   const { ctx, cfg, commandAuthorized } = params;
   const {
@@ -582,6 +622,9 @@ async function initSessionStateAttemptLocked(
     agentId,
     sessionKey: resolveSessionKey(sessionScope, sessionCtxForState, mainKey, agentId),
   });
+  if (resetTriggered) {
+    retryRetainedReplyRunResetBySessionKey(sessionKey);
+  }
   // CRITICAL: Skip cache to ensure fresh data when resolving session identity.
   // Stale cache (especially with multiple gateway processes or on Windows where
   // mtime granularity may miss rapid writes) can cause incorrect sessionId
@@ -767,13 +810,14 @@ async function initSessionStateAttemptLocked(
     !freshEntry &&
     canReuseExistingEntry &&
     entryFreshness?.fresh === false &&
-    entryFreshness.staleReason != null &&
     activeReplyOperation?.phase !== "queued" &&
     activeReplyOperation?.sessionId === entry?.sessionId;
-  // Implicit daily/idle rollover must not rename a transcript while that exact
-  // session's active writer is still running. Admission will steer/wait/queue;
-  // queued pre-dispatch reservations still let the current turn roll over.
+  // An implicit reset must not append a boundary or interrupt this exact active writer.
+  // A bare stale result is the legacy updatedAt=0 pending-reset tombstone.
   const effectiveFreshEntry = deferImplicitRolloverForActiveRun ? true : freshEntry;
+  // Keep the owed reset pending until the active writer completes.
+  const retainPendingResetMarker =
+    deferImplicitRolloverForActiveRun && !isNewSession && entry?.updatedAt === 0;
   // Capture the current session entry before any reset so its transcript can be
   // archived afterward.  We need to do this for both explicit resets (/new, /reset)
   // and for scheduled/daily resets where the session has become stale (!freshEntry).
@@ -789,13 +833,16 @@ async function initSessionStateAttemptLocked(
   const lifecycleMutationMatches = Boolean(
     previousSessionEntry &&
     lifecycleMutationIdentity?.sessionKey === sessionKey &&
-    lifecycleMutationIdentity.sessionId === previousSessionEntry.sessionId,
+    lifecycleMutationIdentity.sessionId === previousSessionEntry.sessionId &&
+    lifecycleMutationIdentity.lifecycleRevision === previousSessionEntry.lifecycleRevision,
   );
   if (previousSessionEntry && !lifecycleMutationMatches) {
     return {
       kind: "lifecycle-mutation",
       sessionId: previousSessionEntry.sessionId,
       sessionKey,
+      lifecycleRevision: previousSessionEntry.lifecycleRevision,
+      resetTriggered,
     };
   }
   const recoveredTerminalEntry =
@@ -917,7 +964,7 @@ async function initSessionStateAttemptLocked(
     ...creationStamp,
     sessionId,
     lifecycleRevision: isNewSession ? crypto.randomUUID() : baseEntry?.lifecycleRevision,
-    updatedAt: Date.now(),
+    updatedAt: retainPendingResetMarker ? 0 : Date.now(),
     sessionStartedAt: isNewSession
       ? now
       : (baseEntry?.sessionStartedAt ?? lifecycleTimestamps.sessionStartedAt),
@@ -1064,7 +1111,9 @@ async function initSessionStateAttemptLocked(
         warn: (message) => log.warn(message),
       });
     },
-    ...(resetBoundary ? { resetBoundary } : {}),
+    ...(resetBoundary
+      ? { resetBoundary: { ...resetBoundary, cwd: resolveAgentWorkspaceDir(cfg, agentId) } }
+      : {}),
     beforeEntryMutation: async ({ currentEntry, sessionEntry: entryToCommit }) => {
       if (!previousSessionEntry || !currentEntry) {
         return;
@@ -1133,9 +1182,10 @@ async function initSessionStateAttemptLocked(
             : "reset",
       });
     } catch (error) {
-      // The replacement is already durable. Runtime cleanup is best-effort and
-      // must not turn a committed reset into a reported initialization failure.
-      log.warn(`failed to clear reset runtime state for session ${sessionKey}: ${String(error)}`);
+      if (error instanceof SessionContinuationResetError) {
+        throw new SessionResetCleanupError(error.message, { cause: error });
+      }
+      throw error;
     }
   }
   sessionEntry = committed.sessionEntry;

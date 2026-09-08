@@ -1,6 +1,9 @@
 // Tests heartbeat runner guardrails for subagent sessions.
 import fs from "node:fs/promises";
+import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { drainFormattedSystemEvents } from "../auto-reply/reply/session-system-events.js";
+import { getReplySystemEventContext } from "../auto-reply/reply/system-event-session-key.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveMainSessionKey } from "../config/sessions.js";
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
@@ -19,14 +22,6 @@ installHeartbeatRunnerTestRuntime();
 afterEach(() => {
   resetSystemEventsForTest();
 });
-
-function requireFirstMockCall<T>(mock: { mock: { calls: T[][] } }, label: string): T[] {
-  const call = mock.mock.calls[0];
-  if (!call) {
-    throw new Error(`expected ${label} call`);
-  }
-  return call;
-}
 
 describe("runHeartbeatOnce", () => {
   it("falls back to the main session when a subagent session key is forced", async () => {
@@ -88,10 +83,10 @@ describe("runHeartbeatOnce", () => {
       });
 
       expect(replySpy).toHaveBeenCalledTimes(1);
-      const [replyParams, _replyRuntime, replyConfig] = requireFirstMockCall(
-        replySpy,
-        "reply",
-      ) as Parameters<typeof replySpy>;
+      const [replyParams, _replyRuntime, replyConfig] = expectDefined(
+        replySpy.mock.calls[0],
+        "reply call",
+      );
       expect(replyParams?.SessionKey).toBe(mainSessionKey);
       expect(replyParams?.OriginatingChannel).toBeUndefined();
       expect(replyParams?.OriginatingTo).toBeUndefined();
@@ -162,7 +157,7 @@ describe("runHeartbeatOnce", () => {
       );
 
       expect(replySpy).toHaveBeenCalledTimes(1);
-      const [replyParams] = requireFirstMockCall(replySpy, "reply") as Parameters<typeof replySpy>;
+      const [replyParams] = expectDefined(replySpy.mock.calls[0], "reply call");
       expect(replyParams?.SessionKey).toBe(subagentSessionKey);
     });
   });
@@ -225,7 +220,7 @@ describe("runHeartbeatOnce", () => {
       );
 
       expect(replySpy).toHaveBeenCalledTimes(1);
-      const [replyParams] = requireFirstMockCall(replySpy, "reply") as Parameters<typeof replySpy>;
+      const [replyParams] = expectDefined(replySpy.mock.calls[0], "reply call");
       expect(replyParams?.SessionKey).toBe(mainSessionKey);
     });
   });
@@ -287,7 +282,23 @@ describe("runHeartbeatOnce", () => {
         sessionKey: opsMainSessionKey,
         trusted: true,
       });
-      replySpy.mockResolvedValue({ text: "NO_REPLY" });
+      let formattedSystemEvents: string | undefined;
+      replySpy.mockImplementation(async (ctx, options) => {
+        const eventContext = getReplySystemEventContext(options);
+        const eventSessionKey = eventContext?.sessionKey ?? ctx.SessionKey;
+        if (!ctx.AgentId || !eventSessionKey) {
+          throw new Error("Expected the resolved heartbeat event queue");
+        }
+        formattedSystemEvents = await drainFormattedSystemEvents({
+          cfg,
+          agentId: ctx.AgentId,
+          sessionKey: eventSessionKey,
+          isMainSession: eventSessionKey === opsMainSessionKey,
+          isNewSession: false,
+          events: eventContext?.events ?? [],
+        });
+        return { text: "NO_REPLY" };
+      });
 
       await runHeartbeatOnce(
         markTrustedContinuationHeartbeatWake({
@@ -305,8 +316,10 @@ describe("runHeartbeatOnce", () => {
       );
 
       expect(replySpy).toHaveBeenCalledTimes(1);
-      const [replyParams] = requireFirstMockCall(replySpy, "reply") as Parameters<typeof replySpy>;
+      const [replyParams] = expectDefined(replySpy.mock.calls[0], "reply call");
       expect(replyParams?.SessionKey).toBe(opsMainSessionKey);
+      expect(formattedSystemEvents).toContain("ops queue event");
+      expect(formattedSystemEvents).not.toContain("main-only queue event");
       expect(peekSystemEventEntries("agent:main:subagent:demo")).toHaveLength(1);
       expect(peekSystemEventEntries(opsMainSessionKey)).toStrictEqual([]);
     });
@@ -370,7 +383,7 @@ describe("runHeartbeatOnce", () => {
       });
 
       expect(replySpy).toHaveBeenCalledTimes(1);
-      const [replyParams] = requireFirstMockCall(replySpy, "reply") as Parameters<typeof replySpy>;
+      const [replyParams] = expectDefined(replySpy.mock.calls[0], "reply call");
       expect(replyParams?.SessionKey).toBe(mainSessionKey);
       expect(replyParams?.Body).toContain("async command completion event");
       expect(peekSystemEventEntries(mainSessionKey)).toStrictEqual([]);

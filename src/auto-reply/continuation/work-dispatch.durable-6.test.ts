@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createAtomicTaskFlowMocks } from "./work-dispatch-flow-mock.test-support.js";
 const turnGrants: unknown[] = [];
 const systemEvents: unknown[] = [];
 const activeQueueDeliveries: unknown[] = [];
@@ -374,6 +375,10 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
     mockFlows.set(flow.flowId, flow);
     return cloneFlow(flow);
   }),
+  ...createAtomicTaskFlowMocks(
+    () => mockFlows,
+    () => `flow-${++flowCounter}`,
+  ),
   listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
     Array.from(
       [...mockFlows.values()].filter((flow) => flow.ownerKey === ownerKey),
@@ -470,12 +475,12 @@ import {
 } from "./work-dispatch.js";
 import {
   consumePendingWork,
-  enqueuePendingWork,
   hasLiveOrRecentlyDispatchedContinuationWork,
   markPendingWorkDelivered,
   markPendingWorkFoldDelivered,
   requeuePendingWork,
 } from "./work-store.js";
+import { enqueuePendingWork } from "./work-store.test-support.js";
 
 const getReplyFromConfigMock = vi.mocked(getReplyFromConfig);
 

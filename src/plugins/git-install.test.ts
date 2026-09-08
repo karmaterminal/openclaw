@@ -195,6 +195,7 @@ describe("installPluginFromGitSpec", () => {
   it("clones, checks out refs, installs from the clone, and returns commit metadata", async () => {
     runCommandWithTimeoutMock
       .mockResolvedValueOnce({ code: 0, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ code: 0, stdout: "abc123\n", stderr: "" })
       .mockResolvedValueOnce({ code: 0, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ code: 0, stdout: "abc123\n", stderr: "" })
       .mockResolvedValueOnce({ code: 0, stdout: "", stderr: "" });
@@ -238,8 +239,8 @@ describe("installPluginFromGitSpec", () => {
       "https://github.com/acme/demo.git",
     ]);
     expect(cloneArgv[4]).toContain("/repo");
-    expect(commandArgvAt(1)).toEqual(["git", "switch", "--detach", "--", "v1.2.3"]);
-    expect(commandArgvAt(3)).toEqual([
+    expect(commandArgvAt(2)).toEqual(["git", "switch", "--detach", "--", "abc123"]);
+    expect(commandArgvAt(4)).toEqual([
       "npm",
       "install",
       "--omit=dev",
@@ -451,6 +452,7 @@ describe("installPluginFromGitSpec", () => {
     const commit = "0123456789abcdef0123456789abcdef01234567";
     runCommandWithTimeoutMock
       .mockResolvedValueOnce({ code: 0, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ code: 0, stdout: `${commit}\n`, stderr: "" })
       .mockResolvedValueOnce({ code: 0, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ code: 0, stdout: `${commit}\n`, stderr: "" })
       .mockResolvedValueOnce({ code: 0, stdout: "", stderr: "" });
@@ -685,10 +687,12 @@ describe("installPluginFromGitSpec", () => {
       });
 
       expect(result.ok, result.ok ? "" : result.error).toBe(true);
-      expect(mkdtempSpy).toHaveBeenCalledTimes(3);
-      const targetPrefix = mkdtempSpy.mock.calls[0]?.[0];
-      const fallbackPrefix = mkdtempSpy.mock.calls[1]?.[0];
-      const commitPrefix = mkdtempSpy.mock.calls[2]?.[0];
+      const cloneWorkspaceCalls = mkdtempSpy.mock.calls.filter(([prefix]) =>
+        path.basename(prefix).startsWith("openclaw-git-plugin-"),
+      );
+      expect(cloneWorkspaceCalls).toHaveLength(2);
+      const targetPrefix = cloneWorkspaceCalls[0]?.[0];
+      const fallbackPrefix = cloneWorkspaceCalls[1]?.[0];
       const persistentRepoDir = expectedGitRepoDir({
         gitDir,
         normalizedSpec: "git:https://github.com/acme/demo.git",
@@ -701,9 +705,6 @@ describe("installPluginFromGitSpec", () => {
       // that is unsafe. Recompute it here so the assertion holds on every host.
       expect(path.dirname(expectDefined(fallbackPrefix, "fallbackPrefix test invariant"))).toBe(
         await fs.realpath(resolvePreferredOpenClawTmpDir()),
-      );
-      expect(path.dirname(expectDefined(commitPrefix, "commitPrefix test invariant"))).toBe(
-        await fs.realpath(path.dirname(persistentRepoDir)),
       );
       expect((await fs.stat(persistentRepoDir)).isDirectory()).toBe(true);
       expect(runCommandWithTimeoutMock).toHaveBeenCalledTimes(3);
@@ -820,11 +821,8 @@ describe("installPluginFromGitSpec", () => {
   it("separates requested refs from git options", async () => {
     runCommandWithTimeoutMock
       .mockResolvedValueOnce({ code: 0, stdout: "", stderr: "" })
-      .mockResolvedValueOnce({
-        code: 128,
-        stdout: "",
-        stderr: "fatal: invalid reference: --ignore-skip-worktree-bits",
-      });
+      .mockResolvedValueOnce({ code: 1, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ code: 1, stdout: "", stderr: "" });
 
     const result = await installPluginFromGitSpec({
       spec: "git:github.com/acme/demo@--ignore-skip-worktree-bits",
@@ -833,10 +831,17 @@ describe("installPluginFromGitSpec", () => {
     expect(result.ok).toBe(false);
     expect(commandArgvAt(1)).toEqual([
       "git",
-      "switch",
-      "--detach",
-      "--",
-      "--ignore-skip-worktree-bits",
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      "--ignore-skip-worktree-bits^{commit}",
+    ]);
+    expect(commandArgvAt(2)).toEqual([
+      "git",
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      "origin/--ignore-skip-worktree-bits^{commit}",
     ]);
     expect(installPluginFromInstalledPackageDirMock).not.toHaveBeenCalled();
   });

@@ -1,5 +1,5 @@
 import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
-import { ensureAuthProfileStore } from "../agents/auth-profiles/store.js";
+import { ensureAuthProfileStore } from "../agents/auth-profiles/store-runtime.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 
 export function resolveCodexSyntheticUsageAuthProfileId(params: {

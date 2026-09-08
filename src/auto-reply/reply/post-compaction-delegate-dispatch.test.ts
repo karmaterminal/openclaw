@@ -142,7 +142,7 @@ function createDispatchDeps(options?: {
   const finalizeStagedPostCompactionDelegates = vi.fn(
     (flowIds: readonly (string | undefined)[]) => flowIds.filter(Boolean).length,
   );
-  const requeueReleasedPostCompactionDelegate = vi.fn(() => false);
+  const requeueReleasedPostCompactionDelegate = vi.fn(() => "missing" as const);
   const stagePostCompactionDelegate = vi.fn();
   const deps: PostCompactionDelegateDispatchDeps = {
     consumeStagedPostCompactionDelegates: vi.fn(() => options?.staged ?? []),

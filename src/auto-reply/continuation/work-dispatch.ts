@@ -30,9 +30,10 @@ import {
   type ContinuationWorkIdleRetryTrigger,
 } from "./work-dispatch-execution.js";
 import type { ContinuationWorkReasonCategory, PendingContinuationWork } from "./work-flow-state.js";
+import { scheduleContinuationWorkBatchWith } from "./work-scheduling-batch.js";
+import { enqueueContinuationWorkForSchedule } from "./work-scheduling-replacement.js";
 import {
   consumePendingWork,
-  enqueuePendingWork,
   finalizeAnchorPendingWork,
   hasPendingIdleRetryWork,
   listPendingWorkSessionKeysForRecovery,
@@ -40,8 +41,6 @@ import {
   peekSoonestQueuedWorkDueAt,
   peekSoonestRunningWorkRecoveryDueAt,
   peekSoonestUnmaturedWorkDueAt,
-  queuedPendingWorkCount,
-  supersedeQueuedTurnEndParkedWork,
 } from "./work-store.js";
 import { drainPendingTerminalNotices } from "./work-terminal-notice.js";
 
@@ -648,22 +647,6 @@ export async function scheduleContinuationWork(
     return { scheduled: false, capped: true, chainState: params.chainState };
   }
 
-  // Guard 1: per-session concurrent pending-work cap. Orthogonal to the
-  // chain-depth cap above — this bounds how many undelivered wakes may coexist
-  // (the multi-continue_work flood foot-gun). Enforced at enqueue so a flood can
-  // never pile up beyond the cap regardless of chain depth. Treated as a cap
-  // (capped: true) so the batch ends early with partial-success preserved.
-  // Counts only QUEUED (future) wakes — not the currently-driving `running`
-  // flow — so a serial chain at maxPendingWork:1 can still schedule its own
-  // successor (the active wake is excluded; see queuedPendingWorkCount).
-  const pending = queuedPendingWorkCount(params.sessionKey);
-  if (pending >= params.config.maxPendingWork) {
-    params.log?.(
-      `[continuation:work-rejected] pending-capped for ${params.sessionKey}: ${pending}/${params.config.maxPendingWork}`,
-    );
-    return { scheduled: false, capped: true, chainState: params.chainState };
-  }
-
   const hop = params.chainState.currentChainCount + 1;
   const delayMs = clampDelayMs(params.request.delaySeconds * 1000, params.config);
   const electedAt = Date.now();
@@ -675,11 +658,12 @@ export async function scheduleContinuationWork(
     ...(params.chainState.chainId ? { chainId: params.chainState.chainId } : {}),
   };
 
-  // any continue_work captured while the electing turn is still
-  // active anchors to that turn's finalization, not the tool-call timestamp or a
-  // later unrelated turn. `reason` remains provenance/rate metadata, never an
-  // admission gate.
+  // Active-turn work anchors to that turn's finalization, not the tool-call time.
+  // `reason` remains provenance/rate metadata, never an admission gate.
   const replyRunRegistry = await getContinuationReplyRunRegistry();
+  if (params.abortSignal?.aborted) {
+    return { scheduled: false, capped: false, chainState: params.chainState };
+  }
   const electingTurnActive = replyRunRegistry.isActive(params.sessionKey);
   const recoveryHedgeAt = electedAt + params.config.maxDelayMs;
   const idleRetry = electingTurnActive
@@ -695,8 +679,7 @@ export async function scheduleContinuationWork(
     hop,
     delayMs,
     electedAt,
-    // Anchor-pending work fires on the lifecycle event; dueAt is only the slow
-    // lost-event hedge until finalization computes the semantic dueAt.
+    // Anchor-pending dueAt is only the lost-event hedge until finalization.
     dueAt: electingTurnActive ? recoveryHedgeAt : dueAt,
     maxChainLength: params.config.maxChainLength,
     chainStartedAt: params.chainState.chainStartedAt,
@@ -710,14 +693,14 @@ export async function scheduleContinuationWork(
     ...(electingTurnActive ? { anchorPending: true } : { anchorFinalizedAt: electedAt }),
     ...(idleRetry ? { idleRetry } : {}),
   };
-  const enqueued = enqueuePendingWork(work);
-  if (!enqueued) {
-    return { scheduled: false, capped: false, chainState: params.chainState };
+  const enqueueResult = enqueueContinuationWorkForSchedule({ work, schedule: params });
+  if (!enqueueResult.scheduled) {
+    return enqueueResult;
   }
-  if (!enqueued.flowId) {
+  if (!enqueueResult.work.flowId) {
     throw new Error("continuation work enqueue did not return a durable flow ID");
   }
-  params.onFlowEnqueued?.(enqueued.flowId);
+  params.onFlowEnqueued?.(enqueueResult.work.flowId);
   emitContinuationWorkSpan({
     chainId: params.chainState.chainId,
     chainStepRemaining: params.config.maxChainLength - hop,
@@ -730,77 +713,25 @@ export async function scheduleContinuationWork(
     params.log?.(
       `[continuation:work-parked-on-turn-end] session=${params.sessionKey} hop=${hop} reasonCategory=${idleRetry?.reasonCategory ?? "unknown"}`,
     );
-    // Wake on the end-of-turn event; keep only a slow hedge as the lost-event net.
     registerIdleRetry(params.sessionKey, { kind: "reply-run-ended" });
-    armNextWorkTimer(params.sessionKey, enqueued.dueAt);
+    armNextWorkTimer(params.sessionKey, enqueueResult.work.dueAt);
   } else {
-    // Let callers persist the advanced chain state before even zero-delay work
-    // can start the next turn; the timer fires on the next event-loop tick.
-    armNextWorkTimer(params.sessionKey, enqueued.dueAt);
+    // Defer even zero-delay work until callers can persist advanced chain state.
+    armNextWorkTimer(params.sessionKey, enqueueResult.work.dueAt);
   }
-  return { scheduled: true, capped: false, chainState: nextState };
+  return {
+    scheduled: true,
+    capped: false,
+    chainState: nextState,
+    supersededFlows: enqueueResult.supersededFlows,
+  };
 }
 
-/**
- * Schedule every continue_work election captured in a single model turn.
- *
- * A single model response can emit N `continue_work` tool calls; each is its
- * own flow with its own delay/reason and must deliver its own wake. The chain
- * state is threaded across elections so chain/cost caps apply cumulatively.
- *
- * Partial success is load-bearing : when a later election trips the cap,
- * the earlier valid elections MUST stay scheduled — silently dropping them is
- * exactly the regression this batches against. A cap rejection ends the batch
- * because the cumulative chain count only grows, so every later election would
- * hit the same cap.
- */
+/** Schedules one durable flow per same-turn continue_work election. */
 export async function scheduleContinuationWorkBatch(
   params: ContinuationWorkBatchParams,
 ): Promise<ContinuationWorkBatchResult> {
-  let chainState = params.chainState;
-  let scheduledCount = 0;
-  // cross-turn coalesce: a new model turn's election(s) supersede any
-  // still-queued end-of-turn-parked wake from a PRIOR turn for this session. The
-  // courtesy/hold/ack repeat loop never accumulates rows — the newest election
-  // carries the live intent and fires once at finalization. Folded BEFORE the
-  // batch loop so distinct elections WITHIN this turn are preserved; only
-  // prior-turn parked duplicates are folded.
-  const folded =
-    params.coalescePriorParkedWork === false
-      ? 0
-      : supersedeQueuedTurnEndParkedWork(
-          params.sessionKey,
-          "Superseded by a newer continue_work election before its end-of-turn wake fired.",
-        );
-  if (folded > 0) {
-    params.log?.(
-      `[continuation:work-turn-end-parked-coalesced] session=${params.sessionKey} folded=${folded}`,
-    );
-  }
-  for (const request of params.requests) {
-    const result = await scheduleContinuationWork({
-      sessionKey: params.sessionKey,
-      chainState,
-      request,
-      config: params.config,
-      ...(params.parentRunId !== undefined ? { parentRunId: params.parentRunId } : {}),
-      ...(params.originRunId !== undefined ? { originRunId: params.originRunId } : {}),
-      ...(params.originTurnId !== undefined ? { originTurnId: params.originTurnId } : {}),
-      ...(params.onFlowEnqueued ? { onFlowEnqueued: params.onFlowEnqueued } : {}),
-      ...(params.log ? { log: params.log } : {}),
-    });
-    if (!result.scheduled) {
-      return {
-        scheduledCount,
-        cappedCount: params.requests.length - scheduledCount,
-        capped: result.capped,
-        chainState,
-      };
-    }
-    chainState = result.chainState;
-    scheduledCount += 1;
-  }
-  return { scheduledCount, cappedCount: 0, capped: false, chainState };
+  return scheduleContinuationWorkBatchWith(params, scheduleContinuationWork);
 }
 
 export async function recoverPendingContinuationWork(): Promise<{
@@ -810,9 +741,8 @@ export async function recoverPendingContinuationWork(): Promise<{
   reaped: number;
   terminalNotices: number;
 }> {
-  // An already-owed terminal notice is a debt from work that ran while
-  // continuation was enabled. Disabling the feature afterwards must not strand
-  // it, so the drain runs before the enablement gate.
+  // Disabling continuation must not strand an already-owed terminal notice,
+  // so the debt drains before the enablement gate.
   const terminalNotices = await drainPendingTerminalNotices();
   const runtimeConfig = resolveContinuationRuntimeConfig();
   if (!runtimeConfig.enabled) {

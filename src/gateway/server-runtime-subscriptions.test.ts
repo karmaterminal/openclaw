@@ -51,6 +51,7 @@ import {
 import type { AgentEventHandlerOptions } from "./server-chat.js";
 import type { TaskEventPayload } from "./server-methods/task-summary.js";
 import { registerTaskTerminalSubscriptionTests } from "./server-runtime-subscriptions.task-terminals.test-harness.js";
+import { lifecycleState, readLifecycleState } from "./server-runtime-subscriptions.test-support.js";
 
 function waitForFast<T>(
   callback: () => T | Promise<T>,
@@ -181,35 +182,6 @@ function readTaskUpserts(broadcast: Mock<SubscriptionParams["broadcast"]>) {
   });
 }
 type LifecycleTransition = { state: string; lifecycle?: ReturnType<typeof readLifecycleState> };
-
-function readLifecycleState(entry: ChatAbortControllerEntry) {
-  return {
-    projectSessionActive: entry.projectSessionActive,
-    projectSessionTerminalPending: entry.projectSessionTerminalPending,
-    projectSessionTerminalObservedAt: entry.projectSessionTerminalObservedAt,
-    projectSessionTerminalPersistence: entry.projectSessionTerminalPersistence,
-    projectSessionTerminalPersisted: entry.projectSessionTerminalPersisted,
-    registrationCleanupRequested: entry.registrationCleanupRequested,
-  };
-}
-
-function lifecycleState(
-  projectSessionActive: boolean | undefined,
-  projectSessionTerminalPending?: boolean,
-  projectSessionTerminalObservedAt?: number,
-  projectSessionTerminalPersistence?: Promise<void>,
-  projectSessionTerminalPersisted?: boolean,
-  registrationCleanupRequested?: boolean,
-): ReturnType<typeof readLifecycleState> {
-  return {
-    projectSessionActive,
-    projectSessionTerminalPending,
-    projectSessionTerminalObservedAt,
-    projectSessionTerminalPersistence,
-    projectSessionTerminalPersisted,
-    registrationCleanupRequested,
-  };
-}
 
 const sessionTaskDefaults = {
   requesterSessionKey: "agent:main:main",
@@ -467,6 +439,7 @@ describe("startGatewayEventSubscriptions", () => {
     options?.markChatSendTerminalBroadcasted?.({
       runId: "run-chat-send",
       clientRunId: "run-chat-send",
+      state: "error",
     });
 
     expect(entry.chatTerminalBroadcasted).toBe(true);
@@ -834,6 +807,21 @@ describe("startGatewayEventSubscriptions", () => {
     );
     expect(transcriptBroadcastMocks.readMessageById).toHaveBeenCalledTimes(2);
     expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it("broadcasts progress-card retirement without session-list subscribers", () => {
+    const params = createParams();
+    unsubs = startGatewayEventSubscriptions(params);
+    emitSessionLifecycleEvent({
+      sessionKey: "global",
+      agentId: "work",
+      reason: "progress-card-reset",
+    });
+    expect(params.broadcast).toHaveBeenCalledWith(
+      "progressCard.changed",
+      { sessionKey: "agent:work:global", revision: null },
+      { sessionKeys: ["global"], agentId: "work" },
+    );
   });
 
   it("logs lifecycle handler failures", async () => {

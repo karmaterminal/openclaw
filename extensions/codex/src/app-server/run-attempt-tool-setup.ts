@@ -3,6 +3,7 @@ import {
   isHostScopedAgentToolActive,
   materializeRequesterScopedMcpToolsForHarnessRun,
   resolveAgentDir,
+  runAgentCleanupStep,
   type EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import {
@@ -66,7 +67,6 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
     options: attemptOptions,
     preDynamicStartupStages,
     mutable,
-    startupAuthProfileId,
     resolvedWorkspace,
     effectiveWorkspace,
     effectiveCwd,
@@ -82,7 +82,7 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
     agentDir,
   } = connection;
   const preDynamicSummary = preDynamicStartupStages.snapshot();
-  if (shouldWarnCodexDynamicToolBuildStageSummary(preDynamicSummary)) {
+  if (shouldWarnCodexDynamicToolBuildStageSummary(preDynamicSummary, profilerEnabled)) {
     embeddedAgentLog.warn(
       `codex app-server pre-dynamic startup timings runId=${params.runId} sessionId=${params.sessionId} totalMs=${preDynamicSummary.totalMs} stages=${formatCodexDynamicToolBuildStageSummary(preDynamicSummary)}`,
       {
@@ -91,7 +91,6 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
         totalMs: preDynamicSummary.totalMs,
         stages: preDynamicSummary.stages,
         hasStartupBinding: Boolean(mutable.startupBinding?.threadId),
-        startupAuthProfileId: startupAuthProfileId ?? null,
         bundleMcpDiagnosticCount: bundleMcpThreadConfig.diagnostics.length,
         nativeToolSurfaceEnabled,
       },
@@ -99,6 +98,7 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
   }
   const toolState: {
     yieldDetected: boolean;
+    yieldMessage?: string;
     yieldAcknowledgment?: string;
     persistentWebSearchAllowed?: boolean;
     webSearchAllowed: boolean;
@@ -197,7 +197,6 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
   const requiresScheduledCodexAppAuthority = appCreatorCapture.required;
   const canResolveAnyScheduledCreatorAuthority =
     canResolveScheduledConfiguredMcpCreatorAuthority || requiresScheduledCodexAppAuthority;
-  let toolBridge: ReturnType<typeof createCodexDynamicToolBridge> | undefined;
   let creatorAuthorityPromise:
     | Promise<{
         tools: readonly (string | { name: string; pluginId?: string })[];
@@ -237,8 +236,9 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
           cronCreatorAuthorityUnavailableReason: "queued-local-operator-configured-mcp" as const,
         }
       : {}),
-    onYieldDetected: (acknowledgment: string | undefined) => {
+    onYieldDetected: (message: string, acknowledgment: string | undefined) => {
       toolState.yieldDetected = true;
+      toolState.yieldMessage = message;
       toolState.yieldAcknowledgment = acknowledgment;
     },
     claimYieldCompletion: () => runtimeYieldCompletionClaim.current?.() ?? false,
@@ -276,8 +276,9 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
   let nativeSpecs: CodexDynamicToolSpec[] | undefined;
   if (hasCodexNativeToolCatalog(mutable.startupBinding)) {
     runAbortController.signal.throwIfAborted();
-    params.hostCapabilities.assertActive();
+    connection.assertCurrent();
     const client = await connection.attemptClientFactory({
+      assertCurrent: connection.assertCurrent,
       startOptions: connection.appServer.start,
       authProfileId: connection.startupClientAuthProfileId,
       agentDir,
@@ -292,16 +293,20 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
         agentDir,
         assertCurrent: () => {
           runAbortController.signal.throwIfAborted();
-          params.hostCapabilities.assertActive();
+          connection.assertCurrent();
         },
       });
     } finally {
       releaseLeasedSharedCodexAppServerClient(client);
     }
   }
+  let requireExplicitMessageTarget: boolean | undefined;
   const tools = await buildDynamicTools({
     ...commonToolParams,
     registerRunCleanup: (cleanup) => runCleanups.push(cleanup),
+    onMessageToolTargetResolved: (required) => {
+      requireExplicitMessageTarget = required;
+    },
     cronCreatorToolAllowlistRef: cronCreatorToolAllowlist,
     cronCreatorToolAllowlistCaptureRef,
     onPersistentWebSearchPolicyResolved: (allowed) => {
@@ -425,6 +430,20 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
   // Specs come from the session advertised-catalog cache so fingerprints stay stable.
   let scopedMcpTools: Awaited<ReturnType<typeof materializeRequesterScopedMcpToolsForHarnessRun>> =
     undefined;
+  const disposeMcpTools = async () => {
+    for (const [step, materialized] of [
+      ["codex-scoped-mcp-dispose", scopedMcpTools],
+      ["codex-configured-mcp-dispose", configuredMcp],
+    ] as const) {
+      await runAgentCleanupStep({
+        runId: params.runId,
+        sessionId: params.sessionId,
+        step,
+        log: embeddedAgentLog,
+        cleanup: async () => materialized?.dispose(),
+      });
+    }
+  };
   try {
     scopedMcpTools = authenticatedScheduledMode
       ? undefined
@@ -493,7 +512,7 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
         ? { turnSourceThreadId: params.currentThreadTs }
         : {}),
     };
-    toolBridge = createCodexDynamicToolBridge({
+    const toolBridge = createCodexDynamicToolBridge({
       tools: toolsWithScopedMcp,
       registeredTools: registeredWithScopedMcp,
       registeredSpecs: nativeSpecs,
@@ -504,49 +523,38 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
       }),
       directToolNames: resolveCodexDynamicToolDirectNames(
         params,
+        registeredWithScopedMcp,
         isHostScopedAgentToolActive("openclaw"),
       ),
       hookContext,
     });
-    await captureFinalCodexCronCreatorToolAllowlist(
-      cronCreatorToolAllowlist,
-      cronCreatorToolAllowlistCaptureRef,
-      toolBridge.availableTools,
-    );
-    if (
-      !authenticatedScheduledMode &&
-      bundleMcpThreadConfig.staticServerNames.length > 0 &&
-      !canResolveScheduledConfiguredMcpCreatorAuthority
-    ) {
-      // Native configured MCP is model-visible but absent from this dynamic-tool list.
-      // Keep the names for finite intersections, but never certify a partial default cap.
-      delete cronCreatorToolAllowlistCaptureRef.value;
-    }
-    if (requiresScheduledCodexAppAuthority) {
-      // Native apps are not represented in the OpenClaw dynamic-tool list.
-      // Require the exact-thread resolver before certifying a default cap.
-      delete cronCreatorToolAllowlistCaptureRef.value;
-    }
+    const captureCronCreatorToolAllowlist = async () => {
+      await captureFinalCodexCronCreatorToolAllowlist(
+        cronCreatorToolAllowlist,
+        cronCreatorToolAllowlistCaptureRef,
+        toolBridge.availableTools,
+        { nativeToolSurfaceEnabled },
+      );
+      if (
+        !authenticatedScheduledMode &&
+        bundleMcpThreadConfig.staticServerNames.length > 0 &&
+        !canResolveScheduledConfiguredMcpCreatorAuthority
+      ) {
+        // Native configured MCP is model-visible but absent from this dynamic-tool list.
+        // Keep the names for finite intersections, but never certify a partial default cap.
+        delete cronCreatorToolAllowlistCaptureRef.value;
+      }
+      if (requiresScheduledCodexAppAuthority) {
+        // Native apps are not represented in the OpenClaw dynamic-tool list.
+        // Require the exact-thread resolver before certifying a default cap.
+        delete cronCreatorToolAllowlistCaptureRef.value;
+      }
+    };
     if (canResolveAnyScheduledCreatorAuthority) {
       resolveCreatorAuthorityImpl = async (options) => {
         options?.signal?.throwIfAborted();
         if (codexAppAuthorityUnavailableReason) {
           throw new Error(codexAppAuthorityUnavailableReason);
-        }
-        if (!toolBridge) {
-          throw new Error("cron creator authority resolver lost the active tool bridge");
-        }
-        const authorityTools: Array<string | { name: string; pluginId?: string }> = [];
-        const captureRef: {
-          value?: { version: 1; source: "final-executable-surface" };
-        } = {};
-        await captureFinalCodexCronCreatorToolAllowlist(
-          authorityTools,
-          captureRef,
-          toolBridge.availableTools,
-        );
-        if (!captureRef.value) {
-          throw new Error("cron creator authority snapshot did not produce provenance");
         }
         const appSource = scheduledAppAuthoritySourceRef.current;
         const runtimeAuthority =
@@ -563,61 +571,61 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
                   );
                 })()
             : undefined;
-        if (!canResolveScheduledConfiguredMcpCreatorAuthority) {
-          options?.signal?.throwIfAborted();
-          return Object.freeze({
-            tools: Object.freeze(authorityTools.map((entry) => Object.freeze(entry))),
-            provenance: Object.freeze(captureRef.value),
-            ...(runtimeAuthority ? { runtimeAuthority } : {}),
-          });
-        }
-        const authorityRuntimeId = `cron-authority:${params.runId}`;
-        let materialized: Awaited<ReturnType<typeof materializeStaticMcpToolsForHarnessRun>>;
+        let materialized:
+          | Awaited<ReturnType<typeof materializeStaticMcpToolsForHarnessRun>>
+          | undefined;
         try {
-          materialized = await materializeStaticMcpToolsForHarnessRun({
-            sessionId: authorityRuntimeId,
-            agentId: sessionAgentId,
-            workspaceDir: effectiveWorkspace,
-            agentDir: policyContext.agentDir,
-            cfg: params.config,
-            manifestRegistry: bundleManifestRegistry,
-            reservedToolNames: toolBridge.availableTools.map((tool) => tool.name),
-            toolsAllow: params.toolsAllow,
-            toolOverrides: codexMcpToolOverrides,
-            autoApproveCodexAppServerApprovals: shouldAutoApproveCodexAppServerApprovals(
-              connection.appServer,
-            ),
-            projectedMcpServers: bundleMcpThreadConfig.configPatch?.mcp_servers,
-            policyContext,
-            warn: (message) => embeddedAgentLog.warn(message),
-            retireSessionRuntimeAfterDispose: true,
-          });
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error);
-          throw new Error(
-            `Configured MCP discovery failed while resolving inherited automation authority: ${detail}. Retry after the server is available, or provide an explicit finite toolsAllow list containing only currently visible tools; no automation changes were saved.`,
-            { cause: error },
-          );
-        }
-        try {
+          if (canResolveScheduledConfiguredMcpCreatorAuthority) {
+            try {
+              materialized = await materializeStaticMcpToolsForHarnessRun({
+                sessionId: `cron-authority:${params.runId}`,
+                agentId: sessionAgentId,
+                workspaceDir: effectiveWorkspace,
+                agentDir: policyContext.agentDir,
+                cfg: params.config,
+                manifestRegistry: bundleManifestRegistry,
+                reservedToolNames: toolBridge.availableTools.map((tool) => tool.name),
+                toolsAllow: params.toolsAllow,
+                toolOverrides: codexMcpToolOverrides,
+                autoApproveCodexAppServerApprovals: shouldAutoApproveCodexAppServerApprovals(
+                  connection.appServer,
+                ),
+                projectedMcpServers: bundleMcpThreadConfig.configPatch?.mcp_servers,
+                policyContext,
+                warn: (message) => embeddedAgentLog.warn(message),
+                retireSessionRuntimeAfterDispose: true,
+              });
+            } catch (error) {
+              const detail = error instanceof Error ? error.message : String(error);
+              throw new Error(
+                `Configured MCP discovery failed while resolving inherited automation authority: ${detail}. Retry after the server is available, or provide an explicit finite toolsAllow list containing only currently visible tools; no automation changes were saved.`,
+                { cause: error },
+              );
+            }
+          }
           options?.signal?.throwIfAborted();
-          if (materialized.diagnosticNotice) {
+          if (materialized?.diagnosticNotice) {
             throw new Error(
               `${materialized.diagnosticNotice} Sign in to the affected MCP server and retry, or provide an explicit finite toolsAllow list containing only currently visible tools. No automation changes were saved.`,
             );
           }
-          // Default authority contains model-callable tools only. App-only projections
-          // gate view callbacks and must never become headless scheduled capability.
-          const projectedConfiguredMcp = projectCodexExecutableDynamicTools({
-            tools: filterCodexDynamicTools(materialized.tools, pluginConfig),
-            hookContext,
-          });
-          await captureFinalCodexCronCreatorToolAllowlist(authorityTools, captureRef, [
-            ...toolBridge.availableTools,
-            ...projectedConfiguredMcp.availableTools,
-          ]);
+          // App-only projections gate view callbacks, never headless scheduled capability.
+          const configuredTools = materialized
+            ? projectCodexExecutableDynamicTools({
+                tools: filterCodexDynamicTools(materialized.tools, pluginConfig),
+                hookContext,
+              }).availableTools
+            : [];
+          const authorityTools: typeof cronCreatorToolAllowlist = [];
+          const captureRef: typeof cronCreatorToolAllowlistCaptureRef = {};
+          await captureFinalCodexCronCreatorToolAllowlist(
+            authorityTools,
+            captureRef,
+            [...toolBridge.availableTools, ...configuredTools],
+            { nativeToolSurfaceEnabled },
+          );
           if (!captureRef.value) {
-            throw new Error("configured MCP authority snapshot did not produce provenance");
+            throw new Error("cron creator authority snapshot did not produce provenance");
           }
           options?.signal?.throwIfAborted();
           return Object.freeze({
@@ -626,19 +634,20 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
             ...(runtimeAuthority ? { runtimeAuthority } : {}),
           });
         } finally {
-          await materialized.dispose();
+          await materialized?.dispose();
         }
       };
     }
     return {
       tools: toolsWithScopedMcp,
       registeredTools: registeredWithScopedMcp,
+      requireExplicitMessageTarget,
       scopedMcpTools,
       configuredMcp,
+      disposeMcpTools,
       configuredMcpOwnershipVersion:
         configuredMcpSurface === "scheduled" ? (1 as const) : undefined,
-      cronCreatorToolAllowlist,
-      cronCreatorToolAllowlistCaptureRef,
+      captureCronCreatorToolAllowlist,
       scheduledAppAuthoritySourceRef,
       dynamicToolParams,
       compactionPlanState,
@@ -655,8 +664,7 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
   } catch (error) {
     // Materialized runtimes are attempt-owned only after this function returns.
     // Dispose here when filtering, schema projection, or bridge setup fails first.
-    await scopedMcpTools?.dispose();
-    await configuredMcp?.dispose();
+    await disposeMcpTools();
     throw error;
   }
 }

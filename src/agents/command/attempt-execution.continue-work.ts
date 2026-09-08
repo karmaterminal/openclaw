@@ -42,6 +42,13 @@ type PriorChainState = {
   chainId: string | undefined;
 };
 
+function normalizeCleanupError(error: unknown, fallback: string): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+  return new Error(typeof error === "string" ? error : fallback);
+}
+
 export async function scheduleSpawnInitContinueWorkWake(params: {
   sessionKey: string;
   sessionEntry: SessionEntry | undefined;
@@ -52,6 +59,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   runResult: EmbeddedAgentRunResult;
   originRunId: string;
   originTurnId: string;
+  abortSignal?: AbortSignal;
 }): Promise<void> {
   const [
     { resolveLiveContinuationRuntimeConfig },
@@ -65,6 +73,9 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     import("../../config/sessions/session-accessor.js"),
   ]);
 
+  if (params.abortSignal?.aborted) {
+    return;
+  }
   const continuationConfig = resolveLiveContinuationRuntimeConfig(params.cfg);
   if (!continuationConfig.enabled) {
     log.info(
@@ -180,6 +191,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     },
     reservedCount: reservedEntry.continuationChainCount ?? prior.count,
   };
+  let rollbackExpectedCount = reservation.reservedCount;
   const restorePriorChainState = async (): Promise<void> => {
     let rolledBack = false;
     try {
@@ -191,7 +203,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         update: (entry) => {
           if (
             entry.continuationChainId !== reservation.reserved.chainId ||
-            (entry.continuationChainCount ?? 0) !== reservation.reservedCount
+            (entry.continuationChainCount ?? 0) !== rollbackExpectedCount
           ) {
             return {};
           }
@@ -218,6 +230,10 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
       throw error;
     }
   };
+  if (params.abortSignal?.aborted) {
+    await restorePriorChainState();
+    return;
+  }
 
   const liveSchedulingConfig = resolveLiveContinuationRuntimeConfig(params.cfg);
   if (!liveSchedulingConfig.enabled) {
@@ -232,6 +248,10 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   const reservedRequests = params.requests.slice(0, reservedRequestCount);
   const unreservedRequestCount = params.requests.length - reservedRequests.length;
   const { checkContinuationBudget } = await import("../../auto-reply/continuation/scheduler.js");
+  if (params.abortSignal?.aborted) {
+    await restorePriorChainState();
+    return;
+  }
   const liveBudgetRejection =
     reservedRequests.length > 0
       ? checkContinuationBudget({
@@ -242,7 +262,6 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
       : null;
   let result: Awaited<ReturnType<typeof scheduleContinuationWorkBatch>>;
   let failCreatedWork: ((summary: string) => void) | undefined;
-  let supersedePriorParkedWork: (() => string[]) | undefined;
   const createdFlowIds: string[] = [];
   if (reservedRequests.length === 0 || liveBudgetRejection) {
     result = {
@@ -255,99 +274,143 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     try {
       const [
         { failFlow, getTaskFlowById, listTaskFlowsForOwnerKey, requestFlowCancel },
-        { decodeWorkState, isContinuationWorkFlow, workToRuntime },
-        { markPendingWorkSuperseded },
+        { abortContinuationDispatchClaim },
+        { decodeWorkState, isContinuationWorkFlow },
+        { rollbackPendingWorkReplacement },
       ] = await Promise.all([
         import("../../tasks/task-flow-runtime-internal.js"),
+        import("../../auto-reply/continuation/continuation-dispatch-claims.js"),
         import("../../auto-reply/continuation/work-flow-state.js"),
-        import("../../auto-reply/continuation/work-store.js"),
+        import("../../auto-reply/continuation/work-replacement-store.js"),
       ]);
       const existingFlows = listTaskFlowsForOwnerKey(params.sessionKey);
-      const priorParkedFlows = existingFlows.flatMap((flow) => {
+      const priorParkedFlows = existingFlows.filter((flow) => {
         const state = isContinuationWorkFlow(flow) ? decodeWorkState(flow) : undefined;
-        return flow.status === "queued" && state?.idleRetry?.trigger === "reply-run-ended"
-          ? [{ flowId: flow.flowId, revision: flow.revision }]
-          : [];
+        return flow.status === "queued" && state?.idleRetry?.trigger === "reply-run-ended";
       });
-      supersedePriorParkedWork = () => {
-        const unresolvedFlowIds: string[] = [];
-        for (const priorParked of priorParkedFlows) {
-          const flow = getTaskFlowById(priorParked.flowId);
-          if (!flow || flow.status !== "queued" || !isContinuationWorkFlow(flow)) {
-            continue;
-          }
-          const state = decodeWorkState(flow);
-          if (state?.idleRetry?.trigger !== "reply-run-ended") {
-            continue;
-          }
-          if (
-            flow.revision !== priorParked.revision ||
-            !markPendingWorkSuperseded(
-              workToRuntime(flow, state, "queued"),
-              "Superseded by a newer continue_work election after its chain state finalized.",
-            )
-          ) {
-            unresolvedFlowIds.push(flow.flowId);
-          }
-        }
-        return unresolvedFlowIds;
-      };
+      let supersededPriorParkedFlows: readonly (typeof priorParkedFlows)[number][] =
+        priorParkedFlows;
+      let replacementApplied = false;
       failCreatedWork = (summary) => {
+        if (replacementApplied) {
+          const rollback = rollbackPendingWorkReplacement({
+            sessionKey: params.sessionKey,
+            createdFlowIds,
+            priorFlows: supersededPriorParkedFlows,
+            originRunId: params.originRunId,
+            originTurnId: params.originTurnId,
+            summary,
+          });
+          const cleanupErrors: Error[] = [];
+          if (rollback.unresolvedCreatedFlowIds.length > 0) {
+            cleanupErrors.push(
+              new Error(
+                `failed to terminalize continuation flow(s): ${rollback.unresolvedCreatedFlowIds.join(", ")}`,
+              ),
+            );
+          }
+          if (rollback.unrestoredPriorFlowIds.length > 0) {
+            cleanupErrors.push(
+              new Error(
+                `failed to restore prior continuation flow(s): ${rollback.unrestoredPriorFlowIds.join(", ")}`,
+              ),
+            );
+          }
+          if (!rollback.applied && cleanupErrors.length === 0) {
+            cleanupErrors.push(new Error("atomic continuation replacement rollback failed"));
+          }
+          const [cleanupError] = cleanupErrors;
+          if (cleanupErrors.length === 1 && cleanupError) {
+            throw cleanupError;
+          }
+          if (cleanupErrors.length > 1) {
+            throw new AggregateError(cleanupErrors, "continuation replacement rollback failed");
+          }
+          return;
+        }
+        const cleanupErrors: Error[] = [];
         const unresolvedFlowIds: string[] = [];
         for (const flowId of createdFlowIds) {
-          const flow = getTaskFlowById(flowId);
-          if (!flow || (flow.status !== "queued" && flow.status !== "running")) {
-            continue;
-          }
-          if (!isContinuationWorkFlow(flow)) {
-            unresolvedFlowIds.push(flow.flowId);
-            continue;
-          }
-          const failed = failFlow({
-            flowId: flow.flowId,
-            expectedRevision: flow.revision,
-            currentStep: "spawn-init continuation finalization failed",
-            stateJson: flow.stateJson,
-            blockedSummary: summary,
-          });
-          if (!failed.applied) {
-            const fresh = getTaskFlowById(flow.flowId);
-            const freshState =
-              fresh && isContinuationWorkFlow(fresh) ? decodeWorkState(fresh) : undefined;
-            if (
-              !fresh ||
-              (fresh.status !== "queued" && fresh.status !== "running") ||
-              fresh.cancelRequestedAt !== undefined
-            ) {
-              continue;
-            }
-            if (
-              freshState?.originRunId !== params.originRunId ||
-              freshState.originTurnId !== params.originTurnId
-            ) {
-              unresolvedFlowIds.push(fresh.flowId);
-              continue;
-            }
-            const cancelled = requestFlowCancel({
-              flowId: fresh.flowId,
-              expectedRevision: fresh.revision,
-            });
-            if (!cancelled.applied) {
-              const latest = getTaskFlowById(fresh.flowId);
-              if (
-                latest &&
-                (latest.status === "queued" || latest.status === "running") &&
-                latest.cancelRequestedAt === undefined
-              ) {
-                unresolvedFlowIds.push(latest.flowId);
+          let resolved = false;
+          let lastError: unknown;
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+              let flow = getTaskFlowById(flowId);
+              if (!flow || (flow.status !== "queued" && flow.status !== "running")) {
+                resolved = true;
+                break;
               }
+              if (!isContinuationWorkFlow(flow)) {
+                break;
+              }
+              const state = decodeWorkState(flow);
+              if (
+                state?.originRunId !== params.originRunId ||
+                state.originTurnId !== params.originTurnId
+              ) {
+                break;
+              }
+              if (flow.status === "running") {
+                abortContinuationDispatchClaim({
+                  sessionKey: params.sessionKey,
+                  flowId: flow.flowId,
+                  reason: summary,
+                });
+                if (flow.cancelRequestedAt === undefined) {
+                  const cancelled = requestFlowCancel({
+                    flowId: flow.flowId,
+                    expectedRevision: flow.revision,
+                  });
+                  if (!cancelled.applied) {
+                    continue;
+                  }
+                  flow = cancelled.flow;
+                }
+              }
+              const failed = failFlow({
+                flowId: flow.flowId,
+                expectedRevision: flow.revision,
+                currentStep: "spawn-init continuation finalization failed",
+                stateJson: flow.stateJson,
+                blockedSummary: summary,
+              });
+              if (failed.applied) {
+                resolved = true;
+                break;
+              }
+            } catch (error) {
+              lastError = error;
+            }
+          }
+          if (!resolved) {
+            const latest = getTaskFlowById(flowId);
+            if (
+              latest &&
+              (latest.status === "queued" || latest.status === "running") &&
+              latest.cancelRequestedAt === undefined
+            ) {
+              unresolvedFlowIds.push(latest.flowId);
+            }
+            if (lastError) {
+              cleanupErrors.push(
+                new Error(`failed to clean up continuation flow ${flowId}`, { cause: lastError }),
+              );
             }
           }
         }
         if (unresolvedFlowIds.length > 0) {
-          throw new Error(
-            `failed to terminalize or cancel continuation flow(s): ${unresolvedFlowIds.join(", ")}`,
+          cleanupErrors.push(
+            new Error(
+              `failed to terminalize or cancel continuation flow(s): ${unresolvedFlowIds.join(", ")}`,
+            ),
           );
+        }
+        const [cleanupError] = cleanupErrors;
+        if (cleanupErrors.length === 1 && cleanupError) {
+          throw cleanupError;
+        }
+        if (cleanupErrors.length > 1) {
+          throw new AggregateError(cleanupErrors, "continuation flow cleanup failed");
         }
       };
       result = await scheduleContinuationWorkBatch({
@@ -365,13 +428,23 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         }),
         config: liveSchedulingConfig,
         coalescePriorParkedWork: false,
-        onFlowEnqueued: (flowId) => createdFlowIds.push(flowId),
+        priorParkedFlowsToSupersede: priorParkedFlows,
+        expectedRunningFlowIds: existingFlows
+          .filter((flow) => isContinuationWorkFlow(flow) && flow.status === "running")
+          .map((flow) => flow.flowId),
+        onFlowEnqueued: (flowId) => {
+          createdFlowIds.push(flowId);
+          replacementApplied ||= priorParkedFlows.length > 0;
+        },
         // Same-session own-turn work has no spawning parent. Adding parentRunId
         // would let orphan recovery reap the row after its electing turn settles.
         originRunId: params.originRunId,
         originTurnId: params.originTurnId,
+        ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
         log: (message) => log.info(message),
       });
+      supersededPriorParkedFlows = result.supersededFlows ?? [];
+      replacementApplied ||= supersededPriorParkedFlows.length > 0;
       result.cappedCount += unreservedRequestCount;
       result.capped ||= unreservedRequestCount > 0;
     } catch (error) {
@@ -384,6 +457,38 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     }
   }
 
+  const failCreatedWorkAndRestoreReservation = async (summary: string): Promise<void> => {
+    try {
+      failCreatedWork?.(summary);
+    } catch (error) {
+      throw normalizeCleanupError(error, "continuation flow cleanup failed");
+    }
+    try {
+      await restorePriorChainState();
+    } catch (error) {
+      throw normalizeCleanupError(error, "continuation chain rollback failed");
+    }
+  };
+
+  if (result.replacementFailure) {
+    enqueueSystemEvent(
+      "[continuation] A newer continue_work wake was not scheduled because prior parked-wake supersession did not commit.",
+      { sessionKey: params.sessionKey, trusted: true },
+    );
+    await failCreatedWorkAndRestoreReservation(
+      "continue_work replacement cancelled because parked-wake supersession did not commit.",
+    );
+    throw new Error(
+      `prior parked-wake supersession did not commit (${result.replacementFailure})${result.replacementFailureFlowId ? ` for flow ${result.replacementFailureFlowId}` : ""}`,
+    );
+  }
+
+  if (params.abortSignal?.aborted) {
+    await failCreatedWorkAndRestoreReservation(
+      "continue_work scheduling cancelled with its originating turn.",
+    );
+    return;
+  }
   if (result.cappedCount > 0 && params.requests.length > 1) {
     enqueueSystemEvent(
       `[continuation] ${result.cappedCount} of ${params.requests.length} continue_work elections were not scheduled (chain/cost/pending cap).`,
@@ -423,6 +528,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     if (!finalizationApplied) {
       throw new Error("spawn-init chain finalization guard did not apply");
     }
+    rollbackExpectedCount = result.chainState.currentChainCount;
   } catch (error) {
     let cleanupError: unknown;
     try {
@@ -447,26 +553,9 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     throw error;
   }
 
-  let unresolvedPriorFlowIds: string[];
-  try {
-    unresolvedPriorFlowIds = supersedePriorParkedWork?.() ?? [];
-  } catch (error) {
-    log.warn(
-      `[continuation] Failed while superseding prior parked work after spawn-init chain finalization for session ${sanitizeForLog(params.sessionKey)}: ${sanitizeForLog(String(error))}`,
-    );
-    enqueueSystemEvent(
-      "[continuation] A newer continue_work wake was scheduled, but prior parked-wake cleanup failed and one or more prior wakes may also run.",
-      { sessionKey: params.sessionKey, trusted: true },
-    );
-    return;
-  }
-  if (unresolvedPriorFlowIds.length > 0) {
-    log.warn(
-      `[continuation] Could not supersede prior parked flow(s) after spawn-init chain finalization for session ${sanitizeForLog(params.sessionKey)}: ${unresolvedPriorFlowIds.map(sanitizeForLog).join(", ")}`,
-    );
-    enqueueSystemEvent(
-      "[continuation] A newer continue_work wake was scheduled, but one or more prior parked wakes could not be superseded and may also run.",
-      { sessionKey: params.sessionKey, trusted: true },
+  if (params.abortSignal?.aborted) {
+    await failCreatedWorkAndRestoreReservation(
+      "continue_work scheduling cancelled with its originating turn.",
     );
   }
 }

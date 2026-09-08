@@ -79,6 +79,7 @@ export async function handleContinuationSignal(context: {
     stagePostCompactionDelegate(sessionKey, {
       task: effectiveContinuationSignal.task,
       createdAt: Date.now(),
+      originRunId: runId,
       ...(effectiveContinuationSignal.targetSessionKey
         ? { targetSessionKey: effectiveContinuationSignal.targetSessionKey }
         : {}),
@@ -235,6 +236,7 @@ export async function handleContinuationSignal(context: {
                 : "normal";
             enqueuePendingDelegate(sessionKey, {
               task: delegateTask,
+              originRunId: runId,
               ...(delayMs > 0 ? { delayMs } : {}),
               ...(delegateMode !== "normal" ? { mode: delegateMode } : {}),
               ...(effectiveContinuationSignal.targetSessionKey

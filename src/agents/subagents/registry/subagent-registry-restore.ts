@@ -24,6 +24,7 @@ import {
   updateSubagentArchiveAtMs,
 } from "./subagent-registry-helpers.js";
 import type { SubagentLifecycleController } from "./subagent-registry-lifecycle.js";
+import { isRetiredSubagentExecution } from "./subagent-registry-restart-recovery-helpers.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { deleteSubagentSessionForCleanup } from "./subagent-session-cleanup.js";
 import {
@@ -57,11 +58,13 @@ export function createSubagentRegistryRestorer(config: {
   resumedRuns: Set<string>;
   deps: () => SubagentRegistryDeps;
   getGatewayContextResolver: () => GatewayContextResolver | undefined;
+  bindGatewayOwners: () => boolean;
   persist: (...runIds: string[]) => void;
   persistOrThrow: (...runIds: string[]) => void;
   settleRequesterTurn: SubagentLifecycleController["settleRequesterTurnAfterSessionSpawns"];
   ensureListener: () => void;
   startSweeper: () => void;
+  scheduleSweep: () => void;
   resumeRun: (runId: string) => void;
   listSwarmRunsForGroup: (
     groupId: string,
@@ -104,11 +107,13 @@ export function createSubagentRegistryRestorer(config: {
     resumedRuns,
     deps,
     getGatewayContextResolver,
+    bindGatewayOwners,
     persist,
     persistOrThrow,
     settleRequesterTurn,
     ensureListener,
     startSweeper,
+    scheduleSweep,
     resumeRun,
     listSwarmRunsForGroup,
     startQueuedSubagentRun,
@@ -166,7 +171,14 @@ export function createSubagentRegistryRestorer(config: {
 
   function activateRestoredRuns() {
     activationRequested = true;
-    if (restoreState !== "succeeded" || activated) {
+    // Hydration retries can finish after Gateway activation or closure. Bind before
+    // resuming, including repeat activations, and leave closed-instance rows pending.
+    if (restoreState !== "succeeded" || !bindGatewayOwners()) {
+      return;
+    }
+    // Post-ready only: collector cleanup retains the canonical sessions.delete RPC owner.
+    scheduleSweep();
+    if (activated) {
       return;
     }
     const cfg = deps().getRuntimeConfig();
@@ -194,16 +206,19 @@ export function createSubagentRegistryRestorer(config: {
         if (!firstEntry) {
           continue;
         }
-        settleRequesterTurn({
-          requesterSessionKey: firstEntry.requesterSessionKey,
-          requesterAgentId: resolveRequesterAgentId(firstEntry),
-          requesterTurnRunId,
-          requesterYielded: entries.every((entry) => entry.requesterTurnYielded === true),
-          acceptedSessionSpawns: entries.map((entry) => ({
-            runId: entry.taskRunId ?? entry.runId,
-            childSessionKey: entry.childSessionKey,
-          })),
-        });
+        settleRequesterTurn(
+          {
+            requesterSessionKey: firstEntry.requesterSessionKey,
+            requesterAgentId: resolveRequesterAgentId(firstEntry),
+            requesterTurnRunId,
+            requesterYielded: entries.every((entry) => entry.requesterTurnYielded === true),
+            acceptedSessionSpawns: entries.map((entry) => ({
+              runId: entry.taskRunId ?? entry.runId,
+              childSessionKey: entry.childSessionKey,
+            })),
+          },
+          "restore",
+        );
       }
     }
     if (runs.size === 0) {
@@ -246,9 +261,11 @@ export function createSubagentRegistryRestorer(config: {
           );
           continue;
         }
+        const groupId = entry.groupId ?? "";
+        const requesterSessionKey = entry.swarmRequesterSessionKey ?? entry.requesterSessionKey;
         const groupRuns = listSwarmRunsForGroup(
-          entry.groupId ?? "",
-          entry.swarmRequesterSessionKey ?? entry.requesterSessionKey,
+          groupId,
+          requesterSessionKey,
           entry.requesterAgentId,
         );
         const currentSwarmConfig = resolveSwarmConfig(cfg, entry.requesterAgentId);
@@ -258,11 +275,16 @@ export function createSubagentRegistryRestorer(config: {
         let acceptedLaunchError: unknown;
         let launchLifecycleGeneration: string | undefined;
         enqueueSwarmRun({
-          groupId: launch.schedulerGroupKey,
+          // Global session keys repeat across agent stores, including restored queues.
+          groupId: JSON.stringify([entry.requesterAgentId, requesterSessionKey, groupId]),
           runId,
           maxConcurrent: currentSwarmConfig.maxConcurrent,
           activeRunIds: groupRuns
-            .filter((candidate) => candidate.execution.status === "running")
+            .filter(
+              (candidate) =>
+                candidate.execution.status === "running" ||
+                candidate.execution.status === "interrupted",
+            )
             .map((candidate) => candidate.schedulerSlotId ?? candidate.runId),
           start: async () => {
             await runWithGatewayIndependentRootWorkAdmission(async () => {
@@ -383,13 +405,17 @@ export function createSubagentRegistryRestorer(config: {
         });
         continue;
       }
-      // An aborted persisted session belongs to orphan recovery. Waiting on its
-      // pre-restart run can terminalize it before the replacement turn starts.
+      const sessionEntry = loadSubagentSessionEntry({
+        childSessionKey: entry.childSessionKey,
+        storeCache: restoredSessionCache,
+      });
+      // Orphan recovery owns aborted sessions and exact still-running retired
+      // executions. Completed sessions must resume normal settlement and delivery.
       if (
-        loadSubagentSessionEntry({
-          childSessionKey: entry.childSessionKey,
-          storeCache: restoredSessionCache,
-        })?.abortedLastRun === true
+        sessionEntry?.abortedLastRun === true ||
+        (sessionEntry?.status === "running" &&
+          sessionEntry.lifecycleRunId === entry.runId &&
+          isRetiredSubagentExecution(entry))
       ) {
         continue;
       }
@@ -614,6 +640,10 @@ export function createSubagentRegistryRestorer(config: {
   return {
     restoreOnce: restoreSubagentRunsOnce,
     activate: activateRestoredRuns,
+    // Old sweepers and reopened admission must wait for restored inventory and its Gateway.
+    canResumeWakes: () =>
+      !activationRequested ||
+      (restoreState === "succeeded" && Boolean(getGatewayContextResolver()?.())),
     reset: () => {
       clearRestoreRetryTimer();
       restoreState = "idle";

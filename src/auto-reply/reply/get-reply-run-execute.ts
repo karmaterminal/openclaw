@@ -28,7 +28,6 @@ import {
 } from "../../sessions/user-turn-transcript.js";
 import { buildChannelUserTurnSender } from "../../sessions/user-turn-transcript.metadata.js";
 import { isReasoningTagProvider } from "../../utils/provider-utils.js";
-import { buildInboundMediaNoteProjection } from "../media-note.js";
 import type { OriginatingChannelType } from "../templating.js";
 import { resolveCurrentTurnImages } from "./current-turn-images.js";
 import { resolveEffectiveReplyRoute } from "./effective-reply-route.js";
@@ -60,10 +59,11 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
   const {
     context,
     resolvedThinkLevel,
+    thinkLevelOverride,
     thinkingCatalog,
     skillsSnapshot,
     promptMedia,
-    currentInboundContext,
+    inboundMediaIndexes,
     adoptPreparedSystemEvents,
     isRoomEvent,
     providedReplyOperation,
@@ -224,7 +224,6 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     unresolvedSourceIndexes.has(index) ? { ...fact, hydrationSuppressed: true } : fact,
   );
   const userTurnMediaForPersistence = [...persistedCtxMedia, ...(opts?.media ?? [])];
-  const inboundMediaIndexes = buildInboundMediaNoteProjection(ctx).mediaIndexes ?? [];
   const promptMediaForRun = suppressUnresolvedPromptMedia({
     promptMedia: promptMedia ?? [],
     inboundMediaIndexes,
@@ -272,6 +271,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     queuedBody,
     transcriptBody,
     transcriptCommandBody,
+    currentInboundContext,
     managedSystemEventDeliveries,
   } = adoptedSystemEvents;
   // prompt-prelude substitutes MEDIA_ONLY_USER_TEXT as transcriptBody for
@@ -475,6 +475,8 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       senderIsOwner: command.senderIsOwner,
       traceAuthorized:
         command.senderIsOwner || (ctx.GatewayClientScopes ?? []).includes("operator.admin"),
+      traceLevelOverride: params.directives.traceLevel,
+      verboseLevelOverride: params.directives.verboseLevel,
       approvalReviewerDeviceId: normalizeOptionalString(ctx.ApprovalReviewerDeviceId),
       sessionFile: preparedSessionState.sessionFile,
       workspaceDir,
@@ -501,6 +503,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       authProfileIdSource,
       thinkingCatalog,
       thinkLevel: resolvedThinkLevel,
+      thinkLevelOverride,
       ...(() => {
         if (useFastReplyRuntime) {
           return { fastMode: false, fastModeAutoOnSeconds: undefined, fastModeOverride: true };

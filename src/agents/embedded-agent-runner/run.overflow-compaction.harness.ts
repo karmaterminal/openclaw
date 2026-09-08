@@ -126,6 +126,7 @@ const testPluginMetadataSnapshot: PluginMetadataSnapshot = {
   diagnostics: [],
   byPluginId: new Map([[anthropicAuthMetadataPlugin.id, anthropicAuthMetadataPlugin]]),
   normalizePluginId: (pluginId: string) => pluginId,
+  declaredProviderOwners: new Map(),
   owners: {
     channels: new Map(),
     channelConfigs: new Map(),
@@ -577,14 +578,12 @@ export function resetRunOverflowCompactionHarnessMocks(): void {
   mockedCoerceToFailoverError.mockReset();
   mockedCoerceToFailoverError.mockReturnValue(null);
   mockedDescribeFailoverError.mockReset();
-  mockedDescribeFailoverError.mockImplementation(
-    (err: unknown): MockFailoverErrorDescription => ({
-      message: formatErrorMessage(err),
-      reason: undefined,
-      status: undefined,
-      code: undefined,
-    }),
-  );
+  mockedDescribeFailoverError.mockImplementation((err: unknown): MockFailoverErrorDescription => ({
+    message: formatErrorMessage(err),
+    reason: undefined,
+    status: undefined,
+    code: undefined,
+  }));
   mockedResolveFailoverStatus.mockReset();
   mockedResolveFailoverStatus.mockReturnValue(undefined);
 
@@ -842,6 +841,7 @@ export async function loadRunOverflowCompactionHarness(): Promise<{
     resolveProviderAuthProfileId: vi.fn(() => undefined),
     resolveProviderReasoningOutputModeWithPlugin: vi.fn(() => undefined),
     shouldPreferProviderRuntimeResolvedModel: vi.fn(() => false),
+    providerOwnsDynamicModelPreparation: vi.fn(() => false),
     prepareProviderExtraParams: vi.fn(async () => ({})),
     wrapProviderStreamFn: vi.fn((_cfg: unknown, _model: unknown, fn: unknown) => fn),
   }));

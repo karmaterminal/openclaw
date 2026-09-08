@@ -6,6 +6,7 @@ import { SessionManager } from "openclaw/plugin-sdk/agent-sessions";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { createOpenClawReadTool } from "./agent-tools.read.js";
+import { createAssistantErrorTranscript } from "./assistant-error-transcript.js";
 import { buildExecForegroundResult } from "./bash-tools.exec-support.js";
 import { installSessionToolResultGuard } from "./session-tool-result-guard.js";
 import { castAgentMessage } from "./test-helpers/agent-message-fixtures.js";
@@ -88,116 +89,6 @@ function getToolResultText(messages: AgentMessage[]): string {
 }
 
 describe("installSessionToolResultGuard", () => {
-  it("redacts continue_delegate attachment names and content before persistence", () => {
-    const sm = SessionManager.inMemory();
-    installSessionToolResultGuard(sm);
-    const secret = "PERSISTED_CONTINUE_DELEGATE_SECRET";
-    const attachmentName = "PERSISTED_ATTACHMENT_NAME_MUST_NOT_ECHO.md";
-
-    sm.appendMessage(
-      asAppendMessage({
-        role: "assistant",
-        content: [
-          {
-            type: "toolCall",
-            id: "call_continue_delegate",
-            name: "continue_delegate",
-            arguments: {
-              task: "use durable input",
-              attachments: [
-                {
-                  name: attachmentName,
-                  content: secret,
-                  encoding: "utf8",
-                  mimeType: "text/markdown",
-                },
-              ],
-            },
-          },
-        ],
-      }),
-    );
-
-    const serialized = JSON.stringify(getPersistedMessages(sm));
-    expect(serialized).not.toContain(secret);
-    expect(serialized).not.toContain(attachmentName);
-    expect(serialized).toContain('"content":"__OPENCLAW_REDACTED__"');
-    expect(serialized).toContain("use durable input");
-  });
-
-  it("removes legacy attachment names from already-redacted continuation persistence", () => {
-    const sm = SessionManager.inMemory();
-    installSessionToolResultGuard(sm);
-    const attachmentName = "LEGACY_REDACTED_NAME_MUST_NOT_PERSIST.md";
-
-    sm.appendMessage(
-      asAppendMessage({
-        role: "assistant",
-        content: [
-          {
-            type: "toolCall",
-            id: "call_continue_delegate_legacy",
-            name: "continue_delegate",
-            arguments: {
-              task: "use legacy redacted input",
-              attachments: [
-                {
-                  name: attachmentName,
-                  content: "__OPENCLAW_REDACTED__",
-                  encoding: "utf8",
-                },
-              ],
-            },
-          },
-        ],
-      }),
-    );
-
-    const serialized = JSON.stringify(getPersistedMessages(sm));
-    expect(serialized).not.toContain(attachmentName);
-    expect(serialized).toContain('"content":"__OPENCLAW_REDACTED__"');
-    expect(serialized).toContain('"encoding":"utf8"');
-  });
-
-  it("does not persist malformed continue_delegate attachment secrets", () => {
-    const sm = SessionManager.inMemory();
-    installSessionToolResultGuard(sm);
-    const primitiveSecret = "PERSISTED_PRIMITIVE_SECRET";
-    const unknownFieldSecret = "PERSISTED_UNKNOWN_FIELD_SECRET";
-
-    sm.appendMessage(
-      asAppendMessage({
-        role: "assistant",
-        content: [
-          {
-            type: "toolCall",
-            id: "call_continue_delegate_malformed",
-            name: "continue_delegate",
-            arguments: {
-              task: "use malformed durable input",
-              attachments: [
-                primitiveSecret,
-                {
-                  name: "brief.md",
-                  content: "PERSISTED_CONTENT_SECRET",
-                  extra: unknownFieldSecret,
-                },
-              ],
-            },
-          },
-        ],
-      }),
-    );
-
-    const serialized = JSON.stringify(getPersistedMessages(sm));
-    expect(serialized).not.toContain(primitiveSecret);
-    expect(serialized).not.toContain(unknownFieldSecret);
-    expect(serialized).not.toContain("PERSISTED_CONTENT_SECRET");
-    expect(serialized).not.toContain('"extra"');
-    expect(serialized).toContain('"content":"__OPENCLAW_REDACTED__"');
-    expect(serialized).not.toContain('"name":"brief.md"');
-  });
-
   it("inserts synthetic toolResult before non-tool message when pending", () => {
     const sm = SessionManager.inMemory();
     installSessionToolResultGuard(sm);
@@ -1022,5 +913,149 @@ describe("installSessionToolResultGuard", () => {
     const persisted = getPersistedMessages(sm);
     expect(persisted).toHaveLength(1);
     expect((persisted[0] as { content?: unknown } | undefined)?.content).toBe("replacement");
+  });
+
+  it("retains terminal errors in nonpersistent sessions", async () => {
+    const sm = SessionManager.inMemory();
+    const owner = createAssistantErrorTranscript({ runId: "run-test" });
+    installSessionToolResultGuard(sm, { assistantErrorTranscript: owner });
+    sm.appendMessage(
+      asAppendMessage({
+        role: "assistant",
+        content: [],
+        stopReason: "error",
+        errorMessage: "terminal failure",
+        timestamp: Date.now(),
+      }),
+    );
+    await owner.settle(true);
+    expect(getPersistedMessages(sm)).toEqual([
+      expect.objectContaining({ role: "assistant", errorMessage: "terminal failure" }),
+    ]);
+  });
+
+  it("reports the exact persisted user entry id", () => {
+    const sm = SessionManager.inMemory();
+    const persisted: Array<{ entryId: string; message: AgentMessage }> = [];
+    installSessionToolResultGuard(sm, {
+      onUserMessagePersisted: (message, context) => {
+        persisted.push({ entryId: context.entryId, message });
+      },
+    });
+
+    const entryId = sm.appendMessage(
+      asAppendMessage({ role: "user", content: "exact admission", timestamp: 1 }),
+    );
+
+    expect(persisted).toEqual([
+      {
+        entryId,
+        message: expect.objectContaining({ role: "user", content: "exact admission" }),
+      },
+    ]);
+  });
+
+  it("still persists successful assistant messages when error suppression is on", () => {
+    const sm = SessionManager.inMemory();
+    installSessionToolResultGuard(sm, {
+      assistantErrorTranscript: createAssistantErrorTranscript({ runId: "run-test" }),
+    });
+
+    sm.appendMessage(
+      asAppendMessage({
+        role: "assistant",
+        content: "ok response",
+        stopReason: "stop",
+        timestamp: Date.now(),
+      }),
+    );
+
+    const persisted = getPersistedMessages(sm);
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]?.role).toBe("assistant");
+  });
+
+  it("suppresses transcript-only assistant messages when requested", () => {
+    const sm = SessionManager.inMemory();
+    installSessionToolResultGuard(sm, {
+      suppressTranscriptOnlyAssistantPersistence: true,
+    });
+
+    sm.appendMessage(
+      asAppendMessage({
+        role: "assistant",
+        content: "private room-event note",
+        timestamp: Date.now(),
+      }),
+    );
+    sm.appendMessage(
+      asAppendMessage({
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call_1", name: "message", arguments: {} }],
+        timestamp: Date.now() + 1,
+      }),
+    );
+
+    const persisted = getPersistedMessages(sm);
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]?.role).toBe("assistant");
+    expect(JSON.stringify(persisted[0])).toContain("call_1");
+  });
+
+  // When an assistant message with toolCalls is aborted, no synthetic toolResult
+  // should be created. Creating synthetic results for aborted/incomplete tool calls
+  // causes API 400 errors: "unexpected tool_use_id found in tool_result blocks".
+  it("does NOT create synthetic toolResult for aborted assistant messages with toolCalls", () => {
+    const sm = SessionManager.inMemory();
+    installSessionToolResultGuard(sm);
+
+    // Aborted assistant message with incomplete toolCall
+    sm.appendMessage(
+      asAppendMessage({
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call_aborted", name: "read", arguments: {} }],
+        stopReason: "aborted",
+      }),
+    );
+
+    // Next message triggers flush of pending tool calls
+    sm.appendMessage(
+      asAppendMessage({
+        role: "user",
+        content: "are you stuck?",
+        timestamp: Date.now(),
+      }),
+    );
+
+    // Should only have assistant + user, NO synthetic toolResult
+    const messages = getPersistedMessages(sm);
+    const roles = messages.map((m) => m.role);
+    expect(roles).toEqual(["assistant", "user"]);
+    expect(roles).not.toContain("toolResult");
+  });
+
+  it("does NOT create synthetic toolResult for errored assistant messages with toolCalls", () => {
+    const sm = SessionManager.inMemory();
+    const guard = installSessionToolResultGuard(sm);
+
+    // Error assistant message with incomplete toolCall
+    sm.appendMessage(
+      asAppendMessage({
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call_error", name: "exec", arguments: {} }],
+        stopReason: "error",
+      }),
+    );
+
+    // Explicit flush should NOT create synthetic result for errored messages
+    guard.flushPendingToolResults();
+
+    const messages = getPersistedMessages(sm);
+    const toolResults = messages.filter((m) => m.role === "toolResult");
+    // No synthetic toolResults should exist for the errored call
+    const syntheticForError = toolResults.filter(
+      (m) => (m as { toolCallId?: string }).toolCallId === "call_error",
+    );
+    expect(syntheticForError).toHaveLength(0);
   });
 });

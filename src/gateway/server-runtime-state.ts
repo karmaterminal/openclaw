@@ -29,7 +29,7 @@ import {
 import { createSandboxHostHttpServer } from "./mcp-app-sandbox-http.js";
 import { isLoopbackHost, resolveGatewayListenHosts } from "./net.js";
 import { createGatewayPortalService, type GatewayPortalService } from "./portals/portal-service.js";
-import { MAX_PREAUTH_PAYLOAD_BYTES } from "./server-constants.js";
+import { MAX_PREAUTH_PAYLOAD_BYTES, WS_COMPRESSION_THRESHOLD_BYTES } from "./server-constants.js";
 import type { GatewayServerExtraHttpRoute } from "./server-extra-handlers.js";
 import { attachGatewayUpgradeHandler, createGatewayHttpServer } from "./server-http.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
@@ -107,12 +107,11 @@ export async function createGatewayHttpTransport(params: {
   getRuntimeConfig?: () => import("../config/config.js").OpenClawConfig;
   bindHost: string;
   port: number;
-  controlUiEnabled: boolean;
+  controlUiEnabled?: boolean;
   controlUiBasePath: string;
   controlUiRoot?: ControlUiRootState;
   openAiChatCompletionsEnabled?: boolean;
   openResponsesEnabled?: boolean;
-  strictTransportSecurityHeader?: string;
   resolvedAuth: ResolvedGatewayAuth;
   getResolvedAuth: () => ResolvedGatewayAuth;
   /** Optional rate limiter for auth brute-force protection. */
@@ -324,6 +323,16 @@ export async function createGatewayHttpTransport(params: {
     // Yield between buffered frames so one RPC burst cannot monopolize the
     // event loop before other connections and HTTP probes can run.
     allowSynchronousEvents: false,
+    // Peers that offer permessage-deflate (browsers, ws clients) get large frames
+    // compressed. No context takeover keeps zlib memory per connection at one reset
+    // stream instead of a retained sliding window, and the threshold keeps small
+    // frames raw. The extension inherits maxPayload for inflated frames, so the
+    // post-auth receiver handoff must raise it too (prepareGatewayReceiverHandoff).
+    perMessageDeflate: {
+      serverNoContextTakeover: true,
+      clientNoContextTakeover: true,
+      threshold: WS_COMPRESSION_THRESHOLD_BYTES,
+    },
   });
   const preauthConnectionBudget = createPreauthConnectionBudget();
 
@@ -347,7 +356,6 @@ export async function createGatewayHttpTransport(params: {
       controlUiRoot: params.controlUiRoot,
       openAiChatCompletionsEnabled: params.openAiChatCompletionsEnabled,
       openResponsesEnabled: params.openResponsesEnabled,
-      strictTransportSecurityHeader: params.strictTransportSecurityHeader,
       handleWatchNodeRequest: params.handleWatchNodeRequest,
       handleHooksRequest,
       handleMcpOAuthCallbackRequest,
@@ -435,6 +443,7 @@ export async function createGatewayHttpTransport(params: {
       const sandboxServers = bindHosts.map(() =>
         createSandboxHostHttpServer(
           params.gatewayTls?.enabled ? params.gatewayTls.tlsOptions : undefined,
+          resolvePluginRouteRegistry,
         ),
       );
       // Register before binding so normal runtime cleanup closes a partially

@@ -33,8 +33,10 @@ import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-runtime-internal
 import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
 import { enqueuePendingDelegate } from "../continuation/delegate-store.js";
-import { enqueuePendingWork } from "../continuation/work-store.js";
+import { resetContinuationWorkDispatchForTests } from "../continuation/work-dispatch.js";
+import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
 import type { TemplateContext } from "../templating.js";
+import { isContinuationChainPatch } from "./agent-runner-entry.test-support.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { testing as replyRunRegistryTesting } from "./reply-run-registry.test-support.js";
 import { createMockTypingController } from "./test-helpers.js";
@@ -63,39 +65,13 @@ vi.mock("../../agents/model-fallback-runner.js", () => ({
   }) => runWithModelFallbackMock(params),
 }));
 
-vi.mock("../../agents/embedded-agent-runner/run-entry.js", () => ({
-  runEmbeddedAgentEntry: async (params: {
-    selection: { provider: string; model: string };
-    runCandidate: (
-      provider: string,
-      model: string,
-      options: Record<string, unknown>,
-    ) => Promise<unknown>;
-  }) => {
-    const { provider, model } = params.selection;
-    const fallback = await runWithModelFallbackMock({
-      provider,
-      model,
-      runCandidate: (nextProvider: string, nextModel: string) =>
-        params.runCandidate(nextProvider, nextModel, {
-          isFallbackRetry: false,
-          modelRoutingProvenance: {
-            requestedProvider: provider,
-            requestedModel: model,
-            stage: "initial",
-          },
-          contextEngineLogicalTurnLease: {},
-          onContextEngineTurnCandidate: () => {},
-        }),
-    });
-    return {
-      ...fallback,
-      outcome: "completed",
-      terminal: { metadata: {} },
-      settleSessionOverride: async () => {},
-    };
-  },
-}));
+vi.mock("../../agents/embedded-agent-runner/run-entry.js", async () => {
+  const { createSuccessfulEmbeddedAgentEntryMock } =
+    await import("./agent-runner-entry.test-support.js");
+  return {
+    runEmbeddedAgentEntry: createSuccessfulEmbeddedAgentEntryMock(() => runWithModelFallbackMock),
+  };
+});
 
 vi.mock("../../agents/model-fallback-attempt.js", () => ({
   isFallbackSummaryError: (err: unknown) =>
@@ -154,6 +130,22 @@ vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => {
     // Final-delivery persistence now verifies the row it wrote, so this seam has
     // to behave like a real store instead of falling through to the unmocked one.
     updateSessionEntry: (...args: unknown[]) => updateSessionEntryMock(...args),
+  };
+});
+
+vi.mock("../../config/sessions/session-accessor.sqlite-entry.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../config/sessions/session-accessor.sqlite-entry.js")>();
+  const { createCurrentTestDatabaseEntry } = await import("./agent-runner-entry.test-support.js");
+  return {
+    ...actual,
+    loadSessionEntryWithDatabase: (...args: unknown[]) => {
+      const implementation = loadSessionEntryMock.getMockImplementation();
+      const entry = implementation
+        ? loadSessionEntryMock(...args)
+        : { sessionId: "session", updatedAt: Date.now() };
+      return createCurrentTestDatabaseEntry(entry);
+    },
   };
 });
 
@@ -317,6 +309,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetContinuationWorkDispatchForTests();
   vi.useRealTimers();
   clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
@@ -378,6 +371,7 @@ function createContinuationRun(params?: {
       skillsSnapshot: {},
       provider: "anthropic",
       model: "claude",
+      thinkingCatalog: [{ provider: "anthropic", id: "claude", input: ["text"] }],
       thinkLevel: "low",
       verboseLevel: "off",
       elevatedLevel: "off",
@@ -447,20 +441,24 @@ describe("runReplyAgent :: continuation.work span", () => {
     });
     loadSessionEntryMock.mockReturnValue(run.sessionEntry);
     let persistedEntry = run.sessionEntry;
-    let persistenceCalls = 0;
+    let continuationPersistenceCalls = 0;
     patchSessionEntryMock.mockImplementation(
       async (
         _scope: unknown,
         update: (entry: SessionEntry) => Partial<SessionEntry> | null,
       ): Promise<SessionEntry | null> => {
-        persistenceCalls += 1;
-        if (persistenceCalls === 2) {
+        let patch = update(persistedEntry);
+        const continuationPatch = isContinuationChainPatch(patch);
+        if (continuationPatch && continuationPersistenceCalls === 1) {
           persistedEntry = {
             ...persistedEntry,
             continuationChainTokens: (persistedEntry.continuationChainTokens ?? 0) + 7,
           };
+          patch = update(persistedEntry);
         }
-        const patch = update(persistedEntry);
+        if (continuationPatch) {
+          continuationPersistenceCalls += 1;
+        }
         if (!patch) {
           return null;
         }
@@ -482,7 +480,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       "/tmp/openclaw-continuation-work-concurrent-token-accounting.json",
     );
 
-    expect(patchSessionEntryMock).toHaveBeenCalledTimes(2);
+    expect(continuationPersistenceCalls).toBe(2);
     const storedEntry = sessionStore[run.sessionKey];
     expect(storedEntry).toBeDefined();
     if (!storedEntry) {
@@ -545,8 +543,12 @@ describe("runReplyAgent :: continuation.work span", () => {
     const run = createContinuationRun({
       sessionKey: "continuation-delegate-incomplete-replay-unsafe",
     });
-    runEmbeddedAgentMock.mockImplementationOnce(async () => {
-      enqueuePendingDelegate(run.sessionKey, { task: "unsafe delegate" });
+    runEmbeddedAgentMock.mockImplementationOnce(async (args: unknown) => {
+      const attempt = args as { runId: string; sessionId: string };
+      enqueuePendingDelegate(run.sessionKey, {
+        task: "unsafe delegate",
+        originRunId: attempt.runId,
+      });
       return {
         payloads: [{ text: "Agent could not generate a response.", isError: true }],
         meta: {

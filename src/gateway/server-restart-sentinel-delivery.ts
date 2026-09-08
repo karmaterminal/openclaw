@@ -4,6 +4,7 @@ import {
   recordDelegateArtifactDeliveryBinding,
 } from "../agents/delegate-artifacts.js";
 import { replaceManagedDelegateReturnInPrompt } from "../agents/internal-events.js";
+import type { RuntimeContextFragment } from "../agents/internal-runtime-context.js";
 import { resolveCorrelatedSubagentDelivery } from "../agents/subagents/completion/subagent-completion-delivery.js";
 import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 import { REPLY_RUN_STILL_SHUTTING_DOWN_TEXT } from "../auto-reply/reply/get-reply-run-queue.js";
@@ -41,6 +42,9 @@ const RESTART_CONTINUATION_BUSY_RETRY_ERROR =
   "restart continuation deferred because previous run is still shutting down";
 
 type QueuedAgentTurnSessionDelivery = Extract<QueuedSessionDelivery, { kind: "agentTurn" }>;
+type ResolvedQueuedSessionDelivery = QueuedSessionDelivery & {
+  runtimeContextFragments?: RuntimeContextFragment[];
+};
 
 function sessionDeliveryStateDirArgs(stateDir?: string): [] | [string] {
   return stateDir === undefined ? [] : [stateDir];
@@ -158,7 +162,7 @@ export async function deliverQueuedSessionDeliveryCore(params: {
 
 async function deliverResolvedQueuedSessionDelivery(params: {
   deps: CliDeps;
-  entry: QueuedSessionDelivery;
+  entry: ResolvedQueuedSessionDelivery;
   stateDir?: string;
   resolveGatewayContext?: import("./server-methods/types.js").GatewayContextResolver;
 }) {
@@ -378,6 +382,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
   if (
     await deliverQueuedGeneratedMediaAgentTurn({
       entry: params.entry,
+      runtimeContextFragments: params.entry.runtimeContextFragments,
       canonicalKey,
       agentId,
       storePath,

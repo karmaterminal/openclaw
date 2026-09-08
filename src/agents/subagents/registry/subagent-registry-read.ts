@@ -3,7 +3,10 @@
  *
  * Combines persisted snapshots with in-memory live runs for UI, announce, control, and recovery paths.
  */
-import { getAgentRunContext } from "../../../infra/agent-run-registry.js";
+import {
+  getAgentRunContext,
+  getAgentRunLifecycleGeneration,
+} from "../../../infra/agent-run-registry.js";
 import { normalizeDeliveryContext } from "../../../utils/delivery-context.shared.js";
 import type { DeliveryContext } from "../../../utils/delivery-context.types.js";
 import { deriveContinuationDelegateChildRunId } from "../../subagent-continuation-ids.js";
@@ -81,10 +84,14 @@ export function listSubagentRunsForController(
 }
 
 /** Counts active descendant runs for a requester/session tree. */
-export function countActiveDescendantRuns(rootSessionKey: string): number {
+export function countActiveDescendantRuns(
+  rootSessionKey: string,
+  requesterAgentId?: string,
+): number {
   return countActiveDescendantRunsFromRuns(
     getSubagentRunsSnapshotForRead(subagentRuns),
     rootSessionKey,
+    requesterAgentId,
   );
 }
 
@@ -185,7 +192,8 @@ export function isSubagentRunLive(
   if (!entry || typeof entry.execution.endedAt === "number") {
     return false;
   }
-  return Boolean(getAgentRunContext(entry.runId));
+  const context = getAgentRunContext(entry.runId);
+  return context?.lifecycleGeneration === getAgentRunLifecycleGeneration();
 }
 
 /** Queued admission belongs to the exact current registration and scheduler reservation. */

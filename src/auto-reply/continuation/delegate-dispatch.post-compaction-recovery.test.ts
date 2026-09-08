@@ -552,7 +552,7 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     if (!delegate) {
       throw new Error("expected claimed post-compaction delegate");
     }
-    expect(requeueReleasedPostCompactionTaskFlowDelegate(delegate)).toBe(true);
+    expect(requeueReleasedPostCompactionTaskFlowDelegate(delegate)).toBe("requeued");
 
     const flowId = delegate.flowId;
     expect(flowId).toBeDefined();

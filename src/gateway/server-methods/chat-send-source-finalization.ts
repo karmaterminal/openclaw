@@ -7,16 +7,16 @@ import {
   appendLocalMediaParentRoots,
   getAgentScopedMediaLocalRoots,
 } from "../../media/local-roots.js";
+import type { ChatTerminalState } from "../chat-abort.js";
 import { attachManagedOutgoingMediaToMessage } from "../managed-image-attachments.js";
 import { loadSessionEntry } from "../session-utils.js";
 import { formatForLog } from "../ws-log.js";
 import {
-  buildAssistantDisplayContentFromReplyPayloads,
+  buildAssistantReplyContent,
   extractAssistantDisplayTextFromContent,
   hasAssistantDisplayMediaContent,
   hasManagedOutgoingAssistantContent,
   hasVisibleAssistantFinalMessage,
-  replaceAssistantContentTextBlocks,
   stripManagedOutgoingAssistantContentBlocks,
   type AssistantDisplayContentBlock,
 } from "./chat-assistant-content.js";
@@ -59,7 +59,7 @@ type FinalizeChatSendAgentRepliesBase = {
   accountId: string | undefined;
   context: GatewayRequestContext;
   emitFirstAssistantServerTiming: () => void;
-  markTerminalBroadcasted?: () => void;
+  markTerminalBroadcasted?: (state: ChatTerminalState) => void;
   session: Pick<
     PreparedChatSendSession,
     "agentId" | "backingSessionId" | "cfg" | "clientRunId" | "sessionKey" | "sessionLoadOptions"
@@ -125,32 +125,26 @@ async function finalizeChatSendAgentReplyPayloads(
     getAgentScopedMediaLocalRoots(cfg, agentId),
     latestStorePath ? [latestStorePath] : undefined,
   );
-  const buildReplyAssistantContent = async (
-    payloads: typeof finalPayloads,
-  ): Promise<AssistantDisplayContentBlock[] | undefined> =>
-    await buildAssistantDisplayContentFromReplyPayloads({
+  const buildReplyContent = async (payloads: typeof finalPayloads) => {
+    const mediaMessage = await buildWebchatAssistantMessageFromReplyPayloads(payloads, {
+      localRoots: mediaLocalRoots,
+      onLocalAudioAccessDenied: (err) => {
+        context.logGateway.warn(`webchat audio embedding denied local path: ${formatForLog(err)}`);
+      },
+    });
+    const content = await buildAssistantReplyContent({
       sessionKey,
       agentId,
       payloads,
+      transcriptMediaMessage: mediaMessage,
       managedMediaLocalRoots: mediaLocalRoots,
       includeSensitiveMedia: false,
       onManagedMediaPrepareError: (message) => {
         context.logGateway.warn(`webchat media embedding skipped attachment: ${message}`);
       },
     });
-  const buildReplyMediaMessage = async (payloads: typeof finalPayloads) =>
-    await buildWebchatAssistantMessageFromReplyPayloads(payloads, {
-      localRoots: mediaLocalRoots,
-      onLocalAudioAccessDenied: (err) => {
-        context.logGateway.warn(`webchat audio embedding denied local path: ${formatForLog(err)}`);
-      },
-    });
-  const combinedAssistantContent =
-    agentRunReplyPayloads.length === 1
-      ? await buildReplyAssistantContent(finalPayloads)
-      : undefined;
-  const combinedMediaMessage =
-    agentRunReplyPayloads.length === 1 ? await buildReplyMediaMessage(finalPayloads) : undefined;
+    return { ...content, mediaMessage };
+  };
   const sourceReplyContentStates: SourceReplyContentState[] = [];
   const sourceReplyBroadcastContent: AssistantDisplayContentBlock[] = [];
   for (const [replyIndex] of agentRunReplyPayloads.entries()) {
@@ -158,23 +152,16 @@ async function finalizeChatSendAgentReplyPayloads(
     if (!finalPayload) {
       continue;
     }
-    const replyAssistantContent =
-      agentRunReplyPayloads.length === 1
-        ? combinedAssistantContent
-        : await buildReplyAssistantContent([finalPayload]);
-    const replyMediaMessage =
-      agentRunReplyPayloads.length === 1
-        ? combinedMediaMessage
-        : await buildReplyMediaMessage([finalPayload]);
+    const {
+      assistantContent: replyAssistantContent,
+      persistedAssistantContent: persistedContent,
+      mediaMessage: replyMediaMessage,
+    } = await buildReplyContent([finalPayload]);
     const replyBroadcastContent = hasAssistantDisplayMediaContent(replyAssistantContent)
       ? replyAssistantContent
       : hasAssistantDisplayMediaContent(replyMediaMessage?.content)
         ? replyMediaMessage?.content
         : replyAssistantContent;
-    const persistedContent = replaceAssistantContentTextBlocks(
-      replyAssistantContent,
-      replyMediaMessage ?? null,
-    );
     const state: SourceReplyContentState = {
       broadcastContent: replyBroadcastContent ? [...replyBroadcastContent] : [],
       persistedContent: persistedContent ? [...persistedContent] : [],
@@ -327,7 +314,7 @@ async function finalizeChatSendAgentReplyPayloads(
     if (hasVisibleAssistantFinalMessage(message)) {
       emitFirstAssistantServerTiming();
     }
-    markTerminalBroadcasted?.();
+    markTerminalBroadcasted?.("final");
     broadcastChatFinal({
       context,
       runId: clientRunId,
@@ -344,11 +331,14 @@ export async function finalizeChatSendSourceReplies(
   params: FinalizeChatSendAgentRepliesBase & {
     deliveredReplies: readonly DeliveredReply[];
     hasReturnedAgentErrorPayloads: boolean;
-    markTerminalBroadcasted: () => void;
+    markTerminalBroadcasted: (state: ChatTerminalState) => void;
     suppressFinal?: boolean;
+    terminalAlreadyBroadcasted?: boolean;
   },
 ): Promise<boolean> {
-  const { suppressFinal } = params;
+  // A terminal already broadcast by the lifecycle observer suppresses the settled
+  // final exactly the way a failed turn does.
+  const suppressFinal = params.suppressFinal === true || params.terminalAlreadyBroadcasted === true;
   const result = await finalizeChatSendAgentReplyPayloads({
     accountId: params.accountId,
     context: params.context,

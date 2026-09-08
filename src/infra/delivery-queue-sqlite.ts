@@ -2,11 +2,13 @@
 import { safeParseJsonRecord } from "@openclaw/normalization-core";
 import {
   openOpenClawStateDatabase,
+  runOpenClawStateWriteTransaction,
   type OpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
 import {
   bindDeliveryQueueEntry,
   deliveryQueueEntriesQuery,
+  loadDeliveryQueueEntryInDatabase,
   pruneDeliveryQueueTombstoneAges,
   pruneDeliveryQueueTombstones,
   terminalizeBoundDeliveryQueueEntry,
@@ -19,7 +21,6 @@ import {
   inflateDeliveryQueueEntry,
   inflateDeliveryQueueEntryResult,
   type DeliveryQueueEntryLoadResult,
-  type DeliveryQueueSqliteRow,
 } from "./delivery-queue-sqlite-codec.js";
 import type { DeliveryQueueEntryState } from "./delivery-queue-sqlite.types.js";
 import {
@@ -42,13 +43,7 @@ export type {
 
 // Generic durable delivery queue storage shared by session and outbound queues.
 // Queue-specific wrappers own payload shape; this layer owns SQLite state.
-type QueueStatus = "pending" | "failed" | "completed";
-type DeliveryQueueStatusRow = {
-  queue_name: string;
-  status?: QueueStatus;
-  entry_json: string;
-  recovery_state: string | null;
-};
+type QueueStatus = NonNullable<UpsertDeliveryQueueEntryParams["status"]>;
 
 export type { DeliveryQueueEntryLoadResult } from "./delivery-queue-sqlite-codec.js";
 
@@ -70,8 +65,8 @@ function enoent(queueName: string, id: string): Error & { code: string } {
   return err;
 }
 
-function upsertDeliveryQueueEntryInDatabase(
-  params: UpsertDeliveryQueueEntryParams,
+export function upsertDeliveryQueueEntryInDatabase(
+  params: Omit<UpsertDeliveryQueueEntryParams, "stateDir">,
   database: OpenClawStateDatabase,
 ): boolean {
   return upsertBoundDeliveryQueueEntryInDatabase(bindDeliveryQueueEntry(params), database);
@@ -100,20 +95,21 @@ export function expireStagingAndLoadDeliveryQueueEntries(params: {
   const snapshot = runSqliteImmediateTransactionSync(
     database.db,
     () => {
-      // sqlite-allow-raw: Expiry must share the write snapshot with both ownership reads.
-      database.db
-        .prepare(
-          `DELETE FROM delivery_queue_entries
-            WHERE queue_name = ? AND status = 'pending' AND enqueued_at <= ?`,
-        )
-        .run(params.stagingQueueName, params.expireBeforeMs);
+      executeSqliteQuerySync(
+        database.db,
+        getNodeSqliteKysely<DeliveryQueueDatabase>(database.db)
+          .deleteFrom("delivery_queue_entries")
+          .where("queue_name", "=", params.stagingQueueName)
+          .where("status", "=", "pending")
+          .where("enqueued_at", "<=", params.expireBeforeMs),
+      );
       const read = (queueNames: readonly string[]) =>
         executeSqliteQuerySync(
           database.db,
           deliveryQueueEntriesQuery(database, queueNames, "unfinished")
             .orderBy("enqueued_at", "asc")
             .orderBy("id", "asc"),
-        ).rows as DeliveryQueueSqliteRow[];
+        ).rows;
       return {
         entryRows: read(params.queueNames),
         stagingRows: read([params.stagingQueueName]),
@@ -180,7 +176,18 @@ export function getDeliveryQueueEntryOwners(
   if (queueNames.length === 0) {
     return new Map();
   }
-  const database = openStateDatabase(stateDir);
+  return getDeliveryQueueEntryOwnersInDatabase(openStateDatabase(stateDir), queueNames, id);
+}
+
+/** Keeps namespace reads and receipt pruning on the caller's exact transaction handle. */
+export function getDeliveryQueueEntryOwnersInDatabase(
+  database: OpenClawStateDatabase,
+  queueNames: readonly string[],
+  id: string,
+): Map<string, { status: QueueStatus; settlementPending?: true }> {
+  if (queueNames.length === 0) {
+    return new Map();
+  }
   const queueDb = getNodeSqliteKysely<DeliveryQueueDatabase>(database.db);
   return runSqliteImmediateTransactionSync(
     database.db,
@@ -190,14 +197,23 @@ export function getDeliveryQueueEntryOwners(
           database.db,
           queueDb
             .selectFrom("delivery_queue_entries")
-            .select(["queue_name", "status", "entry_json", "recovery_state"])
+            .select(["queue_name", "status", "recovery_state"])
+            .select((eb) =>
+              eb
+                .case("recovery_state")
+                .when("completed_bounded")
+                .then(eb.ref("entry_json"))
+                .else(null)
+                .end()
+                .as("entry_json"),
+            )
             .where("queue_name", "in", queueNames)
             .where("id", "=", id),
-        ).rows as DeliveryQueueStatusRow[];
+        ).rows;
       let rows = readExact();
       let pruned = false;
       for (const row of rows) {
-        if (row.recovery_state !== "completed_bounded") {
+        if (row.entry_json === null) {
           continue;
         }
         const entry = safeParseJsonRecord(row.entry_json);
@@ -220,7 +236,8 @@ export function getDeliveryQueueEntryOwners(
                 [
                   row.queue_name,
                   {
-                    status: row.status,
+                    // Preserve the status API and ownership of unknown stored statuses.
+                    status: row.status as QueueStatus,
                     ...(row.status === "failed" && row.recovery_state === "settlement_pending"
                       ? { settlementPending: true as const }
                       : {}),
@@ -262,13 +279,20 @@ export function loadDeliveryQueueEntryResults(
       .select("entry_kind")
       .orderBy("enqueued_at", "asc")
       .orderBy("id", "asc"),
-  ).rows as DeliveryQueueSqliteRow[];
+  ).rows;
   return rows.map(inflateDeliveryQueueEntryResult);
 }
 
 /** Delete a pending delivery queue entry after successful delivery. */
 export function deleteDeliveryQueueEntry(queueName: string, id: string, stateDir?: string): void {
-  const database = openStateDatabase(stateDir);
+  deleteDeliveryQueueEntryInDatabase(openStateDatabase(stateDir), queueName, id);
+}
+
+export function deleteDeliveryQueueEntryInDatabase(
+  database: OpenClawStateDatabase,
+  queueName: string,
+  id: string,
+): void {
   const queueDb = getNodeSqliteKysely<DeliveryQueueDatabase>(database.db);
   executeSqliteQuerySync(
     database.db,
@@ -282,8 +306,16 @@ export function deleteDeliveryQueueEntry(queueName: string, id: string, stateDir
 
 /** Retain a delivered row as a durable idempotency tombstone. */
 export function completeDeliveryQueueEntry(queueName: string, id: string, stateDir?: string): void {
+  completeDeliveryQueueEntryInDatabase(openStateDatabase(stateDir), queueName, id);
+}
+
+export function completeDeliveryQueueEntryInDatabase(
+  database: OpenClawStateDatabase,
+  queueName: string,
+  id: string,
+): void {
   const now = Date.now();
-  const current = loadDeliveryQueueEntry(queueName, id, stateDir);
+  const current = loadDeliveryQueueEntryInDatabase(database, queueName, id, "pending");
   const requestedRetention = current?.completionRetention;
   const retention = parseDeliveryQueueCompletionRetention(requestedRetention, id);
   if (requestedRetention && !retention) {
@@ -295,22 +327,27 @@ export function completeDeliveryQueueEntry(queueName: string, id: string, stateD
     "completed",
     retention,
   );
-  const completed = upsertDeliveryQueueEntry({
-    queueName,
-    entry: tombstone,
-    metadata: {},
-    status: "completed",
-    stateDir,
-    completeExisting: true,
-  });
+  const completed = upsertDeliveryQueueEntryInDatabase(
+    {
+      queueName,
+      entry: tombstone,
+      metadata: {},
+      status: "completed",
+      completeExisting: true,
+    },
+    database,
+  );
   if (!completed) {
-    if (getDeliveryQueueEntryStatus(queueName, id, stateDir) === "completed") {
+    if (
+      getDeliveryQueueEntryOwnersInDatabase(database, [queueName], id).get(queueName)?.status ===
+      "completed"
+    ) {
       return;
     }
     throw enoent(queueName, id);
   }
   if (typeof retention === "object") {
-    getDeliveryQueueEntryStatus(queueName, id, stateDir);
+    getDeliveryQueueEntryOwnersInDatabase(database, [queueName], id);
   }
 }
 
@@ -321,11 +358,12 @@ export function updateDeliveryQueueEntry(
   stateDir: string | undefined,
   update: (entry: DeliveryQueueEntryState) => DeliveryQueueEntryState,
 ): void {
-  const current = loadDeliveryQueueEntry(queueName, id, stateDir);
+  const database = openStateDatabase(stateDir);
+  const current = loadDeliveryQueueEntryInDatabase(database, queueName, id, "pending");
   if (!current) {
     throw enoent(queueName, id);
   }
-  upsertDeliveryQueueEntry({ queueName, entry: update(current), stateDir });
+  upsertDeliveryQueueEntryInDatabase({ queueName, entry: update(current) }, database);
 }
 
 type ReserveDeliveryQueueAttemptResult =
@@ -343,11 +381,14 @@ export function reserveDeliveryQueueEntryAttempt(params: {
   if (!Number.isInteger(params.maxAttempts) || params.maxAttempts <= 0) {
     throw new Error(`Invalid delivery attempt budget: ${params.maxAttempts}`);
   }
-  const database = openStateDatabase(params.stateDir);
-  return runSqliteImmediateTransactionSync(
-    database.db,
-    () => {
-      const current = loadDeliveryQueueEntry(params.queueName, params.id, params.stateDir);
+  return runOpenClawStateWriteTransaction(
+    (database) => {
+      const current = loadDeliveryQueueEntryInDatabase(
+        database,
+        params.queueName,
+        params.id,
+        "pending",
+      );
       if (!current) {
         throw enoent(params.queueName, params.id);
       }
@@ -382,7 +423,9 @@ export function reserveDeliveryQueueEntryAttempt(params: {
       return { status: "reserved", attemptCount: reservedAttemptCount };
     },
     {
-      databaseLabel: "openclaw-state",
+      env: params.stateDir ? { ...process.env, OPENCLAW_STATE_DIR: params.stateDir } : process.env,
+    },
+    {
       operationLabel: `reserve ${params.queueName} delivery attempt`,
     },
   );
@@ -448,8 +491,7 @@ export function pruneExpiredDeliveryQueueTombstones(
   );
 }
 
-/** Atomically delete or tombstone a pending row only while its value is unchanged. */
-export function terminalizePendingDeliveryQueueEntry(params: {
+type TerminalizePendingDeliveryQueueEntryParams = {
   queueName: string;
   id: string;
   entry: DeliveryQueueEntryState;
@@ -457,46 +499,78 @@ export function terminalizePendingDeliveryQueueEntry(params: {
   expectedEntryJson?: string;
   /** Optional payload-free diagnostic retained outside the terminal receipt JSON. */
   lastError?: string;
-  stateDir?: string;
   expectedStatus?: "pending" | "failed";
-}): TerminalizePendingDeliveryQueueEntryResult {
+};
+
+/** Validate and serialize terminal custody before a standalone call opens its database. */
+export function prepareDeliveryQueueTerminalEntry(
+  params: TerminalizePendingDeliveryQueueEntryParams,
+) {
   if (params.entry.id !== params.id) {
     throw new Error(`Delivery queue entry id mismatch: ${params.entry.id} != ${params.id}`);
   }
   const now = Date.now();
-  const database = openStateDatabase(params.stateDir);
   const expectedJson = params.expectedEntryJson ?? JSON.stringify(params.entry);
   const retention = inferDeliveryQueueFailureRetention(params.entry, params.id, params.queueName);
   const failedEntry = retention
     ? projectDeliveryQueueTerminalEntry(params.entry, now, "failed", retention)
     : undefined;
+  return {
+    queueName: params.queueName,
+    id: params.id,
+    expectedStatus: params.expectedStatus,
+    now,
+    expectedJson,
+    lastError: params.lastError,
+    retention,
+    failedEntry,
+  };
+}
+
+/** Atomically delete or tombstone a pending row only while its value is unchanged. */
+export function terminalizePendingDeliveryQueueEntry(
+  params: TerminalizePendingDeliveryQueueEntryParams & { stateDir?: string },
+): TerminalizePendingDeliveryQueueEntryResult {
+  const prepared = prepareDeliveryQueueTerminalEntry(params);
+  return terminalizePendingDeliveryQueueEntryInDatabase(
+    openStateDatabase(params.stateDir),
+    prepared,
+  );
+}
+
+export function terminalizePendingDeliveryQueueEntryInDatabase(
+  database: OpenClawStateDatabase,
+  prepared: ReturnType<typeof prepareDeliveryQueueTerminalEntry>,
+): TerminalizePendingDeliveryQueueEntryResult {
+  const { queueName, id, expectedJson, failedEntry, lastError, now, expectedStatus, retention } =
+    prepared;
   if (
     !terminalizeBoundDeliveryQueueEntry(
       database.db,
-      params.queueName,
-      params.id,
+      queueName,
+      id,
       expectedJson,
       failedEntry,
       now,
-      params.expectedStatus,
+      expectedStatus,
     )
   ) {
     return { status: "not_pending" };
   }
-  if (failedEntry && params.lastError !== undefined) {
+  if (failedEntry && lastError !== undefined) {
     const queueDb = getNodeSqliteKysely<DeliveryQueueDatabase>(database.db);
     executeSqliteQuerySync(
       database.db,
       queueDb
         .updateTable("delivery_queue_entries")
-        .set({ last_error: params.lastError })
-        .where("queue_name", "=", params.queueName)
-        .where("id", "=", params.id)
+        .set({ last_error: lastError })
+        .where("queue_name", "=", queueName)
+        .where("id", "=", id)
         .where("status", "=", "failed"),
     );
   }
   if (typeof retention === "object") {
-    getDeliveryQueueEntryStatus(params.queueName, params.id, params.stateDir);
+    getDeliveryQueueEntryOwnersInDatabase(database, [queueName], id);
   }
   return { status: "terminalized", retained: retention !== undefined };
 }

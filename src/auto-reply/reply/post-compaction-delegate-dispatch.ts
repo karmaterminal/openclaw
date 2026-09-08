@@ -17,6 +17,7 @@ import {
   assertStagedPostCompactionFinalizationComplete,
   consumeStagedPostCompactionDelegates,
   finalizeStagedPostCompactionDelegates,
+  type PostCompactionDelegateRequeueResult,
   requeueReleasedPostCompactionDelegate,
   stagePostCompactionDelegate,
 } from "../continuation/delegate-store-post-compaction.js";
@@ -39,7 +40,7 @@ import {
   type PostCompactionDelegateDeliveryDeps,
 } from "./post-compaction-delegate-delivery.js";
 import { normalizePostCompactionDelegate } from "./post-compaction-delegate-normalize.js";
-import type { FollowupRun } from "./queue/types.js";
+import { isFollowupRunAborted, type FollowupRun } from "./queue/types.js";
 
 export type PostCompactionDelegateDispatchDeps = {
   consumeStagedPostCompactionDelegates(sessionKey: string): SessionPostCompactionDelegate[];
@@ -50,7 +51,7 @@ export type PostCompactionDelegateDispatchDeps = {
   ) => boolean;
   requeueReleasedPostCompactionDelegate(
     delegate: Pick<SessionPostCompactionDelegate, "flowId" | "expectedRevision" | "task">,
-  ): boolean;
+  ): PostCompactionDelegateRequeueResult;
   stagePostCompactionDelegate(sessionKey: string, delegate: SessionPostCompactionDelegate): void;
   drainPostCompactionDelegateDeliveries(params: {
     entryIds?: readonly string[];
@@ -224,6 +225,120 @@ function applyReleaseTraceparent(
   };
 }
 
+async function preservePostCompactionDelegates(params: {
+  deps: PostCompactionDelegateDispatchDeps;
+  dispatch: DispatchPostCompactionDelegatesParams;
+}): Promise<{
+  preservedClaimedFlowIds: Set<string>;
+}> {
+  const preservedClaimedFlowIds = new Set<string>();
+  if (params.dispatch.postCompactionDelegatesToPreserve.length === 0) {
+    return { preservedClaimedFlowIds };
+  }
+
+  const delegatesToPersist: SessionPostCompactionDelegate[] = [];
+  for (const delegate of params.dispatch.postCompactionDelegatesToPreserve) {
+    const requeueResult = params.deps.requeueReleasedPostCompactionDelegate(delegate);
+    if (requeueResult === "requeued") {
+      if (delegate.flowId) {
+        preservedClaimedFlowIds.add(delegate.flowId);
+      }
+      continue;
+    }
+    if (requeueResult === "authoritative") {
+      if (delegate.flowId) {
+        preservedClaimedFlowIds.add(delegate.flowId);
+      }
+      params.deps.log(
+        `[continuation:post-compaction-requeue-not-applied] flowId=${delegate.flowId ?? "missing"}; preserving authoritative TaskFlow state`,
+      );
+      continue;
+    }
+    if (delegate.flowId) {
+      preservedClaimedFlowIds.add(delegate.flowId);
+    }
+    delegatesToPersist.push(delegate);
+  }
+  try {
+    if (delegatesToPersist.length > 0) {
+      await persistPendingPostCompactionDelegates({
+        sessionEntry: params.dispatch.sessionEntry,
+        sessionStore: params.dispatch.sessionStore,
+        sessionKey: params.dispatch.sessionKey,
+        storePath: params.dispatch.storePath,
+        delegates: delegatesToPersist,
+      });
+    }
+  } catch (err) {
+    // Session-store persist failed. Re-stage the delegates as fresh queued
+    // TaskFlow rows NOW — before finalizing the claimed rows — so they stay
+    // durably recoverable WITHOUT leaving the original claimed rows `running`.
+    // Leaving them running would let startup recovery
+    // (listRecoverableStagedPostCompactionDelegates) re-dispatch delegates
+    // that were already delivered or re-staged. Mirrors the
+    // agent-runner post-compaction finalize path.
+    const restagedCount = delegatesToPersist.length;
+    for (const delegate of delegatesToPersist) {
+      params.deps.stagePostCompactionDelegate(params.dispatch.sessionKey, delegate);
+    }
+    params.deps.log(
+      `Failed to persist re-staged post-compaction delegates for ${params.dispatch.sessionKey}; re-staged ${restagedCount} to the durable queue: ${String(
+        err,
+      )}`,
+    );
+  }
+  // Cleared on both paths: the delegates are now durable (session store on
+  // success, fresh queued TaskFlow rows on failure), so the caller's finally
+  // must not re-stage them a second time.
+  params.dispatch.postCompactionDelegatesToPreserve.length = 0;
+  return { preservedClaimedFlowIds };
+}
+
+function finalizeClaimedPostCompactionDelegates(params: {
+  claimedFlowIds: readonly (string | undefined)[];
+  context: string;
+  deps: PostCompactionDelegateDispatchDeps;
+  preservedClaimedFlowIds: ReadonlySet<string>;
+  terminalizedManagedFlowIds?: ReadonlySet<string>;
+}): void {
+  const flowIdsToFinalize = params.claimedFlowIds.filter(
+    (flowId) =>
+      !flowId ||
+      (!params.preservedClaimedFlowIds.has(flowId) &&
+        !params.terminalizedManagedFlowIds?.has(flowId)),
+  );
+  const finalized = params.deps.finalizeStagedPostCompactionDelegates(flowIdsToFinalize);
+  assertStagedPostCompactionFinalizationComplete({
+    flowIds: flowIdsToFinalize,
+    finalized,
+    context: params.context,
+  });
+}
+
+async function preserveCancelledPostCompactionDelegates(params: {
+  claimedFlowIds: readonly (string | undefined)[];
+  delegates: readonly SessionPostCompactionDelegate[];
+  deps: PostCompactionDelegateDispatchDeps;
+  dispatch: DispatchPostCompactionDelegatesParams;
+  phase: "delegate-extraction" | "context-loading" | "enqueue";
+}): Promise<DispatchPostCompactionDelegatesResult> {
+  params.dispatch.postCompactionDelegatesToPreserve.push(...params.delegates);
+  const { preservedClaimedFlowIds } = await preservePostCompactionDelegates({
+    deps: params.deps,
+    dispatch: params.dispatch,
+  });
+  finalizeClaimedPostCompactionDelegates({
+    claimedFlowIds: params.claimedFlowIds,
+    context: `cancelled post-compaction release for ${params.dispatch.sessionKey}`,
+    deps: params.deps,
+    preservedClaimedFlowIds,
+  });
+  params.deps.log(
+    `[continuation:post-compaction-release-cancelled] sessionKey=${params.dispatch.sessionKey} phase=${params.phase} preserved=${params.delegates.length}`,
+  );
+  return { queuedDelegates: 0, droppedDelegates: 0 };
+}
+
 export async function drainPostCompactionDelegateDeliveries(params: {
   entryIds?: readonly string[];
   log?: SessionDeliveryRecoveryLogger;
@@ -257,6 +372,12 @@ export async function dispatchPostCompactionDelegates(
   params: DispatchPostCompactionDelegatesParams,
   deps: PostCompactionDelegateDispatchDeps = defaultPostCompactionDelegateDispatchDeps,
 ): Promise<DispatchPostCompactionDelegatesResult> {
+  if (isFollowupRunAborted(params.followupRun)) {
+    deps.log(
+      `[continuation:post-compaction-release-cancelled] sessionKey=${params.sessionKey} phase=pre-dispatch preserved=0`,
+    );
+    return { queuedDelegates: 0, droppedDelegates: 0 };
+  }
   const internalReleaseTraceparent = resolveContinuationTraceparent(params.releaseTraceparent);
   const stagedCompactionDelegates = deps.consumeStagedPostCompactionDelegates(params.sessionKey);
   // Capture the claim handles immediately: consumeStagedPostCompactionDelegates
@@ -265,6 +386,7 @@ export async function dispatchPostCompactionDelegates(
   // rows for the session (e.g. crash-orphaned ones awaiting recovery).
   const claimedFlowIds = stagedCompactionDelegates.map((delegate) => delegate.flowId);
   let persistedCompactionDelegates: SessionPostCompactionDelegate[] = [];
+  let persistedDelegateLoadError: unknown;
   try {
     persistedCompactionDelegates = await takePendingPostCompactionDelegates({
       sessionEntry: params.sessionEntry,
@@ -273,16 +395,7 @@ export async function dispatchPostCompactionDelegates(
       storePath: params.storePath,
     });
   } catch (err) {
-    const message = formatErrorMessage(err);
-    deps.log(`Failed to load post-compaction delegates for ${params.sessionKey}: ${message}`);
-    enqueueSystemEventOrLog({
-      deps,
-      label: "persisted post-compaction delegate warning",
-      sessionKey: params.sessionKey,
-      text:
-        `[system:continuation-warning] Failed to load persisted post-compaction delegates for this session: ${message}. ` +
-        "Earlier turns may have staged delegates that will not fire. Re-stage critical post-compaction work.",
-    });
+    persistedDelegateLoadError = err;
   }
   const allCompactionDelegates = [
     ...persistedCompactionDelegates,
@@ -300,6 +413,68 @@ export async function dispatchPostCompactionDelegates(
     }
     return normalized;
   });
+  if (isFollowupRunAborted(params.followupRun)) {
+    return preserveCancelledPostCompactionDelegates({
+      claimedFlowIds,
+      delegates: allCompactionDelegates,
+      deps,
+      dispatch: params,
+      phase: "delegate-extraction",
+    });
+  }
+  if (persistedDelegateLoadError !== undefined) {
+    const message = formatErrorMessage(persistedDelegateLoadError);
+    deps.log(`Failed to load post-compaction delegates for ${params.sessionKey}: ${message}`);
+    enqueueSystemEventOrLog({
+      deps,
+      label: "persisted post-compaction delegate warning",
+      sessionKey: params.sessionKey,
+      text:
+        `[system:continuation-warning] Failed to load persisted post-compaction delegates for this session: ${message}. ` +
+        "Earlier turns may have staged delegates that will not fire. Re-stage critical post-compaction work.",
+    });
+  }
+
+  let postCompactionContextContent: string | null = null;
+  let postCompactionContextError: unknown;
+  try {
+    postCompactionContextContent = await deps.readPostCompactionContext(
+      typeof params.followupRun.run.workspaceDir === "string" &&
+        params.followupRun.run.workspaceDir.trim()
+        ? params.followupRun.run.workspaceDir
+        : deps.resolveAgentWorkspaceDir(params.cfg, params.followupRun.run.agentId),
+      {
+        cfg: params.cfg,
+        agentId: deps.resolveSessionAgentId({ sessionKey: params.sessionKey, config: params.cfg }),
+      },
+    );
+  } catch (err) {
+    postCompactionContextError = err;
+  }
+  if (isFollowupRunAborted(params.followupRun)) {
+    return preserveCancelledPostCompactionDelegates({
+      claimedFlowIds,
+      delegates: allCompactionDelegates,
+      deps,
+      dispatch: params,
+      phase: "context-loading",
+    });
+  }
+  if (postCompactionContextError !== undefined) {
+    const message = formatErrorMessage(postCompactionContextError);
+    deps.log(
+      `[continuation:post-compaction-context-read-failed] sessionKey=${params.sessionKey} error=${message}`,
+    );
+    enqueueSystemEventOrLog({
+      deps,
+      label: "post-compaction context read failure",
+      sessionKey: params.sessionKey,
+      text:
+        `[system:post-compaction] Context evacuation read failed: ${message}. ` +
+        "The post-compaction session may be missing AGENTS.md/RESUMPTION.md content. Check workspace permissions and re-run if needed.",
+    });
+  }
+
   const runtimeConfig = deps.resolveContinuationRuntimeConfig(params.cfg);
   const gateEligibleCompactionDelegates: SessionPostCompactionDelegate[] = [];
   for (const delegate of allCompactionDelegates) {
@@ -365,34 +540,16 @@ export async function dispatchPostCompactionDelegates(
     }
   }
 
-  let postCompactionContextContent: string | null = null;
-  try {
-    postCompactionContextContent = await deps.readPostCompactionContext(
-      typeof params.followupRun.run.workspaceDir === "string" &&
-        params.followupRun.run.workspaceDir.trim()
-        ? params.followupRun.run.workspaceDir
-        : deps.resolveAgentWorkspaceDir(params.cfg, params.followupRun.run.agentId),
-      {
-        cfg: params.cfg,
-        agentId: deps.resolveSessionAgentId({ sessionKey: params.sessionKey, config: params.cfg }),
-      },
-    );
-  } catch (err) {
-    const message = formatErrorMessage(err);
-    deps.log(
-      `[continuation:post-compaction-context-read-failed] sessionKey=${params.sessionKey} error=${message}`,
-    );
-    enqueueSystemEventOrLog({
+  const deliveryContext = resolvePostCompactionDelegateDeliveryContext(params.followupRun);
+  if (isFollowupRunAborted(params.followupRun)) {
+    return preserveCancelledPostCompactionDelegates({
+      claimedFlowIds,
+      delegates: releasedCompactionDelegates,
       deps,
-      label: "post-compaction context read failure",
-      sessionKey: params.sessionKey,
-      text:
-        `[system:post-compaction] Context evacuation read failed: ${message}. ` +
-        "The post-compaction session may be missing AGENTS.md/RESUMPTION.md content. Check workspace permissions and re-run if needed.",
+      dispatch: params,
+      phase: "enqueue",
     });
   }
-
-  const deliveryContext = resolvePostCompactionDelegateDeliveryContext(params.followupRun);
   const enqueueResults = await Promise.allSettled(
     releasedCompactionDelegates.map((delegate, sequence) =>
       deps.enqueuePostCompactionDelegateDelivery({
@@ -424,59 +581,10 @@ export async function dispatchPostCompactionDelegates(
     );
   }
 
-  const requeuedClaimedFlowIds = new Set<string>();
-  const authoritativeManagedFlowIds = new Set<string>();
-  if (params.postCompactionDelegatesToPreserve.length > 0) {
-    const delegatesToPersist: SessionPostCompactionDelegate[] = [];
-    for (const delegate of params.postCompactionDelegatesToPreserve) {
-      if (deps.requeueReleasedPostCompactionDelegate(delegate)) {
-        requeuedClaimedFlowIds.add(delegate.flowId!);
-        continue;
-      }
-      if (hasManagedArtifactReturn(delegate)) {
-        if (delegate.flowId) {
-          authoritativeManagedFlowIds.add(delegate.flowId);
-        }
-        deps.log(
-          `[continuation:post-compaction-managed-requeue-not-applied] flowId=${delegate.flowId ?? "missing"}; preserving authoritative TaskFlow state`,
-        );
-        continue;
-      }
-      delegatesToPersist.push(delegate);
-    }
-    try {
-      if (delegatesToPersist.length > 0) {
-        await persistPendingPostCompactionDelegates({
-          sessionEntry: params.sessionEntry,
-          sessionStore: params.sessionStore,
-          sessionKey: params.sessionKey,
-          storePath: params.storePath,
-          delegates: delegatesToPersist,
-        });
-      }
-    } catch (err) {
-      // Session-store persist failed. Re-stage the delegates as fresh queued
-      // TaskFlow rows NOW — before finalizing the claimed rows — so they stay
-      // durably recoverable WITHOUT leaving the original claimed rows `running`.
-      // Leaving them running would let startup recovery
-      // (listRecoverableStagedPostCompactionDelegates) re-dispatch delegates
-      // that were already delivered or re-staged. Mirrors the
-      // agent-runner post-compaction finalize path.
-      const restagedCount = delegatesToPersist.length;
-      for (const delegate of delegatesToPersist) {
-        deps.stagePostCompactionDelegate(params.sessionKey, delegate);
-      }
-      deps.log(
-        `Failed to persist re-staged post-compaction delegates for ${params.sessionKey}; re-staged ${restagedCount} to the durable queue: ${String(
-          err,
-        )}`,
-      );
-    }
-    // Cleared on both paths: the delegates are now durable (session store on
-    // success, fresh queued TaskFlow rows on failure), so the caller's finally
-    // must not re-stage them a second time.
-    params.postCompactionDelegatesToPreserve.length = 0;
-  }
+  const { preservedClaimedFlowIds } = await preservePostCompactionDelegates({
+    deps,
+    dispatch: params,
+  });
 
   // The delegates the claimed rows carried are now durable — delivered to the
   // session-delivery queue, persisted to the session store, or re-staged as
@@ -485,18 +593,12 @@ export async function dispatchPostCompactionDelegates(
   // (e.g. crash-orphaned ones awaiting recovery). A crash before this point
   // leaves the claimed rows recoverable via listRecoverableStagedPostCompactionDelegates
   // instead of silently losing them behind a premature finish.
-  const flowIdsToFinalize = claimedFlowIds.filter(
-    (flowId) =>
-      !flowId ||
-      (!requeuedClaimedFlowIds.has(flowId) &&
-        !authoritativeManagedFlowIds.has(flowId) &&
-        !terminalizedManagedFlowIds.has(flowId)),
-  );
-  const finalized = deps.finalizeStagedPostCompactionDelegates(flowIdsToFinalize);
-  assertStagedPostCompactionFinalizationComplete({
-    flowIds: flowIdsToFinalize,
-    finalized,
+  finalizeClaimedPostCompactionDelegates({
+    claimedFlowIds,
     context: `queued post-compaction release for ${params.sessionKey}`,
+    deps,
+    preservedClaimedFlowIds,
+    terminalizedManagedFlowIds,
   });
 
   const lifecycleEvent = buildPostCompactionLifecycleEvent({

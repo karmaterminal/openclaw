@@ -15,6 +15,7 @@ import { createAgentsWaitTool } from "../../tools/agents-wait-tool.js";
 import { subagentRegistryDeps } from "./subagent-registry-deps.js";
 import { getLatestSubagentRunByChildSessionKey } from "./subagent-registry-read.js";
 import { getSubagentRunsSnapshotForRead } from "./subagent-registry-state.js";
+import { expectFields } from "./subagent-registry.persistence.assertions.test-support.js";
 import {
   canonicalSubagentRunFixtures,
   cleanupSubagentRegistryPersistenceTest,
@@ -49,16 +50,6 @@ const { announceSpy } = vi.hoisted(() => ({
 vi.mock("../announce/subagent-announce.js", () => ({
   runSubagentAnnounceFlow: announceSpy,
 }));
-
-function expectFields(value: unknown, expected: Record<string, unknown>): void {
-  if (!value || typeof value !== "object") {
-    throw new Error("expected fields object");
-  }
-  const record = value as Record<string, unknown>;
-  for (const [key, expectedValue] of Object.entries(expected)) {
-    expect(record[key], key).toEqual(expectedValue);
-  }
-}
 
 describe("subagent registry persistence", () => {
   const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
@@ -178,7 +169,8 @@ describe("subagent registry persistence", () => {
         callGateway({ method: "agent.wait", params, timeoutMs }),
       sendRecoveryNotice: vi.fn(),
     };
-    activateSubagentRegistry(() => ({ recoveryRuntime }) as never);
+    const gateway = { recoveryRuntime, resolveGatewayContext: () => gateway as never };
+    activateSubagentRegistry(() => gateway as never);
   };
 
   const fastPersistSubagentRunsToDisk = (runs: Map<string, SubagentRunRecord>) =>
@@ -892,7 +884,7 @@ describe("subagent registry persistence", () => {
     expect(listSubagentRunsForRequester("agent:main:main")).toHaveLength(0);
   });
 
-  it("finalizes stale unended restored runs with abortedLastRun in the sweeper", async () => {
+  it("finalizes restored runs whose restart interruption exceeded the recovery window", async () => {
     vi.mocked(callGateway).mockImplementationOnce(async (request) => {
       expectFields(request, {
         method: "agent.wait",
@@ -928,7 +920,8 @@ describe("subagent registry persistence", () => {
     await writeChildSessionEntry({
       sessionKey: childSessionKey,
       sessionId: "sess-stale-aborted-restore",
-      updatedAt: now,
+      // Age the interruption marker; task age alone remains restart-recoverable.
+      updatedAt: now - 3 * 60 * 60 * 1_000,
       abortedLastRun: true,
     });
 

@@ -20,7 +20,14 @@ import {
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
 import { createIngressWriter } from "./ingress-claim-writes.js";
-import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
+import {
+  isIngressCancelCompat,
+  type ChannelIngressDispatchLifecycle,
+} from "./ingress-drain-lifecycle.js";
+import {
+  applyIngressPendingDispositions,
+  type ResolveChannelIngressPendingDisposition,
+} from "./ingress-drain-pending-disposition.js";
 import {
   activeClaimKey,
   createIngressSettleOwner,
@@ -78,6 +85,7 @@ export type CreateChannelIngressDrainOptions<
     storedLaneKey: string,
     derivedLaneKey: string,
   ) => boolean;
+  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
   ownerId?: string;
   adoptionStallTimeoutMs?: number;
   claimLeaseMs?: number;
@@ -247,10 +255,16 @@ export function createChannelIngressDrain<
       config: options.retryPolicy,
       now: now(),
     });
+    const committed =
+      disposition.kind === "fail"
+        ? await failClaim(claim, disposition.reason, disposition.message)
+        : await releaseClaim(claim, { lastError: disposition.message });
+    const displayId = claim.id.replace(/^0+(?=\d)/, "") || claim.id;
+    if (!committed) {
+      log(`spooled update ${displayId} settlement skipped: claim no longer owns the event`);
+      return;
+    }
     if (disposition.kind === "fail") {
-      // Operator-visible dead-letter line. Prefer numeric id when the event id
-      // is a zero-padded telegram update_id so logs stay human-readable.
-      const displayId = claim.id.replace(/^0+(?=\d)/, "") || claim.id;
       log(
         `spooled update ${displayId} failed with non-retryable ${disposition.reason}: ${disposition.message}; dead-lettered`,
       );
@@ -259,12 +273,9 @@ export function createChannelIngressDrain<
           `spooled update ${displayId} on lane ${claim.laneKey ?? displayId} reached retry limit after ${disposition.attempt} attempts; dead-lettered`,
         );
       }
-      await failClaim(claim, disposition.reason, disposition.message);
       return;
     }
-    const displayId = claim.id.replace(/^0+(?=\d)/, "") || claim.id;
     log(`spooled update ${displayId} failed; keeping for retry: ${disposition.message}`);
-    await releaseClaim(claim, { lastError: disposition.message });
   };
 
   const armStallWatchdog = (state: ActiveHandlerState<TPayload, TMetadata>) => {
@@ -302,9 +313,9 @@ export function createChannelIngressDrain<
     state.stallTimer.unref?.();
   };
 
-  const releaseUnadopted = async (
+  const settleUnadopted = async (
     state: ActiveHandlerState<TPayload, TMetadata>,
-    releaseOptions: { lastError?: string; recordAttempt?: boolean },
+    settle: (claim: ChannelIngressQueueClaim<TPayload, TMetadata>) => Promise<void>,
   ) => {
     if (state.phase !== "deferred" && state.phase !== "dispatching") {
       return;
@@ -315,7 +326,7 @@ export function createChannelIngressDrain<
     clearStallTimer(state);
     await state
       .settleOnce(async () => {
-        await releaseClaim(state.claim, releaseOptions);
+        await settle(state.claim);
       })
       .catch(() => undefined);
   };
@@ -389,10 +400,18 @@ export function createChannelIngressDrain<
       onCancelled: async () => {
         // Cancellation means ownership ended before delivery, so preserve every
         // prior retry fact while reopening the canonical row for replacement.
-        await releaseUnadopted(state, { recordAttempt: false });
+        await settleUnadopted(state, async (claim) => {
+          await releaseClaim(claim, { recordAttempt: false });
+        });
       },
       onAbandoned: async () => {
-        await releaseUnadopted(state, { lastError: "turn-abandoned" });
+        await settleUnadopted(state, async (claim) => {
+          if (isIngressCancelCompat()) {
+            await releaseClaim(claim, { recordAttempt: false });
+            return;
+          }
+          await applyFailureDisposition(claim, new Error("turn-abandoned"));
+        });
       },
     };
   };
@@ -565,7 +584,18 @@ export function createChannelIngressDrain<
 
     await recoverStaleClaims();
 
-    const pending = await queue.listPending({ limit: "all", orderBy });
+    const dispositionNow = now();
+    const pendingDisposition = await applyIngressPendingDispositions({
+      pending: await queue.listPending({ limit: "all", orderBy }),
+      now: dispositionNow,
+      queue,
+      resolve: options.resolvePendingDisposition,
+      resolveLaneKey: (record) =>
+        resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey),
+      formatError,
+      log,
+    });
+    const pending = pendingDisposition.pending;
     const claims = await queue.listClaims();
     const activeLaneKeys = new Set(laneOwnerByKey.keys());
     const claimedLaneKeys = new Set(
@@ -590,7 +620,7 @@ export function createChannelIngressDrain<
     // Delayed tails leave this snapshot so a sibling cannot make them start early.
     for (const [index, event] of pending.entries()) {
       const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
-      if (resolveIngressRetryDelayMs(event, options.retryPolicy, now()) > 0) {
+      if (resolveIngressRetryDelayMs(event, options.retryPolicy, dispositionNow) > 0) {
         retryDelayed[index] = 1;
         if (!pendingLaneKeys.has(laneKey)) {
           retryDelayedLaneKeys.add(laneKey);
@@ -604,6 +634,7 @@ export function createChannelIngressDrain<
       ...sortedKeys(activeLaneKeys),
       ...sortedKeys(claimedLaneKeys),
       ...sortedKeys(retryDelayedLaneKeys),
+      ...sortedKeys(pendingDisposition.blockedLaneKeys),
     ]);
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
@@ -696,6 +727,12 @@ export function createChannelIngressDrain<
       runClaimed(claimed, laneKey);
       blockedLaneKeys.add(laneKey);
       started += 1;
+    }
+    if (pendingDisposition.errors.length > 0) {
+      throw new AggregateError(
+        pendingDisposition.errors,
+        `ingress drain: ${pendingDisposition.errors.length} pending disposition failure(s)`,
+      );
     }
     return { started };
   };

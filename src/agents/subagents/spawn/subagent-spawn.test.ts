@@ -146,7 +146,6 @@ type InheritedSpawnPreferenceCase = {
   agentDefaults?: Readonly<Record<string, unknown>>;
   requesterAgent?: Readonly<Record<string, unknown>>;
   requesterPreferenceReadFails?: boolean;
-  swarmEnabled?: boolean;
   collect?: boolean;
   requesterRunId?: string;
   requesterThinkingLevel?: ThinkLevel;
@@ -192,17 +191,15 @@ const inheritedSpawnPreferenceCases: readonly InheritedSpawnPreferenceCase[] = [
     requesterState: { fastMode: "auto" },
     preferenceKey: "fastMode",
     expected: "auto",
-    swarmEnabled: true,
     collect: true,
     requesterRunId: "parent-run",
   },
   {
-    name: "inherits requester fast mode for ordinary children when Swarm is enabled",
+    name: "inherits requester fast mode for ordinary children with default Swarm config",
     task: "inherit ordinary fast mode",
     requesterState: { fastMode: true },
     preferenceKey: "fastMode",
     expected: true,
-    swarmEnabled: true,
   },
   {
     name: "persists inherited requester thinking off",
@@ -542,6 +539,7 @@ describe("spawnSubagentDirect seam flow", () => {
   });
 
   it("rejects direct swarm parameters while tools.swarm is disabled", async () => {
+    hoisted.configOverride = createConfigOverride({ tools: { swarm: false } });
     const result = await spawnSubagentDirect(
       { task: "collect", collect: true },
       { agentSessionKey: "agent:main:main", requesterRunId: "parent-run" },
@@ -722,6 +720,9 @@ describe("spawnSubagentDirect seam flow", () => {
     expect(result.status).toBe("accepted");
     expect(result.sessionKey).toBe(result.childSessionKey);
     expect(result.expectsCompletionMessage).toBe(false);
+    expect(result.note).toContain(
+      "This is the only collector child in its group so far; unless more parallel children follow, an ordinary spawn (omit collect) is simpler and can be steered.",
+    );
     const registerInput = firstRegisteredSubagentRun();
     expect(registerInput).toMatchObject({
       runId: result.runId,
@@ -762,6 +763,39 @@ describe("spawnSubagentDirect seam flow", () => {
     expect(agentParams.extraSystemPrompt).toContain("at most one retry");
     await vi.waitFor(() =>
       expect(hoisted.startQueuedSubagentRunMock).toHaveBeenCalledWith(result.runId, "run-1"),
+    );
+
+    hoisted.listSwarmRunsForGroupMock.mockReturnValue([
+      { ...registerInput, execution: { status: "running" } },
+    ]);
+    const second = await spawnSubagentDirect(
+      { task: "collect parallel evidence", collect: true },
+      { agentSessionKey: "agent:main:main", requesterRunId: "parent-run" },
+    );
+    expect(second.status).toBe("accepted");
+    expect(second.note).toBe(
+      "Collector run: no completion notification is sent. The requester must explicitly collect this run's result with the available collector wait capability, using its run id.",
+    );
+  });
+
+  it.each([
+    { name: "explicit group", params: { collect: true, groupId: "chosen-group" } },
+    {
+      name: "Code Mode implicit group",
+      params: { collect: true, swarmLaunchReplayKey: "cm-receipt:bridge:1" },
+    },
+    { name: "ordinary spawn", params: { collect: false } },
+  ])("keeps the existing receipt for $name", async ({ params }) => {
+    hoisted.configOverride = createConfigOverride({ tools: { swarm: true } });
+    const result = await spawnSubagentDirect(
+      { task: "receipt guidance", ...params },
+      { agentSessionKey: "agent:main:main", requesterRunId: "parent-run" },
+    );
+    expect(result.status).toBe("accepted");
+    expect(result.note).toBe(
+      params.collect
+        ? "Collector run: no completion notification is sent. The requester must explicitly collect this run's result with the available collector wait capability, using its run id."
+        : "The final reply returns to the requester as a completion event. Continue any independent work. Wait for completion events for ALL required children before your final answer; never busy-poll. If a completion arrives after your final answer, reply ONLY with NO_REPLY.",
     );
   });
 
@@ -1906,6 +1940,13 @@ describe("spawnSubagentDirect seam flow", () => {
         task: "inspect the spawn seam",
         model: "openai/gpt-5.4",
         traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+        drainsContinuationDelegateQueue: true,
+        continuationChainState: {
+          count: 7,
+          startedAt: 1_783_520_000_000,
+          tokens: 12_345,
+          chainId: "chain-from-parent",
+        },
       },
       {
         agentSessionKey: "agent:main:main",
@@ -1926,7 +1967,7 @@ describe("spawnSubagentDirect seam flow", () => {
     expect(result.childSessionKey).toMatch(/^agent:main:subagent:/);
 
     const childSessionKey = result.childSessionKey as string;
-    expect(hoisted.updateSessionStoreMock).toHaveBeenCalledTimes(2);
+    expect(hoisted.updateSessionStoreMock).toHaveBeenCalledOnce();
     expect(persistedStore?.[childSessionKey]).toMatchObject({
       sessionId: expect.any(String),
       lifecycleRevision: expect.any(String),
@@ -1936,6 +1977,19 @@ describe("spawnSubagentDirect seam flow", () => {
       createdVia: "spawn",
       createdActor: { type: "agent", id: "main" },
       createdAt: expect.any(Number),
+      model: "gpt-5.4",
+      modelProvider: "openai",
+      modelOverride: "gpt-5.4",
+      providerOverride: "openai",
+      modelOverrideSource: "user",
+      modelOverrideRouteResolution: "resolved",
+      subagentRole: "orchestrator",
+      subagentControlScope: "children",
+      continuationTraceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+      continuationChainCount: 7,
+      continuationChainStartedAt: 1_783_520_000_000,
+      continuationChainTokens: 12_345,
+      continuationChainId: "chain-from-parent",
     });
     const registerInput = firstRegisteredSubagentRun();
     const requesterOrigin = requireRecord(registerInput.requesterOrigin);
@@ -2101,6 +2155,32 @@ describe("spawnSubagentDirect seam flow", () => {
     expectNoChildSpawnSideEffects();
   });
 
+  it("rejects a split-key sandboxed requester spawning an unsandboxed native child via the explicit sandboxed flag", async () => {
+    // Regression for the ClawSweeper P1 finding on #137779: when the durable parent-lineage
+    // key (agent:main:main) replaces a sandboxed non-main policy key, key-derived sandbox
+    // status alone would classify the requester as unsandboxed and admit an unsandboxed child.
+    // The active classification must be preserved via the explicit ctx.sandboxed flag, mirroring
+    // the visible/ACP spawn paths, so admission still rejects before child persistence/launch.
+    hoisted.resolveSandboxRuntimeStatusMock.mockImplementation(() => ({
+      // Durable lineage key is not itself classified as sandboxed; only the original policy
+      // key was. This isolates the test from key-derived status.
+      sandboxed: false,
+      sandboxRequired: false,
+    }));
+    const result = await spawnSubagentDirect(
+      { task: "try an unsandboxed child from a split-key sandboxed parent" },
+      {
+        agentSessionKey: "agent:main:main",
+        sandboxed: true,
+      },
+    );
+    expect(result).toMatchObject({
+      status: "forbidden",
+      error: expect.stringContaining("cannot spawn unsandboxed"),
+    });
+    expectNoChildSpawnSideEffects();
+  });
+
   it("dispatches spawned agent runs in process when a gateway context is available", async () => {
     hoisted.hasInProcessGatewayContextMock.mockReturnValue(true);
     hoisted.callGatewayMock.mockRejectedValue(new Error("unexpected websocket gateway call"));
@@ -2252,23 +2332,17 @@ describe("spawnSubagentDirect seam flow", () => {
       agentDefaults,
       requesterAgent,
       requesterPreferenceReadFails,
-      swarmEnabled,
       collect,
       requesterRunId,
       requesterThinkingLevel,
       thinkingOverride,
     }) => {
-      if (agentDefaults || requesterAgent || swarmEnabled) {
+      if (agentDefaults || requesterAgent) {
         hoisted.configOverride = createConfigOverride({
-          ...(agentDefaults || requesterAgent
-            ? {
-                agents: {
-                  defaults: { workspace: os.tmpdir(), ...agentDefaults },
-                  list: [{ id: "main", workspace: "/tmp/workspace-main", ...requesterAgent }],
-                },
-              }
-            : {}),
-          ...(swarmEnabled ? { tools: { swarm: true } } : {}),
+          agents: {
+            defaults: { workspace: os.tmpdir(), ...agentDefaults },
+            list: [{ id: "main", workspace: "/tmp/workspace-main", ...requesterAgent }],
+          },
         });
       }
       hoisted.loadSessionStoreMock.mockReturnValue({ "agent:main:main": requesterState });

@@ -128,16 +128,6 @@ export function isExecLikeToolName(toolName: string): boolean {
 const MAX_ABORT_SUMMARY_LENGTH = 160;
 const REPEATED_TOOL_VALIDATION_LOOP_RE = /Stopped after \d+ identical failed .* tool calls/;
 
-function hasUnsafeSummaryCharacter(value: string): boolean {
-  for (const char of value) {
-    const code = char.charCodeAt(0);
-    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /** Accepts only the compact single-line diagnostic produced below. */
 export function readToolValidationErrorSummary(value: unknown): string | undefined {
   if (typeof value !== "string") {
@@ -147,7 +137,7 @@ export function readToolValidationErrorSummary(value: unknown): string | undefin
   if (
     !summary ||
     summary.length > MAX_ABORT_SUMMARY_LENGTH ||
-    hasUnsafeSummaryCharacter(summary) ||
+    hasTerminalControlCharacter(summary) ||
     hasRawToolValidationOutput(summary)
   ) {
     return undefined;
@@ -166,7 +156,7 @@ export function hasRawToolValidationOutput(value: string): boolean {
 
 /** Builds a static diagnostic from typed pre-execution validation provenance. */
 export function createToolValidationErrorSummary(toolName: string): string | undefined {
-  if (hasUnsafeSummaryCharacter(toolName)) {
+  if (hasTerminalControlCharacter(toolName)) {
     return undefined;
   }
   const normalizedToolName = toolName.replace(/\s+/g, " ").trim();

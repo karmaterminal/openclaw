@@ -71,7 +71,7 @@ describe("session recipient authority", () => {
             env: state.env,
           }).path,
           target: { canonicalKey: scope.sessionKey, storeKeys: [scope.sessionKey] },
-          resetBoundary: { context: "clear", reason },
+          resetBoundary: { context: "clear", reason, cwd: state.workspaceDir },
           buildNextEntry: () => ({ sessionId: "session-after", updatedAt: 2 }),
         });
         expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);

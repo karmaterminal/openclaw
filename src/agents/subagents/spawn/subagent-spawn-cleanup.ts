@@ -1,20 +1,22 @@
 import { promises as fs } from "node:fs";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import type { callGateway } from "../../../gateway/call.js";
 import { isFastTestRuntimeEnv } from "../../../infra/env.js";
+import { getPluginRuntimeGatewayRequestScope } from "../../../plugins/runtime/gateway-request-scope.js";
 import { deleteSubagentSessionForCleanup } from "../registry/subagent-session-cleanup.js";
 import { callSubagentGateway } from "./subagent-spawn-gateway.js";
 
 const SUBAGENT_CONTROL_GATEWAY_TIMEOUT_MS = 60_000;
 type GatewayCall = (options: Parameters<typeof callGateway>[0]) => Promise<unknown>;
 function isMatchingAbortResponse(response: unknown, gatewayRunId: string): boolean {
-  if (!isRecord(response)) {
+  const result = asNullableRecord(response);
+  if (!result) {
     return false;
   }
   return (
-    response.aborted === true &&
-    Array.isArray(response.runIds) &&
-    response.runIds.some((runId) => runId === gatewayRunId)
+    result.aborted === true &&
+    Array.isArray(result.runIds) &&
+    result.runIds.some((runId) => runId === gatewayRunId)
   );
 }
 
@@ -22,11 +24,23 @@ function isSettledAbortResponse(response: unknown, gatewayRunId: string): boolea
   if (isMatchingAbortResponse(response, gatewayRunId)) {
     return true;
   }
-  if (!isRecord(response)) {
+  const result = asNullableRecord(response);
+  if (!result) {
+    return false;
+  }
+  return result.aborted === false && Array.isArray(result.runIds) && result.runIds.length === 0;
+}
+
+function isDefinitiveAbortMiss(response: unknown, gatewayRunId: string): boolean {
+  const result = asNullableRecord(response);
+  if (!result) {
     return false;
   }
   return (
-    response.aborted === false && Array.isArray(response.runIds) && response.runIds.length === 0
+    typeof result.aborted === "boolean" &&
+    Array.isArray(result.runIds) &&
+    result.runIds.every((runId) => typeof runId === "string") &&
+    !result.runIds.includes(gatewayRunId)
   );
 }
 
@@ -136,9 +150,11 @@ export async function terminateAcceptedCollectorRun(params: {
   callGateway?: GatewayCall;
   timeoutMs?: number;
   retry?: boolean;
+  sessionCleanup?: "delete-on-abort-miss" | "preserve";
 }): Promise<boolean> {
   const call = params.callGateway ?? callSubagentGateway;
   const timeoutMs = params.timeoutMs ?? SUBAGENT_CONTROL_GATEWAY_TIMEOUT_MS;
+  const resolveGatewayContext = getPluginRuntimeGatewayRequestScope()?.resolveGatewayContext;
   return await retrySubagentCleanup(
     async () => {
       try {
@@ -150,10 +166,19 @@ export async function terminateAcceptedCollectorRun(params: {
         if (isSettledAbortResponse(response, params.gatewayRunId)) {
           return true;
         }
+        if (
+          params.sessionCleanup === "preserve" &&
+          isDefinitiveAbortMiss(response, params.gatewayRunId)
+        ) {
+          return true;
+        }
       } catch {
-        // Fall through to exact-session deletion.
+        if (params.sessionCleanup === "preserve") {
+          return false;
+        }
+        // Fall through to exact-session deletion for provisional sessions only.
       }
-      if (!hasFrozenSessionIdentity(params)) {
+      if (params.sessionCleanup === "preserve" || !hasFrozenSessionIdentity(params)) {
         return false;
       }
       const cleanup = await requestProvisionalSessionCleanup(params.childSessionKey, {
@@ -167,7 +192,13 @@ export async function terminateAcceptedCollectorRun(params: {
       return cleanup !== "failed";
     },
     {
-      shouldRetry: () => params.retry !== false && hasFrozenSessionIdentity(params),
+      // Retry abort while the request owner can still dispatch. Preserve retries
+      // a durable session without frozen identity; deletion waits require that
+      // identity. A retired scope can never dispatch again.
+      shouldRetry: () =>
+        params.retry !== false &&
+        (!resolveGatewayContext || Boolean(resolveGatewayContext())) &&
+        (params.sessionCleanup === "preserve" || hasFrozenSessionIdentity(params)),
     },
   );
 }

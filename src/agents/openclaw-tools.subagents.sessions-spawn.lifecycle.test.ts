@@ -8,8 +8,8 @@ import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../test-utils/openclaw-test-state.js";
+import { getOrCreateSessionMcpRuntime } from "./agent-bundle-mcp-manager.test-support.js";
 import { testing as bundleMcpRuntimeTesting } from "./agent-bundle-mcp-runtime.js";
-import { getOrCreateSessionMcpRuntime } from "./agent-bundle-mcp-tools.js";
 import {
   getCallGatewayMock,
   getSessionsSpawnTool,

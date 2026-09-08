@@ -6,17 +6,18 @@ import { replaceCompactionReplayOwnerContent } from "@openclaw/ai/transports";
  * Normalizes raw tool-call blocks and synthesizes missing tool results without rewriting trusted local payloads.
  */
 import { safeParseJsonRecord } from "@openclaw/normalization-core";
-import {
-  hasNonEmptyString as hasNonEmptyStringField,
-  normalizeLowercaseStringOrEmpty,
-} from "@openclaw/normalization-core/string-coerce";
+import { hasNonEmptyString as hasNonEmptyStringField } from "@openclaw/normalization-core/string-coerce";
 import {
   classifyToolUseResultPairing,
   makeMissingToolResult as makePairingMissingToolResult,
   normalizeLegacyToolResultId,
 } from "../../packages/agent-core/src/harness/session/tool-result-pairing.js";
 import { isThinkingLikeBlock } from "./thinking-block.js";
-import { extractToolCallsFromAssistant, extractToolResultIds } from "./tool-call-id.js";
+import {
+  extractToolCallsFromAssistant,
+  extractToolResultIds,
+  hasToolCallInput,
+} from "./tool-call-id.js";
 import {
   isAllowedToolCallName,
   normalizeAllowedToolNames,
@@ -52,13 +53,6 @@ function isRawToolCallBlock(block: unknown): block is RawToolCallBlock {
   }
   const type = (block as { type?: unknown }).type;
   return typeof type === "string" && RAW_TOOL_CALL_BLOCK_TYPES.has(type);
-}
-
-function hasToolCallInput(block: RawToolCallBlock): boolean {
-  const hasInput = "input" in block ? block.input !== undefined && block.input !== null : false;
-  const hasArguments =
-    "arguments" in block ? block.arguments !== undefined && block.arguments !== null : false;
-  return hasInput || hasArguments;
 }
 
 function hasToolCallId(block: RawToolCallBlock): boolean {
@@ -129,7 +123,7 @@ function isReplaySafeThinkingAssistantTurn(
     sawToolCall = true;
     const toolCallId = typeof block.id === "string" ? block.id.trim() : "";
     if (
-      !hasToolCallInput(block) ||
+      !hasToolCallInput(block as RawToolCallBlock) ||
       hasPartialJson(block) ||
       !toolCallId ||
       seenToolCallIds.has(toolCallId) ||
@@ -294,7 +288,6 @@ function repairToolCallInputs(
     }
 
     const nextContent: typeof msg.content = [];
-    let droppedInMessage = 0;
     let messageChanged = false;
 
     for (const block of msg.content) {
@@ -306,7 +299,6 @@ function repairToolCallInputs(
           !isAllowedToolCallName((block as RawToolCallBlock).name, allowedToolNames)
         ) {
           droppedToolCalls += 1;
-          droppedInMessage += 1;
           changed = true;
           messageChanged = true;
           continue;
@@ -316,7 +308,6 @@ function repairToolCallInputs(
       if (isRawToolCallBlock(block) && hasPartialJson(block)) {
         if (!isFinalizedOpenAIResponsesToolCall(msg, block)) {
           droppedToolCalls += 1;
-          droppedInMessage += 1;
           changed = true;
           messageChanged = true;
           continue;
@@ -332,59 +323,24 @@ function repairToolCallInputs(
         messageChanged = true;
       }
       if (isRawToolCallBlock(workBlock)) {
-        if (RAW_TOOL_CALL_BLOCK_TYPES.has((workBlock as { type?: string }).type ?? "")) {
-          // Keep provider-specific shapes intact. Only continuation snapshot
-          // calls need payload redaction; sessions_spawn still gets name repair.
-          const blockName =
-            typeof (workBlock as { name?: unknown }).name === "string"
-              ? (workBlock as { name: string }).name.trim()
-              : undefined;
-          const normalizedBlockName = normalizeLowercaseStringOrEmpty(blockName);
-          if (
-            normalizedBlockName === "sessions_spawn" ||
-            normalizedBlockName === "continue_delegate"
-          ) {
-            const sanitized = sanitizeTranscriptToolCallBlock(workBlock as RawToolCallBlock);
-            if (sanitized !== workBlock) {
-              changed = true;
-              messageChanged = true;
-            }
-            nextContent.push(sanitized as typeof block);
-          } else if (typeof (workBlock as { name?: unknown }).name === "string") {
-            const rawName = (workBlock as { name: string }).name;
-            const trimmedName = rawName.trim();
-            if (rawName !== trimmedName && trimmedName) {
-              const renamed = { ...(workBlock as object), name: trimmedName } as typeof block;
-              nextContent.push(renamed);
-              changed = true;
-              messageChanged = true;
-            } else {
-              nextContent.push(workBlock);
-            }
-          } else {
-            nextContent.push(workBlock);
-          }
-          continue;
+        const sanitized = sanitizeTranscriptToolCallBlock(
+          workBlock as RawToolCallBlock, // SAFETY: the guard establishes this shape.
+        );
+        if (sanitized !== workBlock) {
+          changed = true;
+          messageChanged = true;
         }
+        nextContent.push(sanitized as typeof block);
+        continue;
       }
       nextContent.push(workBlock);
     }
 
-    if (droppedInMessage > 0) {
+    if (messageChanged) {
       if (nextContent.length === 0) {
         droppedAssistantMessages += 1;
-        changed = true;
         continue;
       }
-      const nextMessage = replaceCompactionReplayOwnerContent(msg, nextContent);
-      for (const toolCall of extractToolCallsFromAssistant(nextMessage)) {
-        priorToolCallIds.add(toolCall.id);
-      }
-      out.push(nextMessage);
-      continue;
-    }
-
-    if (messageChanged) {
       const nextMessage = replaceCompactionReplayOwnerContent(msg, nextContent);
       for (const toolCall of extractToolCallsFromAssistant(nextMessage)) {
         priorToolCallIds.add(toolCall.id);
@@ -434,6 +390,7 @@ export function sanitizeToolUseResultPairingForModel(
 type ToolUseRepairReport = {
   messages: AgentMessage[];
   added: Array<Extract<AgentMessage, { role: "toolResult" }>>;
+  discarded: AgentMessage[];
   droppedDuplicateCount: number;
   droppedOrphanCount: number;
   moved: boolean;
@@ -462,17 +419,22 @@ export function repairToolUseResultPairing(
   const { frames } = pairing;
   const droppedDuplicateCount = pairing.droppedDuplicateCount;
   let droppedOrphanCount = pairing.droppedOrphanCount;
+  const discarded: Array<{ message: AgentMessage; index: number }> = pairing.droppedResults.map(
+    ({ message, index }) => ({ message, index }),
+  );
 
   const out: AgentMessage[] = [];
   let cursor = 0;
   const pushUnframedRange = (endIndex: number) => {
     for (; cursor < endIndex; cursor += 1) {
+      const sourceIndex = cursor;
       const message = messages[cursor];
       if (!message || typeof message !== "object") {
         continue;
       }
       if (message.role === "toolResult" && !preserveUnframed) {
         droppedOrphanCount += 1;
+        discarded.push({ message, index: sourceIndex });
         continue;
       }
       out.push(message);
@@ -502,6 +464,15 @@ export function repairToolUseResultPairing(
         added.push(missing);
         out.push(missing);
       }
+    } else {
+      for (const occurrence of frame.occurrences) {
+        if (occurrence.sourceResult) {
+          discarded.push({
+            message: occurrence.sourceResult,
+            index: occurrence.sourceResultIndex ?? messages.indexOf(occurrence.sourceResult),
+          });
+        }
+      }
     }
     out.push(...frame.remainder);
   }
@@ -509,9 +480,11 @@ export function repairToolUseResultPairing(
 
   const changed =
     out.length !== messages.length || out.some((message, index) => message !== messages[index]);
+  discarded.sort((left, right) => left.index - right.index);
   return {
     messages: changed ? out : messages,
     added,
+    discarded: discarded.map(({ message }) => message),
     droppedDuplicateCount,
     droppedOrphanCount,
     moved: changed,

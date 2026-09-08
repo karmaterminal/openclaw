@@ -67,6 +67,12 @@ adoption can tombstone a row before the channel's delivery promise returns.
 Optional settings include custom append delays, a `drain` option block for
 advanced drain ordering/concurrency/retry policy, an external `abortSignal`, a
 clock, pump error reporting, a stopped-error factory, and admission policy.
+`drain.resolvePendingDisposition(record, context)` is an opt-in channel policy
+that can terminally fail a stored pending row before it is claimed. Return
+`null` or `undefined` to keep the row claimable. The hook receives unvalidated
+stored payload bytes, so unreadable rows must remain claimable for the canonical
+claim-time codec. A failed compare-and-set keeps that lane fenced for the
+current drain pass rather than allowing later same-lane work to overtake it.
 The returned monitor exposes `admit`, `ensureQueueAvailable`, `start`, `pause`,
 `stop`, `waitForIdle`, `isRunning`, and `isStopped`. Use the idempotent
 `ensureQueueAvailable()` check when plugin-owned migration or preparation must
@@ -236,6 +242,14 @@ These durable helpers do not accept `durability: "disabled"`.
 Use `payloadOutcomes` when a batch mixes sent, suppressed, and failed
 payloads. Do not infer hook cancellation from an empty legacy
 direct-delivery result.
+
+Failure is not permission to send the same payload through another path.
+Once admitted, the queue owns retry or reconciliation until its exact owner
+acknowledges or terminally retires the intent. Pending custody is not a
+delivery receipt: preserve partial receipts, and do not report an unconfirmed
+`ask_user` prompt as visible. Gateway `OUTBOUND_DELIVERY_QUEUED` responses mean
+delivery is pending and must not be resent; an ambiguous send may need
+reconciliation rather than an automatic retry.
 
 When a transport creates a thread during its first successful send, the
 outbound adapter may implement `adoptTargetFromDelivery(...)`. Return the

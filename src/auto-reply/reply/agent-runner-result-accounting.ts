@@ -2,7 +2,7 @@ import { resolveContextTokensForModel } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { resolveFastModeState } from "../../agents/fast-mode.js";
 import { consolidateLiveModelSwitchAfterRun } from "../../agents/live-model-switch.js";
-import { resolveSessionAuthProfileOverrideSource } from "../../config/sessions/auth-profile-override-provenance.js";
+import { resolveCollapsedSessionAuthPinSource } from "../../config/sessions/auth-profile-override-provenance.js";
 import { updateSessionEntry } from "../../config/sessions/session-accessor.js";
 import { logVerbose } from "../../globals.js";
 import {
@@ -13,15 +13,16 @@ import {
 import { defaultRuntime } from "../../runtime.js";
 import { shouldPreserveUserFacingSessionStateForInputProvenance } from "../../sessions/input-provenance.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
-import { failQueuedDelegatesCreatedAtOrAfter } from "../continuation/delegate-store.js";
+import { failQueuedDelegatesOwnedByRun } from "../continuation/delegate-store.js";
 import { extractContinuationSignal } from "../continuation/signal.js";
 import { resolveFallbackTransition } from "../fallback-state.js";
 import { normalizeVerboseLevel } from "../thinking.js";
 import type { ReplyPayload } from "../types.js";
 import { scheduleReplyContinuation } from "./agent-runner-continuation-schedule.js";
 import { createReplyContinuationController } from "./agent-runner-continuation.js";
-import { resolveFallbackOriginModel } from "./agent-runner-core.js";
+import { refreshSessionEntryFromStore, resolveFallbackOriginModel } from "./agent-runner-core.js";
 import type { AgentTurnCompaction } from "./agent-runner-execution.types.js";
+import { buildReplyDiagnosticsPayload } from "./agent-runner-result-diagnostics.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
 import type { AdmittedFollowupTurn, FollowupRunnerParams } from "./followup-turn-admission.js";
 import type { FollowupExecutionResult } from "./followup-turn-execution.js";
@@ -214,9 +215,12 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
       );
     }
     if (sessionKey) {
-      const failedDelegateRows = failQueuedDelegatesCreatedAtOrAfter(
+      const failedDelegateRows = failQueuedDelegatesOwnedByRun(
         sessionKey,
-        runStartedAt,
+        {
+          originRunId: runId,
+          legacyCreatedAfter: runStartedAt,
+        },
         "Continuation delegate election ignored because the enclosing turn was incomplete and replay-unsafe.",
       );
       if (failedDelegateRows > 0) {
@@ -273,6 +277,9 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
   const modelUsed = runResult.meta?.agentMeta?.model ?? fallbackModel ?? defaultModel;
   const providerUsed =
     runResult.meta?.agentMeta?.provider ?? fallbackProvider ?? followupRun.run.provider;
+  const runtimeModelSelection = runResult.meta?.agentMeta?.runtimeModelSelection;
+  // A tool-free finalizer owns its response usage, not the session's next model.
+  const sessionModel = runtimeModelSelection ?? { provider: providerUsed, model: modelUsed };
 
   const winnerProvider = fallbackExhausted
     ? undefined
@@ -328,14 +335,15 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
   const configuredFallbackModel = resolveFallbackOriginModel({
     run: followupRun.run,
     fallbackStateEntry,
+    runtimeModelSelection,
   });
   const selectedProvider = configuredFallbackModel.provider;
   const selectedModel = configuredFallbackModel.model;
   const fallbackTransition = resolveFallbackTransition({
     selectedProvider,
     selectedModel,
-    activeProvider: providerUsed,
-    activeModel: modelUsed,
+    activeProvider: sessionModel.provider,
+    activeModel: sessionModel.model,
     attempts: fallbackAttempts,
     state: fallbackStateEntry,
     cfg,
@@ -376,8 +384,8 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
     runtimeContextTokens === undefined
       ? resolveContextTokensForModel({
           cfg,
-          provider: providerUsed,
-          model: modelUsed,
+          provider: sessionModel.provider,
+          model: sessionModel.model,
           allowAsyncLoad: false,
         })
       : undefined;
@@ -419,6 +427,7 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
     preserveUserFacingSessionModelState: preserveUserFacingSessionState,
     modelUsed,
     providerUsed,
+    runtimeModelSelection,
     contextTokensUsed,
     contextTokensSource,
     contextBudgetStatus:
@@ -435,8 +444,8 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
       cfg,
       sessionKey,
       agentId: followupRun.run.agentId,
-      providerUsed,
-      modelUsed,
+      providerUsed: sessionModel.provider,
+      modelUsed: sessionModel.model,
     });
   }
 
@@ -472,6 +481,7 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
     runResult,
     selectedModel,
     selectedProvider,
+    sessionModel,
     terminalFailurePayload,
     usage,
     verboseEnabled,
@@ -509,6 +519,12 @@ export async function accountFollowupTurn(params: {
     getActiveSessionEntry,
     setActiveSessionEntry: (entry) => turn.session.publish(entry),
   });
+  const resolvedVerboseLevel =
+    normalizeVerboseLevel(
+      turn.queued.run.verboseLevelOverride ??
+        turn.session.current()?.verboseLevel ??
+        turn.queued.run.verboseLevel,
+    ) ?? "off";
   const accounting = await accountAgentTurn({
     activeSessionEntry: turn.session.current(),
     activeSessionStore: turn.sessionStore,
@@ -525,9 +541,7 @@ export async function accountFollowupTurn(params: {
     replyOperation: turn.operation,
     preflightCompactionApplied: turn.preflightCompactionApplied,
     replySessionKey: turn.queued.run.sessionKey ?? defaults.sessionKey ?? sessionKey,
-    resolvedVerboseLevel:
-      normalizeVerboseLevel(turn.session.current()?.verboseLevel ?? turn.queued.run.verboseLevel) ??
-      "off",
+    resolvedVerboseLevel,
     execution: settled,
     runId: execution.execution.runId,
     runStartedAt: execution.runStartedAt,
@@ -550,11 +564,11 @@ export async function accountFollowupTurn(params: {
       previousSessionId: turn.queued.run.sessionId,
       nextSessionId: entry?.sessionId ?? turn.queued.run.sessionId,
       nextSessionFile: queueKey,
-      nextProvider: accounting.providerUsed,
-      nextModel: accounting.modelUsed,
+      nextProvider: accounting.sessionModel.provider,
+      nextModel: accounting.sessionModel.model,
       nextModelOverrideSource: entry?.modelOverrideSource,
       nextAuthProfileId: entry?.authProfileOverride,
-      nextAuthProfileIdSource: resolveSessionAuthProfileOverrideSource(entry),
+      nextAuthProfileIdSource: resolveCollapsedSessionAuthPinSource(entry),
     });
   }
   let compactionNotice: ReplyPayload | undefined;
@@ -612,5 +626,26 @@ export async function accountFollowupTurn(params: {
     getActiveSessionEntry,
   });
   turn.session.publish(getActiveSessionEntry());
-  return { ...accounting, compactionNotice };
+  if (turn.queued.run.verboseLevelOverride !== "off" || turn.queued.run.traceAuthorized === true) {
+    turn.session.publish(
+      refreshSessionEntryFromStore({
+        storePath,
+        sessionKey,
+        fallbackEntry: turn.session.current(),
+        expectedGeneration: accounting.expectedSession,
+      }),
+    );
+  }
+  const diagnosticsPayload = await buildReplyDiagnosticsPayload({
+    activeSessionEntry: turn.session.current(),
+    followupRun: turn.queued,
+    accounting,
+    cfg: turn.config,
+    storePath,
+    userText: turn.queued.prompt,
+    resolvedVerboseLevel,
+    resolvedBlockStreamingBreak: turn.queued.run.blockReplyBreak,
+    preflightCompactionApplied: turn.preflightCompactionApplied,
+  });
+  return { ...accounting, compactionNotice, diagnosticsPayload };
 }

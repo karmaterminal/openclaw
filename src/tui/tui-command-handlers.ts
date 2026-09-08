@@ -78,7 +78,7 @@ type CommandHandlerContext = {
   loadHistory: () => Promise<unknown>;
   setSession: (key: string, agentId?: string) => Promise<void>;
   refreshAgents: (ownsRefresh?: () => boolean) => Promise<Result<void, string>>;
-  abortActive: (params?: { preferActive?: boolean }) => Promise<void>;
+  abortActive: (params?: { preferActive?: boolean }) => Promise<unknown>;
   setActivityStatus: (text: string) => void;
   formatSessionKey: (key: string) => string;
   applySessionInfoFromPatch: (result: SessionsPatchResult) => void;
@@ -311,19 +311,22 @@ export function createCommandHandlers(context: CommandHandlerContext) {
   ) => {
     const { isCurrent } = captureSessionIncarnation();
     selector.onSelect = (item) => {
+      if (pickerRequest !== request) {
+        return;
+      }
+      // Close on first selection so a slow backend cannot leave the picker consuming draft input.
+      closeOverlayAndRender(overlayHandle);
       void (async () => {
         try {
           if (isCurrent()) {
             await onSelect(item.value);
           }
         } catch (err) {
-          // A rejected selection must not strand the overlay open with an
-          // unhandled rejection; close it and surface the cause in chat.
           if (isCurrent()) {
             chatLog.addSystem(`selection failed: ${formatTuiErrorMessage(err)}`);
           }
         }
-        closeOverlayAndRender(overlayHandle);
+        tui.requestRender();
       })();
     };
     selector.onCancel = () => closeOverlayAndRender(overlayHandle);
@@ -838,7 +841,9 @@ export function createCommandHandlers(context: CommandHandlerContext) {
         finishSessionTransition();
       }
     },
-    abort: async () => await abortActive(),
+    abort: async () => {
+      await abortActive();
+    },
     stop: async () => {
       // Queued client runs can terminalize before the followup executes, so
       // local run ids are not a complete stop target inventory.

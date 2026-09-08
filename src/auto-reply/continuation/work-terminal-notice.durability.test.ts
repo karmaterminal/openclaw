@@ -35,11 +35,8 @@ import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { settleManagedSystemEventsAfterTurnAdoption } from "../reply/session-system-event-adoption.js";
 import { prepareFormattedSystemEvents } from "../reply/session-system-events.js";
 import { CONTINUATION_WORK_CONTROLLER_ID } from "./work-flow-state.js";
-import {
-  enqueuePendingWork,
-  listPendingTerminalNoticeWork,
-  markPendingWorkFailed,
-} from "./work-store.js";
+import { listPendingTerminalNoticeWork, markPendingWorkFailed } from "./work-store.js";
+import { enqueuePendingWork } from "./work-store.test-support.js";
 import {
   CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE,
   deliverPendingTerminalNotice,

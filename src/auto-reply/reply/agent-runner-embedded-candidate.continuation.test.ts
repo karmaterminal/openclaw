@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createAssistantErrorTranscript } from "../../agents/assistant-error-transcript.js";
 import { createDeferredEmbeddedRunLifecycleManager } from "../../agents/embedded-agent-runner/run/deferred-lifecycle-owner.js";
 import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/run/params.js";
 import type { AgentTurnParams } from "./agent-runner-execution.types.js";
@@ -156,11 +157,10 @@ function runCandidate(
     getLifecycleGeneration: () => "generation-1",
     onLifecycleGeneration: vi.fn(),
     suppressQueuedUserPersistenceForCandidate: false,
-    suppressAssistantErrorPersistenceForCandidate: false,
-    onAssistantErrorMessagePersisted: vi.fn(),
     userTurnTranscriptRecorder: undefined,
     contextEngineLogicalTurnLease: {} as never,
     onContextEngineTurnCandidate: vi.fn(),
+    assistantErrorTranscript: createAssistantErrorTranscript({ runId: "run-fallback" }),
     notifyUserMessagePersisted: vi.fn(),
     fastModeStartedAtMs: Date.now(),
     fastModeAutoProgressState: { offAnnounced: false, resetAnnounced: false },

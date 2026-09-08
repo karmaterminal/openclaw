@@ -156,7 +156,6 @@ describe("announce-path post-compaction routing", () => {
     configureTaskFlowRegistryRuntime({
       store: {
         loadSnapshot: () => ({ flows: new Map() }),
-        saveSnapshot: () => {},
         upsertFlow: () => {},
         deleteFlow: () => {},
       },

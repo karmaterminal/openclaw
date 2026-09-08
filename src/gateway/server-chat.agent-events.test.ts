@@ -40,15 +40,18 @@ import {
 } from "../infra/agent-run-registry.js";
 import { subscribePluginSessionsChanged } from "../plugins/gateway-events.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { GatewayClientRegistry } from "./server/client-registry.js";
 
 const persistGatewaySessionLifecycleEventMock = vi.fn();
 const loadGatewaySessionLifecycleSnapshotMock = vi.hoisted(() => vi.fn());
 const logErrorMock = vi.fn();
+const logWarnMock = vi.fn();
 const normalizeLiveAssistantBufferedTextMock = vi.hoisted(() => vi.fn());
 const loadGatewaySessionRow = vi.hoisted(() => vi.fn());
 
 vi.mock("../logger.js", () => ({
   logError: (...args: unknown[]) => logErrorMock(...args),
+  logWarn: (...args: unknown[]) => logWarnMock(...args),
 }));
 
 vi.mock("./live-chat-projector.js", async (importOriginal) => {
@@ -97,9 +100,9 @@ vi.mock("./session-utils.js", () => {
 
 import { getRuntimeConfig } from "../config/io.js";
 import { resolveHeartbeatVisibility } from "../infra/heartbeat-visibility.js";
+import { abortChatRunById, registerChatAbortController } from "./chat-abort.js";
 import { createGatewayBroadcaster } from "./server-broadcast.js";
 import {
-  createDirectChatContext,
   emitAgentEvent,
   emitAgentEvents,
   registerChatRun,
@@ -114,8 +117,8 @@ import {
   resolveChatErrorKindFromError,
   type AgentEventHandlerOptions,
 } from "./server-chat.js";
-import { broadcastChatError } from "./server-methods/chat-broadcast.js";
-import { finalizeChatSendAgentOutcome } from "./server-methods/chat-send-agent-outcome.js";
+import { broadcastChatError, broadcastChatFinal } from "./server-methods/chat-broadcast.js";
+import type { GatewayWsClient } from "./server/ws-types.js";
 import { persistGatewaySessionLifecycleEvent } from "./session-lifecycle-state.js";
 import { loadSessionEntry } from "./session-utils.js";
 
@@ -157,6 +160,7 @@ describe("agent event handler", () => {
       }));
     persistGatewaySessionLifecycleEventMock.mockReset().mockResolvedValue(undefined);
     logErrorMock.mockReset();
+    logWarnMock.mockReset();
     normalizeLiveAssistantBufferedTextMock.mockReset();
   });
 
@@ -170,14 +174,11 @@ describe("agent event handler", () => {
     resolveSessionKeyForRun?: (runId: string, options?: { agentId?: string }) => string | undefined;
     lifecycleErrorRetryGraceMs?: number;
     isChatSendRunActive?: (runId: string) => boolean;
-    wasChatSendActiveAtTerminalObservation?: AgentEventHandlerOptions["wasChatSendActiveAtTerminalObservation"];
-    wasChatSendTerminalBroadcasted?: AgentEventHandlerOptions["wasChatSendTerminalBroadcasted"];
-    resolveRunToolErrorSummary?: AgentEventHandlerOptions["resolveRunToolErrorSummary"];
-    markChatSendTerminalBroadcasted?: AgentEventHandlerOptions["markChatSendTerminalBroadcasted"];
     clearTrackedActiveRun?: AgentEventHandlerOptions["clearTrackedActiveRun"];
     settleTrackedTerminal?: AgentEventHandlerOptions["settleTrackedTerminal"];
     trackTrackedRunTerminalPersistence?: AgentEventHandlerOptions["trackTrackedRunTerminalPersistence"];
     resolveActiveLifecycleGenerationForRun?: (runId: string) => string | undefined;
+    updateRunToolErrorSummary?: AgentEventHandlerOptions["updateRunToolErrorSummary"];
     resolveSessionActiveRunState?: AgentEventHandlerOptions["resolveSessionActiveRunState"];
   }) {
     const nowSpy =
@@ -209,14 +210,11 @@ describe("agent event handler", () => {
       persistGatewaySessionLifecycleEventForEvent: persistGatewaySessionLifecycleEventMock,
       lifecycleErrorRetryGraceMs: params?.lifecycleErrorRetryGraceMs,
       isChatSendRunActive: params?.isChatSendRunActive,
-      wasChatSendActiveAtTerminalObservation: params?.wasChatSendActiveAtTerminalObservation,
-      wasChatSendTerminalBroadcasted: params?.wasChatSendTerminalBroadcasted,
-      resolveRunToolErrorSummary: params?.resolveRunToolErrorSummary,
-      markChatSendTerminalBroadcasted: params?.markChatSendTerminalBroadcasted,
       clearTrackedActiveRun: params?.clearTrackedActiveRun ?? clearTrackedActiveRun,
       settleTrackedTerminal: params?.settleTrackedTerminal,
       trackTrackedRunTerminalPersistence: params?.trackTrackedRunTerminalPersistence,
       resolveActiveLifecycleGenerationForRun: params?.resolveActiveLifecycleGenerationForRun,
+      updateRunToolErrorSummary: params?.updateRunToolErrorSummary,
       resolveSessionActiveRunState: params?.resolveSessionActiveRunState,
     });
 
@@ -302,6 +300,271 @@ describe("agent event handler", () => {
     return nodeSendToSession.mock.calls.filter(([, event]) => event === "chat");
   }
 
+  function widgetResult(id: string, target = "assistant_message", title = id) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            kind: "canvas",
+            presentation: { target, title, sandbox: "scripts" },
+            view: { id, url: `/__openclaw__/canvas/documents/${id}/index.html` },
+          }),
+        },
+      ],
+    };
+  }
+
+  it.each(["Widgets ready.", ""])(
+    "projects successful widgets into live assistant snapshots with final text %j",
+    (text) => {
+      const { broadcast, broadcastToConnIds, nodeSendToSession, chatRunState, handler } =
+        createHarness();
+      registerNamedChatRun(chatRunState, "widgets", {
+        chatSendTiming: { ackedAtMs: 0, receivedAtMs: 0, connId: "conn-widgets" },
+      });
+      emitAgentEvents(handler, "run-widgets", [
+        ["tool", { phase: "result", name: "show_widget", result: widgetResult("alpha") }],
+        ["tool", { phase: "result", name: "show_widget", result: widgetResult("beta") }],
+        ["tool", { phase: "result", name: "show_widget", result: widgetResult("alpha") }],
+        ["assistant", { text }],
+        ["lifecycle", { phase: "end" }],
+      ]);
+
+      const canvasBlocks = ["alpha", "beta"].map((id) => ({
+        type: "canvas",
+        preview: {
+          kind: "canvas",
+          surface: "assistant_message",
+          render: "url",
+          title: id,
+          url: `/__openclaw__/canvas/documents/${id}/index.html`,
+          viewId: id,
+          sandbox: "scripts",
+        },
+        rawText: null,
+      }));
+      const content = [...(text ? [{ type: "text", text }] : []), ...canvasBlocks];
+      expect(chatBroadcastCalls(broadcast).at(-1)?.[1]).toMatchObject({
+        message: { role: "assistant", content },
+      });
+      for (const [, payload] of chatBroadcastCalls(broadcast)) {
+        expect(payload.message?.content).toEqual(content);
+        expect(Value.Check(ChatEventSchema, payload)).toBe(true);
+      }
+      expect(sessionChatCalls(nodeSendToSession).at(-1)?.[2].message.content).toEqual(content);
+      expect(
+        broadcastToConnIds.mock.calls.filter(([event]) => event === "chat.send_timing"),
+      ).toEqual([
+        [
+          "chat.send_timing",
+          expect.objectContaining({
+            phase: "first-assistant-event",
+            runId: "client-widgets",
+            sessionKey: "session-widgets",
+          }),
+          new Set(["conn-widgets"]),
+          { dropIfSlow: true },
+        ],
+      ]);
+
+      registerNamedChatRun(chatRunState, "widgets");
+      broadcast.mockClear();
+      emitAgentEvents(handler, "run-widgets", [
+        ["assistant", { text: "Next turn." }],
+        ["lifecycle", { phase: "end" }],
+      ]);
+      expect(chatBroadcastCalls(broadcast).at(-1)?.[1]).toMatchObject({
+        message: { content: [{ type: "text", text: "Next turn." }] },
+      });
+    },
+  );
+
+  it("keeps live widget snapshots bounded without retaining failed or node-panel results", () => {
+    vi.useFakeTimers();
+    const { broadcast, chatRunState, handler } = createHarness();
+    registerNamedChatRun(chatRunState, "widgets");
+    let seq = 0;
+    const id = (index: number) => `cv_${index.toString(16).padStart(32, "0")}`;
+    const publish = (result: ReturnType<typeof widgetResult>, isError = false) =>
+      emitAgentEvent(
+        handler,
+        "run-widgets",
+        "tool",
+        {
+          phase: "result",
+          name: "show_widget",
+          result,
+          isError,
+        },
+        { seq: ++seq },
+      );
+    const publishWidget = (index: number, titleChars = 1_700) => {
+      const result = widgetResult(id(index), "assistant_message", "a".repeat(titleChars));
+      // These fixtures survive embedded and default Codex tool-result text caps.
+      expect(result.content[0]?.text.length).toBeLessThan(8_000);
+      publish(result);
+    };
+    const snapshot = () => {
+      emitAgentEvent(
+        handler,
+        "run-widgets",
+        "assistant",
+        { text: `Widgets ready: ${seq}.` },
+        { seq: ++seq },
+      );
+      vi.advanceTimersByTime(75);
+      return chatBroadcastCalls(broadcast)
+        .at(-1)?.[1]
+        .message.content.filter((block: { type: string }) => block.type === "canvas")
+        .map((block: { preview: { viewId: string } }) => block.preview.viewId);
+    };
+    publish(widgetResult("failed"), true);
+    publish(widgetResult("node", "node_panel"));
+    for (let index = 0; index < 34; index++) {
+      publishWidget(index);
+    }
+    const initial = Array.from({ length: 32 }, (_, index) => id(index + 2));
+    expect(snapshot()).toEqual(initial);
+    publishWidget(33);
+    expect(snapshot()).toEqual(initial);
+    expect(logWarnMock).not.toHaveBeenCalled();
+
+    publishWidget(34, 7_000);
+    const firstEviction = Array.from({ length: 30 }, (_, index) => id(index + 5));
+    expect.soft(snapshot()).toEqual(firstEviction);
+    publishWidget(34, 7_000);
+    expect.soft(snapshot()).toEqual(firstEviction);
+    expect.soft(logWarnMock).toHaveBeenCalledTimes(1);
+    publishWidget(35, 7_000);
+    publishWidget(36, 7_000);
+    expect.soft(snapshot()).toEqual(Array.from({ length: 25 }, (_, index) => id(index + 12)));
+    expect.soft(logWarnMock).toHaveBeenCalledTimes(3);
+
+    // A descriptor that cannot fit alone must retire the old suffix too.
+    publish(widgetResult(id(37), "assistant_message", "a".repeat(65_536)));
+    expect.soft(snapshot()).toEqual([]);
+    publish(widgetResult(id(38), "assistant_message", "a".repeat(65_536)));
+    expect.soft(snapshot()).toEqual([]);
+    publishWidget(39);
+    expect.soft(snapshot()).toEqual([id(39)]);
+    expect
+      .soft(logWarnMock.mock.calls)
+      .toEqual(
+        Array.from({ length: 5 }, () => [
+          "Live chat canvas preview omitted: display descriptors exceed the 64 KiB limit.",
+        ]),
+      );
+    emitAgentEvent(handler, "run-widgets", "lifecycle", { phase: "end" }, { seq: ++seq });
+    expect(chatBroadcastCalls(broadcast).at(-1)?.[1].message.content).toHaveLength(2);
+    handler.dispose();
+  });
+
+  it.each(["silent", "heartbeat", "aborted"])("does not revive widgets from a %s turn", (mode) => {
+    const { broadcast, chatRunState, handler } = createHarness();
+    registerNamedChatRun(chatRunState, "widgets");
+    if (mode === "heartbeat") {
+      registerAgentRunContext("run-widgets", { sessionKey: "session-widgets", isHeartbeat: true });
+    } else if (mode === "aborted") {
+      chatRunState.getOrCreate("client-widgets").abortMarker = createChatAbortMarker();
+    }
+    emitAgentEvents(handler, "run-widgets", [
+      ["tool", { phase: "result", name: "show_widget", result: widgetResult("hidden") }],
+      ["assistant", { text: mode === "silent" ? "NO_REPLY" : "" }],
+      ["lifecycle", { phase: "end", ...(mode === "aborted" ? { aborted: true } : {}) }],
+    ]);
+    expect(chatBroadcastCalls(broadcast).at(-1)?.[1].message).toBeUndefined();
+    handler.dispose();
+  });
+
+  it("drops failed-attempt widgets before a runtime retry succeeds", () => {
+    vi.useFakeTimers();
+    const { broadcast, chatRunState, handler } = createHarness({ lifecycleErrorRetryGraceMs: 100 });
+    registerNamedChatRun(chatRunState, "widgets");
+    emitAgentEvents(handler, "run-widgets", [
+      ["tool", { phase: "result", name: "show_widget", result: widgetResult("failed-attempt") }],
+      ["lifecycle", { phase: "error", error: "retryable failure" }],
+      ["tool", { phase: "result", name: "show_widget", result: widgetResult("retried") }],
+      ["lifecycle", { phase: "end" }],
+    ]);
+    expect(chatBroadcastCalls(broadcast).at(-1)?.[1]).toMatchObject({
+      state: "final",
+      message: { content: [{ type: "canvas", preview: { viewId: "retried" } }] },
+    });
+    expect(vi.getTimerCount()).toBe(0);
+    handler.dispose();
+  });
+
+  it("retires tool-only widgets when a new owner reuses the run before assistant text", () => {
+    const { broadcastToConnIds, chatRunState, sessionMessageSubscribers, handler } =
+      createHarness();
+    const runId = "widget-owner-reuse";
+    const claim = () =>
+      expectDefined(
+        claimAgentRunContext(
+          runId,
+          { sessionKey: "session-widgets", isControlUiVisible: false },
+          { exclusive: true, trackOwner: true },
+        ),
+        "widget run owner claim",
+      );
+    const firstClaim = claim();
+    let currentClaim = firstClaim;
+    sessionMessageSubscribers.subscribe("conn-widgets", "session-widgets");
+    const stop = onAgentRuntimeEvent(handler);
+    const emitWidget = (id: string, owner: string) =>
+      emitAgentEventForOwner(
+        {
+          runId,
+          stream: "tool",
+          data: { phase: "result", name: "show_widget", result: widgetResult(id) },
+        },
+        owner,
+      );
+    try {
+      emitWidget("retired", firstClaim);
+      releaseAgentRunContext(runId, firstClaim);
+      currentClaim = claim();
+      emitWidget("fresh", currentClaim);
+      emitWidget("late", firstClaim);
+      emitAgentEventForOwner({ runId, stream: "lifecycle", data: { phase: "end" } }, currentClaim);
+      expect(chatBroadcastCalls(broadcastToConnIds).at(-1)?.[1]).toMatchObject({
+        state: "final",
+        message: { content: [{ type: "canvas", preview: { viewId: "fresh" } }] },
+      });
+    } finally {
+      stop();
+      releaseAgentRunContext(runId, firstClaim);
+      releaseAgentRunContext(runId, currentClaim);
+      handler.dispose();
+      chatRunState.clear();
+    }
+  });
+
+  it("carries prepared validation diagnostics into active run state", () => {
+    const updateRunToolErrorSummary = vi.fn();
+    const { chatRunState, handler } = createHarness({ updateRunToolErrorSummary });
+    registerChatRun(chatRunState, "provider-run", "session-1", "client-run");
+    emitAgentEvent(
+      handler,
+      "provider-run",
+      "tool",
+      {
+        phase: "result",
+        name: "edit",
+        isError: true,
+        toolErrorSummary: "edit tool validation failed: edits: must be an array",
+      },
+      { ts: 1_000 },
+    );
+
+    expect(updateRunToolErrorSummary).toHaveBeenCalledWith({
+      runId: "provider-run",
+      clientRunId: "client-run",
+      summary: "edit tool validation failed: edits: must be an array",
+    });
+  });
+
   it("retains standalone warnings and Guardian decisions in the client-owned reconnect snapshot", () => {
     const { chatRunState, handler } = createHarness();
     registerChatRun(chatRunState, "provider-run", "session-1", "client-run");
@@ -368,6 +631,7 @@ describe("agent event handler", () => {
       ]),
     );
   });
+
   it("replays cumulative usage with the same client identity as live delivery", () => {
     const { chatRunState, handler, broadcast } = createHarness();
     registerChatRun(chatRunState, "provider-run", "session-1", "client-run");
@@ -384,6 +648,7 @@ describe("agent event handler", () => {
     });
     expect(chatRunState.runs.get("client-run")?.progressSnapshot?.events).toEqual([usage]);
   });
+
   it("records, replaces, dismisses, and clears normalized plan snapshots", () => {
     const { chatRunState, handler } = createHarness();
     registerChatRun(chatRunState, "provider-run", "session-1", "client-run");
@@ -434,6 +699,37 @@ describe("agent event handler", () => {
     };
     chatRunState.clearRun("client-run");
     expect(chatRunState.runs.get("client-run")?.planSnapshot).toBeUndefined();
+  });
+
+  it.each([
+    { stream: "assistant", data: { text: "Recovered" } },
+    { stream: "tool", data: { phase: "start", name: "read" } },
+  ] as const)("clears stale validation diagnostics on $stream progress", (progressEvent) => {
+    const updateRunToolErrorSummary = vi.fn();
+    const { chatRunState, handler } = createHarness({ updateRunToolErrorSummary });
+    registerChatRun(chatRunState, "provider-run", "session-1", "client-run");
+    emitAgentEvent(
+      handler,
+      "provider-run",
+      "tool",
+      {
+        phase: "result",
+        name: "edit",
+        isError: true,
+        toolErrorSummary: "edit tool validation failed: invalid arguments",
+      },
+      { ts: 1_000 },
+    );
+    emitAgentEvent(handler, "provider-run", progressEvent.stream, progressEvent.data, {
+      seq: 2,
+      ts: 1_100,
+    });
+
+    expect(updateRunToolErrorSummary).toHaveBeenLastCalledWith({
+      runId: "provider-run",
+      clientRunId: "client-run",
+      summary: undefined,
+    });
   });
 
   function sessionAgentCalls(nodeSendToSession: ReturnType<typeof vi.fn>) {
@@ -795,6 +1091,75 @@ describe("agent event handler", () => {
     expect(agentBroadcastCalls(broadcast)).toHaveLength(1);
   });
 
+  it.each(["rate_limit", "overloaded", "server_error", "timeout"])(
+    "keeps %s retries transient through long backoff and subsequent assistant output",
+    (reason) => {
+      vi.useFakeTimers();
+      const { broadcast, chatRunState, clearAgentRunContext, handler } = createHarness();
+      registerNamedChatRun(chatRunState, "retry");
+      for (let attempt = 2; attempt <= 5; attempt++) {
+        emitAgentEvent(
+          handler,
+          "run-retry",
+          "lifecycle",
+          {
+            phase: "finishing",
+            error: "provider rate limit",
+          },
+          { seq: attempt * 2 },
+        );
+        emitAgentEvent(
+          handler,
+          "run-retry",
+          "run_status",
+          {
+            phase: "retrying",
+            attempt,
+            maxAttempts: 10,
+            reason,
+          },
+          { seq: attempt * 2 + 1 },
+        );
+        vi.advanceTimersByTime(30_000);
+      }
+      expect(chatBroadcastCalls(broadcast).map(([, payload]) => payload)).toEqual(
+        [2, 3, 4, 5].map((attempt) =>
+          expect.objectContaining({
+            runId: "client-retry",
+            state: "status",
+            phase: "starting_model",
+            ...(reason === "rate_limit" ? { retry: { attempt, maxAttempts: 10, reason } } : {}),
+          }),
+        ),
+      );
+      expect(clearAgentRunContext).not.toHaveBeenCalled();
+      expect(persistGatewaySessionLifecycleEventMock).not.toHaveBeenCalled();
+      emitAgentEvent(handler, "run-retry", "assistant", { text: "I", delta: "I" }, { seq: 12 });
+      vi.advanceTimersByTime(500);
+      emitAgentEvent(
+        handler,
+        "run-retry",
+        "assistant",
+        { text: "I agree", delta: " agree" },
+        { seq: 13 },
+      );
+      emitLifecycleEnd(handler, "run-retry", 14);
+      expect(chatBroadcastCalls(broadcast).map(([, payload]) => payload.state)).toEqual([
+        "status",
+        "status",
+        "status",
+        "status",
+        "delta",
+        "delta",
+        "final",
+      ]);
+      expect(chatBroadcastCalls(broadcast).at(-1)?.[1]).toMatchObject({
+        runId: "client-retry",
+        message: { content: [{ type: "text", text: "I agree" }] },
+      });
+    },
+  );
+
   it("coalesces assistant agent events inside one live-text pacing window", () => {
     let now = 10_000;
     const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
@@ -934,6 +1299,178 @@ describe("agent event handler", () => {
       chatRunState.clear();
     }
   });
+
+  it.each(["native", "dispatch", "abort", "retry", "clearRun", "clear"] as const)(
+    "bounds connection snapshots until %s completion without losing the terminal reply",
+    (terminal) => {
+      vi.useFakeTimers();
+      const harness = createHarness();
+      const { handler, chatRunState, nodeSendToSession, agentRunSeq } = harness;
+      const callbacks: Array<() => void> = [];
+      const frames: Array<{
+        event: string;
+        seq: number;
+        payload: {
+          stream?: string;
+          data?: { delta?: string };
+          state?: string;
+          deltaText?: string;
+        };
+      }> = [];
+      const socket = {
+        readyState: 1,
+        bufferedAmount: 0,
+        send: (wire: string, callback?: () => void) => {
+          frames.push(JSON.parse(wire));
+          if (callback) {
+            callbacks.push(callback);
+          }
+        },
+        close: vi.fn(),
+        terminate: vi.fn(),
+      };
+      const client = {
+        connId: "held-reader",
+        socket,
+        usesSharedGatewayAuth: false,
+        connect: { role: "operator", scopes: ["operator.read"] },
+      } as unknown as GatewayWsClient;
+      const broadcaster = createGatewayBroadcaster({
+        clients: new GatewayClientRegistry([client]),
+      });
+      harness.broadcast.mockImplementation(broadcaster.broadcast);
+      harness.broadcastToConnIds.mockImplementation(broadcaster.broadcastToConnIds);
+      const runId = "backpressured-run";
+      const sessionKey = "agent:main:backpressured";
+      registerChatRun(chatRunState, runId, sessionKey, runId);
+      const chunks = Array.from({ length: 24 }, (_, i) => `[${i}]${"abc🚀".repeat(64)}`);
+      let expected = chunks.join("");
+
+      try {
+        let text = "";
+        for (const [index, delta] of chunks.entries()) {
+          text += delta;
+          emitAgentEvent(handler, runId, "item", answerCandidate("answer", text), {
+            seq: index * 2 + 1,
+          });
+          emitAgentEvent(handler, runId, "assistant", { text, delta }, { seq: index * 2 + 2 });
+          vi.advanceTimersByTime(75);
+        }
+        // The existing producer pacing still delivers updates to nodes, but a
+        // socket with an unfinished write must not retain every historical prefix.
+        expect(nodeSendToSession.mock.calls.length).toBeGreaterThan(chunks.length);
+        expect(frames.length).toBeLessThan(6);
+        if (terminal === "retry" || terminal === "clearRun" || terminal === "clear") {
+          expect(broadcaster.getBufferedAmount(client.connId)).toBeGreaterThan(
+            socket.bufferedAmount,
+          );
+          if (terminal === "retry") {
+            emitAgentEvent(
+              handler,
+              runId,
+              "assistant",
+              { text: `${expected} failed tail` },
+              { seq: 49 },
+            );
+            emitAgentEvent(
+              handler,
+              runId,
+              "lifecycle",
+              { phase: "error", error: "retryable failure" },
+              { seq: 50 },
+            );
+            expect(
+              frames
+                .filter((frame) => frame.event === "chat" && frame.payload.state === "delta")
+                .map((frame) => frame.payload.deltaText)
+                .join(""),
+            ).toBe(`${expected} failed tail`);
+          } else if (terminal === "clearRun") {
+            chatRunState.clearRun(runId);
+          } else {
+            chatRunState.clear();
+            registerChatRun(chatRunState, runId, sessionKey, runId);
+          }
+          expect(broadcaster.getBufferedAmount(client.connId)).toBe(socket.bufferedAmount);
+          expected = "successor reply";
+          emitAgentEvent(
+            handler,
+            runId,
+            "assistant",
+            { text: expected, delta: expected },
+            { seq: 51 },
+          );
+          emitLifecycleEnd(handler, runId, 52);
+        } else if (terminal === "native") {
+          emitAgentEvent(handler, runId, "item", answerCandidate("answer", expected, "selected"), {
+            seq: chunks.length * 2 + 1,
+          });
+          emitLifecycleEnd(handler, runId, chunks.length * 2 + 2);
+        } else if (terminal === "dispatch") {
+          broadcastChatFinal({
+            context: { ...harness, ...broadcaster },
+            runId,
+            sessionKey,
+            message: { role: "assistant", content: [{ type: "text", text: expected }] },
+          });
+          chatRunState.clearRun(runId);
+        } else {
+          const chatAbortControllers = new Map();
+          registerChatAbortController({
+            chatAbortControllers,
+            runId,
+            sessionId: runId,
+            sessionKey,
+            timeoutMs: 60_000,
+          });
+          expect(
+            abortChatRunById(
+              {
+                ...harness,
+                ...broadcaster,
+                chatAbortControllers,
+                removeChatRun: (sourceRunId, clientRunId, key) =>
+                  chatRunState.registry.remove(sourceRunId, clientRunId, key),
+              },
+              { runId, sessionKey },
+            ).aborted,
+          ).toBe(true);
+        }
+        const beforeDrain = frames.length;
+        while (callbacks.length) {
+          callbacks.shift()?.();
+        }
+        expect(frames).toHaveLength(beforeDrain);
+        expect(frames.map(({ seq }) => seq)).toEqual(frames.map((_, index) => index + 1));
+        expect(frames.at(-1)).toMatchObject({
+          event: "chat",
+          payload: {
+            state: terminal === "abort" ? "aborted" : "final",
+            message: { content: [{ type: "text", text: expected }] },
+          },
+        });
+        if (terminal === "native" || terminal === "dispatch") {
+          expect(
+            frames
+              .filter((f) => f.event === "agent" && f.payload.stream === "assistant")
+              .map((f) => f.payload.data?.delta)
+              .join(""),
+          ).toBe(expected);
+          expect(
+            frames
+              .filter((f) => f.event === "chat" && f.payload.state === "delta")
+              .map((f) => f.payload.deltaText)
+              .join(""),
+          ).toBe(expected);
+        }
+        expect(socket.close).not.toHaveBeenCalled();
+      } finally {
+        handler.dispose();
+        chatRunState.clear();
+        agentRunSeq.clear();
+      }
+    },
+  );
 
   it.each([
     { audience: "visible", controlUiVisible: true },
@@ -2365,6 +2902,69 @@ describe("agent event handler", () => {
     nowSpy.mockRestore();
   });
 
+  it.each([
+    { itemId: "message-2", text: "Hello", flags: {}, expected: "HelloHello" },
+    { itemId: "message-2", text: "Hi", flags: { replace: true }, expected: "HelloHi" },
+    { itemId: "message-2", text: "Hi", flags: { replaceable: true }, expected: "HelloHi" },
+    {
+      itemId: "message-2",
+      text: "Hi",
+      flags: { replace: true, replaceable: true },
+      expected: "Hi",
+    },
+    { itemId: "message-1", text: "Hi", flags: { replace: true }, expected: "EarlierHi" },
+    { itemId: "message-1", text: "", flags: { replace: true }, expected: "Earlier" },
+    { itemId: "message-1", text: "", flags: {}, expected: "Earlier" },
+    { itemId: "message-1", flags: { delta: "Hello" }, expected: "EarlierHelloHello" },
+    { itemId: "message-2", flags: { delta: "Hello" }, expected: "HelloHello" },
+  ])(
+    "keeps item ownership across $itemId correction $text",
+    ({ itemId, text, flags, expected }) => {
+      const { broadcast, nodeSendToSession, chatRunState, handler, nowSpy } = createHarness({
+        now: 11_800,
+      });
+      registerNamedChatRun(chatRunState, "item-correction");
+      if (itemId === "message-1") {
+        emitAgentEvent(
+          handler,
+          "run-item-correction",
+          "assistant",
+          {
+            itemId: "earlier",
+            text: "Earlier",
+          },
+          { seq: 1 },
+        );
+      }
+      emitAgentEvent(
+        handler,
+        "run-item-correction",
+        "assistant",
+        {
+          itemId: "message-1",
+          text: "Hello",
+          delta: "Hello",
+        },
+        { seq: itemId === "message-1" ? 2 : 1 },
+      );
+      emitAgentEvent(
+        handler,
+        "run-item-correction",
+        "assistant",
+        { itemId, ...(text === undefined ? {} : { text }), ...flags },
+        {
+          seq: itemId === "message-1" ? 3 : 2,
+        },
+      );
+      emitLifecycleEnd(handler, "run-item-correction", itemId === "message-1" ? 4 : 3);
+
+      const final = { state: "final", message: { content: [{ type: "text", text: expected }] } };
+      expect(chatBroadcastCalls(broadcast).at(-1)?.[1]).toMatchObject(final);
+      expect(sessionChatCalls(nodeSendToSession).at(-1)?.[2]).toMatchObject(final);
+      nowSpy?.mockRestore();
+    },
+  );
+
   it("cleans up agent run sequence tracking when lifecycle completes", () => {
     const { agentRunSeq, chatRunState, handler, nowSpy } = createHarness({ now: 2_500 });
     registerNamedChatRun(chatRunState, "cleanup");
@@ -2499,6 +3099,30 @@ describe("agent event handler", () => {
         diff: { added: 2, removed: 1 },
       },
     );
+  });
+
+  it("drops an expired run audience while preserving current session subscribers", () => {
+    const { nowSpy, broadcastToConnIds, toolEventRecipients, sessionEventSubscribers, handler } =
+      createHarness({ now: 1_000, resolveSessionKeyForRun: () => "session-1" });
+    try {
+      registerAgentRunContext("run-expired", { sessionKey: "session-1", verboseLevel: "off" });
+      toolEventRecipients.add("run-expired", "conn-run");
+      sessionEventSubscribers.subscribe("conn-session");
+      toolEventRecipients.markFinal("run-expired");
+      nowSpy!.mockReturnValue(31_000);
+
+      emitAgentEvent(handler, "run-expired", "tool", {
+        phase: "result",
+        name: "read",
+        toolCallId: "late-result",
+      });
+
+      expect(
+        broadcastToConnIds.mock.calls.map(([event, , recipients]) => [event, recipients]),
+      ).toEqual([["session.tool", new Set(["conn-session"])]]);
+    } finally {
+      nowSpy?.mockRestore();
+    }
   });
 
   it("broadcasts tool events to WS recipients even when verbose is off, but skips node send", () => {
@@ -3055,7 +3679,7 @@ describe("agent event handler", () => {
     const sessionKey = "agent:main:headless-run";
     const received = vi.fn();
     const unsubscribe = subscribePluginSessionsChanged(received);
-    const publisher = createGatewayBroadcaster({ clients: new Set() });
+    const publisher = createGatewayBroadcaster({ clients: new GatewayClientRegistry() });
     const { broadcastToConnIds, handler } = createHarness({
       resolveSessionKeyForRun: () => sessionKey,
     });
@@ -3958,44 +4582,6 @@ describe("agent event handler", () => {
     });
     expect(sessionChatCalls(nodeSendToSession)).toHaveLength(1);
     expect(chatRunState.registry.peek("provider-validation-loop")).toBeUndefined();
-  });
-
-  it("projects lifecycle validation errors as immediate safe aborts", () => {
-    vi.useFakeTimers();
-    const { broadcast, nodeSendToSession, chatRunState, handler } = createHarness({
-      lifecycleErrorRetryGraceMs: 100,
-    });
-    registerChatRun(
-      chatRunState,
-      "provider-validation-error",
-      "session-validation-error",
-      "client-validation-error",
-    );
-
-    emitAgentEvent(
-      handler,
-      "provider-validation-error",
-      "lifecycle",
-      {
-        phase: "error",
-        error: "LLM request failed.",
-        toolErrorSummary: "edit tool validation failed: edits: must be an array",
-      },
-      { seq: 2, ts: 1_500 },
-    );
-
-    expect(vi.getTimerCount()).toBe(0);
-    const chatCalls = chatBroadcastCalls(broadcast);
-    expect(chatCalls).toHaveLength(1);
-    expect(expectDefined(chatCalls[0], "chatCalls[0] test invariant")[1]).toMatchObject({
-      runId: "client-validation-error",
-      sessionKey: "session-validation-error",
-      seq: 2,
-      state: "aborted",
-      errorMessage: "edit tool validation failed: edits: must be an array",
-    });
-    expect(sessionChatCalls(nodeSendToSession)).toHaveLength(1);
-    expect(chatRunState.registry.peek("provider-validation-error")).toBeUndefined();
   });
 
   it.each([
@@ -5315,572 +5901,15 @@ describe("agent event handler", () => {
       ),
     ).toBe(false);
     expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
-    expect(agentRunSeq.get("run-chat-send")).toBe(2);
-  });
-
-  it("does not resurrect sequence state when chat.send finalizes before delayed cleanup", () => {
-    vi.useFakeTimers();
-    let chatSendActive = true;
-    let terminalBroadcasted = false;
-    const {
-      broadcast,
-      nodeSendToSession,
-      chatRunState,
-      clearAgentRunContext,
-      agentRunSeq,
-      handler,
-    } = createHarness({
-      resolveSessionKeyForRun: () => "session-chat-send",
-      lifecycleErrorRetryGraceMs: 100,
-      isChatSendRunActive: (runId) => chatSendActive && runId === "run-chat-send",
-      wasChatSendTerminalBroadcasted: () => terminalBroadcasted,
-    });
-    registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
-
-    emitAgentEvents(handler, "run-chat-send", [
-      ["assistant", { text: "partial" }],
-      ["lifecycle", { phase: "error", error: "chat.send failed" }],
-    ]);
-
-    finalizeChatSendAgentOutcome({
-      context: createDirectChatContext({
-        agentRunSeq,
-        broadcast,
-        chatRunState,
-        nodeSendToSession,
-      }),
-      runId: "run-chat-send",
-      sessionKey: "session-chat-send",
-      hasReturnedAgentErrorPayloads: true,
-      broadcastedSourceReplyFinal: false,
-      markTerminalBroadcasted: () => {
-        terminalBroadcasted = true;
-      },
-      returnedAgentErrorMessage: "chat.send failed",
-    });
-    chatSendActive = false;
-    expect(agentRunSeq.has("run-chat-send")).toBe(false);
-
-    vi.advanceTimersByTime(100);
-
-    expect(agentRunSeq.has("run-chat-send")).toBe(false);
-    expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
-    expect(
-      chatBroadcastCalls(broadcast).filter(
-        ([, payload]) => (payload as { state?: string }).state === "error",
-      ),
-    ).toHaveLength(1);
-  });
-
-  it("does not emit a linked lifecycle error after chat.send already finalized", () => {
-    vi.useFakeTimers();
-    let chatSendActive = true;
-    let terminalBroadcasted = false;
-    const {
-      broadcast,
-      nodeSendToSession,
-      chatRunState,
-      clearAgentRunContext,
-      agentRunSeq,
-      handler,
-    } = createHarness({
-      resolveSessionKeyForRun: () => "session-chat-send",
-      lifecycleErrorRetryGraceMs: 100,
-      isChatSendRunActive: (runId) => chatSendActive && runId === "run-chat-send",
-      wasChatSendTerminalBroadcasted: () => terminalBroadcasted,
-    });
-    registerChatRun(chatRunState, "run-chat-send", "session-chat-send", "run-chat-send");
-    registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
-
-    emitAgentEvents(handler, "run-chat-send", [
-      ["assistant", { text: "partial" }],
-      ["lifecycle", { phase: "error", error: "chat.send failed" }],
-    ]);
-
-    finalizeChatSendAgentOutcome({
-      context: createDirectChatContext({
-        agentRunSeq,
-        broadcast,
-        chatRunState,
-        nodeSendToSession,
-      }),
-      runId: "run-chat-send",
-      sessionKey: "session-chat-send",
-      hasReturnedAgentErrorPayloads: true,
-      broadcastedSourceReplyFinal: false,
-      markTerminalBroadcasted: () => {
-        terminalBroadcasted = true;
-      },
-      returnedAgentErrorMessage: "chat.send failed",
-    });
-    chatSendActive = false;
-
-    vi.advanceTimersByTime(100);
-
-    expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
-    expect(
-      chatBroadcastCalls(broadcast).filter(
-        ([, payload]) => (payload as { state?: string }).state === "error",
-      ),
-    ).toHaveLength(1);
-  });
-
-  it("claims post-dispatch terminal ownership before an immediate linked lifecycle error", () => {
-    let terminalBroadcasted = false;
-    const {
-      broadcast,
-      nodeSendToSession,
-      chatRunState,
-      clearAgentRunContext,
-      agentRunSeq,
-      handler,
-    } = createHarness({
-      resolveSessionKeyForRun: () => "session-chat-send",
-      lifecycleErrorRetryGraceMs: 0,
-      isChatSendRunActive: (runId) => !terminalBroadcasted && runId === "run-chat-send",
-      wasChatSendActiveAtTerminalObservation: (runId) => runId === "run-chat-send",
-      wasChatSendTerminalBroadcasted: () => terminalBroadcasted,
-    });
-    registerChatRun(chatRunState, "run-chat-send", "session-chat-send", "run-chat-send");
-    registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
-
-    finalizeChatSendAgentOutcome({
-      context: createDirectChatContext({
-        agentRunSeq,
-        broadcast,
-        chatRunState,
-        nodeSendToSession,
-      }),
-      runId: "run-chat-send",
-      sessionKey: "session-chat-send",
-      hasReturnedAgentErrorPayloads: true,
-      broadcastedSourceReplyFinal: false,
-      markTerminalBroadcasted: () => {
-        terminalBroadcasted = true;
-      },
-      returnedAgentErrorMessage: "chat.send failed",
-    });
-    expect(terminalBroadcasted).toBe(true);
-
-    emitAgentEvent(handler, "run-chat-send", "lifecycle", {
-      phase: "error",
-      error: "chat.send failed",
-      fallbackExhaustedFailure: true,
-    });
-
-    expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
-    expect(
-      chatBroadcastCalls(broadcast).filter(
-        ([, payload]) => (payload as { state?: string }).state === "error",
-      ),
-    ).toHaveLength(1);
-  });
-
-  it("does not emit a lifecycle error observed before chat.send settled during lazy dispatch", () => {
-    const {
-      broadcast,
-      nodeSendToSession,
-      chatRunState,
-      clearAgentRunContext,
-      agentRunSeq,
-      handler,
-    } = createHarness({
-      resolveSessionKeyForRun: () => "session-chat-send",
-      lifecycleErrorRetryGraceMs: 0,
-      isChatSendRunActive: () => false,
-      wasChatSendActiveAtTerminalObservation: (runId) => runId === "run-chat-send",
-      wasChatSendTerminalBroadcasted: (runId) => runId === "run-chat-send",
-    });
-    registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
-
-    finalizeChatSendAgentOutcome({
-      context: createDirectChatContext({
-        agentRunSeq,
-        broadcast,
-        chatRunState,
-        nodeSendToSession,
-      }),
-      runId: "run-chat-send",
-      sessionKey: "session-chat-send",
-      hasReturnedAgentErrorPayloads: true,
-      broadcastedSourceReplyFinal: false,
-      markTerminalBroadcasted: () => {},
-      returnedAgentErrorMessage: "chat.send failed",
-    });
-
-    emitAgentEvent(handler, "run-chat-send", "lifecycle", {
-      phase: "error",
-      error: "chat.send failed",
-    });
-
-    expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
-    expect(
-      chatBroadcastCalls(broadcast).filter(
-        ([, payload]) => (payload as { state?: string }).state === "error",
-      ),
-    ).toHaveLength(1);
     expect(agentRunSeq.has("run-chat-send")).toBe(false);
   });
-
-  it("emits a delayed successful end when chat.send settled without a terminal", () => {
-    const { broadcast, clearAgentRunContext, agentRunSeq, handler } = createHarness({
-      resolveSessionKeyForRun: () => "session-chat-send",
-      isChatSendRunActive: () => false,
-      wasChatSendActiveAtTerminalObservation: (runId) => runId === "run-chat-send",
-      wasChatSendTerminalBroadcasted: () => false,
-    });
-    registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
-
-    emitAgentEvent(handler, "run-chat-send", "lifecycle", {
-      phase: "end",
-      stopReason: "end_turn",
-    });
-
-    expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
-    expect(
-      chatBroadcastCalls(broadcast).filter(
-        ([, payload]) => (payload as { state?: string }).state === "final",
-      ),
-    ).toHaveLength(1);
-    expect(agentRunSeq.has("run-chat-send")).toBe(false);
-  });
-
-  it("keeps yielded ends lifecycle-owned while chat.send is active", () => {
-    let terminalBroadcasted = false;
-    const { broadcast, nodeSendToSession, chatRunState, agentRunSeq, handler } = createHarness({
-      resolveSessionKeyForRun: () => "session-chat-send",
-      isChatSendRunActive: (runId) => !terminalBroadcasted && runId === "run-chat-send",
-      wasChatSendTerminalBroadcasted: () => terminalBroadcasted,
-      markChatSendTerminalBroadcasted: () => {
-        terminalBroadcasted = true;
-      },
-    });
-    registerChatRun(chatRunState, "run-chat-send", "session-chat-send", "run-chat-send");
-    registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
-
-    emitAgentEvent(handler, "run-chat-send", "lifecycle", {
-      phase: "end",
-      yielded: true,
-      livenessState: "paused",
-      stopReason: "end_turn",
-    });
-
-    expect(
-      chatBroadcastCalls(broadcast).filter(
-        ([, payload]) => (payload as { state?: string }).state === "final",
-      ),
-    ).toEqual([
-      expect.arrayContaining([
-        "chat",
-        expect.objectContaining({
-          stopReason: "end_turn",
-          yielded: true,
-        }),
-      ]),
-    ]);
-    expect(terminalBroadcasted).toBe(true);
-    expect(agentRunSeq.has("run-chat-send")).toBe(false);
-
-    finalizeChatSendAgentOutcome({
-      context: createDirectChatContext({
-        agentRunSeq,
-        broadcast,
-        chatRunState,
-        nodeSendToSession,
-      }),
-      runId: "run-chat-send",
-      sessionKey: "session-chat-send",
-      hasReturnedAgentErrorPayloads: false,
-      broadcastedSourceReplyFinal: false,
-      markTerminalBroadcasted: () => {
-        terminalBroadcasted = true;
-      },
-      terminalAlreadyBroadcasted: terminalBroadcasted,
-    });
-
-    expect(
-      chatBroadcastCalls(broadcast).filter(
-        ([, payload]) => (payload as { state?: string }).state === "final",
-      ),
-    ).toHaveLength(1);
-  });
-
-  it("hands active lifecycle end to chat.send so its synthesized error remains visible", () => {
-    let terminalBroadcasted = false;
-    const {
-      broadcast,
-      nodeSendToSession,
-      chatRunState,
-      clearAgentRunContext,
-      agentRunSeq,
-      handler,
-    } = createHarness({
-      resolveSessionKeyForRun: () => "session-chat-send",
-      isChatSendRunActive: (runId) => !terminalBroadcasted && runId === "run-chat-send",
-      wasChatSendActiveAtTerminalObservation: (runId) => runId === "run-chat-send",
-      wasChatSendTerminalBroadcasted: () => terminalBroadcasted,
-      markChatSendTerminalBroadcasted: () => {
-        terminalBroadcasted = true;
-      },
-    });
-    registerChatRun(chatRunState, "run-chat-send", "session-chat-send", "run-chat-send");
-    registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
-
-    emitAgentEvent(handler, "run-chat-send", "lifecycle", {
-      phase: "end",
-      stopReason: "end_turn",
-    });
-
-    expect(chatBroadcastCalls(broadcast)).toHaveLength(0);
-    expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
-    expect(agentRunSeq.get("run-chat-send")).toBe(1);
-
-    const fallbackText =
-      "I finished the turn, but it did not produce a visible reply. Please try again.";
-    finalizeChatSendAgentOutcome({
-      context: createDirectChatContext({
-        agentRunSeq,
-        broadcast,
-        chatRunState,
-        nodeSendToSession,
-      }),
-      runId: "run-chat-send",
-      sessionKey: "session-chat-send",
-      hasReturnedAgentErrorPayloads: true,
-      broadcastedSourceReplyFinal: false,
-      markTerminalBroadcasted: () => {
-        terminalBroadcasted = true;
-      },
-      terminalAlreadyBroadcasted: terminalBroadcasted,
-      returnedAgentErrorMessage: fallbackText,
-    });
-
-    const errorPayloads = chatBroadcastCalls(broadcast)
-      .map(([, payload]) => payload as { errorMessage?: string; seq?: number; state?: string })
-      .filter((payload) => payload.state === "error");
-    expect(errorPayloads).toEqual([
-      expect.objectContaining({ errorMessage: fallbackText, seq: 2 }),
-    ]);
-    expect(terminalBroadcasted).toBe(true);
-  });
-
-  it("broadcasts a successful final when chat.send owns lifecycle-end terminalization", () => {
-    let terminalBroadcasted = false;
-    const { broadcast, nodeSendToSession, chatRunState, agentRunSeq } = createHarness();
-    agentRunSeq.set("run-chat-send", 1);
-
-    finalizeChatSendAgentOutcome({
-      context: createDirectChatContext({
-        agentRunSeq,
-        broadcast,
-        chatRunState,
-        nodeSendToSession,
-      }),
-      runId: "run-chat-send",
-      sessionKey: "session-chat-send",
-      hasReturnedAgentErrorPayloads: false,
-      broadcastedSourceReplyFinal: false,
-      markTerminalBroadcasted: () => {
-        terminalBroadcasted = true;
-      },
-      terminalAlreadyBroadcasted: false,
-    });
-
-    expect(
-      chatBroadcastCalls(broadcast).map(
-        ([, payload]) => payload as { seq?: number; state?: string },
-      ),
-    ).toContainEqual(expect.objectContaining({ seq: 2, state: "final" }));
-    expect(terminalBroadcasted).toBe(true);
-  });
-
-  it("flushes deferred terminal text before chat.send broadcasts the successful final", () => {
-    let terminalBroadcasted = false;
-    const { broadcast, nodeSendToSession, chatRunState, agentRunSeq, handler } = createHarness({
-      resolveSessionKeyForRun: () => "session-chat-send",
-      isChatSendRunActive: (runId) => runId === "run-chat-send",
-    });
-    registerChatRun(chatRunState, "run-chat-send", "session-chat-send", "run-chat-send");
-
-    const text = "MEDIA:chart.png";
-    emitAgentEvent(handler, "run-chat-send", "assistant", {
-      text,
-      delta: "",
-      mediaUrls: ["chart.png"],
-    });
-    expect(chatBroadcastCalls(broadcast)).toHaveLength(0);
-
-    emitLifecycleEnd(handler, "run-chat-send");
-    expect(chatDeltaTexts(broadcast)).toEqual([text]);
-    expect(
-      chatBroadcastCalls(broadcast).filter(
-        ([, payload]) => (payload as { state?: string }).state === "final",
-      ),
-    ).toHaveLength(0);
-
-    finalizeChatSendAgentOutcome({
-      context: createDirectChatContext({
-        agentRunSeq,
-        broadcast,
-        chatRunState,
-        nodeSendToSession,
-      }),
-      runId: "run-chat-send",
-      sessionKey: "session-chat-send",
-      hasReturnedAgentErrorPayloads: false,
-      broadcastedSourceReplyFinal: false,
-      markTerminalBroadcasted: () => {
-        terminalBroadcasted = true;
-      },
-      terminalAlreadyBroadcasted: false,
-    });
-
-    const finalPayload = chatBroadcastCalls(broadcast)
-      .map(
-        ([, payload]) =>
-          payload as {
-            message?: unknown;
-            seq?: number;
-            state?: string;
-          },
-      )
-      .find((payload) => payload.state === "final");
-    expect(finalPayload).toEqual(expect.objectContaining({ message: undefined, seq: 3 }));
-    expect(terminalBroadcasted).toBe(true);
-  });
-
-  it("does not invent a successful final before a lifecycle terminal is observed", () => {
-    let terminalBroadcasted = false;
-    const { broadcast, nodeSendToSession, chatRunState, agentRunSeq } = createHarness();
-
-    finalizeChatSendAgentOutcome({
-      context: createDirectChatContext({
-        agentRunSeq,
-        broadcast,
-        chatRunState,
-        nodeSendToSession,
-      }),
-      runId: "run-chat-send",
-      sessionKey: "session-chat-send",
-      hasReturnedAgentErrorPayloads: false,
-      broadcastedSourceReplyFinal: false,
-      markTerminalBroadcasted: () => {
-        terminalBroadcasted = true;
-      },
-      terminalAlreadyBroadcasted: false,
-    });
-
-    expect(chatBroadcastCalls(broadcast)).toHaveLength(0);
-    expect(terminalBroadcasted).toBe(false);
-  });
-
-  it("leaves validation-error terminalization to active chat.send runs", () => {
-    const { broadcast, clearAgentRunContext, agentRunSeq, handler } = createHarness({
-      resolveSessionKeyForRun: () => "session-chat-send",
-      isChatSendRunActive: (runId) => runId === "run-chat-send",
-    });
-    registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
-
-    emitAgentEvent(handler, "run-chat-send", "lifecycle", {
-      phase: "error",
-      error: "LLM request failed.",
-      toolErrorSummary: "edit tool validation failed: edits: must be an array",
-    });
-
-    expect(chatBroadcastCalls(broadcast)).toHaveLength(0);
-    expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
-    expect(agentRunSeq.get("run-chat-send")).toBe(1);
-  });
-
-  it.each(["error", "end"] as const)(
-    "hands retained linked validation %s events to chat.send with a monotonic terminal sequence",
-    (phase) => {
-      const validationSummary = "edit tool validation failed: edits: must be an array";
-      const {
-        broadcast,
-        nodeSendToSession,
-        chatRunState,
-        clearAgentRunContext,
-        agentRunSeq,
-        handler,
-      } = createHarness({
-        resolveSessionKeyForRun: () => "session-chat-send",
-        isChatSendRunActive: (runId) => runId === "run-chat-send",
-        resolveRunToolErrorSummary: () => validationSummary,
-      });
-      registerChatRun(chatRunState, "run-chat-send", "session-chat-send", "run-chat-send");
-      registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
-
-      emitAgentEvents(handler, "run-chat-send", [
-        [
-          "tool",
-          {
-            phase: "result",
-            name: "edit",
-            isError: true,
-            toolErrorSummary: validationSummary,
-          },
-        ],
-        [
-          "lifecycle",
-          {
-            phase,
-            ...(phase === "error" ? { error: "LLM request failed." } : {}),
-          },
-        ],
-      ]);
-
-      expect(
-        chatBroadcastCalls(broadcast).filter(
-          ([, payload]) => (payload as { state?: string }).state === "aborted",
-        ),
-      ).toHaveLength(0);
-      expect(chatRunState.registry.peek("run-chat-send")).toBeUndefined();
-      expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
-      expect(agentRunSeq.get("run-chat-send")).toBe(2);
-
-      const context = createDirectChatContext({
-        agentRunSeq,
-        broadcast,
-        chatRunState,
-        nodeSendToSession,
-      });
-      finalizeChatSendAgentOutcome({
-        context,
-        runId: "run-chat-send",
-        sessionKey: "session-chat-send",
-        hasReturnedAgentErrorPayloads: true,
-        broadcastedSourceReplyFinal: false,
-        markTerminalBroadcasted: () => {},
-        returnedAgentErrorMessage: "LLM request failed.",
-        toolErrorSummary: validationSummary,
-      });
-
-      const abortPayloads = chatBroadcastCalls(broadcast)
-        .map(([, payload]) => payload as { seq?: number; state?: string })
-        .filter((payload) => payload.state === "aborted");
-      expect(abortPayloads).toEqual([expect.objectContaining({ seq: 3 })]);
-      expect(agentRunSeq.has("run-chat-send")).toBe(false);
-    },
-  );
 
   it("emits lifecycle chat errors for active chat.send runs with a chat run link", () => {
     vi.useFakeTimers();
-    let terminalAlreadyBroadcasted = false;
-    const {
-      broadcast,
-      nodeSendToSession,
-      chatRunState,
-      clearAgentRunContext,
-      agentRunSeq,
-      handler,
-    } = createHarness({
+    const { broadcast, chatRunState, clearAgentRunContext, agentRunSeq, handler } = createHarness({
       resolveSessionKeyForRun: () => "session-chat-send",
       lifecycleErrorRetryGraceMs: 100,
       isChatSendRunActive: (runId) => runId === "run-chat-send",
-      markChatSendTerminalBroadcasted: () => {
-        terminalAlreadyBroadcasted = true;
-      },
     });
     registerChatRun(chatRunState, "run-chat-send", "session-chat-send", "run-chat-send");
     registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
@@ -5904,41 +5933,9 @@ describe("agent event handler", () => {
       errorMessage: "chat.send failed",
     });
     expect(errorPayload).not.toHaveProperty("message");
-    expect(terminalAlreadyBroadcasted).toBe(true);
     expect(chatRunState.registry.peek("run-chat-send")).toBeUndefined();
     expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
     expect(agentRunSeq.has("run-chat-send")).toBe(false);
-
-    const context = createDirectChatContext({
-      agentRunSeq,
-      broadcast,
-      chatRunState,
-      nodeSendToSession,
-    });
-    finalizeChatSendAgentOutcome({
-      context,
-      runId: "run-chat-send",
-      sessionKey: "session-chat-send",
-      hasReturnedAgentErrorPayloads: true,
-      broadcastedSourceReplyFinal: false,
-      markTerminalBroadcasted: () => {},
-      terminalAlreadyBroadcasted,
-      returnedAgentErrorMessage: "chat.send failed",
-    });
-
-    expect(
-      chatBroadcastCalls(broadcast).filter(
-        ([, payload]) => (payload as { state?: string }).state === "error",
-      ),
-    ).toHaveLength(1);
-    expect(context.dedupe.get("chat:run-chat-send")).toMatchObject({
-      ok: false,
-      payload: {
-        runId: "run-chat-send",
-        status: "error",
-        summary: "chat.send failed",
-      },
-    });
   });
 
   it.each([

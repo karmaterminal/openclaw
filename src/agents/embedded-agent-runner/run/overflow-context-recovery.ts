@@ -2,8 +2,6 @@ import { isContextOverflow } from "@openclaw/ai/internal/runtime";
 import { isProviderRefusalAssistantError } from "@openclaw/llm-core/diagnostics";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { formatErrorMessage } from "../../../infra/errors.js";
-import { requireSessionKeyOrSkip } from "../../../infra/session-keys.js";
-import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../../infra/system-events.js";
 import type { AssistantMessage } from "../../../llm/types.js";
 import { MAX_OVERFLOW_COMPACTION_ATTEMPTS } from "../../agent-compaction-constants.js";
 import { projectAgentRunAttemptTerminal } from "../../agent-run-terminal-outcome.js";
@@ -13,6 +11,7 @@ import {
   isLikelyContextOverflowError,
   isProviderRequestSizeCeilingError,
 } from "../../embedded-agent-helpers.js";
+import type { FailoverClassification } from "../../failover/signal.js";
 import { runContextEngineMaintenance } from "../context-engine-maintenance.js";
 import { log } from "../logger.js";
 import {
@@ -30,6 +29,7 @@ import {
   type EmbeddedRunCompactionRecoveryInput,
 } from "./compaction-runtime.js";
 import { createRunRecoveryDiagId } from "./helpers.js";
+import { emitRecoveryContextPressure } from "./recovery-context-pressure.js";
 import {
   isNoRealConversationCompactionNoop,
   resetNoRealConversationTokenSnapshot,
@@ -65,13 +65,18 @@ export async function recoverEmbeddedRunOverflow(
     signalOwnedInterruption: boolean;
     promptError: unknown;
     assistantErrorText?: string;
-    assistantOverflowCandidate?: AssistantMessage;
+    assistantOverflowCandidate?: {
+      message: AssistantMessage;
+      classification: FailoverClassification | null;
+    };
     toolResultPromptProjectionState: ToolResultPromptProjectionState;
     attemptCompactionCount: number;
     prepareCurrentTranscriptRetry: () => void;
     markOwnedTranscriptRetry: () => void;
   },
 ): Promise<EmbeddedRunOverflowRecoveryOutcome> {
+  const assistant = input.assistantOverflowCandidate?.message;
+  const classification = input.assistantOverflowCandidate?.classification;
   const contextOverflowError =
     !input.aborted && !input.signalOwnedInterruption
       ? (() => {
@@ -85,19 +90,26 @@ export async function recoverEmbeddedRunOverflow(
             return null;
           }
           // Preserve the structured terminal outcome before the text-only fallback below.
-          if (isProviderRefusalAssistantError(input.assistantOverflowCandidate)) {
+          if (isProviderRefusalAssistantError(assistant)) {
+            return null;
+          }
+          // This decision belongs to the selected response, not a text-only guess.
+          if (assistant?.stopReason === "error" && classification?.kind === "reason") {
             return null;
           }
           if (
-            input.assistantOverflowCandidate &&
-            input.contextTokenBudget !== undefined &&
-            isContextOverflow(input.assistantOverflowCandidate, input.contextTokenBudget)
+            assistant &&
+            (classification?.kind === "context_overflow" ||
+              (input.contextTokenBudget !== undefined &&
+                isContextOverflow(assistant, input.contextTokenBudget)))
           ) {
             return {
-              text:
-                input.assistantOverflowCandidate.errorMessage?.trim() || "Context window exceeded",
+              text: assistant.errorMessage?.trim() || "Context window exceeded",
               source: "assistantError" as const,
             };
+          }
+          if (assistant?.stopReason === "length") {
+            return null;
           }
           if (input.assistantErrorText && isLikelyContextOverflowError(input.assistantErrorText)) {
             return { text: input.assistantErrorText, source: "assistantError" as const };
@@ -236,25 +248,7 @@ export async function recoverEmbeddedRunOverflow(
     log.warn(
       `context overflow detected (attempt ${input.state.overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}); attempting auto-compaction for ${input.provider}/${input.modelId}`,
     );
-    log.warn(
-      `[context-pressure:fire] mid-turn trigger=overflow attempt=${input.state.overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS} ` +
-        `tokens=${observedOverflowTokens !== undefined ? Math.round(observedOverflowTokens / 1000) : "?"}k/${Math.round(input.contextTokenBudget / 1000)}k ` +
-        `sessionKey=${runParams.sessionKey ?? runParams.sessionId}`,
-    );
-    const overflowSessionKey = requireSessionKeyOrSkip(
-      runParams,
-      log,
-      "pi-runner.overflow-compaction",
-    );
-    if (overflowSessionKey) {
-      enqueueSystemEvent(
-        `[system:context-pressure] Context-overflow compaction triggered mid-turn ` +
-          `(attempt ${input.state.overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}). ` +
-          "Your last reply grew the context past the model's window. Consider evacuating large " +
-          "tool results or delegated work with continue_delegate(post-compaction).",
-        { sessionKey: overflowSessionKey },
-      );
-    }
+    await emitRecoveryContextPressure(input, observedOverflowTokens ?? input.contextTokenBudget);
     const compaction = await compactEmbeddedRunForRecovery(input, {
       tokenBudget: preflightPromptBudget ?? input.contextTokenBudget,
       trigger: "overflow",

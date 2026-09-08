@@ -22,7 +22,6 @@ import type { DelegateArtifactDeliveryReceipt } from "./session-delivery-queue-s
 import {
   cloneSystemEventOwner,
   recordSystemEventOwner,
-  resolveSystemEventOptionsOwnerAgentId,
   resolveSystemEventOwnerAgentId,
 } from "./system-event-ownership.js";
 
@@ -231,7 +230,7 @@ function enqueueOwnedSystemEventEntry(
   const normalizedContextKey = normalizeContextKey(options.contextKey);
   const normalizedDeliveryContext = normalizeDeliveryContext(options.deliveryContext);
   const normalizedTraceparent = normalizeTraceparent(options?.traceparent);
-  const normalizedOwnerAgentId = resolveSystemEventOptionsOwnerAgentId(options);
+  const normalizedOwnerAgentId = resolveSystemEventOwnerAgentId(options);
   const sessionDeliveryAckStateDir = resolveSessionDeliveryAckStateDir(options);
   applyContextKeyPolicy(entry, normalizedContextKey);
   const event: SystemEvent = {
@@ -388,7 +387,7 @@ function replaceSystemEventEntry(text: string, options: SystemEventOptions): Sys
   }
   const normalizedDeliveryContext = normalizeDeliveryContext(options.deliveryContext);
   const normalizedTraceparent = normalizeTraceparent(options.traceparent);
-  const normalizedOwnerAgentId = resolveSystemEventOptionsOwnerAgentId(options);
+  const normalizedOwnerAgentId = resolveSystemEventOwnerAgentId(options);
   const sessionDeliveryAckStateDir = resolveSessionDeliveryAckStateDir(options);
   const replacement: SystemEvent = {
     id: generateSecureUuid(),
@@ -447,7 +446,6 @@ function replaceSystemEventEntry(text: string, options: SystemEventOptions): Sys
   entry.lastContextKey = normalizedContextKey;
   return replacement;
 }
-
 function isDuplicateSystemEvent(
   existing: SystemEvent,
   incoming: Pick<
@@ -520,30 +518,7 @@ function resetQueueState(key: string, entry: SessionQueue) {
   entry.lastContextKey = null;
 }
 
-export function consumeSystemEventEntries(
-  sessionKey: string,
-  consumedEntries: readonly SystemEvent[],
-): SystemEvent[] {
-  const key = requireSessionKey(sessionKey);
-  const entry = getSessionQueue(key);
-  if (!entry || entry.queue.length === 0 || consumedEntries.length === 0) {
-    return [];
-  }
-  if (
-    consumedEntries.length > entry.queue.length ||
-    !consumedEntries.every((event, index) =>
-      matchesConsumedSystemEvent(expectDefined(entry.queue[index], "queue entry at index"), event),
-    )
-  ) {
-    // A keyed replacement may remove one inspected entry while a prompt is in flight.
-    // Consume the unchanged inspected entries so unrelated work is not replayed,
-    // while leaving the replacement and all newly queued entries intact.
-    return consumeSelectedSystemEventEntries(key, consumedEntries);
-  }
-  const removed = entry.queue.splice(0, consumedEntries.length).map(cloneSystemEvent);
-  resetQueueState(key, entry);
-  return removed;
-}
+export { consumeSelectedSystemEventEntries as consumeSystemEventEntries };
 
 export function consumeSelectedSystemEventEntries(
   sessionKey: string,

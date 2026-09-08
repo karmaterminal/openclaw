@@ -50,6 +50,27 @@ export function abortContinuationDispatchClaims(sessionKey: string): void {
   }
 }
 
+export function abortContinuationDispatchClaim(params: {
+  sessionKey: string;
+  flowId: string;
+  reason: string;
+}): boolean {
+  const claims = activeDispatchClaims.get(params.sessionKey);
+  let aborted = false;
+  for (const claim of claims ?? []) {
+    if (claim.flowId !== params.flowId) {
+      continue;
+    }
+    claims?.delete(claim);
+    claim.controller.abort(params.reason);
+    aborted = true;
+  }
+  if (claims?.size === 0) {
+    activeDispatchClaims.delete(params.sessionKey);
+  }
+  return aborted;
+}
+
 function evictPriorLifecycleDispatchClaims(lifecycleGeneration: string): void {
   for (const [sessionKey, claims] of activeDispatchClaims) {
     for (const claim of claims) {

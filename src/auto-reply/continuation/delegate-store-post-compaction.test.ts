@@ -484,7 +484,7 @@ describe("session post-compaction delegate contract", () => {
       releasedAt: expect.any(Number),
     });
 
-    expect(requeueSessionPostCompactionDelegate(delegate)).toBe(true);
+    expect(requeueSessionPostCompactionDelegate(delegate)).toBe("requeued");
     const requeuedFlow = expectDefined(mockFlows.get(delegate.flowId!), "requeued flow");
     expect(requeuedFlow.status).toBe("queued");
     expect(requeuedFlow.revision).toBe(2);
@@ -496,7 +496,7 @@ describe("session post-compaction delegate contract", () => {
       "re-released delegate",
     );
     expect(rereleased.expectedRevision).toBe(3);
-    expect(requeueSessionPostCompactionDelegate(delegate)).toBe(false);
+    expect(requeueSessionPostCompactionDelegate(delegate)).toBe("authoritative");
   });
 
   it("finalizes exactly the claimed flow ids after durable handoff", () => {

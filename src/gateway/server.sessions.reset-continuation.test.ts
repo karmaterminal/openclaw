@@ -4,7 +4,7 @@ import {
   resetContinuationDispatchClaimsForTests,
 } from "../auto-reply/continuation/continuation-dispatch-claims.js";
 import { enqueuePendingDelegate } from "../auto-reply/continuation/delegate-store.js";
-import { enqueuePendingWork } from "../auto-reply/continuation/work-store.js";
+import { enqueuePendingWork } from "../auto-reply/continuation/work-store.test-support.js";
 import { loadSessionEntry } from "../config/sessions/session-accessor.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { listTaskFlowRecords } from "../tasks/task-flow-registry.js";
@@ -94,10 +94,10 @@ test("sessions.reset reports durable continuation cancellation failures", async 
   configureTaskFlowRegistryRuntime({
     store: {
       loadSnapshot: () => ({ flows: new Map() }),
-      saveSnapshot: () => {},
       upsertFlow: () => {
         throw new Error("SQLITE_FULL: database or disk is full");
       },
+      deleteFlow: () => {},
     },
   });
 

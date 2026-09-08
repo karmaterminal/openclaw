@@ -4,11 +4,11 @@ import {
   type AgentEventPayload,
   type EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { createProcessPollDeliveryContract } from "openclaw/plugin-sdk/agent-runtime-test-contracts";
 import {
   emitTrustedDiagnosticEvent,
   hasPendingInternalDiagnosticEvent,
   onInternalDiagnosticEvent,
-  waitForDiagnosticEventsDrained,
   type DiagnosticEventPayload,
 } from "openclaw/plugin-sdk/diagnostic-runtime";
 import { initializeGlobalHookRunner } from "openclaw/plugin-sdk/hook-runtime";
@@ -16,10 +16,12 @@ import { createMockPluginRegistry } from "openclaw/plugin-sdk/plugin-test-runtim
 import { describe, expect, it, vi } from "vitest";
 import { readAttemptTerminal } from "./attempt-terminal.test-helper.js";
 import { dynamicToolBuildState } from "./dynamic-tool-build-state.js";
+import { emitDynamicToolTerminalDiagnostic } from "./dynamic-tool-diagnostics.js";
 import {
-  emitDynamicToolTerminalDiagnostic,
-  startDynamicToolDiagnosticExecution,
-} from "./dynamic-tool-diagnostics.js";
+  activeDiagnosticToolKeys,
+  emitDynamicToolStartedDiagnostic,
+  flushDiagnosticEvents,
+} from "./dynamic-tool-diagnostics.test-support.js";
 import { hasPendingDynamicToolTerminalDiagnostic } from "./dynamic-tool-execution.js";
 import type { CodexDynamicToolCallParams } from "./protocol.js";
 import {
@@ -42,39 +44,70 @@ const testing = {
   },
 };
 
-function emitDynamicToolStartedDiagnostic(
-  params: Parameters<typeof startDynamicToolDiagnosticExecution>[0],
-): void {
-  startDynamicToolDiagnosticExecution(params, () => undefined);
-}
-
-function flushDiagnosticEvents() {
-  return waitForDiagnosticEventsDrained();
-}
-
-function activeDiagnosticToolKeys(events: DiagnosticEventPayload[]): Set<string> {
-  const active = new Set<string>();
-  for (const event of events) {
-    if (event.type === "tool.execution.started") {
-      active.add(
-        `${event.runId ?? event.sessionId ?? event.sessionKey ?? "unknown"}:${event.toolCallId ?? event.toolName}`,
-      );
-    } else if (
-      event.type === "tool.execution.completed" ||
-      event.type === "tool.execution.error" ||
-      event.type === "tool.execution.blocked"
-    ) {
-      active.delete(
-        `${event.runId ?? event.sessionId ?? event.sessionKey ?? "unknown"}:${event.toolCallId ?? event.toolName}`,
-      );
-    }
-  }
-  return active;
-}
-
 setupRunAttemptTestHooks();
 
 describe("runCodexAppServerAttempt dynamic tools", () => {
+  it("acknowledges a terminal sandbox process poll only after Codex accepts its exact result", async () => {
+    const process = createProcessPollDeliveryContract("codex-result-delivery");
+    dynamicToolBuildState.openClawCodingToolsFactory = () => [
+      { ...process.tool, name: "sandbox_process" },
+    ];
+    const harness = createStartedThreadHarness();
+    const params = createParams(
+      path.join(tempDir, "session.jsonl"),
+      path.join(tempDir, "workspace"),
+    );
+    params.runtimePlan = createCodexRuntimePlanFixture();
+    setCodexTestModelSupportsTools(params, true);
+    const closeHostCapabilities = await bindProductionHarnessHostCapabilitiesForTest(params);
+    const run = runCodexAppServerAttempt(params);
+    try {
+      await harness.waitForMethod("turn/start");
+      const response = await harness.handleServerRequest({
+        id: "process-poll",
+        method: "item/tool/call",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          callId: "process-poll",
+          namespace: null,
+          tool: "sandbox_process",
+          arguments: process.pollArguments,
+        },
+      });
+      expect(response).toMatchObject({ success: true });
+      expect(process.pendingNotifications()).toEqual(["unrelated event", "exec completed"]);
+      const completed = (turnId: string, result: unknown) => ({
+        method: "item/completed",
+        params: {
+          threadId: "thread-1",
+          turnId,
+          item: {
+            type: "dynamicToolCall",
+            id: "process-poll",
+            tool: "sandbox_process",
+            ...(result as object),
+          },
+        },
+      });
+      await harness.notify(completed("old-turn", response));
+      await harness.notify(
+        completed("turn-1", {
+          success: false,
+          contentItems: [{ type: "inputText", text: "Could not decode tool response" }],
+        }),
+      );
+      expect(process.pendingNotifications()).toEqual(["unrelated event", "exec completed"]);
+      await harness.notify(completed("turn-1", response));
+      expect(process.pendingNotifications()).toEqual(["unrelated event"]);
+    } finally {
+      await harness.completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+      await run;
+      closeHostCapabilities();
+      process.close();
+    }
+  });
+
   it.each([
     { name: "default", timeoutSeconds: undefined, waitMs: 900_000 },
     { name: "explicit", timeoutSeconds: 900, waitMs: 900_000 },

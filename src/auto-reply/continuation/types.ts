@@ -10,6 +10,7 @@
 
 import type { ContinuationRecipientAuthorityBinding } from "../../config/sessions/session-recipient-authority-types.js";
 import type { InlineAttachment, InlineAttachmentMount } from "../../shared/inline-attachments.js";
+import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
 import type {
   ContinuationCrossSessionTargetingPolicy,
   ContinuationDelegateFanoutMode,
@@ -242,15 +243,36 @@ export type ChainState = {
   chainId?: string;
 };
 
+export type ContinuationWorkReplacementFailure =
+  | "not_found"
+  | "revision_conflict"
+  | "persist_failed"
+  | "invalid_prior"
+  | "running_owner";
+
 export type ContinuationWorkScheduleResult =
-  | { scheduled: false; capped: boolean; chainState: ChainState }
-  | { scheduled: true; capped: false; chainState: ChainState };
+  | {
+      scheduled: false;
+      capped: boolean;
+      chainState: ChainState;
+      replacementFailure?: ContinuationWorkReplacementFailure;
+      replacementFailureFlowId?: string;
+    }
+  | {
+      scheduled: true;
+      capped: false;
+      chainState: ChainState;
+      supersededFlows: readonly TaskFlowRecord[];
+    };
 
 export type ContinuationWorkBatchResult = {
   scheduledCount: number;
   cappedCount: number;
   capped: boolean;
   chainState: ChainState;
+  replacementFailure?: ContinuationWorkReplacementFailure;
+  replacementFailureFlowId?: string;
+  supersededFlows?: readonly TaskFlowRecord[];
 };
 
 export type ContinuationWorkScheduleParams = {
@@ -261,6 +283,10 @@ export type ContinuationWorkScheduleParams = {
   parentRunId?: string;
   originRunId?: string;
   originTurnId?: string;
+  priorParkedFlowsToSupersede?: readonly TaskFlowRecord[];
+  expectedRunningFlowIds?: readonly string[];
+  replaceQueuedTurnEndParkedWork?: boolean;
+  abortSignal?: AbortSignal;
   onFlowEnqueued?: (flowId: string) => void;
   log?: (message: string) => void;
 };

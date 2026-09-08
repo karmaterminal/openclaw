@@ -114,7 +114,7 @@ vi.mock("../config/config.js", () => ({
     },
   ) => mockWriteConfigFile(cfg, options),
   replaceConfigFile: (params: {
-    nextConfig: OpenClawConfig;
+    sourceConfig: OpenClawConfig;
     writeOptions?: {
       auditOrigin?: "cli";
       unsetPaths?: string[][];
@@ -123,7 +123,7 @@ vi.mock("../config/config.js", () => ({
     };
   }) => {
     params.writeOptions?.assertConfigPathForWrite?.();
-    return mockWriteConfigFile(params.nextConfig, params.writeOptions);
+    return mockWriteConfigFile(params.sourceConfig, params.writeOptions);
   },
 }));
 
@@ -203,7 +203,6 @@ vi.mock("../gateway/config-reload-plan.js", () => ({
       restartGmailWatcher: false,
       restartCron: false,
       restartHeartbeat: hotReasons.length > 0,
-      restartHealthMonitor: false,
       reloadPlugins: false,
       restartChannels: new Set(),
       disposeMcpRuntimes: false,
@@ -1694,7 +1693,7 @@ describe("config cli", () => {
         makeInvalidSnapshot({
           issues: [
             {
-              path: "agents.defaults.suppressToolErrorWarnings",
+              path: "agents.defaults.unknownOption",
               message: "Unrecognized key(s) in object",
             },
           ],
@@ -1704,7 +1703,7 @@ describe("config cli", () => {
       await expect(runConfigCommand(["config", "validate"])).rejects.toThrow(ExitError);
 
       expectErrorIncludes("config is invalid");
-      expectErrorIncludes("agents.defaults.suppressToolErrorWarnings");
+      expectErrorIncludes("agents.defaults.unknownOption");
       expect(mockLog).not.toHaveBeenCalled();
     });
 

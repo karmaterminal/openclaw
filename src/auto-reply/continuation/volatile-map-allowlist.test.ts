@@ -328,16 +328,6 @@ const ALLOWLIST = [
   },
 ] as const satisfies readonly AllowlistEntry[];
 
-// These older reply-continuation symbols are already pinned by
-// src/auto-reply/reply/continuation-state.test.ts. OV-5 guards the TaskFlow
-// continuation surface's reviewed 10 safe-volatile remnants.
-const EXISTING_GUARD_OWNED_SYMBOLS = new Set([
-  "src/auto-reply/continuation/context-pressure.ts:lastFiredBand",
-  "src/auto-reply/reply/continuation-state.ts:continuationGenerations",
-  "src/auto-reply/reply/continuation-state.ts:continuationTimerHandles",
-  "src/auto-reply/reply/continuation-state.ts:continuationTimerRefs",
-]);
-
 const MUTATING_COLLECTION_METHODS = new Set(["add", "clear", "delete", "set"]);
 const STATE_KEYWORD_PATTERN = /\b(session|run|task|chain|delegate|queue|operation)\b/i;
 
@@ -370,7 +360,11 @@ function collectTypeScriptFiles(relativeDir: string, options: { recursive: boole
   for (const entry of readdirSync(absoluteDir, { withFileTypes: true })) {
     const relativePath = posix.join(relativeDir, entry.name);
     if (entry.isDirectory()) {
-      if (options.recursive) {
+      // Proof fixtures own synthetic process state outside the runtime inventory.
+      if (
+        options.recursive &&
+        relativePath !== "src/auto-reply/continuation/return-covenant-fixture"
+      ) {
         files.push(...collectTypeScriptFiles(relativePath, options));
       }
       continue;
@@ -552,9 +546,6 @@ function isStateBearingCandidate(
   candidate: Candidate,
   mutatedSymbols: ReadonlySet<string>,
 ): boolean {
-  if (EXISTING_GUARD_OWNED_SYMBOLS.has(findingKey(candidate))) {
-    return false;
-  }
   if (
     ALLOWLIST.some((entry) => entry.file === candidate.file && entry.symbol === candidate.symbol)
   ) {

@@ -221,8 +221,7 @@ export function extractAssistantTextForPhase(
   const joined = extractAssistantTextPartsForPhase(message, options).join(
     options?.joinWith ?? "\n",
   );
-  const normalized = joined.trim();
-  return normalized || undefined;
+  return joined.trim() ? joined : undefined;
 }
 
 /** Returns user-visible assistant text, preferring final answers over legacy unphased text. */

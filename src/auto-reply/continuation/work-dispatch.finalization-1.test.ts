@@ -353,27 +353,63 @@ function cloneFlow(flow: MockFlow): MockFlow {
   return { ...flow };
 }
 
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn((params: Partial<MockFlow> & { ownerKey: string }) => {
-    const now = Date.now();
-    const flow: MockFlow = {
-      flowId: `flow-${++flowCounter}`,
-      syncMode: "managed",
-      ownerKey: params.ownerKey,
-      chainId: params.chainId,
-      controllerId: params.controllerId ?? "tests/controller",
-      status: params.status ?? "queued",
-      notifyPolicy: "silent",
-      goal: params.goal ?? "goal",
-      currentStep: params.currentStep,
-      stateJson: params.stateJson,
-      revision: 0,
-      createdAt: params.createdAt ?? now,
-      updatedAt: params.updatedAt ?? params.createdAt ?? now,
-    };
-    mockFlows.set(flow.flowId, flow);
+function createMockFlow(params: Partial<MockFlow> & { ownerKey: string }): MockFlow {
+  const now = Date.now();
+  const flow: MockFlow = {
+    flowId: `flow-${++flowCounter}`,
+    syncMode: "managed",
+    ownerKey: params.ownerKey,
+    chainId: params.chainId,
+    controllerId: params.controllerId ?? "tests/controller",
+    status: params.status ?? "queued",
+    notifyPolicy: "silent",
+    goal: params.goal ?? "goal",
+    currentStep: params.currentStep,
+    stateJson: params.stateJson,
+    revision: 0,
+    createdAt: params.createdAt ?? now,
+    updatedAt: params.updatedAt ?? params.createdAt ?? now,
+  };
+  mockFlows.set(flow.flowId, flow);
+  return cloneFlow(flow);
+}
+
+function updateMockFlowsAtomically(
+  updates: Array<{ flowId: string; expectedRevision: number; patch: Partial<MockFlow> }>,
+) {
+  for (const update of updates) {
+    const flow = mockFlows.get(update.flowId);
+    if (!flow || flow.revision !== update.expectedRevision) {
+      return {
+        applied: false as const,
+        reason: flow ? ("revision_conflict" as const) : ("not_found" as const),
+      };
+    }
+  }
+  const flows = updates.map((update) => {
+    const flow = mockFlows.get(update.flowId)!;
+    Object.assign(flow, update.patch, { revision: flow.revision + 1 });
     return cloneFlow(flow);
-  }),
+  });
+  return { applied: true as const, flows };
+}
+
+vi.mock("../../tasks/task-flow-registry.js", () => ({
+  createManagedTaskFlow: vi.fn(createMockFlow),
+  createManagedTaskFlowWithAtomicUpdates: vi.fn(
+    (params: {
+      create: Partial<MockFlow> & { ownerKey: string };
+      updates: Array<{ flowId: string; expectedRevision: number; patch: Partial<MockFlow> }>;
+    }) => {
+      const updated = updateMockFlowsAtomically(params.updates);
+      if (!updated.applied) {
+        return updated;
+      }
+      const created = createMockFlow(params.create);
+      return { applied: true, created, updated: updated.flows };
+    },
+  ),
+  updateTaskFlowsAtomically: vi.fn(updateMockFlowsAtomically),
   listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
     Array.from(
       [...mockFlows.values()].filter((flow) => flow.ownerKey === ownerKey),
@@ -470,12 +506,12 @@ import {
 } from "./work-dispatch.js";
 import {
   consumePendingWork,
-  enqueuePendingWork,
   hasLiveOrRecentlyDispatchedContinuationWork,
   markPendingWorkDelivered,
   markPendingWorkFoldDelivered,
   requeuePendingWork,
 } from "./work-store.js";
+import { enqueuePendingWork } from "./work-store.test-support.js";
 
 const getReplyFromConfigMock = vi.mocked(getReplyFromConfig);
 
@@ -857,6 +893,46 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     expect(batch).toMatchObject({ scheduledCount: 2, cappedCount: 0 });
     const queued = [...mockFlows.values()].filter((flow) => flow.status === "queued");
     expect(queued).toHaveLength(2);
+  });
+
+  it("retains the exact superseded snapshot when cancellation stops a batch mid-flight", async () => {
+    const sessionKey = "agent:main:coalesce-cancelled-batch";
+    mockSessionStore[sessionKey] = { sessionKey };
+    activeSessions.add(sessionKey);
+    await scheduleContinuationWorkBatch({
+      sessionKey,
+      chainState: {
+        currentChainCount: 0,
+        chainStartedAt: Date.now(),
+        accumulatedChainTokens: 0,
+      },
+      requests: [{ reason: "prior parked work", delaySeconds: 0 }],
+      config: immediateConfig,
+    });
+    const abort = new AbortController();
+
+    const result = await scheduleContinuationWorkBatch({
+      sessionKey,
+      chainState: {
+        currentChainCount: 1,
+        chainStartedAt: Date.now(),
+        accumulatedChainTokens: 0,
+      },
+      requests: [
+        { reason: "first replacement", delaySeconds: 0 },
+        { reason: "cancelled second replacement", delaySeconds: 0 },
+      ],
+      config: immediateConfig,
+      abortSignal: abort.signal,
+      onFlowEnqueued: () => abort.abort("stop after first replacement"),
+    });
+
+    expect(result).toMatchObject({ scheduledCount: 1, cappedCount: 1 });
+    expect(result.supersededFlows).toEqual([
+      expect.objectContaining({
+        stateJson: expect.objectContaining({ reason: "prior parked work" }),
+      }),
+    ]);
   });
 
   it("folds matured delayed active-overlap work into the active turn instead of stacking later naked wakes", async () => {

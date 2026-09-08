@@ -8,6 +8,7 @@ export class SubagentRestartSettlementManager extends SubagentWaitManager {
     expected: SubagentRunRecord;
     sessionId: string;
     idempotencyKey: string;
+    pendingNoticeIdempotencyKey?: string;
   }): boolean => {
     const runId = clearParams.runId.trim();
     const entry = this.options.runs.get(runId);
@@ -21,11 +22,43 @@ export class SubagentRestartSettlementManager extends SubagentWaitManager {
     ) {
       return false;
     }
+    const previousNotice = entry.resumptionNotice;
     entry.execution.restartRecovery = undefined;
+    if (clearParams.pendingNoticeIdempotencyKey) {
+      entry.resumptionNotice = {
+        idempotencyKey: clearParams.pendingNoticeIdempotencyKey,
+      };
+    }
     try {
       this.options.persistOrThrow(runId);
     } catch (error) {
       entry.execution.restartRecovery = receipt;
+      entry.resumptionNotice = previousNotice;
+      throw error;
+    }
+    return true;
+  };
+
+  readonly clearPendingSubagentRecoveryNotice = (noticeParams: {
+    runId: string;
+    expected: SubagentRunRecord;
+    idempotencyKey: string;
+  }): boolean => {
+    const runId = noticeParams.runId.trim();
+    const entry = this.options.runs.get(runId);
+    if (
+      !runId ||
+      entry !== noticeParams.expected ||
+      entry.resumptionNotice?.idempotencyKey !== noticeParams.idempotencyKey
+    ) {
+      return false;
+    }
+    const previous = entry.resumptionNotice;
+    entry.resumptionNotice = undefined;
+    try {
+      this.options.persistOrThrow(runId);
+    } catch (error) {
+      entry.resumptionNotice = previous;
       throw error;
     }
     return true;
@@ -37,16 +70,14 @@ export class SubagentRestartSettlementManager extends SubagentWaitManager {
   }): boolean => {
     const runId = resumeParams.runId.trim();
     const entry = this.options.runs.get(runId);
-    if (
-      !runId ||
-      entry !== resumeParams.expected ||
-      entry.execution.restartRecovery !== undefined
-    ) {
+    const receipt = entry?.execution.restartRecovery;
+    if (!runId || entry !== resumeParams.expected || receipt !== undefined) {
       return false;
     }
     if (entry.killIntent || entry.killReconciliation) {
       return true;
     }
+    this.options.resumedRuns.delete(runId);
     this.options.resumeSubagentRun(runId);
     return true;
   };

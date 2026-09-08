@@ -9,6 +9,7 @@ import {
   resetTaskFlowRegistryRuntimeForTests,
   type TaskFlowRegistryObserverEvent,
 } from "./task-flow-registry.store.js";
+import type { TaskFlowRegistryAtomicOwnerCondition } from "./task-flow-registry.store.types.js";
 import {
   isTerminalTaskFlow,
   type JsonValue,
@@ -27,7 +28,7 @@ type TaskFlowRegistryRestoreState =
   | { status: "failed"; error: Error; message: string };
 let taskFlowRegistryRestoreState: TaskFlowRegistryRestoreState = { status: "uninitialized" };
 
-type FlowRecordPatch = Omit<
+export type FlowRecordPatch = Omit<
   Partial<
     Pick<
       TaskFlowRecord,
@@ -103,6 +104,32 @@ export type TaskFlowUpdateResult =
       current?: TaskFlowRecord;
     };
 
+export type TaskFlowAtomicUpdate = {
+  flowId: string;
+  expectedRevision: number;
+  patch: FlowRecordPatch;
+};
+
+export type TaskFlowAtomicUpdateResult =
+  | {
+      applied: true;
+      flows: TaskFlowRecord[];
+    }
+  | {
+      applied: false;
+      reason: "not_found" | "revision_conflict" | "persist_failed";
+      flowId?: string;
+      current?: TaskFlowRecord;
+    };
+
+export type TaskFlowAtomicCreateResult =
+  | {
+      applied: true;
+      created: TaskFlowRecord;
+      updated: TaskFlowRecord[];
+    }
+  | Exclude<TaskFlowAtomicUpdateResult, { applied: true }>;
+
 type TaskFlowSyncResult =
   | {
       ok: true;
@@ -113,6 +140,11 @@ type TaskFlowSyncResult =
       reason: "persist_failed";
       current: TaskFlowRecord;
     };
+
+export type PreparedTaskMirroredFlowSync = {
+  current: TaskFlowRecord;
+  next: TaskFlowRecord;
+};
 
 function cloneStructuredValue<T>(value: T | undefined): T | undefined {
   if (value === undefined) {
@@ -319,43 +351,9 @@ export function reloadTaskFlowRegistryFromStore(): void {
   ensureTaskFlowRegistryReady();
 }
 
-function createFlowSnapshotWith(next?: TaskFlowRecord, deletedFlowId?: string) {
-  const snapshot = new Map(snapshotFlowRecords(flows).map((flow) => [flow.flowId, flow]));
-  if (deletedFlowId) {
-    snapshot.delete(deletedFlowId);
-  }
-  if (next) {
-    snapshot.set(next.flowId, cloneFlowRecord(next));
-  }
-  return snapshot;
-}
-
-function persistFlowRegistry(): boolean {
-  try {
-    getTaskFlowRegistryStore().saveSnapshot({
-      flows: createFlowSnapshotWith(),
-    });
-    return true;
-  } catch (error) {
-    log.warn("Failed to persist task-flow registry snapshot", { error });
-    return false;
-  }
-}
-
-function persistFlowUpsert(flow: TaskFlowRecord) {
-  const store = getTaskFlowRegistryStore();
-  if (store.upsertFlow) {
-    store.upsertFlow(cloneFlowRecord(flow));
-    return;
-  }
-  store.saveSnapshot({
-    flows: createFlowSnapshotWith(flow),
-  });
-}
-
 function tryPersistFlowUpsert(flow: TaskFlowRecord, operation: string): boolean {
   try {
-    persistFlowUpsert(flow);
+    getTaskFlowRegistryStore().upsertFlow(cloneFlowRecord(flow));
     return true;
   } catch (error) {
     log.warn("Failed to persist task-flow registry upsert", {
@@ -367,20 +365,9 @@ function tryPersistFlowUpsert(flow: TaskFlowRecord, operation: string): boolean 
   }
 }
 
-function persistFlowDelete(flowId: string) {
-  const store = getTaskFlowRegistryStore();
-  if (store.deleteFlow) {
-    store.deleteFlow(flowId);
-    return;
-  }
-  store.saveSnapshot({
-    flows: createFlowSnapshotWith(undefined, flowId),
-  });
-}
-
 function tryPersistFlowDelete(flowId: string): boolean {
   try {
-    persistFlowDelete(flowId);
+    getTaskFlowRegistryStore().deleteFlow(flowId);
     return true;
   } catch (error) {
     log.warn("Failed to persist task-flow registry delete", {
@@ -483,6 +470,126 @@ function createFlowRecord(params: CreateFlowRecordParams): TaskFlowRecord | null
   return writeFlowRecord(record);
 }
 
+function prepareTaskFlowAtomicUpdates(
+  updates: readonly TaskFlowAtomicUpdate[],
+):
+  | { applied: true; entries: Array<{ current: TaskFlowRecord; next: TaskFlowRecord }> }
+  | Exclude<TaskFlowAtomicUpdateResult, { applied: true }> {
+  const seenFlowIds = new Set<string>();
+  const entries: Array<{ current: TaskFlowRecord; next: TaskFlowRecord }> = [];
+  for (const update of updates) {
+    if (seenFlowIds.has(update.flowId)) {
+      return {
+        applied: false,
+        reason: "revision_conflict",
+        flowId: update.flowId,
+        current: cloneStructuredValue(flows.get(update.flowId)),
+      };
+    }
+    seenFlowIds.add(update.flowId);
+    const current = flows.get(update.flowId);
+    if (!current) {
+      return { applied: false, reason: "not_found", flowId: update.flowId };
+    }
+    if (current.revision !== update.expectedRevision) {
+      return {
+        applied: false,
+        reason: "revision_conflict",
+        flowId: update.flowId,
+        current: cloneFlowRecord(current),
+      };
+    }
+    entries.push({
+      current,
+      next: applyFlowPatch(current, update.patch),
+    });
+  }
+  return { applied: true, entries };
+}
+
+function commitTaskFlowAtomicChanges(params: {
+  created: TaskFlowRecord;
+  updates: readonly TaskFlowAtomicUpdate[];
+  ownerCondition?: TaskFlowRegistryAtomicOwnerCondition;
+}): TaskFlowAtomicCreateResult;
+function commitTaskFlowAtomicChanges(params: {
+  created?: undefined;
+  updates: readonly TaskFlowAtomicUpdate[];
+  ownerCondition?: TaskFlowRegistryAtomicOwnerCondition;
+}): TaskFlowAtomicUpdateResult;
+function commitTaskFlowAtomicChanges(params: {
+  created?: TaskFlowRecord;
+  updates: readonly TaskFlowAtomicUpdate[];
+  ownerCondition?: TaskFlowRegistryAtomicOwnerCondition;
+}): TaskFlowAtomicCreateResult | TaskFlowAtomicUpdateResult {
+  ensureTaskFlowRegistryReady();
+  const prepared = prepareTaskFlowAtomicUpdates(params.updates);
+  if (!prepared.applied) {
+    return prepared;
+  }
+  const changed = [
+    ...prepared.entries.map((entry) => entry.next),
+    ...(params.created ? [params.created] : []),
+  ];
+  if (changed.length === 0) {
+    return { applied: true, flows: [] };
+  }
+  try {
+    const store = getTaskFlowRegistryStore();
+    if (!store.upsertFlowsAtomically) {
+      throw new Error("task-flow registry store does not support atomic writes");
+    }
+    const applied = store.upsertFlowsAtomically({
+      changes: [
+        ...prepared.entries.map((entry) => ({
+          flow: cloneFlowRecord(entry.next),
+          expectedRevision: entry.current.revision,
+        })),
+        ...(params.created ? [{ flow: cloneFlowRecord(params.created) }] : []),
+      ],
+      ...(params.ownerCondition ? { ownerCondition: params.ownerCondition } : {}),
+    });
+    if (!applied) {
+      reloadTaskFlowRegistryFromStore();
+      return { applied: false, reason: "revision_conflict" };
+    }
+  } catch (error) {
+    log.warn("Failed to persist atomic task-flow changes", {
+      createdFlowId: params.created?.flowId,
+      updatedFlowIds: params.updates.map((update) => update.flowId),
+      error,
+    });
+    return { applied: false, reason: "persist_failed" };
+  }
+
+  for (const flow of changed) {
+    flows.set(flow.flowId, flow);
+  }
+  for (const entry of prepared.entries) {
+    emitFlowRegistryObserverEvent(() => ({
+      kind: "upserted",
+      flow: cloneFlowRecord(entry.next),
+      previous: cloneFlowRecord(entry.current),
+    }));
+  }
+  const created = params.created;
+  if (created) {
+    emitFlowRegistryObserverEvent(() => ({
+      kind: "upserted",
+      flow: cloneFlowRecord(created),
+    }));
+    return {
+      applied: true,
+      created: cloneFlowRecord(created),
+      updated: prepared.entries.map((entry) => cloneFlowRecord(entry.next)),
+    };
+  }
+  return {
+    applied: true,
+    flows: prepared.entries.map((entry) => cloneFlowRecord(entry.next)),
+  };
+}
+
 // chainId is threaded through createManagedTaskFlow via FlowRecordCreateFields,
 // so flow_runs.chain_id is populated on the common managed-flow create path,
 // not just when callers bypass via createFlowRecord directly.
@@ -496,6 +603,29 @@ export function createManagedTaskFlow(
     syncMode: "managed",
     controllerId: assertControllerId(params.controllerId),
   });
+}
+
+export function createManagedTaskFlowWithAtomicUpdates(params: {
+  create: FlowRecordCreateFields & { controllerId: string };
+  updates: readonly TaskFlowAtomicUpdate[];
+  ownerCondition?: TaskFlowRegistryAtomicOwnerCondition;
+}): TaskFlowAtomicCreateResult {
+  const created = buildFlowRecord({
+    ...params.create,
+    syncMode: "managed",
+    controllerId: assertControllerId(params.create.controllerId),
+  });
+  return commitTaskFlowAtomicChanges({
+    created,
+    updates: params.updates,
+    ...(params.ownerCondition ? { ownerCondition: params.ownerCondition } : {}),
+  });
+}
+
+export function updateTaskFlowsAtomically(
+  updates: readonly TaskFlowAtomicUpdate[],
+): TaskFlowAtomicUpdateResult {
+  return commitTaskFlowAtomicChanges({ updates });
 }
 
 export function createTaskFlowForTask(params: {
@@ -536,18 +666,6 @@ export function createTaskFlowForTask(params: {
     updatedAt: timing.updatedAt,
     ...(timing.endedAt !== undefined ? { endedAt: timing.endedAt } : {}),
   });
-}
-
-function updateFlowRecordByIdUnchecked(
-  flowId: string,
-  patch: FlowRecordPatch,
-): TaskFlowRecord | null {
-  ensureTaskFlowRegistryReady();
-  const current = flows.get(flowId);
-  if (!current) {
-    return null;
-  }
-  return writeFlowRecord(applyFlowPatch(current, patch), current);
 }
 
 export function updateFlowRecordByIdExpectedRevision(params: {
@@ -733,6 +851,22 @@ export function syncFlowFromTaskResult(
   if (flow.syncMode !== "task_mirrored") {
     return { ok: true, flow };
   }
+  const prepared = prepareTaskMirroredFlowSyncFromCurrent(task, flow);
+  const updated = writeFlowRecord(prepared.next, prepared.current);
+  if (!updated) {
+    return {
+      ok: false,
+      reason: "persist_failed",
+      current: flow,
+    };
+  }
+  return { ok: true, flow: updated };
+}
+
+function prepareTaskMirroredFlowSyncFromCurrent(
+  task: Parameters<typeof syncFlowFromTaskResult>[0],
+  flow: TaskFlowRecord,
+): PreparedTaskMirroredFlowSync {
   const terminalFlowStatus = deriveTaskFlowStatusFromTask(task);
   const isTerminal = isTerminalTaskFlowStatus(terminalFlowStatus);
   const timing = resolveTaskMirroredFlowTiming(
@@ -743,7 +877,7 @@ export function syncFlowFromTaskResult(
     },
     isTerminal,
   );
-  const updated = updateFlowRecordByIdUnchecked(flowId, {
+  const next = applyFlowPatch(flow, {
     status: terminalFlowStatus,
     notifyPolicy: task.notifyPolicy,
     goal: normalizeOptionalString(task.label) ?? (task.task.trim() || "Background task"),
@@ -758,14 +892,36 @@ export function syncFlowFromTaskResult(
         }
       : { endedAt: null }),
   });
-  if (!updated) {
-    return {
-      ok: false,
-      reason: "persist_failed",
-      current: flow,
-    };
+  return { current: cloneFlowRecord(flow), next };
+}
+
+export function prepareTaskMirroredFlowSync(
+  task: Parameters<typeof syncFlowFromTaskResult>[0],
+): PreparedTaskMirroredFlowSync | undefined {
+  const flowId = task.parentFlowId?.trim();
+  if (!flowId) {
+    return undefined;
   }
-  return { ok: true, flow: updated };
+  const flow = getTaskFlowById(flowId);
+  return flow?.syncMode === "task_mirrored"
+    ? prepareTaskMirroredFlowSyncFromCurrent(task, flow)
+    : undefined;
+}
+
+/** Publishes a mirrored flow record already committed by a shared-state transaction. */
+export function publishTaskFlowAfterAtomicStore(
+  prepared: PreparedTaskMirroredFlowSync,
+  deferredObserverEvents: Array<() => void>,
+): void {
+  const next = cloneFlowRecord(prepared.next);
+  flows.set(next.flowId, next);
+  deferredObserverEvents.push(() =>
+    emitFlowRegistryObserverEvent(() => ({
+      kind: "upserted",
+      flow: cloneFlowRecord(next),
+      previous: cloneFlowRecord(prepared.current),
+    })),
+  );
 }
 
 export function getTaskFlowById(flowId: string): TaskFlowRecord | undefined {
@@ -830,13 +986,10 @@ export function deleteTaskFlowRecordById(flowId: string): boolean {
   return true;
 }
 
-function resetTaskFlowRegistryForTests(opts?: { persist?: boolean }) {
+function resetTaskFlowRegistryForTests() {
   flows = new Map();
   taskFlowRegistryRestoreState = { status: "uninitialized" };
   resetTaskFlowRegistryRuntimeForTests();
-  if (opts?.persist !== false) {
-    persistFlowRegistry();
-  }
   getTaskFlowRegistryStore().close?.();
 }
 

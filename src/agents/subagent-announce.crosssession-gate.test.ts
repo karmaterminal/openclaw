@@ -50,39 +50,13 @@ vi.mock("./model-fallback-runner.js", () => ({
   }) => runWithModelFallbackMock(params),
 }));
 
-vi.mock("./embedded-agent-runner/run-entry.js", () => ({
-  runEmbeddedAgentEntry: async (params: {
-    selection: { provider: string; model: string };
-    runCandidate: (
-      provider: string,
-      model: string,
-      options: Record<string, unknown>,
-    ) => Promise<unknown>;
-  }) => {
-    const { provider, model } = params.selection;
-    const fallback = await runWithModelFallbackMock({
-      provider,
-      model,
-      runCandidate: (nextProvider: string, nextModel: string) =>
-        params.runCandidate(nextProvider, nextModel, {
-          isFallbackRetry: false,
-          modelRoutingProvenance: {
-            requestedProvider: provider,
-            requestedModel: model,
-            stage: "initial",
-          },
-          contextEngineLogicalTurnLease: {},
-          onContextEngineTurnCandidate: () => {},
-        }),
-    });
-    return {
-      ...fallback,
-      outcome: "completed",
-      terminal: { metadata: {} },
-      settleSessionOverride: async () => {},
-    };
-  },
-}));
+vi.mock("./embedded-agent-runner/run-entry.js", async () => {
+  const { createSuccessfulEmbeddedAgentEntryMock } =
+    await import("../auto-reply/reply/agent-runner-entry.test-support.js");
+  return {
+    runEmbeddedAgentEntry: createSuccessfulEmbeddedAgentEntryMock(() => runWithModelFallbackMock),
+  };
+});
 
 vi.mock("./model-fallback-attempt.js", () => ({
   isFallbackSummaryError: (err: unknown) =>
@@ -263,6 +237,7 @@ function createContinuationRun(params: {
       skillsSnapshot: {},
       provider: "anthropic",
       model: "claude",
+      thinkingCatalog: [{ provider: "anthropic", id: "claude", input: ["text"] }],
       thinkLevel: "low",
       verboseLevel: "off",
       elevatedLevel: "off",
@@ -324,7 +299,6 @@ beforeEach(() => {
   configureTaskFlowRegistryRuntime({
     store: {
       loadSnapshot: () => ({ flows: new Map() }),
-      saveSnapshot: () => {},
       upsertFlow: () => {},
       deleteFlow: () => {},
     },

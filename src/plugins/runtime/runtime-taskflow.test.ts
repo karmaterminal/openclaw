@@ -35,8 +35,8 @@ function expectPublicContinuationState(flow: TaskFlowRecord | undefined) {
   expect(Object.keys(state)).not.toContain("attachAs");
 }
 
-afterEach(() => {
-  resetRuntimeTaskTestState();
+afterEach(async () => {
+  await resetRuntimeTaskTestState();
 });
 
 describe("runtime TaskFlow", () => {

@@ -25,7 +25,7 @@ import {
 } from "./subagent-registry-sweep-kill.js";
 import type { SubagentRegistrySweeperParams } from "./subagent-registry-sweeper.types.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
-import { isStaleUnendedSubagentRun } from "./subagent-run-liveness.js";
+import { hasSubagentRunEnded, isStaleUnendedSubagentRun } from "./subagent-run-liveness.js";
 import {
   loadSubagentSessionEntry,
   resolveCompletionFromSessionEntry,
@@ -52,6 +52,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
   let scheduledTimer: NodeJS.Timeout | null = null;
   let scheduledAt = Number.POSITIVE_INFINITY;
   let acceptedSteerCursor: string | undefined;
+  let acceptedSpawnRollbackCursor: string | undefined;
 
   function start() {
     if (intervalStarted) {
@@ -110,6 +111,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
     getGatewayRuntime: params.getGatewayRecoveryRuntime,
     abandonLaunch: params.abandonSubagentRestartRecoveryLaunch,
     clearAcceptedRecovery: params.clearAcceptedSubagentRestartRecovery,
+    clearPendingNotice: params.clearPendingSubagentRecoveryNotice,
     resumeAcceptedRecovery: params.resumeSettledSubagentRestartRecovery,
     replaceRun: params.replaceSubagentRunAfterSteer,
     markLaunchAttempted: params.markSubagentRestartRecoveryLaunchAttempted,
@@ -145,11 +147,10 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
     try {
       const now = Date.now();
       const storeCache: SubagentSessionStoreCache = new Map();
-      let mutated = false;
       const mutatedRunIds = new Set<string>();
       const collectorArchiveCandidates = new Map<
         string,
-        { requesterSessionKey: string; groupId: string }
+        { requesterSessionKey: string; groupId: string; requesterAgentId?: string }
       >();
       const acceptedSteerCandidates: Array<{ runId: string; entry: SubagentRunRecord }> = [];
       const acceptedSpawnRollbackCandidates: Array<{
@@ -205,7 +206,14 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
           acceptedSpawnRollbackCandidates.push({ runId, entry });
           continue;
         }
-        if (entry.requesterSettleWake) {
+        // Yield freezes the parent's wake before its children finish. Keep
+        // terminal delivery priority while unfinished children reach recovery.
+        if (
+          entry.requesterSettleWake &&
+          entry.execution.status !== "running" &&
+          hasSubagentRunEnded(entry) &&
+          !entry.execution.restartRecovery
+        ) {
           params.resumeRequesterSettleWake(runId, entry);
           continue;
         }
@@ -227,7 +235,6 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
               emitSubagentEndedHookForRun: params.emitSubagentEndedHookForRun,
               warn: params.warn,
             });
-            mutated = true;
             mutatedRunIds.add(runId);
           }
           continue;
@@ -245,7 +252,6 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
               warn: params.warn,
             })
           ) {
-            mutated = true;
             mutatedRunIds.add(runId);
           }
           continue;
@@ -264,13 +270,13 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
             warn: params.warn,
           });
           if (reconciled) {
-            mutated = true;
             mutatedRunIds.add(runId);
           }
           continue;
         }
         if (
-          (entry.execution.restartRecovery?.phase === "accepted" ||
+          (entry.resumptionNotice !== undefined ||
+            entry.execution.restartRecovery?.phase === "accepted" ||
             entry.terminalOwner === "interrupted-recovery" ||
             (!getAgentRunContext(runId) && typeof entry.execution.endedAt !== "number")) &&
           (await recovery.recover(runId, entry, now))
@@ -294,7 +300,6 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
                   resumedRuns,
                 })
               ) {
-                mutated = true;
                 mutatedRunIds.add(runId);
               }
               continue;
@@ -393,19 +398,19 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
             }
             entry.collectorLaunchCleanupPending = false;
             entry.cleanupCompletedAt = now;
-            mutated = true;
             mutatedRunIds.add(runId);
           }
           const groupId = entry.groupId?.trim();
           const swarmRequesterSessionKey =
             entry.swarmRequesterSessionKey ?? entry.requesterSessionKey;
           const groupKey = groupId
-            ? JSON.stringify([swarmRequesterSessionKey, groupId])
+            ? JSON.stringify([entry.requesterAgentId, swarmRequesterSessionKey, groupId])
             : undefined;
           if (groupKey && groupId) {
             collectorArchiveCandidates.set(groupKey, {
               requesterSessionKey: swarmRequesterSessionKey,
               groupId,
+              requesterAgentId: entry.requesterAgentId,
             });
           }
           continue;
@@ -436,7 +441,6 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
               });
             }
             runs.delete(runId);
-            mutated = true;
             mutatedRunIds.add(runId);
             if (!entry.retainAttachmentsOnKeep) {
               await safeRemoveAttachmentsDir(entry);
@@ -475,7 +479,6 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
           }
         }
         runs.delete(runId);
-        mutated = true;
         mutatedRunIds.add(runId);
         await safeRemoveAttachmentsDir(entry);
         if (!suppressSessionEffects && !sessionOwnershipChanged) {
@@ -484,8 +487,15 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
           });
         }
       }
-      for (const { requesterSessionKey, groupId } of collectorArchiveCandidates.values()) {
-        const groupEntries = [...params.getRunsForCollectorGroup(requesterSessionKey, groupId)];
+      for (const {
+        requesterSessionKey,
+        groupId,
+        requesterAgentId,
+      } of collectorArchiveCandidates.values()) {
+        const readGroup = () => [
+          ...params.getRunsForCollectorGroup(requesterSessionKey, groupId, requesterAgentId),
+        ];
+        const groupEntries = readGroup();
         if (
           groupEntries.some(
             ([, candidate]) =>
@@ -585,7 +595,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
           continue;
         }
         const expectedGroupEntries = new Map(groupEntries);
-        const liveGroupEntries = [...params.getRunsForCollectorGroup(requesterSessionKey, groupId)];
+        const liveGroupEntries = readGroup();
         if (
           liveGroupEntries.length !== groupEntries.length ||
           liveGroupEntries.some(
@@ -604,11 +614,10 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
           runs.delete(candidateRunId);
           mutatedRunIds.add(candidateRunId);
         }
-        mutated = true;
       }
       params.sweepPendingLifecycle(now);
 
-      if (mutated) {
+      if (mutatedRunIds.size > 0) {
         params.persist(...mutatedRunIds);
       }
       const acceptedSteerCandidate = selectNextAcceptedSteerCandidate(
@@ -629,10 +638,10 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
       }
       const acceptedSpawnRollbackCandidate = selectNextAcceptedSteerCandidate(
         acceptedSpawnRollbackCandidates,
-        acceptedSteerCursor,
+        acceptedSpawnRollbackCursor,
       );
       if (acceptedSpawnRollbackCandidate) {
-        acceptedSteerCursor = acceptedSpawnRollbackCandidate.runId;
+        acceptedSpawnRollbackCursor = acceptedSpawnRollbackCandidate.runId;
         await reconcileAcceptedSpawnRollback({
           ...acceptedSpawnRollbackCandidate,
           runs,
@@ -667,6 +676,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
       scheduledAt = Number.POSITIVE_INFINITY;
       recovery.reset();
       acceptedSteerCursor = undefined;
+      acceptedSpawnRollbackCursor = undefined;
       rerunRequested = false;
       intervalStarted = false;
       sweepInProgress = false;

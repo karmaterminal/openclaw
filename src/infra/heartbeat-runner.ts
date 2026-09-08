@@ -68,24 +68,11 @@ export async function runHeartbeatOnce(
   if (!continuationTrigger && !opts.parentRunId && !trustedTargetSessionKey) {
     return await runSplitHeartbeatOnce(opts);
   }
-  const getReplyFromConfig =
-    opts.deps?.getReplyFromConfig ??
-    (await import("./heartbeat-runner.runtime.js")).getHeartbeatReplyFromConfig;
   return await runSplitHeartbeatOnce({
     ...opts,
-    deps: {
-      ...opts.deps,
-      getReplyFromConfig: (ctx, replyOpts, cfg) =>
-        getReplyFromConfig(
-          trustedTargetSessionKey ? { ...ctx, SessionKey: trustedTargetSessionKey } : ctx,
-          {
-            ...replyOpts,
-            ...(continuationTrigger ? { continuationTrigger } : {}),
-            ...(opts.parentRunId ? { parentRunId: opts.parentRunId } : {}),
-          },
-          cfg,
-        ),
-    },
+    ...(continuationTrigger ? { continuationTrigger } : {}),
+    ...(opts.parentRunId ? { parentRunId: opts.parentRunId } : {}),
+    ...(trustedTargetSessionKey ? { trustedTargetSessionKey } : {}),
   });
 }
 

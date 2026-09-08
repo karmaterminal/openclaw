@@ -1,6 +1,9 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { consumeStagedPostCompactionDelegates } from "../../auto-reply/continuation/delegate-store-post-compaction.js";
+import {
+  claimStagedPostCompactionTaskFlowDelegates,
+  consumeStagedPostCompactionDelegates,
+} from "../../auto-reply/continuation/delegate-store-post-compaction.js";
 import {
   cancelPendingDelegates,
   consumePendingDelegates,
@@ -139,6 +142,29 @@ describe("continue_delegate tool", () => {
 
     expect(JSON.stringify(tool.parameters)).not.toContain("traceparent");
   });
+
+  it.each(["normal", "post-compaction"] as const)(
+    "persists the originating run for %s delegates",
+    async (mode) => {
+      const tool = createContinueDelegateTool({
+        agentSessionKey: "test-session",
+        runId: "run-owner",
+      });
+
+      await executeTool(tool, 0, { task: `${mode} owned work`, mode });
+
+      const delegates =
+        mode === "post-compaction"
+          ? claimStagedPostCompactionTaskFlowDelegates("test-session")
+          : consumePendingDelegates("test-session");
+      expect(delegates).toMatchObject([
+        {
+          task: `${mode} owned work`,
+          originRunId: "run-owner",
+        },
+      ]);
+    },
+  );
 
   it("persists only the closed artifact return request and preserves omission as text-only", async () => {
     setRuntimeConfigSnapshot({

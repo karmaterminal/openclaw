@@ -17,6 +17,7 @@ import type { SpawnedToolContext } from "./spawned-context.js";
 import type { ToolFsPolicy } from "./tool-fs-policy.js";
 import type { ContinueWorkRequest } from "./tools/continue-work-tool.js";
 import type { CronToolOptions } from "./tools/cron-tool.types.js";
+import type { QuestionPromptDelivery } from "./tools/question-prompt-send.js";
 import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
 
 export type OpenClawToolsOptions = {
@@ -67,6 +68,8 @@ export type OpenClawToolsOptions = {
   webSearchEnabled?: boolean;
   /** Capabilities declared by the gateway client that originated this run. */
   clientCaps?: string[];
+  /** Host-admitted dashboard authoring without an originating inline renderer. */
+  pinnedWidgetAuthoring?: boolean;
   pluginToolAllowlist?: string[];
   pluginToolDenylist?: string[];
   runtimeToolAllowlist?: string[];
@@ -156,6 +159,13 @@ export type OpenClawToolsOptions = {
   spawnWorkspaceDir?: string;
   /** Current runtime directory used as the default project for follow-up suggestions. */
   cwd?: string;
+  /**
+   * How this run shows a blocking question tool's prompt. Harnesses that run tools
+   * through the embedded tool lifecycle reserve the prompt themselves and leave this
+   * unset; harnesses that dispatch tools directly pass it so the question still
+   * reaches the person being asked.
+   */
+  questionPrompt?: QuestionPromptDelivery;
   onYield?: (message: string, acknowledgment?: string) => Promise<void> | void;
   claimYieldCompletion?: () => boolean | Promise<boolean>;
   /** Whether this run consumes the continuation delegate staging queue. */

@@ -110,6 +110,11 @@ export function createEmbeddedAgentSessionEventHandler(ctx: EmbeddedAgentSubscri
         void scheduleAttemptEvent(evt, () => handleMessageEnd(ctx, evt, { deliveryGeneration }));
         return;
       }
+      case "turn_end":
+        void scheduleEvent(evt, () =>
+          ctx.noteLastAssistant(evt.message, { hasToolResults: evt.toolResults.length > 0 }),
+        );
+        return;
       case "tool_execution_start": {
         const deliveryGeneration = ctx.getBlockReplyDeliveryGeneration();
         void scheduleAttemptEvent(evt, () =>

@@ -113,6 +113,7 @@ function createHarness(runtime: { current?: GatewayRecoveryRuntime }) {
     getGatewayRecoveryRuntime: () => runtime.current,
     abandonSubagentRestartRecoveryLaunch: vi.fn(() => true),
     clearAcceptedSubagentRestartRecovery: vi.fn(() => true),
+    clearPendingSubagentRecoveryNotice: vi.fn(() => true),
     resumeSettledSubagentRestartRecovery: vi.fn(() => true),
     replaceSubagentRunAfterSteer: vi.fn(() => true),
     markSubagentRestartRecoveryLaunchAttempted: vi.fn((params) => ({
@@ -177,7 +178,7 @@ describe("subagent registry recovery scheduling", () => {
     vi.useFakeTimers();
     resetGatewayWorkAdmission();
     agentEvents.lifecycleCurrent = true;
-    recoverRow.mockReset();
+    recoverRow.mockReset().mockResolvedValue({ status: "handled" });
     getAgentRunContext.mockReset().mockReturnValue(undefined);
     killRuntime.abortEmbeddedAgentRun.mockReset().mockReturnValue(false);
     killRuntime.isEmbeddedAgentRunActive.mockReset().mockReturnValue(false);
@@ -201,6 +202,34 @@ describe("subagent registry recovery scheduling", () => {
     vi.useRealTimers();
   });
 
+  it.each(["terminal", "running"] as const)(
+    "only gives ended %s children requester-wake priority over suspended delivery cleanup",
+    async (executionStatus) => {
+      const { entry, resumeRequesterSettleWake, completeCleanupBookkeeping, sweeper } =
+        createHarness({});
+      entry.execution = {
+        status: executionStatus,
+        endedAt: Date.now() - 60_000,
+        outcome: { status: "ok" },
+      };
+      entry.requesterSettleWake = { status: "pending", attemptCount: 0 };
+      entry.delivery = {
+        status: "suspended",
+        suspendedAt: Date.now() - 8 * 24 * 60 * 60_000,
+        suspendedReason: "expiry",
+      };
+
+      await sweeper.sweepOnce();
+
+      expect(resumeRequesterSettleWake).toHaveBeenCalledTimes(
+        executionStatus === "terminal" ? 1 : 0,
+      );
+      if (executionStatus === "terminal") {
+        expect(completeCleanupBookkeeping).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it("reconciles one accepted steer after ordinary rows progress", async () => {
     const harness = createHarness({});
     harness.entry.suppressAnnounceReason = "steer-restart";
@@ -216,6 +245,11 @@ describe("subagent registry recovery scheduling", () => {
       ...run(),
       runId: "requester-settle-row",
       childSessionKey: "agent:main:subagent:requester-settle",
+      execution: {
+        status: "terminal" as const,
+        endedAt: Date.now() - 1_000,
+        outcome: { status: "ok" as const },
+      },
       requesterSettleWake: {
         status: "pending" as const,
         attemptCount: 0,
@@ -247,6 +281,57 @@ describe("subagent registry recovery scheduling", () => {
       gatewayRunId: "accepted-steer-one",
     });
     expect(second.acceptedSteerDispatch).toBeUndefined();
+  });
+
+  it("round-robins steer and spawn rollback queues independently", async () => {
+    const harness = createHarness({});
+    harness.entry.suppressAnnounceReason = "steer-restart";
+    harness.entry.acceptedSteerDispatch = { gatewayRunId: "accepted-steer-one" };
+    const secondSteer = {
+      ...run(),
+      runId: "accepted-steer-two-source",
+      childSessionKey: "agent:main:subagent:accepted-steer-two",
+      suppressAnnounceReason: "steer-restart" as const,
+      acceptedSteerDispatch: { gatewayRunId: "accepted-steer-two" },
+    };
+    const firstRollback = {
+      ...run(),
+      runId: "accepted-rollback-one-source",
+      childSessionKey: "agent:main:subagent:accepted-rollback-one",
+      acceptedSpawnRollback: {
+        gatewayRunId: "accepted-rollback-one",
+        requestedAt: Date.now(),
+        reason: "rollback one",
+      },
+    };
+    const secondRollback = {
+      ...run(),
+      runId: "accepted-rollback-two-source",
+      childSessionKey: "agent:main:subagent:accepted-rollback-two",
+      acceptedSpawnRollback: {
+        gatewayRunId: "accepted-rollback-two",
+        requestedAt: Date.now(),
+        reason: "rollback two",
+      },
+    };
+    harness.runs.set(secondSteer.runId, secondSteer);
+    harness.runs.set(firstRollback.runId, firstRollback);
+    harness.runs.set(secondRollback.runId, secondRollback);
+    harness.callGateway.mockResolvedValue({ aborted: true, runIds: ["different-run"] });
+
+    await harness.sweeper.sweepOnce();
+    await harness.sweeper.sweepOnce();
+
+    expect(
+      harness.callGateway.mock.calls.map(
+        ([request]) => (request.params as { runId: string }).runId,
+      ),
+    ).toEqual([
+      "accepted-steer-one",
+      "accepted-rollback-one",
+      "accepted-steer-two",
+      "accepted-rollback-two",
+    ]);
   });
 
   it("reconciles a restored wake receipt before generic cleanup", async () => {

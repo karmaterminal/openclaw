@@ -133,6 +133,7 @@ export async function createInitialSubagentSession(params: {
   inheritedToolAllowlist?: string[];
   inheritedToolDenylist?: string[];
   modelPatch: Record<string, unknown>;
+  continuationPatch: Partial<SessionEntry>;
   swarmGroupId?: string;
   collect: boolean;
   outputSchema?: Record<string, unknown>;
@@ -190,6 +191,7 @@ export async function createInitialSubagentSession(params: {
       },
       {
         ...buildDirectChildSessionPatch(initialChildSessionPatch),
+        ...params.continuationPatch,
         // Native spawn keeps agent RPC label semantics, not sessions.patch's uniqueness policy.
         ...(params.label ? { label: params.label } : {}),
         ...(params.sessionPermissionPolicy

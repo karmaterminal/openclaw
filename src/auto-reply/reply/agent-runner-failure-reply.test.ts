@@ -5,6 +5,7 @@ import {
   HEARTBEAT_EXTERNAL_RUN_FAILURE_TEXT,
 } from "../../agents/failover/user-copy.js";
 import { AgentHarnessPreflightError } from "../../agents/harness/errors.js";
+import { getReplyPayloadMetadata } from "../reply-payload.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import {
   buildEmptyInteractiveReplyPayload,
@@ -39,12 +40,13 @@ describe("buildEmptyInteractiveReplyPayload", () => {
   });
 
   it("surfaces the fallback when group silence is explicitly disallowed", () => {
-    expect(
-      buildEmptyInteractiveReplyPayload({
-        ...baseParams,
-        cfg: { agents: { defaults: { silentReply: { group: "disallow" } } } },
-      }),
-    ).toMatchObject({ text: EMPTY_INTERACTIVE_REPLY_TEXT, isError: true });
+    const payload = buildEmptyInteractiveReplyPayload({
+      ...baseParams,
+      cfg: { agents: { defaults: { silentReply: { group: "disallow" } } } },
+    });
+
+    expect(payload).toMatchObject({ text: EMPTY_INTERACTIVE_REPLY_TEXT, isError: true });
+    expect(getReplyPayloadMetadata(payload ?? {})).toMatchObject({ agentRunFailureReply: true });
   });
 });
 
@@ -127,6 +129,33 @@ describe("buildExternalRunFailureReply", () => {
     expect(verbose.text).toContain("boom-canary");
     expect(verbose.text).not.toContain("/new");
     expect(verbose.isGenericRunnerFailure).toBe(false);
+  });
+
+  it("keeps unclassified model context visible without exposing raw detail", () => {
+    const message = "opaque-private-provider-detail";
+    const reply = buildExternalRunFailureReply(
+      {
+        message,
+        error: new FailoverError(message, {
+          reason: "unclassified",
+          provider: "openai",
+          model: "test-model",
+        }),
+      },
+      { includeDetails: false },
+    );
+
+    expect(reply).toEqual({
+      text: "⚠️ Agent run failed (model: openai/test-model).",
+      isGenericRunnerFailure: false,
+    });
+    expect(
+      resolveExternalRunFailureTextForConversation({
+        text: reply.text,
+        isGenericRunnerFailure: reply.isGenericRunnerFailure,
+        sessionCtx: { Provider: "discord", Surface: "discord", ChatType: "group" },
+      }),
+    ).toBe(reply.text);
   });
 
   it("forwards classified provider copy when verbose detail is off", () => {

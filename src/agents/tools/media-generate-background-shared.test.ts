@@ -365,6 +365,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
         model: "gpt-image-1",
         count: 1,
         wakeResult: "generated",
+        attachments: [{ type: "image" as const, path: "/tmp/proof.png" }],
       }),
     });
 
@@ -410,6 +411,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
         model: "gpt-image-1",
         count: 1,
         wakeResult: "generated",
+        attachments: [{ type: "image" as const, path: "/tmp/proof.png" }],
         mediaUrls: ["/tmp/proof.png"],
       }),
     });
@@ -420,6 +422,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
     expect(detachedTaskRuntimeMocks.completeTaskRunByRunId).toHaveBeenCalledWith(
       expect.objectContaining({
         terminalOutcome: "blocked",
+        terminalSummary: expect.stringContaining('path="/tmp/proof.png"'),
       }),
     );
     expect(
@@ -681,6 +684,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
         model: "gpt-image-1",
         count: 1,
         wakeResult: "generated",
+        attachments: [{ type: "image" as const, path: "/tmp/proof.png" }],
       }),
     });
 
@@ -699,8 +703,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
         count: 1,
         terminalResult: {
           terminalOutcome: "blocked",
-          terminalSummary:
-            "Required completion delivery failed before reaching the requester: requester wake failed.",
+          terminalSummary: expect.stringContaining('path="/tmp/proof.png"'),
         },
       }),
     );
