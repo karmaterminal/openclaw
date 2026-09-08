@@ -406,7 +406,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       });
     handleChatEvent({ runId: "run-current", message: { content: "partial" } });
     chatLog.addSystem.mockClear();
-    setActivityStatus.mockClear();
+    vi.mocked(setActivityStatus).mockClear();
 
     reconnectStreamingWatchdog(outcome);
 
@@ -1096,7 +1096,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       });
 
     handleChatEvent(makeFinalChatEvent(state, "run-final"));
-    setActivityStatus.mockClear();
+    vi.mocked(setActivityStatus).mockClear();
     tui.requestRender.mockClear();
 
     handleAgentEvent({
@@ -1107,7 +1107,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     expect(setActivityStatus).toHaveBeenCalledWith("finishing context");
     expect(tui.requestRender).toHaveBeenCalled();
 
-    setActivityStatus.mockClear();
+    vi.mocked(setActivityStatus).mockClear();
     tui.requestRender.mockClear();
 
     handleAgentEvent({
@@ -1133,7 +1133,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       runId: "run-local",
       data: { phase: "finishing" },
     });
-    setActivityStatus.mockClear();
+    vi.mocked(setActivityStatus).mockClear();
     tui.requestRender.mockClear();
 
     handleAgentEvent({
@@ -1177,7 +1177,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       runId: "run-new",
       message: { content: "new running" },
     });
-    setActivityStatus.mockClear();
+    vi.mocked(setActivityStatus).mockClear();
     tui.requestRender.mockClear();
 
     handleAgentEvent({
@@ -1659,7 +1659,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       question: "what changed?",
       text: "nothing important",
     } satisfies BtwEvent);
-    setActivityStatus.mockClear();
+    vi.mocked(setActivityStatus).mockClear();
 
     handleChatEvent({
       runId: "run-btw",
@@ -1796,7 +1796,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     chatLog.startTool.mockClear();
     btw.clear.mockClear();
     tui.requestRender.mockClear();
-    setActivityStatus.mockClear();
+    vi.mocked(setActivityStatus).mockClear();
 
     handleSessionsChangedEvent({
       sessionKey: "main",
@@ -2141,7 +2141,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       runId: "run-other",
       message: { content: "hello" },
     });
-    setActivityStatus.mockClear();
+    vi.mocked(setActivityStatus).mockClear();
     tui.requestRender.mockClear();
 
     handleAgentEvent({
