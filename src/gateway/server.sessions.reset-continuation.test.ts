@@ -94,10 +94,10 @@ test("sessions.reset reports durable continuation cancellation failures", async 
   configureTaskFlowRegistryRuntime({
     store: {
       loadSnapshot: () => ({ flows: new Map() }),
-      saveSnapshot: () => {},
       upsertFlow: () => {
         throw new Error("SQLITE_FULL: database or disk is full");
       },
+      deleteFlow: () => {},
     },
   });
 
