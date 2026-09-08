@@ -196,7 +196,7 @@ function makeSessionMessageEvent(
   };
 }
 
-function clearCallbackMock(callback: (...args: unknown[]) => void): void {
+function clearCallbackMock(callback: (...args: never[]) => unknown): void {
   if (!("mockClear" in callback) || typeof callback.mockClear !== "function") {
     throw new Error("expected a Vitest mock callback");
   }
@@ -1104,7 +1104,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
 
     handleChatEvent(makeFinalChatEvent(state, "run-final"));
     clearCallbackMock(setActivityStatus);
-    tui.requestRender.mockClear();
+    clearCallbackMock(tui.requestRender);
 
     handleAgentEvent({
       runId: "run-final",
@@ -1115,7 +1115,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     expect(tui.requestRender).toHaveBeenCalled();
 
     clearCallbackMock(setActivityStatus);
-    tui.requestRender.mockClear();
+    clearCallbackMock(tui.requestRender);
 
     handleAgentEvent({
       runId: "run-final",
@@ -1141,7 +1141,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       data: { phase: "finishing" },
     });
     clearCallbackMock(setActivityStatus);
-    tui.requestRender.mockClear();
+    clearCallbackMock(tui.requestRender);
 
     handleAgentEvent({
       runId: "run-local",
@@ -1185,7 +1185,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       message: { content: "new running" },
     });
     clearCallbackMock(setActivityStatus);
-    tui.requestRender.mockClear();
+    clearCallbackMock(tui.requestRender);
 
     handleAgentEvent({
       runId: "run-old",
@@ -1587,7 +1587,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       question: "what changed?",
       text: "nothing important",
     } satisfies BtwEvent);
-    tui.requestRender.mockClear();
+    clearCallbackMock(tui.requestRender);
 
     handleChatEvent({
       runId: "run-btw",
@@ -1758,7 +1758,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
 
     state.currentSessionKey = "agent:main:other";
     state.activeChatRunId = null;
-    tui.requestRender.mockClear();
+    clearCallbackMock(tui.requestRender);
 
     handleAgentEvent({
       runId: "run-old",
@@ -1802,7 +1802,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     refreshSessionInfo.mockClear();
     chatLog.startTool.mockClear();
     btw.clear.mockClear();
-    tui.requestRender.mockClear();
+    clearCallbackMock(tui.requestRender);
     clearCallbackMock(setActivityStatus);
 
     handleSessionsChangedEvent({
@@ -2149,7 +2149,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       message: { content: "hello" },
     });
     clearCallbackMock(setActivityStatus);
-    tui.requestRender.mockClear();
+    clearCallbackMock(tui.requestRender);
 
     handleAgentEvent({
       runId: "run-other",
