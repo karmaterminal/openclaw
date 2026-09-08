@@ -232,7 +232,7 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
       }),
     );
     registryRuntimeMock.listSubagentRunsForRequester.mockReturnValue(children);
-    const deliveryGate = createDeferred<{ delivered: boolean; path: string }>();
+    const deliveryGate = createDeferred<SubagentAnnounceDeliveryResult>();
     deliverSpy.mockReturnValueOnce(deliveryGate.promise);
 
     const wakeA = maybeWakeRequesterAfterAllChildrenSettled(
