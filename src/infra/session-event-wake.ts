@@ -565,41 +565,6 @@ function createSessionEventWakeRuntime() {
   function requestSessionEventWake(options: RequestOptions): void {
     enqueueRequest(options);
   }
-  function requestSessionEventWakeRetry(
-    options: SessionEventWakeRequest,
-    result: Extract<SessionEventWakeResult, { status: "skipped" }>,
-  ): void {
-    const now = performance.now();
-    const delay =
-      result.retryAtMs !== undefined
-        ? Math.max(0, result.retryAtMs - Date.now())
-        : result.reason === "preempted" ||
-            result.reason === "channel-not-ready" ||
-            ((result.reason === "requests-in-flight" || result.reason === "active-run") &&
-              (options.intent === "scheduled" || options.intent === "task"))
-          ? SESSION_EVENT_IDLE_RETRY_MS
-          : RETRY_MS;
-    const trustedContinuationRouting = hasTrustedContinuationHeartbeatWake(options);
-    const pendingWake: PendingWake = {
-      ...options,
-      agentId: normalizeOptionalString(options.agentId),
-      sessionKey: normalizeOptionalString(options.sessionKey),
-      reason: normalizeHeartbeatWakeReason(options.reason),
-      trustedContinuationRouting,
-      sequence: ++sequence,
-      barrierSequence:
-        targetBaseKey(options) === "::" && options.intent === "immediate" ? sequence : undefined,
-      requestedAt: now,
-      readyAt: now,
-      notBefore: now + delay,
-      retainedWork: true,
-      settlements: [],
-    };
-    runWithoutOwnedSessionTranscriptWrites(() => {
-      enqueue(pendingWake, now + delay);
-      schedulePending();
-    });
-  }
   function requestSessionEventWakeAndWait(
     options: RequestOptions,
     lifecycle?: SessionEventWakeWaitOptions,
@@ -632,7 +597,6 @@ function createSessionEventWakeRuntime() {
     setSessionEventWakeHandler,
     requestSessionEventWake,
     requestSessionEventWakeAndWait,
-    requestSessionEventWakeRetry,
     getSessionEventWakeAbortSignal: () => abortSignals.getStore(),
     getActiveSessionEventWakeContext: () => activeRequests.getStore() ?? null,
     areSessionEventWakesEnabled: () => enabled,
@@ -660,7 +624,6 @@ export const {
   setSessionEventWakeHandler,
   requestSessionEventWake,
   requestSessionEventWakeAndWait,
-  requestSessionEventWakeRetry,
   getSessionEventWakeAbortSignal,
   getActiveSessionEventWakeContext,
   areSessionEventWakesEnabled,

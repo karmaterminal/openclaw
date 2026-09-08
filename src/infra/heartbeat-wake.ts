@@ -11,7 +11,6 @@ import {
 import {
   requestSessionEventWake,
   requestSessionEventWakeAndWait,
-  requestSessionEventWakeRetry,
   resetSessionEventWakeStateForTests,
   setSessionEventWakeHandler,
 } from "./session-event-wake.js";
@@ -88,13 +87,6 @@ export function requestHeartbeatNow(options?: {
     markTrustedContinuationHeartbeatWake(request);
   }
   requestHeartbeatRaw(request);
-}
-
-export function requestHeartbeatRetry(
-  wake: HeartbeatWakeRequest,
-  result: Extract<HeartbeatRunResult, { status: "skipped" }>,
-): void {
-  requestSessionEventWakeRetry(wake, result);
 }
 
 export function resetHeartbeatWakeStateForTests(): void {
