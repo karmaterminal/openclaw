@@ -33,6 +33,7 @@ import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-runtime-internal
 import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
 import { enqueuePendingDelegate } from "../continuation/delegate-store.js";
+import { resetContinuationWorkDispatchForTests } from "../continuation/work-dispatch.js";
 import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
 import type { TemplateContext } from "../templating.js";
 import { isContinuationChainPatch } from "./agent-runner-entry.test-support.js";
@@ -308,6 +309,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetContinuationWorkDispatchForTests();
   vi.useRealTimers();
   clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
@@ -369,6 +371,7 @@ function createContinuationRun(params?: {
       skillsSnapshot: {},
       provider: "anthropic",
       model: "claude",
+      thinkingCatalog: [{ provider: "anthropic", id: "claude", input: ["text"] }],
       thinkLevel: "low",
       verboseLevel: "off",
       elevatedLevel: "off",
