@@ -1,5 +1,7 @@
+import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import { resetAgentEventsForTest } from "../../infra/agent-events.js";
 import type { AgentHarness } from "../harness/types.js";
 import type { AgentInternalEvent } from "../internal-events.js";
@@ -248,6 +250,12 @@ describe("runEmbeddedAgent continuation model routing", () => {
 
   it("keeps a session-pinned native model out of prepared-route materialization", async () => {
     const { clearAgentHarnesses, registerAgentHarness } = await import("../harness/registry.js");
+    const sessionId = "native-session";
+    const sessionKey = "agent:main:harness:codex:supervision:native-thread";
+    const storePath = path.join(
+      tempDirs.make("openclaw-continuation-native-model-"),
+      "sessions.json",
+    );
     const pluginRunAttempt = vi.fn<AgentHarness["runAttempt"]>(async () =>
       makeAttemptResult({ assistantTexts: ["native ok"], promptError: null }),
     );
@@ -287,8 +295,26 @@ describe("runEmbeddedAgent continuation model routing", () => {
       supports: (ctx) =>
         ctx.provider === "openai" ? { supported: true, priority: 100 } : { supported: false },
       authBootstrap: "harness",
+      resolveSessionRuntimeOwnership: ({ assertCurrent }) => {
+        assertCurrent();
+        return {
+          model: "native",
+          auth: "host",
+          modelRef: { provider: "openai", model: "gpt-native" },
+        };
+      },
       runAttempt: pluginRunAttempt,
     });
+    await replaceSessionEntry(
+      { agentId: "main", sessionKey, storePath },
+      {
+        agentHarnessId: "codex",
+        delivery: { kind: "none" },
+        modelSelectionLocked: true,
+        sessionId,
+        updatedAt: Date.now(),
+      },
+    );
     mockedEnsureAuthProfileStore.mockReturnValue(authStore);
     mockedResolveAuthProfileOrder.mockReturnValue(["openai:work"]);
     mockedBuildAgentRuntimePlan.mockReturnValue(runtimePlan);
@@ -296,7 +322,9 @@ describe("runEmbeddedAgent continuation model routing", () => {
     try {
       await runEmbeddedAgent({
         ...overflowBaseRunParams,
-        sessionKey: undefined,
+        sessionId,
+        sessionKey,
+        sessionTarget: { agentId: "main", sessionId, sessionKey, storePath },
         provider: "openai",
         model: "gpt-native",
         agentHarnessId: "codex",
@@ -305,6 +333,7 @@ describe("runEmbeddedAgent continuation model routing", () => {
         authProfileIdSource: "user",
         config: {
           agents: { defaults: { agentRuntime: { id: "codex" } } },
+          session: { store: storePath },
         },
         runId: "native-model-skips-route-materialization",
       });
