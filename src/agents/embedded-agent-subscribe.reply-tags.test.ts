@@ -8,6 +8,7 @@ import {
   emitAssistantTextEnd,
 } from "./embedded-agent-subscribe.e2e-harness.js";
 import { subscribeEmbeddedAgentSession } from "./embedded-agent-subscribe.js";
+import { textAssistant } from "./test-helpers/sparse-transcript.test-support.js";
 
 describe("subscribeEmbeddedAgentSession reply tags", () => {
   type ReplyPayload = { text?: string; replyToCurrent?: boolean; replyToTag?: boolean };
@@ -56,10 +57,7 @@ describe("subscribeEmbeddedAgentSession reply tags", () => {
     emitAssistantTextDelta({ emit, delta: "[[reply_to_current]]\nHello" });
     emitAssistantTextEnd({ emit });
 
-    const assistantMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "[[reply_to_current]]\nHello" }],
-    } as AssistantMessage;
+    const assistantMessage = textAssistant("[[reply_to_current]]\nHello") as AssistantMessage;
     emit({ type: "message_end", message: assistantMessage });
 
     expect(onBlockReply.mock.calls.map(([payload]) => payload)).toEqual([
@@ -198,10 +196,7 @@ describe("subscribeEmbeddedAgentSession reply tags", () => {
     emitAssistantTextDelta({ emit, delta: "current] Visible reply" });
     emitAssistantTextEnd({ emit });
 
-    const assistantMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "[[reply_to_current] Visible reply" }],
-    } as AssistantMessage;
+    const assistantMessage = textAssistant("[[reply_to_current] Visible reply") as AssistantMessage;
     emit({ type: "message_end", message: assistantMessage });
     await subscription.waitForPendingEvents();
 

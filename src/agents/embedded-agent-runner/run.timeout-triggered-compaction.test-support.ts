@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { makeUserMessage } from "../../../test/helpers/user-message.js";
 import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
 import * as systemEvents from "../../infra/system-events.js";
 import type { OpenClawTestState } from "../../test-utils/openclaw-test-state.js";
@@ -75,11 +76,7 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
     mockedBuildEmbeddedRunPayloads.mockReturnValue([{ text: "timeout recovery complete" }]);
     mockedRunEmbeddedAttempt
       .mockImplementationOnce(async (params) => {
-        params.onUserMessagePersisted?.({
-          role: "user",
-          content: "hello",
-          timestamp: 1,
-        });
+        params.onUserMessagePersisted?.(makeUserMessage("hello", 1));
         return makeAttemptResult({
           timedOut: true,
           lastAssistant: { usage: { input: 160_000 } } as never,

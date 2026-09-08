@@ -22,6 +22,7 @@ describe("ensurePlaywrightChromium", () => {
 
     expect(
       ensurePlaywrightChromium({
+        env: {},
         executablePath: "/cache/chromium/chrome",
         existsSync: () => true,
         spawnSync,
@@ -73,6 +74,7 @@ describe("ensurePlaywrightChromium", () => {
 
     expect(
       ensurePlaywrightChromium({
+        env: {},
         executablePath: "/cache/chromium/chrome",
         existsSync: (candidatePath: string) => candidatePath === "/usr/bin/chromium-browser",
         log: (line: string) => logs.push(line),
@@ -245,6 +247,7 @@ describe("ensurePlaywrightChromium", () => {
 
     expect(
       ensurePlaywrightChromium({
+        env: {},
         executablePath: "/cache/chromium/chrome",
         existsSync: (candidatePath: string) =>
           candidatePath === "/snap/bin/chromium" || candidatePath === "/usr/bin/google-chrome",
@@ -513,6 +516,7 @@ describe("ensurePlaywrightChromium", () => {
   it("returns the installer status when Playwright install fails", () => {
     expect(
       ensurePlaywrightChromium({
+        env: {},
         executablePath: "/cache/chromium/chrome",
         existsSync: () => false,
         platform: "darwin",

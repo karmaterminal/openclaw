@@ -3356,7 +3356,7 @@ EOF
         { HOME: home, PATH: "/usr/bin:/bin", SHELL: "/bin/bash" },
       );
       const interactive = spawnSync(
-        "bash",
+        "/bin/bash",
         ["-ic", "printf 'openclaw-path=%s\\n' \"$(command -v openclaw)\""],
         {
           encoding: "utf8",
@@ -3364,7 +3364,7 @@ EOF
         },
       );
       const login = spawnSync(
-        "bash",
+        "/bin/bash",
         ["--noprofile", "--norc", "-c", '. "$HOME/.profile"; command -v openclaw'],
         {
           encoding: "utf8",
@@ -4793,7 +4793,7 @@ describe("install.sh duplicate OpenClaw install detection", () => {
 
   it("needs_stdin_isolation returns true when stdin is piped", () => {
     const result = spawnSync(
-      "bash",
+      "/bin/bash",
       [
         "-c",
         `source "${SCRIPT_PATH}" && needs_stdin_isolation && echo "ISOLATED" || echo "INTERACTIVE"`,
@@ -4886,7 +4886,7 @@ describe("install.sh duplicate OpenClaw install detection", () => {
     const marker = join(dir, "stdin-state");
     try {
       const result = spawnSync(
-        "bash",
+        "/bin/bash",
         [
           "-c",
           `source "${SCRIPT_PATH}" && GUM="" && run_quiet_step "test-step" bash -c 'if read -t 1 line 2>/dev/null && [ -n "$line" ]; then echo "LEAKED:$line" > ${JSON.stringify(marker)}; else echo ISOLATED > ${JSON.stringify(marker)}; fi'`,
@@ -4922,7 +4922,7 @@ describe("install.sh duplicate OpenClaw install detection", () => {
     const marker = join(dir, "stdin-state");
     try {
       const result = spawnSync(
-        "bash",
+        "/bin/bash",
         [
           "-c",
           // Bypass run_quiet_step: call the child directly with inherited stdin
@@ -4957,7 +4957,7 @@ describe("install.sh duplicate OpenClaw install detection", () => {
     const marker = join(dir, "stdin-state");
     try {
       const result = spawnSync(
-        "bash",
+        "/bin/bash",
         [
           "-c",
           `source "${SCRIPT_PATH}" && GUM="" && run_quiet_step "test-step" bash -c 'output=$(cat); if [ -n "$output" ]; then echo "LEAKED" > ${JSON.stringify(marker)}; else echo "ISOLATED" > ${JSON.stringify(marker)}; fi'`,

@@ -19,6 +19,7 @@ import {
 } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { makeTextToolResult } from "../../../test/helpers/text-tool-result.js";
 import { createReplyOperation } from "../../auto-reply/reply/reply-run-registry.js";
 import {
   loadSessionEntryReadOnly,
@@ -3336,14 +3337,7 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
         content: [{ type: "toolCall", id: "call-1", name: "exec", arguments: {} }],
         timestamp: 2,
       },
-      {
-        role: "toolResult",
-        toolCallId: "call-1",
-        toolName: "exec",
-        content: [{ type: "text", text: "audit output" }],
-        isError: false,
-        timestamp: 3,
-      },
+      makeTextToolResult("call-1", "exec", "audit output", false, 3),
     );
 
     const result = await compactEmbeddedAgentSessionDirect(
@@ -3399,14 +3393,7 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
   it("skips compaction when the transcript only contains boilerplate replies and tool output", () => {
     const messages = [
       { role: "user", content: "<b>HEARTBEAT_OK</b>", timestamp: 1 },
-      {
-        role: "toolResult",
-        toolCallId: "t1",
-        toolName: "exec",
-        content: [{ type: "text", text: "checked" }],
-        isError: false,
-        timestamp: 2,
-      },
+      makeTextToolResult("t1", "exec", "checked", false, 2),
     ] as AgentMessage[];
 
     expect(compactTesting.containsRealConversationMessages(messages)).toBe(false);
