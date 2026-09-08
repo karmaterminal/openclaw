@@ -93,6 +93,7 @@ function reportDelegateAdmissionFailure(childSessionKey: string, eventSessionKey
 async function drainChildContinuationQueue(params: {
   cfg: OpenClawConfig;
   childSessionKey: string;
+  childAgentId?: string;
   requesterOrigin?: DeliveryContext;
   additionalChainTokens?: number;
   dispatchRegardlessOfDelay?: boolean;
@@ -104,7 +105,7 @@ async function drainChildContinuationQueue(params: {
     return undefined;
   }
   try {
-    const childEntry = loadSessionEntryByKey(params.childSessionKey);
+    const childEntry = loadSessionEntryByKey(params.childSessionKey, params.childAgentId);
     const config = resolveContinuationRuntimeConfig(params.cfg);
     const baseChainState = params.chainStateOverride ?? loadContinuationChainState(childEntry);
     const chainState =
@@ -170,6 +171,7 @@ async function drainChildContinuationQueue(params: {
       chainState,
       ctx: {
         sessionKey: params.childSessionKey,
+        ownerAgentId: params.childAgentId,
         agentChannel: params.requesterOrigin?.channel,
         agentAccountId: params.requesterOrigin?.accountId,
         agentTo: params.requesterOrigin?.to,
@@ -271,6 +273,7 @@ async function scheduleSubagentSelfContinuationWork(params: {
 export async function coordinateSubagentContinuation(params: {
   cfg: OpenClawConfig;
   childSessionKey: string;
+  childAgentId?: string;
   childRunId: string;
   targetRequesterSessionKey: string;
   targetRequesterOrigin?: DeliveryContext;
@@ -319,6 +322,7 @@ export async function coordinateSubagentContinuation(params: {
     await drainChildContinuationQueue({
       cfg: params.cfg,
       childSessionKey: params.childSessionKey,
+      childAgentId: params.childAgentId,
       requesterOrigin: params.targetRequesterOrigin,
       additionalChainTokens: accounting.childChainTokensToFold,
       dispatchRegardlessOfDelay: accounting.childChainTokensToFold > 0,
@@ -462,6 +466,7 @@ export async function coordinateSubagentContinuation(params: {
             const dispatchResult = await drainChildContinuationQueue({
               cfg: params.cfg,
               childSessionKey: params.childSessionKey,
+              childAgentId: params.childAgentId,
               requesterOrigin: params.targetRequesterOrigin,
               ...(accounting.childChainTokensToFold > 0 ? { dispatchRegardlessOfDelay: true } : {}),
               chainStateOverride: {
@@ -516,7 +521,10 @@ export async function coordinateSubagentContinuation(params: {
       const activeDispatch = registerContinuationDelegateDispatchClaim({
         controller: "pending",
         delegate,
-        loadOwnerSessionEntry: createContinuationOwnerSessionLoader(params.childSessionKey),
+        ownerSession: createContinuationOwnerSessionLoader(
+          params.childSessionKey,
+          params.childAgentId,
+        ),
         ownerSessionKey: params.childSessionKey,
       });
       let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
@@ -585,7 +593,9 @@ export async function coordinateSubagentContinuation(params: {
               : {}),
           },
           {
-            agentSessionKey: params.targetRequesterSessionKey,
+            agentSessionKey: params.childSessionKey,
+            completionOwnerKey: params.targetRequesterSessionKey,
+            requesterAgentIdOverride: activeDispatch.ownerAgentId,
             ...(delegate.originRunId ? { requesterTurnRunId: delegate.originRunId } : {}),
             agentChannel: params.targetRequesterOrigin?.channel ?? undefined,
             agentAccountId: params.targetRequesterOrigin?.accountId ?? undefined,
@@ -643,6 +653,7 @@ export async function coordinateSubagentContinuation(params: {
       void drainChildContinuationQueue({
         cfg: params.cfg,
         childSessionKey: params.childSessionKey,
+        childAgentId: params.childAgentId,
         requesterOrigin: params.targetRequesterOrigin,
         chainStateOverride: {
           currentChainCount: state.count,
@@ -662,6 +673,7 @@ export async function coordinateSubagentContinuation(params: {
     void drainChildContinuationQueue({
       cfg: params.cfg,
       childSessionKey: params.childSessionKey,
+      childAgentId: params.childAgentId,
       requesterOrigin: params.targetRequesterOrigin,
       chainStateOverride: {
         currentChainCount: state.count,

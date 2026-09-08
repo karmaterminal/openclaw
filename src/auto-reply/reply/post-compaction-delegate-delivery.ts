@@ -606,8 +606,10 @@ export async function deliverQueuedPostCompactionDelegate(
       expectedRevision: params.entry.sourceExpectedRevision,
       task: params.entry.task,
     },
-    loadOwnerSessionEntry: () =>
-      deps.loadSessionEntry({ storePath, sessionKey: params.entry.sessionKey }),
+    ownerSession: {
+      agentId,
+      load: () => deps.loadSessionEntry({ storePath, sessionKey: params.entry.sessionKey }),
+    },
     ownerSessionKey: params.entry.sessionKey,
   });
   let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
@@ -664,6 +666,7 @@ export async function deliverQueuedPostCompactionDelegate(
       },
       {
         agentSessionKey: params.entry.sessionKey,
+        requesterAgentIdOverride: activeDispatch.ownerAgentId,
         agentChannel: params.entry.deliveryContext?.channel,
         agentAccountId: params.entry.deliveryContext?.accountId,
         agentTo: params.entry.deliveryContext?.to,

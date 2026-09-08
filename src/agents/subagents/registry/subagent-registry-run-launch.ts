@@ -184,6 +184,7 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
       progressOrigin: registerParams.progressOrigin,
       requesterDisplayKey: registerParams.requesterDisplayKey,
       requesterAgentId: resolveSubagentRequesterAgentId(cfg, registerParams),
+      agentId: registerParams.agentId,
       task: registerParams.task,
       taskName: registerParams.taskName,
       cleanup: registerParams.cleanup,

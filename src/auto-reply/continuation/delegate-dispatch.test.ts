@@ -773,7 +773,7 @@ describe("raw trusted delegate task echoes", () => {
             chainStartedAt: Date.now(),
             accumulatedChainTokens: 0,
           },
-          ctx: { sessionKey },
+          ctx: { sessionKey, ownerAgentId: "main" },
           maxChainLength: 10,
           config: continuationConfig(),
         });
@@ -783,7 +783,10 @@ describe("raw trusted delegate task echoes", () => {
           expect.objectContaining({
             task: expect.stringContaining(ROLE_MARKED_DELEGATE_TASK),
           }),
-          expect.objectContaining({ agentSessionKey: sessionKey }),
+          expect.objectContaining({
+            agentSessionKey: sessionKey,
+            requesterAgentIdOverride: "main",
+          }),
         );
       },
     },

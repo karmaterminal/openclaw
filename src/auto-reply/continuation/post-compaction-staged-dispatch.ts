@@ -39,6 +39,7 @@ const postCompactionLog = createSubsystemLogger("continuation/compaction");
 
 export interface PostCompactionSpawnContext {
   agentSessionKey: string;
+  requesterAgentIdOverride?: string;
   agentChannel?: string;
   agentAccountId?: string;
   agentTo?: string;
@@ -341,7 +342,10 @@ export async function dispatchStagedPostCompactionDelegates(
     const activeDispatch = registerContinuationDelegateDispatchClaim({
       controller: "post-compaction",
       delegate,
-      loadOwnerSessionEntry: createContinuationOwnerSessionLoader(sessionKey),
+      ownerSession: createContinuationOwnerSessionLoader(
+        sessionKey,
+        spawnCtx.requesterAgentIdOverride,
+      ),
       ownerSessionKey: sessionKey,
     });
     let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
@@ -407,6 +411,7 @@ export async function dispatchStagedPostCompactionDelegates(
         },
         {
           ...spawnCtx,
+          requesterAgentIdOverride: activeDispatch.ownerAgentId,
           continuationDelegateAdmission: activeDispatch.authority,
         },
       );

@@ -11,7 +11,6 @@ import {
 import { deriveContinuationDelegateChildSessionKeyFromParent } from "../../agents/subagent-continuation-ids.js";
 import { isSpawnSubagentAdmissionCancelledError } from "../../agents/subagents/spawn/subagent-spawn-contract.js";
 import { spawnSubagentDirect } from "../../agents/subagents/spawn/subagent-spawn.js";
-import type { SpawnSubagentContext } from "../../agents/subagents/spawn/subagent-spawn.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import {
   emitContinuationDelegateFireSpan,
@@ -456,22 +455,13 @@ export async function dispatchToolDelegates(
     const delegateDelayMs = delegate.delayMs ?? 0;
     const delegateDelivery: "immediate" | "timer" = delegateDelayMs > 0 ? "timer" : "immediate";
 
-    const spawnCtx: SpawnSubagentContext = {
-      agentSessionKey: sessionKey,
-      ...(delegate.originRunId ? { requesterTurnRunId: delegate.originRunId } : {}),
-      agentChannel: ctx.agentChannel,
-      agentAccountId: ctx.agentAccountId,
-      agentTo: ctx.agentTo,
-      agentThreadId: ctx.agentThreadId,
-    };
-
     let dispatchSpan: ReturnType<typeof startContinuationDelegateSpan> | undefined;
     let spawnAttempted = false;
     let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
     const activeDispatch = registerContinuationDelegateDispatchClaim({
       controller: "pending",
       delegate,
-      loadOwnerSessionEntry: createContinuationOwnerSessionLoader(sessionKey),
+      ownerSession: createContinuationOwnerSessionLoader(sessionKey, ctx.ownerAgentId),
       ownerSessionKey: sessionKey,
     });
     try {
@@ -581,7 +571,13 @@ export async function dispatchToolDelegates(
           ...(spawnTraceparent ? { traceparent: spawnTraceparent } : {}),
         },
         {
-          ...spawnCtx,
+          agentSessionKey: sessionKey,
+          requesterAgentIdOverride: activeDispatch.ownerAgentId,
+          ...(delegate.originRunId ? { requesterTurnRunId: delegate.originRunId } : {}),
+          agentChannel: ctx.agentChannel,
+          agentAccountId: ctx.agentAccountId,
+          agentTo: ctx.agentTo,
+          agentThreadId: ctx.agentThreadId,
           continuationDelegateAdmission: activeDispatch.authority,
         },
       );
