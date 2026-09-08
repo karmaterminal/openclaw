@@ -88,6 +88,13 @@ export type RequestCompactionPersistedNullCause =
   | "total_tokens_version_mismatch"
   | "unresolved_model_context";
 
+export type RequestCompactionUnavailableReason =
+  | "inventory_stub"
+  | "live_context_unavailable"
+  | "session_binding_mismatch"
+  | "stale_snapshot"
+  | "unresolved_model_window";
+
 export type RequestCompactionContextUsageDiagnostics = {
   usageSource: "live_in_flight" | "persisted_fallback" | "unavailable" | "inventory_stub";
   callbackSessionId?: string;
@@ -144,6 +151,51 @@ export type RequestCompactionToolBinding = Pick<
 
 function formatErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function resolveContextUnavailableReason(
+  opts: RequestCompactionToolOpts,
+  diagnostics: RequestCompactionContextUsageDiagnostics | undefined,
+): { code: RequestCompactionUnavailableReason; message: string } {
+  const cause = diagnostics?.nullCause;
+  if (opts.contextUsageOrigin === "inventory_stub" || cause === "inventory_stub") {
+    return {
+      code: "inventory_stub",
+      message:
+        "Context pressure is unavailable in this tool inventory context; invoke request_compaction from an active agent turn.",
+    };
+  }
+  if (cause === "session_binding_mismatch") {
+    return {
+      code: "session_binding_mismatch",
+      message:
+        "Context pressure was rejected because the available session snapshot does not match this invocation.",
+    };
+  }
+  if (cause === "unresolved_model_context") {
+    return {
+      code: "unresolved_model_window",
+      message:
+        "Context pressure is unavailable because the active model context window could not be resolved.",
+    };
+  }
+  if (
+    cause === "missing_entry" ||
+    cause === "missing_total_tokens" ||
+    cause === "invalid_total_tokens" ||
+    cause === "stale_total_tokens" ||
+    cause === "total_tokens_version_mismatch"
+  ) {
+    return {
+      code: "stale_snapshot",
+      message:
+        "Context pressure is unavailable because no fresh session snapshot is available; retry after the current turn records usage.",
+    };
+  }
+  return {
+    code: "live_context_unavailable",
+    message: "Live context pressure is unavailable for this active turn; retry on the next turn.",
+  };
 }
 
 function notifyCompactionFailure(params: {
@@ -260,14 +312,18 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
           `liveNullCause=${contextDiagnostics?.liveNullCause ?? "none"}`,
       );
       if (contextUsage === null) {
+        const unavailable = resolveContextUnavailableReason(opts, contextDiagnostics);
         log.debug(
           `[request_compaction:context-unknown] source=${opts.contextUsageOrigin ?? "unspecified"} ` +
-            `session=${sessionKey} sessionId=${opts.sessionId}`,
+            `category=${unavailable.code} session=${sessionKey} sessionId=${opts.sessionId}`,
         );
         return jsonResult({
           status: "rejected",
           guard: "context_threshold",
-          reason: `Context usage is unknown for this session; request_compaction is unavailable on inventory-only paths.`,
+          contextUsage: null,
+          threshold: Math.round(MIN_CONTEXT_THRESHOLD * 100),
+          contextUnavailableReason: unavailable.code,
+          reason: unavailable.message,
         });
       }
       if (contextUsage < MIN_CONTEXT_THRESHOLD) {

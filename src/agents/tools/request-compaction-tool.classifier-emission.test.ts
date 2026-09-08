@@ -151,8 +151,10 @@ describe("request_compaction tool — classifier emission", () => {
     expect(result).toEqual({
       status: "rejected",
       guard: "context_threshold",
-      reason:
-        "Context usage is unknown for this session; request_compaction is unavailable on inventory-only paths.",
+      contextUsage: null,
+      threshold: 70,
+      contextUnavailableReason: "live_context_unavailable",
+      reason: "Live context pressure is unavailable for this active turn; retry on the next turn.",
     });
     expect(triggerCompaction).not.toHaveBeenCalled();
     expect(capturedLogs).toContainEqual({
@@ -170,8 +172,69 @@ describe("request_compaction tool — classifier emission", () => {
       level: "debug",
       message:
         `[request_compaction:context-unknown] source=live_runner ` +
-        `session=${SESSION_KEY} sessionId=${SESSION_ID}`,
+        `category=live_context_unavailable session=${SESSION_KEY} sessionId=${SESSION_ID}`,
     });
+  });
+
+  it.each([
+    {
+      name: "inventory catalog",
+      origin: "inventory_stub" as const,
+      nullCause: "inventory_stub" as const,
+      category: "inventory_stub",
+      reason:
+        "Context pressure is unavailable in this tool inventory context; invoke request_compaction from an active agent turn.",
+    },
+    {
+      name: "wrong callback session",
+      origin: "live_runner" as const,
+      nullCause: "session_binding_mismatch" as const,
+      category: "session_binding_mismatch",
+      reason:
+        "Context pressure was rejected because the available session snapshot does not match this invocation.",
+    },
+    {
+      name: "stale persisted snapshot",
+      origin: "live_runner" as const,
+      nullCause: "stale_total_tokens" as const,
+      category: "stale_snapshot",
+      reason:
+        "Context pressure is unavailable because no fresh session snapshot is available; retry after the current turn records usage.",
+    },
+    {
+      name: "unresolved model window",
+      origin: "live_runner" as const,
+      nullCause: "unresolved_model_context" as const,
+      category: "unresolved_model_window",
+      reason:
+        "Context pressure is unavailable because the active model context window could not be resolved.",
+    },
+  ])("returns a safe categorical failure for $name", async (testCase) => {
+    const triggerCompaction = vi.fn(async () => ({ ok: true, compacted: true }));
+    const tool = createRequestCompactionTool(
+      buildOpts({
+        contextUsageOrigin: testCase.origin,
+        getContextUsage: () => null,
+        getContextUsageDiagnostics: () => ({
+          usageSource: testCase.origin === "inventory_stub" ? "inventory_stub" : "unavailable",
+          nullCause: testCase.nullCause,
+        }),
+        triggerCompaction,
+      }),
+    );
+
+    const result = (await tool.execute(`call-${testCase.category}`, { reason: REASON }))?.details;
+
+    expect(result).toEqual({
+      status: "rejected",
+      guard: "context_threshold",
+      contextUsage: null,
+      threshold: 70,
+      contextUnavailableReason: testCase.category,
+      reason: testCase.reason,
+    });
+    expect(triggerCompaction).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain(REASON);
   });
 
   it("warn log on resolve-with-failure includes code=<classifier-result> and the raw reason", async () => {

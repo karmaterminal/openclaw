@@ -289,7 +289,7 @@ export async function dispatchEmbeddedRunAttempt(input: {
             nullCause:
               resolvedUsageSource === "persisted_fallback"
                 ? persisted?.nullCause
-                : (persisted?.nullCause ?? live?.liveNullCause),
+                : (live?.liveNullCause ?? persisted?.nullCause),
           };
         },
         bindLiveContextUsage(

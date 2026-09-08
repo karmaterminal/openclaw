@@ -284,8 +284,11 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     expect(result).toEqual({
       status: "rejected",
       guard: "context_threshold",
+      contextUsage: null,
+      threshold: 70,
+      contextUnavailableReason: "stale_snapshot",
       reason:
-        "Context usage is unknown for this session; request_compaction is unavailable on inventory-only paths.",
+        "Context pressure is unavailable because no fresh session snapshot is available; retry after the current turn records usage.",
     });
   });
 
