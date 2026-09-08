@@ -35,6 +35,7 @@ import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-di
 import { enqueuePendingDelegate } from "../continuation/delegate-store.js";
 import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
 import type { TemplateContext } from "../templating.js";
+import { isContinuationChainPatch } from "./agent-runner-entry.test-support.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { testing as replyRunRegistryTesting } from "./reply-run-registry.test-support.js";
 import { createMockTypingController } from "./test-helpers.js";
@@ -581,7 +582,20 @@ describe("runReplyAgent :: continuation.work span", () => {
       sessionKey: "continuation-work-persistence-failure",
     });
     loadSessionEntryMock.mockReturnValue(run.sessionEntry);
-    patchSessionEntryMock.mockRejectedValueOnce(new Error("session database unavailable"));
+    let continuationPersistenceCalls = 0;
+    patchSessionEntryMock.mockImplementation(
+      async (
+        _scope: unknown,
+        update: (entry: SessionEntry) => Partial<SessionEntry> | null,
+      ): Promise<SessionEntry | null> => {
+        const patch = update(run.sessionEntry);
+        if (isContinuationChainPatch(patch)) {
+          continuationPersistenceCalls += 1;
+          throw new Error("session database unavailable");
+        }
+        return patch ? { ...run.sessionEntry, ...patch } : null;
+      },
+    );
     runEmbeddedAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "Working on it\nCONTINUE_WORK:1" }],
       meta: { agentMeta: { usage: { input: 2, output: 3 } } },
@@ -596,7 +610,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       "/tmp/openclaw-continuation-work-persistence-failure.json",
     );
 
-    expect(patchSessionEntryMock).toHaveBeenCalledTimes(1);
+    expect(continuationPersistenceCalls).toBe(1);
     expect(spans.filter((span) => span.name === "continuation.work")).toHaveLength(0);
     expect(listTaskFlowsForOwnerKey(run.sessionKey)).toHaveLength(0);
     expect(run.sessionEntry.continuationChainCount).toBeUndefined();
@@ -612,15 +626,17 @@ describe("runReplyAgent :: continuation.work span", () => {
     });
     loadSessionEntryMock.mockReturnValue(run.sessionEntry);
     let persistedEntry = run.sessionEntry;
-    let persistenceCalls = 0;
+    let continuationPersistenceCalls = 0;
     patchSessionEntryMock.mockImplementation(
       async (
         _scope: unknown,
         update: (entry: SessionEntry) => Partial<SessionEntry> | null,
       ): Promise<SessionEntry | null> => {
         const patch = update(persistedEntry);
-        persistenceCalls += 1;
-        if (persistenceCalls === 1) {
+        if (isContinuationChainPatch(patch)) {
+          continuationPersistenceCalls += 1;
+        }
+        if (continuationPersistenceCalls === 1 && isContinuationChainPatch(patch)) {
           setRuntimeConfigSnapshot({
             ...run.followupRun.run.config,
             agents: {
@@ -656,7 +672,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       "/tmp/openclaw-continuation-work-disable-reservation.json",
     );
 
-    expect(patchSessionEntryMock).toHaveBeenCalledTimes(2);
+    expect(continuationPersistenceCalls).toBe(2);
     expect(spans.filter((span) => span.name === "continuation.work")).toHaveLength(0);
     expect(listTaskFlowsForOwnerKey(run.sessionKey)).toHaveLength(0);
     const storedEntry = sessionStore[run.sessionKey];
@@ -676,15 +692,17 @@ describe("runReplyAgent :: continuation.work span", () => {
     });
     loadSessionEntryMock.mockReturnValue(run.sessionEntry);
     let persistedEntry = run.sessionEntry;
-    let persistenceCalls = 0;
+    let continuationPersistenceCalls = 0;
     patchSessionEntryMock.mockImplementation(
       async (
         _scope: unknown,
         update: (entry: SessionEntry) => Partial<SessionEntry> | null,
       ): Promise<SessionEntry | null> => {
         const patch = update(persistedEntry);
-        persistenceCalls += 1;
-        if (persistenceCalls === 1) {
+        if (isContinuationChainPatch(patch)) {
+          continuationPersistenceCalls += 1;
+        }
+        if (continuationPersistenceCalls === 1 && isContinuationChainPatch(patch)) {
           setRuntimeConfigSnapshot({
             ...run.followupRun.run.config,
             agents: {
@@ -735,7 +753,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       "/tmp/openclaw-continuation-work-live-limits.json",
     );
 
-    expect(patchSessionEntryMock).toHaveBeenCalledTimes(2);
+    expect(continuationPersistenceCalls).toBe(2);
     expect(listTaskFlowsForOwnerKey(run.sessionKey)).toHaveLength(1);
     expect(sessionStore[run.sessionKey]?.continuationChainCount).toBe(1);
   });
@@ -760,17 +778,19 @@ describe("runReplyAgent :: continuation.work span", () => {
     });
     loadSessionEntryMock.mockReturnValue(run.sessionEntry);
     let persistedEntry = run.sessionEntry;
-    let persistenceCalls = 0;
+    let continuationPersistenceCalls = 0;
     patchSessionEntryMock.mockImplementation(
       async (
         _scope: unknown,
         update: (entry: SessionEntry) => Partial<SessionEntry> | null,
       ): Promise<SessionEntry | null> => {
-        persistenceCalls += 1;
-        if (persistenceCalls === 2) {
+        const patch = update(persistedEntry);
+        if (isContinuationChainPatch(patch)) {
+          continuationPersistenceCalls += 1;
+        }
+        if (continuationPersistenceCalls === 2 && isContinuationChainPatch(patch)) {
           throw new Error("session database unavailable during reconciliation");
         }
-        const patch = update(persistedEntry);
         setRuntimeConfigSnapshot({
           ...run.followupRun.run.config,
           agents: {
@@ -820,7 +840,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       "/tmp/openclaw-continuation-work-live-limit-increase.json",
     );
 
-    expect(patchSessionEntryMock).toHaveBeenCalledTimes(2);
+    expect(continuationPersistenceCalls).toBe(2);
     expect(listTaskFlowsForOwnerKey(run.sessionKey)).toHaveLength(1);
     expect(persistedEntry.continuationChainCount).toBe(1);
     expect(sessionStore[run.sessionKey]?.continuationChainCount).toBe(1);
@@ -867,6 +887,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       throw new Error("expected existing parked continuation work");
     }
     loadSessionEntryMock.mockReturnValue(run.sessionEntry);
+    let continuationPersistenceCalls = 0;
     let persistedEntry: SessionEntry = {
       sessionId: "session",
       updatedAt: Date.now(),
@@ -881,6 +902,9 @@ describe("runReplyAgent :: continuation.work span", () => {
         update: (entry: SessionEntry) => Partial<SessionEntry> | null,
       ): Promise<SessionEntry | null> => {
         const patch = update(persistedEntry);
+        if (isContinuationChainPatch(patch)) {
+          continuationPersistenceCalls += 1;
+        }
         if (!patch) {
           return null;
         }
@@ -912,7 +936,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       "/tmp/openclaw-continuation-work-zero-new-reservation.json",
     );
 
-    expect(patchSessionEntryMock).toHaveBeenCalledTimes(2);
+    expect(continuationPersistenceCalls).toBe(2);
     expect(listTaskFlowsForOwnerKey(run.sessionKey)).toMatchObject([
       { flowId: existingWork.flowId, status: "queued" },
     ]);
@@ -926,7 +950,20 @@ describe("runReplyAgent :: continuation.work span", () => {
       sessionKey: "continuation-delegate-hedge-persistence-failure",
     });
     loadSessionEntryMock.mockReturnValue(run.sessionEntry);
-    patchSessionEntryMock.mockRejectedValueOnce(new Error("session database unavailable"));
+    let continuationPersistenceCalls = 0;
+    patchSessionEntryMock.mockImplementation(
+      async (
+        _scope: unknown,
+        update: (entry: SessionEntry) => Partial<SessionEntry> | null,
+      ): Promise<SessionEntry | null> => {
+        const patch = update(run.sessionEntry);
+        if (isContinuationChainPatch(patch)) {
+          continuationPersistenceCalls += 1;
+          throw new Error("session database unavailable");
+        }
+        return patch ? { ...run.sessionEntry, ...patch } : null;
+      },
+    );
     runEmbeddedAgentMock.mockImplementationOnce(async () => {
       enqueuePendingDelegate(run.sessionKey, {
         task: "persist before terminalizing this delayed delegate",
@@ -948,7 +985,7 @@ describe("runReplyAgent :: continuation.work span", () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
-    expect(patchSessionEntryMock).toHaveBeenCalledTimes(1);
+    expect(continuationPersistenceCalls).toBe(1);
     expect(listTaskFlowsForOwnerKey(run.sessionKey)).toMatchObject([{ status: "running" }]);
   });
 });

@@ -52,6 +52,18 @@ export function createCurrentTestDatabaseEntry<T>(entry: T) {
   };
 }
 
+export function isContinuationChainPatch(patch: object | null): boolean {
+  return Boolean(
+    patch &&
+    [
+      "continuationChainCount",
+      "continuationChainStartedAt",
+      "continuationChainTokens",
+      "continuationChainId",
+    ].some((key) => Object.hasOwn(patch, key)),
+  );
+}
+
 export function createSuccessfulEmbeddedAgentEntryMock(
   getRunWithModelFallback: () => TestFallbackRunner,
 ) {

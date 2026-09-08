@@ -35,6 +35,7 @@ import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-di
 import { enqueuePendingDelegate } from "../continuation/delegate-store.js";
 import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
 import type { TemplateContext } from "../templating.js";
+import { isContinuationChainPatch } from "./agent-runner-entry.test-support.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { testing as replyRunRegistryTesting } from "./reply-run-registry.test-support.js";
 import { createMockTypingController } from "./test-helpers.js";
@@ -437,20 +438,24 @@ describe("runReplyAgent :: continuation.work span", () => {
     });
     loadSessionEntryMock.mockReturnValue(run.sessionEntry);
     let persistedEntry = run.sessionEntry;
-    let persistenceCalls = 0;
+    let continuationPersistenceCalls = 0;
     patchSessionEntryMock.mockImplementation(
       async (
         _scope: unknown,
         update: (entry: SessionEntry) => Partial<SessionEntry> | null,
       ): Promise<SessionEntry | null> => {
-        persistenceCalls += 1;
-        if (persistenceCalls === 2) {
+        let patch = update(persistedEntry);
+        const continuationPatch = isContinuationChainPatch(patch);
+        if (continuationPatch && continuationPersistenceCalls === 1) {
           persistedEntry = {
             ...persistedEntry,
             continuationChainTokens: (persistedEntry.continuationChainTokens ?? 0) + 7,
           };
+          patch = update(persistedEntry);
         }
-        const patch = update(persistedEntry);
+        if (continuationPatch) {
+          continuationPersistenceCalls += 1;
+        }
         if (!patch) {
           return null;
         }
@@ -472,7 +477,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       "/tmp/openclaw-continuation-work-concurrent-token-accounting.json",
     );
 
-    expect(patchSessionEntryMock).toHaveBeenCalledTimes(2);
+    expect(continuationPersistenceCalls).toBe(2);
     const storedEntry = sessionStore[run.sessionKey];
     expect(storedEntry).toBeDefined();
     if (!storedEntry) {
