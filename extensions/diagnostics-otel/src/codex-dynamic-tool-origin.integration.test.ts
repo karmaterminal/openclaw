@@ -11,7 +11,6 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { ATTR_GEN_AI_TOOL_CALL_ID } from "@opentelemetry/semantic-conventions/incubating";
 import type { AgentToolResult } from "openclaw/plugin-sdk/agent-core";
-import { createOpenClawCodingTools } from "openclaw/plugin-sdk/agent-harness";
 import type { AnyAgentTool } from "openclaw/plugin-sdk/agent-harness-runtime";
 import {
   cancelPendingDelegates,
@@ -221,10 +220,7 @@ test("exports Codex dynamic continuation origins through the production tool bou
         resetContinueDelegateTurnAdmissionForTests();
         resetTaskFlowRegistryForTests();
 
-        dynamicToolBuildState.openClawCodingToolsFactory = (options) => [
-          ...createOpenClawCodingTools(options),
-          timeoutTool,
-        ];
+        dynamicToolBuildState.extraOpenClawCodingTools = [timeoutTool];
         const params = createParams(
           path.join(tempDir, "session.jsonl"),
           path.join(tempDir, "workspace"),
@@ -272,7 +268,26 @@ test("exports Codex dynamic continuation origins through the production tool bou
         run = runWithDiagnosticTraceContext(runTrace, () =>
           runCodexAppServerAttempt(params, { allowProviderRuntimePluginLoad: false }),
         );
-        await harness.waitForMethod("turn/start", 10_000);
+        let turnStarted = false;
+        await Promise.race([
+          harness.waitForMethod("turn/start", 10_000).then(() => {
+            turnStarted = true;
+          }),
+          Promise.resolve(run).then(
+            (result) => {
+              if (!turnStarted) {
+                throw new Error(
+                  `codex app-server attempt settled before turn/start: ${String(result)}`,
+                );
+              }
+            },
+            (error: unknown) => {
+              if (!turnStarted) {
+                throw error;
+              }
+            },
+          ),
+        ]);
 
         const delegateResponse = await callDynamicTool({
           harness,
