@@ -538,12 +538,15 @@ export async function runSubagentAnnounceFlow(params: {
       silentAnnounce: params.silentAnnounce,
       wakeOnReturn: params.wakeOnReturn,
       traceparent: params.traceparent,
-      loadEntry: (sessionKey, options) =>
-        sessionKey === params.childSessionKey
-          ? loadSessionEntryByKey(sessionKey, params.childAgentId)
-          : sessionKey === targetRequesterSessionKey
-            ? loadSessionEntryByKey(sessionKey, targetRequesterAgentId)
-            : readSessionEntryByKey(sessionKey, options),
+      loadEntry: (sessionKey, options) => {
+        if (sessionKey === params.childSessionKey) {
+          return loadSessionEntryByKey(sessionKey, params.childAgentId);
+        }
+        if (sessionKey === targetRequesterSessionKey) {
+          return loadSessionEntryByKey(sessionKey, targetRequesterAgentId);
+        }
+        return readSessionEntryByKey(sessionKey, options);
+      },
       invalidateSessionEntry,
     });
     findings = continuation.findings;
@@ -731,8 +734,12 @@ export async function runSubagentAnnounceFlow(params: {
       );
     }
   } catch (err) {
+    const originSession = params.childSessionKey.startsWith("agent:") ? "agent-scoped" : "unscoped";
+    const childOwnerSource = params.childAgentId ? "persisted" : "derived";
+    const ownerReceipt = params.childAgentId ? "present" : "absent";
+    const requesterOwnerSource = params.requesterAgentId ? "persisted" : "derived";
     defaultRuntime.error?.(
-      `Subagent announce failed: stage=${failureStage} originSession=${params.childSessionKey.startsWith("agent:") ? "agent-scoped" : "unscoped"} childOwnerSource=${params.childAgentId ? "persisted" : "derived"} ownerReceipt=${params.childAgentId ? "present" : "absent"} requesterOwnerSource=${params.requesterAgentId ? "persisted" : "derived"} ${String(err)}`,
+      `Subagent announce failed: stage=${failureStage} originSession=${originSession} childOwnerSource=${childOwnerSource} ownerReceipt=${ownerReceipt} requesterOwnerSource=${requesterOwnerSource} ${String(err)}`,
     );
     // Best-effort follow-ups; ignore failures to avoid breaking the caller response.
   } finally {
