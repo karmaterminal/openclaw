@@ -295,7 +295,7 @@ describe("runHeartbeatOnce", () => {
           sessionKey: eventSessionKey,
           isMainSession: eventSessionKey === opsMainSessionKey,
           isNewSession: false,
-          events: eventContext?.events,
+          events: eventContext?.events ?? [],
         });
         return { text: "NO_REPLY" };
       });
