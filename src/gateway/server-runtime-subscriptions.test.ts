@@ -52,13 +52,6 @@ import type { AgentEventHandlerOptions } from "./server-chat.js";
 import type { TaskEventPayload } from "./server-methods/task-summary.js";
 import { registerTaskTerminalSubscriptionTests } from "./server-runtime-subscriptions.task-terminals.test-harness.js";
 import { lifecycleState, readLifecycleState } from "./server-runtime-subscriptions.test-support.js";
-import { TerminalSessionManager } from "./terminal/session-manager.js";
-import {
-  agentTerminalOwner,
-  baseOpenRequest,
-  makeFakePty,
-  taskAgentOwner,
-} from "./terminal/session-manager.test-helpers.js";
 
 function waitForFast<T>(
   callback: () => T | Promise<T>,

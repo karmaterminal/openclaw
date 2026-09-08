@@ -15,7 +15,6 @@ import { DEFAULT_CRON_MAX_CONCURRENT_RUNS } from "../../config/cron-limits.js";
 import type { HeartbeatRunResult } from "../../infra/heartbeat-wake-contracts.js";
 import {
   HEARTBEAT_SKIP_REQUESTS_IN_FLIGHT,
-  HEARTBEAT_SKIP_PREEMPTED,
   requestHeartbeatAndWait as requestOwnedHeartbeatAndWait,
   setHeartbeatWakeHandler,
 } from "../../infra/heartbeat-wake.js";
