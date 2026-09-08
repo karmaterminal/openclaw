@@ -2,6 +2,8 @@
 import fs from "node:fs/promises";
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { drainFormattedSystemEvents } from "../auto-reply/reply/session-system-events.js";
+import { getReplySystemEventContext } from "../auto-reply/reply/system-event-session-key.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveMainSessionKey } from "../config/sessions.js";
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
@@ -280,7 +282,23 @@ describe("runHeartbeatOnce", () => {
         sessionKey: opsMainSessionKey,
         trusted: true,
       });
-      replySpy.mockResolvedValue({ text: "NO_REPLY" });
+      let formattedSystemEvents: string | undefined;
+      replySpy.mockImplementation(async (ctx, options) => {
+        const eventContext = getReplySystemEventContext(options);
+        const eventSessionKey = eventContext?.sessionKey ?? ctx.SessionKey;
+        if (!ctx.AgentId || !eventSessionKey) {
+          throw new Error("Expected the resolved heartbeat event queue");
+        }
+        formattedSystemEvents = await drainFormattedSystemEvents({
+          cfg,
+          agentId: ctx.AgentId,
+          sessionKey: eventSessionKey,
+          isMainSession: eventSessionKey === opsMainSessionKey,
+          isNewSession: false,
+          events: eventContext?.events ?? [],
+        });
+        return { text: "NO_REPLY" };
+      });
 
       await runHeartbeatOnce(
         markTrustedContinuationHeartbeatWake({
@@ -300,6 +318,8 @@ describe("runHeartbeatOnce", () => {
       expect(replySpy).toHaveBeenCalledTimes(1);
       const [replyParams] = expectDefined(replySpy.mock.calls[0], "reply call");
       expect(replyParams?.SessionKey).toBe(opsMainSessionKey);
+      expect(formattedSystemEvents).toContain("ops queue event");
+      expect(formattedSystemEvents).not.toContain("main-only queue event");
       expect(peekSystemEventEntries("agent:main:subagent:demo")).toHaveLength(1);
       expect(peekSystemEventEntries(opsMainSessionKey)).toStrictEqual([]);
     });
