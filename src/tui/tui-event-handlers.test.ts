@@ -207,7 +207,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       requestRender: vi.fn(),
       recoverEsc: vi.fn(),
     } as unknown as MockTui & HandlerTui;
-    const setActivityStatus = vi.fn();
+    const setActivityStatus = vi.fn<(text: string) => void>();
     const loadHistory = vi.fn<() => Promise<TuiHistoryLoadResult>>(async () => ({
       loaded: true,
       runOutcome: { state: "completed" },
