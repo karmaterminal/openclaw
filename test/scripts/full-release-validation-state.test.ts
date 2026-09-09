@@ -2,7 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, assert, describe, expect, it } from "vitest";
+import { afterAll, afterEach, assert, beforeAll, describe, expect, it } from "vitest";
 import {
   buildFullReleaseCandidateBinding,
   buildFullReleaseCandidateRequest,
@@ -35,6 +35,7 @@ import {
   verifyReleaseStateArtifacts,
   updateReleaseTransportEpisode,
 } from "../../scripts/full-release-validation-state.mjs";
+import { captureEnv, setTestEnvValue } from "../../src/test-utils/env.js";
 import {
   fullReleaseCandidateBindingFixture,
   fullReleaseCandidateManifestFixture,
@@ -47,6 +48,15 @@ const SHA = "a".repeat(40);
 const TARGET_SHA = "b".repeat(40);
 const TRUSTED_MAIN = { fullRef: "refs/heads/main", ref: "main", sha: SHA };
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+const githubRepositoryEnv = captureEnv(["GITHUB_REPOSITORY"]);
+
+beforeAll(() => {
+  setTestEnvValue("GITHUB_REPOSITORY", "openclaw/openclaw");
+});
+
+afterAll(() => {
+  githubRepositoryEnv.restore();
+});
 
 function candidateRequestInput(overrides: Record<string, unknown> = {}) {
   return {
