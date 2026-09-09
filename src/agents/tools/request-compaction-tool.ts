@@ -1,5 +1,6 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { Type } from "typebox";
+import { withContinuationOwner } from "../../auto-reply/continuation/system-event-ownership.js";
 import { createExpiringMapCache } from "../../config/cache-utils.js";
 import { formatCurrentSpanContinuationTraceparent } from "../../infra/continuation-tracer.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
@@ -118,6 +119,12 @@ export type RequestCompactionToolOpts = {
   agentSessionKey?: string;
   /** Session id (the Pi session UUID). */
   sessionId?: string;
+  /**
+   * Exact admitted originating agent for async failure events.
+   * Live spawn-init/follow-up constructors stamp the invoking runner agent.
+   * Inventory stubs omit this so unowned shared-session events cannot leak.
+   */
+  ownerAgentId?: string;
   /** Stable run identifier for this agent invocation. */
   runId?: string;
   /**
@@ -143,6 +150,7 @@ export type RequestCompactionToolOpts = {
 export type RequestCompactionToolBinding = Pick<
   RequestCompactionToolOpts,
   | "sessionId"
+  | "ownerAgentId"
   | "getContextUsage"
   | "contextUsageOrigin"
   | "getContextUsageDiagnostics"
@@ -201,6 +209,7 @@ function resolveContextUnavailableReason(
 function notifyCompactionFailure(params: {
   enqueue: typeof enqueueSystemEvent;
   sessionKey: string;
+  ownerAgentId?: string;
   runId?: string;
   sessionId?: string;
   diagId: string;
@@ -210,7 +219,7 @@ function notifyCompactionFailure(params: {
   try {
     params.enqueue(
       `[system:compaction-failed] Volitional compaction request ${params.diagId} failed (code=${params.code}, reason=${params.reason}). Your evacuated state was NOT compacted. Staged post-compaction delegates remain pending. Either re-call request_compaction (rate limit allowing) or yield with the evacuation as-is.`,
-      { sessionKey: params.sessionKey },
+      withContinuationOwner({ sessionKey: params.sessionKey }, params.ownerAgentId),
     );
   } catch (err) {
     log.error(
@@ -386,6 +395,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
         notifyCompactionFailure({
           enqueue: opts.enqueueSystemEvent ?? enqueueSystemEvent,
           sessionKey,
+          ownerAgentId: opts.ownerAgentId,
           runId: opts.runId,
           sessionId: opts.sessionId,
           diagId,

@@ -195,6 +195,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
       | {
           requestCompactionOpts?: {
             sessionId?: string;
+            ownerAgentId?: string;
             getContextUsage?: unknown;
             contextUsageOrigin?: unknown;
             triggerCompaction?: unknown;
@@ -209,6 +210,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     expect(callArgs?.requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
     expect(typeof callArgs?.requestCompactionOpts?.triggerCompaction).toBe("function");
     expect(callArgs?.requestCompactionOpts?.sessionId).toBe(sessionEntry.sessionId);
+    expect(callArgs?.requestCompactionOpts?.ownerAgentId).toBe("main");
   });
 
   it("does NOT forward requestCompactionOpts when continuation is disabled", async () => {

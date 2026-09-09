@@ -212,6 +212,7 @@ describe("runEmbeddedFallbackCandidate continuation callbacks", () => {
     mocks.releaseQueuedCompactionTolerant.mockClear();
     const onCompactionCount = vi.fn();
     mocks.runEmbeddedAgent.mockImplementationOnce(async (options: RunEmbeddedAgentParams) => {
+      expect(options.requestCompactionOpts?.ownerAgentId).toBe("main");
       expect(options.requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
       expect(options.requestCompactionOpts?.getContextUsageDiagnostics?.()).toMatchObject({
         usageSource: "persisted_fallback",

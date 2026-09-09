@@ -15,6 +15,15 @@ import {
   type DiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
 import {
+  resolveSystemEventOwnerAgentId,
+  selectAgentSystemEvents,
+} from "../../infra/system-event-ownership.js";
+import {
+  enqueueSystemEventRaw,
+  peekSystemEventEntries,
+  resetSystemEventsForTest,
+} from "../../infra/system-events.js";
+import {
   createRequestCompactionTool,
   _resetGuardState,
   _resetVolitionalCounts,
@@ -68,6 +77,7 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
 describe("request_compaction tool", () => {
   const SESSION_KEY = "test-session";
   const SESSION_ID = "session-uuid-1234";
+  const OWNER_AGENT_ID = "origin-agent";
 
   let contextUsage: number;
   let mockTriggerCompaction: ReturnType<
@@ -81,6 +91,7 @@ describe("request_compaction tool", () => {
     return {
       agentSessionKey: SESSION_KEY,
       sessionId: SESSION_ID,
+      ownerAgentId: OWNER_AGENT_ID,
       getContextUsage: () => contextUsage,
       triggerCompaction: mockTriggerCompaction,
       enqueueSystemEvent: mockEnqueueSystemEvent,
@@ -128,6 +139,7 @@ describe("request_compaction tool", () => {
     _resetVolitionalCounts();
     resetContinuationTracer();
     resetDiagnosticTraceContextForTest();
+    resetSystemEventsForTest();
     vi.restoreAllMocks();
   });
 
@@ -260,6 +272,58 @@ describe("request_compaction tool", () => {
       ),
       { sessionKey: SESSION_KEY },
     );
+  });
+
+  it("keeps asynchronous compaction failure events owner-bound on a shared session", async () => {
+    resetSystemEventsForTest();
+    mockTriggerCompaction.mockResolvedValueOnce({
+      ok: false,
+      compacted: false,
+      reason: "lane_contention",
+    });
+
+    const tool = makeTool({ enqueueSystemEvent: enqueueSystemEventRaw });
+    const result = await executeTool(tool);
+    expect(result).toMatchObject({ status: "compaction_requested" });
+    await flushBackgroundCompaction();
+
+    const events = peekSystemEventEntries(SESSION_KEY);
+    const failureEvents = events.filter((event) =>
+      event.text.includes("[system:compaction-failed]"),
+    );
+    const receipt = {
+      count: failureEvents.length,
+      owner: failureEvents[0] ? resolveSystemEventOwnerAgentId(failureEvents[0]) : null,
+      visibleToOtherAgent: selectAgentSystemEvents(failureEvents, "other-agent").length,
+    };
+    expect(receipt).toEqual({
+      count: 1,
+      owner: OWNER_AGENT_ID,
+      visibleToOtherAgent: 0,
+    });
+    expect(selectAgentSystemEvents(failureEvents, OWNER_AGENT_ID)).toEqual(failureEvents);
+    resetSystemEventsForTest();
+  });
+
+  it("fails closed without emitting an unowned compaction failure event", async () => {
+    resetSystemEventsForTest();
+    mockTriggerCompaction.mockResolvedValueOnce({
+      ok: false,
+      compacted: false,
+      reason: "lane_contention",
+    });
+
+    const tool = makeTool({
+      ownerAgentId: undefined,
+      enqueueSystemEvent: enqueueSystemEventRaw,
+    });
+    const result = await executeTool(tool);
+    expect(result).toMatchObject({ status: "compaction_requested" });
+    await flushBackgroundCompaction();
+
+    const events = peekSystemEventEntries(SESSION_KEY);
+    expect(events).toEqual([]);
+    resetSystemEventsForTest();
   });
 
   it("does not arm cooldown when background compaction rejects", async () => {

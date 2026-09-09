@@ -13,6 +13,7 @@ describe("buildInventoryContinuationToolOpts", () => {
     expect(opts.requestCompactionOpts?.getContextUsage).toBeTypeOf("function");
     expect(opts.requestCompactionOpts?.contextUsageOrigin).toBe("inventory_stub");
     expect(opts.requestCompactionOpts?.triggerCompaction).toBeTypeOf("function");
+    expect(opts.requestCompactionOpts?.ownerAgentId).toBeUndefined();
   });
 
   it("stub getContextUsage returns null (no live usage on inventory paths)", () => {
