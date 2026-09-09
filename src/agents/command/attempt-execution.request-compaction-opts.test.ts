@@ -11,13 +11,17 @@
  * both schedule a next turn and reclaim context when pressure rises.
  */
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createTestPreparedRunAdmission } from "../admitted-run-context.test-support.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
+import {
+  createRequestCompactionTool,
+  type RequestCompactionToolOpts,
+} from "../tools/request-compaction-tool.js";
 import { runAgentAttempt } from "./attempt-execution.js";
 
 const runEmbeddedAgentMock = vi.hoisted(() => vi.fn());
@@ -71,6 +75,8 @@ vi.mock("../model-runtime-aliases.js", async () => {
 vi.mock("../embedded-agent.js", () => ({
   runEmbeddedAgent: runEmbeddedAgentMock,
 }));
+
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
 function makeEmbeddedResult(): EmbeddedAgentRunResult {
   return {
@@ -128,7 +134,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
   const sessionKey = "agent:main:subagent:917-trap";
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-917-trap-"));
+    tmpDir = tempDirs.make("openclaw-917-trap-");
     storePath = path.join(tmpDir, "sessions.json");
     runEmbeddedAgentMock.mockReset();
     runCliAgentMock.mockReset();
@@ -139,10 +145,6 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     } as SessionEntry;
     sessionStore = { [sessionKey]: sessionEntry };
     await fs.writeFile(storePath, JSON.stringify(sessionStore, null, 2), "utf-8");
-  });
-
-  afterEach(async () => {
-    await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
   async function runEmbeddedAttempt(cfg: OpenClawConfig) {
@@ -194,6 +196,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
           requestCompactionOpts?: {
             sessionId?: string;
             getContextUsage?: unknown;
+            contextUsageOrigin?: unknown;
             triggerCompaction?: unknown;
           };
         }
@@ -203,6 +206,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     // subagent's turn-1 tool list even though continuation is enabled.
     expect(callArgs?.requestCompactionOpts).toBeDefined();
     expect(typeof callArgs?.requestCompactionOpts?.getContextUsage).toBe("function");
+    expect(callArgs?.requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
     expect(typeof callArgs?.requestCompactionOpts?.triggerCompaction).toBe("function");
     expect(callArgs?.requestCompactionOpts?.sessionId).toBe(sessionEntry.sessionId);
   });
@@ -232,6 +236,60 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     // (synchronous, matching computeRequestCompactionContextUsage).
     const result = callArgs?.requestCompactionOpts?.getContextUsage();
     expect(result === null || typeof result === "number").toBe(true);
+  });
+
+  it("identifies the rejected-base first-turn callback as live with unavailable context", async () => {
+    await runEmbeddedAttempt(makeContinuationEnabledConfig());
+
+    const requestCompactionOpts = (
+      runEmbeddedAgentMock.mock.calls[0]?.[0] as {
+        requestCompactionOpts?: {
+          sessionId?: string;
+          contextUsageOrigin?: "live_runner" | "inventory_stub";
+          getContextUsage: () => number | null;
+          getContextUsageDiagnostics?: RequestCompactionToolOpts["getContextUsageDiagnostics"];
+          triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
+        };
+      }
+    )?.requestCompactionOpts;
+    expect(requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
+    expect(requestCompactionOpts?.getContextUsage()).toBeNull();
+    expect(requestCompactionOpts?.getContextUsageDiagnostics?.()).toMatchObject({
+      usageSource: "unavailable",
+      callbackSessionId: sessionEntry.sessionId,
+      callbackSessionKey: sessionKey,
+      entryPresent: true,
+      totalTokens: null,
+      totalTokensFresh: null,
+      totalTokensVersion: null,
+      contextWindow: null,
+      contextWindowSource: "unresolved",
+      nullCause: "missing_total_tokens",
+      persistedNullCause: "missing_total_tokens",
+    });
+    if (!requestCompactionOpts) {
+      throw new Error("expected first-turn requestCompactionOpts");
+    }
+
+    const tool = createRequestCompactionTool({
+      agentSessionKey: sessionKey,
+      ...requestCompactionOpts,
+    });
+    const result = (
+      await tool.execute("call-first-turn-base", {
+        reason: "rejected-base callback-origin control",
+      })
+    )?.details;
+
+    expect(result).toEqual({
+      status: "rejected",
+      guard: "context_threshold",
+      contextUsage: null,
+      threshold: 70,
+      contextUnavailableReason: "stale_snapshot",
+      reason:
+        "Context pressure is unavailable because no fresh session snapshot is available; retry after the current turn records usage.",
+    });
   });
 
   // A successful turn-1 volitional compaction must run the same

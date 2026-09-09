@@ -18,6 +18,7 @@ import {
   createAdmittedGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
 } from "../../tools/gateway-caller-context.js";
+import type { RequestCompactionContextUsageDiagnostics } from "../../tools/request-compaction-tool.js";
 import type { SystemAgentToolOptions } from "../../tools/system-agent-tool.js";
 import {
   resolveSandboxSkillRuntimeInputs,
@@ -250,6 +251,56 @@ export async function dispatchEmbeddedRunAttempt(input: {
       }
     },
   });
+  // Tool construction precedes AgentSession creation, so bridge the live
+  // measurement through a per-attempt rebinding closure.
+  let getLiveContextUsage: (() => number | null) | undefined;
+  let getLiveContextUsageDiagnostics: (() => RequestCompactionContextUsageDiagnostics) | undefined;
+  let resolvedUsageSource: "live_in_flight" | "persisted_fallback" | "unavailable" = "unavailable";
+  const requestCompactionOpts = params.requestCompactionOpts
+    ? {
+        ...params.requestCompactionOpts,
+        getContextUsage: () => {
+          const liveUsage = getLiveContextUsage?.() ?? null;
+          if (liveUsage !== null) {
+            resolvedUsageSource = "live_in_flight";
+            return liveUsage;
+          }
+          const persistedUsage = params.requestCompactionOpts?.getContextUsage() ?? null;
+          resolvedUsageSource = persistedUsage === null ? "unavailable" : "persisted_fallback";
+          return persistedUsage;
+        },
+        getContextUsageDiagnostics: () => {
+          const persisted = params.requestCompactionOpts?.getContextUsageDiagnostics?.();
+          const live = getLiveContextUsageDiagnostics?.();
+          if (resolvedUsageSource === "live_in_flight") {
+            return {
+              ...persisted,
+              ...live,
+              usageSource: resolvedUsageSource,
+              nullCause: undefined,
+            };
+          }
+          return {
+            ...persisted,
+            liveTokens: live?.liveTokens,
+            liveContextWindow: live?.liveContextWindow,
+            liveNullCause: live?.liveNullCause,
+            usageSource: resolvedUsageSource,
+            nullCause:
+              resolvedUsageSource === "persisted_fallback"
+                ? persisted?.nullCause
+                : (live?.liveNullCause ?? persisted?.nullCause),
+          };
+        },
+        bindLiveContextUsage(
+          getContextUsage: () => number | null,
+          getContextUsageDiagnostics: () => RequestCompactionContextUsageDiagnostics,
+        ) {
+          getLiveContextUsage = getContextUsage;
+          getLiveContextUsageDiagnostics = getContextUsageDiagnostics;
+        },
+      }
+    : undefined;
   const attemptParams: EmbeddedRunAttemptInternalParams = {
     permissionChange: input.permissionChange,
     admittedRunContext: params.admittedRunContext,
@@ -262,7 +313,7 @@ export async function dispatchEmbeddedRunAttempt(input: {
     drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,
     disableContinuationTools: params.disableContinuationTools,
     continueWorkOpts: params.continueWorkOpts,
-    requestCompactionOpts: params.requestCompactionOpts,
+    requestCompactionOpts,
     conversationRecall: params.conversationRecall,
     promptCacheKey: params.promptCacheKey,
     sandboxSessionKey: params.sandboxSessionKey,

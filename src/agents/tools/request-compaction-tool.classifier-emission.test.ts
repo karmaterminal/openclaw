@@ -82,6 +82,161 @@ describe("request_compaction tool — classifier emission", () => {
     vi.restoreAllMocks();
   });
 
+  it("rejects below 70% without compaction and logs the safe threshold event exactly once", async () => {
+    const triggerCompaction = vi.fn(async () => ({ ok: true, compacted: true }));
+    const tool = createRequestCompactionTool(
+      buildOpts({
+        getContextUsage: () => 0.69,
+        triggerCompaction,
+      }),
+    );
+
+    const result = (
+      await tool.execute("call-below-threshold", {
+        reason: REASON,
+        focus: "private working-state detail",
+      })
+    )?.details;
+
+    expect(result).toEqual({
+      status: "rejected",
+      guard: "context_threshold",
+      contextUsage: 69,
+      threshold: 70,
+      reason:
+        "Context usage (69%) is below the minimum threshold (70%). Compaction is not needed yet.",
+    });
+    expect(triggerCompaction).not.toHaveBeenCalled();
+
+    const thresholdLogs = capturedLogs.filter((entry) =>
+      entry.message.includes("[request_compaction:below-threshold]"),
+    );
+    expect(thresholdLogs).toEqual([
+      {
+        level: "debug",
+        message: `[request_compaction:below-threshold] session=${SESSION_KEY} usage=69.0% threshold=70%`,
+      },
+    ]);
+    expect(thresholdLogs[0]?.message).not.toContain(REASON);
+    expect(thresholdLogs[0]?.message).not.toContain("private working-state detail");
+  });
+
+  it("logs whether unknown context came from a live runner", async () => {
+    const triggerCompaction = vi.fn(async () => ({ ok: true, compacted: true }));
+    const tool = createRequestCompactionTool(
+      buildOpts({
+        getContextUsage: () => null,
+        contextUsageOrigin: "live_runner",
+        getContextUsageDiagnostics: () => ({
+          usageSource: "unavailable",
+          callbackSessionId: SESSION_ID,
+          callbackSessionKey: SESSION_KEY,
+          entryPresent: true,
+          totalTokens: null,
+          totalTokensFresh: null,
+          totalTokensVersion: null,
+          contextWindow: 272_000,
+          contextWindowSource: "active_model",
+          liveTokens: null,
+          liveContextWindow: 272_000,
+          nullCause: "live_context_unavailable",
+          persistedNullCause: "missing_total_tokens",
+        }),
+        triggerCompaction,
+      }),
+    );
+
+    const result = (await tool.execute("call-context-unknown", { reason: REASON }))?.details;
+
+    expect(result).toEqual({
+      status: "rejected",
+      guard: "context_threshold",
+      contextUsage: null,
+      threshold: 70,
+      contextUnavailableReason: "live_context_unavailable",
+      reason: "Live context pressure is unavailable for this active turn; retry on the next turn.",
+    });
+    expect(triggerCompaction).not.toHaveBeenCalled();
+    expect(capturedLogs).toContainEqual({
+      level: "debug",
+      message:
+        `[request_compaction:context-source] origin=live_runner usageSource=unavailable ` +
+        `session=${SESSION_KEY} runId=none sessionId=${SESSION_ID} ` +
+        `callbackSessionKey=${SESSION_KEY} callbackSessionId=${SESSION_ID} ` +
+        "entryPresent=true sessionBindingMatches=unknown totalTokens=none totalTokensFresh=none " +
+        "totalTokensVersion=none contextWindow=272000 contextWindowSource=active_model " +
+        "liveTokens=none liveContextWindow=272000 nullCause=live_context_unavailable " +
+        "persistedNullCause=missing_total_tokens liveNullCause=none",
+    });
+    expect(capturedLogs).toContainEqual({
+      level: "debug",
+      message:
+        `[request_compaction:context-unknown] source=live_runner ` +
+        `category=live_context_unavailable session=${SESSION_KEY} sessionId=${SESSION_ID}`,
+    });
+  });
+
+  it.each([
+    {
+      name: "inventory catalog",
+      origin: "inventory_stub" as const,
+      nullCause: "inventory_stub" as const,
+      category: "inventory_stub",
+      reason:
+        "Context pressure is unavailable in this tool inventory context; invoke request_compaction from an active agent turn.",
+    },
+    {
+      name: "wrong callback session",
+      origin: "live_runner" as const,
+      nullCause: "session_binding_mismatch" as const,
+      category: "session_binding_mismatch",
+      reason:
+        "Context pressure was rejected because the available session snapshot does not match this invocation.",
+    },
+    {
+      name: "stale persisted snapshot",
+      origin: "live_runner" as const,
+      nullCause: "stale_total_tokens" as const,
+      category: "stale_snapshot",
+      reason:
+        "Context pressure is unavailable because no fresh session snapshot is available; retry after the current turn records usage.",
+    },
+    {
+      name: "unresolved model window",
+      origin: "live_runner" as const,
+      nullCause: "unresolved_model_context" as const,
+      category: "unresolved_model_window",
+      reason:
+        "Context pressure is unavailable because the active model context window could not be resolved.",
+    },
+  ])("returns a safe categorical failure for $name", async (testCase) => {
+    const triggerCompaction = vi.fn(async () => ({ ok: true, compacted: true }));
+    const tool = createRequestCompactionTool(
+      buildOpts({
+        contextUsageOrigin: testCase.origin,
+        getContextUsage: () => null,
+        getContextUsageDiagnostics: () => ({
+          usageSource: testCase.origin === "inventory_stub" ? "inventory_stub" : "unavailable",
+          nullCause: testCase.nullCause,
+        }),
+        triggerCompaction,
+      }),
+    );
+
+    const result = (await tool.execute(`call-${testCase.category}`, { reason: REASON }))?.details;
+
+    expect(result).toEqual({
+      status: "rejected",
+      guard: "context_threshold",
+      contextUsage: null,
+      threshold: 70,
+      contextUnavailableReason: testCase.category,
+      reason: testCase.reason,
+    });
+    expect(triggerCompaction).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain(REASON);
+  });
+
   it("warn log on resolve-with-failure includes code=<classifier-result> and the raw reason", async () => {
     const tool = createRequestCompactionTool(
       buildOpts({

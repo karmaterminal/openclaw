@@ -14,6 +14,7 @@ import { formatAcpErrorChain } from "../../acp/runtime/errors.js";
 import { resolveAcpToolTerminalOutcome } from "../../acp/tool-status.js";
 import { failQueuedDelegatesCreatedAtOrAfter } from "../../auto-reply/continuation/delegate-store.js";
 import {
+  buildPersistedContextUsageDiagnostics,
   computeRequestCompactionContextUsage,
   releaseQueuedCompactionTolerant,
 } from "../../auto-reply/reply/agent-runner-post-compaction-release.js";
@@ -1337,12 +1338,23 @@ export async function runAgentAttempt(params: {
   const requestCompactionOpts = continuationEnabled
     ? {
         sessionId: params.sessionId,
+        contextUsageOrigin: "live_runner" as const,
         getContextUsage: () =>
           computeRequestCompactionContextUsage({
+            entry: params.sessionEntry,
+            callbackSessionId: params.sessionId,
+            cfg: params.cfg,
+            provider: embeddedAgentProvider,
+            model: params.modelOverride,
+          }),
+        getContextUsageDiagnostics: () =>
+          buildPersistedContextUsageDiagnostics({
             entry: params.sessionEntry,
             cfg: params.cfg,
             provider: embeddedAgentProvider,
             model: params.modelOverride,
+            callbackSessionId: params.sessionId,
+            callbackSessionKey: params.sessionKey,
           }),
         triggerCompaction: async (request: RequestCompactionInvocation) => {
           try {

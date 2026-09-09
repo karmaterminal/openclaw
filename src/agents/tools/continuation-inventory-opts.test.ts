@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { RequestCompactionInvocation } from "../compaction-attribution.js";
 import { buildInventoryContinuationToolOpts } from "./continuation-inventory-opts.js";
 
 describe("buildInventoryContinuationToolOpts", () => {
@@ -10,12 +11,21 @@ describe("buildInventoryContinuationToolOpts", () => {
     const opts = buildInventoryContinuationToolOpts(true);
     expect(opts.continueWorkOpts?.requestContinuation).toBeTypeOf("function");
     expect(opts.requestCompactionOpts?.getContextUsage).toBeTypeOf("function");
+    expect(opts.requestCompactionOpts?.contextUsageOrigin).toBe("inventory_stub");
     expect(opts.requestCompactionOpts?.triggerCompaction).toBeTypeOf("function");
   });
 
   it("stub getContextUsage returns null (no live usage on inventory paths)", () => {
     const opts = buildInventoryContinuationToolOpts(true);
     expect(opts.requestCompactionOpts?.getContextUsage()).toBeNull();
+    const diagnostics = opts.requestCompactionOpts?.getContextUsageDiagnostics?.();
+    expect(diagnostics).toEqual({
+      usageSource: "inventory_stub",
+      callbackSessionId: "<inventory-only>",
+      entryPresent: false,
+      contextWindowSource: "inventory_stub",
+      nullCause: "inventory_stub",
+    });
   });
 
   it("stub requestContinuation throws a clear error (registered-but-not-runnable; no silent success)", () => {
@@ -27,7 +37,16 @@ describe("buildInventoryContinuationToolOpts", () => {
 
   it("stub triggerCompaction resolves to an inert rejection (no compaction fires)", async () => {
     const opts = buildInventoryContinuationToolOpts(true);
-    const result = await opts.requestCompactionOpts?.triggerCompaction();
+    const request: RequestCompactionInvocation = {
+      sessionKey: "agent:main:subagent:inventory",
+      sessionId: "<inventory-only>",
+      diagId: "cmp-inventory-test",
+      trigger: "volitional",
+      reason: "inventory rejection control",
+      contextUsage: 0.8,
+      requestedAtMs: 1,
+    };
+    const result = await opts.requestCompactionOpts?.triggerCompaction(request);
     expect(result).toEqual({ ok: false, compacted: false, reason: "inventory-only path" });
   });
 });

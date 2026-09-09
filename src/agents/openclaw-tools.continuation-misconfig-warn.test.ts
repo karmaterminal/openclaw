@@ -234,11 +234,13 @@ describe("createOpenClawTools — silent partial-registration guard", () => {
         reason: "verify inventory guard",
       }),
     ).resolves.toMatchObject({
-      content: [
-        expect.objectContaining({
-          text: expect.stringContaining("inventory-only paths"),
-        }),
-      ],
+      details: {
+        status: "rejected",
+        guard: "context_threshold",
+        contextUsage: null,
+        threshold: 70,
+        contextUnavailableReason: "inventory_stub",
+      },
     });
   });
 

@@ -31,6 +31,7 @@ import {
 } from "./agent-runner-event-handler.js";
 import type { AgentFallbackCandidateCommonParams } from "./agent-runner-fallback-cycle.types.js";
 import {
+  buildPersistedContextUsageDiagnostics,
   computeRequestCompactionContextUsage,
   releaseQueuedCompactionTolerant,
 } from "./agent-runner-post-compaction-release.js";
@@ -232,12 +233,23 @@ export async function runEmbeddedFallbackCandidate(
         requestCompactionOpts: continuationEnabled
           ? {
               sessionId: turn.followupRun.run.sessionId,
+              contextUsageOrigin: "live_runner" as const,
               getContextUsage: () =>
                 computeRequestCompactionContextUsage({
+                  entry: turn.getActiveSessionEntry(),
+                  callbackSessionId: turn.followupRun.run.sessionId,
+                  cfg: params.runtimeConfig,
+                  provider: embeddedRunProvider,
+                  model: params.model,
+                }),
+              getContextUsageDiagnostics: () =>
+                buildPersistedContextUsageDiagnostics({
                   entry: turn.getActiveSessionEntry(),
                   cfg: params.runtimeConfig,
                   provider: embeddedRunProvider,
                   model: params.model,
+                  callbackSessionId: turn.followupRun.run.sessionId,
+                  callbackSessionKey: turn.sessionKey,
                 }),
               triggerCompaction: async (request) => {
                 attemptCompactionTraceparent = request.traceparent;

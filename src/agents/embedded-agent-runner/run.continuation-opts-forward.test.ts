@@ -1,5 +1,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import {
+  createRequestCompactionTool,
+  type RequestCompactionToolOpts,
+} from "../tools/request-compaction-tool.js";
 import { makeAttemptResult } from "./run.overflow-compaction.fixture.js";
 import {
   loadRunOverflowCompactionHarness,
@@ -137,13 +141,25 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
     expect(attemptParams.continueWorkOpts).toBe(continueWorkOpts);
   });
 
-  it("forwards requestCompactionOpts to runEmbeddedAttempt", async () => {
+  it("forwards requestCompactionOpts with live context rebinding", async () => {
     mockedRunEmbeddedAttempt.mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
 
     const requestCompactionOpts = {
       sessionId: "session-868-compaction",
+      contextUsageOrigin: "live_runner" as const,
       getContextUsage: () => 0.005,
-      triggerCompaction: async () => ({ ok: true, compacted: true }),
+      getContextUsageDiagnostics: () => ({
+        usageSource: "persisted_fallback" as const,
+        callbackSessionId: "session-868-compaction",
+        callbackSessionKey: "agent:main:subagent:first-turn",
+        entryPresent: true,
+        totalTokens: 1,
+        totalTokensFresh: true,
+        totalTokensVersion: 1,
+        contextWindow: 200,
+        contextWindowSource: "session_entry",
+      }),
+      triggerCompaction: vi.fn(async () => ({ ok: true, compacted: true })),
     };
 
     await runEmbeddedAgent({
@@ -156,9 +172,97 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
 
     expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(1);
     const attemptParams = mockedRunEmbeddedAttempt.mock.calls[0]?.[0] as {
-      requestCompactionOpts?: typeof requestCompactionOpts;
+      requestCompactionOpts?: typeof requestCompactionOpts & {
+        contextUsageOrigin?: "live_runner" | "inventory_stub";
+        getContextUsageDiagnostics?: RequestCompactionToolOpts["getContextUsageDiagnostics"];
+        bindLiveContextUsage?: (
+          getContextUsage: () => number | null,
+          getContextUsageDiagnostics: () => {
+            usageSource: "live_in_flight" | "unavailable";
+            callbackSessionId: string;
+            callbackSessionKey: string;
+            liveTokens: number | null;
+            liveContextWindow: number;
+            liveNullCause?: "live_context_unavailable";
+          },
+        ) => void;
+      };
     };
-    expect(attemptParams.requestCompactionOpts).toBe(requestCompactionOpts);
+    expect(attemptParams.requestCompactionOpts?.triggerCompaction).toBe(
+      requestCompactionOpts.triggerCompaction,
+    );
+    expect(attemptParams.requestCompactionOpts?.contextUsageOrigin).toBe("live_runner");
+    expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0.005);
+
+    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(
+      () => null,
+      () => ({
+        usageSource: "unavailable",
+        callbackSessionId: "session-868-compaction",
+        callbackSessionKey: "agent:main:subagent:first-turn",
+        liveTokens: null,
+        liveContextWindow: 100,
+        liveNullCause: "live_context_unavailable",
+      }),
+    );
+    expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0.005);
+    expect(attemptParams.requestCompactionOpts?.getContextUsageDiagnostics?.()).toMatchObject({
+      usageSource: "persisted_fallback",
+      contextWindow: 200,
+      contextWindowSource: "session_entry",
+      liveTokens: null,
+      liveContextWindow: 100,
+      liveNullCause: "live_context_unavailable",
+    });
+
+    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(
+      () => 0,
+      () => ({
+        usageSource: "live_in_flight",
+        callbackSessionId: "session-868-compaction",
+        callbackSessionKey: "agent:main:subagent:first-turn",
+        liveTokens: 0,
+        liveContextWindow: 100,
+      }),
+    );
+    expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0);
+
+    attemptParams.requestCompactionOpts?.bindLiveContextUsage?.(
+      () => 0.12,
+      () => ({
+        usageSource: "live_in_flight",
+        callbackSessionId: "session-868-compaction",
+        callbackSessionKey: "agent:main:subagent:first-turn",
+        liveTokens: 12,
+        liveContextWindow: 100,
+      }),
+    );
+    expect(attemptParams.requestCompactionOpts?.getContextUsage()).toBe(0.12);
+    expect(attemptParams.requestCompactionOpts?.getContextUsageDiagnostics?.()).toMatchObject({
+      usageSource: "live_in_flight",
+      callbackSessionId: "session-868-compaction",
+      callbackSessionKey: "agent:main:subagent:first-turn",
+      liveTokens: 12,
+      liveContextWindow: 100,
+    });
+
+    const tool = createRequestCompactionTool({
+      agentSessionKey: "agent:main:subagent:first-turn",
+      ...attemptParams.requestCompactionOpts!,
+    });
+    const result = (
+      await tool.execute("call-first-turn-child", {
+        reason: "first-turn child threshold control",
+      })
+    )?.details;
+
+    expect(result).toMatchObject({
+      status: "rejected",
+      guard: "context_threshold",
+      contextUsage: 12,
+      threshold: 70,
+    });
+    expect(requestCompactionOpts.triggerCompaction).not.toHaveBeenCalled();
   });
 
   it("forwards explicit continuation-tool disablement to runEmbeddedAttempt", async () => {
@@ -206,7 +310,9 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
       drainsContinuationDelegateQueue?: boolean;
     };
     expect(attemptParams.continueWorkOpts).toBe(continueWorkOpts);
-    expect(attemptParams.requestCompactionOpts).toBe(requestCompactionOpts);
+    expect(attemptParams.requestCompactionOpts?.triggerCompaction).toBe(
+      requestCompactionOpts.triggerCompaction,
+    );
     expect(attemptParams.drainsContinuationDelegateQueue).toBe(true);
   });
 
