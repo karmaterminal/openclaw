@@ -27,16 +27,16 @@ import {
   resolveSessionStoreKey,
   resolveStoredSessionKeyForAgentStore,
 } from "./session-store-key.js";
-import type {
-  GatewaySessionStoreTarget,
-  GatewaySessionStoreTargetWithStore,
-} from "./session-utils-store-target.js";
 import {
   loadGatewaySessionStoreReads,
   readGatewaySessionStore,
   type GatewaySessionStoreRead,
   type GatewaySessionStoreCache,
 } from "./session-utils-store-read.js";
+import type {
+  GatewaySessionStoreTarget,
+  GatewaySessionStoreTargetWithStore,
+} from "./session-utils-store-target.js";
 export type { GatewaySessionStoreCache } from "./session-utils-store-read.js";
 
 function findCanonicalStoreMatch(
