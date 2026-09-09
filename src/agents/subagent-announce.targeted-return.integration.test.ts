@@ -181,6 +181,7 @@ describe("subagent announce targeted continuation return integration", () => {
         throw new Error(`expected systemEvent delivery, received ${persisted.kind}`);
       }
       expect(persisted.sessionKey).toBe(targetSessionKey);
+      expect(persisted.agentId).toBe("main");
       expect(persisted.text).toContain(nonce);
 
       expect(runtimeLogMock).toHaveBeenCalledWith(

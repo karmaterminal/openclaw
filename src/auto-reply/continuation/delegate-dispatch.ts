@@ -1,8 +1,3 @@
-/**
- * Dispatches immediate and delayed continuation delegates.
- * Every outcome stays visible at info level; timer-only logging hides immediate work.
- */
-
 import { formatDelegateArtifactTaskInstruction } from "../../agents/delegate-artifact-policy.js";
 import {
   assertDelegateArtifactPolicyPrepared,
@@ -37,7 +32,10 @@ import {
   clearDelegateDispatchHedge,
   DELEGATE_DISPATCH_RETRY_MS,
 } from "./delegate-dispatch-hedge.js";
-import { partitionManagedDelegatesForRuntime } from "./delegate-dispatch-managed-gates.js";
+import {
+  hasManagedDelegateArtifacts,
+  partitionManagedDelegatesForRuntime,
+} from "./delegate-dispatch-managed-gates.js";
 import { commitPendingDelegateSpawnAcceptance } from "./delegate-spawn-acceptance.js";
 import {
   createContinuationOwnerSessionLoader,
@@ -176,11 +174,8 @@ export async function dispatchToolDelegates(
   );
 
   const { maxDelegatesPerTurn, maxChainLength, crossSessionTargeting } = config;
-  const hasManagedArtifacts = (delegate: PendingContinuationDelegate): boolean =>
-    delegate.returnOptions?.artifacts === "optional" ||
-    delegate.returnOptions?.artifacts === "required";
   const removeRejectedArtifactPolicy = (delegate: PendingContinuationDelegate): void => {
-    if (hasManagedArtifacts(delegate) && delegate.flowId) {
+    if (hasManagedDelegateArtifacts(delegate) && delegate.flowId) {
       removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
     }
   };
@@ -313,7 +308,7 @@ export async function dispatchToolDelegates(
     const acceptedChildAlreadyKnown = Boolean(
       delegate.flowId && acceptedChildSessionKeysByFlowId.has(delegate.flowId),
     );
-    const managedArtifacts = hasManagedArtifacts(delegate);
+    const managedArtifacts = hasManagedDelegateArtifacts(delegate);
     const currentArtifactRuntime = managedArtifacts
       ? resolveContinuationRuntimeConfig(getRuntimeConfig())
       : undefined;
@@ -587,21 +582,12 @@ export async function dispatchToolDelegates(
 
       if (result.status === "accepted") {
         rollbackAcceptedSpawn = result.rollbackAccepted;
-        // INFO-level on EVERY successful spawn — observability parity.
-        log.info(
-          `[continuation:delegate-spawned] hop=${nextHop}/${maxChainLength} mode=${delegate.mode ?? "normal"} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
-        );
-        enqueueSystemEvent(
-          `[continuation:delegate-spawned] Spawned turn ${nextHop}/${maxChainLength}: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          ownerEventOptions({ sessionKey, trusted: true }),
-        );
         const acceptedChildSessionKey = result.childSessionKey ?? childSessionKey;
         const acceptedDelegate = await persistTerminalChainState(
           delegate,
           plannedTerminalChainState,
           { markPlannedChainState: true, markerKind: "advanced" },
         );
-        activeDispatch.authority.assertCurrent("final-acceptance", null);
         if (acceptedChildSessionKey) {
           try {
             await commitPendingDelegateSpawnAcceptance(
@@ -620,6 +606,14 @@ export async function dispatchToolDelegates(
             continue;
           }
         }
+        activeDispatch.authority.assertCurrent("final-acceptance", null);
+        log.info(
+          `[continuation:delegate-spawned] hop=${nextHop}/${maxChainLength} mode=${delegate.mode ?? "normal"} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
+        );
+        enqueueSystemEvent(
+          `[continuation:delegate-spawned] Spawned turn ${nextHop}/${maxChainLength}: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
+          ownerEventOptions({ sessionKey, trusted: true }),
+        );
         dispatchSpan.setStatus("OK");
         commitPlannedChainState(dispatchChainId);
       } else if (result.status === "cancelled") {

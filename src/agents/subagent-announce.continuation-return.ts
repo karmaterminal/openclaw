@@ -78,7 +78,7 @@ export async function routeSubagentContinuationReturn(params: {
   managedArtifactReturn?: boolean;
   announceId: string;
   childSessionKey: string;
-  childAgentId?: string;
+  childAgentId: string;
   childRunId: string;
   targetRequesterSessionKey: string;
   targetRequesterAgentId?: string;

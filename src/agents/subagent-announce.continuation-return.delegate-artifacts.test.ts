@@ -54,6 +54,7 @@ const baseParams = {
   managedArtifactReturn: true,
   announceId: "announce-1",
   childSessionKey: "agent:main:subagent:child",
+  childAgentId: "main",
   childRunId: "child-run-1",
   targetRequesterSessionKey: "agent:main:parent",
 } as const;

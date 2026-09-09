@@ -45,6 +45,7 @@ test.each(["new", "reset"] as const)(
     const requestHeartbeatNow = vi.fn();
     const result = await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: [sessionKey],
         text: "accepted delegate result",
         idempotencyKeyBase: `continuation-return:${reason}`,

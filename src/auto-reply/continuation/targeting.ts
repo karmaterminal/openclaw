@@ -109,13 +109,10 @@ export async function enqueueContinuationReturnDeliveries(
     traceparent?: string;
     fanoutMode?: ContinuationDelegateFanoutMode;
     chainStepRemaining?: number;
-    ownerAgentId?: string;
+    ownerAgentId: string;
   },
   deps: ContinuationReturnDeliveryDeps = defaultContinuationReturnDeliveryDeps,
 ): Promise<{ enqueued: number; delivered: number; deliveryIds: string[] }> {
-  if (!params.ownerAgentId) {
-    throw new Error("Continuation return source owner is unavailable.");
-  }
   const targetSessionKeys = normalizeContinuationTargetKeys(params.targetSessionKeys);
   const deliveryIds: string[] = [];
   let delivered = 0;
@@ -152,6 +149,7 @@ export async function enqueueContinuationReturnDeliveries(
     const commonPayload = {
       kind: "systemEvent" as const,
       sessionKey,
+      agentId: params.ownerAgentId,
       text,
       ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
       ...(params.traceparent ? { traceparent: params.traceparent } : {}),

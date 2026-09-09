@@ -17,6 +17,13 @@ type UnavailablePolicyDelegate = {
   error: Error;
 };
 
+export function hasManagedDelegateArtifacts(delegate: PendingContinuationDelegate): boolean {
+  return (
+    delegate.returnOptions?.artifacts === "optional" ||
+    delegate.returnOptions?.artifacts === "required"
+  );
+}
+
 export function partitionManagedDelegatesForRuntime(params: {
   delegates: PendingContinuationDelegate[];
   sessionKey: string;
@@ -29,9 +36,7 @@ export function partitionManagedDelegatesForRuntime(params: {
   const dispatchableDelegates: PendingContinuationDelegate[] = [];
   const unavailablePolicyDelegates: UnavailablePolicyDelegate[] = [];
   for (const delegate of params.delegates) {
-    const managed =
-      delegate.returnOptions?.artifacts === "optional" ||
-      delegate.returnOptions?.artifacts === "required";
+    const managed = hasManagedDelegateArtifacts(delegate);
     if (managed && delegate.flowId) {
       try {
         assertDelegateArtifactPolicyPrepared(delegate.flowId);

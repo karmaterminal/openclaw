@@ -92,6 +92,7 @@ type QueuedSessionDeliveryGenericPayload =
   | ({
       kind: "systemEvent";
       sessionKey: string;
+      agentId?: string;
       text: string;
       expectedSessionId?: string;
       recipientAuthority?: SessionRecipientAuthority;
@@ -111,6 +112,7 @@ type QueuedSessionDeliveryGenericPayload =
   | ({
       kind: "systemEvent";
       sessionKey: string;
+      agentId?: string;
       text: string;
       expectedSessionId: string;
       recipientAuthority?: never;
@@ -327,6 +329,7 @@ const QueuedPlainSystemEventSchema = z
     ...QueuedGenericCommonSchema,
     kind: z.literal("systemEvent"),
     sessionKey: z.string(),
+    agentId: z.string().trim().min(1).optional(),
     text: z.string(),
     expectedSessionId: z.string().optional(),
     recipientAuthority: SessionRecipientAuthoritySchema.optional(),
@@ -351,6 +354,7 @@ const QueuedManagedSystemEventSchema = z
     ...QueuedGenericCommonSchema,
     kind: z.literal("systemEvent"),
     sessionKey: z.string(),
+    agentId: z.string().trim().min(1).optional(),
     text: z.string(),
     expectedSessionId: z.string().min(1),
     recipientAuthority: z.never().optional(),

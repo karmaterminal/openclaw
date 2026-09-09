@@ -324,6 +324,7 @@ describe("clearSessionResetRuntimeState", () => {
               ),
             ).toBe(true);
             const delivered = await enqueueContinuationReturnDeliveries({
+              ownerAgentId: "main",
               targetSessionKeys: [sessionKey],
               text: "[continuation:enrichment-return] accepted child completed",
               idempotencyKeyBase: `accepted-after-${reason}`,

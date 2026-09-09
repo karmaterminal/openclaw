@@ -36,9 +36,10 @@ const updateSessionStoreForRecoveryOptions: Array<Record<string, unknown> | unde
 let updateSessionStoreForRecoveryShouldThrow = false;
 let updateSessionStoreForRecoveryRequiredWriteCalls = 0;
 let updateSessionStoreForRecoveryThrowOnRequiredWriteCall: number | undefined;
+let ownerSessionAvailable = true;
 
 const loadOwnerSession = (_target: object, sessionKey: string | symbol) =>
-  typeof sessionKey === "string"
+  ownerSessionAvailable && typeof sessionKey === "string"
     ? { sessionId: `session-${sessionKey}`, lifecycleRevision: "revision-1" }
     : undefined;
 const ownerSessionStore = new Proxy<Record<string, unknown>>({}, { get: loadOwnerSession });
@@ -280,6 +281,14 @@ function continuationConfig(
   };
 }
 
+function zeroChainState() {
+  return {
+    currentChainCount: 0,
+    chainStartedAt: Date.now(),
+    accumulatedChainTokens: 0,
+  };
+}
+
 function findPersistedRecoveryEntry(sessionKey: string): Record<string, unknown> | undefined {
   for (const store of recoveryStoreByPath.values()) {
     const entry = store[sessionKey];
@@ -334,6 +343,7 @@ beforeEach(() => {
   failFlowShouldPersistFail = false;
   updateSessionStoreForRecoveryRequiredWriteCalls = 0;
   updateSessionStoreForRecoveryThrowOnRequiredWriteCall = undefined;
+  ownerSessionAvailable = true;
   resetGatewayWorkAdmission();
   vi.useFakeTimers();
   clearRuntimeConfigSnapshot();
@@ -411,11 +421,7 @@ describe("managed artifact pre-spawn lifecycle", () => {
 
     const result = await dispatchToolDelegates({
       sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
+      chainState: zeroChainState(),
       ctx: { sessionKey },
       maxChainLength: 8,
       config: continuationConfig({ enabled: true, crossSessionTargeting: "enabled" }),
@@ -442,11 +448,7 @@ describe("managed artifact pre-spawn lifecycle", () => {
 
     const result = await dispatchToolDelegates({
       sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
+      chainState: zeroChainState(),
       ctx: { sessionKey },
       maxChainLength: 8,
       config: continuationConfig({ enabled: true, crossSessionTargeting: "enabled" }),
@@ -473,11 +475,7 @@ describe("managed artifact pre-spawn lifecycle", () => {
 
     const result = await dispatchToolDelegates({
       sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
+      chainState: zeroChainState(),
       ctx: { sessionKey },
       maxChainLength: 8,
       config: continuationConfig({ enabled: true, crossSessionTargeting: "enabled" }),
@@ -509,11 +507,7 @@ describe("managed artifact pre-spawn lifecycle", () => {
 
     const result = await dispatchToolDelegates({
       sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
+      chainState: zeroChainState(),
       ctx: { sessionKey },
       maxChainLength: 8,
       config: continuationConfig({ enabled: true, crossSessionTargeting: "enabled" }),
@@ -544,11 +538,7 @@ describe("managed artifact pre-spawn lifecycle", () => {
 
     await dispatchToolDelegates({
       sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
+      chainState: zeroChainState(),
       ctx: { sessionKey },
       maxChainLength: 8,
       config: continuationConfig({
@@ -574,11 +564,7 @@ describe("managed artifact pre-spawn lifecycle", () => {
 
     await dispatchToolDelegates({
       sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
+      chainState: zeroChainState(),
       ctx: { sessionKey },
       maxChainLength: 8,
       config: continuationConfig({
@@ -620,11 +606,7 @@ describe("managed artifact pre-spawn lifecycle", () => {
 
     const result = await dispatchToolDelegates({
       sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
+      chainState: zeroChainState(),
       ctx: { sessionKey },
       maxChainLength: 8,
       inheritedSilent: true,
@@ -669,11 +651,7 @@ describe("raw trusted delegate task echoes", () => {
 
         const result = await dispatchToolDelegates({
           sessionKey,
-          chainState: {
-            currentChainCount: 0,
-            chainStartedAt: Date.now(),
-            accumulatedChainTokens: 0,
-          },
+          chainState: zeroChainState(),
           ctx: { sessionKey },
           maxChainLength: 10,
           config: continuationConfig({ maxDelegatesPerTurn: 1 }),
@@ -695,11 +673,7 @@ describe("raw trusted delegate task echoes", () => {
 
         const result = await dispatchToolDelegates({
           sessionKey,
-          chainState: {
-            currentChainCount: 0,
-            chainStartedAt: Date.now(),
-            accumulatedChainTokens: 0,
-          },
+          chainState: zeroChainState(),
           ctx: { sessionKey },
           maxChainLength: 10,
           config: continuationConfig({ crossSessionTargeting: "disabled" }),
@@ -745,11 +719,7 @@ describe("raw trusted delegate task echoes", () => {
 
         const result = await dispatchToolDelegates({
           sessionKey,
-          chainState: {
-            currentChainCount: 0,
-            chainStartedAt: Date.now(),
-            accumulatedChainTokens: 0,
-          },
+          chainState: zeroChainState(),
           ctx: { sessionKey },
           maxChainLength: 10,
           config: continuationConfig(),
@@ -774,11 +744,7 @@ describe("raw trusted delegate task echoes", () => {
 
         const result = await dispatchToolDelegates({
           sessionKey,
-          chainState: {
-            currentChainCount: 0,
-            chainStartedAt: Date.now(),
-            accumulatedChainTokens: 0,
-          },
+          chainState: zeroChainState(),
           ctx: { sessionKey, ownerAgentId: "main" },
           maxChainLength: 10,
           config: continuationConfig(),
@@ -814,11 +780,7 @@ describe("raw trusted delegate task echoes", () => {
 
     const result = await dispatchToolDelegates({
       sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
+      chainState: zeroChainState(),
       ctx: { sessionKey },
       maxChainLength: 10,
       config: continuationConfig(),
@@ -832,6 +794,29 @@ describe("raw trusted delegate task echoes", () => {
       expect.objectContaining({ agentSessionKey: sessionKey }),
     );
     expectTrustedRawTaskEcho("[continuation:delegate-spawned]", sessionKey);
+  });
+
+  it("emits no success when the source owner is deleted during persistence", async () => {
+    const sessionKey = "session-owner-deleted-during-persist";
+    enqueuePendingDelegate(sessionKey, { task: "must not report success" });
+
+    await dispatchToolDelegates({
+      sessionKey,
+      chainState: zeroChainState(),
+      ctx: { sessionKey, ownerAgentId: "main" },
+      maxChainLength: 10,
+      config: continuationConfig(),
+      persistBeforeTerminalCommit: true,
+      persistChainState: async () => {
+        ownerSessionAvailable = false;
+      },
+    });
+
+    expect(
+      enqueueSystemEventMock.mock.calls.some(([text]) =>
+        String(text).includes("[continuation:delegate-spawned]"),
+      ),
+    ).toBe(false);
   });
 
   it("forwards typed attachments into the continuation child spawn", async () => {
@@ -856,11 +841,7 @@ describe("raw trusted delegate task echoes", () => {
 
     await dispatchToolDelegates({
       sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
+      chainState: zeroChainState(),
       ctx: { sessionKey },
       maxChainLength: 10,
       config: continuationConfig(),
