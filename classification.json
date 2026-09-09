@@ -1,0 +1,222 @@
+{
+  "schema": "mode-b-terminal-classification/v1",
+  "runId": 34395149670,
+  "verdict": "PASS",
+  "unclassified": 0,
+  "authority": {
+    "productRepo": "karmaterminal/openclaw",
+    "productSha": "32e89116f2177b6cccd80cc427af85e678921176",
+    "productTree": "bee6e3f415969861dcc34b73b95e33f842a56a5a",
+    "workflowRepo": "karmaterminal/openclaw-bootstrap",
+    "workflowSha": "b27223f107a7b55dbd5b207ba8d6bd3b426941a1",
+    "boundWork": "https://github.com/openclaw/openclaw/pull/129388"
+  },
+  "namedRefs": [
+    {
+      "category": "product/base ref",
+      "name": "32e89116f2177b6cccd80cc427af85e678921176",
+      "sha": "32e89116f2177b6cccd80cc427af85e678921176",
+      "equality": "local product commit and supplied authority equal; tree bee6e3f415969861dcc34b73b95e33f842a56a5a"
+    },
+    {
+      "category": "safe lane branch ref",
+      "name": "codeagent/modeb-34395149670-terminal-classifier",
+      "sha": "32e89116f2177b6cccd80cc427af85e678921176",
+      "equality": "local, origin tracking, and server ref equal before evidence collection"
+    },
+    {
+      "category": "CI/workflow ref",
+      "name": "karmaterminal/openclaw-bootstrap commit",
+      "sha": "b27223f107a7b55dbd5b207ba8d6bd3b426941a1",
+      "equality": "supplied authority, aggregate workflowSha, and GitHub commit API equal"
+    },
+    {
+      "category": "presentation ref",
+      "name": "N/A",
+      "sha": null,
+      "equality": "N/A"
+    },
+    {
+      "category": "docs/proof ref",
+      "name": "N/A",
+      "sha": null,
+      "equality": "N/A; proof source is immutable Actions run 34395149670 plus its downloaded aggregate"
+    }
+  ],
+  "counts": {
+    "tests": 7,
+    "nonTestResiduals": 8,
+    "loadFlake": 3,
+    "existingIssue": 6,
+    "newIssue": 1,
+    "blocked": 5
+  },
+  "rows": [
+    {
+      "id": "T01",
+      "kind": "test",
+      "shard": "auto-reply-reply-commands-2",
+      "target": "src/auto-reply/reply/commands-models.catalog-recovery.test.ts > /models browse catalog recovery > rebuilds the whole browse result after config replacement",
+      "rootGroup": "catalog-model-name-undefined",
+      "rootFingerprint": "AssertionError: expected undefined to be 'GPT-5.6 Luna' // Object.is equality",
+      "classification": "load flake",
+      "evidence": "The Mode-B determinism rerun and this lane's exact-product isolated one-worker confirmation passed."
+    },
+    {
+      "id": "T02",
+      "kind": "test",
+      "shard": "extension-discord",
+      "target": "extensions/discord/src/voice/realtime-playback-pcm.integration.test.ts > keeps PCM marks truthful across repeated partial-frame underflows",
+      "rootGroup": "discord-pcm-abort",
+      "rootFingerprint": "Serialized Error: { code: 'ABORT_ERR' }",
+      "classification": "load flake",
+      "evidence": "The Mode-B determinism rerun and this lane's exact-product isolated one-worker confirmation passed."
+    },
+    {
+      "id": "T03",
+      "kind": "test",
+      "shard": "extension-codex-app-server-support",
+      "target": "extensions/codex/src/app-server/transport.process.test.ts > Codex app-server process containment > revalidates identities while quiescing: root-resumed",
+      "rootGroup": "codex-process-inspection-deadline",
+      "rootFingerprint": "ProcessInspectionError: Cannot inspect Codex processes. Process inspection exceeded its deadline. Retry when the host is responsive.|reason=deadline",
+      "classification": "existing issue",
+      "issue": "https://github.com/openclaw/openclaw/issues/138043",
+      "repair": "https://github.com/openclaw/openclaw/pull/138089",
+      "evidence": "Exact-product isolated one-worker confirmation passed; the Mode-B failure fingerprint is byte-identical to the existing burst-load issue."
+    },
+    {
+      "id": "T04",
+      "kind": "test",
+      "shard": "extension-codex-app-server-support",
+      "target": "extensions/codex/src/app-server/transport.process.test.ts > Codex app-server process containment > revalidates identities while quiescing: uninterruptible",
+      "rootGroup": "codex-process-inspection-deadline",
+      "rootFingerprint": "ProcessInspectionError: Cannot inspect Codex processes. Process inspection exceeded its deadline. Retry when the host is responsive.|reason=deadline",
+      "classification": "existing issue",
+      "issue": "https://github.com/openclaw/openclaw/issues/138043",
+      "repair": "https://github.com/openclaw/openclaw/pull/138089",
+      "evidence": "Exact-product isolated one-worker confirmation passed; the Mode-B failure fingerprint is byte-identical to the existing burst-load issue."
+    },
+    {
+      "id": "T05",
+      "kind": "test",
+      "shard": "extension-codex-app-server-support",
+      "target": "extensions/codex/src/app-server/transport.process.test.ts > Codex app-server process containment > revalidates identities while quiescing: snapshot-failure",
+      "rootGroup": "codex-process-inspection-deadline",
+      "rootFingerprint": "ProcessInspectionError: Cannot inspect Codex processes. Process inspection exceeded its deadline. Retry when the host is responsive.|reason=deadline",
+      "classification": "existing issue",
+      "issue": "https://github.com/openclaw/openclaw/issues/138043",
+      "repair": "https://github.com/openclaw/openclaw/pull/138089",
+      "evidence": "Exact-product isolated one-worker confirmation passed; the Mode-B failure fingerprint is byte-identical to the existing burst-load issue."
+    },
+    {
+      "id": "T06",
+      "kind": "test",
+      "shard": "extension-codex-app-server-support",
+      "target": "extensions/codex/src/app-server/transport.process.test.ts > Codex app-server process containment > revalidates identities while quiescing: traced",
+      "rootGroup": "codex-process-inspection-deadline",
+      "rootFingerprint": "ProcessInspectionError: Cannot inspect Codex processes. Process inspection exceeded its deadline. Retry when the host is responsive.|reason=deadline",
+      "classification": "existing issue",
+      "issue": "https://github.com/openclaw/openclaw/issues/138043",
+      "repair": "https://github.com/openclaw/openclaw/pull/138089",
+      "evidence": "Exact-product isolated one-worker confirmation passed; the Mode-B failure fingerprint is byte-identical to the existing burst-load issue."
+    },
+    {
+      "id": "T07",
+      "kind": "test",
+      "shard": "extension-telegram",
+      "target": "extensions/telegram/src/telegram-ingress-drain-factory.test.ts > Telegram transport ingress outcome handoff > coalesces duplicate callback answers 'before middleware consumes a new-row answer'",
+      "rootGroup": "telegram-pending-answer-undefined",
+      "rootFingerprint": "AssertionError: expected undefined to be defined|extensions/telegram/src/telegram-ingress-drain-factory.test.ts:159:77",
+      "classification": "load flake",
+      "evidence": "The loaded shard failed twice, but the exact-product isolated one-worker confirmation passed on the same ARM64 host architecture."
+    },
+    {
+      "id": "N01",
+      "kind": "non-test",
+      "shard": "core-tooling-15",
+      "target": "docs-i18n Go module beforeAll toolchain precondition",
+      "rootGroup": "core-tooling-go-floor",
+      "rootFingerprint": "go: go.mod requires go >= 1.26.0 (running go 1.22.2; GOTOOLCHAIN=local)",
+      "classification": "new issue",
+      "issue": "https://github.com/karmaterminal/openclaw-bootstrap/issues/1476",
+      "evidence": "No Go partition executed. The Mode-B self-host route omitted the product-compatible toolchain that openclaw/openclaw#134745 supplies only to Testbox."
+    },
+    {
+      "id": "N02",
+      "kind": "non-test",
+      "shard": "static-gates",
+      "target": "check (typecheck+lint+duplicates+guards)",
+      "rootGroup": "gateway-cron-fixture-type",
+      "rootFingerprint": "src/gateway/server-runtime-services.test-harness.ts(173,5): error TS2353: Object literal may only specify known properties, and 'complete' does not exist in type 'GatewayCronReconciliation'.",
+      "classification": "existing issue",
+      "issue": "https://github.com/openclaw/openclaw/pull/129388",
+      "evidence": "The bound product branch contains the stale top-level fixture property while GatewayCronReconciliation exposes completion only from arm()."
+    },
+    {
+      "id": "N03",
+      "kind": "non-test",
+      "shard": "agentic-control-plane-runtime-config",
+      "target": "pretest-build mode=runtime",
+      "rootGroup": "tsdown-heap-floor",
+      "rootFingerprint": "The resolved OpenClaw build heap is 4069MB, and a full build needs 4352MB",
+      "classification": "existing issue",
+      "issue": "https://github.com/karmaterminal/openclaw-bootstrap/issues/1472",
+      "evidence": "The shard stopped before removing output or running tests; bootstrap #1472 owns the same tsdown admission-floor failure."
+    },
+    {
+      "id": "N04",
+      "kind": "non-test",
+      "shard": "extensions",
+      "target": "routing-terminal",
+      "rootGroup": "hosted-batch-011-cancelled",
+      "rootFingerprint": "planned matrix job concluded cancelled before producing a receipt",
+      "classification": "blocked",
+      "issue": "https://github.com/karmaterminal/openclaw-bootstrap/issues/1341",
+      "evidence": "Aggregate terminal synthesis preserves the missing evidence; no shard result exists to classify as pass or fail."
+    },
+    {
+      "id": "N05",
+      "kind": "non-test",
+      "shard": "extension-codex-app-server-attempt-support",
+      "target": "routing-terminal",
+      "rootGroup": "hosted-batch-011-cancelled",
+      "rootFingerprint": "planned matrix job concluded cancelled before producing a receipt",
+      "classification": "blocked",
+      "issue": "https://github.com/karmaterminal/openclaw-bootstrap/issues/1341",
+      "evidence": "Aggregate terminal synthesis preserves the missing evidence; no shard result exists to classify as pass or fail."
+    },
+    {
+      "id": "N06",
+      "kind": "non-test",
+      "shard": "core-runtime-infra-diagnostics-state",
+      "target": "routing-terminal",
+      "rootGroup": "hosted-batch-011-cancelled",
+      "rootFingerprint": "planned matrix job concluded cancelled before producing a receipt",
+      "classification": "blocked",
+      "issue": "https://github.com/karmaterminal/openclaw-bootstrap/issues/1341",
+      "evidence": "Aggregate terminal synthesis preserves the missing evidence; no shard result exists to classify as pass or fail."
+    },
+    {
+      "id": "N07",
+      "kind": "non-test",
+      "shard": "core-runtime-tui-pty",
+      "target": "routing-terminal",
+      "rootGroup": "self-hosted-dist-no-job",
+      "rootFingerprint": "planned matrix job produced no receipt and no exact Actions job record",
+      "classification": "blocked",
+      "issue": "https://github.com/karmaterminal/openclaw-bootstrap/issues/1341",
+      "evidence": "The self-hosted-dist lane was planned but skipped; no execution evidence exists."
+    },
+    {
+      "id": "N08",
+      "kind": "non-test",
+      "shard": "core-support-boundary",
+      "target": "routing-terminal",
+      "rootGroup": "self-hosted-dist-no-job",
+      "rootFingerprint": "planned matrix job produced no receipt and no exact Actions job record",
+      "classification": "blocked",
+      "issue": "https://github.com/karmaterminal/openclaw-bootstrap/issues/1341",
+      "evidence": "The self-hosted-dist lane was planned but skipped; no execution evidence exists."
+    }
+  ]
+}
