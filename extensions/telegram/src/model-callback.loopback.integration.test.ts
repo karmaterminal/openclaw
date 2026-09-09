@@ -60,6 +60,8 @@ describe("Telegram model callback loopback", () => {
     const stateDir = await mkdtemp(join(tmpdir(), "openclaw-telegram-model-loopback-"));
     const requests: TelegramApiRequest[] = [];
     let sentMessage: Record<string, unknown> | undefined;
+    let loseFirstSuccessfulEditResponse = true;
+    let messageNotModifiedResponses = 0;
 
     const handleApiRequest = async (request: IncomingMessage, response: ServerResponse) => {
       const method = request.url?.split("/").at(-1) ?? "";
@@ -95,6 +97,7 @@ describe("Telegram model callback loopback", () => {
         sendJson(response, true);
       } else if (method === "editMessageText") {
         if (sentMessage?.text === payload.text) {
+          messageNotModifiedResponses += 1;
           sendMessageNotModified(response);
           return;
         }
@@ -103,6 +106,11 @@ describe("Telegram model callback loopback", () => {
           text: payload.text,
           reply_markup: payload.reply_markup,
         };
+        if (loseFirstSuccessfulEditResponse) {
+          loseFirstSuccessfulEditResponse = false;
+          response.destroy(new Error("injected response loss after committed edit"));
+          return;
+        }
         sendJson(response, sentMessage);
       } else {
         response.writeHead(404, { "content-type": "application/json" });
@@ -266,22 +274,19 @@ describe("Telegram model callback loopback", () => {
         return { bot, router };
       };
 
-      let firstAttemptError: unknown;
-      try {
-        await createCallbackBot().bot.handleUpdate(callbackUpdate);
-      } catch (error) {
-        firstAttemptError = error;
-      }
-      if (process.versions.node.startsWith("24.")) {
-        expect(firstAttemptError).toBeInstanceOf(Error);
-      } else {
-        expect(firstAttemptError).toBeUndefined();
-      }
+      await expect(createCallbackBot().bot.handleUpdate(callbackUpdate)).rejects.toThrow();
       expect(requests.map(({ method }) => method)).toEqual([
         "sendMessage",
         "answerCallbackQuery",
         "editMessageText",
       ]);
+      expect(callbackSteps).toEqual(["context", "sender", "model", "catalog"]);
+      expect(listSessionEntries({ storePath })[0]?.entry).toMatchObject({
+        providerOverride: PROVIDER,
+        modelOverride: MODEL,
+        modelOverrideSource: "user",
+        liveModelSwitchPending: true,
+      });
 
       const restarted = createCallbackBot(restartedProcessFetch);
       const replayContext = {
@@ -308,12 +313,7 @@ describe("Telegram model callback loopback", () => {
         "model",
         "catalog",
       ]);
-      expect(listSessionEntries({ storePath })[0]?.entry).toMatchObject({
-        providerOverride: PROVIDER,
-        modelOverride: MODEL,
-        modelOverrideSource: "user",
-        liveModelSwitchPending: true,
-      });
+      expect(messageNotModifiedResponses).toBe(1);
       const editRequests = requests.filter(({ method }) => method === "editMessageText");
       expect(editRequests).toHaveLength(2);
       for (const request of editRequests) {
