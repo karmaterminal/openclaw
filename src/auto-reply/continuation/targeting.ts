@@ -22,6 +22,7 @@ import {
   enqueueSystemEventRaw as enqueueSystemEvent,
   removeSystemEvents,
 } from "../../infra/system-events.js";
+import { normalizeAgentId, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { withContinuationOwner } from "./system-event-ownership.js";
 import {
   CONTINUATION_DELEGATE_FANOUT_MODES,
@@ -109,15 +110,36 @@ export async function enqueueContinuationReturnDeliveries(
     traceparent?: string;
     fanoutMode?: ContinuationDelegateFanoutMode;
     chainStepRemaining?: number;
-    ownerAgentId: string;
+    recipientAgentIds?: ReadonlyMap<string, string>;
   },
   deps: ContinuationReturnDeliveryDeps = defaultContinuationReturnDeliveryDeps,
 ): Promise<{ enqueued: number; delivered: number; deliveryIds: string[] }> {
   const targetSessionKeys = normalizeContinuationTargetKeys(params.targetSessionKeys);
+  const targets = targetSessionKeys.map((sessionKey) => {
+    const explicitRecipientAgentId = sessionKey.startsWith("agent:")
+      ? resolveAgentIdFromSessionKey(sessionKey)
+      : undefined;
+    const boundRecipientAgentId = params.recipientAgentIds?.get(sessionKey)?.trim();
+    const normalizedBoundRecipientAgentId = boundRecipientAgentId
+      ? normalizeAgentId(boundRecipientAgentId)
+      : undefined;
+    if (
+      explicitRecipientAgentId &&
+      normalizedBoundRecipientAgentId &&
+      explicitRecipientAgentId !== normalizedBoundRecipientAgentId
+    ) {
+      throw new Error(`Continuation recipient owner mismatches target ${sessionKey}`);
+    }
+    const recipientAgentId = normalizedBoundRecipientAgentId ?? explicitRecipientAgentId;
+    if (!recipientAgentId) {
+      throw new Error(`Continuation recipient owner is unavailable for target ${sessionKey}`);
+    }
+    return { sessionKey, recipientAgentId };
+  });
   const deliveryIds: string[] = [];
   let delivered = 0;
 
-  for (const sessionKey of targetSessionKeys) {
+  for (const { sessionKey, recipientAgentId } of targets) {
     const text = params.textBySessionKey?.get(sessionKey) ?? params.text;
     const expectedSessionId = params.expectedSessionIds?.get(sessionKey);
     const delegateArtifactReceipt = params.delegateArtifactReceipts?.get(sessionKey);
@@ -149,7 +171,7 @@ export async function enqueueContinuationReturnDeliveries(
     const commonPayload = {
       kind: "systemEvent" as const,
       sessionKey,
-      agentId: params.ownerAgentId,
+      agentId: recipientAgentId,
       text,
       ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
       ...(params.traceparent ? { traceparent: params.traceparent } : {}),
@@ -197,7 +219,7 @@ export async function enqueueContinuationReturnDeliveries(
     };
     const enqueued = deps.enqueueSystemEvent(
       text,
-      withContinuationOwner(eventOptions, params.ownerAgentId),
+      withContinuationOwner(eventOptions, recipientAgentId),
     );
     if (enqueued && delegateArtifactProjection && delegateArtifactReceipt) {
       deps.recordDelegateArtifactDeliveryBinding?.({
@@ -232,6 +254,7 @@ export async function enqueueContinuationReturnDeliveries(
       deps.requestHeartbeatNow(
         markTrustedContinuationHeartbeatWake({
           sessionKey,
+          agentId: recipientAgentId,
           reason: "delegate-return",
           parentRunId: params.childRunId,
         }),

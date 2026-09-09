@@ -16,7 +16,11 @@ import {
 import { isSessionRecipientAuthorityCurrent as isActualSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.sqlite-recipient-authority.js";
 import { addSessionMember, removeSessionMember } from "../config/sessions/session-sharing-store.js";
 import type { RestartSentinelPayload } from "../infra/restart-sentinel.js";
-import { resolveSystemEventOptionsOwnerAgentId } from "../infra/system-event-ownership.js";
+import {
+  recordSystemEventOwner,
+  resolveSystemEventOptionsOwnerAgentId,
+  selectAgentSystemEvents,
+} from "../infra/system-event-ownership.js";
 import { onInternalSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import { openOpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
 import {
@@ -3158,6 +3162,75 @@ describe("scheduleRestartSentinelWake", () => {
         resolveSystemEventOptionsOwnerAgentId(options),
       ),
     ).toEqual(["main", "main"]);
+  });
+
+  it("replays a main-child continuation return only for its helper recipient", async () => {
+    const sessionKey = "agent:helper:return";
+    mocks.loadSessionEntry.mockReturnValue({
+      cfg: {},
+      agentId: "helper",
+      entry: undefined,
+      store: {},
+      storePath: "/tmp/helper-sessions.json",
+      canonicalKey: sessionKey,
+      storeKeys: [sessionKey],
+      legacyKey: undefined,
+    });
+
+    await deliverQueuedSessionDelivery({
+      deps: {} as never,
+      entry: {
+        id: "continuation-return-helper-replay",
+        kind: "systemEvent",
+        sessionKey,
+        agentId: "helper",
+        text: "main child completed",
+        idempotencyKey: "continuation-return:main-child:agent:helper:return",
+        enqueuedAt: 1,
+        retryCount: 0,
+      },
+      stateDir: "/tmp/restart-delivery-state",
+    });
+
+    const eventOptions = mocks.enqueueSystemEvent.mock.calls[0]?.[1];
+    expect(resolveSystemEventOptionsOwnerAgentId(eventOptions as object)).toBe("helper");
+    const replayedEvent = {};
+    recordSystemEventOwner(
+      replayedEvent,
+      resolveSystemEventOptionsOwnerAgentId(eventOptions as object),
+    );
+    expect(selectAgentSystemEvents([replayedEvent], "helper")).toEqual([replayedEvent]);
+    expect(selectAgentSystemEvents([replayedEvent], "main")).toEqual([]);
+    expect(mocks.requestHeartbeat).toHaveBeenCalledWith({
+      source: "restart-sentinel",
+      intent: "immediate",
+      reason: "wake",
+      agentId: "helper",
+      sessionKey,
+    });
+  });
+
+  it.each([
+    { name: "missing", agentId: undefined },
+    { name: "mismatched", agentId: "main" },
+  ])("fails closed when a continuation return recipient owner is $name", async ({ agentId }) => {
+    await expect(
+      deliverQueuedSessionDelivery({
+        deps: {} as never,
+        entry: {
+          id: `continuation-return-helper-${agentId ?? "missing"}`,
+          kind: "systemEvent",
+          sessionKey: "agent:helper:return",
+          ...(agentId ? { agentId } : {}),
+          text: "must not replay",
+          idempotencyKey: `continuation-return:invalid-${agentId ?? "missing"}`,
+          enqueuedAt: 1,
+          retryCount: 0,
+        },
+      }),
+    ).rejects.toThrow(/recipient owner (is unavailable|mismatches)/);
+    expect(mocks.enqueueSystemEvent).not.toHaveBeenCalled();
+    expect(mocks.requestHeartbeat).not.toHaveBeenCalled();
   });
 
   it("preserves the session chat type for agentTurn continuations", async () => {

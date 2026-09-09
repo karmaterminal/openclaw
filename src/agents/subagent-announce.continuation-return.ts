@@ -2,6 +2,7 @@ import {
   captureContinuationRecipientAuthorities,
   continuationRecipientAuthorityMap,
   parseContinuationRecipientAuthorityBinding,
+  resolveContinuationRecipientAgentIds,
 } from "../auto-reply/continuation/recipient-authority-binding.js";
 import { withContinuationOwner } from "../auto-reply/continuation/system-event-ownership.js";
 import {
@@ -159,6 +160,7 @@ export async function routeSubagentContinuationReturn(params: {
       (sessionKey) =>
         !params.registryRuntime?.shouldIgnorePostCompletionAnnounceForSession(sessionKey),
     );
+    const recipientAgentIds = resolveContinuationRecipientAgentIds(params.cfg, targetSessionKeys);
     if (
       recipientAuthorityBinding?.selection === "pending" &&
       recipientAuthorityBinding.fanoutMode === "tree"
@@ -235,7 +237,7 @@ export async function routeSubagentContinuationReturn(params: {
           ? { chainStepRemaining: completionTrace.chainStepRemaining }
           : {}),
         ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
-        ownerAgentId: params.childAgentId,
+        recipientAgentIds,
       });
     }
     defaultRuntime.log(

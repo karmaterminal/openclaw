@@ -32,6 +32,7 @@ import {
 } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { OutboundReplyPayload } from "../plugin-sdk/reply-payload.js";
+import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import { deliverQueuedGeneratedMediaAgentTurn } from "./server-restart-sentinel-agent-delivery.js";
 import { loadSessionEntry } from "./session-utils.js";
@@ -166,9 +167,39 @@ async function deliverResolvedQueuedSessionDelivery(params: {
     await deliverQueuedPostCompactionDelegate({ entry: params.entry });
     return;
   }
+  const isContinuationReturn =
+    params.entry.kind === "systemEvent" &&
+    params.entry.idempotencyKey?.startsWith("continuation-return:");
+  const recipientAgentId =
+    params.entry.kind === "systemEvent" ? params.entry.agentId?.trim() : undefined;
+  if (isContinuationReturn && !recipientAgentId) {
+    throw new SessionDeliveryDeadLetteredError(
+      "continuation return recipient owner is unavailable",
+    );
+  }
+  const explicitTargetAgentId = parseAgentSessionKey(params.entry.sessionKey)?.agentId;
+  if (
+    recipientAgentId &&
+    explicitTargetAgentId &&
+    normalizeAgentId(explicitTargetAgentId) !== normalizeAgentId(recipientAgentId)
+  ) {
+    throw new SessionDeliveryDeadLetteredError(
+      "continuation return recipient owner mismatches its target",
+    );
+  }
   const { cfg, agentId, entry, storePath, canonicalKey } = loadSessionEntry(
     params.entry.sessionKey,
+    recipientAgentId ? { agentId: recipientAgentId } : undefined,
   );
+  if (
+    isContinuationReturn &&
+    (normalizeAgentId(agentId) !== normalizeAgentId(recipientAgentId) ||
+      (!explicitTargetAgentId && !entry))
+  ) {
+    throw new SessionDeliveryDeadLetteredError(
+      "continuation return recipient owner is no longer authoritative",
+    );
+  }
   const queuedDeliveryContext = resolveQueuedSessionDeliveryContext(params.entry);
 
   if (params.entry.kind === "systemEvent") {

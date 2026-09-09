@@ -174,7 +174,6 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
 
     const result = await enqueueContinuationReturnDeliveries(
       {
-        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:never-existed"],
         text: "[continuation:enrichment-return] nonexistent target",
         idempotencyKeyBase: "continuation-return:nonexistent-test",
@@ -215,7 +214,6 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
 
     const result = await enqueueContinuationReturnDeliveries(
       {
-        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:ghost", "agent:main:phantom", "agent:main:stale"],
         text: "[continuation:enrichment-return] multi nonexistent",
         idempotencyKeyBase: "continuation-return:multi-nonexistent",
@@ -252,7 +250,6 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
 
     const result = await enqueueContinuationReturnDeliveries(
       {
-        ownerAgentId: "main",
         targetSessionKeys,
         text: "[continuation:enrichment-return] empty targets",
         idempotencyKeyBase: "continuation-return:empty-targets",
@@ -277,7 +274,6 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
 
       const result = await enqueueContinuationReturnDeliveries(
         {
-          ownerAgentId: "main",
           targetSessionKeys: ["agent:main:never-existed"],
           text: "[continuation:enrichment-return] durable nonexistent",
           idempotencyKeyBase: "continuation-return:durable-nonexistent",
@@ -310,7 +306,6 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
 
     await enqueueContinuationReturnDeliveries(
       {
-        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:never-existed"],
         text: "[continuation:enrichment-return] in-memory nonexistent",
         idempotencyKeyBase: "continuation-return:inmem-nonexistent",

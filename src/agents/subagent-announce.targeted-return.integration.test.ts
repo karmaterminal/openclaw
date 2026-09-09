@@ -146,14 +146,15 @@ describe("subagent announce targeted continuation return integration", () => {
     resetSystemEventsForTest();
   });
 
-  it("writes queue file, logs targeted-return, and drains the recipient System context", async () => {
+  it("owner-binds a main child return to its explicit helper recipient", async () => {
     await withTestDir({ prefix: "openclaw-targeted-return-runtime-" }, async (stateDir) => {
       vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
       const nonce = "TARGETED-RUNTIME-PATH-NONCE-580";
-      const targetSessionKey = "agent:main:recipient-runtime";
+      const targetSessionKey = "agent:helper:recipient-runtime";
 
       const didAnnounce = await runSubagentAnnounceFlow({
         childSessionKey: "agent:main:subagent:runtime-path",
+        childAgentId: "main",
         childRunId: "run-targeted-runtime-path",
         requesterSessionKey: "agent:main:dispatcher-runtime",
         requesterDisplayKey: "dispatcher-runtime",
@@ -181,7 +182,7 @@ describe("subagent announce targeted continuation return integration", () => {
         throw new Error(`expected systemEvent delivery, received ${persisted.kind}`);
       }
       expect(persisted.sessionKey).toBe(targetSessionKey);
-      expect(persisted.agentId).toBe("main");
+      expect(persisted.agentId).toBe("helper");
       expect(persisted.text).toContain(nonce);
 
       expect(runtimeLogMock).toHaveBeenCalledWith(
@@ -189,11 +190,11 @@ describe("subagent announce targeted continuation return integration", () => {
       );
 
       const queuedEvents = peekSystemEventEntries(targetSessionKey);
-      expect(selectAgentSystemEvents(queuedEvents, "main")).toEqual(queuedEvents);
-      expect(selectAgentSystemEvents(queuedEvents, "helper")).toEqual([]);
+      expect(selectAgentSystemEvents(queuedEvents, "helper")).toEqual(queuedEvents);
+      expect(selectAgentSystemEvents(queuedEvents, "main")).toEqual([]);
       const promptContext = await drainFormattedSystemEvents({
         cfg: mockConfig,
-        agentId: "main",
+        agentId: "helper",
         sessionKey: targetSessionKey,
         isMainSession: false,
         isNewSession: false,
@@ -203,6 +204,7 @@ describe("subagent announce targeted continuation return integration", () => {
       expect(promptContext).toContain(nonce);
       expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
         expect.objectContaining({
+          agentId: "helper",
           sessionKey: targetSessionKey,
           reason: "delegate-return",
           parentRunId: "run-targeted-runtime-path",

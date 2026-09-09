@@ -163,10 +163,9 @@ export async function enqueueHeldReturnCovenantDelivery(params: {
     throw new Error("held result has no durable recipient binding");
   }
   const result = await enqueueContinuationReturnDeliveries({
-    ownerAgentId: "main",
     targetSessionKeys: [state.casePlan.logicalSessionKey],
     text: state.resultText,
-    idempotencyKeyBase: `return-covenant:${context.plan.runId}:${state.casePlan.id}:${state.form}`,
+    idempotencyKeyBase: `continuation-return:return-covenant:${context.plan.runId}:${state.casePlan.id}:${state.form}`,
     recipientAuthorities: continuationRecipientAuthorityMap(parsed.binding, [
       state.casePlan.logicalSessionKey,
     ]),

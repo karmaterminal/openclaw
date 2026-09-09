@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import {
   resetContinuationTracer,
   setContinuationTracer,
@@ -19,8 +20,10 @@ import {
   peekSystemEventEntries,
   resetSystemEventsForTest,
 } from "../../infra/system-events.js";
+import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import { drainFormattedSystemEvents } from "../reply/session-system-events.js";
+import { resolveContinuationRecipientAgentIds } from "./recipient-authority-binding.js";
 import {
   enqueueContinuationReturnDeliveries,
   resolveContinuationReturnTargetSessionKeys,
@@ -32,6 +35,7 @@ describe("continuation cross-session targeting", () => {
   type EnqueueSystemEvent = typeof import("../../infra/system-events.js").enqueueSystemEventRaw;
 
   afterEach(() => {
+    closeOpenClawAgentDatabasesForTest();
     resetContinuationTracer();
     resetSystemEventsForTest();
   });
@@ -51,6 +55,89 @@ describe("continuation cross-session targeting", () => {
         targetSessionKey: "agent:main:root",
       }),
     ).toEqual(["agent:main:root"]);
+  });
+
+  it("resolves an unscoped recipient from its sole durable session-store owner", async () => {
+    await withTestDir({ prefix: "openclaw-targeting-owner-resolution-" }, async (stateDir) => {
+      const env = { ...process.env, OPENCLAW_STATE_DIR: stateDir };
+      const sessionKey = "legacy-helper-target";
+      await upsertSessionEntryCore(
+        { agentId: "helper", env, sessionKey },
+        { sessionId: "helper-target-session", updatedAt: 1 },
+      );
+
+      expect(
+        resolveContinuationRecipientAgentIds(
+          { agents: { list: [{ id: "main" }, { id: "helper" }] } },
+          [sessionKey],
+          env,
+        ),
+      ).toEqual(new Map([[sessionKey, "helper"]]));
+    });
+  });
+
+  it("fails closed when an unscoped recipient owner is missing", async () => {
+    const enqueueSessionDelivery = vi.fn();
+
+    await expect(
+      enqueueContinuationReturnDeliveries(
+        {
+          targetSessionKeys: ["legacy-ownerless-target"],
+          text: "must not deliver",
+          idempotencyKeyBase: "continuation-return:ownerless",
+        },
+        {
+          enqueueSessionDelivery,
+          ackSessionDelivery: vi.fn(),
+          enqueueSystemEvent: vi.fn(),
+          requestHeartbeatNow: vi.fn(),
+        },
+      ),
+    ).rejects.toThrow("recipient owner is unavailable");
+    expect(enqueueSessionDelivery).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a bound recipient owner mismatches the explicit target", async () => {
+    const enqueueSessionDelivery = vi.fn();
+
+    await expect(
+      enqueueContinuationReturnDeliveries(
+        {
+          targetSessionKeys: ["agent:helper:mismatched-target"],
+          recipientAgentIds: new Map([["agent:helper:mismatched-target", "main"]]),
+          text: "must not deliver",
+          idempotencyKeyBase: "continuation-return:mismatch",
+        },
+        {
+          enqueueSessionDelivery,
+          ackSessionDelivery: vi.fn(),
+          enqueueSystemEvent: vi.fn(),
+          requestHeartbeatNow: vi.fn(),
+        },
+      ),
+    ).rejects.toThrow("recipient owner mismatches target");
+    expect(enqueueSessionDelivery).not.toHaveBeenCalled();
+  });
+
+  it("validates every fanout recipient owner before enqueueing any delivery", async () => {
+    const enqueueSessionDelivery = vi.fn();
+
+    await expect(
+      enqueueContinuationReturnDeliveries(
+        {
+          targetSessionKeys: ["agent:main:valid-target", "legacy-ownerless-target"],
+          text: "must not partially deliver",
+          idempotencyKeyBase: "continuation-return:atomic-owner-validation",
+        },
+        {
+          enqueueSessionDelivery,
+          ackSessionDelivery: vi.fn(),
+          enqueueSystemEvent: vi.fn(),
+          requestHeartbeatNow: vi.fn(),
+        },
+      ),
+    ).rejects.toThrow("recipient owner is unavailable");
+    expect(enqueueSessionDelivery).not.toHaveBeenCalled();
   });
 
   it("targets multiple sessions with byte-identical target order and dedupe", () => {
@@ -98,7 +185,6 @@ describe("continuation cross-session targeting", () => {
 
     const result = await enqueueContinuationReturnDeliveries(
       {
-        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
         text: "[continuation:enrichment-return] byte-identical payload",
         idempotencyKeyBase: "continuation-return:test-run",
@@ -164,7 +250,6 @@ describe("continuation cross-session targeting", () => {
 
     await enqueueContinuationReturnDeliveries(
       {
-        ownerAgentId: "main",
         ...shared,
         targetSessionKeys: ["agent:main:cleaned", "agent:main:root"],
       },
@@ -172,7 +257,6 @@ describe("continuation cross-session targeting", () => {
     );
     await enqueueContinuationReturnDeliveries(
       {
-        ownerAgentId: "main",
         ...shared,
         targetSessionKeys: ["agent:main:root"],
       },
@@ -232,7 +316,6 @@ describe("continuation cross-session targeting", () => {
 
     await enqueueContinuationReturnDeliveries(
       {
-        ownerAgentId: "main",
         targetSessionKeys,
         text,
         idempotencyKeyBase: `continuation-return:${scenario.label}`,
@@ -315,7 +398,6 @@ describe("continuation cross-session targeting", () => {
 
     await enqueueContinuationReturnDeliveries(
       {
-        ownerAgentId: "main",
         targetSessionKeys: scenario.targetSessionKeys,
         text: "[continuation:enrichment-return] traced payload",
         idempotencyKeyBase: `continuation-return:${scenario.label}`,
@@ -352,7 +434,6 @@ describe("continuation cross-session targeting", () => {
 
     await enqueueContinuationReturnDeliveries(
       {
-        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:root"],
         text: "[continuation:enrichment-return] untraced payload",
         idempotencyKeyBase: "continuation-return:untraced",
@@ -392,7 +473,6 @@ describe("continuation cross-session targeting", () => {
 
     await enqueueContinuationReturnDeliveries(
       {
-        ownerAgentId: "main",
         targetSessionKeys,
         text: "[continuation:enrichment-return] traced payload",
         idempotencyKeyBase: "continuation-return:fanout",
@@ -443,7 +523,6 @@ describe("continuation cross-session targeting", () => {
 
       const result = await enqueueContinuationReturnDeliveries(
         {
-          ownerAgentId: "main",
           targetSessionKeys: ["agent:main:other"],
           text: "[continuation:enrichment-return] non-attached recipient",
           idempotencyKeyBase: "continuation-return:durable-test",
@@ -479,7 +558,6 @@ describe("continuation cross-session targeting", () => {
       const sessionKey = "agent:main:attached";
       await enqueueContinuationReturnDeliveries(
         {
-          ownerAgentId: "main",
           targetSessionKeys: [sessionKey],
           text: "[continuation:enrichment-return] live attached recipient",
           idempotencyKeyBase: "continuation-return:live-ack-test",
@@ -511,7 +589,6 @@ describe("continuation cross-session targeting", () => {
     await withTestDir({ prefix: "openclaw-targeting-fanout-durable-" }, async (stateDir) => {
       await enqueueContinuationReturnDeliveries(
         {
-          ownerAgentId: "main",
           targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
           text: "[continuation:enrichment-return] fanout durable",
           idempotencyKeyBase: "continuation-return:fanout-durable",

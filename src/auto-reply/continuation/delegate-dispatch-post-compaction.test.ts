@@ -7,7 +7,10 @@
  */
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
+import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
+import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
 
 // Capture mock state for assertions
 const mockState = vi.hoisted(() => ({
@@ -37,8 +40,25 @@ vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEventRaw: mockState.enqueueSystemEvent,
 }));
 
-import { dispatchStagedPostCompactionDelegates } from "./post-compaction-staged-dispatch.js";
+import { dispatchStagedPostCompactionDelegates as dispatchPersistedPostCompactionDelegates } from "./post-compaction-staged-dispatch.js";
 import { POST_COMPACTION_DELEGATE_TTL_MS } from "./post-compaction-staleness.js";
+
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+
+async function dispatchStagedPostCompactionDelegates(
+  ...args: Parameters<typeof dispatchPersistedPostCompactionDelegates>
+) {
+  const sessionKey = args[1];
+  await upsertSessionEntryCore(
+    { agentId: "main", sessionKey },
+    {
+      sessionId: `session:${sessionKey}`,
+      lifecycleRevision: `lifecycle:${sessionKey}`,
+      updatedAt: Date.now(),
+    },
+  );
+  return dispatchPersistedPostCompactionDelegates(...args);
+}
 
 const ROLE_MARKED_DELEGATE_TASK = [
   "do important continuation work",
@@ -74,11 +94,15 @@ function expectTrustedRawTaskEcho(fragment: string, sessionKey: string): string 
 }
 
 beforeEach(() => {
+  closeOpenClawAgentDatabasesForTest();
+  vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("openclaw-post-compaction-dispatch-"));
   vi.clearAllMocks();
 });
 
 afterEach(() => {
   clearRuntimeConfigSnapshot();
+  closeOpenClawAgentDatabasesForTest();
+  vi.unstubAllEnvs();
   vi.clearAllMocks();
 });
 

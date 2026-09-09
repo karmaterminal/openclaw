@@ -129,7 +129,6 @@ describe("recipient authority prompt-adoption fence", () => {
         }
         const recipientAuthority = sessionAccessor.captureSessionRecipientAuthority(scope);
         const delivery = await enqueueContinuationReturnDeliveries({
-          ownerAgentId: "main",
           targetSessionKeys: [sessionKey],
           text: "stale delegate result",
           idempotencyKeyBase: `transcript-race-${invalidation}`,
@@ -255,7 +254,6 @@ describe("recipient authority prompt-adoption fence", () => {
         }
         const recipientAuthority = sessionAccessor.captureSessionRecipientAuthority(scope);
         const delivery = await enqueueContinuationReturnDeliveries({
-          ownerAgentId: "main",
           targetSessionKeys: [sessionKey],
           text: "stale delegate result",
           idempotencyKeyBase: `final-race-${invalidation}`,
@@ -303,7 +301,6 @@ describe("recipient authority prompt-adoption fence", () => {
         });
         const authority = sessionAccessor.captureSessionRecipientAuthority(scope);
         const delivery = await enqueueContinuationReturnDeliveries({
-          ownerAgentId: "main",
           targetSessionKeys: [sessionKey],
           text: `${agentId} delegate result`,
           idempotencyKeyBase: `multi-batch-${agentId}`,
@@ -314,7 +311,7 @@ describe("recipient authority prompt-adoption fence", () => {
         expect(deliveryId).toBeDefined();
         const prepared = await prepareFormattedSystemEvents({
           cfg: {},
-          agentId: "main",
+          agentId,
           sessionKey,
           isMainSession: false,
           isNewSession: false,

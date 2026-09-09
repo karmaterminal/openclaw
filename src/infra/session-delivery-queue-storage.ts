@@ -41,7 +41,7 @@ export type {
 
 export type QueuedSessionDeliveryPayload =
   | (Extract<CoreQueuedSessionDeliveryPayload, { kind: "systemEvent" }> & {
-      /** Preserves ownership when a durable event targets the literal global session. */
+      /** Recipient agent that exclusively owns this durable system event. */
       agentId?: string;
     })
   | Exclude<CoreQueuedSessionDeliveryPayload, { kind: "systemEvent" }>;

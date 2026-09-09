@@ -1,11 +1,16 @@
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { getRuntimeConfig } from "../../config/config.js";
-import { captureSessionRecipientAuthority } from "../../config/sessions/session-accessor.js";
+import {
+  captureSessionRecipientAuthority,
+  loadSessionEntry,
+} from "../../config/sessions/session-accessor.js";
 import {
   ContinuationRecipientAuthorityBindingSchema,
   type ContinuationRecipientAuthorityBinding,
   type SessionRecipientAuthority,
 } from "../../config/sessions/session-recipient-authority-types.js";
+import { resolveAllAgentSessionStoreTargetsSync } from "../../config/sessions/targets.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import {
   normalizeContinuationTargetKey,
@@ -115,4 +120,40 @@ export function continuationRecipientAuthorityMap(
     }
   }
   return authorities;
+}
+
+export function resolveContinuationRecipientAgentIds(
+  cfg: OpenClawConfig,
+  sessionKeys: readonly string[],
+  env: NodeJS.ProcessEnv = process.env,
+): ReadonlyMap<string, string> {
+  let targets: ReturnType<typeof resolveAllAgentSessionStoreTargetsSync> | undefined;
+  return new Map(
+    normalizeContinuationTargetKeys(sessionKeys).map((sessionKey) => {
+      if (sessionKey.startsWith("agent:")) {
+        return [sessionKey, resolveAgentIdFromSessionKey(sessionKey)] as const;
+      }
+      // Explicit agent keys stay allocation-free; only legacy/global aliases need
+      // durable store discovery to prove one recipient owner.
+      targets ??= resolveAllAgentSessionStoreTargetsSync(cfg, { env });
+      const owners = new Set(
+        targets.flatMap((target) =>
+          loadSessionEntry({
+            agentId: target.agentId,
+            env,
+            sessionKey,
+            storePath: target.storePath,
+          })
+            ? [target.agentId]
+            : [],
+        ),
+      );
+      if (owners.size !== 1) {
+        throw new Error(
+          `Continuation recipient owner is ${owners.size === 0 ? "unavailable" : "ambiguous"} for target ${sessionKey}`,
+        );
+      }
+      return [sessionKey, [...owners][0]!] as const;
+    }),
+  );
 }

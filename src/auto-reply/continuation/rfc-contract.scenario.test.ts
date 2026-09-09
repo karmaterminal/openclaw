@@ -373,7 +373,6 @@ describe("continuation RFC contract scenarios", () => {
 
       const result = await enqueueContinuationReturnDeliveries(
         {
-          ownerAgentId: "main",
           targetSessionKeys: [ROOT_SESSION, SIBLING_SESSION, ROOT_SESSION],
           text: envelope,
           idempotencyKeyBase: "contract-return",
@@ -441,8 +440,14 @@ describe("continuation RFC contract scenarios", () => {
 
       expect(deps.requestHeartbeatNow).toHaveBeenCalledTimes(2);
       expect(deps.requestHeartbeatNow.mock.calls.map(([request]) => request)).toEqual([
-        { sessionKey: ROOT_SESSION, reason: "delegate-return", parentRunId: "child-run-contract" },
         {
+          agentId: "main",
+          sessionKey: ROOT_SESSION,
+          reason: "delegate-return",
+          parentRunId: "child-run-contract",
+        },
+        {
+          agentId: "main",
           sessionKey: SIBLING_SESSION,
           reason: "delegate-return",
           parentRunId: "child-run-contract",
@@ -456,7 +461,6 @@ describe("continuation RFC contract scenarios", () => {
 
       await enqueueContinuationReturnDeliveries(
         {
-          ownerAgentId: "main",
           targetSessionKeys: [ROOT_SESSION, SIBLING_SESSION],
           text: "[continuation:enrichment-return] ambient only",
           idempotencyKeyBase: "contract-silent",
@@ -481,7 +485,6 @@ describe("continuation RFC contract scenarios", () => {
 
       const result = await enqueueContinuationReturnDeliveries(
         {
-          ownerAgentId: "main",
           targetSessionKeys: [ROOT_SESSION],
           text: "[continuation:enrichment-return] no trace available",
           idempotencyKeyBase: "contract-no-trace",
