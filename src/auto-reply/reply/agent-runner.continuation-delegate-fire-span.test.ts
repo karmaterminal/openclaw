@@ -10,6 +10,7 @@ import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runne
 import { createContinueDelegateTool } from "../../agents/tools/continue-delegate-tool.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
+import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import {
   resetContinuationTracer,
   setContinuationTracer,
@@ -21,6 +22,10 @@ import {
 } from "../../infra/continuation-tracer.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
 import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-runtime-internal.js";
+import {
+  createOpenClawTestState,
+  type OpenClawTestState,
+} from "../../test-utils/openclaw-test-state.js";
 import {
   dispatchToolDelegates,
   resetDelegateDispatchHedgesForTests,
@@ -47,6 +52,7 @@ const compactState = vi.hoisted(() => ({
 }));
 const requestHeartbeatNowMock = vi.hoisted(() => vi.fn());
 const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
+let testState: OpenClawTestState;
 
 vi.mock("../../agents/model-fallback-runner.js", () => ({
   runWithModelFallback: (params: {
@@ -199,7 +205,11 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
   return { tracer, spans };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  testState = await createOpenClawTestState({
+    layout: "state-only",
+    prefix: "openclaw-continuation-delegate-fire-",
+  });
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
   runEmbeddedAgentMock.mockClear();
@@ -234,7 +244,7 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers();
   resetDelegateDispatchHedgesForTests();
   resetContinuationStateForTests();
@@ -243,6 +253,7 @@ afterEach(() => {
   replyRunRegistryTesting.resetReplyRunRegistry();
   embeddedRunTesting.resetActiveEmbeddedRuns();
   resetContinuationTracer();
+  await testState.cleanup();
 });
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -328,6 +339,10 @@ async function runDelegateTurn(
   run: ReturnType<typeof createContinuationRun>,
   sessionStore: Record<string, SessionEntry>,
 ): Promise<unknown> {
+  await upsertSessionEntryCore(
+    { agentId: "main", env: testState.env, sessionKey: run.sessionKey },
+    run.sessionEntry,
+  );
   setRuntimeConfigSnapshot(run.followupRun.run.config);
   return runReplyAgent({
     commandBody: "hello",
