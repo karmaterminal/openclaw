@@ -249,12 +249,12 @@ describe("Telegram model callback loopback", () => {
           message: sentMessage as never,
         },
       };
-      const createCallbackBot = (customFetch?: typeof fetch) => {
+      const createCallbackBot = (customFetch?: Parameters<typeof asTelegramClientFetch>[0]) => {
         const bot = new Bot(TOKEN, {
           botInfo: telegramBotInfoForTest,
           client: {
             apiRoot,
-            ...(customFetch ? { fetch: customFetch } : {}),
+            ...(customFetch ? { fetch: asTelegramClientFetch(customFetch) } : {}),
           },
         });
         const router = createTelegramCallbackRouter({
