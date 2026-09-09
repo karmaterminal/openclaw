@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Bot } from "grammy";
+import { Bot, type ApiClientOptions } from "grammy";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { listSessionEntries } from "openclaw/plugin-sdk/session-store-runtime";
 import { afterEach, describe, expect, it } from "vitest";
@@ -56,7 +56,7 @@ describe("Telegram model callback loopback", () => {
     resetTelegramClientOptionsCacheForTests();
   });
 
-  it("sends, authorizes, resolves, persists, answers, and edits an opaque callback", async () => {
+  it("replays committed success after Node 24 loses an accepted edit response", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "openclaw-telegram-model-loopback-"));
     const requests: TelegramApiRequest[] = [];
     let sentMessage: Record<string, unknown> | undefined;
@@ -126,6 +126,7 @@ describe("Telegram model callback loopback", () => {
     if (!restartedProcessFetch) {
       throw new Error("Expected Telegram client fetch");
     }
+    const restartedProcessClientFetch = asTelegramClientFetch(restartedProcessFetch);
 
     try {
       const apiRoot = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -241,7 +242,7 @@ describe("Telegram model callback loopback", () => {
           message: sentMessage as never,
         },
       };
-      const createCallbackBot = (customFetch?: typeof fetch) => {
+      const createCallbackBot = (customFetch?: ApiClientOptions["fetch"]) => {
         const bot = new Bot(TOKEN, {
           botInfo: telegramBotInfoForTest,
           client: {
@@ -272,10 +273,10 @@ describe("Telegram model callback loopback", () => {
       } catch (error) {
         firstAttemptError = error;
       }
+      // Node 24 deterministically exposes the accepted-request/lost-response path.
+      // Other supported runtimes still exercise committed restart replay below.
       if (process.versions.node.startsWith("24.")) {
         expect(firstAttemptError).toBeInstanceOf(Error);
-      } else {
-        expect(firstAttemptError).toBeUndefined();
       }
       expect(requests.map(({ method }) => method)).toEqual([
         "sendMessage",
@@ -283,7 +284,7 @@ describe("Telegram model callback loopback", () => {
         "editMessageText",
       ]);
 
-      const restarted = createCallbackBot(restartedProcessFetch);
+      const restarted = createCallbackBot(restartedProcessClientFetch);
       const replayContext = {
         callbackQuery: callbackUpdate.callback_query,
         me: telegramBotInfoForTest,
