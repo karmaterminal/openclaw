@@ -17111,12 +17111,43 @@ it("pins simple release admission owners before selected checkout and preserves 
       ].join("\n"),
       { mode: 0o755 },
     );
+    writeFileSync(
+      path.join(fakeBin, "uname"),
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        'case "${1:-}" in',
+        "  -s) printf 'Linux\\n' ;;",
+        "  -m) printf '%s\\n' \"${FAKE_UNAME_ARCH:-x86_64}\" ;;",
+        "  *) exit 2 ;;",
+        "esac",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
     const toolEnv = {
       ...process.env,
       PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ""}`,
       TOOL_SOURCE_DIR: toolSourceDir,
       XDG_CACHE_HOME: cacheRoot,
     };
+    const rejectedHostPrepare = spawnSync(trustedTools, ["prepare"], {
+      cwd: selectedTagRoot,
+      encoding: "utf8",
+      env: {
+        ...toolEnv,
+        FAKE_UNAME_ARCH: "aarch64",
+      },
+    });
+    expect(
+      rejectedHostPrepare.status,
+      `${rejectedHostPrepare.stdout}${rejectedHostPrepare.stderr}`,
+    ).toBe(1);
+    expect(rejectedHostPrepare.stderr).toContain(
+      "unsupported host Linux/aarch64; expected Linux x86_64",
+    );
+    expect(existsSync(cacheRoot)).toBe(false);
+
     writeSyntheticManifest(true);
     const rejectedPrepare = spawnSync(trustedTools, ["prepare"], {
       cwd: selectedTagRoot,
@@ -17139,6 +17170,10 @@ it("pins simple release admission owners before selected checkout and preserves 
       rejectedRacedPrepare.status,
       `${rejectedRacedPrepare.stdout}${rejectedRacedPrepare.stderr}`,
     ).not.toBe(0);
+    expect(
+      existsSync(path.join(cacheRoot, "tauri/race-marker")),
+      `${rejectedRacedPrepare.stdout}${rejectedRacedPrepare.stderr}`,
+    ).toBe(true);
     expect(readFileSync(path.join(cacheRoot, "tauri/race-marker"), "utf8")).toBe("raced\n");
     expect(globSync(path.join(cacheRoot, ".tauri-tools.*"))).toEqual([]);
     rmSync(path.join(cacheRoot, "tauri"), { recursive: true });
