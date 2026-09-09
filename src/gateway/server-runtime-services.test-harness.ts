@@ -164,15 +164,13 @@ export function createTestCronState(
   } as GatewayCronState;
 }
 
-export function createTestCronReconciliation(
-  complete: () => Promise<void> = async () => {},
-): GatewayCronReconciliation {
+export function createTestCronReconciliation(complete: () => Promise<void> = async () => {}) {
   const completeMock = vi.fn<() => Promise<void>>(complete);
   return {
     arm: vi.fn(() => ({ complete: completeMock })),
-    complete: completeMock,
     invalidate: vi.fn(),
-  };
+    completeMock,
+  } satisfies GatewayCronReconciliation & { completeMock: typeof completeMock };
 }
 
 export function activateScheduledServicesForTest(

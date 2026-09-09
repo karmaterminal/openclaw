@@ -256,7 +256,7 @@ describe("server-runtime-services", () => {
       expect(logCron.error).toHaveBeenCalledWith("failed to start: Error: store unavailable"),
     );
     expect(onStartError).toHaveBeenCalledOnce();
-    expect(cronReconciliation.complete).not.toHaveBeenCalled();
+    expect(cronReconciliation.completeMock).not.toHaveBeenCalled();
     expect(getActiveGatewayRootWorkCount()).toBe(0);
   });
 
@@ -278,7 +278,7 @@ describe("server-runtime-services", () => {
     await waitForFast(() =>
       expect(logCron.error).toHaveBeenCalledWith("failed to start: Error: watcher unavailable"),
     );
-    expect(cronReconciliation.complete).not.toHaveBeenCalled();
+    expect(cronReconciliation.completeMock).not.toHaveBeenCalled();
     expect(getActiveGatewayRootWorkCount()).toBe(0);
   });
 
@@ -299,7 +299,7 @@ describe("server-runtime-services", () => {
       logCron: { error: vi.fn() },
     });
 
-    await waitForFast(() => expect(cronReconciliation.complete).toHaveBeenCalledTimes(1));
+    await waitForFast(() => expect(cronReconciliation.completeMock).toHaveBeenCalledTimes(1));
     expect(getActiveGatewayRootWorkCount()).toBe(1);
     if (!releaseHook) {
       throw new Error("Expected cron reconciliation hook to be pending");
