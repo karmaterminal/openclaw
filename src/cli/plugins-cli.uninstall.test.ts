@@ -25,12 +25,13 @@ import {
   runPluginsCommand,
   runtimeErrors,
   pluginsCliRuntimeLogs,
+  pluginsCliTestStateRoot,
   setInstalledPluginIndexInstallRecords,
   configWriteMock,
   writePersistedInstalledPluginIndexInstallRecordsWithLeaseMock,
 } from "./plugins-cli-test-helpers.js";
 
-const CLI_STATE_ROOT = "/tmp/openclaw-state";
+const CLI_STATE_ROOT = pluginsCliTestStateRoot;
 const ALPHA_INSTALL_PATH = installedPluginRoot(CLI_STATE_ROOT, "alpha");
 const ORIGINAL_OPENCLAW_NIX_MODE = process.env.OPENCLAW_NIX_MODE;
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);

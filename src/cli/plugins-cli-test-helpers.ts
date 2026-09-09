@@ -1,4 +1,5 @@
 // Shared Vitest mocks and runtime capture helpers for plugin CLI command tests.
+import path from "node:path";
 import { Command } from "commander";
 import type { Mock } from "vitest";
 import { vi } from "vitest";
@@ -59,6 +60,11 @@ function createEmptyUninstallActions() {
 let mockInstalledPluginIndexInstallRecords: PluginInstallRecordMap = {};
 let mockHookInstallRecords: Record<string, HookInstallRecord> = {};
 let mockInstalledPluginIndexRevision = 0;
+const isolatedTestHome = process.env.OPENCLAW_TEST_HOME;
+if (!isolatedTestHome) {
+  throw new Error("OPENCLAW_TEST_HOME is required for plugin CLI tests");
+}
+export const pluginsCliTestStateRoot = path.join(isolatedTestHome, ".openclaw");
 
 export function setHookInstallRecords(records: Record<string, HookInstallRecord>): void {
   mockHookInstallRecords = structuredClone(records);
@@ -102,7 +108,7 @@ export const configWriteMock: AsyncUnknownMock = vi.fn(async () => undefined);
 export const replaceConfigFileMock: AsyncUnknownMock = vi.fn(
   async (params: { nextConfig: OpenClawConfig }) => await configWriteMock(params.nextConfig),
 ) as AsyncUnknownMock;
-const resolveStateDir: Mock<() => string> = vi.fn(() => "/tmp/openclaw-state");
+const resolveStateDir: Mock<() => string> = vi.fn(() => pluginsCliTestStateRoot);
 export const installPluginFromMarketplaceMock: Mock<InstallPluginFromMarketplaceFn> = vi.fn();
 export const installPluginFromGitSpecMock: Mock<InstallPluginFromGitSpecFn> = vi.fn();
 const parseGitPluginSpec: Mock<ParseGitPluginSpecFn> = vi.fn();
@@ -117,7 +123,7 @@ const loadInstalledPluginIndexInstallRecords: AsyncUnknownMock = vi.fn(async () 
 const writePersistedInstalledPluginIndexInstallRecords: Mock<WritePersistedInstalledPluginIndexInstallRecordsFn> =
   vi.fn<WritePersistedInstalledPluginIndexInstallRecordsFn>(async (records) => {
     mockInstalledPluginIndexInstallRecords = clonePluginInstallRecords(records);
-    return "/tmp/openclaw-state/openclaw.sqlite";
+    return path.join(pluginsCliTestStateRoot, "openclaw.sqlite");
   });
 export const readPersistedInstalledPluginIndexMock: Mock<ReadPersistedInstalledPluginIndexFn> =
   vi.fn<ReadPersistedInstalledPluginIndexFn>(async () => null);
@@ -951,7 +957,7 @@ export function resetPluginsCliTestState() {
     (async (params: { nextConfig: OpenClawConfig }) =>
       await configWriteMock(params.nextConfig)) as (...args: unknown[]) => Promise<unknown>,
   );
-  resolveStateDir.mockReturnValue("/tmp/openclaw-state");
+  resolveStateDir.mockReturnValue(pluginsCliTestStateRoot);
   resolveMarketplaceInstallShortcutMock.mockResolvedValue(null);
   installPluginFromMarketplaceMock.mockResolvedValue({
     ok: false,
@@ -970,7 +976,7 @@ export function resetPluginsCliTestState() {
   );
   writePersistedInstalledPluginIndexInstallRecords.mockImplementation(async (records) => {
     mockInstalledPluginIndexInstallRecords = clonePluginInstallRecords(records);
-    return "/tmp/openclaw-state/openclaw.sqlite";
+    return path.join(pluginsCliTestStateRoot, "openclaw.sqlite");
   });
   readPersistedInstalledPluginIndexMock.mockResolvedValue(null);
   writePersistedInstalledPluginIndexInstallRecordsWithLeaseMock.mockImplementation(
