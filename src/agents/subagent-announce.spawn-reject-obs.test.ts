@@ -122,7 +122,13 @@ import {
   setRuntimeConfigSnapshot,
   type OpenClawConfig,
 } from "../config/config.js";
+import { resolveSessionStorePathCore } from "../config/sessions.js";
+import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import { defaultRuntime } from "../runtime.js";
+import {
+  createOpenClawTestState,
+  type OpenClawTestState,
+} from "../test-utils/openclaw-test-state.js";
 import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 import * as subagentSpawn from "./subagents/spawn/subagent-spawn.js";
 
@@ -144,6 +150,21 @@ function makeConfig(): OpenClawConfig {
       },
     },
   };
+}
+
+async function writeChildSessionOwner(): Promise<void> {
+  const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
+  await replaceSessionEntry(
+    {
+      agentId: "main",
+      sessionKey: "agent:main:subagent:shard-reject-tool",
+      storePath,
+    },
+    {
+      sessionId: "session-shard-reject-tool",
+      updatedAt: Date.now(),
+    },
+  );
 }
 
 function buildToolDelegateParams(): AnnounceFlowParams {
@@ -168,8 +189,14 @@ const mockedMarkPendingDelegateFailed = vi.mocked(markPendingDelegateFailed);
 describe("subagent-announce tool-delegate rejection observability", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;
   let logSpy: ReturnType<typeof vi.spyOn>;
+  let testState: OpenClawTestState;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    testState = await createOpenClawTestState({
+      layout: "state-only",
+      prefix: "openclaw-continuation-reject-observation-",
+    });
+    await writeChildSessionOwner();
     setRuntimeConfigSnapshot(makeConfig());
     spawnSpy = vi.spyOn(subagentSpawn, "spawnSubagentDirect");
     logSpy = vi.spyOn(defaultRuntime, "log").mockImplementation(() => {});
@@ -182,7 +209,7 @@ describe("subagent-announce tool-delegate rejection observability", () => {
     mockedMarkPendingDelegateFailed.mockClear();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     spawnSpy.mockRestore();
     logSpy.mockRestore();
     mockedConsumePendingDelegates.mockReturnValue([]);
@@ -193,6 +220,7 @@ describe("subagent-announce tool-delegate rejection observability", () => {
     }));
     mockedMarkPendingDelegateFailed.mockClear();
     clearRuntimeConfigSnapshot();
+    await testState.cleanup();
   });
 
   it("surfaces spawnResult.error in `reason=...` log + markPendingDelegateFailed summary when present", async () => {
