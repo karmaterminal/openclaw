@@ -56,6 +56,7 @@ async function runConnect(args: string[]): Promise<void> {
 }
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+const UNIX_SOCKET_PATH_MAX_BYTES = process.platform === "darwin" ? 103 : 107;
 
 describe("connect cli", () => {
   beforeEach(() => {
@@ -178,8 +179,9 @@ describe("connect cli", () => {
   it.skipIf(process.platform === "win32")(
     "rejects a socket target without removing it",
     async () => {
-      const root = tempDirs.make("openclaw-connect-target-socket-");
+      const root = tempDirs.make("oc-connect-socket-", "/tmp");
       const targetFile = path.join(root, "setup-code.sock");
+      expect(Buffer.byteLength(targetFile)).toBeLessThanOrEqual(UNIX_SOCKET_PATH_MAX_BYTES);
       const server = net.createServer();
       await new Promise<void>((resolve, reject) => {
         server.once("error", reject);

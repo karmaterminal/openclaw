@@ -366,17 +366,6 @@ async function listenLoopback(port: number): Promise<{
   };
 }
 
-async function occupyLoopbackPort(port: number): Promise<{ close: () => Promise<void> }> {
-  try {
-    return await listenLoopback(port);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
-      return { close: async () => undefined };
-    }
-    throw error;
-  }
-}
-
 async function stopUpgradeSurvivorSupervisor(supervisor: ChildProcess, pidPath: string) {
   try {
     if (supervisor.exitCode === null && supervisor.signalCode === null) {
@@ -3432,7 +3421,8 @@ fi
       mkdirSync(artifacts);
       mkdirSync(stateDir);
       const configPath = join(stateDir, "openclaw.json");
-      const authored = '{"gateway":{"mode":"local","port":18789},"channels":{"whatsapp":{}}}\n';
+      const ambient = await listenLoopback(0);
+      const authored = `{"gateway":{"mode":"local","port":${ambient.port}},"channels":{"whatsapp":{}}}\n`;
       writeFileSync(configPath, authored);
       const childPath = join(workDir, "listener.mjs");
       const startsPath = join(workDir, "starts.jsonl");
@@ -3508,7 +3498,10 @@ process.on("SIGTERM", () => {
         STARTS_FILE: startsPath,
         PORT_FILE: portPath,
       };
-      const source = readFileSync(UPGRADE_SURVIVOR_RUN_SCRIPT, "utf8");
+      const source = readFileSync(UPGRADE_SURVIVOR_RUN_SCRIPT, "utf8").replace(
+        "local probe_port=18789",
+        `local probe_port=${ambient.port}`,
+      );
       const setup =
         lane === "published"
           ? source.slice(0, source.indexOf("phase storage-preflight"))
@@ -3528,7 +3521,7 @@ eval "$(declare -f stop_update_restart_probe_gateway | sed '1s/stop_update_resta
 stop_update_restart_probe_gateway() {
   fixture_stop_update_restart_probe_gateway "$1" "$(cat "$PORT_FILE")"
 }
-${lane === "published" ? "prepare_update_restart_probe" : 'prepare_update_restart_probe_current_install 18789 "$OPENCLAW_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_DAEMON_LOG"'}
+${lane === "published" ? "prepare_update_restart_probe" : `prepare_update_restart_probe_current_install ${ambient.port} "$OPENCLAW_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_DAEMON_LOG"`}
 `;
       const systemctlPath = join(
         lane === "published" ? join(artifacts, "npm-prefix") : workDir,
@@ -3549,7 +3542,6 @@ ${lane === "published" ? "prepare_update_restart_probe" : 'prepare_update_restar
               .filter(Boolean)
               .map((line) => JSON.parse(line))
           : [];
-      const ambient = await occupyLoopbackPort(18789);
       try {
         const result = spawnSync("bash", ["-c", script], {
           env,
@@ -3607,7 +3599,7 @@ ${lane === "published" ? "prepare_update_restart_probe" : 'prepare_update_restar
       const workDir = tempDirs.make("survivor-stop-owned-listener-");
       const daemonLog = join(workDir, "daemon.log");
       const owned = await listenLoopback(0);
-      const ambient = await occupyLoopbackPort(18789);
+      const ambient = await listenLoopback(0);
       const runStop = (port: number) =>
         spawnSync(
           "bash",
@@ -3637,9 +3629,9 @@ stop_update_restart_probe_gateway 5s ${shellQuote(String(port))}
         await owned.close();
         const released = runStop(owned.port);
         expect(released.status, released.stdout + released.stderr).toBe(0);
-        const productionPort = runStop(18789);
-        expect(productionPort.status, productionPort.stdout + productionPort.stderr).not.toBe(0);
-        expect(productionPort.stderr).toContain("gateway service shutdown could not be verified");
+        const foreignPort = runStop(ambient.port);
+        expect(foreignPort.status, foreignPort.stdout + foreignPort.stderr).not.toBe(0);
+        expect(foreignPort.stderr).toContain("gateway service shutdown could not be verified");
       } finally {
         await owned.close().catch(() => undefined);
         await ambient.close();
