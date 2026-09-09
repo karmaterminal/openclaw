@@ -1,7 +1,11 @@
 // "RFC §" references herein cite docs/design/continue-work-signal-v2.md (Agent Self-Elected Turn Continuation / CONTINUE_WORK).
 import { expectDefined } from "@openclaw/normalization-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
+import {
+  createOpenClawTestState,
+  type OpenClawTestState,
+} from "../test-utils/openclaw-test-state.js";
 import { createSubagentAnnounceDeliveryRuntimeMock } from "./subagents/announce/subagent-announce.test-support.js";
 import type { SpawnSubagentResult } from "./subagents/spawn/subagent-spawn.js";
 
@@ -305,13 +309,37 @@ vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => ({
   ) => updateSessionEntryMock(scope, update, options),
 }));
 
+import { resolveSessionStorePathCore } from "../config/sessions.js";
+import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 
 const splitLintUse = [validTraceparent];
 void splitLintUse;
 
 describe("subagent-announce continuation drain (F7)", () => {
-  beforeEach(() => {
+  let testState: OpenClawTestState;
+
+  beforeEach(async () => {
+    testState = await createOpenClawTestState({
+      layout: "state-only",
+      prefix: "openclaw-continuation-bracket-hedge-",
+    });
+    const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
+    for (const sessionKey of [
+      "agent:main:subagent:mixed-rejected-bracket",
+      "agent:main:subagent:post-compaction-mixed",
+      "agent:main:subagent:delayed-bracket-tool",
+      "agent:main:subagent:delayed-bracket-one-reject",
+      "agent:main:subagent:delayed-bracket-all-rejected",
+    ]) {
+      await replaceSessionEntry(
+        { agentId: "main", sessionKey, storePath },
+        {
+          sessionId: `session-${sessionKey}`,
+          updatedAt: Date.now(),
+        },
+      );
+    }
     agentSpy.mockClear();
     callGatewayMock.mockReset().mockImplementation(async () => ({}));
     dispatchToolDelegatesMock.mockReset().mockResolvedValue({ dispatched: 0, rejected: 0 });
@@ -383,6 +411,10 @@ describe("subagent-announce continuation drain (F7)", () => {
       runId: "run-grandchild",
     });
     resetSystemEventsForTest();
+  });
+
+  afterEach(async () => {
+    await testState.cleanup();
   });
 
   it("does not reserve a current-chain hop when an immediate bracket delegate is rejected", async () => {
