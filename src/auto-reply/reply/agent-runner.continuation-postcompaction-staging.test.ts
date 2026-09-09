@@ -11,7 +11,9 @@ import {
 import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runner/runs.test-support.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
+import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
+import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
 import { resetContinuationStateForTests } from "../continuation/state.js";
 import type { TemplateContext } from "../templating.js";
@@ -70,7 +72,10 @@ vi.mock("../../agents/embedded-agent-runner/run-entry.js", () => ({
     return {
       ...fallback,
       outcome: "completed",
-      terminal: { metadata: {} },
+      terminal: {
+        outcome: { reason: "completed", status: "ok" },
+        metadata: {},
+      },
       settleSessionOverride: async () => {},
     };
   },
@@ -342,8 +347,12 @@ describe("runReplyAgent :: post-compaction staging wiring", () => {
   it("post-compaction bracket stages via stagePostCompactionDelegate and does NOT normal-dispatch", async () => {
     const run = createContinuationRun({ sessionKey: "postcompaction-stage-only" });
     runEmbeddedAgentMock.mockResolvedValueOnce({
-      payloads: [{ text: "Reply\n[[CONTINUE_DELEGATE: lifeboat task | post-compaction]]" }],
-      meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+      payloads: [{ text: "Reply" }],
+      meta: {
+        finalAssistantVisibleText: "Reply",
+        finalAssistantRawText: "Reply\n[[CONTINUE_DELEGATE: lifeboat task | post-compaction]]",
+        agentMeta: { usage: { input: 1, output: 1 } },
+      },
     });
 
     await runDelegateTurn(run, { [run.sessionKey]: run.sessionEntry });
@@ -378,12 +387,13 @@ describe("runReplyAgent :: post-compaction staging wiring", () => {
       },
     });
     runEmbeddedAgentMock.mockResolvedValueOnce({
-      payloads: [
-        {
-          text: "Reply\n[[CONTINUE_DELEGATE: t | target=agent:main:other | post-compaction]]",
-        },
-      ],
-      meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+      payloads: [{ text: "Reply" }],
+      meta: {
+        finalAssistantVisibleText: "Reply",
+        finalAssistantRawText:
+          "Reply\n[[CONTINUE_DELEGATE: t | target=agent:main:other | post-compaction]]",
+        agentMeta: { usage: { input: 1, output: 1 } },
+      },
     });
 
     await runDelegateTurn(run, { [run.sessionKey]: run.sessionEntry });
@@ -398,27 +408,40 @@ describe("runReplyAgent :: post-compaction staging wiring", () => {
   });
 
   it("normal bracket (no post-compaction) normal-dispatches and does NOT stage", async () => {
-    const run = createContinuationRun({ sessionKey: "postcompaction-normal-dispatch" });
-    runEmbeddedAgentMock.mockResolvedValueOnce({
-      payloads: [{ text: "Reply\n[[CONTINUE_DELEGATE: normal task]]" }],
-      meta: { agentMeta: { usage: { input: 1, output: 1 } } },
-    });
+    await withOpenClawTestState(
+      { layout: "state-only", prefix: "openclaw-postcompaction-normal-dispatch-" },
+      async (state) => {
+        const run = createContinuationRun({ sessionKey: "postcompaction-normal-dispatch" });
+        await upsertSessionEntryCore(
+          { agentId: "main", env: state.env, sessionKey: run.sessionKey },
+          run.sessionEntry,
+        );
+        runEmbeddedAgentMock.mockResolvedValueOnce({
+          payloads: [{ text: "Reply" }],
+          meta: {
+            finalAssistantVisibleText: "Reply",
+            finalAssistantRawText: "Reply\n[[CONTINUE_DELEGATE: normal task]]",
+            agentMeta: { usage: { input: 1, output: 1 } },
+          },
+        });
 
-    await runDelegateTurn(run, { [run.sessionKey]: run.sessionEntry });
+        await runDelegateTurn(run, { [run.sessionKey]: run.sessionEntry });
 
-    expect(stagePostCompactionDelegateMock).not.toHaveBeenCalled();
-    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+        expect(stagePostCompactionDelegateMock).not.toHaveBeenCalled();
+        expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+      },
+    );
   });
 
   it("post-compaction bracket enqueues the delegate-staged-post-compaction system event", async () => {
     const run = createContinuationRun({ sessionKey: "postcompaction-system-event" });
     runEmbeddedAgentMock.mockResolvedValueOnce({
-      payloads: [
-        {
-          text: `Reply\n[[CONTINUE_DELEGATE: ${ROLE_MARKED_BRACKET_TASK} | post-compaction]]`,
-        },
-      ],
-      meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+      payloads: [{ text: "Reply" }],
+      meta: {
+        finalAssistantVisibleText: "Reply",
+        finalAssistantRawText: `Reply\n[[CONTINUE_DELEGATE: ${ROLE_MARKED_BRACKET_TASK} | post-compaction]]`,
+        agentMeta: { usage: { input: 1, output: 1 } },
+      },
     });
 
     await runDelegateTurn(run, { [run.sessionKey]: run.sessionEntry });

@@ -69,7 +69,10 @@ vi.mock("../../agents/embedded-agent-runner/run-entry.js", () => ({
     return {
       ...fallback,
       outcome: "completed",
-      terminal: { metadata: {} },
+      terminal: {
+        outcome: { reason: "completed", status: "ok" },
+        metadata: {},
+      },
       settleSessionOverride: async () => {},
     };
   },
@@ -271,8 +274,11 @@ function createContinuationRun(params: { sessionKey: string; compactionCount: nu
   } as unknown as FollowupRun;
 
   runEmbeddedAgentMock.mockResolvedValueOnce({
-    payloads: [{ text: "Reply\n[[CONTINUE_DELEGATE: lifeboat survival task | post-compaction]]" }],
+    payloads: [{ text: "Reply" }],
     meta: {
+      finalAssistantVisibleText: "Reply",
+      finalAssistantRawText:
+        "Reply\n[[CONTINUE_DELEGATE: lifeboat survival task | post-compaction]]",
       agentMeta: {
         usage: { input: 1, output: 1 },
         ...(params.compactionCount > 0 ? { compactionCount: params.compactionCount } : {}),
