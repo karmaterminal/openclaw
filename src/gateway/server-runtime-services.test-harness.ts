@@ -1,4 +1,11 @@
 import { vi } from "vitest";
+import type { GatewayCronReconciliation } from "./server-cron-reconciled.js";
+import type { GatewayCronState } from "./server-cron.js";
+import {
+  activateGatewayScheduledServices,
+  type GatewayMaintenanceHandles,
+  scheduleGatewayPostReadyMaintenance,
+} from "./server-runtime-services.js";
 
 type StartSessionDeliveryRuntime =
   typeof import("../infra/session-delivery-queue-runtime.js").startSessionDeliveryRuntime;
@@ -131,3 +138,95 @@ vi.mock("./channel-health-monitor.js", () => ({
 
 // Vitest moves the declaration before imports; it rejects an exported hoisted declaration.
 export { runtimeServiceMocks };
+
+export function createRuntimeServiceLog() {
+  return {
+    child: vi.fn(() => ({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    })),
+    warn: vi.fn(),
+    error: vi.fn(),
+  };
+}
+
+export const createTestCron = () => ({ start: vi.fn<() => Promise<void>>(async () => {}) });
+
+export function createTestCronState(
+  cron: { start: () => Promise<void> } = createTestCron(),
+  cronEnabled = true,
+) {
+  return {
+    cron,
+    storePath: "/tmp/cron.json",
+    cronEnabled,
+  } as GatewayCronState;
+}
+
+export function createTestCronReconciliation(
+  complete: () => Promise<void> = async () => {},
+): GatewayCronReconciliation {
+  const completeMock = vi.fn<() => Promise<void>>(complete);
+  return {
+    arm: vi.fn(() => ({ complete: completeMock })),
+    complete: completeMock,
+    invalidate: vi.fn(),
+  };
+}
+
+export function activateScheduledServicesForTest(
+  overrides: Omit<
+    Partial<Parameters<typeof activateGatewayScheduledServices>[0]>,
+    "cronState"
+  > = {},
+) {
+  const cron = createTestCron();
+  const cronState = createTestCronState(cron);
+  const cronStart = cron.start;
+  const log = overrides.log ?? createRuntimeServiceLog();
+  const cfgAtStart = overrides.cfgAtStart ?? ({} as never);
+  const services = activateGatewayScheduledServices({
+    minimalTestGateway: false,
+    cfgAtStart,
+    deps: {} as never,
+    sessionDeliveryRecoveryMaxEnqueuedAt: 123,
+    cronReconciliation: createTestCronReconciliation(),
+    logCron: { error: vi.fn() },
+    ...overrides,
+    cronState,
+    log,
+  });
+  return { cron, cronStart, log, services };
+}
+
+export function createPostReadyMaintenanceScheduleParams(
+  overrides: Partial<Parameters<typeof scheduleGatewayPostReadyMaintenance>[0]> = {},
+): Parameters<typeof scheduleGatewayPostReadyMaintenance>[0] {
+  return {
+    delayMs: 1,
+    isClosing: () => false,
+    startMaintenance: vi.fn(async () => null),
+    applyMaintenance: vi.fn(),
+    shouldStartCron: () => true,
+    markCronStartHandled: vi.fn(),
+    cronState: createTestCronState(),
+    cronReconciliation: createTestCronReconciliation(),
+    cronConfig: {} as never,
+    logCron: { error: vi.fn() },
+    log: createRuntimeServiceLog(),
+    recordPostReadyMemory: vi.fn(),
+    ...overrides,
+  };
+}
+
+export const createMaintenanceHandles = (): GatewayMaintenanceHandles => ({
+  tickInterval: setInterval(() => undefined, 60_000),
+  healthInterval: setInterval(() => undefined, 60_000),
+  dedupeCleanup: setInterval(() => undefined, 60_000),
+  startMediaCleanup: vi.fn(),
+  stopMediaCleanup: vi.fn(async () => "drained" as const),
+  worktreeCleanup: setInterval(() => undefined, 60_000),
+  delegateArtifactCleanup: setInterval(() => undefined, 60_000),
+  skillUsageCleanup: vi.fn(),
+});

@@ -1,7 +1,5 @@
 /** Coordinates subagent registration, lifecycle, delivery, steering, recovery, and persistence. */
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import type { AgentWaitParams } from "../../../../packages/gateway-protocol/src/index.js";
-import { hasLiveOrRecentlyDispatchedContinuationWork } from "../../../auto-reply/continuation/work-store.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { callGateway } from "../../../gateway/call.js";
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
@@ -49,6 +47,10 @@ import type {
 import { createSubagentRunManager } from "./subagent-registry-run-manager.js";
 import { clearSubagentRunsReadCacheForTest } from "./subagent-registry-state.js";
 import { SUBAGENT_SUSPENDED_DELIVERY_HARD_CAP } from "./subagent-registry-suspended-delivery.js";
+import {
+  callGatewayForSweep,
+  hasContinuationWorkForSweepEntry,
+} from "./subagent-registry-sweep-gateway.js";
 import { resolveSubagentTaskForRun } from "./subagent-registry-sweep-kill.js";
 import {
   createSubagentRegistrySweeper,
@@ -109,37 +111,6 @@ function persistSubagentRunsOrThrow(...runIds: string[]) {
 
 function findSubagentTaskForRun(entry: SubagentRunRecord) {
   return resolveSubagentTaskForRun(getSubagentRunsForChildSession(entry.childSessionKey), entry);
-}
-
-function hasContinuationWorkForSweepEntry(entry: SubagentRunRecord): boolean {
-  if (hasLiveOrRecentlyDispatchedContinuationWork(entry.childSessionKey)) {
-    return true;
-  }
-  if (!entry.collect || !entry.groupId) {
-    return false;
-  }
-  return [...subagentRuns.values()].some(
-    (candidate) =>
-      candidate.collect === true &&
-      candidate.groupId === entry.groupId &&
-      candidate.swarmRequesterSessionKey === entry.swarmRequesterSessionKey &&
-      hasLiveOrRecentlyDispatchedContinuationWork(candidate.childSessionKey),
-  );
-}
-
-async function callGatewayForSweep<T>(request: Parameters<typeof callGateway>[0]): Promise<T> {
-  if (request.method === "sessions.delete") {
-    const key = asOptionalRecord(request.params)?.key;
-    if (typeof key === "string") {
-      const entry = [...subagentRuns.values()].find(
-        (candidate) => candidate.childSessionKey === key,
-      );
-      if (entry && hasContinuationWorkForSweepEntry(entry)) {
-        throw new Error("subagent session still owns live continuation work");
-      }
-    }
-  }
-  return await subagentRegistryDeps.callGateway<T>(request);
 }
 
 export function scheduleSubagentRegistrySweep(params?: { delayMs?: number }) {

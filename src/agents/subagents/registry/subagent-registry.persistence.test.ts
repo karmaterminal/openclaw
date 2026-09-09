@@ -19,6 +19,7 @@ import {
   canonicalSubagentRunFixtures,
   cleanupSubagentRegistryPersistenceTest,
   expectDeferredSubagentAnnouncement,
+  expectFields,
   gateSubagentRequesterSettlement,
   settleSubagentRegistryPersistenceWork,
   createSubagentRegistryTestDeps,
@@ -49,16 +50,6 @@ const { announceSpy } = vi.hoisted(() => ({
 vi.mock("../announce/subagent-announce.js", () => ({
   runSubagentAnnounceFlow: announceSpy,
 }));
-
-function expectFields(value: unknown, expected: Record<string, unknown>): void {
-  if (!value || typeof value !== "object") {
-    throw new Error("expected fields object");
-  }
-  const record = value as Record<string, unknown>;
-  for (const [key, expectedValue] of Object.entries(expected)) {
-    expect(record[key], key).toEqual(expectedValue);
-  }
-}
 
 describe("subagent registry persistence", () => {
   const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
