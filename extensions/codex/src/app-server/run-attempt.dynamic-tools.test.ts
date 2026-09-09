@@ -9,7 +9,6 @@ import {
   emitTrustedDiagnosticEvent,
   hasPendingInternalDiagnosticEvent,
   onInternalDiagnosticEvent,
-  waitForDiagnosticEventsDrained,
   type DiagnosticEventPayload,
 } from "openclaw/plugin-sdk/diagnostic-runtime";
 import { initializeGlobalHookRunner } from "openclaw/plugin-sdk/hook-runtime";
@@ -17,10 +16,12 @@ import { createMockPluginRegistry } from "openclaw/plugin-sdk/plugin-test-runtim
 import { describe, expect, it, vi } from "vitest";
 import { readAttemptTerminal } from "./attempt-terminal.test-helper.js";
 import { dynamicToolBuildState } from "./dynamic-tool-build-state.js";
+import { emitDynamicToolTerminalDiagnostic } from "./dynamic-tool-diagnostics.js";
 import {
-  emitDynamicToolTerminalDiagnostic,
-  startDynamicToolDiagnosticExecution,
-} from "./dynamic-tool-diagnostics.js";
+  activeDiagnosticToolKeys,
+  emitDynamicToolStartedDiagnostic,
+  flushDiagnosticEvents,
+} from "./dynamic-tool-diagnostics.test-support.js";
 import { hasPendingDynamicToolTerminalDiagnostic } from "./dynamic-tool-execution.js";
 import type { CodexDynamicToolCallParams } from "./protocol.js";
 import {
@@ -42,36 +43,6 @@ const testing = {
     dynamicToolBuildState.openClawCodingToolsFactory = factory;
   },
 };
-
-function emitDynamicToolStartedDiagnostic(
-  params: Parameters<typeof startDynamicToolDiagnosticExecution>[0],
-): void {
-  startDynamicToolDiagnosticExecution(params, () => undefined);
-}
-
-function flushDiagnosticEvents() {
-  return waitForDiagnosticEventsDrained();
-}
-
-function activeDiagnosticToolKeys(events: DiagnosticEventPayload[]): Set<string> {
-  const active = new Set<string>();
-  for (const event of events) {
-    if (event.type === "tool.execution.started") {
-      active.add(
-        `${event.runId ?? event.sessionId ?? event.sessionKey ?? "unknown"}:${event.toolCallId ?? event.toolName}`,
-      );
-    } else if (
-      event.type === "tool.execution.completed" ||
-      event.type === "tool.execution.error" ||
-      event.type === "tool.execution.blocked"
-    ) {
-      active.delete(
-        `${event.runId ?? event.sessionId ?? event.sessionKey ?? "unknown"}:${event.toolCallId ?? event.toolName}`,
-      );
-    }
-  }
-  return active;
-}
 
 setupRunAttemptTestHooks();
 
