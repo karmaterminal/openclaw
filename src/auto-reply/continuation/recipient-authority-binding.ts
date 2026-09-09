@@ -122,6 +122,39 @@ export function continuationRecipientAuthorityMap(
   return authorities;
 }
 
+function resolveScopedContinuationRecipientAgentId(sessionKey: string): string | undefined {
+  return sessionKey.startsWith("agent:") ? resolveAgentIdFromSessionKey(sessionKey) : undefined;
+}
+
+function resolveUnscopedContinuationRecipientAgentId(params: {
+  sessionKey: string;
+  targets: ReturnType<typeof resolveAllAgentSessionStoreTargetsSync>;
+  env: NodeJS.ProcessEnv;
+}): string {
+  let ownerAgentId: string | undefined;
+
+  for (const target of params.targets) {
+    const entry = loadSessionEntry({
+      agentId: target.agentId,
+      env: params.env,
+      sessionKey: params.sessionKey,
+      storePath: target.storePath,
+    });
+    if (!entry) {
+      continue;
+    }
+    if (ownerAgentId && ownerAgentId !== target.agentId) {
+      throw new Error(`Continuation recipient owner is ambiguous for target ${params.sessionKey}`);
+    }
+    ownerAgentId = target.agentId;
+  }
+
+  if (!ownerAgentId) {
+    throw new Error(`Continuation recipient owner is unavailable for target ${params.sessionKey}`);
+  }
+  return ownerAgentId;
+}
+
 export function resolveContinuationRecipientAgentIds(
   cfg: OpenClawConfig,
   sessionKeys: readonly string[],
@@ -130,30 +163,21 @@ export function resolveContinuationRecipientAgentIds(
   let targets: ReturnType<typeof resolveAllAgentSessionStoreTargetsSync> | undefined;
   return new Map(
     normalizeContinuationTargetKeys(sessionKeys).map((sessionKey) => {
-      if (sessionKey.startsWith("agent:")) {
-        return [sessionKey, resolveAgentIdFromSessionKey(sessionKey)] as const;
+      const scopedAgentId = resolveScopedContinuationRecipientAgentId(sessionKey);
+      if (scopedAgentId) {
+        return [sessionKey, scopedAgentId] as const;
       }
       // Explicit agent keys stay allocation-free; only legacy/global aliases need
       // durable store discovery to prove one recipient owner.
       targets ??= resolveAllAgentSessionStoreTargetsSync(cfg, { env });
-      const owners = new Set(
-        targets.flatMap((target) =>
-          loadSessionEntry({
-            agentId: target.agentId,
-            env,
-            sessionKey,
-            storePath: target.storePath,
-          })
-            ? [target.agentId]
-            : [],
-        ),
-      );
-      if (owners.size !== 1) {
-        throw new Error(
-          `Continuation recipient owner is ${owners.size === 0 ? "unavailable" : "ambiguous"} for target ${sessionKey}`,
-        );
-      }
-      return [sessionKey, [...owners][0]!] as const;
+      return [
+        sessionKey,
+        resolveUnscopedContinuationRecipientAgentId({
+          sessionKey,
+          targets,
+          env,
+        }),
+      ] as const;
     }),
   );
 }

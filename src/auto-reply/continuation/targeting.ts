@@ -93,6 +93,36 @@ const defaultContinuationReturnDeliveryDeps: ContinuationReturnDeliveryDeps = {
   recordDelegateArtifactDeliveryBinding,
 };
 
+function resolveContinuationReturnDeliveryTarget(params: {
+  sessionKey: string;
+  recipientAgentIds?: ReadonlyMap<string, string>;
+}): { sessionKey: string; recipientAgentId: string } {
+  const explicitRecipientAgentId = params.sessionKey.startsWith("agent:")
+    ? resolveAgentIdFromSessionKey(params.sessionKey)
+    : undefined;
+  const boundRecipientAgentId = params.recipientAgentIds?.get(params.sessionKey)?.trim();
+  const normalizedBoundRecipientAgentId = boundRecipientAgentId
+    ? normalizeAgentId(boundRecipientAgentId)
+    : undefined;
+
+  if (
+    explicitRecipientAgentId &&
+    normalizedBoundRecipientAgentId &&
+    explicitRecipientAgentId !== normalizedBoundRecipientAgentId
+  ) {
+    throw new Error(`Continuation recipient owner mismatches target ${params.sessionKey}`);
+  }
+
+  const recipientAgentId = normalizedBoundRecipientAgentId ?? explicitRecipientAgentId;
+  if (!recipientAgentId) {
+    throw new Error(`Continuation recipient owner is unavailable for target ${params.sessionKey}`);
+  }
+  return {
+    sessionKey: params.sessionKey,
+    recipientAgentId,
+  };
+}
+
 export async function enqueueContinuationReturnDeliveries(
   params: {
     targetSessionKeys: readonly string[];
@@ -115,27 +145,12 @@ export async function enqueueContinuationReturnDeliveries(
   deps: ContinuationReturnDeliveryDeps = defaultContinuationReturnDeliveryDeps,
 ): Promise<{ enqueued: number; delivered: number; deliveryIds: string[] }> {
   const targetSessionKeys = normalizeContinuationTargetKeys(params.targetSessionKeys);
-  const targets = targetSessionKeys.map((sessionKey) => {
-    const explicitRecipientAgentId = sessionKey.startsWith("agent:")
-      ? resolveAgentIdFromSessionKey(sessionKey)
-      : undefined;
-    const boundRecipientAgentId = params.recipientAgentIds?.get(sessionKey)?.trim();
-    const normalizedBoundRecipientAgentId = boundRecipientAgentId
-      ? normalizeAgentId(boundRecipientAgentId)
-      : undefined;
-    if (
-      explicitRecipientAgentId &&
-      normalizedBoundRecipientAgentId &&
-      explicitRecipientAgentId !== normalizedBoundRecipientAgentId
-    ) {
-      throw new Error(`Continuation recipient owner mismatches target ${sessionKey}`);
-    }
-    const recipientAgentId = normalizedBoundRecipientAgentId ?? explicitRecipientAgentId;
-    if (!recipientAgentId) {
-      throw new Error(`Continuation recipient owner is unavailable for target ${sessionKey}`);
-    }
-    return { sessionKey, recipientAgentId };
-  });
+  const targets = targetSessionKeys.map((sessionKey) =>
+    resolveContinuationReturnDeliveryTarget({
+      sessionKey,
+      recipientAgentIds: params.recipientAgentIds,
+    }),
+  );
   const deliveryIds: string[] = [];
   let delivered = 0;
 
