@@ -45,6 +45,7 @@ import {
   runPluginsCommand,
   runtimeErrors,
   pluginsCliRuntimeLogs,
+  pluginsCliTestStateRoot,
   configWriteMock,
   writePersistedInstalledPluginIndexInstallRecordsWithLeaseMock,
 } from "./plugins-cli-test-helpers.js";
@@ -59,12 +60,12 @@ vi.mock("../version.js", async (importOriginal) => ({
   },
 }));
 
-const CLI_STATE_ROOT = "/tmp/openclaw-state";
+const CLI_STATE_ROOT = pluginsCliTestStateRoot;
 const ORIGINAL_OPENCLAW_STATE_DIR = process.env.OPENCLAW_STATE_DIR;
 const ORIGINAL_OPENCLAW_NIX_MODE = process.env.OPENCLAW_NIX_MODE;
 const ORIGINAL_STDIN_TTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
 const ORIGINAL_STDOUT_TTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
-const PROFILE_STATE_ROOT = "/tmp/openclaw-ledger-profile";
+const PROFILE_STATE_ROOT = path.join(path.dirname(CLI_STATE_ROOT), ".openclaw-ledger-profile");
 
 function expectedNpmInstallSpec(spec: string): string {
   return VERSION.includes("-beta.") ? `${spec.replace(/@latest$/, "")}@${VERSION}` : spec;
@@ -625,6 +626,15 @@ describe("plugins cli install", () => {
       process.env.OPENCLAW_NIX_MODE = ORIGINAL_OPENCLAW_NIX_MODE;
     }
     restoreTty();
+  });
+
+  it("keeps CLI and profile state inside the isolated test home", () => {
+    const isolatedTestHome = process.env.OPENCLAW_TEST_HOME;
+    if (!isolatedTestHome) {
+      throw new Error("OPENCLAW_TEST_HOME is required for plugin CLI tests");
+    }
+    expect(CLI_STATE_ROOT).toBe(path.join(isolatedTestHome, ".openclaw"));
+    expect(PROFILE_STATE_ROOT).toBe(path.join(isolatedTestHome, ".openclaw-ledger-profile"));
   });
 
   it("shows one force option for confirmation and overwrite", async () => {

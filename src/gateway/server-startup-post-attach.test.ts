@@ -155,13 +155,20 @@ vi.mock("../agents/main-session-recovery/main-session-restart-recovery.js", () =
 
 vi.mock("../config/paths.js", async () => {
   const actual = await vi.importActual<typeof import("../config/paths.js")>("../config/paths.js");
+  const isolatedTestHome = process.env.OPENCLAW_TEST_HOME;
+  if (!isolatedTestHome) {
+    throw new Error("OPENCLAW_TEST_HOME is required for gateway startup tests");
+  }
+  const testStateDir = path.join(isolatedTestHome, ".openclaw");
   return {
     ...actual,
-    STATE_DIR: "/tmp/openclaw-state",
-    resolveConfigPath: vi.fn(() => "/tmp/openclaw-state/openclaw.json"),
+    STATE_DIR: testStateDir,
+    resolveConfigPath: vi.fn(() =>
+      actual.resolveConfigPath({ ...process.env, OPENCLAW_STATE_DIR: testStateDir }, testStateDir),
+    ),
     resolveGatewayPort: vi.fn(() => 18789),
     resolveStateDir: vi.fn((env: NodeJS.ProcessEnv = process.env) =>
-      env.OPENCLAW_STATE_DIR?.trim() ? actual.resolveStateDir(env) : "/tmp/openclaw-state",
+      env.OPENCLAW_STATE_DIR?.trim() ? actual.resolveStateDir(env) : testStateDir,
     ),
   };
 });
@@ -277,6 +284,8 @@ const {
 } = await import("./server-startup-post-attach.js");
 const { scheduleContextCachePrewarm } = await import("./server-startup-context-cache-prewarm.js");
 const { STARTUP_UNAVAILABLE_GATEWAY_METHODS } = await import("./methods/core-descriptors.js");
+const { STATE_DIR: GATEWAY_TEST_STATE_DIR, resolveStateDir: resolveGatewayTestStateDir } =
+  await import("../config/paths.js");
 
 type PostAttachParams = Parameters<typeof startGatewayPostAttachRuntimeImpl>[0];
 type PostAttachRuntimeDeps = NonNullable<Parameters<typeof startGatewayPostAttachRuntimeImpl>[1]>;
@@ -474,6 +483,7 @@ describe("startGatewayPostAttachRuntime", () => {
   beforeEach(() => {
     resetGatewayWorkAdmission();
     closeOpenClawStateDatabaseForTest();
+    vi.stubEnv("OPENCLAW_STATE_DIR", GATEWAY_TEST_STATE_DIR);
     vi.stubEnv("OPENCLAW_SKIP_CHANNELS", "0");
     vi.stubEnv("OPENCLAW_SKIP_PROVIDERS", "0");
     hoisted.startPluginServices.mockClear();
@@ -537,6 +547,29 @@ describe("startGatewayPostAttachRuntime", () => {
 
   afterEach(async () => {
     await cleanupGatewayTestState();
+  });
+
+  it("pins default startup state while honoring a scoped fixture state", async () => {
+    const isolatedTestHome = process.env.OPENCLAW_TEST_HOME;
+    if (!isolatedTestHome) {
+      throw new Error("OPENCLAW_TEST_HOME is required for gateway startup tests");
+    }
+    expect(GATEWAY_TEST_STATE_DIR).toBe(path.join(isolatedTestHome, ".openclaw"));
+    expect(process.env.OPENCLAW_STATE_DIR).toBe(GATEWAY_TEST_STATE_DIR);
+    expect(resolveGatewayTestStateDir()).toBe(GATEWAY_TEST_STATE_DIR);
+
+    const explicitStateDir = path.join(isolatedTestHome, "explicit-state");
+    await withEnvAsync({ OPENCLAW_STATE_DIR: explicitStateDir }, async () => {
+      expect(resolveGatewayTestStateDir()).toBe(explicitStateDir);
+      expect(resolveGatewayTestStateDir(process.env)).toBe(explicitStateDir);
+    });
+
+    expect(
+      resolveGatewayTestStateDir({
+        ...process.env,
+        OPENCLAW_STATE_DIR: explicitStateDir,
+      }),
+    ).toBe(explicitStateDir);
   });
 
   it("drains tracked sidecars and resets fixture state after the first cleanup failure", async () => {

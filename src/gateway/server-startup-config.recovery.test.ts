@@ -1,5 +1,6 @@
 // Startup config recovery tests cover prepared snapshots, plugin metadata,
 // auto-enable behavior, model defaults, and recovery diagnostics.
+import path from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfigFileSnapshot, ModelDefinitionConfig, OpenClawConfig } from "../config/types.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
@@ -67,12 +68,19 @@ vi.mock("../config/io.js", () => ({
   writeConfigFile: vi.fn(),
 }));
 
-vi.mock("../config/paths.js", () => ({
-  get isNixMode() {
-    return configMocks.isNixMode.value;
-  },
-  resolveStateDir: vi.fn(() => "/tmp/openclaw-state"),
-}));
+vi.mock("../config/paths.js", () => {
+  const isolatedTestHome = process.env.OPENCLAW_TEST_HOME;
+  if (!isolatedTestHome) {
+    throw new Error("OPENCLAW_TEST_HOME is required for gateway startup tests");
+  }
+  const testStateDir = path.join(isolatedTestHome, ".openclaw");
+  return {
+    get isNixMode() {
+      return configMocks.isNixMode.value;
+    },
+    resolveStateDir: vi.fn(() => testStateDir),
+  };
+});
 
 vi.mock("../config/runtime-overrides.js", () => ({
   applyConfigOverrides: vi.fn((config: OpenClawConfig) => config),
