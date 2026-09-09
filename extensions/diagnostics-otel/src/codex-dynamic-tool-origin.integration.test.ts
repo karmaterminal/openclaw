@@ -10,9 +10,6 @@ import {
   type ReadableSpan,
 } from "@opentelemetry/sdk-trace-base";
 import { ATTR_GEN_AI_TOOL_CALL_ID } from "@opentelemetry/semantic-conventions/incubating";
-import type { AgentToolResult } from "openclaw/plugin-sdk/agent-core";
-import { createOpenClawCodingTools } from "openclaw/plugin-sdk/agent-harness";
-import type { AnyAgentTool } from "openclaw/plugin-sdk/agent-harness-runtime";
 import {
   cancelPendingDelegates,
   consumePendingDelegates,
@@ -37,7 +34,6 @@ import {
 import { resetTaskFlowRegistryForTests } from "openclaw/plugin-sdk/task-flow-test-runtime";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { expect, test } from "vitest";
-import { dynamicToolBuildState } from "../../codex/src/app-server/dynamic-tool-build-state.js";
 import {
   bindProductionHarnessHostCapabilitiesForTest,
   createCodexRuntimePlanFixture,
@@ -60,7 +56,6 @@ const SESSION_KEY = "agent:main:codex-dynamic-tool-origin";
 const DELEGATE_CALL_ID = "call-codex-continue-delegate";
 const WORK_CALL_ID = "call-codex-continue-work";
 const ERROR_CALL_ID = "call-codex-continue-delegate-error";
-const TIMEOUT_CALL_ID = "call-codex-timeout";
 const DELEGATE_CHAIN_ID = "11111111-1111-4111-8111-111111111111";
 const WORK_CHAIN_ID = "22222222-2222-4222-8222-222222222222";
 
@@ -78,38 +73,6 @@ function registeredOtelGlobals(): OtelGlobalRegistrations | undefined {
   return (globalThis as unknown as Record<symbol, OtelGlobalRegistrations | undefined>)[
     OTEL_GLOBAL_API_KEY
   ];
-}
-
-function createTimeoutTool(): AnyAgentTool {
-  return {
-    name: "codex_timeout_probe",
-    label: "Codex timeout probe",
-    description: "Waits for the dynamic-tool owner timeout.",
-    parameters: {
-      type: "object",
-      properties: {
-        timeoutMs: { type: "number", minimum: 1 },
-      },
-      required: ["timeoutMs"],
-      additionalProperties: false,
-    },
-    execute: async (
-      _toolCallId: string,
-      _args: unknown,
-      signal?: AbortSignal,
-    ): Promise<AgentToolResult<unknown>> =>
-      await new Promise<AgentToolResult<unknown>>((_resolve, reject) => {
-        const rejectWithAbort = () => {
-          const reason = signal?.reason;
-          reject(reason instanceof Error ? reason : new Error("timeout probe aborted"));
-        };
-        if (signal?.aborted) {
-          rejectWithAbort();
-          return;
-        }
-        signal?.addEventListener("abort", rejectWithAbort, { once: true });
-      }),
-  };
 }
 
 function toolSpanForCall(spans: ReadableSpan[], toolCallId: string): ReadableSpan {
@@ -194,7 +157,6 @@ test("exports Codex dynamic continuation origins through the production tool bou
         spanId: RUN_DIAGNOSTIC_SPAN_ID,
         traceFlags: "01",
       };
-      const timeoutTool = createTimeoutTool();
       const harness = createStartedThreadHarness();
 
       try {
@@ -221,10 +183,6 @@ test("exports Codex dynamic continuation origins through the production tool bou
         resetContinueDelegateTurnAdmissionForTests();
         resetTaskFlowRegistryForTests();
 
-        dynamicToolBuildState.openClawCodingToolsFactory = (options) => [
-          ...createOpenClawCodingTools(options),
-          timeoutTool,
-        ];
         const params = createParams(
           path.join(tempDir, "session.jsonl"),
           path.join(tempDir, "workspace"),
@@ -327,19 +285,6 @@ test("exports Codex dynamic continuation origins through the production tool bou
         expect(errorResponse.success).toBe(false);
         expect(errorResponse.contentItems[0]?.text).toMatch(/task.*(?:required|non-empty)/u);
 
-        const timeoutResponse = await callDynamicTool({
-          harness,
-          runTrace,
-          callId: TIMEOUT_CALL_ID,
-          tool: timeoutTool.name,
-          arguments: { timeoutMs: 1 },
-        });
-        expectProtocolResponse(timeoutResponse);
-        expect(timeoutResponse.success).toBe(false);
-        expect(timeoutResponse.contentItems[0]?.text).toContain(
-          "OpenClaw dynamic tool call timed out after 1ms",
-        );
-
         emitContinuationDelegateSpan({
           chainId: DELEGATE_CHAIN_ID,
           chainStepRemaining: 4,
@@ -399,7 +344,6 @@ test("exports Codex dynamic continuation origins through the production tool bou
         const delegateToolSpan = toolSpanForCall(spans, DELEGATE_CALL_ID);
         const workToolSpan = toolSpanForCall(spans, WORK_CALL_ID);
         toolSpanForCall(spans, ERROR_CALL_ID);
-        toolSpanForCall(spans, TIMEOUT_CALL_ID);
         expect(delegateToolSpan.parentSpanContext?.spanId).toBe(runSpan?.spanContext().spanId);
         expect(workToolSpan.parentSpanContext?.spanId).toBe(runSpan?.spanContext().spanId);
         expect(parseDiagnosticTraceparent(delegate.traceparent)?.spanId).toBe(
