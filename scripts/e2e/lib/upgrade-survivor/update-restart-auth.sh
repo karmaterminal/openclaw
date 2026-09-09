@@ -415,13 +415,15 @@ assert_update_restart_probe_inactive() {
 }
 
 stop_update_restart_probe_gateway() {
-  local command_timeout="$1" stop_status=0
+  local command_timeout="$1"
+  # Probe the listener this stop owns. A fixed ambient 18789 can belong to another seat.
+  local port="${2:?missing managed gateway port}" stop_status=0
   local stop_log="${OPENCLAW_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_DAEMON_LOG}.stop"
   openclaw_e2e_maybe_timeout "$command_timeout" systemctl --user stop openclaw-gateway.service >"$stop_log" 2>&1 || stop_status=$?
   if [ "$stop_status" -eq 0 ]; then
     assert_update_restart_probe_inactive >>"$stop_log" 2>&1 || stop_status=$?
   fi
-  if [ "$stop_status" -eq 0 ] && openclaw_e2e_probe_tcp 127.0.0.1 18789 400; then
+  if [ "$stop_status" -eq 0 ] && openclaw_e2e_probe_tcp 127.0.0.1 "$port" 400; then
     echo "Baseline gateway listener is still open after service stop." >>"$stop_log"
     stop_status=1
   fi
