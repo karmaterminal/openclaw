@@ -31,6 +31,7 @@ describe("enqueueContinuationReturnDeliveries :: de-duplicated ack reconciliatio
 
     const result = await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:root"],
         text: "identical return text",
         idempotencyKeyBase: "idem-base",
@@ -53,6 +54,7 @@ describe("enqueueContinuationReturnDeliveries :: de-duplicated ack reconciliatio
 
     await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:root"],
         text: "fresh return text",
         idempotencyKeyBase: "idem-base",
@@ -71,6 +73,7 @@ describe("enqueueContinuationReturnDeliveries :: de-duplicated ack reconciliatio
 
     await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:alpha", "agent:main:beta"],
         text: "shared fallback",
         textBySessionKey: new Map([

@@ -1,4 +1,5 @@
 import { resolveAgentWorkspaceDir, resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolveContinuationTraceparent } from "../../infra/continuation-tracer.js";
@@ -39,6 +40,7 @@ import {
   type PostCompactionDelegateDeliveryDeps,
 } from "./post-compaction-delegate-delivery.js";
 import { normalizePostCompactionDelegate } from "./post-compaction-delegate-normalize.js";
+import { createPostCompactionSourceGuard } from "./post-compaction-source-lifecycle.js";
 import type { FollowupRun } from "./queue/types.js";
 
 export type PostCompactionDelegateDispatchDeps = {
@@ -59,6 +61,8 @@ export type PostCompactionDelegateDispatchDeps = {
   }): Promise<void>;
   enqueuePostCompactionDelegateDelivery(params: {
     sessionKey: string;
+    sourceSessionId?: string;
+    sourceLifecycleRevision?: string;
     delegate: SessionPostCompactionDelegate;
     sequence: number;
     compactionCount?: number;
@@ -157,12 +161,16 @@ function terminalizeDroppedManagedDelegate(params: {
 
 function enqueueSystemEventOrLog(params: {
   deps: Pick<PostCompactionDelegateDispatchDeps, "enqueueSystemEvent" | "log">;
+  eventOptions: <T extends object>(options: T) => T;
   label: string;
   sessionKey: string;
   text: string;
 }): void {
   try {
-    params.deps.enqueueSystemEvent(params.text, { sessionKey: params.sessionKey });
+    params.deps.enqueueSystemEvent(
+      params.text,
+      params.eventOptions({ sessionKey: params.sessionKey }),
+    );
   } catch (err) {
     params.deps.log(
       `Failed to enqueue ${params.label} for ${params.sessionKey}: ${formatErrorMessage(err)}`,
@@ -257,6 +265,22 @@ export async function dispatchPostCompactionDelegates(
   params: DispatchPostCompactionDelegatesParams,
   deps: PostCompactionDelegateDispatchDeps = defaultPostCompactionDelegateDispatchDeps,
 ): Promise<DispatchPostCompactionDelegatesResult> {
+  const sourceEntry = params.sessionEntry ?? params.sessionStore?.[params.sessionKey];
+  const ownerAgentId = deps.resolveSessionAgentId({
+    sessionKey: params.sessionKey,
+    config: params.cfg,
+  });
+  const sourceGuard = createPostCompactionSourceGuard({
+    ownerAgentId,
+    sourceEntry,
+    loadCurrent: () =>
+      params.sessionStore
+        ? params.sessionStore[params.sessionKey]
+        : params.storePath
+          ? loadSessionEntry({ storePath: params.storePath, sessionKey: params.sessionKey })
+          : undefined,
+  });
+  sourceGuard.assertCurrent();
   const internalReleaseTraceparent = resolveContinuationTraceparent(params.releaseTraceparent);
   const stagedCompactionDelegates = deps.consumeStagedPostCompactionDelegates(params.sessionKey);
   // Capture the claim handles immediately: consumeStagedPostCompactionDelegates
@@ -277,6 +301,7 @@ export async function dispatchPostCompactionDelegates(
     deps.log(`Failed to load post-compaction delegates for ${params.sessionKey}: ${message}`);
     enqueueSystemEventOrLog({
       deps,
+      eventOptions: sourceGuard.eventOptions,
       label: "persisted post-compaction delegate warning",
       sessionKey: params.sessionKey,
       text:
@@ -374,9 +399,10 @@ export async function dispatchPostCompactionDelegates(
         : deps.resolveAgentWorkspaceDir(params.cfg, params.followupRun.run.agentId),
       {
         cfg: params.cfg,
-        agentId: deps.resolveSessionAgentId({ sessionKey: params.sessionKey, config: params.cfg }),
+        agentId: ownerAgentId,
       },
     );
+    sourceGuard.assertCurrent();
   } catch (err) {
     const message = formatErrorMessage(err);
     deps.log(
@@ -384,6 +410,7 @@ export async function dispatchPostCompactionDelegates(
     );
     enqueueSystemEventOrLog({
       deps,
+      eventOptions: sourceGuard.eventOptions,
       label: "post-compaction context read failure",
       sessionKey: params.sessionKey,
       text:
@@ -393,10 +420,15 @@ export async function dispatchPostCompactionDelegates(
   }
 
   const deliveryContext = resolvePostCompactionDelegateDeliveryContext(params.followupRun);
+  sourceGuard.assertCurrent();
   const enqueueResults = await Promise.allSettled(
     releasedCompactionDelegates.map((delegate, sequence) =>
       deps.enqueuePostCompactionDelegateDelivery({
         sessionKey: params.sessionKey,
+        sourceSessionId: sourceGuard.sourceSessionId,
+        ...(sourceGuard.sourceLifecycleRevision
+          ? { sourceLifecycleRevision: sourceGuard.sourceLifecycleRevision }
+          : {}),
         delegate,
         sequence,
         compactionCount: params.compactionCount,
@@ -505,14 +537,18 @@ export async function dispatchPostCompactionDelegates(
     droppedDelegates: droppedCompactionDelegates,
   });
   if (postCompactionContextContent) {
-    deps.enqueueSystemEvent(postCompactionContextContent, {
-      sessionKey: params.sessionKey,
-    });
+    deps.enqueueSystemEvent(
+      postCompactionContextContent,
+      sourceGuard.eventOptions({ sessionKey: params.sessionKey }),
+    );
   }
-  deps.enqueueSystemEvent(lifecycleEvent, {
-    sessionKey: params.sessionKey,
-    ...(internalReleaseTraceparent ? { traceparent: internalReleaseTraceparent } : {}),
-  });
+  deps.enqueueSystemEvent(
+    lifecycleEvent,
+    sourceGuard.eventOptions({
+      sessionKey: params.sessionKey,
+      ...(internalReleaseTraceparent ? { traceparent: internalReleaseTraceparent } : {}),
+    }),
+  );
 
   if (queuedEntryIds.length > 0) {
     // Drain unfiltered for this sessionKey: the prior `entryIds`-filtered

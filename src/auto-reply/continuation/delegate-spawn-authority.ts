@@ -27,38 +27,53 @@ type OwnerLifecycleIdentity = Pick<SessionEntry, "lifecycleRevision" | "sessionI
 
 export function createContinuationOwnerSessionLoader(
   ownerSessionKey: string,
-): () => SessionEntry | undefined {
+  expectedAgentId?: string,
+): {
+  agentId: string;
+  load: () => SessionEntry | undefined;
+} {
   const cfg = getRuntimeConfig();
-  const agentId = resolveSessionAgentId({ sessionKey: ownerSessionKey, config: cfg });
+  const agentId = resolveSessionAgentId({
+    sessionKey: ownerSessionKey,
+    config: cfg,
+    agentId: expectedAgentId,
+  });
   const storePath = resolveSessionStorePathCore(cfg.session?.store, { agentId });
-  return () => loadSessionEntry({ storePath, sessionKey: ownerSessionKey });
+  return {
+    agentId,
+    load: () => loadSessionEntry({ storePath, sessionKey: ownerSessionKey }),
+  };
 }
 
 export function registerContinuationDelegateDispatchClaim(params: {
   controller: DelegateSpawnFenceController;
   delegate: DelegateClaim;
-  loadOwnerSessionEntry: () => SessionEntry | undefined;
+  ownerSession: ReturnType<typeof createContinuationOwnerSessionLoader>;
   ownerSessionKey: string;
 }): {
   authority: SpawnSubagentAdmissionAuthority;
+  ownerAgentId: string;
   release: () => void;
 } {
-  const { flowId, expectedRevision } = params.delegate;
+  const { controller, delegate, ownerSession, ownerSessionKey } = params;
+  const { flowId, expectedRevision } = delegate;
   if ((flowId === undefined) !== (expectedRevision === undefined)) {
     throw new SpawnSubagentAdmissionCancelledError(
       "Continuation delegate source metadata is incomplete.",
     );
   }
   const lifecycleGeneration = getAgentEventLifecycleGeneration();
-  const ownerIdentity = params.loadOwnerSessionEntry();
+  const ownerIdentity = ownerSession.load();
+  if (!ownerIdentity) {
+    throw new SpawnSubagentAdmissionCancelledError(
+      "Continuation delegate source session owner is unavailable.",
+    );
+  }
   const activeClaim = registerContinuationDispatchClaim({
-    sessionKey: params.ownerSessionKey,
+    sessionKey: ownerSessionKey,
     flowId,
   });
-  const assertCurrent = (
-    _boundary?: string,
-    source: DelegateClaim | null = params.delegate,
-  ): void => {
+  const assertCurrent = (_boundary?: string, source: DelegateClaim | null = delegate): void => {
     if (
       activeClaim.controller.signal.aborted ||
       !activeClaim.isActive() ||
@@ -67,29 +82,27 @@ export function registerContinuationDelegateDispatchClaim(params: {
       throw new SpawnSubagentAdmissionCancelledError("Continuation delegate admission closed.");
     }
     if (flowId !== undefined && source) {
-      const fence = revalidatePendingDelegateForSpawn(source, params.controller);
+      const fence = revalidatePendingDelegateForSpawn(source, controller);
       if (!fence.allowed) {
         throw new SpawnSubagentAdmissionCancelledError(fence.summary);
       }
     }
-    if (ownerIdentity) {
-      const currentOwner = params.loadOwnerSessionEntry();
-      if (!isSameOwnerLifecycle(currentOwner, ownerIdentity)) {
-        throw new SpawnSubagentAdmissionCancelledError(
-          "Continuation delegate source session lifecycle changed.",
-        );
-      }
+    if (!isSameOwnerLifecycle(ownerSession.load(), ownerIdentity)) {
+      throw new SpawnSubagentAdmissionCancelledError(
+        "Continuation delegate source session lifecycle changed.",
+      );
     }
   };
   return {
     authority: {
       signal: activeClaim.controller.signal,
       source: {
-        ownerSessionKey: params.ownerSessionKey,
+        ownerSessionKey,
         ...(flowId !== undefined ? { flowId, expectedRevision } : {}),
       },
       assertCurrent,
     },
+    ownerAgentId: ownerSession.agentId,
     release: activeClaim.release,
   };
 }

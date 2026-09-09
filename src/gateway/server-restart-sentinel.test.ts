@@ -3124,6 +3124,7 @@ describe("scheduleRestartSentinelWake", () => {
         id,
         kind: "systemEvent",
         sessionKey: "agent:main:main",
+        agentId: "main",
         text: "continue after restart",
         enqueuedAt: 1,
         retryCount: 0,
@@ -3152,6 +3153,11 @@ describe("scheduleRestartSentinelWake", () => {
       sessionDeliveryAckStateDir: "/tmp/restart-delivery-state",
       trusted: true,
     });
+    expect(
+      mocks.enqueueSystemEvent.mock.calls.map(([, options]) =>
+        resolveSystemEventOptionsOwnerAgentId(options),
+      ),
+    ).toEqual(["main", "main"]);
   });
 
   it("preserves the session chat type for agentTurn continuations", async () => {

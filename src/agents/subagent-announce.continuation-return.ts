@@ -3,6 +3,7 @@ import {
   continuationRecipientAuthorityMap,
   parseContinuationRecipientAuthorityBinding,
 } from "../auto-reply/continuation/recipient-authority-binding.js";
+import { withContinuationOwner } from "../auto-reply/continuation/system-event-ownership.js";
 import {
   enqueueContinuationReturnDeliveries,
   resolveContinuationReturnTargetSessionKeys,
@@ -77,8 +78,10 @@ export async function routeSubagentContinuationReturn(params: {
   managedArtifactReturn?: boolean;
   announceId: string;
   childSessionKey: string;
+  childAgentId: string;
   childRunId: string;
   targetRequesterSessionKey: string;
+  targetRequesterAgentId?: string;
   silentAnnounce?: boolean;
   wakeOnReturn?: boolean;
   continuationTargetSessionKey?: string;
@@ -232,6 +235,7 @@ export async function routeSubagentContinuationReturn(params: {
           ? { chainStepRemaining: completionTrace.chainStepRemaining }
           : {}),
         ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
+        ownerAgentId: params.childAgentId,
       });
     }
     defaultRuntime.log(
@@ -267,15 +271,16 @@ export async function routeSubagentContinuationReturn(params: {
         `[continuation/silent-wake] wakeOnReturn=true target=${params.targetRequesterSessionKey} silentAnnounce=true`,
       );
     }
+    const eventOptions = {
+      sessionKey: params.targetRequesterSessionKey,
+      trusted: true,
+      ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
+    };
     enqueueSystemEvent(
       params.triggerMessagesBySessionKey?.get(params.targetRequesterSessionKey) ||
         params.triggerMessage ||
         `[continuation:enrichment-return] Delegate completed: ${params.taskLabel}`,
-      {
-        sessionKey: params.targetRequesterSessionKey,
-        trusted: true,
-        ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
-      },
+      withContinuationOwner(eventOptions, params.childAgentId),
     );
     continuationLog.info(
       `[continuation:enrichment-return] Delivered to ${params.targetRequesterSessionKey} from ${params.childSessionKey}`,
@@ -284,6 +289,7 @@ export async function routeSubagentContinuationReturn(params: {
       requestHeartbeatNow(
         markTrustedContinuationHeartbeatWake({
           sessionKey: params.targetRequesterSessionKey,
+          ...(params.targetRequesterAgentId ? { agentId: params.targetRequesterAgentId } : {}),
           reason: "silent-wake-enrichment",
           parentRunId: params.childRunId,
         }),

@@ -1,8 +1,3 @@
-/**
- * Dispatches immediate and delayed continuation delegates.
- * Every outcome stays visible at info level; timer-only logging hides immediate work.
- */
-
 import { formatDelegateArtifactTaskInstruction } from "../../agents/delegate-artifact-policy.js";
 import {
   assertDelegateArtifactPolicyPrepared,
@@ -11,7 +6,6 @@ import {
 import { deriveContinuationDelegateChildSessionKeyFromParent } from "../../agents/subagent-continuation-ids.js";
 import { isSpawnSubagentAdmissionCancelledError } from "../../agents/subagents/spawn/subagent-spawn-contract.js";
 import { spawnSubagentDirect } from "../../agents/subagents/spawn/subagent-spawn.js";
-import type { SpawnSubagentContext } from "../../agents/subagents/spawn/subagent-spawn.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import {
   emitContinuationDelegateFireSpan,
@@ -38,7 +32,10 @@ import {
   clearDelegateDispatchHedge,
   DELEGATE_DISPATCH_RETRY_MS,
 } from "./delegate-dispatch-hedge.js";
-import { partitionManagedDelegatesForRuntime } from "./delegate-dispatch-managed-gates.js";
+import {
+  hasManagedDelegateArtifacts,
+  partitionManagedDelegatesForRuntime,
+} from "./delegate-dispatch-managed-gates.js";
 import { commitPendingDelegateSpawnAcceptance } from "./delegate-spawn-acceptance.js";
 import {
   createContinuationOwnerSessionLoader,
@@ -55,6 +52,7 @@ import {
 } from "./delegate-store.js";
 import { formatDelegateTaskForSystemEvent } from "./delegate-system-event.js";
 import { checkContinuationBudget, type ChainState } from "./scheduler.js";
+import { bindContinuationOwner } from "./system-event-ownership.js";
 import { hasCrossSessionDelegateTargeting } from "./targeting-pure.js";
 import type { PendingContinuationDelegate } from "./types.js";
 
@@ -168,17 +166,16 @@ export async function dispatchToolDelegates(
   if (toolDelegates.length === 0) {
     return { dispatched: 0, rejected: 0, chainState };
   }
+  const ownerSession = createContinuationOwnerSessionLoader(sessionKey, ctx.ownerAgentId);
+  const ownerEventOptions = bindContinuationOwner(ownerSession.agentId);
 
   log.info(
     `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}`,
   );
 
   const { maxDelegatesPerTurn, maxChainLength, crossSessionTargeting } = config;
-  const hasManagedArtifacts = (delegate: PendingContinuationDelegate): boolean =>
-    delegate.returnOptions?.artifacts === "optional" ||
-    delegate.returnOptions?.artifacts === "required";
   const removeRejectedArtifactPolicy = (delegate: PendingContinuationDelegate): void => {
-    if (hasManagedArtifacts(delegate) && delegate.flowId) {
+    if (hasManagedDelegateArtifacts(delegate) && delegate.flowId) {
       removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
     }
   };
@@ -273,10 +270,10 @@ export async function dispatchToolDelegates(
     }
     enqueueSystemEvent(
       `[continuation] ${summary}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-      {
+      ownerEventOptions({
         sessionKey,
         trusted: true,
-      },
+      }),
     );
   }
 
@@ -296,10 +293,10 @@ export async function dispatchToolDelegates(
     terminalizeRejectedDelegate(failedDelegate, summary);
     enqueueSystemEvent(
       `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(dropped.task)}`,
-      {
+      ownerEventOptions({
         sessionKey,
         trusted: true,
-      },
+      }),
     );
   }
 
@@ -311,7 +308,7 @@ export async function dispatchToolDelegates(
     const acceptedChildAlreadyKnown = Boolean(
       delegate.flowId && acceptedChildSessionKeysByFlowId.has(delegate.flowId),
     );
-    const managedArtifacts = hasManagedArtifacts(delegate);
+    const managedArtifacts = hasManagedDelegateArtifacts(delegate);
     const currentArtifactRuntime = managedArtifacts
       ? resolveContinuationRuntimeConfig(getRuntimeConfig())
       : undefined;
@@ -350,10 +347,10 @@ export async function dispatchToolDelegates(
       markPendingDelegateFailed(failedDelegate, summary);
       enqueueSystemEvent(
         `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        {
+        ownerEventOptions({
           sessionKey,
           trusted: true,
-        },
+        }),
       );
       emitContinuationDisabledSpan({
         chainId: undefined,
@@ -412,10 +409,10 @@ export async function dispatchToolDelegates(
       terminalizeRejectedDelegate(failedDelegate, summary);
       enqueueSystemEvent(
         `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        {
+        ownerEventOptions({
           sessionKey,
           trusted: true,
-        },
+        }),
       );
       rejected++;
       continue;
@@ -456,22 +453,13 @@ export async function dispatchToolDelegates(
     const delegateDelayMs = delegate.delayMs ?? 0;
     const delegateDelivery: "immediate" | "timer" = delegateDelayMs > 0 ? "timer" : "immediate";
 
-    const spawnCtx: SpawnSubagentContext = {
-      agentSessionKey: sessionKey,
-      ...(delegate.originRunId ? { requesterTurnRunId: delegate.originRunId } : {}),
-      agentChannel: ctx.agentChannel,
-      agentAccountId: ctx.agentAccountId,
-      agentTo: ctx.agentTo,
-      agentThreadId: ctx.agentThreadId,
-    };
-
     let dispatchSpan: ReturnType<typeof startContinuationDelegateSpan> | undefined;
     let spawnAttempted = false;
     let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
     const activeDispatch = registerContinuationDelegateDispatchClaim({
       controller: "pending",
       delegate,
-      loadOwnerSessionEntry: createContinuationOwnerSessionLoader(sessionKey),
+      ownerSession,
       ownerSessionKey: sessionKey,
     });
     try {
@@ -541,10 +529,10 @@ export async function dispatchToolDelegates(
         dispatchSpan.setStatus("ERROR", spawnFence.summary);
         enqueueSystemEvent(
           `[continuation] ${spawnFence.summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          {
+          ownerEventOptions({
             sessionKey,
             trusted: true,
-          },
+          }),
         );
         rejected++;
         continue;
@@ -581,28 +569,25 @@ export async function dispatchToolDelegates(
           ...(spawnTraceparent ? { traceparent: spawnTraceparent } : {}),
         },
         {
-          ...spawnCtx,
+          agentSessionKey: sessionKey,
+          requesterAgentIdOverride: activeDispatch.ownerAgentId,
+          ...(delegate.originRunId ? { requesterTurnRunId: delegate.originRunId } : {}),
+          agentChannel: ctx.agentChannel,
+          agentAccountId: ctx.agentAccountId,
+          agentTo: ctx.agentTo,
+          agentThreadId: ctx.agentThreadId,
           continuationDelegateAdmission: activeDispatch.authority,
         },
       );
 
       if (result.status === "accepted") {
         rollbackAcceptedSpawn = result.rollbackAccepted;
-        // INFO-level on EVERY successful spawn — observability parity.
-        log.info(
-          `[continuation:delegate-spawned] hop=${nextHop}/${maxChainLength} mode=${delegate.mode ?? "normal"} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
-        );
-        enqueueSystemEvent(
-          `[continuation:delegate-spawned] Spawned turn ${nextHop}/${maxChainLength}: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          { sessionKey, trusted: true },
-        );
         const acceptedChildSessionKey = result.childSessionKey ?? childSessionKey;
         const acceptedDelegate = await persistTerminalChainState(
           delegate,
           plannedTerminalChainState,
           { markPlannedChainState: true, markerKind: "advanced" },
         );
-        activeDispatch.authority.assertCurrent("final-acceptance", null);
         if (acceptedChildSessionKey) {
           try {
             await commitPendingDelegateSpawnAcceptance(
@@ -621,6 +606,14 @@ export async function dispatchToolDelegates(
             continue;
           }
         }
+        activeDispatch.authority.assertCurrent("final-acceptance", null);
+        log.info(
+          `[continuation:delegate-spawned] hop=${nextHop}/${maxChainLength} mode=${delegate.mode ?? "normal"} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
+        );
+        enqueueSystemEvent(
+          `[continuation:delegate-spawned] Spawned turn ${nextHop}/${maxChainLength}: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
+          ownerEventOptions({ sessionKey, trusted: true }),
+        );
         dispatchSpan.setStatus("OK");
         commitPlannedChainState(dispatchChainId);
       } else if (result.status === "cancelled") {
@@ -646,10 +639,10 @@ export async function dispatchToolDelegates(
           dispatchSpan.setStatus("ERROR", reasonText);
           enqueueSystemEvent(
             `[continuation] ${summary}; managed work was deferred for retry. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-            {
+            ownerEventOptions({
               sessionKey,
               trusted: true,
-            },
+            }),
           );
           continue;
         }
@@ -662,10 +655,10 @@ export async function dispatchToolDelegates(
         dispatchSpan.setStatus("ERROR", reasonText);
         enqueueSystemEvent(
           `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          {
+          ownerEventOptions({
             sessionKey,
             trusted: true,
-          },
+          }),
         );
         rejected++;
       }
@@ -703,10 +696,10 @@ export async function dispatchToolDelegates(
         armManagedSpawnRetry();
         enqueueSystemEvent(
           `[continuation] ${summary}; managed work was deferred for retry. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          {
+          ownerEventOptions({
             sessionKey,
             trusted: true,
-          },
+          }),
         );
         continue;
       }
@@ -721,10 +714,10 @@ export async function dispatchToolDelegates(
       terminalizeRejectedDelegate(failedDelegate, summary);
       enqueueSystemEvent(
         `[continuation] ${summary}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        {
+        ownerEventOptions({
           sessionKey,
           trusted: true,
-        },
+        }),
       );
       rejected++;
     } finally {

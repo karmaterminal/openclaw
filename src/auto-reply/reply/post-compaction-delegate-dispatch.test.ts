@@ -497,6 +497,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         }),
         postCompactionDelegatesToPreserve: preserve,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -509,6 +510,7 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(enqueuePostCompactionDelegateDelivery.mock.calls.map((call) => call[0])).toEqual([
       {
         sessionKey: "main",
+        sourceSessionId: "session",
         delegate: normalizePostCompactionDelegate(delegate("persisted")),
         sequence: 0,
         compactionCount: 7,
@@ -521,6 +523,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       },
       {
         sessionKey: "main",
+        sourceSessionId: "session",
         delegate: normalizePostCompactionDelegate(delegate("staged")),
         sequence: 1,
         compactionCount: 7,
@@ -570,6 +573,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: preserve,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -604,6 +608,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         postCompactionDelegatesToPreserve: preserve,
         releaseTraceparent: VALID_TRACEPARENT,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -614,6 +619,7 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(enqueuePostCompactionDelegateDelivery.mock.calls.map((call) => call[0])).toEqual([
       {
         sessionKey: "main",
+        sourceSessionId: "session",
         delegate: {
           ...normalizePostCompactionDelegate(delegate("persisted")),
           traceparent: VALID_TRACEPARENT,
@@ -624,6 +630,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       },
       {
         sessionKey: "main",
+        sourceSessionId: "session",
         delegate: {
           ...normalizePostCompactionDelegate(delegate("staged")),
           traceparent: VALID_TRACEPARENT,
@@ -658,6 +665,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: [],
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -694,6 +702,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: [],
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,

@@ -11,6 +11,7 @@ import {
   enqueuePostCompactionDelegateDelivery as enqueuePostCompactionDelegateDeliveryQueue,
   loadPendingSessionDelivery,
 } from "../../infra/session-delivery-queue-storage.js";
+import { resolveSystemEventOptionsOwnerAgentId } from "../../infra/system-event-ownership.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
@@ -183,6 +184,7 @@ function createQueuedEntry(
     id: "queue-1",
     kind: "postCompactionDelegate",
     sessionKey: "main",
+    sourceSessionId: "session",
     task: "queued delegate",
     // Armed at the delivery clock: an entry stamped at epoch 1 would be ~54
     // years old and would terminalize on the RFC §4.4 stale gate instead of
@@ -328,6 +330,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: [],
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -365,6 +368,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         postCompactionDelegatesToPreserve: preserve,
         releaseTraceparent: VALID_TRACEPARENT,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -398,6 +402,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         postCompactionDelegatesToPreserve: [],
         releaseTraceparent: VALID_TRACEPARENT,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -425,6 +430,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: [],
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -438,6 +444,62 @@ describe("post-compaction delegate dispatch extraction", () => {
       expect.stringContaining("Context evacuation read failed: workspace locked"),
       { sessionKey: "main" },
     );
+    expect(
+      enqueueSystemEvent.mock.calls.map(([, options]) =>
+        resolveSystemEventOptionsOwnerAgentId(options),
+      ),
+    ).toEqual(["main", "main"]);
+  });
+
+  it("emits no context or lifecycle event after the source is deleted during context loading", async () => {
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const sessionStore: Record<string, SessionEntry> = { main: sessionEntry };
+    const { deps, enqueueSystemEvent, readPostCompactionContext } = createDispatchDeps();
+    readPostCompactionContext.mockImplementationOnce(async () => {
+      delete sessionStore.main;
+      return "recovered context";
+    });
+
+    await expect(
+      dispatchPostCompactionDelegates(
+        {
+          cfg,
+          compactionCount: 1,
+          followupRun: createFollowupRun(),
+          postCompactionDelegatesToPreserve: [],
+          sessionEntry,
+          sessionKey: "main",
+          sessionStore,
+        },
+        deps,
+      ),
+    ).rejects.toThrow("Continuation delegate source session lifecycle changed.");
+    expect(enqueueSystemEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a replacement already occupying the source key before dispatch", async () => {
+    const sessionEntry: SessionEntry = { sessionId: "original", updatedAt: 1 };
+    const sessionStore: Record<string, SessionEntry> = {
+      main: { sessionId: "replacement", updatedAt: 2 },
+    };
+    const { deps, enqueueSystemEvent, readPostCompactionContext } = createDispatchDeps();
+
+    await expect(
+      dispatchPostCompactionDelegates(
+        {
+          cfg,
+          compactionCount: 1,
+          followupRun: createFollowupRun(),
+          postCompactionDelegatesToPreserve: [],
+          sessionEntry,
+          sessionKey: "main",
+          sessionStore,
+        },
+        deps,
+      ),
+    ).rejects.toThrow("Continuation delegate source session lifecycle changed.");
+    expect(readPostCompactionContext).not.toHaveBeenCalled();
+    expect(enqueueSystemEvent).not.toHaveBeenCalled();
   });
 
   it("surfaces persisted post-compaction delegate load failures without clearing local pending delegates", async () => {
@@ -459,6 +521,7 @@ describe("post-compaction delegate dispatch extraction", () => {
           followupRun: createFollowupRun(),
           postCompactionDelegatesToPreserve: [],
           sessionEntry,
+          sessionStore: { main: sessionEntry },
           sessionKey: "main",
           storePath,
         },
@@ -476,6 +539,11 @@ describe("post-compaction delegate dispatch extraction", () => {
         ),
         { sessionKey: "main" },
       );
+      expect(
+        enqueueSystemEvent.mock.calls.map(([, options]) =>
+          resolveSystemEventOptionsOwnerAgentId(options),
+        ),
+      ).toEqual(["main", "main"]);
     });
   });
 
@@ -502,6 +570,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: preserve,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -544,6 +613,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: preserve,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -590,6 +660,7 @@ describe("post-compaction delegate dispatch extraction", () => {
           followupRun: createFollowupRun(),
           postCompactionDelegatesToPreserve: [],
           sessionEntry: { sessionId: "session", updatedAt: 1 },
+          sessionStore: { main: { sessionId: "session", updatedAt: 1 } },
           sessionKey: "main",
         },
         deps,
@@ -658,6 +729,7 @@ describe("post-compaction delegate dispatch extraction", () => {
           followupRun: createFollowupRun(),
           postCompactionDelegatesToPreserve: preserve,
           sessionEntry: { sessionId: "session", updatedAt: 1 },
+          sessionStore: { main: { sessionId: "session", updatedAt: 1 } },
           sessionKey: "main",
         },
         deps,
@@ -705,6 +777,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: preserve,
         sessionEntry: { sessionId: "session", updatedAt: 1 },
+        sessionStore: { main: { sessionId: "session", updatedAt: 1 } },
         sessionKey: "main",
       },
       deps,
@@ -737,6 +810,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: preserve,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -762,6 +836,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: preserve,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -794,6 +869,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: preserve,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -830,6 +906,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun({ workspaceDir: "   " }),
         postCompactionDelegatesToPreserve: [],
         sessionEntry: { sessionId: "session", updatedAt: 1 },
+        sessionStore: { main: { sessionId: "session", updatedAt: 1 } },
         sessionKey: "main",
       },
       deps,

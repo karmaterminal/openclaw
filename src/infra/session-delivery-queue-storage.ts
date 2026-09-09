@@ -233,6 +233,8 @@ function buildPostCompactionDelegateIdempotencyKey(params: {
 
 export function buildPostCompactionDelegateDeliveryPayload(params: {
   sessionKey: string;
+  sourceSessionId?: string;
+  sourceLifecycleRevision?: string;
   delegate: SessionPostCompactionDelegate;
   sequence: number;
   compactionCount?: number;
@@ -242,6 +244,10 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
   return {
     kind: "postCompactionDelegate",
     sessionKey: params.sessionKey,
+    ...(params.sourceSessionId ? { sourceSessionId: params.sourceSessionId } : {}),
+    ...(params.sourceLifecycleRevision
+      ? { sourceLifecycleRevision: params.sourceLifecycleRevision }
+      : {}),
     task: params.delegate.task,
     createdAt: params.delegate.createdAt,
     firstArmedAt: params.delegate.firstArmedAt ?? params.delegate.createdAt,
@@ -347,6 +353,8 @@ export async function enqueueSessionDeliveryWithStatus(
 export async function enqueuePostCompactionDelegateDelivery(
   params: {
     sessionKey: string;
+    sourceSessionId?: string;
+    sourceLifecycleRevision?: string;
     delegate: SessionPostCompactionDelegate;
     sequence: number;
     compactionCount?: number;

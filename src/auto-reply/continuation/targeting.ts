@@ -22,6 +22,7 @@ import {
   enqueueSystemEventRaw as enqueueSystemEvent,
   removeSystemEvents,
 } from "../../infra/system-events.js";
+import { withContinuationOwner } from "./system-event-ownership.js";
 import {
   CONTINUATION_DELEGATE_FANOUT_MODES,
   hasCrossSessionDelegateTargeting,
@@ -108,6 +109,7 @@ export async function enqueueContinuationReturnDeliveries(
     traceparent?: string;
     fanoutMode?: ContinuationDelegateFanoutMode;
     chainStepRemaining?: number;
+    ownerAgentId: string;
   },
   deps: ContinuationReturnDeliveryDeps = defaultContinuationReturnDeliveryDeps,
 ): Promise<{ enqueued: number; delivered: number; deliveryIds: string[] }> {
@@ -147,6 +149,7 @@ export async function enqueueContinuationReturnDeliveries(
     const commonPayload = {
       kind: "systemEvent" as const,
       sessionKey,
+      agentId: params.ownerAgentId,
       text,
       ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
       ...(params.traceparent ? { traceparent: params.traceparent } : {}),
@@ -176,7 +179,7 @@ export async function enqueueContinuationReturnDeliveries(
       continue;
     }
 
-    const enqueued = deps.enqueueSystemEvent(text, {
+    const eventOptions = {
       sessionKey,
       trusted: true,
       ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
@@ -191,7 +194,11 @@ export async function enqueueContinuationReturnDeliveries(
           }
         : {}),
       ...(delegateArtifactReceipt ? { delegateArtifactReceipt } : {}),
-    });
+    };
+    const enqueued = deps.enqueueSystemEvent(
+      text,
+      withContinuationOwner(eventOptions, params.ownerAgentId),
+    );
     if (enqueued && delegateArtifactProjection && delegateArtifactReceipt) {
       deps.recordDelegateArtifactDeliveryBinding?.({
         dispatchId: delegateArtifactReceipt.dispatchId,

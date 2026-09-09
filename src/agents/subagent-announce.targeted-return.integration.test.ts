@@ -5,6 +5,7 @@ import type { ContinuationRecipientAuthorityBinding } from "../config/sessions/s
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { loadPendingSessionDeliveries } from "../infra/session-delivery-queue-storage.js";
 import type { QueuedSessionDelivery } from "../infra/session-delivery-queue-storage.js";
+import { selectAgentSystemEvents } from "../infra/system-event-ownership.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
 import { withTestDir } from "../test-helpers/temp-dir.js";
 
@@ -180,13 +181,16 @@ describe("subagent announce targeted continuation return integration", () => {
         throw new Error(`expected systemEvent delivery, received ${persisted.kind}`);
       }
       expect(persisted.sessionKey).toBe(targetSessionKey);
+      expect(persisted.agentId).toBe("main");
       expect(persisted.text).toContain(nonce);
 
       expect(runtimeLogMock).toHaveBeenCalledWith(
         expect.stringContaining(`[continuation:targeted-return] Delivered to ${targetSessionKey}`),
       );
 
-      expect(peekSystemEventEntries(targetSessionKey)).toHaveLength(1);
+      const queuedEvents = peekSystemEventEntries(targetSessionKey);
+      expect(selectAgentSystemEvents(queuedEvents, "main")).toEqual(queuedEvents);
+      expect(selectAgentSystemEvents(queuedEvents, "helper")).toEqual([]);
       const promptContext = await drainFormattedSystemEvents({
         cfg: mockConfig,
         agentId: "main",

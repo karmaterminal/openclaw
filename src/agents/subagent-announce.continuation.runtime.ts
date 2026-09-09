@@ -18,7 +18,7 @@ import {
   loadContinuationChainState,
   persistContinuationChainState,
 } from "../auto-reply/continuation/state.js";
-import { hasCrossSessionDelegateTargeting } from "../auto-reply/continuation/targeting-pure.js";
+import { withContinuationOwner } from "../auto-reply/continuation/system-event-ownership.js";
 import { scheduleContinuationWorkBatch } from "../auto-reply/continuation/work-dispatch.js";
 import { hasLiveOrRecentlyDispatchedContinuationWork } from "../auto-reply/continuation/work-store.js";
 import { resolveAgentIdFromSessionKey, resolveSessionStorePathCore } from "../config/sessions.js";
@@ -32,6 +32,10 @@ import { enqueueSystemEventRaw as enqueueSystemEvent } from "../infra/system-eve
 import { defaultRuntime } from "../runtime.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import { removeUnacceptedDelegateArtifactPolicy } from "./delegate-artifacts.js";
+import {
+  rejectOwnedCrossSessionTargeting,
+  reportOwnedDelegateAdmissionFailure,
+} from "./subagent-announce.continuation-owner-events.js";
 import {
   type ContinuationChainSource,
   type ContinuationChainState,
@@ -52,47 +56,10 @@ type OriginDelegateFlowStatus = NonNullable<
 >["status"];
 type ChildContinuationDrainResult = Awaited<ReturnType<typeof dispatchToolDelegates>>;
 
-async function rejectCrossSessionTargeting(params: {
-  crossSessionTargeting: "disabled" | "enabled";
-  dispatchingSessionKey: string;
-  eventSessionKey: string;
-  source: "bracket" | "tool";
-  targeting: {
-    targetSessionKey?: string;
-    targetSessionKeys?: readonly string[];
-    fanoutMode?: "tree" | "all";
-  };
-  task: string;
-}): Promise<boolean> {
-  if (
-    params.crossSessionTargeting !== "disabled" ||
-    !hasCrossSessionDelegateTargeting(params.targeting, params.dispatchingSessionKey)
-  ) {
-    return false;
-  }
-  defaultRuntime.log(
-    `[subagent-chain-hop] Cross-session targeting rejected by policy for ${params.source} delegate in session ${params.dispatchingSessionKey}`,
-  );
-  enqueueSystemEvent(
-    "[continuation] Delegate rejected: cross-session targeting is disabled by policy. " +
-      'Use the default return target, targetSessionKey set to this session, or fanoutMode="tree". ' +
-      `Task: ${params.task}`,
-    { sessionKey: params.eventSessionKey, trusted: true },
-  );
-  return true;
-}
-
-function reportDelegateAdmissionFailure(childSessionKey: string, eventSessionKey: string): void {
-  defaultRuntime.error?.(`[continuation:delegate-admission-failed] child=${childSessionKey}`);
-  enqueueSystemEvent(
-    "[continuation] Delegate was not scheduled because durable TaskFlow admission failed. Retry the delegation.",
-    { sessionKey: eventSessionKey, trusted: true },
-  );
-}
-
 async function drainChildContinuationQueue(params: {
   cfg: OpenClawConfig;
   childSessionKey: string;
+  childAgentId?: string;
   requesterOrigin?: DeliveryContext;
   additionalChainTokens?: number;
   dispatchRegardlessOfDelay?: boolean;
@@ -104,7 +71,7 @@ async function drainChildContinuationQueue(params: {
     return undefined;
   }
   try {
-    const childEntry = loadSessionEntryByKey(params.childSessionKey);
+    const childEntry = loadSessionEntryByKey(params.childSessionKey, params.childAgentId);
     const config = resolveContinuationRuntimeConfig(params.cfg);
     const baseChainState = params.chainStateOverride ?? loadContinuationChainState(childEntry);
     const chainState =
@@ -170,6 +137,7 @@ async function drainChildContinuationQueue(params: {
       chainState,
       ctx: {
         sessionKey: params.childSessionKey,
+        ownerAgentId: params.childAgentId,
         agentChannel: params.requesterOrigin?.channel,
         agentAccountId: params.requesterOrigin?.accountId,
         agentTo: params.requesterOrigin?.to,
@@ -271,6 +239,7 @@ async function scheduleSubagentSelfContinuationWork(params: {
 export async function coordinateSubagentContinuation(params: {
   cfg: OpenClawConfig;
   childSessionKey: string;
+  childAgentId?: string;
   childRunId: string;
   targetRequesterSessionKey: string;
   targetRequesterOrigin?: DeliveryContext;
@@ -290,8 +259,14 @@ export async function coordinateSubagentContinuation(params: {
   skipAnnounceDelivery: boolean;
   continuationEnabled: boolean;
   isContinuationChainDelegate: boolean;
+  ownerAgentId: string;
   originDelegateFlowStatus?: OriginDelegateFlowStatus;
 }> {
+  const ownerSession = createContinuationOwnerSessionLoader(
+    params.childSessionKey,
+    params.childAgentId,
+  );
+  const childOwnerAgentId = ownerSession.agentId;
   const continuationEnabled = params.cfg.agents?.defaults?.continuation?.enabled === true;
   const accounting = await prepareSubagentContinuationAccounting({
     enabled: continuationEnabled,
@@ -308,6 +283,7 @@ export async function coordinateSubagentContinuation(params: {
       skipAnnounceDelivery: params.skipAnnounceDelivery,
       continuationEnabled,
       isContinuationChainDelegate: accounting.isContinuationChainDelegate,
+      ownerAgentId: childOwnerAgentId,
     };
   }
 
@@ -319,6 +295,7 @@ export async function coordinateSubagentContinuation(params: {
     await drainChildContinuationQueue({
       cfg: params.cfg,
       childSessionKey: params.childSessionKey,
+      childAgentId: childOwnerAgentId,
       requesterOrigin: params.targetRequesterOrigin,
       additionalChainTokens: accounting.childChainTokensToFold,
       dispatchRegardlessOfDelay: accounting.childChainTokensToFold > 0,
@@ -388,13 +365,20 @@ export async function coordinateSubagentContinuation(params: {
         originRunId: params.childRunId,
       });
       if (!staged) {
-        reportDelegateAdmissionFailure(params.childSessionKey, params.targetRequesterSessionKey);
+        reportOwnedDelegateAdmissionFailure({
+          childSessionKey: params.childSessionKey,
+          eventSessionKey: params.targetRequesterSessionKey,
+          ownerAgentId: childOwnerAgentId,
+        });
         bracketDrainArmed = true;
       } else {
         originDelegateFlowStatus = staged.status;
         enqueueSystemEvent(
           `[continuation:delegate-staged-post-compaction] Bracket delegate staged for post-compaction release: ${signal.task}`,
-          { sessionKey: params.childSessionKey, trusted: true },
+          withContinuationOwner(
+            { sessionKey: params.childSessionKey, trusted: true },
+            childOwnerAgentId,
+          ),
         );
       }
     } else {
@@ -414,10 +398,11 @@ export async function coordinateSubagentContinuation(params: {
             : `[subagent-chain-hop] Cost cap exceeded (${parentChainTokens} > ${config.costCapTokens}), rejecting hop from ${params.childSessionKey}`,
         );
       } else if (
-        await rejectCrossSessionTargeting({
+        await rejectOwnedCrossSessionTargeting({
           crossSessionTargeting: config.crossSessionTargeting,
           dispatchingSessionKey: params.childSessionKey,
           eventSessionKey: params.targetRequesterSessionKey,
+          ownerAgentId: childOwnerAgentId,
           source: "bracket",
           targeting: {
             ...(signal.targetSessionKey ? { targetSessionKey: signal.targetSessionKey } : {}),
@@ -451,7 +436,11 @@ export async function coordinateSubagentContinuation(params: {
           originRunId: params.childRunId,
         });
         if (!admitted) {
-          reportDelegateAdmissionFailure(params.childSessionKey, params.targetRequesterSessionKey);
+          reportOwnedDelegateAdmissionFailure({
+            childSessionKey: params.childSessionKey,
+            eventSessionKey: params.targetRequesterSessionKey,
+            ownerAgentId: childOwnerAgentId,
+          });
           bracketDrainArmed = true;
         } else {
           originDelegateFlowStatus = admitted.status;
@@ -462,6 +451,7 @@ export async function coordinateSubagentContinuation(params: {
             const dispatchResult = await drainChildContinuationQueue({
               cfg: params.cfg,
               childSessionKey: params.childSessionKey,
+              childAgentId: childOwnerAgentId,
               requesterOrigin: params.targetRequesterOrigin,
               ...(accounting.childChainTokensToFold > 0 ? { dispatchRegardlessOfDelay: true } : {}),
               chainStateOverride: {
@@ -516,16 +506,20 @@ export async function coordinateSubagentContinuation(params: {
       const activeDispatch = registerContinuationDelegateDispatchClaim({
         controller: "pending",
         delegate,
-        loadOwnerSessionEntry: createContinuationOwnerSessionLoader(params.childSessionKey),
+        ownerSession: createContinuationOwnerSessionLoader(
+          params.childSessionKey,
+          childOwnerAgentId,
+        ),
         ownerSessionKey: params.childSessionKey,
       });
       let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
       try {
         if (
-          await rejectCrossSessionTargeting({
+          await rejectOwnedCrossSessionTargeting({
             crossSessionTargeting: config.crossSessionTargeting,
             dispatchingSessionKey: params.childSessionKey,
             eventSessionKey: params.targetRequesterSessionKey,
+            ownerAgentId: childOwnerAgentId,
             source: "tool",
             targeting: {
               ...(delegate.targetSessionKey ? { targetSessionKey: delegate.targetSessionKey } : {}),
@@ -557,10 +551,16 @@ export async function coordinateSubagentContinuation(params: {
           defaultRuntime.log(
             `[continuation:delegate-spawn-fenced] reason=${spawnFence.reason} flowId=${delegate.flowId ?? "unknown"} session=${params.childSessionKey}`,
           );
-          enqueueSystemEvent(`[continuation] ${spawnFence.summary} Task: ${delegate.task}`, {
-            sessionKey: params.targetRequesterSessionKey,
-            trusted: true,
-          });
+          enqueueSystemEvent(
+            `[continuation] ${spawnFence.summary} Task: ${delegate.task}`,
+            withContinuationOwner(
+              {
+                sessionKey: params.targetRequesterSessionKey,
+                trusted: true,
+              },
+              activeDispatch.ownerAgentId,
+            ),
+          );
           continue;
         }
         const spawnResult = await spawnSubagentDirect(
@@ -585,7 +585,9 @@ export async function coordinateSubagentContinuation(params: {
               : {}),
           },
           {
-            agentSessionKey: params.targetRequesterSessionKey,
+            agentSessionKey: params.childSessionKey,
+            completionOwnerKey: params.targetRequesterSessionKey,
+            requesterAgentIdOverride: activeDispatch.ownerAgentId,
             ...(delegate.originRunId ? { requesterTurnRunId: delegate.originRunId } : {}),
             agentChannel: params.targetRequesterOrigin?.channel ?? undefined,
             agentAccountId: params.targetRequesterOrigin?.accountId ?? undefined,
@@ -643,6 +645,7 @@ export async function coordinateSubagentContinuation(params: {
       void drainChildContinuationQueue({
         cfg: params.cfg,
         childSessionKey: params.childSessionKey,
+        childAgentId: childOwnerAgentId,
         requesterOrigin: params.targetRequesterOrigin,
         chainStateOverride: {
           currentChainCount: state.count,
@@ -662,6 +665,7 @@ export async function coordinateSubagentContinuation(params: {
     void drainChildContinuationQueue({
       cfg: params.cfg,
       childSessionKey: params.childSessionKey,
+      childAgentId: childOwnerAgentId,
       requesterOrigin: params.targetRequesterOrigin,
       chainStateOverride: {
         currentChainCount: state.count,
@@ -679,6 +683,7 @@ export async function coordinateSubagentContinuation(params: {
     skipAnnounceDelivery: params.skipAnnounceDelivery,
     continuationEnabled,
     isContinuationChainDelegate: isChain,
+    ownerAgentId: childOwnerAgentId,
     ...(originDelegateFlowStatus ? { originDelegateFlowStatus } : {}),
   };
 }

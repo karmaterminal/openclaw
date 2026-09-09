@@ -297,6 +297,7 @@ describe("continuation trace-context propagation integration", () => {
     const targetedSystemEvents: Array<{ sessionKey: string; traceparent?: string }> = [];
     await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:root"],
         text: "[continuation:enrichment-return] targeted result",
         idempotencyKeyBase: "trace-integration:targeted",
@@ -331,6 +332,7 @@ describe("continuation trace-context propagation integration", () => {
     const fanoutTargets = ["agent:main:root", "agent:main:sibling", "agent:main:observer"];
     await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: fanoutTargets,
         text: "[continuation:enrichment-return] broadcast result",
         idempotencyKeyBase: "trace-integration:fanout",

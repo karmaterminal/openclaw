@@ -194,6 +194,7 @@ function createQueuedEntry(
     id: "queue-1",
     kind: "postCompactionDelegate",
     sessionKey: "main",
+    sourceSessionId: "session",
     task: "queued delegate",
     // Armed at the delivery clock: an entry stamped at epoch 1 would be ~54
     // years old and would terminalize on the RFC §4.4 stale gate instead of
@@ -375,6 +376,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: preserve,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -403,6 +405,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       const mainId = await enqueuePostCompactionDelegateDeliveryQueue(
         {
           sessionKey: "main",
+          sourceSessionId: "main-session",
           delegate: delegate("main retry", {
             createdAt: DELIVERY_NOW_MS,
             firstArmedAt: DELIVERY_NOW_MS,
@@ -415,6 +418,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       const otherId = await enqueuePostCompactionDelegateDeliveryQueue(
         {
           sessionKey: "other",
+          sourceSessionId: "other-session",
           delegate: delegate("other untouched", {
             createdAt: DELIVERY_NOW_MS,
             firstArmedAt: DELIVERY_NOW_MS,
@@ -509,6 +513,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: preserve,
         sessionEntry,
+        sessionStore: { main: sessionEntry },
         sessionKey: "main",
       },
       deps,
@@ -546,6 +551,8 @@ describe("post-compaction delegate dispatch extraction", () => {
           compactionCount: 1,
           followupRun: createFollowupRun(),
           postCompactionDelegatesToPreserve: preserve,
+          sessionEntry: { sessionId: "session", updatedAt: 1 },
+          sessionStore: { main: { sessionId: "session", updatedAt: 1 } },
           sessionKey: "main",
           storePath: "/tmp/post-compaction-persist-fail.json",
         },
@@ -589,6 +596,8 @@ describe("post-compaction delegate dispatch extraction", () => {
         compactionCount: 1,
         followupRun: createFollowupRun(),
         postCompactionDelegatesToPreserve: preserve,
+        sessionEntry: { sessionId: "session", updatedAt: 1 },
+        sessionStore: { main: { sessionId: "session", updatedAt: 1 } },
         sessionKey: "main",
       },
       deps,
@@ -623,6 +632,8 @@ describe("post-compaction delegate dispatch extraction", () => {
           compactionCount: 1,
           followupRun: createFollowupRun(),
           postCompactionDelegatesToPreserve: [],
+          sessionEntry: { sessionId: "session", updatedAt: 1 },
+          sessionStore: { main: { sessionId: "session", updatedAt: 1 } },
           sessionKey: "main",
         },
         deps,
