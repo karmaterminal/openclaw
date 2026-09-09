@@ -274,12 +274,18 @@ describe("Telegram model callback loopback", () => {
         return { bot, router };
       };
 
-      await expect(createCallbackBot().bot.handleUpdate(callbackUpdate)).rejects.toThrow();
+      let firstAttemptError: unknown;
+      try {
+        await createCallbackBot().bot.handleUpdate(callbackUpdate);
+      } catch (error) {
+        firstAttemptError = error;
+      }
       expect(requests.map(({ method }) => method)).toEqual([
         "sendMessage",
         "answerCallbackQuery",
         "editMessageText",
       ]);
+      expect(firstAttemptError).toBeInstanceOf(Error);
       expect(callbackSteps).toEqual(["context", "sender", "model", "catalog"]);
       expect(listSessionEntries({ storePath })[0]?.entry).toMatchObject({
         providerOverride: PROVIDER,
