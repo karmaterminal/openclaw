@@ -14,6 +14,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createServer as createNetServer } from "node:net";
 import { basename, dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
@@ -340,6 +341,39 @@ function isProcessRunning(pid: number): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function listenLoopback(port: number): Promise<{
+  port: number;
+  close: () => Promise<void>;
+}> {
+  const server = createNetServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => resolve());
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("expected TCP listen address");
+  }
+  return {
+    port: address.port,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      }),
+  };
+}
+
+async function occupyLoopbackPort(port: number): Promise<{ close: () => Promise<void> }> {
+  try {
+    return await listenLoopback(port);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
+      return { close: async () => undefined };
+    }
+    throw error;
   }
 }
 
@@ -3380,7 +3414,13 @@ fi
     expectTextToIncludeAll(updateRestartAuth, [
       "command=(env -u OPENCLAW_GATEWAY_TOKEN -u OPENCLAW_GATEWAY_PASSWORD openclaw gateway install --force --json)",
       'openclaw_e2e_maybe_timeout "$command_timeout" "${command[@]}"',
+      'local port="${2:?missing managed gateway port}" stop_status=0',
+      'openclaw_e2e_probe_tcp 127.0.0.1 "$port" 400',
     ]);
+    expect(updateRestartAuth).not.toContain("openclaw_e2e_probe_tcp 127.0.0.1 18789 400");
+    expect(publishedRunner).toContain(
+      'stop_update_restart_probe_gateway "$COMMAND_TIMEOUT" "$probe_port"',
+    );
   });
 
   it.skipIf(process.platform !== "linux").each(["published", "current"])(
@@ -3484,6 +3524,10 @@ openclaw_e2e_wait_gateway_ready() {
   for _ in {1..200}; do [ -s "$PORT_FILE" ] && break; sleep 0.01; done
   fixture_wait_gateway_ready "$1" "$2" 20 "$(cat "$PORT_FILE")" "\${5:-strict}"
 }
+eval "$(declare -f stop_update_restart_probe_gateway | sed '1s/stop_update_restart_probe_gateway/fixture_stop_update_restart_probe_gateway/')"
+stop_update_restart_probe_gateway() {
+  fixture_stop_update_restart_probe_gateway "$1" "$(cat "$PORT_FILE")"
+}
 ${lane === "published" ? "prepare_update_restart_probe" : 'prepare_update_restart_probe_current_install 18789 "$OPENCLAW_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_DAEMON_LOG"'}
 `;
       const systemctlPath = join(
@@ -3505,6 +3549,7 @@ ${lane === "published" ? "prepare_update_restart_probe" : 'prepare_update_restar
               .filter(Boolean)
               .map((line) => JSON.parse(line))
           : [];
+      const ambient = await occupyLoopbackPort(18789);
       try {
         const result = spawnSync("bash", ["-c", script], {
           env,
@@ -3550,9 +3595,56 @@ ${lane === "published" ? "prepare_update_restart_probe" : 'prepare_update_restar
             process.kill(pid, "SIGKILL");
           } catch {}
         }
+        await ambient.close();
       }
     },
     60_000,
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "fails closed when the owned restart-probe listener stays reachable after stop",
+    async () => {
+      const workDir = tempDirs.make("survivor-stop-owned-listener-");
+      const daemonLog = join(workDir, "daemon.log");
+      const owned = await listenLoopback(0);
+      const ambient = await occupyLoopbackPort(18789);
+      const runStop = (port: number) =>
+        spawnSync(
+          "bash",
+          [
+            "-c",
+            `
+set -euo pipefail
+source ${shellQuote(OPENCLAW_E2E_INSTANCE_HELPER_PATH)}
+source ${shellQuote(UPGRADE_SURVIVOR_UPDATE_RESTART_AUTH_PATH)}
+openclaw_e2e_maybe_timeout() { shift; "$@"; }
+systemctl() { return 0; }
+assert_update_restart_probe_inactive() { return 0; }
+export OPENCLAW_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_DAEMON_LOG=${shellQuote(daemonLog)}
+stop_update_restart_probe_gateway 5s ${shellQuote(String(port))}
+`,
+          ],
+          {
+            encoding: "utf8",
+            timeout: 10_000,
+            env: { ...process.env, HOME: workDir },
+          },
+        );
+      try {
+        const stranded = runStop(owned.port);
+        expect(stranded.status, stranded.stdout + stranded.stderr).not.toBe(0);
+        expect(stranded.stderr).toContain("gateway service shutdown could not be verified");
+        await owned.close();
+        const released = runStop(owned.port);
+        expect(released.status, released.stdout + released.stderr).toBe(0);
+        const productionPort = runStop(18789);
+        expect(productionPort.status, productionPort.stdout + productionPort.stderr).not.toBe(0);
+        expect(productionPort.stderr).toContain("gateway service shutdown could not be verified");
+      } finally {
+        await owned.close().catch(() => undefined);
+        await ambient.close();
+      }
+    },
   );
 
   it("returns the gateway readiness failure when startup is called conditionally", () => {

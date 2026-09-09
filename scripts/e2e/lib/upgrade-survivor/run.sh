@@ -1055,17 +1055,18 @@ prepare_update_restart_probe() {
   echo "Preparing configured-auth gateway for automatic update restart."
   install_update_restart_systemctl_shim
   local probe_status=0 restore_status=0
+  local probe_port=18789
   local authored_config="$RUNTIME_ROOT/baseline-authored-openclaw.json"
   local parking_helper="${OPENCLAW_UPGRADE_SURVIVOR_CONFIG_PARKING_HELPER:-scripts/e2e/lib/upgrade-survivor/config-parking.mjs}"
   # Bootstrap only service auth; authored plugins must reach the actual updater unchanged.
   # The canonical path stays installed in the unit, with reload off until update owns restart.
   node "$parking_helper" \
-    park-restart-probe "$OPENCLAW_CONFIG_PATH" "$authored_config" 18789 || probe_status=$?
+    park-restart-probe "$OPENCLAW_CONFIG_PATH" "$authored_config" "$probe_port" || probe_status=$?
   if [ "$probe_status" -eq 0 ]; then
     write_update_restart_service_env || probe_status=$?
   fi
   if [ "$probe_status" -eq 0 ]; then
-    run_update_restart_probe_gateway install 18789 "$COMMAND_TIMEOUT" legacy-ready-log-ok || probe_status=$?
+    run_update_restart_probe_gateway install "$probe_port" "$COMMAND_TIMEOUT" legacy-ready-log-ok || probe_status=$?
   fi
   if [ "$probe_status" -eq 0 ]; then
     local STATUS_JSON="$ARTIFACT_ROOT/baseline-status.json" STATUS_ERR="$ARTIFACT_ROOT/baseline-status.err"
@@ -1075,7 +1076,7 @@ prepare_update_restart_probe() {
     assert_prepublish_fixture_idle || probe_status=$?
   fi
   # The installed baseline must be offline before restoring authored config or seeding state.
-  stop_update_restart_probe_gateway "$COMMAND_TIMEOUT" || return "$?"
+  stop_update_restart_probe_gateway "$COMMAND_TIMEOUT" "$probe_port" || return "$?"
   if [ -e "$authored_config" ]; then
     node "$parking_helper" restore "$OPENCLAW_CONFIG_PATH" "$authored_config" || restore_status=$?
   fi
