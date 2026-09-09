@@ -1552,23 +1552,67 @@ describe("package-mac-app plist stamping", () => {
     const helperBlock = getPackageManagerHelperBlock();
     const tempRoot = tempDirs.make("openclaw-package-pnpm-root-");
     const toolsDir = tempDirs.make("openclaw-package-pnpm-tools-");
-    // Hosts with a system corepack in /usr/bin (plus a cached pnpm) would satisfy
-    // the detection this test needs to fail; an empty cache with network disabled
-    // keeps "corepack pnpm is unavailable" true everywhere.
+    const hostBin = tempDirs.make("openclaw-package-pnpm-host-bin-");
     const corepackHome = tempDirs.make("openclaw-package-corepack-home-");
+    const hostLog = path.join(tempRoot, "host-pnpm.log");
+    const failStub = ["#!/bin/bash", "exit 1", ""].join("\n");
 
-    const result = runHelper(`
+    // Present-but-unusable Corepack: `command -v corepack` succeeds, then
+    // `corepack pnpm --version` fails without network or a cached shim.
+    writeFileSync(path.join(toolsDir, "corepack"), failStub, "utf8");
+    chmodSync(path.join(toolsDir, "corepack"), 0o755);
+
+    // Do not put pnpm on PATH. resolve_pnpm_cmd treats `command -v pnpm` as
+    // available and would skip the product diagnostic, matching CachyOS
+    // /usr/bin/pnpm plus inherited npm_config_loglevel=silent (empty stderr).
+    writeFileSync(
+      path.join(hostBin, "pnpm"),
+      ["#!/bin/bash", `printf 'host-pnpm\\n' >> ${JSON.stringify(hostLog)}`, "exit 1", ""].join(
+        "\n",
+      ),
+      "utf8",
+    );
+    writeFileSync(path.join(hostBin, "corepack"), failStub, "utf8");
+    chmodSync(path.join(hostBin, "pnpm"), 0o755);
+    chmodSync(path.join(hostBin, "corepack"), 0o755);
+
+    // Stay off runHelper()'s `bash -lc`. Login PATH and usr-merged /bin ->
+    // /usr/bin can resurrect a real pnpm; keep PATH at the hostile tools dir.
+    const result = spawnSync(
+      "/bin/bash",
+      [
+        "-c",
+        `
       set -euo pipefail
+      PATH=${JSON.stringify(toolsDir)}
+      export PATH
+      hash -r
+      unset npm_config_loglevel NPM_CONFIG_LOGLEVEL
       ROOT_DIR=${JSON.stringify(tempRoot)}
-      PATH=${JSON.stringify(`${toolsDir}:/usr/bin:/bin`)}
       export COREPACK_HOME=${JSON.stringify(corepackHome)}
       export COREPACK_ENABLE_NETWORK=0
       ${helperBlock}
       run_pnpm build
-    `);
+    `,
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: {
+          HOME: tempRoot,
+          PATH: toolsDir,
+          COREPACK_HOME: corepackHome,
+          COREPACK_ENABLE_NETWORK: "0",
+          // Inherited from pnpm-launched Vitest on self-hosted runners; the
+          // product diagnostic must still appear after clearing it.
+          npm_config_loglevel: "silent",
+        },
+      },
+    );
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("pnpm is not on PATH and corepack pnpm is unavailable");
+    expect(existsSync(hostLog)).toBe(false);
   });
 
   it("checks the selected Swift toolchain before dependency install work", () => {
