@@ -19,6 +19,7 @@ import type {
   PluginStateSyncKeyedStore,
 } from "openclaw/plugin-sdk/plugin-state-runtime";
 import type { GetReplyOptions, MsgContext } from "openclaw/plugin-sdk/reply-runtime";
+import { listSessionEntries } from "openclaw/plugin-sdk/session-store-runtime";
 import { withEnvAsync } from "openclaw/plugin-sdk/test-env";
 import { createRequireRecord, sanitizeTerminalText } from "openclaw/plugin-sdk/test-fixtures";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -5730,6 +5731,64 @@ describe("createTelegramBot", () => {
         (typeof call[2] === "string" ? call[2] : "").includes("Failed to change model"),
       ),
     ).toBe(false);
+  });
+
+  it("keeps a committed model selection when its receipt target is permanently unavailable", async () => {
+    sequentializeSpy.mockImplementationOnce(
+      () => async (_ctx: unknown, next: () => Promise<void>) => {
+        await next();
+      },
+    );
+
+    const storePath = path.join(createTelegramBotTestStateDir(), "session-store.json");
+    const config = {
+      channels: { telegram: { dmPolicy: "open", allowFrom: ["*"] } },
+      session: { store: storePath },
+    } satisfies NonNullable<Parameters<typeof createTelegramBot>[0]["config"]>;
+    const onUpdateId = vi.fn();
+    loadConfig.mockReturnValue(config);
+    createTelegramBot({
+      token: "tok",
+      config,
+      updateOffset: { lastUpdateId: 890, onUpdateId },
+    });
+    const callbackHandler = getOnHandler("callback_query");
+    const ctx = makeCallbackRetryContext({
+      updateId: 891,
+      id: "cbq-model-select-permanent-edit-1",
+      data: "mdl_sel_openai/gpt-5.4",
+      messageId: 25,
+    });
+
+    editMessageTextSpy.mockRejectedValueOnce(
+      new Error("400: Bad Request: message can't be edited"),
+    );
+
+    await expect(
+      runTelegramMiddlewareChain({
+        ctx,
+        finalHandler: callbackHandler,
+      }),
+    ).resolves.toBeUndefined();
+
+    await flushTelegramTestMicrotasks();
+    expect(onUpdateId).toHaveBeenCalledWith(891);
+    expect(editMessageTextSpy).toHaveBeenCalledTimes(1);
+    expect(editMessageTextSpy.mock.calls.at(0)?.[2]).toContain(
+      "Session-only model selection. Runtime set to <b>codex</b> from configured policy.",
+    );
+    expect(listSessionEntries({ storePath })[0]?.entry).toMatchObject({
+      providerOverride: "openai",
+      modelOverride: "gpt-5.4",
+      modelOverrideSource: "user",
+      liveModelSwitchPending: true,
+    });
+
+    await runTelegramMiddlewareChain({
+      ctx,
+      finalHandler: callbackHandler,
+    });
+    expect(editMessageTextSpy).toHaveBeenCalledTimes(1);
   });
 
   it("shows a permanent rejection when model selection is locked", async () => {

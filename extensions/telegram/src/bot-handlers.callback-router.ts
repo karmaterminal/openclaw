@@ -691,9 +691,11 @@ async function handleTelegramModelCallback(params: {
     const scopeText = isDefaultSelection
       ? `Session model selection cleared.${defaultAuthProfileNotice ? ` ${defaultAuthProfileNotice}` : ""} ${runtimeText} New replies use the agent's configured default.`
       : `Session-only model selection. ${runtimeText} The agent default in openclaw.json is unchanged. This chat keeps the model selection across /new and /reset; use /model default -s to clear the session model selection.`;
-    await editMessageWithButtons(`✅ Model ${actionText}\n\n${scopeText}`, [], {
-      parse_mode: "HTML",
-    });
+    await retryModelAction(() =>
+      editMessageWithButtons(`✅ Model ${actionText}\n\n${scopeText}`, [], {
+        parse_mode: "HTML",
+      }),
+    );
   } catch (err) {
     if (err instanceof TelegramRetryableCallbackError) {
       throw err;

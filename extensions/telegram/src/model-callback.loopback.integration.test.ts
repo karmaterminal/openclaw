@@ -14,6 +14,9 @@ import { createTelegramCallbackRouter } from "./bot-handlers.callback-router.js"
 import type { TelegramHandlerAuthorization } from "./bot-handlers.inbound-authorization.js";
 import type { RegisterTelegramHandlerParams } from "./bot-handlers.types.js";
 import { telegramBotInfoForTest } from "./bot.create-telegram-bot.test-support.js";
+import { setTelegramCallbackQueryAnswerPromise } from "./callback-query-answer-state.js";
+import { asTelegramClientFetch, createTelegramClientFetch } from "./client-fetch.js";
+import { resolveTelegramTransport } from "./fetch.js";
 import { buildModelsKeyboard } from "./model-buttons.js";
 import { resetTelegramClientOptionsCacheForTests, sendMessageTelegram } from "./send.js";
 
@@ -35,6 +38,17 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
 function sendJson(response: ServerResponse, result: unknown): void {
   response.writeHead(200, { "content-type": "application/json" });
   response.end(JSON.stringify({ ok: true, result }));
+}
+
+function sendMessageNotModified(response: ServerResponse): void {
+  response.writeHead(400, { "content-type": "application/json" });
+  response.end(
+    JSON.stringify({
+      ok: false,
+      error_code: 400,
+      description: "Bad Request: message is not modified",
+    }),
+  );
 }
 
 describe("Telegram model callback loopback", () => {
@@ -80,11 +94,16 @@ describe("Telegram model callback loopback", () => {
       } else if (method === "answerCallbackQuery") {
         sendJson(response, true);
       } else if (method === "editMessageText") {
-        sendJson(response, {
+        if (sentMessage?.text === payload.text) {
+          sendMessageNotModified(response);
+          return;
+        }
+        sentMessage = {
           ...sentMessage,
           text: payload.text,
           reply_markup: payload.reply_markup,
-        });
+        };
+        sendJson(response, sentMessage);
       } else {
         response.writeHead(404, { "content-type": "application/json" });
         response.end(JSON.stringify({ ok: false, error_code: 404, description: method }));
@@ -99,6 +118,14 @@ describe("Telegram model callback loopback", () => {
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", resolve);
     });
+    const restartedProcessTransport = resolveTelegramTransport();
+    const restartedProcessFetch = createTelegramClientFetch({
+      fetchImpl: asTelegramClientFetch(restartedProcessTransport.fetch),
+      transport: restartedProcessTransport,
+    });
+    if (!restartedProcessFetch) {
+      throw new Error("Expected Telegram client fetch");
+    }
 
     try {
       const apiRoot = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -139,7 +166,6 @@ describe("Telegram model callback loopback", () => {
       expect(Buffer.byteLength(callbackData ?? "", "utf8")).toBeLessThanOrEqual(64);
 
       const callbackSteps: string[] = [];
-      const bot = new Bot(TOKEN, { botInfo: telegramBotInfoForTest, client: { apiRoot } });
       const telegramDeps = {
         ...defaultTelegramBotDeps,
         buildModelsProviderData: async (): ReturnType<
@@ -205,21 +231,7 @@ describe("Telegram model callback loopback", () => {
           model: undefined,
         }),
       } as unknown as TelegramCallbackMessageRuntime;
-      const router = createTelegramCallbackRouter({
-        params: {
-          accountId: "default",
-          bot,
-          runtime: {},
-          telegramDeps,
-          shouldSkipUpdate: () => false,
-        } as unknown as RegisterTelegramHandlerParams,
-        message,
-        authorization,
-      });
-      bot.on("callback_query", async (context) => {
-        await router.route(context);
-      });
-      await bot.handleUpdate({
+      const callbackUpdate = {
         update_id: 1,
         callback_query: {
           id: "loopback-callback",
@@ -228,24 +240,88 @@ describe("Telegram model callback loopback", () => {
           from: { id: 9, is_bot: false, first_name: "Operator", username: "operator" },
           message: sentMessage as never,
         },
-      });
+      };
+      const createCallbackBot = (customFetch?: typeof fetch) => {
+        const bot = new Bot(TOKEN, {
+          botInfo: telegramBotInfoForTest,
+          client: {
+            apiRoot,
+            ...(customFetch ? { fetch: customFetch } : {}),
+          },
+        });
+        const router = createTelegramCallbackRouter({
+          params: {
+            accountId: "default",
+            bot,
+            runtime: {},
+            telegramDeps,
+            shouldSkipUpdate: () => false,
+          } as unknown as RegisterTelegramHandlerParams,
+          message,
+          authorization,
+        });
+        bot.on("callback_query", async (context) => {
+          await router.route(context);
+        });
+        return { bot, router };
+      };
 
+      let firstAttemptError: unknown;
+      try {
+        await createCallbackBot().bot.handleUpdate(callbackUpdate);
+      } catch (error) {
+        firstAttemptError = error;
+      }
+      if (process.versions.node.startsWith("24.")) {
+        expect(firstAttemptError).toBeInstanceOf(Error);
+      } else {
+        expect(firstAttemptError).toBeUndefined();
+      }
       expect(requests.map(({ method }) => method)).toEqual([
         "sendMessage",
         "answerCallbackQuery",
         "editMessageText",
       ]);
-      expect(callbackSteps).toEqual(["context", "sender", "model", "catalog"]);
+
+      const restarted = createCallbackBot(restartedProcessFetch);
+      const replayContext = {
+        callbackQuery: callbackUpdate.callback_query,
+        me: telegramBotInfoForTest,
+        update: callbackUpdate,
+      } as unknown as Parameters<typeof restarted.router.route>[0];
+      setTelegramCallbackQueryAnswerPromise(replayContext, Promise.resolve(true));
+      await restarted.router.route(replayContext);
+
+      expect(requests.map(({ method }) => method)).toEqual([
+        "sendMessage",
+        "answerCallbackQuery",
+        "editMessageText",
+        "editMessageText",
+      ]);
+      expect(callbackSteps).toEqual([
+        "context",
+        "sender",
+        "model",
+        "catalog",
+        "context",
+        "sender",
+        "model",
+        "catalog",
+      ]);
       expect(listSessionEntries({ storePath })[0]?.entry).toMatchObject({
         providerOverride: PROVIDER,
         modelOverride: MODEL,
         modelOverrideSource: "user",
         liveModelSwitchPending: true,
       });
-      expect(requests.at(-1)?.payload.text).toContain(
-        `Model changed to <b>${PROVIDER}/${MODEL}</b>`,
-      );
+      const editRequests = requests.filter(({ method }) => method === "editMessageText");
+      expect(editRequests).toHaveLength(2);
+      for (const request of editRequests) {
+        expect(request.payload.text).toContain(`Model changed to <b>${PROVIDER}/${MODEL}</b>`);
+        expect(request.payload.text).not.toContain("Failed to change model");
+      }
     } finally {
+      await restartedProcessTransport.close();
       server.close();
       server.closeAllConnections();
       server.unref();
