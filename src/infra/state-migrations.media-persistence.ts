@@ -20,6 +20,7 @@ import { AGENT_MEDIA_SCHEMA_VERSION } from "../state/openclaw-agent-db-contract.
 import { assertOpenClawAgentDatabaseOwner } from "../state/openclaw-agent-db-maintenance.js";
 import { registerOpenClawAgentDatabase } from "../state/openclaw-agent-db-registry.js";
 import { assertOpenClawAgentSchemaContains } from "../state/openclaw-agent-db-schema-helpers.js";
+import { resolveOpenClawAgentTargetSchema } from "../state/openclaw-agent-db-schema-variants.js";
 import {
   ensureOpenClawAgentDatabaseSchema,
   migrateOpenClawAgentDatabaseToMediaPrerequisiteSchema,
@@ -30,8 +31,6 @@ import {
   withAgentDatabaseMaintenanceLease,
   type OpenClawAgentDatabase,
 } from "../state/openclaw-agent-db.js";
-import { withLegacySessionParticipantsSchema } from "../state/openclaw-agent-participants-migration.js";
-import { OPENCLAW_AGENT_SCHEMA_SQL } from "../state/openclaw-agent-schema.js";
 import { OPENCLAW_SQLITE_BUSY_TIMEOUT_MS } from "../state/openclaw-state-db.js";
 import { VERSION } from "../version.js";
 import { formatErrorMessage } from "./errors.js";
@@ -403,10 +402,7 @@ function migrateAgentDatabase(params: {
       userVersion = readSqliteUserVersion(database);
     }
     const schemaMode = userVersion < OPENCLAW_AGENT_SCHEMA_VERSION ? "legacy" : "current";
-    const schemaSql =
-      schemaMode === "legacy"
-        ? withLegacySessionParticipantsSchema(OPENCLAW_AGENT_SCHEMA_SQL)
-        : OPENCLAW_AGENT_SCHEMA_SQL;
+    const schemaSql = resolveOpenClawAgentTargetSchema(userVersion);
     // Remove after 2026-10-12: drop the v15-to-v16 media cutover once schema 16 is the support floor.
     if (userVersion === PREVIOUS_MEDIA_SCHEMA_VERSION) {
       repairCanonicalSqliteIndexes(database, params.pathname, schemaSql, {

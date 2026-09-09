@@ -28,6 +28,9 @@ describe("legacy media persistence Doctor migration from historical v15", () => 
     expect(createHash("sha256").update(historicalSchema).digest("hex")).toBe(
       "75953ef97a738251822fc5aaf283bbe55fbcabe8702ad771892cdafc85d8e6b9",
     );
+    expect(historicalSchema).not.toContain(
+      "CREATE TABLE IF NOT EXISTS session_recipient_authority (",
+    );
 
     const stateDir = makeTempDir(tempDirs, "media-persistence-historical-v15-");
     const env = { OPENCLAW_STATE_DIR: stateDir };
@@ -118,6 +121,13 @@ describe("legacy media persistence Doctor migration from historical v15", () => 
       expect(
         migrated.prepare("SELECT main_key FROM session_key_contract WHERE id = 1").get(),
       ).toEqual({ main_key: "main" });
+      expect(
+        migrated
+          .prepare(
+            "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'session_recipient_authority'",
+          )
+          .get(),
+      ).toEqual({ name: "session_recipient_authority" });
       const row = migrated
         .prepare("SELECT event_json FROM transcript_events WHERE session_id = ? AND seq = 0")
         .get("historical-v15") as { event_json: string };
