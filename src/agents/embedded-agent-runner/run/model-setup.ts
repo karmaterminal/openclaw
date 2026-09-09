@@ -191,7 +191,11 @@ export async function resolveEmbeddedRunModelSetup(params: {
     );
   }
 
-  const nativeModelOwned = nativeSessionRuntime !== undefined;
+  const nativeModelOwned =
+    nativeSessionRuntime !== undefined ||
+    (params.sessionAdmission === undefined &&
+      resolveSessionPinnedHarnessId(runParams) === agentHarness.id &&
+      pluginHarnessOwnsTransport);
   const modelConfigProvider = provider;
   let resolvedModelProvider = provider;
   let modelResolution;
