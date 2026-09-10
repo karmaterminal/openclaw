@@ -7,7 +7,7 @@ type CallbackQueryAnswer = {
   pending: boolean;
   retention: "transient" | "retained" | "consumed";
 };
-type CallbackQueryAnswerOwner = {
+type CallbackQueryAnswerOwner = object & {
   [TELEGRAM_CALLBACK_QUERY_ANSWERS]?: Map<string, CallbackQueryAnswer>;
 };
 // Admission and dispatch can observe the same in-flight answer in either order.
