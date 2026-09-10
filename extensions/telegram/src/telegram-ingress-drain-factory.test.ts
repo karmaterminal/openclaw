@@ -117,8 +117,12 @@ describe("Telegram transport ingress outcome handoff", () => {
       const pendingAnswer = createDeferred<void>();
       let releaseAnswers = false;
       const sendAnswer = (response: ServerResponse) => {
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify({ ok: true, result: true }));
+        const body = JSON.stringify({ ok: true, result: true });
+        response.writeHead(200, {
+          "content-length": Buffer.byteLength(body),
+          "content-type": "application/json",
+        });
+        response.end(body);
       };
       const server = createServer((request, response) => {
         let body = "";
