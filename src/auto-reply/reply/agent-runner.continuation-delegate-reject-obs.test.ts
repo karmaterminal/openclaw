@@ -9,6 +9,7 @@ import {
 import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runner/runs.test-support.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
+import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import {
   resetContinuationTracer,
   setContinuationTracer,
@@ -19,6 +20,10 @@ import {
   type Tracer,
 } from "../../infra/continuation-tracer.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
+import {
+  createOpenClawTestState,
+  type OpenClawTestState,
+} from "../../test-utils/openclaw-test-state.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { testing as replyRunRegistryTesting } from "./reply-run-registry.test-support.js";
@@ -36,6 +41,7 @@ const compactState = vi.hoisted(() => ({
 }));
 const requestHeartbeatNowMock = vi.hoisted(() => vi.fn());
 const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
+let testState: OpenClawTestState;
 
 vi.mock("../../agents/model-fallback-runner.js", () => ({
   runWithModelFallback: (params: {
@@ -229,7 +235,11 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
   return { tracer, spans };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  testState = await createOpenClawTestState({
+    layout: "state-only",
+    prefix: "openclaw-continuation-delegate-reject-",
+  });
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
   runEmbeddedAgentMock.mockClear();
@@ -264,13 +274,14 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers();
   clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
   replyRunRegistryTesting.resetReplyRunRegistry();
   embeddedRunTesting.resetActiveEmbeddedRuns();
   resetContinuationTracer();
+  await testState.cleanup();
 });
 
 function createContinuationRun(params?: {
@@ -343,6 +354,10 @@ async function runDelegateTurn(
   run: ReturnType<typeof createContinuationRun>,
   sessionStore: Record<string, SessionEntry>,
 ): Promise<unknown> {
+  await upsertSessionEntryCore(
+    { agentId: "main", env: testState.env, sessionKey: run.sessionKey },
+    run.sessionEntry,
+  );
   setRuntimeConfigSnapshot(run.followupRun.run.config);
   return runReplyAgent({
     commandBody: "hello",
