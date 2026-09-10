@@ -26,16 +26,17 @@ continuation refactor.
 
 ## Named refs
 
-The immutable docs/proof ref and final safe-branch equality receipt are added
-after this proof snapshot is committed.
+The proof snapshot was committed and published before this metadata receipt was
+added. The final commit is a metadata-only successor; it does not alter the
+measurements or conclusion.
 
 | Category | Named ref | Full SHA | Local/tracking/server equality |
 | --- | --- | --- | --- |
 | Product/base | diagnostic product | `0b85aeb4685df7da33259fe3c6a0153dedd85cb8` | Clean diagnostic clone `HEAD` equals requested SHA |
-| Safe lane | `codeagent/ab-chain-break-bundled-plugins` | `0b85aeb4685df7da33259fe3c6a0153dedd85cb8` before proof commit | Local = `origin/...` tracking = server before evidence |
+| Safe lane | `codeagent/ab-chain-break-bundled-plugins` proof snapshot | `9efc54795d00af252b227ac2c6f753532558563d` | Local = `origin/...` tracking = server after proof publication |
 | CI/workflow | N/A | N/A | Workorder prohibited Actions dispatch |
 | Presentation | N/A | N/A | Workorder prohibited presentation work |
-| Docs/proof | pending immutable proof commit | pending | Filled after proof snapshot commit |
+| Docs/proof | immutable `output.md` proof snapshot | `9efc54795d00af252b227ac2c6f753532558563d` | Commit was pushed to the safe lane before this receipt |
 
 The server `main` ref was observed only as context at
 `76db6d1846e54d7f2fe2a1a605f828a1cd4ab84e`; it is not an evidence authority.
