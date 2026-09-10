@@ -22,10 +22,14 @@ import {
 import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
 import { listOpenAIAuthProfileProvidersForAgentRuntime } from "../agents/openai-routing.js";
 import { resolveSessionRuntimeOverrideForProvider } from "../agents/session-runtime-compat.js";
+import { getVolitionalCompactionCount } from "../agents/tools/request-compaction-tool.js";
 import {
   resolveInternalSessionKey,
   resolveMainSessionAlias,
 } from "../agents/tools/sessions-helpers.js";
+import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
+import { stagedPostCompactionDelegateCount } from "../auto-reply/continuation/delegate-store-post-compaction.js";
+import { pendingDelegateCount } from "../auto-reply/continuation/delegate-store.js";
 import { normalizeGroupActivation } from "../auto-reply/group-activation.js";
 import { resolveSelectedAndActiveModel } from "../auto-reply/model-runtime.js";
 import type { ThinkLevel } from "../auto-reply/thinking.js";
@@ -63,10 +67,13 @@ import {
   shouldUseCodexSyntheticUsageForRuntime,
 } from "./codex-synthetic-usage.js";
 import { resolveActiveFallbackState } from "./fallback-notice-state.js";
+import { formatStatusTextContinuationLine } from "./status-continuation-line.js";
 import type { StatusMessageParts } from "./status-message.js";
 import { formatCompactPluginHealthLine } from "./status-plugin-health.js";
 import { appendSessionCostLine, buildStatusUptimeValue } from "./status-runtime-lines.js";
 import type { BuildStatusTextParams } from "./status-text.types.js";
+
+export { formatStatusTextContinuationLine };
 
 // Status text assembly gathers runtime/model/session/task facts, then delegates
 // final formatting to status-message.runtime through lazy imports.
@@ -546,6 +553,17 @@ export async function buildStatusReplyParts(
       verboseEnabled,
     });
   }
+  let continuationLine: string | undefined;
+  const continuation = cfg.agents?.defaults?.continuation;
+  if (continuation?.enabled && sessionKey) {
+    continuationLine = formatStatusTextContinuationLine({
+      maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
+      chainCount: sessionEntry?.continuationChainCount ?? 0,
+      pending: pendingDelegateCount(sessionKey),
+      staged: stagedPostCompactionDelegateCount(sessionKey),
+      volitional: getVolitionalCompactionCount(sessionKey),
+    });
+  }
   const groupActivation = isGroup
     ? (normalizeGroupActivation(sessionEntry?.groupActivation) ?? defaultGroupActivation())
     : undefined;
@@ -686,6 +704,7 @@ export async function buildStatusReplyParts(
     },
     subagentsLine,
     taskLine,
+    continuationLine,
     pluginHealthLine,
     channelFeatureLine,
     mediaDecisions: params.mediaDecisions,

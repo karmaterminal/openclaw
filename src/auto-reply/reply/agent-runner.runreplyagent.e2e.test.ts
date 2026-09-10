@@ -271,41 +271,36 @@ vi.mock("../../channels/plugins/index.js", async (importOriginal) => ({
   getChannelPlugin: (channel: unknown) => state.getChannelPluginMock(channel),
 }));
 
-vi.mock("../../agents/embedded-agent-runner/runs.js", async (importOriginal) => {
-  const { clearActiveEmbeddedRun, setActiveEmbeddedRun } =
-    await importOriginal<typeof import("../../agents/embedded-agent-runner/runs.js")>();
-  return {
-    // Queue admission is controlled here; logical-turn registration and retirement stay real.
-    clearActiveEmbeddedRun,
-    setActiveEmbeddedRun,
-    formatEmbeddedAgentQueueFailureSummary: () => "test queue rejection",
-    queueEmbeddedAgentMessageWithOutcomeAsync: async (
-      sessionId: string,
-      prompt: string,
-      options: unknown,
-    ) => {
-      const result = state.queueEmbeddedAgentMessageMock(sessionId, prompt, options);
-      if (typeof result === "object") {
-        return result;
-      }
-      return result
-        ? {
-            queued: true,
-            sessionId,
-            target: "embedded_run",
-            gatewayHealth: "live",
-            enqueuedAtMs: Date.now(),
-          }
-        : {
-            queued: false,
-            sessionId,
-            reason: "no_active_run",
-            target: "none",
-            gatewayHealth: "live",
-          };
-    },
-  };
-});
+vi.mock("../../agents/embedded-agent-runner/runs.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../agents/embedded-agent-runner/runs.js")>()),
+  // Queue admission is controlled here; logical-turn registration and retirement stay real.
+  formatEmbeddedAgentQueueFailureSummary: () => "test queue rejection",
+  queueEmbeddedAgentMessageWithOutcomeAsync: async (
+    sessionId: string,
+    prompt: string,
+    options: unknown,
+  ) => {
+    const result = state.queueEmbeddedAgentMessageMock(sessionId, prompt, options);
+    if (typeof result === "object") {
+      return result;
+    }
+    return result
+      ? {
+          queued: true,
+          sessionId,
+          target: "embedded_run",
+          gatewayHealth: "live",
+          enqueuedAtMs: Date.now(),
+        }
+      : {
+          queued: false,
+          sessionId,
+          reason: "no_active_run",
+          target: "none",
+          gatewayHealth: "live",
+        };
+  },
+}));
 
 vi.mock("../../gateway/mcp-app-channel-action.js", () => ({
   materializeMcpAppChannelPresentation: (params: unknown) =>
@@ -418,6 +413,7 @@ function createMinimalRun(params?: {
     originatingTo: sessionCtx.OriginatingTo,
     originatingChatId: sessionCtx.NativeChannelId ?? sessionCtx.ChatId,
     run: {
+      agentId: "main",
       sessionId: "session",
       sessionKey,
       messageProvider: "whatsapp",
@@ -1450,6 +1446,20 @@ describe("runReplyAgent heartbeat followup guard", () => {
     expect(payloads.map((payload) => payload?.text)).toEqual(["Visible terminal failure."]);
     expect(resolveReplyOperationAgentTurn(runState)).toBe("failed");
   });
+
+  it.each(["work-wake", "delegate-return", "subagent-return"] as const)(
+    "reports %s continuation provenance to the runner-owned hook path as heartbeat",
+    async (continuationTrigger) => {
+      const { run } = createMinimalRun({
+        opts: { continuationTrigger },
+      });
+
+      await run();
+
+      const [call] = mockCallArgs(state.runEmbeddedAgentMock, "run embedded agent");
+      expect((call as AgentRunParams).trigger).toBe("heartbeat");
+    },
+  );
 
   it("runs visible turns with the session id returned by admission", async () => {
     const active = createReplyOperation({

@@ -140,6 +140,20 @@ async function createFixture() {
     },
   });
   const sessionStore = { [sessionKey]: entry };
+  let activeSessionEntry: SessionEntry | undefined = entry;
+  const getActiveSessionEntry = () => activeSessionEntry;
+  const setActiveSessionEntry = (next: SessionEntry | undefined) => {
+    activeSessionEntry = next;
+  };
+  const continuation = createReplyContinuationController({
+    cfg,
+    sessionKey,
+    storePath,
+    isContinuationWake: false,
+    activeSessionStore: sessionStore,
+    getActiveSessionEntry,
+    setActiveSessionEntry,
+  });
   const replyOperation = createReplyOperation({
     sessionId: entry.sessionId,
     sessionKey,
@@ -150,21 +164,25 @@ async function createFixture() {
   operations.push(replyOperation);
   const context: FinalizeReplyAgentRunInput = {
     activeIsNewSession: false,
-    activeSessionEntry: entry,
+    activeSessionEntry,
     activeSessionStore: sessionStore,
     blockReplyPipeline: null,
     blockStreamingEnabled: false,
     cfg,
     commandBody: followupRun.prompt,
+    continuation,
     defaultModel: diagnostic.model,
     followupRun,
+    getActiveSessionEntry,
     isHeartbeat: false,
+    noOpRearmWakeClass: undefined,
     pendingToolTasks: new Set(),
     preflightCompactionApplied: false,
     queueKey: sessionKey,
     replyMediaContext: { normalizePayload: async (payload) => payload },
     replyOperation,
     replyRouteThreadId: undefined,
+    replySessionKey: sessionKey,
     replyToChannel: undefined,
     replyToMode: "off",
     resolvedBlockStreamingBreak: "message_end",
@@ -172,6 +190,7 @@ async function createFixture() {
     resolvedVerboseLevel: "off",
     returnWithQueuedFollowupDrain: (value) => value,
     runFollowupTurn: async () => {},
+    setActiveSessionEntry,
     execution: {
       kind: "settled",
       status: "ok",
@@ -333,6 +352,7 @@ async function createFixture() {
             completedSourceReplyDelivery: true,
             guardedReplyPayloads: [],
             responseUsageLine: undefined,
+            wasSilentContinuation: false,
           },
         });
       } else {

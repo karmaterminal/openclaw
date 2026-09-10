@@ -1,19 +1,10 @@
 // Gateway restart sentinel recovery resumes pending continuations and outbound delivery.
-import {
-  resolveCorrelatedSubagentDelivery,
-  settleCorrelatedSubagentDelivery,
-} from "../agents/subagents/completion/subagent-completion-delivery.js";
-import { REPLY_RUN_STILL_SHUTTING_DOWN_TEXT } from "../auto-reply/reply/get-reply-run-queue.js";
-import { finalizeInboundContext } from "../auto-reply/reply/inbound-context.js";
-import { dispatchReplyWithBufferedBlockDispatcherCore } from "../auto-reply/reply/provider-dispatcher.js";
-import { recordInboundSession } from "../channels/session.js";
-import { dispatchAssembledChannelTurn } from "../channels/turn/lifecycle.js";
+import { settleCorrelatedSubagentDelivery } from "../agents/subagents/completion/subagent-completion-delivery.js";
 import type { CliDeps } from "../cli/deps.types.js";
 import { getRuntimeConfig } from "../config/io.js";
 import { resolveSystemMainSessionTarget } from "../config/sessions.js";
 import { appendAssistantMessageToSessionTranscript } from "../config/sessions/transcript.js";
-import { formatErrorMessage, toErrorObject } from "../infra/errors.js";
-import { requestHeartbeat } from "../infra/heartbeat-wake.js";
+import { formatErrorMessage } from "../infra/errors.js";
 import {
   clearRestartSentinelIfRevision,
   finalizeUpdateRestartSentinelRunningVersion,
@@ -31,16 +22,9 @@ import {
 } from "../infra/session-delivery-queue-recovery.js";
 import {
   enqueueSessionDelivery,
-  markSessionDeliveryAttemptStarted,
-  markSessionDeliverySettlement,
-  SessionDeliveryDeadLetteredError,
-  SessionDeliverySafeRetryError,
-  type QueuedSessionDelivery,
   type QueuedSessionDeliveryPayload,
   type SessionDeliveryRoute,
 } from "../infra/session-delivery-queue-storage.js";
-import { withSystemEventOwner } from "../infra/system-event-ownership.js";
-import { enqueueSystemEvent } from "../infra/system-events.js";
 import { isPendingControlPlaneUpdateRestartSentinel } from "../infra/update-control-plane-sentinel.js";
 import { recordUpdateRunVerification } from "../infra/update-run-ledger.js";
 import {
@@ -48,7 +32,6 @@ import {
   updateRunReportInputFromSentinel,
 } from "../infra/update-run-report.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import type { OutboundReplyPayload } from "../plugin-sdk/reply-payload.js";
 import { runWithGatewayIndependentRootWorkAdmission } from "../process/gateway-work-admission.js";
 import { removeCronRunContinuationSessionIfIdle } from "../tasks/cron-run-continuation-cleanup.js";
 import {
@@ -72,8 +55,6 @@ const RESTART_CONTINUATION_BUSY_RETRY_DELAY_MS = process.env.VITEST ? 1 : 6_000;
 const RESTART_CONTINUATION_BUSY_MAX_ATTEMPTS = 20;
 const CONTROL_PLANE_UPDATE_PENDING_RETRY_DELAY_MS = process.env.VITEST ? 1 : 2_000;
 const CONTROL_PLANE_UPDATE_PENDING_MAX_ATTEMPTS = 900;
-const RESTART_CONTINUATION_BUSY_RETRY_ERROR =
-  "restart continuation deferred because previous run is still shutting down";
 let latestUpdateRestartSentinel: RestartSentinelPayload | null = null;
 
 /** Settles every queue entry through its durable producer before cron cleanup. */
@@ -82,36 +63,10 @@ export const settleQueuedSessionDelivery: SettleSessionDeliveryFn = async (entry
   await removeCronRunContinuationSessionIfIdle(entry.sessionKey, entry.id);
 };
 
-type QueuedAgentTurnSessionDelivery = Extract<QueuedSessionDelivery, { kind: "agentTurn" }>;
-
-function sessionDeliveryStateDirArgs(stateDir?: string): [] | [string] {
-  return stateDir === undefined ? [] : [stateDir];
-}
-
 function cloneRestartSentinelPayload(
   payload: RestartSentinelPayload | null,
 ): RestartSentinelPayload | null {
   return payload ? structuredClone(payload) : null;
-}
-
-function enqueueRestartSentinelWake(
-  message: string,
-  sessionKey: string,
-  agentId?: string,
-  deliveryContext?: DeliveryContext,
-) {
-  const eventOptions = {
-    sessionKey,
-    ...(deliveryContext ? { deliveryContext } : {}),
-  };
-  enqueueSystemEvent(message, agentId ? withSystemEventOwner(eventOptions, agentId) : eventOptions);
-  requestHeartbeat({
-    source: "restart-sentinel",
-    intent: "immediate",
-    reason: "wake",
-    ...(agentId ? { agentId } : {}),
-    sessionKey,
-  });
 }
 
 async function waitForRetry(delayMs: number) {
@@ -339,6 +294,7 @@ function buildQueuedRestartContinuation(params: {
       ...(params.agentId ? { agentId: params.agentId } : {}),
       text: params.continuation.text,
       ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+      ...(params.continuation.traceparent ? { traceparent: params.continuation.traceparent } : {}),
       idempotencyKey,
       maxRetries: RESTART_CONTINUATION_BUSY_MAX_ATTEMPTS,
       completionRetention: "permanent",
@@ -354,6 +310,7 @@ function buildQueuedRestartContinuation(params: {
     completionRetention: "permanent",
     ...(params.route ? { route: params.route } : {}),
     ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+    ...(params.continuation.traceparent ? { traceparent: params.continuation.traceparent } : {}),
     idempotencyKey,
   };
 }

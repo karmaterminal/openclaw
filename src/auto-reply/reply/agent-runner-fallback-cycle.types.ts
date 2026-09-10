@@ -86,6 +86,9 @@ type CompletedFallbackCycle = {
   fallbackExhausted: boolean;
   fallbackAttempts: RuntimeFallbackAttempt[];
   terminalRunFailed: boolean;
+  continueWorkRequests: ContinueWorkRequest[];
+  compactionTraceparent?: string;
+  rawContinuationText?: string;
 };
 
 export type AgentFallbackCycleResult =

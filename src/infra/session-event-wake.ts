@@ -89,6 +89,11 @@ function merge(previous: PendingWake, next: PendingWake): PendingWake {
   );
   const bypass =
     (preferred.intent === "manual" || preferred.intent === "immediate") && !preferred.retainedWork;
+  const continuationOwner = next.trustedContinuationRouting
+    ? next
+    : previous.trustedContinuationRouting
+      ? previous
+      : preferred;
   return {
     ...preferred,
     // A scheduled reason must not discard the event's guard-retry semantics.
@@ -106,6 +111,9 @@ function merge(previous: PendingWake, next: PendingWake): PendingWake {
     notBefore: bypass ? 0 : Math.max(previous.notBefore, next.notBefore),
     heartbeat: preferred.heartbeat ?? other.heartbeat,
     scheduledEveryMs: preferred.scheduledEveryMs ?? other.scheduledEveryMs,
+    parentRunId: continuationOwner.parentRunId,
+    trustedContinuationRouting:
+      previous.trustedContinuationRouting || next.trustedContinuationRouting || undefined,
     tasks: tasks.size
       ? [...tasks.values()].toSorted((left, right) => left.jobId.localeCompare(right.jobId))
       : undefined,

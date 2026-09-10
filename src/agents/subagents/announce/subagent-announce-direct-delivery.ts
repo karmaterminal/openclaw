@@ -142,6 +142,8 @@ export async function sendSubagentAnnounceDirectly(params: {
   isSourceSessionEffectsAllowed?: () => boolean;
   isCompletionOwnedByRequesterYield?: () => boolean;
   requesterIsSubagent: boolean;
+  continuationTriggerOverride?: ContinuationTrigger;
+  traceparent?: string;
   createUserTurnTranscriptRecorder?: (sessionId: string) => UserTurnTranscriptRecorder;
   onDeliveryResult?: (delivery: SubagentAnnounceDeliveryResult) => void;
   signal?: AbortSignal;
@@ -407,6 +409,8 @@ export async function sendSubagentAnnounceDirectly(params: {
       ...(completionSourceReplyDeliveryMode
         ? { sourceReplyDeliveryMode: completionSourceReplyDeliveryMode }
         : {}),
+      continuationTrigger: params.continuationTriggerOverride,
+      ...(params.traceparent ? { traceparent: params.traceparent } : {}),
       idempotencyKey: params.directIdempotencyKey,
     };
     let directAnnounceResponse: unknown;

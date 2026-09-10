@@ -12,7 +12,13 @@ import { sanitizeForLog } from "../../../packages/terminal-core/src/ansi.js";
 import { ACP_TURN_TIMEOUT_DETAIL_CODE } from "../../acp/control-plane/manager.turn-timeout.js";
 import { formatAcpErrorChain } from "../../acp/runtime/errors.js";
 import { resolveAcpToolTerminalOutcome } from "../../acp/tool-status.js";
+import { failQueuedDelegatesCreatedAtOrAfter } from "../../auto-reply/continuation/delegate-store.js";
+import {
+  computeRequestCompactionContextUsage,
+  releaseQueuedCompactionTolerant,
+} from "../../auto-reply/reply/agent-runner-post-compaction-release.js";
 import { normalizeReplyPayload } from "../../auto-reply/reply/normalize-reply.js";
+import type { FollowupRun } from "../../auto-reply/reply/queue/types.js";
 import {
   readChannelSourceTurnId,
   readChannelSourceTurnSameThreadRequired,
@@ -36,7 +42,12 @@ import {
   timestampOptsFromConfig,
 } from "../../gateway/server-methods/agent-timestamp.js";
 import { emitAgentAuditEvent, emitAgentEvent } from "../../infra/agent-events.js";
+import {
+  formatActiveContinuationTraceparent,
+  resolveContinuationTraceparent,
+} from "../../infra/continuation-tracer.js";
 import { emitTrustedDiagnosticEvent } from "../../infra/diagnostic-events.js";
+import { runWithDiagnosticTraceparent } from "../../infra/diagnostic-trace-context.js";
 import type { StopReason } from "../../llm/types.js";
 import { redactSensitiveText } from "../../logging/redact.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -87,6 +98,7 @@ import {
   resolveCliSessionClearReason,
   shouldClearFailedCliSessionBinding,
 } from "../cli-session.js";
+import type { RequestCompactionInvocation } from "../compaction-attribution.js";
 import { resolveConversationCapabilityProfile } from "../conversation-capability-profile.js";
 import { resolveConversationToolPolicies } from "../conversation-tool-policy-pipeline.js";
 import { resolveDelegationCapability } from "../delegation-capability.js";
@@ -120,7 +132,9 @@ import {
 } from "../subagents/announce/subagent-announce-handoff.js";
 import { isRuntimeToolAllowed, isToolAllowedByPolicies } from "../tool-policy-match.js";
 import { DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS } from "../tool-result-limits.js";
+import type { ContinueWorkRequest } from "../tools/continue-work-tool.js";
 import type { ContextUsage } from "../usage.js";
+import { scheduleSpawnInitContinueWorkWake } from "./attempt-execution.continue-work.js";
 import {
   buildClaudeCliFallbackContextPrelude,
   claudeCliSessionTranscriptHasContent,
@@ -560,7 +574,7 @@ export async function persistCliTurnTranscript(params: {
   });
 }
 
-export function runAgentAttempt(params: {
+export async function runAgentAttempt(params: {
   preparedRunAdmission: PreparedAgentRunAdmission;
   providerOverride: string;
   modelOverride: string;
@@ -631,6 +645,7 @@ export function runAgentAttempt(params: {
     authProfileIdSource?: "auto" | "user";
   }) => void;
 }) {
+  const runStartedAt = Date.now();
   const onRuntimeActivity = (info: { phase: string }) => {
     // CLI preparation and child launch do not prove a native turn. Parsed
     // assistant/tool activity does, even when the backend omits lifecycle events.
@@ -1361,7 +1376,8 @@ export function runAgentAttempt(params: {
     runId: params.runId,
     lifecycleGeneration: params.lifecycleGeneration,
     lane: params.opts.lane,
-    // Hidden internal runs lack an event consumer; visible lanes still feed UI and parent relays.
+    // Hidden internal runs have no assistant-event consumer. Visible subagent
+    // lanes can still feed Control UI, session subscribers, and ACP parent relays.
     suppressLiveStreamOutput: shouldSuppressEmbeddedLiveStreamOutput(params),
     abortSignal: params.opts.abortSignal,
     extraSystemPrompt: params.opts.extraSystemPrompt,
@@ -1369,6 +1385,7 @@ export function runAgentAttempt(params: {
     bootstrapContextRunKind: params.opts.bootstrapContextRunKind,
     toolsAllow: runtimeToolsAllow,
     runtimePluginToolGrant: params.opts.runtimePluginToolGrant,
+    drainsContinuationDelegateQueue: params.opts.drainsContinuationDelegateQueue,
     trustedInternalHandoff: trustedSubagentAnnounceHandoff
       ? params.opts.trustedInternalHandoff
       : undefined,
@@ -1398,6 +1415,7 @@ export function runAgentAttempt(params: {
     onAgentEvent: params.onAgentEvent,
     onExecutionPhase: onRuntimeActivity,
     deferTerminalLifecycle: params.deferTerminalLifecycle,
+    deferTerminalLifecycleEnd: params.deferTerminalLifecycle,
     onDeferredLifecycleOwner: params.deferredLifecycle?.adopt,
     onDeferredLifecycleAbort: params.deferredLifecycle?.abort,
     suppressNextUserMessagePersistence: params.suppressPromptPersistenceOnRetry === true,
@@ -1428,13 +1446,111 @@ export function runAgentAttempt(params: {
     onSessionIdChanged: params.opts.onSessionIdChanged,
     bootstrapPromptWarningSignaturesSeen,
     bootstrapPromptWarningSignature,
+    continueWorkOpts,
+    requestCompactionOpts,
   };
   setChannelSourceTurnId(embeddedRunParams, readChannelSourceTurnId(params.runContext));
   setChannelSourceTurnSameThreadRequired(
     embeddedRunParams,
     readChannelSourceTurnSameThreadRequired(params.runContext),
   );
-  return runEmbeddedAgent(embeddedRunParams);
+  const embeddedRunResult = await runWithDiagnosticTraceparent(params.opts.traceparent, () =>
+    runEmbeddedAgent(embeddedRunParams),
+  );
+
+  // Post-turn: capture both continue_work surfaces. Light-context subagents may
+  // not receive the typed tool, so the nested path must honor the bracket
+  // token parsed from the final payload as well as the tool callback.
+  if (continuationEnabled && params.sessionKey) {
+    try {
+      const suppressContinuationAfterReplayUnsafeRun =
+        embeddedRunResult.meta?.error?.kind === "incomplete_turn" &&
+        embeddedRunResult.meta?.replayInvalid === true;
+      if (suppressContinuationAfterReplayUnsafeRun) {
+        if (attemptContinueWorkRequests.length > 0) {
+          log.info(
+            `[continuation] Ignoring ${attemptContinueWorkRequests.length} continue_work election(s) because the spawn-init turn was incomplete and replay-unsafe for session ${sanitizeForLog(params.sessionKey)}`,
+          );
+        }
+        const failedDelegateRows = failQueuedDelegatesCreatedAtOrAfter(
+          params.sessionKey,
+          runStartedAt,
+          "Continuation delegate election ignored because the spawn-init turn was incomplete and replay-unsafe.",
+        );
+        if (failedDelegateRows > 0) {
+          log.info(
+            `[continuation] Failed ${failedDelegateRows} queued continue_delegate election(s) because the spawn-init turn was incomplete and replay-unsafe for session ${sanitizeForLog(params.sessionKey)}`,
+          );
+        }
+        return embeddedRunResult;
+      }
+      const { extractContinuationSignal, stripContinuationSignal } =
+        await import("../../auto-reply/continuation/signal.js");
+      const continuationPayloads = embeddedRunResult.payloads ?? [];
+      const firstWorkRequest = attemptContinueWorkRequests[0];
+      const extraction = extractContinuationSignal({
+        payloads: continuationPayloads.map((payload) => ({ ...payload })),
+        ...(firstWorkRequest ? { continueWorkRequest: firstWorkRequest } : {}),
+        enabled: true,
+        sessionKey: params.sessionKey,
+      });
+      if (extraction.signal?.kind === "work") {
+        const internalBracketTraceparent = extraction.fromBracket
+          ? (resolveContinuationTraceparent(params.opts.traceparent) ??
+            formatActiveContinuationTraceparent())
+          : undefined;
+        // Tool elections fan out one wake each; a bracket signal has no per-tool
+        // array, so it schedules a single election from the merged signal.
+        const requests =
+          !extraction.fromBracket && attemptContinueWorkRequests.length > 0
+            ? attemptContinueWorkRequests
+            : [
+                {
+                  reason: extraction.workReason ?? "",
+                  ...(extraction.signal.delayMs !== undefined
+                    ? { delaySeconds: extraction.signal.delayMs / 1000 }
+                    : {}),
+                  ...(internalBracketTraceparent
+                    ? { traceparent: internalBracketTraceparent }
+                    : {}),
+                },
+              ];
+        if (extraction.fromBracket) {
+          for (let i = continuationPayloads.length - 1; i >= 0; i--) {
+            const payload = continuationPayloads[i];
+            if (!payload?.text) {
+              continue;
+            }
+            const stripped = stripContinuationSignal(payload.text);
+            if (stripped.signal?.kind !== "work") {
+              continue;
+            }
+            payload.text = stripped.text;
+            break;
+          }
+        }
+        await scheduleSpawnInitContinueWorkWake({
+          sessionKey: params.sessionKey,
+          sessionEntry: params.sessionStore?.[params.sessionKey] ?? params.sessionEntry,
+          sessionStore: params.sessionStore,
+          storePath: params.storePath,
+          requests,
+          cfg: params.cfg,
+          runResult: embeddedRunResult,
+          originRunId: params.runId,
+          originTurnId: params.sessionId,
+        });
+      }
+    } catch (err) {
+      // Persistence/scheduling failure must not break the attempt itself —
+      // mirrors followup-runner's defensive logging.
+      log.warn(
+        `[attempt-execution] failed to schedule continue_work wake for ${sanitizeForLog(params.sessionKey)}: ${sanitizeForLog(String(err))}`,
+      );
+    }
+  }
+
+  return embeddedRunResult;
 }
 
 export function buildAcpResult(params: {

@@ -115,6 +115,8 @@ export type HeartbeatRunOptions = {
   source?: HeartbeatWakeSource;
   intent?: HeartbeatWakeIntent;
   reason?: string;
+  parentRunId?: string;
+  trustedContinuationRouting?: boolean;
   /** Persisted monitor cadence carried by a coalesced scheduled wake. */
   scheduledEveryMs?: number;
   tasks?: readonly HeartbeatScheduledTask[];

@@ -99,6 +99,8 @@ export function startHeartbeatRunner(opts: {
     const decision = shouldDeferWake({
       intent,
       reason,
+      parentRunId: params.parentRunId,
+      trustedContinuationRouting: params.trustedContinuationRouting,
       now,
       nextDueMs: options.authoritativeScheduledTick ? now : agent.cooldownUntilMs,
       lastRunStartedAtMs: agent.lastRunStartedAtMs,

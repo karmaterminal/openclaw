@@ -38,6 +38,8 @@ export type HeartbeatWakeRequest = {
   source: HeartbeatWakeSource;
   intent: HeartbeatWakeIntent;
   reason?: string;
+  parentRunId?: string;
+  trustedContinuationRouting?: boolean;
   agentId?: string;
   sessionKey?: string;
   heartbeat?: HeartbeatWakeOverride;

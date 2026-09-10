@@ -13,8 +13,15 @@ import {
   TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import {
+  setContinuationTracer,
+  type Tracer,
+  waitForDiagnosticEventsDrained,
+} from "openclaw/plugin-sdk/diagnostic-runtime";
 import { registerUnhandledRejectionHandler } from "openclaw/plugin-sdk/runtime-env";
 import type { DiagnosticTraceContext, OpenClawPluginService } from "../api.js";
+import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapter.js";
+import { resetContinuationTracerIfOwned } from "./continuation-tracer-ownership.js";
 import {
   DEFAULT_SERVICE_NAME,
   OTEL_EXPORTER_OTLP_ENDPOINT_ENV,
