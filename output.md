@@ -7,7 +7,7 @@
 | Category | Named ref | Full SHA | Identity receipt |
 |---|---|---|---|
 | Product/base | `karmaterminal/openclaw@8a4f89c11d3a90768ff6b641a84b77aa7e308820` | `8a4f89c11d3a90768ff6b641a84b77aa7e308820` | Run input and aggregate target agree |
-| Safe lane | `refs/heads/codeagent/modeb-34419865749-terminal-classifier` | `8a4f89c11d3a90768ff6b641a84b77aa7e308820` | Local, tracking, and server refs agree |
+| Safe lane | `refs/heads/codeagent/modeb-34419865749-terminal-classifier` | `8a4f89c11d3a90768ff6b641a84b77aa7e308820` | Local, tracking, and server refs agreed at the pre-evidence identity gate; later commits contain classification artifacts only |
 | CI/workflow | `karmaterminal/openclaw-bootstrap:refs/heads/codeagent/final-workflow-ad2f8d2f` | `ad2f8d2fd5cb6be6775ac8fbd9ffc4e20e3fb816` | Server branch and run `headSha` agree |
 | Presentation | N/A | N/A | Read-only classification; no presentation work |
 | Docs/proof | N/A | N/A | Proof is the supplied run aggregate, not a Git ref |

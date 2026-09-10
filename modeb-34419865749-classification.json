@@ -23,7 +23,7 @@
       "category": "safe lane",
       "ref": "refs/heads/codeagent/modeb-34419865749-terminal-classifier",
       "sha": "8a4f89c11d3a90768ff6b641a84b77aa7e308820",
-      "identity": "local, tracking, and server refs agree"
+      "identity": "local, tracking, and server refs agreed at the pre-evidence identity gate; later commits contain classification artifacts only"
     },
     {
       "category": "CI/workflow",
