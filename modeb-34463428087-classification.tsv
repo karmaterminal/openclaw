@@ -1,0 +1,29 @@
+cell_id	category	item	original_terminal	classification	owner_or_boundary	evidence
+R001	identity	product SHA	c27e802bf5a314c51eb661059922c95a92bd65b3	pass	product ref	codeagent/compose-final-product-1292-1319-v2 local=tracking=server
+R002	identity	workflow SHA	f34107bc12314e5a5a2e98cc8c0331819a5f236c	pass	workflow ref	codeagent/fix-1478-declaration-entry server exact
+R003	routing	planned/routed shards	178/178	pass	routing plan	identity matched 178 unknown 0 blocked 0
+R004	routing	receipts	71 raw + 4 synthesized = 75	pass	fail-closed aggregate	missing 0 duplicate 0 invalid 0
+R005	routing	hosted-batch-011	no raw receipt	failure	infrastructure	hosted runner lost communication; synthesized blocked rc125
+R006	routing	hosted-batch-039	no raw receipt	cancelled	infrastructure	hosted runner shutdown signal; synthesized cancelled rc125
+R007	routing	dist-batch-074	no Actions job	failure	workflow-blocked	synthesized blocked rc125
+R008	routing	dist-batch-075	no Actions job	failure	workflow-blocked	synthesized blocked rc125
+S001	summary	expected routed summaries	178	fail	aggregate counting	170 routed present; 8 missing
+S002	summary	aggregate reported summaries	171	fail	workflow defect	170 routed + 1 static non-shard summary
+S003	summary	hosted-batch-011 shards	3 missing	failure	infrastructure	extensions; checks-fast-contracts-plugins-b; extension-provider-openai
+S004	summary	hosted-batch-039 shards	3 missing	cancelled	infrastructure	agentic-plugins; extension-discord; core-runtime-infra-channel-plugin
+S005	summary	dist-batch-074 shard	1 missing	failure	workflow-blocked	core-runtime-tui-pty
+S006	summary	dist-batch-075 shard	1 missing	failure	workflow-blocked	core-support-boundary
+D001	dist	core-runtime-tui-pty	not executed	failure	openclaw-bootstrap#1478	planned; matrix skipped; blocked; synthesized; no upload/extract
+D002	dist	core-support-boundary	not executed	failure	openclaw-bootstrap#1478	planned; matrix skipped; blocked; synthesized; no upload/extract
+A001	static archive	dist/extensions/acpx/node_modules/.bin	archive create failure	workflow defect	openclaw-bootstrap#1478	directory symlink to ../../../../extensions/acpx/node_modules/.bin outside archive; target is real directory; v1 allows only in-archive regular-file symlink targets
+F001	greened load flake	extensions/codex/src/app-server/run-attempt.steering.test.ts assertion	fail then pass	load flake	confirm-determinism	isolated 19/19 target 3861ms
+F002	greened load flake	extensions/codex/src/session-rollout-snapshot.test.ts compressed=false	timeout then pass	load flake	confirm-determinism	isolated 20/20 target 24113ms
+F003	greened load flake	src/auto-reply/reply/agent-runner.continuation-chain-break-reset.test.ts	timeout then pass	load flake	confirm-determinism	isolated 4/4 target 95851ms; unrelated to openclaw#1292 reservation fixture
+F004	greened load flake	extensions/codex/src/app-server/transport.process.test.ts assertion	fail then pass	load flake	confirm-determinism	isolated 12/12 target 511ms
+F005	test harness	test/scripts/build-and-run-mac.test.ts corepack	fail then fail	test-harness defect	corepack fixture/PATH	pnpm sibling passed; isolated 1 failed/6 passed; real pnpm found before fake corepack
+F006	product composition	extensions/telegram/src/telegram-ingress-drain-factory.test.ts retained new-row	fail then fail	product defect	openclaw#1319	fresh file process; expected defined got undefined; isolated 2 failed/9 passed
+F007	product composition	extensions/telegram/src/telegram-ingress-drain-factory.test.ts transient-to-retained	fail then fail	product defect	openclaw#1319	fresh file process; expected defined got undefined; isolated 2 failed/9 passed
+L005	greened load flake	ui/src/styles/cursor-policy.browser.test.ts hook	load failure then pass	load flake	confirm-determinism	original hook timeout 180000ms with zero failed tests; isolated 3/3
+I001	infrastructure	hosted extensions batch	runner communication loss	failure	GitHub-hosted runner	check annotation; 3 summaries missing; synthesized blocked
+I002	infrastructure	hosted agentic-plugins batch	runner shutdown	cancelled	GitHub-hosted runner	shutdown signal and operation cancelled; 3 summaries missing; synthesized cancelled
+V001	terminal	run 34463428087	failure	FAIL	mixed	2 product tests; 1 harness test; 2 workflow defects; 2 infrastructure batches; 5 greened load flakes; 0 unclassified

@@ -1,0 +1,422 @@
+{
+  "schema": "openclaw-modeb-terminal-classification/v1",
+  "run": {
+    "repository": "karmaterminal/openclaw-bootstrap",
+    "run_id": 34463428087,
+    "status": "completed",
+    "conclusion": "failure",
+    "product_repository": "karmaterminal/openclaw",
+    "product_sha": "c27e802bf5a314c51eb661059922c95a92bd65b3",
+    "product_predecessor_sha": "a3dce202836ac647ed9e8c6cdb2cb096326bbc9e",
+    "workflow_sha": "f34107bc12314e5a5a2e98cc8c0331819a5f236c",
+    "routing_ruleset_digest": "sha256:ecf33213b90b95f4fe8ea0ca6a18b958c5cb686068565c6f75ce9449c7d10384",
+    "routing_planner_digest": "sha256:957eea6354cfbd37ec65e09806021d52b716294519e81da13ce87c26f2d36c62"
+  },
+  "named_refs_at_evidence_acquisition": [
+    {
+      "category": "product/base",
+      "repository": "karmaterminal/openclaw",
+      "ref": "codeagent/compose-final-product-1292-1319-v2",
+      "local_sha": "c27e802bf5a314c51eb661059922c95a92bd65b3",
+      "tracking_sha": "c27e802bf5a314c51eb661059922c95a92bd65b3",
+      "server_sha": "c27e802bf5a314c51eb661059922c95a92bd65b3",
+      "equal": true
+    },
+    {
+      "category": "safe lane",
+      "repository": "karmaterminal/openclaw",
+      "ref": "codeagent/classify-modeb-34463428087",
+      "local_sha": "c27e802bf5a314c51eb661059922c95a92bd65b3",
+      "tracking_sha": "c27e802bf5a314c51eb661059922c95a92bd65b3",
+      "server_sha": "c27e802bf5a314c51eb661059922c95a92bd65b3",
+      "equal": true
+    },
+    {
+      "category": "CI/workflow",
+      "repository": "karmaterminal/openclaw-bootstrap",
+      "ref": "codeagent/fix-1478-declaration-entry",
+      "local_sha": null,
+      "tracking_sha": null,
+      "server_sha": "f34107bc12314e5a5a2e98cc8c0331819a5f236c",
+      "equal": true
+    },
+    {
+      "category": "presentation",
+      "repository": null,
+      "ref": "N/A",
+      "local_sha": null,
+      "tracking_sha": null,
+      "server_sha": null,
+      "equal": null
+    },
+    {
+      "category": "docs/proof",
+      "repository": "karmaterminal/openclaw",
+      "ref": "codeagent/classify-modeb-34463428087",
+      "local_sha": "c27e802bf5a314c51eb661059922c95a92bd65b3",
+      "tracking_sha": "c27e802bf5a314c51eb661059922c95a92bd65b3",
+      "server_sha": "c27e802bf5a314c51eb661059922c95a92bd65b3",
+      "equal": true,
+      "note": "The unchanged lane ref was published before evidence acquisition; classifier commits are successors."
+    }
+  ],
+  "artifacts": {
+    "api_total": 74,
+    "batch_artifacts": 71,
+    "dist_runtime_artifacts": 0,
+    "verified_downloads": [
+      {
+        "id": 10149452625,
+        "name": "openclaw-local-ci-aggregate-c27e802bf5a3",
+        "size_bytes": 12061756,
+        "sha256": "7f490b1ce8533e9475651f15ba61aad8b0f0a10b3daaa5e3091acf5531cd3509"
+      },
+      {
+        "id": 10146506478,
+        "name": "openclaw-local-ci-routing-plan-c27e802bf5a3",
+        "size_bytes": 135948,
+        "sha256": "8fb62a06c4e9d4126cf98ed4cf7f9fc5263ce1673e715a64446492135b5eb177"
+      },
+      {
+        "id": 10146890017,
+        "name": "openclaw-local-ci-static-c27e802bf5a3",
+        "size_bytes": 12912,
+        "sha256": "7489e1be1bccf7c76ac60d4d43826f3fadec246b397d000ba4e064e91997ff84"
+      },
+      {
+        "id": 10147162527,
+        "name": "openclaw-local-ci-batch-hosted-batch-008-c27e802bf5a3",
+        "size_bytes": 440077,
+        "sha256": "aa6d13afff6c6b1fd2f9ca90e6b95cb82babbc8720ec8e979b8e4703a1cf3385"
+      },
+      {
+        "id": 10147123092,
+        "name": "openclaw-local-ci-batch-hosted-batch-022-c27e802bf5a3",
+        "size_bytes": 328735,
+        "sha256": "f8d42529f1604f12bbf3fecaade1afb6e34c56209f4ffdab66ca5fe7dccf17bf"
+      },
+      {
+        "id": 10147155842,
+        "name": "openclaw-local-ci-batch-hosted-batch-033-c27e802bf5a3",
+        "size_bytes": 153746,
+        "sha256": "5a79642fcc8e4461adfbadbbab5abf4d6d15e776b75a67b8f0fe5d90c1725637"
+      },
+      {
+        "id": 10146993890,
+        "name": "openclaw-local-ci-batch-hosted-batch-045-c27e802bf5a3",
+        "size_bytes": 172036,
+        "sha256": "0c14ac84fd2183883fd63de7be529f64d0a469b87f523bae8538696fc1030e76"
+      },
+      {
+        "id": 10147863877,
+        "name": "openclaw-local-ci-batch-local-batch-055-c27e802bf5a3",
+        "size_bytes": 83062,
+        "sha256": "0247735f4f9c810ad586d3e905454ddcd6f52578adcda357443f3670605582f1"
+      },
+      {
+        "id": 10148522030,
+        "name": "openclaw-local-ci-batch-local-batch-071-c27e802bf5a3",
+        "size_bytes": 536807,
+        "sha256": "136e2eda6ca066e1d877055e8b3b127e40b9f84b3d0cca6286279ca17871cb7e"
+      }
+    ]
+  },
+  "routing": {
+    "planned_shards": 178,
+    "routed_shards": 178,
+    "planned_jobs": 75,
+    "lanes": {
+      "hosted": {
+        "jobs": 48,
+        "shards": 144
+      },
+      "self-hosted": {
+        "jobs": 25,
+        "shards": 32
+      },
+      "self-hosted-dist": {
+        "jobs": 2,
+        "shards": 2
+      }
+    },
+    "raw_uploaded_receipts": 71,
+    "synthesized_terminal_receipts": 4,
+    "receipts_total": 75,
+    "missing_after_synthesis": 0,
+    "duplicate_batch_ids": 0,
+    "invalid_receipts": 0,
+    "exact_sha_consistent": true,
+    "all_synthesized_rows_fail_closed": true,
+    "synthesized_batches": [
+      {
+        "batch_id": "hosted-batch-011",
+        "terminal_state": "blocked",
+        "result": "failure",
+        "rc": 125,
+        "reason": "Hosted runner lost communication with the server before producing a receipt."
+      },
+      {
+        "batch_id": "hosted-batch-039",
+        "terminal_state": "cancelled",
+        "result": "failure",
+        "rc": 125,
+        "reason": "Hosted runner received a shutdown signal; the operation was cancelled before producing a receipt."
+      },
+      {
+        "batch_id": "dist-batch-074",
+        "terminal_state": "blocked",
+        "result": "failure",
+        "rc": 125,
+        "reason": "Dist archive creation failed, so the planned matrix job produced no Actions job or receipt."
+      },
+      {
+        "batch_id": "dist-batch-075",
+        "terminal_state": "blocked",
+        "result": "failure",
+        "rc": 125,
+        "reason": "Dist archive creation failed, so the planned matrix job produced no Actions job or receipt."
+      }
+    ]
+  },
+  "summary_accounting": {
+    "expected_routed_shard_summaries": 178,
+    "aggregate_reported_summaries_found": 171,
+    "actual_routed_shard_summaries_present": 170,
+    "non_shard_static_summary_included_by_aggregate": 1,
+    "missing_routed_shard_summaries": 8,
+    "duplicate_routed_shard_summaries": 0,
+    "missing": [
+      {
+        "shard": "extensions",
+        "batch_id": "hosted-batch-011",
+        "classification": "infrastructure failure"
+      },
+      {
+        "shard": "checks-fast-contracts-plugins-b",
+        "batch_id": "hosted-batch-011",
+        "classification": "infrastructure failure"
+      },
+      {
+        "shard": "extension-provider-openai",
+        "batch_id": "hosted-batch-011",
+        "classification": "infrastructure failure"
+      },
+      {
+        "shard": "agentic-plugins",
+        "batch_id": "hosted-batch-039",
+        "classification": "infrastructure cancellation"
+      },
+      {
+        "shard": "extension-discord",
+        "batch_id": "hosted-batch-039",
+        "classification": "infrastructure cancellation"
+      },
+      {
+        "shard": "core-runtime-infra-channel-plugin",
+        "batch_id": "hosted-batch-039",
+        "classification": "infrastructure cancellation"
+      },
+      {
+        "shard": "core-runtime-tui-pty",
+        "batch_id": "dist-batch-074",
+        "classification": "workflow-blocked"
+      },
+      {
+        "shard": "core-support-boundary",
+        "batch_id": "dist-batch-075",
+        "classification": "workflow-blocked"
+      }
+    ]
+  },
+  "dist_variants": [
+    {
+      "batch_id": "dist-batch-074",
+      "shard": "core-runtime-tui-pty",
+      "config": "test/vitest/vitest.tui-pty.config.ts",
+      "planned": true,
+      "actions_job_created": false,
+      "executed": false,
+      "skipped": true,
+      "blocked": true,
+      "receipt_synthesized": true,
+      "runtime_archive_uploaded": false,
+      "runtime_archive_extracted": false,
+      "result": "failure",
+      "reason": "Static gates passed and runtime validation passed, but deterministic archive creation rejected the acpx .bin directory symlink; dist_ready was empty and routing eligibility set dist=false."
+    },
+    {
+      "batch_id": "dist-batch-075",
+      "shard": "core-support-boundary",
+      "config": "test/vitest/vitest.boundary.config.ts",
+      "planned": true,
+      "actions_job_created": false,
+      "executed": false,
+      "skipped": true,
+      "blocked": true,
+      "receipt_synthesized": true,
+      "runtime_archive_uploaded": false,
+      "runtime_archive_extracted": false,
+      "result": "failure",
+      "reason": "Static gates passed and runtime validation passed, but deterministic archive creation rejected the acpx .bin directory symlink; dist_ready was empty and routing eligibility set dist=false."
+    }
+  ],
+  "static_archive_failure": {
+    "classification": "workflow defect",
+    "bound_issue": "karmaterminal/openclaw-bootstrap#1478",
+    "static_product_gates": "pass",
+    "runtime_manifest_validation": "pass",
+    "archive_creation": "failure",
+    "reported_path": "extensions/acpx/node_modules/.bin",
+    "source_archive_entry": "dist/extensions/acpx/node_modules/.bin",
+    "source_entry_type": "symbolic link to a directory",
+    "source_entry_target": "../../../../extensions/acpx/node_modules/.bin",
+    "canonical_target_in_runner_checkout": "/home/figs/actions-runner/_work/_temp/openclaw-local-ci-34463428087-1OCRfn/extensions/acpx/node_modules/.bin",
+    "canonical_target_type": "directory, not a symbolic link",
+    "unsupported_archive_member_class": "out-of-archive directory symlink; archive v1 permits symlinks only when their normalized target is an archived regular file",
+    "failure_text": "FATAL: unexpected archive path: 'extensions/acpx/node_modules/.bin'",
+    "upload_attempted": false,
+    "extract_attempted": false
+  },
+  "failed_tests": [
+    {
+      "id": "F1",
+      "shard": "extension-codex-app-server-attempt-extra",
+      "file": "extensions/codex/src/app-server/run-attempt.steering.test.ts",
+      "name": "runCodexAppServerAttempt steering > persists every completed answer before 'Gateway steering across a none barrier'",
+      "original_result": "failed assertion: completed answers were merged into one assistant record and the steer record was absent",
+      "confirm_determinism": "greened",
+      "isolated_fresh_process_result": "pass; 19/19 tests, target 3861ms",
+      "preceding_state_order": "Same-file steering cases for cleanup, start-time, and pending-question cancellation passed immediately before it.",
+      "classification": "greened load flake",
+      "candidate_regression": false
+    },
+    {
+      "id": "F2",
+      "shard": "extension-codex-surface",
+      "file": "extensions/codex/src/session-rollout-snapshot.test.ts",
+      "name": "bounded native rollout snapshot > reads immutable metadata without interpreting historical records (compressed=false)",
+      "original_result": "timed out at 120000ms after four no-output intervals",
+      "confirm_determinism": "greened",
+      "isolated_fresh_process_result": "pass; 20/20 tests, target 24113ms",
+      "preceding_state_order": "Followed the harness.session-runtime-ownership file; the compressed=true sibling and later snapshot cases passed.",
+      "classification": "greened load flake",
+      "candidate_regression": false
+    },
+    {
+      "id": "F3",
+      "shard": "auto-reply-reply-agent-runner",
+      "file": "src/auto-reply/reply/agent-runner.continuation-chain-break-reset.test.ts",
+      "name": "runReplyAgent :: continuation chain-break reset > resets the chain budget to 0 on a fresh (non-wake) turn-entry, upstream of inference",
+      "original_result": "timed out at 120000ms after agent-runner-utils completed",
+      "confirm_determinism": "greened",
+      "isolated_fresh_process_result": "pass; 4/4 tests, target 95851ms",
+      "preceding_state_order": "Followed agent-runner-utils in the loaded shard; its three same-file sibling cases passed.",
+      "classification": "greened load flake",
+      "candidate_regression": false,
+      "bound_issue_relation": "Not the reservation fixture repaired for karmaterminal/openclaw#1292."
+    },
+    {
+      "id": "F4",
+      "shard": "extension-codex-app-server-support",
+      "file": "extensions/codex/src/app-server/transport.process.test.ts",
+      "name": "Codex app-server process containment > reaps descendants in independent and root process groups before close returns",
+      "original_result": "failed assertion: four leader/descendant processes remained",
+      "confirm_determinism": "greened",
+      "isolated_fresh_process_result": "pass; 12/12 tests, target 511ms",
+      "preceding_state_order": "Two same-file identity-change cases ran immediately before it; four revalidation siblings passed after it.",
+      "classification": "greened load flake",
+      "candidate_regression": false
+    },
+    {
+      "id": "F5",
+      "shard": "core-tooling-12",
+      "file": "test/scripts/build-and-run-mac.test.ts",
+      "name": "scripts/build-and-run-mac.sh > prepares the Apple resource bundle before SwiftPM with corepack",
+      "original_result": "failed assertion: status 1 instead of 23; real pnpm returned ENOENT lstat for the fixture's absent packages directory",
+      "confirm_determinism": "deterministic",
+      "isolated_fresh_process_result": "failed again; 1 failed/6 passed, target 369ms",
+      "preceding_state_order": "The pnpm variant in the same file passed immediately before the corepack variant.",
+      "classification": "test-harness defect",
+      "candidate_regression": false,
+      "ownership": "The fixture does not force the corepack fallback when /usr/bin/pnpm exists; pnpm-runner correctly prefers pnpm on PATH."
+    },
+    {
+      "id": "F6",
+      "shard": "extension-telegram",
+      "file": "extensions/telegram/src/telegram-ingress-drain-factory.test.ts",
+      "name": "Telegram transport ingress outcome handoff > coalesces duplicate callback answers 'before middleware consumes a new-row answer'",
+      "original_result": "failed assertion: retained callback answer was undefined",
+      "confirm_determinism": "deterministic",
+      "isolated_fresh_process_result": "failed again; shared file result 2 failed/9 passed, target 5ms",
+      "preceding_state_order": "Fresh file process; the first three admission-order table rows passed before this retained-new-row row.",
+      "classification": "product composition defect",
+      "candidate_regression": false,
+      "ownership": "Telegram callback-answer state across admission and replacement module graphs",
+      "bound_issue": "karmaterminal/openclaw#1319"
+    },
+    {
+      "id": "F7",
+      "shard": "extension-telegram",
+      "file": "extensions/telegram/src/telegram-ingress-drain-factory.test.ts",
+      "name": "Telegram transport ingress outcome handoff > coalesces duplicate callback answers 'when an existing-row answer starts before the new-row admission'",
+      "original_result": "failed assertion: retained callback answer was undefined",
+      "confirm_determinism": "deterministic",
+      "isolated_fresh_process_result": "failed again; shared file result 2 failed/9 passed, target 3ms",
+      "preceding_state_order": "Fresh file process; follows the failed retained-new-row row and exercises transient-to-retained upgrade order.",
+      "classification": "product composition defect",
+      "candidate_regression": false,
+      "ownership": "Telegram callback-answer state across admission and replacement module graphs",
+      "bound_issue": "karmaterminal/openclaw#1319"
+    }
+  ],
+  "additional_load_flake": {
+    "shard": "core-runtime-media-ui-1",
+    "file": "ui/src/styles/cursor-policy.browser.test.ts",
+    "original_result": "beforeAll hook timed out at 180000ms; zero tests failed and three were skipped",
+    "confirm_determinism": "greened",
+    "isolated_fresh_process_result": "pass; 3/3 tests",
+    "classification": "greened load flake"
+  },
+  "predecessor_comparison": {
+    "result": "No failed test file changed from a3dce202836ac647ed9e8c6cdb2cb096326bbc9e to c27e802bf5a314c51eb661059922c95a92bd65b3.",
+    "candidate_change": "The sole candidate change adds an erased TypeScript object intersection to callback-query-answer-state.ts; normalized runtime source bytes match the predecessor.",
+    "ownership": "The two Telegram failures expose the still-broken #1319 composition invariant but were not introduced by c27e802b. The other five failures are unrelated inherited harness/load behavior."
+  },
+  "classification_counts": {
+    "product_defect_tests": 2,
+    "product_defect_invariants": 1,
+    "test_harness_defect_tests": 1,
+    "workflow_defects": 2,
+    "infrastructure_terminal_batches": 2,
+    "greened_load_flakes": 5,
+    "unclassified_cells": 0
+  },
+  "terminal_verdict": "FAIL",
+  "repair_boundaries": [
+    {
+      "classification": "product defect",
+      "boundary": "extensions/telegram callback admission/consumer answer ownership across module replacement",
+      "issue": "karmaterminal/openclaw#1319"
+    },
+    {
+      "classification": "test-harness defect",
+      "boundary": "test/scripts/build-and-run-mac.test.ts corepack fixture versus pnpm-runner PATH precedence",
+      "issue": null
+    },
+    {
+      "classification": "workflow defect",
+      "boundary": "openclaw-bootstrap deterministic dist archive support for product-generated directory symlinks",
+      "issue": "karmaterminal/openclaw-bootstrap#1478"
+    },
+    {
+      "classification": "workflow defect",
+      "boundary": "aggregate shard-summary counting must exclude the static-gates summary",
+      "issue": "karmaterminal/openclaw-bootstrap#1478"
+    },
+    {
+      "classification": "infrastructure failure",
+      "boundary": "GitHub-hosted runner lifecycle/communication",
+      "issue": null
+    }
+  ]
+}
