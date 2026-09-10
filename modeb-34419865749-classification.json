@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "run": {
+    "id": 34419865749,
+    "url": "https://github.com/karmaterminal/openclaw-bootstrap/actions/runs/34419865749",
+    "status": "completed",
+    "conclusion": "failure",
+    "attempt": 1,
+    "product_repo": "karmaterminal/openclaw",
+    "product_sha": "8a4f89c11d3a90768ff6b641a84b77aa7e308820",
+    "workflow_repo": "karmaterminal/openclaw-bootstrap",
+    "workflow_ref": "refs/heads/codeagent/final-workflow-ad2f8d2f",
+    "workflow_sha": "ad2f8d2fd5cb6be6775ac8fbd9ffc4e20e3fb816"
+  },
+  "refs": [
+    {
+      "category": "product/base",
+      "ref": "karmaterminal/openclaw@8a4f89c11d3a90768ff6b641a84b77aa7e308820",
+      "sha": "8a4f89c11d3a90768ff6b641a84b77aa7e308820",
+      "identity": "run input and aggregate target agree"
+    },
+    {
+      "category": "safe lane",
+      "ref": "refs/heads/codeagent/modeb-34419865749-terminal-classifier",
+      "sha": "8a4f89c11d3a90768ff6b641a84b77aa7e308820",
+      "identity": "local, tracking, and server refs agree"
+    },
+    {
+      "category": "CI/workflow",
+      "ref": "karmaterminal/openclaw-bootstrap:refs/heads/codeagent/final-workflow-ad2f8d2f",
+      "sha": "ad2f8d2fd5cb6be6775ac8fbd9ffc4e20e3fb816",
+      "identity": "server branch and run headSha agree"
+    },
+    {
+      "category": "presentation",
+      "ref": "N/A",
+      "sha": null,
+      "identity": "read-only classification; no presentation work"
+    },
+    {
+      "category": "docs/proof",
+      "ref": "N/A",
+      "sha": null,
+      "identity": "proof is the supplied run aggregate, not a Git ref"
+    }
+  ],
+  "aggregate": {
+    "tests_passed": 191599,
+    "tests_failed": 5,
+    "load_flakes_greened": 3,
+    "summaries_found": 171,
+    "routed_jobs": 75,
+    "receipts_found": 75,
+    "receipts_valid": true,
+    "receipt_validation_errors": 0,
+    "exact_sha_consistent": true,
+    "dist_variants_represented": true
+  },
+  "test_failures": [
+    {
+      "shard": "extension-codex-surface",
+      "test": "extensions/codex/src/session-rollout-snapshot.test.ts > bounded native rollout snapshot > reads immutable metadata without interpreting historical records (compressed=false)",
+      "initial_failure": "test timed out after 120000ms",
+      "isolation_confirmation": "passed",
+      "classification": "load_flake_greened",
+      "tracker": null,
+      "notes": "The shard result is success and records this exact test in flakes_greened."
+    },
+    {
+      "shard": "agentic-control-plane-agent-chat",
+      "test": "src/gateway/server.sessions.reclamation.test.ts > sessions.delete keeps the Gateway responsive while reclaiming a large session",
+      "initial_failure": "maxGatewayGapMs was 1482.8271660000319ms; threshold was <500ms",
+      "isolation_confirmation": "passed",
+      "classification": "load_flake_greened",
+      "tracker": null,
+      "notes": "The shard result is success and records this exact test in flakes_greened."
+    },
+    {
+      "shard": "auto-reply-reply-agent-runner",
+      "test": "src/auto-reply/reply/agent-runner.continuation-delegate-fire-span.test.ts > runReplyAgent :: continuation.delegate.fire span > bracket-delayed delegate fires through TaskFlow hedge with matching fire and dispatch chain.id",
+      "initial_failure": "test timed out after 120000ms",
+      "isolation_confirmation": "failed again after 120000ms",
+      "classification": "deterministic_failure",
+      "tracker": "https://github.com/openclaw/openclaw/pull/129388",
+      "notes": "Root-cause investigation is owned by Rune. Rune's receipt was not available from visible session artifacts, and Discrawl was unavailable on this host; no independent root-cause claim is made."
+    },
+    {
+      "shard": "extension-codex-app-server-support",
+      "test": "extensions/codex/src/app-server/transport.process.test.ts > Codex app-server process containment > reaps descendants in independent and root process groups before close returns",
+      "initial_failure": "four Node processes remained where [] was expected",
+      "isolation_confirmation": "passed",
+      "classification": "load_flake_greened",
+      "tracker": null,
+      "notes": "The shard result is success and records this exact test in flakes_greened."
+    },
+    {
+      "shard": "extension-telegram",
+      "test": "extensions/telegram/src/telegram-ingress-drain-factory.test.ts > Telegram transport ingress outcome handoff > coalesces duplicate callback answers 'before middleware consumes a new-row answer'",
+      "initial_failure": "expected retained admission answer to be defined; received undefined",
+      "isolation_confirmation": "failed again with the same assertion",
+      "classification": "deterministic_regression_test_failure",
+      "tracker": "https://github.com/openclaw/openclaw/issues/133294",
+      "fix_pr": "https://github.com/openclaw/openclaw/pull/133379",
+      "notes": "The product SHA contains merge commit 911b8e7dde52c4ab43a46a467681ddcd334e0c04. That commit introduced this exact regression test and closed the canonical issue, so no duplicate tracker was filed."
+    }
+  ],
+  "failure_shaped_receipts": [
+    {
+      "batch_id": "dist-batch-074",
+      "batch_name": "core-runtime-tui-pty",
+      "lane": "self-hosted-dist",
+      "origin": "aggregate-terminal-synthesis",
+      "rc": 125,
+      "classification": "synthetic_blocked",
+      "reason": "planned matrix job produced no receipt and no exact Actions job record",
+      "product_failure": false
+    },
+    {
+      "batch_id": "dist-batch-075",
+      "batch_name": "core-support-boundary",
+      "lane": "self-hosted-dist",
+      "origin": "aggregate-terminal-synthesis",
+      "rc": 125,
+      "classification": "synthetic_blocked",
+      "reason": "planned matrix job produced no receipt and no exact Actions job record",
+      "product_failure": false
+    },
+    {
+      "batch_id": "hosted-batch-011",
+      "batch_name": "extensions+2more",
+      "lane": "hosted",
+      "origin": "aggregate-terminal-synthesis",
+      "rc": 125,
+      "classification": "synthetic_cancelled_blocked",
+      "reason": "runner received a shutdown signal; batch step was cancelled and emitted no receipt",
+      "product_failure": false
+    },
+    {
+      "batch_id": "hosted-batch-033",
+      "batch_name": "agentic-control-plane-auth-node+2more",
+      "lane": "hosted",
+      "origin": "worker",
+      "rc": 1,
+      "classification": "deterministic_test_failure",
+      "reason": "auto-reply-reply-agent-runner continuation fire-span test timed out twice",
+      "product_failure": true
+    },
+    {
+      "batch_id": "hosted-batch-039",
+      "batch_name": "agentic-plugins+2more",
+      "lane": "hosted",
+      "origin": "aggregate-terminal-synthesis",
+      "rc": 125,
+      "classification": "synthetic_receiptless_blocked",
+      "reason": "Actions job concluded failure with its batch step left in-progress and produced no receipt",
+      "product_failure": false
+    },
+    {
+      "batch_id": "local-batch-071",
+      "batch_name": "agentic-gateway-methods+3more",
+      "lane": "self-hosted",
+      "origin": "worker",
+      "rc": 1,
+      "classification": "deterministic_test_failure",
+      "reason": "extension-telegram admission-answer assertion failed twice",
+      "product_failure": true
+    }
+  ],
+  "other_failure_shapes": [
+    {
+      "surface": "static gates job",
+      "classification": "infrastructure_artifact_upload_oom",
+      "product_failure": false,
+      "evidence": "all five static gates passed; actions/upload-artifact reached approximately 4.1GB heap while finding files for the validated dist runtime artifact and terminated with JavaScript heap out of memory",
+      "tracker": "https://github.com/karmaterminal/openclaw-bootstrap/issues/1478"
+    },
+    {
+      "surface": "aggregate + status",
+      "classification": "expected_aggregate_failure",
+      "product_failure": false,
+      "evidence": "aggregate failed because deterministic tests and lane guards were non-green"
+    }
+  ],
+  "tracker_actions": {
+    "created": [],
+    "reason": "No truly missing tracker was found: continuation is bound to openclaw/openclaw#129388, Telegram's exact invariant is openclaw/openclaw#133294 with merged fix openclaw/openclaw#133379, and the dist upload OOM is karmaterminal/openclaw-bootstrap#1478."
+  },
+  "unclassified_rows": 0,
+  "verdict": "FAIL: two deterministic test failures remain; three test failures are isolated load flakes; four failure-shaped receipts are synthetic blocked/cancellation rows; the static job failure is a tracked dist artifact upload OOM."
+}

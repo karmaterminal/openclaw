@@ -1,0 +1,14 @@
+row_type	id	surface	classification	isolation_or_terminal_detail	tracker	product_failure
+test	extension-codex-surface	extensions/codex/src/session-rollout-snapshot.test.ts	load_flake_greened	initial 120000ms timeout; isolated confirmation passed	N/A	false
+test	agentic-control-plane-agent-chat	src/gateway/server.sessions.reclamation.test.ts	load_flake_greened	initial 1482.8271660000319ms gateway gap exceeded 500ms; isolated confirmation passed	N/A	false
+test	auto-reply-reply-agent-runner	src/auto-reply/reply/agent-runner.continuation-delegate-fire-span.test.ts	deterministic_failure	120000ms timeout reproduced on confirmation; Rune owns root-cause investigation	https://github.com/openclaw/openclaw/pull/129388	true
+test	extension-codex-app-server-support	extensions/codex/src/app-server/transport.process.test.ts	load_flake_greened	initial four residual Node processes; isolated confirmation passed	N/A	false
+test	extension-telegram	extensions/telegram/src/telegram-ingress-drain-factory.test.ts	deterministic_regression_test_failure	expected retained admission answer to be defined; same assertion reproduced	https://github.com/openclaw/openclaw/issues/133294	true
+receipt	dist-batch-074	core-runtime-tui-pty	synthetic_blocked	no receipt and no exact Actions job record	N/A	false
+receipt	dist-batch-075	core-support-boundary	synthetic_blocked	no receipt and no exact Actions job record	N/A	false
+receipt	hosted-batch-011	extensions+2more	synthetic_cancelled_blocked	runner shutdown cancelled batch before receipt	N/A	false
+receipt	hosted-batch-033	auto-reply-reply-agent-runner	deterministic_test_failure	worker receipt rc=1	https://github.com/openclaw/openclaw/pull/129388	true
+receipt	hosted-batch-039	agentic-plugins+2more	synthetic_receiptless_blocked	completed failure retained in-progress batch step and emitted no receipt	N/A	false
+receipt	local-batch-071	extension-telegram	deterministic_test_failure	worker receipt rc=1	https://github.com/openclaw/openclaw/issues/133294	true
+job	static-gates	Upload dist runtime artifact	infrastructure_artifact_upload_oom	all static gates passed; upload action exhausted approximately 4.1GB heap while finding dist files	https://github.com/karmaterminal/openclaw-bootstrap/issues/1478	false
+job	aggregate-status	aggregate + status	expected_aggregate_failure	deterministic tests and lane guards were non-green	N/A	false
