@@ -235,6 +235,7 @@ beforeEach(async () => {
   testState = await createOpenClawTestState({
     layout: "state-only",
     prefix: "openclaw-continuation-delegate-fire-",
+    env: { OPENCLAW_DISABLE_BUNDLED_PLUGINS: "1" },
   });
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
