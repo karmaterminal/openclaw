@@ -119,8 +119,12 @@ import {
   type OpenClawConfig,
 } from "../config/config.js";
 import { resolveSessionStorePathCore } from "../config/sessions.js";
-import { clearSessionStoreCacheForTest } from "../config/sessions/store-writer-state.js";
-import { saveLegacySessionStore as saveSessionStore } from "../infra/state-migrations.legacy-session-store.js";
+import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
+import type { SessionEntry } from "../config/sessions/types.js";
+import {
+  createOpenClawTestState,
+  type OpenClawTestState,
+} from "../test-utils/openclaw-test-state.js";
 import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 import * as subagentSpawn from "./subagents/spawn/subagent-spawn.js";
 
@@ -157,10 +161,9 @@ function makeConfig(
 
 async function writeSessionStore(data: Record<string, unknown>) {
   const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
-  await saveSessionStore(storePath, data as Parameters<typeof saveSessionStore>[1], {
-    skipMaintenance: true,
-  });
-  clearSessionStoreCacheForTest();
+  for (const [sessionKey, entry] of Object.entries(data)) {
+    await replaceSessionEntry({ agentId: "main", sessionKey, storePath }, entry as SessionEntry);
+  }
 }
 
 const childSessionKey = "agent:main:subagent:parity-gate";
@@ -189,13 +192,23 @@ function buildParityParams(bracket: string): AnnounceFlowParams {
 
 describe("announce-path bracket delegate exactly-once dispatch", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;
+  let testState: OpenClawTestState;
 
   beforeEach(async () => {
+    testState = await createOpenClawTestState({
+      layout: "state-only",
+      prefix: "openclaw-continuation-parity-",
+    });
     vi.mocked(enqueuePendingDelegate).mockClear();
     vi.mocked(stagePostCompactionDelegate).mockClear();
     vi.mocked(registerContinuationTimerHandle).mockClear();
     vi.mocked(retainContinuationTimerRef).mockClear();
-    await writeSessionStore({});
+    await writeSessionStore({
+      [childSessionKey]: {
+        sessionId: "session-parity-gate",
+        updatedAt: Date.now(),
+      },
+    });
     setRuntimeConfigSnapshot(makeConfig());
     spawnSpy = vi.spyOn(subagentSpawn, "spawnSubagentDirect").mockResolvedValue({
       status: "accepted",
@@ -205,10 +218,10 @@ describe("announce-path bracket delegate exactly-once dispatch", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     spawnSpy.mockRestore();
     clearRuntimeConfigSnapshot();
-    clearSessionStoreCacheForTest();
+    await testState.cleanup();
   });
 
   // -- 1. Normal delegate (no modifiers) --
@@ -393,9 +406,19 @@ describe("announce-path bracket delegate exactly-once dispatch", () => {
 
 describe("announce path is the sole dispatch route (no-double-fire guard)", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;
+  let testState: OpenClawTestState;
 
   beforeEach(async () => {
-    await writeSessionStore({});
+    testState = await createOpenClawTestState({
+      layout: "state-only",
+      prefix: "openclaw-continuation-double-fire-",
+    });
+    await writeSessionStore({
+      [childSessionKey]: {
+        sessionId: "session-parity-gate",
+        updatedAt: Date.now(),
+      },
+    });
     setRuntimeConfigSnapshot(makeConfig());
     spawnSpy = vi.spyOn(subagentSpawn, "spawnSubagentDirect").mockResolvedValue({
       status: "accepted",
@@ -405,10 +428,10 @@ describe("announce path is the sole dispatch route (no-double-fire guard)", () =
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     spawnSpy.mockRestore();
     clearRuntimeConfigSnapshot();
-    clearSessionStoreCacheForTest();
+    await testState.cleanup();
   });
 
   // This test documents the exactly-once invariant that the announce path

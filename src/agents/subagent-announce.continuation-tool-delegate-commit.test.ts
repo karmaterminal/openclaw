@@ -112,8 +112,12 @@ import {
 } from "../auto-reply/continuation/delegate-store.js";
 import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
 import { resolveSessionStorePathCore } from "../config/sessions.js";
-import { clearSessionStoreCacheForTest } from "../config/sessions/store-writer-state.js";
-import { saveLegacySessionStore as saveSessionStore } from "../infra/state-migrations.legacy-session-store.js";
+import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
+import type { SessionEntry } from "../config/sessions/types.js";
+import {
+  createOpenClawTestState,
+  type OpenClawTestState,
+} from "../test-utils/openclaw-test-state.js";
 import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 import * as subagentSpawn from "./subagents/spawn/subagent-spawn.js";
 
@@ -139,10 +143,9 @@ function makeConfig() {
 
 async function writeSessionStore(data: Record<string, unknown>) {
   const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
-  await saveSessionStore(storePath, data as Parameters<typeof saveSessionStore>[1], {
-    skipMaintenance: true,
-  });
-  clearSessionStoreCacheForTest();
+  for (const [sessionKey, entry] of Object.entries(data)) {
+    await replaceSessionEntry({ agentId: "main", sessionKey, storePath }, entry as SessionEntry);
+  }
 }
 
 function buildToolDelegateParams(): AnnounceFlowParams {
@@ -167,9 +170,19 @@ const mockedMarkPendingDelegateSpawnAccepted = vi.mocked(markPendingDelegateSpaw
 
 describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;
+  let testState: OpenClawTestState;
 
   beforeEach(async () => {
-    await writeSessionStore({});
+    testState = await createOpenClawTestState({
+      layout: "state-only",
+      prefix: "openclaw-continuation-tool-commit-",
+    });
+    await writeSessionStore({
+      "agent:main:subagent:tool-hop-1": {
+        sessionId: "session-tool-hop-1",
+        updatedAt: Date.now(),
+      },
+    });
     setRuntimeConfigSnapshot(makeConfig() as never);
     spawnSpy = vi.spyOn(subagentSpawn, "spawnSubagentDirect").mockResolvedValue({
       status: "accepted",
@@ -183,7 +196,7 @@ describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", 
     mockedMarkPendingDelegateSpawnAccepted.mockReset().mockReturnValue(true);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     spawnSpy.mockRestore();
     mockedConsumePendingDelegates.mockReturnValue([]);
     dispatchToolDelegatesMock.mockReset().mockImplementation(async (params) => ({
@@ -192,7 +205,7 @@ describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", 
       chainState: params.chainState,
     }));
     clearRuntimeConfigSnapshot();
-    clearSessionStoreCacheForTest();
+    await testState.cleanup();
   });
 
   it("threads continuationDelegateFlowId and commits the flow via markPendingDelegateSpawnAccepted", async () => {
