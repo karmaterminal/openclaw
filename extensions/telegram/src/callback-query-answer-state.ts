@@ -1,24 +1,35 @@
 const TELEGRAM_CALLBACK_QUERY_ANSWER_PROMISE = Symbol.for(
   "openclaw.telegram.callbackQueryAnswerPromise",
 );
+const TELEGRAM_CALLBACK_QUERY_ANSWERS = Symbol.for("openclaw.telegram.callbackQueryAnswers");
 type CallbackQueryAnswer = {
   promise: Promise<unknown>;
   pending: boolean;
   retention: "transient" | "retained" | "consumed";
 };
+type CallbackQueryAnswerOwner = {
+  [TELEGRAM_CALLBACK_QUERY_ANSWERS]?: Map<string, CallbackQueryAnswer>;
+};
 // Admission and dispatch can observe the same in-flight answer in either order.
-// Retain only unconsumed new-row answers; duplicate tombstones may never dispatch.
-const telegramCallbackQueryAnswers = new WeakMap<object, Map<string, CallbackQueryAnswer>>();
+// Bot-owned state keeps isolated module graphs together; only unconsumed new-row
+// answers survive settlement, while duplicate tombstones never dispatch.
+function readTelegramCallbackQueryAnswers(
+  bot: CallbackQueryAnswerOwner,
+): Map<string, CallbackQueryAnswer> | undefined {
+  return bot[TELEGRAM_CALLBACK_QUERY_ANSWERS];
+}
 
 export function startTelegramCallbackQueryAnswer(
-  bot: { api: { answerCallbackQuery: (id: string) => Promise<unknown> } },
+  bot: CallbackQueryAnswerOwner & {
+    api: { answerCallbackQuery: (id: string) => Promise<unknown> };
+  },
   callbackQueryId: string,
   mode: "admission-retained" | "admission-transient" | "consumer",
 ): Promise<unknown> {
-  let answers = telegramCallbackQueryAnswers.get(bot);
+  let answers = readTelegramCallbackQueryAnswers(bot);
   if (!answers) {
     answers = new Map();
-    telegramCallbackQueryAnswers.set(bot, answers);
+    Object.defineProperty(bot, TELEGRAM_CALLBACK_QUERY_ANSWERS, { value: answers });
   }
   const existing = answers.get(callbackQueryId);
   if (existing) {
@@ -49,10 +60,10 @@ export function startTelegramCallbackQueryAnswer(
 }
 
 export function takeTelegramCallbackQueryAdmissionAnswer(
-  bot: object,
+  bot: CallbackQueryAnswerOwner,
   callbackQueryId: string,
 ): Promise<unknown> | undefined {
-  const answers = telegramCallbackQueryAnswers.get(bot);
+  const answers = readTelegramCallbackQueryAnswers(bot);
   const answer = answers?.get(callbackQueryId);
   if (answer) {
     answer.retention = "consumed";
