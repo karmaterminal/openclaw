@@ -48,35 +48,53 @@ describe("Telegram transport ingress outcome handoff", () => {
   it.each([
     {
       name: "after a rejected new-row answer",
-      rejectNewAnswer: true,
-      startNewPending: false,
+      initialAdmissions: ["new"],
+      rejectFirstAnswer: true,
       consumePending: false,
+      expectRetained: false,
       expectedRequests: 2,
     },
     {
       name: "for an existing durable row",
-      rejectNewAnswer: false,
-      startNewPending: false,
+      initialAdmissions: [],
+      rejectFirstAnswer: false,
       consumePending: false,
+      expectRetained: false,
       expectedRequests: 1,
     },
     {
       name: "while middleware consumes a pending answer",
-      rejectNewAnswer: false,
-      startNewPending: true,
+      initialAdmissions: ["new"],
+      rejectFirstAnswer: false,
       consumePending: true,
+      expectRetained: false,
       expectedRequests: 1,
     },
     {
       name: "before middleware consumes a new-row answer",
-      rejectNewAnswer: false,
-      startNewPending: true,
+      initialAdmissions: ["new"],
+      rejectFirstAnswer: false,
       consumePending: false,
+      expectRetained: true,
+      expectedRequests: 1,
+    },
+    {
+      name: "when an existing-row answer starts before the new-row admission",
+      initialAdmissions: ["existing", "new"],
+      rejectFirstAnswer: false,
+      consumePending: false,
+      expectRetained: true,
       expectedRequests: 1,
     },
   ])(
     "coalesces duplicate callback answers $name",
-    async ({ rejectNewAnswer, startNewPending, consumePending, expectedRequests }) => {
+    async ({
+      initialAdmissions,
+      rejectFirstAnswer,
+      consumePending,
+      expectRetained,
+      expectedRequests,
+    }) => {
       const callbackId = "callback-redelivered";
       const requestIds: string[] = [];
       const pendingResponses: ServerResponse[] = [];
@@ -96,7 +114,7 @@ describe("Telegram transport ingress outcome handoff", () => {
         request.on("end", () => {
           const payload = JSON.parse(body) as { callback_query_id: string };
           requestIds.push(payload.callback_query_id);
-          if (rejectNewAnswer && requestIds.length === 1) {
+          if (rejectFirstAnswer && requestIds.length === 1) {
             response.writeHead(503, { "content-type": "application/json" });
             response.end(
               JSON.stringify({ ok: false, error_code: 503, description: "ACK unavailable" }),
@@ -133,17 +151,18 @@ describe("Telegram transport ingress outcome handoff", () => {
       const monitor = mocks.createTelegramIngressMonitor.mock.calls[0]?.[0] as CapturedMonitor;
       const update = { update_id: 125, callback_query: { id: callbackId } };
       try {
-        if (rejectNewAnswer) {
-          await monitor.onDurableAdmission(update, { isNew: true });
+        for (const [index, admission] of initialAdmissions.entries()) {
+          await monitor.onDurableAdmission(update, { isNew: admission === "new" });
+          if (!rejectFirstAnswer || index > 0) {
+            await pendingAnswer.promise;
+          }
+        }
+        if (rejectFirstAnswer) {
           const initialAnswers = await Promise.allSettled(answerRequests);
           expect(initialAnswers).toMatchObject([{ status: "rejected" }]);
         }
-        if (startNewPending) {
-          await monitor.onDurableAdmission(update, { isNew: true });
-          await pendingAnswer.promise;
-          if (consumePending) {
-            expect(takeTelegramCallbackQueryAdmissionAnswer(bot, callbackId)).toBeDefined();
-          }
+        if (consumePending) {
+          expect(takeTelegramCallbackQueryAdmissionAnswer(bot, callbackId)).toBeDefined();
         }
         await monitor.onDurableAdmission(update, { isNew: false });
         await pendingAnswer.promise;
@@ -155,7 +174,7 @@ describe("Telegram transport ingress outcome handoff", () => {
         await Promise.allSettled(answerRequests);
         expect(requestIds).toEqual(Array.from({ length: expectedRequests }, () => callbackId));
         expect(bot.handleUpdate).not.toHaveBeenCalled();
-        if (startNewPending && !consumePending) {
+        if (expectRetained) {
           expect(takeTelegramCallbackQueryAdmissionAnswer(bot, callbackId)).toBeDefined();
         }
         // Tombstones never dispatch; their settled answers must not remain per bot.
