@@ -164,19 +164,20 @@ describe("scripts/build-and-run-mac.sh", () => {
             "process.exit(23);",
           ],
         ],
+        ["dirname", ['console.log(require("node:path").dirname(process.argv[2]));']],
       ] as const) {
         const target = join(binDir, name);
         writeFileSync(target, ["#!/usr/bin/env node", ...body].join("\n"));
         chmodSync(target, 0o755);
       }
 
-      const result = spawnSync("bash", [join(root, scriptPath)], {
+      const result = spawnSync("/bin/bash", [join(root, scriptPath)], {
         encoding: "utf8",
         env: {
           ...process.env,
           npm_execpath: "",
           OPENCLAW_MAC_RUN_LOG: join(root, "launch.log"),
-          PATH: `${binDir}:/usr/bin:/bin`,
+          PATH: binDir,
         },
       });
 
