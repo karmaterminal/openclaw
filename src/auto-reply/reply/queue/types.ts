@@ -180,6 +180,8 @@ export type FollowupRun = {
     agentDir: string;
     sessionId: string;
     sessionKey?: string;
+    traceparent?: string;
+    drainsContinuationDelegateQueue?: boolean;
     runtimePolicySessionKey?: string;
     messageProvider?: string;
     clientCaps?: string[];

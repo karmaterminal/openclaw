@@ -354,6 +354,7 @@ export async function materializeSubagentAttachments(params: {
 
   let prepared: ReturnType<typeof prepareSubagentAttachments>;
   let pathBlock: string;
+  let materializationStage: AttachmentMaterializationStage = "prepare_directory";
   try {
     prepared = prepareSubagentAttachments({
       attachments: request.attachments,

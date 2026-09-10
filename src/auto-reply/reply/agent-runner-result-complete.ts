@@ -9,7 +9,6 @@ import { setReplyPayloadMetadata } from "../reply-payload.js";
 import type { ReplyPayload } from "../types.js";
 import { scheduleReplyContinuation } from "./agent-runner-continuation-schedule.js";
 import {
-  markBeforeAgentRunBlockedPayloads,
   resolveReplyRunDeliveryContext,
   resolveSourceReplyPolicy,
   normalizeAssistantFinalDeliveryText,
@@ -18,7 +17,6 @@ import { scheduleReplySessionMaintenance } from "./agent-runner-maintenance.js";
 import type { accountAgentTurn } from "./agent-runner-result-accounting.js";
 import { buildReplyDiagnosticsPayload } from "./agent-runner-result-diagnostics.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
-import { appendUsageLine } from "./agent-runner-usage-line.js";
 import {
   buildRecoverablePendingFinalDeliveryText,
   normalizePendingFinalDeliveryPayloads,
@@ -82,12 +80,7 @@ export async function completeReplyAgentRun(input: {
     usage,
     verboseEnabled,
   } = accounting;
-  const {
-    completedSourceReplyDelivery,
-    guardedReplyPayloads,
-    responseUsageLine,
-    wasSilentContinuation,
-  } = prepared;
+  const { completedSourceReplyDelivery, guardedReplyPayloads, wasSilentContinuation } = prepared;
   let { activeSessionEntry } = prepared;
 
   // Prepend verbose operational notices. Model fallback notices are prepared

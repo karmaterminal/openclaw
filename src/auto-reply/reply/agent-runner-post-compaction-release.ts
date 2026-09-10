@@ -47,7 +47,6 @@ export async function releaseQueuedCompactionCompletion(params: {
     storePath: params.storePath,
     amount: 1,
     tokensAfter: params.compactionResult.result?.tokensAfter,
-    newSessionId: params.compactionResult.result?.sessionId,
   });
   const resolved = resolveSessionEntryFromStore({
     store: params.activeSessionStore,

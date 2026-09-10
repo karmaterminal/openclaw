@@ -99,8 +99,6 @@ export function startHeartbeatRunner(opts: {
     const decision = shouldDeferWake({
       intent,
       reason,
-      parentRunId: params.parentRunId,
-      trustedContinuationRouting: params.trustedContinuationRouting,
       now,
       nextDueMs: options.authoritativeScheduledTick ? now : agent.cooldownUntilMs,
       lastRunStartedAtMs: agent.lastRunStartedAtMs,
@@ -268,6 +266,8 @@ export function startHeartbeatRunner(opts: {
           source: params.source,
           intent,
           reason,
+          parentRunId: params.parentRunId,
+          trustedContinuationRouting: params.trustedContinuationRouting,
           ...(scheduledEveryMs !== undefined ? { scheduledEveryMs } : {}),
           ...(targeted ? { sessionKey: requestedSessionKey } : {}),
           tasks: requestedTasks,

@@ -280,10 +280,8 @@ export function loadDeliveryQueueEntryResults(
       .select("entry_kind")
       .orderBy("enqueued_at", "asc")
       .orderBy("id", "asc"),
-  ).rows;
-  return rows
-    .map(inflateDeliveryQueueRow)
-    .filter((entry): entry is DeliveryQueueEntryState => entry != null);
+  ).rows as DeliveryQueueSqliteRow[];
+  return rows.map(inflateDeliveryQueueEntryResult);
 }
 
 /** Delete a pending delivery queue entry after successful delivery. */

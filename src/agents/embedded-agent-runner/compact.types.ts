@@ -28,6 +28,7 @@ export type CompactEmbeddedAgentSessionParams = Pick<
   contextEngineAgentId?: string;
   sessionId: string;
   runId?: string;
+  traceparent?: string;
   sessionKey?: string;
   /** Storage-neutral transcript/session target. Defaults to sessionId/sessionKey/agentId. */
   sessionTarget?: AgentRunSessionTarget;
@@ -132,7 +133,7 @@ export type CompactEmbeddedAgentSessionParams = Pick<
   preflightRequired?: boolean;
   /** Diagnostic trigger that made preflight compaction mandatory. */
   preflightCompactionTrigger?: "tokens" | "transcript_bytes";
-  trigger?: "budget" | "overflow" | "manual";
+  trigger?: "budget" | "overflow" | "manual" | "volitional";
   /**
    * Preflight callers can allow native/current-session harness compaction but
    * move plugin-owned budget compaction onto background turn maintenance.

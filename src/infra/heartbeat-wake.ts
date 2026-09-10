@@ -7,6 +7,7 @@ import {
   isRetryableSessionEventWakeReason,
   requestSessionEventWake,
   requestSessionEventWakeAndWait,
+  resetSessionEventWakeStateForTests,
 } from "./session-event-wake.js";
 import { setSessionEventWakeHandler } from "./session-event-wake.js";
 
@@ -51,7 +52,9 @@ export {
 } from "./session-event-wake.js";
 
 export const requestHeartbeat = requestSessionEventWake;
+export const requestHeartbeatRaw = requestSessionEventWake;
 export const requestHeartbeatAndWait = requestSessionEventWakeAndWait;
+export const resetHeartbeatWakeStateForTests = resetSessionEventWakeStateForTests;
 
 export function requestHeartbeatNow(opts?: {
   source?: HeartbeatWakeSource;

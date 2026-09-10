@@ -1,5 +1,5 @@
 import type { AgentInternalEvent } from "../../agents/internal-events.js";
-import type { ContinuationTrigger } from "../../auto-reply/types.js";
+import type { ContinuationTrigger } from "../../auto-reply/get-reply-options.types.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
 
 export type AgentRunRequest = {

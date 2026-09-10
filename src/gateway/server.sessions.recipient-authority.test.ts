@@ -46,6 +46,7 @@ test.each(["new", "reset"] as const)(
     const result = await enqueueContinuationReturnDeliveries(
       {
         targetSessionKeys: [sessionKey],
+        ownerAgentId: "main",
         text: "accepted delegate result",
         idempotencyKeyBase: `continuation-return:${reason}`,
         recipientAuthorities: new Map([[sessionKey, recipientAuthority]]),

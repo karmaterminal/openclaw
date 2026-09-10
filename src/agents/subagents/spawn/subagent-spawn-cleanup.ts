@@ -64,6 +64,10 @@ type SessionCleanupOptions = {
   timeoutMs?: number;
 };
 
+function hasFrozenSessionIdentity(options?: SessionCleanupOptions): boolean {
+  return Boolean(options?.expectedSessionId && options.expectedLifecycleRevision);
+}
+
 function requestProvisionalSessionCleanup(
   childSessionKey: string,
   options?: SessionCleanupOptions,
@@ -88,6 +92,9 @@ async function waitForProvisionalSessionDeletion(
   childSessionKey: string,
   options?: SessionCleanupOptions,
 ): Promise<boolean> {
+  if (!hasFrozenSessionIdentity(options)) {
+    return false;
+  }
   let deleted = false;
   await retrySubagentCleanup(async () => {
     const outcome = await requestProvisionalSessionCleanup(childSessionKey, options);
@@ -132,11 +139,12 @@ export async function terminateAcceptedCollectorRun(params: {
   callGateway?: GatewayCall;
   timeoutMs?: number;
   sessionCleanup?: "delete-on-abort-miss" | "preserve";
-}): Promise<void> {
+  retry?: boolean;
+}): Promise<boolean> {
   const call = params.callGateway ?? callSubagentGateway;
   const timeoutMs = params.timeoutMs ?? SUBAGENT_CONTROL_GATEWAY_TIMEOUT_MS;
   const resolveGatewayContext = getPluginRuntimeGatewayRequestScope()?.resolveGatewayContext;
-  await retrySubagentCleanup(
+  return await retrySubagentCleanup(
     async () => {
       try {
         const response = await call({
@@ -175,7 +183,8 @@ export async function terminateAcceptedCollectorRun(params: {
     {
       // A retired request scope can never dispatch again; retrying would retain
       // its Gateway forever without terminating the accepted run.
-      shouldRetry: () => !resolveGatewayContext || Boolean(resolveGatewayContext()),
+      shouldRetry: () =>
+        params.retry !== false && (!resolveGatewayContext || Boolean(resolveGatewayContext())),
     },
   );
 }

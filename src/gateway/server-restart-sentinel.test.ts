@@ -4132,7 +4132,7 @@ describe("scheduleRestartSentinelWake", () => {
       trusted: true,
     });
     expect(
-      resolveSystemEventOptionsOwnerAgentId(mocks.enqueueSystemEvent.mock.calls[0]?.[1] as object),
+      resolveSystemEventOwnerAgentId(mocks.enqueueSystemEvent.mock.calls[0]?.[1] as object),
     ).toBe("ops");
     expect(mocks.requestHeartbeat).toHaveBeenCalledWith({
       source: "restart-sentinel",
@@ -4233,7 +4233,7 @@ describe("scheduleRestartSentinelWake", () => {
       trusted: true,
     });
     expect(
-      resolveSystemEventOptionsOwnerAgentId(mocks.enqueueSystemEvent.mock.calls[0]?.[1] as object),
+      resolveSystemEventOwnerAgentId(mocks.enqueueSystemEvent.mock.calls[0]?.[1] as object),
     ).toBe("ops");
     expect(mocks.requestHeartbeat).toHaveBeenCalledWith({
       source: "restart-sentinel",
@@ -4317,7 +4317,7 @@ describe("scheduleRestartSentinelWake", () => {
       trusted: true,
     });
     expect(
-      resolveSystemEventOptionsOwnerAgentId(mocks.enqueueSystemEvent.mock.calls[0]?.[1] as object),
+      resolveSystemEventOwnerAgentId(mocks.enqueueSystemEvent.mock.calls[0]?.[1] as object),
     ).toBe("ops");
     expect(mocks.recordInboundSessionAndDispatchReply).not.toHaveBeenCalled();
     expect(mocks.logWarn.mock.calls).toEqual([

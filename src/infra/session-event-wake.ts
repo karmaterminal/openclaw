@@ -531,6 +531,23 @@ function createSessionEventWakeRuntime() {
     });
   }
 
+  function resetSessionEventWakeStateForTests(): void {
+    if (timer) {
+      clearTimeout(timer);
+    }
+    timer = undefined;
+    timerDueAt = 0;
+    pending.clear();
+    for (const owner of active.values()) {
+      owner.controller.abort();
+    }
+    active.clear();
+    generation += 1;
+    sequence = 0;
+    handler = null;
+    enabled = true;
+  }
+
   return {
     setSessionEventWakeHandler,
     requestSessionEventWake,
@@ -540,6 +557,7 @@ function createSessionEventWakeRuntime() {
     setSessionEventWakesEnabled: (value: boolean) => {
       enabled = value;
     },
+    resetSessionEventWakeStateForTests,
   };
 }
 
@@ -551,4 +569,5 @@ export const {
   getSessionEventWakeAbortSignal,
   areSessionEventWakesEnabled,
   setSessionEventWakesEnabled,
+  resetSessionEventWakeStateForTests,
 } = resolveGlobalSingleton(Symbol.for("openclaw.sessionEventWake"), createSessionEventWakeRuntime);

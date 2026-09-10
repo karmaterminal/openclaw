@@ -283,7 +283,7 @@ export {
   drainSystemEventEntries,
   drainSystemEvents,
   enqueueSystemEvent,
-  enqueueSystemEventEntry,
+  enqueueSystemEventEntryRaw as enqueueSystemEventEntry,
   hasSystemEvents,
   isSystemEventContextChanged,
   peekSystemEventEntries,

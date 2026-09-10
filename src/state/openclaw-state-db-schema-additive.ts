@@ -490,6 +490,7 @@ export function ensureAdditiveStateColumns(db: DatabaseSync): void {
     repairLegacyTaskAgentAttribution(db);
   }
   repairLegacyTaskDeliveryStatuses(db);
+  ensureColumns(db, columns.flowRunDetails);
   ensureColumns(db, columns.taskRunDetails);
   repairLegacySubagentSuspensionReasons(db);
   repairLegacySubagentExecutionPayloads(db);

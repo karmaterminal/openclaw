@@ -62,7 +62,7 @@ vi.mock("../../agents/embedded-agent-runner/run-entry.js", () => ({
     return {
       ...fallback,
       outcome: "completed",
-      terminal: { metadata: {} },
+      terminal: { outcome: { status: "ok" }, metadata: {} },
       settleSessionOverride: async () => {},
     };
   },

@@ -532,7 +532,7 @@ export async function accountFollowupTurn(params: {
     followupRun: turn.queued,
     getActiveSessionEntry,
     isHeartbeat: defaults.opts?.isHeartbeat === true,
-    noOpRearmWakeClass: turn.noOpRearmWakeClass,
+    noOpRearmWakeClass: undefined,
     opts: defaults.opts,
     pendingToolTasks: execution.pendingToolTasks,
     replyOperation: turn.operation,

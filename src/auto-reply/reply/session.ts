@@ -1169,6 +1169,10 @@ async function initSessionStateAttemptLocked(
       clearSessionResetRuntimeState([sessionKey, previousSessionEntry.sessionId], {
         activeReplySessionId: previousSessionEntry.sessionId,
         agentId,
+        reason:
+          previousSessionEndReason && previousSessionEndReason !== "unknown"
+            ? previousSessionEndReason
+            : "daily",
       });
     } catch (error) {
       // The replacement is already durable. Runtime cleanup is best-effort and

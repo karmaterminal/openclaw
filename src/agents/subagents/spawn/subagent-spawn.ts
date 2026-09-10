@@ -63,6 +63,7 @@ import { callNativeSubagentGateway, readGatewayRunId } from "./subagent-spawn-ga
 import { buildSubagentLaunchRequest } from "./subagent-spawn-launch-request.js";
 import { createSubagentSpawnLifecycleEmitter } from "./subagent-spawn-lifecycle.js";
 import { resolveSubagentSpawnRequest } from "./subagent-spawn-request.js";
+import { cleanupAcceptedSubagentSpawnFailure } from "./subagent-spawn-rollback.js";
 import { createInitialSubagentSession } from "./subagent-spawn-session-patch.js";
 import { bindThreadForSubagentSpawn } from "./subagent-spawn-thread-binding.js";
 import { emitSessionLifecycleEvent, mergeDeliveryContext } from "./subagent-spawn.runtime.js";
@@ -126,6 +127,9 @@ export async function spawnSubagentDirect(
     },
     childIdem: resolvedChildIdem,
   } = requestResolution.resolved;
+  const childIdem = params.continuationDelegateFlowId
+    ? deriveContinuationDelegateChildRunId(params.continuationDelegateFlowId)
+    : resolvedChildIdem;
   let threadBindingReady = false;
   let hasBoundThreadDeliveryOrigin = false;
   let childRunId: string = childIdem;
@@ -227,6 +231,20 @@ export async function spawnSubagentDirect(
       provisionalSessionIdentity = {
         expectedSessionId: childEntry.sessionId,
         expectedLifecycleRevision: childEntry.lifecycleRevision,
+      };
+    }
+    const runtimeStatePersistError = await persistInitialChildRuntimeState({
+      cfg,
+      childSessionKey,
+      resolvedModel,
+      continuationPatch: buildContinuationSessionPatch(params),
+    });
+    if (runtimeStatePersistError) {
+      await cleanupCreatedSession();
+      return {
+        status: "error",
+        error: runtimeStatePersistError,
+        childSessionKey,
       };
     }
     if (requestThreadBinding) {

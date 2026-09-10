@@ -73,7 +73,7 @@ vi.mock("../../agents/embedded-agent-runner/run-entry.js", () => ({
     return {
       ...fallback,
       outcome: "completed",
-      terminal: { metadata: {} },
+      terminal: { outcome: { status: "ok" }, metadata: {} },
       settleSessionOverride: async () => {},
     };
   },
@@ -113,6 +113,18 @@ vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   SUBAGENT_SPAWN_CONTEXT_MODES: ["isolated", "fork"],
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
+
+vi.mock("../continuation/delegate-spawn-authority.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../continuation/delegate-spawn-authority.js")>();
+  return {
+    ...actual,
+    createContinuationOwnerSessionLoader: () => ({
+      agentId: "main",
+      load: () => ({ sessionId: "session", updatedAt: Date.now() }),
+    }),
+  };
+});
 
 vi.mock("../../runtime.js", () => ({
   defaultRuntime: {

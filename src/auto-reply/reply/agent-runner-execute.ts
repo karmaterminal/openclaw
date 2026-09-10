@@ -5,11 +5,9 @@ import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { patchSessionEntryCore } from "../../config/sessions/session-accessor.js";
-import { logVerbose } from "../../globals.js";
 import { withBeforeAgentReplyObserver } from "../../plugins/before-agent-reply.js";
 import { getGatewayContextResolver } from "../../plugins/runtime/gateway-request-scope.js";
 import { defaultRuntime } from "../../runtime.js";
-import { readSessionInputProfileId } from "../../sessions/session-participant-input.js";
 import { readPendingUserTurnTranscriptAdmission } from "../../sessions/user-turn-transcript-admission.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
 import { checkContextPressure } from "../continuation/context-pressure.js";
@@ -330,7 +328,6 @@ export async function executePreparedReplyAgentRun(
       provenance: followupRun.run.inputProvenance,
       inboundEventKind: followupRun.currentInboundEventKind,
       messageId: followupRun.messageId,
-      eventTimestampMs: followupRun.currentInboundEventTimestampMs,
       isHeartbeat,
       isContinuationWake,
     });
