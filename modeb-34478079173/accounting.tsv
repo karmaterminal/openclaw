@@ -1,0 +1,20 @@
+axis	item	count_or_state	classification
+summary	planned routed shards	178	accounted
+summary	present routed summaries	171	accounted
+summary	missing routed summaries	7	all named and terminal-attributed
+summary	static evidence summaries	1	separate from routed axis
+summary	planned batch receipts	75	accounted
+summary	valid batch receipts	75	accounted
+summary	raw failed tests	6	one deterministic; five greened
+summary	load flakes greened	5	confirmed pass on second execution
+summary	deterministic test failures	1	failed on both executions
+summary	terminal batches	4	cancelled/lost/blocked fully classified
+summary	dist variants	2	both blocked before execution
+summary	unclassified cells	0	closed
+missing-shard	agentic-plugins	missing	hosted runner shutdown/communication loss before receipt; no test verdict
+missing-shard	core-runtime-infra-channel-plugin	missing	hosted runner shutdown/communication loss before receipt; no test verdict
+missing-shard	core-runtime-tui-pty	missing	archive producer failed; dist job skipped
+missing-shard	core-support-boundary	missing	archive producer failed; dist job skipped
+missing-shard	extension-discord	missing	hosted runner shutdown/communication loss before receipt; no test verdict
+missing-shard	extension-provider-openai	missing	hosted cancellation; no verdict for missing shards
+missing-shard	extensions	missing	hosted cancellation; no verdict for missing shards

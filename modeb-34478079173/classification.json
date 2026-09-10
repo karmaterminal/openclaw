@@ -1,0 +1,1133 @@
+{
+  "artifacts": [
+    {
+      "created_at": "2026-09-10T14:13:17Z",
+      "digest": "sha256:e3879d4d7e5289c0122c73ef3f346814e3949ac936e5dd47c5e5ae12c76286ef",
+      "expired": false,
+      "id": 10156296779,
+      "name": "openclaw-local-ci-aggregate-0b85aeb4685d",
+      "size_in_bytes": 12817003
+    },
+    {
+      "created_at": "2026-09-10T12:50:41Z",
+      "digest": "sha256:3a87352724ea917cf9c225b4932bf5acb88e384961e4bdba4c03e781700b1b35",
+      "expired": false,
+      "id": 10152743892,
+      "name": "openclaw-local-ci-batch-hosted-batch-001-0b85aeb4685d",
+      "size_in_bytes": 74366
+    },
+    {
+      "created_at": "2026-09-10T12:52:18Z",
+      "digest": "sha256:5aa354d6144eb74697c2be8cebf77dde32b20ea7269e0c6b1cac9cdefa02144d",
+      "expired": false,
+      "id": 10152810631,
+      "name": "openclaw-local-ci-batch-hosted-batch-002-0b85aeb4685d",
+      "size_in_bytes": 81247
+    },
+    {
+      "created_at": "2026-09-10T12:54:52Z",
+      "digest": "sha256:e872a90789434c96d1de1fbcf11bb2faf6df11bfa67dd3c6796efd2fbbc9b3e7",
+      "expired": false,
+      "id": 10152914630,
+      "name": "openclaw-local-ci-batch-hosted-batch-003-0b85aeb4685d",
+      "size_in_bytes": 133681
+    },
+    {
+      "created_at": "2026-09-10T13:02:41Z",
+      "digest": "sha256:968e0ddb03be148f80b2b0d069a00a11c23e1e199ce05dd769dd964fba5da533",
+      "expired": false,
+      "id": 10153226401,
+      "name": "openclaw-local-ci-batch-hosted-batch-004-0b85aeb4685d",
+      "size_in_bytes": 290923
+    },
+    {
+      "created_at": "2026-09-10T12:50:28Z",
+      "digest": "sha256:04e43b5e9041f0075466004cb28145bb01982014f3cb2c09eab07ee689cffee3",
+      "expired": false,
+      "id": 10152734620,
+      "name": "openclaw-local-ci-batch-hosted-batch-005-0b85aeb4685d",
+      "size_in_bytes": 95664
+    },
+    {
+      "created_at": "2026-09-10T13:16:38Z",
+      "digest": "sha256:5af3e485f68988d673e4150c8518b0ba31a00d3874b34f35daadefccac0992ff",
+      "expired": false,
+      "id": 10153802939,
+      "name": "openclaw-local-ci-batch-hosted-batch-006-0b85aeb4685d",
+      "size_in_bytes": 317716
+    },
+    {
+      "created_at": "2026-09-10T12:50:55Z",
+      "digest": "sha256:b2754181801ec77d190061529171ccc4e2b227364927f012c7f672306a877b27",
+      "expired": false,
+      "id": 10152754076,
+      "name": "openclaw-local-ci-batch-hosted-batch-007-0b85aeb4685d",
+      "size_in_bytes": 144811
+    },
+    {
+      "created_at": "2026-09-10T12:57:34Z",
+      "digest": "sha256:14c83d8c393b9d301555bd353d5748a521c98149f4e76aaff395808891418480",
+      "expired": false,
+      "id": 10153021828,
+      "name": "openclaw-local-ci-batch-hosted-batch-008-0b85aeb4685d",
+      "size_in_bytes": 439226
+    },
+    {
+      "created_at": "2026-09-10T12:53:14Z",
+      "digest": "sha256:0c3de0c6e492c4426aec487d4086bc4d68e93df94ccb8bd341016cccc0b5acca",
+      "expired": false,
+      "id": 10152848648,
+      "name": "openclaw-local-ci-batch-hosted-batch-009-0b85aeb4685d",
+      "size_in_bytes": 391985
+    },
+    {
+      "created_at": "2026-09-10T12:54:37Z",
+      "digest": "sha256:e6fa98dcb70533f4ca2bdaac40a811e16ebe8c304413f5567055018f2baf86d2",
+      "expired": false,
+      "id": 10152904445,
+      "name": "openclaw-local-ci-batch-hosted-batch-010-0b85aeb4685d",
+      "size_in_bytes": 174625
+    },
+    {
+      "created_at": "2026-09-10T14:12:08Z",
+      "digest": "sha256:ebee670a8cdc8da6996ea675938b1ba4b453e776a8bdffe1715e3e86019e78d8",
+      "expired": false,
+      "id": 10156243367,
+      "name": "openclaw-local-ci-batch-hosted-batch-011-0b85aeb4685d",
+      "size_in_bytes": 1014099
+    },
+    {
+      "created_at": "2026-09-10T12:54:12Z",
+      "digest": "sha256:4bc9609b141b3f7a74b64b9d0d7c8b1dd1ee38b48f5c76afb378dd8f714ea00f",
+      "expired": false,
+      "id": 10152887721,
+      "name": "openclaw-local-ci-batch-hosted-batch-012-0b85aeb4685d",
+      "size_in_bytes": 52017
+    },
+    {
+      "created_at": "2026-09-10T12:52:21Z",
+      "digest": "sha256:7abf3f18bf0f5bd8e8da2288621bdbd2a16cd92494dc0ac0a796c8ab37113c22",
+      "expired": false,
+      "id": 10152812307,
+      "name": "openclaw-local-ci-batch-hosted-batch-013-0b85aeb4685d",
+      "size_in_bytes": 107803
+    },
+    {
+      "created_at": "2026-09-10T12:58:37Z",
+      "digest": "sha256:5018a864e62ad8f6b6d1175cf50172bbd5cb614c1331e4c379bdacefe1eb450a",
+      "expired": false,
+      "id": 10153065077,
+      "name": "openclaw-local-ci-batch-hosted-batch-014-0b85aeb4685d",
+      "size_in_bytes": 288093
+    },
+    {
+      "created_at": "2026-09-10T13:01:17Z",
+      "digest": "sha256:60318305113a455112e2e3d3c7b4da78644bdfd7d7aa7f9f86fdc9232f2699a2",
+      "expired": false,
+      "id": 10153171063,
+      "name": "openclaw-local-ci-batch-hosted-batch-015-0b85aeb4685d",
+      "size_in_bytes": 283671
+    },
+    {
+      "created_at": "2026-09-10T12:58:34Z",
+      "digest": "sha256:c37480b9bef5005f7d26723fd5681a2e36038f9b96c696041177df75af06170d",
+      "expired": false,
+      "id": 10153063166,
+      "name": "openclaw-local-ci-batch-hosted-batch-016-0b85aeb4685d",
+      "size_in_bytes": 202744
+    },
+    {
+      "created_at": "2026-09-10T12:50:23Z",
+      "digest": "sha256:f220b21196b5aee631d892434b5f002d6cc3c47bdd5c60259e7d4a1f8fafe9e9",
+      "expired": false,
+      "id": 10152731573,
+      "name": "openclaw-local-ci-batch-hosted-batch-017-0b85aeb4685d",
+      "size_in_bytes": 63212
+    },
+    {
+      "created_at": "2026-09-10T12:54:18Z",
+      "digest": "sha256:5f4091ab147ff045f9d6365f2983d6a0acfff5c67a5b883333436c1311517316",
+      "expired": false,
+      "id": 10152891878,
+      "name": "openclaw-local-ci-batch-hosted-batch-018-0b85aeb4685d",
+      "size_in_bytes": 110012
+    },
+    {
+      "created_at": "2026-09-10T12:50:41Z",
+      "digest": "sha256:08e756373610c7bf0af3a018ab54502a96cb87a44c3250113a0660eacdc21268",
+      "expired": false,
+      "id": 10152743639,
+      "name": "openclaw-local-ci-batch-hosted-batch-019-0b85aeb4685d",
+      "size_in_bytes": 154710
+    },
+    {
+      "created_at": "2026-09-10T12:51:05Z",
+      "digest": "sha256:5b261da7afaecaca7145d2c7783f2a47c32f797c007679f36260cfc2ff2d0734",
+      "expired": false,
+      "id": 10152760931,
+      "name": "openclaw-local-ci-batch-hosted-batch-020-0b85aeb4685d",
+      "size_in_bytes": 89136
+    },
+    {
+      "created_at": "2026-09-10T12:49:41Z",
+      "digest": "sha256:630fcf99b852ae1c86f3cbebbd8a129eaeabadae3881756ef87d09f82d96381d",
+      "expired": false,
+      "id": 10152701987,
+      "name": "openclaw-local-ci-batch-hosted-batch-021-0b85aeb4685d",
+      "size_in_bytes": 79941
+    },
+    {
+      "created_at": "2026-09-10T12:56:39Z",
+      "digest": "sha256:5c6176a3289f2b8d575dd2bdb9ad55976dbf3491cf31fe70572c8b506b74217b",
+      "expired": false,
+      "id": 10152985670,
+      "name": "openclaw-local-ci-batch-hosted-batch-022-0b85aeb4685d",
+      "size_in_bytes": 329855
+    },
+    {
+      "created_at": "2026-09-10T12:52:56Z",
+      "digest": "sha256:789284578ef4f2e71a72dee103c7f5fe8afc1e95049b32e70d2b3153b14cbedb",
+      "expired": false,
+      "id": 10152835959,
+      "name": "openclaw-local-ci-batch-hosted-batch-023-0b85aeb4685d",
+      "size_in_bytes": 362772
+    },
+    {
+      "created_at": "2026-09-10T12:53:06Z",
+      "digest": "sha256:733802937211154e6c04f100367771dc978a21abb55731c55d36ab9cb9fd6f90",
+      "expired": false,
+      "id": 10152843008,
+      "name": "openclaw-local-ci-batch-hosted-batch-024-0b85aeb4685d",
+      "size_in_bytes": 311185
+    },
+    {
+      "created_at": "2026-09-10T13:00:05Z",
+      "digest": "sha256:2050d908db1b7985b1bbc4e2845c5cb4b7b60901fe6e341d7e38cd65397f4baa",
+      "expired": false,
+      "id": 10153123324,
+      "name": "openclaw-local-ci-batch-hosted-batch-025-0b85aeb4685d",
+      "size_in_bytes": 425358
+    },
+    {
+      "created_at": "2026-09-10T12:59:00Z",
+      "digest": "sha256:baa264c8a8af30b83481ed223c27904f9dfc210cd3c18515474bbcc220271a36",
+      "expired": false,
+      "id": 10153080716,
+      "name": "openclaw-local-ci-batch-hosted-batch-026-0b85aeb4685d",
+      "size_in_bytes": 205688
+    },
+    {
+      "created_at": "2026-09-10T12:57:38Z",
+      "digest": "sha256:710e5db40b3fc271f80055e306f2a1717d2ebc03ce63e64a43ff48e1103ba76d",
+      "expired": false,
+      "id": 10153024947,
+      "name": "openclaw-local-ci-batch-hosted-batch-027-0b85aeb4685d",
+      "size_in_bytes": 188045
+    },
+    {
+      "created_at": "2026-09-10T12:57:51Z",
+      "digest": "sha256:1cea71ea90414ab3711550fedd0c2726e5a75bf4f6c9644cac12a2e2740a3d64",
+      "expired": false,
+      "id": 10153034334,
+      "name": "openclaw-local-ci-batch-hosted-batch-028-0b85aeb4685d",
+      "size_in_bytes": 193994
+    },
+    {
+      "created_at": "2026-09-10T12:54:13Z",
+      "digest": "sha256:7d55cbcbe06cc6103b6cff8dc7d19424a8db3611369750cb0655c5e4645f9d39",
+      "expired": false,
+      "id": 10152888521,
+      "name": "openclaw-local-ci-batch-hosted-batch-029-0b85aeb4685d",
+      "size_in_bytes": 62916
+    },
+    {
+      "created_at": "2026-09-10T12:49:19Z",
+      "digest": "sha256:c777859a884acdfaf4b2e1114516cffaee5c5944f9ed5b32cd39cba585784413",
+      "expired": false,
+      "id": 10152686365,
+      "name": "openclaw-local-ci-batch-hosted-batch-030-0b85aeb4685d",
+      "size_in_bytes": 59058
+    },
+    {
+      "created_at": "2026-09-10T13:01:57Z",
+      "digest": "sha256:15e191ce535c32b538554b7ecde42e5104d7a8c4866dbc1cc9e5dc72e495eb06",
+      "expired": false,
+      "id": 10153198020,
+      "name": "openclaw-local-ci-batch-hosted-batch-031-0b85aeb4685d",
+      "size_in_bytes": 213846
+    },
+    {
+      "created_at": "2026-09-10T13:02:45Z",
+      "digest": "sha256:68e472832eaf5b3c78f3219bfadae80bd284ee6561c41e4a3c17bdbbd92a7655",
+      "expired": false,
+      "id": 10153229031,
+      "name": "openclaw-local-ci-batch-hosted-batch-032-0b85aeb4685d",
+      "size_in_bytes": 116053
+    },
+    {
+      "created_at": "2026-09-10T13:02:54Z",
+      "digest": "sha256:9693014d796a51877fa2469c0b62db2bfb654ff1559e73ad6acb7ea8ea26afd3",
+      "expired": false,
+      "id": 10153235304,
+      "name": "openclaw-local-ci-batch-hosted-batch-033-0b85aeb4685d",
+      "size_in_bytes": 154084
+    },
+    {
+      "created_at": "2026-09-10T12:55:17Z",
+      "digest": "sha256:a1aa1e3ee30ea6241b3c2f2dba13b3eda42d1f506ef7d242e8cce30912e34539",
+      "expired": false,
+      "id": 10152931822,
+      "name": "openclaw-local-ci-batch-hosted-batch-034-0b85aeb4685d",
+      "size_in_bytes": 381953
+    },
+    {
+      "created_at": "2026-09-10T12:53:37Z",
+      "digest": "sha256:6ce631550706acdb153483bc7474cbc7d5a7d7927a3767516ea9932ea2e0f179",
+      "expired": false,
+      "id": 10152864517,
+      "name": "openclaw-local-ci-batch-hosted-batch-035-0b85aeb4685d",
+      "size_in_bytes": 103675
+    },
+    {
+      "created_at": "2026-09-10T12:50:12Z",
+      "digest": "sha256:7ead76462a51de0f1d5630fc8107e2bbbfc64f8ed1ae4764a228d95494508c9c",
+      "expired": false,
+      "id": 10152723842,
+      "name": "openclaw-local-ci-batch-hosted-batch-036-0b85aeb4685d",
+      "size_in_bytes": 71108
+    },
+    {
+      "created_at": "2026-09-10T12:52:04Z",
+      "digest": "sha256:7bd07d2c299b455b346cb32367d8183c34dd37e57c39fe0de923cb83cb9f9807",
+      "expired": false,
+      "id": 10152801283,
+      "name": "openclaw-local-ci-batch-hosted-batch-037-0b85aeb4685d",
+      "size_in_bytes": 92918
+    },
+    {
+      "created_at": "2026-09-10T12:50:40Z",
+      "digest": "sha256:4d5f9bbf98731a8908d18c91ab1d5a735f2366bb092de7530da922e107e688a0",
+      "expired": false,
+      "id": 10152743001,
+      "name": "openclaw-local-ci-batch-hosted-batch-038-0b85aeb4685d",
+      "size_in_bytes": 90571
+    },
+    {
+      "created_at": "2026-09-10T12:51:20Z",
+      "digest": "sha256:7b367ee004e45552cd312f49cb9c6a564258e385305484935005e082890f7dce",
+      "expired": false,
+      "id": 10152771822,
+      "name": "openclaw-local-ci-batch-hosted-batch-040-0b85aeb4685d",
+      "size_in_bytes": 193525
+    },
+    {
+      "created_at": "2026-09-10T12:52:25Z",
+      "digest": "sha256:63d28b97e61428602cff14fcce8ba2607a8b431eb3851227a5c7bc2d11755df0",
+      "expired": false,
+      "id": 10152814925,
+      "name": "openclaw-local-ci-batch-hosted-batch-041-0b85aeb4685d",
+      "size_in_bytes": 209505
+    },
+    {
+      "created_at": "2026-09-10T12:51:29Z",
+      "digest": "sha256:597f1293d371e13c306f685f52d302ff3415ece78320ea1c34e3a88d4363facb",
+      "expired": false,
+      "id": 10152777660,
+      "name": "openclaw-local-ci-batch-hosted-batch-042-0b85aeb4685d",
+      "size_in_bytes": 34401
+    },
+    {
+      "created_at": "2026-09-10T12:53:01Z",
+      "digest": "sha256:b46987b80a4b04c2e97252590491726fdeb6b84a4c0ee231c961dcf927c6acca",
+      "expired": false,
+      "id": 10152839194,
+      "name": "openclaw-local-ci-batch-hosted-batch-043-0b85aeb4685d",
+      "size_in_bytes": 101737
+    },
+    {
+      "created_at": "2026-09-10T12:53:17Z",
+      "digest": "sha256:6cf25e64b2b448e226c835f8db5124ab6cddfa62f691e7ca373aef6ce45d1979",
+      "expired": false,
+      "id": 10152850444,
+      "name": "openclaw-local-ci-batch-hosted-batch-044-0b85aeb4685d",
+      "size_in_bytes": 95995
+    },
+    {
+      "created_at": "2026-09-10T12:58:15Z",
+      "digest": "sha256:5375fb60167c07c9f44aef68eeecc719ed3471c18290b54ac1bd6f3e3824ba0e",
+      "expired": false,
+      "id": 10153050566,
+      "name": "openclaw-local-ci-batch-hosted-batch-045-0b85aeb4685d",
+      "size_in_bytes": 172532
+    },
+    {
+      "created_at": "2026-09-10T13:01:03Z",
+      "digest": "sha256:3db47874ed6b80dd6bc13ec58a126f1c8a746c20e1b931cc664293733e05994b",
+      "expired": false,
+      "id": 10153161053,
+      "name": "openclaw-local-ci-batch-hosted-batch-046-0b85aeb4685d",
+      "size_in_bytes": 79632
+    },
+    {
+      "created_at": "2026-09-10T12:52:49Z",
+      "digest": "sha256:8c4024c5791509d5a9f96ff17f7acd5df837c0d40506aab2e2f194e785e88225",
+      "expired": false,
+      "id": 10152831167,
+      "name": "openclaw-local-ci-batch-hosted-batch-047-0b85aeb4685d",
+      "size_in_bytes": 148835
+    },
+    {
+      "created_at": "2026-09-10T12:49:50Z",
+      "digest": "sha256:bed85f76fac35c709a1b09b962cb87124a9722fc68c95738e0f86d730a54af49",
+      "expired": false,
+      "id": 10152707776,
+      "name": "openclaw-local-ci-batch-hosted-batch-048-0b85aeb4685d",
+      "size_in_bytes": 104138
+    },
+    {
+      "created_at": "2026-09-10T13:15:32Z",
+      "digest": "sha256:85383dcd48cd7450fa04ffc8abc4fb75c25f70e6e8eb0d10a768de49fb1edfb7",
+      "expired": false,
+      "id": 10153755993,
+      "name": "openclaw-local-ci-batch-local-batch-049-0b85aeb4685d",
+      "size_in_bytes": 135001
+    },
+    {
+      "created_at": "2026-09-10T13:14:00Z",
+      "digest": "sha256:ee99c4600dbb42930125577d9873eb6a06c96e325b8e5a37b295921307c26ad7",
+      "expired": false,
+      "id": 10153692324,
+      "name": "openclaw-local-ci-batch-local-batch-050-0b85aeb4685d",
+      "size_in_bytes": 9543
+    },
+    {
+      "created_at": "2026-09-10T13:03:35Z",
+      "digest": "sha256:c40820a4927f290dffa6e369181c65671d05f21f3429f4276f012483534b7bfa",
+      "expired": false,
+      "id": 10153263580,
+      "name": "openclaw-local-ci-batch-local-batch-051-0b85aeb4685d",
+      "size_in_bytes": 35116
+    },
+    {
+      "created_at": "2026-09-10T12:53:59Z",
+      "digest": "sha256:fbe464c5788cd10aaac9be51d24c1ef74b0ba0d38c49a8c5e06d67793a663a13",
+      "expired": false,
+      "id": 10152879018,
+      "name": "openclaw-local-ci-batch-local-batch-052-0b85aeb4685d",
+      "size_in_bytes": 24557
+    },
+    {
+      "created_at": "2026-09-10T13:22:15Z",
+      "digest": "sha256:5103ca4caea4482200b6672703ed4d76f9245728a4187aec338783fe3a1624a1",
+      "expired": false,
+      "id": 10154051245,
+      "name": "openclaw-local-ci-batch-local-batch-053-0b85aeb4685d",
+      "size_in_bytes": 128391
+    },
+    {
+      "created_at": "2026-09-10T12:59:46Z",
+      "digest": "sha256:c8af2dea68048a4a5c8ae557413cef7f5648280d09e1ab1bd6969c2538eacd34",
+      "expired": false,
+      "id": 10153110703,
+      "name": "openclaw-local-ci-batch-local-batch-054-0b85aeb4685d",
+      "size_in_bytes": 65480
+    },
+    {
+      "created_at": "2026-09-10T13:29:41Z",
+      "digest": "sha256:ed6a8622f11c3de6604212cb0109cebea9b5a2764a550cc4c58060ab1666d516",
+      "expired": false,
+      "id": 10154368935,
+      "name": "openclaw-local-ci-batch-local-batch-055-0b85aeb4685d",
+      "size_in_bytes": 80351
+    },
+    {
+      "created_at": "2026-09-10T13:36:01Z",
+      "digest": "sha256:f98fa6beebf07e70c208103c6182b2448317df326205da658612b5a0e9980fa0",
+      "expired": false,
+      "id": 10154641064,
+      "name": "openclaw-local-ci-batch-local-batch-056-0b85aeb4685d",
+      "size_in_bytes": 81801
+    },
+    {
+      "created_at": "2026-09-10T13:32:43Z",
+      "digest": "sha256:43772cc833e1a9a094403e08f695dac6654357e6900287358bc399d17f45fdf2",
+      "expired": false,
+      "id": 10154498626,
+      "name": "openclaw-local-ci-batch-local-batch-057-0b85aeb4685d",
+      "size_in_bytes": 128413
+    },
+    {
+      "created_at": "2026-09-10T13:11:13Z",
+      "digest": "sha256:3b20d4a911a42ad4d287a31ea6ed8575b07eac31bec4e7ca8585b0ef4c00889e",
+      "expired": false,
+      "id": 10153576216,
+      "name": "openclaw-local-ci-batch-local-batch-058-0b85aeb4685d",
+      "size_in_bytes": 125156
+    },
+    {
+      "created_at": "2026-09-10T13:30:29Z",
+      "digest": "sha256:c84640c5fd968f7b97db382235e90f2da5b7d29e71547aa537ed43558512a15d",
+      "expired": false,
+      "id": 10154403018,
+      "name": "openclaw-local-ci-batch-local-batch-059-0b85aeb4685d",
+      "size_in_bytes": 353051
+    },
+    {
+      "created_at": "2026-09-10T13:22:37Z",
+      "digest": "sha256:fdb216f627f77c93c41f9c03057d8a544243b9ccf4ac8631c4b7c6ebab08bc0a",
+      "expired": false,
+      "id": 10154067089,
+      "name": "openclaw-local-ci-batch-local-batch-060-0b85aeb4685d",
+      "size_in_bytes": 232816
+    },
+    {
+      "created_at": "2026-09-10T12:48:23Z",
+      "digest": "sha256:bd9dbd7cc2b7350d246e76d2ce2406b10877074b464239c9a4bc72edc4f6f683",
+      "expired": false,
+      "id": 10152647298,
+      "name": "openclaw-local-ci-batch-local-batch-061-0b85aeb4685d",
+      "size_in_bytes": 42466
+    },
+    {
+      "created_at": "2026-09-10T13:24:08Z",
+      "digest": "sha256:fdedceb653cb497f9668e67cfe76dad1fdebf7852dcb703f825206b26d587660",
+      "expired": false,
+      "id": 10154131174,
+      "name": "openclaw-local-ci-batch-local-batch-062-0b85aeb4685d",
+      "size_in_bytes": 113645
+    },
+    {
+      "created_at": "2026-09-10T13:02:15Z",
+      "digest": "sha256:4ed30405d309b5019302bf98b3fb6d6d19c8979d554ede6e4c4ae76979b5a644",
+      "expired": false,
+      "id": 10153209588,
+      "name": "openclaw-local-ci-batch-local-batch-063-0b85aeb4685d",
+      "size_in_bytes": 181724
+    },
+    {
+      "created_at": "2026-09-10T13:13:47Z",
+      "digest": "sha256:32ea158b6bb934711589da960e696bcf166e404acc48264c289252b61deadbd8",
+      "expired": false,
+      "id": 10153683891,
+      "name": "openclaw-local-ci-batch-local-batch-064-0b85aeb4685d",
+      "size_in_bytes": 62529
+    },
+    {
+      "created_at": "2026-09-10T12:53:09Z",
+      "digest": "sha256:7d15eae441319d906759096e973f031eedf721ac1090cdce4215516ef96ec8c1",
+      "expired": false,
+      "id": 10152844840,
+      "name": "openclaw-local-ci-batch-local-batch-065-0b85aeb4685d",
+      "size_in_bytes": 15673
+    },
+    {
+      "created_at": "2026-09-10T13:17:36Z",
+      "digest": "sha256:ea13ece15025eb64e3ea24fed45eb0cd1d9527b52ae6a337882fd8900b5cd4b6",
+      "expired": false,
+      "id": 10153845603,
+      "name": "openclaw-local-ci-batch-local-batch-066-0b85aeb4685d",
+      "size_in_bytes": 15431
+    },
+    {
+      "created_at": "2026-09-10T12:57:26Z",
+      "digest": "sha256:ba0b3f671a30a119055011ddab70388845b8d9858da2a4ae34be3c9fb48c972b",
+      "expired": false,
+      "id": 10153016573,
+      "name": "openclaw-local-ci-batch-local-batch-067-0b85aeb4685d",
+      "size_in_bytes": 34536
+    },
+    {
+      "created_at": "2026-09-10T12:48:52Z",
+      "digest": "sha256:5f825146dd0f677e2ff95c40ea01bc58526333f10356032b6e36cfde63e585b2",
+      "expired": false,
+      "id": 10152667788,
+      "name": "openclaw-local-ci-batch-local-batch-068-0b85aeb4685d",
+      "size_in_bytes": 17035
+    },
+    {
+      "created_at": "2026-09-10T12:47:46Z",
+      "digest": "sha256:95ab30c2e64fdd5a7ffbe19955d6e176be4702566ec4f0b9b2c8e97a2dfa14c6",
+      "expired": false,
+      "id": 10152620806,
+      "name": "openclaw-local-ci-batch-local-batch-069-0b85aeb4685d",
+      "size_in_bytes": 26977
+    },
+    {
+      "created_at": "2026-09-10T12:44:15Z",
+      "digest": "sha256:b5d244a65bf76b88d9586d065079e214a0f90846453857a6b36cc04dbdd4160c",
+      "expired": false,
+      "id": 10152481309,
+      "name": "openclaw-local-ci-batch-local-batch-070-0b85aeb4685d",
+      "size_in_bytes": 69703
+    },
+    {
+      "created_at": "2026-09-10T13:37:30Z",
+      "digest": "sha256:b2986f42a88a06e6233c1b376bf2f6eb71a9bcc30f293fc6f1602b2df2c9b984",
+      "expired": false,
+      "id": 10154705423,
+      "name": "openclaw-local-ci-batch-local-batch-071-0b85aeb4685d",
+      "size_in_bytes": 555103
+    },
+    {
+      "created_at": "2026-09-10T12:48:22Z",
+      "digest": "sha256:859eeeb76d0bbb6da9ed0b517952c4602f26449fc83644ad4eaa187ffd011732",
+      "expired": false,
+      "id": 10152646807,
+      "name": "openclaw-local-ci-batch-local-batch-072-0b85aeb4685d",
+      "size_in_bytes": 288547
+    },
+    {
+      "created_at": "2026-09-10T13:11:06Z",
+      "digest": "sha256:e5e49875aa210d3654e46e59697669eaa618a75467b6b490a16e8b38662a032b",
+      "expired": false,
+      "id": 10153571683,
+      "name": "openclaw-local-ci-batch-local-batch-073-0b85aeb4685d",
+      "size_in_bytes": 497805
+    },
+    {
+      "created_at": "2026-09-10T12:41:24Z",
+      "digest": "sha256:27db6e3abe98fc71b4e8e595053fe7bd7fe089a8e19c3b1d448a6f94dec1d4f7",
+      "expired": false,
+      "id": 10152371072,
+      "name": "openclaw-local-ci-routing-plan-0b85aeb4685d",
+      "size_in_bytes": 135948
+    },
+    {
+      "created_at": "2026-09-10T12:54:24Z",
+      "digest": "sha256:a5410cd1a3c0937c8a6445289ead026f5600802d79ad634edfa5d999911096d4",
+      "expired": false,
+      "id": 10152895843,
+      "name": "openclaw-local-ci-static-0b85aeb4685d",
+      "size_in_bytes": 12915
+    }
+  ],
+  "current_context_refs": {
+    "fork_main": "03628385d33207df1df0a60cf50548e2ec8f2bdf",
+    "upstream_main": "d9f1f50e074bf3d963b5b100cd7da8c01ba4cc88",
+    "workflow_main": "30cf7234393690fade354ab577b58a9b9a67d03b"
+  },
+  "discord_receipts": [
+    {
+      "message_id": "1547608710157705246",
+      "sha256": "ef50ceb691efb01804bca47ba958544b547924033f50536071026339e90e0483",
+      "utf8_bytes": 2015
+    },
+    {
+      "message_id": "1547608712145801266",
+      "sha256": "3f726c25b50b1a64a9e6f8fc953ab637afd652f87519446ec1efd56dd6633e2c",
+      "utf8_bytes": 300
+    },
+    {
+      "message_id": "1547609116866908240",
+      "sha256": "72a8f9d7492565c5049413ba9c368a6cf7ac12d65ed22fae54b2db6747a8c8f5",
+      "utf8_bytes": 1982
+    },
+    {
+      "message_id": "1547609120113303564",
+      "sha256": "bfadba79c07be0f2bbcd91d3b332acd219e39873e57dc5ca7e3a2b9d98db5c9f",
+      "utf8_bytes": 126
+    },
+    {
+      "message_id": "1547608122749755523",
+      "sha256": "719c32aa553efc696b7d02e0d59befeaee35cea338c3ae08091b13e38721fb7a",
+      "utf8_bytes": 1826
+    }
+  ],
+  "downloaded_hashes": {
+    "aggregate.zip": "e3879d4d7e5289c0122c73ef3f346814e3949ac936e5dd47c5e5ae12c76286ef",
+    "hosted-011.zip": "ebee670a8cdc8da6996ea675938b1ba4b453e776a8bdffe1715e3e86019e78d8",
+    "hosted-033.zip": "9693014d796a51877fa2469c0b62db2bfb654ff1559e73ad6acb7ea8ea26afd3",
+    "hosted-cancelled.log": "9a02bf675482919d8d9bc52b5ad5aac4e7108e9f8a05d8dcf7c8786e722c3984",
+    "hosted-communication-loss.log": "9c1c1759a4697332a58d2a50b8ca8fa1114068d368db560ac7da26818347786e",
+    "hosted-test-failure.log": "910945eba3defd130837e00310b63dc050f04e72c3168b6215684e12b1b3d9a7",
+    "routing-plan.zip": "27db6e3abe98fc71b4e8e595053fe7bd7fe089a8e19c3b1d448a6f94dec1d4f7",
+    "static-job.log": "cc0b33b77b7538b942e50998245d2ecfa8d1b7f432ad75c171edb62e9d068f0f",
+    "static.zip": "a5410cd1a3c0937c8a6445289ead026f5600802d79ad634edfa5d999911096d4"
+  },
+  "hardlink": {
+    "archive_disposition": "copy bytes as a normalized regular-file entry",
+    "path": "dist/extensions/acpx/node_modules/@agentclientprotocol/claude-agent-acp/LICENSE",
+    "producer_observation": {
+      "device": null,
+      "gap": "job log emitted only the failing path/predicate",
+      "inode": null,
+      "link_count_exact": null,
+      "predicate": "st_nlink != 1",
+      "type": "regular file"
+    },
+    "reject_preserve_reason": "Source inode/link topology is not archive content. Preserving links would import nondeterministic filesystem topology and require hardlink extraction ordering; rejecting a benign regular file blocks both dist consumers. Existing manifest SHA/size validation safely owns byte identity.",
+    "same_host_candidate_install_corroboration": {
+      "device": 66306,
+      "inode": 35092411,
+      "link_count": 9,
+      "path": "node_modules/.pnpm/@agentclientprotocol+claude-agent-acp@0.70.0_@anthropic-ai+sdk@0.120.0_zod@4.4.3__@mode_a0bdd4f5b204e1d68ec20f1649381777/node_modules/@agentclientprotocol/claude-agent-acp/LICENSE",
+      "size": 10783,
+      "visible_same_inode_names": 3
+    }
+  },
+  "named_ref_contract": [
+    {
+      "category": "product/base",
+      "equality": "local object = diagnostic HEAD = run target",
+      "ref": "karmaterminal/openclaw@0b85aeb4685df7da33259fe3c6a0153dedd85cb8",
+      "sha": "0b85aeb4685df7da33259fe3c6a0153dedd85cb8"
+    },
+    {
+      "category": "safe lane",
+      "equality": "local = tracking = server before evidence",
+      "ref": "origin/codeagent/classify-modeb-34478079173",
+      "sha": "0b85aeb4685df7da33259fe3c6a0153dedd85cb8"
+    },
+    {
+      "category": "CI/workflow",
+      "equality": "run headSha = commit API = aggregate workflow_sha",
+      "ref": "karmaterminal/openclaw-bootstrap/codeagent/final-workflow-1478-1479-impl",
+      "sha": "5a37295932d42e01d2a51c7176f09b14c860bd1e"
+    },
+    {
+      "category": "presentation",
+      "equality": "no presentation action or evidence",
+      "ref": "N/A",
+      "sha": null
+    },
+    {
+      "category": "docs/proof",
+      "equality": "created only after evidence; immutable payload SHA recorded by successor receipt",
+      "ref": "N/A",
+      "sha": null
+    }
+  ],
+  "persistent_blobs": [
+    {
+      "candidate": "20e92fbee301b52342e5b11b2a274cb703b25f4c",
+      "disposition": "load flake greened; identical current blob",
+      "fork_main": "20e92fbee301b52342e5b11b2a274cb703b25f4c",
+      "path": "src/agents/sessions/exec.real.test.ts",
+      "superseding_upstream_commit": null,
+      "upstream_main": "20e92fbee301b52342e5b11b2a274cb703b25f4c"
+    },
+    {
+      "candidate": "e8ccfcd5c6f11b49888450c9f5813992172753e3",
+      "disposition": "load flake greened; candidate blob stale",
+      "fork_main": "ba16515f67633bd6480ccbab90c6ae6d3835f2de",
+      "path": "extensions/codex/src/session-rollout-snapshot.test.ts",
+      "superseding_upstream_commit": "c49714aef31cf785fa06594f58e5f5f02f6f2c8b",
+      "upstream_main": "ba16515f67633bd6480ccbab90c6ae6d3835f2de"
+    },
+    {
+      "candidate": "ff34361d3e1b7ad22cd602ac1976c634e9d4e06a",
+      "disposition": "load flake greened; identical current blob",
+      "fork_main": "ff34361d3e1b7ad22cd602ac1976c634e9d4e06a",
+      "path": "src/gateway/server.sessions.reclamation.test.ts",
+      "superseding_upstream_commit": null,
+      "upstream_main": "ff34361d3e1b7ad22cd602ac1976c634e9d4e06a"
+    },
+    {
+      "candidate": "d837bc5411aaf85044ce4d1d73dab67015735c1e",
+      "disposition": "load flake greened; candidate blob stale",
+      "fork_main": "912a2cd4de490d4398fde65b2ca86732de9a537c",
+      "path": "extensions/codex/src/app-server/transport.process.test.ts",
+      "superseding_upstream_commit": "693485b36510ee24cf97be4bdbfa2c3ff5547609",
+      "upstream_main": "912a2cd4de490d4398fde65b2ca86732de9a537c"
+    },
+    {
+      "candidate": "8977e44d41d2b83b052c83120670eb4ba05729ed",
+      "disposition": "deterministic old-candidate failure; continuation-only file must be replayed and retested on fresh base",
+      "fork_main": null,
+      "path": "src/auto-reply/reply/agent-runner.continuation-chain-break-reset.test.ts",
+      "superseding_upstream_commit": null,
+      "upstream_main": null
+    },
+    {
+      "candidate": "403a6349b5a98c1f5de15753c3af5ea58a0fc37e",
+      "disposition": "load flake greened; continuation-only file remains a replay input",
+      "fork_main": null,
+      "path": "src/agents/subagent-announce.continuation.test.ts",
+      "superseding_upstream_commit": null,
+      "upstream_main": null
+    },
+    {
+      "candidate": "b98bd7f8ef09e0e45036f7440927c7ee8567e440",
+      "disposition": "prior-run persistent row obsolete; current upstream includes #141884/#142096 fixture topology",
+      "fork_main": "0292b9c22dcadce21c5f2f89d2560a560804b400",
+      "path": "test/scripts/build-and-run-mac.test.ts",
+      "superseding_upstream_commit": "31b25e78513ec1855e09c19b88b3ca8a745d764e",
+      "upstream_main": "0292b9c22dcadce21c5f2f89d2560a560804b400"
+    },
+    {
+      "candidate": "57da9903f943418a12aea22937ee39f19d104fd6",
+      "disposition": "prior-run persistent rows obsolete; current upstream includes #140078/#140602 topology",
+      "fork_main": "a931a6323ec34172b45cd623c47052ccb4729a7f",
+      "path": "extensions/telegram/src/telegram-ingress-drain-factory.test.ts",
+      "superseding_upstream_commit": "f34ec093d5f88ba3a743464afab5d62385599d75",
+      "upstream_main": "a931a6323ec34172b45cd623c47052ccb4729a7f"
+    }
+  ],
+  "replay": {
+    "excluded_old_base_commits": [
+      {
+        "reason": "stale Mac and Telegram fixture composition",
+        "sha": "0b85aeb4685df7da33259fe3c6a0153dedd85cb8"
+      },
+      {
+        "reason": "old-base Telegram answer owner repair",
+        "sha": "c27e802bf5a314c51eb661059922c95a92bd65b3"
+      },
+      {
+        "reason": "old-base Telegram module-graph repair",
+        "sha": "a3dce202836ac647ed9e8c6cdb2cb096326bbc9e"
+      },
+      {
+        "reason": "old-base Telegram admission-order repair",
+        "sha": "92ae08ae5b74aeca70fbd57cf260e5fb28e274fc"
+      },
+      {
+        "reason": "old-base Telegram reproduction",
+        "sha": "f3eb1971039e1f1959e2b2fd56283e906b47a1ca"
+      },
+      {
+        "reason": "old-base Telegram replay test alignment",
+        "sha": "32e89116f2177b6cccd80cc427af85e678921176"
+      },
+      {
+        "reason": "old-base Telegram duplicate-edit test",
+        "sha": "aea5f4e097fb0d99da02275fa911905abd459940"
+      },
+      {
+        "reason": "old-base Telegram callback-loss test",
+        "sha": "49cd1cfb4ddecb5bd8f624b5f742da5cf8cb167f"
+      },
+      {
+        "reason": "old-base Telegram callback receipt repair",
+        "sha": "6a8979ddc60875955a8effc3c959e85fd4476219"
+      },
+      {
+        "reason": "old-base Mac test repair superseded upstream",
+        "sha": "14c500c3f0a1442bb558b8475480677b36180e6b"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "8a4f89c11d3a90768ff6b641a84b77aa7e308820"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "9995bf5e79107d6332a52f308c5a9ca245f2bfeb"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "333809fb26eeb665f7ab868dfe13b14627d1af90"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "82a8c8fa98b0e9e62777d3825ccc5decf14396d4"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "c07dd5983cc59cc92a6c438bd194c96cc9a4d1c1"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "6fcb3f0085f87270241beee5e60410de7d82cae7"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "b1b0bebfe332c17be500e41867683179b693d27d"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "f49ba6f875c7173e2a2f7db1a8151011c6c78ba9"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "fc267d54215820897a2bffbb35524cd6feb88aaa"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "b3a572cd3ea0082679669baa80f0679332643cf8"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "6eee5579c373c53233d42ad9f50dc3ea193bf9f1"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "f63fc7feb345eb449d7f1c580560b24acfd0c784"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "7152de29eb25335e6afe1c83a6250ae4984fa1b8"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "f30056167ad25b9306f6b72219508edab4dd039d"
+      },
+      {
+        "reason": "non-continuation support/repair or structural merge; exclude from scoped replay",
+        "sha": "e159fd6fe16f982a83395ed25921b97c5fda2062"
+      }
+    ],
+    "fresh_base": "d9f1f50e074bf3d963b5b100cd7da8c01ba4cc88",
+    "inputs": [
+      {
+        "role": "canonical accepted continuation transpose; re-author its semantic delta, do not retain its old upstream base",
+        "sha": "f16aa2e0118b616d1a1c31bb64a56b7da756a224"
+      },
+      {
+        "role": "targeted TaskFlow store fixture update",
+        "sha": "4f3ed1f13dd4b562ced2a293c9f980bf8a6dd170"
+      },
+      {
+        "role": "remaining targeted continuation/reset store fixtures",
+        "sha": "af4d5c901ff7ed43882812d2be3caec38dd48953"
+      },
+      {
+        "role": "prepared model catalog fixture for genuine reject-observation path",
+        "sha": "f2139b3497f9f16ee498302892bcf8e24d6ae71f"
+      },
+      {
+        "role": "owner-bind request_compaction failure events",
+        "sha": "dedcc84b1c57cb94be7df4c8c47c968cc724b5ba"
+      },
+      {
+        "role": "post-compaction runner fixtures",
+        "sha": "1bfe94efa22f09808345babe413326d6bd02f50a"
+      },
+      {
+        "role": "recipient-owner return binding",
+        "sha": "d3f8c4958a294b84094e3b8c4faa259345905cd7"
+      },
+      {
+        "role": "owner-resolution helper refactor supporting the binding",
+        "sha": "fc4e29c12aec3512bfa97877706dfa7e31e6b939"
+      },
+      {
+        "role": "persist validated owner through completion spawn",
+        "sha": "e7eec0e6eefe2c90584d60988a5c962933e09a40"
+      },
+      {
+        "role": "fence owner-bound completion events",
+        "sha": "64a21f17cbc9f8861f8999f6e77b100409dcc133"
+      }
+    ],
+    "instruction": "Re-author/cherry-pick only these semantic continuation deltas onto the fresh upstream base, resolve against current owners, then run one exact product/workflow pair after the archive byte-copy cure. Do not replay stale Telegram/Mac repair commits or structural merge commits.",
+    "subsumed_old_fixture_commits": [
+      "abd2389ed0fe5699cf96b9383ff580c1cf40aa86",
+      "a49d599edfb42b4a4a9a0ac290493a7f06a16d4b",
+      "eab496cdf0c4b1d358991e126405242d83cbc2a3",
+      "32565097c057970e546ddc8bb82e09005d43530e",
+      "aa4d22aa09b27c1bc94617a587da3d72c85cf9ef",
+      "8223339a868994a77a9616b5cfd63ff78a28c7aa"
+    ]
+  },
+  "routing": {
+    "missing_routed_summaries": [
+      "agentic-plugins",
+      "core-runtime-infra-channel-plugin",
+      "core-runtime-tui-pty",
+      "core-support-boundary",
+      "extension-discord",
+      "extension-provider-openai",
+      "extensions"
+    ],
+    "planned_batches": 75,
+    "planned_shards": 178,
+    "planner_digest": "sha256:957eea6354cfbd37ec65e09806021d52b716294519e81da13ce87c26f2d36c62",
+    "present_routed_summaries": 171,
+    "receipts_found": 75,
+    "receipts_valid": true,
+    "routing_plan_artifact_digest": "sha256:27db6e3abe98fc71b4e8e595053fe7bd7fe089a8e19c3b1d448a6f94dec1d4f7",
+    "routing_ruleset_digest": "sha256:ecf33213b90b95f4fe8ea0ca6a18b958c5cb686068565c6f75ce9449c7d10384",
+    "static_summaries": 1
+  },
+  "run": {
+    "attempt": 1,
+    "conclusion": "failure",
+    "id": 34478079173,
+    "product_sha": "0b85aeb4685df7da33259fe3c6a0153dedd85cb8",
+    "repository": "karmaterminal/openclaw-bootstrap",
+    "workflow_sha": "5a37295932d42e01d2a51c7176f09b14c860bd1e"
+  },
+  "schema": "openclaw-mode-b-terminal-classification/v1",
+  "stale_base": {
+    "reason": "current fork and upstream main are identical on the superseding Mac/Telegram blobs; current refs also supersede two greened Codex flake blobs. Gate 2.7, path intersection, stale checkouts, and stale GitNexus bindings are not baseline proof.",
+    "verdict": "reject diagnostic product as successor base"
+  },
+  "static_and_dist": {
+    "archive_create": "failure",
+    "archive_upload": "skipped",
+    "dist_archive_download_extract": "not reached",
+    "dist_variants": [
+      {
+        "shard": "core-runtime-tui-pty",
+        "state": "blocked"
+      },
+      {
+        "shard": "core-support-boundary",
+        "state": "blocked"
+      }
+    ],
+    "static_product_summary": "pass"
+  },
+  "terminal_batches": [
+    {
+      "batch": "hosted-batch-011",
+      "classification": "hosted cancellation; no verdict for missing shards",
+      "missing_summaries": [
+        "extensions",
+        "extension-provider-openai"
+      ],
+      "preserved_summaries": [
+        "checks-fast-contracts-plugins-b"
+      ],
+      "receipt_origin": "worker-terminal",
+      "state": "cancelled"
+    },
+    {
+      "batch": "hosted-batch-039",
+      "classification": "hosted runner shutdown/communication loss before receipt; no test verdict",
+      "missing_summaries": [
+        "agentic-plugins",
+        "extension-discord",
+        "core-runtime-infra-channel-plugin"
+      ],
+      "receipt_origin": "aggregate-terminal-synthesis",
+      "state": "blocked"
+    },
+    {
+      "batch": "dist-batch-074",
+      "classification": "archive producer failed; dist job skipped",
+      "missing_summaries": [
+        "core-runtime-tui-pty"
+      ],
+      "receipt_origin": "aggregate-terminal-synthesis",
+      "state": "blocked"
+    },
+    {
+      "batch": "dist-batch-075",
+      "classification": "archive producer failed; dist job skipped",
+      "missing_summaries": [
+        "core-support-boundary"
+      ],
+      "receipt_origin": "aggregate-terminal-synthesis",
+      "state": "blocked"
+    }
+  ],
+  "tests": [
+    {
+      "aggregate_class": "load-flake-greened",
+      "confirm_file": true,
+      "detail": "extension-codex-app-server-support  extensions/codex/src/app-server/transport.process.test.ts > Codex app-server process containment > reaps descendants in independent and root process groups before close returns",
+      "executions": [
+        {
+          "attempt": 1,
+          "outcome": "fail",
+          "row": "\u00d7  extension-codex-app-server-support  extensions/codex/src/app-server/transport.process.test.ts > Codex app-server process containment > reaps descendants in independent and root process groups before close returns 2567ms"
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "row": "\u2713  extension-codex-app-server-support  extensions/codex/src/app-server/transport.process.test.ts > Codex app-server process containment > reaps descendants in independent and root process groups before close returns 561ms"
+        }
+      ],
+      "path": "extensions/codex/src/app-server/transport.process.test.ts",
+      "shard": "extension-codex-app-server-support"
+    },
+    {
+      "aggregate_class": "load-flake-greened",
+      "confirm_file": true,
+      "detail": "extension-codex-surface  extensions/codex/src/session-rollout-snapshot.test.ts > bounded native rollout snapshot > reads immutable metadata without interpreting historical records (compressed=false)",
+      "executions": [
+        {
+          "attempt": 1,
+          "outcome": "fail",
+          "row": "\u00d7  extension-codex-surface  extensions/codex/src/session-rollout-snapshot.test.ts > bounded native rollout snapshot > reads immutable metadata without interpreting historical records (compressed=false) 137231ms"
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "row": "\u2713  extension-codex-surface  extensions/codex/src/session-rollout-snapshot.test.ts > bounded native rollout snapshot > reads immutable metadata without interpreting historical records (compressed=false) 45459ms"
+        }
+      ],
+      "path": "extensions/codex/src/session-rollout-snapshot.test.ts",
+      "shard": "extension-codex-surface"
+    },
+    {
+      "aggregate_class": "load-flake-greened",
+      "confirm_file": true,
+      "detail": "agents-support  src/agents/sessions/exec.real.test.ts > execCommand process-tree cleanup > does not resolve a timeout while a SIGTERM-resistant descendant is alive",
+      "executions": [
+        {
+          "attempt": 1,
+          "outcome": "fail",
+          "row": "\u00d7  agents-support  src/agents/sessions/exec.real.test.ts > execCommand process-tree cleanup > does not resolve a timeout while a SIGTERM-resistant descendant is alive 3938ms"
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "row": "\u2713  agents-support  src/agents/sessions/exec.real.test.ts > execCommand process-tree cleanup > does not resolve a timeout while a SIGTERM-resistant descendant is alive 6166ms"
+        }
+      ],
+      "path": "src/agents/sessions/exec.real.test.ts",
+      "shard": "agentic-agents-support"
+    },
+    {
+      "aggregate_class": "deterministic-failure",
+      "confirm_file": false,
+      "detail": "auto-reply-reply  src/auto-reply/reply/agent-runner.continuation-chain-break-reset.test.ts > runReplyAgent :: continuation chain-break reset > resets the chain budget to 0 on a fresh (non-wake) turn-entry, upstream of inference",
+      "executions": [
+        {
+          "attempt": 1,
+          "outcome": "fail",
+          "row": "\u00d7  auto-reply-reply  src/auto-reply/reply/agent-runner.continuation-chain-break-reset.test.ts > runReplyAgent :: continuation chain-break reset > resets the chain budget to 0 on a fresh (non-wake) turn-entry, upstream of inference 211397ms"
+        },
+        {
+          "attempt": 2,
+          "outcome": "fail",
+          "row": "\u00d7  auto-reply-reply  src/auto-reply/reply/agent-runner.continuation-chain-break-reset.test.ts > runReplyAgent :: continuation chain-break reset > resets the chain budget to 0 on a fresh (non-wake) turn-entry, upstream of inference 121340ms"
+        }
+      ],
+      "path": "src/auto-reply/reply/agent-runner.continuation-chain-break-reset.test.ts",
+      "shard": "auto-reply-reply-agent-runner"
+    },
+    {
+      "aggregate_class": "load-flake-greened",
+      "confirm_file": true,
+      "detail": "gateway-server  src/gateway/server.sessions.reclamation.test.ts > sessions.delete keeps the Gateway responsive while reclaiming a large session",
+      "executions": [
+        {
+          "attempt": 1,
+          "outcome": "fail",
+          "row": "\u00d7  gateway-server  src/gateway/server.sessions.reclamation.test.ts > sessions.delete keeps the Gateway responsive while reclaiming a large session 16661ms"
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "row": "\u2713  gateway-server  src/gateway/server.sessions.reclamation.test.ts > sessions.delete keeps the Gateway responsive while reclaiming a large session 13775ms"
+        }
+      ],
+      "path": "src/gateway/server.sessions.reclamation.test.ts",
+      "shard": "agentic-control-plane-agent-chat"
+    },
+    {
+      "aggregate_class": "load-flake-greened",
+      "confirm_file": true,
+      "detail": "agents-core  src/agents/subagent-announce.continuation.test.ts > subagent announce continuation chaining > routes a delayed chain-hop delegate through the durable pending store, then spawns via the hedge",
+      "executions": [
+        {
+          "attempt": 1,
+          "outcome": "fail",
+          "row": "\u00d7  agents-core  src/agents/subagent-announce.continuation.test.ts > subagent announce continuation chaining > routes a delayed chain-hop delegate through the durable pending store, then spawns via the hedge 77ms"
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "row": "\u2713  agents-core  src/agents/subagent-announce.continuation.test.ts > subagent announce continuation chaining > routes a delayed chain-hop delegate through the durable pending store, then spawns via the hedge 31ms"
+        }
+      ],
+      "path": "src/agents/subagent-announce.continuation.test.ts",
+      "shard": "agentic-agents-core-subagents"
+    }
+  ],
+  "verdict": "diagnostic failure: one deterministic continuation test on stale composition, five confirmed load flakes, seven missing routed summaries fully attributed, and one benign-hardlink archive contract defect blocking both dist variants",
+  "zero_unclassified": true
+}

@@ -1,0 +1,7 @@
+shard	path	aggregate_class	attempt_1	attempt_2	confirm_file
+extension-codex-app-server-support	extensions/codex/src/app-server/transport.process.test.ts	load-flake-greened	fail	pass	true
+extension-codex-surface	extensions/codex/src/session-rollout-snapshot.test.ts	load-flake-greened	fail	pass	true
+agentic-agents-support	src/agents/sessions/exec.real.test.ts	load-flake-greened	fail	pass	true
+auto-reply-reply-agent-runner	src/auto-reply/reply/agent-runner.continuation-chain-break-reset.test.ts	deterministic-failure	fail	fail	false
+agentic-control-plane-agent-chat	src/gateway/server.sessions.reclamation.test.ts	load-flake-greened	fail	pass	true
+agentic-agents-core-subagents	src/agents/subagent-announce.continuation.test.ts	load-flake-greened	fail	pass	true
