@@ -4,16 +4,16 @@ const TELEGRAM_CALLBACK_QUERY_ANSWER_PROMISE = Symbol.for(
 type CallbackQueryAnswer = {
   promise: Promise<unknown>;
   pending: boolean;
-  retainUntilDispatch: boolean;
+  retention: "transient" | "retained" | "consumed";
 };
-// Consuming an answer must not stop coalescing in-flight requests. Only new rows
-// retain settled answers: duplicate admissions may be tombstones that never dispatch.
+// Admission and dispatch can observe the same in-flight answer in either order.
+// Retain only unconsumed new-row answers; duplicate tombstones may never dispatch.
 const telegramCallbackQueryAnswers = new WeakMap<object, Map<string, CallbackQueryAnswer>>();
 
 export function startTelegramCallbackQueryAnswer(
   bot: { api: { answerCallbackQuery: (id: string) => Promise<unknown> } },
   callbackQueryId: string,
-  retainUntilDispatch: boolean,
+  mode: "admission-retained" | "admission-transient" | "consumer",
 ): Promise<unknown> {
   let answers = telegramCallbackQueryAnswers.get(bot);
   if (!answers) {
@@ -22,18 +22,24 @@ export function startTelegramCallbackQueryAnswer(
   }
   const existing = answers.get(callbackQueryId);
   if (existing) {
+    if (mode === "consumer") {
+      existing.retention = "consumed";
+    } else if (mode === "admission-retained" && existing.retention === "transient") {
+      existing.retention = "retained";
+    }
     return existing.promise;
   }
-  const answer = {
+  const answer: CallbackQueryAnswer = {
     promise: bot.api.answerCallbackQuery(callbackQueryId),
     pending: true,
-    retainUntilDispatch,
+    retention:
+      mode === "admission-retained" ? "retained" : mode === "consumer" ? "consumed" : "transient",
   };
   answers.set(callbackQueryId, answer);
   void answer.promise.then(
     () => {
       answer.pending = false;
-      if (!answer.retainUntilDispatch) {
+      if (answer.retention !== "retained") {
         answers.delete(callbackQueryId);
       }
     },
@@ -49,7 +55,7 @@ export function takeTelegramCallbackQueryAdmissionAnswer(
   const answers = telegramCallbackQueryAnswers.get(bot);
   const answer = answers?.get(callbackQueryId);
   if (answer) {
-    answer.retainUntilDispatch = false;
+    answer.retention = "consumed";
     if (!answer.pending) {
       answers?.delete(callbackQueryId);
     }

@@ -245,7 +245,7 @@ export function createTelegramBotCore(
     if (callback) {
       const answerPromise =
         takeTelegramCallbackQueryAdmissionAnswer(bot, callback.id) ??
-        startTelegramCallbackQueryAnswer(bot, callback.id, false);
+        startTelegramCallbackQueryAnswer(bot, callback.id, "consumer");
       setTelegramCallbackQueryAnswerPromise(ctx, answerPromise);
       void answerPromise.catch(() => {});
     }

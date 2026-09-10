@@ -78,7 +78,11 @@ export function createTelegramTransportIngressMonitor(
       if (typeof callbackQueryId !== "string" || callbackQueryId.trim().length === 0) {
         return;
       }
-      void startTelegramCallbackQueryAnswer(params.bot, callbackQueryId, context.isNew);
+      void startTelegramCallbackQueryAnswer(
+        params.bot,
+        callbackQueryId,
+        context.isNew ? "admission-retained" : "admission-transient",
+      );
     },
     dispatch: async (update, lifecycle) => {
       if (params.dispatchUpdate) {

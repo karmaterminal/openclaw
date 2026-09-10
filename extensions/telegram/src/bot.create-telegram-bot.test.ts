@@ -826,7 +826,7 @@ describe("createTelegramBot", () => {
   it("reuses the callback answer started at durable admission", async () => {
     const bot = createTelegramBot({ token: "tok" });
     const callbackId = "cbq-durable-admission-1";
-    await startTelegramCallbackQueryAnswer(bot, callbackId, true);
+    await startTelegramCallbackQueryAnswer(bot, callbackId, "admission-retained");
 
     await runTelegramMiddlewareChain({
       ctx: makeGenericCallbackContext({ id: callbackId, updateId: 403 }),
@@ -840,7 +840,7 @@ describe("createTelegramBot", () => {
   it("re-answers a durable callback after bot restart loses admission state", async () => {
     const callbackId = "cbq-restart-replay-1";
     const stoppedBot = createTelegramBot({ token: "tok" });
-    await startTelegramCallbackQueryAnswer(stoppedBot, callbackId, true);
+    await startTelegramCallbackQueryAnswer(stoppedBot, callbackId, "admission-retained");
     middlewareUseSpy.mockClear();
     const restartedBot = createTelegramBot({ token: "tok" });
     const pendingAnswer = createDeferred<true>();
@@ -855,7 +855,11 @@ describe("createTelegramBot", () => {
     );
 
     try {
-      const duplicate = startTelegramCallbackQueryAnswer(restartedBot, callbackId, false);
+      const duplicate = startTelegramCallbackQueryAnswer(
+        restartedBot,
+        callbackId,
+        "admission-transient",
+      );
       expect(duplicate).toBe(pendingAnswer.promise);
       expect(answerCallbackQuerySpy).toHaveBeenCalledTimes(2);
       expect(answerCallbackQuerySpy).toHaveBeenCalledWith(callbackId);

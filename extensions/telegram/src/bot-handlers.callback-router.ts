@@ -108,7 +108,7 @@ export function createTelegramCallbackRouter({
       await withTelegramApiErrorLogging({
         operation: "answerCallbackQuery",
         runtime,
-        fn: () => startTelegramCallbackQueryAnswer(bot, callback.id, false),
+        fn: () => startTelegramCallbackQueryAnswer(bot, callback.id, "consumer"),
       }).catch(() => {});
       callbackAnswered = true;
     };

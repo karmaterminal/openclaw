@@ -49,6 +49,7 @@ describe("Telegram transport ingress outcome handoff", () => {
     {
       name: "after a rejected new-row answer",
       initialAdmissions: ["new"],
+      admissionsAfterConsumption: [],
       rejectFirstAnswer: true,
       consumePending: false,
       expectRetained: false,
@@ -57,6 +58,7 @@ describe("Telegram transport ingress outcome handoff", () => {
     {
       name: "for an existing durable row",
       initialAdmissions: [],
+      admissionsAfterConsumption: [],
       rejectFirstAnswer: false,
       consumePending: false,
       expectRetained: false,
@@ -65,6 +67,7 @@ describe("Telegram transport ingress outcome handoff", () => {
     {
       name: "while middleware consumes a pending answer",
       initialAdmissions: ["new"],
+      admissionsAfterConsumption: [],
       rejectFirstAnswer: false,
       consumePending: true,
       expectRetained: false,
@@ -73,6 +76,7 @@ describe("Telegram transport ingress outcome handoff", () => {
     {
       name: "before middleware consumes a new-row answer",
       initialAdmissions: ["new"],
+      admissionsAfterConsumption: [],
       rejectFirstAnswer: false,
       consumePending: false,
       expectRetained: true,
@@ -81,15 +85,26 @@ describe("Telegram transport ingress outcome handoff", () => {
     {
       name: "when an existing-row answer starts before the new-row admission",
       initialAdmissions: ["existing", "new"],
+      admissionsAfterConsumption: [],
       rejectFirstAnswer: false,
       consumePending: false,
       expectRetained: true,
+      expectedRequests: 1,
+    },
+    {
+      name: "when middleware consumes before the new-row admission",
+      initialAdmissions: ["existing"],
+      admissionsAfterConsumption: ["new"],
+      rejectFirstAnswer: false,
+      consumePending: true,
+      expectRetained: false,
       expectedRequests: 1,
     },
   ])(
     "coalesces duplicate callback answers $name",
     async ({
       initialAdmissions,
+      admissionsAfterConsumption,
       rejectFirstAnswer,
       consumePending,
       expectRetained,
@@ -163,6 +178,9 @@ describe("Telegram transport ingress outcome handoff", () => {
         }
         if (consumePending) {
           expect(takeTelegramCallbackQueryAdmissionAnswer(bot, callbackId)).toBeDefined();
+        }
+        for (const admission of admissionsAfterConsumption) {
+          await monitor.onDurableAdmission(update, { isNew: admission === "new" });
         }
         await monitor.onDurableAdmission(update, { isNew: false });
         await pendingAnswer.promise;
