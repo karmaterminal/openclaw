@@ -35,4 +35,26 @@
 - Rejected product, Node `24.17.0`: focused file failed 2/11 at the exact two retained-answer rows
   with `expected undefined to be defined`; diagnostics confirmed `ERR_STREAM_PREMATURE_CLOSE`.
 - Successor working tree, Node `24.17.0`: focused file passed 11/11.
+- Successor `eb273555c7acdaaea582158bea05ccc97f1d0ce6`, Node `24.17.0`: complete
+  serial Telegram shard passed 218 files / 3,960 tests.
+- `node scripts/run-tsgo.mjs -p test/tsconfig/tsconfig.extensions.test.json --incremental
+--tsBuildInfoFile .artifacts/tsgo-cache/extensions-test.tsbuildinfo`: passed.
+- `node scripts/run-oxlint.mjs --tsconfig extensions/tsconfig.json
+extensions/telegram/src/telegram-ingress-drain-factory.test.ts`: passed.
+- `node_modules/.bin/oxfmt --check
+extensions/telegram/src/telegram-ingress-drain-factory.test.ts output.md`: passed.
+- Changed gate: all checks through formatting passed. The plugin boundary check then failed because
+  one unrelated compatibility record became date-eligible; the identical failure reproduced on
+  exact baseline `c27e802bf5a314c51eb661059922c95a92bd65b3`.
+- Internal P1 autoreview against the exact base reported `scoped-clean` with patch correctness
+  confidence `0.99` and no actionable P0/P1 findings.
 - Acceptance path: focused-only. Actions were explicitly forbidden by the workorder.
+
+## Scope and uncertainty
+
+- Production LOC: `+0/-0`.
+- Test LOC: `+6/-2`.
+- Proof/report LOC: `+42/-0` before this final receipt.
+- No live Telegram probe was run: the repaired surface is the deterministic loopback's HTTP framing,
+  not product transport behavior, and the workorder required local proof with no deployment.
+- No Actions, PR, presentation, or deployment was created.
