@@ -32,6 +32,7 @@ import { VERSION } from "../version.js";
 import { ensureOpenClawAgentBoardSchemaInTransaction } from "./openclaw-agent-board-schema.js";
 import {
   AGENT_MEDIA_SCHEMA_VERSION,
+  AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION,
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
   OPENCLAW_AGENT_SCHEMA_VERSION,
   type OpenClawAgentDatabaseOptions,
@@ -663,7 +664,7 @@ function ensureAgentSchema(
       maintenanceAuthority.renewAgentDatabaseMaintenanceAuthorityIfPresent();
       ensureSessionAdditiveColumns(db);
       ensureSessionEntryValidityProjection(db);
-      if (targetVersion >= 18 && previousVersion < 18) {
+      if (targetVersion >= AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION) {
         migrateSessionParticipantsSchema(db, pathname);
       }
       if (targetVersion >= 19) {

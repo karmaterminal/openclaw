@@ -10,6 +10,7 @@ import {
   HEARTBEAT_SKIP_REQUESTS_IN_FLIGHT,
   hasTrustedContinuationHeartbeatWake,
   markTrustedContinuationHeartbeatWake,
+  requestHeartbeatAndWait,
   requestHeartbeatRaw as requestHeartbeat,
   requestHeartbeatNow,
   resetHeartbeatWakeStateForTests,

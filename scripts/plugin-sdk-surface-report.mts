@@ -369,7 +369,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: canonical credential-value functions through the narrow secret-input surface.
       // +1: shared removed-model choice recovery text for channel consumers.
       // +17: continuation runtime, task-flow, trace, and channel-ingress contracts.
-      4467,
+      // +5: final continuation system-event and diagnostic runtime contracts.
+      4472,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -504,7 +505,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: prepared model-specific runtime choice reader.
       // +2: canonical env-value reader and managed SecretRef marker constructor.
       // +5: callable continuation and channel-ingress runtime helpers.
-      2636,
+      // +2: plugin-safe system-event alias and diagnostic trace scope runner.
+      2638,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
