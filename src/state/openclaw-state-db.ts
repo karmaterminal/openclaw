@@ -201,9 +201,12 @@ function repairStateSchema(
             `Migrated shared state session watch cursors → provenance column (${sessionWatchResult.migratedAmbientWatches} ambient, ${sessionWatchResult.removedLegacySentinels} sentinels removed)`,
           );
         }
-        assertCanonicalStateSchemaShape(db, pathname);
-        if (tableExists(db, "audit_events")) {
+        const hasAuditEvents = tableExists(db, "audit_events");
+        if (hasAuditEvents) {
           ensureAdditiveStateColumns(db);
+        }
+        assertCanonicalStateSchemaShape(db, pathname);
+        if (hasAuditEvents) {
           for (const migration of versionedStateMigrations) {
             if (migration.migrate(db, previousVersion)) {
               applied.push(migration.applied);
