@@ -1181,20 +1181,30 @@ export function createAgentEventHandler({
       firstAssistantTimingEntry?: ChatRunEntry;
       abortErrorMessage?: string;
       yielded?: true;
+      terminalFrameOwnedElsewhere?: true;
       errorObservation?: unknown;
+      resolvedTextState?: { text: string; shouldSuppressSilent: boolean };
     },
   ) => {
-    const { text, shouldSuppressSilent } = resolveBufferedChatTextState(clientRunId, sourceRunId, {
-      final: true,
-      suppressLeadFragments: false,
-    });
+    const { text, shouldSuppressSilent } =
+      opts?.resolvedTextState ??
+      resolveBufferedChatTextState(clientRunId, sourceRunId, {
+        final: true,
+        suppressLeadFragments: false,
+      });
     // Flush any paced delta so streaming clients receive the complete text
     // before the final event.
     // Only flush if the buffered text differs from the last broadcast to avoid duplicates.
+    flushBufferedAgentDeltaIfNeeded(clientRunId);
     flushBufferedChatDeltaIfNeeded(sessionKey, opts?.agentId, clientRunId, sourceRunId, seq, opts, {
       text,
       shouldSuppressSilent,
     });
+    // Delegated terminal ownership still needs live paced text until that owner
+    // publishes and settles. Clearing here would erase the remaining flush state.
+    if (opts?.terminalFrameOwnedElsewhere) {
+      return;
+    }
     const spawnedBy = resolveSpawnedBy(sessionKey);
     if (jobState !== "error") {
       const run = chatRunState.runs.get(clientRunId);

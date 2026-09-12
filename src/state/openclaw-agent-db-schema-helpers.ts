@@ -27,6 +27,7 @@ import { CONTEXT_ENGINE_TURN_OUTBOX_TABLE } from "./openclaw-agent-context-engin
 import { FIRST_USE_ADDITIVE_AGENT_COLUMN_DEFINITIONS } from "./openclaw-agent-db-additive-columns.js";
 import {
   AGENT_MEDIA_SCHEMA_VERSION,
+  AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION,
   OPENCLAW_AGENT_SCHEMA_VERSION,
 } from "./openclaw-agent-db-contract.js";
 import { OpenClawAgentDatabaseMediaMigrationRequiredError } from "./openclaw-agent-db-migration-required.js";
@@ -187,7 +188,7 @@ function repairAndAssertAgentSchemaGroup(
 }
 
 const SESSION_KEY_CONTRACT_SCHEMA_START = "CREATE TABLE IF NOT EXISTS session_key_contract (";
-const SESSION_KEY_CONTRACT_SCHEMA_END = "CREATE TABLE IF NOT EXISTS session_windows (";
+const SESSION_KEY_CONTRACT_SCHEMA_END = "CREATE TABLE IF NOT EXISTS session_recipient_authority (";
 
 /** Ensure the additive session-key contract table inside the caller's transaction. */
 export function ensureSessionKeyContractSchemaInTransaction(db: DatabaseSync): void {
@@ -365,6 +366,10 @@ export function assertAgentSchemaVersion(
   db: DatabaseSync,
   options: { agentId: string; pathname: string; version: number },
   schemaSql: string,
+  participantSchema: "current" | "legacy" = options.version <
+  AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION
+    ? "legacy"
+    : "current",
 ): void {
   const metadata = readExistingAgentSchemaMeta(db);
   assertExistingAgentSchemaOwner(metadata, options.agentId, options.pathname);
@@ -374,12 +379,7 @@ export function assertAgentSchemaVersion(
       `OpenClaw agent database ${options.pathname} did not converge on schema version ${options.version}.`,
     );
   }
-  assertOpenClawAgentSchemaContains(
-    db,
-    options.pathname,
-    schemaSql,
-    options.version < 18 ? "legacy" : "current",
-  );
+  assertOpenClawAgentSchemaContains(db, options.pathname, schemaSql, participantSchema);
 }
 
 function hasLegacyMemoryChunkProvenanceTrigger(db: DatabaseSync): boolean {

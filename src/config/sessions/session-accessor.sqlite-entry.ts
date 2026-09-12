@@ -99,6 +99,7 @@ export {
 // Public entry API. Async preparation precedes BEGIN; commit revalidates repository snapshots.
 
 type SqliteSessionEntryPatchOptions = SessionEntryPatchOptions & {
+  afterPersistInTransaction?: (database: OpenClawAgentDatabase) => void;
   skipMaintenance?: boolean;
   /** Recheck owner cancellation after async preparation, immediately before committing. */
   shouldCommit?: () => boolean;
@@ -172,9 +173,9 @@ export function loadSessionEntryReadOnly(scope: SessionAccessScope): SessionEntr
 }
 
 /** Lists persisted session keys without materializing their entry JSON. */
-export async function listSessionEntryKeysReadOnly(
+export function listSessionEntryKeysReadOnly(
   scope: Partial<Omit<SessionAccessScope, "sessionKey">> = {},
-): Promise<string[]> {
+): string[] {
   const resolved = resolveSqliteScope({ ...scope, sessionKey: "" });
   const result = withOpenClawAgentDatabaseReadOnly((database) => {
     const db = getSessionKysely(database.db);
@@ -593,6 +594,7 @@ async function patchSqliteSessionEntrySnapshot(
                 ? { canonicalPreviousEntry: fresh[0].entry }
                 : {}),
             });
+            options.afterPersistInTransaction?.(writeDatabase);
             wrote = true;
             // Identity observers only consume sessionId, already owned by this canonical write.
             const currentIdentity = new Map([[sessionKey, persisted]]);

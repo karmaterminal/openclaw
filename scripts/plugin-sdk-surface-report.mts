@@ -368,7 +368,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +3: public provider-owned asynchronous embedding batch contract.
       // +2: canonical credential-value functions through the narrow secret-input surface.
       // +1: shared removed-model choice recovery text for channel consumers.
-      4454,
+      // +17: continuation runtime, task-flow, trace, and channel-ingress contracts.
+      4467,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -502,7 +503,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: canonical runtime-context classifier for native history projection.
       // +1: prepared model-specific runtime choice reader.
       // +2: canonical env-value reader and managed SecretRef marker constructor.
-      2632,
+      // +5: callable continuation and channel-ingress runtime helpers.
+      2636,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -522,7 +524,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       //     Slack progress-draft render) so installed plugins survive upgrade (#124041 class).
       // -18: retire the expired August compatibility exports and messaging-targets subpath.
       // +4: rendering helpers forwarded by the shipped channel-message wildcard.
-      1138,
+      // +7: continuation compatibility projections retained during migration.
+      1145,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

@@ -21,7 +21,11 @@ import {
   extractToolResultIds,
   hasToolCallInput,
 } from "./tool-call-id.js";
-import { isAllowedToolCallName, normalizeAllowedToolNames } from "./tool-call-shared.js";
+import {
+  isAllowedToolCallName,
+  normalizeAllowedToolNames,
+  sanitizeTranscriptToolCallBlock,
+} from "./tool-call-shared.js";
 
 type RawToolCallBlock = {
   type?: unknown;
@@ -151,7 +155,11 @@ function isReplaySafeThinkingAssistantTurn(
       return false;
     }
     seenToolCallIds.add(toolCallId);
-    if (sanitizeToolCallBlock(block) !== block) {
+    if (
+      sanitizeTranscriptToolCallBlock(block, {
+        preserveLegacyContinueDelegateAttachmentName: true,
+      }) !== block
+    ) {
       return false;
     }
   }

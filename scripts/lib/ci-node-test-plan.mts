@@ -1439,6 +1439,7 @@ function resolveInfraShardName(file: string): string {
   if (
     name.startsWith("archive") ||
     name.startsWith("backup") ||
+    name.startsWith("continuation-tracer") ||
     name.startsWith("diagnostic") ||
     name.startsWith("diagnostics")
   ) {

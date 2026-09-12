@@ -1,3 +1,4 @@
+// "RFC §" references herein cite docs/design/continue-work-signal-v2.md (Agent Self-Elected Turn Continuation / CONTINUE_WORK).
 // Builds overview table rows for `openclaw status` and `openclaw status --all`.
 // The row builders combine scan surfaces with health/session summaries while keeping rendering elsewhere.
 
@@ -108,6 +109,8 @@ export function buildStatusCommandOverviewRows(
     formatKTokens: (value: number) => string;
     updateValue?: string;
     updateRows?: Array<{ Item: string; Value: string }>;
+    /** Continuation telemetry value (RFC §6.3). */
+    continuationValue?: string;
   } & StatusMemoryStateResolvers,
 ) {
   const agentsValue = buildStatusAgentsValue({
@@ -199,6 +202,9 @@ export function buildStatusCommandOverviewRows(
       },
       { Item: "Heartbeat", Value: heartbeatValue },
       ...(lastHeartbeatValue ? [{ Item: "Last heartbeat", Value: lastHeartbeatValue }] : []),
+      ...(params.continuationValue
+        ? [{ Item: "Continuation", Value: params.continuationValue }]
+        : []),
       {
         Item: "Sessions",
         Value: buildStatusSessionsOverviewValue({
