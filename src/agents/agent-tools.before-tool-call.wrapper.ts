@@ -11,6 +11,7 @@ import { resolveDiagnosticModelContentCapturePolicy } from "../infra/diagnostic-
 import {
   createChildDiagnosticTraceContext,
   freezeDiagnosticTraceContext,
+  runWithDiagnosticTraceContext,
 } from "../infra/diagnostic-trace-context.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
 import { getPluginToolMeta } from "../plugins/tool-metadata.js";
@@ -299,6 +300,7 @@ export function wrapToolWithBeforeToolCallHook(
   if (!execute) {
     return tool;
   }
+  const forwardedExecute = execute as ForwardedToolExecution;
   const toolName = tool.name || "tool";
   const admitExecution = captureAgentToolExecutionBudget();
   const diagnosticIdentity = resolveToolDiagnosticIdentity(tool);
@@ -544,7 +546,10 @@ export function wrapToolWithBeforeToolCallHook(
         let result: Awaited<ReturnType<ForwardedToolExecution>>;
         try {
           const args = [toolCallId, executeParams, signal, forwardedOnUpdate, ...executionArgs];
-          const invoke = () => (execute as ForwardedToolExecution)(...args);
+          const invoke = () =>
+            trace
+              ? runWithDiagnosticTraceContext(trace, () => forwardedExecute(...args))
+              : forwardedExecute(...args);
           result = outcome.ownerDecision
             ? await invoke()
             : await runWithGenericToolActionDecision(tool, toolCallId, invoke);
