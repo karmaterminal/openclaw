@@ -209,6 +209,57 @@ describe("channel ingress monitor", () => {
     });
   });
 
+  it("fails stale pending backlog before it can repopulate after reset", async () => {
+    await withQueue(async (queue) => {
+      let currentTime = 1_000_000;
+      const monitor = createMonitor(queue, vi.fn(), {
+        now: () => currentTime,
+        resolvePendingDisposition: (record) => {
+          if (record.receivedAt < currentTime) {
+            return {
+              kind: "fail",
+              reason: "stale-backlog",
+              message: "stale backlog row was excluded before claim",
+            };
+          }
+          return null;
+        },
+      });
+      await expect(
+        queue.enqueue(
+          "stale-backlog",
+          {
+            version: 1,
+            rawEvent: JSON.stringify({ id: "stale-backlog", lane: "a", text: "hello" }),
+          },
+          { receivedAt: 10 },
+        ),
+      ).resolves.toMatchObject({ kind: "accepted" });
+      currentTime = 1_100_000;
+      monitor.start();
+      await monitor.waitForIdle();
+
+      const failedRows = await queue.listFailed?.({ limit: "all" });
+      expect(failedRows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            reason: "stale-backlog",
+            message: expect.stringContaining("excluded before claim"),
+          }),
+        ]),
+      );
+
+      await expect(
+        queue.enqueue("stale-backlog", {
+          version: 1,
+          rawEvent: JSON.stringify({ id: "stale-backlog", lane: "a", text: "hello" }),
+        }),
+      ).resolves.toMatchObject({ kind: "failed", duplicate: true });
+
+      await monitor.stop();
+    });
+  });
+
   it("prunes zero-interval retention once before a multi-event batch", async () => {
     await withQueue(async (queue) => {
       const prune = vi.spyOn(queue, "prune");
