@@ -1,6 +1,7 @@
-// Recent-queue message-id dedupe shared by enqueue admission and abandonment release.
+// Recent-queue message-id dedupe shared by enqueue admission and pre-retry release.
 import { resolveGlobalDedupeCache } from "../../../infra/dedupe.js";
 import type { TurnAdoptionLifecycle } from "../../get-reply-options.types.js";
+import { releaseBeforeTurnAdoptionRetry } from "./lifecycle.js";
 
 const RECENT_QUEUE_MESSAGE_ID_TTL_MS = 5 * 60 * 1000;
 const RECENT_QUEUE_MESSAGE_ID_MAX_SIZE = 10_000;
@@ -31,12 +32,10 @@ export function recordRecentQueueMessageId(
   RECENT_QUEUE_MESSAGE_IDS.check(key, now, ownerToken);
   const lifecycle = run.turnAdoptionLifecycle;
   if (lifecycle) {
-    const onAbandoned = lifecycle.onAbandoned;
-    lifecycle.onAbandoned = () => {
+    releaseBeforeTurnAdoptionRetry(lifecycle, () => {
       // Lifecycle callbacks survive summary cloning. Free only this entry before retry.
       RECENT_QUEUE_MESSAGE_IDS.delete(key, ownerToken);
-      onAbandoned?.();
-    };
+    });
   }
 }
 

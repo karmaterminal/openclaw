@@ -98,6 +98,8 @@ export type TurnAdoptionLifecycle = {
   deferredHeartbeatIntervalMs?: number;
   /** Deferred turn finished without owning the reply lane. */
   onAbandoned?: () => void;
+  /** Queued turn cancelled before admission; releases without spending retry budget. */
+  onCancelled?: () => void;
   /** Always fires when the followup ownership cycle ends (admitted or not). Gateway cleanup. */
   onSettled?: () => void;
   /** Retires cancellation ownership while retaining live identity. */

@@ -69,6 +69,30 @@ export function markFollowupRunEnqueued(run: FollowupLifecycleRun): boolean {
   return true;
 }
 
+/**
+ * Dedupe owners must free their entry before durable ingress retries the turn.
+ * Cancellation and abandonment are both pre-retry releases, so hook whichever
+ * terminal callbacks this lifecycle actually exposes. A lifecycle without
+ * onCancelled still cancels through onAbandoned, which is already hooked.
+ */
+export function releaseBeforeTurnAdoptionRetry(
+  lifecycle: TurnAdoptionLifecycle,
+  release: () => void,
+): void {
+  const onAbandoned = lifecycle.onAbandoned;
+  lifecycle.onAbandoned = () => {
+    release();
+    onAbandoned?.();
+  };
+  const onCancelled = lifecycle.onCancelled;
+  if (onCancelled) {
+    lifecycle.onCancelled = () => {
+      release();
+      onCancelled();
+    };
+  }
+}
+
 export function retireFollowupRunCancellation(run: FollowupLifecycleRun): void {
   const lifecycle = run.turnAdoptionLifecycle;
   if (!lifecycle || retiredTurnAdoptionCancellationLifecycles.has(lifecycle)) {
@@ -110,7 +134,7 @@ export async function admitFollowupRunLifecycle(run: FollowupLifecycleRun): Prom
 
 export function completeFollowupRunLifecycle(
   run: FollowupLifecycleRun,
-  disposition?: "consumed",
+  disposition?: "consumed" | "cancelled",
 ): void {
   run.steerPending?.settle(false);
   const lifecycle = run.turnAdoptionLifecycle;
@@ -124,7 +148,13 @@ export function completeFollowupRunLifecycle(
     // non-rejecting promise. onSettled must still run after a synchronous throw.
     try {
       if (disposition !== "consumed" && !admittedTurnAdoptionLifecycles.has(lifecycle)) {
-        lifecycle.onAbandoned?.();
+        // Cancellation ended ownership before the reply lane, so it settles
+        // through the cancel callback and leaves the retry budget untouched.
+        if (disposition === "cancelled" && lifecycle.onCancelled) {
+          lifecycle.onCancelled();
+        } else {
+          lifecycle.onAbandoned?.();
+        }
       }
     } finally {
       lifecycle.onSettled?.();
