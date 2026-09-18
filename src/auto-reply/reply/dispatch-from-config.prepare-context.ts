@@ -38,6 +38,7 @@ import type { DispatchFromConfigResult } from "./dispatch-from-config.types.js";
 import { claimInboundDedupe } from "./inbound-dedupe.js";
 import { emitMessageReceivedHooks as emitSharedMessageReceivedHooks } from "./message-received-hooks.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
+import { releaseBeforeTurnAdoptionRetry } from "./queue/lifecycle.js";
 import { waitForReplyDispatcherIdle } from "./reply-dispatcher.js";
 import { recordReplyOperationAgentTurn } from "./reply-operation-run-state.js";
 import { isDuplicateRestartRecoverySource } from "./restart-recovery-claim.js";
@@ -439,24 +440,13 @@ export async function prepareDispatchOperationContext(state: PrepareDispatchDeli
   const releaseInboundDedupeIfClaimed = () => inboundDedupeClaim.release?.();
   const lifecycle = params.replyOptions?.turnAdoptionLifecycle;
   if (lifecycle && inboundDedupeClaim.status === "claimed") {
-    const releaseUnadoptedInboundDedupe = () => {
-      // Release before ingress retries, including cancellation or abandonment before commit.
+    releaseBeforeTurnAdoptionRetry(lifecycle, () => {
+      // Release before ingress retries, including abandonment or cancellation
+      // before commit.
       if (!state.inboundDedupeReplayUnsafe && !state.turnAdoptionState?.adopted) {
         inboundDedupeClaim.release();
       }
-    };
-    const onAbandoned = lifecycle.onAbandoned;
-    lifecycle.onAbandoned = () => {
-      releaseUnadoptedInboundDedupe();
-      onAbandoned?.();
-    };
-    const onCancelled = lifecycle.onCancelled;
-    if (onCancelled) {
-      lifecycle.onCancelled = () => {
-        releaseUnadoptedInboundDedupe();
-        return onCancelled();
-      };
-    }
+    });
   }
   const finishReplyOperationBusyDispatch = (opts?: {
     dedupeDisposition?: "commit" | "release";

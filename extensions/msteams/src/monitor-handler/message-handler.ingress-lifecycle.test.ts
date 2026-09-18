@@ -266,7 +266,7 @@ describe("Microsoft Teams drain claim ownership", () => {
     expect(lifecycle.abandonedCount()).toBe(0);
   });
 
-  it("retries abandonment with backoff, then dead-letters without restart redispatch", async () => {
+  it("preserves abandon retry accounting and backoff, then dead-letters at the threshold without restart redispatch", async () => {
     vi.useFakeTimers();
     const now = Date.UTC(2026, 0, 2);
     vi.setSystemTime(now);
@@ -353,41 +353,51 @@ describe("Microsoft Teams drain claim ownership", () => {
           releasedAt: secondAttempt.lastAttemptAt,
         });
       }
+      // Abandonment is a real attempt, so the last one hits the shared retry
+      // ceiling and dead-letters instead of retrying without bound.
+      const failedCeiling = {
+        id: "activity-abandon",
+        reason: "retry-limit-exceeded",
+        message: "turn-abandoned",
+        // fail() never increments; the claim-time budget is what is retained.
+        attempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS - 1,
+      };
       vi.setSystemTime(secondAttempt.lastAttemptAt + 64_001);
       const threshold = createIntegratedIngress();
       threshold.start();
       await threshold.accept(incoming);
       await vi.waitFor(async () => {
-        expect(await queue.listFailed?.()).toEqual([
-          expect.objectContaining({
-            id: "activity-abandon",
-            attempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS - 1,
-            reason: "retry-limit-exceeded",
-            message: "turn-abandoned",
-          }),
+        expect(await queue.listPending({ limit: "all" })).toEqual([]);
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([
+          expect.objectContaining(failedCeiling),
         ]);
       });
-      expect(await queue.listPending()).toEqual([]);
-      expect(await queue.listClaims()).toEqual([]);
       expect(dispatchMock).toHaveBeenCalledTimes(3);
+      // Dead-lettering releases the claim too; a retained claim would block the lane.
+      expect(await queue.listClaims()).toEqual([]);
       await threshold.stop();
 
-      vi.setSystemTime(Date.now() + 128_001);
+      // A dead-lettered activity stays retired across restarts.
+      vi.setSystemTime(secondAttempt.lastAttemptAt + 192_001);
       const beyond = createIntegratedIngress();
       beyond.start();
       await beyond.accept(incoming);
       await vi.advanceTimersByTimeAsync(0);
-      expect(await queue.listPending()).toEqual([]);
-      expect(await queue.listFailed?.()).toHaveLength(1);
       expect(dispatchMock).toHaveBeenCalledTimes(3);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([
+        expect.objectContaining(failedCeiling),
+      ]);
       await beyond.stop();
 
-      vi.setSystemTime(Date.now() + 1_000);
+      // A second restart past the ceiling still must not redispatch.
+      vi.setSystemTime(secondAttempt.lastAttemptAt + 193_001);
       const blockedRestart = createIntegratedIngress();
       blockedRestart.start();
       await blockedRestart.accept(incoming);
       await vi.advanceTimersByTimeAsync(0);
       expect(dispatchMock).toHaveBeenCalledTimes(3);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
       await blockedRestart.stop();
     } finally {
       dispatchMock.mockReset();
