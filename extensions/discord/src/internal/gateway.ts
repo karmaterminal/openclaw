@@ -19,6 +19,10 @@ import { asSafeIntegerInRange, MAX_TIMER_TIMEOUT_MS } from "openclaw/plugin-sdk/
 import { asOptionalRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type * as ws from "ws";
 import { Plugin, type Client } from "./client.js";
+import {
+  DiscordGatewayChannelInventory,
+  type DiscordGatewayChannelInfo,
+} from "./gateway-channel-inventory.js";
 import { canResumeAfterGatewayClose, isFatalGatewayCloseCode } from "./gateway-close-codes.js";
 import { dispatchVoiceGatewayEvent, mapGatewayDispatchData } from "./gateway-dispatch.js";
 import { sharedGatewayIdentifyLimiter } from "./gateway-identify-limiter.js";
@@ -98,6 +102,7 @@ export class GatewayPlugin extends Plugin {
   private readonly heartbeatTimers = new GatewayHeartbeatTimers();
   private readonly reconnectTimer = new GatewayReconnectTimer();
   private readonly voiceStateCache = new DiscordGatewayVoiceStateCache();
+  private readonly channelInventory = new DiscordGatewayChannelInventory();
   private outboundLimiter = new GatewaySendLimiter(
     (payload) => this.sendSerializedGatewayEvent(payload),
     (error) => this.emitter.emit("error", error),
@@ -125,6 +130,20 @@ export class GatewayPlugin extends Plugin {
 
   listVoiceChannelStates(guildId: string, channelId: string): APIVoiceState[] | null {
     return this.voiceStateCache.listVoiceChannelStates(guildId, channelId);
+  }
+
+  /** Authoritative gateway channel facts; undefined means "not known here". */
+  getGatewayChannelInfo(channelId: string): DiscordGatewayChannelInfo | undefined {
+    return this.channelInventory.get(channelId);
+  }
+
+  /**
+   * True while this session cannot yet answer for the guild's channels: before
+   * READY on a new or reconnecting session, and between READY and the guild's
+   * GUILD_CREATE snapshot.
+   */
+  isGatewayChannelInventoryHydrating(guildId: string): boolean {
+    return !this.isConnected || this.channelInventory.isGuildHydrating(guildId);
   }
 
   async fetchGuildEmojis<T>(guildId: string, fetcher: () => Promise<T>): Promise<T> {
@@ -194,6 +213,7 @@ export class GatewayPlugin extends Plugin {
     this.reconnectAttempts = 0;
     this.consecutiveResumeFailures = 0;
     this.voiceStateCache.clear();
+    this.channelInventory.clear();
   }
 
   protected createWebSocket(url: string): ws.WebSocket {
@@ -430,6 +450,7 @@ export class GatewayPlugin extends Plugin {
       this.isConnected = true;
     }
     this.voiceStateCache.apply(payload);
+    this.channelInventory.apply(payload);
     dispatchVoiceGatewayEvent(this.client, payload.t, payload.d);
     // MESSAGE_CREATE is the durable-ingress raw-envelope boundary. Its listener
     // maps structures only after the queue claim; other events retain eager mapping.
@@ -449,6 +470,7 @@ export class GatewayPlugin extends Plugin {
     this.sequence = null;
     this.consecutiveResumeFailures = 0;
     this.voiceStateCache.clear();
+    this.channelInventory.clear();
   }
 
   private getResumeState(): { sessionId: string; sequence: number } | null {
