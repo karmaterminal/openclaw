@@ -1,5 +1,5 @@
 import { ComponentType } from "discord-api-types/v10";
-import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { isRecord, normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { Message } from "../internal/discord.js";
 import {
   formatDiscordSnapshotAuthor,
@@ -50,20 +50,40 @@ export function resolveDiscordMessageText(
 }
 
 export function resolveDiscordMessageMentionDocuments(message: Message): string[] {
+  return resolveDiscordRawMessageMentionDocuments({
+    content: message.content,
+    embeds: message.embeds,
+    components: resolveDiscordMessageComponents(message),
+  });
+}
+
+/**
+ * Same mention/command document rules for a raw gateway frame, which durable
+ * ingress replay sees before any Message structure exists. Keeping one
+ * implementation stops preclaim policy from reading less text than preflight.
+ */
+export function resolveDiscordRawMessageMentionDocuments(message: {
+  content?: unknown;
+  embeds?: unknown;
+  components?: unknown;
+}): string[] {
   const content = typeof message.content === "string" ? message.content : "";
   if (content.trim()) {
     return [content];
   }
-  const embedDocuments = (message.embeds ?? []).flatMap(({ title, description }) =>
-    [title, description].filter(
-      (value): value is string => typeof value === "string" && Boolean(value.trim()),
-    ),
+  const embedDocuments = (Array.isArray(message.embeds) ? message.embeds : []).flatMap(
+    (embed): string[] =>
+      isRecord(embed)
+        ? [embed.title, embed.description].filter(
+            (value): value is string => typeof value === "string" && Boolean(value.trim()),
+          )
+        : [],
   );
   if (embedDocuments.length > 0) {
     return embedDocuments;
   }
   const componentDocuments: string[] = [];
-  collectDiscordTextDisplayDocuments(resolveDiscordMessageComponents(message), componentDocuments);
+  collectDiscordTextDisplayDocuments(message.components, componentDocuments);
   return componentDocuments;
 }
 
