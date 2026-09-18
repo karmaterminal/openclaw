@@ -1,11 +1,18 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
+/**
+ * Marks an `onAbandoned` call that is really aggregate cancellation. Lifecycles
+ * that predate `onCancelled` expose cancellation through `onAbandoned`, so the
+ * durable owner needs the distinction to keep those releases budget-free.
+ */
 const ingressCancelCompat = new AsyncLocalStorage<true>();
 
+/** Run a source-compatible cancellation fallback as cancellation, not abandonment. */
 export function runIngressCancelCompat<T>(fn: () => T): T {
   return ingressCancelCompat.run(true, fn);
 }
 
+/** True while the running `onAbandoned` call stands in for cancellation. */
 export function isIngressCancelCompat(): boolean {
   return ingressCancelCompat.getStore() === true;
 }
@@ -40,7 +47,8 @@ export type ChannelIngressDispatchLifecycle = {
   onCancelled?: () => void | Promise<void>;
   /**
    * Deferred turn finished without ever owning the reply lane.
-   * Drain releases the claim for retry.
+   * Drain applies the bounded retry disposition unless a source-compatible
+   * fan-in callback invokes it as cancellation.
    */
   onAbandoned: () => void | Promise<void>;
 };
@@ -58,8 +66,10 @@ export function bindIngressLifecycleToReplyOptions(lifecycle: ChannelIngressDisp
       onAdopted: lifecycle.onAdopted,
       onDeferred: lifecycle.onDeferred,
       onDeferredHeartbeat: lifecycle.onDeferredHeartbeat,
-      ...(lifecycle.onCancelled ? { onCancelled: lifecycle.onCancelled } : {}),
       deferredHeartbeatIntervalMs: lifecycle.deferredHeartbeatIntervalMs,
+      // Cancellation is part of the reply-lane terminal contract: a queued turn
+      // dropped before admission must release its claim without spending budget.
+      ...(lifecycle.onCancelled ? { onCancelled: lifecycle.onCancelled } : {}),
       onAbandoned: lifecycle.onAbandoned,
       abortSignal: lifecycle.abortSignal,
     },

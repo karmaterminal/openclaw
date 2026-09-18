@@ -21,7 +21,10 @@ import {
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
 import { createIngressWriter } from "./ingress-claim-writes.js";
-import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
+import {
+  isIngressCancelCompat,
+  type ChannelIngressDispatchLifecycle,
+} from "./ingress-drain-lifecycle.js";
 import {
   applyIngressPendingDispositions,
   type ResolveChannelIngressPendingDisposition,
@@ -319,9 +322,10 @@ export function createChannelIngressDrain<
     state.stallTimer.unref?.();
   };
 
-  const releaseUnadopted = async (
+  // One pre-adoption settlement guard; callers choose the claim disposition.
+  const settleUnadopted = async (
     state: ActiveHandlerState<TPayload, TMetadata>,
-    releaseOptions: { lastError?: string; recordAttempt?: boolean },
+    settle: (claim: ChannelIngressQueueClaim<TPayload, TMetadata>) => Promise<void>,
   ) => {
     if (state.phase !== "deferred" && state.phase !== "dispatching") {
       return;
@@ -332,7 +336,7 @@ export function createChannelIngressDrain<
     clearStallTimer(state);
     await state
       .settleOnce(async () => {
-        await releaseClaim(state.claim, releaseOptions);
+        await settle(state.claim);
       })
       .catch(() => undefined);
   };
@@ -407,10 +411,22 @@ export function createChannelIngressDrain<
       onCancelled: async () => {
         // Cancellation means ownership ended before delivery, so preserve every
         // prior retry fact while reopening the canonical row for replacement.
-        await releaseUnadopted(state, { recordAttempt: false });
+        await settleUnadopted(state, async (claim) => {
+          await releaseClaim(claim, { recordAttempt: false });
+        });
       },
       onAbandoned: async () => {
-        await releaseUnadopted(state, { lastError: "turn-abandoned" });
+        await settleUnadopted(state, async (claim) => {
+          // A source-compatible fan-in reaches cancellation through this
+          // callback; that release must not spend the event's retry budget.
+          if (isIngressCancelCompat()) {
+            await releaseClaim(claim, { recordAttempt: false });
+            return;
+          }
+          // Genuine abandonment is a real attempt, so it settles through the
+          // shared retry owner instead of retrying without bound.
+          await applyFailureDisposition(claim, new Error("turn-abandoned"));
+        });
       },
     };
   };
