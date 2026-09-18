@@ -23,6 +23,10 @@ import {
 import { createIngressWriter } from "./ingress-claim-writes.js";
 import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
 import {
+  applyIngressPendingDispositions,
+  type ResolveChannelIngressPendingDisposition,
+} from "./ingress-drain-pending-disposition.js";
+import {
   activeClaimKey,
   createIngressSettleOwner,
   IngressAdoptionLostError,
@@ -83,6 +87,11 @@ export type CreateChannelIngressDrainOptions<
     storedLaneKey: string,
     derivedLaneKey: string,
   ) => boolean;
+  /**
+   * Optional channel policy that may terminally fail a stored pending row
+   * before it is claimed. Return null/undefined to keep the row claimable.
+   */
+  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
   ownerId?: string;
   adoptionStallTimeoutMs?: number;
   claimLeaseMs?: number;
@@ -576,7 +585,19 @@ export function createChannelIngressDrain<
 
     await recoverStaleClaims();
 
-    const pending = await queue.listPending({ limit: "all", orderBy });
+    // One clock for the whole snapshot: disposition awaits must not let retry
+    // delays be measured against a later instant than the rows they gate.
+    const snapshotNow = now();
+    const disposition = await applyIngressPendingDispositions({
+      pending: await queue.listPending({ limit: "all", orderBy }),
+      now: snapshotNow,
+      queue,
+      ...(options.resolvePendingDisposition ? { resolve: options.resolvePendingDisposition } : {}),
+      resolveLaneKey: (record) =>
+        resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey),
+      log,
+    });
+    const pending = disposition.pending;
     const claims = await queue.listClaims();
     const activeLaneKeys = new Set(laneOwnerByKey.keys());
     const claimedLaneKeys = new Set(
@@ -601,7 +622,7 @@ export function createChannelIngressDrain<
     // Delayed tails leave this snapshot so a sibling cannot make them start early.
     for (const [index, event] of pending.entries()) {
       const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
-      if (resolveIngressRetryDelayMs(event, options.retryPolicy, now()) > 0) {
+      if (resolveIngressRetryDelayMs(event, options.retryPolicy, snapshotNow) > 0) {
         retryDelayed[index] = 1;
         if (!pendingLaneKeys.has(laneKey)) {
           retryDelayedLaneKeys.add(laneKey);
@@ -615,6 +636,7 @@ export function createChannelIngressDrain<
       ...sortedKeys(activeLaneKeys),
       ...sortedKeys(claimedLaneKeys),
       ...sortedKeys(retryDelayedLaneKeys),
+      ...sortedKeys(disposition.blockedLaneKeys),
     ]);
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
