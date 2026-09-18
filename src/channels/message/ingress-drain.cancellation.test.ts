@@ -13,6 +13,7 @@ type ChannelIngressDispatchLifecycle = Parameters<
   Parameters<typeof createChannelIngressDrain>[0]["dispatchClaimedEvent"]
 >[1];
 
+/** A source-compatible lifecycle predates onCancelled and cancels via onAbandoned. */
 function withoutCancellation(
   lifecycle: ChannelIngressDispatchLifecycle,
 ): Omit<ChannelIngressDispatchLifecycle, "onCancelled"> {
@@ -103,6 +104,7 @@ describe("channel ingress drain cancellation", () => {
       const lifecycles = new Map<string, ChannelIngressDispatchLifecycle>();
       const drain = createChannelIngressDrain<Payload>({
         queue,
+        // One attempt: abandonment would dead-letter both rows immediately.
         retryPolicy: { maxAttempts: 1, deadLetterMinAgeMs: 0, baseMs: 0, maxMs: 0 },
         dispatchClaimedEvent: async (event, lifecycle) => {
           lifecycles.set(event.id, lifecycle);
@@ -119,7 +121,9 @@ describe("channel ingress drain cancellation", () => {
       );
       await fanInChannelIngressLifecycles([modern, legacy]).cancel();
 
-      expect(await queue.listPending()).toEqual(
+      const pending = await queue.listPending();
+      expect(pending).toHaveLength(2);
+      expect(pending).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ id: "modern", attempts: 0 }),
           expect.objectContaining({ id: "legacy", attempts: 0 }),

@@ -318,6 +318,7 @@ export function createChannelIngressDrain<
     state.stallTimer.unref?.();
   };
 
+  // One pre-adoption settlement guard; callers choose the claim disposition.
   const settleUnadopted = async (
     state: ActiveHandlerState<TPayload, TMetadata>,
     settle: (claim: ChannelIngressQueueClaim<TPayload, TMetadata>) => Promise<void>,
@@ -412,11 +413,15 @@ export function createChannelIngressDrain<
       },
       onAbandoned: async () => {
         await settleUnadopted(state, async (claim) => {
+          // A source-compatible fan-in reaches cancellation through this
+          // callback; that release must not spend the event's retry budget.
           if (isIngressCancelCompat()) {
             await releaseClaim(claim, { recordAttempt: false });
-          } else {
-            await applyFailureDisposition(claim, new Error("turn-abandoned"));
+            return;
           }
+          // Genuine abandonment is a real attempt, so it settles through the
+          // shared retry owner instead of retrying without bound.
+          await applyFailureDisposition(claim, new Error("turn-abandoned"));
         });
       },
     };
