@@ -205,23 +205,23 @@ export function fanInChannelIngressLifecycles(
       }
     }
   };
-  const supportsCancellation = lifecycles.every((lifecycle) => lifecycle.onCancelled !== undefined);
   const deferredHeartbeatIntervals = lifecycles
     .map((lifecycle) => lifecycle.deferredHeartbeatIntervalMs)
     .filter(
       (interval): interval is number =>
         interval !== undefined && Number.isFinite(interval) && interval > 0,
     );
-  // Omit aggregate cancellation unless every durable source supports it. Callers
-  // can then use settle/abandon without an acknowledged-but-unsettled claim.
+  // Every source settles here, so the aggregate always offers cancellation: a
+  // mixed fan-in that hid it would fall back to budget-spending abandonment.
   const cancelAll = () =>
     settleOnce(() =>
-      fanOut((lifecycle) => {
-        if (lifecycle.onCancelled) {
-          return lifecycle.onCancelled();
-        }
-        return runIngressCancelCompat(() => lifecycle.onAbandoned());
-      }),
+      fanOut((lifecycle) =>
+        lifecycle.onCancelled
+          ? lifecycle.onCancelled()
+          : // Source-compatible lifecycles predate onCancelled. Mark the fallback
+            // so the durable owner still releases without spending retry budget.
+            runIngressCancelCompat(() => lifecycle.onAbandoned()),
+      ),
     );
   return {
     lifecycle: {
@@ -256,14 +256,10 @@ export function fanInChannelIngressLifecycles(
         handedOff = true;
         await failAll(error);
       },
-      ...(supportsCancellation
-        ? {
-            onCancelled: async () => {
-              handedOff = true;
-              await cancelAll();
-            },
-          }
-        : {}),
+      onCancelled: async () => {
+        handedOff = true;
+        await cancelAll();
+      },
       onAbandoned: async () => {
         handedOff = true;
         await settleOnce(() =>
