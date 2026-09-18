@@ -1,12 +1,12 @@
 import type { ChannelIngressQueue, ChannelIngressQueueRecord } from "./ingress-queue.js";
 
-export type ChannelIngressPendingDisposition = {
+type ChannelIngressPendingDisposition = {
   kind: "fail";
   reason: string;
   message: string;
 };
 
-export type ChannelIngressPendingDispositionContext = {
+type ChannelIngressPendingDispositionContext = {
   laneKey: string;
   now: number;
 };
