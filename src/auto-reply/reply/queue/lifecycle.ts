@@ -117,7 +117,7 @@ export function releaseBeforeTurnAdoptionRetry(
   if (onCancelled) {
     lifecycle.onCancelled = () => {
       release();
-      onCancelled();
+      return onCancelled();
     };
   }
 }
