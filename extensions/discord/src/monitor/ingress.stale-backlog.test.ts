@@ -183,7 +183,7 @@ describe("Discord ingress stale ambient backlog boundary", () => {
       }
 
       expect(dispatched).not.toContain("stale-ambient");
-      expect([...dispatched].sort()).toEqual([
+      expect(dispatched.toSorted()).toEqual([
         "current-ambient",
         "stale-addressed",
         "stale-open",

@@ -2,6 +2,7 @@
 import {
   GatewayDispatchEvents,
   type APIChannel,
+  type ChannelType,
   type GatewayChannelDeleteDispatchData,
   type GatewayDispatchPayload,
   type GatewayGuildCreateDispatchData,
@@ -13,7 +14,12 @@ export type DiscordGatewayChannelInfo = {
   guildId?: string;
   name?: string;
   parentId?: string;
-  type: number;
+  /**
+   * Declared as the enum rather than a bare number: the inventory only accepts
+   * an APIChannel `type`, so widening it here makes every comparison against a
+   * ChannelType member an unsafe cross-type comparison at each call site.
+   */
+  type: ChannelType;
 };
 
 type ChannelLike = Partial<Pick<APIChannel, "id" | "type" | "name">> & {
