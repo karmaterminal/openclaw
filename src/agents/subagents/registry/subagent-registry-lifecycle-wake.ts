@@ -31,6 +31,7 @@ import {
   retryPendingWakeCommit,
 } from "./subagent-registry-requester-wake-commit.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
+import { requesterCompletionSettlementNeedsTask } from "./subagent-requester-settlement-task-owner.js";
 import { hasSubagentRunEnded } from "./subagent-run-liveness.js";
 
 type RequesterSettleWakeBatchState =
@@ -116,6 +117,9 @@ const completeRequesterSettleWakeBatch = (
   if (outcome) {
     settleRequesterCompletionBatch({
       entries: entries.map((subagent) => {
+        if (!requesterCompletionSettlementNeedsTask(subagent, outcome)) {
+          return { subagent };
+        }
         const resolution = params.resolveSubagentTask(subagent);
         if (resolution.lookup !== "available") {
           throw new Error(
