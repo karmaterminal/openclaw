@@ -113,7 +113,33 @@ const completeRequesterSettleWakeBatch = (
     return false;
   }
   const requesterSessionKeys = new Set(entries.map((entry) => entry.requesterSessionKey));
-  if (outcome) {
+  // karmaterminal/openclaw#1363. Settling an outcome resolves the owning
+  // detached task first, and a task that has gone away does not come back. For
+  // a DELIVERED outcome that has to stay fatal: a transport result and its
+  // replay budget cannot be erased just because the owner vanished, so the
+  // caller retains and retries.
+  //
+  // A NON-DELIVERY is the opposite case. It carries no receipt to lose, and it
+  // is how the attempt ceiling in subagent-announce.requester-settle-wake.ts
+  // gives up. Routing it through the owner meant the owner being gone was at
+  // once the reason retrying was pointless and the reason giving up was
+  // impossible, so the row was never retired and the 60s sweeper re-armed it
+  // for the life of the process. On the silas seat that produced 5,634 warning
+  // pairs in 48h from two orphaned runs.
+  //
+  // So a non-delivery whose owner is gone retires the row locally instead,
+  // through the same path a no-outcome settlement already uses.
+  const ownerlessGiveUp =
+    outcome !== undefined &&
+    outcome.delivered === false &&
+    entries.some((subagent) => params.resolveSubagentTask(subagent).lookup !== "available");
+  if (ownerlessGiveUp) {
+    params.warn("requester settle wake gave up without a completion owner", {
+      runIds: entries.map((entry) => maskLifecycleIdentifier(entry.runId, "run")),
+      error: outcome?.error,
+    });
+  }
+  if (outcome && !ownerlessGiveUp) {
     settleRequesterCompletionBatch({
       entries: entries.map((subagent) => {
         const resolution = params.resolveSubagentTask(subagent);

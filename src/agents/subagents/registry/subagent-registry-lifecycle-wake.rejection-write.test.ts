@@ -132,9 +132,11 @@ function warnedMessages(warn: ReturnType<typeof vi.fn>): string[] {
 // pending.failures never accumulates across cycles and a ceiling on it could
 // never fire.
 //
-// BELLED ROPE: the second case below pins the CURRENT DEFECTIVE behavior. If you
-// are fixing #1363, it SHOULD fail — change it deliberately, and keep the first
-// case, which is the contract that must survive any fix.
+// BELLED ROPE, RUNG AND REPLACED. The second case below used to pin the
+// defective behavior and to instruct whoever fixed #1363 to change it
+// deliberately. This is that deliberate change: it now pins the cure, that an
+// ownerless give-up retires the row instead of looping. The first case is
+// untouched — it is the contract that had to survive the fix, and it did.
 describe("requester settle wake rejection write", () => {
   it("records the rejection through settlement when the completion owner is available", async () => {
     vi.clearAllMocks();
@@ -166,7 +168,7 @@ describe("requester settle wake rejection write", () => {
     }
   });
 
-  it("cannot record the rejection and leaves the row armed when the completion owner is gone", async () => {
+  it("retires the row locally when the completion owner is gone", async () => {
     vi.clearAllMocks();
     resetGatewayWorkAdmission();
     const { controller, entry, warn, persisted, origin } = buildHarness(
@@ -176,20 +178,87 @@ describe("requester settle wake rejection write", () => {
     try {
       origin.run(() => controller.resumeRequesterSettleWake(entry.runId, entry));
       await vi.waitFor(() => {
-        expect(warnedMessages(warn)).toContain("failed to persist requester settle wake rejection");
+        expect(warnedMessages(warn)).toContain(
+          "requester settle wake gave up without a completion owner",
+        );
       });
       const messages = warnedMessages(warn);
-      // The exact 1:1 pair seen on the seat: the second line is the caller
-      // observing commitRequesterWake's intentional rethrow, not a second fault.
+      // The wake itself still failed and is still reported once. What changed is
+      // what happens next.
       expect(messages.filter((m) => m === "requester settle wake failed")).toHaveLength(1);
-      expect(
-        messages.filter((m) => m === "failed to persist requester settle wake rejection"),
-      ).toHaveLength(1);
-      // The throw happens while resolving the owner, BEFORE any durable write.
-      expect(persisted).toEqual([]);
-      // No terminal state was reached, so the row remains eligible to re-fire.
-      expect(entry.requesterSettleWake).toBeDefined();
-      expect(entry.requesterSettleWake?.rearmGeneration).toBe(1);
+      // The seat's second line is gone. There is no failed rejection write any
+      // more, because the give-up no longer needs the owner to record it.
+      expect(messages).not.toContain("failed to persist requester settle wake rejection");
+      // Abandoning a wake is recorded, not silent.
+      expect(messages).toContain("requester settle wake gave up without a completion owner");
+      // Terminal now: the row is retired, so the 60s sweeper has nothing left to
+      // re-arm. This is the assertion the belled rope was guarding.
+      expect(entry.requesterSettleWake).toBeUndefined();
+    } finally {
+      controller.clearScheduledResumeTimers();
+      await origin.drain();
+      resetGatewayWorkAdmission();
+    }
+  });
+});
+
+// karmaterminal/openclaw#1363, second half. The belled rope above pins the
+// single-attempt behavior. This pins what makes it a LOOP rather than a
+// one-time loss, and it is the case a fix has to make pass.
+//
+// REQUESTER_SETTLE_WAKE_MAX_ATTEMPTS is 3, and the exhaustion branch in
+// subagent-announce.requester-settle-wake.ts gives up by calling completeBatch
+// with { delivered: false, path: "none" }. That routes into
+// completeRequesterSettleWakeBatch WITH AN OUTCOME, which resolves the owning
+// detached task FIRST and throws when the lookup is unavailable.
+//
+// So the owner being gone is at once the condition that makes retrying
+// pointless AND the condition that makes giving up impossible. The row is never
+// retired, and subagent-registry-sweeper.ts:239 re-arms every ended run that
+// still carries a wake on its 60s schedule (delayMs: 60_000, lines 63 and 107).
+// That is the loop seen on silas: 5,634 warnings over 48h, emitted as an exact
+// pair, two pairs in the same second — one sweep re-arming two orphaned runs —
+// and the next pair exactly 60s later.
+//
+// This test drives the row to the attempt ceiling and asserts it reaches a
+// terminal state. It FAILS TODAY, and it must fail for that reason and no
+// other: the give-up write throws, so requesterSettleWake stays defined and the
+// next sweep re-arms it.
+describe("requester settle wake attempt exhaustion", () => {
+  it("retires the row when the owner is gone and the attempts are spent", async () => {
+    vi.clearAllMocks();
+    resetGatewayWorkAdmission();
+    const { controller, entry, warn, origin } = buildHarness(
+      "unavailable",
+      new Error("wake transport refused"),
+    );
+    // At the ceiling: the next pass takes the exhaustion branch rather than
+    // dispatching another attempt.
+    entry.requesterSettleWake = {
+      status: "pending",
+      attemptCount: 3,
+      rearmGeneration: 1,
+    };
+    try {
+      origin.run(() => controller.resumeRequesterSettleWake(entry.runId, entry));
+      await vi.waitFor(() => {
+        expect(warnedMessages(warn)).toContain(
+          "requester settle wake gave up without a completion owner",
+        );
+      });
+      // The give-up is recorded rather than silent: an abandoned wake is a
+      // thing an operator has to be able to find afterwards.
+      expect(warnedMessages(warn)).toContain(
+        "requester settle wake gave up without a completion owner",
+      );
+      // And it must no longer report a failed rejection write, because there is
+      // no longer a failed write — that was the loop.
+      expect(warnedMessages(warn)).not.toContain(
+        "failed to persist requester settle wake rejection",
+      );
+      // The row must not remain armed. While it does, the sweeper re-arms it
+      // every 60s for the life of the process and nothing can ever clear it.
+      expect(entry.requesterSettleWake).toBeUndefined();
     } finally {
       controller.clearScheduledResumeTimers();
       await origin.drain();
