@@ -23,7 +23,10 @@ import {
   normalizeTextForComparison,
 } from "./embedded-agent-helpers.js";
 import { runBestEffortCallback } from "./embedded-agent-subscribe.callback.js";
-import { shouldSuppressDeterministicApprovalOutput } from "./embedded-agent-subscribe.handlers.messages.stream.js";
+import {
+  shouldSuppressDeterministicApprovalOutput,
+  stripContinuationSignalFromDisplayText,
+} from "./embedded-agent-subscribe.handlers.messages.stream.js";
 import type {
   EmbeddedAgentSubscribeContext,
   StreamBlockState,
@@ -451,6 +454,11 @@ export function createStreamRendering({
     }
     // Prepared chunks already removed real directives with full source context;
     // a chunk boundary can separate a remaining literal from its code opener.
+    // The chunker buffers RAW streamed text, so a turn cut off mid-marker
+    // ("Done.\nCONTINUE_WOR") reaches a reply with the partial control token
+    // still attached when message_end flushes the buffer. Every other display
+    // path already applies this strip; the chunker was the one that did not.
+    chunk = stripContinuationSignalFromDisplayText(chunk);
     let splitResult: ReplyDirectiveParseResult = {
       text: chunk,
       replyToTag: false,
