@@ -71,11 +71,22 @@ export function resolveFinalReplyReconciliation(params: {
         normalizeTerminalComparison(textEndDeliveredVisibleText));
   let finalTextCorrection = "";
   if (!finalTextMatchesDelivered) {
-    if (
+    // A streamed chunk keeps its trailing whitespace deliberately: concatenating
+    // the streamed part with the final part has to reproduce the source bytes
+    // exactly (see the "Caption " + "[[oops" case). That whitespace is not part
+    // of the block boundary though, so an exact startsWith fails whenever the
+    // source continues with a newline — delivered "First " against final
+    // "First\nSecond". The else branch then re-sent the WHOLE message as the
+    // correction, so the reader saw "First " followed by "First\nSecond".
+    // Retry the prefix test against the delivered text without its trailing
+    // whitespace so the correction is the undelivered remainder.
+    const deliveredPrefix =
       textEndDeliveredVisibleText &&
-      params.finalAssistantText.startsWith(textEndDeliveredVisibleText)
-    ) {
-      finalTextCorrection = params.finalAssistantText.slice(textEndDeliveredVisibleText.length);
+      !params.finalAssistantText.startsWith(textEndDeliveredVisibleText)
+        ? textEndDeliveredVisibleText.trimEnd()
+        : textEndDeliveredVisibleText;
+    if (deliveredPrefix && params.finalAssistantText.startsWith(deliveredPrefix)) {
+      finalTextCorrection = params.finalAssistantText.slice(deliveredPrefix.length);
     } else if (params.finalAssistantText !== textEndDeliveredVisibleText) {
       finalTextCorrection = params.finalAssistantText;
     }
