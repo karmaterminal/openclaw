@@ -2275,12 +2275,20 @@ function createAgenticGatewayCoreSplitShards(): NodeTestSplitShard[] {
           },
         ]
       : []),
-    {
-      configs: ["test/vitest/vitest.gateway-server.config.ts"],
-      includePatterns: [RETURN_COVENANT_GATEWAY_TEST_FILE],
-      requiresDist: false,
-      shardName: "agentic-gateway-return-covenant",
-    },
+    // Only when the file is actually tracked. Emitting this stripe
+    // unconditionally invented a shard for a file that need not exist, which
+    // changed the Gateway stripe count for every caller and broke three
+    // upstream measurement tests that assert on it.
+    ...(listTestFiles("src/gateway").includes(RETURN_COVENANT_GATEWAY_TEST_FILE)
+      ? [
+          {
+            configs: ["test/vitest/vitest.gateway-server.config.ts"],
+            includePatterns: [RETURN_COVENANT_GATEWAY_TEST_FILE],
+            requiresDist: false,
+            shardName: "agentic-gateway-return-covenant",
+          },
+        ]
+      : []),
   ];
 }
 
