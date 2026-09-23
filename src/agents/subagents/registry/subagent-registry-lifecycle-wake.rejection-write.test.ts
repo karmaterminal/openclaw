@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { describe, expect, it, vi } from "vitest";
 import { resetGatewayWorkAdmission } from "../../../process/gateway-work-admission.js";
 import { AsyncWorkScope } from "../../../shared/async-work-scope.js";
