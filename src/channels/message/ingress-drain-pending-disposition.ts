@@ -1,10 +1,18 @@
+/**
+ * Core-owned pre-claim disposition pass for stored pending ingress rows.
+ *
+ * Channels opt in through the drain seam to settle rows that can never become
+ * work, or to hold a row while the channel cannot yet classify it, before the
+ * drain builds its candidate window. The hook never sees a claim, so it cannot
+ * take part in adoption, retry, or supersede semantics.
+ */
 import type { ChannelIngressQueue, ChannelIngressQueueRecord } from "./ingress-queue.js";
 
-type ChannelIngressPendingDisposition = {
-  kind: "fail";
-  reason: string;
-  message: string;
-};
+type ChannelIngressPendingDisposition =
+  /** Terminally fail the stored row; it can never become work. */
+  | { kind: "fail"; reason: string; message: string }
+  /** Hold the row and its lane for this pass; the channel cannot classify it yet. */
+  | { kind: "defer" };
 
 type ChannelIngressPendingDispositionContext = {
   laneKey: string;
@@ -30,7 +38,6 @@ type ApplyPendingDispositionsParams<TPayload, TMetadata, TCompletedMetadata> = {
   queue: Pick<ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>, "fail">;
   resolve?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
   resolveLaneKey: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => string;
-  formatError: (err: unknown) => string;
   log: (message: string) => void;
 };
 
@@ -39,63 +46,48 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
 ): Promise<{
   pending: Array<ChannelIngressQueueRecord<TPayload, TMetadata>>;
   blockedLaneKeys: Set<string>;
-  errors: unknown[];
 }> {
-  if (!params.resolve) {
-    return { pending: params.pending, blockedLaneKeys: new Set(), errors: [] };
+  const resolve = params.resolve;
+  if (!resolve) {
+    return { pending: params.pending, blockedLaneKeys: new Set() };
   }
 
   const retained: Array<ChannelIngressQueueRecord<TPayload, TMetadata>> = [];
   const blockedLaneKeys = new Set<string>();
-  const errors: unknown[] = [];
   for (const record of params.pending) {
     const laneKey = params.resolveLaneKey(record);
     if (blockedLaneKeys.has(laneKey)) {
+      // This lane is already fenced for the snapshot. Its head keeps ordering,
+      // so no later row on it may be settled or started ahead of that head.
       retained.push(record);
       continue;
     }
-    let disposition;
-    try {
-      disposition = await params.resolve(record, { laneKey, now: params.now });
-    } catch (err) {
-      params.log(
-        `ingress drain: pending disposition policy failed for event ${record.id} on ${laneKey}: ${params.formatError(err)}`,
-      );
-      retained.push(record);
-      blockedLaneKeys.add(laneKey);
-      errors.push(err);
-      continue;
-    }
+    const disposition = await resolve(record, { laneKey, now: params.now });
     if (!disposition) {
       retained.push(record);
       continue;
     }
-
-    const reason = disposition.reason.trim() || "pending-disposition";
-    const message = disposition.message.trim() || reason;
-    let committed;
-    try {
-      committed = await params.queue.fail(record.id, {
-        reason,
-        message,
-        failedAt: params.now,
-      });
-    } catch (err) {
-      params.log(
-        `ingress drain: pending disposition write failed for event ${record.id} on ${laneKey}: ${params.formatError(err)}`,
-      );
+    if (disposition.kind === "defer") {
+      // The channel cannot classify this row yet. Hold the lane so the row is
+      // neither settled nor claimed before the channel can decide.
       retained.push(record);
       blockedLaneKeys.add(laneKey);
-      errors.push(err);
       continue;
     }
+
+    const reason = disposition.reason.trim() || "pending-disposition";
+    const committed = await params.queue.fail(record.id, {
+      reason,
+      message: disposition.message.trim() || reason,
+      failedAt: params.now,
+    });
     if (!committed) {
-      // A concurrent claim won the CAS. Keep its lane out of this snapshot so
-      // later same-lane work cannot overtake the authoritative claimant.
+      // A concurrent claim won the compare-and-set. Keep its lane out of this
+      // snapshot so later same-lane work cannot overtake the real claimant.
       params.log(`ingress drain: pending disposition lost race for event ${record.id}`);
       retained.push(record);
       blockedLaneKeys.add(laneKey);
     }
   }
-  return { pending: retained, blockedLaneKeys, errors };
+  return { pending: retained, blockedLaneKeys };
 }

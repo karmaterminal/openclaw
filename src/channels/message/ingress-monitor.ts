@@ -161,7 +161,13 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
   const getDrain = (): ChannelIngressDrain => {
     drain ??= createChannelIngressDrain<TStoredPayload, TMetadata>({
       ...options.drain,
-      resolvePendingDisposition: options.resolvePendingDisposition,
+      // Forward the monitor-level policy only when a caller set one. An
+      // unconditional key overwrites a drain-level policy with undefined, and
+      // the drain omits `resolve` for an undefined value, so the whole
+      // disposition pass silently becomes a no-op.
+      ...(options.resolvePendingDisposition
+        ? { resolvePendingDisposition: options.resolvePendingDisposition }
+        : {}),
       queue: getQueue(),
       abortSignal: drainAbortSignal,
       now,

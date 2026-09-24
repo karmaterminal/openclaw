@@ -119,10 +119,14 @@ describe("plugin-sdk/channel-ingress-runtime", () => {
       createLifecycle(undefined, legacyAbandoned),
     ]);
 
-    expect(combined.lifecycle).not.toHaveProperty("onCancelled");
-    await combined.cancel();
+    // The aggregate always offers cancellation: hiding it would send a mixed
+    // fan-in down the aggregate abandon path and spend every source's budget.
+    await combined.lifecycle?.onCancelled?.();
 
     expect(adopted).not.toHaveBeenCalled();
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(legacyAbandoned).toHaveBeenCalledOnce();
+    await combined.cancel();
     expect(cancelled).toHaveBeenCalledOnce();
     expect(legacyAbandoned).toHaveBeenCalledOnce();
   });

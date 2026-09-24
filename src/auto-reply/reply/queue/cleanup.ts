@@ -111,7 +111,7 @@ export function prepareSessionFollowupCleanup(params: {
       consumeQueueSummaryDelivery(
         queue,
         { sources: summaries, droppedCount: summaries.length },
-        false,
+        "retained",
       );
       const detached = new Set([...pending, ...summaries]);
       removed += detached.size;

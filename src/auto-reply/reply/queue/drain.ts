@@ -161,7 +161,7 @@ export function prepareStaleFollowupDrainRetirement(key: string): (() => void) |
     consumeQueueSummaryDelivery(
       queue,
       { droppedCount: activeSummarySources.length, sources: activeSummarySources },
-      false,
+      "retained",
     );
     const replacement = {
       ...queue,
@@ -653,7 +653,6 @@ function createQueueSummaryDelivery(params: {
     sources,
   };
 }
-
 function releaseQueueSummaryDeliveryForRetry(
   queue: FollowupQueueSummaryState,
   delivery: QueueSummaryDelivery,
@@ -702,7 +701,7 @@ async function runQueueSummaryDelivery(
         admitted = true;
         // A multi-source summary is atomic once it owns the reply lane.
         // Retire sibling ids while the latest source owns aggregate cancel.
-        consumeQueueSummaryDelivery(queue, { ...delivery, sources: protectedSources }, false);
+        consumeQueueSummaryDelivery(queue, { ...delivery, sources: protectedSources }, "retained");
         const aggregateOwner = resolveAggregateOwner(protectedSources);
         for (const source of protectedSources) {
           if (source !== aggregateOwner) {
@@ -732,10 +731,7 @@ async function runQueueSummaryDelivery(
     if (!admitted) {
       const canceledSources = protectedSources.filter(isFollowupRunAborted);
       if (canceledSources.length > 0) {
-        consumeQueueSummaryDelivery(queue, {
-          ...delivery,
-          sources: canceledSources,
-        });
+        consumeQueueSummaryDelivery(queue, { ...delivery, sources: canceledSources }, "cancelled");
         return false;
       }
     }
@@ -785,10 +781,14 @@ export async function dropAbortedFollowups(
   ].filter(canDrop);
   // Detach identities and release both dedupe owners before ingress can retry.
   removeQueuedItemsByRef(queue.items, pending);
-  consumeQueueSummaryDelivery(queue, { sources: summaries, droppedCount: summaries.length }, false);
+  consumeQueueSummaryDelivery(
+    queue,
+    { sources: summaries, droppedCount: summaries.length },
+    "retained",
+  );
   for (const item of [...pending, ...summaries]) {
     try {
-      completeFollowupRunLifecycle(item);
+      completeFollowupRunLifecycle(item, "cancelled");
     } catch (error) {
       defaultRuntime.error?.(`followup queue cancellation settlement failed: ${String(error)}`);
     }
@@ -1205,7 +1205,7 @@ export function scheduleFollowupDrain(
             if (abortedGroupItems.length > 0) {
               removeQueuedItemsByRef(queue.items, abortedGroupItems);
               for (const item of abortedGroupItems) {
-                completeFollowupRunLifecycle(item);
+                completeFollowupRunLifecycle(item, "cancelled");
               }
             }
             const activeGroupItems = currentGroupItems.filter(
@@ -1330,7 +1330,7 @@ export function scheduleFollowupDrain(
               if (canceledSources.length > 0) {
                 removeQueuedItemsByRef(queue.items, canceledSources);
                 for (const item of canceledSources) {
-                  completeFollowupRunLifecycle(item);
+                  completeFollowupRunLifecycle(item, "cancelled");
                 }
                 const survivors = activeGroupItems.filter(
                   (item) => !canceledSources.includes(item),

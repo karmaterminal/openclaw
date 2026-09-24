@@ -12,7 +12,11 @@ export function consumeQueueSummaryDelivery(
     "summarySources" | "summaryLines" | "summaryElisions" | "droppedCount"
   >,
   delivery: { droppedCount: number; sources: readonly FollowupRun[] },
-  completeLifecycles = true,
+  // Carried from the 121204/124337 composite: a three-state settlement, not a
+  // boolean. "retained" keeps the run's lifecycle open, and "cancelled" ends
+  // ownership through the cancel callback so an ingress cancellation reaches the
+  // reply terminal lifecycle instead of settling as a plain completion.
+  settlement: "abandoned" | "cancelled" | "retained" = "abandoned",
 ): void {
   let consumedCount = delivery.sources.length === 0 ? delivery.droppedCount : 0;
   for (const source of delivery.sources) {
@@ -42,8 +46,8 @@ export function consumeQueueSummaryDelivery(
         }
       }
     }
-    if (completeLifecycles) {
-      completeFollowupRunLifecycle(source);
+    if (settlement !== "retained") {
+      completeFollowupRunLifecycle(source, settlement === "cancelled" ? "cancelled" : undefined);
     }
   }
   queue.droppedCount = Math.max(0, queue.droppedCount - consumedCount);
