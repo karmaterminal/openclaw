@@ -56,7 +56,7 @@ async function applyInvalidation(params: {
     return;
   }
   if (params.invalidation === "member access removal") {
-    expect(removeSessionMember(params.scope, "member-a")).not.toBeNull();
+    expect(await removeSessionMember(params.scope, "member-a")).not.toBeNull();
     return;
   }
   if (params.invalidation === "session deletion and recreation") {

@@ -168,7 +168,6 @@ describe("sessions.send completed subagent follow-up status", () => {
       applyEnv: false,
     });
     onTestFinished(() => state.cleanup());
-    const storePath = state.statePath("agents", "main", "agent", "openclaw-agent.sqlite");
     const childSessionKey = "agent:main:subagent:followup";
     const completedRun = {
       runId: "run-old",

@@ -207,7 +207,16 @@ export async function transitionReturnCovenantCase(params: {
       }
       break;
     case "forbidden-member-access-removal":
-      if (!removeSessionMember(returnCovenantCaseScope(state, context), "return-covenant-member")) {
+      // session-sharing-store re-exports the worker-backed
+      // removeSessionMemberInWorker, which returns a Promise. Without the await
+      // the negation is always false, so this guard could never throw and the
+      // fixture continued before the removal committed.
+      if (
+        !(await removeSessionMember(
+          returnCovenantCaseScope(state, context),
+          "return-covenant-member",
+        ))
+      ) {
         throw new Error("return-covenant member removal did not commit");
       }
       break;

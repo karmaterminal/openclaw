@@ -3566,7 +3566,7 @@ describe("scheduleRestartSentinelWake", () => {
           }),
         ).not.toBeNull();
       } else if (invalidation === "member access removal") {
-        expect(removeSessionMember(authorityScope, "member-a")).not.toBeNull();
+        expect(await removeSessionMember(authorityScope, "member-a")).not.toBeNull();
       } else {
         const deletion = await deleteSessionEntryLifecycle({
           agentId: "main",

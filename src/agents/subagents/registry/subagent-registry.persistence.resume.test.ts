@@ -8,10 +8,7 @@ import { listOpenClawAgentDatabasesForTest as listSeedAgentDatabases } from "../
 import { closeOpenClawStateDatabaseForTest as closeSeedStateDatabase } from "../../../state/openclaw-state-db.js";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
 import "./subagent-registry.mocks.shared.js";
-import {
-  createSubagentPersistenceRuntime,
-  listFixtureAgentDatabases,
-} from "./subagent-registry.persistence-fixture.test-support.js";
+import { createSubagentPersistenceRuntime } from "./subagent-registry.persistence-fixture.test-support.js";
 import {
   activatePersistenceResumeRegistry,
   createHydratedRegistryRuns,
@@ -100,6 +97,17 @@ describe("subagent registry persistence resume", () => {
     vi.mocked(agentEventsModule.onAgentEvent)
       .mockReset()
       .mockReturnValue(() => undefined);
+  });
+
+  // Restored from upstream. Both snapshots are cleared deliberately: after
+  // vi.resetModules() the statically imported config module and the late-bound
+  // registryConfigModule are separate instances holding separate snapshot
+  // state, so clearing only one leaks a runtime config snapshot into later
+  // tests.
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearRuntimeConfigSnapshot();
+    registryConfigModule.clearRuntimeConfigSnapshot();
   });
 
   function withRegistryState<T>(run: (stateDir: string) => Promise<T>): Promise<T>;

@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/config.js";
-import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
+import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { callGateway } from "../gateway/call.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
@@ -13,19 +13,20 @@ import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.
 import { SUBAGENT_ENDED_REASON_KILLED } from "./subagents/registry/subagent-lifecycle-events.js";
 import { resetSubagentRegistryRuntimeLoadersForTests } from "./subagents/registry/subagent-registry-deps.js";
 import { persistSubagentSessionTiming } from "./subagents/registry/subagent-registry-helpers.js";
+// Registers the shared gateway/agent-event vi.mock factories. Ordered ahead of
+// this file's own ../gateway/call.js import so that binding resolves to the
+// mock, matching upstream's ordering in
+// subagents/registry/subagent-registry.persistence.test.ts.
 import { sharedRegistryMocks } from "./subagents/registry/subagent-registry.mocks.shared.js";
 import {
   createCanonicalSubagentRunFixture,
   readSubagentSessionStore,
   writeSubagentSessionEntry,
 } from "./subagents/registry/subagent-registry.persistence.test-support.js";
-import { saveSubagentRegistryToSqlite } from "./subagents/registry/subagent-registry.store.sqlite.js";
 import {
   registerSubagentRun,
   resetSubagentRegistryForTests,
-  testing,
 } from "./subagents/registry/subagent-registry.test-helpers.js";
-import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.types.js";
 
 const { announceSpy } = vi.hoisted(() => ({
   announceSpy: vi.fn(async () => "delivered" as const),

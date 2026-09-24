@@ -23,7 +23,6 @@ import {
   saveSubagentRegistryToSqlite,
 } from "./subagents/registry/subagent-registry.store.sqlite.js";
 import {
-  testing,
   activateSubagentRegistry,
   getLatestSubagentRunByChildSessionKey,
   getSubagentRunByChildSessionKey,
@@ -186,12 +185,6 @@ describe("subagent registry persistence", () => {
     };
     const gateway = { recoveryRuntime, resolveGatewayContext: () => gateway as never };
     activateSubagentRegistry(() => gateway as never);
-  };
-
-  const fastPersistSubagentRunsToDisk = (runs: Map<string, SubagentRunRecord>) => {
-    // Most tests assert restore semantics, not async writer behavior, so this
-    // synchronous writer keeps sqlite registry state immediately observable.
-    saveSubagentRegistryToSqlite(runs);
   };
 
   beforeEach(() => {

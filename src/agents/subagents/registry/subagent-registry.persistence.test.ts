@@ -24,14 +24,12 @@ import { getSubagentRunsSnapshotForRead } from "./subagent-registry-state.js";
 import { registerSubagentOrphanTaskCases } from "./subagent-registry.persistence.orphan.test-support.js";
 import {
   canonicalSubagentRunFixtures,
-  cleanupSubagentRegistryPersistenceTest,
   createPersistedEndedRun,
   expectDeferredSubagentAnnouncement,
   expectFields,
   flushQueuedRegistryWork,
   gateSubagentRequesterSettlement,
   removeSubagentSessionEntry,
-  settleSubagentRegistryPersistenceWork,
   waitForRegistryWork,
   writeSubagentSessionEntry,
 } from "./subagent-registry.persistence.test-support.js";

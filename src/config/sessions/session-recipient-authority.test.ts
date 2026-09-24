@@ -176,11 +176,11 @@ describe("session recipient authority", () => {
       ).toBe(true);
       expect(isSessionRecipientAuthorityCurrent(scope, reassignedAuthority)).toBe(true);
 
-      expect(removeSessionMember(scope, "member-a")).not.toBeNull();
+      expect(await removeSessionMember(scope, "member-a")).not.toBeNull();
       expect(isSessionRecipientAuthorityCurrent(scope, reassignedAuthority)).toBe(false);
 
       const revokedAuthority = captureSessionRecipientAuthority(scope);
-      expect(removeSessionMember(scope, "member-a")).toBeNull();
+      expect(await removeSessionMember(scope, "member-a")).toBeNull();
       expect(isSessionRecipientAuthorityCurrent(scope, revokedAuthority)).toBe(true);
     });
   });
