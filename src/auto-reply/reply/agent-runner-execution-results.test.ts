@@ -498,7 +498,6 @@ describe("executeAgentTurn: result and tool delivery", () => {
       shouldEmitToolResult: () => true,
       shouldEmitToolOutput: () => false,
       pendingToolTasks,
-      resetSessionAfterRoleOrderingConflict: async () => false,
       isHeartbeat: false,
       sessionKey: "main",
       getActiveSessionEntry: () => undefined,

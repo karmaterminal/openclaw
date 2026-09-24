@@ -7155,7 +7155,7 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
         }),
       });
     } finally {
-      closeOpenClawAgentDatabasesForTest();
+      agentDatabases.closeOpenClawAgentDatabasesForTest();
       await rm(dir, { force: true, recursive: true });
     }
   });

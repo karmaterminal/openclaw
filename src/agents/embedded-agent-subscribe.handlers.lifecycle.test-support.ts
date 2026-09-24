@@ -39,7 +39,7 @@ export function createContext(
       pendingToolAudioAsVoice: false,
       deferredBlockReplies: [],
       replayState: { replayInvalid: false, hadPotentialSideEffects: false },
-      blockState: {
+      partialBlockState: {
         thinking: true,
         final: true,
         inlineCode: createInlineCodeState(),

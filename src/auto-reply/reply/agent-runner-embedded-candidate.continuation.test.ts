@@ -116,7 +116,6 @@ function createTurn(config: AgentTurnParams["followupRun"]["run"]["config"]): Ag
     shouldEmitToolResult: () => true,
     shouldEmitToolOutput: () => true,
     pendingToolTasks: new Set(),
-    resetSessionAfterRoleOrderingConflict: async () => false,
     isHeartbeat: false,
     sessionKey: "agent:main:fallback",
     getActiveSessionEntry: () => ({

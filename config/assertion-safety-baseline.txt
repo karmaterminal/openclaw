@@ -1803,7 +1803,7 @@ src/agents/session-placement-admission.ts	1
 src/agents/session-raw-append-message.ts	2
 src/agents/session-suspension.ts	1
 src/agents/session-tool-result-guard.ts	11
-src/agents/session-transcript-repair.ts	6
+src/agents/session-transcript-repair.ts	4
 src/agents/sessions/agent-session-base.ts	3
 src/agents/sessions/agent-session-extensions.ts	1
 src/agents/sessions/agent-session-models.ts	2
@@ -2398,7 +2398,7 @@ src/config/plugins-allowlist.ts	1
 src/config/redact-snapshot.ts	4
 src/config/runtime-overrides.ts	2
 src/config/runtime-snapshot.ts	1
-src/config/runtime-source-projection.ts	4
+src/config/runtime-source-projection.ts	3
 src/config/schema.ts	1
 src/config/sessions/cleanup-service.ts	3
 src/config/sessions/conversation-delivery-store.ts	2
@@ -2635,6 +2635,7 @@ src/gateway/server-methods/plugin-approval.ts	2
 src/gateway/server-methods/plugin-host-hooks.ts	1
 src/gateway/server-methods/question.ts	2
 src/gateway/server-methods/restart-request.ts	8
+src/gateway/server-methods/send.ts	1
 src/gateway/server-methods/session-catalog-terminal-start.ts	1
 src/gateway/server-methods/session-create-initial-turn.ts	2
 src/gateway/server-methods/session-recovery-continuation.ts	1
@@ -3074,7 +3075,7 @@ src/plugins/bundle-mcp.ts	2
 src/plugins/bundled-channel-config-metadata.ts	4
 src/plugins/bundled-plugin-scan.ts	1
 src/plugins/candidate-install-owner.ts	1
-src/plugins/capability-provider-runtime.ts	13
+src/plugins/capability-provider-runtime.ts	12
 src/plugins/captured-registration.ts	2
 src/plugins/channel-presence-policy.ts	2
 src/plugins/channel-validation.ts	1

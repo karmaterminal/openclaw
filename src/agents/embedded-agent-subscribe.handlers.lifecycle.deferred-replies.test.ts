@@ -72,7 +72,7 @@ describe("handleAgentEnd deferred replies", () => {
           ]);
           expect(ctx.flushBlockReplyBuffer).not.toHaveBeenCalled();
           expect(ctx.resolveCompactionRetry).not.toHaveBeenCalled();
-          expect(ctx.state.blockState.thinking).toBe(true);
+          expect(ctx.state.partialBlockState.thinking).toBe(true);
           expect(onAgentEvent).not.toHaveBeenCalled();
           expect(emitAgentEventMock).not.toHaveBeenCalled();
         } else {

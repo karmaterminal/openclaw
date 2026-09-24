@@ -160,7 +160,7 @@ describe("subagent registration rollback", () => {
     generation: 1,
     createdAt: 10,
     execution: { status: "running", startedAt: 10 },
-    completion: { required: false, resultText: null, capturedAt: null },
+    completion: { required: false, resultText: null },
     delivery: { status: "not_required" },
   });
 

@@ -70,7 +70,7 @@ export async function materializeReturnCovenantRecipient(params: {
     });
   }
   if (state.casePlan.id === "forbidden-member-access-removal") {
-    const added = addSessionMember(scope, {
+    const added = await addSessionMember(scope, {
       identityId: "return-covenant-member",
       addedBy: returnCovenantOwnerA.id,
       addedAt: context.clock.wallNow(),

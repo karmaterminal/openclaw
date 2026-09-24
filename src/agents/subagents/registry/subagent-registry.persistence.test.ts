@@ -16,7 +16,7 @@ import { createDeferred } from "../../../../test/helpers/promise.js";
 import { callGateway } from "../../../gateway/call.js";
 import { getActiveGatewayRootWorkCount } from "../../../process/gateway-work-admission.js";
 import { closeOpenClawStateDatabaseForTest } from "../../../state/openclaw-state-db.js";
-import { withEnv } from "../../../test-utils/env.js";
+import { setTestEnvValue, withEnv } from "../../../test-utils/env.js";
 import { createAgentsWaitTool } from "../../tools/agents-wait-tool.js";
 import { subagentRegistryDeps } from "./subagent-registry-deps.js";
 import { getLatestSubagentRunByChildSessionKey } from "./subagent-registry-read.js";
@@ -178,8 +178,7 @@ describe("subagent registry persistence", () => {
   });
 
   it("rolls back a new subagent run when initial persistence fails", async () => {
-    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
-    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
+    await fixture.allocateStateDir();
     const persistError = new Error("sqlite busy");
     testing.setDepsForTest({
       ...createSubagentRegistryTestDeps(),
@@ -205,12 +204,10 @@ describe("subagent registry persistence", () => {
   });
 
   it("uses fail-closed production persistence for initial subagent registration", async () => {
-    tempStateDir = path.join(
-      os.tmpdir(),
-      `openclaw-subagent-state-file-${process.pid}-${Date.now()}`,
-    );
-    await fs.writeFile(tempStateDir, "not a directory", "utf8");
-    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
+    await fixture.allocateStateDir();
+    const stateFilePath = path.join(fixture.stateDir, "state-is-a-file");
+    await fs.writeFile(stateFilePath, "not a directory", "utf8");
+    setTestEnvValue("OPENCLAW_STATE_DIR", stateFilePath);
     testing.setDepsForTest({
       ...createSubagentRegistryTestDeps(),
       runSubagentAnnounceFlow: announceSpy,
@@ -232,8 +229,7 @@ describe("subagent registry persistence", () => {
   });
 
   it("persists continuation return metadata and replays it after restart", async () => {
-    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
-    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
+    await fixture.allocateStateDir();
     let releaseInitialWait:
       | ((value: { status: "ok"; startedAt: number; endedAt: number }) => void)
       | undefined;

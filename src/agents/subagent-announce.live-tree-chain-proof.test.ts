@@ -102,10 +102,8 @@ import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/syste
 import { defaultRuntime } from "../runtime.js";
 import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
-import {
-  listTaskFlowsForOwnerKey,
-  reloadTaskFlowRegistryFromStore,
-} from "../tasks/task-flow-runtime-internal.js";
+import { reloadTaskFlowRegistryFromStore } from "../tasks/task-flow-registry.js";
+import { listTaskFlowsForOwnerKey } from "../tasks/task-flow-runtime-internal.js";
 import { resetTaskFlowRegistryForTests } from "../tasks/task-runtime.test-helpers.js";
 import { createOpenClawContinuationTools } from "./openclaw-tools.continuation.js";
 import { loadSessionEntryByKey } from "./subagents/announce/subagent-announce-delivery.js";

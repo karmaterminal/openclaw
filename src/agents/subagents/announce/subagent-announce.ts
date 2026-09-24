@@ -246,7 +246,7 @@ async function runSubagentAnnounceFlowBound(
       params.childRunId.startsWith("continuation-delegate-") &&
       isDelegateArtifactReturnConfigured(params.childRunId);
     let requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey, {
-      cfg: getRuntimeConfig(),
+      cfg: subagentAnnounceDeps.getRuntimeConfig(),
       agentId: targetRequesterAgentId,
     });
     const requesterIsInternalSession = () =>
@@ -768,7 +768,7 @@ async function runSubagentAnnounceFlowBound(
       (params.onBeforeDeleteChildSession?.() ?? true)
     ) {
       await deleteSubagentSessionForCleanup({
-        callGateway: callSubagentLifecycleGateway,
+        callGateway: subagentAnnounceDeps.callGateway,
         isCurrent: childSessionEffectsAllowed,
         childSessionKey: params.childSessionKey,
         spawnMode: params.spawnMode,

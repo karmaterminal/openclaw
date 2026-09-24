@@ -60,7 +60,7 @@ vi.mock("./chat-send-external-entry.js", () => ({
   handleDirectExternalChatSend: (...args: unknown[]) => chatSendWithAdmissionOwnedMock(...args),
 }));
 
-import { resolveUnsuffixedSqliteTargetFromSessionStorePath } from "../../config/sessions/session-sqlite-target.js";
+import { resolveUnsuffixedSqliteTargetFromSessionStorePath } from "../../config/sessions/session-sqlite-target-paths.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
 import { createSuiteTempRootTracker } from "../../test-helpers/temp-dir.js";
 import { createSessionRowProjectionFixture } from "../session-row-projection.test-support.js";

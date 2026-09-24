@@ -88,7 +88,6 @@ import {
   getUserProfilesHttpModule,
   getDevicePairingJoinHttpModule,
   getPluginNodeCapabilityAuthModule,
-  getHttpAuthUtilsModule,
   getPluginRouteRuntimeScopesModule,
 } from "./server-http-modules.js";
 import {

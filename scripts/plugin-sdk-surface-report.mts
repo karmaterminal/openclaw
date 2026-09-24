@@ -410,10 +410,13 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: approved canonical resolveConfigPath export for pre-config native browser admission.
       // +1: supported read-only admitted operator scopes for tool presentation.
       // Re-pinned to the MEASURED merged surface after absorbing upstream
-      // 2167eab4cf. This is a budget, not an equality: it must cover both
-      // upstream's additions above and the continuation feature's own exports,
-      // so it is measured rather than arithmetic on either side's pin.
-      4570,
+      // 2167eab4cf: `pnpm plugin-sdk:surface` reports 4582 public package
+      // exports. Recorded here because it is the exact trap this comment block
+      // exists to prevent -- ours pinned 4547, upstream 4570, base 4530, and the
+      // real merged surface is 4582, ABOVE BOTH SIDES. The continuation feature's
+      // exports and upstream's additions are disjoint, so no arithmetic on either
+      // side's pin would have produced this number. Measure, never derive.
+      4582,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -579,8 +582,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: approved canonical resolveConfigPath callable for pre-config native browser admission.
       // +1: supported read-only readGatewayToolOperatorScopes callable.
       // Re-pinned to the MEASURED merged surface after absorbing upstream
-      // 2167eab4cf, on the same basis as the export cap above.
-      2682,
+      // 2167eab4cf: `pnpm plugin-sdk:surface` reports 2687 public package
+      // callable exports. Ours pinned 2678, upstream 2682, base 2673 -- again
+      // above both sides. Same rule as the export cap: measure, never derive.
+      2687,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

@@ -166,11 +166,13 @@ describe("session recipient authority", () => {
 
       const reassignedAuthority = captureSessionRecipientAuthority(scope);
       expect(
-        addSessionMember(scope, {
-          identityId: "member-a",
-          addedBy: "owner-b",
-          addedAt: 4,
-        }).inserted,
+        (
+          await addSessionMember(scope, {
+            identityId: "member-a",
+            addedBy: "owner-b",
+            addedAt: 4,
+          })
+        ).inserted,
       ).toBe(true);
       expect(isSessionRecipientAuthorityCurrent(scope, reassignedAuthority)).toBe(true);
 

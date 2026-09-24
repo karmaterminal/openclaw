@@ -3546,11 +3546,13 @@ describe("scheduleRestartSentinelWake", () => {
       }).path;
       if (invalidation === "member access removal") {
         expect(
-          addSessionMember(authorityScope, {
-            identityId: "member-a",
-            addedBy: ownerA.id,
-            addedAt: 2,
-          }).inserted,
+          (
+            await addSessionMember(authorityScope, {
+              identityId: "member-a",
+              addedBy: ownerA.id,
+              addedAt: 2,
+            })
+          ).inserted,
         ).toBe(true);
       }
       const recipientAuthority = captureSessionRecipientAuthority(authorityScope);

@@ -26,10 +26,10 @@ import { createSubagentRegistryCompletionRuntime } from "./subagent-registry-com
 import { emitSubagentProgressEndedHook } from "./subagent-registry-completion.js";
 import { createSubagentRegistryContextCleanup } from "./subagent-registry-context-cleanup.js";
 import {
-  callSubagentRegistryGateway,
-  loadSubagentAnnounceModule,
-  loadSubagentBrowserCleanupModule,
   resetSubagentRegistryRuntimeLoadersForTests,
+  setSubagentRegistryDepsForTest,
+  subagentRegistryDeps,
+  type SubagentRegistryDeps,
 } from "./subagent-registry-deps.js";
 import { ANNOUNCE_EXPIRY_MS } from "./subagent-registry-helpers.js";
 import { suspendReplacedStoreNotifications } from "./subagent-registry-lifecycle-cleanup.js";
@@ -169,18 +169,24 @@ const subagentLifecycleController = new SubagentLifecycleController({
   notifyContextEngineSubagentEnded: contextCleanup.notifyContextEngineSubagentEnded,
   retireSupersededRun: retireSupersededSubagentRun,
   resumeSubagentRun,
-  callGateway: callSubagentRegistryGateway,
-  captureSubagentCompletionReply: async (sessionKey, options) =>
-    (await loadSubagentAnnounceModule()).captureSubagentCompletionReply(sessionKey, options),
-  cleanupBrowserSessionsForLifecycleEnd: async (args) =>
-    (await loadSubagentBrowserCleanupModule()).cleanupBrowserSessionsForLifecycleEnd(args),
-  runSubagentAnnounceFlow: async (params) => {
+  // Routed through subagentRegistryDeps, NOT upstream's direct loaders. The
+  // registry test seam (setSubagentRegistryDepsForTest, 6 test files) only
+  // controls behaviour while the runtime actually reads the injected object;
+  // calling the loaders directly would leave those injections silently inert.
+  // Migrating this lane to upstream's module-mock strategy is its own change,
+  // not something to fold into a drift absorb.
+  callGateway: (request) => subagentRegistryDeps.callGateway(request),
+  captureSubagentCompletionReply: (sessionKey, options) =>
+    subagentRegistryDeps.captureSubagentCompletionReply(sessionKey, options),
+  cleanupBrowserSessionsForLifecycleEnd: (args) =>
+    subagentRegistryDeps.cleanupBrowserSessionsForLifecycleEnd(args),
+  runSubagentAnnounceFlow: (params) => {
     const entry =
       subagentRuns.get(params.childRunId) ??
       [...subagentRuns.values()].find(
         (candidate) => candidate.childSessionKey === params.childSessionKey,
       );
-    return (await loadSubagentAnnounceModule()).runSubagentAnnounceFlow({
+    return subagentRegistryDeps.runSubagentAnnounceFlow({
       ...params,
       silentAnnounce: entry?.silentAnnounce,
       wakeOnReturn: entry?.wakeOnReturn,
@@ -209,9 +215,7 @@ const subagentLifecycleController = new SubagentLifecycleController({
   },
   maybeWakeRequesterAfterAllChildrenSettled: async (args) =>
     subagentRestorer.canResumeWakes()
-      ? (
-          await import("../announce/subagent-announce.requester-settle-wake.js")
-        ).maybeWakeRequesterAfterAllChildrenSettled(args)
+      ? await subagentRegistryDeps.maybeWakeRequesterAfterAllChildrenSettled(args)
       : false,
   warn: (message, meta) => log.warn(message, meta),
 });
@@ -481,7 +485,7 @@ const subagentRestorer = createSubagentRegistryRestorer({
       expectedSessionId,
       expectedLifecycleRevision,
       timeoutMs,
-      callGateway: callSubagentRegistryGateway,
+      callGateway: subagentRegistryDeps.callGateway,
     }).then(() => undefined);
   },
   cleanupCollectorLaunchResources: contextCleanup.cleanupCollectorLaunchResources,
@@ -581,9 +585,9 @@ const subagentRunManager = createSubagentRunManager({
         );
       }
     }
-    return await callSubagentRegistryGateway<T>(request);
+    return await subagentRegistryDeps.callGateway<T>(request);
   },
-  getRuntimeConfig,
+  getRuntimeConfig: () => subagentRegistryDeps.getRuntimeConfig(),
   ensureListener: subagentListener.ensure,
   startSweeper: subagentSweeper.start,
   stopSweeper: subagentSweeper.stop,
@@ -735,6 +739,9 @@ const testing = {
   },
   async runSweeperTickForTests() {
     await subagentSweeper.runTick();
+  },
+  setDepsForTest(overrides?: Partial<SubagentRegistryDeps>) {
+    setSubagentRegistryDepsForTest(overrides);
   },
 } as const;
 

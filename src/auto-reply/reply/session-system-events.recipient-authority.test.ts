@@ -120,11 +120,13 @@ describe("recipient authority prompt-adoption fence", () => {
         }).path;
         if (invalidation === "member access removal") {
           expect(
-            addSessionMember(scope, {
-              identityId: "member-a",
-              addedBy: ownerA.id,
-              addedAt: 2,
-            }).inserted,
+            (
+              await addSessionMember(scope, {
+                identityId: "member-a",
+                addedBy: ownerA.id,
+                addedAt: 2,
+              })
+            ).inserted,
           ).toBe(true);
         }
         const recipientAuthority = sessionAccessor.captureSessionRecipientAuthority(scope);
@@ -195,11 +197,13 @@ describe("recipient authority prompt-adoption fence", () => {
         }).path;
         if (invalidation === "member access removal") {
           expect(
-            addSessionMember(scope, {
-              identityId: "member-a",
-              addedBy: ownerA.id,
-              addedAt: 2,
-            }).inserted,
+            (
+              await addSessionMember(scope, {
+                identityId: "member-a",
+                addedBy: ownerA.id,
+                addedAt: 2,
+              })
+            ).inserted,
           ).toBe(true);
         }
         const recipientAuthority = sessionAccessor.captureSessionRecipientAuthority(scope);
@@ -246,11 +250,13 @@ describe("recipient authority prompt-adoption fence", () => {
         }).path;
         if (invalidation === "member access removal") {
           expect(
-            addSessionMember(scope, {
-              identityId: "member-a",
-              addedBy: ownerA.id,
-              addedAt: 2,
-            }).inserted,
+            (
+              await addSessionMember(scope, {
+                identityId: "member-a",
+                addedBy: ownerA.id,
+                addedAt: 2,
+              })
+            ).inserted,
           ).toBe(true);
         }
         const recipientAuthority = sessionAccessor.captureSessionRecipientAuthority(scope);

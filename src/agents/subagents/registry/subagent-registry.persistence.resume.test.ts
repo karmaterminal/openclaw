@@ -2,23 +2,17 @@ import { setImmediate as nextTask } from "node:timers/promises";
 // Subagent registry persistence-resume tests cover restoring SQLite-backed child runs.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
-import {
-  announceSpy,
-  createSubagentPersistenceRuntime,
-  listFixtureAgentDatabases,
-} from "./subagent-registry.persistence-fixture.test-support.js";
-import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../../config/config.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import { listOpenClawAgentDatabasesForTest as listSeedAgentDatabases } from "../../../state/openclaw-agent-db.test-support.js";
 import { closeOpenClawStateDatabaseForTest as closeSeedStateDatabase } from "../../../state/openclaw-state-db.js";
-import "./subagent-registry.mocks.shared.js";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
-import {
-  getGatewayToolCallerIdentity,
-  withGatewayToolCallerIdentity,
-} from "../../tools/gateway-caller-context.js";
+import "./subagent-registry.mocks.shared.js";
 import type { SubagentRegistryDeps } from "./subagent-registry-deps.js";
+import {
+  createSubagentPersistenceRuntime,
+  listFixtureAgentDatabases,
+} from "./subagent-registry.persistence-fixture.test-support.js";
 import {
   activatePersistenceResumeRegistry,
   createHydratedRegistryRuns,
@@ -47,7 +41,7 @@ import {
   saveSubagentRegistryToSqlite,
 } from "./subagent-registry.store.sqlite.js";
 
-type WakeRequester = typeof maybeWakeRequesterAfterAllChildrenSettled;
+type WakeRequester = SubagentRegistryDeps["maybeWakeRequesterAfterAllChildrenSettled"];
 type WakeParams = Parameters<WakeRequester>[0];
 type AnnounceParams = Parameters<
   typeof import("../announce/subagent-announce.js").runSubagentAnnounceFlow
@@ -59,6 +53,12 @@ const { announceSpy } = vi.hoisted(() => ({
   ),
 }));
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+// Late-bound in beforeAll after vi.resetModules(); a static import would capture
+// the pre-reset module instance.
+let bindGatewayContextResolver: typeof import("../../../plugins/runtime/gateway-request-scope.js").bindGatewayContextResolver;
+let getGatewayContextResolver: typeof import("../../../plugins/runtime/gateway-request-scope.js").getGatewayContextResolver;
+let getGatewayToolCallerIdentity: typeof import("../../tools/gateway-caller-context.js").getGatewayToolCallerIdentity;
+let withGatewayToolCallerIdentity: typeof import("../../tools/gateway-caller-context.js").withGatewayToolCallerIdentity;
 let mod: typeof import("./subagent-registry.test-helpers.js");
 let callGatewayModule: typeof import("../../../gateway/call.js");
 let agentEventsModule: typeof import("../../../infra/agent-events.js");
