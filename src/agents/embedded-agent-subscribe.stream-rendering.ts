@@ -678,7 +678,6 @@ export function createStreamRendering({
           pendingChunk = { text, ...chunkOptions };
         },
       });
-      blockChunker.reset();
     }
     if (
       pendingChunk !== undefined ||
