@@ -6,17 +6,18 @@ import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import type { SessionEntry } from "../config/sessions/types.js";
-import { callGateway } from "../gateway/call.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
 import { SUBAGENT_ENDED_REASON_KILLED } from "./subagents/registry/subagent-lifecycle-events.js";
 import { resetSubagentRegistryRuntimeLoadersForTests } from "./subagents/registry/subagent-registry-deps.js";
 import { persistSubagentSessionTiming } from "./subagents/registry/subagent-registry-helpers.js";
-// Registers the shared gateway/agent-event vi.mock factories. Ordered ahead of
-// this file's own ../gateway/call.js import so that binding resolves to the
-// mock, matching upstream's ordering in
-// subagents/registry/subagent-registry.persistence.test.ts.
+// Registers the shared gateway/agent-event vi.mock factories and owns the spies.
+// This file resets and programs sharedRegistryMocks.callGateway rather than a
+// `vi.mocked(callGateway)` binding of its own: the batch runs this project's 57
+// files in one worker, so another file can resolve ../gateway/call.js before this
+// module executes, leaving a local import bound to the real function. Holding the
+// owner's spy is independent of module identity and of file order.
 import { sharedRegistryMocks } from "./subagents/registry/subagent-registry.mocks.shared.js";
 import {
   createCanonicalSubagentRunFixture,
@@ -95,8 +96,8 @@ describe("subagent registry persistence timing", () => {
     sharedRegistryMocks.onAgentEvent.mockClear();
     announceSpy.mockReset();
     announceSpy.mockResolvedValue("delivered");
-    vi.mocked(callGateway).mockReset();
-    vi.mocked(callGateway).mockResolvedValue({
+    sharedRegistryMocks.callGateway.mockReset();
+    sharedRegistryMocks.callGateway.mockResolvedValue({
       status: "ok",
       startedAt: 111,
       endedAt: 222,
@@ -161,7 +162,7 @@ describe("subagent registry persistence timing", () => {
     const now = Date.now();
     const startedAt = now;
     const endedAt = now + 500;
-    vi.mocked(callGateway).mockResolvedValueOnce({
+    sharedRegistryMocks.callGateway.mockResolvedValueOnce({
       status: "ok",
       startedAt,
       endedAt,
