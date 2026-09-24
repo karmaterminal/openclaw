@@ -356,6 +356,7 @@ export type EmbeddedAgentSubscribeContext = {
       assistantMessageIndex?: number;
       consumePendingToolMedia?: boolean;
       blockSourceText?: string;
+      blockSourceRange?: readonly [start: number, end: number];
       onDelivered?: () => void;
     },
   ) => void;

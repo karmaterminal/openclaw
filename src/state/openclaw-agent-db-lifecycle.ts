@@ -39,7 +39,10 @@ import {
   assertSupportedAgentSchemaVersion,
   readExistingAgentSchemaMeta,
 } from "./openclaw-agent-db-schema-helpers.js";
-import type { OpenClawAgentDatabaseValidation } from "./openclaw-agent-db-validation-cache.js";
+import {
+  clearOpenClawAgentDatabaseValidationCache,
+  type OpenClawAgentDatabaseValidation,
+} from "./openclaw-agent-db-validation-cache.js";
 import { clearOpenClawAgentIntegrityVerification } from "./openclaw-quarantine-store.js";
 import {
   getOpenClawDatabaseMaintenanceScope,
@@ -515,6 +518,23 @@ export function readOpenIncognitoAgentDatabaseGeneration(): number {
 /** Returns whether this exact process-held database is incognito/in-memory. */
 export function isIncognitoOpenClawAgentDatabase(database: OpenClawAgentDatabase): boolean {
   return cache.incognito.has(database);
+}
+
+/**
+ * Awaitable form of `closeOpenClawAgentDatabasesForTest`, living beside the
+ * primitives it uses.
+ *
+ * The synchronous form only closes in place for resources exposing `closeSync`;
+ * anything else is parked in the closing set while its close completes, and
+ * `registerAgentDatabaseResource` then refuses an overlapping open with
+ * "Agent database resources are closing". A caller closing in order to force a
+ * durable re-read must therefore await it, or it races its own next open.
+ * Clears the same two caches so the durable-read intent is preserved.
+ */
+export async function closeOpenClawAgentDatabasesForTestAsync(rootPath?: string): Promise<void> {
+  await closeOpenClawAgentDatabasesAsync(rootPath);
+  clearOpenClawAgentDatabaseValidationCache(rootPath);
+  cache.terminal.clearAll(rootPath);
 }
 
 export { cache as agentDatabaseLifecycle };

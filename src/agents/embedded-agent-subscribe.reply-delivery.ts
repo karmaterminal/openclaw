@@ -476,6 +476,7 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     options?: {
       assistantMessageIndex?: number;
       blockSourceText?: string;
+      blockSourceRange?: readonly [start: number, end: number];
       consumePendingToolMedia?: boolean;
       onDelivered?: () => void;
       retryable?: boolean;
@@ -520,7 +521,12 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
           })
         : blockPayload;
     if (blockPayload.text && options?.blockSourceText !== undefined) {
-      setReplyPayloadMetadata(taggedPayload, { blockSourceText: options.blockSourceText });
+      // The range travels with the text it describes. block-reply-coalescer reads
+      // it back to merge adjacent blocks by source span rather than by identity.
+      setReplyPayloadMetadata(taggedPayload, {
+        blockSourceText: options.blockSourceText,
+        blockSourceRange: options.blockSourceRange,
+      });
     }
     if (state.deferBlockReplyDelivery) {
       if (pendingToolMedia) {
