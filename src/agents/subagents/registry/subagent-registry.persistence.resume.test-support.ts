@@ -1,10 +1,8 @@
 import { expect, vi } from "vitest";
 import { isPathInside } from "../../../infra/path-guards.js";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
-import type { SubagentRegistryDeps } from "./subagent-registry-deps.js";
 import {
   createDeliveredWake,
-  createSubagentRegistryTestDeps,
   withSubagentRegistryPersistenceState,
 } from "./subagent-registry.persistence.test-support.js";
 import { loadSubagentRegistryFromSqlite } from "./subagent-registry.store.sqlite.js";
@@ -61,7 +59,6 @@ export function withPersistenceResumeRegistryState<T>(params: {
     {
       stateDir: params.stateDir,
       resetRegistry: () => params.mod.resetSubagentRegistryForTests({ persist: false }),
-      resetDeps: () => params.mod.testing.setDepsForTest(),
       closeDatabases: () =>
         closePersistenceResumeFixtureDatabases({
           stateDir: params.stateDir,
@@ -71,19 +68,6 @@ export function withPersistenceResumeRegistryState<T>(params: {
         }),
     },
     params.run,
-  );
-}
-
-export function setPersistenceResumeRegistryDeps(params: {
-  mod: RegistryModule;
-  callGateway: GatewayCall;
-  extra?: Partial<SubagentRegistryDeps>;
-}) {
-  params.mod.testing.setDepsForTest(
-    createSubagentRegistryTestDeps({
-      callGateway: vi.mocked(params.callGateway),
-      ...params.extra,
-    }),
   );
 }
 

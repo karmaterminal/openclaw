@@ -16,6 +16,25 @@ const sharedMocks = vi.hoisted(() => ({
   onAgentEvent: vi.fn(() => noop),
 }));
 
+/**
+ * Tests assert THIS object's spies, not a separately imported `onAgentEvent`
+ * binding: asserting the imported binding cannot distinguish "the listener was
+ * never installed" from "two module identities exist and the spy you hold is not
+ * the one the registry called".
+ *
+ * Getters rather than a direct re-export, because a vi.hoisted() result cannot
+ * itself be exported ("Cannot export hoisted variable"). These resolve to the same
+ * spy objects the vi.mock factories below hand to the runtime.
+ */
+export const sharedRegistryMocks = {
+  get callGateway() {
+    return sharedMocks.callGateway;
+  },
+  get onAgentEvent() {
+    return sharedMocks.onAgentEvent;
+  },
+};
+
 vi.mock("../../../gateway/call.js", () => ({
   callGateway: sharedMocks.callGateway,
 }));

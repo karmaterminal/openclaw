@@ -116,7 +116,6 @@ import { getSubagentRunByRunId } from "./subagents/registry/subagent-registry.js
 import {
   releaseSubagentRun,
   resetSubagentRegistryForTests,
-  testing as subagentRegistryTesting,
 } from "./subagents/registry/subagent-registry.test-helpers.js";
 import { getSubagentDepthFromSessionStore } from "./subagents/spawn/subagent-depth.js";
 import { spawnSubagentDirect } from "./subagents/spawn/subagent-spawn.js";
@@ -217,6 +216,14 @@ function installRecordingContinuationTracer(): RecordedContinuationSpan[] {
   return spans;
 }
 
+// This fixture opens no browser tabs. Keep unrelated plugin activation out of the
+// bounded continuation handoff; browser cleanup has owner tests. The registry
+// reaches this through loadSubagentBrowserCleanupModule(), so the mock has to sit
+// at the module boundary rather than on an injected dependency.
+vi.mock("../browser-lifecycle-cleanup.js", () => ({
+  cleanupBrowserSessionsForLifecycleEnd: vi.fn(async () => {}),
+}));
+
 describe("continuation chain production composition proof (tree hop-1 + hop-2)", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
@@ -233,11 +240,6 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
 
     resetAgentEventsForTest();
     resetSubagentRegistryForTests();
-    // This fixture opens no browser tabs. Keep unrelated plugin activation out
-    // of the bounded continuation handoff; browser cleanup has owner tests.
-    subagentRegistryTesting.setDepsForTest({
-      cleanupBrowserSessionsForLifecycleEnd: async () => {},
-    });
     resetTaskFlowRegistryForTests({ persist: false });
     resetDelegateStoreForTests();
     resetContinueDelegateTurnAdmissionForTests();
@@ -262,7 +264,6 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     resetContinueDelegateTurnAdmissionForTests();
     resetTaskFlowRegistryForTests({ persist: false });
     resetSubagentRegistryForTests();
-    subagentRegistryTesting.setDepsForTest();
     resetAgentEventsForTest();
     resetContinuationTracer();
     resetDiagnosticTraceContextForTest();

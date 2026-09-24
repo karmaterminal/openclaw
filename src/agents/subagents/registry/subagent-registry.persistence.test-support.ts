@@ -160,7 +160,6 @@ export async function settleSubagentRegistryPersistenceWork(
 type PersistenceCleanup = {
   stateDir: string;
   resetRegistry: () => void;
-  resetDeps?: () => void;
   closeDatabases?: () => void | Promise<void>;
 };
 
@@ -169,7 +168,6 @@ export async function cleanupSubagentRegistryPersistenceTest(params: Persistence
   params.resetRegistry();
   await cleanupSessionStateForTest({ stateDir: params.stateDir });
   await params.closeDatabases?.();
-  params.resetDeps?.();
   await fs.rm(params.stateDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 }
 
@@ -273,27 +271,6 @@ export async function removeSubagentSessionEntry(params: {
     skipMaintenance: true,
   });
   return storePath;
-}
-
-/** Builds default dependency mocks used by subagent registry persistence tests. */
-export function createSubagentRegistryTestDeps(
-  extra: Record<string, unknown> = {},
-): Record<string, unknown> {
-  return {
-    cleanupBrowserSessionsForLifecycleEnd: vi.fn(async () => {}),
-    captureSubagentCompletionReply: vi.fn(async () => undefined),
-    ensureContextEnginesInitialized: vi.fn(),
-    loadAgentRuntimePluginRegistryHandle: vi.fn(),
-    getRuntimeConfig: vi.fn(() => ({})),
-    resolveAgentTimeoutMs: vi.fn(() => 100),
-    resolveContextEngine: vi.fn(async () => ({
-      info: { id: "test", name: "Test", version: "0.0.1" },
-      ingest: vi.fn(async () => ({ ingested: false })),
-      assemble: vi.fn(async ({ messages }) => ({ messages, estimatedTokens: 0 })),
-      compact: vi.fn(async () => ({ ok: false, compacted: false })),
-    })),
-    ...extra,
-  };
 }
 
 export function createDeliveredWake(

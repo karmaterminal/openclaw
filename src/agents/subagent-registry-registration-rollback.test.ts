@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./subagents/registry/subagent-registry.mocks.shared.js";
+import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import * as detachedTaskRuntime from "../tasks/detached-task-runtime.js";
 import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
@@ -11,15 +12,11 @@ import type {
   RegisterSubagentRunParams,
   SubagentRegistrationIdentity,
 } from "./subagents/registry/subagent-registry-run-launch.js";
-import { persistSubagentRunsToDiskOrThrow } from "./subagents/registry/subagent-registry-state.js";
 import {
   recordAcceptedSubagentSpawnRollback,
   rollbackSubagentRunRegistration,
 } from "./subagents/registry/subagent-registry.js";
-import {
-  createSubagentRegistryTestDeps,
-  canonicalSubagentRunFixtures,
-} from "./subagents/registry/subagent-registry.persistence.test-support.js";
+import { canonicalSubagentRunFixtures } from "./subagents/registry/subagent-registry.persistence.test-support.js";
 import {
   loadSubagentRegistryFromSqlite,
   saveSubagentRegistryToSqlite,
@@ -34,6 +31,34 @@ import {
 } from "./subagents/registry/subagent-registry.test-helpers.js";
 import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.types.js";
 
+type PersistDisk =
+  typeof import("./subagents/registry/subagent-registry-state.js").persistSubagentRunsToDisk;
+type PersistOrThrow =
+  typeof import("./subagents/registry/subagent-registry-state.js").persistSubagentRunsToDiskOrThrow;
+
+// Two INDEPENDENT override slots, not one global redirect: only one case in this
+// file swaps persistSubagentRunsToDisk for the sqlite writer, and redirecting it
+// for every case would silently change what the others exercise. The or-throw
+// override is handed the REAL implementation, because this module is mocked and a
+// top-level import of it would resolve to the wrapper and recurse.
+let persistDiskOverride: PersistDisk | undefined;
+let persistOrThrowOverride:
+  | ((real: PersistOrThrow, ...args: Parameters<PersistOrThrow>) => void)
+  | undefined;
+vi.mock("./subagents/registry/subagent-registry-state.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./subagents/registry/subagent-registry-state.js")>();
+  return {
+    ...actual,
+    persistSubagentRunsToDisk: (...args: Parameters<PersistDisk>) =>
+      (persistDiskOverride ?? actual.persistSubagentRunsToDisk)(...args),
+    persistSubagentRunsToDiskOrThrow: (...args: Parameters<PersistOrThrow>) =>
+      persistOrThrowOverride
+        ? persistOrThrowOverride(actual.persistSubagentRunsToDiskOrThrow, ...args)
+        : actual.persistSubagentRunsToDiskOrThrow(...args),
+  };
+});
+
 describe("subagent registration rollback", () => {
   const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
   let tempStateDir: string | undefined;
@@ -41,12 +66,12 @@ describe("subagent registration rollback", () => {
   beforeEach(async () => {
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-rollback-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
-    testing.setDepsForTest(createSubagentRegistryTestDeps());
   });
 
   afterEach(async () => {
     closeOpenClawStateDatabaseForTest();
-    testing.setDepsForTest();
+    persistDiskOverride = undefined;
+    persistOrThrowOverride = undefined;
     resetSubagentRegistryForTests({ persist: false });
     if (tempStateDir) {
       await fs.rm(tempStateDir, { recursive: true, force: true });
@@ -237,13 +262,10 @@ describe("subagent registration rollback", () => {
     );
     const expectedKillReconciliation = structuredClone(olderRun.killReconciliation);
     const persistenceScopes: string[][] = [];
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDiskOrThrow: (runs, changedRunIds) => {
-        persistenceScopes.push([...(changedRunIds ?? [])]);
-        persistSubagentRunsToDiskOrThrow(runs, changedRunIds);
-      },
-    });
+    persistOrThrowOverride = (real, runs, changedRunIds) => {
+      persistenceScopes.push([...(changedRunIds ?? [])]);
+      real(runs, changedRunIds);
+    };
     const taskError = new Error("task runtime unavailable");
     const createTaskSpy = vi
       .spyOn(detachedTaskRuntime, "createRunningTaskRun")
@@ -298,13 +320,10 @@ describe("subagent registration rollback", () => {
       canonicalSubagentRunFixtures(new Map([[priorSameIdRun.runId, priorSameIdRun]])),
     );
     const persistError = new Error("initial sqlite busy");
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDisk: saveSubagentRegistryToSqlite,
-      persistSubagentRunsToDiskOrThrow: () => {
-        throw persistError;
-      },
-    });
+    persistDiskOverride = saveSubagentRegistryToSqlite;
+    persistOrThrowOverride = () => {
+      throw persistError;
+    };
 
     expect(() =>
       registerSubagentRun({
@@ -332,16 +351,13 @@ describe("subagent registration rollback", () => {
     const taskError = new Error("task runtime unavailable");
     const rollbackError = new Error("rollback sqlite busy");
     let persistAttempt = 0;
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDiskOrThrow: (runs, changedRunIds) => {
-        persistAttempt += 1;
-        if (persistAttempt === 2) {
-          throw rollbackError;
-        }
-        persistSubagentRunsToDiskOrThrow(runs, changedRunIds);
-      },
-    });
+    persistOrThrowOverride = (real, runs, changedRunIds) => {
+      persistAttempt += 1;
+      if (persistAttempt === 2) {
+        throw rollbackError;
+      }
+      real(runs, changedRunIds);
+    };
     const createTaskSpy = vi
       .spyOn(detachedTaskRuntime, "createRunningTaskRun")
       .mockImplementationOnce(() => {
@@ -382,16 +398,13 @@ describe("subagent registration rollback", () => {
     const rollbackPersistError = new Error("rollback sqlite busy");
     const terminationError = new Error("gateway termination unavailable");
     let persistAttempt = 0;
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDiskOrThrow: (runs, changedRunIds) => {
-        persistAttempt += 1;
-        if (persistAttempt === 2) {
-          throw rollbackPersistError;
-        }
-        persistSubagentRunsToDiskOrThrow(runs, changedRunIds);
-      },
-    });
+    persistOrThrowOverride = (real, runs, changedRunIds) => {
+      persistAttempt += 1;
+      if (persistAttempt === 2) {
+        throw rollbackPersistError;
+      }
+      real(runs, changedRunIds);
+    };
     const createTaskSpy = vi
       .spyOn(detachedTaskRuntime, "createRunningTaskRun")
       .mockImplementationOnce(() => {
@@ -508,12 +521,9 @@ describe("subagent registration rollback", () => {
 
   it("attempts external cleanup without a rollback marker when no durable row survives", async () => {
     const persistError = new Error("initial sqlite busy");
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDiskOrThrow: () => {
-        throw persistError;
-      },
-    });
+    persistOrThrowOverride = () => {
+      throw persistError;
+    };
     const cleanupOnFailure = vi.fn(async () => {});
     const childSessionKey = "agent:main:subagent:pipeline-no-row";
 

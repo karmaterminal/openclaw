@@ -8,7 +8,6 @@ import { listOpenClawAgentDatabasesForTest as listSeedAgentDatabases } from "../
 import { closeOpenClawStateDatabaseForTest as closeSeedStateDatabase } from "../../../state/openclaw-state-db.js";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
 import "./subagent-registry.mocks.shared.js";
-import type { SubagentRegistryDeps } from "./subagent-registry-deps.js";
 import {
   createSubagentPersistenceRuntime,
   listFixtureAgentDatabases,
@@ -23,7 +22,6 @@ import {
   expectFixtureAgentDatabaseCount,
   FORCED_RESTART_WAKE_CASES,
   readPersistedRun,
-  setPersistenceResumeRegistryDeps,
   withPersistenceResumeRegistryState,
 } from "./subagent-registry.persistence.resume.test-support.js";
 import { registerSubagentDismissedRetentionCases } from "./subagent-registry.persistence.retention.test-support.js";
@@ -41,7 +39,8 @@ import {
   saveSubagentRegistryToSqlite,
 } from "./subagent-registry.store.sqlite.js";
 
-type WakeRequester = SubagentRegistryDeps["maybeWakeRequesterAfterAllChildrenSettled"];
+type WakeRequester =
+  typeof import("../announce/subagent-announce.requester-settle-wake.js").maybeWakeRequesterAfterAllChildrenSettled;
 type WakeParams = Parameters<WakeRequester>[0];
 type AnnounceParams = Parameters<
   typeof import("../announce/subagent-announce.js").runSubagentAnnounceFlow
@@ -68,8 +67,6 @@ let registrySessionCleanupModule: typeof import("../../../test-utils/session-sta
 let registryAgentDbTestModule: typeof import("../../../state/openclaw-agent-db.test-support.js");
 let registryStateDbModule: typeof import("../../../state/openclaw-state-db.js");
 
-const setRegistryDeps = (extra?: Parameters<typeof setPersistenceResumeRegistryDeps>[0]["extra"]) =>
-  setPersistenceResumeRegistryDeps({ mod, callGateway: callGatewayModule.callGateway, extra });
 const activateRegistry = () =>
   activatePersistenceResumeRegistry(mod, callGatewayModule.callGateway);
 

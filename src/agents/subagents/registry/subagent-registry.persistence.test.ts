@@ -2,7 +2,8 @@
 // session timing writes, and restart cleanup behavior.
 import fs from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetSubagentRegistryRuntimeLoadersForTests } from "./subagent-registry-deps.js";
 import "./subagent-registry.mocks.shared.js";
 import "./subagent-registry.persistence.mocks.test-support.js";
 // Preserve module setup before modules that consume it.
@@ -18,7 +19,6 @@ import { getActiveGatewayRootWorkCount } from "../../../process/gateway-work-adm
 import { closeOpenClawStateDatabaseForTest } from "../../../state/openclaw-state-db.js";
 import { setTestEnvValue, withEnv } from "../../../test-utils/env.js";
 import { createAgentsWaitTool } from "../../tools/agents-wait-tool.js";
-import { subagentRegistryDeps } from "./subagent-registry-deps.js";
 import { getLatestSubagentRunByChildSessionKey } from "./subagent-registry-read.js";
 import { getSubagentRunsSnapshotForRead } from "./subagent-registry-state.js";
 import { registerSubagentOrphanTaskCases } from "./subagent-registry.persistence.orphan.test-support.js";
@@ -26,7 +26,6 @@ import {
   canonicalSubagentRunFixtures,
   cleanupSubagentRegistryPersistenceTest,
   createPersistedEndedRun,
-  createSubagentRegistryTestDeps,
   expectDeferredSubagentAnnouncement,
   expectFields,
   flushQueuedRegistryWork,
@@ -54,15 +53,42 @@ import {
 } from "./subagent-registry.test-helpers.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
+type PersistOrThrow =
+  typeof import("./subagent-registry-state.js").persistSubagentRunsToDiskOrThrow;
+
+// Overridable or-throw slot alongside upstream's sqlite redirect, so a case can
+// make the first durable write fail. The registry imports this entry point
+// directly, so the module mock is what reaches the runtime.
+let persistOrThrowOverride: PersistOrThrow | undefined;
 vi.mock("./subagent-registry-state.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./subagent-registry-state.js")>();
   const { saveSubagentRegistryToSqlite: saveRegistryToSqlite } =
     await import("./subagent-registry.store.sqlite.js");
-  return { ...actual, persistSubagentRunsToDisk: saveRegistryToSqlite };
+  return {
+    ...actual,
+    persistSubagentRunsToDisk: saveRegistryToSqlite,
+    persistSubagentRunsToDiskOrThrow: (...args: Parameters<PersistOrThrow>) =>
+      (persistOrThrowOverride ?? actual.persistSubagentRunsToDiskOrThrow)(...args),
+  };
 });
 
 describe("subagent registry persistence", () => {
   const fixture = useSubagentPersistenceFixture();
+
+  // Cleared in beforeEach, NOT afterEach. The persistence fixture owns its own
+  // teardown, knows nothing about this module-mock slot, and can itself throw
+  // ("Subagent persistence cleanup failed") -- which would skip a later afterEach
+  // and leak a failing-write override into every subsequent case. beforeEach runs
+  // regardless of how the previous case tore down.
+  beforeEach(() => {
+    persistOrThrowOverride = undefined;
+    // Clear the lazy loaders too. The ported runtime reaches announce and browser
+    // cleanup through createLazyImportLoader caches that survive
+    // resetSubagentRegistryForTests; a cached resolution predating this file's
+    // vi.mock of the announce module means the registry calls the REAL module and
+    // announceSpy silently records nothing.
+    resetSubagentRegistryRuntimeLoadersForTests();
+  });
 
   const resolveAgentIdFromSessionKey = (sessionKey: string) => {
     const match = sessionKey.match(/^agent:([^:]+):/i);
@@ -180,13 +206,9 @@ describe("subagent registry persistence", () => {
   it("rolls back a new subagent run when initial persistence fails", async () => {
     await fixture.allocateStateDir();
     const persistError = new Error("sqlite busy");
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDiskOrThrow: () => {
-        throw persistError;
-      },
-      runSubagentAnnounceFlow: announceSpy,
-    });
+    persistOrThrowOverride = () => {
+      throw persistError;
+    };
 
     expect(() =>
       registerSubagentRun({
@@ -208,10 +230,6 @@ describe("subagent registry persistence", () => {
     const stateFilePath = path.join(fixture.stateDir, "state-is-a-file");
     await fs.writeFile(stateFilePath, "not a directory", "utf8");
     setTestEnvValue("OPENCLAW_STATE_DIR", stateFilePath);
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      runSubagentAnnounceFlow: announceSpy,
-    });
     expect(() =>
       registerSubagentRun({
         runId: "run-prod-persist-fails",
@@ -313,6 +331,23 @@ describe("subagent registry persistence", () => {
       startedAt: 111,
       endedAt: 222,
     });
+    // Wait on the DURABLE OUTCOME, not on the spy. Under the retired injection seam
+    // the announce dependency was reached with no intervening async hop, so polling
+    // the spy doubled as the trigger. The lazy module boundary adds hops, which made
+    // that poll a timing artefact rather than a behaviour check -- measured: at the
+    // 2s mark baseline and port are byte-identical (execution terminal, metadata
+    // intact, delivery pending, spy 0); given enough turns BOTH reach delivered.
+    // So gate on replay driving delivery terminal, then keep the original
+    // enriched-params assertion, which still holds once announce is reached.
+    await vi.waitFor(
+      () => {
+        const replayed = loadSubagentRegistryFromSqlite().get("run-silent") as
+          | { delivery?: { status?: string } }
+          | undefined;
+        expect(replayed?.delivery?.status).toBe("delivered");
+      },
+      { interval: 25, timeout: 20_000 },
+    );
     await vi.waitFor(() => {
       expect(announceSpy).toHaveBeenCalledWith(
         expect.objectContaining({

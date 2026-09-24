@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import "./subagents/registry/subagent-registry.mocks.shared.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/config.js";
+import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { callGateway } from "../gateway/call.js";
@@ -10,10 +11,11 @@ import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js
 import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
 import { SUBAGENT_ENDED_REASON_KILLED } from "./subagents/registry/subagent-lifecycle-events.js";
+import { resetSubagentRegistryRuntimeLoadersForTests } from "./subagents/registry/subagent-registry-deps.js";
 import { persistSubagentSessionTiming } from "./subagents/registry/subagent-registry-helpers.js";
+import { sharedRegistryMocks } from "./subagents/registry/subagent-registry.mocks.shared.js";
 import {
   createCanonicalSubagentRunFixture,
-  createSubagentRegistryTestDeps,
   readSubagentSessionStore,
   writeSubagentSessionEntry,
 } from "./subagents/registry/subagent-registry.persistence.test-support.js";
@@ -28,9 +30,25 @@ import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.t
 const { announceSpy } = vi.hoisted(() => ({
   announceSpy: vi.fn(async () => "delivered" as const),
 }));
+// No importOriginal: loading the real announce module here drags its import graph
+// in during the registry's own lazy load of it. loadSubagentAnnounceModule() is
+// typed as a Pick of exactly these two exports, so this is the whole surface the
+// registry reaches through that loader.
 vi.mock("./subagents/announce/subagent-announce.js", () => ({
   runSubagentAnnounceFlow: announceSpy,
+  captureSubagentCompletionReply: vi.fn(async () => undefined),
 }));
+
+// persistSubagentRunsToDisk is redirected to the sqlite writer, matching upstream's
+// own idiom in subagent-registry.persistence.test.ts. The registry imports this
+// entry point directly, so the module mock is what reaches the runtime.
+vi.mock("./subagents/registry/subagent-registry-state.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./subagents/registry/subagent-registry-state.js")>();
+  const { saveSubagentRegistryToSqlite: saveRegistryToSqlite } =
+    await import("./subagents/registry/subagent-registry.store.sqlite.js");
+  return { ...actual, persistSubagentRunsToDisk: saveRegistryToSqlite };
+});
 
 describe("subagent registry persistence timing", () => {
   const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
@@ -55,20 +73,27 @@ describe("subagent registry persistence timing", () => {
   };
 
   const waitForRegistryWork = async (predicate: () => boolean | Promise<boolean>) =>
-    await vi.waitFor(async () => expect(await predicate()).toBe(true), {
-      interval: 1,
-      timeout: 5_000,
-    });
+    await vi.waitFor(
+      async () => {
+        // The registry now reaches announce/browser-cleanup through lazy dynamic
+        // imports rather than an injected object, so the completion path parks on
+        // a pending import that nothing else flushes. Without this the lifecycle
+        // never advances and announceSpy is never called.
+        await vi.dynamicImportSettled();
+        expect(await predicate()).toBe(true);
+      },
+      {
+        interval: 1,
+        timeout: 5_000,
+      },
+    );
 
   beforeEach(() => {
+    setRuntimeConfigSnapshot({});
+    // The shared owner's spies are module-scoped and accumulate across cases.
+    sharedRegistryMocks.onAgentEvent.mockClear();
     announceSpy.mockReset();
     announceSpy.mockResolvedValue("delivered");
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDisk: (runs: Map<string, SubagentRunRecord>) =>
-        saveSubagentRegistryToSqlite(runs),
-      runSubagentAnnounceFlow: announceSpy,
-    });
     vi.mocked(callGateway).mockReset();
     vi.mocked(callGateway).mockResolvedValue({
       status: "ok",
@@ -78,9 +103,10 @@ describe("subagent registry persistence timing", () => {
   });
 
   afterEach(async () => {
+    clearRuntimeConfigSnapshot();
     closeOpenClawStateDatabaseForTest();
-    testing.setDepsForTest();
     resetSubagentRegistryForTests({ persist: false });
+    resetSubagentRegistryRuntimeLoadersForTests();
     await cleanupSessionStateForTest();
     if (tempStateDir) {
       await fs.rm(tempStateDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
@@ -155,6 +181,10 @@ describe("subagent registry persistence timing", () => {
     // registerSubagentRun stamps startedAt from the real clock, so bound the
     // upper edge by an observed timestamp rather than the mocked endedAt --
     // a loaded runner can take longer than the synthetic 500ms window.
+    // Listener installation verified during the port: the shared owner's
+    // onAgentEvent spy records the registration synchronously, so a stalled
+    // lifecycle here is never "no listener installed".
+    expect(sharedRegistryMocks.onAgentEvent).toHaveBeenCalled();
     const registeredBy = Date.now();
     await waitForRegistryWork(async () => {
       const store = await readSubagentSessionStore(storePath);

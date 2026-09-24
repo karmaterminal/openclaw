@@ -1,6 +1,6 @@
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { callGateway } from "../../../gateway/call.js";
-import { subagentRegistryDeps } from "./subagent-registry-deps.js";
+import { callSubagentRegistryGateway } from "./subagent-registry-deps.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 import { hasContinuationWorkForSweepEntry } from "./subagent-registry-sweep-guards.js";
 
@@ -18,5 +18,5 @@ export async function callGatewayForSweep<T>(
       }
     }
   }
-  return await subagentRegistryDeps.callGateway<T>(request);
+  return await callSubagentRegistryGateway<T>(request);
 }

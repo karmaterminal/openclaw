@@ -88,6 +88,25 @@ vi.mock("../auto-reply/continuation/work-store.js", () => ({
 
 vi.mock("./subagents/announce/subagent-announce.js", () => ({
   runSubagentAnnounceFlow: vi.fn(async () => true),
+  // loadSubagentAnnounceModule() is typed as a Pick of exactly these two, so this
+  // is the whole surface the registry reaches through that loader.
+  captureSubagentCompletionReply: vi.fn(async () => undefined),
+}));
+
+vi.mock("./subagents/announce/subagent-announce.requester-settle-wake.js", () => ({
+  maybeWakeRequesterAfterAllChildrenSettled: vi.fn(
+    async (params: {
+      settledEntry: { runId: string };
+      completeBatch: (runIds: string[]) => void;
+    }) => {
+      params.completeBatch([params.settledEntry.runId]);
+      return false;
+    },
+  ),
+}));
+
+vi.mock("./runtime-plugins.js", () => ({
+  loadAgentRuntimePluginRegistryHandle: vi.fn(),
 }));
 
 vi.mock("../plugins/hook-runner-global.js", () => ({
@@ -109,21 +128,6 @@ describe("subagent registry archive behavior (continuation work)", () => {
     ({ createSubagentRunRecord } = await import("./subagent-test-fixtures.test-helpers.js"));
     mod = await import("./subagents/registry/subagent-registry.test-helpers.js");
   });
-
-  const setRegistryTestDeps = (
-    overrides: NonNullable<Parameters<typeof mod.testing.setDepsForTest>[0]> = {},
-  ) => {
-    mod.testing.setDepsForTest({
-      callGateway,
-      getRuntimeConfig: loadConfigMock as typeof import("../config/config.js").getRuntimeConfig,
-      loadAgentRuntimePluginRegistryHandle: vi.fn(),
-      maybeWakeRequesterAfterAllChildrenSettled: vi.fn(async (params) => {
-        params.completeBatch([params.settledEntry.runId]);
-        return false;
-      }),
-      ...overrides,
-    });
-  };
 
   const addCanonicalSubagentRunForTests = (
     entry: Parameters<typeof mod.addSubagentRunForTests>[0],
@@ -175,13 +179,11 @@ describe("subagent registry archive behavior (continuation work)", () => {
           } as never)
         : undefined;
     });
-    setRegistryTestDeps();
     mod.resetSubagentRegistryForTests({ persist: false });
   });
 
   afterEach(() => {
     resetDetachedTaskLifecycleRuntimeForTests();
-    mod.testing.setDepsForTest();
     mod.resetSubagentRegistryForTests({ persist: false });
     vi.useRealTimers();
   });

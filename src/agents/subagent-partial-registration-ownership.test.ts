@@ -3,21 +3,45 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./subagents/registry/subagent-registry.mocks.shared.js";
+import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import * as detachedTaskRuntime from "../tasks/detached-task-runtime.js";
 import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
 import { runSpawnPipeline } from "./spawn-pipeline.js";
-import { persistSubagentRunsToDiskOrThrow } from "./subagents/registry/subagent-registry-state.js";
 import {
   recordAcceptedSubagentSpawnRollback,
   rollbackSubagentRunRegistration,
 } from "./subagents/registry/subagent-registry.js";
-import { createSubagentRegistryTestDeps } from "./subagents/registry/subagent-registry.persistence.test-support.js";
 import {
   getSubagentRunByChildSessionKey,
   resetSubagentRegistryForTests,
   testing,
 } from "./subagents/registry/subagent-registry.test-helpers.js";
+
+// The registry imports its persistence entry points directly from this module, so
+// a module mock is what actually reaches the runtime. `actual` is captured inside
+// the factory so a test can delegate to the real implementation and only intercept
+// the attempt it cares about.
+type PersistOrThrow =
+  typeof import("./subagents/registry/subagent-registry-state.js").persistSubagentRunsToDiskOrThrow;
+
+// The override is handed the REAL implementation. It cannot import it: this module
+// is mocked, so a top-level import of persistSubagentRunsToDiskOrThrow would resolve
+// to the wrapper below and recurse.
+let persistOrThrowOverride:
+  | ((real: PersistOrThrow, ...args: Parameters<PersistOrThrow>) => void)
+  | undefined;
+vi.mock("./subagents/registry/subagent-registry-state.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./subagents/registry/subagent-registry-state.js")>();
+  return {
+    ...actual,
+    persistSubagentRunsToDiskOrThrow: (...args: Parameters<PersistOrThrow>) =>
+      persistOrThrowOverride
+        ? persistOrThrowOverride(actual.persistSubagentRunsToDiskOrThrow, ...args)
+        : actual.persistSubagentRunsToDiskOrThrow(...args),
+  };
+});
 
 describe("partial subagent registration ownership", () => {
   const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
@@ -26,12 +50,11 @@ describe("partial subagent registration ownership", () => {
   beforeEach(async () => {
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-partial-registration-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
-    testing.setDepsForTest(createSubagentRegistryTestDeps());
   });
 
   afterEach(async () => {
     closeOpenClawStateDatabaseForTest();
-    testing.setDepsForTest();
+    persistOrThrowOverride = undefined;
     resetSubagentRegistryForTests({ persist: false });
     if (tempStateDir) {
       await fs.rm(tempStateDir, { recursive: true, force: true });
@@ -46,16 +69,13 @@ describe("partial subagent registration ownership", () => {
     const taskError = new Error("negative-control task row failure");
     const rollbackError = new Error("negative-control rollback persistence failure");
     let persistAttempt = 0;
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDiskOrThrow: (runs, changedRunIds) => {
-        persistAttempt += 1;
-        if (persistAttempt === 2) {
-          throw rollbackError;
-        }
-        persistSubagentRunsToDiskOrThrow(runs, changedRunIds);
-      },
-    });
+    persistOrThrowOverride = (real, runs, changedRunIds) => {
+      persistAttempt += 1;
+      if (persistAttempt === 2) {
+        throw rollbackError;
+      }
+      real(runs, changedRunIds);
+    };
     const createTaskSpy = vi
       .spyOn(detachedTaskRuntime, "createRunningTaskRun")
       .mockImplementationOnce(() => {

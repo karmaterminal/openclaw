@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./subagents/registry/subagent-registry.mocks.shared.js";
+import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import { callGateway } from "../gateway/call.js";
 import { onAgentEvent } from "../infra/agent-events.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
@@ -14,7 +15,6 @@ import { captureEnv, deleteTestEnvValue, setTestEnvValue, withEnv } from "../tes
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
 import {
   canonicalSubagentRunFixtures,
-  createSubagentRegistryTestDeps,
   writeSubagentSessionEntry,
 } from "./subagents/registry/subagent-registry.persistence.test-support.js";
 import type { SubagentRunFixture } from "./subagents/registry/subagent-registry.persistence.test-support.js";
@@ -36,9 +36,26 @@ import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.t
 const { announceSpy } = vi.hoisted(() => ({
   announceSpy: vi.fn(async () => "delivered" as const),
 }));
-vi.mock("./subagents/announce/subagent-announce.js", () => ({
-  runSubagentAnnounceFlow: announceSpy,
-}));
+vi.mock("./subagents/announce/subagent-announce.js", async (importOriginal) => {
+  const { hasUsableSessionEntry } =
+    await importOriginal<typeof import("./subagents/announce/subagent-announce.js")>();
+  return {
+    hasUsableSessionEntry,
+    runSubagentAnnounceFlow: announceSpy,
+    captureSubagentCompletionReply: vi.fn(async () => undefined),
+  };
+});
+
+// persistSubagentRunsToDisk is redirected to the sqlite writer, matching upstream's
+// own idiom in subagent-registry.persistence.test.ts. The registry imports this
+// entry point directly, so the module mock is what reaches the runtime.
+vi.mock("./subagents/registry/subagent-registry-state.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./subagents/registry/subagent-registry-state.js")>();
+  const { saveSubagentRegistryToSqlite: saveRegistryToSqlite } =
+    await import("./subagents/registry/subagent-registry.store.sqlite.js");
+  return { ...actual, persistSubagentRunsToDisk: saveRegistryToSqlite };
+});
 
 function expectFields(value: unknown, expected: Record<string, unknown>): void {
   if (!value || typeof value !== "object") {
@@ -181,11 +198,6 @@ describe("subagent registry persistence", () => {
     resetDetachedTaskLifecycleRuntimeForTests();
     announceSpy.mockReset();
     announceSpy.mockResolvedValue("delivered");
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDisk: fastPersistSubagentRunsToDisk,
-      runSubagentAnnounceFlow: announceSpy,
-    });
     vi.mocked(callGateway).mockReset();
     vi.mocked(callGateway).mockResolvedValue({
       status: "ok",
@@ -197,7 +209,6 @@ describe("subagent registry persistence", () => {
   });
 
   afterEach(async () => {
-    testing.setDepsForTest();
     resetSubagentRegistryForTests({ persist: false });
     resetDetachedTaskLifecycleRuntimeForTests();
     await cleanupSessionStateForTest();
