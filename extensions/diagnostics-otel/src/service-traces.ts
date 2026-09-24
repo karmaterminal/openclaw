@@ -6,6 +6,7 @@ import {
   type SpanKind,
   type Tracer,
 } from "@opentelemetry/api";
+import { normalizeDiagnosticValue } from "openclaw/plugin-sdk/diagnostic-runtime";
 import type {
   DiagnosticEventMetadata,
   DiagnosticEventPayload,
@@ -413,6 +414,7 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
       runId?: string;
       sessionKey?: string;
       sessionId?: string;
+      agentId?: string;
       provider?: string;
       model?: string;
       channel?: string;
@@ -430,6 +432,9 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
     }
     if (evt.trigger) {
       spanAttrs["openclaw.trigger"] = evt.trigger;
+    }
+    if (evt.agentId) {
+      spanAttrs["openclaw.agent"] = normalizeDiagnosticValue(evt.agentId);
     }
   };
 

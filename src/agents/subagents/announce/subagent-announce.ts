@@ -140,7 +140,7 @@ export type SubagentAnnounceFlowParams = {
   isCompletionOwnedByRequesterYield?: () => boolean;
   signal?: AbortSignal;
   bestEffortDeliver?: boolean;
-  onDeliveryResult?: (delivery: SubagentAnnounceDeliveryResult) => void;
+  onDeliveryResult?: (delivery: SubagentAnnounceDeliveryResult) => void | Promise<void>;
   silentAnnounce?: boolean;
   wakeOnReturn?: boolean;
   continuationTargetSessionKey?: string;
@@ -246,7 +246,7 @@ async function runSubagentAnnounceFlowBound(
       params.childRunId.startsWith("continuation-delegate-") &&
       isDelegateArtifactReturnConfigured(params.childRunId);
     let requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey, {
-      cfg: subagentAnnounceDeps.getRuntimeConfig(),
+      cfg: getRuntimeConfig(),
       agentId: targetRequesterAgentId,
     });
     const requesterIsInternalSession = () =>
@@ -708,12 +708,12 @@ async function runSubagentAnnounceFlowBound(
     // follow-up injection (deliver=false) so the orchestrator receives it.
     const directIdempotencyKey = buildAnnounceIdempotencyKey(announceId);
     let deliveryResultReported = false;
-    const reportDeliveryResult = (delivery: SubagentAnnounceDeliveryResult) => {
+    const reportDeliveryResult = async (delivery: SubagentAnnounceDeliveryResult) => {
       if (deliveryResultReported) {
         return;
       }
       deliveryResultReported = true;
-      params.onDeliveryResult?.(delivery);
+      await params.onDeliveryResult?.(delivery);
     };
     const delivery = await deliverSubagentAnnouncement({
       requesterSessionKey: targetRequesterSessionKey,
@@ -742,7 +742,7 @@ async function runSubagentAnnounceFlowBound(
       ...(returnRoute.traceparent ? { traceparent: returnRoute.traceparent } : {}),
       resolveGatewayContext: params.resolveGatewayContext,
     });
-    reportDeliveryResult(delivery);
+    await reportDeliveryResult(delivery);
     announceOutcome =
       delivery.reason === "requester_turn_pending"
         ? "requester_turn_pending"
@@ -768,7 +768,7 @@ async function runSubagentAnnounceFlowBound(
       (params.onBeforeDeleteChildSession?.() ?? true)
     ) {
       await deleteSubagentSessionForCleanup({
-        callGateway: subagentAnnounceDeps.callGateway,
+        callGateway: callSubagentLifecycleGateway,
         isCurrent: childSessionEffectsAllowed,
         childSessionKey: params.childSessionKey,
         spawnMode: params.spawnMode,

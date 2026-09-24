@@ -518,7 +518,7 @@ export async function buildStatusReplyParts(
     }
     const { buildControlledSubagentRunsReadContext, buildSubagentsStatusLine } =
       await loadStatusSubagentsRuntime();
-    const subagentReadContext = buildControlledSubagentRunsReadContext(
+    const subagentReadContext = await buildControlledSubagentRunsReadContext(
       requesterKey,
       statusAgentId,
       cfg,

@@ -2,6 +2,7 @@ import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
 import { withoutSessionRecipientAuthoritySchema } from "./openclaw-agent-db-session-migrations.js";
 import { withLegacySessionParticipantsSchema } from "./openclaw-agent-participants-migration.js";
 import { AGENT_SCHEMA_WITHOUT_PROGRESS_CARD_SQL } from "./openclaw-agent-progress-card-schema.js";
+import { withLegacyAgentStorageSchema } from "./openclaw-agent-storage-schema.js";
 
 const SUGGESTIONS_SCHEMA_START = "CREATE TABLE IF NOT EXISTS session_suggestions (";
 
@@ -23,8 +24,15 @@ export const AGENT_V14_SESSION_SHARING_SCHEMA_SQL = sessionSharingSchema.slice(
   sessionSuggestionsStart,
 );
 export const AGENT_V14_ADDITIVE_SCHEMA_SQL = sessionSharingSchema.slice(sessionSuggestionsStart);
+// V14 is a historical fixture: every schema block introduced after v14 must be
+// stripped. Three transforms now, not two -- upstream added the agent-storage
+// strip while the continuation lane added the recipient-authority strip, and
+// each removes a distinct block, so both are required and neither subsumes the
+// other.
 export const AGENT_V14_CORE_SCHEMA_SQL = withoutSessionRecipientAuthoritySchema(
   withLegacySessionParticipantsSchema(
-    AGENT_SCHEMA_WITHOUT_PROGRESS_CARD_SQL.replace(sessionSharingSchema, ""),
+    withLegacyAgentStorageSchema(
+      AGENT_SCHEMA_WITHOUT_PROGRESS_CARD_SQL.replace(sessionSharingSchema, ""),
+    ),
   ),
 );

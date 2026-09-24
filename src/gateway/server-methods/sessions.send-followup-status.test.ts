@@ -15,6 +15,7 @@ import {
   vi,
 } from "vitest";
 import { ErrorCodes } from "../../../packages/gateway-protocol/src/index.js";
+import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { bindSessionRowProjection } from "../session-row-projection-access.js";
 import { expectSubagentFollowupReactivation } from "./subagent-followup.test-helpers.js";
 import type { GatewayRequestContext, RespondFn } from "./types.js";
@@ -162,6 +163,12 @@ describe("sessions.send completed subagent follow-up status", () => {
   }
 
   it("reactivates completed subagent sessions before broadcasting sessions.changed", async () => {
+    const state = await createOpenClawTestState({
+      label: "session-send-followup",
+      applyEnv: false,
+    });
+    onTestFinished(() => state.cleanup());
+    const storePath = state.statePath("agents", "main", "agent", "openclaw-agent.sqlite");
     const childSessionKey = "agent:main:subagent:followup";
     const completedRun = {
       runId: "run-old",

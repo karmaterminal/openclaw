@@ -1,21 +1,22 @@
-// Subagent registry persistence tests cover JSON registry restore, child
+// Subagent registry persistence tests cover SQLite registry restore, child
 // session timing writes, and restart cleanup behavior.
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import "./subagent-registry.mocks.shared.js";
+import "./subagent-registry.persistence.mocks.test-support.js";
+// Preserve module setup before modules that consume it.
+// oxfmt-ignore
+import {
+  announceSpy,
+  createSubagentPersistenceRuntime,
+  useSubagentPersistenceFixture,
+} from "./subagent-registry.persistence-fixture.test-support.js";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { callGateway } from "../../../gateway/call.js";
-import { onAgentEvent } from "../../../infra/agent-events.js";
 import { getActiveGatewayRootWorkCount } from "../../../process/gateway-work-admission.js";
 import { closeOpenClawStateDatabaseForTest } from "../../../state/openclaw-state-db.js";
-import { resetTaskRegistryMaintenanceRuntimeForTests } from "../../../tasks/task-registry.maintenance.js";
-import {
-  resetTaskFlowRegistryForTests,
-  resetTaskRegistryForTests,
-} from "../../../tasks/task-runtime.test-helpers.js";
-import { captureEnv, setTestEnvValue, withEnv } from "../../../test-utils/env.js";
+import { withEnv } from "../../../test-utils/env.js";
 import { createAgentsWaitTool } from "../../tools/agents-wait-tool.js";
 import { subagentRegistryDeps } from "./subagent-registry-deps.js";
 import { getLatestSubagentRunByChildSessionKey } from "./subagent-registry-read.js";
@@ -53,16 +54,15 @@ import {
 } from "./subagent-registry.test-helpers.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
-const { announceSpy } = vi.hoisted(() => ({
-  announceSpy: vi.fn(async (): Promise<"delivered" | "retryable"> => "delivered"),
-}));
-vi.mock("../announce/subagent-announce.js", () => ({
-  runSubagentAnnounceFlow: announceSpy,
-}));
+vi.mock("./subagent-registry-state.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./subagent-registry-state.js")>();
+  const { saveSubagentRegistryToSqlite: saveRegistryToSqlite } =
+    await import("./subagent-registry.store.sqlite.js");
+  return { ...actual, persistSubagentRunsToDisk: saveRegistryToSqlite };
+});
 
 describe("subagent registry persistence", () => {
-  const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
-  let tempStateDir: string | null = null;
+  const fixture = useSubagentPersistenceFixture();
 
   const resolveAgentIdFromSessionKey = (sessionKey: string) => {
     const match = sessionKey.match(/^agent:([^:]+):/i);
@@ -75,12 +75,9 @@ describe("subagent registry persistence", () => {
     updatedAt?: number;
     abortedLastRun?: boolean;
   }) => {
-    if (!tempStateDir) {
-      throw new Error("tempStateDir not initialized");
-    }
     const agentId = resolveAgentIdFromSessionKey(params.sessionKey);
     return await writeSubagentSessionEntry({
-      stateDir: tempStateDir,
+      stateDir: fixture.stateDir,
       agentId,
       sessionKey: params.sessionKey,
       sessionId: params.sessionId,
@@ -91,12 +88,9 @@ describe("subagent registry persistence", () => {
   };
 
   const removeChildSessionEntry = async (sessionKey: string) => {
-    if (!tempStateDir) {
-      throw new Error("tempStateDir not initialized");
-    }
     const agentId = resolveAgentIdFromSessionKey(sessionKey);
     return await removeSubagentSessionEntry({
-      stateDir: tempStateDir,
+      stateDir: fixture.stateDir,
       agentId,
       sessionKey,
     });
@@ -128,8 +122,7 @@ describe("subagent registry persistence", () => {
   ) => {
     // Each persisted-registry fixture gets its own state dir so session and
     // subagent SQLite stores use the same production paths.
-    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
-    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
+    await fixture.allocateStateDir();
     const runs = (persisted.runs ?? {}) as Record<string, SubagentRunRecord>;
     saveCanonicalRunFixtures(new Map(Object.entries(runs)));
     if (opts?.seedChildSessions !== false) {
@@ -144,61 +137,14 @@ describe("subagent registry persistence", () => {
   const restartRegistry = () => {
     resetSubagentRegistryForTests({ persist: false });
     initSubagentRegistry();
-    const recoveryRuntime = {
-      dispatchAgent: (params: Record<string, unknown>, timeoutMs?: number) =>
-        callGateway({ method: "agent", params, timeoutMs }),
-      waitForAgent: (params: Record<string, unknown>, timeoutMs?: number) =>
-        callGateway({ method: "agent.wait", params, timeoutMs }),
-      sendRecoveryNotice: vi.fn(),
-    };
+    const recoveryRuntime = createSubagentPersistenceRuntime(callGateway);
     const gateway = { recoveryRuntime, resolveGatewayContext: () => gateway as never };
     activateSubagentRegistry(() => gateway as never);
   };
 
-  const fastPersistSubagentRunsToDisk = (runs: Map<string, SubagentRunRecord>) =>
-    saveSubagentRegistryToSqlite(runs);
-
   function saveCanonicalRunFixtures(runs: ReadonlyMap<string, SubagentRunFixture>) {
     saveSubagentRegistryToSqlite(canonicalSubagentRunFixtures(runs));
   }
-
-  beforeEach(() => {
-    resetTaskRegistryMaintenanceRuntimeForTests();
-    resetTaskRegistryForTests({ persist: false });
-    resetTaskFlowRegistryForTests({ persist: false });
-    announceSpy.mockReset();
-    announceSpy.mockResolvedValue("delivered");
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDisk: fastPersistSubagentRunsToDisk,
-      runSubagentAnnounceFlow: announceSpy,
-    });
-    vi.mocked(callGateway).mockReset();
-    vi.mocked(callGateway).mockResolvedValue({
-      status: "ok",
-      startedAt: 111,
-      endedAt: 222,
-    });
-    vi.mocked(onAgentEvent).mockReset();
-    vi.mocked(onAgentEvent).mockReturnValue(() => undefined);
-  });
-
-  afterEach(async () => {
-    if (tempStateDir) {
-      await cleanupSubagentRegistryPersistenceTest({
-        stateDir: tempStateDir,
-        resetRegistry: () => resetSubagentRegistryForTests({ persist: false }),
-        resetDeps: () => testing.setDepsForTest(),
-        closeDatabases: () => {
-          resetTaskRegistryForTests({ persist: false });
-          resetTaskFlowRegistryForTests({ persist: false });
-        },
-      });
-      tempStateDir = null;
-    }
-    resetTaskRegistryMaintenanceRuntimeForTests();
-    envSnapshot.restore();
-  });
 
   it("round-trips the progress source locator through SQLite", async () => {
     const progressOrigin = {
@@ -406,8 +352,7 @@ describe("subagent registry persistence", () => {
   });
 
   it("skips cleanup when cleanupHandled was persisted", async () => {
-    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
-    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
+    await fixture.allocateStateDir();
 
     const persisted = {
       version: 2,
@@ -486,8 +431,7 @@ describe("subagent registry persistence", () => {
   });
 
   it("normalizes newly registered session keys to canonical trimmed values", async () => {
-    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
-    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
+    await fixture.allocateStateDir();
 
     vi.mocked(callGateway).mockResolvedValueOnce({
       status: "pending",
@@ -517,8 +461,7 @@ describe("subagent registry persistence", () => {
   });
 
   it("reloads waitable swarm collector completions after a gateway restart", async () => {
-    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
-    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
+    await fixture.allocateStateDir();
     const run: SubagentRunRecord = {
       runId: "run-swarm-restart",
       childSessionKey: "agent:worker:subagent:swarm-restart",
@@ -589,8 +532,7 @@ describe("subagent registry persistence", () => {
   });
 
   it("reloads queued launch and in-flight structured state", async () => {
-    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
-    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
+    await fixture.allocateStateDir();
     const run: SubagentRunRecord = {
       runId: "run-swarm-in-flight",
       childSessionKey: "agent:worker:subagent:swarm-in-flight",
@@ -652,13 +594,13 @@ describe("subagent registry persistence", () => {
     const announcement = createDeferred<"retryable">();
     const releaseAnnouncement = () =>
       reject ? announcement.reject(new Error("announce boom")) : announcement.resolve("retryable");
+    const requesterSettle = await import("../announce/subagent-announce.requester-settle-wake.js");
     const settlement = gateSubagentRequesterSettlement(
-      subagentRegistryDeps.maybeWakeRequesterAfterAllChildrenSettled,
+      requesterSettle.maybeWakeRequesterAfterAllChildrenSettled,
     );
-    testing.setDepsForTest({
-      ...subagentRegistryDeps,
-      maybeWakeRequesterAfterAllChildrenSettled: settlement.run,
-    });
+    vi.spyOn(requesterSettle, "maybeWakeRequesterAfterAllChildrenSettled").mockImplementation(
+      settlement.run,
+    );
     announceSpy.mockImplementationOnce(() => announcement.promise);
     let retryReady = false;
     let readiness: Promise<void> | undefined;
@@ -700,7 +642,7 @@ describe("subagent registry persistence", () => {
       releaseAnnouncement();
       await readiness;
       expect(announceSpy, "first attempt deferred").toHaveBeenCalledOnce();
-      await settleSubagentRegistryPersistenceWork();
+      await fixture.settle();
 
       announceSpy.mockResolvedValueOnce("delivered");
       const beforeRetry = Date.now();
@@ -850,6 +792,7 @@ describe("subagent registry persistence", () => {
     writeChildSessionEntry,
     restartRegistry,
     waitForRegistryWork,
+    settle: fixture.settle,
   });
 
   it("finalizes restored interrupted runs without replay", async () => {
@@ -906,9 +849,8 @@ describe("subagent registry persistence", () => {
   });
 
   it("prunes orphaned runs without traversing legacy attachment paths", async () => {
-    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
-    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
-    const attachmentsRootDir = path.join(tempStateDir, "attachments");
+    await fixture.allocateStateDir();
+    const attachmentsRootDir = path.join(fixture.stateDir, "attachments");
     const attachmentsDir = path.join(attachmentsRootDir, "ghost");
     await fs.mkdir(attachmentsDir, { recursive: true });
     await fs.writeFile(path.join(attachmentsDir, "artifact.txt"), "artifact", "utf8");
@@ -1029,8 +971,7 @@ describe("subagent registry persistence", () => {
   });
 
   it("resume preserves steer-restart ownership when the child session is missing", async () => {
-    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
-    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
+    await fixture.allocateStateDir();
     const runId = "run-orphan-resume-guard";
     const childSessionKey = "agent:main:subagent:ghost-resume";
     const now = Date.now();

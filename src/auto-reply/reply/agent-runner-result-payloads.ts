@@ -49,8 +49,7 @@ import { emitReplyAgentUsageDiagnostic } from "./agent-runner-usage-diagnostic.j
 import { resolveResponseUsageLine } from "./agent-runner-usage-line.js";
 import { hasBlockReplyDeliveryCustody } from "./block-reply-delivery.js";
 import type { PendingContinuationSettlement } from "./get-reply.types.js";
-import { attachMcpAppChannelAction } from "./mcp-app-channel-action.js";
-import { attachMcpConnectChannelAction } from "./mcp-connect-channel-action.js";
+import { attachMcpAppChannelAction, attachMcpConnectChannelAction } from "./mcp-channel-actions.js";
 import { normalizeReplyPayload } from "./normalize-reply.js";
 import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
 import { createReplyToModeFilterForChannel } from "./reply-threading.js";

@@ -66,6 +66,9 @@ vi.mock("../../internal-session-effects.js", () => ({
   removeInternalSessionEffectsSession,
 }));
 vi.mock("../../../tasks/detached-task-runtime.js", () => detachedTaskRuntime);
+vi.mock("../../../tasks/detached-task-runtime.async.js", () => ({
+  finalizeTaskRunByRunIdAsync: detachedTaskRuntime.finalizeTaskRunByRunId,
+}));
 vi.mock("./subagent-control.runtime.js", () => killRuntime);
 vi.mock("./subagent-session-reconciliation.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./subagent-session-reconciliation.js")>();
@@ -709,6 +712,7 @@ describe("subagent registry recovery scheduling", () => {
         status: "cancelled",
         suppressDelivery: true,
       }),
+      expect.any(Function),
     );
     expect(retireSupersededRun).toHaveBeenCalledWith(entry.runId, entry);
   });
@@ -759,6 +763,7 @@ describe("subagent registry recovery scheduling", () => {
         status: "cancelled",
         suppressDelivery: true,
       }),
+      expect.any(Function),
     );
     expect(retireSupersededRun).toHaveBeenCalledWith(entry.runId, entry);
   });

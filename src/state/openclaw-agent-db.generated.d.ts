@@ -139,7 +139,7 @@ export interface HeartbeatOutcomes {
 
 export interface MemoryEmbeddingCache {
   dims: number | null;
-  embedding: string;
+  embedding: Uint8Array;
   hash: string;
   model: string;
   provider: string;
@@ -172,7 +172,8 @@ export interface MemoryIndexChunkRecallMetadata {
 }
 
 export interface MemoryIndexChunks {
-  embedding: string;
+  chunk_rowid: Generated<number>;
+  embedding: Uint8Array;
   end_line: number;
   hash: string;
   id: string;
@@ -443,14 +444,14 @@ export interface SessionTranscriptFtsIdx {
 }
 
 export interface SessionTranscriptFtsRows {
-  fts_rowid: Generated<number>;
+  id: Generated<number>;
+  message_id: string | null;
   session_id: string;
 }
 
 export interface SessionTranscriptIndexState {
   active_event_count: Generated<number>;
   active_message_count: Generated<number>;
-  fts_row_count: number | null;
   indexed_seq: number;
   leaf_event_id: string | null;
   needs_rebuild: Generated<number>;
@@ -551,7 +552,10 @@ export interface TranscriptEventIdentities {
 
 export interface TranscriptEvents {
   created_at: number;
-  event_json: string;
+  event_json: string | null;
+  event_utf8_bytes: number | null;
+  event_zstd: Uint8Array | null;
+  navigation_json: string | null;
   seq: number;
   session_id: string;
 }

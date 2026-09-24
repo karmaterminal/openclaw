@@ -207,7 +207,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: approved host-owned workspace access runtime entrypoint.
       // +1: passive docked link-reader contracts.
       // +1: typed decision provider contract.
-      157,
+      // +1: shared Code Mode executor contract for the bundled QuickJS owner.
+      158,
       env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
@@ -404,8 +405,15 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       //     d69a4fa9ca (#151652) stopped re-exporting from this deprecated
       //     barrel so every SDK subpath goes through the plugins/runtime facade.
       // +1: approved native workspace worker argv resolver for node adapters.
-      // Re-pinned to the measured surface after absorbing upstream ba2fc97a917c.
-      4547,
+      // +35: shared Code Mode executor/guest protocol and source/output implementation helpers.
+      // +3: approved shared preview lifecycle factory and delivery/lifecycle types.
+      // +1: approved canonical resolveConfigPath export for pre-config native browser admission.
+      // +1: supported read-only admitted operator scopes for tool presentation.
+      // Re-pinned to the MEASURED merged surface after absorbing upstream
+      // 2167eab4cf. This is a budget, not an equality: it must cover both
+      // upstream's additions above and the continuation feature's own exports,
+      // so it is measured rather than arithmetic on either side's pin.
+      4570,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -566,8 +574,13 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       //     not a net loss. The callable that left is removeSystemEvents,
       //     withdrawn from the public barrel by upstream d69a4fa9ca (#151652).
       // +1: approved native workspace worker argv resolver for node adapters.
-      // Re-pinned to the measured surface after absorbing upstream ba2fc97a917c.
-      2678,
+      // +6: shared Code Mode source preparation, output capture, and source-location helpers.
+      // +1: approved shared preview lifecycle factory.
+      // +1: approved canonical resolveConfigPath callable for pre-config native browser admission.
+      // +1: supported read-only readGatewayToolOperatorScopes callable.
+      // Re-pinned to the MEASURED merged surface after absorbing upstream
+      // 2167eab4cf, on the same basis as the export cap above.
+      2682,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -597,7 +610,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // -1: infra-runtime excludes the internal system-event receipt API.
       // -1: infra-runtime re-exports number coercion directly from its canonical owner.
       // -1: channel-message pins its published compatibility exports explicitly.
-      49,
+      // -1: infra-runtime pins its existing diagnostics type-query surface.
+      48,
       env,
     ),
   };

@@ -15,6 +15,7 @@ import { initializeGlobalHookRunner } from "openclaw/plugin-sdk/hook-runtime";
 import {
   createMockPluginRegistry,
   loadWebFetchToolFactoryForTest,
+  useProviderToolSchemaRuntimeForTest,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
 import type { ModelCompatConfig } from "openclaw/plugin-sdk/provider-model-types";
 import { patchSessionEntry, upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
@@ -50,6 +51,7 @@ const {
   agentDelta,
   turnCompleted,
   sideParams,
+  platformPreparedRuntimeAuth,
   TEST_HOST_CAPABILITIES,
   useSideQuestionTestSetup,
   extractRelayIdFromThreadConfig,
@@ -171,31 +173,7 @@ function nativeCommandItem(
   };
 }
 
-function platformPreparedRuntimeAuth(resolvedApiKey?: string) {
-  return {
-    plan: {
-      providerForAuth: "openai",
-      authProfileProviderForAuth: "openai",
-      selectedAuthMode: "api-key",
-      modelRoute: {
-        provider: "openai",
-        modelId: "gpt-5.6",
-        api: "openai-responses",
-        baseUrl: "https://api.openai.com/v1",
-        authRequirement: "api-key",
-        requestTransportOverrides: "none",
-      },
-    },
-    authProfileStore: {
-      version: 1 as const,
-      profiles: {},
-      order: { openai: [] },
-    },
-    authStorage: {} as never,
-    modelRegistry: {} as never,
-    ...(resolvedApiKey ? { resolvedApiKey } : {}),
-  } satisfies Parameters<typeof runCodexAppServerSideQuestion>[0]["preparedRuntimeAuth"];
-}
+useProviderToolSchemaRuntimeForTest(["openai", "codex", "lmstudio"]);
 
 describe("runCodexAppServerSideQuestion", () => {
   const tempDirs = useAutoCleanupTempDirTracker(afterEach);

@@ -381,7 +381,10 @@ function sanitizeOpenAIReasoningSignature(
   }
   if (
     parsed.id !== undefined &&
-    (typeof parsed.id !== "string" || !isOpenAIResponseItemId(parsed.id, route))
+    (typeof parsed.id !== "string" ||
+      !(isOpenAIResponsesRoute(route)
+        ? isSafeReplayIdentifier(parsed.id, Infinity)
+        : isOpenAIResponseItemId(parsed.id, route)))
   ) {
     return undefined;
   }

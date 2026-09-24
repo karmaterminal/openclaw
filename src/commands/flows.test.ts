@@ -14,7 +14,6 @@ import { markTaskLostById, markTaskTerminalById } from "../tasks/task-registry.j
 import type { TaskRecord } from "../tasks/task-registry.types.js";
 import {
   resetTaskFlowRegistryForTests,
-  resetTaskRegistryDeliveryRuntimeForTests,
   resetTaskRegistryForTests,
 } from "../tasks/task-runtime.test-helpers.js";
 import { captureEnv } from "../test-utils/env.js";
@@ -60,13 +59,11 @@ async function withTaskFlowCommandStateDir(run: (root: string) => Promise<void>)
       prefix: "openclaw-flows-command-",
     },
     async (state) => {
-      resetTaskRegistryDeliveryRuntimeForTests();
       resetTaskRegistryForTests({ persist: false });
       resetTaskFlowRegistryForTests({ persist: false });
       try {
         await run(state.stateDir);
       } finally {
-        resetTaskRegistryDeliveryRuntimeForTests();
         resetTaskRegistryForTests({ persist: false });
         resetTaskFlowRegistryForTests({ persist: false });
       }
@@ -83,7 +80,6 @@ describe("flows commands", () => {
 
   afterEach(() => {
     envSnapshot.restore();
-    resetTaskRegistryDeliveryRuntimeForTests();
     resetTaskRegistryForTests({ persist: false });
     resetTaskFlowRegistryForTests({ persist: false });
   });

@@ -8,6 +8,7 @@ import {
 } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import type { TlsOptions } from "node:tls";
+import { ARTIFACT_DOWNLOAD_PATH } from "../../packages/gateway-protocol/src/artifact-download.js";
 import { isCoreCanvasHostEnabled } from "../canvas/config.js";
 import { isCanvasDocumentHttpPath } from "../canvas/constants.js";
 import { getRuntimeConfig } from "../config/io.js";
@@ -20,7 +21,6 @@ import {
 import { runHttpConnectionRequest } from "../infra/http-request-lifecycle.js";
 import { readTailscaleWhoisIdentity } from "../infra/tailscale.js";
 import { parseDevicePairingJoinRequestPath } from "../pairing/join-code.js";
-import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import { resolveAssistantAgentId } from "./assistant-identity.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
 import type { ResolvedGatewayAuth } from "./auth.js";
@@ -71,15 +71,36 @@ import {
   handleServerExtraHttpRoute,
 } from "./server-extra-http-routes.js";
 import {
+  getControlUiModule,
+  getControlUiPluginAssetsModule,
+  getCanvasServeModule,
+  getBoardHttpModule,
+  getEmbeddingsHttpModule,
+  getManagedMediaAttachmentsModule,
+  getArtifactDownloadsModule,
+  getMcpAppStandaloneModule,
+  getModelsHttpModule,
+  getOpenAiHttpModule,
+  getOpenResponsesHttpModule,
+  getSessionHistoryHttpModule,
+  getSessionKillHttpModule,
+  getToolsInvokeHttpModule,
+  getUserProfilesHttpModule,
+  getDevicePairingJoinHttpModule,
+  getPluginNodeCapabilityAuthModule,
+  getHttpAuthUtilsModule,
+  getPluginRouteRuntimeScopesModule,
+} from "./server-http-modules.js";
+import {
   getCachedPluginGatewayAuthBypassPaths,
   shouldEnforceDefaultPluginGatewayAuth,
-  type PluginGatewayDispatchContext,
   type ResolvePluginNodeCapabilityRoute,
 } from "./server-http-plugin-auth.js";
 import { handleGatewayProbeRequest } from "./server-http-probes.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
 import type { HooksRequestHandler } from "./server/hooks-request-handler.js";
 import { runWithGatewayHttpWorkAdmission } from "./server/http-work-admission.js";
+import type { PluginHttpRequestHandler } from "./server/plugins-http.js";
 import {
   resolvePluginRoutePathContext,
   type PluginRoutePathContext,
@@ -100,40 +121,8 @@ import {
   type WorkerBootstrapArtifactTransferHttpCallback,
 } from "./worker-environments/worker-bootstrap-artifact-transfer-http.js";
 
-type PluginHttpRequestHandler = (
-  req: IncomingMessage,
-  res: ServerResponse,
-  pathContext?: PluginRoutePathContext,
-  dispatchContext?: PluginGatewayDispatchContext,
-) => Promise<boolean>;
-
 type WatchNodeHttpRequestHandler = (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;
 type McpOAuthCallbackHandler = (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;
-
-const lazyRuntime = createLazyRuntimeModule;
-const getControlUiModule = lazyRuntime(() => import("./control-ui.js"));
-const getControlUiPluginAssetsModule = lazyRuntime(() => import("./control-ui-plugin-assets.js"));
-const getCanvasServeModule = lazyRuntime(() => import("../canvas/serve.runtime.js"));
-const getBoardHttpModule = lazyRuntime(() => import("./board-http.js"));
-const getEmbeddingsHttpModule = lazyRuntime(() => import("./embeddings-http.js"));
-const getManagedMediaAttachmentsModule = lazyRuntime(
-  () => import("./managed-image-attachments.js"),
-);
-const getMcpAppStandaloneModule = lazyRuntime(() => import("./mcp-app-standalone.js"));
-const getModelsHttpModule = lazyRuntime(() => import("./models-http.js"));
-const getOpenAiHttpModule = lazyRuntime(() => import("./openai-http.js"));
-const getOpenResponsesHttpModule = lazyRuntime(() => import("./openresponses-http.js"));
-const getSessionHistoryHttpModule = lazyRuntime(() => import("./sessions-history-http.js"));
-const getSessionKillHttpModule = lazyRuntime(() => import("./session-kill-http.js"));
-const getToolsInvokeHttpModule = lazyRuntime(() => import("./tools-invoke-http.js"));
-const getUserProfilesHttpModule = lazyRuntime(() => import("./user-profiles-http.js"));
-const getDevicePairingJoinHttpModule = lazyRuntime(() => import("./device-pairing-join-http.js"));
-const getPluginNodeCapabilityAuthModule = lazyRuntime(
-  () => import("./server/plugin-node-capability-auth.js"),
-);
-const getPluginRouteRuntimeScopesModule = lazyRuntime(
-  () => import("./server/plugin-route-runtime-scopes.js"),
-);
 
 type GatewayHttpRequestStage = () => Promise<boolean> | boolean;
 
@@ -340,6 +329,9 @@ export function createGatewayHttpServer(opts: {
       const resolvedAuthValue = getResolvedAuth();
       const routeAuth = {
         auth: resolvedAuthValue,
+        cfg: configSnapshot,
+        getRuntimeConfig: loadGatewayConfig,
+        getResolvedAuth,
         trustedProxies,
         allowRealIpFallback,
         rateLimiter,
@@ -473,6 +465,16 @@ export function createGatewayHttpServer(opts: {
       addAdmittedStage(scopedRequestPath === PROVIDER_OAUTH_CALLBACK_PATH, () =>
         handleProviderOAuthCallback(req, res),
       );
+      addAdmittedStage(
+        scopedRequestPath.startsWith(ARTIFACT_DOWNLOAD_PATH) ||
+          (controlUiRouteBasePath.length > 0 &&
+            scopedRequestPath.startsWith(`${controlUiRouteBasePath}${ARTIFACT_DOWNLOAD_PATH}`)),
+        async () =>
+          (await getArtifactDownloadsModule()).handleArtifactDownloadHttpRequest(req, res, {
+            clients,
+            basePath: controlUiRouteBasePath,
+          }),
+      );
       // Before hooks: an operator hooks.path of "/oauth" would otherwise claim
       // this exact GET and 405 every provider redirect. The claim is exact-path
       // and config-gated, so preceding hooks cannot shadow any hook route.
@@ -505,10 +507,7 @@ export function createGatewayHttpServer(opts: {
         (await getSessionKillHttpModule()).handleSessionKillHttpRequest(req, res, routeAuth),
       );
       addAdmittedStage(/^\/sessions\/[^/]+\/history$/.test(scopedRequestPath), async () =>
-        (await getSessionHistoryHttpModule()).handleSessionHistoryHttpRequest(req, res, {
-          ...routeAuth,
-          getResolvedAuth,
-        }),
+        (await getSessionHistoryHttpModule()).handleSessionHistoryHttpRequest(req, res, routeAuth),
       );
       addAdmittedStage(scopedRequestPath.startsWith("/__openclaw__/board/"), async () =>
         (await getBoardHttpModule()).handleBoardHttpRequest(req, res, {
@@ -654,7 +653,6 @@ export function createGatewayHttpServer(opts: {
               req,
               res,
               ...routeAuth,
-              getResolvedAuth,
               requestPath: scopedRequestPath,
               resolveOperatorScopes: resolvePluginRouteRuntimeOperatorScopes,
             });
@@ -666,13 +664,18 @@ export function createGatewayHttpServer(opts: {
             pluginRequestOperatorScopes = authResult.operatorScopes;
             return false;
           },
-          () =>
-            handlePluginRequest(req, res, pluginPathContext, {
+          () => {
+            if (pluginGatewayRequestAuth?.hasCurrentClientAuthority?.() === false) {
+              sendGatewayAuthFailure(res, { ok: false, reason: "unauthorized" });
+              return true;
+            }
+            return handlePluginRequest(req, res, pluginPathContext, {
               gatewayAuthSatisfied: pluginGatewayAuthSatisfied,
               gatewayRequestAuth: pluginGatewayRequestAuth,
               gatewayRequestOperatorScopes: pluginRequestOperatorScopes,
               gatewayRequestClientIp: requestClientIp,
-            }),
+            });
+          },
         );
       }
 

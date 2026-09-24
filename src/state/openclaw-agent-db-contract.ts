@@ -2,7 +2,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type { SqliteWalMaintenance } from "../infra/sqlite-wal.js";
 import type { OpenClawStateDatabaseOptions } from "./openclaw-state-db-contract.js";
 
-// v22 records exact transcript FTS row ownership; older writers cannot maintain it.
+// v23 compacts payloads and replaces deployed v22 lazy FTS ownership without rewriting FTS content.
+// v22 introduced exact FTS row ownership with nullable completeness and lazy repair.
 // v21 records canonical-session invalidation under node, window and policy mutations.
 // v20 records authoritative cold transcript archives; older readers cannot treat absent raw rows as empty history.
 // v19 qualifies immutable creator namespaces without deriving authority from sandbox policy.
@@ -25,14 +26,16 @@ import type { OpenClawStateDatabaseOptions } from "./openclaw-state-db-contract.
 // change is folded in structure-gated migrations, so v2 main DBs and
 // pre-merge v4 flip DBs both converge on this schema.
 export const AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION = 19;
-// v22 is upstream's transcript-FTS row-ownership reconciliation. Our 18/19
-// continuation migrations sit below 21, so upstream's new step slots after all
-// of them and the ordering stays monotonic.
-export const OPENCLAW_AGENT_SCHEMA_VERSION = 22;
 export const AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION = 18;
+// Ordering, re-checked against upstream 2167eab4cf: the continuation migrations
+// occupy 18 and 19, upstream's transcript-FTS row-ownership reconciliation is 22,
+// and upstream's agent-storage step is 23. Ours stay strictly below both, so the
+// migration sequence remains monotonic and no step is reordered by this absorb.
+export const OPENCLAW_AGENT_SCHEMA_VERSION = 23;
+export const AGENT_STORAGE_SCHEMA_VERSION = 23;
+export const TRANSCRIPT_FTS_ROW_SCHEMA_VERSION = 22;
 export const AGENT_MEDIA_SCHEMA_VERSION = 17;
 export const CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION = 21;
-export const TRANSCRIPT_FTS_ROW_SCHEMA_VERSION = 22;
 
 /** Open per-agent SQLite database handle plus lifecycle maintenance. */
 export type OpenClawAgentDatabase = {

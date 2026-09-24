@@ -56,7 +56,6 @@ export type SessionScope = "per-sender" | "global";
 export type SessionChatType = ChatType;
 export type PersistedSessionRunStatus = SessionRunStatus | "interrupted";
 export const SESSION_TOTAL_TOKENS_VERSION = 1 as const;
-type SessionVisibility = "shared" | "read-only" | "suggest" | "draft";
 
 export type SessionOrigin = {
   label?: string;
@@ -308,7 +307,7 @@ type SessionEntryCore = SessionRestartRecoveryState &
   SessionEntryProvenance &
   Pick<SessionRow, "permissionMode" | "sandboxMode" | "nativeRuntimeConsent" | "sessionRoot"> & {
     /** Collaboration mode. Missing legacy values are equivalent to "shared". */
-    visibility?: SessionVisibility;
+    visibility?: NonNullable<SessionRow["visibility"]>;
     /**
      * Last delivered heartbeat payload (used to suppress duplicate heartbeat notifications).
      * Stored on the main session entry.
@@ -340,6 +339,8 @@ type SessionEntryCore = SessionRestartRecoveryState &
     incognito?: true;
     /** Opaque owner revision used to reject stale lifecycle mutations. */
     lifecycleRevision?: string;
+    /** Current provider precaution; only its acknowledged continuation may start work. */
+    providerReview?: import("./provider-review.types.js").SessionProviderReview;
     /**
      * Durable logical-mailbox authority. Runtime consumers must validate this
      * unknown value before comparing it so malformed persisted state fails closed.

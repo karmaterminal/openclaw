@@ -126,6 +126,8 @@ export async function prepareAndDispatchEmbeddedRunAttempt(input: {
   );
   const authProfileStore = resolveRunAttemptAuthProfileStore();
 
+  params.assertModelInput?.(effectiveModel);
+
   await fs.mkdir(workspaceDir, { recursive: true });
   if (!input.startupStagesEmitted) {
     startupStages.mark(EMBEDDED_RUN_ATTEMPT_DISPATCH_STAGE.workspace);
@@ -159,7 +161,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(input: {
     workspaceDir,
     agentDir,
     agentId: workspaceResolution.agentId,
-    thinkingLevel: mapThinkingLevelForProvider(runtime.thinkLevel),
+    thinkingLevel: mapThinkingLevelForProvider(runtime.thinkLevel, effectiveModel),
     extraParamsOverride: { ...params.streamParams, fastMode: attemptFastMode },
   });
   const resolvedAttemptApiKey = resolveAttemptDispatchApiKey({
@@ -384,6 +386,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(input: {
     sessionKey: string;
     agentHarnessId: string;
   } = {
+    providerReviewAcknowledgment: params.providerReviewAcknowledgment,
     pluginRuntimeRefreshPending: pluginRefresh.isPending,
     registerPluginRuntimeRefreshConsumer: (isCurrent) => {
       if (attemptControls.isCurrent()) {
