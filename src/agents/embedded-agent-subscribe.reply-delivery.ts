@@ -477,6 +477,8 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
       assistantMessageIndex?: number;
       blockSourceText?: string;
       blockSourceRange?: readonly [start: number, end: number];
+      /** Completion provenance; survives the presentation-change clear. */
+      blockCoverageSourceText?: string;
       consumePendingToolMedia?: boolean;
       onDelivered?: () => void;
       retryable?: boolean;
@@ -526,6 +528,7 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
       setReplyPayloadMetadata(taggedPayload, {
         blockSourceText: options.blockSourceText,
         blockSourceRange: options.blockSourceRange,
+        blockCoverageSourceText: options.blockCoverageSourceText,
       });
     }
     if (state.deferBlockReplyDelivery) {

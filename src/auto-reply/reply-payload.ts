@@ -235,10 +235,23 @@ export type ReplyPayloadMetadata = {
   assistantMessageIndex?: number;
   /** Answer to a preceding user input in the same run. */
   precedingInputAnswer?: true;
-  /** Visible source represented by this block, excluding synthetic chunk wrappers. */
+  /**
+   * Occurrence identity, half of an atomic pair with {@link blockSourceRange}.
+   * Answers "is this exact streamed source occurrence already delivered?", so a
+   * presentation change invalidates it and both fields clear together: two
+   * distinct corrected presentations at the same offsets must not collapse.
+   */
   blockSourceText?: string;
   /** UTF-16 source range represented by this block within one assistant message. */
   blockSourceRange?: readonly [start: number, end: number];
+  /**
+   * Completion provenance, deliberately NOT the occurrence identity above.
+   * Answers "does this authoritative final correspond to source already under
+   * delivery custody, even though its channel presentation changed?", so it
+   * SURVIVES the presentation-change clear that wipes the occurrence pair.
+   * Consumed only by coverage joins; never used as a dedupe key.
+   */
+  blockCoverageSourceText?: string;
   /** Live source receipts retained until final text recovery settles. */
   blockReplySources?: readonly BlockReplySource[];
   /** Persisted assistant speech facts; never serialized into channel payloads. */
