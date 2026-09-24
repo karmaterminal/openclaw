@@ -92,6 +92,16 @@ describe("subagent registry persistence timing", () => {
 
   beforeEach(() => {
     setRuntimeConfigSnapshot({});
+    // Cleared here and not only in afterEach, mirroring
+    // subagents/registry/subagent-registry.persistence.test.ts: the registry
+    // reaches announce and browser cleanup through createLazyImportLoader caches
+    // that survive resetSubagentRegistryForTests, so a resolution cached by an
+    // earlier file in this project -- the batch runs all 57 in one worker --
+    // makes the registry call the REAL announce module while announceSpy
+    // silently records nothing. beforeEach runs regardless of how the previous
+    // case tore down, whereas an afterEach is skipped when a fixture teardown
+    // throws.
+    resetSubagentRegistryRuntimeLoadersForTests();
     // The shared owner's spies are module-scoped and accumulate across cases.
     sharedRegistryMocks.onAgentEvent.mockClear();
     announceSpy.mockReset();
