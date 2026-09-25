@@ -112,17 +112,14 @@ const assertTriggerCodesCoverHeadless: AssertTriggerCodesCoverHeadless = true;
 void assertTriggerCodesCoverHeadless;
 
 type PreparedTriggerRuntime = {
-  createTools: (
-    admitted: AdmittedRunContext,
-    signal: AbortSignal,
-    disableContinuationTools: boolean,
-    allowDelegateOnlyContinuationTools: boolean,
-  ) => AnyAgentTool[];
+  createTools: (admitted: AdmittedRunContext, signal: AbortSignal) => AnyAgentTool[];
   context: HookContext & { config: OpenClawConfig; agentId: string; sessionKey: string };
   pluginRegistry?: PluginRegistry;
 };
 
 type CronScriptInvocation = Parameters<NonNullable<CronServiceDeps["evaluateCronTrigger"]>>[0];
+
+type CronContinuationToolMode = "disabled" | "delegate-only";
 
 type PrepareTriggerRuntime = (params: {
   runtimeConfig: OpenClawConfig;
@@ -131,6 +128,7 @@ type PrepareTriggerRuntime = (params: {
   toolsAllow?: string[];
   scheduledToolPolicy?: ScheduledToolPolicyContext;
   execTarget?: CronToolsAllowExecTarget;
+  continuationToolMode: CronContinuationToolMode;
   signal?: AbortSignal;
 }) => Promise<PreparedTriggerRuntime>;
 
@@ -221,12 +219,7 @@ async function prepareTriggerRuntime(
     });
     // Bundle MCP tools are source:"mcp", which the headless bridge excludes.
     // LSP runtimes are session-scoped and intentionally outside trigger v1.
-    const createTools: PreparedTriggerRuntime["createTools"] = (
-      admitted,
-      signal,
-      disableContinuationTools,
-      allowDelegateOnlyContinuationTools,
-    ) => {
+    const createTools: PreparedTriggerRuntime["createTools"] = (admitted, signal) => {
       const allTools = toolPlan.constructTools
         ? createOpenClawCodingTools({
             agentId,
@@ -244,8 +237,8 @@ async function prepareTriggerRuntime(
             spawnWorkspaceDir: workspaceDir,
             config,
             allowGatewaySubagentBinding: true,
-            disableContinuationTools,
-            allowDelegateOnlyContinuationTools,
+            disableContinuationTools: params.continuationToolMode === "disabled",
+            allowDelegateOnlyContinuationTools: params.continuationToolMode === "delegate-only",
             includeCoreTools: toolPlan.includeCoreTools,
             runtimeToolAllowlist: toolPlan.runtimeToolAllowlist,
             inheritRuntimeToolAllowlist: Boolean(toolPlan.runtimeToolAllowlist),
@@ -312,6 +305,7 @@ function createCronCodeModeRunner(deps: CronTriggerEvaluatorDeps) {
       request.toolsAllow ?? null,
       request.scheduledToolPolicy ?? null,
       request.execTarget ?? null,
+      request.continuationToolMode,
     ]);
     const cached = runtimeCache.get(request.jobId);
     if (
@@ -376,8 +370,7 @@ function createCronCodeModeRunner(deps: CronTriggerEvaluatorDeps) {
       maxToolCalls: number;
       label: string;
       onExecutionStarted?: () => void | Promise<void>;
-      disableContinuationTools: boolean;
-      allowDelegateOnlyContinuationTools: boolean;
+      continuationToolMode: CronContinuationToolMode;
     },
   ): Promise<
     | { kind: "completed"; result: Extract<CodeModeHeadlessResult, { status: "completed" }> }
@@ -402,6 +395,7 @@ function createCronCodeModeRunner(deps: CronTriggerEvaluatorDeps) {
           owner: params.job.owner,
         }),
         execTarget: params.job.toolsAllowExecTarget,
+        continuationToolMode: params.continuationToolMode,
       };
       const runId = `cron-trigger:${params.job.id}:${crypto.randomUUID()}`;
       let runtime: CachedTriggerRuntime | undefined;
@@ -461,12 +455,7 @@ function createCronCodeModeRunner(deps: CronTriggerEvaluatorDeps) {
           const selected = runtime;
           const authority = admitted;
           tools = withPluginRuntimeRegistryScope(selected.pluginRegistry, () =>
-            selected.createTools(
-              authority,
-              evaluationScope.signal,
-              params.disableContinuationTools,
-              params.allowDelegateOnlyContinuationTools,
-            ),
+            selected.createTools(authority, evaluationScope.signal),
           );
           if (!runtime.isCurrent()) {
             throw new PluginInstanceUnavailableError();
@@ -581,8 +570,7 @@ export function createCronScriptRuntime(deps: CronTriggerEvaluatorDeps) {
           wallClockMs: HEADLESS_TRIGGER_WALL_CLOCK_MS,
           maxToolCalls: HEADLESS_TRIGGER_TOOL_BUDGET,
           label: "cron trigger evaluation",
-          disableContinuationTools: true,
-          allowDelegateOnlyContinuationTools: false,
+          continuationToolMode: "disabled",
         });
         return outcome.kind === "completed" ? parseTriggerResult(outcome.result) : outcome;
       } finally {
@@ -611,8 +599,7 @@ export function createCronScriptRuntime(deps: CronTriggerEvaluatorDeps) {
         wallClockMs: timeoutSeconds * 1000,
         maxToolCalls: toolBudget,
         label: "cron script payload",
-        disableContinuationTools: false,
-        allowDelegateOnlyContinuationTools: true,
+        continuationToolMode: "delegate-only",
         onExecutionStarted: params.executionIdentity?.onExecutionStarted,
       });
       return outcome.kind === "completed" ? parseScriptPayloadResult(outcome.result) : outcome;
