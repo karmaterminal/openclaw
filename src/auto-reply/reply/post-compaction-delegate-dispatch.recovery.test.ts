@@ -25,6 +25,7 @@ import {
   enqueuePostCompactionDelegateDelivery as enqueuePostCompactionDelegateDeliveryQueue,
   loadPendingSessionDelivery,
 } from "../../infra/session-delivery-queue-storage.js";
+import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
@@ -42,6 +43,20 @@ import {
 } from "./post-compaction-delegate-dispatch.js";
 import { normalizePostCompactionDelegate } from "./post-compaction-delegate-normalize.js";
 import type { FollowupRun } from "./queue/types.js";
+
+// Upstream's system-event ownership qualifies the queue key by owning agent:
+// resolveSystemEventQueueKey("main", "main") -> "agent:main:main". That file
+// (src/infra/system-event-ownership.ts) is BYTE-IDENTICAL to upstream/main in
+// this tree, and its contract is explicit -- "Queue identity is scoped without
+// rewriting the caller's persisted session key". The caller's own sessionKey
+// stays "main" (see the inputs below, deliberately unchanged); only the
+// enqueued event's queue identity is qualified.
+//
+// These expectations previously asserted the bare "main", which was our
+// pre-absorb behaviour and is what the oracle 3821eaef72 carried. Derived from
+// the resolver rather than re-hardcoded, so the assertion tracks the contract
+// instead of a second literal that can rot the same way. See openclaw#1380.
+const OWNED_MAIN_QUEUE_KEY = resolveSystemEventQueueKey("main", "main");
 
 const mockRegistryState = vi.hoisted(() => ({
   acceptedChildSessionKeys: new Set<string>(),
@@ -544,7 +559,7 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(result).toEqual({ queuedDelegates: 3, droppedDelegates: 0 });
     expect(enqueueSystemEvent).toHaveBeenCalledWith(
       "[system:post-compaction] Session compacted at 2026-04-26T22:30:00.000Z. Compaction count: 4. Queued 3 post-compaction delegate(s) for delivery into the fresh session.",
-      { sessionKey: "main" },
+      { sessionKey: OWNED_MAIN_QUEUE_KEY },
     );
   });
 

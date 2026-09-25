@@ -26,6 +26,7 @@ import {
   SessionDeliveryDeadLetteredError,
   SessionDeliveryDeferredError,
 } from "../../infra/session-delivery-queue-storage.js";
+import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
@@ -43,6 +44,20 @@ import {
 } from "./post-compaction-delegate-dispatch.js";
 import { normalizePostCompactionDelegate } from "./post-compaction-delegate-normalize.js";
 import type { FollowupRun } from "./queue/types.js";
+
+// Upstream's system-event ownership qualifies the queue key by owning agent:
+// resolveSystemEventQueueKey("main", "main") -> "agent:main:main". That file
+// (src/infra/system-event-ownership.ts) is BYTE-IDENTICAL to upstream/main in
+// this tree, and its contract is explicit -- "Queue identity is scoped without
+// rewriting the caller's persisted session key". The caller's own sessionKey
+// stays "main" (see the inputs below, deliberately unchanged); only the
+// enqueued event's queue identity is qualified.
+//
+// These expectations previously asserted the bare "main", which was our
+// pre-absorb behaviour and is what the oracle 3821eaef72 carried. Derived from
+// the resolver rather than re-hardcoded, so the assertion tracks the contract
+// instead of a second literal that can rot the same way. See openclaw#1380.
+const OWNED_MAIN_QUEUE_KEY = resolveSystemEventQueueKey("main", "main");
 
 const mockRegistryState = vi.hoisted(() => ({
   acceptedChildSessionKeys: new Set<string>(),
@@ -529,7 +544,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: queued delegate",
-        { sessionKey: "main" },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY },
       );
       expect(log).toHaveBeenCalledWith(
         expect.stringContaining("post-compaction-source-accepted-recovered"),
@@ -664,7 +679,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: queued delegate",
-        { sessionKey: "main", traceparent },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY, traceparent },
       );
     });
   });
@@ -686,7 +701,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: queued delegate",
-        { sessionKey: "main" },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY },
       );
     });
   });
@@ -849,7 +864,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation] Post-compaction delegate rejected: chain length 2 reached. Task: queued delegate",
-        { sessionKey: "main" },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY },
       );
       expect(failReleasedPostCompactionDelegate).toHaveBeenCalledWith(
         {
@@ -896,7 +911,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation] Post-compaction delegate rejected: cost cap exceeded (11 > 10). Task: queued delegate",
-        { sessionKey: "main" },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY },
       );
       expect(failReleasedPostCompactionDelegate).toHaveBeenCalledWith(
         {
@@ -943,7 +958,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation] Post-compaction delegate rejected: cross-session targeting was disabled at delivery time. Task: queued delegate",
-        { sessionKey: "main", traceparent: VALID_TRACEPARENT },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY, traceparent: VALID_TRACEPARENT },
       );
       const stored = readSessionStore(storePath);
       expect(Object.values(stored).some((entry) => entry.continuationChainCount != null)).toBe(
