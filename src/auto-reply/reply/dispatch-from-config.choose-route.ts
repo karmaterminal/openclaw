@@ -215,7 +215,13 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
     const reply = resolveSendableOutboundReplyParts(payload);
     attempts.push({
       contentKey: createBlockReplyContentKey(payload),
-      source: getReplyPayloadMetadata(payload)?.blockSourceText ?? reply.trimmedText,
+      // Coverage provenance first; see block-reply-pipeline. The occurrence pair
+      // is cleared when presentation changes, and this join must still recognise
+      // the source already under delivery custody.
+      source:
+        getReplyPayloadMetadata(payload)?.blockCoverageSourceText ??
+        getReplyPayloadMetadata(payload)?.blockSourceText ??
+        reply.trimmedText,
       delivery: outcome,
     });
     blockDeliveryAttemptsByMessage.set(assistantMessageIndex, attempts);

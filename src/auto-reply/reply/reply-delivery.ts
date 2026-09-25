@@ -197,9 +197,18 @@ export function createBlockReplyDeliveryHandler(params: {
       params.applyReplyToMode(mediaNormalizedPayload),
     );
     if (blockPayload.text?.trim() !== payload.text?.trim()) {
+      // Presentation changed, so the occurrence identity is no longer valid: the
+      // pair clears atomically or two corrected presentations at the same offsets
+      // would collapse into one. blockCoverageSourceText is deliberately left
+      // alone — it is completion provenance, and dropping it here is what made an
+      // authoritative final replay or vanish instead of joining the delivery it
+      // already had custody of.
       setReplyPayloadMetadata(blockPayload, {
         blockSourceText: undefined,
         blockSourceRange: undefined,
+        blockCoverageSourceText:
+          getReplyPayloadMetadata(blockPayload)?.blockCoverageSourceText ??
+          getReplyPayloadMetadata(payload)?.blockSourceText,
       });
     }
     const blockHasNonTextContent = hasOutboundReplyContent({ ...blockPayload, text: undefined });

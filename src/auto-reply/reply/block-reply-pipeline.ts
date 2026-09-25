@@ -194,7 +194,13 @@ export function createBlockReplyPipeline(params: {
     const reply = resolveSendableOutboundReplyParts(payload);
     const attempt: BlockAttempt = {
       outcome: "cancelled",
-      sourceText: blockSourceText ?? reply.trimmedText,
+      // Coverage provenance first: after a presentation change the occurrence
+      // text is cleared by design, and falling straight through to trimmedText
+      // joins against the mutated presentation instead of the delivered source.
+      sourceText:
+        getReplyPayloadMetadata(payload)?.blockCoverageSourceText ??
+        blockSourceText ??
+        reply.trimmedText,
       contentKey,
       mediaUrls: reply.mediaUrls,
       terminal: isTerminalContent && hasOutboundReplyContent(payload, { trimText: true }),

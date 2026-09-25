@@ -2341,6 +2341,16 @@ describe("buildStatusText continuation line", () => {
       },
       sessionKey: continuationSessionKey,
       parentSessionKey: continuationSessionKey,
+      // This block asserts the CONTINUATION line, not the task line.
+      // buildStatusText only performs the default task lookup when a
+      // sessionKey is present and neither escape is set (status-text.ts:510),
+      // and that lookup opens the shared-state SQLite worker, which needs a
+      // host broker this suite does not stand up. Upstream's own tests here
+      // pass sessionKey "agent:main:main", which resolves to the main alias
+      // and is satisfied without the store; a non-main key like ours is not.
+      // Declining the lookup keeps the assertion on its actual subject
+      // rather than standing up a task registry to ignore its output.
+      skipDefaultTaskLookup: true,
       sessionScope: "per-sender",
       statusChannel: "whatsapp",
       provider: "anthropic",
@@ -2368,6 +2378,16 @@ describe("buildStatusText continuation line", () => {
       },
       sessionKey: continuationSessionKey,
       parentSessionKey: continuationSessionKey,
+      // This block asserts the CONTINUATION line, not the task line.
+      // buildStatusText only performs the default task lookup when a
+      // sessionKey is present and neither escape is set (status-text.ts:510),
+      // and that lookup opens the shared-state SQLite worker, which needs a
+      // host broker this suite does not stand up. Upstream's own tests here
+      // pass sessionKey "agent:main:main", which resolves to the main alias
+      // and is satisfied without the store; a non-main key like ours is not.
+      // Declining the lookup keeps the assertion on its actual subject
+      // rather than standing up a task registry to ignore its output.
+      skipDefaultTaskLookup: true,
       sessionScope: "per-sender",
       statusChannel: "whatsapp",
       provider: "anthropic",
@@ -2406,6 +2426,16 @@ describe("buildStatusText continuation line", () => {
       },
       sessionKey: continuationSessionKey,
       parentSessionKey: continuationSessionKey,
+      // This block asserts the CONTINUATION line, not the task line.
+      // buildStatusText only performs the default task lookup when a
+      // sessionKey is present and neither escape is set (status-text.ts:510),
+      // and that lookup opens the shared-state SQLite worker, which needs a
+      // host broker this suite does not stand up. Upstream's own tests here
+      // pass sessionKey "agent:main:main", which resolves to the main alias
+      // and is satisfied without the store; a non-main key like ours is not.
+      // Declining the lookup keeps the assertion on its actual subject
+      // rather than standing up a task registry to ignore its output.
+      skipDefaultTaskLookup: true,
       sessionScope: "per-sender",
       statusChannel: "whatsapp",
       provider: "anthropic",

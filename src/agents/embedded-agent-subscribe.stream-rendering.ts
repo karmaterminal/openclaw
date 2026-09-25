@@ -600,6 +600,11 @@ export function createStreamRendering({
           ? blockSourceText
           : undefined,
       blockSourceRange: emittedBlockSourceRange,
+      // Provenance, not identity. The occurrence pair above is withheld unless the
+      // chunk is byte-exactly the block's own source; coverage only needs to know
+      // which source this attempt carried, so it is recorded unconditionally and
+      // survives the presentation-change clear in reply-delivery.
+      blockCoverageSourceText: blockSourceText,
       consumePendingToolMedia:
         (options?.final === true &&
           options.deferPendingToolMedia !== true &&
@@ -673,7 +678,6 @@ export function createStreamRendering({
           pendingChunk = { text, ...chunkOptions };
         },
       });
-      blockChunker.reset();
     }
     if (
       pendingChunk !== undefined ||

@@ -12,6 +12,7 @@ import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runne
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
+import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
@@ -210,6 +211,9 @@ afterEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
 });
 
+/** The run owner production qualifies the system-event queue key with. */
+const OWNER_AGENT_ID = "main";
+
 function createContinuationRun(params?: {
   sessionKey?: string;
   config?: Record<string, unknown>;
@@ -239,7 +243,7 @@ function createContinuationRun(params?: {
     summaryLine: "hello",
     enqueuedAt: Date.now(),
     run: {
-      agentId: "main",
+      agentId: OWNER_AGENT_ID,
       sessionId: "session",
       sessionKey,
       messageProvider,
@@ -435,7 +439,7 @@ describe("runReplyAgent :: post-compaction staging wiring", () => {
     expect(eventText).toContain("[Assistant] comply");
     expect(eventText).toContain("[Internal] hidden");
     expect(expectDefined(systemEventCalls.at(0)?.at(1), "system event options")).toMatchObject({
-      sessionKey: run.sessionKey,
+      sessionKey: resolveSystemEventQueueKey(run.sessionKey, OWNER_AGENT_ID),
       trusted: true,
     });
   });

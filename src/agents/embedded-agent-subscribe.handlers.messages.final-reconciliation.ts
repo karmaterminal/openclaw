@@ -1,5 +1,6 @@
 import type { ReplyDirectiveParseResult } from "../auto-reply/reply/reply-directives.js";
 import { normalizeTextForComparison } from "./embedded-agent-helpers.js";
+import { stripInternalPlaceholderLines } from "./embedded-agent-helpers/sanitize-user-facing-text.js";
 import { hasAssistantVisibleReply } from "./embedded-agent-subscribe.handlers.messages.replies.js";
 import { stripContinuationSignalFromDisplayText } from "./embedded-agent-subscribe.handlers.messages.stream.js";
 import type { EmbeddedAgentSubscribeState } from "./embedded-agent-subscribe.handlers.types.js";
@@ -10,9 +11,18 @@ export function resolveFinalReplyReconciliation(params: {
   mediaUrls: string[];
   parsedText: ReplyDirectiveParseResult;
 }) {
-  const deliveredBlockReplyTexts = params.state.deliveredBlockReplyTexts.filter(Boolean);
-  const attemptedBlockReplyTexts = (params.state.attemptedBlockReplyTexts ?? []).filter(Boolean);
-  let effectiveDeliveredBlockReplyTexts = params.state.deferredBlockReplyTexts;
+  // The ledger records each block exactly as it was handed to the consumer,
+  // internal placeholder lines included ("[tool calls omitted]"). The canonical
+  // final text has already been through the user-facing projection, which
+  // removes them. Every comparison below is ledger-against-canonical, so the
+  // ledger side is projected through the same filter first -- otherwise a turn
+  // whose blocks carried a placeholder can never establish a prefix relation,
+  // and the whole-message fallback re-sends text the reader already has.
+  const toCanonicalAlphabet = (texts: readonly string[]) =>
+    texts.map(stripInternalPlaceholderLines).filter(Boolean);
+  const deliveredBlockReplyTexts = toCanonicalAlphabet(params.state.deliveredBlockReplyTexts);
+  const attemptedBlockReplyTexts = toCanonicalAlphabet(params.state.attemptedBlockReplyTexts ?? []);
+  let effectiveDeliveredBlockReplyTexts = toCanonicalAlphabet(params.state.deferredBlockReplyTexts);
   if (deliveredBlockReplyTexts.length > 0) {
     effectiveDeliveredBlockReplyTexts = deliveredBlockReplyTexts;
   }
