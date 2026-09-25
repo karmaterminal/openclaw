@@ -19,7 +19,7 @@ import type { ResolvedConversationCapabilityProfile } from "./conversation-capab
 import type { OpenClawCodingToolConstructionPlan } from "./core-tool-factory-descriptors.js";
 import type { DelegationCapability } from "./delegation-capability.js";
 import type { ModelAuthMode } from "./model-auth.js";
-import type { OpenClawSharedToolsOptions } from "./openclaw-tools.types.js";
+import type { ContinuationToolMode, OpenClawSharedToolsOptions } from "./openclaw-tools.types.js";
 import type { PreparedModelRuntimeSnapshot } from "./prepared-model-runtime.js";
 import type { SandboxContext } from "./sandbox.js";
 import type { ScheduledToolPolicyContext } from "./scheduled-tool-policy.js";
@@ -99,6 +99,8 @@ export type OpenClawCodingToolsOptions = {
   memberRoleIds?: string[];
   /** Whether this run consumes the continue_delegate staging queue. */
   drainsContinuationDelegateQueue?: boolean;
+  /** Explicit continuation surface for runtimes with nonstandard lifecycle ownership. */
+  continuationToolMode?: ContinuationToolMode;
   /** Internal maintenance/model-only runs that cannot schedule post-turn continuation work. */
   disableContinuationTools?: boolean;
   /** Callback for continue_work to request a post-turn continuation. */

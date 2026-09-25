@@ -44,4 +44,21 @@ describe("createOpenClawTools continuation option forwarding", () => {
       expect.objectContaining({ sandboxWritable: true }),
     );
   });
+
+  it("forwards an explicit continuation tool mode", () => {
+    createOpenClawTools({
+      agentSessionKey: "cron:payload",
+      disableMessageTool: true,
+      disablePluginTools: true,
+      continuationToolMode: "delegate-only",
+      config: {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: { defaults: { continuation: { enabled: true } } },
+      } as never,
+    });
+
+    expect(mocks.createOpenClawContinuationTools).toHaveBeenCalledWith(
+      expect.objectContaining({ continuationToolMode: "delegate-only" }),
+    );
+  });
 });

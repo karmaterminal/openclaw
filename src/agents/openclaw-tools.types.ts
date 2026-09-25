@@ -18,6 +18,8 @@ import type { CronToolOptions } from "./tools/cron-tool.types.js";
 import type { QuestionPromptDelivery } from "./tools/question-prompt-send.js";
 import type { RequestCompactionToolOpts } from "./tools/request-compaction-tool.js";
 
+export type ContinuationToolMode = "auto" | "disabled" | "delegate-only";
+
 /** Options shared by the coding-tool factory and its OpenClaw tool surface. */
 export type OpenClawSharedToolsOptions = {
   /**
@@ -169,6 +171,8 @@ export type OpenClawToolsOptions = {
   requesterSenderId?: string | null;
   /** Whether this run consumes the continuation delegate staging queue. */
   drainsContinuationDelegateQueue?: boolean;
+  /** Explicit continuation surface for runtimes with nonstandard lifecycle ownership. */
+  continuationToolMode?: ContinuationToolMode;
   /** Internal maintenance/model-only runs that cannot schedule continuation work. */
   disableContinuationTools?: boolean;
   /** Callback for continue_work to request a post-turn continuation. */
