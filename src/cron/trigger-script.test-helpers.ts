@@ -6,7 +6,7 @@ import type { CronStoredJob } from "./types.js";
 type RuntimeDeps = Parameters<typeof createCronScriptRuntime>[0];
 type ScriptFixture = Omit<
   Parameters<NonNullable<RuntimeDeps["prepareRuntime"]>>[0],
-  "runtimeConfig" | "signal"
+  "runtimeConfig" | "signal" | "continuationToolMode"
 > & {
   script: string;
   state: unknown;

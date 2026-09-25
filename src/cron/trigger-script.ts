@@ -38,6 +38,7 @@ import {
   applyEmbeddedAttemptToolsAllow,
   resolveEmbeddedAttemptToolConstructionPlan,
 } from "../agents/embedded-agent-runner/run/attempt-tool-construction-plan.js";
+import type { ContinuationToolMode } from "../agents/openclaw-tools.types.js";
 import { loadAgentRuntimePluginRegistryHandle } from "../agents/runtime-plugins.js";
 import { resolveSandboxContext } from "../agents/sandbox.js";
 import {
@@ -118,10 +119,12 @@ type PreparedTriggerRuntime = {
 };
 
 type CronScriptInvocation = Parameters<NonNullable<CronServiceDeps["evaluateCronTrigger"]>>[0];
+type CronContinuationToolMode = Exclude<ContinuationToolMode, "auto">;
 
 type PrepareTriggerRuntime = (params: {
   runtimeConfig: OpenClawConfig;
   jobId: string;
+  continuationToolMode: CronContinuationToolMode;
   agentId?: string;
   toolsAllow?: string[];
   scheduledToolPolicy?: ScheduledToolPolicyContext;
@@ -148,6 +151,7 @@ type TriggerRuntimeCacheEntry = {
   configEpoch: OpenClawConfig;
   agentId: string;
   toolsAllowKey: string;
+  continuationToolMode: CronContinuationToolMode;
 };
 
 type CachedTriggerRuntime = PreparedTriggerRuntime & {
@@ -234,6 +238,7 @@ async function prepareTriggerRuntime(
             spawnWorkspaceDir: workspaceDir,
             config,
             allowGatewaySubagentBinding: true,
+            continuationToolMode: params.continuationToolMode,
             includeCoreTools: toolPlan.includeCoreTools,
             runtimeToolAllowlist: toolPlan.runtimeToolAllowlist,
             inheritRuntimeToolAllowlist: Boolean(toolPlan.runtimeToolAllowlist),
@@ -306,7 +311,8 @@ function createCronCodeModeRunner(deps: CronTriggerEvaluatorDeps) {
       cached &&
       cached.configEpoch === request.runtimeConfig &&
       cached.agentId === agentId &&
-      cached.toolsAllowKey === toolsAllowKey
+      cached.toolsAllowKey === toolsAllowKey &&
+      cached.continuationToolMode === request.continuationToolMode
     ) {
       runtimeCache.delete(request.jobId);
       runtimeCache.set(request.jobId, cached);
@@ -345,6 +351,7 @@ function createCronCodeModeRunner(deps: CronTriggerEvaluatorDeps) {
       configEpoch: request.runtimeConfig,
       agentId,
       toolsAllowKey,
+      continuationToolMode: request.continuationToolMode,
     };
     runtimeCache.delete(request.jobId);
     runtimeCache.set(request.jobId, entry);
@@ -363,6 +370,7 @@ function createCronCodeModeRunner(deps: CronTriggerEvaluatorDeps) {
       wallClockMs: number;
       maxToolCalls: number;
       label: string;
+      continuationToolMode: CronContinuationToolMode;
       onExecutionStarted?: () => void | Promise<void>;
     },
   ): Promise<
@@ -380,6 +388,7 @@ function createCronCodeModeRunner(deps: CronTriggerEvaluatorDeps) {
       const request = {
         runtimeConfig: resolveCronActiveRuntimeConfig(deps.config),
         jobId: params.job.id,
+        continuationToolMode: params.continuationToolMode,
         agentId: params.job.agentId,
         toolsAllow: params.job.payload.toolsAllow,
         scheduledToolPolicy: resolveCronScheduledToolPolicy({
@@ -562,6 +571,7 @@ export function createCronScriptRuntime(deps: CronTriggerEvaluatorDeps) {
           wallClockMs: HEADLESS_TRIGGER_WALL_CLOCK_MS,
           maxToolCalls: HEADLESS_TRIGGER_TOOL_BUDGET,
           label: "cron trigger evaluation",
+          continuationToolMode: "disabled",
         });
         return outcome.kind === "completed" ? parseTriggerResult(outcome.result) : outcome;
       } finally {
@@ -590,6 +600,7 @@ export function createCronScriptRuntime(deps: CronTriggerEvaluatorDeps) {
         wallClockMs: timeoutSeconds * 1000,
         maxToolCalls: toolBudget,
         label: "cron script payload",
+        continuationToolMode: "delegate-only",
         onExecutionStarted: params.executionIdentity?.onExecutionStarted,
       });
       return outcome.kind === "completed" ? parseScriptPayloadResult(outcome.result) : outcome;

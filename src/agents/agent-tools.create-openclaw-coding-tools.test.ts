@@ -186,6 +186,16 @@ function cronCreatorToolNames(
 }
 
 describe("createOpenClawCodingTools", () => {
+  it("forwards an explicit continuation tool mode to the OpenClaw factory", () => {
+    vi.mocked(createOpenClawTools).mockClear();
+
+    createOpenClawCodingTools({ continuationToolMode: "delegate-only" });
+
+    expect(latestCreateOpenClawToolsOptions()).toMatchObject({
+      continuationToolMode: "delegate-only",
+    });
+  });
+
   it("forwards the session web-search gate to core tool materialization", () => {
     vi.mocked(createOpenClawTools).mockClear();
     createOpenClawCodingTools({ webSearchEnabled: false });

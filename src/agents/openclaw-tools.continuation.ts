@@ -13,6 +13,7 @@ const log = createSubsystemLogger("agents/openclaw-tools");
 type OpenClawContinuationToolOptions = Pick<
   OpenClawToolsOptions,
   | "drainsContinuationDelegateQueue"
+  | "continuationToolMode"
   | "disableContinuationTools"
   | "continueWorkOpts"
   | "requestCompactionOpts"
@@ -31,9 +32,11 @@ export function createOpenClawContinuationTools(
     sandboxWritable?: boolean;
   },
 ): AnyAgentTool[] {
+  const mode = options.disableContinuationTools
+    ? "disabled"
+    : (options.continuationToolMode ?? "auto");
   const enabled =
-    options.disableContinuationTools !== true &&
-    options.config?.agents?.defaults?.continuation?.enabled === true;
+    mode !== "disabled" && options.config?.agents?.defaults?.continuation?.enabled === true;
   if (!enabled) {
     return [];
   }
@@ -52,7 +55,7 @@ export function createOpenClawContinuationTools(
       sandboxWritable: options.sandboxWritable,
     }),
   );
-  if (options.continueWorkOpts) {
+  if (mode === "auto" && options.continueWorkOpts) {
     tools.push(
       createContinueWorkTool({
         agentSessionKey: options.agentSessionKey,
@@ -65,7 +68,7 @@ export function createOpenClawContinuationTools(
       createContinueDelegateTool({ agentSessionKey: liveSessionKey, runId: options.runId }),
     );
   }
-  if (options.requestCompactionOpts) {
+  if (mode === "auto" && options.requestCompactionOpts) {
     tools.push(
       createRequestCompactionTool({
         agentSessionKey: options.agentSessionKey,
@@ -76,7 +79,7 @@ export function createOpenClawContinuationTools(
     );
   }
 
-  if (!options.continueWorkOpts && !options.requestCompactionOpts) {
+  if (mode === "auto" && !options.continueWorkOpts && !options.requestCompactionOpts) {
     log.warn(
       "continuation.enabled=true but neither continueWorkOpts nor requestCompactionOpts " +
         "were supplied — only continue_delegate will register. If this is a live runner, it " +

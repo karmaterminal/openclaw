@@ -7,6 +7,7 @@ import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { wrapToolWithBeforeToolCallHook } from "../agents/agent-tools.before-tool-call.js";
 import { getBeforeToolCallHookContext } from "../agents/before-tool-call-metadata.js";
 import { runCodeModeScriptHeadless, type CodeModeHeadlessResult } from "../agents/code-mode.js";
+import { createOpenClawTools } from "../agents/openclaw-tools.js";
 import { clearToolSearchCatalog } from "../agents/tool-search.js";
 import { jsonResult, type AnyAgentTool } from "../agents/tools/common.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -69,6 +70,119 @@ function createCronTriggerEvaluator(deps: EvaluatorDeps) {
 }
 
 describe("cron trigger script evaluator", () => {
+  it.each([
+    ["trigger", "payload"],
+    ["payload", "trigger"],
+  ] as const)(
+    "threads distinct continuation policy through the shared cache in %s-then-%s order",
+    async (firstMode, secondMode) => {
+      const config = {} as OpenClawConfig;
+      const prepareRuntime = vi.fn(async (_params: PrepareParams) => createPreparedRuntime(config));
+      let activeMode: "trigger" | "payload" = firstMode;
+      const runHeadless = vi.fn(async () =>
+        completed({ value: activeMode === "trigger" ? { fire: false } : {} }),
+      );
+      const runtime = createCronScriptRuntime({ config, prepareRuntime, runHeadless });
+      const invoke = async (mode: "trigger" | "payload") => {
+        activeMode = mode;
+        return mode === "trigger"
+          ? await runtime.evaluateTrigger({
+              jobId: "shared-continuation-policy-cache",
+              script: "return { fire: false }",
+              state: null,
+            })
+          : await runtime.executePayload({
+              jobId: "shared-continuation-policy-cache",
+              script: "return {}",
+              state: null,
+            });
+      };
+
+      await invoke(firstMode);
+      await invoke(secondMode);
+
+      expect(prepareRuntime).toHaveBeenCalledTimes(2);
+      expect(prepareRuntime.mock.calls.map(([params]) => params.continuationToolMode)).toEqual(
+        [firstMode, secondMode].map((mode) => (mode === "trigger" ? "disabled" : "delegate-only")),
+      );
+    },
+  );
+
+  it.each([
+    ["trigger", "payload"],
+    ["payload", "trigger"],
+  ] as const)(
+    "exposes the required continuation surfaces in %s-then-%s order",
+    async (firstMode, secondMode) => {
+      const config = {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: { defaults: { continuation: { enabled: true } } },
+      } as OpenClawConfig;
+      const observed = new Map<string, string[]>();
+      const prepareRuntime = vi.fn(async (params: PrepareParams) => ({
+        createTools: () => {
+          const tools = createOpenClawTools({
+            agentSessionKey: `cron:surface:${params.continuationToolMode}`,
+            disableMessageTool: true,
+            disablePluginTools: true,
+            continuationToolMode: params.continuationToolMode,
+            config,
+          });
+          observed.set(
+            params.continuationToolMode,
+            tools.map((tool) => tool.name),
+          );
+          return tools;
+        },
+        context: { config, agentId: "main", sessionKey: "cron:surface:trigger" },
+      }));
+      let activeMode: "trigger" | "payload" = firstMode;
+      const runHeadless = vi.fn(async () =>
+        completed({ value: activeMode === "trigger" ? { fire: false } : {} }),
+      );
+      const runtime = createCronScriptRuntime({ config, prepareRuntime, runHeadless });
+      const invoke = async (mode: "trigger" | "payload") => {
+        activeMode = mode;
+        return mode === "trigger"
+          ? await runtime.evaluateTrigger({
+              jobId: "shared-continuation-surface-cache",
+              script: "return { fire: false }",
+              state: null,
+            })
+          : await runtime.executePayload({
+              jobId: "shared-continuation-surface-cache",
+              script: "return {}",
+              state: null,
+            });
+      };
+
+      await invoke(firstMode);
+      await invoke(secondMode);
+
+      expect(observed.has("disabled")).toBe(true);
+      expect(observed.get("disabled")).not.toEqual(
+        expect.arrayContaining([
+          "continue_work",
+          "continue_delegate",
+          "request_compaction",
+          "delegate_artifacts",
+          "delegate_artifacts_publish",
+        ]),
+      );
+      expect(observed.has("delegate-only")).toBe(true);
+      expect(observed.get("delegate-only")).toEqual(
+        expect.arrayContaining([
+          "continue_delegate",
+          "delegate_artifacts",
+          "delegate_artifacts_publish",
+        ]),
+      );
+      expect(observed.get("delegate-only")).not.toEqual(
+        expect.arrayContaining(["continue_work", "request_compaction"]),
+      );
+    },
+  );
+
   it("cancels the real headless worker and bridge when its evaluation catalog closes", async () => {
     const entered = createDeferred();
     const release = createDeferred();

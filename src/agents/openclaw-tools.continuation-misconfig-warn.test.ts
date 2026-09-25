@@ -150,6 +150,49 @@ describe("createOpenClawTools — silent partial-registration guard", () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
+  it("does NOT warn and registers only delegate-owned continuation for an explicit delegate-only run", () => {
+    const tools = createOpenClawTools({
+      agentSessionKey: "cron:payload",
+      disablePluginTools: true,
+      disableMessageTool: true,
+      continuationToolMode: "delegate-only",
+      config: {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: { defaults: { continuation: { enabled: true } } },
+      } as never,
+      continueWorkOpts: buildContinueWorkOpts(),
+      requestCompactionOpts: buildRequestCompactionOpts(),
+    });
+
+    const names = tools.map((tool) => tool.name);
+    expect(names).toContain("continue_delegate");
+    expect(names).toContain("delegate_artifacts");
+    expect(names).toContain("delegate_artifacts_publish");
+    expect(names).not.toContain("continue_work");
+    expect(names).not.toContain("request_compaction");
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("lets the legacy disable flag override an explicit delegate-only mode", () => {
+    const tools = createOpenClawTools({
+      agentSessionKey: "cron:trigger",
+      disablePluginTools: true,
+      disableMessageTool: true,
+      continuationToolMode: "delegate-only",
+      disableContinuationTools: true,
+      config: {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: { defaults: { continuation: { enabled: true } } },
+      } as never,
+    });
+
+    const names = tools.map((tool) => tool.name);
+    expect(names).not.toContain("continue_delegate");
+    expect(names).not.toContain("delegate_artifacts");
+    expect(names).not.toContain("delegate_artifacts_publish");
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
   it("does NOT warn when only continueWorkOpts is supplied (request_compaction will not register, but continue_work IS registered — partial-registration concern only fires when neither is supplied)", () => {
     createOpenClawTools({
       agentSessionKey: "main",
