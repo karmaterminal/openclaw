@@ -6,6 +6,7 @@ import { findCodeRegions } from "../shared/text/code-regions.js";
 import {
   resolveAssistantStreamBlockIndex,
   resolveAssistantStreamItemId,
+  stripContinuationSignalFromDisplayText,
 } from "./embedded-agent-subscribe.handlers.messages.stream.js";
 import type {
   EmbeddedAgentSubscribeContext,
@@ -59,8 +60,13 @@ export function extractAssistantStreamSnapshot(
     // Final prose preserves inline tag examples; generic streams still hide reasoning.
     const preparedFinal = phase === "final_answer" && !ctx.params.enforceFinalTag;
     finalAnswer &&= preparedFinal;
+    // A continuation marker that terminates an *earlier* final-answer item ends
+    // up mid-string once the parts are joined, where the trailing-oriented
+    // display strip can no longer see it. Per part it is still trailing, so
+    // strip here rather than widening the matcher to hunt markers mid-text.
+    const displayPart = preparedFinal ? stripContinuationSignalFromDisplayText(part) : part;
     const visible = preparedFinal
-      ? `${separator}${part}`
+      ? `${separator}${displayPart}`
       : ctx.stripBlockTags(`${separator}${part}`, state, {
           final: final && options?.final !== false,
         });
