@@ -14,6 +14,7 @@ type OpenClawContinuationToolOptions = Pick<
   OpenClawToolsOptions,
   | "drainsContinuationDelegateQueue"
   | "disableContinuationTools"
+  | "allowDelegateOnlyContinuationTools"
   | "continueWorkOpts"
   | "requestCompactionOpts"
 >;
@@ -76,14 +77,20 @@ export function createOpenClawContinuationTools(
     );
   }
 
-  if (!options.continueWorkOpts && !options.requestCompactionOpts) {
+  if (
+    !options.continueWorkOpts &&
+    !options.requestCompactionOpts &&
+    options.allowDelegateOnlyContinuationTools !== true
+  ) {
     log.warn(
       "continuation.enabled=true but neither continueWorkOpts nor requestCompactionOpts " +
         "were supplied — only continue_delegate will register. If this is a live runner, it " +
         "must supply both callbacks for the full continuation tool set (likely a config/wiring " +
-        "gap). If this is an inventory/catalog/dispatch build, register the tools via stub " +
-        "callbacks (buildInventoryContinuationToolOpts) so the catalog reflects the full surface " +
-        "and this warning is satisfied honestly rather than suppressed.",
+        "gap). If this is an executable headless lane that intentionally supports only " +
+        "callback-free delegation, set allowDelegateOnlyContinuationTools=true. If this is an " +
+        "inventory/catalog/dispatch build, register the tools via stub callbacks " +
+        "(buildInventoryContinuationToolOpts) so the catalog reflects the full surface and this " +
+        "warning is satisfied honestly rather than suppressed.",
       {
         agentSessionKey: options.agentSessionKey,
         runSessionKey: options.runSessionKey,

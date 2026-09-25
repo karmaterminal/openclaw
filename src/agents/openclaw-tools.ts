@@ -682,6 +682,7 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
       sandboxWritable: options?.sandboxWritable,
       drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
       disableContinuationTools: options?.disableContinuationTools,
+      allowDelegateOnlyContinuationTools: options?.allowDelegateOnlyContinuationTools,
       continueWorkOpts: options?.continueWorkOpts ?? inventoryContinuationOpts.continueWorkOpts,
       requestCompactionOpts:
         options?.requestCompactionOpts ?? inventoryContinuationOpts.requestCompactionOpts,

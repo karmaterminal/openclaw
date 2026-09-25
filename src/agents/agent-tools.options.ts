@@ -101,6 +101,8 @@ export type OpenClawCodingToolsOptions = {
   drainsContinuationDelegateQueue?: boolean;
   /** Internal maintenance/model-only runs that cannot schedule post-turn continuation work. */
   disableContinuationTools?: boolean;
+  /** Executable headless lanes that intentionally expose only callback-free delegation tools. */
+  allowDelegateOnlyContinuationTools?: boolean;
   /** Callback for continue_work to request a post-turn continuation. */
   continueWorkOpts?: {
     requestContinuation: (

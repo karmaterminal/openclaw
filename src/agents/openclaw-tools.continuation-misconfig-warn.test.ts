@@ -104,6 +104,27 @@ describe("createOpenClawTools — silent partial-registration guard", () => {
     expect(names).not.toContain("request_compaction");
   });
 
+  it("does NOT warn and registers only callback-free delegation tools for an explicit delegate-only lane", () => {
+    const tools = createOpenClawTools({
+      agentSessionKey: "main",
+      disablePluginTools: true,
+      disableMessageTool: true,
+      allowDelegateOnlyContinuationTools: true,
+      config: {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: { defaults: { continuation: { enabled: true } } },
+      } as never,
+    });
+
+    const names = tools.map((tool) => tool.name);
+    expect(names).toContain("continue_delegate");
+    expect(names).toContain("delegate_artifacts");
+    expect(names).toContain("delegate_artifacts_publish");
+    expect(names).not.toContain("continue_work");
+    expect(names).not.toContain("request_compaction");
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
   it("does NOT warn when continuation is fully configured", () => {
     createOpenClawTools({
       agentSessionKey: "main",

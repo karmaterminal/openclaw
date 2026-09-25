@@ -651,6 +651,7 @@ export function createOpenClawCodingToolsInternal(
             allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
             drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
             disableContinuationTools,
+            allowDelegateOnlyContinuationTools: options?.allowDelegateOnlyContinuationTools,
             continueWorkOpts: options?.continueWorkOpts,
             requestCompactionOpts: options?.requestCompactionOpts,
             recordToolPrepStage: options?.recordToolPrepStage,
