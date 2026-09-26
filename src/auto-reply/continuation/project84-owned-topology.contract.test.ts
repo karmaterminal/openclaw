@@ -1,8 +1,18 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import * as ts from "typescript/unstable/ast";
+import { afterAll, describe, expect, it } from "vitest";
+import { createNativeTypeScriptParser } from "../../../scripts/lib/native-typescript.mts";
+
+const sourceParser = createNativeTypeScriptParser();
+afterAll(() => sourceParser.close());
+
+function isStringLiteralLike(
+  node: ts.Node,
+): node is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral {
+  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
+}
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -18,7 +28,7 @@ const MONITORED_MODULES = [
   "src/process/command-queue-waiters.ts",
   "src/auto-reply/reply/agent-runner-embedded-candidate.ts",
   "src/auto-reply/reply/agent-runner-post-compaction-release.ts",
-  "src/gateway/server-methods.ts",
+  "src/gateway/server-methods/core-handlers.ts",
   "src/gateway/server-methods/sessions-compact.ts",
   "src/auto-reply/continuation/work-store.ts",
   "src/auto-reply/continuation/work-flow-state.ts",
@@ -52,7 +62,7 @@ type ScanResult = Readonly<{
 const monitoredModuleSet = new Set<string>(MONITORED_MODULES);
 
 function resolveStaticString(expression: ts.Expression): string | undefined {
-  if (ts.isStringLiteralLike(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+  if (isStringLiteralLike(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
     return expression.text;
   }
   if (ts.isParenthesizedExpression(expression)) {
@@ -60,7 +70,7 @@ function resolveStaticString(expression: ts.Expression): string | undefined {
   }
   if (
     ts.isAsExpression(expression) ||
-    ts.isTypeAssertionExpression(expression) ||
+    ts.isTypeAssertion(expression) ||
     ts.isNonNullExpression(expression) ||
     ts.isSatisfiesExpression(expression)
   ) {
@@ -89,9 +99,9 @@ function resolveStaticString(expression: ts.Expression): string | undefined {
 }
 
 function resolveImportTypeString(node: ts.ImportTypeNode): string | undefined {
-  return ts.isLiteralTypeNode(node.argument)
-    ? resolveStaticString(node.argument.literal)
-    : undefined;
+  // import("...") type arguments are string literal types; TS7 types `literal` as a Node.
+  const literal = ts.isLiteralTypeNode(node.argument) ? node.argument.literal : undefined;
+  return literal && isStringLiteralLike(literal) ? literal.text : undefined;
 }
 
 function resolveMonitoredModule(
@@ -128,12 +138,9 @@ function scanOwnedTopology(): ScanResult {
   const unresolvedDynamicImports: string[] = [];
 
   for (const from of MONITORED_MODULES) {
-    const sourceFile = ts.createSourceFile(
+    const sourceFile = sourceParser.parseSourceFile(
       from,
       readFileSync(path.resolve(REPO_ROOT, from), "utf8"),
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS,
     );
 
     const recordEdge = (specifier: string, kind: EdgeKind): void => {
@@ -181,7 +188,7 @@ function scanOwnedTopology(): ScanResult {
           recordEdge(specifier, "import-type");
         }
       }
-      ts.forEachChild(node, visit);
+      node.forEachChild(visit);
     };
     visit(sourceFile);
   }
@@ -367,7 +374,7 @@ describe("Project 84 owned topology contract", () => {
       "src/auto-reply/reply/agent-runner-post-compaction-release.ts",
     );
     expectEdge(
-      "src/gateway/server-methods.ts",
+      "src/gateway/server-methods/core-handlers.ts",
       "src/gateway/server-methods/sessions-compact.ts",
       "dynamic-import",
     );

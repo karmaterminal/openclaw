@@ -308,6 +308,7 @@ describe("Gateway GitHub publication attribution", () => {
       creationPolicy: { actor: { type: "agent", id: "main" } },
       completionOwnerSessionKey: SESSION_KEY,
       modelPatch: {},
+      continuationPatch: {},
       collect: false,
     });
     expect(child.status).toBe("ok");

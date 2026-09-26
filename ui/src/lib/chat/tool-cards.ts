@@ -383,7 +383,6 @@ function extractToolCards(message: unknown): ToolCard[] {
       const rawArgs = coerceArgs(item.arguments ?? item.args ?? item.input);
       const name = resolveToolName(item, m);
       const callId = resolveToolCallId(item, m);
-      const name = resolveToolName(item, m);
       const details = item.details ?? m.details;
       // Redact at construction so raw arguments never enter any card surface.
       const redactedSummary = resolveRedactedToolArgumentSummary(name);

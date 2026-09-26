@@ -5,8 +5,9 @@ import path from "node:path";
 import type { SQLInputValue } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import type { Worker } from "node:worker_threads";
-import ts from "typescript";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import * as ts from "typescript/unstable/ast";
+import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
+import { createNativeTypeScriptParser } from "../../../scripts/lib/native-typescript.mts";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { openNodeSqliteDatabase } from "../../infra/node-sqlite.js";
 import * as queue from "../../shared/store-writer-queue.js";
@@ -45,6 +46,9 @@ import {
 import { resolveSqliteTargetFromSessionStorePath } from "./session-sqlite-target.js";
 import { resolveMaintenanceConfigFromInput } from "./store-maintenance.js";
 
+const sourceParser = createNativeTypeScriptParser();
+afterAll(() => sourceParser.close());
+
 const states: OpenClawTestState[] = [];
 const work: Promise<unknown>[] = [];
 const releaseGates: Array<() => void> = [];
@@ -76,7 +80,7 @@ function isTypeOnlyImportDeclaration(node: ts.ImportDeclaration): boolean {
   const clause = node.importClause;
   return Boolean(
     clause &&
-    (clause.isTypeOnly ||
+    (clause.phaseModifier === ts.SyntaxKind.TypeKeyword ||
       (!clause.name &&
         clause.namedBindings &&
         ts.isNamedImports(clause.namedBindings) &&
@@ -103,12 +107,7 @@ function readRuntimeImports(relativePath: string): {
   staticImports: Set<string>;
 } {
   const sourcePath = fileURLToPath(new URL(relativePath, import.meta.url));
-  const sourceFile = ts.createSourceFile(
-    sourcePath,
-    fs.readFileSync(sourcePath, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const sourceFile = sourceParser.parseSourceFile(sourcePath, fs.readFileSync(sourcePath, "utf8"));
   const dynamicImports = new Set<string>();
   const staticImports = new Set<string>();
   const visit = (node: ts.Node) => {
@@ -140,7 +139,7 @@ function readRuntimeImports(relativePath: string): {
         dynamicImports.add(argument.text);
       }
     }
-    ts.forEachChild(node, visit);
+    node.forEachChild(visit);
   };
   visit(sourceFile);
   return { dynamicImports, staticImports };

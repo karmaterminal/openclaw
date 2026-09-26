@@ -95,8 +95,8 @@ import {
 import { isRuntimeToolAllowed, isToolAllowedByPolicies } from "../tool-policy-match.js";
 import { DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS } from "../tool-result-limits.js";
 import type { ContinueWorkRequest } from "../tools/continue-work-tool.js";
-import { scheduleSpawnInitContinueWorkWake } from "./attempt-execution.continue-work.js";
 import { resolveHarnessAuthProfileSelection } from "./attempt-auth-selection.js";
+import { scheduleSpawnInitContinueWorkWake } from "./attempt-execution.continue-work.js";
 import {
   buildClaudeCliFallbackContextPrelude,
   claudeCliSessionTranscriptHasContent,
@@ -903,29 +903,43 @@ export async function runAgentAttempt(params: {
             model: params.modelOverride,
           }),
         triggerCompaction: async (request: RequestCompactionInvocation) => {
+          const assertCompactionSourceActive = () => {
+            params.opts.abortSignal?.throwIfAborted();
+            params.opts.operatorAuthority?.assertCurrent();
+          };
           try {
             const { compactEmbeddedAgentSession } =
               await import("../embedded-agent-runner/compact.queued.js");
-            const result = await compactEmbeddedAgentSession({
-              sessionId: params.sessionId,
-              runId: request.runId ?? params.runId,
-              sessionKey: params.sessionKey,
-              sessionFile: params.sessionFile,
-              workspaceDir: params.workspaceDir,
-              cwd: params.cwd,
-              config: params.cfg,
-              messageChannel: params.messageChannel,
-              messageProvider: params.opts.messageProvider ?? params.messageChannel,
-              agentAccountId: params.runContext.accountId,
-              provider: embeddedAgentProvider,
-              model: params.modelOverride,
-              authProfileId,
-              customInstructions: request.customInstructions,
-              trigger: request.trigger,
-              diagId: request.diagId,
-              traceparent: request.traceparent,
-              abortSignal: params.opts.abortSignal,
-            });
+            const result = await compactEmbeddedAgentSession(
+              {
+                sessionId: params.sessionId,
+                runId: request.runId ?? params.runId,
+                sessionKey: params.sessionKey,
+                sessionFile: params.sessionFile,
+                workspaceDir: params.workspaceDir,
+                cwd: params.cwd,
+                config: params.cfg,
+                messageChannel: params.messageChannel,
+                messageProvider: params.opts.messageProvider ?? params.messageChannel,
+                agentAccountId: params.runContext.accountId,
+                provider: embeddedAgentProvider,
+                model: params.modelOverride,
+                authProfileId,
+                customInstructions: request.customInstructions,
+                trigger: request.trigger,
+                diagId: request.diagId,
+                traceparent: request.traceparent,
+                abortSignal: params.opts.abortSignal,
+              },
+              {
+                // The requesting run's own admission is the compaction source.
+                assertActive: assertCompactionSourceActive,
+                sourceAuthority: {
+                  assertActive: assertCompactionSourceActive,
+                  operatorAuthority: params.opts.operatorAuthority,
+                },
+              },
+            );
             if (params.opts.abortSignal?.aborted) {
               if (params.sessionKey) {
                 failQueuedDelegatesOwnedByRun(

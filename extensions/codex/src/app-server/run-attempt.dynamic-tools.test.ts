@@ -307,10 +307,7 @@ describe("runCodexAppServerAttempt dynamic tools", () => {
     );
     const harness = createStartedThreadHarness();
     const onAgentToolResult = vi.fn();
-    const params = createParams(
-      path.join(tempDir, "session.jsonl"),
-      path.join(tempDir, "workspace"),
-    );
+    const params = createTestParams();
     setCodexTestToolFactory(params, () => [continuationTool]);
     params.disableTools = false;
     setCodexTestModelSupportsTools(params, true);
@@ -321,7 +318,7 @@ describe("runCodexAppServerAttempt dynamic tools", () => {
       const run = runCodexAppServerAttempt(params, {
         allowProviderRuntimePluginLoad: false,
       });
-      await harness.waitForMethod("turn/start", 10_000);
+      await harness.waitForMethod("turn/start");
 
       const toolRequest = harness.handleServerRequest({
         id: "request-continue-delegate",

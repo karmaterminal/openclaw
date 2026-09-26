@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expectDefined } from "@openclaw/normalization-core";
-import ts from "typescript";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as ts from "typescript/unstable/ast";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createNativeTypeScriptParser } from "../../../scripts/lib/native-typescript.mts";
 import { UnavailableDelegateArtifactPolicyError } from "../../agents/delegate-artifacts.js";
 
 // Mock TaskFlow registry — delegate-store resolves it transitively.
@@ -388,6 +390,15 @@ const splitLintUse = [
   findPersistedRecoveryEntry,
 ];
 void splitLintUse;
+
+const sourceParser = createNativeTypeScriptParser();
+afterAll(() => sourceParser.close());
+
+function isStringLiteralLike(
+  node: ts.Node,
+): node is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral {
+  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
+}
 
 describe("managed artifact pre-spawn lifecycle", () => {
   it("fails and scrubs a delegate cancelled after claim without spawning", async () => {
@@ -882,27 +893,24 @@ describe("raw trusted delegate task echoes", () => {
   });
 
   it("keeps every delegate task system-event echo behind the neutral formatter", () => {
-    const sourceFiles = ["./delegate-dispatch.ts", "./post-compaction-staged-dispatch.ts"].map(
-      (sourcePath) =>
-        ts.createSourceFile(
-          sourcePath,
-          readFileSync(new URL(sourcePath, import.meta.url), "utf8"),
-          ts.ScriptTarget.Latest,
-          true,
-          ts.ScriptKind.TS,
-        ),
+    // One parse call: the native parser disposes earlier snapshots on each call.
+    const sourceFiles = sourceParser.parseSourceFiles(
+      ["./delegate-dispatch.ts", "./post-compaction-staged-dispatch.ts"].map((sourcePath) => {
+        const url = new URL(sourcePath, import.meta.url);
+        return { fileName: fileURLToPath(url), text: readFileSync(url, "utf8") };
+      }),
     );
     const taskReferences: ts.Expression[] = [];
     const visit = (node: ts.Node): void => {
       if (
         (ts.isPropertyAccessExpression(node) && node.name.text === "task") ||
         (ts.isElementAccessExpression(node) &&
-          ts.isStringLiteralLike(node.argumentExpression) &&
+          isStringLiteralLike(node.argumentExpression) &&
           node.argumentExpression.text === "task")
       ) {
         taskReferences.push(node);
       }
-      ts.forEachChild(node, visit);
+      node.forEachChild(visit);
     };
     for (const sourceFile of sourceFiles) {
       const enqueueCalls: ts.CallExpression[] = [];
@@ -914,7 +922,7 @@ describe("raw trusted delegate task echoes", () => {
         ) {
           enqueueCalls.push(node);
         }
-        ts.forEachChild(node, collectEnqueueCalls);
+        node.forEachChild(collectEnqueueCalls);
       };
       collectEnqueueCalls(sourceFile);
       for (const call of enqueueCalls) {
@@ -954,7 +962,7 @@ describe("delegate dispatch ownership graph", () => {
   type OwnershipEdge = { from: ModuleFile; kind: ImportKind; to: ModuleFile };
 
   function resolveStaticString(expression: ts.Expression): string | undefined {
-    if (ts.isStringLiteralLike(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+    if (isStringLiteralLike(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
       return expression.text;
     }
     if (ts.isParenthesizedExpression(expression)) {
@@ -998,12 +1006,9 @@ describe("delegate dispatch ownership graph", () => {
         from === "src/gateway/server-runtime-services.ts"
           ? new URL("../../gateway/server-runtime-services.ts", import.meta.url)
           : new URL(`./${path.posix.basename(from)}`, import.meta.url);
-      const sourceFile = ts.createSourceFile(
-        from,
+      const sourceFile = sourceParser.parseSourceFile(
+        fileURLToPath(sourceUrl),
         readFileSync(sourceUrl, "utf8"),
-        ts.ScriptTarget.Latest,
-        true,
-        ts.ScriptKind.TS,
       );
       const recordEdge = (specifier: string, kind: ImportKind): void => {
         const to = resolveCoveredModule(from, specifier);
@@ -1012,12 +1017,12 @@ describe("delegate dispatch ownership graph", () => {
         }
       };
       const visit = (node: ts.Node): void => {
-        if (ts.isImportDeclaration(node) && ts.isStringLiteralLike(node.moduleSpecifier)) {
+        if (ts.isImportDeclaration(node) && isStringLiteralLike(node.moduleSpecifier)) {
           recordEdge(node.moduleSpecifier.text, "static-import");
         } else if (
           ts.isExportDeclaration(node) &&
           node.moduleSpecifier &&
-          ts.isStringLiteralLike(node.moduleSpecifier)
+          isStringLiteralLike(node.moduleSpecifier)
         ) {
           recordEdge(node.moduleSpecifier.text, "static-export");
         } else if (
@@ -1033,7 +1038,7 @@ describe("delegate dispatch ownership graph", () => {
           }
           recordEdge(specifier, "dynamic-import");
         }
-        ts.forEachChild(node, visit);
+        node.forEachChild(visit);
       };
       visit(sourceFile);
     }

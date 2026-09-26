@@ -1,6 +1,9 @@
 // Stores durable delivery queue entries through their connection-bound owner.
 import { withExistingOpenClawStateDatabaseArtifactPreservingReadOnlyAsync } from "../state/openclaw-state-db-readonly.js";
-import { openOpenClawStateDatabase, type OpenClawStateDatabase } from "../state/openclaw-state-db.js";
+import {
+  openOpenClawStateDatabase,
+  type OpenClawStateDatabase,
+} from "../state/openclaw-state-db.js";
 import {
   deliveryQueueEntriesQuery,
   terminalizeBoundDeliveryQueueEntry,
@@ -17,8 +20,6 @@ import {
   prepareDeliveryQueueTerminalEntry,
   terminalizePendingDeliveryQueueEntryInDatabase,
   type DeliveryQueueStoredStatus,
-  type ReserveDeliveryQueueAttemptResult,
-  type TerminalizePendingDeliveryQueueEntryParams,
   type TerminalizePendingDeliveryQueueEntryParams as KernelTerminalizeParams,
   type TerminalizePendingDeliveryQueueEntryResult,
 } from "./delivery-queue-sqlite.kernel.js";

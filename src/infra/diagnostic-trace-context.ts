@@ -96,8 +96,7 @@ export function formatDiagnosticTraceparent(
   }
   const traceId = normalizeTraceId(context.traceId);
   const spanId = normalizeSpanId(context.spanId);
-  const traceFlags =
-    normalizeTraceFlags(context.traceFlags) ?? DEFAULT_TRACE_FLAGS;
+  const traceFlags = normalizeTraceFlags(context.traceFlags) ?? DEFAULT_TRACE_FLAGS;
   if (!traceId || !spanId) {
     return undefined;
   }
@@ -133,9 +132,7 @@ export function createChildDiagnosticTraceContext(
   parent: DiagnosticTraceContext,
   input: Omit<DiagnosticTraceContextInput, "traceId" | "traceparent"> = {},
 ): DiagnosticTraceContext {
-  const parentSpanId =
-    normalizeSpanId(input.parentSpanId) ??
-    normalizeSpanId(parent.spanId);
+  const parentSpanId = normalizeSpanId(input.parentSpanId) ?? normalizeSpanId(parent.spanId);
   return createDiagnosticTraceContext({
     traceId: parent.traceId,
     spanId: input.spanId,

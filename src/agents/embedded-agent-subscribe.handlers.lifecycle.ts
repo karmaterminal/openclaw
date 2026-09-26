@@ -294,7 +294,9 @@ export function handleAgentEnd(
     };
     const postMediaFlushResult = ctx.flushBlockReplyBuffer({ retryFailures: true });
     return isPromiseLike<void>(postMediaFlushResult)
-      ? postMediaFlushResult.then(() => (isCurrentDeliveryGeneration() ? flushChannel() : undefined))
+      ? postMediaFlushResult.then(() =>
+          isCurrentDeliveryGeneration() ? flushChannel() : undefined,
+        )
       : flushChannel();
   };
 

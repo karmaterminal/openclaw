@@ -315,7 +315,9 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
               subagentRuns.releaseCompletionAuthority(entry);
               throw new SubagentRegistrationError(
                 [error],
-                error instanceof Error ? error.message : `Subagent task registration failed: ${runId}`,
+                error instanceof Error
+                  ? error.message
+                  : `Subagent task registration failed: ${runId}`,
                 failedOwnership(),
               );
             }

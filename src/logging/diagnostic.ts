@@ -328,8 +328,6 @@ function emitDiagnosticContinuationQueueSample(
   markActivity();
 }
 
-      livenessSample !== null && shouldEmitDiagnosticLivenessWarning(now, work, continuationQueue);
-    const hasContinuationActivity = hasContinuationQueueActivity(continuationQueue);
 function emitDiagnosticLivenessWarning(
   sample: DiagnosticLivenessSample,
   work: DiagnosticWorkSnapshot,

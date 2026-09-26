@@ -509,8 +509,8 @@ describe("queued collector session projection", () => {
           }
           if (failure === "registry replaced") {
             const completion = registerSubagentRun(registration);
-            if (completion) {
-              replacementWork.completion = completion;
+            if (completion instanceof Promise) {
+              replacementWork.completion = completion.then(() => undefined);
             }
           }
         });

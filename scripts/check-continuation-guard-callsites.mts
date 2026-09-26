@@ -24,8 +24,9 @@ import { fileURLToPath } from "node:url";
 // Each entry names a guard and the modules that MUST call it. Losing a call site is a
 // hard failure with the protection spelled out, so the next absorb has to make a
 // deliberate decision instead of an accidental one.
-import type ts from "typescript";
-import { getTypeScript, runAsScript, toLine } from "./lib/ts-guard-utils.mts";
+import * as ts from "typescript/unstable/ast";
+import { createNativeTypeScriptParser } from "./lib/native-typescript.mts";
+import { collectCallExpressionLines, runAsScript } from "./lib/ts-guard-utils.mts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -131,7 +132,7 @@ const contracts: GuardContract[] = [
 ];
 
 async function main() {
-  const ts = getTypeScript();
+  using parser = createNativeTypeScriptParser({ cwd: repoRoot });
   const failures: string[] = [];
   const found: string[] = [];
 
@@ -147,27 +148,17 @@ async function main() {
         );
         continue;
       }
-      const sourceFile = ts.createSourceFile(caller, content, ts.ScriptTarget.Latest, true);
-      let callLine: number | undefined;
-      const visit = (node: ts.Node): void => {
-        if (callLine !== undefined) {
-          return;
-        }
-        if (ts.isCallExpression(node)) {
-          const target = node.expression;
-          const name = ts.isIdentifier(target)
-            ? target.text
-            : ts.isPropertyAccessExpression(target)
-              ? target.name.text
-              : undefined;
-          if (name === contract.guard) {
-            callLine = toLine(sourceFile, node);
-            return;
-          }
-        }
-        ts.forEachChild(node, visit);
-      };
-      visit(sourceFile);
+      const sourceFile = parser.parseSourceFile(absolute, content);
+      // Traversal order is source order, so the first line is the first call.
+      const callLine = collectCallExpressionLines(sourceFile, (call) => {
+        const target = call.expression;
+        const name = ts.isIdentifier(target)
+          ? target.text
+          : ts.isPropertyAccessExpression(target)
+            ? target.name.text
+            : undefined;
+        return name === contract.guard ? call : null;
+      })[0];
       if (callLine === undefined) {
         failures.push(
           `${caller}: no call to ${contract.guard}() found.\n    protects: ${contract.protects}`,

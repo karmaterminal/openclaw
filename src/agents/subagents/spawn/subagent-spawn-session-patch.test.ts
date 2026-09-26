@@ -51,6 +51,7 @@ it("inherits accepted human credit when participant persistence is still queued"
         creationPolicy: { actor: { type: "agent", id: agentId } },
         completionOwnerSessionKey: sessionKey,
         modelPatch: {},
+        continuationPatch: {},
         collect: false,
       });
       releaseWriter.resolve();

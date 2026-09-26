@@ -207,25 +207,40 @@ export async function runEmbeddedFallbackCandidate(
                 }),
               triggerCompaction: async (request) => {
                 attemptCompactionTraceparent = request.traceparent;
+                const operatorAuthority = turn.followupRun.operatorAuthority;
+                const assertCompactionSourceActive = () => {
+                  params.runAbortSignal?.throwIfAborted();
+                  operatorAuthority?.assertCurrent();
+                };
                 try {
                   const { compactEmbeddedAgentSession } =
                     await import("../../agents/embedded-agent-runner/compact.queued.js");
-                  const compactionResult = await compactEmbeddedAgentSession({
-                    sessionId: turn.followupRun.run.sessionId ?? "",
-                    runId: request.runId ?? params.runId,
-                    sessionKey: turn.sessionKey,
-                    sessionFile: turn.followupRun.run.sessionFile ?? "",
-                    workspaceDir: turn.followupRun.run.workspaceDir ?? process.cwd(),
-                    config: params.runtimeConfig,
-                    messageProvider: embeddedContext.messageProvider,
-                    provider: embeddedRunProvider,
-                    model: params.model,
-                    authProfileId: runBaseParams.authProfileId,
-                    customInstructions: request.customInstructions,
-                    trigger: request.trigger,
-                    diagId: request.diagId,
-                    traceparent: request.traceparent,
-                  });
+                  const compactionResult = await compactEmbeddedAgentSession(
+                    {
+                      sessionId: turn.followupRun.run.sessionId ?? "",
+                      runId: request.runId ?? params.runId,
+                      sessionKey: turn.sessionKey,
+                      sessionFile: turn.followupRun.run.sessionFile ?? "",
+                      workspaceDir: turn.followupRun.run.workspaceDir ?? process.cwd(),
+                      config: params.runtimeConfig,
+                      messageProvider: embeddedContext.messageProvider,
+                      provider: embeddedRunProvider,
+                      model: params.model,
+                      authProfileId: runBaseParams.authProfileId,
+                      customInstructions: request.customInstructions,
+                      trigger: request.trigger,
+                      diagId: request.diagId,
+                      traceparent: request.traceparent,
+                    },
+                    {
+                      // The requesting turn's own admission is the compaction source.
+                      assertActive: assertCompactionSourceActive,
+                      sourceAuthority: {
+                        assertActive: assertCompactionSourceActive,
+                        operatorAuthority,
+                      },
+                    },
+                  );
                   if (compactionResult.ok && compactionResult.compacted) {
                     await releaseQueuedCompactionTolerant({
                       activeSessionStore: turn.activeSessionStore,

@@ -37,6 +37,7 @@ import { resetTaskFlowRegistryForTests } from "openclaw/plugin-sdk/task-flow-tes
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { expect, test } from "vitest";
 import { setCodexTestToolFactory } from "../../codex/src/app-server/host-capability.test-support.js";
+import type { JsonObject } from "../../codex/src/app-server/protocol-json.js";
 import {
   bindProductionHarnessHostCapabilitiesForTest,
   createCodexRuntimePlanFixture,
@@ -143,7 +144,7 @@ async function callDynamicTool(params: {
   runTrace: DiagnosticTraceContext;
   callId: string;
   tool: string;
-  arguments: Record<string, unknown>;
+  arguments: JsonObject;
 }): Promise<CodexToolResponse> {
   return (await runWithDiagnosticTraceContext(params.runTrace, () =>
     params.harness.handleServerRequest({
@@ -270,7 +271,7 @@ test("exports Codex dynamic continuation origins through the production tool bou
         );
         let turnStarted = false;
         await Promise.race([
-          harness.waitForMethod("turn/start", 10_000).then(() => {
+          harness.waitForMethod("turn/start").then(() => {
             turnStarted = true;
           }),
           Promise.resolve(run).then(

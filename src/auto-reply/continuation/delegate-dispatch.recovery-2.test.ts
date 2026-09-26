@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
-import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock TaskFlow registry — delegate-store resolves it transitively.
@@ -369,7 +368,6 @@ const splitLintUse = [
   readFileSync,
   path,
   expectDefined,
-  ts,
   noopTracer,
   setContinuationTracer,
   isGatewaySubordinateWorkAdmissionClosed,

@@ -1,7 +1,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, join, posix } from "node:path";
-import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import * as ts from "typescript/unstable/ast";
+import { afterAll, describe, expect, it } from "vitest";
+import { createNativeTypeScriptParser } from "../../../scripts/lib/native-typescript.mts";
+
+const sourceParser = createNativeTypeScriptParser();
+afterAll(() => sourceParser.close());
 
 type CollectionKind = "Map" | "Set" | "WeakMap";
 
@@ -387,7 +391,7 @@ function scanContinuationSurface(): Finding[] {
 
 function scanFileForVolatileCollections(file: string): Finding[] {
   const sourceText = readFileSync(join(SOURCE_ROOT, file), "utf8");
-  const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
+  const sourceFile = sourceParser.parseSourceFile(file, sourceText);
   const mutatedSymbols = collectMutatedCollectionSymbols(sourceFile);
   const findings: Finding[] = [];
 
@@ -401,7 +405,7 @@ function scanFileForVolatileCollections(file: string): Finding[] {
         collectionKind: candidate.collectionKind,
       });
     }
-    ts.forEachChild(node, visit);
+    node.forEachChild(visit);
   }
 
   visit(sourceFile);
@@ -421,7 +425,7 @@ function collectMutatedCollectionSymbols(sourceFile: ts.SourceFile): Set<string>
         }
       }
     }
-    ts.forEachChild(node, visit);
+    node.forEachChild(visit);
   }
 
   visit(sourceFile);

@@ -371,6 +371,10 @@ describe("visible session placement and authority", () => {
         if (failure === "registration-failed") {
           throw new Error("registration unavailable");
         }
+        return {
+          status: "new-row-committed" as const,
+          attempted: { runId: "cloud-run", childSessionKey: key, generation: 1, createdAt: 0 },
+        };
       });
       const tool = createSessionsSpawnTool({
         agentSessionKey: "agent:main:main",

@@ -9,6 +9,7 @@ import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { createInMemoryTaskFlowRegistryStore } from "../test-utils/task-registry-store.js";
 import {
   createManagedTaskFlow as createManagedTaskFlowOrNull,
   createManagedTaskFlowWithAtomicUpdates,
@@ -31,7 +32,10 @@ import {
   type TaskFlowRecord,
 } from "./task-flow-registry.types.js";
 import { parseTaskNotifyPolicy } from "./task-registry.types.js";
-import { resetTaskFlowRegistryForTests } from "./task-runtime.test-helpers.js";
+import {
+  configureTaskFlowRegistryRuntime,
+  resetTaskFlowRegistryForTests,
+} from "./task-runtime.test-helpers.js";
 
 function createManagedTaskFlow(
   params: Parameters<typeof createManagedTaskFlowOrNull>[0],

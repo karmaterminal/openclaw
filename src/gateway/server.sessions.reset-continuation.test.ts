@@ -10,6 +10,7 @@ import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js
 import { listTaskFlowRecords } from "../tasks/task-flow-registry.js";
 import { configureTaskFlowRegistryRuntime } from "../tasks/task-flow-registry.store.test-support.js";
 import { resetTaskFlowRegistryForTests } from "../tasks/task-runtime.test-helpers.js";
+import { createInMemoryTaskFlowRegistryStore } from "../test-utils/task-registry-store.js";
 import { embeddedRunMock } from "./test-helpers.js";
 import {
   directSessionReq,
@@ -93,6 +94,8 @@ test("sessions.reset reports durable continuation cancellation failures", async 
   });
   configureTaskFlowRegistryRuntime({
     store: {
+      // In-memory base supplies the read/sync members; only the writes fail.
+      ...createInMemoryTaskFlowRegistryStore(),
       loadSnapshot: () => ({ flows: new Map() }),
       upsertFlow: () => {
         throw new Error("SQLITE_FULL: database or disk is full");

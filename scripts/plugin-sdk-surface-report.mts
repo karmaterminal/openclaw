@@ -419,7 +419,14 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +5: approved meeting participation contract: four types and one callable (#152327).
       // +2: shared workspace context preparation and bounded instruction snapshots.
       // +1: Gateway-verified legacy webhook endpoint attribution.
-      4580,
+      // +12: continuation runtime, task-flow, trace, channel-ingress, system-event
+      //      and diagnostic contracts (unchanged from the pre-absorb candidate).
+      // Re-pinned to the MEASURED merged surface after absorbing upstream
+      // b1c68b936f: `pnpm plugin-sdk:surface` reports 4592 public package exports.
+      // Upstream measures exactly 4580 at b1c68b936f and base 2167eab4cf pinned
+      // 4570 against our 4582, so the merged surface is upstream plus our
+      // unchanged +12. Measure, never derive.
+      4592,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -588,7 +595,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: approved runMeetingParticipationWithBrowser callable (#152327).
       // +2: shared workspace context preparation and bounded instruction snapshots.
       // +1: Gateway-verified legacy webhook endpoint attribution.
-      2688,
+      // +5: callable continuation, channel-ingress and diagnostic trace-scope helpers.
+      // Re-pinned to the MEASURED merged surface after absorbing upstream
+      // b1c68b936f: 2693 public callable exports = upstream's measured 2688 plus
+      // our unchanged +5 (base 2682, ours 2687). Measure, never derive.
+      2693,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

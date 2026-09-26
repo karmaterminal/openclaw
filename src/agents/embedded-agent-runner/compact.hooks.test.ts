@@ -7182,8 +7182,7 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
         }),
       });
     } finally {
-      agentDatabases.closeOpenClawAgentDatabasesForTest();
-      await rm(dir, { force: true, recursive: true });
+      await compactionFixture.cleanupDirectory(dir);
     }
   });
 

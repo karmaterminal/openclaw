@@ -66,12 +66,12 @@ import {
   handleProviderOAuthCallback,
   PROVIDER_OAUTH_CALLBACK_PATH,
 } from "./provider-browser-auth.js";
+import type { ControlUiRootState } from "./server-control-ui-root.js";
 import type { GatewayServerExtraHttpRoute } from "./server-extra-handlers.js";
 import {
   authorizeGatewayHttpRouteOrReply,
   handleServerExtraHttpRoute,
 } from "./server-extra-http-routes.js";
-import type { ControlUiRootState } from "./server-control-ui-root.js";
 import {
   getControlUiModule,
   getControlUiPluginAssetsModule,

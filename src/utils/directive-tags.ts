@@ -212,25 +212,29 @@ function replaceTextParts(
   const source = indexTextParts(parts);
   const edits: NativeTextEdit[] = [];
   let part = 0;
-  replace(source.text, (match, captures, offset, text) => {
-    while (
-      source.spans[part + 1] &&
-      expectDefined(source.spans[part + 1], "next text part").start <= offset
-    ) {
-      part++;
-    }
-    const value = replacement(
-      match,
-      captures,
-      offset,
-      text,
-      expectDefined(source.spans[part], "directive start part").index,
-    );
-    if (value !== match) {
-      edits.push({ start: offset, end: offset + match.length, text: value });
-    }
-    return value;
-  }, isInsideCodeSpan);
+  replace(
+    source.text,
+    (match, captures, offset, text) => {
+      while (
+        source.spans[part + 1] &&
+        expectDefined(source.spans[part + 1], "next text part").start <= offset
+      ) {
+        part++;
+      }
+      const value = replacement(
+        match,
+        captures,
+        offset,
+        text,
+        expectDefined(source.spans[part], "directive start part").index,
+      );
+      if (value !== match) {
+        edits.push({ start: offset, end: offset + match.length, text: value });
+      }
+      return value;
+    },
+    isInsideCodeSpan,
+  );
   return edits.length ? applyNativeTextEdits(parts, edits) : [...parts];
 }
 

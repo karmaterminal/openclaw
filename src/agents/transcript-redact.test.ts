@@ -423,7 +423,7 @@ describe("redactTranscriptMessage", () => {
       ],
     } as unknown as AgentMessage;
 
-    const result = redactTranscriptMessage(msg, cfg("tools"));
+    const result = redactTranscriptMessage(msg, cfg());
     const persistedBytes = JSON.stringify(result);
     expect(persistedBytes).not.toContain(secret);
     expect(persistedBytes).not.toContain(attachmentName);

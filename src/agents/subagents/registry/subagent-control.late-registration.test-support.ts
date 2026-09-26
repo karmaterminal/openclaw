@@ -100,7 +100,7 @@ export function registerLateDescendantControlTests({
             onStartFailure: () => true,
           });
         };
-        return registration ? registration.then(enqueue) : enqueue();
+        return registration instanceof Promise ? registration.then(enqueue) : enqueue();
       };
       setSubagentControlDepsForTest({
         isEmbeddedAgentRunActive: () => true,

@@ -97,6 +97,7 @@ function buildHarness(taskLookup: "available" | "unavailable", wakeFailure: Erro
     getLatestRunForChildSession: () => null,
     suppressAnnounceForSteerRestart: () => false,
     resolveSubagentTask: () => ({ lookup: taskLookup }),
+    resolveSubagentTaskAsync: async () => ({ lookup: taskLookup }),
     shouldEmitEndedHookForRun: () => false,
     emitSubagentEndedHookForRun: unexpected,
     emitSubagentProgressEndedForRun: unexpected,
