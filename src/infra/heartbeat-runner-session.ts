@@ -44,46 +44,50 @@ export function resolveHeartbeatSessionKey(
     return mainSession();
   }
 
+  // Only an explicit forced wake may opt into a subagent session; configured
+  // heartbeat sessions never do.
+  const allowSubagentSession = options?.allowSubagentSession === true;
+  const resolveCandidate = (requestKey: string, allowSubagent = false) => {
+    const candidate = toAgentStoreSessionKey({
+      agentId: resolvedAgentId,
+      requestKey,
+      mainKey: cfg.session?.mainKey,
+    });
+    if (!allowSubagent && isSubagentSessionKey(candidate)) {
+      return undefined;
+    }
+    const canonical = canonicalizeMainSessionAlias({
+      cfg,
+      agentId: resolvedAgentId,
+      sessionKey: candidate,
+    });
+    return canonical !== "global" &&
+      (allowSubagent || !isSubagentSessionKey(canonical)) &&
+      resolveAgentIdFromSessionKey(canonical) === normalizeAgentId(resolvedAgentId)
+      ? canonical
+      : undefined;
+  };
+
   // Guard: never route heartbeats to subagent sessions, regardless of entry path.
   const forced = forcedSessionKey?.trim();
-  if (forced && isSubagentSessionKey(forced) && options?.allowSubagentSession !== true) {
+  if (forced && isSubagentSessionKey(forced) && !allowSubagentSession) {
     return mainSession(true);
   }
 
-  if (forced) {
-    const forcedCandidate = toAgentStoreSessionKey({
-      agentId: resolvedAgentId,
-      requestKey: forced,
-      mainKey: cfg.session?.mainKey,
-    });
-    if (options?.allowSubagentSession === true || !isSubagentSessionKey(forcedCandidate)) {
-      const forcedCanonical = canonicalizeMainSessionAlias({
-        cfg,
-        agentId: resolvedAgentId,
-        sessionKey: forcedCandidate,
-      });
-      if (
-        forcedCanonical !== "global" &&
-        (options?.allowSubagentSession === true || !isSubagentSessionKey(forcedCanonical))
-      ) {
-        const sessionAgentId = resolveAgentIdFromSessionKey(forcedCanonical);
-        if (sessionAgentId === normalizeAgentId(resolvedAgentId)) {
-          const routedSessionKey =
-            options?.allowSubagentSession === true && isSubagentSessionKey(forcedCanonical)
-              ? forcedCanonical
-              : (resolveMainScopedEventSessionKey({
-                  cfg,
-                  sessionKey: forcedCanonical,
-                  agentId: resolvedAgentId,
-                }) ?? forcedCanonical);
-          return {
-            sessionKey: routedSessionKey,
-            storePath,
-            suppressOriginatingContext: false,
-          };
-        }
-      }
-    }
+  const forcedCanonical = forced ? resolveCandidate(forced, allowSubagentSession) : undefined;
+  if (forcedCanonical) {
+    return {
+      sessionKey:
+        allowSubagentSession && isSubagentSessionKey(forcedCanonical)
+          ? forcedCanonical
+          : (resolveMainScopedEventSessionKey({
+              cfg,
+              sessionKey: forcedCanonical,
+              agentId: resolvedAgentId,
+            }) ?? forcedCanonical),
+      storePath,
+      suppressOriginatingContext: false,
+    };
   }
 
   const trimmed = heartbeat?.session?.trim() ?? "";
@@ -96,31 +100,10 @@ export function resolveHeartbeatSessionKey(
     return mainSession();
   }
 
-  const candidate = toAgentStoreSessionKey({
-    agentId: resolvedAgentId,
-    requestKey: trimmed,
-    mainKey: cfg.session?.mainKey,
-  });
-  if (isSubagentSessionKey(candidate)) {
-    return mainSession();
-  }
-  const canonical = canonicalizeMainSessionAlias({
-    cfg,
-    agentId: resolvedAgentId,
-    sessionKey: candidate,
-  });
-  if (canonical !== "global" && !isSubagentSessionKey(canonical)) {
-    const sessionAgentId = resolveAgentIdFromSessionKey(canonical);
-    if (sessionAgentId === normalizeAgentId(resolvedAgentId)) {
-      return {
-        sessionKey: canonical,
-        storePath,
-        suppressOriginatingContext: false,
-      };
-    }
-  }
-
-  return mainSession();
+  const canonical = resolveCandidate(trimmed);
+  return canonical
+    ? { sessionKey: canonical, storePath, suppressOriginatingContext: false }
+    : mainSession();
 }
 
 export function resolveHeartbeatSession(

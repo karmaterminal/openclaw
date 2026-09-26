@@ -24,6 +24,7 @@ import {
 } from "./embedded-agent-helpers.js";
 import { runBestEffortCallback } from "./embedded-agent-subscribe.callback.js";
 import {
+  hasMessageToolOnlySourceDelivery,
   shouldSuppressDeterministicApprovalOutput,
   stripContinuationSignalFromDisplayText,
 } from "./embedded-agent-subscribe.handlers.messages.stream.js";
@@ -124,7 +125,6 @@ export function createStreamRendering({
   shouldSkipAssistantText,
 }: StreamRenderingParams) {
   const messagingToolSentTextsNormalized = state.messagingToolSentTextsNormalized;
-  const messagingToolSourceReplyPayloads = state.messagingToolSourceReplyPayloads;
   // Final-reconciliation helper only: streamed chunks arrive already prepared, so
   // message_end drains/parses through it without re-consuming live chunks.
   const replyDirectiveAccumulator = createStreamingDirectiveAccumulator();
@@ -359,12 +359,6 @@ export function createStreamRendering({
     output += text.slice(lastIndex);
     return output;
   };
-  const hasMessageToolOnlySourceDelivery = () =>
-    params.sourceReplyDeliveryMode === "message_tool_only" &&
-    (state.messageToolOnlySourceReplyDelivered ||
-      params.hasDeliveredMessageToolOnlySourceReply?.() === true ||
-      messagingToolSourceReplyPayloads.length > 0);
-
   const emitBlockChunk = (
     text: string,
     options?: {
@@ -399,7 +393,7 @@ export function createStreamRendering({
       state.lastBlockReplyText = blockReplyText;
       state.toolExecutionSinceLastBlockReply = false;
     };
-    if (hasMessageToolOnlySourceDelivery()) {
+    if (hasMessageToolOnlySourceDelivery({ params, state })) {
       markBlockReplyTextHandled();
       return;
     }
@@ -759,7 +753,11 @@ export function createStreamRendering({
     // only what was explicitly sent, so trailing reasoning must stay out of the
     // render hook — uniformly, whether the thinking block rode in on a tool call
     // or arrived on its own. It still reaches the bus/archive above.
-    if (state.streamReasoning && !hasMessageToolOnlySourceDelivery() && params.onReasoningStream) {
+    if (
+      state.streamReasoning &&
+      !hasMessageToolOnlySourceDelivery({ params, state }) &&
+      params.onReasoningStream
+    ) {
       runBestEffortCallback({
         label: "reasoning stream",
         log,

@@ -8,6 +8,7 @@ import {
   type DeliveryQueueStateContext,
 } from "../infra/delivery-queue-sqlite.js";
 import { computeBackoffMs } from "../infra/delivery-recovery.shared.js";
+import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { resolveHeartbeatAgents, resolveHeartbeatIntervalMs } from "../infra/heartbeat-config.js";
 import { startHeartbeatRunner, type HeartbeatRunner } from "../infra/heartbeat-runner-scheduler.js";
 import type { runHeartbeatOnce } from "../infra/heartbeat-runner.js";
@@ -483,6 +484,7 @@ function startPendingContinuationRecovery(params: {
 
 /** Activates background gateway services after core runtime startup is ready. */
 export function activateGatewayScheduledServices(params: {
+  scheduler: GatewayScheduler;
   minimalTestGateway: boolean;
   cfgAtStart: OpenClawConfig;
   deps: import("../cli/deps.types.js").CliDeps;
@@ -499,6 +501,7 @@ export function activateGatewayScheduledServices(params: {
       stopDeliveryRecovery: async () => {},
     };
   }
+  const { scheduler } = params;
   if (
     !params.cronEnabled &&
     resolveHeartbeatAgents(params.cfgAtStart).some((agent) =>
@@ -546,7 +549,7 @@ export function activateGatewayScheduledServices(params: {
         }
       : {}),
   });
-  const sessionUpstreamMonitor = startSessionUpstreamMonitor();
+  const sessionUpstreamMonitor = startSessionUpstreamMonitor({ scheduler });
   const stopSessionDeliveryRuntime = startPendingSessionDeliveryRuntime({
     deps: params.deps,
     log: params.log,
@@ -577,7 +580,7 @@ export function activateGatewayScheduledServices(params: {
     stop: () => {
       heartbeatStopped = true;
       void stopDeliveryRecovery();
-      sessionUpstreamMonitor.stop();
+      void sessionUpstreamMonitor.stop();
       heartbeatRunner.stop();
     },
   };

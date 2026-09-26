@@ -1,4 +1,3 @@
-// Diagnostics Otel plugin module implements service behavior.
 import { createNoopMeter, diag, metrics, trace, type SpanContext } from "@opentelemetry/api";
 import * as otelCore from "@opentelemetry/core";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
@@ -15,11 +14,12 @@ import {
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import {
   setContinuationTracer,
+  type DiagnosticTraceContext,
   type Tracer,
   waitForDiagnosticEventsDrained,
 } from "openclaw/plugin-sdk/diagnostic-runtime";
+import type { OpenClawPluginService } from "openclaw/plugin-sdk/plugin-entry";
 import { registerUnhandledRejectionHandler } from "openclaw/plugin-sdk/runtime-env";
-import type { DiagnosticTraceContext, OpenClawPluginService } from "../api.js";
 import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapter.js";
 import { resetContinuationTracerIfOwned } from "./continuation-tracer-ownership.js";
 import {

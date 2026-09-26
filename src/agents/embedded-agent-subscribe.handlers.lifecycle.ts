@@ -25,6 +25,7 @@ import {
   hasAssistantVisibleReply,
   readPendingToolMediaReply,
 } from "./embedded-agent-subscribe.handlers.messages.replies.js";
+import { finalizeToolActivity } from "./embedded-agent-subscribe.handlers.tools.start.js";
 import type { EmbeddedAgentSubscribeContext } from "./embedded-agent-subscribe.handlers.types.js";
 import { isAssistantMessage } from "./embedded-agent-utils.js";
 import type { AgentSessionEvent } from "./sessions/index.js";
@@ -208,6 +209,7 @@ export function handleAgentEnd(
     if (!isCurrentDeliveryGeneration()) {
       return;
     }
+    finalizeToolActivity(ctx);
     const terminalStopReason =
       ctx.params.resolveTerminalStopReason?.() ??
       ctx.state.terminalStopReason ??
@@ -286,31 +288,20 @@ export function handleAgentEnd(
       }
     }
 
+    const flushChannel = () => {
+      const result = ctx.params.onBlockReplyFlush?.({ reason: "terminal" });
+      return isPromiseLike<void>(result) ? result : undefined;
+    };
     const postMediaFlushResult = ctx.flushBlockReplyBuffer({ retryFailures: true });
-    if (isPromiseLike<void>(postMediaFlushResult)) {
-      return postMediaFlushResult.then(() => {
-        if (!isCurrentDeliveryGeneration()) {
-          return undefined;
-        }
-        const onBlockReplyFlushResult = ctx.params.onBlockReplyFlush?.({ reason: "terminal" });
-        if (isPromiseLike<void>(onBlockReplyFlushResult)) {
-          return onBlockReplyFlushResult;
-        }
-        return undefined;
-      });
-    }
-
-    const onBlockReplyFlushResult = ctx.params.onBlockReplyFlush?.({ reason: "terminal" });
-    if (isPromiseLike<void>(onBlockReplyFlushResult)) {
-      return onBlockReplyFlushResult;
-    }
-    return undefined;
+    return isPromiseLike<void>(postMediaFlushResult)
+      ? postMediaFlushResult.then(() => (isCurrentDeliveryGeneration() ? flushChannel() : undefined))
+      : flushChannel();
   };
 
   const runBeforeTerminalDelivery = ():
     | BeforeTerminalDeliveryDecision
     | Promise<BeforeTerminalDeliveryDecision> => {
-    const result = ctx.params.onBeforeTerminalDelivery?.({
+    return ctx.params.onBeforeTerminalDelivery?.({
       messages: evt?.messages ?? [],
       willRetry: evt?.willRetry === true,
       ...(evt?.assistantEntryId ? { assistantEntryId: evt.assistantEntryId } : {}),
@@ -321,10 +312,6 @@ export function handleAgentEnd(
       incompleteTerminalAssistant,
       hadDeterministicSideEffect: hadBeforeFinalizeSideEffect,
     });
-    if (isPromiseLike<void | { suppressTerminalDelivery?: boolean }>(result)) {
-      return result;
-    }
-    return result;
   };
 
   const finishTerminalDelivery = () => {

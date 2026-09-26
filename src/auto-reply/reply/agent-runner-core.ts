@@ -52,7 +52,10 @@ import type { InternalGetReplyOptions } from "./get-reply.types.js";
 import { sanitizePendingFinalDeliveryText } from "./pending-final-delivery-state.js";
 import { type FollowupRun, type QueueSettings, scheduleFollowupDrain } from "./queue.js";
 import { normalizeReplyPayloadDirectives, type DirectBlockDelivery } from "./reply-delivery.js";
-import { isReplyOperationSuperseded } from "./reply-operation-abort.js";
+import {
+  isReplyOperationSuperseded,
+  resolveReplyOperationAbortReason,
+} from "./reply-operation-abort.js";
 import { type ReplyOperation, runAfterReplyOperationClear } from "./reply-run-registry.js";
 import { resolveRoutedDeliveryThreadId } from "./routed-delivery-thread.js";
 import { resolveSourceReplyVisibilityPolicy } from "./source-reply-delivery-mode.js";
@@ -162,14 +165,9 @@ export function resolveSourceReplyPolicy(params: {
   });
 }
 
-export function resolveReplyRunDeliveryContext(params: {
-  cfg: OpenClawConfig;
-  sessionCtx: TemplateContext;
-  sessionEntry?: SessionEntry;
-  sessionKey: string;
-  runtimePolicySessionKey?: string;
-  opts?: GetReplyOptions;
-}): DeliveryContext | undefined {
+export function resolveReplyRunDeliveryContext(
+  params: Parameters<typeof resolveSourceReplyPolicy>[0],
+): DeliveryContext | undefined {
   const sourceReplyPolicy = resolveSourceReplyPolicy(params);
   if (
     params.sessionCtx.InboundEventKind === "room_event" ||
@@ -344,11 +342,8 @@ export function refreshSessionEntryFromStore(params: {
 }
 
 export function resolveAdmittedRunSessionFile(params: {
-  agentId: string;
-  sessionId: string;
   sessionFile?: string;
   sessionKey?: string;
-  storePath?: string;
 }): string | undefined {
   if (params.sessionKey?.trim()) {
     return params.sessionKey.trim();
@@ -362,7 +357,7 @@ export async function handleReplyAgentRunError(
     resolveVisibleReplyDelivery: () => Promise<boolean>;
     isHeartbeat: boolean;
     replyExpectation: ReplyExpectation;
-    isRestartRecoveryArmed: () => boolean;
+    isRestartRecoveryArmed: () => Promise<boolean>;
     replyOperation: ReplyOperation;
     resolvedVerboseLevel: VerboseLevel;
     returnWithQueuedFollowupDrain: <T>(value: T) => T;
@@ -393,7 +388,11 @@ export async function handleReplyAgentRunError(
     replyOperation.result?.kind === "aborted" &&
     replyOperation.result.code === "aborted_for_restart"
   ) {
-    if (isRestartRecoveryArmed()) {
+    if (
+      (await isRestartRecoveryArmed()) ||
+      isReplyOperationSuperseded(replyOperation) ||
+      resolveReplyOperationAbortReason(replyOperation) === "user"
+    ) {
       return returnWithQueuedFollowupDrain({ text: SILENT_REPLY_TOKEN });
     }
     return returnWithQueuedFollowupDrain(
@@ -402,16 +401,11 @@ export async function handleReplyAgentRunError(
       }),
     );
   }
-  if (error instanceof GatewayDrainingError) {
-    replyOperation.fail("gateway_draining", error);
-    return returnWithQueuedFollowupDrain(
-      markReplyPayloadForSourceSuppressionDelivery({
-        text: RESTART_LIFECYCLE_REPLY_TEXT,
-      }),
+  if (error instanceof GatewayDrainingError || error instanceof CommandLaneClearedError) {
+    replyOperation.fail(
+      error instanceof GatewayDrainingError ? "gateway_draining" : "command_lane_cleared",
+      error,
     );
-  }
-  if (error instanceof CommandLaneClearedError) {
-    replyOperation.fail("command_lane_cleared", error);
     return returnWithQueuedFollowupDrain(
       markReplyPayloadForSourceSuppressionDelivery({
         text: RESTART_LIFECYCLE_REPLY_TEXT,
@@ -481,10 +475,8 @@ export async function cleanupReplyAgentRun(context: {
       queueKey,
       runFollowup: runFollowupTurn,
     });
-    if (!providedReplyOperation) {
-      replyOperation.complete();
-    }
-  } else if (!providedReplyOperation) {
+  }
+  if (!providedReplyOperation) {
     replyOperation.complete();
   }
   blockReplyPipeline?.stop();

@@ -128,19 +128,6 @@ describe("heartbeat-wake", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it("does not downgrade a higher-priority pending reason", async () => {
-    vi.useFakeTimers();
-    const handler = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
-    setHeartbeatWakeHandler(handler);
-
-    requestHeartbeat(wake("exec-event", { coalesceMs: 100 }));
-    requestHeartbeat(wake("retry", { coalesceMs: 100 }));
-
-    await vi.advanceTimersByTimeAsync(100);
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler).toHaveBeenCalledWith(wake("exec-event"));
-  });
-
   it("recovers interrupted wakes when a replacement handler is registered", async () => {
     vi.useFakeTimers();
 

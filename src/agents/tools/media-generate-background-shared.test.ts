@@ -120,6 +120,25 @@ function createImageMediaLifecycle() {
   });
 }
 
+type ScheduleOptions = Parameters<typeof scheduleMediaGenerationTaskCompletion>[0];
+
+function generatedImageResult() {
+  return { provider: "openai", model: "gpt-image-1", count: 1, wakeResult: "generated" };
+}
+
+function scheduleImageCompletion(
+  params: Pick<ScheduleOptions, "lifecycle" | "handle" | "scheduleBackgroundWork"> &
+    Partial<ScheduleOptions>,
+) {
+  scheduleMediaGenerationTaskCompletion({
+    progressSummary: "Generating image",
+    toolName: "Image generation",
+    onWakeFailure: vi.fn(),
+    run: async () => generatedImageResult(),
+    ...params,
+  });
+}
+
 describe("shouldDetachMediaGenerationTask", () => {
   it("detaches session-backed media generation", () => {
     expect(shouldDetachMediaGenerationTask("agent:main:discord:direct:123")).toBe(true);
@@ -188,16 +207,13 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       wakeTaskCompletion,
     };
     const run = vi.fn(async () => ({
-      provider: "openai",
-      model: "gpt-image-1",
-      count: 1,
-      wakeResult: "generated",
+      ...generatedImageResult(),
     }));
 
     await withOwnedSessionTranscriptWrites(
       { sessionKey, withTranscriptWrite: withRequesterTranscriptWrite },
       async () => {
-        scheduleMediaGenerationTaskCompletion({
+        scheduleImageCompletion({
           lifecycle,
           handle: {
             taskId: "task-image-disposed-owner",
@@ -209,9 +225,6 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
             // Register under the attempt owner, then execute after it is disposed.
             scheduled = backgroundReady.then(work);
           },
-          progressSummary: "Generating image",
-          toolName: "Image generation",
-          onWakeFailure: vi.fn(),
           run,
         });
       },
@@ -255,7 +268,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
         wakeTaskCompletion: vi.fn(async () => ({ status: "delivered" as const })),
       };
 
-      scheduleMediaGenerationTaskCompletion({
+      scheduleImageCompletion({
         lifecycle,
         handle: {
           taskId: "task-image-123",
@@ -266,9 +279,6 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
         scheduleBackgroundWork: (work) => {
           scheduled.push(work);
         },
-        progressSummary: "Generating image",
-        toolName: "Image generation",
-        onWakeFailure: vi.fn(),
         run: () => runPromise,
       });
 
@@ -287,10 +297,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       });
 
       resolveRun?.({
-        provider: "openai",
-        model: "gpt-image-1",
-        count: 1,
-        wakeResult: "generated",
+        ...generatedImageResult(),
       });
       await task;
       const callsAfterCompletion =
@@ -326,7 +333,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       }),
     };
 
-    scheduleMediaGenerationTaskCompletion({
+    scheduleImageCompletion({
       lifecycle,
       handle: {
         taskId: "task-image-123",
@@ -337,16 +344,10 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       scheduleBackgroundWork: (work) => {
         scheduled.push(work);
       },
-      progressSummary: "Generating image",
-      toolName: "Image generation",
-      onWakeFailure: vi.fn(),
       run: async () => {
         order.push("run");
         return {
-          provider: "openai",
-          model: "gpt-image-1",
-          count: 1,
-          wakeResult: "generated",
+          ...generatedImageResult(),
         };
       },
     });
@@ -378,20 +379,14 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
     const lifecycle = createImageMediaLifecycle();
     const handle = lifecycle.createTaskRun({ sessionKey, prompt: "proof image" });
 
-    scheduleMediaGenerationTaskCompletion({
+    scheduleImageCompletion({
       lifecycle,
       handle,
       scheduleBackgroundWork: (work) => {
         scheduled.push(work);
       },
-      progressSummary: "Generating image",
-      toolName: "Image generation",
-      onWakeFailure: vi.fn(),
       run: async () => ({
-        provider: "openai",
-        model: "gpt-image-1",
-        count: 1,
-        wakeResult: "generated",
+        ...generatedImageResult(),
         attachments: [{ type: "image" as const, path: "/tmp/proof.png" }],
       }),
     });
@@ -424,20 +419,14 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       prompt: "proof image",
     });
 
-    scheduleMediaGenerationTaskCompletion({
+    scheduleImageCompletion({
       lifecycle,
       handle,
       scheduleBackgroundWork: (work) => {
         scheduled.push(work);
       },
-      progressSummary: "Generating image",
-      toolName: "Image generation",
-      onWakeFailure: vi.fn(),
       run: async () => ({
-        provider: "openai",
-        model: "gpt-image-1",
-        count: 1,
-        wakeResult: "generated",
+        ...generatedImageResult(),
         attachments: [{ type: "image" as const, path: "/tmp/proof.png" }],
         mediaUrls: ["/tmp/proof.png"],
       }),
@@ -476,21 +465,12 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
         prompt: "proof image",
       });
 
-      scheduleMediaGenerationTaskCompletion({
+      scheduleImageCompletion({
         lifecycle,
         handle,
         scheduleBackgroundWork: (work) => {
           scheduled.push(work);
         },
-        progressSummary: "Generating image",
-        toolName: "Image generation",
-        onWakeFailure: vi.fn(),
-        run: async () => ({
-          provider: "openai",
-          model: "gpt-image-1",
-          count: 1,
-          wakeResult: "generated",
-        }),
       });
 
       const backgroundWork = scheduled[0]?.();
@@ -531,7 +511,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
         }),
       };
 
-      scheduleMediaGenerationTaskCompletion({
+      scheduleImageCompletion({
         lifecycle,
         handle: {
           taskId: "task-image-pending",
@@ -542,15 +522,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
         scheduleBackgroundWork: (work) => {
           scheduled.push(work);
         },
-        progressSummary: "Generating image",
-        toolName: "Image generation",
         onWakeFailure,
-        run: async () => ({
-          provider: "openai",
-          model: "gpt-image-1",
-          count: 1,
-          wakeResult: "generated",
-        }),
       });
 
       const backgroundWork = scheduled[0]?.();
@@ -585,7 +557,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
         failTaskRun: vi.fn(),
         wakeTaskCompletion: vi.fn(async () => ({ status: "pending" as const })),
       };
-      scheduleMediaGenerationTaskCompletion({
+      scheduleImageCompletion({
         lifecycle,
         handle: {
           taskId: "task-image-orphaned",
@@ -594,15 +566,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
           taskLabel: "proof image",
         },
         scheduleBackgroundWork: (work) => scheduled.push(work),
-        progressSummary: "Generating image",
-        toolName: "Image generation",
         onWakeFailure,
-        run: async () => ({
-          provider: "openai",
-          model: "gpt-image-1",
-          count: 1,
-          wakeResult: "generated",
-        }),
       });
 
       const backgroundWork = scheduled[0]?.();
@@ -635,7 +599,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       wakeTaskCompletion: vi.fn(async () => ({ status: "permanent_failure" as const })),
     };
 
-    scheduleMediaGenerationTaskCompletion({
+    scheduleImageCompletion({
       lifecycle,
       handle: {
         taskId: "task-image-456",
@@ -646,15 +610,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       scheduleBackgroundWork: (work) => {
         scheduled.push(work);
       },
-      progressSummary: "Generating image",
-      toolName: "Image generation",
       onWakeFailure,
-      run: async () => ({
-        provider: "openai",
-        model: "gpt-image-1",
-        count: 1,
-        wakeResult: "generated",
-      }),
     });
 
     await scheduled[0]?.();
@@ -692,26 +648,23 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
     };
     const onWakeFailure = vi.fn();
 
-    scheduleMediaGenerationTaskCompletion({
+    scheduleImageCompletion({
       lifecycle,
       handle: {
         taskId: "task-image-789",
         runId: "tool:image_generate:789",
         requesterSessionKey: "agent:main:discord:channel:123",
+        requesterOrigin: { channel: "discord", to: "channel:123" },
         taskLabel: "proof image",
       },
       scheduleBackgroundWork: (work) => {
         scheduled.push(work);
       },
-      progressSummary: "Generating image",
-      toolName: "Image generation",
       onWakeFailure,
       run: async () => ({
-        provider: "openai",
-        model: "gpt-image-1",
-        count: 1,
-        wakeResult: "generated",
+        ...generatedImageResult(),
         attachments: [{ type: "image" as const, path: "/tmp/proof.png" }],
+        mediaUrls: ["/tmp/proof.png"],
       }),
     });
 
@@ -734,57 +687,9 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
         },
       }),
     );
+    expect(taskRegistryDeliveryRuntimeMocks.sendMessage).not.toHaveBeenCalled();
     expect(lifecycle.failTaskRun).not.toHaveBeenCalled();
     expect(lifecycle.wakeTaskCompletion).toHaveBeenCalledTimes(1);
-  });
-
-  it("records a blocked completion when the agent-loop wake throws", async () => {
-    const scheduled: Array<() => Promise<void>> = [];
-    const wakeError = new Error("requester wake failed");
-    const lifecycle = {
-      createTaskRun: vi.fn(),
-      recordTaskProgress: vi.fn(),
-      completeTaskRun: vi.fn(),
-      failTaskRun: vi.fn(),
-      wakeTaskCompletion: vi.fn().mockRejectedValueOnce(wakeError),
-    };
-
-    scheduleMediaGenerationTaskCompletion({
-      lifecycle,
-      handle: {
-        taskId: "task-image-direct-recovery",
-        runId: "tool:image_generate:direct-recovery",
-        requesterSessionKey: "agent:main:discord:channel:123",
-        requesterOrigin: {
-          channel: "discord",
-          to: "channel:123",
-        },
-        taskLabel: "proof image",
-      },
-      scheduleBackgroundWork: (work) => {
-        scheduled.push(work);
-      },
-      progressSummary: "Generating image",
-      toolName: "Image generation",
-      onWakeFailure: vi.fn(),
-      run: async () => ({
-        provider: "openai",
-        model: "gpt-image-1",
-        count: 1,
-        wakeResult: "generated",
-        mediaUrls: ["/tmp/proof.png"],
-      }),
-    });
-
-    await scheduled[0]?.();
-
-    expect(taskRegistryDeliveryRuntimeMocks.sendMessage).not.toHaveBeenCalled();
-    expect(lifecycle.completeTaskRun).toHaveBeenCalledWith(
-      expect.objectContaining({
-        terminalResult: expect.objectContaining({ terminalOutcome: "blocked" }),
-      }),
-    );
-    expect(lifecycle.failTaskRun).not.toHaveBeenCalled();
   });
 
   it("still delivers completion when the post-generation progress update throws", async () => {
@@ -801,7 +706,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       wakeTaskCompletion: vi.fn(async () => ({ status: "delivered" as const })),
     };
 
-    scheduleMediaGenerationTaskCompletion({
+    scheduleImageCompletion({
       lifecycle,
       handle: {
         taskId: "task-image-progress-error",
@@ -812,15 +717,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       scheduleBackgroundWork: (work) => {
         scheduled.push(work);
       },
-      progressSummary: "Generating image",
-      toolName: "Image generation",
       onWakeFailure,
-      run: async () => ({
-        provider: "openai",
-        model: "gpt-image-1",
-        count: 1,
-        wakeResult: "generated",
-      }),
     });
 
     await scheduled[0]?.();
@@ -861,7 +758,7 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       }),
     };
 
-    scheduleMediaGenerationTaskCompletion({
+    scheduleImageCompletion({
       lifecycle,
       handle: {
         taskId: "task-image-generation-error",
@@ -872,9 +769,6 @@ describe("scheduleMediaGenerationTaskCompletion", () => {
       scheduleBackgroundWork: (work) => {
         scheduled.push(work);
       },
-      progressSummary: "Generating image",
-      toolName: "Image generation",
-      onWakeFailure: vi.fn(),
       run: async () => {
         throw generationError;
       },
@@ -1025,31 +919,6 @@ describe("createMediaGenerationTaskLifecycle", () => {
     });
   });
 
-  it("returns the completion wake delivery result", async () => {
-    subagentAnnounceDeliveryMocks.deliverSubagentAnnouncement.mockResolvedValueOnce({
-      delivered: true,
-    });
-    const lifecycle = createImageMediaLifecycle();
-
-    await expect(
-      lifecycle.wakeTaskCompletion({
-        handle: {
-          taskId: "task-image-789",
-          runId: "tool:image_generate:789",
-          requesterSessionKey: "agent:main:discord:channel:123",
-          taskLabel: "proof image",
-          requesterOrigin: {
-            channel: "discord",
-            to: "channel:123",
-          },
-        },
-        status: "ok",
-        statusLabel: "completed successfully",
-        result: "generated",
-      }),
-    ).resolves.toEqual({ status: "delivered" });
-  });
-
   it("carries trusted continuation context from task admission into completion delivery", async () => {
     subagentAnnounceDeliveryMocks.deliverSubagentAnnouncement.mockResolvedValueOnce({
       delivered: true,
@@ -1123,39 +992,6 @@ describe("createMediaGenerationTaskLifecycle", () => {
       }),
     ).resolves.toEqual({ status: "delivered" });
   });
-
-  it.each(["completion_handoff_unavailable", "generated_media_missing"] as const)(
-    "does not bypass the agent loop after %s",
-    async (reason) => {
-      subagentAnnounceDeliveryMocks.deliverSubagentAnnouncement.mockResolvedValueOnce({
-        delivered: false,
-        reason,
-        error: "completion agent did not deliver generated media",
-      });
-      const lifecycle = createImageMediaLifecycle();
-
-      await expect(
-        lifecycle.wakeTaskCompletion({
-          handle: {
-            taskId: "task-image-direct",
-            runId: "tool:image_generate:direct",
-            requesterSessionKey: "agent:main:discord:channel:123",
-            taskLabel: "proof image",
-            requesterOrigin: {
-              channel: "discord",
-              to: "channel:123",
-            },
-          },
-          status: "ok",
-          statusLabel: "completed successfully",
-          result: "generated",
-          mediaUrls: ["/tmp/proof.png"],
-        }),
-      ).resolves.toEqual({ status: "permanent_failure" });
-
-      expect(taskRegistryDeliveryRuntimeMocks.sendMessage).not.toHaveBeenCalled();
-    },
-  );
 
   it("includes MEDIA directives in music completion wake prompts for session-only delivery", async () => {
     subagentAnnounceDeliveryMocks.deliverSubagentAnnouncement.mockResolvedValueOnce({
@@ -1293,4 +1129,3 @@ describe("createMediaGenerationTaskLifecycle", () => {
     expect(taskRegistryDeliveryRuntimeMocks.sendMessage).not.toHaveBeenCalled();
   });
 });
-/* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

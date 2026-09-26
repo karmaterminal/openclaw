@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
+import { resolveIntegerOption } from "@openclaw/normalization-core/number-coercion";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 /**
  * Subagent inline attachment staging.
@@ -91,29 +92,22 @@ function resolveAttachmentLimits(config: OpenClawConfig): AttachmentLimits {
   const attachmentsCfg = config.tools?.sessions_spawn?.attachments;
   return {
     enabled: attachmentsCfg?.enabled === true,
-    maxTotalBytes:
-      typeof attachmentsCfg?.maxTotalBytes === "number" &&
-      Number.isFinite(attachmentsCfg.maxTotalBytes)
-        ? Math.min(
-            DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxTotalBytes,
-            Math.max(0, Math.floor(attachmentsCfg.maxTotalBytes)),
-          )
-        : DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxTotalBytes,
-    maxFiles:
-      typeof attachmentsCfg?.maxFiles === "number" && Number.isFinite(attachmentsCfg.maxFiles)
-        ? Math.min(
-            DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFiles,
-            Math.max(0, Math.floor(attachmentsCfg.maxFiles)),
-          )
-        : DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFiles,
-    maxFileBytes:
-      typeof attachmentsCfg?.maxFileBytes === "number" &&
-      Number.isFinite(attachmentsCfg.maxFileBytes)
-        ? Math.min(
-            DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFileBytes,
-            Math.max(0, Math.floor(attachmentsCfg.maxFileBytes)),
-          )
-        : DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFileBytes,
+    // Configured limits may tighten, never widen, the inline snapshot ceilings.
+    maxTotalBytes: resolveIntegerOption(
+      attachmentsCfg?.maxTotalBytes,
+      DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxTotalBytes,
+      { min: 0, max: DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxTotalBytes },
+    ),
+    maxFiles: resolveIntegerOption(
+      attachmentsCfg?.maxFiles,
+      DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFiles,
+      { min: 0, max: DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFiles },
+    ),
+    maxFileBytes: resolveIntegerOption(
+      attachmentsCfg?.maxFileBytes,
+      DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFileBytes,
+      { min: 0, max: DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFileBytes },
+    ),
     retainOnSessionKeep: attachmentsCfg?.retainOnSessionKeep === true,
   };
 }

@@ -1,5 +1,6 @@
 import { readSessionMessageIdentity } from "@openclaw/gateway-client/browser";
 import { isHttpUrl } from "@openclaw/net-policy/url-protocol";
+import { safeParseJsonRecord } from "@openclaw/normalization-core";
 import {
   asNullableObjectRecord as readRecord,
   asNullableRecord,
@@ -7,7 +8,6 @@ import {
 } from "@openclaw/normalization-core/record-coerce";
 import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
-// Control UI chat domain owns pure tool-card extraction rules.
 import {
   extractCanvasFromDetails,
   extractCanvasFromText,
@@ -82,15 +82,7 @@ function coerceArgs(value: unknown): unknown {
 }
 
 function parseJsonRecord(value: string): Record<string, unknown> | null {
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
-    return null;
-  }
-  try {
-    return readRecord(JSON.parse(trimmed));
-  } catch {
-    return null;
-  }
+  return safeParseJsonRecord(value.trim()) ?? null;
 }
 
 function extractToolText(item: Record<string, unknown>): string | undefined {
@@ -251,14 +243,6 @@ function resolveToolName(item: Record<string, unknown>, message: Record<string, 
   );
 }
 
-function resolveToolCardId(
-  item: Record<string, unknown>,
-  message: Record<string, unknown>,
-  index: number,
-): string {
-  return resolveToolCallId(item, message) ?? `${resolveToolName(item, message)}:${index}`;
-}
-
 function serializeToolInput(args: unknown): string | undefined {
   if (args === undefined || args === null) {
     return undefined;
@@ -399,11 +383,12 @@ function extractToolCards(message: unknown): ToolCard[] {
       const rawArgs = coerceArgs(item.arguments ?? item.args ?? item.input);
       const name = resolveToolName(item, m);
       const callId = resolveToolCallId(item, m);
+      const name = resolveToolName(item, m);
       const details = item.details ?? m.details;
       // Redact at construction so raw arguments never enter any card surface.
       const redactedSummary = resolveRedactedToolArgumentSummary(name);
       cards.push({
-        id: resolveToolCardId(item, m, index),
+        id: callId ?? `${name}:${index}`,
         ...(callId ? { callId } : {}),
         ...(runId ? { runId } : {}),
         ...(parentToolCallId ? { parentToolCallId } : {}),
@@ -422,8 +407,8 @@ function extractToolCards(message: unknown): ToolCard[] {
 
     if (isToolResultContentType(item.type)) {
       const name = resolveToolName(item, m);
-      const cardId = resolveToolCardId(item, m, index);
       const callId = resolveToolCallId(item, m);
+      const cardId = callId ?? `${name}:${index}`;
       const existing =
         cards.find((card) => card.id === cardId) ??
         cards.find(
@@ -515,7 +500,7 @@ function extractToolCards(message: unknown): ToolCard[] {
     const callId = resolveToolCallId({}, m);
     const exitCode = readToolExitCode(m, m.details, text ? parseJsonRecord(text) : undefined);
     cards.push({
-      id: resolveToolCardId({}, m, 0),
+      id: callId ?? `${resolveToolName({}, m)}:0`,
       ...(callId ? { callId } : {}),
       ...(messageRunId ? { runId: messageRunId } : {}),
       name,

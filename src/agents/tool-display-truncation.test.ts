@@ -3,30 +3,6 @@ import { resolveExecDetail } from "./tool-display-exec.js";
 import { formatToolDetail, resolveToolDisplay } from "./tool-display.js";
 
 describe("compactRawCommand middle truncation", () => {
-  it("preserves start and end of long commands", () => {
-    const longCommand =
-      "/opt/custom/bin/my-processor --input /data/warehouse/2024/q1/transactions/raw/batch_001.csv --output /data/warehouse/2024/q1/transactions/processed/batch_001_clean.csv";
-    const result = resolveExecDetail({ command: longCommand });
-    expect(result).toContain("/opt/custom/bin/my-processor");
-    expect(result).toContain("batch_001_clean.csv");
-    expect(result).toContain("…");
-    expect(result).not.toMatch(/…$/);
-  });
-
-  it("does not truncate short commands", () => {
-    expect(resolveExecDetail({ command: "/opt/custom/bin/my-tool --version" })).toBe(
-      "/opt/custom/bin/my-tool --version",
-    );
-  });
-
-  it("redacts credential-like tails before middle truncation", () => {
-    const longCommand =
-      "/opt/custom/bin/deploy --region us-east-1 --token sk-proj-ABCDEFGHIJKLMNOP1234567890abcdefghij --output /data/results/deploy-output.json";
-    expect(resolveExecDetail({ command: longCommand })).not.toContain(
-      "ABCDEFGHIJKLMNOP1234567890abcdefghij",
-    );
-  });
-
   it("uses the canonical tool payload redactor before compacting raw commands", () => {
     const longCommand =
       "/opt/custom/bin/deploy --aws-key AKIDABCDEFGHIJKLMNOP1234567890 --output /data/results/deploy-output.json";

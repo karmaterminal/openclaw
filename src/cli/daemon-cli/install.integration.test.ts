@@ -112,6 +112,11 @@ describe("runDaemonInstall integration", () => {
   let tempHome: string;
   let configPath: string;
 
+  async function writeConfig(config: unknown, indent?: number) {
+    await fs.writeFile(configPath, JSON.stringify(config, null, indent));
+    clearConfigCache();
+  }
+
   async function snapshotConfig() {
     const contents = await fs.readFile(configPath);
     const { ino, mode, uid } = await fs.lstat(configPath);
@@ -171,8 +176,7 @@ describe("runDaemonInstall integration", () => {
     serviceMock.readDefinitionMutationCapability.mockResolvedValue({ kind: "writable" });
     serviceMock.readCommand.mockReset();
     serviceMock.readCommand.mockResolvedValue(null);
-    await fs.writeFile(configPath, JSON.stringify({}, null, 2));
-    clearConfigCache();
+    await writeConfig({}, 2);
   });
 
   it.each(
@@ -366,31 +370,26 @@ describe("runDaemonInstall integration", () => {
   });
 
   it("fails closed when token SecretRef is required but unresolved", async () => {
-    await fs.writeFile(
-      configPath,
-      JSON.stringify(
-        {
-          secrets: {
-            providers: {
-              default: { source: "env" },
-            },
+    await writeConfig(
+      {
+        secrets: {
+          providers: {
+            default: { source: "env" },
           },
-          gateway: {
-            auth: {
-              mode: "token",
-              token: {
-                source: "env",
-                provider: "default",
-                id: "MISSING_GATEWAY_TOKEN",
-              },
+        },
+        gateway: {
+          auth: {
+            mode: "token",
+            token: {
+              source: "env",
+              provider: "default",
+              id: "MISSING_GATEWAY_TOKEN",
             },
           },
         },
-        null,
-        2,
-      ),
+      },
+      2,
     );
-    clearConfigCache();
 
     await expect(runDaemonInstall({ json: true })).rejects.toThrow("__exit__:1");
     expect(serviceMock.install).not.toHaveBeenCalled();
@@ -416,8 +415,7 @@ describe("runDaemonInstall integration", () => {
       };
       await fs.mkdir(ancestor);
       await fs.chmod(ancestor, 0o777);
-      await fs.writeFile(configPath, JSON.stringify(config));
-      clearConfigCache();
+      await writeConfig(config);
       busctl.mockResolvedValue({
         code: 1,
         termination: "exit",
@@ -682,8 +680,7 @@ describe("runDaemonInstall integration", () => {
 
   it("repairs missing gateway mode for a loaded sealed service without rewriting its definition", async () => {
     const config = { gateway: { auth: { mode: "token", token: "existing-token" } } };
-    await fs.writeFile(configPath, JSON.stringify(config));
-    clearConfigCache();
+    await writeConfig(config);
     serviceMock.isLoaded.mockResolvedValue(true);
     serviceMock.readDefinitionMutationCapability.mockResolvedValue({
       kind: "sealed",
@@ -700,11 +697,7 @@ describe("runDaemonInstall integration", () => {
   });
 
   it("refuses loaded-service auto-refresh before persisting missing gateway defaults", async () => {
-    await fs.writeFile(
-      configPath,
-      JSON.stringify({ gateway: { auth: { mode: "token", token: "existing-token" } } }),
-    );
-    clearConfigCache();
+    await writeConfig({ gateway: { auth: { mode: "token", token: "existing-token" } } });
     serviceMock.isLoaded.mockResolvedValue(true);
     serviceMock.readCommand.mockResolvedValue({
       programArguments: ["openclaw", "gateway", "run"],
@@ -725,8 +718,7 @@ describe("runDaemonInstall integration", () => {
 
   it("refuses a loaded service's sealed effective state before persisting config or a token", async () => {
     const effectiveStateDir = path.join(tempHome, "sealed-service-state");
-    await fs.writeFile(configPath, JSON.stringify({ gateway: { auth: { mode: "token" } } }));
-    clearConfigCache();
+    await writeConfig({ gateway: { auth: { mode: "token" } } });
     serviceMock.isLoaded.mockResolvedValue(true);
     serviceMock.readCommand.mockResolvedValue({
       programArguments: ["openclaw", "gateway", "run"],
@@ -801,21 +793,16 @@ describe("runDaemonInstall integration", () => {
   });
 
   it("auto-mints token when no source exists without embedding it into service env", async () => {
-    await fs.writeFile(
-      configPath,
-      JSON.stringify(
-        {
-          gateway: {
-            auth: {
-              mode: "token",
-            },
+    await writeConfig(
+      {
+        gateway: {
+          auth: {
+            mode: "token",
           },
         },
-        null,
-        2,
-      ),
+      },
+      2,
     );
-    clearConfigCache();
     serviceMock.isLoaded.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
 
     await runDaemonInstall({ json: true });
@@ -831,11 +818,7 @@ describe("runDaemonInstall integration", () => {
   });
 
   it("logs a generated-token warning without callback indexes or warning arrays", async () => {
-    await fs.writeFile(
-      configPath,
-      JSON.stringify({ gateway: { mode: "local", auth: { mode: "token" } } }),
-    );
-    clearConfigCache();
+    await writeConfig({ gateway: { mode: "local", auth: { mode: "token" } } });
     serviceMock.isLoaded.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
 
     await runDaemonInstall({});

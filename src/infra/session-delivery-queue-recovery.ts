@@ -65,13 +65,9 @@ async function notifySessionDeliverySettled(params: {
   }
 }
 
-async function finalizeSessionDeliverySettlement(params: {
-  entry: QueuedSessionDelivery;
-  log: SessionDeliveryRecoveryLogger;
-  onSettled?: SettleSessionDeliveryFn;
-  outcome: SessionDeliverySettledOutcome;
-  queueContext: OpenClawStateWorkerContext;
-}): Promise<boolean> {
+async function finalizeSessionDeliverySettlement(
+  params: Parameters<typeof notifySessionDeliverySettled>[0],
+): Promise<boolean> {
   const callbackSettled = await notifySessionDeliverySettled(params);
   if (!callbackSettled) {
     return false;
@@ -141,11 +137,9 @@ async function processPendingSessionDelivery(opts: {
   const pendingSettlementOutcome = resolvePendingSettlementOutcome(entry);
   if (pendingSettlementOutcome) {
     const finalized = await finalizeSessionDeliverySettlement({
+      ...context,
       entry,
-      log: context.log,
-      onSettled: context.onSettled,
       outcome: pendingSettlementOutcome,
-      queueContext: context.queueContext,
     });
     return { status: pendingSettlementOutcome, finalized };
   }
@@ -155,11 +149,9 @@ async function processPendingSessionDelivery(opts: {
   ) {
     await markSessionDeliverySettlement(entry, "moved-to-failed", context.queueContext);
     const finalized = await finalizeSessionDeliverySettlement({
+      ...context,
       entry,
-      log: context.log,
-      onSettled: context.onSettled,
       outcome: "moved-to-failed",
-      queueContext: context.queueContext,
     });
     return { status: "max-retries", finalized };
   }
@@ -224,11 +216,9 @@ async function processPendingSessionDelivery(opts: {
     }
   }
   const finalized = await finalizeSessionDeliverySettlement({
+    ...context,
     entry,
-    log: context.log,
-    onSettled: context.onSettled,
     outcome: result,
-    queueContext: context.queueContext,
   });
   return { status: result, finalized };
 }

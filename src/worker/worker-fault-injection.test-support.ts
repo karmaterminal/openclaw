@@ -40,6 +40,7 @@ import { createWorkerTranscriptCommitter } from "../gateway/worker-environments/
 import { onAgentRuntimeEvent } from "../infra/agent-events.js";
 import type { WorkerProvider, WorkerSshEndpoint } from "../plugins/types.js";
 import * as stateDb from "../state/openclaw-state-db.js";
+import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
 import { buildWorkerConnectParams, type WorkerLaunchDescriptor } from "./launch-descriptor.js";
 import { createWorkerConnection, type WorkerConnection } from "./worker-connection.js";
@@ -188,7 +189,10 @@ export class ComposedGatewayHarness {
   private placementGateValue: WorkerSessionPlacementGate | undefined;
   private useReplacementExecutor = false;
   private unsubscribeLive: (() => void) | undefined;
-  private readonly turnSources = new Map<string, ReturnType<typeof bindWorkerFixtureTurnSource>>();
+  private readonly turnSources = new Map<
+    string,
+    Awaited<ReturnType<typeof bindWorkerFixtureTurnSource>>
+  >();
 
   static async create(root: string): Promise<ComposedGatewayHarness> {
     const sessionsDir = path.join(root, "agents", "main", "sessions");
@@ -224,7 +228,8 @@ export class ComposedGatewayHarness {
     readonly database: stateDb.OpenClawStateDatabase,
     readonly store: envStore.WorkerEnvironmentStore,
   ) {
-    this.socketPath = path.join(root, "gateway.sock");
+    // Leave room for Vitest temp nesting within Darwin's Unix socket pathname limit.
+    this.socketPath = path.join(root, "s");
     this.cfg = {
       agents: { list: [{ id: "main", default: true }] },
       session: {
@@ -291,8 +296,8 @@ export class ComposedGatewayHarness {
     return gate;
   }
 
-  settleRun(runId: string): void {
-    this.placementLifecycle.settleRun(runId);
+  async settleRun(runId: string): Promise<void> {
+    await this.placementLifecycle.settleRun(runId);
     for (const [claimId, source] of this.turnSources) {
       if (source.operationalRunInstance.runId === runId) {
         source.dispose();
@@ -311,12 +316,7 @@ export class ComposedGatewayHarness {
     }
     let source = this.turnSources.get(claim.claimId);
     if (!source) {
-      source = bindWorkerFixtureTurnSource(
-        this.placementStore,
-        this.database.path,
-        claim,
-        this.sessionTarget,
-      );
+      source = await bindWorkerFixtureTurnSource(this.placementStore, claim, this.sessionTarget);
       this.turnSources.set(claim.claimId, source);
     }
     return {
@@ -408,7 +408,7 @@ export class ComposedGatewayHarness {
     ) {
       throw new Error("fault placement has no active worker claim to reclaim");
     }
-    this.settleRun(staleClaim.runId);
+    await this.settleRun(staleClaim.runId);
     this.placementLifecycle.reclaimPlacement(placement, staleClaim.owner.ownerEpoch);
     const attached = this.store.get(ENVIRONMENT_ID);
     if (!attached || attached.state !== "attached") {
@@ -541,6 +541,7 @@ export class ComposedGatewayHarness {
       return doneOutcome(plan.text);
     };
     return workerEnv.createWorkerEnvironmentService({
+      scheduler: createTestGatewayScheduler(),
       store: this.store,
       getConfig: () => this.cfg,
       resolveProvider: (providerId) => (providerId === PROVIDER.id ? PROVIDER : undefined),
@@ -562,7 +563,7 @@ export class ComposedGatewayHarness {
       },
       liveEvents: this.liveEventsValue,
       executeInference,
-      inferenceStore: createWorkerInferenceStore({ database: this.database }),
+      inferenceStore: createWorkerInferenceStore({ path: this.database.path }),
       ...(this.placementGateValue ? { placementStore: this.placementGateValue } : {}),
     });
   }

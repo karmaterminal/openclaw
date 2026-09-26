@@ -59,7 +59,10 @@ import {
 } from "./subagent-registry-state.js";
 import { callGatewayForSweep } from "./subagent-registry-sweep-gateway.js";
 import { hasContinuationWorkForSweepEntry } from "./subagent-registry-sweep-guards.js";
-import { resolveSubagentTaskForRun } from "./subagent-registry-sweep-kill.js";
+import {
+  resolveSubagentTaskForRun,
+  resolveSubagentTaskForRunAsync,
+} from "./subagent-registry-sweep-kill.js";
 import {
   createSubagentRegistrySweeper,
   retireSupersededSubagentRun as retireSupersededSubagentRunForSweep,
@@ -163,6 +166,11 @@ const subagentLifecycleController = new SubagentLifecycleController({
   getLatestRunForChildSession: getLatestLiveSubagentRunByChildSessionKey,
   suppressAnnounceForSteerRestart: contextCleanup.suppressAnnounceForSteerRestart,
   resolveSubagentTask: findSubagentTaskForRun,
+  resolveSubagentTaskAsync: (entry) =>
+    resolveSubagentTaskForRunAsync(
+      () => getSubagentRunsForChildSession(entry.childSessionKey),
+      entry,
+    ),
   shouldEmitEndedHookForRun: contextCleanup.shouldEmitEndedHookForRun,
   emitSubagentEndedHookForRun: contextCleanup.emitSubagentEndedHookForRun,
   emitSubagentProgressEndedForRun: emitSubagentProgressEndedHook,

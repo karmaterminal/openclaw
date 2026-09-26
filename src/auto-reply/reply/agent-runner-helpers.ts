@@ -11,12 +11,9 @@ import type { ReplyPayload } from "../types.js";
 import type { InternalGetReplyOptions } from "./get-reply.types.js";
 import type { TypingSignaler } from "./typing-mode.js";
 
-const hasAudioMedia = (urls?: string[]): boolean =>
-  Boolean(urls?.some((url) => isAudioFileName(url)));
-
 /** Returns true when a payload carries audio media. */
 export const isAudioPayload = (payload: ReplyPayload): boolean =>
-  hasAudioMedia(resolveSendableOutboundReplyParts(payload).mediaUrls);
+  resolveSendableOutboundReplyParts(payload).mediaUrls.some(isAudioFileName);
 
 type VerboseGateParams = {
   sessionKey?: string;

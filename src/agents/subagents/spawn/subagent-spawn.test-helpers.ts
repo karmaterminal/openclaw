@@ -25,6 +25,35 @@ type SubagentSpawnModuleForTest = Awaited<typeof import("./subagent-spawn.js")> 
   resetSubagentRegistryForTests: MockFn;
 };
 
+export function firstMockCall(mock: { mock: { calls: unknown[][] } }, label: string): unknown[] {
+  const call = mock.mock.calls[0];
+  if (!call) {
+    throw new Error(`Expected ${label} to be called`);
+  }
+  return call;
+}
+
+export function latestMockCall(mock: { mock: { calls: unknown[][] } }, label: string): unknown[] {
+  const call = mock.mock.calls[mock.mock.calls.length - 1];
+  if (!call) {
+    throw new Error(`Expected ${label} to be called`);
+  }
+  return call;
+}
+
+export function expectRegisteredSubagentRun(
+  mock: unknown,
+  expected: Partial<RegisterSubagentRunParams>,
+  options: Pick<RegisterSubagentRunOptions, "assertCurrent"> = {
+    assertCurrent: expect.any(Function),
+  },
+) {
+  expect(mock).toHaveBeenCalledWith(
+    expect.objectContaining(expected),
+    expect.objectContaining(options),
+  );
+}
+
 /** Orchestration fixtures assume a supported model; support policy has its own owner tests. */
 export async function supportedSpawnModelChoice(
   params: Parameters<typeof import("../../model-runtime-choice.js").prepareModelChoice>[0],
@@ -150,8 +179,6 @@ function identityDeliveryContext(value: unknown) {
 
 function createDefaultSessionHelperMocks() {
   return {
-    resolveMainSessionAlias: () => ({ mainKey: "main", alias: "main" }),
-    resolveInternalSessionKey: ({ key }: { key?: string }) => key ?? "agent:main:main",
     resolveDisplaySessionKey: ({ key }: { key?: string }) => key ?? "agent:main:main",
   };
 }
@@ -494,6 +521,7 @@ export async function loadSubagentSpawnModuleForTest(params: {
               canCleanupSession: () => true,
               canRetireReservation: () => true,
               waitForClaim: () => undefined,
+              waitForRetirementPublication: () => undefined,
               settleFailedLaunch: async (error) => {
                 params.settleFailedQueuedSubagentLaunchMock?.(record.runId, error);
               },

@@ -1,5 +1,5 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { isUnsafeDeviceReadPath } from "../infra/fs-safe-advanced.js";
+import { isUnsafeDeviceReadPath } from "@openclaw/fs-safe/advanced";
 
 export type InlineAttachment = {
   name: string;

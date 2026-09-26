@@ -33,13 +33,6 @@ export function resolveAttemptDispatchApiKey(params: {
   return params.apiKeyInfo?.apiKey;
 }
 
-function createEmptyAuthProfileStore(): AuthProfileStore {
-  return {
-    version: 1,
-    profiles: {},
-  };
-}
-
 export function createScopedAuthProfileStore(
   store: AuthProfileStore,
   profileIds: string | undefined | string[],
@@ -75,5 +68,5 @@ export function createScopedAuthProfileStore(
           ? { runtimeExternalProfileIdsAuthoritative: true }
           : {}),
       }
-    : createEmptyAuthProfileStore();
+    : { version: 1, profiles: {} };
 }

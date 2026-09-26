@@ -1,10 +1,6 @@
 // Stores durable delivery queue entries through their connection-bound owner.
 import { withExistingOpenClawStateDatabaseArtifactPreservingReadOnlyAsync } from "../state/openclaw-state-db-readonly.js";
-import {
-  openOpenClawStateDatabase,
-  runOpenClawStateWriteTransaction,
-  type OpenClawStateDatabase,
-} from "../state/openclaw-state-db.js";
+import { openOpenClawStateDatabase, type OpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import {
   deliveryQueueEntriesQuery,
   terminalizeBoundDeliveryQueueEntry,
@@ -19,11 +15,10 @@ import {
   deleteDeliveryQueueEntryInDatabase,
   getDeliveryQueueEntryOwnersInDatabase,
   prepareDeliveryQueueTerminalEntry,
-  reserveDeliveryQueueEntryAttemptInDatabase,
   terminalizePendingDeliveryQueueEntryInDatabase,
-  updateDeliveryQueueEntryInDatabase,
   type DeliveryQueueStoredStatus,
   type ReserveDeliveryQueueAttemptResult,
+  type TerminalizePendingDeliveryQueueEntryParams,
   type TerminalizePendingDeliveryQueueEntryParams as KernelTerminalizeParams,
   type TerminalizePendingDeliveryQueueEntryResult,
 } from "./delivery-queue-sqlite.kernel.js";
@@ -143,42 +138,6 @@ export function deleteDeliveryQueueEntry(
   context?: DeliveryQueueStateContext,
 ): void {
   deleteDeliveryQueueEntryInDatabase(openStateDatabase(stateDir, context), queueName, id);
-}
-
-/** Load, transform, and persist a pending delivery queue entry. */
-export function updateDeliveryQueueEntry(
-  queueName: string,
-  id: string,
-  stateDir: string | undefined,
-  update: (entry: DeliveryQueueEntryState) => DeliveryQueueEntryState,
-  context?: DeliveryQueueStateContext,
-): void {
-  updateDeliveryQueueEntryInDatabase(openStateDatabase(stateDir, context), queueName, id, update);
-}
-
-/** Atomically reserve one provider-delivery call before executing it. */
-export function reserveDeliveryQueueEntryAttempt(
-  params: {
-    queueName: string;
-    id: string;
-    maxAttempts: number;
-    stateDir?: string;
-    expectedPlatformSendAttemptId?: string;
-  },
-  context?: DeliveryQueueStateContext,
-): ReserveDeliveryQueueAttemptResult {
-  if (!Number.isInteger(params.maxAttempts) || params.maxAttempts <= 0) {
-    throw new Error(`Invalid delivery attempt budget: ${params.maxAttempts}`);
-  }
-  return runOpenClawStateWriteTransaction(
-    (database) => reserveDeliveryQueueEntryAttemptInDatabase(database, params),
-    {
-      env: resolveDeliveryQueueStateEnv(params.stateDir, context),
-    },
-    {
-      operationLabel: `reserve ${params.queueName} delivery attempt`,
-    },
-  );
 }
 
 /** Count dead-lettered entries per queue namespace for coarse health reporting. */

@@ -67,7 +67,7 @@ export type SubagentCompletionDeliveryState = {
   suspendedReason?: "expiry" | "permanent_failure";
   dismissedAt?: number;
   discardedAt?: number;
-  discardReason?: "expired";
+  discardReason?: "expired" | "task-missing";
   discardedPayloadSummary?: {
     requesterSessionKey?: string;
     childSessionKey?: string;

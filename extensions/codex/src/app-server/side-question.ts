@@ -546,7 +546,7 @@ export async function runCodexAppServerSideQuestion(
       }
       if (request.method === "item/tool/requestUserInput") {
         return isSideUserInputRequest(request.params, childThreadId, turnId)
-          ? emptySideUserInputResponse()
+          ? { answers: {} }
           : undefined;
       }
       if (isCodexAppServerApprovalRequest(request.method)) {
@@ -1152,10 +1152,6 @@ async function createCodexSideToolBridge(input: {
     }),
     webSearchPlan,
   };
-}
-
-function emptySideUserInputResponse(): JsonObject {
-  return { answers: {} };
 }
 
 function isSideUserInputRequest(

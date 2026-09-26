@@ -13,7 +13,6 @@ import {
   resolveSessionWorkStartError,
   type SessionEntry,
   type InternalSessionEntry,
-  type SessionFreshness,
 } from "../../config/sessions.js";
 import {
   patchSessionEntryTarget,
@@ -48,7 +47,6 @@ import type { GatewayRequestHandlerOptions } from "../server-methods/types.js";
 import {
   cronContinuationHasReusableRuntime,
   emitAgentSendSessionLifecycleTransition,
-  withSqliteSessionFileMarker,
   type RestoredCronContinuation,
 } from "./agent-handler-helpers.js";
 
@@ -69,11 +67,7 @@ type AgentSessionPersistResult = {
   supersededSessionId?: string;
   admittedSessionId: string;
   skipAgentInitialSessionTouch: boolean;
-  patchBuild: AgentSessionPatchBuild;
   isNewSession: boolean;
-  rotatedSessionId: boolean;
-  usableRequestedSessionId?: string;
-  freshness: SessionFreshness | undefined;
   spawnedBy?: string;
   groupId?: string;
   groupChannel?: string;
@@ -368,12 +362,7 @@ export async function persistAgentSessionPhase(params: {
                   ),
                 };
             createdNewEntry = freshEntry === undefined;
-            const merged = withSqliteSessionFileMarker({
-              agentId: params.sessionAgentId,
-              entry: mergeSessionEntry(entryForPatch, effectivePatch),
-              sessionKey: params.canonicalSessionKey,
-              storePath: params.storePath,
-            });
+            const merged = mergeSessionEntry(entryForPatch, effectivePatch);
             const recoveryTransition = params.isRestartRecoveryResumeRun
               ? transitionMainSessionRecovery(merged as InternalSessionEntry, {
                   kind: "validate_recovery",
@@ -607,11 +596,7 @@ export async function persistAgentSessionPhase(params: {
     // Admission revalidation can observe a newer session id after persistence.
     admittedSessionId: params.getAdmittedSessionId(),
     skipAgentInitialSessionTouch,
-    patchBuild,
     isNewSession,
-    rotatedSessionId,
-    usableRequestedSessionId,
-    freshness,
     spawnedBy: patchBuild.spawnedBy,
     groupId: patchBuild.groupId,
     groupChannel: patchBuild.groupChannel,

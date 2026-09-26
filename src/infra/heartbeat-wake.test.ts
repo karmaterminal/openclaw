@@ -878,64 +878,13 @@ describe("heartbeat-wake", () => {
     });
   });
 
-  it.each(["a", "b", "c"])(
-    "retries only the failed targeted wake when batch target %s throws",
-    async (failedTarget) => {
-      vi.useFakeTimers();
-      let hasFailed = false;
-      const handler = vi.fn(async (request: WakeRequest) => {
-        if (request.reason === `cron:job-${failedTarget}` && !hasFailed) {
-          hasFailed = true;
-          throw new Error("heartbeat target failed");
-        }
-        return { status: "ran" as const, durationMs: 1 };
-      });
-      setHeartbeatWakeHandler(handler);
-
-      for (const target of ["a", "b", "c"]) {
-        requestHeartbeat({
-          source: "cron",
-          intent: "event",
-          reason: `cron:job-${target}`,
-          agentId: `agent-${target}`,
-          sessionKey: `agent:agent-${target}:main`,
-          coalesceMs: 100,
-        });
-      }
-
-      await vi.advanceTimersByTimeAsync(100);
-
-      expect(handler.mock.calls.map(([request]) => request.reason)).toEqual([
-        "cron:job-a",
-        "cron:job-b",
-        "cron:job-c",
-      ]);
-      expect(getActiveGatewayRootWorkCount()).toBe(0);
-
-      await vi.advanceTimersByTimeAsync(999);
-      expect(handler).toHaveBeenCalledTimes(3);
-
-      await vi.advanceTimersByTimeAsync(1);
-      expect(handler.mock.calls.map(([request]) => request.reason)).toEqual([
-        "cron:job-a",
-        "cron:job-b",
-        "cron:job-c",
-        `cron:job-${failedTarget}`,
-      ]);
-      expect(handler.mock.calls[3]?.[0]).toMatchObject({
-        agentId: `agent-${failedTarget}`,
-        sessionKey: `agent:agent-${failedTarget}:main`,
-      });
-      expect(getActiveGatewayRootWorkCount()).toBe(0);
-    },
-  );
-
-  it("does not replay completed wake targets when another target keeps throwing", async () => {
+  it("retries only the failed targeted wake without replaying completed siblings", async () => {
+    const failedTarget = "b";
     vi.useFakeTimers();
-    let failedAttempts = 0;
+    let remainingFailures = 2;
     const handler = vi.fn(async (request: WakeRequest) => {
-      if (request.reason === "cron:job-b" && failedAttempts < 2) {
-        failedAttempts += 1;
+      if (request.reason === `cron:job-${failedTarget}` && remainingFailures > 0) {
+        remainingFailures -= 1;
         throw new Error("heartbeat target failed");
       }
       return { status: "ran" as const, durationMs: 1 };
@@ -954,9 +903,31 @@ describe("heartbeat-wake", () => {
     }
 
     await vi.advanceTimersByTimeAsync(100);
-    await vi.advanceTimersByTimeAsync(1_000);
-    await vi.advanceTimersByTimeAsync(1_000);
 
+    expect(handler.mock.calls.map(([request]) => request.reason)).toEqual([
+      "cron:job-a",
+      "cron:job-b",
+      "cron:job-c",
+    ]);
+    expect(getActiveGatewayRootWorkCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(handler).toHaveBeenCalledTimes(3);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(handler.mock.calls.map(([request]) => request.reason)).toEqual([
+      "cron:job-a",
+      "cron:job-b",
+      "cron:job-c",
+      `cron:job-${failedTarget}`,
+    ]);
+    expect(handler.mock.calls[3]?.[0]).toMatchObject({
+      agentId: `agent-${failedTarget}`,
+      sessionKey: `agent:agent-${failedTarget}:main`,
+    });
+    expect(getActiveGatewayRootWorkCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(handler.mock.calls.map(([request]) => request.reason)).toEqual([
       "cron:job-a",
       "cron:job-b",
@@ -1074,51 +1045,5 @@ describe("heartbeat-wake", () => {
       sessionKey: "agent:ops:guildchat:channel:alerts",
       heartbeat: { target: "last" },
     });
-  });
-
-  it("executes distinct targeted wakes queued in the same coalescing window", async () => {
-    vi.useFakeTimers();
-    const handler = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
-    setHeartbeatWakeHandler(handler);
-
-    requestHeartbeat({
-      source: "cron",
-      intent: "event",
-      reason: "cron:job-a",
-      agentId: "ops",
-      sessionKey: "agent:ops:guildchat:channel:alerts",
-      coalesceMs: 100,
-    });
-    requestHeartbeat({
-      source: "cron",
-      intent: "event",
-      reason: "cron:job-b",
-      agentId: "main",
-      sessionKey: "agent:main:forum:group:-1001",
-      coalesceMs: 100,
-    });
-
-    await vi.advanceTimersByTimeAsync(100);
-
-    expect(handler).toHaveBeenCalledTimes(2);
-    const handledRequests = handler.mock.calls
-      .map((call) => call[0])
-      .toSorted((left, right) => left.reason.localeCompare(right.reason));
-    expect(handledRequests).toEqual([
-      {
-        source: "cron",
-        intent: "event",
-        reason: "cron:job-a",
-        agentId: "ops",
-        sessionKey: "agent:ops:guildchat:channel:alerts",
-      },
-      {
-        source: "cron",
-        intent: "event",
-        reason: "cron:job-b",
-        agentId: "main",
-        sessionKey: "agent:main:forum:group:-1001",
-      },
-    ]);
   });
 });

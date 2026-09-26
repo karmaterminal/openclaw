@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
-import type { SessionEntry } from "../../config/sessions.js";
 import { updateSessionEntry } from "../../config/sessions/session-accessor.js";
 import { emitContinuationCompactionReleasedSpan } from "../../infra/continuation-tracer.js";
 import { defaultRuntime } from "../../runtime.js";
 import { sessionDeliveryChannel } from "../../utils/delivery-context.read.js";
+import { getCommandOwnerAuthority } from "../command-owner-authority.js";
 import { DEFAULT_HEARTBEAT_ACK_MAX_CHARS, stripHeartbeatToken } from "../heartbeat.js";
 import { setReplyPayloadMetadata } from "../reply-payload.js";
 import type { ReplyPayload } from "../types.js";
@@ -15,8 +15,9 @@ import {
   normalizeAssistantFinalDeliveryText,
 } from "./agent-runner-core.js";
 import { scheduleReplySessionMaintenance } from "./agent-runner-maintenance.js";
-import type { accountAgentTurn } from "./agent-runner-result-accounting.js";
+import type { AccountedAgentTurn } from "./agent-runner-result-accounting.js";
 import { buildReplyDiagnosticsPayload } from "./agent-runner-result-diagnostics.js";
+import type { prepareReplyAgentPayloads } from "./agent-runner-result-payloads.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
 import { appendUsageLine } from "./agent-runner-usage-line.js";
 import {
@@ -31,20 +32,11 @@ import {
   buildStrandedReplyDeliveryFailurePayload,
   resolveStrandedReplyRecovery,
 } from "./stranded-reply-recovery.js";
-type ReplyAgentAccounting = Awaited<ReturnType<typeof accountAgentTurn>>;
-type PreparedReplyAgentPayloads = {
-  kind: "continue";
-  activeSessionEntry: SessionEntry | undefined;
-  completedSourceReplyDelivery: boolean;
-  guardedReplyPayloads: ReplyPayload[];
-  responseUsageLine: string | undefined;
-  wasSilentContinuation: boolean;
-};
 
 export async function completeReplyAgentRun(input: {
   context: FinalizeReplyAgentRunInput;
-  accounting: ReplyAgentAccounting;
-  prepared: PreparedReplyAgentPayloads;
+  accounting: AccountedAgentTurn;
+  prepared: Extract<Awaited<ReturnType<typeof prepareReplyAgentPayloads>>, { kind: "continue" }>;
 }) {
   const { context, accounting, prepared } = input;
   const {
@@ -153,7 +145,6 @@ export async function completeReplyAgentRun(input: {
     ? undefined
     : (runResult.meta?.finalAssistantRawText ?? runResult.meta?.finalAssistantVisibleText);
   if (!wasSilentContinuation) {
-    const prefixPayloads = [...prefixNotices];
     const trailingPluginStatusPayload = await buildReplyDiagnosticsPayload({
       activeSessionEntry,
       followupRun,
@@ -171,8 +162,8 @@ export async function completeReplyAgentRun(input: {
       resolvedBlockStreamingBreak,
       preflightCompactionApplied,
     });
-    if (prefixPayloads.length > 0) {
-      finalPayloads = [...prefixPayloads, ...finalPayloads];
+    if (prefixNotices.length > 0) {
+      finalPayloads = [...prefixNotices, ...finalPayloads];
     }
     if (trailingPluginStatusPayload) {
       finalPayloads = [...finalPayloads, trailingPluginStatusPayload];
@@ -293,12 +284,17 @@ export async function completeReplyAgentRun(input: {
           (payload) => normalizePendingFinalDeliveryPayloads([payload]).length > 0,
         );
     if (sendableFinalPayloads.length > 0) {
+      const commandOwner = getCommandOwnerAuthority(followupRun.run);
+      const commandOwnerReference = commandOwner
+        ? (commandOwner.recoveryReference ?? null)
+        : undefined;
       const pendingFinalDeliveryIntentId = crypto.randomUUID();
       const expectedSessionId = activeSessionEntry?.sessionId ?? followupRun.run.sessionId;
       const pendingFinalDeliveries = sendableFinalPayloads.map((payload) => {
         const deliveryId = crypto.randomUUID();
         setReplyPayloadMetadata(payload, {
           pendingFinalDeliveryCompletion: {
+            commandOwnerReference,
             agentId: followupRun.run.agentId,
             deliveryId,
             intentId: pendingFinalDeliveryIntentId,
@@ -328,7 +324,7 @@ export async function completeReplyAgentRun(input: {
           entry.sessionId === expectedSessionId
             ? {
                 pendingFinalDelivery: {
-                  ...(resolvedPendingText
+                  ...(resolvedPendingText && commandOwnerReference === undefined
                     ? { kind: "replayable" as const, text: resolvedPendingText }
                     : { kind: "transport-only" as const }),
                   intentId: pendingFinalDeliveryIntentId,

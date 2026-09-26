@@ -1,4 +1,5 @@
 // Covers session delivery queue persistence state transitions.
+import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
@@ -1107,9 +1108,7 @@ describe("session-delivery queue storage", () => {
         queueContext,
       );
       const entry = await loadPendingSessionDelivery(id, queueContext);
-      if (!entry) {
-        throw new Error("Expected pending session delivery");
-      }
+      assert(entry, "Expected pending session delivery");
 
       await markSessionDeliveryAttemptStarted(entry, queueContext);
       expect(await loadPendingSessionDelivery(id, queueContext)).toMatchObject({

@@ -62,10 +62,13 @@ export {
 export function buildSubagentSessionListReadIndex(
   now = Date.now(),
   sessionKeys?: readonly string[],
+  preparedRuns?: Map<string, SubagentRunReadRecord>,
 ): SubagentRunReadIndex<SubagentRunReadRecord> {
-  const runs = sessionKeys
-    ? getSubagentSessionListRunsSnapshotForSessions(subagentRuns, sessionKeys)
-    : getSubagentSessionListRunsSnapshotForRead(subagentRuns);
+  const runs =
+    preparedRuns ??
+    (sessionKeys
+      ? getSubagentSessionListRunsSnapshotForSessions(subagentRuns, sessionKeys)
+      : getSubagentSessionListRunsSnapshotForRead(subagentRuns));
   return buildSubagentRunReadIndexFromRuns({
     runs,
     inMemoryRuns: sessionKeys
@@ -111,12 +114,14 @@ export function countActiveDescendantRuns(
   rootSessionKey: string,
   requesterAgentId?: string,
   requesterStorePath?: string | null,
+  rootRunIds?: ReadonlySet<string>,
 ): number {
   return countActiveDescendantRunsFromRuns(
     getSubagentRunsSnapshotForSessions(subagentRuns, [rootSessionKey]),
     rootSessionKey,
     requesterAgentId,
     requesterStorePath,
+    rootRunIds,
   );
 }
 
@@ -143,6 +148,7 @@ export function hasDescendantRunAwaitingSettle(
   requesterAgentId?: string,
   requesterStorePath?: string | null,
   settledBefore?: number,
+  rootRunIds?: ReadonlySet<string>,
 ): boolean {
   return hasDescendantRunAwaitingSettleFromRuns(
     getSubagentRunsSnapshotForSessions(subagentRuns, [rootSessionKey]),
@@ -151,6 +157,7 @@ export function hasDescendantRunAwaitingSettle(
     requesterAgentId,
     requesterStorePath,
     settledBefore,
+    rootRunIds,
   );
 }
 

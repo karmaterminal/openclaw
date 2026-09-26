@@ -31,6 +31,7 @@ import type { MediaFact } from "../../media/media-facts.js";
 import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
 import { bindGatewayContextResolver } from "../../plugins/runtime/gateway-request-scope.js";
 import { retainGatewayRootWorkAdmissionContinuation } from "../../process/gateway-work-admission.js";
+import type { CommandLaneConfiguration } from "../../process/lanes.js";
 import {
   annotateInterSessionPromptText,
   type InputProvenance,
@@ -44,8 +45,11 @@ import { resolveSessionRuntimeCwd } from "../server-methods/agent-session-reset.
 import { emitSessionsChanged } from "../server-methods/session-change-event.js";
 import { reactivateCompletedSubagentSession } from "../session-subagent-reactivation.js";
 import { prepareGatewaySkillAuthoring } from "../skill-library-authoring.js";
-import { formatForLog } from "../ws-log.js";
-import { setAbortedAgentDedupeEntries, setGatewayDedupeEntries } from "./agent-dedupe.js";
+import {
+  buildAbortedAgentPayload,
+  setAbortedAgentDedupeEntries,
+  setGatewayDedupeEntries,
+} from "./agent-dedupe.js";
 import type { AgentDeliveryPhaseResult } from "./agent-delivery-phase.js";
 import {
   yieldAfterAgentAcceptedAck,
@@ -57,6 +61,7 @@ import {
   resolveAgentRestartRecoveryExecutionIdentityAdmission,
 } from "./agent-restart-recovery-context.js";
 import type { PreparedAgentRunDispatch } from "./agent-run-admission-types.js";
+import { createAgentRunDiagnostics } from "./agent-run-diagnostics.js";
 import { withAgentRunDispatchExecutionIdentity } from "./agent-run-dispatch-execution-identity.js";
 import {
   resolveAbortedAgentStopReason,
@@ -82,7 +87,6 @@ export async function startAgentRunExecution(params: {
   resolvedSessionKey?: string;
   requestedSessionKey?: string;
   resolvedSessionId?: string;
-  storePath?: string;
   agentId?: string;
   activeSessionAgentId: string;
   delivery: AgentDeliveryPhaseResult;
@@ -97,6 +101,7 @@ export async function startAgentRunExecution(params: {
   inputProvenance?: InputProvenance;
   runId: string;
   agentDedupeKeys: readonly string[];
+  swarmExecutionLane?: CommandLaneConfiguration;
   spawnedBy?: string;
   groupId?: string;
   groupChannel?: string;
@@ -118,6 +123,11 @@ export async function startAgentRunExecution(params: {
   ) => Promise<boolean>;
 }): Promise<void> {
   const { prepared } = params;
+  const diagnostics = createAgentRunDiagnostics(
+    params.resolvedSessionKey,
+    params.sessionEntry?.incognito,
+    params.context.logGateway,
+  );
   const jobSessionBinding = prepared.activeRunAbort.entry ?? {
     sessionKey: params.resolvedSessionKey,
     sessionId: params.resolvedSessionId,
@@ -178,9 +188,7 @@ export async function startAgentRunExecution(params: {
           (!prepared.userTurn.privateCompletion || outcome.reason === "cancelled");
         releasePreparedAgentRunUserTurn(prepared.userTurn, cancelled ? "cancelled" : "interrupted");
       } catch (error) {
-        params.context.logGateway.warn(
-          `failed to settle pending agent input: ${formatForLog(error)}`,
-        );
+        diagnostics.warning("failed to settle pending agent input")(error);
       }
       prepared.activeRunAbort.cleanup();
       prepared.activeGatewayWorkAdmission.release();
@@ -232,9 +240,7 @@ export async function startAgentRunExecution(params: {
           try {
             prepared.userTurn.recorder?.completeProcessing?.(outcome);
           } catch (completionError) {
-            params.context.logGateway.warn(
-              `input completion persistence failed: ${formatForLog(completionError)}`,
-            );
+            diagnostics.warning("input completion persistence failed")(completionError);
           }
         }
         await settleUnstartedTask(outcome);
@@ -243,9 +249,12 @@ export async function startAgentRunExecution(params: {
           dedupe: params.context.dedupe,
           keys: params.agentDedupeKeys,
           session: captureAgentJobSession(jobSessionBinding),
-          entry: { ts: Date.now(), ok: false, payload, error },
+          entry: diagnostics.forReplay({ ts: Date.now(), ok: false, payload, error }),
         });
-        params.io.emitFinal([false, payload, error], { runId: params.runId, error: renderedErr });
+        params.io.emitFinal([false, payload, error], {
+          runId: params.runId,
+          ...diagnostics.errorMeta(renderedErr),
+        });
       };
       const finishUndispatchedAbort = async () => {
         const stopReason = resolveAbortedAgentStopReason(prepared.activeRunAbort.entry);
@@ -273,21 +282,9 @@ export async function startAgentRunExecution(params: {
           runId: params.runId,
           stopReason,
         });
-        params.io.emitFinal(
-          [
-            true,
-            {
-              runId: params.runId,
-              status: "timeout" as const,
-              summary: "aborted",
-              stopReason,
-              timeoutPhase: "queue" as const,
-              providerStarted: false,
-            },
-            undefined,
-          ],
-          { runId: params.runId },
-        );
+        params.io.emitFinal([true, buildAbortedAgentPayload(params.runId, stopReason), undefined], {
+          runId: params.runId,
+        });
       };
       try {
         if (prepared.activeRunAbort.controller.signal.aborted) {
@@ -505,6 +502,7 @@ export async function startAgentRunExecution(params: {
                 messageChannel: params.delivery.originMessageChannel,
                 runId: params.runId,
                 lane: params.request.lane,
+                swarmExecutionLane: params.swarmExecutionLane,
                 modelRun: params.request.modelRun === true,
                 promptMode: params.request.promptMode,
                 extraSystemPrompt: params.request.extraSystemPrompt,
@@ -644,6 +642,7 @@ export async function startAgentRunExecution(params: {
                 : undefined,
               io: params.io,
               context: params.context,
+              isIncognito: diagnostics.incognito,
               taskTrackingMode: prepared.dispatchTaskTrackingMode,
               restoreAdmittedRecovery: prepared.restoreAdmittedRestartRecoveryInterrupted,
               canonicalSkillWorkspaceDir: params.sessionEntry?.worktree?.canonicalWorkspaceDir,
@@ -668,10 +667,7 @@ export async function startAgentRunExecution(params: {
                 pendingRecovery ??= await repairMainSessionRecoveryMutation({
                   mutation: restoreAdmittedRecovery,
                   onDeferredSuccess: scheduleMainSessionRecoveryPendingTarget,
-                  onError: (err) =>
-                    params.context.logGateway.warn(
-                      `failed to restore undispatched restart recovery: ${formatForLog(err)}`,
-                    ),
+                  onError: diagnostics.warning("failed to restore undispatched restart recovery"),
                 });
               }
             } finally {
@@ -683,8 +679,8 @@ export async function startAgentRunExecution(params: {
                     params.mainRestartRecoveryOwnerLease,
                   );
                 } catch (err) {
-                  params.context.logGateway.warn(
-                    `failed to release undispatched main restart recovery owner: ${formatForLog(err)}`,
+                  diagnostics.warning("failed to release undispatched main restart recovery owner")(
+                    err,
                   );
                 } finally {
                   try {
