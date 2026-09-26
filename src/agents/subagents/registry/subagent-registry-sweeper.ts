@@ -7,6 +7,7 @@ import {
 import { emitSessionLifecycleEvent } from "../../../sessions/session-lifecycle-events.js";
 import { createLazyImportLoader } from "../../../shared/lazy-promise.js";
 import { createSubagentSweepSessionCleanup } from "../../subagent-registry-sweeper-session.js";
+import { reconcileRetiredSubagentCancellation } from "../completion/subagent-completion-admission.store.js";
 import { SUBAGENT_ENDED_REASON_ERROR } from "./subagent-lifecycle-events.js";
 import { shouldSuppressSubagentRecoverySessionEffects } from "./subagent-recovery-state.js";
 import { safeRemoveAttachmentsDir } from "./subagent-registry-helpers.js";
@@ -214,10 +215,12 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
         }
       }
       for (const [runId, entry] of runEntries) {
-        if (runs.get(runId) !== entry) {
-          continue;
-        }
-        if (isRestoredQueuedFailureSettlementClaimed(entry)) {
+        if (
+          runs.get(runId) !== entry ||
+          isRestoredQueuedFailureSettlementClaimed(entry) ||
+          // A kill whose cancellation is already retired has nothing left for the sweep.
+          (entry.killReconciliation && reconcileRetiredSubagentCancellation(entry, now) === false)
+        ) {
           continue;
         }
         if (entry.acceptedSteerDispatch) {
@@ -381,6 +384,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
                     () =>
                       runs.get(runId) === entry &&
                       isSessionIdentityCurrent(entry.childSessionKey, sessionIdentity),
+                    entry,
                   );
                 } catch (error) {
                   params.warn("failed to retry collector launch cleanup", {
@@ -490,6 +494,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
                   () =>
                     runs.get(runId) === entry &&
                     isSessionIdentityCurrent(entry.childSessionKey, sessionIdentity),
+                  entry,
                 )) === "changed";
             } catch (error) {
               params.warn("sessions.delete failed during subagent sweep; keeping run for retry", {
@@ -556,6 +561,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
               () =>
                 runs.get(candidateRunId) === candidate &&
                 isSessionIdentityCurrent(candidate.childSessionKey, sessionIdentity),
+              candidate,
             );
             if (runs.get(candidateRunId) !== candidate) {
               groupMembershipChanged = true;

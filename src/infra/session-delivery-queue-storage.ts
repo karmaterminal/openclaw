@@ -306,18 +306,11 @@ export async function enqueueSessionDeliveryWithStatus(
     retryCount: 0,
   });
   const context = resolveQueueContext(handle);
-  const stateDir = resolveStateDir(handle);
-  await executeSessionDelivery(context, {
+  const { status: current } = await executeSessionDelivery(context, {
     type: "sessionDelivery.enqueue",
     input: prepareEntry(entry, "insert"),
   });
-  let status: SessionDeliveryEnqueueResult["status"];
-  try {
-    const current = getDeliveryQueueEntryStatus(SESSION_DELIVERY_QUEUE_NAME, id, stateDir);
-    status = current === "completed" ? "completed" : current === "pending" ? "pending" : "unknown";
-  } catch {
-    status = "unknown";
-  }
+  const status = current === "completed" || current === "pending" ? current : "unknown";
   return { id, status };
 }
 

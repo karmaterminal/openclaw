@@ -68,9 +68,15 @@ export function executeSessionDeliveryCommand(
   };
 
   switch (command.type) {
-    case "sessionDelivery.enqueue":
+    case "sessionDelivery.enqueue": {
       upsertBoundDeliveryQueueEntryInDatabase(command.input, database);
-      return;
+      try {
+        // Read the settled status here so enqueue callers never touch SQLite on the main thread.
+        return { status: readStatus(command.input.row.id) ?? "unknown" };
+      } catch {
+        return { status: "unknown" };
+      }
+    }
     case "sessionDelivery.enqueueClaimed": {
       const id = command.input.row.id;
       const claimed = upsertBoundDeliveryQueueEntryInDatabase(command.input, database);

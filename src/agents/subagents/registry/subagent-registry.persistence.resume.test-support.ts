@@ -1,6 +1,7 @@
-import { expect, vi } from "vitest";
+import { expect } from "vitest";
 import { isPathInside } from "../../../infra/path-guards.js";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
+import { createSubagentPersistenceRuntime } from "./subagent-registry.persistence-fixture.test-support.js";
 import {
   createDeliveredWake,
   withSubagentRegistryPersistenceState,
@@ -76,13 +77,8 @@ export function readPersistedRun(runId: string) {
 }
 
 export function activatePersistenceResumeRegistry(mod: RegistryModule, callGateway: GatewayCall) {
-  const recoveryRuntime = {
-    dispatchAgent: (params: Record<string, unknown>, timeoutMs?: number) =>
-      callGateway({ method: "agent", params, timeoutMs }),
-    waitForAgent: (params: Record<string, unknown>, timeoutMs?: number) =>
-      callGateway({ method: "agent.wait", params, timeoutMs }),
-    sendRecoveryNotice: vi.fn(),
-  };
+  // Build the real recovery-runtime shape (incl. dispatchSessionMethod) that production uses.
+  const recoveryRuntime = createSubagentPersistenceRuntime(callGateway);
   const gateway = { recoveryRuntime, resolveGatewayContext: () => gateway as never };
   mod.activateSubagentRegistry(() => gateway as never);
 }

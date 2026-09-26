@@ -12,7 +12,10 @@ export type SessionDeliveryAgentRunUpdate = {
 type PreparedEntry = ReturnType<typeof bindDeliveryQueueEntry>;
 
 export type SessionDeliveryWorkerOperations = {
-  "sessionDelivery.enqueue": { input: PreparedEntry; output: void };
+  "sessionDelivery.enqueue": {
+    input: PreparedEntry;
+    output: { status: DeliveryQueueStoredStatus | "unknown" };
+  };
   "sessionDelivery.enqueueClaimed": {
     input: PreparedEntry;
     output: { id: string; claimed: boolean; status: DeliveryQueueStoredStatus };

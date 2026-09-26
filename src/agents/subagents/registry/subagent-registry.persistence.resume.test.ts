@@ -1035,7 +1035,15 @@ describe("subagent registry persistence resume", () => {
   it.each([false, true])(
     "settles a restored steered requester turn (yielded: %s)",
     async (requesterYielded) => {
-      const wakeRequester = vi.fn(async () => false);
+      // Settle like the real waker so a later restore replay sees no pending wake.
+      const wakeRequester = vi.fn<WakeRequester>(async (params) => {
+        const wake = params.settledEntry!.requesterSettleWake!;
+        params.completeBatch([params.settledEntry!], wake.rearmGeneration!, {
+          delivered: true,
+          path: "direct",
+        });
+        return true;
+      });
       vi.spyOn(
         requesterSettleModule,
         "maybeWakeRequesterAfterAllChildrenSettled",
@@ -1072,10 +1080,9 @@ describe("subagent registry persistence resume", () => {
             requesterYieldBatch: true,
             afterRequesterYield: true,
           });
-          await vi.waitFor(() => expect(wakeRequester).toHaveBeenCalledOnce(), {
-            timeout: 1_000,
-            interval: 10,
-          });
+          await settleSubagentRegistryPersistenceWork();
+          expect(wakeRequester).toHaveBeenCalledOnce();
+          expect(readPersistedRun(run.runId)?.requesterSettleWake).toBeUndefined();
         } else {
           expect(restored?.requesterSettleWake).toBeUndefined();
           await nextTask();

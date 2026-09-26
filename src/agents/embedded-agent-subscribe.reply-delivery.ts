@@ -592,6 +592,8 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
       ) {
         recordAssistantTranscriptMedia(payload);
         payload.text = undefined;
+        // A superseded reply must not credit its stale source text as delivered (#143722).
+        setReplyPayloadMetadata(payload, { blockSourceText: undefined });
       }
     }
     state.deferBlockReplyDelivery = false;

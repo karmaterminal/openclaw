@@ -31,7 +31,7 @@ const log = createSubsystemLogger("agents/subagent-announce-descendant-wake");
 type SubagentDescendantWakeOutcome = "woke" | "not-woken" | "termination-unconfirmed";
 
 type SubagentDescendantWakeDeps = {
-  callGateway: typeof import("../../../gateway/call.js").callGateway;
+  callGateway: typeof import("./subagent-announce.runtime.js").callSubagentLifecycleGateway;
   dispatchGatewayMethodInProcess: typeof dispatchGatewayMethodInProcess;
   getRuntimeConfig: typeof getRuntimeConfig;
   loadSubagentRegistryRuntime: () => Promise<SubagentRegistryRuntime>;

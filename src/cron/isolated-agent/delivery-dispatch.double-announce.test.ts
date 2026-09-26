@@ -4153,13 +4153,23 @@ describe("dispatchCronDelivery — double-announce guard", () => {
     });
   });
 
-  describe("durable outbound retry outcomes", () => {
+  describe("real outbound retry outcomes", () => {
     let harness: typeof import("./run.test-harness.js");
     let runCronIsolatedAgentTurn: typeof import("./run.js").runCronIsolatedAgentTurn;
+    let realDeliver: typeof import("../../infra/outbound/deliver.js").deliverOutboundPayloadsInternal;
 
     beforeAll(async () => {
       harness = await import("./run.test-harness.js");
+      // Keep the runner's offline agent/session fixture, but exercise real
+      // payload classification, channel lookup, and outbound callbacks.
+      vi.doUnmock("./helpers.js");
+      vi.doUnmock("../../channels/plugins/index.js");
       runCronIsolatedAgentTurn = await harness.loadRunCronIsolatedAgentTurn();
+      realDeliver = (
+        await vi.importActual<typeof import("../../infra/outbound/deliver.js")>(
+          "../../infra/outbound/deliver.js",
+        )
+      ).deliverOutboundPayloadsInternal;
     });
 
     beforeEach(() => {
@@ -4173,12 +4183,16 @@ describe("dispatchCronDelivery — double-announce guard", () => {
         to: "123456",
       });
       harness.resolveDeliveryTargetMock.mockResolvedValue(makeResolvedDelivery());
+      vi.mocked(deliverOutboundPayloads).mockImplementation(realDeliver);
       vi.stubEnv("OPENCLAW_TEST_FAST", "1");
     });
 
     afterEach(() => {
       resetPluginRuntimeStateForTest();
       setActivePluginRegistry(createTestRegistry());
+      vi.mocked(deliverOutboundPayloads)
+        .mockReset()
+        .mockResolvedValue([{ ok: true } as never]);
     });
 
     it.each([
@@ -4186,25 +4200,18 @@ describe("dispatchCronDelivery — double-announce guard", () => {
       { name: "best-effort retry", bestEffort: true, partialSend: false },
       { name: "required partial send without retry", bestEffort: false, partialSend: true },
       { name: "best-effort partial send without retry", bestEffort: true, partialSend: true },
-    ])("reports $name from durable batch outcomes", async ({ bestEffort, partialSend }) => {
+    ])("reports $name from actual adapter outcomes", async ({ bestEffort, partialSend }) => {
       await withTempCronHome(async () => {
         const notDispatched = new PlatformMessageNotDispatchedError(
           "payload stopped before final dispatch",
           { cause: new Error("connect ECONNREFUSED") },
         );
         const receipt = { channel: "telegram", messageId: "cron-retry-message" };
+        const sendText = vi.fn();
         if (partialSend) {
-          sendDurableMessageBatchCoreMock.mockResolvedValueOnce({
-            status: "partial_failed",
-            results: [receipt],
-            receipt,
-            error: notDispatched,
-            sentBeforeError: true,
-          });
+          sendText.mockResolvedValueOnce(receipt).mockRejectedValueOnce(notDispatched);
         } else {
-          sendDurableMessageBatchCoreMock
-            .mockResolvedValueOnce({ status: "failed", error: notDispatched })
-            .mockResolvedValueOnce({ status: "sent", results: [receipt], receipt });
+          sendText.mockRejectedValueOnce(notDispatched).mockResolvedValueOnce(receipt);
         }
         const registry = createTestRegistry([
           {
@@ -4212,7 +4219,7 @@ describe("dispatchCronDelivery — double-announce guard", () => {
             source: "test",
             plugin: createOutboundTestPlugin({
               id: "telegram",
-              outbound: { deliveryMode: "direct", sendText: vi.fn() },
+              outbound: { deliveryMode: "direct", sendText },
             }),
           },
         ]);
@@ -4235,8 +4242,9 @@ describe("dispatchCronDelivery — double-announce guard", () => {
         );
 
         expect(result.error).toBeUndefined();
+        expect(sendText).toHaveBeenCalledTimes(2);
         expect(harness.runEmbeddedAgentMock).toHaveBeenCalledTimes(1);
-        expect(sendDurableMessageBatchCoreMock).toHaveBeenCalledTimes(partialSend ? 1 : 2);
+        expect(deliverOutboundPayloads).toHaveBeenCalledTimes(partialSend ? 1 : 2);
         expect(result.status).toBe("ok");
         expect(result.deliveryAttempted).toBe(true);
         expect.soft(result.delivered).toBe(!partialSend);

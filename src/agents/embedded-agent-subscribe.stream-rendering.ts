@@ -390,7 +390,12 @@ export function createStreamRendering({
       return;
     }
     const markBlockReplyTextHandled = () => {
-      state.lastBlockReplyText = blockReplyText;
+      // Only real text counts as handled, and it is also the delivered prefix the suffix
+      // dedupe below reads (#135751); an empty chunk must not mark the block handled.
+      if (blockReplyText) {
+        state.lastBlockReplyText = blockReplyText;
+        state.lastDeliveredBlockReplyText = blockReplyText;
+      }
       state.toolExecutionSinceLastBlockReply = false;
     };
     if (hasMessageToolOnlySourceDelivery({ params, state })) {

@@ -1,9 +1,11 @@
-// Covers session delivery queue persistence state transitions.
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
+import { observeMainThreadSql } from "../test-utils/main-thread-sql-spies.test-support.js";
+// Covers session delivery queue persistence state transitions.
+import { requireNodeSqlite } from "./node-sqlite.js";
 import {
   advanceSessionDeliveryAgentRun,
   deferSessionDelivery,
@@ -585,76 +587,84 @@ describe("session-delivery queue storage", () => {
   });
 
   it("advances only the agent run attempt and can focus its retry media", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
-      const id = await enqueueSessionDelivery(
-        {
-          kind: "agentTurn",
-          sessionKey: "agent:main:main",
-          message: "all generated media",
-          messageId: "image:task-retry:agent-loop",
-          expectedMediaUrls: ["/tmp/one.png", "/tmp/two.png"],
+    // Keep the one-time SQLite capability check outside the queue observation window.
+    requireNodeSqlite();
+    const sqlCalls = observeMainThreadSql();
+    try {
+      await withSessionDeliveryQueue(async (_stateDir, queueContext) => {
+        const id = await enqueueSessionDelivery(
+          {
+            kind: "agentTurn",
+            sessionKey: "agent:main:main",
+            message: "all generated media",
+            messageId: "image:task-retry:agent-loop",
+            expectedMediaUrls: ["/tmp/one.png", "/tmp/two.png"],
+            expectedMediaAttachments: {
+              "/tmp/one.png": { type: "image", path: "/tmp/one.png", mimeType: "image/png" },
+              "/tmp/two.png": { type: "image", path: "/tmp/two.png", mimeType: "image/png" },
+            },
+          },
+          queueContext,
+        );
+
+        await failSessionDelivery(id, "ambiguous timeout", queueContext);
+        await deferSessionDelivery(id, 1_000, queueContext);
+        let [entry] = await loadPendingSessionDeliveries(queueContext);
+        expect(entry).toMatchObject({ retryCount: 1 });
+        expect(entry?.agentRunAttempt).toBeUndefined();
+        expect(entry?.availableAt).toBeGreaterThan(Date.now());
+
+        await mergeSessionDeliveryPreparedMediaBlocks(
+          id,
+          "/tmp/one.png",
+          [{ type: "image", artifactId: "artifact-one" }],
+          queueContext,
+        );
+        await expect(
+          mergeSessionDeliveryPreparedMediaBlocks(
+            id,
+            "/tmp/one.png",
+            [{ type: "image", artifactId: "replacement-must-not-win" }],
+            queueContext,
+          ),
+        ).resolves.toEqual([{ type: "image", artifactId: "artifact-one" }]);
+        await mergeSessionDeliveryPreparedMediaBlocks(
+          id,
+          "/tmp/two.png",
+          [{ type: "image", artifactId: "artifact-two" }],
+          queueContext,
+        );
+
+        await advanceSessionDeliveryAgentRun(
+          id,
+          {
+            message: "only missing media",
+            expectedMediaUrls: ["/tmp/two.png"],
+            suppressTextDelivery: true,
+          },
+          queueContext,
+        );
+        [entry] = await loadPendingSessionDeliveries(queueContext);
+        expect(entry).toMatchObject({
+          agentRunAttempt: 1,
+          retryCount: 1,
+          message: "only missing media",
+          expectedMediaUrls: ["/tmp/two.png"],
           expectedMediaAttachments: {
             "/tmp/one.png": { type: "image", path: "/tmp/one.png", mimeType: "image/png" },
             "/tmp/two.png": { type: "image", path: "/tmp/two.png", mimeType: "image/png" },
           },
-        },
-        tempDir,
-      );
-
-      await failSessionDelivery(id, "ambiguous timeout", tempDir);
-      await deferSessionDelivery(id, 1_000, tempDir);
-      let [entry] = await loadPendingSessionDeliveries(tempDir);
-      expect(entry).toMatchObject({ retryCount: 1 });
-      expect(entry?.agentRunAttempt).toBeUndefined();
-      expect(entry?.availableAt).toBeGreaterThan(Date.now());
-
-      await mergeSessionDeliveryPreparedMediaBlocks(
-        id,
-        "/tmp/one.png",
-        [{ type: "image", artifactId: "artifact-one" }],
-        tempDir,
-      );
-      await expect(
-        mergeSessionDeliveryPreparedMediaBlocks(
-          id,
-          "/tmp/one.png",
-          [{ type: "image", artifactId: "replacement-must-not-win" }],
-          tempDir,
-        ),
-      ).resolves.toEqual([{ type: "image", artifactId: "artifact-one" }]);
-      await mergeSessionDeliveryPreparedMediaBlocks(
-        id,
-        "/tmp/two.png",
-        [{ type: "image", artifactId: "artifact-two" }],
-        tempDir,
-      );
-
-      await advanceSessionDeliveryAgentRun(
-        id,
-        {
-          message: "only missing media",
-          expectedMediaUrls: ["/tmp/two.png"],
+          preparedMediaBlocks: {
+            "/tmp/one.png": [{ type: "image", artifactId: "artifact-one" }],
+            "/tmp/two.png": [{ type: "image", artifactId: "artifact-two" }],
+          },
           suppressTextDelivery: true,
-        },
-        tempDir,
-      );
-      [entry] = await loadPendingSessionDeliveries(tempDir);
-      expect(entry).toMatchObject({
-        agentRunAttempt: 1,
-        retryCount: 1,
-        message: "only missing media",
-        expectedMediaUrls: ["/tmp/two.png"],
-        expectedMediaAttachments: {
-          "/tmp/one.png": { type: "image", path: "/tmp/one.png", mimeType: "image/png" },
-          "/tmp/two.png": { type: "image", path: "/tmp/two.png", mimeType: "image/png" },
-        },
-        preparedMediaBlocks: {
-          "/tmp/one.png": [{ type: "image", artifactId: "artifact-one" }],
-          "/tmp/two.png": [{ type: "image", artifactId: "artifact-two" }],
-        },
-        suppressTextDelivery: true,
+        });
       });
-    });
+      sqlCalls.expectIdle();
+    } finally {
+      sqlCalls.restore();
+    }
   });
 
   it("rejects invalid post-compaction snapshot bytes before durable enqueue", async () => {

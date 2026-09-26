@@ -522,7 +522,7 @@ export function startManagedGatewayConfigReloader(
       abortActiveGmailRestart();
       await configReloader.stop();
     },
-    hotReloadStatus: () => configReloader.hotReloadStatus() ?? "disabled",
+    hotReloadStatus: configReloader.hotReloadStatus,
     getDeferredChannelReloads,
     applyPluginLifecycleChange: configReloader.applyPluginLifecycleChange,
     // Equal config revisions can still owe a plugin/runtime restart.

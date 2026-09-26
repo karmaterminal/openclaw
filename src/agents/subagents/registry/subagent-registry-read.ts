@@ -168,7 +168,8 @@ export function resolveRequesterForChildSession(childSessionKey: string): {
   requesterOrigin?: DeliveryContext;
 } | null {
   const resolved = resolveRequesterForChildSessionFromRuns(
-    getSubagentRunsSnapshotForRead(subagentRuns),
+    // Only this child's runs: a full snapshot here puts every read on the Gateway loop (#154727).
+    getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey),
     childSessionKey,
   );
   if (!resolved) {
@@ -184,7 +185,8 @@ export function resolveRequesterForChildSession(childSessionKey: string): {
 /** True when post-completion announce should be skipped for a child session. */
 export function shouldIgnorePostCompletionAnnounceForSession(childSessionKey: string): boolean {
   return shouldIgnorePostCompletionAnnounceForSessionFromRuns(
-    getSubagentRunsSnapshotForRead(subagentRuns),
+    // Only this child's runs: a full snapshot here puts every read on the Gateway loop (#154727).
+    getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey),
     childSessionKey,
   );
 }

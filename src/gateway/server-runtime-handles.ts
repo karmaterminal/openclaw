@@ -27,7 +27,7 @@ import {
 // active" instead of guessing.
 export type GatewayConfigReloaderHandle = {
   stop: () => Promise<void>;
-  hotReloadStatus?: () => GatewayHotReloadStatus;
+  hotReloadStatus?: () => GatewayHotReloadStatus | undefined;
   getDeferredChannelReloads?: () => readonly GatewayDeferredChannelReload[];
   getCommittedRuntimeConfig?: () => import("../config/types.openclaw.js").OpenClawConfig;
   applyPluginLifecycleChange: import("../plugins/lifecycle.js").PluginLifecycleRuntimeApply;

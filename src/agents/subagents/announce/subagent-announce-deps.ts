@@ -1,6 +1,6 @@
 import { createLazyImportLoader } from "../../../shared/lazy-promise.js";
 import {
-  callGateway,
+  callSubagentLifecycleGateway,
   dispatchGatewayMethodInProcess,
   getRuntimeConfig,
   resolveContinuationRuntimeConfig,
@@ -22,7 +22,8 @@ export function loadSubagentContinuationRuntime() {
 }
 
 type SubagentAnnounceDeps = {
-  callGateway: typeof callGateway;
+  // Cleanup and descendant-wake termination keep the run's inherited Gateway binding (#146369).
+  callGateway: typeof callSubagentLifecycleGateway;
   dispatchGatewayMethodInProcess: typeof dispatchGatewayMethodInProcess;
   getRuntimeConfig: typeof getRuntimeConfig;
   loadSubagentRegistryRuntime: typeof loadSubagentRegistryRuntime;
@@ -30,7 +31,7 @@ type SubagentAnnounceDeps = {
 };
 
 const defaultSubagentAnnounceDeps: SubagentAnnounceDeps = {
-  callGateway,
+  callGateway: callSubagentLifecycleGateway,
   dispatchGatewayMethodInProcess,
   getRuntimeConfig,
   loadSubagentRegistryRuntime,
@@ -42,7 +43,7 @@ export let subagentAnnounceDeps: SubagentAnnounceDeps = defaultSubagentAnnounceD
 export const testing = {
   setDepsForTest(
     overrides?: Partial<SubagentAnnounceDeps> & {
-      callGateway?: typeof callGateway;
+      callGateway?: typeof callSubagentLifecycleGateway;
     },
   ) {
     const callGatewayOverride = overrides?.callGateway;
