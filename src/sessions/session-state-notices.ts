@@ -48,12 +48,21 @@ export function enqueueSessionStateNotice(params: {
   lastSeenSequence: number;
   queueOnly?: boolean;
 }): void {
-  enqueueSystemEvent(sessionStateNoticeText(params.targetSessionKey, params.lastSeenSequence), {
-    sessionKey: params.watcherSessionKey,
-    sessionStorePath: params.watcherStorePath ?? null,
-    contextKey: `${SESSION_STATE_CONTEXT_PREFIX}${encodeNoticeTarget(params.targetSessionKey)}`,
-    ...(params.queueOnly ? { replace: true } : {}),
-  });
+  const queued = enqueueSystemEvent(
+    sessionStateNoticeText(params.targetSessionKey, params.lastSeenSequence),
+    {
+      sessionKey: params.watcherSessionKey,
+      sessionStorePath: params.watcherStorePath ?? null,
+      contextKey: `${SESSION_STATE_CONTEXT_PREFIX}${encodeNoticeTarget(params.targetSessionKey)}`,
+      ...(params.queueOnly ? { replace: true } : {}),
+    },
+  );
+  // A deduped notice carries no new payload. Waking anyway creates an empty
+  // immediate request that guard retries can retain after the original notice
+  // has already been consumed.
+  if (!queued) {
+    return;
+  }
   // Group activity is ambient context. Coalesce it for the next main turn instead
   // of waking the personal agent once per inbound group message.
   if (params.queueOnly) {

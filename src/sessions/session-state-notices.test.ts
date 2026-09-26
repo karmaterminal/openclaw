@@ -1,6 +1,7 @@
 // Session-state notice context key decoding: strict UTF-8 after hex validation.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { requestHeartbeat } from "../infra/heartbeat-wake.js";
+import { enqueueSystemEvent } from "../infra/system-events.js";
 import {
   decodeSessionStateNoticeContextKey,
   enqueueSessionStateNotice,
@@ -16,6 +17,7 @@ vi.mock("../infra/system-events.js", () => ({
 
 beforeEach(() => {
   vi.mocked(requestHeartbeat).mockClear();
+  vi.mocked(enqueueSystemEvent).mockReset().mockReturnValue(true);
 });
 
 function encodeTarget(sessionKey: string): string {
@@ -48,6 +50,18 @@ describe("decodeSessionStateNoticeContextKey", () => {
 });
 
 describe("enqueueSessionStateNotice", () => {
+  it("does not wake when the notice was deduplicated", () => {
+    vi.mocked(enqueueSystemEvent).mockReturnValueOnce(false);
+
+    enqueueSessionStateNotice({
+      watcherSessionKey: "agent:main:main",
+      targetSessionKey: "agent:main:subagent:finished",
+      lastSeenSequence: 42,
+    });
+
+    expect(requestHeartbeat).not.toHaveBeenCalled();
+  });
+
   it.each([undefined, null, "/synthetic/store.sqlite"])(
     "carries store provenance %s and preserves the 20-second coalescing policy",
     (watcherStorePath) => {
