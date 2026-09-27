@@ -17,7 +17,7 @@ import type { CliDeps } from "../cli/deps.types.js";
 import { isSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.js";
 import type { SessionRecipientAuthority } from "../config/sessions/session-recipient-authority-types.js";
 import { toErrorObject } from "../infra/errors.js";
-import { requestHeartbeatRaw as requestHeartbeat } from "../infra/heartbeat-wake.js";
+import { requestHeartbeat } from "../infra/heartbeat-wake.js";
 import {
   markSessionDeliveryAttemptStarted,
   markSessionDeliverySettlement,
@@ -27,10 +27,7 @@ import {
   type QueuedSessionDelivery,
 } from "../infra/session-delivery-queue-storage.js";
 import { withSystemEventOwner } from "../infra/system-event-ownership.js";
-import {
-  enqueueSystemEventRaw as enqueueSystemEvent,
-  removeSystemEvents,
-} from "../infra/system-events.js";
+import { enqueueSystemEvent, removeSystemEvents } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { OutboundReplyPayload } from "../plugin-sdk/reply-payload.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";

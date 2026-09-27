@@ -565,7 +565,6 @@ vi.mock("../infra/heartbeat-wake.js", async () => {
   return {
     ...actual,
     requestHeartbeat: mocks.requestHeartbeat,
-    requestHeartbeatRaw: mocks.requestHeartbeat,
   };
 });
 
