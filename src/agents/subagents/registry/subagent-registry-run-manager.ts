@@ -73,7 +73,9 @@ class SubagentRunManager extends SubagentLaunchManager {
       expectedLifecycleRevision: params.expectedLifecycleRevision?.trim() || undefined,
     };
     entry.suppressCompletionDelivery = true;
-    entry.execution = { ...entry.execution, suppressSessionEffects: true };
+    if (entry.execution.status !== "terminal") {
+      entry.execution = { ...entry.execution, suppressSessionEffects: true };
+    }
     try {
       this.options.persistOrThrow(runId);
       return { status: "persisted" };

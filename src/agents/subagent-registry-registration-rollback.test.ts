@@ -13,6 +13,7 @@ import type {
   SubagentRegistrationIdentity,
 } from "./subagents/registry/subagent-registry-run-launch.js";
 import {
+  markSubagentRunTerminated,
   recordAcceptedSubagentSpawnRollback,
   rollbackSubagentRunRegistration,
 } from "./subagents/registry/subagent-registry.js";
@@ -224,7 +225,47 @@ describe("subagent registration rollback", () => {
     expect(loadSubagentRegistryFromSqlite().get(runId)).toMatchObject({
       acceptedSpawnRollback: { gatewayRunId: runId },
       suppressCompletionDelivery: true,
+      execution: { suppressSessionEffects: true },
     });
+  });
+
+  it("preserves kill-owned terminal execution while recording accepted rollback custody", () => {
+    const childSessionKey = "agent:main:subagent:rollback-after-kill";
+    const runId = "run-rollback-after-kill";
+    const liveRun = createAcceptedLiveRun(runId, childSessionKey);
+    addSubagentRunForTests(liveRun);
+    saveSubagentRegistryToSqlite(
+      canonicalSubagentRunFixtures(new Map([[runId, structuredClone(liveRun)]])),
+    );
+
+    expect(markSubagentRunTerminated({ runId, reason: "manual kill" })).toBe(1);
+    const killed = getSubagentRunByChildSessionKey(childSessionKey);
+    expect(killed).not.toBeNull();
+    const killedExecution = structuredClone(killed!.execution);
+    const killedReconciliation = structuredClone(killed!.killReconciliation);
+
+    const result = recordAcceptedSubagentSpawnRollback({
+      runId,
+      childSessionKey,
+      gatewayRunId: runId,
+      reason: "accepted launch completed after manual kill",
+      expectedRegistration: { runId, childSessionKey, generation: 1, createdAt: 10 },
+    });
+
+    expect(result).toEqual({ status: "persisted" });
+    expect(getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
+      acceptedSpawnRollback: { gatewayRunId: runId },
+      suppressCompletionDelivery: true,
+      killReconciliation: killedReconciliation,
+    });
+    expect(getSubagentRunByChildSessionKey(childSessionKey)?.execution).toEqual(killedExecution);
+    const persisted = loadSubagentRegistryFromSqlite().get(runId);
+    expect(persisted).toMatchObject({
+      acceptedSpawnRollback: { gatewayRunId: runId },
+      suppressCompletionDelivery: true,
+      killReconciliation: killedReconciliation,
+    });
+    expect(persisted?.execution).toEqual(killedExecution);
   });
 
   it("rejects rollback custody when the registration identity no longer matches", () => {

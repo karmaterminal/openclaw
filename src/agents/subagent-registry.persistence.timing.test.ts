@@ -4,11 +4,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/config.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
-import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import type { SessionEntry } from "../config/sessions/types.js";
-import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
+import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
+import { timingLifecycleMocks } from "./subagent-registry.persistence.timing.mocks.test-support.js";
 import { SUBAGENT_ENDED_REASON_KILLED } from "./subagents/registry/subagent-lifecycle-events.js";
 import { resetSubagentRegistryRuntimeLoadersForTests } from "./subagents/registry/subagent-registry-deps.js";
 import { persistSubagentSessionTiming } from "./subagents/registry/subagent-registry-helpers.js";
@@ -106,6 +106,9 @@ describe("subagent registry persistence timing", () => {
     sharedRegistryMocks.onAgentEvent.mockClear();
     announceSpy.mockReset();
     announceSpy.mockResolvedValue("delivered");
+    timingLifecycleMocks.recordSubagentTerminalState.mockReset();
+    timingLifecycleMocks.recordSubagentTerminalState.mockResolvedValue(undefined);
+    timingLifecycleMocks.completeTaskRunByRunIdAsync.mockClear();
     sharedRegistryMocks.callGateway.mockReset();
     sharedRegistryMocks.callGateway.mockResolvedValue({
       status: "ok",
@@ -115,11 +118,10 @@ describe("subagent registry persistence timing", () => {
   });
 
   afterEach(async () => {
-    clearRuntimeConfigSnapshot();
-    closeOpenClawStateDatabaseForTest();
     resetSubagentRegistryForTests({ persist: false });
     resetSubagentRegistryRuntimeLoadersForTests();
-    await cleanupSessionStateForTest();
+    await cleanupSessionStateForTest(tempStateDir ? { stateDir: tempStateDir } : undefined);
+    clearRuntimeConfigSnapshot();
     if (tempStateDir) {
       await fs.rm(tempStateDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
       tempStateDir = null;
@@ -202,6 +204,8 @@ describe("subagent registry persistence timing", () => {
       const store = await readSubagentSessionStore(storePath);
       return store["agent:main:subagent:timing"]?.endedAt === endedAt;
     });
+    expect(timingLifecycleMocks.recordSubagentTerminalState).toHaveBeenCalledOnce();
+    expect(timingLifecycleMocks.completeTaskRunByRunIdAsync).toHaveBeenCalledOnce();
     const store = await readSubagentSessionStore(storePath);
     const persisted = store["agent:main:subagent:timing"];
     expect(persisted?.endedAt).toBe(endedAt);
