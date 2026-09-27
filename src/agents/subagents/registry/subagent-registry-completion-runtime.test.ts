@@ -161,7 +161,7 @@ describe("subagent completion rejection ownership", () => {
         expect(completionSignal).not.toBe(launch.signal);
         expect(completionSignal?.aborted).toBe(false);
         expect(settled).toBe(false);
-        expect(h.entry.completion?.resultText).toBeUndefined();
+        expect(h.entry.completion?.resultText).toBeNull();
         expect(getActiveGatewayRootWorkCount()).toBe(1);
         finishCapture.resolve();
         await expect(completion).resolves.toEqual({ status: "fulfilled" });
@@ -389,19 +389,16 @@ describe("subagent completion rejection ownership", () => {
     },
   );
 
-  it("defers a partially terminal steer-restart orphan after two persistence failures", async () => {
+  it("resumes canonical terminal cleanup after two persistence failures", async () => {
     const h = createHarness();
-    h.entry.execution = { status: "terminal", startedAt: 0, endedAt: 1 };
-    h.entry.endedReason = undefined;
-    h.entry.completion = undefined;
-    h.entry.delivery = undefined;
+    h.resumeRun.mockImplementation(() => {});
 
     await h.runtime.completeSubagentRunWithRecovery(h.request, "orphan-resume");
 
     expect(h.completeSubagentRun).toHaveBeenCalledTimes(2);
-    expect(h.scheduleSweep).toHaveBeenCalledExactlyOnceWith({ delayMs: 1_000 });
-    expect(h.resumeRun).not.toHaveBeenCalled();
-    expect(h.entry.cleanupHandled).toBe(true);
-    expect(h.resumed.has(h.entry.runId)).toBe(true);
+    expect(h.scheduleSweep).not.toHaveBeenCalled();
+    expect(h.resumeRun).toHaveBeenCalledExactlyOnceWith(h.entry.runId);
+    expect(h.entry.cleanupHandled).toBe(false);
+    expect(h.resumed.has(h.entry.runId)).toBe(false);
   });
 });
