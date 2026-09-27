@@ -21,11 +21,14 @@ import {
   createOutstandingWakeRuns,
   createRejectedRequesterWake,
   createRestoredWakeRuns,
+  createSelectedAllRecipientAuthorityBinding,
+  createSettlingRequesterWake,
   createSteeredRestoreRuns,
   expectFixtureAgentDatabaseCount,
   FORCED_RESTART_WAKE_CASES,
   readPersistedRun,
   withPersistenceResumeRegistryState,
+  writeRunChildSessions,
 } from "./subagent-registry.persistence.resume.test-support.js";
 import { registerSubagentDismissedRetentionCases } from "./subagent-registry.persistence.retention.test-support.js";
 import {
@@ -144,15 +147,6 @@ describe("subagent registry persistence resume", () => {
         registryStateDbModule.closeOpenClawStateDatabaseForTest();
       },
     });
-  }
-
-  async function writeRunChildSessions(
-    stateDir: string,
-    runs: ReadonlyArray<{ runId: string; childSessionKey: string }>,
-  ) {
-    await Promise.all(
-      runs.map((run) => writeChildSession(stateDir, run.childSessionKey, `session-${run.runId}`)),
-    );
   }
 
   it.each([
@@ -281,19 +275,7 @@ describe("subagent registry persistence resume", () => {
         ([params]) => params.childRunId === "run-all-authority",
       )?.[0];
       expect(announceParams).toBeDefined();
-      const selectedBinding = {
-        version: 1 as const,
-        selection: "selected" as const,
-        recipients: [
-          {
-            sessionKey: "agent:main:main",
-            authority: {
-              state: "bound" as const,
-              epoch: "11111111-1111-4111-8111-111111111111",
-            },
-          },
-        ],
-      };
+      const selectedBinding = createSelectedAllRecipientAuthorityBinding();
 
       expect(announceParams?.persistContinuationRecipientAuthorityBinding?.(selectedBinding)).toBe(
         true,
@@ -1033,15 +1015,7 @@ describe("subagent registry persistence resume", () => {
   it.each([false, true])(
     "settles a restored steered requester turn (yielded: %s)",
     async (requesterYielded) => {
-      // Settle like the real waker so a later restore replay sees no pending wake.
-      const wakeRequester = vi.fn<WakeRequester>(async (params) => {
-        const wake = params.settledEntry!.requesterSettleWake!;
-        params.completeBatch([params.settledEntry!], wake.rearmGeneration!, {
-          delivered: true,
-          path: "direct",
-        });
-        return true;
-      });
+      const wakeRequester = createSettlingRequesterWake();
       vi.spyOn(
         requesterSettleModule,
         "maybeWakeRequesterAfterAllChildrenSettled",

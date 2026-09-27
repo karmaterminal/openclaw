@@ -29,6 +29,11 @@ import {
   emitInSettlementOrder,
   waitForPendingReplyEvents,
 } from "./embedded-agent-subscribe.reply-delivery.serial.js";
+import type {
+  BlockReplyDeliveryOptions,
+  EmitBlockReplyOptions,
+  FailedBlockReply,
+} from "./embedded-agent-subscribe.reply-delivery.types.js";
 import { createAssistantTextAccumulator } from "./embedded-agent-subscribe.reply-text.js";
 import type { EmbeddedAgentEvent } from "./embedded-agent-subscribe.shared-types.js";
 import type { SubscribeEmbeddedAgentSessionParams } from "./embedded-agent-subscribe.types.js";
@@ -307,19 +312,7 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     { pendingToolMedia: BlockReplyPayload; autoDeliveryMediaUrls: string[] }
   >();
   const deferredBlockReplyCallbacks = new WeakMap<BlockReplyPayload, () => void>();
-  const failedBlockReplies: Array<{
-    payload: BlockReplyPayload;
-    options?: {
-      assistantMessageIndex?: number;
-      pendingToolMedia?: BlockReplyPayload | null;
-      autoDeliveryMediaUrls?: string[];
-      retryable?: boolean;
-    };
-    onDelivered?: () => void;
-    deliveryGeneration: number;
-    deliveryKey: string;
-    deliverySequence: number;
-  }> = [];
+  const failedBlockReplies: FailedBlockReply[] = [];
   const exhaustedBlockReplyKeys = new Set<string>();
   let blockReplyDeliveryGeneration = 0;
   let blockReplyDeliverySequence = 0;
@@ -329,12 +322,7 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
   });
   const emitBlockReplySafely = (
     payload: Parameters<NonNullable<SubscribeEmbeddedAgentSessionParams["onBlockReply"]>>[0],
-    options?: {
-      assistantMessageIndex?: number;
-      pendingToolMedia?: BlockReplyPayload | null;
-      autoDeliveryMediaUrls?: string[];
-      retryable?: boolean;
-    },
+    options?: BlockReplyDeliveryOptions,
     onDelivered?: () => void,
     retrying = false,
     deliveryGeneration = blockReplyDeliveryGeneration,
@@ -471,19 +459,7 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
     }
     recordDeliveredAutoMedia(state, autoDeliveryMediaUrls);
   };
-  const emitBlockReply = (
-    payload: BlockReplyPayload,
-    options?: {
-      assistantMessageIndex?: number;
-      blockSourceText?: string;
-      blockSourceRange?: readonly [start: number, end: number];
-      /** Completion provenance; survives the presentation-change clear. */
-      blockCoverageSourceText?: string;
-      consumePendingToolMedia?: boolean;
-      onDelivered?: () => void;
-      retryable?: boolean;
-    },
-  ) => {
+  const emitBlockReply = (payload: BlockReplyPayload, options?: EmitBlockReplyOptions) => {
     flushAssistantStream();
     const withAssistantDirectives = consumePendingAssistantReplyDirectivesIntoReply(state, payload);
     const pendingToolMedia =

@@ -1,16 +1,19 @@
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { isPathInside } from "../../../infra/path-guards.js";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
 import { createSubagentPersistenceRuntime } from "./subagent-registry.persistence-fixture.test-support.js";
 import {
   createDeliveredWake,
   withSubagentRegistryPersistenceState,
+  writeChildSession,
 } from "./subagent-registry.persistence.test-support.js";
 import { loadSubagentRegistryFromSqlite } from "./subagent-registry.store.sqlite.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
 type RegistryModule = typeof import("./subagent-registry.test-helpers.js");
 type GatewayCall = typeof import("../../../gateway/call.js").callGateway;
+type WakeRequester =
+  typeof import("../announce/subagent-announce.requester-settle-wake.js").maybeWakeRequesterAfterAllChildrenSettled;
 
 export const FORCED_RESTART_WAKE_CASES = [
   { order: "replacement-first", runCount: 1 },
@@ -218,4 +221,41 @@ export function createSteeredRestoreRuns(endedAt: number, requesterYielded: bool
     });
   }
   return { nonannouncing, run };
+}
+
+export async function writeRunChildSessions(
+  stateDir: string,
+  runs: ReadonlyArray<{ runId: string; childSessionKey: string }>,
+) {
+  await Promise.all(
+    runs.map((run) => writeChildSession(stateDir, run.childSessionKey, `session-${run.runId}`)),
+  );
+}
+
+export function createSelectedAllRecipientAuthorityBinding() {
+  return {
+    version: 1 as const,
+    selection: "selected" as const,
+    recipients: [
+      {
+        sessionKey: "agent:main:main",
+        authority: {
+          state: "bound" as const,
+          epoch: "11111111-1111-4111-8111-111111111111",
+        },
+      },
+    ],
+  };
+}
+
+// Settle like the real waker so a later restore replay sees no pending wake.
+export function createSettlingRequesterWake() {
+  return vi.fn<WakeRequester>(async (params) => {
+    const wake = params.settledEntry!.requesterSettleWake!;
+    params.completeBatch([params.settledEntry!], wake.rearmGeneration!, {
+      delivered: true,
+      path: "direct",
+    });
+    return true;
+  });
 }
