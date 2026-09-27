@@ -86,3 +86,19 @@ export function buildSubagentContinuationRegistrationFields(
     ...(params.traceparent ? { traceparent: params.traceparent } : {}),
   };
 }
+
+/**
+ * Completion settlement (#157061) retires a result whose run has no `subagent` task row.
+ * Continuation spawns start from detached cleanup with no Gateway request scope, so they
+ * dispatch over the WebSocket fallback, where the registry otherwise leaves tracking to
+ * Gateway's `cli` row. Keep that fallback's never-reject policy but write the canonical row:
+ * an unset ownership is the registry's best-effort row mode.
+ */
+export function resolveSubagentContinuationTaskRowOwnership(
+  params: Pick<ContinuationSpawnParams, "continuationChainState">,
+  taskRowOwnership: "required" | "gateway_best_effort",
+): "required" | "gateway_best_effort" | undefined {
+  return taskRowOwnership === "gateway_best_effort" && params.continuationChainState
+    ? undefined
+    : taskRowOwnership;
+}
