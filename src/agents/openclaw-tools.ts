@@ -17,7 +17,7 @@ import {
 } from "./agent-tools.before-tool-call.js";
 import { resolveOpenClawPluginToolsForOptions } from "./openclaw-plugin-tools.js";
 import { filterToolsByClientCaps } from "./openclaw-tools.client-caps.js";
-import { createOpenClawContinuationTools } from "./openclaw-tools.continuation.js";
+import { createOpenClawContinuationToolsForRun } from "./openclaw-tools.continuation-run.js";
 import { createHostedGatewayTools } from "./openclaw-tools.gateway.js";
 import { resolveOpenClawToolsHookContext } from "./openclaw-tools.hook-context.js";
 import {
@@ -42,7 +42,6 @@ import { createAgentsListTool } from "./tools/agents-list-tool.js";
 import { createAskUserTool } from "./tools/ask-user-tool.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { createComputerTool } from "./tools/computer-tool.js";
-import { buildInventoryContinuationToolOpts } from "./tools/continuation-inventory-opts.js";
 import {
   createConversationsListTool,
   createConversationsSendTool,
@@ -125,11 +124,6 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
   const spawnWorkspaceDir = resolveWorkspaceRoot(options?.spawnWorkspaceDir ?? workspaceDir);
   options?.recordToolPrepStage?.("openclaw-tools:session-workspace");
   const widgetPresentation = resolveWidgetPresentationForRun(options);
-  const inventoryContinuationOpts = options?.beforeToolCallHookContext?.skillCommand
-    ? buildInventoryContinuationToolOpts(
-        resolvedConfig?.agents?.defaults?.continuation?.enabled === true,
-      )
-    : {};
   // Scheduled turns keep delivery routing live, but Gateway authorization remains bound to the
   // authenticated creator account captured in the immutable scheduled authority envelope.
   const inlineWidgetClientAvailable = options?.clientCaps?.includes("inline-widgets") === true;
@@ -670,22 +664,7 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
       },
     }),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
-    ...createOpenClawContinuationTools({
-      config: resolvedConfig,
-      agentSessionKey: options?.agentSessionKey,
-      runSessionKey: options?.runSessionKey,
-      sessionId: options?.sessionId,
-      runId: options?.runId,
-      workspaceDir,
-      sandboxRoot: options?.sandboxRoot,
-      sandboxFsBridge: options?.sandboxFsBridge,
-      sandboxWritable: options?.sandboxWritable,
-      drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
-      disableContinuationTools: options?.disableContinuationTools,
-      continueWorkOpts: options?.continueWorkOpts ?? inventoryContinuationOpts.continueWorkOpts,
-      requestCompactionOpts:
-        options?.requestCompactionOpts ?? inventoryContinuationOpts.requestCompactionOpts,
-    }),
+    ...createOpenClawContinuationToolsForRun({ resolvedConfig, workspaceDir, options }),
   ];
   options?.recordToolPrepStage?.("openclaw-tools:core-tool-list");
   let allTools = tools;

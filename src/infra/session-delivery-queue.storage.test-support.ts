@@ -69,3 +69,18 @@ export function rewriteSessionQueueEntry(
       WHERE queue_name = 'session' AND id = ?`,
   ).run(JSON.stringify(entry), id);
 }
+
+export function rewriteSessionQueueEntryKind(
+  tempDir: string,
+  id: string,
+  entryKind: string | null,
+): void {
+  const { db } = openOpenClawStateDatabase({
+    env: { ...process.env, OPENCLAW_STATE_DIR: tempDir },
+  });
+  db.prepare(
+    `UPDATE delivery_queue_entries
+        SET entry_kind = ?
+      WHERE queue_name = 'session' AND id = ?`,
+  ).run(entryKind, id);
+}

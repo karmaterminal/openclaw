@@ -11,7 +11,6 @@ import { deletePersonalGitHubSessionReceipts } from "../../state/github-personal
 import { readOpenClawAgentDatabaseIdentity } from "../../state/openclaw-agent-db-identity.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
 import {
-  deferOpenClawAgentPostCommitPublication,
   openOpenClawAgentDatabase,
   type OpenClawAgentDatabase,
 } from "../../state/openclaw-agent-db.js";
@@ -44,6 +43,7 @@ import {
 import { emitArchivedTranscriptUpdates } from "./session-accessor.sqlite-events.js";
 import { publishCommittedSessionEntryRemoval } from "./session-accessor.sqlite-identity.js";
 import { prepareSessionLifecycleArtifactCleanup } from "./session-accessor.sqlite-lifecycle-artifacts.js";
+import { withCommittedHistoryMaintenance } from "./session-accessor.sqlite-lifecycle-maintenance.js";
 import {
   collectSessionStateIdsForEntry,
   planSessionStateDeleteIfUnreferenced,
@@ -76,42 +76,10 @@ import {
   withSqliteSessionDatabase,
   type ResolvedSqliteScope,
 } from "./session-accessor.sqlite-scope.js";
-import {
-  collectAdmissionProtectedSessionIds,
-  kickSessionHistoryDiskBudgetMaintenance,
-} from "./session-history-eviction.js";
+import { collectAdmissionProtectedSessionIds } from "./session-history-eviction.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
 
 // Single-target lifecycle owner: cleanup, reset, guarded delete, and trusted rollback.
-
-async function withCommittedHistoryMaintenance<T>(
-  { agentId, env, storePath }: { agentId?: string; env?: NodeJS.ProcessEnv; storePath: string },
-  run: (
-    recordCommit: (database: OpenClawAgentDatabase) => void,
-    markCommitted: () => void,
-  ) => Promise<T>,
-  options: { scheduleNext?: boolean } = {},
-): Promise<T> {
-  let committed = false;
-  try {
-    return await run(
-      (database) => {
-        deferOpenClawAgentPostCommitPublication(database, () => {
-          committed = true;
-        });
-      },
-      () => {
-        committed = true;
-      },
-    );
-  } finally {
-    // A partial commit still needs maintenance, but only after archive publication and
-    // lifecycle-owner cleanup finish. Rejected preparation or rollback creates no pressure.
-    if (committed && options.scheduleNext !== false) {
-      kickSessionHistoryDiskBudgetMaintenance({ agentId, env, storePath, force: true });
-    }
-  }
-}
 
 export async function cleanupSessionLifecycleArtifactsCore(
   params: SessionLifecycleArtifactCleanupParams,

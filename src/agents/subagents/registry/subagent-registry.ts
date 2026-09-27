@@ -15,13 +15,13 @@ import {
   isGatewayRestartDraining,
   runWithGatewayIndependentRootWorkAdmission,
 } from "../../../process/gateway-work-admission.js";
-import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
 import { prependAgentSteeringPrompt } from "../../agent-steering-queue.js";
 import { purgeExpiredDelegateArtifacts } from "../../delegate-artifacts.js";
 import { resolveAgentTimeoutMs } from "../../timeout.js";
 import { reconcileRetiredSubagentCancellation } from "../completion/subagent-completion-admission.store.js";
 import { terminateAcceptedCollectorRun } from "../spawn/subagent-spawn-cleanup.js";
 import { isDeliverySuspended } from "./subagent-delivery-state.js";
+import { runRegistrySubagentAnnounceFlow } from "./subagent-registry-announce-flow.js";
 import { createSubagentRegistryCompletionRuntime } from "./subagent-registry-completion-runtime.js";
 import { emitSubagentProgressEndedHook } from "./subagent-registry-completion.js";
 import { createSubagentRegistryContextCleanup } from "./subagent-registry-context-cleanup.js";
@@ -41,6 +41,11 @@ import {
   getSubagentRunsForCollectorGroup,
   subagentRuns,
 } from "./subagent-registry-memory.js";
+import {
+  persistSubagentRuns,
+  persistSubagentRunsAsyncOrThrow,
+  persistSubagentRunsOrThrow,
+} from "./subagent-registry-persist.js";
 import { createSubagentRegistryPublicApi } from "./subagent-registry-public-api.js";
 import {
   countPendingDescendantRuns,
@@ -51,12 +56,7 @@ import { handleOrphanedSubagentResume } from "./subagent-registry-resume-orphan.
 import type { RegisterSubagentRunParams } from "./subagent-registry-run-launch-record.js";
 import type { SubagentRegistrationOwnership } from "./subagent-registry-run-launch.js";
 import { createSubagentRunManager } from "./subagent-registry-run-manager.js";
-import {
-  clearSubagentRunsReadCacheForTest,
-  persistSubagentRunsToDisk,
-  persistSubagentRunsToDiskOrThrow,
-  persistSubagentRunsToDiskAsyncOrThrow,
-} from "./subagent-registry-state.js";
+import { clearSubagentRunsReadCacheForTest } from "./subagent-registry-state.js";
 import { callGatewayForSweep } from "./subagent-registry-sweep-gateway.js";
 import { hasContinuationWorkForSweepEntry } from "./subagent-registry-sweep-guards.js";
 import {
@@ -90,27 +90,6 @@ const resumeRetryTimers = new Set<ReturnType<typeof setTimeout>>();
 let activeGatewayContextResolver: GatewayContextResolver | undefined;
 const SUBAGENT_ANNOUNCE_TIMEOUT_MS = 120_000;
 const GATEWAY_ADMISSION_RETRY_DELAY_MS = 1_000;
-
-// Hot lifecycle callers name every changed or removed row. Zero ids is reserved
-// for explicit full-registry replacement at restore/reset boundaries.
-function persistSubagentRuns(...runIds: string[]) {
-  persistSubagentRunsToDisk(subagentRuns, runIds.length > 0 ? runIds : undefined);
-}
-
-function persistSubagentRunsAsyncOrThrow(
-  context: OpenClawStateWorkerContext,
-  callbacks: { assertCurrent: () => void; onCommitted?: () => void },
-  ...runIds: string[]
-): Promise<void> {
-  return persistSubagentRunsToDiskAsyncOrThrow(subagentRuns, runIds, {
-    context,
-    ...callbacks,
-  });
-}
-
-function persistSubagentRunsOrThrow(...runIds: string[]) {
-  persistSubagentRunsToDiskOrThrow(subagentRuns, runIds.length > 0 ? runIds : undefined);
-}
 
 /** Prepare registry hydration before the session owner's synchronous reset commit. */
 export function prepareSubagentSessionCleanupRevocation(sessionKey: string): () => void {
@@ -182,39 +161,7 @@ const subagentLifecycleController = new SubagentLifecycleController({
     (await loadSubagentAnnounceModule()).captureSubagentCompletionReply(sessionKey, options),
   cleanupBrowserSessionsForLifecycleEnd: async (args) =>
     (await loadSubagentBrowserCleanupModule()).cleanupBrowserSessionsForLifecycleEnd(args),
-  runSubagentAnnounceFlow: async (params) => {
-    const entry =
-      subagentRuns.get(params.childRunId) ??
-      [...subagentRuns.values()].find(
-        (candidate) => candidate.childSessionKey === params.childSessionKey,
-      );
-    return (await loadSubagentAnnounceModule()).runSubagentAnnounceFlow({
-      ...params,
-      silentAnnounce: entry?.silentAnnounce,
-      wakeOnReturn: entry?.wakeOnReturn,
-      continuationTargetSessionKey: entry?.continuationTargetSessionKey,
-      continuationTargetSessionKeys: entry?.continuationTargetSessionKeys,
-      continuationFanoutMode: entry?.continuationFanoutMode,
-      continuationRecipientAuthorityBinding: entry?.continuationRecipientAuthorityBinding,
-      persistContinuationRecipientAuthorityBinding: (binding) => {
-        if (!entry || subagentRuns.get(entry.runId) !== entry) {
-          return false;
-        }
-        const previous = entry.continuationRecipientAuthorityBinding;
-        entry.continuationRecipientAuthorityBinding = binding;
-        try {
-          persistSubagentRunsOrThrow(entry.runId);
-        } catch (error) {
-          // Persistence owns completion-time selection. Restore pending state so
-          // a retry cannot enqueue from memory-only authority.
-          entry.continuationRecipientAuthorityBinding = previous;
-          throw error;
-        }
-        return subagentRuns.get(entry.runId) === entry;
-      },
-      ...(entry?.traceparent ? { traceparent: entry.traceparent } : {}),
-    });
-  },
+  runSubagentAnnounceFlow: runRegistrySubagentAnnounceFlow,
   maybeWakeRequesterAfterAllChildrenSettled: async (args) =>
     subagentRestorer.canResumeWakes()
       ? (
@@ -792,41 +739,7 @@ export const settleRequesterAfterSessionSpawns = publicApi.settleRequesterAfterS
 export const markRequesterTurnYielded = publicApi.markRequesterTurnYielded;
 export const listUnsettledRequesterChildren = publicApi.listUnsettledRequesterChildren;
 export type { UnsettledRequesterChild } from "./subagent-registry-requester-yield.js";
-
-/** Attaches presentation to an existing wake without changing completion ownership. */
-export function attachRequesterProgressPresentation(params: {
-  operationId: string;
-  members: readonly { runId: string; generation: number; rearmGeneration: number }[];
-  assertCurrent: () => void;
-}): void {
-  params.assertCurrent();
-  const rows = params.members.map((member) => {
-    const entry = subagentRuns.get(member.runId);
-    const wake = entry?.requesterSettleWake;
-    if (
-      !entry ||
-      entry.generation !== member.generation ||
-      wake?.requesterYieldBatch !== true ||
-      wake.status !== "pending" ||
-      wake.rearmGeneration !== member.rearmGeneration
-    ) {
-      throw new Error("Progress handoff batch was replaced");
-    }
-    return { entry, wake, previous: wake.progressOperationId };
-  });
-  for (const { wake } of rows) {
-    wake.progressOperationId = params.operationId;
-  }
-  try {
-    params.assertCurrent();
-    persistSubagentRunsOrThrow(...rows.map(({ entry }) => entry.runId));
-  } catch (error) {
-    for (const { wake, previous } of rows) {
-      wake.progressOperationId = previous;
-    }
-    throw error;
-  }
-}
+export { attachRequesterProgressPresentation } from "./subagent-registry-progress-presentation.js";
 
 const bootstrapState = subagentRegistryBootstrapState;
 bootstrapState.restorer = subagentRestorer;

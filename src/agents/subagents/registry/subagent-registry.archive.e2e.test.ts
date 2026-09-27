@@ -25,6 +25,7 @@ import {
   captureSubagentCompletionReply,
   runSubagentAnnounceFlow,
 } from "../announce/subagent-announce.js";
+import { finalizeArchiveFixtureTaskRun } from "./subagent-registry.archive.test-support.js";
 import { observeRootWork } from "./subagent-registry.browser-cleanup.test-support.js";
 
 const taskRuntimeMocks = vi.hoisted(() => ({
@@ -174,24 +175,9 @@ describe("subagent registry archive behavior", () => {
     vi.mocked(runSubagentAnnounceFlow).mockReset();
     hasLiveOrRecentlyDispatchedContinuationWorkMock.mockReset().mockReturnValue(false);
     vi.mocked(getAgentRunContext).mockReset().mockReturnValue(undefined);
-    taskRuntimeMocks.finalizeTaskRunByRunId.mockReset().mockImplementation((params) => [
-      {
-        taskId: params.taskId ?? `task-${params.runId}`,
-        runtime: params.runtime ?? "subagent",
-        runId: params.runId,
-        childSessionKey: params.sessionKey,
-        requesterSessionKey: "agent:main:main",
-        ownerKey: "agent:main:main",
-        scopeKind: "session",
-        task: "Finalized archive fixture task",
-        status: params.status,
-        deliveryStatus: "not_applicable",
-        notifyPolicy: "silent",
-        createdAt: 0,
-        endedAt: params.endedAt,
-        error: params.error,
-      },
-    ]);
+    taskRuntimeMocks.finalizeTaskRunByRunId
+      .mockReset()
+      .mockImplementation(finalizeArchiveFixtureTaskRun);
     taskStatusMocks.findTaskByRunIdForStatus.mockReset();
     taskStatusMocks.listTasksForSessionKeyForStatus.mockReset();
     taskStatusMocks.listTasksForSessionKeyForStatus.mockReturnValue([]);

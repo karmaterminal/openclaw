@@ -9,9 +9,19 @@ import { normalizeHeartbeatWakeReason } from "./heartbeat-reason.js";
 import {
   hasTrustedContinuationHeartbeatWake,
   markTrustedContinuationHeartbeatWake,
-  type HeartbeatRunResult,
-  type HeartbeatWakeRequest,
 } from "./heartbeat-wake-contracts.js";
+import type {
+  ActiveWake,
+  PendingWake,
+  RequestOptions,
+  SessionEventWakeRequest,
+  SessionEventWakeResult,
+  SessionEventWakeWaitOptions,
+  Settlement,
+  WakeAttempt,
+  WakeGroup,
+  WakeHandler,
+} from "./session-event-wake.types.js";
 import {
   getSystemEventStorePath,
   isSystemEventStoreCurrent,
@@ -19,61 +29,7 @@ import {
   recordSystemEventStoreReplaced,
 } from "./system-event-ownership.js";
 
-type SessionEventWakeResult = HeartbeatRunResult;
-type SessionEventWakeRequest = HeartbeatWakeRequest;
-type WakeHandler = (
-  request: SessionEventWakeRequest,
-  signal: AbortSignal,
-) => Promise<SessionEventWakeResult>;
-export type SessionEventWakeWaitOptions = {
-  abortSignal?: AbortSignal;
-  /** Called when the queue starts an attempt for this waiter. */
-  onAttemptStarted?: () => void;
-  /** Called whenever this waiter enters the queue, including retained retries. */
-  onQueued?: () => void;
-  /** Detach this waiter while the queue retains the wake at its retry deadline. */
-  stopWaitingOnRetry?: (
-    result: Extract<SessionEventWakeResult, { status: "skipped" }>,
-    retryAtMs: number,
-  ) => boolean;
-};
-type Settlement = {
-  active: boolean;
-  settle: (result: SessionEventWakeResult) => void;
-  onAttemptStarted?: SessionEventWakeWaitOptions["onAttemptStarted"];
-  onQueued?: SessionEventWakeWaitOptions["onQueued"];
-  stopWaitingOnRetry?: SessionEventWakeWaitOptions["stopWaitingOnRetry"];
-};
-type PendingWake = SessionEventWakeRequest & {
-  trustedContinuationRouting: boolean;
-  sequence: number;
-  barrierSequence?: number;
-  requestedAt: number;
-  readyAt: number;
-  notBefore: number;
-  settlements: Settlement[];
-  retired?: true;
-  /** Admission/preparation may have effects even before model dispatch. Never reset on retry. */
-  workStarted: boolean;
-  /** Every request represented by this wake must be an authoritative, task-free monitor poll. */
-  pureNativePoll: boolean;
-};
-type WakeGroup = {
-  task?: PendingWake;
-  scheduled?: PendingWake;
-  event?: PendingWake;
-  trustedTask?: PendingWake;
-  trustedScheduled?: PendingWake;
-  trustedEvent?: PendingWake;
-  blockedUntil: number;
-};
-type ActiveWake = { generation: number; controller: AbortController; wakes: PendingWake[] };
-type WakeAttempt = {
-  signal: AbortSignal;
-  wake: PendingWake;
-  terminalPollDisposition: boolean;
-};
-type RequestOptions = Omit<SessionEventWakeRequest, "retainedWork"> & { coalesceMs?: number };
+export type { SessionEventWakeWaitOptions } from "./session-event-wake.types.js";
 
 const SLOT_GROUPS = [
   ["task", "scheduled", "event"],
