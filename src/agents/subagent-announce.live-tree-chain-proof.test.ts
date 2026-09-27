@@ -102,11 +102,16 @@ import {
 import { parseDiagnosticTraceparent } from "../infra/diagnostic-trace-context-pure.js";
 import { resetDiagnosticTraceContextForTest } from "../infra/diagnostic-trace-context.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
+import {
+  getActiveGatewayRootWorkCount,
+  getActiveGatewayRootWorkHolders,
+} from "../process/gateway-work-admission.js";
 import { defaultRuntime } from "../runtime.js";
 import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { reloadTaskFlowRegistryFromStore } from "../tasks/task-flow-registry.js";
 import { listTaskFlowsForOwnerKey } from "../tasks/task-flow-runtime-internal.js";
+import { findTaskByRunId } from "../tasks/task-registry-query.js";
 import {
   resetTaskFlowRegistryForTests,
   resetTaskRegistryForTests,
@@ -181,6 +186,24 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2_000) {
     });
   }
   throw new Error("timed out waiting for condition");
+}
+
+// A continuation spawn also owns a `subagent` task row, which upstream mirrors
+// into a one-task flow under the same owner. Select the managed delegate flows
+// by kind; the mirror is asserted separately.
+function continuationDelegateFlows(ownerKey: string) {
+  return listTaskFlowsForOwnerKey(ownerKey).filter(
+    (flow) => (flow.stateJson as { kind?: string } | undefined)?.kind === "continuation_delegate",
+  );
+}
+
+function expectMirroredSubagentFlow(ownerKey: string, runId: string) {
+  const task = findTaskByRunId(runId);
+  expect(task).toMatchObject({ runtime: "subagent", ownerKey });
+  const mirroredFlows = listTaskFlowsForOwnerKey(ownerKey).filter(
+    (flow) => flow.syncMode === "task_mirrored",
+  );
+  expect(mirroredFlows).toEqual([expect.objectContaining({ flowId: task?.parentFlowId })]);
 }
 
 type RecordedContinuationSpan = {
@@ -270,7 +293,17 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     errorSpy = vi.spyOn(defaultRuntime, "error").mockImplementation(() => undefined);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Completion bookkeeping (task-row finalization) runs as detached Gateway
+    // root work after the observable return. Drain it the way a Gateway restart
+    // does before closing the SQLite handles it still reads.
+    try {
+      await waitFor(() => getActiveGatewayRootWorkCount() === 0, 4_000);
+    } catch {
+      throw new Error(
+        `Gateway root work still active at teardown: ${getActiveGatewayRootWorkHolders().join(", ")}`,
+      );
+    }
     logSpy?.mockRestore();
     errorSpy?.mockRestore();
     clearRuntimeConfigSnapshot();
@@ -578,9 +611,11 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     expect(
       callGatewayMock.mock.calls.filter(([request]) => request.method === "agent"),
     ).toHaveLength(2);
-    expect(listTaskFlowsForOwnerKey(hop1ChildSessionKey)).toEqual([
+    expect(continuationDelegateFlows(hop1ChildSessionKey)).toEqual([
       expect.objectContaining({ status: "succeeded" }),
     ]);
+    expectMirroredSubagentFlow(hop1ChildSessionKey, hop2RunId);
+    expect(listTaskFlowsForOwnerKey(hop1ChildSessionKey)).toHaveLength(2);
   });
 
   it("keeps a raw-final token delegate owned by its registered disposable origin", async () => {
@@ -645,7 +680,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
             entries.findIndex((candidate) => candidate.runId === entry.runId) === index,
         );
     await waitFor(() => {
-      const flow = listTaskFlowsForOwnerKey(originChildSessionKey)[0];
+      const flow = continuationDelegateFlows(originChildSessionKey)[0];
       return (
         flow?.status === "succeeded" &&
         listDelegateRuns().length === 1 &&
@@ -654,7 +689,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
       );
     }, 4_000);
 
-    const flows = listTaskFlowsForOwnerKey(originChildSessionKey);
+    const flows = continuationDelegateFlows(originChildSessionKey);
     const flow = flows[0];
     const [delegateRun] = listDelegateRuns();
     if (!flow || !delegateRun) {
@@ -673,7 +708,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     expect.soft(delegateRun.controllerSessionKey).toBe(originChildSessionKey);
     expect.soft(listTaskFlowsForOwnerKey(rootSessionKey)).toHaveLength(0);
     reloadTaskFlowRegistryFromStore();
-    expect.soft(listTaskFlowsForOwnerKey(originChildSessionKey)).toEqual([
+    expect.soft(continuationDelegateFlows(originChildSessionKey)).toEqual([
       expect.objectContaining({
         flowId: flow.flowId,
         ownerKey: originChildSessionKey,
@@ -696,7 +731,9 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     await new Promise<void>((resolveTurn) => {
       setTimeout(resolveTurn, 50);
     });
-    expect(listTaskFlowsForOwnerKey(originChildSessionKey)).toHaveLength(1);
+    expect(continuationDelegateFlows(originChildSessionKey)).toHaveLength(1);
+    expectMirroredSubagentFlow(originChildSessionKey, delegateRun.runId);
+    expect(listTaskFlowsForOwnerKey(originChildSessionKey)).toHaveLength(2);
     expect(listDelegateRuns()).toHaveLength(1);
     releaseSubagentRun(originChildRunId);
     expect(getSubagentRunByChildSessionKey(originChildSessionKey)).toBeNull();
