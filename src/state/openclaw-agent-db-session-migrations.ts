@@ -5,6 +5,7 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import { normalizeChatType, type ChatType } from "../channels/chat-type.js";
 import { parseSqliteSessionEntryRecord } from "../config/sessions/session-entry-json.js";
 import type { SessionEntry } from "../config/sessions/types.js";
+import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
 import { normalizeAccountId } from "../routing/account-id.js";
 import { buildConversationRef, normalizeConversationPeerId } from "../routing/conversation-ref.js";
 import { deriveSessionChatTypeFromKey } from "../sessions/session-chat-type-shared.js";
@@ -424,6 +425,20 @@ export function withoutSessionRecipientAuthoritySchema(sql: string): string {
 
 function hasSessionRecipientAuthoritySchema(db: DatabaseSync): boolean {
   return readSqliteTableColumns(db, "session_recipient_authority") !== null;
+}
+
+/**
+ * Upstream-lineage databases share schema versions 19+ without this additive
+ * table. Create it before exact-shape checks; such databases carry no entry-local
+ * return epochs, so there is nothing to move.
+ */
+export function ensureSessionRecipientAuthoritySchemaInTransaction(
+  db: DatabaseSync,
+  schemaSql: string,
+): void {
+  if (!hasSessionRecipientAuthoritySchema(db)) {
+    db.exec(extractSqliteTableSchema(schemaSql, "session_recipient_authority")); // sqlite-allow-raw -- Idempotent additive lazy ensure.
+  }
 }
 
 /** Moves the unshipped entry-local return epoch to its logical session-key owner. */

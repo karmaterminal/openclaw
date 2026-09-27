@@ -332,7 +332,6 @@ function downgradeV21AgentDatabaseToV13(databasePath: string): void {
       PRAGMA foreign_keys = OFF;
       PRAGMA legacy_alter_table = OFF;
       DROP TABLE session_participants;
-      DROP TABLE session_recipient_authority;
       DROP TABLE session_pending_inputs;
       DROP TABLE session_input_completions;
       DROP INDEX IF EXISTS idx_agent_session_windows_updated_at;
@@ -1374,14 +1373,15 @@ describe("openclaw agent database", () => {
   it("upgrades upstream v18 recipient authority without parsing Doctor-owned malformed rows", async () => {
     const stateDir = createTempStateDir();
     const env = { OPENCLAW_STATE_DIR: stateDir };
-    const databasePath = materializeCurrentWorkerAgentDatabase(stateDir);
+    // The frozen upstream schema carries no session_recipient_authority table.
+    const databasePath = materializeV21WorkerAgentDatabase(stateDir);
     const validKey = "agent:worker-1:valid-authority";
     const malformedKey = "agent:worker-1:malformed-authority";
     const epoch = "11111111-1111-4111-8111-111111111111";
     const { DatabaseSync } = requireNodeSqlite();
     const legacy = new DatabaseSync(databasePath);
+    removeCanonicalValidationFromHistoricalAgentFixture(legacy);
     legacy.exec(`
-      DROP TABLE session_recipient_authority;
       PRAGMA user_version = 18;
       UPDATE schema_meta SET schema_version = 18 WHERE meta_key = 'primary';
     `);
@@ -3897,7 +3897,6 @@ describe("openclaw agent database", () => {
     damaged.exec(`
       DROP TABLE auth_profile_store;
       DROP TABLE session_participants;
-      DROP TABLE session_recipient_authority;
       PRAGMA user_version = 14;
       UPDATE schema_meta SET schema_version = 14 WHERE meta_key = 'primary';
     `);
@@ -3932,7 +3931,6 @@ describe("openclaw agent database", () => {
     legacy.exec(`
       DROP TABLE session_suggestions;
       DROP TABLE session_participants;
-      DROP TABLE session_recipient_authority;
       PRAGMA user_version = 14;
       UPDATE schema_meta SET schema_version = 14 WHERE meta_key = 'primary';
     `);

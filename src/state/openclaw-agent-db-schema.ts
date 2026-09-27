@@ -72,6 +72,7 @@ import {
   ensureSessionAdditiveColumns,
   ensureSessionEntryValidityProjection,
   migrateConversationDeliveryTargetColumn,
+  ensureSessionRecipientAuthoritySchemaInTransaction,
   migrateSessionCreatorNamespaces,
   migrateSessionRecipientAuthority,
   migrateSessionTranscriptActiveProjection,
@@ -348,6 +349,7 @@ function ensureAgentSchema(
             migrateMemoryChunkMetadataSchema(db);
           }
         }
+        ensureSessionRecipientAuthoritySchemaInTransaction(db, schemaSql);
         const previousSchema =
           previousVersion < CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION
             ? withoutCanonicalSessionValidationSchema(migrationSchemaSql)
@@ -398,6 +400,7 @@ function ensureAgentSchema(
         ensureSessionAdditiveColumns(db);
         ensureSessionEntryValidityProjection(db);
         ensureSessionKeyContractSchemaInTransaction(db);
+        ensureSessionRecipientAuthoritySchemaInTransaction(db, schemaSql);
         if (hasPendingMemoryChunkMetadataMigration(db)) {
           migrateMemoryChunkMetadataSchema(db);
           db.exec(schemaSql);

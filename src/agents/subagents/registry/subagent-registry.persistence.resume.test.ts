@@ -1,6 +1,13 @@
 import { setImmediate as nextTask } from "node:timers/promises";
 // Subagent registry persistence-resume tests cover restoring SQLite-backed child runs.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import "./subagent-registry.persistence.mocks.test-support.js";
+// Preserve module setup before modules that consume it.
+// oxfmt-ignore
+import {
+  announceSpy,
+  createSubagentPersistenceRuntime,
+} from "./subagent-registry.persistence-fixture.test-support.js";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../../config/config.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
@@ -8,7 +15,6 @@ import { listOpenClawAgentDatabasesForTest as listSeedAgentDatabases } from "../
 import { closeOpenClawStateDatabaseForTest as closeSeedStateDatabase } from "../../../state/openclaw-state-db.js";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
 import "./subagent-registry.mocks.shared.js";
-import { createSubagentPersistenceRuntime } from "./subagent-registry.persistence-fixture.test-support.js";
 import {
   activatePersistenceResumeRegistry,
   createHydratedRegistryRuns,
@@ -40,15 +46,7 @@ import {
 type WakeRequester =
   typeof import("../announce/subagent-announce.requester-settle-wake.js").maybeWakeRequesterAfterAllChildrenSettled;
 type WakeParams = Parameters<WakeRequester>[0];
-type AnnounceParams = Parameters<
-  typeof import("../announce/subagent-announce.js").runSubagentAnnounceFlow
->[0];
 
-const { announceSpy } = vi.hoisted(() => ({
-  announceSpy: vi.fn<(params: AnnounceParams) => Promise<"delivered" | "retryable">>(
-    async () => "delivered",
-  ),
-}));
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 // Late-bound in beforeAll after vi.resetModules(); a static import would capture
 // the pre-reset module instance.

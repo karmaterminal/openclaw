@@ -228,20 +228,26 @@ describe("subagent registry persistence", () => {
     const stateFilePath = path.join(fixture.stateDir, "state-is-a-file");
     await fs.writeFile(stateFilePath, "not a directory", "utf8");
     setTestEnvValue("OPENCLAW_STATE_DIR", stateFilePath);
-    expect(() =>
-      registerSubagentRun({
-        runId: "run-prod-persist-fails",
-        childSessionKey: "agent:main:subagent:prod-persist-fails",
-        requesterSessionKey: "agent:main:main",
-        requesterDisplayKey: "main",
-        task: "must use strict production persistence",
-        cleanup: "keep",
-      }),
-    ).toThrow();
-    expect(getLatestSubagentRunByChildSessionKey("agent:main:subagent:prod-persist-fails")).toBe(
-      null,
-    );
-    expect(callGateway).not.toHaveBeenCalled();
+    try {
+      expect(() =>
+        registerSubagentRun({
+          runId: "run-prod-persist-fails",
+          childSessionKey: "agent:main:subagent:prod-persist-fails",
+          requesterSessionKey: "agent:main:main",
+          requesterDisplayKey: "main",
+          task: "must use strict production persistence",
+          cleanup: "keep",
+        }),
+      ).toThrow();
+      expect(getLatestSubagentRunByChildSessionKey("agent:main:subagent:prod-persist-fails")).toBe(
+        null,
+      );
+      expect(callGateway).not.toHaveBeenCalled();
+    } finally {
+      // The fixture settles through the shared-state worker context, which fails
+      // closed on an unusable state path; hand it back the case's real directory.
+      setTestEnvValue("OPENCLAW_STATE_DIR", fixture.stateDir);
+    }
   });
 
   it("persists continuation return metadata and replays it after restart", async () => {

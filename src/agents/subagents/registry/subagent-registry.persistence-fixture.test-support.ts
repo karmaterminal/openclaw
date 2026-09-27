@@ -20,8 +20,14 @@ import { cleanupSessionStateForTest } from "../../../test-utils/session-state-cl
 import { settleSubagentRegistryPersistenceWork } from "./subagent-registry.persistence.test-support.js";
 import { resetSubagentRegistryForTests } from "./subagent-registry.test-helpers.js";
 
+type AnnounceParams = Parameters<
+  typeof import("../announce/subagent-announce.js").runSubagentAnnounceFlow
+>[0];
+
 const { announceSpy } = vi.hoisted(() => ({
-  announceSpy: vi.fn(async (): Promise<"delivered" | "retryable"> => "delivered"),
+  announceSpy: vi.fn<(params: AnnounceParams) => Promise<"delivered" | "retryable">>(
+    async () => "delivered",
+  ),
 }));
 
 vi.mock("../announce/subagent-announce.js", async (importOriginal) => {
