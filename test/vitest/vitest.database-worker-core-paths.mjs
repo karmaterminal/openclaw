@@ -139,6 +139,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/subagents/announce/subagent-announce.requester-cron-authority.test.ts",
   "src/agents/subagents/announce/subagent-announce.requester-settle-results.test.ts",
   "src/agents/subagents/announce/subagent-announce.requester-settle-wake.test.ts",
+  "src/agents/subagent-announce.live-tree-chain-proof.test.ts",
   "src/agents/subagents/registry/subagent-control.accounting.test.ts",
   "src/agents/subagents/registry/subagent-registry.persistence.test.ts",
   "src/agents/subagents/registry/subagent-registry-lifecycle.test.ts",

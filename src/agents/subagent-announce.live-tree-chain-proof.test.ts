@@ -106,14 +106,11 @@ import { defaultRuntime } from "../runtime.js";
 import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { reloadTaskFlowRegistryFromStore } from "../tasks/task-flow-registry.js";
-import { getTaskFlowRegistryStore } from "../tasks/task-flow-registry.store.js";
 import { listTaskFlowsForOwnerKey } from "../tasks/task-flow-runtime-internal.js";
-import { configureTaskRegistryRuntime } from "../tasks/task-registry.store.js";
 import {
   resetTaskFlowRegistryForTests,
   resetTaskRegistryForTests,
 } from "../tasks/task-runtime.test-helpers.js";
-import { createInMemoryTaskRegistryStore } from "../test-utils/task-registry-store.js";
 import { createOpenClawContinuationTools } from "./openclaw-tools.continuation.js";
 import { loadSessionEntryByKey } from "./subagents/announce/subagent-announce-delivery.js";
 import {
@@ -234,6 +231,12 @@ function installRecordingContinuationTracer(): RecordedContinuationSpan[] {
 vi.mock("../browser-lifecycle-cleanup.js", () => ({
   cleanupBrowserSessionsForLifecycleEnd: vi.fn(async () => {}),
 }));
+// Context-engine end-of-run notification activates the whole agent plugin
+// runtime (every bundled provider). Plugin activation has its own owner tests
+// and is not part of the continuation chain under proof.
+vi.mock("./runtime-plugins.js", () => ({
+  loadAgentRuntimePluginRegistryHandle: vi.fn(),
+}));
 
 describe("continuation chain production composition proof (tree hop-1 + hop-2)", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
@@ -253,12 +256,6 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     resetSubagentRegistryForTests();
     resetTaskFlowRegistryForTests({ persist: false });
     resetTaskRegistryForTests({ persist: false });
-    // Durable task-registry admission needs the host SQLite broker, which this
-    // worker-thread shard does not own. Keep detached task records in memory,
-    // mirrored against the durable flow store the chain assertions reload.
-    configureTaskRegistryRuntime({
-      store: createInMemoryTaskRegistryStore(undefined, getTaskFlowRegistryStore()),
-    });
     resetDelegateStoreForTests();
     resetContinueDelegateTurnAdmissionForTests();
     resetSystemEventsForTest();
