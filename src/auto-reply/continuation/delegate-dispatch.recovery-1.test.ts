@@ -230,7 +230,11 @@ import {
   stagePostCompactionTaskFlowDelegate,
   stagedPostCompactionDelegateCount,
 } from "./delegate-store-post-compaction.js";
-import { cancelPendingDelegates, enqueuePendingDelegate } from "./delegate-store.js";
+import {
+  cancelPendingDelegates,
+  enqueuePendingDelegate,
+  resetDelegateStoreForTests,
+} from "./delegate-store.js";
 import { dispatchStagedPostCompactionDelegates } from "./post-compaction-staged-dispatch.js";
 import { hasLiveContinuationTimerRefs, resetContinuationStateForTests } from "./state.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
@@ -487,6 +491,7 @@ describe("recoverPendingContinuationDelegates", () => {
         continuationChainTokens: 0,
       },
     });
+    resetDelegateStoreForTests();
 
     await recoverPendingContinuationDelegates({});
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();

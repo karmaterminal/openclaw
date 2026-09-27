@@ -28,6 +28,7 @@ import {
   classifyRecoverablePendingDelegates,
   clearRecoverableDelegatesChainTokensFold,
   listPendingDelegateSessionKeysForRecovery,
+  reconcileContinuationDelegateAttachmentCustody,
 } from "./delegate-store.js";
 import {
   dispatchStagedPostCompactionDelegates,
@@ -59,6 +60,14 @@ export async function recoverPendingContinuationDelegates(
     includeRunningUpdatedAtOrBefore?: number;
   } = {},
 ): Promise<{ sessions: number; dispatched: number; rejected: number }> {
+  const custody = await reconcileContinuationDelegateAttachmentCustody(
+    params.queuedCreatedAtOrBefore ?? Date.now(),
+  );
+  if (custody.failed > 0) {
+    log.warn(
+      `[continuation:delegate-attachment-reconcile-failed] failures=${custody.failed} removed=${custody.removed}`,
+    );
+  }
   const runtimeConfig = resolveContinuationRuntimeConfig();
   const includeRunningUpdatedAtOrBefore = params.includeRunningUpdatedAtOrBefore ?? Date.now();
   classifyRecoverablePendingDelegates({

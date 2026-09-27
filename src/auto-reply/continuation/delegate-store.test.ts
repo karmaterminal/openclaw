@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setRuntimeConfigSnapshot } from "../../config/config.js";
@@ -148,7 +151,7 @@ vi.mock("../../tasks/task-flow-registry.js", () => ({
     },
   ),
   deleteTaskFlowRecordById: vi.fn((flowId: string) => {
-    mockFlows.delete(flowId);
+    return mockFlows.delete(flowId);
   }),
 }));
 
@@ -178,6 +181,13 @@ import {
 } from "./delegate-store.js";
 
 const VALID_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+let testStateDir = "";
+
+function attachmentTreeForFlow(flow: MockTaskFlowRecord): string {
+  const attachmentId = (flow.stateJson as { attachmentId?: unknown })?.attachmentId;
+  expect(typeof attachmentId).toBe("string");
+  return path.join(testStateDir, "attachments", "continuation", attachmentId as string);
+}
 
 function queueRawPendingFlow(sessionKey: string, stateJson: unknown): string {
   const flowId = `flow-${++flowIdCounter}`;
@@ -198,6 +208,8 @@ function queueRawPendingFlow(sessionKey: string, stateJson: unknown): string {
 }
 
 beforeEach(() => {
+  testStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-delegate-store-"));
+  vi.stubEnv("OPENCLAW_STATE_DIR", testStateDir);
   setRuntimeConfigSnapshot({
     tools: { sessions_spawn: { attachments: { enabled: true } } },
   });
@@ -208,9 +220,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  mockFlows.clear();
   resetDelegateStoreForTests();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
+  fs.rmSync(testStateDir, { recursive: true, force: true });
 });
 
 describe("delegate store — TaskFlow-backed", () => {
@@ -233,6 +246,8 @@ describe("delegate store — TaskFlow-backed", () => {
       attachAs: { mountPath: "handoff" },
     });
     const flow = expectDefined([...mockFlows.values()].at(0), "pending flow");
+    const attachmentTree = attachmentTreeForFlow(flow);
+    expect(fs.existsSync(attachmentTree)).toBe(true);
     flow.cancelRequestedAt = Date.now();
 
     expect(listPendingDelegateSessionKeysForRecovery()).toEqual([]);
@@ -247,6 +262,7 @@ describe("delegate store — TaskFlow-backed", () => {
     expect(flow.stateJson).not.toHaveProperty("attachments");
     expect(flow.stateJson).not.toHaveProperty("attachAs");
     expect(JSON.stringify(flow.stateJson)).not.toContain(secret);
+    expect(fs.existsSync(attachmentTree)).toBe(false);
   });
 
   it("uses only regular queued/running pending delegates for cleanup deferral", () => {
@@ -392,20 +408,40 @@ describe("delegate store — TaskFlow-backed", () => {
     expect(stored.stateJson).not.toHaveProperty("attachAs");
   });
 
-  it("fails closed after restart when volatile attachment bytes are unavailable", () => {
+  it("restores the complete attachment payload after process restart", () => {
+    const attachments = [
+      { name: "brief.md", content: "private handoff", mimeType: "text/markdown" },
+      { name: "data.bin", content: "AQID", encoding: "base64" as const },
+    ];
     enqueuePendingDelegate("session-restart-attachment", {
       task: "attachment task after restart",
-      attachments: [{ name: "brief.md", content: "private handoff" }],
+      attachments,
+      attachAs: { mountPath: "handoff" },
     });
+    const queued = expectDefined(
+      [...mockFlows.values()].find((flow) => flow.ownerKey === "session-restart-attachment"),
+      "queued delegate flow",
+    );
+    expect(queued.stateJson).toMatchObject({
+      attachmentCount: 2,
+      attachmentId: expect.any(String),
+    });
+    expect(fs.existsSync(attachmentTreeForFlow(queued))).toBe(true);
 
     resetDelegateStoreForTests();
 
-    expect(consumePendingDelegates("session-restart-attachment")).toEqual([]);
+    expect(consumePendingDelegates("session-restart-attachment")).toMatchObject([
+      {
+        task: "attachment task after restart",
+        attachments,
+        attachAs: { mountPath: "handoff" },
+      },
+    ]);
     const stored = expectDefined(
       [...mockFlows.values()].find((flow) => flow.ownerKey === "session-restart-attachment"),
-      "failed delegate flow",
+      "restored delegate flow",
     );
-    expect(stored.status).toBe("failed");
+    expect(stored.status).toBe("running");
     expect(JSON.stringify(stored.stateJson)).not.toContain("private handoff");
   });
 
@@ -761,9 +797,14 @@ describe("delegate store — TaskFlow-backed", () => {
       consumePendingDelegates("session-terminal-success").at(0),
       "accepted delegate",
     );
+    const acceptedFlow = expectDefined(mockFlows.get(accepted.flowId!), "accepted flow");
+    const acceptedTree = attachmentTreeForFlow(acceptedFlow);
+    expect(fs.existsSync(acceptedTree)).toBe(true);
     expect(markPendingDelegateSpawnAccepted(accepted, "agent:main:subagent:child")).toBe(true);
     expect(mockFlows.get(accepted.flowId!)?.stateJson).not.toHaveProperty("attachments");
     expect(mockFlows.get(accepted.flowId!)?.stateJson).not.toHaveProperty("attachAs");
+    expect(mockFlows.get(accepted.flowId!)?.stateJson).not.toHaveProperty("attachmentId");
+    expect(fs.existsSync(acceptedTree)).toBe(false);
 
     enqueuePendingDelegate("session-terminal-failure", {
       task: "failed attachment task",
@@ -774,9 +815,14 @@ describe("delegate store — TaskFlow-backed", () => {
       consumePendingDelegates("session-terminal-failure").at(0),
       "failed delegate",
     );
+    const failedFlow = expectDefined(mockFlows.get(failed.flowId!), "failed flow");
+    const failedTree = attachmentTreeForFlow(failedFlow);
+    expect(fs.existsSync(failedTree)).toBe(true);
     markPendingDelegateFailed(failed, "spawn rejected");
     expect(mockFlows.get(failed.flowId!)?.stateJson).not.toHaveProperty("attachments");
     expect(mockFlows.get(failed.flowId!)?.stateJson).not.toHaveProperty("attachAs");
+    expect(mockFlows.get(failed.flowId!)?.stateJson).not.toHaveProperty("attachmentId");
+    expect(fs.existsSync(failedTree)).toBe(false);
   });
 
   it("confirms only a failed terminal row when failure races another terminal outcome", () => {
