@@ -1587,8 +1587,11 @@ function createAutoReplyReplySplitShards(): NodeTestSplitShard[] {
     "auto-reply-reply-session": [] as string[],
     "auto-reply-reply-state-routing": [] as string[],
     // The reply config also collects the continuation subtree; without its own
-    // group those files would be collected by no shard at all (#1402).
-    "auto-reply-continuation": listTestFiles("src/auto-reply/continuation"),
+    // group those files would be collected by no shard at all (#1402). The group
+    // claims only files inside that subtree, whatever the inventory returns.
+    "auto-reply-continuation": listTestFiles("src/auto-reply/continuation").filter((file) =>
+      file.startsWith("src/auto-reply/continuation/"),
+    ),
   };
   const dispatchEntrypoints = new Map<string, keyof typeof groups>([
     ["dispatch-from-config.test.ts", "auto-reply-reply-dispatch-core"],
