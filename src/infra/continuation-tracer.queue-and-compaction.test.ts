@@ -3,6 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
+import { drainSessionStoreWriterQueuesForTest } from "../config/sessions/store-writer-state.test-support.js";
+import type { SessionEntry } from "../config/sessions/types.js";
+import {
+  disposeOpenClawAgentDatabaseByPath,
+  openOpenClawAgentDatabase,
+} from "../state/openclaw-agent-db.js";
 import {
   CONTINUATION_SIGNAL_KINDS,
   emitContinuationCompactionReleasedSpan,
@@ -30,13 +37,6 @@ import {
   type StartSpanOptions,
   type Tracer,
 } from "./continuation-tracer.js";
-import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
-import { drainSessionStoreWriterQueuesForTest } from "../config/sessions/store-writer-state.test-support.js";
-import type { SessionEntry } from "../config/sessions/types.js";
-import {
-  disposeOpenClawAgentDatabaseByPath,
-  openOpenClawAgentDatabase,
-} from "../state/openclaw-agent-db.js";
 import { runWithDiagnosticTraceContext } from "./diagnostic-trace-context.js";
 
 afterEach(() => {
