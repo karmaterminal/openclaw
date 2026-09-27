@@ -488,19 +488,33 @@ export async function loadSubagentSpawnModuleForTest(params: {
     listSwarmRunsForGroup: params.listSwarmRunsForGroup ?? vi.fn(() => []),
     registerSubagentRun: vi.fn(
       (record: RegisterSubagentRunParams, options?: RegisterSubagentRunOptions) => {
-        // Default registration outcome when a test supplies no mock. Concrete, not
+        // Registration outcome for a successful registration. Concrete, not
         // undefined: callers assert on `status` and `attempted`.
-        const register =
-          params.registerSubagentRunMock ??
-          ((committed: RegisterSubagentRunParams, _options?: RegisterSubagentRunOptions) => ({
-            status: "new-row-committed",
-            attempted: {
-              runId: committed.runId,
-              childSessionKey: committed.childSessionKey,
-              generation: 1,
-              createdAt: Date.now(),
-            },
-          }));
+        const committed = (registered: RegisterSubagentRunParams) => ({
+          status: "new-row-committed" as const,
+          attempted: {
+            runId: registered.runId,
+            childSessionKey: registered.childSessionKey,
+            generation: 1,
+            createdAt: Date.now(),
+          },
+        });
+        // Upstream types registration as `void | Promise<void>`, so upstream tests
+        // express success with a mock that returns nothing. Map that success onto
+        // the ownership result; a throwing or rejecting mock still fails.
+        const register = (
+          registered: RegisterSubagentRunParams,
+          registerOptions?: RegisterSubagentRunOptions,
+        ) => {
+          if (!params.registerSubagentRunMock) {
+            return committed(registered);
+          }
+          const outcome: unknown = params.registerSubagentRunMock(registered, registerOptions);
+          if (outcome instanceof Promise) {
+            return outcome.then((settled: unknown) => settled ?? committed(registered));
+          }
+          return outcome ?? committed(registered);
+        };
         if (!record.queued || !options?.retainOwnership) {
           return register(record, options);
         }
