@@ -3,6 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { configureInMemoryTaskStoresForTests } from "../../../tasks/task-registry.test-support.js";
+import {
+  resetTaskFlowRegistryForTests,
+  resetTaskRegistryForTests,
+} from "../../../tasks/task-runtime.test-helpers.js";
 import type { AnyAgentTool } from "../../tools/common.js";
 import {
   cleanupTempPaths,
@@ -237,15 +242,26 @@ describe("runEmbeddedAttempt cwd/workspace split", () => {
   });
 
   it("forwards explicit continuation-tool disablement into runtime tools", async () => {
-    await createContextEngineAttemptRunner({
-      contextEngine: createContextEngineBootstrapAndAssemble(),
-      sessionKey: "agent:main:cron:job:run:attempt",
-      tempPaths,
-      attemptOverrides: {
-        disableTools: false,
-        disableContinuationTools: true,
-      },
-    });
+    // A cron run settles by reading completion-required tasks. Durable registry
+    // admission needs the host SQLite broker, which this worker shard does not
+    // own, so keep task and flow records in memory for this case.
+    resetTaskRegistryForTests({ persist: false });
+    resetTaskFlowRegistryForTests({ persist: false });
+    configureInMemoryTaskStoresForTests();
+    try {
+      await createContextEngineAttemptRunner({
+        contextEngine: createContextEngineBootstrapAndAssemble(),
+        sessionKey: "agent:main:cron:job:run:attempt",
+        tempPaths,
+        attemptOverrides: {
+          disableTools: false,
+          disableContinuationTools: true,
+        },
+      });
+    } finally {
+      resetTaskRegistryForTests({ persist: false });
+      resetTaskFlowRegistryForTests({ persist: false });
+    }
 
     // Assert the forwarded options, not the call arity: the factory is invoked
     // with (options, skillReadResources), so a single-argument
