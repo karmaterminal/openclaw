@@ -1,13 +1,20 @@
-import { expect, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import { isPathInside } from "../../../infra/path-guards.js";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
 import { createSubagentPersistenceRuntime } from "./subagent-registry.persistence-fixture.test-support.js";
 import {
+  createCanonicalSubagentRunFixture,
   createDeliveredWake,
+  removeSubagentSessionEntry,
+  settleSubagentRegistryPersistenceWork,
   withSubagentRegistryPersistenceState,
   writeChildSession,
+  writeSubagentSessionEntry,
 } from "./subagent-registry.persistence.test-support.js";
-import { loadSubagentRegistryFromSqlite } from "./subagent-registry.store.sqlite.js";
+import {
+  loadSubagentRegistryFromSqlite,
+  saveSubagentRegistryToSqlite,
+} from "./subagent-registry.store.sqlite.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
 type RegistryModule = typeof import("./subagent-registry.test-helpers.js");
@@ -84,6 +91,129 @@ export function activatePersistenceResumeRegistry(mod: RegistryModule, callGatew
   const recoveryRuntime = createSubagentPersistenceRuntime(callGateway);
   const gateway = { recoveryRuntime, resolveGatewayContext: () => gateway as never };
   mod.activateSubagentRegistry(() => gateway as never);
+}
+
+export function registerSteerRestartOrphanPersistenceCases(params: {
+  getRegistry: () => RegistryModule;
+  getCallGateway: () => GatewayCall;
+  getStateDatabase: () => typeof import("../../../state/openclaw-state-db.js");
+  withRegistryState: (run: (stateDir: string) => Promise<void>) => Promise<void>;
+  activateRegistry: () => void;
+  announceSpy: unknown;
+}) {
+  it("settles a steer-restart orphan without entering a retry-resume loop", async () => {
+    await params.withRegistryState(async (stateDir) => {
+      const mod = params.getRegistry();
+      const runId = "run-orphan-resume-guard";
+      const childSessionKey = "agent:main:subagent:ghost-resume";
+      const now = Date.now();
+
+      await writeSubagentSessionEntry({
+        stateDir,
+        agentId: "main",
+        sessionKey: childSessionKey,
+        sessionId: "sess-resume-guard",
+        updatedAt: now,
+        defaultSessionId: "sess-resume-guard",
+      });
+      const run = createCanonicalSubagentRunFixture(
+        createSubagentRunRecord({
+          runId,
+          childSessionKey,
+          requesterSessionKey: "agent:main:main",
+          requesterDisplayKey: "main",
+          task: "resume orphan guard",
+          cleanup: "keep",
+          createdAt: now - 50,
+          startedAt: now - 25,
+          endedAt: now,
+          expectsCompletionMessage: false,
+          suppressAnnounceReason: "steer-restart",
+          cleanupHandled: false,
+        }),
+      );
+      saveSubagentRegistryToSqlite(new Map([[runId, run]]));
+      await removeSubagentSessionEntry({
+        stateDir,
+        agentId: "main",
+        sessionKey: childSessionKey,
+      });
+
+      mod.initSubagentRegistry();
+      expect(mod.getSubagentRunByRunId(runId)).toMatchObject({
+        suppressAnnounceReason: "steer-restart",
+        completion: { required: false },
+        delivery: { status: "not_required" },
+      });
+      params.activateRegistry();
+      expect(mod.clearSubagentRunSteerRestart(runId)).toBe(true);
+      await settleSubagentRegistryPersistenceWork();
+      await vi.waitFor(() =>
+        expect(mod.getSubagentRunByRunId(runId)).toMatchObject({
+          execution: {
+            status: "terminal",
+            outcome: { status: "error", error: "subagent run orphaned: missing-session-entry" },
+          },
+          endedReason: "subagent-error",
+          completion: { required: false, resultText: null, capturedAt: expect.any(Number) },
+          delivery: { status: "not_required" },
+          cleanupCompletedAt: expect.any(Number),
+        }),
+      );
+
+      expect(params.announceSpy).not.toHaveBeenCalled();
+      expect(vi.mocked(params.getCallGateway())).not.toHaveBeenCalledWith(
+        expect.objectContaining({ method: "agent.wait" }),
+      );
+      expect(loadSubagentRegistryFromSqlite().get(runId)).toMatchObject({
+        execution: { status: "terminal", outcome: { status: "error" } },
+        completion: { resultText: null, capturedAt: expect.any(Number) },
+        delivery: { status: "not_required" },
+      });
+    });
+  });
+
+  it("rejects a non-canonical persisted steer-restart row before resume", async () => {
+    await params.withRegistryState(async () => {
+      const mod = params.getRegistry();
+      const runId = "run-noncanonical-steer-restart";
+      const run = createCanonicalSubagentRunFixture(
+        createSubagentRunRecord({
+          runId,
+          childSessionKey: "agent:main:subagent:noncanonical-steer-restart",
+          task: "reject before retry",
+          endedAt: Date.now(),
+          expectsCompletionMessage: false,
+          suppressAnnounceReason: "steer-restart",
+        }),
+      );
+      saveSubagentRegistryToSqlite(new Map([[runId, run]]));
+
+      const db = params.getStateDatabase().openOpenClawStateDatabase().db;
+      const stored = db
+        .prepare("SELECT payload_json FROM subagent_runs WHERE run_id = ?")
+        .get(runId) as { payload_json: string };
+      const nonCanonical = JSON.parse(stored.payload_json) as Record<string, unknown>;
+      nonCanonical.completion = undefined;
+      nonCanonical.delivery = undefined;
+      db.prepare("UPDATE subagent_runs SET payload_json = ? WHERE run_id = ?").run(
+        JSON.stringify(nonCanonical),
+        runId,
+      );
+
+      expect(loadSubagentRegistryFromSqlite().has(runId)).toBe(false);
+      mod.initSubagentRegistry();
+      params.activateRegistry();
+      await settleSubagentRegistryPersistenceWork();
+
+      expect(mod.getSubagentRunByRunId(runId)).toBeUndefined();
+      expect(vi.mocked(params.getCallGateway())).not.toHaveBeenCalled();
+      expect(params.announceSpy).not.toHaveBeenCalled();
+      expect(
+        db.prepare("SELECT COUNT(*) AS count FROM subagent_runs WHERE run_id = ?").get(runId),
+      ).toEqual({ count: 1 });
+    });
+  });
 }
 
 export function createHydratedRegistryRuns(endedAt: number) {

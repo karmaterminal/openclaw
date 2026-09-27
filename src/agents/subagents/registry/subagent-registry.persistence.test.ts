@@ -726,6 +726,9 @@ describe("subagent registry persistence", () => {
       task: "orphan restore",
       cleanup: "keep",
     });
+    Object.assign(persisted.runs["run-orphan-restore"], {
+      expectsCompletionMessage: false,
+    });
     await writePersistedRegistry(persisted, {
       seedChildSessions: false,
     });
