@@ -106,8 +106,8 @@ describe("doctor transcript owner repair", () => {
         agentId: sourceAgentId,
         env,
       });
-      const canonicalKey = "agent:main:work";
-      const aliasKey = "agent:main:main";
+      const canonicalKey = "agent:main:matrix:channel:!Orphan:example.org";
+      const aliasKey = canonicalKey.toLowerCase();
       const orphanEpoch = "11111111-1111-4111-8111-111111111111";
       const cfg = {
         agents: {
@@ -120,7 +120,13 @@ describe("doctor transcript owner repair", () => {
       } as OpenClawConfig;
       insertLegacySession({
         agentId: sourceAgentId,
-        entry: { sessionId: "alias-session", updatedAt: 20 },
+        entry: {
+          delivery: normalizeSessionDeliveryState({
+            context: { channel: "matrix", to: "!Orphan:example.org" },
+          }),
+          sessionId: "alias-session",
+          updatedAt: 20,
+        },
         env,
         sessionKey: aliasKey,
         storePath: sourceStore,
@@ -179,8 +185,8 @@ describe("doctor transcript owner repair", () => {
       const env = { ...process.env, OPENCLAW_STATE_DIR: stateDir };
       const storeTemplate = path.join(stateDir, "agents", "{agentId}", "sessions.json");
       const storePath = resolveSessionStorePathCore(storeTemplate, { agentId: "main", env });
-      const canonicalKey = "agent:main:work";
-      const aliasKey = "agent:main:main";
+      const canonicalKey = "agent:main:matrix:channel:!Stamped:example.org";
+      const aliasKey = canonicalKey.toLowerCase();
       const epoch = "11111111-1111-4111-8111-111111111111";
       const cfg = {
         agents: { list: [{ id: "main", default: true }] },
@@ -202,6 +208,9 @@ describe("doctor transcript owner repair", () => {
         agentId: "main",
         entry: {
           createdActor: { type: "human", source: "unknown", id: "winner-owner" },
+          delivery: normalizeSessionDeliveryState({
+            context: { channel: "matrix", to: "!Stamped:example.org" },
+          }),
           sessionId: "winner-session",
           updatedAt: 20,
         },
@@ -262,8 +271,8 @@ describe("doctor transcript owner repair", () => {
           agentId: sourceAgentId,
           env,
         });
-        const canonicalKey = "agent:main:work";
-        const aliasKey = "agent:main:main";
+        const canonicalKey = "agent:main:matrix:channel:!Competing:example.org";
+        const aliasKey = canonicalKey.toLowerCase();
         const canonicalEpoch = "11111111-1111-4111-8111-111111111111";
         const aliasEpoch = "22222222-2222-4222-8222-222222222222";
         const cfg = {
@@ -290,6 +299,9 @@ describe("doctor transcript owner repair", () => {
           agentId: sourceAgentId,
           entry: {
             createdActor: { type: "human", source: "unknown", id: "owner-after" },
+            delivery: normalizeSessionDeliveryState({
+              context: { channel: "matrix", to: "!Competing:example.org" },
+            }),
             sessionId: "alias-session",
             updatedAt: 20,
           },
