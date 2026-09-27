@@ -14,6 +14,7 @@ import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths
 import { resetDetachedTaskLifecycleRuntimeForTests } from "../tasks/detached-task-runtime.test-support.js";
 import { captureTaskDeliveryWork } from "../tasks/task-registry-delivery.test-support.js";
 import { configureTaskRegistryMaintenance } from "../tasks/task-registry.maintenance.js";
+import { configureInMemoryTaskStoresForTests } from "../tasks/task-registry.test-support.js";
 import {
   resetTaskFlowRegistryForTests,
   resetTaskRegistryForTests,
@@ -198,6 +199,7 @@ describe("subagent registry persistence", () => {
     configureTaskRegistryMaintenance({ runtimeAuthoritative: false });
     resetTaskRegistryForTests({ persist: false });
     resetTaskFlowRegistryForTests({ persist: false });
+    configureInMemoryTaskStoresForTests();
     resetDetachedTaskLifecycleRuntimeForTests();
     deliveries = captureTaskDeliveryWork();
     announceSpy.mockReset();
