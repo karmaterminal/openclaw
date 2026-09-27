@@ -1,6 +1,6 @@
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { runWithGatewayIndependentRootWorkAdmission } from "../../process/gateway-work-admission.js";
+import { runWithGatewayDetachedWorkAdmission } from "../../process/gateway-work-admission.js";
 import type {
   DelegateDispatchParams,
   DelegateDispatchResult,
@@ -161,7 +161,9 @@ export function armDelegateDispatchHedge(
     unregisterContinuationTimerHandle(sessionKey, handle);
     log.info(`[continuation:delegate-hedge-fired] session=${sessionKey}`);
     const { params: activeParams, dispatchToolDelegates: activeDispatchToolDelegates } = hedge;
-    void runWithGatewayIndependentRootWorkAdmission(async () => {
+    // The timer inherits the arming caller's async work scope, which has usually
+    // closed by now. The delayed dispatch owns a fresh detached scope.
+    void runWithGatewayDetachedWorkAdmission(async () => {
       // Enforce the budget against the latest persisted chain state rather than
       // the snapshot captured when the hedge was armed.
       const refreshedChainState = activeParams.loadFreshChainState
