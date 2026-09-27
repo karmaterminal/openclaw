@@ -17,7 +17,8 @@ import {
 } from "./agent-tools.before-tool-call.js";
 import { resolveOpenClawPluginToolsForOptions } from "./openclaw-plugin-tools.js";
 import { filterToolsByClientCaps } from "./openclaw-tools.client-caps.js";
-import { createOpenClawContinuationToolsForRun } from "./openclaw-tools.continuation-run.js";
+import { resolveOpenClawContinuationToolParamsForRun } from "./openclaw-tools.continuation-run.js";
+import { createOpenClawContinuationTools } from "./openclaw-tools.continuation.js";
 import { createHostedGatewayTools } from "./openclaw-tools.gateway.js";
 import { resolveOpenClawToolsHookContext } from "./openclaw-tools.hook-context.js";
 import {
@@ -645,7 +646,9 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
       },
     }),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
-    ...createOpenClawContinuationToolsForRun({ resolvedConfig, workspaceDir, options }),
+    ...createOpenClawContinuationTools(
+      resolveOpenClawContinuationToolParamsForRun({ resolvedConfig, workspaceDir, options }),
+    ),
   ];
   options?.recordToolPrepStage?.("openclaw-tools:core-tool-list");
   let allTools = tools;
