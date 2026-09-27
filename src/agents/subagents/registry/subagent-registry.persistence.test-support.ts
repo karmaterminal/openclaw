@@ -52,6 +52,7 @@ export function createPersistedEndedRun(params: {
   childSessionKey: string;
   task: string;
   cleanup: "keep" | "delete";
+  expectsCompletionMessage?: boolean;
 }) {
   const now = Date.now();
   return {
@@ -67,6 +68,9 @@ export function createPersistedEndedRun(params: {
         createdAt: now - 2,
         startedAt: now - 1,
         endedAt: now,
+        ...(params.expectsCompletionMessage === undefined
+          ? {}
+          : { expectsCompletionMessage: params.expectsCompletionMessage }),
       },
     },
   };
