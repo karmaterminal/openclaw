@@ -182,7 +182,7 @@ describe("subagent registry persistence timing", () => {
       sessionId: "sess-timing",
       updatedAt: startedAt - 1,
     });
-    registerSubagentRun({
+    await registerSubagentRun({
       runId: "run-session-timing",
       childSessionKey: "agent:main:subagent:timing",
       requesterSessionKey: "agent:main:main",

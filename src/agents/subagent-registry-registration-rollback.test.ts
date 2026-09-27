@@ -347,7 +347,7 @@ describe("subagent registration rollback", () => {
     });
   });
 
-  it("surfaces task registration and rollback persistence failures together", () => {
+  it("surfaces task registration and rollback persistence failures together", async () => {
     const taskError = new Error("task runtime unavailable");
     const rollbackError = new Error("rollback sqlite busy");
     let persistAttempt = 0;
@@ -367,7 +367,7 @@ describe("subagent registration rollback", () => {
     try {
       let thrown: unknown;
       try {
-        registerSubagentRun({
+        await registerSubagentRun({
           runId: "run-rollback-persist-fails",
           childSessionKey: "agent:main:subagent:rollback-persist-fails",
           requesterSessionKey: "agent:main:main",

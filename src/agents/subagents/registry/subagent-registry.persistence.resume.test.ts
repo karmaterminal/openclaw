@@ -248,7 +248,7 @@ describe("subagent registry persistence resume", () => {
         sessionId: "sess-all-authority",
         defaultSessionId: "sess-all-authority",
       });
-      mod.registerSubagentRun({
+      await mod.registerSubagentRun({
         runId: "run-all-authority",
         childSessionKey,
         requesterSessionKey: "agent:main:main",

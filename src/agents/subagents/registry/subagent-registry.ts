@@ -616,15 +616,9 @@ export const releaseSubagentRunKillClaim = subagentRunManager.releaseSubagentRun
 export const rollbackSubagentRunRegistration = subagentRunManager.rollbackSubagentRunRegistration;
 export const recordAcceptedSubagentSpawnRollback =
   subagentRunManager.recordAcceptedSubagentSpawnRollback;
-export function registerSubagentRun(
-  params: RegisterSubagentRunParams &
-    ({ queued?: false } | { taskRowOwnership?: "gateway_best_effort" }),
-  options?: RegisterSubagentRunOptions,
-): SubagentRegistrationOwnership;
-export function registerSubagentRun(
-  params: RegisterSubagentRunParams,
-  options?: RegisterSubagentRunOptions,
-): SubagentRegistrationOwnership | Promise<SubagentRegistrationOwnership>;
+// Matches upstream's awaitable `void | Promise<void>` contract: in-process Gateway
+// callers prepare completion authority asynchronously, so any registration may settle
+// later. Callers await it and read the ownership the continuation spawn path checks.
 export function registerSubagentRun(
   params: RegisterSubagentRunParams,
   options?: RegisterSubagentRunOptions,

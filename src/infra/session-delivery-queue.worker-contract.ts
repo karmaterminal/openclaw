@@ -14,7 +14,8 @@ type PreparedEntry = ReturnType<typeof bindDeliveryQueueEntry>;
 export type SessionDeliveryWorkerOperations = {
   "sessionDelivery.enqueue": {
     input: PreparedEntry;
-    output: { status: DeliveryQueueStoredStatus | "unknown" };
+    // Stored status is a string column; "unknown" means the row could not be read back.
+    output: { status: DeliveryQueueStoredStatus };
   };
   "sessionDelivery.enqueueClaimed": {
     input: PreparedEntry;

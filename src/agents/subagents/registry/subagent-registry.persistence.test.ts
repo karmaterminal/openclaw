@@ -267,7 +267,7 @@ describe("subagent registry persistence", () => {
         startedAt: 111,
         endedAt: 222,
       });
-    registerSubagentRun({
+    await registerSubagentRun({
       runId: "run-silent",
       childSessionKey: "agent:main:subagent:silent-test",
       requesterSessionKey: "agent:main:main",
