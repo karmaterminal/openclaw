@@ -38,7 +38,6 @@ import {
   settleSubagentRegistryPersistenceWork,
   createDeliveredWake,
   createOrphanedRequiredDelivery,
-  removeSubagentSessionEntry,
   writeChildSession,
   writeSubagentSessionEntry,
 } from "./subagent-registry.persistence.test-support.js";
@@ -160,7 +159,7 @@ describe("subagent registry persistence resume", () => {
       vi.mocked(callGatewayModule.callGateway).mockResolvedValue({ status: "pending" });
       const { name, ...registration } = options;
       const childSessionKey = "agent:main:subagent:parent-association";
-      await mod.registerSubagentRun({
+      mod.registerSubagentRun({
         runId: "child-parent-association",
         childSessionKey,
         requesterSessionKey: "agent:main:main",
