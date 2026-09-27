@@ -33,6 +33,7 @@ import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "openclaw/plugin-sdk/runtime-config-snapshot";
+import { closeOpenClawStateDatabaseAsync } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { resetTaskFlowRegistryForTests } from "openclaw/plugin-sdk/task-flow-test-runtime";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { expect, test } from "vitest";
@@ -162,6 +163,15 @@ async function callDynamicTool(params: {
   )) as CodexToolResponse;
 }
 
+// The TaskFlow reset closes shared state handles synchronously, which is only safe
+// once no async state resource remains. The harness keeps a session reclamation
+// worker between requests, so drain it first; otherwise its stale admission
+// fails the harness's afterEach session cleanup.
+async function resetTaskFlowRegistryAfterStateDrain(opts?: { persist?: boolean }) {
+  await closeOpenClawStateDatabaseAsync();
+  resetTaskFlowRegistryForTests(opts);
+}
+
 setupRunAttemptTestHooks();
 
 test("exports Codex dynamic continuation origins through the production tool boundary", async () => {
@@ -219,7 +229,7 @@ test("exports Codex dynamic continuation origins through the production tool bou
         cancelPendingDelegates(SESSION_KEY);
         consumePendingDelegates(SESSION_KEY);
         resetContinueDelegateTurnAdmissionForTests();
-        resetTaskFlowRegistryForTests();
+        await resetTaskFlowRegistryAfterStateDrain();
 
         const params = createParams(
           path.join(tempDir, "session.jsonl"),
@@ -308,7 +318,7 @@ test("exports Codex dynamic continuation origins through the production tool bou
           mode: "silent-wake",
         });
 
-        resetTaskFlowRegistryForTests({ persist: false });
+        await resetTaskFlowRegistryAfterStateDrain({ persist: false });
         const delegates = consumePendingDelegates(SESSION_KEY, { ignoreDelay: true });
         expect(delegates).toHaveLength(1);
         const delegate = delegates[0]!;
@@ -446,7 +456,7 @@ test("exports Codex dynamic continuation origins through the production tool bou
         cancelPendingDelegates(SESSION_KEY);
         consumePendingDelegates(SESSION_KEY);
         resetContinueDelegateTurnAdmissionForTests();
-        resetTaskFlowRegistryForTests();
+        await resetTaskFlowRegistryAfterStateDrain();
         clearRuntimeConfigSnapshot();
         await stopStartedOtelServices();
         await provider.shutdown();
