@@ -10,6 +10,8 @@ import type {
   SubagentRunRecord,
 } from "./subagents/registry/subagent-registry.types.js";
 
+type SubagentRegistryRuntime = typeof import("./subagents/registry/subagent-registry-runtime.js");
+
 const mocks = vi.hoisted(() => ({
   loadSessionEntryByKey: vi.fn(),
 }));
@@ -93,7 +95,12 @@ function createWakeHarness(params: {
       return true;
     },
   );
-  const replaceSubagentRunAfterSteer = vi.fn(async () => {
+  // Typed to the registry contract: replacement is synchronous. An async double
+  // would hand the unawaited caller a truthy Promise and report every failed
+  // replacement as a wake.
+  const replaceSubagentRunAfterSteer = vi.fn<
+    SubagentRegistryRuntime["replaceSubagentRunAfterSteer"]
+  >(() => {
     if (params.replaced) {
       sourceEntry.acceptedSteerDispatch = undefined;
     }

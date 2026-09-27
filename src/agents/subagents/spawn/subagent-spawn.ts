@@ -39,6 +39,7 @@ import {
   buildSubagentContinuationRegistrationFields,
   resolveSubagentContinuationChildRunId,
   resolveSubagentContinuationChildSessionKey,
+  resolveSubagentContinuationTaskRowOwnership,
   validateSubagentContinuationSpawnParams,
 } from "./subagent-spawn-continuation.js";
 import type {
@@ -567,7 +568,7 @@ export async function spawnSubagentDirect(
           groupId: swarmGroupId,
           queuedLaunch,
           queued: params.collect === true,
-          taskRowOwnership,
+          taskRowOwnership: resolveSubagentContinuationTaskRowOwnership(params, taskRowOwnership),
           ...(gatewayContextResolver ? { gatewayContextResolver } : {}),
           attachmentId,
           retainAttachmentsOnKeep: retainOnSessionKeep,

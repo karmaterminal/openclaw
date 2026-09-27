@@ -29,6 +29,7 @@ import {
   resolveContinuationTraceparent,
 } from "../infra/continuation-tracer.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../infra/system-events.js";
+import { runWithGatewayDetachedWorkContinuation } from "../process/gateway-work-admission.js";
 import { defaultRuntime } from "../runtime.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import { removeUnacceptedDelegateArtifactPolicy } from "./delegate-artifacts.js";
@@ -236,7 +237,23 @@ async function scheduleSubagentSelfContinuationWork(params: {
   }
 }
 
-export async function coordinateSubagentContinuation(params: {
+/**
+ * Completion cleanup reaches this from an untracked continuation of the
+ * completion's detached work scope, which closes once completion settles.
+ * Continuation dispatch spawns children whose preparation tracks async work,
+ * so it owns a detached work scope instead of inheriting one that may close
+ * under it.
+ */
+export async function coordinateSubagentContinuation(
+  params: Parameters<typeof coordinateSubagentContinuationInOwnedWork>[0],
+): ReturnType<typeof coordinateSubagentContinuationInOwnedWork> {
+  return await runWithGatewayDetachedWorkContinuation(
+    () => coordinateSubagentContinuationInOwnedWork(params),
+    "continuation:subagent-coordination",
+  );
+}
+
+async function coordinateSubagentContinuationInOwnedWork(params: {
   cfg: OpenClawConfig;
   childSessionKey: string;
   childAgentId?: string;

@@ -1727,9 +1727,10 @@ describe("spawnSubagentDirect seam flow", () => {
     });
     const registerInput = firstRegisteredSubagentRun();
     const requesterOrigin = requireRecord(registerInput.requesterOrigin);
-    // Out-of-process dispatch leaves the Gateway-owned task row in place, so
-    // registration must not also claim it (contrast with the in-process case above).
-    expect(registerInput.taskRowOwnership).toBe("gateway_best_effort");
+    // A continuation spawn over the WebSocket fallback still needs the canonical
+    // `subagent` row: completion settlement retires results that have no owner.
+    // Unset ownership is the registry's never-reject best-effort row mode.
+    expect(registerInput.taskRowOwnership).toBeUndefined();
     expect(registerInput.runId).toBe("run-1");
     expect(registerInput.childSessionKey).toBe(childSessionKey);
     expect(registerInput.requesterSessionKey).toBe("agent:main:main");
@@ -1769,6 +1770,19 @@ describe("spawnSubagentDirect seam flow", () => {
     expect(agentParams.provider).toBe("openai");
     expect(agentParams.model).toBe("gpt-5.4");
     expect(agentParams.cleanupBundleMcpOnRunEnd).toBe(true);
+  });
+
+  it("leaves ordinary out-of-process task tracking to the Gateway", async () => {
+    const result = await spawnSubagentDirect(
+      { task: "inspect the spawn seam" },
+      { agentSessionKey: "agent:main:main" },
+    );
+
+    expect(result.status).toBe("accepted");
+    expect(hoisted.dispatchGatewayMethodInProcessMock).not.toHaveBeenCalled();
+    // Out-of-process dispatch leaves the Gateway-owned task row in place, so
+    // registration must not also claim it (contrast with the in-process case below).
+    expect(firstRegisteredSubagentRun().taskRowOwnership).toBe("gateway_best_effort");
   });
 
   it("persists inherited continuation chain state into draining child sessions", async () => {
