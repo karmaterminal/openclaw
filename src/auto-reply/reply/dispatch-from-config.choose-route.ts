@@ -205,6 +205,9 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
   const { getBlockReplyOutcome } = blockDeliveryAttempts;
   const recordBlockOutcome = (payload: ReplyPayload, outcome: Promise<BlockDelivery>) => {
     setBlockReplyDelivery(outcome, payload);
+    if (getReplyPayloadMetadata(payload)?.independentDeliveryIntentId !== undefined) {
+      return;
+    }
     blockDeliveryAttempts.recordBlockDeliveryAttempt(payload, outcome);
   };
   const sendTrackedBlockReply = (operation: ReplyDispatchOperation) => {
@@ -648,8 +651,9 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
     return replyDispatchTakeover;
   }
 
-  const dispatchAcquisition = await state.ensureDispatchReplyOperation(
-    state.activeRunSafeCommandTurn ? "command_resolution" : "dispatch",
+  const dispatchPhase = state.activeRunSafeCommandTurn ? "command_resolution" : "dispatch";
+  const dispatchAcquisition = await traceReplyPhase(`reply.admit_${dispatchPhase}`, () =>
+    state.ensureDispatchReplyOperation(dispatchPhase),
   );
   if (dispatchAcquisition.status === "aborted") {
     return { status: "complete" as const, result: state.finishReplyOperationAbortedDispatch() };

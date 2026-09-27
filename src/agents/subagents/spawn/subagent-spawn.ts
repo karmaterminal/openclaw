@@ -20,7 +20,6 @@ import {
   recordAcceptedSubagentSpawnRollback,
   rollbackSubagentRunRegistration,
 } from "../registry/subagent-registry.js";
-import { holdQueuedSwarmRun } from "../swarm/swarm-scheduler.js";
 import { materializeSubagentAttachments } from "./subagent-attachments.js";
 import { resolveSubagentChildPlan } from "./subagent-spawn-child-plan.js";
 import {
@@ -98,7 +97,7 @@ export async function spawnSubagentDirect(
     gatewayScope?.context?.resolveGatewayContext;
   const operatorAuthority =
     gatewayCaller?.operatorAuthority ?? gatewayScope?.client?.internal?.operatorRunAuthority;
-  const requestResolution = resolveSubagentSpawnRequest(params, ctx);
+  const requestResolution = await resolveSubagentSpawnRequest(params, ctx);
   if (!requestResolution.ok) {
     return requestResolution.result;
   }
@@ -127,6 +126,7 @@ export async function spawnSubagentDirect(
       launchReplayKey: swarmLaunchReplayKey,
       soleImplicitMember,
       reservationPending,
+      reservation: swarmReservation,
     },
     admission: {
       resolve: resolveAdmission,
@@ -145,14 +145,14 @@ export async function spawnSubagentDirect(
   let hasBoundThreadDeliveryOrigin = false;
   let childRunId: string = childIdem;
   let swarmReservationPending = reservationPending;
-  const swarmReservation = reservationPending ? holdQueuedSwarmRun(childIdem) : undefined;
   let canCleanupCreatedSession: (() => boolean) | undefined;
   let canRetireReservation: (() => boolean) | undefined;
   let releaseOperatorAuthority: (() => void) | undefined;
   let provisionalCleanupOpen = true;
   let contextEnginePreparation: PreparedContextEngineSubagentSpawn | undefined;
   try {
-    if (reservationPending && !swarmReservation) {
+    assertActive?.();
+    if (reservationPending && !swarmReservation?.isCurrent()) {
       return { status: "error", error: "Collector FIFO reservation is no longer current" };
     }
     if (operatorAuthority && !gatewayContextResolver) {

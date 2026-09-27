@@ -102,7 +102,6 @@ export {
 
 type SqliteSessionEntryPatchOptions = SessionEntryPatchOptions & {
   afterPersistInTransaction?: (database: OpenClawAgentDatabase) => void;
-  skipMaintenance?: boolean;
   /** Recheck owner cancellation after async preparation, immediately before committing. */
   shouldCommit?: () => boolean;
   /** Synchronous owner bookkeeping after COMMIT, before identity observers can cancel the caller. */
@@ -332,10 +331,7 @@ export function replaceSessionEntrySync(scope: SessionAccessScope, entry: Sessio
 /** Patches one entry in the additive SQLite session store. */
 export async function patchSessionEntryCore(
   scope: SessionAccessScope,
-  update: (
-    entry: SessionEntry,
-    context: SessionEntryPatchContext,
-  ) => Promise<Partial<SessionEntry> | null> | Partial<SessionEntry> | null,
+  update: SqliteSessionEntrySnapshotPatchParams["update"],
   options: SqliteSessionEntryPatchOptions = {},
 ): Promise<SessionEntry | null> {
   return await patchSessionEntryInScope(scope, update, options);
@@ -372,10 +368,7 @@ async function patchSessionEntryInScope(
 /** Patches one logical entry after validating its canonical lifecycle target. */
 export async function patchSessionEntryTarget(
   scope: SessionEntryTargetPatchScope,
-  update: (
-    entry: SessionEntry,
-    context: SessionEntryPatchContext,
-  ) => Promise<Partial<SessionEntry> | null> | Partial<SessionEntry> | null,
+  update: SqliteSessionEntrySnapshotPatchParams["update"],
   options: SqliteSessionEntryPatchOptions = {},
 ): Promise<SessionEntry | null> {
   const source = scope.readSource;
@@ -559,6 +552,16 @@ async function patchSqliteSessionEntrySnapshot(
   return committed;
 }
 
+function buildInboundSessionCreationStamp(ctx: UpdateSessionLastRouteParams["ctx"]) {
+  const senderId = ctx?.SenderId?.trim();
+  return buildSessionCreationStamp(
+    ctx?.SessionCreation ?? {
+      via: "channel",
+      ...(senderId ? { actor: { type: "human", source: "channel", id: senderId } } : {}),
+    },
+  );
+}
+
 export async function recordInboundSessionMeta(
   params: RecordInboundSessionMetaParams,
 ): Promise<SessionEntry | null> {
@@ -576,14 +579,8 @@ export async function recordInboundSessionMeta(
       if (context.existingEntry) {
         return metadataPatch;
       }
-      const senderId = params.ctx.SenderId?.trim();
       return {
-        ...buildSessionCreationStamp(
-          params.ctx.SessionCreation ?? {
-            via: "channel",
-            ...(senderId ? { actor: { type: "human", source: "channel", id: senderId } } : {}),
-          },
-        ),
+        ...buildInboundSessionCreationStamp(params.ctx),
         ...metadataPatch,
       };
     },
@@ -633,16 +630,8 @@ export async function updateSessionLastRouteInScope(
       if (context.existingEntry) {
         return routePatch;
       }
-      const senderId = params.ctx?.SenderId?.trim();
       return {
-        ...buildSessionCreationStamp(
-          params.ctx?.SessionCreation ?? {
-            via: "channel",
-            ...(senderId
-              ? { actor: { type: "human" as const, source: "channel" as const, id: senderId } }
-              : {}),
-          },
-        ),
+        ...buildInboundSessionCreationStamp(params.ctx),
         ...routePatch,
       };
     },

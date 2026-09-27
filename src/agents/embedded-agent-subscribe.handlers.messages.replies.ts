@@ -8,6 +8,14 @@ import type { ReplyDirectiveParseResult } from "../auto-reply/reply/reply-direct
 import type { BlockReplyPayload } from "./embedded-agent-payloads.js";
 import type { EmbeddedAgentSubscribeState } from "./embedded-agent-subscribe.handlers.types.js";
 
+type PendingToolMediaState = Pick<
+  EmbeddedAgentSubscribeState,
+  | "pendingToolMediaUrls"
+  | "pendingToolMediaAttachments"
+  | "pendingToolMediaTrustByUrl"
+  | "pendingToolAudioAsVoice"
+>;
+
 export function hasReplyDirectiveMetadata(
   parsed: ReplyDirectiveParseResult | null | undefined,
 ): boolean {
@@ -37,15 +45,7 @@ export function mergeReplyDirectiveResults(
   };
 }
 
-function clearPendingToolMedia(
-  state: Pick<
-    EmbeddedAgentSubscribeState,
-    | "pendingToolMediaUrls"
-    | "pendingToolMediaAttachments"
-    | "pendingToolMediaTrustByUrl"
-    | "pendingToolAudioAsVoice"
-  >,
-) {
+function clearPendingToolMedia(state: PendingToolMediaState) {
   state.pendingToolMediaUrls = [];
   state.pendingToolMediaAttachments = [];
   state.pendingToolMediaTrustByUrl.clear();
@@ -112,13 +112,7 @@ function readAlignedPendingToolMedia(
 
 /** Moves queued tool media into a non-reasoning assistant reply payload. */
 export function consumePendingToolMediaIntoReply(
-  state: Pick<
-    EmbeddedAgentSubscribeState,
-    | "pendingToolMediaUrls"
-    | "pendingToolMediaAttachments"
-    | "pendingToolMediaTrustByUrl"
-    | "pendingToolAudioAsVoice"
-  >,
+  state: PendingToolMediaState,
   payload: BlockReplyPayload,
 ): BlockReplyPayload {
   if (payload.isReasoning) {
@@ -170,14 +164,8 @@ export function consumePendingToolMediaIntoReply(
 
 /** Restores reserved tool media after its outbound delivery was rejected. */
 export function restorePendingToolMediaReply(
-  state: Pick<
-    EmbeddedAgentSubscribeState,
-    | "pendingToolMediaUrls"
-    | "pendingToolMediaAttachments"
-    | "pendingToolMediaTrustByUrl"
-    | "pendingToolAudioAsVoice"
-    | "pendingToolMediaDeliveryFailed"
-  >,
+  state: PendingToolMediaState &
+    Pick<EmbeddedAgentSubscribeState, "pendingToolMediaDeliveryFailed">,
   payload: BlockReplyPayload,
 ): void {
   const pendingUrls = state.pendingToolMediaUrls;
@@ -204,15 +192,7 @@ export function restorePendingToolMediaReply(
 }
 
 /** Reads queued tool media without clearing it. */
-export function readPendingToolMediaReply(
-  state: Pick<
-    EmbeddedAgentSubscribeState,
-    | "pendingToolMediaUrls"
-    | "pendingToolMediaAttachments"
-    | "pendingToolMediaTrustByUrl"
-    | "pendingToolAudioAsVoice"
-  >,
-): BlockReplyPayload | null {
+export function readPendingToolMediaReply(state: PendingToolMediaState): BlockReplyPayload | null {
   if (state.pendingToolMediaUrls.length === 0 && !state.pendingToolAudioAsVoice) {
     return null;
   }

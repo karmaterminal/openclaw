@@ -11,7 +11,7 @@ import {
 import type { resolveSubagentSpawnRequest } from "./subagent-spawn-request.js";
 
 type ResolveCollectorAdmission = Extract<
-  ReturnType<typeof resolveSubagentSpawnRequest>,
+  Awaited<ReturnType<typeof resolveSubagentSpawnRequest>>,
   { ok: true }
 >["resolved"]["admission"]["resolve"];
 
@@ -60,10 +60,12 @@ export function buildSubagentSpawnPipelineFailureResult(
   { childIdem, childSessionKey }: { childIdem: string; childSessionKey: string },
 ): SpawnSubagentResult {
   const runId = pipelineResult.runId ?? childIdem;
-  const spawnStatus =
+  const spawnError =
     pipelineResult.error && typeof pipelineResult.error === "object"
-      ? (pipelineResult.error as { spawnStatus?: unknown }).spawnStatus
+      ? pipelineResult.error
       : undefined;
+  // SAFETY: spawnError is a non-null object or undefined; spawnStatus is read as unknown and compared.
+  const spawnStatus = (spawnError as { spawnStatus?: unknown } | undefined)?.spawnStatus;
   return {
     status: isSpawnSubagentAdmissionCancelledError(pipelineResult.error)
       ? "cancelled"

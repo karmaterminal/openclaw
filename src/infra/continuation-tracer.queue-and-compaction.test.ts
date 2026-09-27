@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -27,6 +30,13 @@ import {
   type StartSpanOptions,
   type Tracer,
 } from "./continuation-tracer.js";
+import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
+import { drainSessionStoreWriterQueuesForTest } from "../config/sessions/store-writer-state.test-support.js";
+import type { SessionEntry } from "../config/sessions/types.js";
+import {
+  disposeOpenClawAgentDatabaseByPath,
+  openOpenClawAgentDatabase,
+} from "../state/openclaw-agent-db.js";
 import { runWithDiagnosticTraceContext } from "./diagnostic-trace-context.js";
 
 afterEach(() => {
@@ -519,56 +529,66 @@ describe("continuation-tracer :: compaction.id cross-cutting attr", () => {
   // (0, fractional, negative, undefined-on-error), the assertion fails with
   // a precise message identifying which side broke.
   //
-  // Stub keeps storePath undefined to avoid file IO; cfg undefined to skip
-  // lifecycle hooks. Only the count-arithmetic path is exercised.
+  // The counter persists only through the writer-serialized session row, so the
+  // producer runs against a real temporary agent database; cfg stays undefined
+  // to skip lifecycle hooks.
   it("producer-coupling: incrementCompactionCount return value flows to compaction.id attr", async () => {
     const { incrementCompactionCount } = await import("../auto-reply/reply/session-updates.js");
     const { tracer, spans } = makeRecordingTracer();
     setContinuationTracer(tracer);
 
-    const sessionKey = "agent:main:test";
-    const baseEntry = {
-      sessionId: "s1",
-      sessionFile: "/tmp/sessions/s1.jsonl",
-      compactionCount: 0,
-      updatedAt: Date.now(),
-    } as unknown as Parameters<typeof incrementCompactionCount>[0]["sessionEntry"];
-    const sessionStore: Record<string, NonNullable<typeof baseEntry>> = {
-      [sessionKey]: baseEntry as NonNullable<typeof baseEntry>,
-    };
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-tracer-compaction-"));
+    const storePath = path.join(root, "openclaw-agent.sqlite");
+    openOpenClawAgentDatabase({ agentId: "main", path: storePath });
+    try {
+      const sessionKey = "agent:main:test";
+      const baseEntry: SessionEntry = {
+        sessionId: "s1",
+        compactionCount: 0,
+        updatedAt: Date.now(),
+      };
+      await replaceSessionEntry({ storePath, sessionKey }, baseEntry);
+      const sessionStore: Record<string, SessionEntry> = { [sessionKey]: baseEntry };
 
-    // amount=1: producer returns 1 (0 + max(0,1))
-    const count1 = await incrementCompactionCount({
-      sessionEntry: baseEntry,
-      sessionStore,
-      sessionKey,
-      amount: 1,
-    });
-    expect(count1).toBe(1);
-    // releasedCount intentionally 0; this test pins compaction.id flow only.
-    emitContinuationCompactionReleasedSpan({
-      releasedCount: 0,
-      compactionId: count1,
-    });
+      // amount=1: producer returns 1 (0 + max(0,1))
+      const count1 = await incrementCompactionCount({
+        sessionEntry: baseEntry,
+        sessionStore,
+        sessionKey,
+        storePath,
+        amount: 1,
+      });
+      expect(count1).toBe(1);
+      // releasedCount intentionally 0; this test pins compaction.id flow only.
+      emitContinuationCompactionReleasedSpan({
+        releasedCount: 0,
+        compactionId: count1,
+      });
 
-    // amount=3: producer returns 4 (1 + max(0,3)) — sanity-check non-1 increments
-    const count3 = await incrementCompactionCount({
-      sessionEntry: sessionStore[sessionKey],
-      sessionStore,
-      sessionKey,
-      amount: 3,
-    });
-    expect(count3).toBe(4);
-    emitContinuationCompactionReleasedSpan({
-      releasedCount: 0,
-      compactionId: count3,
-    });
+      // amount=3: producer returns 4 (1 + max(0,3)) — sanity-check non-1 increments
+      const count3 = await incrementCompactionCount({
+        sessionEntry: sessionStore[sessionKey],
+        sessionStore,
+        sessionKey,
+        storePath,
+        amount: 3,
+      });
+      expect(count3).toBe(4);
+      emitContinuationCompactionReleasedSpan({
+        releasedCount: 0,
+        compactionId: count3,
+      });
 
-    expect(spans).toHaveLength(2);
-    const attrs1 = spans[0]?.options?.attributes as ContinuationSpanAttrs;
-    const attrs2 = spans[1]?.options?.attributes as ContinuationSpanAttrs;
-    expect(attrs1["compaction.id"]).toBe(count1);
-    expect(attrs2["compaction.id"]).toBe(count3);
+      expect(spans).toHaveLength(2);
+      const attrs1 = spans[0]?.options?.attributes as ContinuationSpanAttrs;
+      const attrs2 = spans[1]?.options?.attributes as ContinuationSpanAttrs;
+      expect(attrs1["compaction.id"]).toBe(count1);
+      expect(attrs2["compaction.id"]).toBe(count3);
+    } finally {
+      await drainSessionStoreWriterQueuesForTest();
+      disposeOpenClawAgentDatabaseByPath(storePath);
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

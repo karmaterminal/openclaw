@@ -1,6 +1,3 @@
-/**
- * Orchestrates one agent attempt across embedded and CLI runtimes.
- */
 import type { FastMode } from "@openclaw/normalization-core/string-coerce";
 import { sanitizeForLog } from "../../../packages/terminal-core/src/ansi.js";
 import { failQueuedDelegatesOwnedByRun } from "../../auto-reply/continuation/delegate-store.js";
@@ -96,6 +93,7 @@ import { isRuntimeToolAllowed, isToolAllowedByPolicies } from "../tool-policy-ma
 import { DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS } from "../tool-result-limits.js";
 import type { ContinueWorkRequest } from "../tools/continue-work-tool.js";
 import { resolveHarnessAuthProfileSelection } from "./attempt-auth-selection.js";
+import { emitAgentAttemptRuntimeStart } from "./attempt-callbacks.js";
 import { scheduleSpawnInitContinueWorkWake } from "./attempt-execution.continue-work.js";
 import {
   buildClaudeCliFallbackContextPrelude,
@@ -188,13 +186,6 @@ export async function runAgentAttempt(params: {
     authProfileIdSource?: "auto" | "user";
   }) => void;
 }) {
-  const onRuntimeActivity = (info: { phase: string }) => {
-    // CLI preparation and child launch do not prove a native turn. Parsed
-    // assistant/tool activity does, even when the backend omits lifecycle events.
-    if (info.phase === "assistant_output_started" || info.phase === "tool_execution_started") {
-      void params.onAgentEvent({ stream: "lifecycle", data: { phase: "start" } });
-    }
-  };
   const runStartedAt = Date.now();
   const sessionAuthProfileId = params.sessionEntry?.authProfileOverride?.trim();
   const sessionAuthProfileSource = resolveCollapsedSessionAuthPinSource(params.sessionEntry);
@@ -503,13 +494,16 @@ export async function runAgentAttempt(params: {
       runTimeoutOverrideMs: params.runTimeoutOverrideMs,
       runId: params.runId,
       lifecycleGeneration: params.lifecycleGeneration,
-      onExecutionPhase: onRuntimeActivity,
+      onExecutionPhase: (info) => emitAgentAttemptRuntimeStart(info, params.onAgentEvent),
       lane: params.opts.lane,
       swarmExecutionLane: params.opts.swarmExecutionLane,
       extraSystemPrompt: params.opts.extraSystemPrompt,
       inputProvenance: params.opts.inputProvenance,
       skillLibraryAuthoring: params.opts.skillLibraryAuthoring,
       sourceReplyDeliveryMode: params.opts.sourceReplyDeliveryMode,
+      taskSuggestionDeliveryMode: params.opts.taskSuggestionDeliveryMode,
+      clientCaps: params.opts.clientCaps,
+      gatewayUiCommandTarget: params.opts.gatewayUiCommandTarget,
       media: params.opts.media,
       skillsSnapshot: params.skillsSnapshot,
       streamParams: params.opts.streamParams,
@@ -1039,6 +1033,7 @@ export async function runAgentAttempt(params: {
     images: shouldForwardImagesToEmbedded ? params.opts.images : undefined,
     imageOrder: shouldForwardImagesToEmbedded ? params.opts.imageOrder : undefined,
     clientTools: params.opts.clientTools,
+    toolBindings: params.opts.toolBindings,
     provider: embeddedAgentProvider,
     requestedRouteResolution: "resolved",
     modelThinkingCapability: params.modelThinkingCapability,

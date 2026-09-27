@@ -8,7 +8,6 @@ import { withBeforeAgentReplyObserver } from "../../plugins/before-agent-reply.j
 import { getGatewayContextResolver } from "../../plugins/runtime/gateway-request-scope.js";
 import { defaultRuntime } from "../../runtime.js";
 import { readPendingUserTurnTranscriptAdmission } from "../../sessions/user-turn-transcript-admission.js";
-import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
 import {
   checkContextPressure,
@@ -42,6 +41,7 @@ import type { ReplyOperation } from "./reply-run-registry.js";
 import { replyRunRegistry } from "./reply-run-registry.js";
 import { createReplyRestartRecoveryClaimController } from "./restart-recovery-claim.js";
 import { resolveReplyHookTrigger } from "./run-provenance.js";
+import { resolveReplySourceTurnId } from "./source-turn-id.js";
 type ExecutePreparedReplyAgentRunInput = Omit<
   FinalizeReplyAgentRunInput,
   | "activeSessionEntry"
@@ -523,20 +523,12 @@ export function createReplyAgentRestartRecoveryController(
   const admitUserTurnWithSourceBinding: typeof admitUserTurn = async (...args) => {
     const result = await admitUserTurn(...args);
     if (result === "admitted") {
-      let sourceTurnId = restartRecoverySourceTurnId;
-      if (
-        !sourceTurnId &&
-        admissionRunId &&
-        isInternalMessageChannel(sessionCtx.Provider ?? sessionCtx.Surface)
-      ) {
-        const entry = getActiveSessionEntry();
-        // Gateway inputs use run IDs, not channel hashes. Recovery retains the
-        // admitted source so historical terminal receipts cannot fence a later turn.
-        sourceTurnId =
-          entry?.restartRecoveryDeliveryRunId === admissionRunId
-            ? (normalizeOptionalString(entry?.restartRecoveryDeliverySourceRunId) ?? admissionRunId)
-            : admissionRunId;
-      }
+      const sourceTurnId = resolveReplySourceTurnId({
+        sourceTurnId: restartRecoverySourceTurnId,
+        admissionRunId,
+        ingressProvider: sessionCtx.Provider ?? sessionCtx.Surface,
+        entry: getActiveSessionEntry(),
+      });
       if (sourceTurnId) {
         replyRunRegistry.bindSourceTurnId(replyOperation, sourceTurnId);
       }

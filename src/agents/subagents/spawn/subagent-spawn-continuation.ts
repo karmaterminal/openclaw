@@ -54,7 +54,7 @@ export function applySubagentContinuationLaunchFields(
 }
 
 type ResolvedSpawnAdmission = Extract<
-  ReturnType<typeof resolveSubagentSpawnRequest>,
+  Awaited<ReturnType<typeof resolveSubagentSpawnRequest>>,
   { ok: true }
 >["resolved"]["admission"];
 

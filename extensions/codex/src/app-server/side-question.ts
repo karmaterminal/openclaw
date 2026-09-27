@@ -65,6 +65,7 @@ import {
   handleDynamicToolCallWithTimeout,
   resolveCodexToolAbortTerminalReason,
   resolveDynamicToolCallTimeoutMs,
+  toCodexDynamicToolProtocolResponse,
 } from "./dynamic-tool-execution.js";
 import { resolveCodexDynamicToolsLoading } from "./dynamic-tool-profile.js";
 import { createCodexDynamicToolBridge, type CodexDynamicToolBridge } from "./dynamic-tools.js";
@@ -604,10 +605,7 @@ export async function runCodexAppServerSideQuestion(
           response,
           durationMs: Math.max(0, Date.now() - toolStartedAt),
         });
-        return {
-          contentItems: response.contentItems,
-          success: response.success,
-        } as JsonValue;
+        return toCodexDynamicToolProtocolResponse(response) as JsonValue;
       } catch (error) {
         emitDynamicToolErrorDiagnostic({
           ...diagnosticContext,

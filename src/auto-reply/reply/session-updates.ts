@@ -6,14 +6,13 @@ import {
   type ExecPolicyOverrides,
   resolveNodeExecEligibility,
 } from "../../agents/exec-defaults.js";
-import { mergeSessionEntry, type SessionEntry } from "../../config/sessions.js";
+import type { SessionEntry } from "../../config/sessions.js";
 import {
   loadSessionEntry,
   patchSessionEntryCore,
   updateSessionEntry,
 } from "../../config/sessions/session-accessor.js";
 import { projectCompactionAccountingPatch } from "../../config/sessions/session-entry-projection.js";
-import { projectCanonicalSessionEntryShape } from "../../config/sessions/store-entry-shape.js";
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { isFastTestRuntimeEnv } from "../../infra/env.js";
@@ -288,7 +287,7 @@ export async function incrementCompactionCount(params: {
   sessionEntry?: SessionEntry;
   sessionStore?: Record<string, SessionEntry>;
   sessionKey?: string;
-  storePath?: string;
+  storePath: string;
   now?: number;
   amount?: number;
   tokensAfter?: number;
@@ -305,7 +304,7 @@ export async function incrementCompactionCount(params: {
   authorize?: () => boolean;
 }): Promise<number | undefined> {
   const { sessionStore, sessionKey, storePath, authorize } = params;
-  if (!sessionKey || (!storePath && !sessionStore)) {
+  if (!sessionKey || !storePath) {
     return undefined;
   }
   const cachedEntry = sessionStore?.[sessionKey] ?? params.sessionEntry;
@@ -343,52 +342,40 @@ export async function incrementCompactionCount(params: {
       transcriptByteCompactionLatch: params.transcriptByteCompactionLatch,
     });
   };
-  if (storePath) {
-    let committed = false;
-    const authorityRevoked = new Error("compaction accounting authority revoked");
-    let persisted: InternalSessionEntry | null;
-    try {
-      persisted = await patchSessionEntryCore(
-        { agentId: params.agentId, storePath, sessionKey },
-        update,
-        {
-          onCommitted: (entry) => {
-            committed = true;
-            // Publish while this commit owns the row, before maintenance yields to a new writer.
-            if (sessionStore) {
-              sessionStore[sessionKey] = entry;
-            }
-          },
-          ...(authorize
-            ? {
-                assertCommitAllowed: () => {
-                  if (!authorize()) {
-                    throw authorityRevoked;
-                  }
-                },
-              }
-            : {}),
+  let committed = false;
+  const authorityRevoked = new Error("compaction accounting authority revoked");
+  let persisted: InternalSessionEntry | null;
+  try {
+    persisted = await patchSessionEntryCore(
+      { agentId: params.agentId, storePath, sessionKey },
+      update,
+      {
+        onCommitted: (entry) => {
+          committed = true;
+          // Publish while this commit owns the row, before maintenance yields to a new writer.
+          if (sessionStore) {
+            sessionStore[sessionKey] = entry;
+          }
         },
-      );
-    } catch (error) {
-      if (error === authorityRevoked) {
-        return undefined;
-      }
-      throw error;
-    }
-    if (!committed || !persisted) {
+        ...(authorize
+          ? {
+              assertCommitAllowed: () => {
+                if (!authorize()) {
+                  throw authorityRevoked;
+                }
+              },
+            }
+          : {}),
+      },
+    );
+  } catch (error) {
+    if (error === authorityRevoked) {
       return undefined;
     }
-    return persisted.compactionCount;
+    throw error;
   }
-  const patch = cachedEntry && update(cachedEntry);
-  if (!sessionStore || !cachedEntry || !patch) {
+  if (!committed || !persisted) {
     return undefined;
   }
-  // Keep merge semantics, then enforce the canonical cache shape upstream requires.
-  const nextEntry = projectCanonicalSessionEntryShape({
-    ...mergeSessionEntry(cachedEntry, patch, { now }),
-  });
-  sessionStore[sessionKey] = nextEntry;
-  return nextEntry.compactionCount;
+  return persisted.compactionCount;
 }

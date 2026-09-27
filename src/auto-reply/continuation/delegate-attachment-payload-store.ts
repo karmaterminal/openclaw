@@ -76,6 +76,7 @@ export function readDelegateAttachmentId(stateJson: unknown): string | undefined
   if (!stateJson || typeof stateJson !== "object" || Array.isArray(stateJson)) {
     return undefined;
   }
+  // SAFETY: narrowed to a non-array object above; the field is read as unknown and validated below.
   const attachmentId = (stateJson as { attachmentId?: unknown }).attachmentId;
   return typeof attachmentId === "string" && isSubagentAttachmentId(attachmentId)
     ? attachmentId

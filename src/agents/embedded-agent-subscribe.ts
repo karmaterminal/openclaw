@@ -103,7 +103,7 @@ export function subscribeEmbeddedAgentSession(params: SubscribeEmbeddedAgentSess
     }
   };
 
-  const resolveCompactionPromiseIfIdle = () => {
+  const maybeResolveCompactionWait = () => {
     if (state.pendingCompactionRetry !== 0 || state.compactionInFlight) {
       return;
     }
@@ -117,12 +117,9 @@ export function subscribeEmbeddedAgentSession(params: SubscribeEmbeddedAgentSess
     createCompactionRetryTracker({
       state,
       ensureCompactionPromise,
-      resolveCompactionPromiseIfIdle,
+      resolveCompactionPromiseIfIdle: maybeResolveCompactionWait,
     });
 
-  const maybeResolveCompactionWait = () => {
-    resolveCompactionPromiseIfIdle();
-  };
   const incrementCompactionCount = () => {
     compactionCount += 1;
   };

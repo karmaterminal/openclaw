@@ -18,6 +18,7 @@ import {
   trimTextFilter,
   trimTextPreservingCode,
 } from "../shared/text/text-projection.js";
+import type { BlockChunkMetadata } from "./embedded-agent-block-chunker.js";
 import {
   isMessagingToolDuplicateNormalized,
   normalizeTextForComparison,
@@ -286,24 +287,11 @@ export function createStreamRendering({
     return stripFinalTagsOutsideCodeSpans(result, resultCodeSpans.isInside);
   };
 
-  const emitBlockChunk = (
-    text: string,
-    options?: {
-      assistantMessageIndex?: number;
-      deferPendingToolMedia?: boolean;
-      final?: boolean;
-      finalReply?: ReplyDirectiveParseResult;
-      // Source coordinates travel with sourceText as a PAIR (upstream 2167eab4cf).
-      // Never set a range without its text or vice versa: the delivery pipeline
-      // treats (text, range) as one occurrence identity and falls back to payload
-      // identity only when BOTH are absent.
-      reconciledSourceBreak?: true;
-      sourceEnd?: number;
-      sourceGeneration?: number;
-      sourceStart?: number;
-      sourceText?: string;
-    },
-  ) => {
+  // Source coordinates travel with sourceText as a PAIR (upstream 2167eab4cf).
+  // Never set a range without its text or vice versa: the delivery pipeline
+  // treats (text, range) as one occurrence identity and falls back to payload
+  // identity only when BOTH are absent.
+  const emitBlockChunk: EmbeddedAgentSubscribeContext["emitBlockChunk"] = (text, options) => {
     if (
       state.suppressBlockChunks ||
       params.silentExpected ||
@@ -575,16 +563,7 @@ export function createStreamRendering({
     if (isPromiseLike<void>(settlement)) {
       return Promise.resolve(settlement).then(() => flushBlockReplyBuffer(options));
     }
-    let pendingChunk:
-      | {
-          text: string;
-          sourceText?: string;
-          sourceGeneration?: number;
-          reconciledSourceBreak?: true;
-          sourceStart?: number;
-          sourceEnd?: number;
-        }
-      | undefined;
+    let pendingChunk: ({ text: string } & Partial<BlockChunkMetadata>) | undefined;
     if (blockChunker.hasBuffered()) {
       blockChunker.drain({
         force: true,

@@ -60,6 +60,7 @@ import {
 import {
   buildChannelSourceTurnId,
   readChannelSourceTurnId,
+  resolveReplySourceTurnId,
   setChannelSourceTurnId,
   shouldMintChannelSourceTurnId,
 } from "./source-turn-id.js";
@@ -84,7 +85,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     queueKey,
     shouldSteer,
     shouldFollowup,
-    queueAdmissionState,
+    hasQueuedFollowups,
     isActive,
     authProfileId,
     authProfileIdSource,
@@ -409,6 +410,12 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       : originalTurnAdoptionLifecycle;
   const followupRun = {
     prompt: queuedBody,
+    sourceTurnId: resolveReplySourceTurnId({
+      sourceTurnId,
+      admissionRunId: sourceMessageId,
+      ingressProvider: ctx.Provider ?? ctx.Surface ?? promptSessionCtx.Provider,
+      entry: preparedSessionState.sessionEntry,
+    }),
     personalBootstrapEligible,
     operatorAuthority: opts?.operatorAuthority,
     transcriptPrompt: transcriptCommandBody,
@@ -670,7 +677,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       resolvedQueue,
       shouldSteer,
       shouldFollowup,
-      queueAdmissionState,
+      hasQueuedFollowups,
       isActive,
       isRunActive: () => {
         const latestSessionState = resolvePreparedSessionState();

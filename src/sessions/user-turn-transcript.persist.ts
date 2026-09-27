@@ -26,6 +26,8 @@ export async function persistUserTurnTranscript(
   }
   let committedWithoutAnchor = false;
 
+  // SAFETY: the caller's runtime config is the persist-options config shape.
+  const persistConfig = params.config as SessionTranscriptTurnPersistOptions["config"] | undefined;
   const turn = await persistSessionTranscriptTurn(
     {
       sessionId: params.sessionId,
@@ -38,9 +40,7 @@ export async function persistUserTurnTranscript(
     },
     {
       ...(params.cwd ? { cwd: params.cwd } : {}),
-      ...(params.config
-        ? { config: params.config as SessionTranscriptTurnPersistOptions["config"] }
-        : {}),
+      ...(persistConfig ? { config: persistConfig } : {}),
       ...(params.expectedSessionId ? { expectedSessionId: params.expectedSessionId } : {}),
       ...(params.initialSessionEntry ? { initialSessionEntry: params.initialSessionEntry } : {}),
       ...(params.expectedSessionState ? { expectedSessionState: params.expectedSessionState } : {}),
@@ -65,6 +65,7 @@ export async function persistUserTurnTranscript(
           idempotencyLookup: "scan",
           prepareMessageAfterIdempotencyCheck: (candidate) =>
             preparePersistedUserTurnMessageForTranscriptWrite(
+              // SAFETY: candidates are the single user message this call submitted.
               candidate as PersistedUserTurnMessage,
               params,
             ),
@@ -72,6 +73,7 @@ export async function persistUserTurnTranscript(
       ],
     },
   );
+  // SAFETY: messages[0] is the result for the one message submitted above, in submission order.
   let appended = turn.messages[0] as
     | {
         anchor?: Omit<UserTurnTranscriptAdmissionReceipt, "logicalTurnId" | "role">;
