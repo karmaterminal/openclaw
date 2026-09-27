@@ -759,7 +759,6 @@ export {
   closeOpenClawAgentDatabaseByPathAsync,
   closeOpenClawAgentDatabases,
   closeOpenClawAgentDatabasesAsync,
-  closeOpenClawAgentDatabasesForTestAsync,
   inspectOpenClawAgentDatabaseOwner,
   isIncognitoOpenClawAgentDatabase,
   listOpenIncognitoAgentDatabases,

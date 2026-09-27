@@ -36,14 +36,16 @@ describe("channel ingress monitor pending dispositions", () => {
       pollIntervalMs: 10,
       retention: { pruneIntervalMs: 60_000 },
       now: () => currentTime,
-      resolvePendingDisposition: (record) =>
-        record.receivedAt < currentTime
-          ? {
-              kind: "fail",
-              reason: "stale-backlog",
-              message: "stale backlog row was excluded before claim",
-            }
-          : null,
+      drain: {
+        resolvePendingDisposition: (record) =>
+          record.receivedAt < currentTime
+            ? {
+                kind: "fail",
+                reason: "stale-backlog",
+                message: "stale backlog row was excluded before claim",
+              }
+            : null,
+      },
     });
 
     await expect(

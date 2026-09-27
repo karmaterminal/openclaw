@@ -24,10 +24,8 @@ import {
 } from "../../../infra/session-delivery-queue-storage.js";
 import { peekSystemEventEntries, removeSystemEvents } from "../../../infra/system-events.js";
 import { buildPersistedUserTurnMessage } from "../../../sessions/user-turn-transcript.message.js";
-import {
-  closeOpenClawAgentDatabasesForTestAsync,
-  runOpenClawAgentWriteTransaction,
-} from "../../../state/openclaw-agent-db.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../../state/openclaw-agent-db-lifecycle.js";
+import { runOpenClawAgentWriteTransaction } from "../../../state/openclaw-agent-db.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import {
   resolveFinalSystemEventAdoption,

@@ -457,8 +457,7 @@ export function createAgentTurnService(
         if (!persistedSession) {
           return;
         }
-        sessionEntry = persistedSession.sessionEntry;
-        sessionTraceparent = persistedSession.consumedContinuationTraceparent;
+        ({ sessionEntry, consumedContinuationTraceparent: sessionTraceparent } = persistedSession);
         resolvedSessionId = persistedSession.resolvedSessionId;
         sessionPersistedBeforeGatewayAdmission =
           persistedSession.sessionPersistedBeforeGatewayAdmission;

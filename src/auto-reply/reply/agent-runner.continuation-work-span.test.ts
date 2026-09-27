@@ -32,7 +32,7 @@ import {
   type Tracer,
 } from "../../infra/continuation-tracer.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
-import { closeOpenClawAgentDatabasesForTestAsync } from "../../state/openclaw-agent-db.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../state/openclaw-agent-db-lifecycle.js";
 import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-runtime-internal.js";
 import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";

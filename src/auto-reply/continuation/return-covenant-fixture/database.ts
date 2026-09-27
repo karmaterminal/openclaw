@@ -6,11 +6,11 @@ import { upsertSessionEntryCore } from "../../../config/sessions/session-accesso
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../../infra/kysely-sync.js";
 import { openNodeSqliteDatabase } from "../../../infra/node-sqlite.js";
 import { resolveSqliteDatabaseFilePaths } from "../../../infra/sqlite-files.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../../state/openclaw-agent-db-lifecycle.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../../state/openclaw-agent-db-readonly.js";
 import { listOpenClawRegisteredAgentDatabases } from "../../../state/openclaw-agent-db-registry-listing.js";
 import type { DB as OpenClawAgentKyselyDatabase } from "../../../state/openclaw-agent-db.generated.js";
 import {
-  closeOpenClawAgentDatabasesForTestAsync,
   disposeOpenClawAgentDatabaseByPath,
   ensureOpenClawAgentDatabaseSchema,
   openOpenClawAgentDatabase,
