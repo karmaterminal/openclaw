@@ -1,9 +1,9 @@
 import { createLazyImportLoader } from "../../../shared/lazy-promise.js";
+import * as subagentAnnounceRuntime from "./subagent-announce.runtime.js";
 import {
   callSubagentLifecycleGateway,
   dispatchGatewayMethodInProcess,
   getRuntimeConfig,
-  resolveContinuationRuntimeConfig,
 } from "./subagent-announce.runtime.js";
 
 const subagentRegistryRuntimeLoader = createLazyImportLoader(
@@ -27,8 +27,17 @@ type SubagentAnnounceDeps = {
   dispatchGatewayMethodInProcess: typeof dispatchGatewayMethodInProcess;
   getRuntimeConfig: typeof getRuntimeConfig;
   loadSubagentRegistryRuntime: typeof loadSubagentRegistryRuntime;
-  resolveContinuationRuntimeConfig: typeof resolveContinuationRuntimeConfig;
+  resolveContinuationRuntimeConfig: typeof subagentAnnounceRuntime.resolveContinuationRuntimeConfig;
 };
+
+// Continuation config is resolved through the runtime barrel at call time, not
+// bound at import. Upstream's announce tests replace that barrel with a mock that
+// lists only upstream's exports; binding a fork-only export at import would make
+// every such suite fail to load, while call-time access keeps our mocks of it
+// effective for the continuation paths that actually use it.
+const resolveContinuationRuntimeConfig: SubagentAnnounceDeps["resolveContinuationRuntimeConfig"] = (
+  ...args
+) => subagentAnnounceRuntime.resolveContinuationRuntimeConfig(...args);
 
 const defaultSubagentAnnounceDeps: SubagentAnnounceDeps = {
   callGateway: callSubagentLifecycleGateway,
