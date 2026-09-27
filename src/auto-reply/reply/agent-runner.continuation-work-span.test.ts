@@ -11,6 +11,9 @@
 //      `continuation.work` span emitted (rejected requests don't
 //      advance the chain, so they MUST NOT emit `continuation.work`)
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   abortEmbeddedAgentRun,
@@ -29,6 +32,7 @@ import {
   type Tracer,
 } from "../../infra/continuation-tracer.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../state/openclaw-agent-db.js";
 import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-runtime-internal.js";
 import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
@@ -248,6 +252,15 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
   return { tracer, spans };
 }
 
+let testStoreDir: string | undefined;
+
+// Durable chain-state lands beside the store path; a per-test directory keeps
+// runs hermetic instead of reusing agent databases left in the shared tmpdir.
+function testStorePath(fileName: string): string {
+  testStoreDir ??= fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-continuation-work-span-"));
+  return path.join(testStoreDir, fileName);
+}
+
 beforeEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
@@ -309,7 +322,7 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers();
   clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
@@ -318,6 +331,11 @@ afterEach(() => {
   resetContinuationTracer();
   resetDelegateDispatchHedgesForTests();
   resetTaskFlowRegistryForTests({ persist: false });
+  await closeOpenClawAgentDatabasesForTestAsync();
+  if (testStoreDir) {
+    fs.rmSync(testStoreDir, { recursive: true, force: true });
+    testStoreDir = undefined;
+  }
 });
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -609,7 +627,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       sessionStore,
       "Working on it\nCONTINUE_WORK:1",
       false,
-      "/tmp/openclaw-continuation-work-persistence-failure.json",
+      testStorePath("openclaw-continuation-work-persistence-failure.json"),
     );
 
     expect(continuationPersistenceCalls).toBe(1);
@@ -671,7 +689,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       sessionStore,
       "Working on it\nCONTINUE_WORK:1",
       false,
-      "/tmp/openclaw-continuation-work-disable-reservation.json",
+      testStorePath("openclaw-continuation-work-disable-reservation.json"),
     );
 
     expect(continuationPersistenceCalls).toBe(2);
@@ -752,7 +770,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       sessionStore,
       "Working on it",
       false,
-      "/tmp/openclaw-continuation-work-live-limits.json",
+      testStorePath("openclaw-continuation-work-live-limits.json"),
     );
 
     expect(continuationPersistenceCalls).toBe(2);
@@ -842,7 +860,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       sessionStore,
       "Working on it",
       false,
-      "/tmp/openclaw-continuation-work-live-limit-increase.json",
+      testStorePath("openclaw-continuation-work-live-limit-increase.json"),
     );
 
     expect(continuationPersistenceCalls).toBe(2);
@@ -938,7 +956,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       { [run.sessionKey]: run.sessionEntry },
       "Working on it",
       false,
-      "/tmp/openclaw-continuation-work-zero-new-reservation.json",
+      testStorePath("openclaw-continuation-work-zero-new-reservation.json"),
     );
 
     expect(continuationPersistenceCalls).toBe(2);
@@ -985,7 +1003,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       { [run.sessionKey]: run.sessionEntry },
       "Working on it",
       false,
-      "/tmp/openclaw-continuation-delegate-hedge-persist.json",
+      testStorePath("openclaw-continuation-delegate-hedge-persist.json"),
     );
     await vi.advanceTimersByTimeAsync(1_000);
 

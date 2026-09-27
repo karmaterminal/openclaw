@@ -11,6 +11,9 @@
 //      `continuation.work` span emitted (rejected requests don't
 //      advance the chain, so they MUST NOT emit `continuation.work`)
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   abortEmbeddedAgentRun,
@@ -29,6 +32,7 @@ import {
   type Tracer,
 } from "../../infra/continuation-tracer.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../state/openclaw-agent-db.js";
 import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-runtime-internal.js";
 import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
@@ -249,6 +253,15 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
   return { tracer, spans };
 }
 
+let testStoreDir: string | undefined;
+
+// Durable chain-state lands beside the store path; a per-test directory keeps
+// runs hermetic instead of reusing agent databases left in the shared tmpdir.
+function testStorePath(fileName: string): string {
+  testStoreDir ??= fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-continuation-work-span-"));
+  return path.join(testStoreDir, fileName);
+}
+
 beforeEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
@@ -310,7 +323,7 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
   resetContinuationWorkDispatchForTests();
   vi.useRealTimers();
   clearRuntimeConfigSnapshot();
@@ -320,6 +333,11 @@ afterEach(() => {
   resetContinuationTracer();
   resetDelegateDispatchHedgesForTests();
   resetTaskFlowRegistryForTests({ persist: false });
+  await closeOpenClawAgentDatabasesForTestAsync();
+  if (testStoreDir) {
+    fs.rmSync(testStoreDir, { recursive: true, force: true });
+    testStoreDir = undefined;
+  }
 });
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -479,7 +497,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       sessionStore,
       "Working on it\nCONTINUE_WORK:1",
       true,
-      "/tmp/openclaw-continuation-work-concurrent-token-accounting.json",
+      testStorePath("openclaw-continuation-work-concurrent-token-accounting.json"),
     );
 
     expect(continuationPersistenceCalls).toBe(2);
