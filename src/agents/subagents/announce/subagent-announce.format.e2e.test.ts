@@ -153,6 +153,18 @@ function expectAgentCallFields(
 }
 
 const agentSpy = vi.fn(async (_req: AgentCallRequest) => visibleAgentResponse());
+// The Gateway `agent` method acks a dispatch with status "accepted" and the request's
+// idempotency key as runId (agent-request-preflight.ts, agent-run-admission-phase.ts).
+// The descendant wake binds its reserved dispatch only to such an ack; a final-shaped
+// response under a foreign run id is treated as unbound and stopped.
+function acceptedWakeResponse(runId: string) {
+  return { ...visibleAgentResponse(runId), status: "accepted" };
+}
+function mockAcceptedWakeDispatch(runId?: string) {
+  agentSpy.mockImplementationOnce(async (req: AgentCallRequest) =>
+    acceptedWakeResponse(runId ?? String(req.params?.idempotencyKey)),
+  );
+}
 const sendSpy = vi.fn(async (_req: AgentCallRequest) => ({ runId: "send-main", status: "ok" }));
 const sessionsDeleteSpy = vi.fn((_req: AgentCallRequest) => undefined);
 const resolveAgentIdFromSessionKeySpy = vi.spyOn(configSessions, "resolveAgentIdFromSessionKey");
@@ -203,15 +215,51 @@ const { subagentRegistryMock } = vi.hoisted(() => ({
     getLatestSubagentRunByChildSessionKey: vi.fn(
       (_childSessionKey: string): MockSubagentRun | undefined => undefined,
     ),
+    getSubagentRunByRunId: vi.fn((_runId: string): MockSubagentRun | undefined => undefined),
     listSubagentRunsForRequester: vi.fn(
       (_sessionKey: string, _scope?: { requesterRunId?: string }): MockSubagentRun[] => [],
     ),
+    recordAcceptedSubagentSteerDispatch: vi.fn(
+      async (params: {
+        runId: string;
+        expected: MockSubagentRun;
+        gatewayRunId: string;
+        phase: "dispatching" | "accepted";
+        lifecycleGeneration?: string;
+        expectedSessionId?: string;
+        expectedLifecycleRevision?: string;
+      }) => ({
+        status: "persisted" as const,
+        ownerRunId: params.runId,
+        owner: params.expected,
+        dispatch: {
+          gatewayRunId: params.gatewayRunId,
+          phase: params.phase,
+          lifecycleGeneration: params.lifecycleGeneration,
+          expectedSessionId: params.expectedSessionId,
+          expectedLifecycleRevision: params.expectedLifecycleRevision,
+        },
+      }),
+    ),
+    clearSubagentRunSteerRestart: vi.fn(async () => true),
     replaceSubagentRunAfterSteer: vi.fn(
       (_params: { previousRunId: string; nextRunId: string; lifecycleGeneration?: string }) => true,
     ),
     resolveRequesterForChildSession: vi.fn((_sessionKey: string): RequesterResolution => null),
   },
 }));
+// The continuation line's descendant wake reserves and binds its dispatch through
+// the lazy registry runtime before replacing the run (subagent-registry-runtime.ts).
+Object.assign(subagentRegistryMock, {
+  clearLazySubagentSteerRestart: (
+    ...args: Parameters<typeof subagentRegistryMock.clearSubagentRunSteerRestart>
+  ) => subagentRegistryMock.clearSubagentRunSteerRestart(...args),
+  getLazySubagentRunByRunId: (...args: [string]) =>
+    subagentRegistryMock.getSubagentRunByRunId(...args),
+  recordLazySubagentSteerDispatch: (
+    ...args: Parameters<typeof subagentRegistryMock.recordAcceptedSubagentSteerDispatch>
+  ) => subagentRegistryMock.recordAcceptedSubagentSteerDispatch(...args),
+});
 const subagentDeliveryTargetHookMock = vi.fn(
   async (
     _eventValue?: unknown,
@@ -401,6 +449,7 @@ vi.mock("../registry/subagent-registry-runtime.js", () => subagentRegistryMock);
 describe("subagent announce formatting", () => {
   let previousFastTestEnv: string | undefined;
   let runSubagentAnnounceFlow: (typeof import("./subagent-announce.js"))["runSubagentAnnounceFlow"];
+  let subagentAnnounceDepsTesting: (typeof import("./subagent-announce.js"))["testing"];
 
   beforeAll(async () => {
     // Set FAST_TEST_MODE before importing the module to ensure the module-level
@@ -409,10 +458,12 @@ describe("subagent announce formatting", () => {
     // See: https://github.com/openclaw/openclaw/issues/31298
     previousFastTestEnv = process.env.OPENCLAW_TEST_FAST;
     process.env.OPENCLAW_TEST_FAST = "1";
-    ({ runSubagentAnnounceFlow } = await import("./subagent-announce.js"));
+    ({ runSubagentAnnounceFlow, testing: subagentAnnounceDepsTesting } =
+      await import("./subagent-announce.js"));
   });
 
   afterAll(() => {
+    subagentAnnounceDepsTesting.setDepsForTest();
     subagentAnnounceTesting.setDepsForTest();
     subagentAnnounceOutputTesting.setDepsForTest();
     subagentAnnounceDeliveryTesting.setDepsForTest();
@@ -481,6 +532,14 @@ describe("subagent announce formatting", () => {
         req: Parameters<typeof gatewayCall.callGateway>[0],
       ) => (await callGatewaySpy(req)) as T,
       getRuntimeConfig: () => configOverride,
+    });
+    // The continuation line routes descendant-wake dispatch and termination through
+    // subagent-announce-deps, whose defaults bind at module load and so bypass the
+    // runtime spies above; give that seam the same Gateway fake.
+    subagentAnnounceDepsTesting.setDepsForTest({
+      callGateway: async <T = Record<string, unknown>>(
+        req: Parameters<typeof gatewayCall.callGateway>[0],
+      ) => (await callGatewaySpy(req)) as T,
     });
     transcriptEvents = [];
     subagentAnnounceOutputTesting.setDepsForTest({
@@ -553,7 +612,35 @@ describe("subagent announce formatting", () => {
     subagentRegistryMock.getLatestSubagentRunByChildSessionKey
       .mockClear()
       .mockReturnValue(undefined);
+    subagentRegistryMock.getSubagentRunByRunId.mockClear().mockImplementation((runId: string) => ({
+      runId,
+      childSessionKey: "agent:main:subagent:parent",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "parent task",
+      cleanup: "delete",
+      createdAt: 1,
+      execution: {
+        endedAt: 2,
+        outcome: { status: "ok" },
+      },
+    }));
     subagentRegistryMock.listSubagentRunsForRequester.mockClear().mockReturnValue([]);
+    subagentRegistryMock.recordAcceptedSubagentSteerDispatch
+      .mockClear()
+      .mockImplementation(async (params) => ({
+        status: "persisted" as const,
+        ownerRunId: params.runId,
+        owner: params.expected,
+        dispatch: {
+          gatewayRunId: params.gatewayRunId,
+          phase: params.phase,
+          lifecycleGeneration: params.lifecycleGeneration,
+          expectedSessionId: params.expectedSessionId,
+          expectedLifecycleRevision: params.expectedLifecycleRevision,
+        },
+      }));
+    subagentRegistryMock.clearSubagentRunSteerRestart.mockClear().mockResolvedValue(true);
     subagentRegistryMock.replaceSubagentRunAfterSteer.mockClear().mockReturnValue(true);
     subagentRegistryMock.resolveRequesterForChildSession.mockClear().mockReturnValue(null);
     hasSubagentDeliveryTargetHook = false;
@@ -2953,6 +3040,7 @@ describe("subagent announce formatting", () => {
       },
     );
 
+    mockAcceptedWakeDispatch();
     const didAnnounce = await runSubagentAnnounceFlow({
       childSessionKey: "agent:main:subagent:parent",
       childRunId: "run-parent-settled",
@@ -3037,6 +3125,7 @@ describe("subagent announce formatting", () => {
       },
     );
 
+    mockAcceptedWakeDispatch();
     const didAnnounce = await runSubagentAnnounceFlow({
       childSessionKey: "agent:main:subagent:parent",
       childRunId: "run-parent-dedupe",
@@ -3174,7 +3263,7 @@ describe("subagent announce formatting", () => {
         },
       );
 
-      agentSpy.mockResolvedValueOnce(visibleAgentResponse("run-parent-phase-2"));
+      mockAcceptedWakeDispatch("run-parent-phase-2");
       const lifecycleGeneration = getAgentEventLifecycleGeneration();
 
       const didAnnounce = await runSubagentAnnounceFlow({
@@ -3200,9 +3289,16 @@ describe("subagent announce formatting", () => {
       expect(message).toContain("All pending descendants for that run have now settled");
       expect(message).toContain("result from child a");
       expect(message).toContain("result from child b");
+      // The wake replaces the reserved owner run; the continuation line's replacement
+      // compares against that owner and admits the ended source it just woke.
+      const wakeOwner = subagentRegistryMock.getSubagentRunByRunId.mock.results[0]?.value;
+      expect(wakeOwner).toMatchObject({ runId: "run-parent-phase-1" });
       expect(subagentRegistryMock.replaceSubagentRunAfterSteer).toHaveBeenCalledWith({
         previousRunId: "run-parent-phase-1",
         nextRunId: "run-parent-phase-2",
+        fallback: wakeOwner,
+        expected: wakeOwner,
+        allowEndedSource: true,
         lifecycleGeneration,
         preserveFrozenResultFallback: true,
         task: expect.stringContaining("All pending descendants for that run have now settled"),
@@ -3232,7 +3328,7 @@ describe("subagent announce formatting", () => {
     ]);
     let releaseWake!: () => void;
     const wakeResponse = new Promise<ReturnType<typeof visibleAgentResponse>>((resolve) => {
-      releaseWake = () => resolve(visibleAgentResponse("run-parent-phase-2"));
+      releaseWake = () => resolve(acceptedWakeResponse("run-parent-phase-2"));
     });
     agentSpy.mockImplementationOnce(() => wakeResponse);
     callGatewaySpy.mockImplementation(async (req: unknown) => {
@@ -3722,6 +3818,7 @@ describe("subagent announce formatting", () => {
           : [],
       );
 
+      mockAcceptedWakeDispatch();
       const didAnnounce = await runSubagentAnnounceFlow({
         childSessionKey: "agent:main:subagent:parent-2-level",
         childRunId: "run-parent-2-level",
@@ -3783,6 +3880,7 @@ describe("subagent announce formatting", () => {
       expect(agentSpy).not.toHaveBeenCalled();
 
       pending = 0;
+      mockAcceptedWakeDispatch();
       const announced = await runSubagentAnnounceFlow({
         childSessionKey: "agent:main:subagent:parent-fanout",
         childRunId: "run-parent-fanout",
@@ -3924,6 +4022,7 @@ describe("subagent announce formatting", () => {
           : [],
       );
 
+      mockAcceptedWakeDispatch();
       const didAnnounce = await runSubagentAnnounceFlow({
         childSessionKey: "agent:main:subagent:parent-sequential",
         childRunId: "run-parent-sequential",
@@ -3964,6 +4063,7 @@ describe("subagent announce formatting", () => {
           : [],
       );
 
+      mockAcceptedWakeDispatch();
       const didAnnounce = await runSubagentAnnounceFlow({
         childSessionKey: "agent:main:subagent:parent-error",
         childRunId: "run-parent-error",
