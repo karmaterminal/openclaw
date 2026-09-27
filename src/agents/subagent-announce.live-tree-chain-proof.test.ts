@@ -1,3 +1,6 @@
+// Spawn admission verifies model account facts. Provision them through the
+// shared spawn-model fixture so the chain never depends on an ambient account.
+import "./subagents/spawn/subagent-spawn-model.mocks.shared.js";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -103,8 +106,14 @@ import { defaultRuntime } from "../runtime.js";
 import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { reloadTaskFlowRegistryFromStore } from "../tasks/task-flow-registry.js";
+import { getTaskFlowRegistryStore } from "../tasks/task-flow-registry.store.js";
 import { listTaskFlowsForOwnerKey } from "../tasks/task-flow-runtime-internal.js";
-import { resetTaskFlowRegistryForTests } from "../tasks/task-runtime.test-helpers.js";
+import { configureTaskRegistryRuntime } from "../tasks/task-registry.store.js";
+import {
+  resetTaskFlowRegistryForTests,
+  resetTaskRegistryForTests,
+} from "../tasks/task-runtime.test-helpers.js";
+import { createInMemoryTaskRegistryStore } from "../test-utils/task-registry-store.js";
 import { createOpenClawContinuationTools } from "./openclaw-tools.continuation.js";
 import { loadSessionEntryByKey } from "./subagents/announce/subagent-announce-delivery.js";
 import {
@@ -133,6 +142,8 @@ function makeConfig(): OpenClawConfig {
       list: [{ id: "main" }],
       defaults: {
         workspace: process.cwd(),
+        // Pin the model so spawns never inherit the moving product default.
+        model: { primary: "openai/gpt-5.5" },
         subagents: {
           maxSpawnDepth: 10,
           maxChildrenPerAgent: 10,
@@ -241,6 +252,13 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     resetAgentEventsForTest();
     resetSubagentRegistryForTests();
     resetTaskFlowRegistryForTests({ persist: false });
+    resetTaskRegistryForTests({ persist: false });
+    // Durable task-registry admission needs the host SQLite broker, which this
+    // worker-thread shard does not own. Keep detached task records in memory,
+    // mirrored against the durable flow store the chain assertions reload.
+    configureTaskRegistryRuntime({
+      store: createInMemoryTaskRegistryStore(undefined, getTaskFlowRegistryStore()),
+    });
     resetDelegateStoreForTests();
     resetContinueDelegateTurnAdmissionForTests();
     resetSystemEventsForTest();
@@ -263,6 +281,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     resetDelegateStoreForTests();
     resetContinueDelegateTurnAdmissionForTests();
     resetTaskFlowRegistryForTests({ persist: false });
+    resetTaskRegistryForTests({ persist: false });
     resetSubagentRegistryForTests();
     resetAgentEventsForTest();
     resetContinuationTracer();
