@@ -220,7 +220,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  mockFlows.clear();
   resetDelegateStoreForTests();
   vi.useRealTimers();
   vi.unstubAllEnvs();
@@ -247,6 +246,8 @@ describe("delegate store — TaskFlow-backed", () => {
       attachAs: { mountPath: "handoff" },
     });
     const flow = expectDefined([...mockFlows.values()].at(0), "pending flow");
+    const attachmentTree = attachmentTreeForFlow(flow);
+    expect(fs.existsSync(attachmentTree)).toBe(true);
     flow.cancelRequestedAt = Date.now();
 
     expect(listPendingDelegateSessionKeysForRecovery()).toEqual([]);
@@ -261,6 +262,7 @@ describe("delegate store — TaskFlow-backed", () => {
     expect(flow.stateJson).not.toHaveProperty("attachments");
     expect(flow.stateJson).not.toHaveProperty("attachAs");
     expect(JSON.stringify(flow.stateJson)).not.toContain(secret);
+    expect(fs.existsSync(attachmentTree)).toBe(false);
   });
 
   it("uses only regular queued/running pending delegates for cleanup deferral", () => {
