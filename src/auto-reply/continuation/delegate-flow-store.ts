@@ -1,19 +1,8 @@
-import { z } from "zod";
 import { validateSubagentAttachments } from "../../agents/subagents/spawn/subagent-attachments.js";
 import { getRuntimeConfig } from "../../config/config.js";
-import { ContinuationRecipientAuthorityBindingSchema } from "../../config/sessions/session-recipient-authority-types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import {
-  DIAGNOSTIC_TRACEPARENT_PATTERN,
-  normalizeDiagnosticTraceparent,
-} from "../../infra/diagnostic-trace-context.js";
 import { registerDiagnosticContinuationQueueMetricsProvider } from "../../logging/diagnostic-continuation-queues.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import {
-  parseInlineAttachmentMountPath,
-  validateInlineAttachmentSnapshots,
-  type InlineAttachment,
-} from "../../shared/inline-attachments.js";
 import {
   CONTINUATION_DELEGATE_CONTROLLER_ID,
   CONTINUATION_POST_COMPACTION_CONTROLLER_ID,
@@ -33,18 +22,21 @@ import {
   updateFlowRecordByIdExpectedRevision,
 } from "../../tasks/task-flow-runtime-internal.js";
 import {
+  createDelegateAttachmentId,
+  discardDelegateAttachmentPayload,
   projectDelegateFlow,
+  readDelegateAttachmentId,
+  reconcileDelegateAttachmentPayloads,
   releaseDelegateAttachmentPayload,
-  resetDelegateAttachmentPayloadsForTests,
   storeDelegateAttachmentPayload,
 } from "./delegate-attachment-payload-store.js";
 import * as delegateFlowDiagnostics from "./delegate-flow-diagnostics.js";
-import { createContinuationRecipientAuthorityBinding } from "./recipient-authority-binding.js";
 import {
-  CONTINUATION_DELEGATE_FANOUT_MODES,
-  normalizeContinuationTargetKey,
-  normalizeContinuationTargetKeys,
-} from "./targeting.js";
+  decodeDelegateStateJson,
+  encodeDelegateState,
+  type PendingDelegateState,
+} from "./delegate-flow-state.js";
+import { createContinuationRecipientAuthorityBinding } from "./recipient-authority-binding.js";
 import type { ChainState, PendingContinuationDelegate } from "./types.js";
 
 const log = createSubsystemLogger("continuation/delegate-store");
@@ -52,171 +44,6 @@ const log = createSubsystemLogger("continuation/delegate-store");
 type DecodedDelegateFlow = PendingContinuationDelegate | undefined;
 
 export { CONTINUATION_DELEGATE_CONTROLLER_ID, CONTINUATION_POST_COMPACTION_CONTROLLER_ID };
-
-const TraceparentStateSchema = z
-  .preprocess(
-    (value) => (value === null ? undefined : value),
-    z
-      .string()
-      .regex(new RegExp(DIAGNOSTIC_TRACEPARENT_PATTERN))
-      .refine((value) => normalizeDiagnosticTraceparent(value) !== undefined, {
-        message: "invalid W3C traceparent",
-      })
-      .transform((value) => normalizeDiagnosticTraceparent(value)!)
-      .optional(),
-  )
-  .optional();
-
-const InlineAttachmentStateSchema = z
-  .object({
-    name: z.string(),
-    content: z.string(),
-    encoding: z.enum(["utf8", "base64"]).optional(),
-    mimeType: z.string().optional(),
-  })
-  .strict();
-
-function parseDelegateAttachmentMountPath(
-  value: unknown,
-  options: { requireCanonicalInput?: boolean } = {},
-) {
-  const parsed = parseInlineAttachmentMountPath(value);
-  if (parsed.status !== "valid") {
-    if (
-      parsed.status === "absent" &&
-      options.requireCanonicalInput === true &&
-      value !== undefined &&
-      value !== null
-    ) {
-      return { status: "invalid" } as const;
-    }
-    return parsed;
-  }
-  if (
-    (options.requireCanonicalInput === true && value !== parsed.mountPath) ||
-    parsed.mountPath.startsWith("/") ||
-    parsed.mountPath.endsWith("/") ||
-    parsed.mountPath.includes("//") ||
-    !/^[A-Za-z0-9._\-/]+$/.test(parsed.mountPath) ||
-    parsed.mountPath.split("/").some((segment) => segment === "." || segment === "..")
-  ) {
-    return { status: "invalid" } as const;
-  }
-  return parsed;
-}
-
-const InlineAttachmentMountStateSchema = z
-  .object({
-    mountPath: z.string().optional(),
-  })
-  .strict()
-  .transform((mount, ctx) => {
-    const parsed = parseDelegateAttachmentMountPath(mount.mountPath, {
-      requireCanonicalInput: true,
-    });
-    if (parsed.status === "invalid") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "attachAs.mountPath is unsafe or noncanonical",
-      });
-      return z.NEVER;
-    }
-    return parsed.status === "valid" ? { mountPath: parsed.mountPath } : undefined;
-  });
-
-const PendingDelegateStateSchema = z
-  .object({
-    kind: z.literal("continuation_delegate"),
-    task: z.string().min(1),
-    delayMs: z.number().int().nonnegative().optional(),
-    silent: z.boolean().optional(),
-    silentWake: z.boolean().optional(),
-    postCompaction: z.boolean().optional(),
-    firstArmedAt: z.number().int().nonnegative().optional(),
-    attachments: z
-      .array(InlineAttachmentStateSchema)
-      .max(50)
-      .transform((attachments) => (attachments.length > 0 ? attachments : undefined))
-      .optional(),
-    attachmentCount: z.number().int().positive().max(50).optional(),
-    attachAs: InlineAttachmentMountStateSchema.optional(),
-    targetSessionKey: z.string().min(1).optional(),
-    targetSessionKeys: z.array(z.string().min(1)).optional(),
-    fanoutMode: z.enum(CONTINUATION_DELEGATE_FANOUT_MODES).optional(),
-    recipientAuthorityBinding: ContinuationRecipientAuthorityBindingSchema.optional(),
-    returnOptions: z
-      .object({
-        artifacts: z.enum(["forbidden", "optional", "required"]).optional(),
-      })
-      .strict()
-      .optional(),
-    recipientContext: z
-      .object({
-        purpose: z.string().trim().min(1).max(1024),
-      })
-      .strict()
-      .optional(),
-    traceparent: TraceparentStateSchema,
-    traceparentProvenance: z.literal("internal").optional(),
-    model: z.string().min(1).optional(),
-    releasedAt: z.number().int().nonnegative().optional(),
-    childSessionKey: z.string().min(1).optional(),
-    chainTokensFold: z.number().int().nonnegative().optional(),
-    persistedChainState: z
-      .object({
-        currentChainCount: z.number().int().nonnegative(),
-        chainStartedAt: z.number().int().nonnegative(),
-        accumulatedChainTokens: z.number().int().nonnegative(),
-        chainId: z.string().min(1).optional(),
-      })
-      .optional(),
-    persistedChainStateKind: z.enum(["advanced", "terminal"]).optional(),
-    inheritedSilent: z.boolean().optional(),
-    inheritedWake: z.boolean().optional(),
-    originRunId: z.string().min(1).optional(),
-    // Pre-cure rows may contain these overrides. Decode accepts but never projects
-    // them, so restart rebinds the spawn to authoritative TaskFlow ownerKey.
-    spawnRequesterSessionKey: z.string().min(1).optional(),
-    spawnRequesterChannel: z.string().min(1).optional(),
-    spawnRequesterAccountId: z.string().min(1).optional(),
-    spawnRequesterTo: z.string().min(1).optional(),
-    spawnRequesterThreadId: z.union([z.string().min(1), z.number()]).optional(),
-    awaitingNextCompaction: z.boolean().optional(),
-  })
-  .strict()
-  .superRefine((state, ctx) => {
-    const hasSilent = state.silent === true;
-    const hasSilentWake = state.silentWake === true;
-    const hasPostCompaction = state.postCompaction === true;
-    const flagCount = [hasSilent, hasSilentWake, hasPostCompaction].filter(Boolean).length;
-    if (
-      state.fanoutMode &&
-      (state.targetSessionKey || (state.targetSessionKeys && state.targetSessionKeys.length > 0))
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "continuation delegate payload cannot combine explicit targets with fanoutMode",
-      });
-      return;
-    }
-    if (validateInlineAttachmentSnapshots({ attachments: state.attachments })) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["attachments"],
-        message: "invalid inline attachment snapshot",
-      });
-      return;
-    }
-    if (flagCount <= 1 || (hasSilent && hasSilentWake && !hasPostCompaction)) {
-      return;
-    }
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "continuation delegate payload has incompatible mode flags",
-    });
-  });
-
-type PendingDelegateState = z.infer<typeof PendingDelegateStateSchema>;
 
 export type PendingDelegateCutoffOptions = {
   includeRunning?: boolean;
@@ -253,91 +80,6 @@ function delegateGoal(delegate: PendingContinuationDelegate): string {
   return isPostCompaction
     ? `Post-compaction delegate: ${excerpt}`
     : `Continuation delegate: ${excerpt}`;
-}
-
-function canonicalizeDelegateAttachments(
-  config: OpenClawConfig,
-  attachments: InlineAttachment[] | undefined,
-): InlineAttachment[] | undefined {
-  if (!attachments || attachments.length === 0) {
-    return undefined;
-  }
-  const canonical = attachments.map((attachment) => ({
-    name: attachment.name.trim(),
-    content: attachment.content,
-    ...(attachment.encoding ? { encoding: attachment.encoding } : {}),
-    ...(attachment.mimeType !== undefined ? { mimeType: attachment.mimeType.trim() } : {}),
-  }));
-  const error = validateSubagentAttachments({
-    config,
-    attachments: canonical,
-    redactContinuationErrorDetails: true,
-  });
-  if (error) {
-    throw new Error(error);
-  }
-  return canonical;
-}
-
-function encodeDelegateState(
-  delegate: PendingContinuationDelegate,
-  attachmentConfig: OpenClawConfig = getRuntimeConfig(),
-): PendingDelegateState {
-  // Durable TaskFlow writers are also called outside the tool surface. Apply
-  // the exact sessions_spawn attachment policy before any stateJson write.
-  const attachments = canonicalizeDelegateAttachments(attachmentConfig, delegate.attachments);
-  const targetSessionKey = normalizeContinuationTargetKey(delegate.targetSessionKey);
-  const targetSessionKeys = normalizeContinuationTargetKeys(delegate.targetSessionKeys);
-  const traceparent = normalizeDiagnosticTraceparent(delegate.traceparent);
-  const rawAttachAs = delegate.attachAs;
-  if (
-    rawAttachAs !== undefined &&
-    (!rawAttachAs || typeof rawAttachAs !== "object" || Array.isArray(rawAttachAs))
-  ) {
-    throw new Error("invalid continuation delegate attachment mount path");
-  }
-  const parsedMountPath = parseDelegateAttachmentMountPath(rawAttachAs?.mountPath);
-  if (parsedMountPath.status === "invalid") {
-    throw new Error("invalid continuation delegate attachment mount path");
-  }
-  const attachAs =
-    attachments?.length && parsedMountPath.status === "valid"
-      ? { mountPath: parsedMountPath.mountPath }
-      : undefined;
-  return {
-    kind: "continuation_delegate",
-    task: delegate.task,
-    ...(delegate.delayMs !== undefined ? { delayMs: delegate.delayMs } : {}),
-    ...(delegate.mode === "silent" ? { silent: true } : {}),
-    ...(delegate.mode === "silent-wake" ? { silentWake: true } : {}),
-    ...(delegate.mode === "post-compaction" ? { postCompaction: true } : {}),
-    ...(delegate.firstArmedAt !== undefined || delegate.delayMs !== undefined
-      ? { firstArmedAt: delegate.firstArmedAt ?? Date.now() }
-      : {}),
-    ...(attachments ? { attachments } : {}),
-    ...(attachments ? { attachmentCount: attachments.length } : {}),
-    ...(attachAs ? { attachAs } : {}),
-    ...(targetSessionKey ? { targetSessionKey } : {}),
-    ...(targetSessionKeys.length > 0 ? { targetSessionKeys } : {}),
-    ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
-    ...(delegate.recipientAuthorityBinding
-      ? { recipientAuthorityBinding: delegate.recipientAuthorityBinding }
-      : {}),
-    ...(delegate.returnOptions ? { returnOptions: delegate.returnOptions } : {}),
-    ...(delegate.recipientContext ? { recipientContext: delegate.recipientContext } : {}),
-    ...(traceparent ? { traceparent, traceparentProvenance: "internal" as const } : {}),
-    ...(delegate.model ? { model: delegate.model } : {}),
-    ...(delegate.chainTokensFold !== undefined
-      ? { chainTokensFold: delegate.chainTokensFold }
-      : {}),
-    ...(delegate.persistedChainState ? { persistedChainState: delegate.persistedChainState } : {}),
-    ...(delegate.persistedChainStateKind
-      ? { persistedChainStateKind: delegate.persistedChainStateKind }
-      : {}),
-    ...(delegate.inheritedSilent ? { inheritedSilent: true } : {}),
-    ...(delegate.inheritedWake ? { inheritedWake: true } : {}),
-    ...(delegate.originRunId ? { originRunId: delegate.originRunId } : {}),
-  };
 }
 
 function applyDelegateStateChanges(
@@ -378,18 +120,7 @@ function resolveUpdatedDelegateState(params: {
 }
 
 function decodeDelegateState(flow: TaskFlowRecord): PendingDelegateState | undefined {
-  const parsed = PendingDelegateStateSchema.safeParse(flow.stateJson);
-  if (!parsed.success) {
-    return undefined;
-  }
-  // Legacy rows must satisfy the live policy before recovery returns raw bytes to a spawn;
-  // callers terminalize an undefined decode through the scrubbed fail path.
-  const attachmentError = validateSubagentAttachments({
-    config: getRuntimeConfig(),
-    attachments: parsed.data.attachments,
-    redactContinuationErrorDetails: true,
-  });
-  return attachmentError ? undefined : parsed.data;
+  return decodeDelegateStateJson(flow.stateJson);
 }
 
 function decodeDelegateFlowWithOptions(
@@ -400,7 +131,18 @@ function decodeDelegateFlowWithOptions(
   if (!state) {
     return undefined;
   }
-  return projectDelegateFlow(flow, state, options);
+  const delegate = projectDelegateFlow(flow, state, options);
+  if (!delegate) {
+    return undefined;
+  }
+  // Apply the live spawn policy after resolving either legacy inline bytes or
+  // durable referenced custody. Invalid recovery state never reaches dispatch.
+  const attachmentError = validateSubagentAttachments({
+    config: getRuntimeConfig(),
+    attachments: delegate.attachments,
+    redactContinuationErrorDetails: true,
+  });
+  return attachmentError ? undefined : delegate;
 }
 
 export function decodeDelegateFlow(flow: TaskFlowRecord): DecodedDelegateFlow {
@@ -537,14 +279,56 @@ export function listQueuedPostCompactionFlows(sessionKey: string): TaskFlowRecor
     .toSorted((a, b) => a.createdAt - b.createdAt);
 }
 
+function scrubReleasedDelegateAttachmentState(
+  stateJson: TaskFlowRecord["stateJson"],
+): TaskFlowRecord["stateJson"] {
+  const scrubbed = scrubStoredDelegateAttachmentState(stateJson);
+  if (!scrubbed || typeof scrubbed !== "object" || Array.isArray(scrubbed)) {
+    return scrubbed;
+  }
+  const released = { ...scrubbed };
+  delete released.attachmentId;
+  return released;
+}
+
+function releaseDelegateAttachmentCustody(
+  flowId: string,
+  stateJson: TaskFlowRecord["stateJson"],
+): void {
+  const attachmentId = readDelegateAttachmentId(stateJson);
+  if (attachmentId && !releaseDelegateAttachmentPayload(attachmentId, flowId)) {
+    log.warn(`[continuation:delegate-attachment-release-failed] flowId=${flowId}`);
+  }
+}
+
+export async function reconcileDelegateAttachmentCustody(
+  orphanedBefore: number,
+): Promise<{ removed: number; failed: number }> {
+  const retainedAttachmentIds = new Set<string>();
+  for (const flow of listTaskFlowRecords()) {
+    if (
+      !isContinuationDelegateFlow(flow) ||
+      (flow.status !== "queued" && flow.status !== "running")
+    ) {
+      continue;
+    }
+    const attachmentId = readDelegateAttachmentId(flow.stateJson);
+    if (attachmentId) {
+      retainedAttachmentIds.add(attachmentId);
+    }
+  }
+  return await reconcileDelegateAttachmentPayloads({ retainedAttachmentIds, orphanedBefore });
+}
+
 export function scrubCancellationRequestedDelegateFlowState(flow: TaskFlowRecord): void {
-  releaseDelegateAttachmentPayload(flow.flowId);
+  releaseDelegateAttachmentCustody(flow.flowId, flow.stateJson);
   let current = flow;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (
       !isContinuationDelegateFlow(current) ||
       current.cancelRequestedAt == null ||
-      !hasStoredDelegateAttachmentState(current.stateJson)
+      (!hasStoredDelegateAttachmentState(current.stateJson) &&
+        !readDelegateAttachmentId(current.stateJson))
     ) {
       return;
     }
@@ -552,7 +336,7 @@ export function scrubCancellationRequestedDelegateFlowState(flow: TaskFlowRecord
       flowId: current.flowId,
       expectedRevision: current.revision,
       patch: {
-        stateJson: scrubStoredDelegateAttachmentState(current.stateJson),
+        stateJson: scrubReleasedDelegateAttachmentState(current.stateJson),
       },
     });
     if (result.applied || result.reason === "not_found" || !result.current) {
@@ -601,6 +385,8 @@ export const delegateFlowRecords = {
           }),
         };
     const state = encodeDelegateState(delegate, params.attachmentConfig);
+    const attachmentId = state.attachments ? createDelegateAttachmentId() : undefined;
+    const durableState: PendingDelegateState = attachmentId ? { ...state, attachmentId } : state;
     const flow = createManagedTaskFlow({
       ownerKey: params.ownerKey,
       controllerId:
@@ -610,10 +396,27 @@ export const delegateFlowRecords = {
       notifyPolicy: "silent",
       goal: delegateGoal(delegate),
       currentStep: params.currentStep,
-      stateJson: scrubStoredDelegateAttachmentState(state),
+      stateJson: scrubStoredDelegateAttachmentState(durableState),
     });
-    if (flow && state.attachments) {
-      storeDelegateAttachmentPayload(flow.flowId, state);
+    if (flow && attachmentId && state.attachments) {
+      try {
+        storeDelegateAttachmentPayload({
+          attachmentId,
+          flowId: flow.flowId,
+          ownerKey: flow.ownerKey,
+          state,
+        });
+      } catch (error) {
+        failFlow({
+          flowId: flow.flowId,
+          expectedRevision: flow.revision,
+          currentStep: "Failed to persist continuation attachment custody",
+          blockedSummary: "Continuation attachment custody could not be persisted.",
+          stateJson: scrubReleasedDelegateAttachmentState(durableState),
+        });
+        discardDelegateAttachmentPayload(attachmentId);
+        throw error;
+      }
     }
     return flow;
   },
@@ -662,26 +465,27 @@ export const delegateFlowRecords = {
       flowId: params.flowId,
       expectedRevision: params.expectedRevision,
       currentStep: params.currentStep,
-      stateJson: scrubStoredDelegateAttachmentState(state),
+      stateJson: scrubReleasedDelegateAttachmentState(state),
       updatedAt: params.updatedAt,
       endedAt: params.endedAt,
     });
     if (result.applied || result.reason === "not_found") {
-      releaseDelegateAttachmentPayload(params.flowId);
+      releaseDelegateAttachmentCustody(params.flowId, state);
     }
     return result;
   },
   fail(params: Parameters<typeof failFlow>[0]) {
     const current = getTaskFlowById(params.flowId);
     const stateJson = params.stateJson !== undefined ? params.stateJson : current?.stateJson;
+    const custodyStateJson = current?.stateJson ?? params.stateJson;
     const result = failFlow({
       ...params,
       ...(stateJson !== undefined
-        ? { stateJson: scrubStoredDelegateAttachmentState(stateJson) }
+        ? { stateJson: scrubReleasedDelegateAttachmentState(stateJson) }
         : {}),
     });
     if (result.applied || result.reason === "not_found") {
-      releaseDelegateAttachmentPayload(params.flowId);
+      releaseDelegateAttachmentCustody(params.flowId, custodyStateJson);
     }
     return result;
   },
@@ -689,9 +493,10 @@ export const delegateFlowRecords = {
   listAll: listTaskFlowRecords,
   listForOwner: listTaskFlowsForOwnerKey,
   delete(flowId: string) {
+    const current = getTaskFlowById(flowId);
     const deleted = deleteTaskFlowRecordById(flowId);
     if (deleted) {
-      releaseDelegateAttachmentPayload(flowId);
+      releaseDelegateAttachmentCustody(flowId, current?.stateJson);
     }
     return deleted;
   },
@@ -754,6 +559,5 @@ export function getContinuationDelegateQueueDepths(
 }
 
 export function resetDelegateFlowDiagnosticsForTests(): void {
-  resetDelegateAttachmentPayloadsForTests();
   continuationQueueDiagnostics.reset();
 }

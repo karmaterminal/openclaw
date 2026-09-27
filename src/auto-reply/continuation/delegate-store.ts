@@ -18,6 +18,7 @@ import {
   listQueuedPendingFlows,
   listRecoverablePendingFlows,
   readAcceptedDelegateChildSessionKey,
+  reconcileDelegateAttachmentCustody,
   rejectCorruptDelegateFlow,
   resetDelegateFlowDiagnosticsForTests,
   scrubCancellationRequestedDelegateFlowState,
@@ -27,6 +28,12 @@ import type { ChainState, PendingContinuationDelegate } from "./types.js";
 
 const log = createSubsystemLogger("continuation/delegate-store");
 type DelegateFlowRecord = ReturnType<typeof delegateFlowRecords.listAll>[number];
+
+export async function reconcileContinuationDelegateAttachmentCustody(
+  orphanedBefore: number,
+): Promise<{ removed: number; failed: number }> {
+  return await reconcileDelegateAttachmentCustody(orphanedBefore);
+}
 
 export function scrubCancellationRequestedDelegateFlows(
   flows: readonly DelegateFlowRecord[],
