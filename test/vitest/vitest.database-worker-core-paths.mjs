@@ -142,6 +142,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/session.acp-reset-routing.test.ts",
   "src/auto-reply/reply/dispatch-acp.test.ts",
   "src/auto-reply/reply/session.test.ts",
+  "src/auto-reply/continuation/work-terminal-notice.durability.test.ts",
+  "src/auto-reply/continuation/return-covenant-fixture/run.test.ts",
   "src/agents/worktrees/empty-source.test.ts",
   "src/agents/worktrees/registry-read.test.ts",
   "src/agents/worktrees/registry.test.ts",

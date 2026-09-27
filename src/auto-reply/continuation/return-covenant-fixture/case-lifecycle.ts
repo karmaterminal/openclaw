@@ -381,9 +381,15 @@ export async function observeReturnCovenantCase(params: {
     promptText,
   });
   if (allowed) {
+    // Record the adopted delivery ids on the persisted turn exactly as the
+    // production turn (get-reply-run-execute) does; adoption settlement only
+    // acknowledges deliveries this durable receipt names (c38c5a04d2).
     const message = buildPersistedUserTurnMessage({
       text: promptText,
       timestamp: context.clock.wallNow(),
+      ...(adoption.managedDeliveries.size > 0
+        ? { sessionDeliveryAckIds: [...adoption.managedDeliveries.keys()] }
+        : {}),
     });
     await appendTranscriptMessage(
       {
@@ -422,6 +428,10 @@ export async function observeReturnCovenantCase(params: {
     systemEvents,
     transcript,
   });
+  // Report the durable queue record's real state rather than asserting it.
+  const retainedQueueRecord = state.deliveryId
+    ? await loadPendingSessionDelivery(state.deliveryId, stateDirectory(context))
+    : undefined;
   const current = currentAuthority(state, context);
   const captured = state.acceptance?.capturedAuthorityGeneration;
   const admission = allowed
@@ -473,9 +483,9 @@ export async function observeReturnCovenantCase(params: {
       queue: {
         recordId: state.deliveryId,
         status: allowed ? "adopted" : `${admission}-acknowledged`,
-        acknowledged: true,
-        removed: true,
-        retryScheduled: false,
+        acknowledged: !retainedQueueRecord,
+        removed: !retainedQueueRecord,
+        retryScheduled: (retainedQueueRecord?.retryCount ?? 0) > 0,
       },
     },
     effects: {

@@ -1,6 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
+import { removeCanonicalValidationFromHistoricalAgentFixture } from "./openclaw-agent-db.test-support.js";
 import { withLegacySessionParticipantsSchema } from "./openclaw-agent-participants-migration.js";
+import { restoreEmptyV21StorageForHistoricalFixture } from "./openclaw-agent-schema-v21.test-support.js";
 import { sessionParticipantsSchemaSql } from "./openclaw-agent-session-participants-schema.js";
 
 type RecipientAuthorityV18FixtureLineage = "covenant" | "upstream";
@@ -42,6 +44,9 @@ export function stageRecipientAuthorityV18Fixture(
     params;
   const originalValidEntryJson = readSessionEntryJson(database, validSessionKey);
   const originalMalformedEntryJson = readSessionEntryJson(database, malformedSessionKey);
+  // A physical v18 file predates the compact v22+ storage and canonical-validation tables.
+  restoreEmptyV21StorageForHistoricalFixture(database);
+  removeCanonicalValidationFromHistoricalAgentFixture(database);
 
   if (lineage === "covenant") {
     database.exec("DROP TABLE session_participants;");

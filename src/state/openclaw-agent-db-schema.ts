@@ -432,14 +432,11 @@ function ensureAgentSchema(
       maintenanceAuthority.renewAgentDatabaseMaintenanceAuthorityIfPresent();
       ensureSessionAdditiveColumns(db);
       ensureSessionEntryValidityProjection(db);
-      // The `previousVersion <` half is upstream's, restored: it was present at
-      // both the merge base and 2167eab4cf but dropped in our window, which would
-      // have re-run the participants migration on EVERY upgrade instead of only
-      // when crossing the version. Named constant kept.
-      if (
-        targetVersion >= AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION &&
-        previousVersion < AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION
-      ) {
+      // Deliberately not gated on `previousVersion < 18` (upstream's form): the
+      // covenant lineage shipped v18 with the legacy actor_type participants
+      // table, so it must still convert. The migration is idempotent; it returns
+      // early once identity_namespace exists (see 2de99fbe69).
+      if (targetVersion >= AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION) {
         migrateSessionParticipantsSchema(db, pathname);
       }
       if (targetVersion >= 19) {
