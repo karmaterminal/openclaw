@@ -287,7 +287,7 @@ describe("subagent registry persistence", () => {
     });
   });
 
-  it("removes attachments when pruning orphaned restored runs", async () => {
+  it("prunes orphaned restored runs without traversing legacy attachment paths", async () => {
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
     const attachmentsRootDir = path.join(tempStateDir, "attachments");
@@ -313,20 +313,13 @@ describe("subagent registry persistence", () => {
     );
 
     restartRegistry();
-    await waitForRegistryWork(async () => {
-      try {
-        await fs.access(attachmentsDir);
-        return false;
-      } catch (err) {
-        return (
-          (err as NodeJS.ErrnoException).code === "ENOENT" &&
-          !readPersistedRuns().has("run-orphan-attachments")
-        );
-      }
-    });
+    await waitForRegistryWork(async () => !readPersistedRuns().has("run-orphan-attachments"));
 
-    await expect(fs.access(attachmentsDir)).rejects.toHaveProperty("code", "ENOENT");
     expect(readPersistedRuns().has("run-orphan-attachments")).toBe(false);
+    // Legacy attachment paths are untrusted and retired without traversal (upstream #146600).
+    await expect(fs.readFile(path.join(attachmentsDir, "artifact.txt"), "utf8")).resolves.toBe(
+      "artifact",
+    );
   });
 
   it("prefers active runs and can resolve them from persisted registry snapshots", async () => {

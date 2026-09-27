@@ -1,10 +1,8 @@
 /**
  * Subagent registry persistence and recovery helpers.
  *
- * Handles frozen result caps, orphan detection, timing persistence, and announce retry logging.
+ * Handles frozen results, attachment cleanup, timing persistence, and announce retry logging.
  */
-import fsSync, { promises as fs } from "node:fs";
-import path from "node:path";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { DEFAULT_SUBAGENT_ARCHIVE_AFTER_MINUTES } from "../../../config/agent-limits.js";
 import { getRuntimeConfig } from "../../../config/config.js";
@@ -15,7 +13,6 @@ import {
 import { patchSessionEntryCore } from "../../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { computeBackoff } from "../../../infra/backoff.js";
-import { hasErrnoCode } from "../../../infra/errno.js";
 import { defaultRuntime } from "../../../runtime.js";
 import {
   recordGatewaySessionRunFailure,
@@ -220,117 +217,37 @@ export async function persistSubagentSessionTiming(
   }
 }
 
-/**
- * Best-effort async removal for a subagent attachment directory.
- *
- * Both transports stay supported: spawns since the Gateway-owned store carry
- * `attachmentId`, while records persisted before it still carry
- * `attachmentsDir`/`attachmentsRootDir`. Retiring only the identity form would
- * silently leak every legitimate legacy tree, so the confined legacy removal is
- * preserved here exactly as the sync path preserves it.
- */
+/** Best-effort async removal for a subagent attachment directory. */
 export async function safeRemoveAttachmentsDir(entry: SubagentRunRecord): Promise<boolean> {
-  if (entry.attachmentId) {
-    try {
-      await cleanupMaterializedSubagentAttachments({
-        childSessionKey: entry.childSessionKey,
-        attachmentId: entry.attachmentId,
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  if (!entry.attachmentsDir || !entry.attachmentsRootDir) {
+  if (!entry.attachmentId) {
+    // Legacy absolute/workspace paths are untrusted and intentionally retired without traversal.
     return true;
   }
 
-  const resolveReal = async (targetPath: string): Promise<string | null> => {
-    try {
-      return await fs.realpath(targetPath);
-    } catch (err) {
-      if (hasErrnoCode(err, "ENOENT")) {
-        return null;
-      }
-      throw err;
-    }
-  };
-
   try {
-    const [rootReal, dirReal] = await Promise.all([
-      resolveReal(entry.attachmentsRootDir),
-      resolveReal(entry.attachmentsDir),
-    ]);
-    if (!dirReal) {
-      return true;
-    }
-
-    const rootBase = rootReal ?? path.resolve(entry.attachmentsRootDir);
-    const dirBase = dirReal;
-    // Compare real paths so a swapped symlink cannot redirect removal outside
-    // the recorded root; an escape refuses rather than reporting success.
-    if (!isResolvedChildPath({ childPath: dirBase, rootPath: rootBase })) {
-      return false;
-    }
-    await fs.rm(dirBase, { recursive: true, force: true });
+    await cleanupMaterializedSubagentAttachments({
+      childSessionKey: entry.childSessionKey,
+      attachmentId: entry.attachmentId,
+    });
     return true;
   } catch {
     return false;
   }
 }
 
-// Attachment cleanup must stay within the recorded root even if paths were
-// symlinks. Compare real paths before removing anything recursively.
-function isResolvedChildPath(params: { childPath: string; rootPath: string }) {
-  const rootWithSep = params.rootPath.endsWith(path.sep)
-    ? params.rootPath
-    : `${params.rootPath}${path.sep}`;
-  return params.childPath.startsWith(rootWithSep);
-}
-
 function safeRemoveAttachmentsDirSync(entry: SubagentRunRecord): void {
   // Spawns since the Gateway-owned attachment store record only `attachmentId`;
   // their tree lives outside the workspace and the legacy path fields are unset,
   // so this must retire identity-owned storage or a pruned orphan leaks it.
-  if (entry.attachmentId) {
-    try {
-      cleanupMaterializedSubagentAttachmentsSync({
-        childSessionKey: entry.childSessionKey,
-        attachmentId: entry.attachmentId,
-      });
-    } catch {
-      // best effort
-    }
+  if (!entry.attachmentId) {
+    // Legacy absolute/workspace paths are untrusted and intentionally retired without traversal.
     return;
   }
-  if (!entry.attachmentsDir || !entry.attachmentsRootDir) {
-    return;
-  }
-
-  const resolveReal = (targetPath: string): string | null => {
-    try {
-      return fsSync.realpathSync.native(targetPath);
-    } catch (err) {
-      if (hasErrnoCode(err, "ENOENT")) {
-        return null;
-      }
-      throw err;
-    }
-  };
-
   try {
-    const rootReal = resolveReal(entry.attachmentsRootDir);
-    const dirReal = resolveReal(entry.attachmentsDir);
-    if (!dirReal) {
-      return;
-    }
-
-    const rootBase = rootReal ?? path.resolve(entry.attachmentsRootDir);
-    if (!isResolvedChildPath({ childPath: dirReal, rootPath: rootBase })) {
-      return;
-    }
-    fsSync.rmSync(dirReal, { recursive: true, force: true });
+    cleanupMaterializedSubagentAttachmentsSync({
+      childSessionKey: entry.childSessionKey,
+      attachmentId: entry.attachmentId,
+    });
   } catch {
     // best effort
   }

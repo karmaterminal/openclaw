@@ -325,7 +325,7 @@ describe("safeRemoveAttachmentsDir", () => {
     await fs.rm(stateDir, { recursive: true, force: true });
   });
 
-  it("removes a valid legacy child directory under its recorded root", async () => {
+  it("retires a legacy child directory record without traversing it", async () => {
     const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-legacy-attachment-"));
     const childDir = path.join(rootDir, "run-legacy");
     const siblingDir = path.join(rootDir, "run-other");
@@ -334,32 +334,32 @@ describe("safeRemoveAttachmentsDir", () => {
     await fs.writeFile(path.join(childDir, "staged.txt"), "staged");
     await fs.writeFile(path.join(siblingDir, "keep.txt"), "keep");
 
-    // No attachmentId: this is a record persisted before the Gateway-owned store,
-    // and its confined legacy removal must still run.
+    // No attachmentId: a record persisted before the Gateway-owned store. Its legacy
+    // paths are untrusted and are retired without any traversal (upstream #146600).
     await expect(
       safeRemoveAttachmentsDir(
         createRunEntry({ attachmentsRootDir: rootDir, attachmentsDir: childDir }),
       ),
     ).resolves.toBe(true);
-    await expect(fs.access(childDir)).rejects.toHaveProperty("code", "ENOENT");
-    // Confinement: only the recorded child is retired.
+    await expect(fs.readFile(path.join(childDir, "staged.txt"), "utf8")).resolves.toBe("staged");
     await expect(fs.readFile(path.join(siblingDir, "keep.txt"), "utf8")).resolves.toBe("keep");
 
     await fs.rm(rootDir, { recursive: true, force: true });
   });
 
-  it("refuses a legacy child resolved outside its recorded root", async () => {
+  it("never traverses a legacy child resolved outside its recorded root", async () => {
     const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-legacy-root-"));
     const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-legacy-outside-"));
     const sentinel = path.join(outsideDir, "sentinel.txt");
     await fs.writeFile(sentinel, "must-survive");
-    // An absolute escape must be refused, not reported as a successful removal.
+    // Legacy paths are retired without traversal, so an absolute escape can never reach disk.
     await expect(
       safeRemoveAttachmentsDir(
         createRunEntry({ attachmentsRootDir: rootDir, attachmentsDir: outsideDir }),
       ),
-    ).resolves.toBe(false);
+    ).resolves.toBe(true);
     await expect(fs.readFile(sentinel, "utf8")).resolves.toBe("must-survive");
+    await expect(fs.readdir(outsideDir)).resolves.toEqual(["sentinel.txt"]);
 
     await fs.rm(rootDir, { recursive: true, force: true });
     await fs.rm(outsideDir, { recursive: true, force: true });

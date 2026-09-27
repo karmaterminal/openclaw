@@ -13,6 +13,7 @@ import {
   updateSessionEntry,
 } from "../../config/sessions/session-accessor.js";
 import { projectCompactionAccountingPatch } from "../../config/sessions/session-entry-projection.js";
+import { projectCanonicalSessionEntryShape } from "../../config/sessions/store-entry-shape.js";
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { isFastTestRuntimeEnv } from "../../infra/env.js";
@@ -384,7 +385,10 @@ export async function incrementCompactionCount(params: {
   if (!sessionStore || !cachedEntry || !patch) {
     return undefined;
   }
-  const nextEntry = mergeSessionEntry(cachedEntry, patch, { now });
+  // Keep merge semantics, then enforce the canonical cache shape upstream requires.
+  const nextEntry = projectCanonicalSessionEntryShape({
+    ...mergeSessionEntry(cachedEntry, patch, { now }),
+  });
   sessionStore[sessionKey] = nextEntry;
   return nextEntry.compactionCount;
 }

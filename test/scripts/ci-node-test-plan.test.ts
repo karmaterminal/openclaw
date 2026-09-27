@@ -87,7 +87,10 @@ import { createRuntimeConfigVitestConfig } from "../vitest/vitest.runtime-config
 import { sharedVitestConfig } from "../vitest/vitest.shared.config.ts";
 import { startupCorpusTestFiles } from "../vitest/vitest.startup-corpus-paths.mjs";
 import { createTasksVitestConfig } from "../vitest/vitest.tasks.config.ts";
-import { fullSuiteVitestShards } from "../vitest/vitest.test-shards.mjs";
+import {
+  autoReplyReplySubtreeTestInclude,
+  fullSuiteVitestShards,
+} from "../vitest/vitest.test-shards.mjs";
 import { createToolingIsolatedVitestConfig } from "../vitest/vitest.tooling-isolated.config.ts";
 import { createToolingVitestConfig } from "../vitest/vitest.tooling.config.ts";
 import { createTuiVitestConfig } from "../vitest/vitest.tui.config.ts";
@@ -7065,5 +7068,22 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
         entrypoint,
       ]);
     }
+  });
+});
+
+describe("auto-reply reply config shard ownership", () => {
+  it("schedules every tracked file the reply subtree include collects (#1402)", () => {
+    // The reply config is only run as include-pattern splits, never whole, so any
+    // subtree file missing from every split would silently never run in CI.
+    const scheduled = new Set(
+      createNodeTestShards({ includeReleaseOnlyPluginShards: true }).flatMap(
+        (shard) => shard.includePatterns ?? [],
+      ),
+    );
+    const collected = autoReplyReplySubtreeTestInclude.flatMap((pattern) =>
+      globSync(pattern, { cwd: process.cwd() }).map((file) => file.replaceAll("\\", "/")),
+    );
+    expect(collected.some((file) => file.startsWith("src/auto-reply/continuation/"))).toBe(true);
+    expect(collected.filter((file) => !scheduled.has(file))).toEqual([]);
   });
 });

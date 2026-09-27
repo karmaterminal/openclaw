@@ -140,7 +140,8 @@ vi.mock("../../config/config.js", () => ({
   getRuntimeConfig: () => ({ session: { store: "test-store" } }),
 }));
 
-vi.mock("../../config/sessions/paths.js", () => ({
+vi.mock("../../config/sessions/paths.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../config/sessions/paths.js")>()),
   resolveSessionStorePathCore: () => mockStorePath,
 }));
 

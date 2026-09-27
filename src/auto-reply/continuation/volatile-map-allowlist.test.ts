@@ -185,14 +185,58 @@ const ALLOWLIST = [
   },
   {
     file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "afterClearCallbacksByOperation",
+    symbol: "afterClearByOperation",
     owner: "reply run registry singleton",
     purpose:
-      "Weakly associates a live ReplyOperation with the set of after-clear callbacks to run once that operation no longer owns its session lane.",
+      "Weakly associates a live ReplyOperation with the set of after-clear callbacks (plus the optional followup admission barrier they wait on) to run once that operation no longer owns its session lane.",
     safeVolatileClassification:
       "WeakMap keys are live ReplyOperation process objects and the values are in-process callback closures; persisting either would be meaningless and would defeat weak-reference semantics.",
     restartContract:
       "Lost on process restart; new ReplyOperation instances register fresh after-clear callbacks when work resumes.",
+  },
+  {
+    file: "src/auto-reply/reply/reply-run-registry.state.ts",
+    symbol: "sourceTurnByKey",
+    owner: "reply run registry singleton",
+    purpose:
+      "Maps an active sessionKey to the channel source-turn id of its live reply operation so message injection can target the owning turn.",
+    safeVolatileClassification:
+      "The binding is set only while the ReplyOperation is the active run for the key and is deleted when that operation clears.",
+    restartContract:
+      "Lost on process restart together with the live ReplyOperation; a new run records its own source turn.",
+  },
+  {
+    file: "src/auto-reply/reply/reply-run-registry.state.ts",
+    symbol: "completionObservationsByKey",
+    owner: "reply run registry singleton",
+    purpose:
+      "Holds the per-sessionKey observers that record owner departures for the lifetime of one awaited admission attempt.",
+    safeVolatileClassification:
+      "Observers are scoped to an in-process await and disposed when it settles; they carry no durable state.",
+    restartContract:
+      "Lost on process restart; the awaiting admission callers disappear with the process.",
+  },
+  {
+    file: "src/auto-reply/reply/reply-run-registry.state.ts",
+    symbol: "lifecycleAdmissionByOperation",
+    owner: "reply run registry singleton",
+    purpose:
+      "Weakly associates a live ReplyOperation with its session-work admission lease and agent database identity.",
+    safeVolatileClassification:
+      "WeakMap keyed by live ReplyOperations; the lease is an in-process release handle and would defeat weak-reference semantics if persisted.",
+    restartContract:
+      "Lost on process restart; the next admission pass acquires a fresh lease for its new ReplyOperation.",
+  },
+  {
+    file: "src/auto-reply/reply/reply-run-registry.state.ts",
+    symbol: "producerCompletionByOperation",
+    owner: "reply run registry singleton",
+    purpose:
+      "Weakly associates a live ReplyOperation with the Promise that settles when its reply producer completes, for successor handoff.",
+    safeVolatileClassification:
+      "WeakMap of live ReplyOperations to in-process Promises; neither is serializable across processes.",
+    restartContract:
+      "Lost on process restart; there is no in-flight producer left to hand off from.",
   },
   {
     file: "src/auto-reply/continuation/delegate-turn-admission.ts",

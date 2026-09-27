@@ -1630,6 +1630,9 @@ function createAutoReplyReplySplitShards(): NodeTestSplitShard[] {
     "auto-reply-reply-dispatch-lifecycle": [] as string[],
     "auto-reply-reply-session": [] as string[],
     "auto-reply-reply-state-routing": [] as string[],
+    // The reply config also collects the continuation subtree; without its own
+    // group those files would be collected by no shard at all (#1402).
+    "auto-reply-continuation": listTestFiles("src/auto-reply/continuation"),
   };
   const dispatchEntrypoints = new Map<string, keyof typeof groups>([
     ["dispatch-from-config.test.ts", "auto-reply-reply-dispatch-core"],
