@@ -274,7 +274,7 @@ export async function wakeSubagentRunAfterDescendants(
   ) {
     return await settleWake(wakeRunId, acceptedState);
   }
-  const replaced = await registryRuntime.replaceSubagentRunAfterSteer({
+  const replaced = registryRuntime.replaceSubagentRunAfterSteer({
     previousRunId: wakeDispatchOwnership.ownerRunId,
     nextRunId: wakeRunId,
     fallback: wakeDispatchOwnership.owner,
