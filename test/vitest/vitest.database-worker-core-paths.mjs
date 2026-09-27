@@ -775,6 +775,9 @@ export const databaseWorkerCoreTestFiles = [
   "src/gateway/worker-environments/worker-turn-transcript-footprint.test.ts",
   "src/plugin-sdk/session-transcript-mirror-runtime.test.ts",
   "src/plugin-sdk/session-transcript-runtime-visible-delta.test.ts",
+  "src/auto-reply/continuation/cross-session-targeting.test.ts",
+  "src/auto-reply/continuation/cross-session-targeting.nonexistent-target.test.ts",
+  "src/auto-reply/continuation/trace-context-propagation.integration.test.ts",
 ];
 
 const databaseWorkerCoreTestFileSet = new Set(databaseWorkerCoreTestFiles);

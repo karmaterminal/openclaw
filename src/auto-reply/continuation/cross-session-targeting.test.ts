@@ -82,6 +82,7 @@ describe("continuation cross-session targeting", () => {
     await expect(
       enqueueContinuationReturnDeliveries(
         {
+          ownerAgentId: "main",
           targetSessionKeys: ["legacy-ownerless-target"],
           text: "must not deliver",
           idempotencyKeyBase: "continuation-return:ownerless",
@@ -103,6 +104,7 @@ describe("continuation cross-session targeting", () => {
     await expect(
       enqueueContinuationReturnDeliveries(
         {
+          ownerAgentId: "main",
           targetSessionKeys: ["agent:helper:mismatched-target"],
           recipientAgentIds: new Map([["agent:helper:mismatched-target", "main"]]),
           text: "must not deliver",
@@ -125,6 +127,7 @@ describe("continuation cross-session targeting", () => {
     await expect(
       enqueueContinuationReturnDeliveries(
         {
+          ownerAgentId: "main",
           targetSessionKeys: ["agent:main:valid-target", "legacy-ownerless-target"],
           text: "must not partially deliver",
           idempotencyKeyBase: "continuation-return:atomic-owner-validation",
@@ -185,6 +188,7 @@ describe("continuation cross-session targeting", () => {
 
     const result = await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
         text: "[continuation:enrichment-return] byte-identical payload",
         idempotencyKeyBase: "continuation-return:test-run",
@@ -244,6 +248,7 @@ describe("continuation cross-session targeting", () => {
       requestHeartbeatNow: vi.fn(),
     };
     const shared = {
+      ownerAgentId: "main",
       text: "[continuation:enrichment-return] stable recipient key",
       idempotencyKeyBase: "continuation-return:cleanup-transition",
     };
@@ -310,6 +315,7 @@ describe("continuation cross-session targeting", () => {
 
     await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys,
         text,
         idempotencyKeyBase: `continuation-return:${scenario.label}`,
@@ -392,6 +398,7 @@ describe("continuation cross-session targeting", () => {
 
     await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: scenario.targetSessionKeys,
         text: "[continuation:enrichment-return] traced payload",
         idempotencyKeyBase: `continuation-return:${scenario.label}`,
@@ -428,6 +435,7 @@ describe("continuation cross-session targeting", () => {
 
     await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:root"],
         text: "[continuation:enrichment-return] untraced payload",
         idempotencyKeyBase: "continuation-return:untraced",
@@ -467,6 +475,7 @@ describe("continuation cross-session targeting", () => {
 
     await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys,
         text: "[continuation:enrichment-return] traced payload",
         idempotencyKeyBase: "continuation-return:fanout",
@@ -517,6 +526,7 @@ describe("continuation cross-session targeting", () => {
 
       const result = await enqueueContinuationReturnDeliveries(
         {
+          ownerAgentId: "main",
           targetSessionKeys: ["agent:main:other"],
           text: "[continuation:enrichment-return] non-attached recipient",
           idempotencyKeyBase: "continuation-return:durable-test",
@@ -552,6 +562,7 @@ describe("continuation cross-session targeting", () => {
       const sessionKey = "agent:main:attached";
       await enqueueContinuationReturnDeliveries(
         {
+          ownerAgentId: "main",
           targetSessionKeys: [sessionKey],
           text: "[continuation:enrichment-return] live attached recipient",
           idempotencyKeyBase: "continuation-return:live-ack-test",
@@ -583,6 +594,7 @@ describe("continuation cross-session targeting", () => {
     await withTestDir({ prefix: "openclaw-targeting-fanout-durable-" }, async (stateDir) => {
       await enqueueContinuationReturnDeliveries(
         {
+          ownerAgentId: "main",
           targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
           text: "[continuation:enrichment-return] fanout durable",
           idempotencyKeyBase: "continuation-return:fanout-durable",

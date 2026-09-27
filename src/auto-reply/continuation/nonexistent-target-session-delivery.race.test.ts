@@ -77,6 +77,7 @@ describe("branch 1 — target session never existed (cold-start)", () => {
 
     const result = await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: [NEVER_EXISTED],
         text: "[continuation:enrichment-return] cold-start delivery",
         idempotencyKeyBase: "continuation-return:nonexistent-cold-start",
@@ -109,6 +110,7 @@ describe("branch 1 — target session never existed (cold-start)", () => {
 
     const result = await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: [NEVER_EXISTED, `${NEVER_EXISTED}-2`],
         text: "[continuation:enrichment-return] cold-start fanout",
         idempotencyKeyBase: "continuation-return:cold-start-fanout",
@@ -135,6 +137,7 @@ describe("branch 2 — target session deleted before dispatch", () => {
 
     const result = await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: [DELETED_BEFORE],
         text: "[continuation:enrichment-return] deleted-before delivery",
         idempotencyKeyBase: "continuation-return:deleted-before",
@@ -162,6 +165,7 @@ describe("branch 2 — target session deleted before dispatch", () => {
     await expect(
       enqueueContinuationReturnDeliveries(
         {
+          ownerAgentId: "main",
           targetSessionKeys: [DELETED_BEFORE],
           text: "[continuation:enrichment-return] enqueue fails",
           idempotencyKeyBase: "continuation-return:enqueue-fail",
@@ -202,6 +206,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
 
     const result = await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: [EXISTING_TARGET],
         text: "[continuation:enrichment-return] stale authority",
         idempotencyKeyBase: "continuation-return:stale-authority",
@@ -257,6 +262,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
 
     const result = await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: [EXISTING_TARGET],
         text: "[continuation:enrichment-return] stale before wake",
         idempotencyKeyBase: "continuation-return:stale-before-wake",
@@ -297,6 +303,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
     await expect(
       enqueueContinuationReturnDeliveries(
         {
+          ownerAgentId: "main",
           targetSessionKeys: [EXISTING_TARGET, DELETED_DURING, `${EXISTING_TARGET}-2`],
           text: "[continuation:enrichment-return] race fanout",
           idempotencyKeyBase: "continuation-return:race",
@@ -331,6 +338,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
 
     const result = await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: [EXISTING_TARGET, DELETED_DURING, `${EXISTING_TARGET}-2`],
         text: "[continuation:enrichment-return] race resolved pre-delete",
         idempotencyKeyBase: "continuation-return:race-ok",
@@ -363,6 +371,7 @@ describe("branch 4 — happy-path control (sanity-check the mock harness)", () =
 
     const result = await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: [EXISTING_TARGET],
         text: "[continuation:enrichment-return] happy path",
         idempotencyKeyBase: "continuation-return:happy",
