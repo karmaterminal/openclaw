@@ -121,7 +121,6 @@ export async function prepareAndDispatchEmbeddedRunAttempt(input: {
     runtime.effectiveModel,
     runtime.providerRuntimeHandle,
   );
-  const authProfileStore = resolveRunAttemptAuthProfileStore();
 
   params.assertModelInput?.(effectiveModel);
 
@@ -161,6 +160,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(input: {
     thinkingLevel: mapThinkingLevelForProvider(runtime.thinkLevel, effectiveModel),
     extraParamsOverride: { ...params.streamParams, fastMode: attemptFastMode },
   });
+  const authProfileStore = resolveRunAttemptAuthProfileStore();
   const resolvedAttemptApiKey = resolveAttemptDispatchApiKey({
     apiKeyInfo: runtime.apiKeyInfo,
     runtimeAuthState: runtime.runtimeAuthState,
