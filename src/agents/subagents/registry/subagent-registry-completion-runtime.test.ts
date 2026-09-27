@@ -30,8 +30,12 @@ function createHarness() {
     requesterDisplayKey: "main",
     task: "complete the synthetic task",
     cleanup: "keep",
+    expectsCompletionMessage: false,
     createdAt: 0,
     execution: { status: "terminal", endedAt: 1, outcome: { status: "error", error: "failed" } },
+    endedReason: SUBAGENT_ENDED_REASON_ERROR,
+    completion: { required: false, resultText: null, capturedAt: 1 },
+    delivery: { status: "not_required" },
     cleanupHandled: true,
   };
   const runs = new Map([[entry.runId, entry]]);
@@ -384,4 +388,20 @@ describe("subagent completion rejection ownership", () => {
       }
     },
   );
+
+  it("defers a partially terminal steer-restart orphan after two persistence failures", async () => {
+    const h = createHarness();
+    h.entry.execution = { status: "terminal", startedAt: 0, endedAt: 1 };
+    h.entry.endedReason = undefined;
+    h.entry.completion = undefined;
+    h.entry.delivery = undefined;
+
+    await h.runtime.completeSubagentRunWithRecovery(h.request, "orphan-resume");
+
+    expect(h.completeSubagentRun).toHaveBeenCalledTimes(2);
+    expect(h.scheduleSweep).toHaveBeenCalledExactlyOnceWith({ delayMs: 1_000 });
+    expect(h.resumeRun).not.toHaveBeenCalled();
+    expect(h.entry.cleanupHandled).toBe(true);
+    expect(h.resumed.has(h.entry.runId)).toBe(true);
+  });
 });

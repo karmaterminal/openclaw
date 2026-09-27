@@ -2,86 +2,76 @@ import { expect, it, vi } from "vitest";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
 import { handleOrphanedSubagentResume } from "./subagent-registry-resume-orphan.js";
 
-function createHarness(params?: {
-  terminal?: boolean;
-  collect?: boolean;
-  collectorComplete?: boolean;
-  collectorLaunchCleanupPending?: boolean;
-  hasUnsettledTask?: boolean;
-}) {
+function createHarness(params?: { terminal?: boolean; retainedRequiredDelivery?: boolean }) {
   const now = Date.now();
+  const retainedRequiredDelivery = params?.retainedRequiredDelivery === true;
   const entry = createSubagentRunRecord({
     runId: "run-orphan",
     childSessionKey: "agent:main:subagent:orphan",
     task: "finish orphan ownership",
     cleanup: "keep",
-    expectsCompletionMessage: false,
-    completion: { required: false },
-    delivery: { status: "not_required" },
+    expectsCompletionMessage: retainedRequiredDelivery,
+    completion: { required: retainedRequiredDelivery },
+    delivery: retainedRequiredDelivery
+      ? {
+          status: "pending",
+          payload: {
+            requesterSessionKey: "agent:main:main",
+            requesterDisplayKey: "main",
+            childSessionKey: "agent:main:subagent:orphan",
+            childRunId: "run-orphan",
+            task: "finish orphan ownership",
+          },
+        }
+      : { status: "not_required" },
     createdAt: now - 100,
     startedAt: now - 50,
-    ...(params?.terminal ? { endedAt: now, outcome: { status: "ok" } } : {}),
-    ...(params?.collect
-      ? {
-          collect: true,
-          ...(params.collectorComplete ? { collectorCompletion: { status: "done" } } : {}),
-          ...(params.collectorLaunchCleanupPending ? { collectorLaunchCleanupPending: true } : {}),
-        }
-      : {}),
+    ...(params?.terminal ? { endedAt: now } : {}),
   });
-  const runs = new Map([[entry.runId, entry]]);
-  const resumedRuns = new Set<string>();
-  const persist = vi.fn();
   const complete = vi.fn(async () => {});
   const handled = handleOrphanedSubagentResume({
     runId: entry.runId,
     entry,
     source: "restore",
-    runs,
-    resumedRuns,
-    hasUnsettledTask: params?.hasUnsettledTask === true,
-    persist,
     complete,
     warn: vi.fn(),
   });
-  return { complete, entry, handled, persist, runs };
+  return { complete, entry, handled };
 }
 
 it("completes a running quiet orphan instead of pruning its ownership", async () => {
   const harness = createHarness();
 
   expect(harness.handled).toBe(true);
-  expect(harness.runs.has(harness.entry.runId)).toBe(true);
-  await vi.waitFor(() => expect(harness.complete).toHaveBeenCalledOnce());
+  await vi.waitFor(() =>
+    expect(harness.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: harness.entry.runId,
+        endedAt: expect.any(Number),
+        outcome: {
+          status: "error",
+          error: "subagent run orphaned: missing-session-entry",
+        },
+      }),
+      "orphan-resume",
+    ),
+  );
 });
 
-it.each([
-  { name: "unfinished task", hasUnsettledTask: true },
-  { name: "unfinished collector", collect: true },
-  {
-    name: "collector launch cleanup",
-    collect: true,
-    collectorComplete: true,
-    collectorLaunchCleanupPending: true,
-  },
-])("preserves terminal orphan ownership with $name debt", (params) => {
-  const harness = createHarness({ terminal: true, ...params });
-
-  expect(harness.handled).toBe(false);
-  expect(harness.runs.has(harness.entry.runId)).toBe(true);
-  expect(harness.complete).not.toHaveBeenCalled();
-  expect(harness.persist).not.toHaveBeenCalled();
-});
-
-it("directly prunes a terminal orphan only after all ownership is settled", () => {
-  const harness = createHarness({
-    terminal: true,
-    collect: true,
-    collectorComplete: true,
-  });
+it("settles a partially terminal orphan through canonical completion", async () => {
+  const harness = createHarness({ terminal: true });
 
   expect(harness.handled).toBe(true);
-  expect(harness.runs.has(harness.entry.runId)).toBe(false);
-  expect(harness.persist).toHaveBeenCalledWith(harness.entry.runId);
+  await vi.waitFor(() => expect(harness.complete).toHaveBeenCalledOnce());
+  expect(harness.complete).toHaveBeenCalledWith(
+    expect.objectContaining({ endedAt: harness.entry.execution.endedAt }),
+    "orphan-resume",
+  );
+});
+
+it("preserves a retained required completion delivery after its child session is gone", () => {
+  const harness = createHarness({ terminal: true, retainedRequiredDelivery: true });
+
+  expect(harness.handled).toBe(false);
   expect(harness.complete).not.toHaveBeenCalled();
 });
