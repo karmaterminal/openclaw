@@ -19,15 +19,8 @@ import {
   resolveSessionRunError,
 } from "../../../sessions/session-run-error.js";
 import { truncateUtf8Prefix } from "../../../utils/utf8-truncate.js";
-import {
-  cleanupMaterializedSubagentAttachments,
-  cleanupMaterializedSubagentAttachmentsSync,
-} from "../subagent-attachment-cleanup.js";
-import {
-  getDeliveryAttemptCount,
-  getDeliveryLastError,
-  hasRetainedRequiredCompletionDelivery,
-} from "./subagent-delivery-state.js";
+import { cleanupMaterializedSubagentAttachments } from "../subagent-attachment-cleanup.js";
+import { getDeliveryAttemptCount, getDeliveryLastError } from "./subagent-delivery-state.js";
 import { SUBAGENT_ENDED_REASON_KILLED } from "./subagent-lifecycle-events.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import {
@@ -35,10 +28,7 @@ import {
   getSubagentSessionStartedAt,
   resolveSubagentSessionStatus,
 } from "./subagent-session-metrics.js";
-import {
-  resolveCompletionFromSessionEntry,
-  type SubagentRunOrphanReason,
-} from "./subagent-session-reconciliation.js";
+import { resolveCompletionFromSessionEntry } from "./subagent-session-reconciliation.js";
 
 export const PROVISIONAL_KILL_RECONCILIATION_MS = 5 * 60_000;
 export const MIN_ANNOUNCE_RETRY_DELAY_MS = 15_000;
@@ -233,52 +223,6 @@ export async function safeRemoveAttachmentsDir(entry: SubagentRunRecord): Promis
   } catch {
     return false;
   }
-}
-
-function safeRemoveAttachmentsDirSync(entry: SubagentRunRecord): void {
-  // Spawns since the Gateway-owned attachment store record only `attachmentId`;
-  // their tree lives outside the workspace and the legacy path fields are unset,
-  // so this must retire identity-owned storage or a pruned orphan leaks it.
-  if (!entry.attachmentId) {
-    // Legacy absolute/workspace paths are untrusted and intentionally retired without traversal.
-    return;
-  }
-  try {
-    cleanupMaterializedSubagentAttachmentsSync({
-      childSessionKey: entry.childSessionKey,
-      attachmentId: entry.attachmentId,
-    });
-  } catch {
-    // best effort
-  }
-}
-
-/** Marks an orphaned registry run finished, cleans attachments, and removes it. */
-export function reconcileOrphanedRun(params: {
-  runId: string;
-  entry: SubagentRunRecord;
-  reason: SubagentRunOrphanReason;
-  source: "restore" | "resume";
-  runs: Map<string, SubagentRunRecord>;
-  resumedRuns: Set<string>;
-}) {
-  if (hasRetainedRequiredCompletionDelivery(params.entry)) {
-    return false;
-  }
-  const shouldDeleteAttachments =
-    params.entry.cleanup === "delete" || !params.entry.retainAttachmentsOnKeep;
-  if (shouldDeleteAttachments) {
-    safeRemoveAttachmentsDirSync(params.entry);
-  }
-  const removed = params.runs.delete(params.runId);
-  params.resumedRuns.delete(params.runId);
-  if (!removed) {
-    return false;
-  }
-  defaultRuntime.log(
-    `[warn] Subagent orphan run pruned source=${params.source} run=${params.runId} child=${params.entry.childSessionKey} reason=${params.reason}`,
-  );
-  return true;
 }
 
 /** Resolves the completed subagent archive delay from config. */

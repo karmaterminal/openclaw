@@ -725,6 +725,7 @@ describe("subagent registry persistence", () => {
       childSessionKey: "agent:main:subagent:ghost-restore",
       task: "orphan restore",
       cleanup: "keep",
+      expectsCompletionMessage: false,
     });
     await writePersistedRegistry(persisted, {
       seedChildSessions: false,

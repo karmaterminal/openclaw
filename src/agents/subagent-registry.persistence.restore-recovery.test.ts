@@ -6,15 +6,26 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./subagents/registry/subagent-registry.mocks.shared.js";
 import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/config.js";
 import { callGateway } from "../gateway/call.js";
 import { onAgentEvent } from "../infra/agent-events.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { resetDetachedTaskLifecycleRuntimeForTests } from "../tasks/detached-task-runtime.test-support.js";
+import { captureTaskDeliveryWork } from "../tasks/task-registry-delivery.test-support.js";
+import { configureTaskRegistryMaintenance } from "../tasks/task-registry.maintenance.js";
+import { configureInMemoryTaskStoresForTests } from "../tasks/task-registry.test-support.js";
+import {
+  resetTaskFlowRegistryForTests,
+  resetTaskRegistryForTests,
+} from "../tasks/task-runtime.test-helpers.js";
 import { captureEnv, deleteTestEnvValue, setTestEnvValue, withEnv } from "../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
+import { resetSubagentRegistryRuntimeLoadersForTests } from "./subagents/registry/subagent-registry-deps.js";
+import { createSubagentPersistenceRuntime } from "./subagents/registry/subagent-registry.persistence-fixture.test-support.js";
 import {
   canonicalSubagentRunFixtures,
+  settleSubagentRegistryPersistenceWork,
   writeSubagentSessionEntry,
 } from "./subagents/registry/subagent-registry.persistence.test-support.js";
 import type { SubagentRunFixture } from "./subagents/registry/subagent-registry.persistence.test-support.js";
@@ -69,6 +80,7 @@ function expectFields(value: unknown, expected: Record<string, unknown>): void {
 describe("subagent registry persistence", () => {
   const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
   let tempStateDir: string | null = null;
+  let deliveries: ReturnType<typeof captureTaskDeliveryWork> | undefined;
 
   const resolveAgentIdFromSessionKey = (sessionKey: string) => {
     const match = sessionKey.match(/^agent:([^:]+):/i);
@@ -124,7 +136,6 @@ describe("subagent registry persistence", () => {
     // and sqlite registry rows are tested through the same paths production resolves.
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
-    closeOpenClawStateDatabaseForTest();
     const runs = new Map(
       Object.entries((persisted.runs ?? {}) as Record<string, SubagentRunRecord>),
     );
@@ -154,6 +165,7 @@ describe("subagent registry persistence", () => {
           createdAt: now - 2,
           startedAt: now - 1,
           endedAt: now,
+          expectsCompletionMessage: false,
         },
       },
     };
@@ -176,19 +188,20 @@ describe("subagent registry persistence", () => {
   const restartRegistry = () => {
     resetSubagentRegistryForTests({ persist: false });
     initSubagentRegistry();
-    const recoveryRuntime = {
-      dispatchAgent: (params: Record<string, unknown>, timeoutMs?: number) =>
-        callGateway({ method: "agent", params, timeoutMs }),
-      waitForAgent: (params: Record<string, unknown>, timeoutMs?: number) =>
-        callGateway({ method: "agent.wait", params, timeoutMs }),
-      sendRecoveryNotice: vi.fn(),
-    };
+    const recoveryRuntime = createSubagentPersistenceRuntime(callGateway);
     const gateway = { recoveryRuntime, resolveGatewayContext: () => gateway as never };
     activateSubagentRegistry(() => gateway as never);
   };
 
   beforeEach(() => {
+    resetSubagentRegistryRuntimeLoadersForTests();
+    setRuntimeConfigSnapshot({});
+    configureTaskRegistryMaintenance({ runtimeAuthoritative: false });
+    resetTaskRegistryForTests({ persist: false });
+    resetTaskFlowRegistryForTests({ persist: false });
+    configureInMemoryTaskStoresForTests();
     resetDetachedTaskLifecycleRuntimeForTests();
+    deliveries = captureTaskDeliveryWork();
     announceSpy.mockReset();
     announceSpy.mockResolvedValue("delivered");
     vi.mocked(callGateway).mockReset();
@@ -202,14 +215,21 @@ describe("subagent registry persistence", () => {
   });
 
   afterEach(async () => {
+    await settleSubagentRegistryPersistenceWork(deliveries);
     resetSubagentRegistryForTests({ persist: false });
     resetDetachedTaskLifecycleRuntimeForTests();
+    resetTaskRegistryForTests({ persist: false });
+    resetTaskFlowRegistryForTests({ persist: false });
     await cleanupSessionStateForTest();
     closeOpenClawStateDatabaseForTest();
     if (tempStateDir) {
       await fs.rm(tempStateDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
       tempStateDir = null;
     }
+    configureTaskRegistryMaintenance({ runtimeAuthoritative: false });
+    clearRuntimeConfigSnapshot();
+    deliveries?.[Symbol.dispose]();
+    deliveries = undefined;
     envSnapshot.restore();
   });
 
@@ -271,11 +291,13 @@ describe("subagent registry persistence", () => {
           cleanup: "keep",
           createdAt: now - 3 * 60 * 60 * 1_000,
           startedAt: now - 3 * 60 * 60 * 1_000,
+          expectsCompletionMessage: false,
         },
       },
     });
 
     restartRegistry();
+    await settleSubagentRegistryPersistenceWork(deliveries);
     await waitForRegistryWork(
       () => readPersistedRuns().get(runId)?.cleanupCompletedAt !== undefined,
     );
@@ -287,7 +309,7 @@ describe("subagent registry persistence", () => {
     });
   });
 
-  it("prunes orphaned restored runs without traversing legacy attachment paths", async () => {
+  it("settles orphaned restored runs without traversing legacy attachment paths", async () => {
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
     const attachmentsRootDir = path.join(tempStateDir, "attachments");
@@ -313,6 +335,7 @@ describe("subagent registry persistence", () => {
     );
 
     restartRegistry();
+    await settleSubagentRegistryPersistenceWork(deliveries);
     await waitForRegistryWork(async () => !readPersistedRuns().has("run-orphan-attachments"));
 
     expect(readPersistedRuns().has("run-orphan-attachments")).toBe(false);

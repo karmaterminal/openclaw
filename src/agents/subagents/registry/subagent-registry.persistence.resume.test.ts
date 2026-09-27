@@ -20,6 +20,7 @@ import {
   createHydratedRegistryRuns,
   createOutstandingWakeRuns,
   createRejectedRequesterWake,
+  registerSteerRestartOrphanPersistenceCases,
   createRestoredWakeRuns,
   createSelectedAllRecipientAuthorityBinding,
   createSettlingRequesterWake,
@@ -37,7 +38,6 @@ import {
   settleSubagentRegistryPersistenceWork,
   createDeliveredWake,
   createOrphanedRequiredDelivery,
-  removeSubagentSessionEntry,
   writeChildSession,
   writeSubagentSessionEntry,
 } from "./subagent-registry.persistence.test-support.js";
@@ -287,46 +287,13 @@ describe("subagent registry persistence resume", () => {
     });
   });
 
-  it("prunes orphan runs before resuming an announce retry", async () => {
-    const stateDir = tempDirs.make("openclaw-subagent-");
-    await withRegistryState(stateDir, async () => {
-      const runId = "run-orphan-resume-guard";
-      const childSessionKey = "agent:main:subagent:ghost-resume";
-      const now = Date.now();
-
-      await writeSubagentSessionEntry({
-        stateDir,
-        agentId: "main",
-        sessionKey: childSessionKey,
-        sessionId: "sess-resume-guard",
-        updatedAt: now,
-        defaultSessionId: "sess-resume-guard",
-      });
-      mod.addSubagentRunForTests({
-        runId,
-        childSessionKey,
-        requesterSessionKey: "agent:main:main",
-        requesterDisplayKey: "main",
-        task: "resume orphan guard",
-        cleanup: "keep",
-        createdAt: now - 50,
-        startedAt: now - 25,
-        endedAt: now,
-        suppressAnnounceReason: "steer-restart",
-        cleanupHandled: false,
-      });
-      await removeSubagentSessionEntry({
-        stateDir,
-        agentId: "main",
-        sessionKey: childSessionKey,
-      });
-
-      expect(mod.clearSubagentRunSteerRestart(runId)).toBe(true);
-      await vi.waitFor(() => expect(mod.getSubagentRunByRunId(runId)).toBeUndefined());
-
-      expect(announceSpy).not.toHaveBeenCalled();
-      expect(loadSubagentRegistryFromSqlite().has(runId)).toBe(false);
-    });
+  registerSteerRestartOrphanPersistenceCases({
+    getRegistry: () => mod,
+    getCallGateway: () => callGatewayModule.callGateway,
+    getStateDatabase: () => registryStateDbModule,
+    withRegistryState: (run) => withRegistryState(run),
+    activateRegistry,
+    announceSpy,
   });
 
   it.each([

@@ -30,8 +30,12 @@ function createHarness() {
     requesterDisplayKey: "main",
     task: "complete the synthetic task",
     cleanup: "keep",
+    expectsCompletionMessage: false,
     createdAt: 0,
     execution: { status: "terminal", endedAt: 1, outcome: { status: "error", error: "failed" } },
+    endedReason: SUBAGENT_ENDED_REASON_ERROR,
+    completion: { required: false, resultText: null, capturedAt: 1 },
+    delivery: { status: "not_required" },
     cleanupHandled: true,
   };
   const runs = new Map([[entry.runId, entry]]);
@@ -157,7 +161,7 @@ describe("subagent completion rejection ownership", () => {
         expect(completionSignal).not.toBe(launch.signal);
         expect(completionSignal?.aborted).toBe(false);
         expect(settled).toBe(false);
-        expect(h.entry.completion?.resultText).toBeUndefined();
+        expect(h.entry.completion?.resultText).toBeNull();
         expect(getActiveGatewayRootWorkCount()).toBe(1);
         finishCapture.resolve();
         await expect(completion).resolves.toEqual({ status: "fulfilled" });
@@ -384,4 +388,17 @@ describe("subagent completion rejection ownership", () => {
       }
     },
   );
+
+  it("resumes canonical terminal cleanup after two persistence failures", async () => {
+    const h = createHarness();
+    h.resumeRun.mockImplementation(() => {});
+
+    await h.runtime.completeSubagentRunWithRecovery(h.request, "orphan-resume");
+
+    expect(h.completeSubagentRun).toHaveBeenCalledTimes(2);
+    expect(h.scheduleSweep).not.toHaveBeenCalled();
+    expect(h.resumeRun).toHaveBeenCalledExactlyOnceWith(h.entry.runId);
+    expect(h.entry.cleanupHandled).toBe(false);
+    expect(h.resumed.has(h.entry.runId)).toBe(false);
+  });
 });
