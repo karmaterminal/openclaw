@@ -464,6 +464,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/sessions/session-upstream-monitor.test.ts",
   "src/sessions/user-turn-transcript.test.ts",
   "src/sessions/user-turn-transcript.persistence.test.ts",
+  "src/sessions/user-turn-transcript.recorder.test.ts",
   "test/canonical-descendant.integration.test.ts",
   "test/runtime-agent.codex-initialization.integration.test.ts",
   "packages/memory-host-sdk/src/host/session-memory-sync.test.ts",
