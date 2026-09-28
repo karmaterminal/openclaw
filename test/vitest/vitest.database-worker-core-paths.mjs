@@ -2,6 +2,7 @@
 export const databaseWorkerCoreTestFiles = [
   "src/channels/message/durable-receive.test.ts",
   "src/channels/message/ingress-drain-lanes.test.ts",
+  "src/channels/message/ingress-drain-pending-disposition.test.ts",
   "src/channels/message/ingress-drain-supersede.test.ts",
   "src/channels/message/ingress-drain.abandonment.test.ts",
   "src/channels/message/ingress-drain.async-work.test.ts",
@@ -24,6 +25,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/channels/message/ingress-queue.pruning.test.ts",
   "src/channels/message/ingress-queue.read-only-access.test.ts",
   "src/channels/message/ingress-queue.test.ts",
+  "src/auto-reply/reply/dispatch-from-config.ingress-cancellation.test.ts",
   "src/auto-reply/reply/dispatch-from-config.ingress-retry.test.ts",
   "test/line-question-gateway.test.ts",
   "src/commands/channels/dead-letters.test.ts",
