@@ -3,11 +3,14 @@ import path from "node:path";
 import { createRuntimeImportGraph } from "../../scripts/lib/runtime-import-closure.mts";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
-const staticDependencyCache = new Map<string, readonly string[]>();
+const dependencyCache = new Map<string, readonly string[]>();
 
 export function findSourceImportBackedges(
   entry: string | readonly string[],
   forbidden: readonly string[],
+  // Single-bundle builds (`codeSplitting: false`) inline dynamic imports, so their
+  // graphs must follow `import()` edges too.
+  { includeDynamicImports = false }: { includeDynamicImports?: boolean } = {},
 ): string[] {
   const entries = typeof entry === "string" ? [entry] : entry;
   const pending = entries.map((file) => ({
@@ -29,10 +32,12 @@ export function findSourceImportBackedges(
         violations.push(chain.map((part) => path.relative(repoRoot, part)).join(" -> "));
         continue;
       }
-      let dependencies = staticDependencyCache.get(file);
+      const cacheKey = `${includeDynamicImports ? "dynamic" : "static"}:${file}`;
+      let dependencies = dependencyCache.get(cacheKey);
       if (!dependencies) {
         graph ??= createRuntimeImportGraph(repoRoot, entries, {
           includeCommonJs: true,
+          includeDynamicImports,
           sourceImports: true,
           // Vite query suffixes select asset handling without changing the source file.
           normalizeSpecifier: (specifier) => specifier.split("?", 1)[0]!,
@@ -80,7 +85,7 @@ export function findSourceImportBackedges(
           }
         }
         dependencies = resolved;
-        staticDependencyCache.set(file, dependencies);
+        dependencyCache.set(cacheKey, dependencies);
       }
       for (const dependency of dependencies) {
         pending.push({ file: dependency, parents: chain });
