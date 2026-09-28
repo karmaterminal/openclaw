@@ -4,6 +4,8 @@ import type { Result } from "@openclaw/normalization-core/result";
 import type { AgentRunTerminalOutcome } from "../agents/agent-run-terminal-outcome.types.js";
 import {
   bindSessionPendingInputSources,
+  publishTranscriptUpdate,
+  rewriteTranscriptMessageAtAnchor,
   stageSessionPendingInput,
   withSessionPendingInputPersistence,
   resolveSessionTranscriptRuntimeTarget,
@@ -12,12 +14,12 @@ import {
 } from "../config/sessions/session-accessor.js";
 import { createUserTurnAdmissionWrite } from "./user-turn-transcript-admission-write.js";
 import {
-  confirmPersistedSteerTargetRunId,
   registerUserTurnTranscriptAdmissionOwner,
   resolveUserTurnTranscriptAdmission,
 } from "./user-turn-transcript-admission.js";
 import {
   buildLateResolvedMediaMessage,
+  isUserMessage,
   resolvePersistedUserTurnMessage,
 } from "./user-turn-transcript.message.js";
 import {
@@ -68,6 +70,43 @@ export {
   preparePersistedUserTurnMessageForTranscriptWrite,
   restorePreparedUserTurnOperationalMetaForRuntime,
 };
+
+// The transcript read fence imports `user-turn-transcript-admission.ts` for its
+// admission registry, and runtime workers bundle every import of that graph,
+// dynamic ones included. This write-path rewrite stays beside its only caller so
+// the session accessor never enters the state-read worker.
+async function confirmPersistedSteerTargetRunId(params: {
+  admission: UserTurnTranscriptAdmissionReceipt;
+  targetRunId: string;
+}): Promise<
+  | {
+      admission: UserTurnTranscriptAdmissionReceipt;
+      message: PersistedUserTurnMessage;
+    }
+  | undefined
+> {
+  const rewritten = await rewriteTranscriptMessageAtAnchor(params.admission, (message) => {
+    if (!isUserMessage(message)) {
+      return undefined;
+    }
+    const currentTarget = normalizePersistedSteerTargetRunId(
+      message["__openclaw"]?.steerTargetRunId,
+    );
+    return currentTarget === params.targetRunId
+      ? undefined
+      : rewritePersistedSteerTargetRunId(message, params.targetRunId);
+  });
+  if (!rewritten) {
+    return undefined;
+  }
+  const admission = { ...params.admission, generation: rewritten.generation };
+  await publishTranscriptUpdate(admission, {
+    message: rewritten.message,
+    messageId: admission.entryId,
+    messageSeq: admission.activeMessagePosition + 1,
+  });
+  return { admission, message: rewritten.message };
+}
 
 async function resolveUserTurnTranscriptTarget(
   target: UserTurnTranscriptTargetResolver,
