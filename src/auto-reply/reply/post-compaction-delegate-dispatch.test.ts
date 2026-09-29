@@ -12,6 +12,7 @@ import {
   loadPendingSessionDelivery,
 } from "../../infra/session-delivery-queue-storage.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
+import { formatContinuationChildRunId } from "../../shared/continuation-run-key.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
@@ -36,6 +37,8 @@ const MAIN_QUEUE_KEY = resolveSystemEventQueueKey("main", "main");
 
 const mockRegistryState = vi.hoisted(() => ({
   acceptedChildSessionKeys: new Set<string>(),
+  /** Registry rows keyed by attempt run ID: runId -> child session key. */
+  admittedRunIds: new Map<string, string>(),
 }));
 
 vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
@@ -144,14 +147,23 @@ function createDispatchDeps(options?: {
     return `queue-${sequence}`;
   });
   const drainPostCompactionDelegateDeliveries = vi.fn(async () => undefined);
-  const finalizeStagedPostCompactionDelegates = vi.fn(
-    (flowIds: readonly (string | undefined)[]) => flowIds.filter(Boolean).length,
-  );
-  const requeueReleasedPostCompactionDelegate = vi.fn(() => "missing" as const);
+  // A claimed custody delegate is released through one commit (queue insert
+  // plus permanent handoff); a session-store delegate uses the plain enqueue.
+  const releasePostCompactionDelegateToQueue = vi.fn<
+    PostCompactionDelegateDispatchDeps["releasePostCompactionDelegateToQueue"]
+  >(async ({ sequence }) => {
+    if (options?.rejectEnqueueAt === sequence) {
+      throw new Error("queue write failed");
+    }
+    return { released: true, entryId: `queue-${sequence}` };
+  });
+  const requeueReleasedPostCompactionDelegate = vi.fn<
+    PostCompactionDelegateDispatchDeps["requeueReleasedPostCompactionDelegate"]
+  >(async () => "missing");
   const stagePostCompactionDelegate = vi.fn();
   const deps: PostCompactionDelegateDispatchDeps = {
-    consumeStagedPostCompactionDelegates: vi.fn(() => options?.staged ?? []),
-    finalizeStagedPostCompactionDelegates,
+    consumeStagedPostCompactionDelegates: vi.fn(async () => options?.staged ?? []),
+    releasePostCompactionDelegateToQueue,
     requeueReleasedPostCompactionDelegate,
     stagePostCompactionDelegate,
     drainPostCompactionDelegateDeliveries,
@@ -169,7 +181,7 @@ function createDispatchDeps(options?: {
     drainPostCompactionDelegateDeliveries,
     enqueuePostCompactionDelegateDelivery,
     enqueueSystemEvent,
-    finalizeStagedPostCompactionDelegates,
+    releasePostCompactionDelegateToQueue,
     log,
     readPostCompactionContext,
     requeueReleasedPostCompactionDelegate,
@@ -201,6 +213,7 @@ function createQueuedEntry(
     firstArmedAt: DELIVERY_NOW_MS,
     enqueuedAt: DELIVERY_NOW_MS,
     retryCount: 0,
+    childRunId: firstAttemptRunId(overrides?.sourceFlowId ?? overrides?.id ?? "queue-1"),
     ...overrides,
     ...(overrides?.traceparent && overrides.traceparentProvenance === undefined
       ? { traceparentProvenance: "internal" as const }
@@ -211,6 +224,18 @@ function createQueuedEntry(
 function deriveTestContinuationChildSessionKey(agentId: string, flowId: string): string {
   const digest = crypto.createHash("sha256").update(flowId).digest("hex").slice(0, 32);
   return `agent:${agentId}:subagent:continuation-${digest}`;
+}
+
+/** The first attempt key a release records for `recordId` (RFC §5.4.4). */
+function firstAttemptRunId(recordId: string): string {
+  return formatContinuationChildRunId(recordId, 1);
+}
+
+/** Put an owner-matching registry row under `recordId`'s first attempt key. */
+function admitFirstAttempt(recordId: string, agentId = "main"): string {
+  const childSessionKey = deriveTestContinuationChildSessionKey(agentId, recordId);
+  mockRegistryState.admittedRunIds.set(firstAttemptRunId(recordId), childSessionKey);
+  return childSessionKey;
 }
 
 function createDeliveryDeps(params: {
@@ -230,17 +255,40 @@ function createDeliveryDeps(params: {
     const status = params.spawnStatus ?? "accepted";
     return status === "accepted" ? { status, context: "isolated" as const } : { status };
   });
-  const markPendingDelegateSpawnAccepted = vi.fn(() => true);
-  const failReleasedPostCompactionDelegate = vi.fn(() => true);
-  // Mirrors the real store: the marker write bumps the TaskFlow revision, and a
-  // row that already carries a marker returns that same hop on every replay.
+  const markPendingDelegateSpawnAccepted = vi.fn(async () => true);
+  const failReleasedPostCompactionDelegate = vi.fn(async () => true);
+  // Mirrors the real store: the marker write bumps the custody revision, and a
+  // record that already carries a marker returns that same hop on every replay.
   const reserveAcceptedPostCompactionChainHop = vi.fn(
-    (flowRef: { flowId?: string; expectedRevision?: number }, plannedChainState: ChainState) => ({
+    async (
+      flowRef: { flowId?: string; expectedRevision?: number },
+      plannedChainState: ChainState,
+    ) => ({
       chainState: params.reservedChainState ?? plannedChainState,
       expectedRevision:
         flowRef.expectedRevision === undefined ? undefined : flowRef.expectedRevision + 1,
     }),
   );
+  // Registry evidence under the entry's attempt keys (RFC §5.4.4): a row whose
+  // requester is the owner is an admitted child.
+  const readAdmissionEvidence = vi.fn<PostCompactionDelegateDeliveryDeps["readAdmissionEvidence"]>(
+    async ({ runIds }) => {
+      const runId = runIds.find((candidate) => mockRegistryState.admittedRunIds.has(candidate));
+      return runId
+        ? {
+            kind: "admitted",
+            runId,
+            childSessionKey: mockRegistryState.admittedRunIds.get(runId)!,
+          }
+        : { kind: "none" };
+    },
+  );
+  const markAttemptStarted = vi.fn<PostCompactionDelegateDeliveryDeps["markAttemptStarted"]>(
+    async () => undefined,
+  );
+  const enqueueInterruptedNotice = vi.fn<
+    PostCompactionDelegateDeliveryDeps["enqueueInterruptedNotice"]
+  >(async () => undefined);
   const deps: PostCompactionDelegateDeliveryDeps = {
     enqueueSystemEvent,
     getRuntimeConfig: vi.fn(() => cfg),
@@ -257,13 +305,19 @@ function createDeliveryDeps(params: {
     resolveSessionAgentId: vi.fn(() => "main"),
     resolveSessionStorePathCore: vi.fn(() => params.storePath),
     spawnSubagentDirect,
-    revalidatePendingDelegateForSpawn: vi.fn(() => ({ allowed: true }) as const),
+    revalidatePendingDelegateForSpawn: vi.fn(async () => ({ allowed: true }) as const),
     markPendingDelegateSpawnAccepted,
     failReleasedPostCompactionDelegate,
     reserveAcceptedPostCompactionChainHop,
+    readAdmissionEvidence,
+    markAttemptStarted,
+    enqueueInterruptedNotice,
   };
   return {
     deps,
+    enqueueInterruptedNotice,
+    markAttemptStarted,
+    readAdmissionEvidence,
     enqueueSystemEvent,
     log,
     failReleasedPostCompactionDelegate,
@@ -307,6 +361,7 @@ function readSessionEntry(storePath: string, sessionKey = "main"): SessionEntry 
 afterEach(() => {
   vi.useRealTimers();
   mockRegistryState.acceptedChildSessionKeys.clear();
+  mockRegistryState.admittedRunIds.clear();
   sessionStoreModule.clearSessionStoreCacheForTest();
 });
 
@@ -318,6 +373,7 @@ const splitLintUse = [
   drainPostCompactionDelegateDeliveriesDispatch,
   createQueuedEntry,
   deriveTestContinuationChildSessionKey,
+  admitFirstAttempt,
   createDeliveryDeps,
 ];
 void splitLintUse;

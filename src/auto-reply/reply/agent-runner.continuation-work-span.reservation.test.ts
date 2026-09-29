@@ -33,12 +33,13 @@ import {
 } from "../../infra/continuation-tracer.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
 import { closeOpenClawAgentDatabasesForTestAsync } from "../../state/openclaw-agent-db-lifecycle.js";
-import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-runtime-internal.js";
-import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
+import {
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "../continuation/custody/custody.test-support.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
 import { enqueuePendingDelegate } from "../continuation/delegate-store.js";
 import { resetContinuationWorkDispatchForTests } from "../continuation/work-dispatch.js";
-import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
 import type { TemplateContext } from "../templating.js";
 import { isContinuationChainPatch } from "./agent-runner-entry.test-support.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
@@ -262,10 +263,11 @@ function testStorePath(fileName: string): string {
   return path.join(testStoreDir, fileName);
 }
 
+useContinuationCustodyTestState();
+
 beforeEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
-  resetTaskFlowRegistryForTests({ persist: false });
   runEmbeddedAgentMock.mockClear();
   runCliAgentMock.mockClear();
   runWithModelFallbackMock.mockClear();
@@ -332,15 +334,12 @@ afterEach(async () => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   resetContinuationTracer();
   resetDelegateDispatchHedgesForTests();
-  resetTaskFlowRegistryForTests({ persist: false });
   await closeOpenClawAgentDatabasesForTestAsync();
   if (testStoreDir) {
     fs.rmSync(testStoreDir, { recursive: true, force: true });
     testStoreDir = undefined;
   }
 });
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function createContinuationRun(params?: {
   sessionKey?: string;
@@ -441,9 +440,6 @@ async function runWorkTurn(
   });
 }
 
-const splitLintUse = [enqueuePendingWork, UUID_REGEX];
-void splitLintUse;
-
 describe("runReplyAgent :: continuation.work span", () => {
   it("preserves child-token updates committed while a work reservation is active", async () => {
     vi.useFakeTimers();
@@ -509,7 +505,7 @@ describe("runReplyAgent :: continuation.work span", () => {
     expect(storedEntry.continuationChainCount).toBe(2);
     expect(storedEntry.continuationChainTokens).toBe(22);
     expect(storedEntry.continuationChainId).toBe(chainId);
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toHaveLength(1);
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toHaveLength(1);
   });
 
   it("suppresses continue_work tool callbacks from incomplete non-replay-safe turns", async () => {
@@ -565,7 +561,7 @@ describe("runReplyAgent :: continuation.work span", () => {
     });
     runEmbeddedAgentMock.mockImplementationOnce(async (args: unknown) => {
       const attempt = args as { runId: string; sessionId: string };
-      enqueuePendingDelegate(run.sessionKey, {
+      await enqueuePendingDelegate(run.sessionKey, {
         task: "unsafe delegate",
         originRunId: attempt.runId,
       });
@@ -592,11 +588,12 @@ describe("runReplyAgent :: continuation.work span", () => {
 
     expect(spans.filter((s) => s.name === "continuation.work")).toHaveLength(0);
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toMatchObject([
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toMatchObject([
       {
+        kind: "delegate",
         status: "failed",
-        currentStep: "Rejected replay-unsafe continuation delegate election",
-        blockedSummary:
+        phase: "Rejected replay-unsafe continuation delegate election",
+        failureReason:
           "Continuation delegate election ignored because the enclosing turn was incomplete and replay-unsafe.",
       },
     ]);

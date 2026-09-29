@@ -53,17 +53,20 @@ import {
   resolveIncognitoOpenClawAgentSqlitePath,
 } from "../../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseAsync } from "../../state/openclaw-state-db.js";
-import { listTaskFlowRecords } from "../../tasks/task-flow-registry.js";
-import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
 import {
   createChannelTestPluginBase,
   createTestRegistry,
 } from "../../test-utils/channel-plugins.js";
 import { withEnvAsync } from "../../test-utils/env.js";
 import { createSessionConversationTestRegistry } from "../../test-utils/session-conversation-registry.js";
+import {
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "../continuation/custody/custody.test-support.js";
 import { consumePendingDelegates, enqueuePendingDelegate } from "../continuation/delegate-store.js";
+import type { PendingContinuationWork } from "../continuation/work-flow-state.js";
+import { enqueuePendingWorkReplacing } from "../continuation/work-replacement-store.js";
 import { consumePendingWork } from "../continuation/work-store.js";
-import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
 import { buildCommandContext } from "./commands-context.js";
 import { maybeHandleResetCommand } from "./commands-reset.js";
 import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
@@ -150,6 +153,21 @@ async function makeStorePath(prefix: string, agentId?: string): Promise<string> 
   const root = await makeCaseDir(prefix);
   const sessionsDir = agentId ? path.join(root, "agents", agentId, "sessions") : root;
   return path.join(sessionsDir, "sessions.json");
+}
+
+// Seed queued work through the real custody election path.
+async function enqueuePendingWork(work: PendingContinuationWork): Promise<PendingContinuationWork> {
+  const result = await enqueuePendingWorkReplacing({
+    work,
+    summary: "seeded session test work",
+    maxPendingWork: Number.MAX_SAFE_INTEGER,
+    replaceParkedWork: false,
+    expectedRunningFlowIds: [],
+  });
+  if (!result.applied) {
+    throw new Error("expected seeded continuation work to be elected");
+  }
+  return result.work;
 }
 
 const TEST_NATIVE_MODEL_PROFILE_ID = "openai:secondary@example.test";
@@ -2688,6 +2706,7 @@ describe("initSessionState RawBody", () => {
 });
 
 describe("initSessionState reset policy", () => {
+  useContinuationCustodyTestState();
   let clearBootstrapSnapshotOnSessionRolloverSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -2821,7 +2840,6 @@ describe("initSessionState reset policy", () => {
     },
   ])("preserves durable continuation claims across implicit $name rollover", async (scenario) => {
     vi.setSystemTime(scenario.now);
-    resetTaskFlowRegistryForTests();
     const storePath = await makeStorePath(`openclaw-reset-${scenario.name}-continuation-`);
     const sessionKey = `agent:main:whatsapp:dm:${scenario.name}-continuation`;
     await writeSessionStoreFast(storePath, {
@@ -2830,7 +2848,7 @@ describe("initSessionState reset policy", () => {
         updatedAt: scenario.updatedAt,
       },
     });
-    const work = enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 0,
@@ -2838,27 +2856,20 @@ describe("initSessionState reset policy", () => {
       dueAt: Date.now(),
       maxChainLength: 8,
     });
-    const delegate = enqueuePendingDelegate(sessionKey, {
+    await enqueuePendingDelegate(sessionKey, {
       task: `continue after ${scenario.name} rollover`,
       delayMs: 0,
     });
-    if (!work || !delegate) {
-      throw new Error("expected durable continuation rows");
-    }
 
-    try {
-      const result = await initSessionState({
-        ctx: { Body: "hello", SessionKey: sessionKey },
-        cfg: { session: { store: storePath, reset: scenario.reset } } as OpenClawConfig,
-      });
+    const result = await initSessionState({
+      ctx: { Body: "hello", SessionKey: sessionKey },
+      cfg: { session: { store: storePath, reset: scenario.reset } } as OpenClawConfig,
+    });
 
-      expect(result.isNewSession).toBe(true);
-      expect(result.resetTriggered).toBe(false);
-      expect(consumePendingWork(sessionKey)).toHaveLength(1);
-      expect(consumePendingDelegates(sessionKey)).toHaveLength(1);
-    } finally {
-      resetTaskFlowRegistryForTests();
-    }
+    expect(result.isNewSession).toBe(true);
+    expect(result.resetTriggered).toBe(false);
+    expect(await consumePendingWork(sessionKey)).toHaveLength(1);
+    expect(await consumePendingDelegates(sessionKey)).toHaveLength(1);
   });
 
   it("drains stale system events when idle rollover creates a new session", async () => {
@@ -3280,6 +3291,7 @@ describe("initSessionState reset policy", () => {
 });
 
 describe("initSessionState browser tab cleanup", () => {
+  useContinuationCustodyTestState();
   it("closes tracked browser tabs when idle session expires", async () => {
     vi.setSystemTime(new Date(2026, 0, 18, 5, 30, 0));
     const storePath = await makeStorePath("openclaw-tab-cleanup-idle-");
@@ -3316,47 +3328,41 @@ describe("initSessionState browser tab cleanup", () => {
     const storePath = await makeStorePath("openclaw-inline-reset-continuation-");
     const sessionKey = "agent:main:telegram:dm:inline-reset-continuation";
     const existingSessionId = "inline-reset-continuation-session";
-    resetTaskFlowRegistryForTests();
-    try {
-      await writeSessionStoreFast(storePath, {
-        [sessionKey]: {
-          sessionId: existingSessionId,
-          updatedAt: Date.now(),
-        },
-      });
-      const work = enqueuePendingWork({
-        sessionKey,
-        hop: 1,
-        delayMs: 60_000,
-        electedAt: Date.now(),
-        dueAt: Date.now() + 60_000,
-        maxChainLength: 8,
-      });
-      const delegate = enqueuePendingDelegate(sessionKey, {
-        task: "delegate after inline reset",
-        delayMs: 60_000,
-      });
-      if (!work || !delegate) {
-        throw new Error("expected durable continuation rows");
-      }
-
-      const result = await initSessionState({
-        ctx: {
-          Body: "/new",
-          RawBody: "/new",
-          CommandBody: "/new",
-          SessionKey: sessionKey,
-        },
-        cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
-      });
-
-      expect(result.isNewSession).toBe(true);
-      const flows = new Map(listTaskFlowRecords().map((flow) => [flow.flowId, flow]));
-      expect(flows.get(work.flowId!)?.status).toBe("cancelled");
-      expect(flows.get(delegate.flowId!)?.status).toBe("cancelled");
-    } finally {
-      resetTaskFlowRegistryForTests();
+    await writeSessionStoreFast(storePath, {
+      [sessionKey]: {
+        sessionId: existingSessionId,
+        updatedAt: Date.now(),
+      },
+    });
+    const work = await enqueuePendingWork({
+      sessionKey,
+      hop: 1,
+      delayMs: 60_000,
+      electedAt: Date.now(),
+      dueAt: Date.now() + 60_000,
+      maxChainLength: 8,
+    });
+    const delegate = await enqueuePendingDelegate(sessionKey, {
+      task: "delegate after inline reset",
+      delayMs: 60_000,
+    });
+    if (!work.flowId) {
+      throw new Error("expected durable continuation records");
     }
+
+    const result = await initSessionState({
+      ctx: {
+        Body: "/new",
+        RawBody: "/new",
+        CommandBody: "/new",
+        SessionKey: sessionKey,
+      },
+      cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
+    });
+
+    expect(result.isNewSession).toBe(true);
+    expect((await readCustodyRecordForTest(work.flowId))?.status).toBe("cancelled");
+    expect((await readCustodyRecordForTest(delegate.recordId))?.status).toBe("cancelled");
   });
 
   it("does not close browser tabs for a fresh session without previous state", async () => {

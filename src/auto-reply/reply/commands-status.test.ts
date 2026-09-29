@@ -34,11 +34,9 @@ import {
 } from "../../tasks/task-executor.js";
 import { resetTaskRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
 import { withEnvAsync } from "../../test-utils/env.js";
-import {
-  consumeStagedPostCompactionDelegates,
-  stagePostCompactionDelegate,
-} from "../continuation/delegate-store-post-compaction.js";
-import { consumePendingDelegates, enqueuePendingDelegate } from "../continuation/delegate-store.js";
+import { useContinuationCustodyTestState } from "../continuation/custody/custody.test-support.js";
+import { stagePostCompactionDelegate } from "../continuation/delegate-store-post-compaction.js";
+import { enqueuePendingDelegate } from "../continuation/delegate-store.js";
 import { buildStatusPluginsReply, buildStatusReply, buildStatusText } from "./commands-status.js";
 import { buildKiraStatusReply, buildStatusReplyForTest } from "./commands-status.test-support.js";
 import {
@@ -2250,9 +2248,10 @@ describe("buildStatusReply subagent summary", () => {
 describe("buildStatusText continuation line", () => {
   const continuationSessionKey = "agent:main:cont-test";
 
+  // Each test gets its own custody state; status reads the hydrated projection.
+  useContinuationCustodyTestState();
+
   afterEach(() => {
-    consumePendingDelegates(continuationSessionKey);
-    consumeStagedPostCompactionDelegates(continuationSessionKey);
     _resetVolitionalCounts(continuationSessionKey);
   });
 
@@ -2348,9 +2347,9 @@ describe("buildStatusText continuation line", () => {
   it("renders delegate and post-compaction counts correctly", async () => {
     incrementVolitionalCompactionCount(continuationSessionKey);
     incrementVolitionalCompactionCount(continuationSessionKey);
-    enqueuePendingDelegate(continuationSessionKey, { task: "task-a" });
-    enqueuePendingDelegate(continuationSessionKey, { task: "task-b" });
-    stagePostCompactionDelegate(continuationSessionKey, {
+    await enqueuePendingDelegate(continuationSessionKey, { task: "task-a" });
+    await enqueuePendingDelegate(continuationSessionKey, { task: "task-b" });
+    await stagePostCompactionDelegate(continuationSessionKey, {
       task: "compaction-task",
       createdAt: Date.now(),
       silent: false,

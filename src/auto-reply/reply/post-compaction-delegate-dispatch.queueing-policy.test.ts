@@ -13,6 +13,7 @@ import {
   loadPendingSessionDelivery,
 } from "../../infra/session-delivery-queue-storage.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
+import { formatContinuationChildRunId } from "../../shared/continuation-run-key.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
@@ -143,18 +144,23 @@ function createDispatchDeps(options?: {
     return `queue-${sequence}`;
   });
   const drainPostCompactionDelegateDeliveries = vi.fn(async () => undefined);
-  const finalizeStagedPostCompactionDelegates = vi.fn(
-    (flowIds: readonly (string | undefined)[]) => flowIds.filter(Boolean).length,
-  );
-  const rejectPostCompactionTaskFlowDelegate = vi.fn(() => true);
+  const releasePostCompactionDelegateToQueue = vi.fn<
+    PostCompactionDelegateDispatchDeps["releasePostCompactionDelegateToQueue"]
+  >(async ({ sequence }) => {
+    if (options?.rejectEnqueueAt === sequence) {
+      throw new Error("queue write failed");
+    }
+    return { released: true, entryId: `queue-${sequence}` };
+  });
+  const rejectPostCompactionDelegate = vi.fn(async () => true);
   const requeueReleasedPostCompactionDelegate = vi.fn<
     PostCompactionDelegateDispatchDeps["requeueReleasedPostCompactionDelegate"]
-  >(() => "missing");
+  >(async () => "missing");
   const stagePostCompactionDelegate = vi.fn();
   const deps: PostCompactionDelegateDispatchDeps = {
-    consumeStagedPostCompactionDelegates: vi.fn(() => options?.staged ?? []),
-    finalizeStagedPostCompactionDelegates,
-    rejectPostCompactionTaskFlowDelegate,
+    consumeStagedPostCompactionDelegates: vi.fn(async () => options?.staged ?? []),
+    releasePostCompactionDelegateToQueue,
+    rejectPostCompactionDelegate,
     requeueReleasedPostCompactionDelegate,
     stagePostCompactionDelegate,
     drainPostCompactionDelegateDeliveries,
@@ -172,9 +178,9 @@ function createDispatchDeps(options?: {
     drainPostCompactionDelegateDeliveries,
     enqueuePostCompactionDelegateDelivery,
     enqueueSystemEvent,
-    finalizeStagedPostCompactionDelegates,
+    releasePostCompactionDelegateToQueue,
     log,
-    rejectPostCompactionTaskFlowDelegate,
+    rejectPostCompactionDelegate,
     readPostCompactionContext,
     requeueReleasedPostCompactionDelegate,
     resolveAgentWorkspaceDir,
@@ -205,6 +211,7 @@ function createQueuedEntry(
     firstArmedAt: DELIVERY_NOW_MS,
     enqueuedAt: DELIVERY_NOW_MS,
     retryCount: 0,
+    childRunId: firstAttemptRunId(overrides?.sourceFlowId ?? overrides?.id ?? "queue-1"),
     ...overrides,
     ...(overrides?.traceparent && overrides.traceparentProvenance === undefined
       ? { traceparentProvenance: "internal" as const }
@@ -215,6 +222,11 @@ function createQueuedEntry(
 function deriveTestContinuationChildSessionKey(agentId: string, flowId: string): string {
   const digest = crypto.createHash("sha256").update(flowId).digest("hex").slice(0, 32);
   return `agent:${agentId}:subagent:continuation-${digest}`;
+}
+
+/** The first attempt key a release records for `recordId` (RFC §5.4.4). */
+function firstAttemptRunId(recordId: string): string {
+  return formatContinuationChildRunId(recordId, 1);
 }
 
 function createDeliveryDeps(params: {
@@ -234,17 +246,30 @@ function createDeliveryDeps(params: {
     const status = params.spawnStatus ?? "accepted";
     return status === "accepted" ? { status, context: "isolated" as const } : { status };
   });
-  const markPendingDelegateSpawnAccepted = vi.fn(() => true);
-  const failReleasedPostCompactionDelegate = vi.fn(() => true);
-  // Mirrors the real store: the marker write bumps the TaskFlow revision, and a
-  // row that already carries a marker returns that same hop on every replay.
+  const markPendingDelegateSpawnAccepted = vi.fn(async () => true);
+  const failReleasedPostCompactionDelegate = vi.fn(async () => true);
+  // Mirrors the real store: the marker write bumps the custody revision, and a
+  // record that already carries a marker returns that same hop on every replay.
   const reserveAcceptedPostCompactionChainHop = vi.fn(
-    (flowRef: { flowId?: string; expectedRevision?: number }, plannedChainState: ChainState) => ({
+    async (
+      flowRef: { flowId?: string; expectedRevision?: number },
+      plannedChainState: ChainState,
+    ) => ({
       chainState: params.reservedChainState ?? plannedChainState,
       expectedRevision:
         flowRef.expectedRevision === undefined ? undefined : flowRef.expectedRevision + 1,
     }),
   );
+  // No registry row exists under any attempt key in this suite (RFC §5.4.4).
+  const readAdmissionEvidence = vi.fn<PostCompactionDelegateDeliveryDeps["readAdmissionEvidence"]>(
+    async () => ({ kind: "none" }),
+  );
+  const markAttemptStarted = vi.fn<PostCompactionDelegateDeliveryDeps["markAttemptStarted"]>(
+    async () => undefined,
+  );
+  const enqueueInterruptedNotice = vi.fn<
+    PostCompactionDelegateDeliveryDeps["enqueueInterruptedNotice"]
+  >(async () => undefined);
   const deps: PostCompactionDelegateDeliveryDeps = {
     enqueueSystemEvent,
     getRuntimeConfig: vi.fn(() => cfg),
@@ -261,13 +286,19 @@ function createDeliveryDeps(params: {
     resolveSessionAgentId: vi.fn(() => "main"),
     resolveSessionStorePathCore: vi.fn(() => params.storePath),
     spawnSubagentDirect,
-    revalidatePendingDelegateForSpawn: vi.fn(() => ({ allowed: true }) as const),
+    revalidatePendingDelegateForSpawn: vi.fn(async () => ({ allowed: true }) as const),
     markPendingDelegateSpawnAccepted,
     failReleasedPostCompactionDelegate,
     reserveAcceptedPostCompactionChainHop,
+    readAdmissionEvidence,
+    markAttemptStarted,
+    enqueueInterruptedNotice,
   };
   return {
     deps,
+    enqueueInterruptedNotice,
+    markAttemptStarted,
+    readAdmissionEvidence,
     enqueueSystemEvent,
     log,
     failReleasedPostCompactionDelegate,
@@ -327,21 +358,22 @@ const splitLintUse = [
 void splitLintUse;
 
 describe("post-compaction delegate dispatch extraction", () => {
-  it("carries staged TaskFlow source ids into queued post-compaction deliveries", async () => {
+  it("releases staged custody source ids into queued post-compaction deliveries", async () => {
     const sessionEntry: SessionEntry = {
       sessionId: "session",
       updatedAt: 1,
       pendingPostCompactionDelegates: [],
     };
-    const { deps, enqueuePostCompactionDelegateDelivery } = createDispatchDeps({
-      staged: [
-        {
-          ...delegate("staged from taskflow"),
-          flowId: "pc-flow-source",
-          expectedRevision: 4,
-        },
-      ],
-    });
+    const { deps, enqueuePostCompactionDelegateDelivery, releasePostCompactionDelegateToQueue } =
+      createDispatchDeps({
+        staged: [
+          {
+            ...delegate("staged from custody"),
+            flowId: "pc-flow-source",
+            expectedRevision: 4,
+          },
+        ],
+      });
 
     const result = await dispatchPostCompactionDelegates(
       {
@@ -357,13 +389,17 @@ describe("post-compaction delegate dispatch extraction", () => {
     await flushMicrotasks();
 
     expect(result).toEqual({ queuedDelegates: 1, droppedDelegates: 0 });
+    // A claimed custody record is released (queue insert plus handoff in one
+    // commit), never enqueued as a plain session-store delegate.
+    expect(enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
+    expect(releasePostCompactionDelegateToQueue).toHaveBeenCalledTimes(1);
     expect(
       expectDefined(
-        enqueuePostCompactionDelegateDelivery.mock.calls.at(0)?.at(0),
-        "queued delegate delivery",
+        releasePostCompactionDelegateToQueue.mock.calls.at(0)?.at(0),
+        "released delegate delivery",
       ).delegate,
     ).toMatchObject({
-      task: "staged from taskflow",
+      task: "staged from custody",
       flowId: "pc-flow-source",
       expectedRevision: 4,
     });
@@ -477,11 +513,11 @@ describe("post-compaction delegate dispatch extraction", () => {
       drainPostCompactionDelegateDeliveries,
       enqueuePostCompactionDelegateDelivery,
       enqueueSystemEvent,
-      finalizeStagedPostCompactionDelegates,
+      releasePostCompactionDelegateToQueue,
       readPostCompactionContext,
       requeueReleasedPostCompactionDelegate,
     } = createDispatchDeps({ staged: [managedDelegate] });
-    requeueReleasedPostCompactionDelegate.mockReturnValue("requeued");
+    requeueReleasedPostCompactionDelegate.mockResolvedValue("requeued");
     readPostCompactionContext.mockImplementationOnce(async () => {
       contextStarted.resolve();
       await releaseContext.promise;
@@ -507,7 +543,7 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(requeueReleasedPostCompactionDelegate).toHaveBeenCalledWith(
       expect.objectContaining(managedDelegate),
     );
-    expect(finalizeStagedPostCompactionDelegates).toHaveBeenCalledWith([]);
+    expect(releasePostCompactionDelegateToQueue).not.toHaveBeenCalled();
     expect(enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
     expect(enqueueSystemEvent).not.toHaveBeenCalled();
     expect(drainPostCompactionDelegateDeliveries).not.toHaveBeenCalled();
@@ -545,11 +581,11 @@ describe("post-compaction delegate dispatch extraction", () => {
         const {
           deps,
           enqueuePostCompactionDelegateDelivery,
-          finalizeStagedPostCompactionDelegates,
+          releasePostCompactionDelegateToQueue,
           readPostCompactionContext,
           requeueReleasedPostCompactionDelegate,
         } = createDispatchDeps({ staged: [claimedDelegate] });
-        requeueReleasedPostCompactionDelegate.mockImplementation((candidate) =>
+        requeueReleasedPostCompactionDelegate.mockImplementation(async (candidate) =>
           candidate.flowId === claimedDelegate.flowId ? "requeued" : "missing",
         );
 
@@ -578,7 +614,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         expect(requeueReleasedPostCompactionDelegate).toHaveBeenCalledWith(
           expect.objectContaining(claimedDelegate),
         );
-        expect(finalizeStagedPostCompactionDelegates).toHaveBeenCalledWith([]);
+        expect(releasePostCompactionDelegateToQueue).not.toHaveBeenCalled();
         expect(readPostCompactionContext).not.toHaveBeenCalled();
         expect(enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
         expect(
@@ -710,12 +746,15 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining(`firstArmedAt=${staleFirstArmedAt}`));
   });
 
-  it.each([
-    { name: "stale", maxDelegatesPerTurn: 5, firstArmedAtOffsetMs: 8 * 24 * 60 * 60 * 1000 },
-    { name: "over budget", maxDelegatesPerTurn: 0, firstArmedAtOffsetMs: 60_000 },
-  ])(
-    "terminalizes managed TaskFlow claims dropped as $name",
-    async ({ firstArmedAtOffsetMs, maxDelegatesPerTurn }) => {
+  // RFC §4.4: a dropped claim fails visibly whether or not it is managed.
+  it.each(
+    [true, false].flatMap((managed) => [
+      { name: "stale", managed, maxDelegatesPerTurn: 5, firstArmedAtOffsetMs: 8 * 86_400_000 },
+      { name: "over budget", managed, maxDelegatesPerTurn: 0, firstArmedAtOffsetMs: 60_000 },
+    ]),
+  )(
+    "terminalizes custody claims (managed=$managed) dropped as $name",
+    async ({ firstArmedAtOffsetMs, managed, maxDelegatesPerTurn }) => {
       const now = 1_700_000_000_000;
       const managedDelegate: SessionPostCompactionDelegate = {
         task: "managed drop",
@@ -723,9 +762,9 @@ describe("post-compaction delegate dispatch extraction", () => {
         firstArmedAt: now - firstArmedAtOffsetMs,
         flowId: "flow-managed-drop",
         expectedRevision: 7,
-        returnOptions: { artifacts: "required" },
+        ...(managed ? { returnOptions: { artifacts: "required" as const } } : {}),
       };
-      const { deps, finalizeStagedPostCompactionDelegates, rejectPostCompactionTaskFlowDelegate } =
+      const { deps, releasePostCompactionDelegateToQueue, rejectPostCompactionDelegate } =
         createDispatchDeps({
           staged: [managedDelegate],
           runtimeConfig: { ...defaultRuntimeConfig, maxDelegatesPerTurn },
@@ -745,11 +784,11 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
 
       expect(result).toEqual({ queuedDelegates: 0, droppedDelegates: 1 });
-      expect(rejectPostCompactionTaskFlowDelegate).toHaveBeenCalledWith(
+      expect(rejectPostCompactionDelegate).toHaveBeenCalledWith(
         expect.objectContaining(managedDelegate),
         expect.stringContaining("Post-compaction delegate rejected"),
       );
-      expect(finalizeStagedPostCompactionDelegates).toHaveBeenCalledWith([]);
+      expect(releasePostCompactionDelegateToQueue).not.toHaveBeenCalled();
     },
   );
 
@@ -775,7 +814,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       targetSessionKey: "agent:main:other",
     },
   ])(
-    "requeues managed TaskFlow rows before stale and cap handling when $name is disabled",
+    "requeues managed custody records before stale and cap handling when $name is disabled",
     async ({ runtimeConfig, targetSessionKey }) => {
       const now = 1_700_000_000_000;
       const managedDelegate: SessionPostCompactionDelegate = {
@@ -791,14 +830,14 @@ describe("post-compaction delegate dispatch extraction", () => {
       const {
         deps,
         enqueuePostCompactionDelegateDelivery,
-        finalizeStagedPostCompactionDelegates,
+        releasePostCompactionDelegateToQueue,
         requeueReleasedPostCompactionDelegate,
       } = createDispatchDeps({
         staged: [managedDelegate],
         runtimeConfig,
         now,
       });
-      requeueReleasedPostCompactionDelegate.mockReturnValue("requeued");
+      requeueReleasedPostCompactionDelegate.mockResolvedValue("requeued");
 
       const result = await dispatchPostCompactionDelegates(
         {
@@ -817,12 +856,12 @@ describe("post-compaction delegate dispatch extraction", () => {
         expect.objectContaining(managedDelegate),
       );
       expect(enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
-      expect(finalizeStagedPostCompactionDelegates).toHaveBeenCalledWith([]);
+      expect(releasePostCompactionDelegateToQueue).not.toHaveBeenCalled();
       expect(preserve).toEqual([]);
     },
   );
 
-  it("does not restage a managed return when its authoritative TaskFlow requeue is not applied", async () => {
+  it("does not restage a managed return when its authoritative custody requeue is not applied", async () => {
     const managedDelegate: SessionPostCompactionDelegate = {
       task: "defer managed post-compaction work",
       createdAt: 1,
@@ -834,7 +873,7 @@ describe("post-compaction delegate dispatch extraction", () => {
     const preserve: SessionPostCompactionDelegate[] = [];
     const {
       deps,
-      finalizeStagedPostCompactionDelegates,
+      releasePostCompactionDelegateToQueue,
       log,
       requeueReleasedPostCompactionDelegate,
       stagePostCompactionDelegate,
@@ -846,7 +885,7 @@ describe("post-compaction delegate dispatch extraction", () => {
         maxDelegatesPerTurn: 0,
       },
     });
-    requeueReleasedPostCompactionDelegate.mockReturnValue("authoritative");
+    requeueReleasedPostCompactionDelegate.mockResolvedValue("authoritative");
 
     await dispatchPostCompactionDelegates(
       {
@@ -864,9 +903,9 @@ describe("post-compaction delegate dispatch extraction", () => {
       expect.objectContaining(managedDelegate),
     );
     expect(stagePostCompactionDelegate).not.toHaveBeenCalled();
-    expect(finalizeStagedPostCompactionDelegates).toHaveBeenCalledWith([]);
+    expect(releasePostCompactionDelegateToQueue).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith(
-      expect.stringContaining("preserving authoritative TaskFlow state"),
+      expect.stringContaining("preserving authoritative custody state"),
     );
     expect(preserve).toEqual([]);
   });
@@ -921,13 +960,17 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
   });
 
-  it("settles every enqueue before preserving failures and finalizing exact claims", async () => {
+  // Contract change (RFC §4.4): each claimed record's release is one commit
+  // (queue insert plus handoff), so there is no separate batch finalization;
+  // every release still settles before any failure is preserved.
+  it("settles every release before preserving failures", async () => {
     const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
     const preserve: SessionPostCompactionDelegate[] = [];
     const {
       deps,
       enqueuePostCompactionDelegateDelivery,
-      finalizeStagedPostCompactionDelegates,
+      releasePostCompactionDelegateToQueue,
+      requeueReleasedPostCompactionDelegate,
       log,
     } = createDispatchDeps({
       staged: [
@@ -950,17 +993,24 @@ describe("post-compaction delegate dispatch extraction", () => {
     );
 
     expect(result).toEqual({ queuedDelegates: 1, droppedDelegates: 1 });
-    expect(enqueuePostCompactionDelegateDelivery).toHaveBeenCalledTimes(2);
+    expect(enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
+    expect(releasePostCompactionDelegateToQueue).toHaveBeenCalledTimes(2);
     expect(
-      enqueuePostCompactionDelegateDelivery.mock.calls.map((call) => call[0].delegate.task),
-    ).toEqual(["first", "second"]);
+      releasePostCompactionDelegateToQueue.mock.calls.map(([call]) => call.delegate),
+    ).toMatchObject([
+      { task: "first", flowId: "flow-first" },
+      { task: "second", flowId: "flow-second" },
+    ]);
     expect(sessionEntry.pendingPostCompactionDelegates).toEqual([
       normalizePostCompactionDelegate(delegate("second")),
     ]);
-    expect(finalizeStagedPostCompactionDelegates).toHaveBeenCalledWith(["flow-first"]);
-    expect(
-      Math.max(...enqueuePostCompactionDelegateDelivery.mock.invocationCallOrder),
-    ).toBeLessThan(finalizeStagedPostCompactionDelegates.mock.invocationCallOrder[0]!);
+    // Only the release that did not commit is preserved, after every release settled.
+    expect(requeueReleasedPostCompactionDelegate.mock.calls).toEqual([
+      [expect.objectContaining({ task: "second", flowId: "flow-second" })],
+    ]);
+    expect(Math.max(...releasePostCompactionDelegateToQueue.mock.invocationCallOrder)).toBeLessThan(
+      requeueReleasedPostCompactionDelegate.mock.invocationCallOrder[0]!,
+    );
     expect(preserve).toEqual([]);
     expect(log).toHaveBeenCalledWith(
       "Failed to enqueue post-compaction delegate for main (re-staged): Error: queue write failed",

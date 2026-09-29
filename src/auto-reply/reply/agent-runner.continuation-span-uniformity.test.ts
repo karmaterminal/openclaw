@@ -27,6 +27,7 @@ import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../../test-utils/openclaw-test-state.js";
+import { useContinuationCustodyTestState } from "../continuation/custody/custody.test-support.js";
 import { enqueuePendingDelegate } from "../continuation/delegate-store.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
@@ -239,6 +240,10 @@ beforeEach(async () => {
   );
 });
 
+// Registered after the fixture state above so custody's per-test state
+// directory is the one the runner resolves; its afterEach runs first.
+const custodyState = useContinuationCustodyTestState();
+
 afterEach(async () => {
   vi.useRealTimers();
   clearRuntimeConfigSnapshot();
@@ -326,7 +331,11 @@ async function runDelegateTurn(
   sessionStore: Record<string, SessionEntry>,
 ): Promise<unknown> {
   await upsertSessionEntryCore(
-    { agentId: "main", env: testState.env, sessionKey: run.sessionKey },
+    {
+      agentId: "main",
+      env: { ...testState.env, OPENCLAW_STATE_DIR: custodyState.stateDir() },
+      sessionKey: run.sessionKey,
+    },
     run.sessionEntry,
   );
   setRuntimeConfigSnapshot(run.followupRun.run.config);
@@ -370,7 +379,7 @@ async function dispatchToolDelegateMode(params: {
     currentChainCount: params.currentChainCount,
   });
   runEmbeddedAgentMock.mockImplementationOnce(async () => {
-    enqueuePendingDelegate(sessionKey, {
+    await enqueuePendingDelegate(sessionKey, {
       task: `check span uniformity for ${params.mode}`,
       mode: params.mode,
     });

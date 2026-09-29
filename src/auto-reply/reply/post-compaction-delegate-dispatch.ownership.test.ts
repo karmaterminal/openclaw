@@ -1,21 +1,19 @@
 import { expectDefined } from "@openclaw/normalization-core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
-  deleteTaskFlowRecordById,
-  getTaskFlowById,
-  listTaskFlowsForOwnerKey,
-  updateFlowRecordByIdExpectedRevision,
-} from "../../tasks/task-flow-registry.js";
+  deleteContinuationRecord,
+  updateContinuationRecords,
+} from "../continuation/custody/custody-store.js";
 import {
-  configureTaskFlowRegistryRuntime,
-  resetTaskFlowRegistryForTests,
-} from "../../tasks/task-runtime.test-helpers.js";
-import { createInMemoryTaskFlowRegistryStore } from "../../test-utils/task-registry-store.js";
+  listCustodyRecordsForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "../continuation/custody/custody.test-support.js";
 import {
   consumeStagedPostCompactionDelegates,
-  finalizeStagedPostCompactionDelegates,
+  releaseStagedPostCompactionDelegateToQueue,
   requeueReleasedPostCompactionDelegate,
   stagePostCompactionDelegate,
 } from "../continuation/delegate-store-post-compaction.js";
@@ -38,6 +36,8 @@ const runtimeConfig: ContinuationRuntimeConfig = {
   maxPendingWork: 32,
   crossSessionTargeting: "disabled",
 };
+
+useContinuationCustodyTestState();
 
 function delegate(
   task: string,
@@ -71,11 +71,33 @@ function followupRun(abortSignal?: AbortSignal): FollowupRun {
   };
 }
 
-function configureInMemoryTaskFlows(): void {
-  resetTaskFlowRegistryForTests({ persist: false });
-  configureTaskFlowRegistryRuntime({
-    store: createInMemoryTaskFlowRegistryStore(),
-  });
+/**
+ * A concurrent owner's write on the claimed record: one real custody commit at
+ * the claim revision. Returns the revision the record advanced to.
+ */
+async function advanceClaimedRecord(
+  claimed: Pick<SessionPostCompactionDelegate, "flowId" | "expectedRevision">,
+  ownerSessionKey: string,
+  phase: string,
+): Promise<number> {
+  const expectedRevision = expectDefined(claimed.expectedRevision, "claimed revision");
+  const advanced = await updateContinuationRecords(
+    [
+      {
+        recordId: expectDefined(claimed.flowId, "claimed flow id"),
+        ownerSessionKey,
+        expectedRevision,
+        patch: { phase },
+      },
+    ],
+    { now: Date.now() },
+  );
+  if (advanced.outcome !== "applied") {
+    throw new Error(`concurrent owner write did not apply: ${advanced.outcome}`);
+  }
+  const revision = expectDefined(advanced.records[0], "advanced record").revision;
+  expect(revision).toBe(expectedRevision + 1);
+  return revision;
 }
 
 function createOwnerDeps(params?: {
@@ -83,9 +105,9 @@ function createOwnerDeps(params?: {
 }): PostCompactionDelegateDispatchDeps {
   return {
     consumeStagedPostCompactionDelegates,
-    finalizeStagedPostCompactionDelegates,
     requeueReleasedPostCompactionDelegate,
     stagePostCompactionDelegate,
+    releasePostCompactionDelegateToQueue: vi.fn(releaseStagedPostCompactionDelegateToQueue),
     drainPostCompactionDelegateDeliveries: vi.fn(async () => undefined),
     enqueuePostCompactionDelegateDelivery: vi.fn(async ({ sequence }) => `queue-${sequence}`),
     enqueueSystemEvent: vi.fn(),
@@ -101,39 +123,32 @@ function createOwnerDeps(params?: {
   };
 }
 
-afterEach(() => {
-  resetTaskFlowRegistryForTests({ persist: false });
-});
-
 describe("post-compaction delegate cancellation ownership", () => {
   it.each([
     { name: "non-artifact", returnOptions: undefined },
     { name: "artifact", returnOptions: { artifacts: "required" as const } },
   ])(
-    "keeps a $name delegate exclusively TaskFlow-owned after a revision advance",
+    "keeps a $name delegate exclusively custody-owned after a revision advance",
     async ({ returnOptions }) => {
-      configureInMemoryTaskFlows();
       const sessionKey = "agent:main:revision-advance";
-      const flowId = expectDefined(
-        stagePostCompactionDelegate(
+      const recordId = (
+        await stagePostCompactionDelegate(
           sessionKey,
-          delegate("keep the advanced TaskFlow authoritative", returnOptions),
-        ),
-        "staged TaskFlow",
-      ).flowId;
+          delegate("keep the advanced custody record authoritative", returnOptions),
+        )
+      ).recordId;
       const abort = new AbortController();
       const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
       const deps = createOwnerDeps({ abortDuringContext: abort });
-      deps.requeueReleasedPostCompactionDelegate = (claimed) => {
-        const advanced = updateFlowRecordByIdExpectedRevision({
-          flowId: expectDefined(claimed.flowId, "claimed flow id"),
-          expectedRevision: expectDefined(claimed.expectedRevision, "claimed revision"),
-          patch: { currentStep: "Concurrent owner advanced the flow" },
-        });
-        expect(advanced.applied).toBe(true);
-        return requeueReleasedPostCompactionDelegate(claimed);
+      let advancedRevision: number | undefined;
+      deps.requeueReleasedPostCompactionDelegate = async (claimed) => {
+        advancedRevision = await advanceClaimedRecord(
+          claimed,
+          sessionKey,
+          "Concurrent owner advanced the record",
+        );
+        return await requeueReleasedPostCompactionDelegate(claimed);
       };
-      const exactFinalize = vi.spyOn(deps, "finalizeStagedPostCompactionDelegates");
 
       await expect(
         dispatchPostCompactionDelegates(
@@ -150,13 +165,14 @@ describe("post-compaction delegate cancellation ownership", () => {
       ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
 
       expect(sessionEntry.pendingPostCompactionDelegates).toBeUndefined();
-      expect(exactFinalize).toHaveBeenCalledWith([]);
-      expect(listTaskFlowsForOwnerKey(sessionKey)).toEqual([
+      // A cancelled release hands nothing off.
+      expect(deps["releasePostCompactionDelegateToQueue"]).not.toHaveBeenCalled();
+      expect(await listCustodyRecordsForTest({ ownerSessionKey: sessionKey })).toEqual([
         expect.objectContaining({
-          flowId,
+          recordId,
           status: "running",
-          revision: 2,
-          currentStep: "Concurrent owner advanced the flow",
+          revision: expectDefined(advancedRevision, "advanced revision"),
+          phase: "Concurrent owner advanced the record",
         }),
       ]);
 
@@ -177,39 +193,39 @@ describe("post-compaction delegate cancellation ownership", () => {
         ),
       ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
       expect(retryEnqueue).not.toHaveBeenCalled();
-      expect(getTaskFlowById(flowId)).toMatchObject({
+      expect(retryDeps["releasePostCompactionDelegateToQueue"]).not.toHaveBeenCalled();
+      expect(await readCustodyRecordForTest(recordId)).toMatchObject({
         status: "running",
-        revision: 2,
-        currentStep: "Concurrent owner advanced the flow",
+        revision: advancedRevision,
+        phase: "Concurrent owner advanced the record",
       });
     },
   );
 
-  it("cannot leave a pending duplicate when finalization throws after a revision advance", async () => {
-    configureInMemoryTaskFlows();
-    const sessionKey = "agent:main:revision-advance-finalize-error";
-    const flowId = expectDefined(
-      stagePostCompactionDelegate(
+  // Contract change (RFC §4.4): the release is one commit (queue insert plus
+  // handoff), so the separate finalization step, and its failure point, no
+  // longer exist. The remaining failure point after a revision advance is the
+  // preserve owner itself; a throw there must not leave a duplicate either.
+  it("cannot leave a pending duplicate when preservation throws after a revision advance", async () => {
+    const sessionKey = "agent:main:revision-advance-preserve-error";
+    const recordId = (
+      await stagePostCompactionDelegate(
         sessionKey,
-        delegate("keep one owner across finalization failure"),
-      ),
-      "staged TaskFlow",
-    ).flowId;
+        delegate("keep one owner across preservation failure"),
+      )
+    ).recordId;
     const abort = new AbortController();
     const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
     const deps = createOwnerDeps({ abortDuringContext: abort });
-    deps.requeueReleasedPostCompactionDelegate = (claimed) => {
-      const advanced = updateFlowRecordByIdExpectedRevision({
-        flowId: expectDefined(claimed.flowId, "claimed flow id"),
-        expectedRevision: expectDefined(claimed.expectedRevision, "claimed revision"),
-        patch: { currentStep: "Concurrent owner advanced before finalization" },
-      });
-      expect(advanced.applied).toBe(true);
-      return requeueReleasedPostCompactionDelegate(claimed);
+    let advancedRevision: number | undefined;
+    deps.requeueReleasedPostCompactionDelegate = async (claimed) => {
+      advancedRevision = await advanceClaimedRecord(
+        claimed,
+        sessionKey,
+        "Concurrent owner advanced before preservation",
+      );
+      throw new Error("preservation failed");
     };
-    deps.finalizeStagedPostCompactionDelegates = vi.fn(() => {
-      throw new Error("finalization failed");
-    });
 
     await expect(
       dispatchPostCompactionDelegates(
@@ -223,13 +239,14 @@ describe("post-compaction delegate cancellation ownership", () => {
         },
         deps,
       ),
-    ).rejects.toThrow("finalization failed");
+    ).rejects.toThrow("preservation failed");
 
     expect(sessionEntry.pendingPostCompactionDelegates).toBeUndefined();
-    expect(getTaskFlowById(flowId)).toMatchObject({
+    expect(deps["releasePostCompactionDelegateToQueue"]).not.toHaveBeenCalled();
+    expect(await readCustodyRecordForTest(recordId)).toMatchObject({
       status: "running",
-      revision: 2,
-      currentStep: "Concurrent owner advanced before finalization",
+      revision: expectDefined(advancedRevision, "advanced revision"),
+      phase: "Concurrent owner advanced before preservation",
     });
   });
 
@@ -237,23 +254,22 @@ describe("post-compaction delegate cancellation ownership", () => {
     { name: "non-artifact", returnOptions: undefined },
     { name: "artifact", returnOptions: { artifacts: "required" as const } },
   ])(
-    "preserves a $name delegate when its TaskFlow row is truly missing",
+    "preserves a $name delegate when its custody record is truly missing",
     async ({ returnOptions }) => {
-      configureInMemoryTaskFlows();
       const sessionKey = "agent:main:missing-source";
       const source = delegate("preserve work after source loss", returnOptions);
-      const flowId = expectDefined(
-        stagePostCompactionDelegate(sessionKey, source),
-        "staged TaskFlow",
-      ).flowId;
+      const recordId = (await stagePostCompactionDelegate(sessionKey, source)).recordId;
       const abort = new AbortController();
       const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
       const deps = createOwnerDeps({ abortDuringContext: abort });
-      deps.requeueReleasedPostCompactionDelegate = (claimed) => {
-        expect(deleteTaskFlowRecordById(expectDefined(claimed.flowId, "claimed flow id"))).toBe(
-          true,
-        );
-        return requeueReleasedPostCompactionDelegate(claimed);
+      deps.requeueReleasedPostCompactionDelegate = async (claimed) => {
+        const deleted = await deleteContinuationRecord({
+          recordId: expectDefined(claimed.flowId, "claimed flow id"),
+          ownerSessionKey: sessionKey,
+          expectedRevision: expectDefined(claimed.expectedRevision, "claimed revision"),
+        });
+        expect(deleted.outcome).toBe("deleted");
+        return await requeueReleasedPostCompactionDelegate(claimed);
       };
 
       await expect(
@@ -270,7 +286,7 @@ describe("post-compaction delegate cancellation ownership", () => {
         ),
       ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
 
-      expect(getTaskFlowById(flowId)).toBeUndefined();
+      expect(await readCustodyRecordForTest(recordId)).toBeUndefined();
       expect(sessionEntry.pendingPostCompactionDelegates).toEqual([
         expect.objectContaining({
           task: source.task,

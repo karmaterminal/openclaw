@@ -1,5 +1,5 @@
 // Integration tests pinning delayed continuation delegates on the common
-// TaskFlow-backed dispatch path.
+// custody-backed dispatch path.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -21,11 +21,14 @@ import {
   type Tracer,
 } from "../../infra/continuation-tracer.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
-import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-runtime-internal.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../../test-utils/openclaw-test-state.js";
+import {
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "../continuation/custody/custody.test-support.js";
 import {
   dispatchToolDelegates,
   resetDelegateDispatchHedgesForTests,
@@ -52,7 +55,33 @@ const compactState = vi.hoisted(() => ({
 }));
 const requestHeartbeatNowMock = vi.hoisted(() => vi.fn());
 const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
+const detachedWork = vi.hoisted(() => ({ pending: [] as Promise<unknown>[] }));
 let testState: OpenClawTestState;
+
+// A fired hedge dispatches on detached Gateway work whose custody commands
+// complete on the state worker, outside fake time. Track that work so a test
+// can await the hedge's whole dispatch instead of polling for its effects.
+vi.mock("../../process/gateway-work-admission.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../process/gateway-work-admission.js")>();
+  return {
+    ...actual,
+    runWithGatewayDetachedWorkAdmission: <T>(
+      run: () => Promise<T>,
+      origin?: string,
+      signal?: AbortSignal,
+    ): Promise<T> => {
+      const work = actual.runWithGatewayDetachedWorkAdmission(run, origin, signal);
+      detachedWork.pending.push(work);
+      return work;
+    },
+  };
+});
+
+async function settleDetachedWork(): Promise<void> {
+  while (detachedWork.pending.length > 0) {
+    await Promise.allSettled(detachedWork.pending.splice(0));
+  }
+}
 
 vi.mock("../../agents/model-fallback-runner.js", () => ({
   runWithModelFallback: (params: {
@@ -245,7 +274,12 @@ beforeEach(async () => {
   );
 });
 
+// Registered after the fixture state above so custody's per-test state
+// directory is the one the runner resolves; its afterEach runs first.
+const custodyState = useContinuationCustodyTestState();
+
 afterEach(async () => {
+  await settleDetachedWork();
   vi.useRealTimers();
   resetDelegateDispatchHedgesForTests();
   resetContinuationStateForTests();
@@ -342,7 +376,11 @@ async function runDelegateTurn(
   sessionStore: Record<string, SessionEntry>,
 ): Promise<unknown> {
   await upsertSessionEntryCore(
-    { agentId: "main", env: testState.env, sessionKey: run.sessionKey },
+    {
+      agentId: "main",
+      env: { ...testState.env, OPENCLAW_STATE_DIR: custodyState.stateDir() },
+      sessionKey: run.sessionKey,
+    },
     run.sessionEntry,
   );
   setRuntimeConfigSnapshot(run.followupRun.run.config);
@@ -370,7 +408,7 @@ async function runDelegateTurn(
 }
 
 describe("runReplyAgent :: continuation.delegate.fire span", () => {
-  it("bracket-delayed delegate fires through TaskFlow hedge with matching fire and dispatch chain.id", async () => {
+  it("bracket-delayed delegate fires through custody hedge with matching fire and dispatch chain.id", async () => {
     vi.useFakeTimers();
     const { tracer, spans } = createRecordingTracer();
     setContinuationTracer(tracer);
@@ -398,6 +436,7 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
 
     // Advance past the clamped delay (1000ms) to fire the common hedge path.
     await vi.advanceTimersByTimeAsync(1_000);
+    await settleDetachedWork();
 
     const dispatchSpans = spans.filter((s) => s.name === "continuation.delegate.dispatch");
     const fireSpans = spans.filter((s) => s.name === "continuation.delegate.fire");
@@ -441,7 +480,7 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     const sessionKey = "continuation-delegate-fire-tool";
     const run = createContinuationRun({ sessionKey });
     runEmbeddedAgentMock.mockImplementationOnce(async () => {
-      enqueuePendingDelegate(sessionKey, {
+      await enqueuePendingDelegate(sessionKey, {
         task: "poll change status",
         mode: "normal",
         traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
@@ -523,7 +562,7 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     const sessionKey = "continuation-delegate-immediate-hop-with-pending";
     const run = createContinuationRun({ sessionKey });
     runEmbeddedAgentMock.mockImplementationOnce(async () => {
-      enqueuePendingDelegate(sessionKey, {
+      await enqueuePendingDelegate(sessionKey, {
         task: "already queued delayed shard",
         delayMs: 10_000,
       });
@@ -556,21 +595,29 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     await runDelegateTurn(run, { [sessionKey]: run.sessionEntry });
 
     expect(spawnSubagentDirectMock).toHaveBeenCalledOnce();
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
-    expect(flows).toHaveLength(1);
-    const flow = flows[0];
-    expect(flow).toMatchObject({
-      ownerKey: sessionKey,
+    const records = await listCustodyRecordsForTest({ ownerSessionKey: sessionKey });
+    expect(records).toHaveLength(1);
+    const record = records[0];
+    expect(record).toMatchObject({
+      kind: "delegate",
+      ownerSessionKey: sessionKey,
       status: "succeeded",
-      currentStep: "Accepted by continuation subagent",
+      phase: "Accepted by continuation subagent",
     });
+    // The spawn ran under the one attempt the claim recorded (RFC §5.4.4).
+    expect(record?.spawnAttempts).toHaveLength(1);
     const spawnArgs = spawnSubagentDirectMock.mock.calls[0]?.[0] as {
       task?: string;
       continuationDelegateFlowId?: string;
+      continuationChildRunId?: string;
     };
     expect(spawnArgs.task).toContain("[continuation:chain-hop:1]");
     expect(spawnArgs.task).toContain("inspect sanitized followup");
-    expect(spawnArgs.continuationDelegateFlowId).toBe(flow?.flowId);
+    expect(spawnArgs.continuationDelegateFlowId).toBe(record?.recordId);
+    expect(spawnArgs.continuationChildRunId).toBe(
+      `continuation:${record?.recordId}:${record?.spawnAttempts[0]?.attemptId}`,
+    );
+    expect(record?.spawnAttempts[0]?.childRunId).toBe(spawnArgs.continuationChildRunId);
     expect(pendingDelegateCount(sessionKey)).toBe(0);
   });
 
@@ -606,7 +653,7 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     expect(spawnedEvent!.text).toContain("[Internal] hidden");
   });
 
-  it("restart-survival: bracket-delayed delegate remains in TaskFlow and fires with fire-time hop", async () => {
+  it("restart-survival: bracket-delayed delegate remains in custody and fires with fire-time hop", async () => {
     vi.useFakeTimers();
     const sessionKey = "continuation-delegate-restart-survival";
 
@@ -624,7 +671,11 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     resetContinuationStateForTests();
 
     await vi.advanceTimersByTimeAsync(1_000);
+    await settleDetachedWork();
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: sessionKey })).toMatchObject([
+      { kind: "delegate", status: "queued" },
+    ]);
 
     run.sessionEntry.continuationChainCount = 2;
     const result = await dispatchToolDelegates({
@@ -672,6 +723,7 @@ describe("runReplyAgent :: continuation.delegate.fire span", () => {
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1_000);
+    await settleDetachedWork();
 
     expect(pendingDelegateCount(sessionKey)).toBe(0);
     expect(run.sessionEntry.continuationChainCount).toBe(1);
@@ -706,7 +758,7 @@ describe("runReplyAgent :: matured consumed delegate spawns immediately", () => 
     // `continue_delegate({ delaySeconds: 3 })`, then advance fake time past
     // its dueAt so `consumePendingDelegates` returns it as matured. The
     // delegate object carries `delayMs: 3_000` as historical metadata.
-    enqueuePendingDelegate(sessionKey, {
+    await enqueuePendingDelegate(sessionKey, {
       task: "matured-task",
       mode: "silent-wake",
       delayMs: 3_000,
