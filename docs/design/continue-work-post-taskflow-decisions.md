@@ -51,7 +51,7 @@ The candidate cannot absorb upstream without re-homing that custody. It must not
 
 **Decided (Q2):** continuation precomputes `childRunId = continuation:<recordId>:<attemptId>` and records it in the claim before spawning. Spawn passes it as the Gateway `agent` idempotency key, and upstream uses that key as the run ID (`agent-request-preflight.ts@4d8c9bdd`). Recovery then looks the child up in `subagent_runs` by that run ID.
 
-This needs one narrow change in the spawn owner. `spawnSubagentDirect` takes an explicit launch idempotency key as an **internal parameter** for non-collector spawns and uses it verbatim as the run ID. It is not a `sessions_spawn` tool field, and no model or client can author it. Today any caller may pass `swarmLaunchReplayKey`, which the spawn contract documents for collectors. But that key is hashed privately into `swarm_<hash>` (`subagent-spawn-request.ts@4d8c9bdd`), and only collectors persist it or can look it up. The `continuation:` run-ID namespace is reserved for backend callers, following the Gateway's reservation of exec-approval follow-up keys (`agent-request-preflight.ts@4d8c9bdd`). Direct tests cover the namespace and collisions (RFC §9.2.2 item 8).
+This needs one narrow change in the spawn owner. `spawnSubagentDirect` takes an explicit launch idempotency key as an **internal parameter** for non-collector spawns and uses it verbatim as the run ID. It is not a `sessions_spawn` tool field, and no model or client can author it. Today any in-process caller may pass `swarmLaunchReplayKey`, which the spawn contract documents for collectors. But that key is hashed privately into `swarm_<hash>` (`subagent-spawn-request.ts@4d8c9bdd`), and only collectors persist it or can look it up. The `continuation:` run-ID namespace is reserved for backend callers, following the Gateway's reservation of exec-approval follow-up keys (`agent-request-preflight.ts@4d8c9bdd`). Direct tests cover the namespace and collisions (RFC §9.2.2 item 8). The same change exposes the phase in which a spawn failed (`initialize`, `dispatch` or `register`), because only an `initialize`-phase failure proves the child never ran and can be retried in process (RFC §5.4.4, "In-process spawn failures").
 
 The key closes C's duplicate-spawn window, where a child was admitted but the row was never marked handed off. Upstream's interval between Gateway acceptance and registration stays open. Under Q3 that window no longer produces a duplicate child: an unresolved claim ends in a visible interruption. Q4 asks upstream to close the window.
 
@@ -65,7 +65,7 @@ The key closes C's duplicate-spawn window, where a child was admitted but the ro
 - Each owner session commits in one transaction. That transaction holds the imported records, their receipts, the Q6 scrub of legacy inline bytes, and the Q7 downgrade fence on every imported non-terminal source row. Until an owner is imported, its elections and delegate enqueues are refused with a Doctor hint, so the election owner condition never misses un-imported rows.
 - Receipts record structure, counts and hashes, never content. Once a source row's inline bytes are scrubbed, a re-run treats the committed receipt and the new record as authoritative.
 - Gateway startup invokes the same transform before continuation recovery.
-- The importer is the only reader of `flow_runs`, and it is retired on the schedule in RFC §5.4.5. Retiring the importer does not retire the source rows; Decision 4 does.
+- The importer is the only reader of `flow_runs`. On the schedule in RFC §5.4.5, the source-retirement step (Decision 4) absorbs it, and the legacy read ends when that step is removed. Retiring the importer does not retire the source rows; Decision 4 does.
 
 ## Prince decisions
 
@@ -88,10 +88,17 @@ The review required this fold. Q6 removes inline attachment bytes, but task text
 
 - **Horizon.** The release in which the importer retires (RFC §5.4.5). By then every supported upgrade source has shipped the importer, and one extended-stable line has passed since, so no supported rollback target reads continuation rows from `flow_runs`.
 - **Proof condition.** A `flow_runs` row is deleted only if it matches the import's detection predicate and a committed `continuation-taskflow-custody-import` receipt names its `flow_id` with a disposition of `imported` or `retired-terminal`. `retired-terminal` covers terminal rows with no obligation. The import examines those but does not import them, and TaskFlow would have pruned them after 7 days at C. A row without such a receipt is never deleted.
-- **Who runs it.** A core Doctor state-migration step, `continuation-taskflow-source-retirement`, owned by continuation and executed by the Doctor state-migration owner. Update's fresh Doctor and Gateway startup invoke it, like the import. It commits per owner session and writes its own receipt.
+- **Who runs it.** A core Doctor state-migration step, `continuation-taskflow-source-retirement`, owned by continuation and executed by the Doctor state-migration owner. Update's fresh Doctor and Gateway startup invoke it, like the import. It absorbs the importer, runs a final import pass for any owner still un-imported, commits per owner session, and writes its own receipt.
 - **Residue.** Rows that still have no receipt at the horizon are rows whose owner import keeps failing. They are left untouched and reported as a Doctor warning with their count. They are the only continuation data this design leaves in `flow_runs`, and they live as long as upstream keeps the table.
 
 The details are in RFC §5.4.5 ("End of life for source rows").
+
+## Residual exposures for prince confirmation
+
+Q3 and Q7 are folded as ruled. Two edge cases fall outside what the rulings can close, and the RFC names them instead of hiding them (RFC §5.4.5 and §5.4.9 item 4):
+
+1. **Pre-cutover post-compaction queue entries.** C's queue drain recorded no spawn attempt. An entry whose C-era spawn crashed mid-attempt therefore looks never-attempted, and it is delivered once more after the cutover. From the cutover on, the drain marks every attempt, so Q3 holds. The only way to close the gap fully is to terminalize every pre-cutover entry, which would also drop entries that were never attempted.
+2. **Terminal obligation rows on rollback.** Q7 fences non-terminal rows. A `failed` work row that still owes a retry-exhausted notice is terminal and unfenced. If the new build delivered that notice before a rollback, a C-era build can deliver it once more. The cost is a duplicate notice, never duplicate work.
 
 ## Unchanged
 
