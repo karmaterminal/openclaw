@@ -176,6 +176,13 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/dispatch.block-streaming-recovery.test.ts",
   "src/auto-reply/continuation/custody/custody-store.test.ts",
   // L4-G1: continuation delegate store suites on real continuation custody.
+  "src/auto-reply/continuation/delegate-store.test.ts",
+  "src/auto-reply/continuation/delegate-store.queue.test.ts",
+  "src/auto-reply/continuation/delegate-store-post-compaction.test.ts",
+  "src/auto-reply/continuation/delegate-store.ownership.test.ts",
+  "src/auto-reply/continuation/post-compaction-rejection.test.ts",
+  "src/auto-reply/continuation/post-compaction-durable-handoff.test.ts",
+  "src/auto-reply/continuation/types.mode-shape.test.ts",
   "src/auto-reply/reply/agent-runner-direct-runtime-config.test.ts",
   "src/auto-reply/reply/agent-runner-execution-cli-commentary.test.ts",
   "src/auto-reply/reply/agent-runner-source-identity.test.ts",
