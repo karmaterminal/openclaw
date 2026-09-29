@@ -1,8 +1,10 @@
 # RFC: Agent Self-Elected Turn Continuation (`CONTINUE_WORK`)
 
-**Status:** Implemented
+**Status:** Implemented; durable custody under revision for the TaskFlow removal (see §5.4)
 **Authors:** OpenClaw maintainers
-**Date:** March–May 2026
+**Date:** March–May 2026; custody revision September 2026
+
+> **Custody revision (September 2026).** Upstream removed the Tasks and TaskFlow runtime in openclaw/openclaw#159179 (`6652f7eac8`). The `flow_runs` table survives, but nothing reads it at runtime any more. This revision re-homes the continuation's durable custody onto owners that upstream kept, and it keeps the public continuation contract. §5.4 is the design of record: the field-by-field replay state, the single transactional authority for elections, the pre-spawn to `subagent_runs` handoff, and the migration of stored TaskFlow rows. Sections marked **Custody revision** describe the target design, which is proposed and awaiting prince review. Where they differ from the code that shipped on TaskFlow, the section says so. Upstream citations are `path:symbol@4d8c9bdd`. The companion decision record is `docs/design/continue-work-post-taskflow-decisions.md`.
 
 This RFC documents a continuation system for persistent OpenClaw sessions. It introduces self-elected turn continuation, delegated follow-up work, same-host targeted delegate returns, context-pressure awareness, and agent-initiated compaction. The implementation is bounded, observable, interruptible, and opt-in.
 
@@ -43,7 +45,7 @@ Targeted delegate return is the banner routing primitive: one child can grant an
   - [5.1 Core configuration surface](#51-core-configuration-surface)
   - [5.2 Human-user profiles](#52-human-user-profiles)
   - [5.3 Wide fan-out patterns](#53-wide-fan-out-patterns)
-  - [5.4 TaskFlow backing for same-session work and delegates](#54-taskflow-backing-for-same-session-work-and-delegates)
+  - [5.4 Continuation custody after the TaskFlow removal](#54-continuation-custody-after-the-taskflow-removal)
 - [6. Observability](#6-observability)
   - [6.1 Diagnostic log anchors](#61-diagnostic-log-anchors)
   - [6.2 Lifecycle traces](#62-lifecycle-traces)
@@ -128,21 +130,23 @@ A usable continuation primitive for OpenClaw had to satisfy several constraints 
 
 This RFC uses the following terms consistently:
 
-| Term                   | Meaning                                                                                                                                                                                                                                                                                             |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **human-user**         | The person who owns the deployment, grants opt-in, and can interrupt or disable continuation.                                                                                                                                                                                                       |
-| **operator**           | The deploying human-user role when discussing configuration, logs, or runtime policy.                                                                                                                                                                                                               |
-| **turn**               | One model generation cycle with a bounded prompt, tool surface, and reply/follow-up lifecycle.                                                                                                                                                                                                      |
-| **successor turn**     | A later turn that receives structure arranged by an earlier turn: a wake, a delegate result, post-compaction context, or a compaction outcome.                                                                                                                                                      |
-| **continuation**       | Agent-elected work that crosses a turn boundary without becoming an unbounded loop.                                                                                                                                                                                                                 |
-| **continuation chain** | The bounded sequence of successor turns and delegates tracked by chain count, token budget, and chain id where available.                                                                                                                                                                           |
-| **delegate**           | A sub-agent shard spawned through `continue_delegate()` or response-token fallback, with a task string, mode, return targeting (`targetSessionKey`, `targetSessionKeys`, or `fanoutMode`), and optional delay. The typed tool can also carry scoped input attachments into the new child workspace. |
-| **relay**              | A precursor or fallback pattern where one session wakes another by returning a result later.                                                                                                                                                                                                        |
-| **temporal shard**     | Work split across time rather than only across simultaneous agents.                                                                                                                                                                                                                                 |
-| **substrate**          | The mechanism that carries a continuation path: process timer/reservation, TaskFlow, session-delivery queue, or compaction lifecycle.                                                                                                                                                               |
-| **broker**             | Gateway code that translates agent intent into substrate mechanics and policy enforcement.                                                                                                                                                                                                          |
-| **TaskFlow**           | The managed-work SQLite-backed substrate used for same-session `continue_work` elections, pending delegates, and post-compaction staging.                                                                                                                                                           |
-| **OTel**               | OpenTelemetry trace emission through `extensions/diagnostics-otel`.                                                                                                                                                                                                                                 |
+| Term                           | Meaning                                                                                                                                                                                                                                                                                             |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **human-user**                 | The person who owns the deployment, grants opt-in, and can interrupt or disable continuation.                                                                                                                                                                                                       |
+| **operator**                   | The deploying human-user role when discussing configuration, logs, or runtime policy.                                                                                                                                                                                                               |
+| **turn**                       | One model generation cycle with a bounded prompt, tool surface, and reply/follow-up lifecycle.                                                                                                                                                                                                      |
+| **successor turn**             | A later turn that receives structure arranged by an earlier turn: a wake, a delegate result, post-compaction context, or a compaction outcome.                                                                                                                                                      |
+| **continuation**               | Agent-elected work that crosses a turn boundary without becoming an unbounded loop.                                                                                                                                                                                                                 |
+| **continuation chain**         | The bounded sequence of successor turns and delegates tracked by chain count, token budget, and chain id where available.                                                                                                                                                                           |
+| **delegate**                   | A sub-agent shard spawned through `continue_delegate()` or response-token fallback, with a task string, mode, return targeting (`targetSessionKey`, `targetSessionKeys`, or `fanoutMode`), and optional delay. The typed tool can also carry scoped input attachments into the new child workspace. |
+| **relay**                      | A precursor or fallback pattern where one session wakes another by returning a result later.                                                                                                                                                                                                        |
+| **temporal shard**             | Work split across time rather than only across simultaneous agents.                                                                                                                                                                                                                                 |
+| **substrate**                  | The mechanism that carries a continuation path: process timer/reservation, the continuation custody store, the session-delivery queue, the subagent registry, or the compaction lifecycle.                                                                                                          |
+| **broker**                     | Gateway code that translates agent intent into substrate mechanics and policy enforcement.                                                                                                                                                                                                          |
+| **continuation custody store** | The continuation-owned records in the shared state database. They hold same-session `continue_work` elections, pre-spawn delegates and post-compaction staging, and are written only through state-database worker operations (§5.4). It replaces TaskFlow, which upstream removed in #159179.      |
+| **custody handoff**            | The point at which a delegate stops being owned by the continuation custody store and becomes a `subagent_runs` row in the subagent registry (§5.4.4).                                                                                                                                              |
+| **TaskFlow** (retired)         | The managed-work substrate that held continuation state until #159179. Its `flow_runs` rows are read only by the one-time Doctor import in §5.4.5.                                                                                                                                                  |
+| **OTel**                       | OpenTelemetry trace emission through `extensions/diagnostics-otel`.                                                                                                                                                                                                                                 |
 
 Status markers:
 
@@ -150,6 +154,7 @@ Status markers:
 - **Implementation note** explains how the contract is carried today without making the implementation shape the public contract.
 - **Historical note** records why a decision exists, but is not itself normative.
 - **Future seam** names plausible extension points that are not shipped.
+- **Custody revision** names the post-TaskFlow target design from §5.4. It is proposed until the princes accept it.
 - **Non-goal** explicitly excludes behavior from the current RFC.
 
 ### 2.2 Unified interface: tools first, response-token fallback
@@ -181,7 +186,9 @@ This yields a strict two-interface model:
 
 If `delaySeconds` is 30 and the current turn is still active, the 30-second timer starts **after turn completion**, not when the tool call is emitted. The same timing model applies to the `CONTINUE_WORK:30` response token.
 
-**Shipped behavior:** same-session continuation is a durable TaskFlow election. The tool form and response-token fallback both converge on a `continuation_work` row that records the session key, hop, delay, semantic due time, election time, anchor-finalization time, reason, origin run/turn provenance, parent run when there is true spawn lineage, and chain metadata. In-process timers are hedge timers only: they may mature a due row promptly, but they are not the source of truth. Gateway startup recovery re-arms or matures queued work from TaskFlow.
+**Shipped behavior:** same-session continuation is a durable election. The tool form and the response-token fallback both converge on one `continuation_work` record. That record holds the session key, hop, delay, semantic due time, election time, anchor-finalization time, reason, origin run and turn, the parent run when there is true spawn lineage, and chain metadata. In-process timers are hedge timers only. They may mature a due record promptly, but they are not the source of truth. Gateway startup recovery re-arms or matures queued work from the durable record.
+
+**Custody revision:** the `continuation_work` record moves from a TaskFlow `flow_runs` row (`core/continuation-work` controller) to a `work` record in the continuation custody store (§5.4). That store is the only transactional authority for elections: election, replacement of parked work, claim, the delivered mark, requeue, terminalization and the terminal-notice obligation are all compare-and-set writes in that one store. Session pending inputs and cron are **not** election authorities (§5.4.3). Every field listed above keeps its meaning and moves as listed in §5.4.2.
 
 When a `continuation_work` row matures while the session is idle, the dispatcher grants a turn to the **same session** directly through the universal reply executor (`getReplyFromConfig`) with a `[continuation:wake]` system event and provenance banner. When the semantic due time arrives while a later turn for the same session is already active, the row does not stack a naked later wake and does not re-anchor its delay. Instead, the dispatcher delivers one trusted `[system:continuation-note]` into the active turn, quotes the original reason as prior intent, includes age/overdue and origin provenance, instructs the successor to re-evaluate before acting, and terminalizes the row only after durable note delivery succeeds. It does not call `requestHeartbeatNow()` or `runHeartbeatOnce()`, because heartbeat registration, active-hours, deferral, and busy skip gates are heartbeat policy rather than same-session continuation policy. The session-store entry must still exist when the row matures, so sub-agent cleanup and archive sweeps retain child sessions with live or recently granted continuation work.
 
@@ -213,7 +220,7 @@ attachAs?: {
 
 These fields carry scoped input into the **new child delegate workspace**. The workspace is the child execution workspace selected by the shared spawn contract—the target-agent workspace or an explicit child `cwd`. Per-session isolation comes from the private UUID receipt directory; this feature does not provision a separate workspace for every child. An accepted non-empty attachment array is a bounded snapshot **by value at tool dispatch**, not a source path, URL, workspace scan, or later-resolved reference. An omitted or empty `attachments` array means no snapshot. Non-empty arrays contain 1–50 entries. An omitted or empty `attachAs` object means no mount hint, and a mount hint is ignored unless `attachments` is non-empty. A non-empty `mountPath` is trimmed to its canonical value before durable enqueue and accepts only ASCII letters, digits, `.`, `_`, `-`, `/`, and `:`; unsafe or control-bearing hints are rejected. The hint affects only the child prompt—it is not an alternate materialization destination.
 
-The fields use the same validation, limits, private receipt directory, per-file hashes, cleanup policy, and `tools.sessions_spawn.attachments` configuration as `sessions_spawn` attachments. Immediate, delayed/recovered, and post-compaction typed delegates retain the snapshot until child spawn or a crash-safe post-compaction queue handoff. Terminal TaskFlow rows retain lifecycle and routing state but remove `attachments` and `attachAs`. Newly persisted `continue_delegate` tool calls replace each `attachments[].content` value with the established redaction marker, remove each private attachment filename, and preserve only the task plus replay-safe encoding/MIME metadata; `attachAs` is projected to its single mount-path field and removed when no non-empty snapshot exists. A legacy already-redacted snapshot that retains `name` remains replay-safe as-is, so signed historical turns are not mutated or dropped. This does not change the separate trusted-transcript behavior of `sessions_spawn`. Post-compaction queue recovery runtime-validates the discriminated payload and strict attachment members. Malformed records are dead-lettered with structural-only diagnostics, and their raw queue JSON is replaced so attachment bytes do not remain in the failed row. The tool result reports only attachment count and canonical mount options, never attachment content.
+The fields use the same validation, limits, private receipt directory, per-file hashes, cleanup policy, and `tools.sessions_spawn.attachments` configuration as `sessions_spawn` attachments. Immediate, delayed/recovered, and post-compaction typed delegates retain the snapshot until child spawn or a crash-safe post-compaction queue handoff. The snapshot bytes do not sit in the durable record. They live in a private payload file under `<stateDir>/attachments/continuation/<attachmentId>/payload.json` (at most 8 MiB), and the file is bound to its record ID and owner session. The durable record carries only `attachmentId` and `attachmentCount`. Terminal records keep lifecycle and routing state, but they drop `attachmentId`, and the payload file is released. **Custody revision:** the owning record moves from a TaskFlow row to a continuation custody store `delegate` record (§5.4). Imported records keep their legacy `flow_id` as their record ID, so existing payload files stay bound without being rewritten (§5.4.5). Custody passes to the subagent registry's own `attachmentId` receipt directory at the custody handoff (§5.4.4). Newly persisted `continue_delegate` tool calls replace each `attachments[].content` value with the established redaction marker, remove each private attachment filename, and preserve only the task plus replay-safe encoding/MIME metadata; `attachAs` is projected to its single mount-path field and removed when no non-empty snapshot exists. A legacy already-redacted snapshot that retains `name` remains replay-safe as-is, so signed historical turns are not mutated or dropped. This does not change the separate trusted-transcript behavior of `sessions_spawn`. Post-compaction queue recovery runtime-validates the discriminated payload and strict attachment members. Malformed records are dead-lettered with structural-only diagnostics, and their raw queue JSON is replaced so attachment bytes do not remain in the failed row. The tool result reports only attachment count and canonical mount options, never attachment content.
 
 The `attachments` and `attachAs` fields are an input contract, not an attachment-bearing return contract. Managed output artifacts use the shipped claim path instead: `returnOptions` activates a host-owned policy, the child explicitly publishes bounded candidates with `delegate_artifacts_publish`, and recipients receive metadata-only claim projections plus arrival context through durable continuation return delivery. Authorized recipients explicitly list, inspect, materialize, or discard claims. This path does not reuse input attachments, copy payload bytes into the return envelope, auto-mount bytes, prompt-inject bytes, channel-upload them, or generically render or forward them; those automatic byte-presentation surfaces remain future work.
 
@@ -381,7 +388,7 @@ The hierarchy is a decision rule, not a user-facing mode switch. Tier 2 is selec
 2. **Prefer structured invocation.** Tools avoid the fragility of regex parsing and allow explicit schemas.
 3. **Support width.** Fleet-scale fan-out requires multiple delegates in one turn; the response-token path cannot express that efficiently.
 4. **Keep the interface self-describing.** When tools are available, the continuation surface appears explicitly in the tool inventory rather than relying on prior knowledge of terminal tokens.
-5. **Reuse implementation paths.** Tools and response tokens converge on the same signal extraction, TaskFlow scheduling, budget, and dispatch machinery.
+5. **Reuse implementation paths.** Tools and response tokens converge on the same signal extraction, durable custody scheduling, budget, and dispatch machinery.
 
 In OpenClaw, `continue_work()` is the first primitive that lets an agent say “I am not done yet” without trapping it in a loop that cannot also say “I am done.”
 
@@ -393,11 +400,11 @@ The implementation hooks into existing gateway layers rather than adding a paral
 
 1. **Token parsing:** `parseContinuationSignal()` and `stripContinuationSignal()` in `src/auto-reply/continuation/signal.ts` detect and remove continuation tokens from displayed output.
 2. **Signal detection:** the main reply runner, follow-up runner, and spawn-init attempt path inspect finalized payloads and typed tool callbacks with `extractContinuationSignal()`, so typed `continue_work()` and `CONTINUE_WORK[:N]` fallback produce the same work signal.
-3. **Same-session work scheduling:** `scheduleContinuationWork()` persists a `continuation_work` TaskFlow row and advances continuation chain state after the current turn completes. The row, not the timer handle, is the durable election.
+3. **Same-session work scheduling:** `scheduleContinuationWork()` persists a `continuation_work` election and advances continuation chain state after the current turn completes. The durable record, not the timer handle, is the election. **Custody revision:** the record is a `work` record in the continuation custody store. Election and parked-work replacement commit in one owner-conditioned state-database transaction (§5.4.3).
 4. **Same-session work dispatch:** `dispatchPendingContinuationWork()` consumes matured rows, enqueues `[continuation:wake]`, checks that the elected session is present and not already active, then calls `getReplyFromConfig()` directly for that same `SessionKey`. Busy sessions are requeued instead of orphaned.
-5. **Delegate queueing:** tool-path delegates, including typed input attachments and mount options, are enqueued via `enqueuePendingDelegate()` into TaskFlow and consumed after the response finishes or after a follow-up/announce boundary drains the same queue.
+5. **Delegate queueing:** tool-path delegates, including typed input attachments and mount options, are enqueued via `enqueuePendingDelegate()` and consumed after the response finishes, or after a follow-up or announce boundary drains the same queue. **Custody revision:** the pre-spawn owner is a `delegate` record in the continuation custody store. The record hands custody to a `subagent_runs` row at child admission, under a precomputed child run ID (§5.4.4).
 6. **Return routing:** delegate completions resolve default, explicit, multi-recipient, tree, or host-wide return targets and deliver same-host targeted returns through `session-delivery-queue`.
-7. **Lifecycle dispatch:** post-compaction delegates are staged in the TaskFlow-backed post-compaction queue and released through the compaction completion path into `session-delivery-queue` delivery.
+7. **Lifecycle dispatch:** post-compaction delegates are staged as durable records and released through the compaction completion path into `session-delivery-queue` delivery. **Custody revision:** staging is a `post_compaction` record in the continuation custody store. Release enqueues the queue entry and marks the record handed off in one state-database transaction (§5.4.4). This replaces TaskFlow's "succeeded at claim revision + 1" handoff convention.
 
 No new transport layer is introduced. Continuation uses system events, existing sub-agent dispatch, same-host session delivery, and the standard reply executor. Same-session `continue_work` deliberately avoids the heartbeat wake substrate; silent delegate returns still use their existing wake path.
 
@@ -419,32 +426,36 @@ For response-token fallback, the gateway then:
 
 1. Parses the terminal delegate response token.
 2. Strips it from displayed output, so the user sees only the review summary.
-3. Records a delayed reservation with task, planned hop, fire time, and return-target metadata if present.
-4. Arms a process timer for the configured delay.
+3. Enqueues a durable delegate record with task, origin run, clamped delay, mode, model, and return-target metadata if present, through the same `enqueuePendingDelegate()` path as the typed tool, and persists chain state. A `| post-compaction` token stages a post-compaction record instead.
+4. Arms a hedge timer for the due time. The timer only prompts a drain; the record is the durable state.
 
-For the typed tool path, the gateway instead writes a TaskFlow row:
+**Correction (#1412 seam map):** earlier revisions described the token form as a process-scoped reservation. At C (`7b3815d7`) `agent-runner-continuation-signal.ts` already calls `enqueuePendingDelegate()` and `stagePostCompactionDelegate()` for the token form. It therefore crosses the same durable store as the tool, carrying no attachment reference. The rest of this RFC uses that behavior.
+
+For the typed tool path, the gateway instead writes a durable custody record:
 
 1. `continue_delegate()` validates `task`, `delaySeconds`, `mode`, optional return targeting, and typed input attachments.
-2. `enqueuePendingDelegate()` writes a queued TaskFlow record for `core/continuation-delegate` or `core/continuation-post-compaction`, preserving attachment content and mount options for the later child spawn.
-3. `consumePendingDelegates()` drains only matured rows. Unmatured rows stay queued until `createdAt + delayMs`.
+2. `enqueuePendingDelegate()` commits a queued durable record that preserves the attachment reference and mount options for the later child spawn. At C the row committed first and the payload file was written afterwards; a payload write failure failed the row. **Custody revision:** the payload file is written first, bound to a pre-minted record ID, and the record commits second. The tool reports `scheduled` only after that commit. A crash between the two writes leaves only an unreferenced file, which the startup custody reconcile deletes (§5.4.4, boundary 0).
+3. `consumePendingDelegates()` drains only matured records. Unmatured records stay queued until `createdAt + delayMs`.
 4. `peekSoonestUnmaturedDelegateDueAt()` lets the dispatcher arm a hedge timer so a quiet channel still re-drains at the next due time.
-5. Corrupt TaskFlow payloads are logged and moved through `failFlow`; they are not silently dropped.
+5. Corrupt records are logged with structural diagnostics only and terminalized as `failed`. Their attachment reference is scrubbed and the payload file released. They are not silently dropped.
+
+**Custody revision:** at C (`7b3815d7`) these steps wrote TaskFlow rows under the `core/continuation-delegate` and `core/continuation-post-compaction` controllers, and corrupt rows went through `failFlow`. After the revision they write continuation custody store records through state-database worker operations (§5.4). Claiming a matured record for spawn is a separate compare-and-set write. It records the spawn attempt and the precomputed child run ID before `spawnSubagentDirect()` runs, which gives restart recovery an exact key to look up in `subagent_runs` (§5.4.4).
 
 The durability contract is path-specific:
 
-| Path                             | Pre-dispatch state                                                      | Restart behavior                                                                                                                   |
-| -------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `continue_work()` tool or token  | TaskFlow `continuation_work` row plus optional hedge timer              | Queued work survives restart; exact hedge timer state is process-scoped and is re-established by recovery or later dispatch.       |
-| Delegate response-token fallback | Process reservation plus timer handle                                   | Timer/reservation are process-scoped and are lost on gateway restart.                                                              |
-| Tool `continue_delegate()`       | TaskFlow queued row                                                     | Queued work survives restart; exact hedge timer state is process-scoped and may be re-established by a later drain/recovery path.  |
-| `mode="post-compaction"`         | TaskFlow staged row, then session-delivery queue entry after compaction | Staged work survives until consumed, expired, cancelled, or released; queued post-compaction delivery has retry/restart semantics. |
+| Path                             | Pre-dispatch state                                                                              | Restart behavior                                                                                                                                                                         |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `continue_work()` tool or token  | Custody store `work` record plus optional hedge timer                                           | Queued work survives restart; exact hedge timer state is process-scoped and is re-established by recovery or later dispatch.                                                             |
+| Delegate response-token fallback | Custody store `delegate` or `post_compaction` record (no attachment reference) plus hedge timer | Same as the tool form: queued work survives restart; the hedge timer is process-scoped.                                                                                                  |
+| Tool `continue_delegate()`       | Custody store `delegate` record; after admission, a `subagent_runs` row                         | Queued work survives restart. A claimed record is reconciled against `subagent_runs` by its precomputed child run ID (§5.4.4). Hedge timer state is process-scoped.                      |
+| `mode="post-compaction"`         | Custody store `post_compaction` record, then session-delivery queue entry after release         | Staged work survives until consumed, expired, cancelled, or released; the release commits the queue entry and the handed-off mark together; queued delivery has retry/restart semantics. |
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant Agent
     participant Tool as continue_delegate()
-    participant Store as TaskFlow delegate store
+    participant Store as continuation custody store
     participant Runner as reply/follow-up drain
     participant Hedge as quiet-channel hedge timer
     participant Spawn as spawnSubagentDirect()
@@ -485,7 +496,7 @@ sequenceDiagram
 
 #### Gap window
 
-Between scheduling and spawn, the parent session is idle while either a response-token reservation or a TaskFlow row is live. This is the principal temporal gap for audit and security analysis. Typed attachment content is stored in the TaskFlow row until materialization; the token path stores only task text and routing metadata. Neither path carries a private cryptographic capability.
+Between scheduling and spawn, the parent session is idle while a durable custody record is live. This is the principal temporal gap for audit and security analysis. Typed attachment content stays in the private payload file referenced by the custody record until materialization. The token path stores only task text and routing metadata, and both forms cross the same durable store (the token form is recorded as a delegate record with no attachment reference). Neither path carries a private cryptographic capability.
 
 #### Spawn and wake
 
@@ -498,8 +509,8 @@ A representative timeline is:
 ```text
 t=0s    emit [[CONTINUE_DELEGATE: task +10s]]
         → parse and strip
-        → create process-scoped delayed reservation with default return target
-        → arm timer
+        → commit a durable delegate record with default return target
+        → arm hedge timer
 
 t=10s   timer fires
         → spawnSubagentDirect()
@@ -517,7 +528,7 @@ A targeted return changes only the completion routing:
 
 ```text
 t=0s    continue_delegate(task="inspect leaf state", fanoutMode="tree", mode="silent-wake")
-        → write TaskFlow row with tree fan-out return target
+        → commit a custody-store delegate record with tree fan-out return target
 
 t=10s   depth-3 child completes
         → resolver expands tree to root + ancestors
@@ -564,11 +575,11 @@ Follow-up turns also drain the `continue_delegate` queue and persist advanced ch
 
 For `continue_delegate()` specifically:
 
-- tool calls enqueue TaskFlow-backed work; runtime objects use `mode` as the single source of truth, while boolean flags remain only a persisted compatibility projection;
-- typed input attachments and `attachAs` mount options use the shared sub-agent attachment contract and remain attached to the TaskFlow work item until child spawn;
+- tool calls enqueue durable custody records (TaskFlow rows at C; continuation custody store records after the custody revision, §5.4); runtime objects use `mode` as the single source of truth, while boolean flags remain only a persisted compatibility projection;
+- typed input attachments and `attachAs` mount options use the shared sub-agent attachment contract and remain referenced by the durable record until child spawn;
 - `agent-runner.ts`, `followup-runner.ts`, and the announce path consume that queue after the relevant generation boundary;
 - delayed tool delegates use filter-at-consume plus the hedge timer described above;
-- response-token fallback keeps using process-scoped delayed reservations.
+- response-token fallback enqueues the same durable records without attachments.
 
 The tool is denied to **leaf** sub-agents through `SUBAGENT_TOOL_DENY_LEAF`, but remains available to orchestrator sub-agents and continuation chain hops below maximum depth.
 
@@ -633,13 +644,16 @@ delivery:
 
 Continuation is not carried by one substrate. Each path has its own persistence and failure semantics:
 
-| Path                                             | Substrate                                                                 | Durability                                                                                                                  | Important failure behavior                                                                                                                                                      |
-| ------------------------------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Same-session `continue_work()` wake              | TaskFlow `continuation_work` plus trusted system-event/fold-note delivery | Queued row survives restart; hedge timer is process-scoped and re-established by recovery or dispatch                       | Explicit user/directive reset cancels queued work, timers, and chain state. Due+active fold-note delivery failure leaves the row recoverable and keeps semantic `dueAt`.        |
-| Response-token `[[CONTINUE_DELEGATE: ... +Ns]]`  | Process reservation plus process timer                                    | Reservation/timer do not survive gateway restart                                                                            | Exact delayed work can be lost on restart or explicit reset before spawn.                                                                                                       |
-| Tool `continue_delegate()`                       | TaskFlow pending-delegate queue                                           | Queued row, including typed input attachments, survives restart until consumed, cancelled, failed, or completed             | Unmatured rows remain queued; corrupt rows are logged without attachment content and failed via `failFlow`.                                                                     |
-| Tool `continue_delegate(mode="post-compaction")` | TaskFlow post-compaction staging                                          | Staged row, including typed input attachments, survives until compaction release, cancellation, stale TTL, or queue failure | Release consumes `maxDelegatesPerTurn` budget and may drop stale/overflow work.                                                                                                 |
-| Post-compaction delivery after release           | SQLite-backed `session-delivery-queue`                                    | Durable queue records preserve child input attachments through retry/restart recovery                                       | Failed entries move to `failed/`; retry cap emits `[session-delivery-queue:retry-budget-exhausted]`. This is pre-spawn input durability, not a child return-attachment channel. |
+| Path                                             | Substrate (custody revision)                                                                                     | Durability                                                                                                                                                                              | Important failure behavior                                                                                                                                                                                                                                   |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Same-session `continue_work()` wake              | Custody store `work` record plus trusted system-event/fold-note delivery                                         | Queued record survives restart; hedge timer is process-scoped and re-established by recovery or dispatch                                                                                | Explicit user/directive reset cancels queued work, timers, and chain state. Due+active fold-note delivery failure leaves the record recoverable and keeps semantic `dueAt`. A retry-exhausted failure owes a terminal notice that survives restart (§5.4.2). |
+| Response-token `[[CONTINUE_DELEGATE: ... +Ns]]`  | Custody store `delegate` record (no attachment reference)                                                        | Queued record survives restart until claimed and handed off, cancelled, or failed                                                                                                       | Same as the tool form. Explicit reset before spawn cancels it.                                                                                                                                                                                               |
+| Tool `continue_delegate()`                       | Custody store `delegate` record, private attachment payload file, then `subagent_runs` after the custody handoff | Queued record, including the attachment payload, survives restart until handed off, cancelled, or failed; after the handoff the subagent registry owns it                               | Unmatured records remain queued; corrupt records are logged without attachment content and failed. A claimed record is reconciled by precomputed child run ID (§5.4.4).                                                                                      |
+| Tool `continue_delegate(mode="post-compaction")` | Custody store `post_compaction` record and private attachment payload file                                       | Staged record, including the attachment payload, survives until compaction release, cancellation, stale TTL, or failure                                                                 | Release consumes `maxDelegatesPerTurn` budget and may drop stale/overflow work. Release and queue enqueue commit together.                                                                                                                                   |
+| Post-compaction delivery after release           | SQLite-backed `session-delivery-queue` (`delivery_queue_entries`)                                                | Durable queue records preserve child input attachments through retry/restart recovery                                                                                                   | Retry cap emits `[session-delivery-queue:retry-budget-exhausted]`. This is pre-spawn input durability, not a child return-attachment channel.                                                                                                                |
+| Admitted delegate child                          | Subagent registry `subagent_runs` row (upstream owner)                                                           | Upstream restart recovery: an interrupted child is finalized as an error and delivered, never replayed (`subagent-registry-restart-recovery.ts:recoverInterruptedSubagentRow@4d8c9bdd`) | Continuation does not re-own admitted children. Return routing uses the continuation fields on the run record.                                                                                                                                               |
+
+At C (`7b3815d7`) the first four rows were TaskFlow `flow_runs` rows under the `core/continuation-work`, `core/continuation-delegate` and `core/continuation-post-compaction` controllers. After the custody revision (§5.4), the continuation custody store holds them, and the Doctor import in §5.4.5 carries rows that are still live across the cutover.
 
 **Session-delivery queue scope.** `session-delivery-queue` is a local-gateway substrate keyed by `sessionKey`. It accepts `systemEvent`, `agentTurn`, and `postCompactionDelegate` payloads against addressable sessions in the same gateway namespace. It is load-bearing for restart-recovered session deliveries and post-compaction delegate delivery; it is not the ordinary substrate for tool-path pending delegates before compaction.
 
@@ -805,14 +819,16 @@ For `post-compaction` delegates, the release semantics are intentionally fixed: 
 
 If enqueueing fails, the affected delegate is re-staged for a later attempt. If draining fails, the queue retry path owns backoff and eventual failure movement. The lifecycle event reports queued and dropped counts, not guaranteed child-spawn counts.
 
+**Custody revision.** Post-compaction release is part of **delegate custody**, not of `request_compaction()`. `request_compaction()` never crossed TaskFlow, and nothing about it changes. The staged record is a `post_compaction` record in the continuation custody store. Release is one state-database transaction that does three things: it inserts the `postCompactionDelegate` entry into `delivery_queue_entries` under an idempotency key derived from the record ID, it moves the record to `handed_off`, and it keeps its attachment reference until the queue entry settles. At C the same handoff took three steps: claim the TaskFlow row, enqueue it separately, then finish the row at claim revision + 1, with restart recovery matching `pendingPostCompactionSourceKey(sessionKey, flowId)`. The single transaction removes that crash window. Upstream already writes a queue entry and a registry row in one worker transaction, in `subagent-completion-admission.worker.ts:admitSubagentCompletionInWorker@4d8c9bdd`. A failed enqueue still re-stages, because the transaction commits nothing. `awaitingNextCompaction` keeps its meaning: a record claimed for the next compaction seam is requeued at startup rather than released.
+
 ```mermaid
 stateDiagram-v2
     [*] --> Staged: continue_delegate(mode="post-compaction")
-    Staged --> Persisted: TaskFlow row
+    Staged --> Persisted: custody store post_compaction record
     Persisted --> Persisted: diagnostic sample totalQueued / pendingRunnable / stagedPostCompaction
     Persisted --> Compaction: platform or request_compaction fires
     Compaction --> Released: after_compaction consumes staged work
-    Released --> Queued: enqueue postCompactionDelegate delivery
+    Released --> Queued: one transaction enqueues postCompactionDelegate delivery and marks the record handed_off
     Queued --> Draining: drainPendingSessionDeliveries()
     Draining --> Draining: diagnostic sample drained / failed rates + queueDepthHistory
     Draining --> Spawned: spawnSubagentDirect accepted
@@ -880,23 +896,26 @@ The continuation primitives — `continue_work`, `continue_delegate`, `request_c
 
 **Audit shape at any seam.** A seam audit under this rule produces _evidence_, not doctrine: it answers _"can the substrate carry this concern cleanly, or is there a concrete functional reason X it cannot"_ — and then either adopts the substrate (no exception earned) or documents the exception with the named X. Outcome labels for a given seam (e.g. "always-queue", "queue-with-bespoke-fallback", "bespoke-only") are useful coordination handles after the audit, but they are _not_ the governing axis; the rule above is.
 
-**Enforcement.** The capability registry at `src/infra/substrate-capability-registry.ts` mechanizes this review discipline as an explicit inventory of substrate capabilities, including `session-delivery-queue`, TaskFlow, and chain-budget-at-spawn behavior for queue-drained post-compaction delegates. There is no shipped `pnpm lint:substrate-adoption` script in this checkout; the registry is the shipped artifact, and bespoke transport remains possible when it carries a named functional reason.
+**Enforcement.** Enforcement is by review against this section. An earlier capability-registry scaffold (`src/infra/substrate-capability-registry.ts`) was removed as unwired in `f6ef1dafde` and is not present at C. No `pnpm lint:substrate-adoption` script ships either. Bespoke transport remains possible when it names a functional reason. **Custody revision:** the TaskFlow substrate is replaced by the continuation custody store (pre-admission) and the subagent registry (post-admission). The seam audit for that choice is §5.4.3.
 
-The agent supplies structured intent (`delaySeconds`, `mode`, `reason`, task, and optional return targets); the tool's code path picks the substrate (TaskFlow, process timer/reservation, or `session-delivery-queue`, see §3.6), the lifecycle hook (compaction-pending vs. immediate dispatch, see §4.5), and the wire (same-host session addressing today, cross-host addressing only when supported). The agent never names a substrate, hook, or wire — those are the tool's job.
+The agent supplies structured intent (`delaySeconds`, `mode`, `reason`, task, and optional return targets); the tool's code path picks the substrate (continuation custody store, process hedge timer, `session-delivery-queue`, or the subagent registry after handoff, see §3.6), the lifecycle hook (compaction-pending vs. immediate dispatch, see §4.5), and the wire (same-host session addressing today, cross-host addressing only when supported). The agent never names a substrate, hook, or wire — those are the tool's job.
 
 ```mermaid
 flowchart LR
     Agent["Agent intent<br/>delaySeconds / mode / reason / task"] --> Tool["Tool surface<br/>continue_work / continue_delegate / request_compaction"]
     Tool --> Broker["Gateway broker<br/>policy, lifecycle, routing"]
-    Broker --> TaskFlow["TaskFlow<br/>same-session work / pending delegates"]
-    Broker --> Timer["Process timer<br/>hedge or response-token reservation"]
+    Broker --> Custody["Continuation custody store<br/>state DB, worker-broker writes<br/>work elections / pre-spawn delegates / post-compaction staging"]
+    Broker --> Timer["Process hedge timer<br/>prompts drains, never authoritative"]
     Broker --> Queue["session-delivery-queue<br/>targeted returns / post-compaction delivery / restart recovery"]
     Broker --> Compaction["Compaction lane<br/>request + after_compaction hooks"]
     Broker --> Diag["diagnostic event surface<br/>message.queued / session.state / run fireReason"]
-    TaskFlow --> Direct["same-session getReplyFromConfig"]
-    TaskFlow --> Spawn["spawnSubagentDirect"]
+    Custody --> Direct["same-session getReplyFromConfig"]
+    Custody --> Spawn["spawnSubagentDirect<br/>precomputed child run id"]
+    Spawn --> Registry["subagent registry<br/>subagent_runs row = post-admission custody"]
+    Registry --> Return
     Timer --> Wake["dispatch hedge / legacy wake"]
-    TaskFlow --> Metrics["continuation queue metrics provider<br/>depths, drain rates, top queues"]
+    Custody --> Metrics["continuation queue metrics provider<br/>list-by-owner depths, drain rates, top queues"]
+    Custody --> Queue
     Metrics --> Diag
     Queue --> Spawn
     Compaction --> Queue
@@ -912,11 +931,11 @@ flowchart LR
 
 **Worked example — `continue_delegate(task, mode, delaySeconds?)`.**
 
-| Layer     | Owns                                                                                                        |
-| --------- | ----------------------------------------------------------------------------------------------------------- |
-| Agent     | `task`, `mode` (`silent` / `silent-wake` / `post-compaction`), `delaySeconds`, optional return target       |
-| Tool      | TaskFlow enqueue/stage, hedge timer, target resolution, post-compaction queue handoff, span emission (§6.6) |
-| Substrate | path-specific persistence and retry: TaskFlow row, process timer/reservation, or queue record (§3.6)        |
+| Layer     | Owns                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------ |
+| Agent     | `task`, `mode` (`silent` / `silent-wake` / `post-compaction`), `delaySeconds`, optional return target  |
+| Tool      | custody-store enqueue/stage, hedge timer, target resolution, custody handoff, span emission (§6.6)     |
+| Substrate | path-specific persistence and retry: custody-store record, `subagent_runs` row, or queue record (§3.6) |
 
 **Worked example — projected stream-publish tool surface:** the same shape. The agent supplies stream reference, payload bytes, and mode (`broadcast` vs. `addressed`); the tool picks UDP fan-out (substrate: ringbuffer / station-broadcast) vs. an `enqueueSessionDelivery` bridge (substrate: §3.6 queue) underneath. The boundary-line is identical to `continue_delegate`'s; the substrate differs. The specific stream-publish tracker is external to this RFC and is included only as an illustration of the broker discipline.
 
@@ -1082,27 +1101,343 @@ Explicit cross-session delegate targeting — `targetSessionKey`, `targetSession
 | `"disabled"` (default) | Delegates can return to the dispatching session or use `fanoutMode: "tree"` for lineage-only routing. Explicit cross-session targeting (`targetSessionKey` to a non-self session, `targetSessionKeys` containing any non-self session, `fanoutMode: "all"`) is rejected. Self-targeting is always allowed. |
 | `"enabled"`            | All targeting modes are available, including same-host `targetSessionKey`, `targetSessionKeys`, and `fanoutMode: "all"`.                                                                                                                                                                                   |
 
-The gate addresses the model-controlled cross-session context-injection surface: without it, a continuation-enabled session can affect unrelated sessions on the same host. With the gate default-deny, operators explicitly opt in to cross-session targeting when their deployment model requires it. Enforcement is live-read at tool validation, TaskFlow delegate dispatch, post-compaction delegate release, and bracket-syntax spawn, so a config reload changes the next enforcement point without restarting the gateway.
+The gate addresses the model-controlled cross-session context-injection surface: without it, a continuation-enabled session can affect unrelated sessions on the same host. With the gate default-deny, operators explicitly opt in to cross-session targeting when their deployment model requires it. Enforcement is live-read at tool validation, durable delegate dispatch, post-compaction delegate release, and bracket-syntax spawn, so a config reload changes the next enforcement point without restarting the gateway.
 
-### 5.4 TaskFlow backing for same-session work and delegates
+### 5.4 Continuation custody after the TaskFlow removal
 
-Same-session `continue_work` elections and tool-path pending delegates are backed by TaskFlow (SQLite persistence) unconditionally. There is no opt-out. Concrete hedge timer handles remain process-scoped, but they only prompt dispatch of durable rows; they are not the continuation record. Delegate response-token delayed reservations remain process-scoped, as described in §3.2.
+<a id="54-taskflow-backing-for-same-session-work-and-delegates" />
 
-For `continue_work`, `delaySeconds` is anchored to the electing turn's finalization. Rows captured while the electing turn is active persist as anchor-pending until that turn ends; after anchoring, `dueAt = anchorFinalizedAt + delayMs`. Recovery retries use separate retry eligibility and do not mutate semantic `dueAt`. Mature rows that overlap a later active turn fold into one bounded provenance note and finish with `disposition = "folded-active"` only after the note has committed.
+**Historical note.** Up to C (`7b3815d7`), TaskFlow backed three kinds of continuation state, with no opt-out: same-session `continue_work` elections, pending delegates from both the tool and the token form, and post-compaction staging. Each was a `flow_runs` row under the `core/continuation-work`, `core/continuation-delegate` or `core/continuation-post-compaction` controller.
 
-`enqueuePendingWork()` / `consumePendingWork()` use `createManagedTaskFlow()` with `controllerId = "core/continuation-work"`. `enqueuePendingDelegate()` and `consumePendingDelegates()` use `createManagedTaskFlow()` with `controllerId = "core/continuation-delegate"`.
+The fork added four pieces to TaskFlow for this:
 
-This provides:
+- atomic multi-row writes with an owner condition, in `task-flow-registry-mutations.ts`;
+- the `chain_id` column;
+- the continuation state helpers in `task-flow-continuation-state.ts`;
+- a durable-obligation prune guard in `task-flow-durable-obligation.ts`.
 
-| Capability                 | Volatile store | TaskFlow                                                        |
-| -------------------------- | -------------- | --------------------------------------------------------------- |
-| Persistence across restart | ❌             | ✅ SQLite-backed                                                |
-| Cancel semantics           | basic drain    | `requestFlowCancel`, terminal cancellation state, audit trail   |
-| Lifecycle tracking         | minimal        | queued, running/released, granted/spawned, succeeded, cancelled |
-| Observability              | manual logging | TaskFlow registry queries                                       |
-| Session isolation          | map key        | flow scoping                                                    |
+Upstream removed the whole Tasks/TaskFlow runtime in openclaw/openclaw#159179 (`6652f7eac8`) and provided no compatibility facade. This section is the design of record for re-homing that custody. It is a **custody revision**: proposed, and awaiting prince review.
 
-TaskFlow therefore aligns same-session continuation work and continuation delegates with the platform’s broader managed-work infrastructure without changing the public continuation API.
+The continuation keeps its §5.1 non-configurability. Durability is still unconditional. Process hedge timers still only prompt drains of durable records.
+
+#### 5.4.1 Upstream facts the design stands on
+
+All citations in this subsection are at `4d8c9bdd`.
+
+**`flow_runs` survives, but nothing uses it.** The table and its indexes still exist in `src/state/openclaw-state-schema.sql`, so fresh installs still create it. The storage docs state the removal's contract:
+
+- _"their non-Cron rows remain untouched and unused by the runtime"_ (`docs/reference/database-schemas/layout.md`);
+- they are _"not converted into a replacement ledger"_, with _"No table drop, SQL schema change, or schema-version bump"_ (`docs/reference/database-schemas/versioning.md`).
+
+No production code reads `flow_runs`. The upstream schema also has no `chain_id` column: that column was a fork-only additive column.
+
+**Retained owners took over by responsibility.**
+
+- Cron owns its `runtime = 'cron'` history rows (`src/cron/store/run-history.kernel.ts`).
+- Subagent custody is the `subagent_runs` table: `run_id` primary key, `child_session_key`, `requester_session_key`, `controller_session_key`, and a canonical `payload_json`.
+- Session-addressed durable replay is `delivery_queue_entries` (`src/infra/session-delivery-queue-storage.ts:enqueueSessionDelivery`).
+- The prerequisite batches follow the same pattern. For example, #158222 moved cron history to cron's own worker and store, and #158702 moved follow-up completion custody to sessions and subagents.
+
+**Database access rules** (root `AGENTS.md`; `docs/reference/database-schemas/worker-access.md`):
+
+- Runtime database access runs in worker threads.
+- Writers use the state worker broker: `src/state/openclaw-state-worker-store.ts:runOpenClawStateWorkerOperation`, with a synchronous `src/state/openclaw-state-db.ts:runOpenClawStateWriteTransaction` inside the worker.
+- Transactions contain no `await`. They reread authoritative rows before writing.
+
+**Adding a table:**
+
+- A new table needs no schema-version bump (_"New tables qualify because older builds ignore them"_, `versioning.md`).
+- It does trigger the storage review checkpoint (`docs/reference/database-schemas/storage-changes.md`, "Review checkpoint for material changes").
+- So does _"a second interpretation of existing durable data"_, which is what a Doctor import of `flow_runs` rows is.
+
+**Restart doctrine for children.** `src/agents/subagents/registry/subagent-registry-restart-recovery.ts:recoverInterruptedSubagentRow` finalizes a child interrupted by a Gateway restart as an error. It states: _"Old launch receipts are evidence of uncertain effects, never permission to replay a child."_
+
+#### 5.4.2 Requirement 1: the full durable replay state and its new home
+
+The re-home preserves the protocol, not only the create/CAS/finish API shape. Every field that continuation writes into a TaskFlow row at C moves to a named home. Anything this section does not list is a TaskFlow-generic column that continuation never read.
+
+**Owner.** Every row below moves into one **continuation custody store**: a continuation-owned table in the shared state database, `continuation_records`. The table choice is justified in §5.4.3. Continuation code in `src/auto-reply/continuation/` is its only writer. Everything reads it through the continuation's operations: the read-only worker scope for reads, and a continuation state-worker operation family for writes. Nothing reads the table directly.
+
+**`flow_runs` columns** (at C: `src/state/openclaw-state-schema.sql:1830-1855` plus the fork-only `chain_id`):
+
+| `flow_runs` column at C                                                                                | Continuation use at C                                                                                                           | New home                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `flow_id`                                                                                              | Record identity. The attachment payload file is bound to it (`payload.flowId`).                                                 | `record_id` (primary key). Imported records reuse the legacy `flow_id` byte for byte (§5.4.5), so payload bindings stay valid.                                                                                                |
+| `controller_id`                                                                                        | Selects work, delegate or post-compaction                                                                                       | `kind`, one of `work`, `delegate`, `post_compaction`, enforced by a `CHECK` constraint                                                                                                                                        |
+| `owner_key`                                                                                            | Owning session key; the main query key                                                                                          | `owner_session_key`, indexed together with `kind` and `status`                                                                                                                                                                |
+| `chain_id` (fork-only)                                                                                 | Copied from `work.chainId` on work rows; never a precondition                                                                   | `chain_id` on work records. It is also kept in the state JSON, as at C.                                                                                                                                                       |
+| `revision`                                                                                             | Expected-revision CAS on every mutation; rollback and handoff also use exact revision arithmetic                                | `revision`: the same CAS. The +1/+2 conventions are replaced by explicit fields (`handoff`, and `rollbackOf` below), so revision is only a concurrency token.                                                                 |
+| `status`                                                                                               | `queued`, `running`, `succeeded`, `failed`, `cancelled` (continuation never used `waiting`, `blocked` or `lost`)                | `status`: the same five values, enforced by `CHECK`                                                                                                                                                                           |
+| `current_step`                                                                                         | Human-readable phase. Work rollback restores it exactly.                                                                        | `phase` (text), restored exactly by rollback                                                                                                                                                                                  |
+| `blocked_summary`                                                                                      | Failure or requeue reason                                                                                                       | `failure_reason`                                                                                                                                                                                                              |
+| `cancel_requested_at`                                                                                  | "Do not drive" fence (cancel request, reset, restoring rollback)                                                                | `cancel_requested_at`, with the same meaning                                                                                                                                                                                  |
+| `created_at`                                                                                           | Work: `electedAt`. Delegate: **the due-time base** (`createdAt + delayMs`). Also FIFO order and the recovery cutoffs.           | `created_at`. It is carried exactly on import, because delegate due times derive from it.                                                                                                                                     |
+| `updated_at`                                                                                           | A clock: the stale check for recovering running rows, and the running cutoffs. Anchoring sets it to the anchor time on purpose. | `updated_at`, with the same semantics, including the anchor-time assignment                                                                                                                                                   |
+| `ended_at`                                                                                             | Set on terminal writes, cleared on requeue                                                                                      | `ended_at`                                                                                                                                                                                                                    |
+| `state_json`                                                                                           | All controller state (below)                                                                                                    | `state_json`, typed per `kind` by the continuation codecs. Work stays non-strict and delegate stays strict, as at C.                                                                                                          |
+| (derived)                                                                                              | Due-time scans went through the resident in-memory map                                                                          | `due_at`: a derived, indexed copy of the effective due time (`max(dueAt, recoveryDueAt)` for work, `created_at + delayMs` for delegates). It exists only for recovery scans. The authoritative clocks stay in the state JSON. |
+| `shape`, `sync_mode`, `notify_policy`, `goal`, `requester_origin_json`, `blocked_task_id`, `wait_json` | Constant, null, or a label only (`goal`)                                                                                        | Not carried. `goal` is recomputed from the state when diagnostics need a label.                                                                                                                                               |
+
+**Work state** (`work-flow-state.ts:PendingWorkStateSchema`, non-strict):
+
+| Group                            | Fields at C                                                                                                                 | New home and required atomicity                                                                                                                                                                                                                                                                   |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity and routing             | `kind`, `sessionKey`, `hop`, `reason`, `parentRunId`, `originRunId`, `originTurnId`, `traceparent`, `traceparentProvenance` | Unchanged, in `state_json`. `originRunId`/`originTurnId` still gate rollback ownership and anchor finalization. `parentRunId` still exists only for the orphan-reap liveness join.                                                                                                                |
+| Chain and cost snapshot          | `maxChainLength`, `chainStartedAt`, `accumulatedChainTokens`, `chainId`                                                     | Unchanged, in `state_json`. `chainId` is also a column. The live chain counters stay on the `SessionEntry` (§3.3). They are not moved into the custody store.                                                                                                                                     |
+| Timing clocks                    | `delayMs`, `electedAt`, `dueAt`, `anchorPending`, `anchorFinalizedAt`, `recoveryDueAt`, `releasedAt`                        | Unchanged, in `state_json`. Anchor finalization is one CAS write. It never mutates semantic `dueAt` on retry: retries still write only `recoveryDueAt`. `releasedAt` stays persisted (audit only).                                                                                                |
+| Retry and busy-defer             | `retryCount` (limit 8), `busySkipCount`                                                                                     | Unchanged; they feed `busySkipBackoff` (§5.1)                                                                                                                                                                                                                                                     |
+| Idle arming                      | `idleRetry { trigger, reasonCategory, armedAt }`                                                                            | Unchanged. Queued records with `trigger = "reply-run-ended"` are the **parked** records that an election may supersede (§5.4.3).                                                                                                                                                                  |
+| Delivered marker and disposition | `succeeded { point, durability }`, `deliveredAt`, `turnGrantedAt`, `foldedAt`, `overdueByMs`, `disposition`                 | Unchanged. The durable delivered mark is written while the record is still `running`, and it prevents a restart-gap duplicate turn. Consume, recovery peek, idle-retry and the live-work check all still treat it as done.                                                                        |
+| Terminal-notice obligation       | `terminalNoticePending: "retry-exhausted"`                                                                                  | Unchanged, in `state_json`. **Changed atomicity (stronger):** the notice's `delivery_queue_entries` insert and the obligation clear commit in **one** state-database transaction, because both tables live in the shared state database. At C they were two writes, joined by an idempotency key. |
+| Prune guard                      | `task-flow-durable-obligation.ts:hasUnfulfilledDurableObligation` (blocked TaskFlow's 7-day retention)                      | Custody-store retention (§5.4.6): terminal records are pruned after 7 days **unless** `terminalNoticePending` is present.                                                                                                                                                                         |
+
+**Delegate and post-compaction state** (`delegate-flow-state.ts:PendingDelegateStateSchema`, strict):
+
+| Group                                | Fields at C                                                                                                                  | New home and required atomicity                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity and payload                 | `kind`, `task`, `originRunId`, `model`, `traceparent`, `traceparentProvenance`                                               | Unchanged. `originRunId` still drives replay dedupe and `failQueuedDelegatesOwnedByRun`.                                                                                                                                                                                                                                                                                    |
+| Mode and return policy               | `silent`, `silentWake`, `postCompaction`, `inheritedSilent`, `inheritedWake`                                                 | Unchanged. `post_compaction` records are also distinguished by `kind`.                                                                                                                                                                                                                                                                                                      |
+| Timing                               | `delayMs`, `firstArmedAt`, `releasedAt`                                                                                      | Unchanged. The due time stays `created_at + delayMs`.                                                                                                                                                                                                                                                                                                                       |
+| Target and authority                 | `targetSessionKey`, `targetSessionKeys`, `fanoutMode`, `recipientAuthorityBinding` (pending or selected, with epochs)        | Unchanged before the handoff. **At the handoff** these fields move, in upstream's registration commit, to the continuation fields of the `SubagentRunRecord` (`continuationTargetSessionKey(s)`, `continuationFanoutMode`, `continuationRecipientAuthorityBinding`, `silentAnnounce`, `wakeOnReturn`, `traceparent`). That is where return routing already reads them at C. |
+| Return covenant                      | `returnOptions`, `recipientContext`                                                                                          | Unchanged before the handoff. At spawn, the #666 claim store captures the immutable artifact policy (§A.6), as at C.                                                                                                                                                                                                                                                        |
+| Chain state                          | `chainTokensFold`, `persistedChainState`, `persistedChainStateKind`                                                          | Unchanged. The planned-persist marker still exists because the `SessionEntry` (per-agent database) and the custody store (shared state database) cannot share a transaction. The marker is what stops recovery from advancing the chain twice.                                                                                                                              |
+| Child-session handoff                | `childSessionKey` (set at accept; **no child run ID stored at C**)                                                           | Replaced by an explicit `spawnAttempts[]` list (`{attemptId, childRunId, claimedAt}`) and a `handoff` object (`{target: "subagent_runs", childRunId, childSessionKey, handedOffAt}`). This is the new idempotent handoff key (§5.4.4).                                                                                                                                      |
+| Attachments                          | `attachmentId`, `attachmentCount` (bytes in the private payload file); legacy inline `attachments`/`attachAs`                | Same file store (`<stateDir>/attachments/continuation/<attachmentId>/payload.json`, 8 MiB cap). The payload binds `recordId` (read as `flowId` for v1 payloads) and `ownerKey`. Custody release rules are in §5.4.4.                                                                                                                                                        |
+| Post-compaction staging              | `awaitingNextCompaction`; handoff meant "succeeded at claim revision + 1"                                                    | `awaitingNextCompaction` is unchanged. The handoff is explicit: `handoff = {target: "session_delivery_queue", queueEntryId, handedOffAt}`, committed with the queue insert (§4.4).                                                                                                                                                                                          |
+| Legacy, accepted but never projected | `spawnRequesterSessionKey`, `spawnRequesterChannel`, `spawnRequesterAccountId`, `spawnRequesterTo`, `spawnRequesterThreadId` | Accepted on import and not projected, as at C. Recovery still rebinds to `owner_session_key`.                                                                                                                                                                                                                                                                               |
+
+**Transition atomicity.** Every single-record transition at C stays a single-record CAS on `revision`, and all such writes are serialized through the state worker broker's FIFO:
+
+- claim, anchor, requeue, grant/fold finish, delivered mark, fail, cancel request, scrub, chain-persist plan, and policy annotation.
+
+Three transitions become multi-record transactions:
+
+- election with parked-work replacement (§5.4.3);
+- terminal-notice enqueue plus clear;
+- post-compaction release plus queue insert.
+
+Work-scheduling rollback stays a multi-record CAS with no owner condition. It uses an explicit `rollbackOf` marker instead of the `prior.revision + 1` / `+ 2` inference.
+
+#### 5.4.3 Requirement 2: one transactional authority for election replacement
+
+**What must be preserved.** `work-replacement-store.ts:enqueuePendingWorkReplacing` elects in one SQLite write transaction at C (`task-flow-registry.store.sqlite.ts:upsertTaskFlowRegistryRecordsToSqlite`). The transaction does the following:
+
+1. Rereads the owner's live work rows: `owner_key` = session, `controller_id` = work, `status IN (queued, running)`, `cancel_requested_at IS NULL`.
+2. Requires them to equal the caller's snapshot exactly, by `(flowId, revision, status)`.
+3. Requires each superseded parked row to still be at its expected revision.
+4. Requires the created row to be new.
+5. Writes all rows.
+
+Before the transaction runs, the caller rejects three cases:
+
+- `running_owner`: an unexpected running row exists;
+- `capped`: there are `maxPendingWork` or more non-parked queued rows;
+- `invalid_prior`.
+
+A conflict retries once. **`chainId` is copied into the new row, but it is not part of the owner condition at C.** The owner condition already covers every live work row for the session, whatever its chain. This revision keeps that. Whether to add a chain check is open question Q5 in the decision record.
+
+**Options.** For each option: its transaction boundary, and what fits or breaks.
+
+| Option                                                                                                                     | Transaction boundary                                                                                                                                                                                                                           | Fit                                                                                                                                                                                                                                                        | Breaks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A. Session pending inputs** (`src/config/sessions/session-accessor.pending-inputs.ts:stageSessionPendingInput@4d8c9bdd`) | One-row `runOpenClawAgentWriteTransaction` per input, serialized by `runExclusiveSqliteSessionWrite`, in the **per-agent** database                                                                                                            | Idempotent, session-scoped input custody                                                                                                                                                                                                                   | Pending inputs are custody for an _already admitted_ turn. They have no due time. After a restart they are recorded as `interrupted` and deliberately never replayed (`readPendingInputRows`, "without resuming a pre-restart execution"). There is no multi-row owner condition, and access is legacy main-thread code. They cannot hold a future election.                                                                                                                                                     |
+| **B. Session-store transaction** (election state on the `SessionEntry`)                                                    | `runExclusiveSqliteSessionWrite` plus one per-agent write transaction                                                                                                                                                                          | The election and the chain counters could commit together                                                                                                                                                                                                  | Puts queues into a hot session row. Recovery must scan every agent database. Election records cannot share a transaction with `delivery_queue_entries` or `subagent_runs`, which live in the shared state database. `/reset` session rotation would need to carry or cancel embedded queues.                                                                                                                                                                                                                     |
+| **C. Cron one-shot jobs** (`src/cron/service/jobs-validation.ts:assertSupportedJobSpec@4d8c9bdd`)                          | Cron's own worker transaction (`src/cron/store/run-admission.worker.ts:reserveCronRunsInWorker@4d8c9bdd`). Cross-row writes exist only through internal `CronStoreTransactionHooks`.                                                           | Durable timers with restart catch-up                                                                                                                                                                                                                       | `cron_jobs` has no revision CAS. A session target accepts only `agentTurn`, not the trusted `[continuation:wake]` system event. Restart catch-up is capped at 5 jobs. No public API writes a job and other rows atomically. It would also split the authority between the election record and the timer.                                                                                                                                                                                                         |
+| **D. Subagent registry rows** (`subagent_runs`)                                                                            | Registry write transactions: the legacy synchronous `saveSubagentRegistryChangesToSqlite` and the worker `subagents.persistChanges`                                                                                                            | Post-admission truth for delegates                                                                                                                                                                                                                         | A same-session election has no child and no run. Putting elections into the registry would give it a competing responsibility. Pre-admission delegates have no row either (§5.4.4).                                                                                                                                                                                                                                                                                                                              |
+| **E. Continuation-owned table in the shared state database** (recommended)                                                 | One continuation state-worker operation (`runOpenClawStateWorkerOperation`) running one synchronous `runOpenClawStateWriteTransaction`: reread the owner's live work records, check the owner condition, CAS the priors, insert the new record | Keeps the exact C semantics. One authority for work, delegate and post-compaction custody. Same database as `delivery_queue_entries` and `subagent_runs`, so notice/queue writes can commit atomically and handoff checks can read inside the transaction. | A new table, which needs storage-review acceptance (no version bump). The API becomes asynchronous; at C it was a synchronous resident map. Hot synchronous readers need a lifecycle-owned projection (§5.4.6).                                                                                                                                                                                                                                                                                                  |
+| **F. A continuation-owned store over the retained `flow_runs` table**                                                      | The same worker transaction as E, but over `flow_runs`                                                                                                                                                                                         | No data copy: live rows stay where they are                                                                                                                                                                                                                | Reverses upstream's documented "untouched and unused / not converted into a replacement ledger" contract for a table upstream still ships. Would need upstream's acceptance for a second interpretation of rows it deliberately abandoned. `chain_id` is not in the upstream schema, and constrained additions need a version bump. The dead TaskFlow-generic columns come along. Retention and maintenance were deleted with TaskFlow. Our presentation PR would re-activate a subsystem upstream just removed. |
+
+**Recommendation: E, with timer and idle wakes as projections only.**
+
+Justification:
+
+1. **One owner per responsibility.** Election, replacement, claim, delivered mark and terminal obligation all stay in one store with one writer. Timer and idle wakes change nothing in it; they only prompt a drain. The hedge timer is process-local. `idleRetry` triggers, `reply-run-ended` and `command-lane-idle` stay record fields that the dispatcher reads.
+2. **The C protocol is preserved byte for byte.** The owner condition, cap, `running_owner` and `invalid_prior` checks, the single retry, and rollback all translate directly into a synchronous worker transaction. That transaction is the shape the AGENTS database rules require: plan asynchronously, then reread and write synchronously.
+3. **Sharing a database with the queue and the registry strengthens two contracts.** The terminal-notice enqueue and clear become one commit. So do the post-compaction release and queue insert. The custody handoff check can read `subagent_runs` inside the same transaction that marks a delegate handed off. Upstream uses this cross-owner pattern in `admitSubagentCompletionInWorker`.
+4. **It follows upstream's own precedent.** Cron moved to its own store and worker (#158222). The session delivery queue owns its table. A feature with durable custody owns its store; it does not borrow a generic ledger.
+5. **Costs are bounded and explicit.**
+   - The table goes in `FIRST_USE_STATE_TABLES` (`src/state/openclaw-state-db-contract.ts@4d8c9bdd`), because task text and reasons are privacy-sensitive. It is created at the first continuation write, and nothing checks for it per call.
+   - Storage-review acceptance is required and is requested through this RFC.
+   - Callers move from synchronous to asynchronous APIs in the implementation lane.
+
+The decision belongs to the princes. The companion decision record states the alternatives and the questions.
+
+#### 5.4.4 Requirement 3: pre-spawn custody handoff to `subagent_runs`
+
+**Two-phase custody.** `subagent_runs` cannot own a delegate before a child exists. At `4d8c9bdd`, a native `sessions_spawn` child's row is written only _after_ the Gateway has accepted the child run. The order in `src/agents/subagents/spawn/subagent-spawn.ts:spawnSubagentDirect` and `src/agents/spawn-pipeline.ts:runSpawnPipeline` is:
+
+1. create the child session;
+2. materialize the attachments;
+3. dispatch the `agent` turn;
+4. `registerSubagentRun`.
+
+The continuation custody store therefore owns the delegate before admission, and the registry owns it after. The handoff needs a key that both sides can see.
+
+**Handoff key: a precomputed child run ID.** The Gateway uses the caller's idempotency key as the run ID (`src/gateway/agent-turn/agent-request-preflight.ts@4d8c9bdd`, `const runId = request.idempotencyKey`). Spawn already derives that key deterministically from a requester-scoped replay key (`src/agents/subagents/spawn/subagent-spawn-request.ts@4d8c9bdd`, `childIdem` from `swarmLaunchReplayKey`). However:
+
+- the derivation is private;
+- the registry's replay-key lookup, `getSwarmRunByLaunchReplayKey`, only covers collector runs;
+- spawn persists the replay key only for collectors (`subagent-spawn.ts@4d8c9bdd:588`).
+
+The implementation therefore needs one narrow change in the spawn owner: `spawnSubagentDirect` accepts an explicit launch idempotency key for non-collector spawns and uses it as `childIdem`. Continuation derives `childRunId = continuation:<recordId>:<attemptId>` and records it in the claim _before_ calling spawn. Once the child is admitted, the registry row's `run_id` equals that `childRunId`. Recovery then looks it up by run ID (`src/agents/subagents/registry/subagent-registry.store.sqlite.ts:loadSubagentRunsByRunIdsFromSqlite@4d8c9bdd`, read through the registry's read path).
+
+**What moves at the handoff:**
+
+- **Return routing and recipient authority.** Both move into the registration commit as the `SubagentRunRecord` continuation fields.
+- **Attachment custody.** Spawn materializes the bytes into the child's private receipt directory. The registry row then records its own `attachmentId` (`src/agents/subagents/spawn/subagent-attachments.ts:materializeSubagentAttachments@4d8c9bdd`). The continuation payload file is released only **after** the handoff is marked. If the child is not admitted, the next attempt re-materializes from the retained payload. Spawn re-validates the bytes against the policy in force at that moment (§9.2.1).
+- **Chain charge.** It is applied once, at accept, guarded by the `persistedChainState` planned-persist marker (§5.4.2).
+
+**Crash-boundary table.** "Recovery" means the Gateway startup continuation recovery, which runs after the Doctor import (§5.4.5) and after upstream `activateSubagentRegistry`.
+
+| #   | Boundary                                                                                                                                                  | Durable at the crash                                                      | What recovery does                                                                                                                                                                                                                                                                                                                   | Why no loss                                                                                                                 | Why no duplicate                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | Before the enqueue commit (tool validated; payload file possibly written)                                                                                 | At most an unreferenced payload file                                      | The startup custody reconcile deletes payload files that no live record references (`reconcileDelegateAttachmentCustody`, as at C)                                                                                                                                                                                                   | The tool reports `scheduled` only after the commit. An uncommitted delegate was never promised, and the turn sees an error. | Nothing was enqueued                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 1   | Enqueued (`queued`), not claimed                                                                                                                          | Record plus payload file                                                  | Re-arms the hedge timer and drains when due. `created_at + delayMs` is unchanged.                                                                                                                                                                                                                                                    | The record is durable                                                                                                       | Only one claim can win the revision CAS                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 2   | Claimed (`running`, `spawnAttempts[n]` recorded); spawn not yet accepted by the Gateway. The child session may exist and attachments may be materialized. | Record with `childRunId`, payload file, possibly an orphan child session  | No `subagent_runs` row under any recorded `childRunId`. Recovery appends a new attempt with a fresh `childRunId` and spawns again. Upstream's startup session migration has already marked the orphan child session interrupted (`src/gateway/server-startup-session-migration.ts@4d8c9bdd`, via `hasSubagentSessionRecoveryOwner`). | The payload is still retained, so the spawn is retried                                                                      | Nothing ran under the old attempt. The Gateway never accepted it.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 3   | The Gateway accepted the child run, but `registerSubagentRun` had not committed (**upstream's window**)                                                   | Same as #2                                                                | Same as #2: indistinguishable at recovery, so it re-spawns                                                                                                                                                                                                                                                                           | Same as #2                                                                                                                  | **Not guaranteed.** The unregistered child may have executed. This is the one window with possible duplicate side effects. Upstream narrows it in process: `spawnSubagentDirect` terminates the accepted run if registration throws. It closes fully only if native spawn registers before acknowledging, as plugin subagents already do (`src/gateway/agent-turn/agent-run-subagent.ts@4d8c9bdd`, "Persist the actual execution owner before acknowledging a plugin dispatch"). |
+| 4   | `subagent_runs` row committed (child admitted); continuation record not yet marked handed off                                                             | Record (`running`), payload file, registry row with `run_id = childRunId` | Finds the registry row for a recorded `childRunId`. In one transaction it marks `handoff`, sets `succeeded` and scrubs the attachment reference. It then releases the payload file and applies the chain charge through the planned-persist marker.                                                                                  | The registry owns the child                                                                                                 | **Closed by the precomputed key.** At C this window re-dispatched running rows, which had no child run key, so it could spawn twice.                                                                                                                                                                                                                                                                                                                                             |
+| 5   | Handed off; child running                                                                                                                                 | Terminal record; registry row                                             | None in continuation. Upstream recovery owns the child: a running child resumes waiting; an interrupted child is finalized as an error and delivered, never replayed (`recoverInterruptedSubagentRow`).                                                                                                                              | Upstream's completion obligation delivers the terminal result (§5.4.7)                                                      | Upstream never replays a child                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 6   | Child terminal                                                                                                                                            | Registry row, delivery obligation, queued continuation returns            | Upstream admission and delivery (`subagent-completion-admission.worker.ts:admitSubagentCompletionInWorker@4d8c9bdd`). Targeted returns redeliver from `delivery_queue_entries` under their idempotency keys.                                                                                                                         | Durable queue and obligation                                                                                                | Idempotent queue entry IDs                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+**Reset at any boundary.** Explicit reset cancels records in states 1 and 2, including when state 2 was really state 3. It scrubs their attachment references and releases the payload files. At C the file waited for the next startup reconcile; the revision releases it immediately. For states 4 to 6 it relies on upstream `stopSessionResetSubagents` (`src/auto-reply/reply/session-reset-cleanup.ts@4d8c9bdd`), which kills the requester's child runs.
+
+**Alternative policy for boundaries 2 and 3** (open question Q3): treat an unresolved claim as **at-most-once**. That means terminalizing it with a `[continuation:delegate-spawn-interrupted]` notice instead of re-spawning. This matches upstream's no-replay doctrine exactly, but it loses delegates in window 2, which is much wider than window 3. The recommendation is to re-spawn under a fresh attempt. That keeps the RFC's promise that queued work survives restart until it is consumed, and it bounds duplicates to upstream's own window 3.
+
+**Post-compaction handoff.** Staging hands custody to the session delivery queue, not to the registry (§4.4). The queue drain spawns the child, and that spawn follows the same pattern:
+
+- the queue payload carries a precomputed `childRunId` derived from `(recordId, queue attempt)`;
+- the drain checks `subagent_runs` before it spawns again.
+
+At C the queue drain had no such key.
+
+#### 5.4.5 Requirement 4: migrating stored continuation TaskFlow rows
+
+#159179 leaves `flow_runs` rows in place and removes their only reader. Queued and running continuation rows that exist on live seats at the cutover would otherwise become unreadable residue. A **Doctor state migration** imports them. Its step ID is `continuation-taskflow-custody-import`. It is a core step, because continuation is core-owned (`src/infra/state-migrations.doctor.ts@4d8c9bdd`, the `unresolvedMigrationStepLayout` registration). Receipts use `src/infra/state-migrations.receipts.ts@4d8c9bdd:recordLegacyMigrationReceipt` and `recordLegacyMigrationSource`.
+
+**Detection.** A row is a candidate if it has `sync_mode = 'managed'` and a `controller_id` in `{core/continuation-work, core/continuation-delegate, core/continuation-post-compaction}`. The migration reads `flow_runs` read-only through Kysely. It is the **only** `flow_runs` reader. The runtime never reads the table.
+
+**Idempotency.**
+
+- Each imported record keeps `record_id = flow_id`. The insert is insert-if-absent on that primary key, so a re-run is a no-op.
+- The migration receipt records the run and its per-source keys.
+- Import is batched, one state-database transaction per batch, and each record commits together with its source receipt.
+
+**Per-state handling:**
+
+| Legacy row                                                                                 | Import as                                                                                   | Attachment payload                                                     | Notes                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| work `queued` (with or without `anchorPending`/`idleRetry`)                                | `queued`, all state fields verbatim, `created_at` and `updated_at` exact, `revision` copied | n/a                                                                    | Recovery re-arms it, as at C (anchors orphaned `anchorPending`, matures overdue anchors)                                                                                                                                   |
+| work `running` without the delivered mark                                                  | `running`                                                                                   | n/a                                                                    | Recovery re-drives it after the 60 s stale cutoff, as at C                                                                                                                                                                 |
+| work `running` with the `succeeded` delivered mark                                         | `running`, mark kept                                                                        | n/a                                                                    | Recovery finalizes it without re-driving, as at C, so there is no duplicate turn                                                                                                                                           |
+| work `failed` with `terminalNoticePending`                                                 | `failed`, obligation kept                                                                   | n/a                                                                    | The notice is delivered by the first recovery (§5.4.2)                                                                                                                                                                     |
+| work terminal without an obligation                                                        | not imported                                                                                | n/a                                                                    | Left untouched; there is nothing to replay                                                                                                                                                                                 |
+| delegate or post-compaction `queued`                                                       | `queued`, `created_at` exact (it is the due-time base)                                      | The file stays bound, because `record_id = flow_id` = `payload.flowId` | Due times are unchanged                                                                                                                                                                                                    |
+| delegate `running` (claimed at C; C stored no child run key)                               | `running` with an empty `spawnAttempts`                                                     | kept                                                                   | No run key exists to reconcile against. Recovery re-spawns, which is C's own behavior for running rows. The duplicate window that C had stays for these legacy rows only. Guessing ownership from task text is ruled out.  |
+| post-compaction `running` + `awaitingNextCompaction`                                       | `running`, flag kept                                                                        | kept                                                                   | Requeued at startup, as at C                                                                                                                                                                                               |
+| post-compaction `running`, claimed for release                                             | `running`                                                                                   | kept                                                                   | Recovery checks `delivery_queue_entries` for the C source key `pendingPostCompactionSourceKey(sessionKey, flowId)`. If found, it marks the record handed off; otherwise it re-releases (C's logic, now over one database). |
+| post-compaction `succeeded` without `childSessionKey` (handed off, child not yet accepted) | `succeeded` with a `handoff` to the queue                                                   | released                                                               | Imported so that session reset can still find and cancel it, as at C (`session-reset.ts` covers these rows)                                                                                                                |
+| any non-terminal row with `cancel_requested_at`                                            | `cancelled`                                                                                 | released                                                               | Honors the fence                                                                                                                                                                                                           |
+| state fails to decode (work codec, or strict delegate schema)                              | `failed`, `state_json` reduced to structural diagnostics                                    | scrubbed, and the file released if it is bound                         | As C's `rejectCorruptDelegateFlow`. Diagnostics carry no attachment content.                                                                                                                                               |
+| legacy inline `attachments`/`attachAs` (rows from before the payload-file store)           | Record references a newly written payload file                                              | written from the inline bytes, then referenced                         | See source-row policy below                                                                                                                                                                                                |
+
+**Source-row policy.** By default, source rows stay byte-identical, as in upstream's precedent (`extensions/codex/src/migration/native-task-assignments.ts@4d8c9bdd`; `docs/gateway/doctor/config-migrations.md`). The princes must decide two exceptions:
+
+- **Q6, inline bytes.** Legacy rows with inline attachment bytes would keep those bytes in a table that is never pruned any more. The recommendation is to scrub `attachments[].content` in exactly those source rows, in the import transaction, and record that in the receipt.
+- **Q7, downgrade fencing.** Rolling back to a C-era build after the import would let C re-drive rows that the new build already executed. The recommendation is to set `cancel_requested_at` on imported non-terminal source rows in the import transaction. C treats that as "do not drive". Consequence: C's maintenance reaper then cancels those rows and releases their payload files, so rolling forward again fails those delegates as corrupt instead of duplicating them.
+
+**Update behavior** (AGENTS "Updates always work"):
+
+- The installed updater runs first. The candidate's fresh Doctor then runs `doctor --repair --non-interactive` (`src/cli/update-cli/update-command-fresh-doctor.ts@4d8c9bdd`), which performs the import.
+- Gateway startup invokes the same approved transform before continuation recovery, so a restart that skipped Doctor still imports. There is no separate compatibility reader.
+- A failed or partial import is a recorded warning. The Gateway keeps running and new elections work. Un-imported rows stay in `flow_runs` for the next Doctor run.
+- The import writes only the new table and receipts, plus the Q6/Q7 fences if accepted. It is covered by the pre-update backup.
+
+**Retiring the legacy read.** The importer is the only `flow_runs` reader. It is retired when both of these hold:
+
+1. every supported upgrade source that could carry C-era rows has shipped the importer;
+2. one extended-stable line has passed since then.
+
+If upstream schedules a `flow_runs` drop (a schema retirement) before that, the importer must run in the release before the drop. The importer's removal PR cites this condition.
+
+#### 5.4.6 Listing: mandatory internal list-by-owner, optional `tasks.*`
+
+The **internal list-by-owner capability is mandatory**. Its consumers are:
+
+- startup recovery (all live records by kind and status);
+- session reset (all records for an owner);
+- `/status` counts (§6.3);
+- the metrics provider;
+- the subagent cleanup and sweep guards (`hasLiveOrRecentlyDispatchedContinuationWork`, `failStagedPostCompactionDelegatesForCleanup`).
+
+The continuation custody store provides it through read-only worker queries on the `(owner_session_key, kind, status)` and `(status, kind, due_at)` indexes. Synchronous hot-path guards need to know "does this session have live continuation work" without an `await`. They read a lifecycle-owned projection that the custody store's write operations update after commit, with explicit invalidation on each write. They never freshness-poll.
+
+**Retention.** Terminal records are pruned after 7 days, which is TaskFlow's policy carried over. A record whose `terminalNoticePending` is set is never pruned. The prune runs in the startup recovery pass and on a lifecycle-owned interval that the custody store owns. TaskFlow's maintenance worker, which pruned at C, was deleted by #159179.
+
+The **`tasks.*` gateway RPC and task UI are optional product surface.** They were upstream-authored and upstream removed them. This revision does not re-add them. If a listing surface is wanted later, it should be a continuation-owned read method over list-by-owner, not a revival of `tasks.*`. Deleting the UI does not remove the internal enumeration that recovery and reset depend on.
+
+#### 5.4.7 Durable obligation and the upstream native-child completion gap
+
+The continuation's own durable obligation is the work terminal notice (`terminalNoticePending`). It stays in the custody store (§5.4.2). Upstream's completion obligation for children is separate and stays upstream's:
+
+- per-child delivery state in the `subagent_runs` payload, admitted together with a queue entry (`admitSubagentCompletionInWorker`);
+- the durable requester settle wake (`src/agents/subagents/announce/subagent-announce.requester-settle-wake.ts:maybeWakeRequesterAfterAllChildrenSettled@4d8c9bdd`).
+
+`accepted-session-spawn.ts` is not a durable obligation store. Its receipts live in a process `WeakMap` (`src/agents/accepted-session-spawn.ts:acceptedSpawnsByRun@4d8c9bdd`). After the handoff (§5.4.4 boundary 5), delegate completions rely on upstream's obligation.
+
+**The admitted gap concerns Codex-native children, not `sessions_spawn`.**
+
+- The #159179 commit body says: _"remaining native completion and 9.4 rollback witnesses are explicitly unproven."_
+- `docs/gateway/doctor/config-migrations.md@4d8c9bdd` records that unstamped legacy native records "cannot establish the missing physical requester and connection history".
+- `7c8c71bf1d` (#160608) later fixed a lost `sessions_yield` wake, but it "does not replay previously failed deliveries".
+
+At `4d8c9bdd` the gap is therefore **not closed** for unstamped or ambiguous legacy native rows, and the published-state witness is still unproven.
+
+Continuation delegates spawn through `spawnSubagentDirect`, so they are native OpenClaw subagents tracked in `subagent_runs`, and the Codex-native gap does not apply to them directly. The spawn-order window in §5.4.4 boundary 3 is a separate, narrower upstream gap. The fork-only hunk that called `finalizeTaskRunByRunId` from `src/agents/subagents/registry/subagent-registry-run-recovery.ts` finalized a Task ledger row for an abandoned steer restart. With no Task ledger, it is dropped; the registry row is the only owner.
+
+#### 5.4.8 The eight capabilities and their new owners
+
+| #   | Capability (#1408)                                                 | New owner                                                                                                                                                    |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Durable create keyed by owner and controller                       | Custody store insert: `owner_session_key` + `kind` (work, delegate, post-compaction)                                                                         |
+| 2   | Optimistic-revision CAS update                                     | Custody store `revision` CAS inside one worker write transaction                                                                                             |
+| 3   | Atomic multi-record update with owner condition (`chainId` copied) | Custody store election transaction (§5.4.3); rollback multi-record CAS                                                                                       |
+| 4   | Finish, fail, cancel, delete lifecycle                             | Custody store status transitions. Delete remains for unaccepted removals (`removeUnacceptedContinuationDelegate`). After the handoff: the subagent registry. |
+| 5   | List-by-owner for recovery and reset (mandatory)                   | Custody store indexed reads plus a lifecycle-owned projection (§5.4.6)                                                                                       |
+| 6   | Typed-attachment custody and scrub-on-terminal (#1403)             | Private payload file bound to `record_id`, released on handoff or terminal; the subagent registry `attachmentId` after admission (§5.4.4)                    |
+| 7   | Durable obligation                                                 | `terminalNoticePending` with atomic enqueue-and-clear plus a prune guard; upstream's completion obligation after the handoff (§5.4.7)                        |
+| 8   | Listing surface (optional)                                         | Not re-added; future continuation-owned read method only if needed (§5.4.6)                                                                                  |
+
+#### 5.4.9 Contract changes
+
+Behavior contracts this revision keeps unchanged:
+
+- durable, unconditional custody;
+- anchor and delay semantics;
+- the delivered mark;
+- fold-note delivery;
+- terminal notices;
+- chain and cost accounting;
+- targeting and recipient authority;
+- attachment validation, limits, snapshot-by-value and scrub;
+- post-compaction staging and release;
+- reset as an interruption boundary;
+- `request_compaction()`.
+
+These promises change:
+
+1. **Delegate spawn after a restart gets stronger.** A claimed delegate whose child was admitted is no longer re-spawned (boundary 4). Duplicates are limited to upstream's window 3 and to legacy running rows imported without a run key.
+2. **Two handoffs become single commits:** post-compaction release plus queue insert, and terminal notice plus clear. Their crash windows close.
+3. **The storage owner changes.** The records are no longer visible through TaskFlow registry queries, the `tasks.*` RPC or the task UI. §5.1's "no opt-out" durability is unchanged.
+4. **Legacy rows from before the cutover** are carried by a Doctor import. If Q7 is accepted, a rollback after the import fails imported delegates instead of duplicating them.
+5. **Reset releases payload files immediately** instead of at the next startup.
+
+**Highest-risk conjecture tests for the implementation lanes** (from the prince review):
+
+- atomic replacement under a crash;
+- delivered-mark and terminal-notice restart gaps;
+- the pre-spawn handoff at each boundary in §5.4.4;
+- legacy-row migration across every row in §5.4.5;
+- tool/token parity for work, delegate and post-compaction.
 
 ## 6. Observability
 
