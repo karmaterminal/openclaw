@@ -5,7 +5,6 @@
 // write, so a refusal commits nothing and a thrown write rolls the whole
 // transaction back.
 import type { DatabaseSync } from "node:sqlite";
-import type { Insertable, Selectable } from "kysely";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
@@ -16,18 +15,20 @@ import { requestSqliteWorkerOperationAdmission } from "../../../infra/sqlite-wor
 import {
   formatContinuationChildRunId,
   type ContinuationSpawnAttempt,
-  type ContinuationSpawnFailurePhase,
 } from "../../../shared/continuation-run-key.js";
 import { tableExists } from "../../../state/openclaw-state-db-schema-helpers.js";
-import type {
-  ContinuationRecords,
-  DB as OpenClawStateKyselyDatabase,
-} from "../../../state/openclaw-state-db.generated.js";
+import type { DB as OpenClawStateKyselyDatabase } from "../../../state/openclaw-state-db.generated.js";
 import {
   runOpenClawStateWriteTransaction,
   type OpenClawStateDatabaseOptions,
 } from "../../../state/openclaw-state-db.js";
 import { OPENCLAW_STATE_SCHEMA_SQL } from "../../../state/openclaw-state-schema.js";
+import {
+  CONTINUATION_SPAWN_FAILURE_PHASES,
+  decodeContinuationRecordRow,
+  encodeContinuationRecordRow,
+  isTerminalContinuationStatus,
+} from "./custody-record-codec.js";
 import type {
   ContinuationAttemptFailureInput,
   ContinuationCasFailure,
@@ -37,18 +38,14 @@ import type {
   ContinuationDeleteResult,
   ContinuationElection,
   ContinuationElectionResult,
-  ContinuationHandoff,
   ContinuationLiveRecordFact,
   ContinuationLiveStatus,
   ContinuationOwnerLiveSet,
   ContinuationPruneResult,
   ContinuationRecord,
-  ContinuationRecordKind,
   ContinuationRecordPatch,
   ContinuationRecordQuery,
-  ContinuationRecordStatus,
   ContinuationRecordUpdate,
-  ContinuationTerminalNotice,
   ContinuationUpdateResult,
   NewContinuationRecord,
 } from "./custody-store.types.js";
@@ -57,41 +54,14 @@ import type { ContinuationCustodyWorkerOperations } from "./custody-store.worker
 export const CONTINUATION_RECORDS_TABLE = "continuation_records" as const;
 
 type CustodyDatabase = Pick<OpenClawStateKyselyDatabase, typeof CONTINUATION_RECORDS_TABLE>;
-type Row = Selectable<ContinuationRecords>;
 
 const SCHEMA_START = `CREATE TABLE IF NOT EXISTS ${CONTINUATION_RECORDS_TABLE} (`;
 const SCHEMA_END = "ON continuation_records(status, kind, due_at);";
 
-const KINDS: ReadonlySet<string> = new Set<ContinuationRecordKind>([
-  "work",
-  "delegate",
-  "post_compaction",
-]);
-const STATUSES: ReadonlySet<string> = new Set<ContinuationRecordStatus>([
-  "queued",
-  "running",
-  "succeeded",
-  "failed",
-  "cancelled",
-]);
-const NOTICES: ReadonlySet<string> = new Set<ContinuationTerminalNotice>([
-  "retry-exhausted",
-  "delegate-spawn-interrupted",
-  "rollback-election-conflict",
-]);
-const FAILURE_PHASES: ReadonlySet<string> = new Set<ContinuationSpawnFailurePhase>([
-  "initialize",
-  "dispatch",
-  "register",
-]);
 const LIVE_STATUSES = ["queued", "running"] as const satisfies readonly ContinuationLiveStatus[];
 
 function custodyDb(db: DatabaseSync) {
   return getNodeSqliteKysely<CustodyDatabase>(db);
-}
-
-export function isTerminalContinuationStatus(status: ContinuationRecordStatus): boolean {
-  return status === "succeeded" || status === "failed" || status === "cancelled";
 }
 
 /** Create the canonical first-use table and its indexes at the first custody write. */
@@ -108,156 +78,6 @@ function ensureContinuationCustodySchema(db: DatabaseSync): void {
   db.exec(OPENCLAW_STATE_SCHEMA_SQL.slice(start, end + SCHEMA_END.length));
 }
 
-class ContinuationRecordDecodeError extends Error {
-  constructor(recordId: string, field: string) {
-    // Structural only: never echo stored content, which may hold task text.
-    super(`continuation record ${recordId} has an invalid ${field}`);
-    this.name = "ContinuationRecordDecodeError";
-  }
-}
-
-function decodeSpawnAttempts(recordId: string, raw: string): ContinuationSpawnAttempt[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new ContinuationRecordDecodeError(recordId, "spawn_attempts_json");
-  }
-  if (!Array.isArray(parsed)) {
-    throw new ContinuationRecordDecodeError(recordId, "spawn_attempts_json");
-  }
-  return parsed.map((value: unknown) => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      throw new ContinuationRecordDecodeError(recordId, "spawn_attempts_json");
-    }
-    const entry: Record<string, unknown> = { ...value };
-    const { attemptId, childRunId, claimedAt, failurePhase } = entry;
-    if (
-      typeof attemptId !== "number" ||
-      !Number.isSafeInteger(attemptId) ||
-      attemptId < 1 ||
-      typeof childRunId !== "string" ||
-      childRunId.length === 0 ||
-      typeof claimedAt !== "number" ||
-      (failurePhase !== undefined &&
-        (typeof failurePhase !== "string" || !FAILURE_PHASES.has(failurePhase)))
-    ) {
-      throw new ContinuationRecordDecodeError(recordId, "spawn_attempts_json");
-    }
-    return {
-      attemptId,
-      // Opaque persisted evidence: never re-derived from the record ID on read.
-      childRunId,
-      claimedAt,
-      ...(failurePhase !== undefined
-        ? // SAFETY: membership in FAILURE_PHASES was checked above.
-          { failurePhase: failurePhase as ContinuationSpawnFailurePhase }
-        : {}),
-    };
-  });
-}
-
-function decodeHandoff(recordId: string, raw: string | null): ContinuationHandoff | undefined {
-  if (raw === null) {
-    return undefined;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new ContinuationRecordDecodeError(recordId, "handoff_json");
-  }
-  if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-    const value: Record<string, unknown> = { ...parsed };
-    if (
-      value.target === "subagent_runs" &&
-      typeof value.childRunId === "string" &&
-      typeof value.childSessionKey === "string" &&
-      typeof value.handedOffAt === "number"
-    ) {
-      return {
-        target: "subagent_runs",
-        childRunId: value.childRunId,
-        childSessionKey: value.childSessionKey,
-        handedOffAt: value.handedOffAt,
-      };
-    }
-    if (
-      value.target === "session_delivery_queue" &&
-      typeof value.queueEntryId === "string" &&
-      typeof value.handedOffAt === "number"
-    ) {
-      return {
-        target: "session_delivery_queue",
-        queueEntryId: value.queueEntryId,
-        handedOffAt: value.handedOffAt,
-      };
-    }
-  }
-  throw new ContinuationRecordDecodeError(recordId, "handoff_json");
-}
-
-function decodeRow(row: Row): ContinuationRecord {
-  if (!KINDS.has(row.kind)) {
-    throw new ContinuationRecordDecodeError(row.record_id, "kind");
-  }
-  if (!STATUSES.has(row.status)) {
-    throw new ContinuationRecordDecodeError(row.record_id, "status");
-  }
-  if (row.terminal_notice_pending !== null && !NOTICES.has(row.terminal_notice_pending)) {
-    throw new ContinuationRecordDecodeError(row.record_id, "terminal_notice_pending");
-  }
-  const handoff = decodeHandoff(row.record_id, row.handoff_json);
-  return {
-    recordId: row.record_id,
-    // SAFETY: the three enumerations were checked against their CHECK-constraint sets above.
-    kind: row.kind as ContinuationRecordKind,
-    ownerSessionKey: row.owner_session_key,
-    ...(row.chain_id !== null ? { chainId: row.chain_id } : {}),
-    revision: row.revision,
-    status: row.status as ContinuationRecordStatus,
-    ...(row.phase !== null ? { phase: row.phase } : {}),
-    ...(row.failure_reason !== null ? { failureReason: row.failure_reason } : {}),
-    ...(row.cancel_requested_at !== null ? { cancelRequestedAt: row.cancel_requested_at } : {}),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    ...(row.ended_at !== null ? { endedAt: row.ended_at } : {}),
-    ...(row.due_at !== null ? { dueAt: row.due_at } : {}),
-    stateJson: row.state_json,
-    spawnAttempts: decodeSpawnAttempts(row.record_id, row.spawn_attempts_json),
-    ...(handoff ? { handoff } : {}),
-    ...(row.rollback_of !== null ? { rollbackOf: row.rollback_of } : {}),
-    ...(row.attachment_id !== null ? { attachmentId: row.attachment_id } : {}),
-    ...(row.terminal_notice_pending !== null
-      ? { terminalNoticePending: row.terminal_notice_pending as ContinuationTerminalNotice }
-      : {}),
-  };
-}
-
-function encodeRecord(record: ContinuationRecord): Insertable<ContinuationRecords> {
-  return {
-    record_id: record.recordId,
-    kind: record.kind,
-    owner_session_key: record.ownerSessionKey,
-    chain_id: record.chainId ?? null,
-    revision: record.revision,
-    status: record.status,
-    phase: record.phase ?? null,
-    failure_reason: record.failureReason ?? null,
-    cancel_requested_at: record.cancelRequestedAt ?? null,
-    created_at: record.createdAt,
-    updated_at: record.updatedAt,
-    ended_at: record.endedAt ?? null,
-    due_at: record.dueAt ?? null,
-    state_json: record.stateJson,
-    spawn_attempts_json: JSON.stringify(record.spawnAttempts),
-    handoff_json: record.handoff ? JSON.stringify(record.handoff) : null,
-    rollback_of: record.rollbackOf ?? null,
-    attachment_id: record.attachmentId ?? null,
-    terminal_notice_pending: record.terminalNoticePending ?? null,
-  };
-}
-
 function readRecord(db: DatabaseSync, recordId: string): ContinuationRecord | undefined {
   const row = executeSqliteQueryTakeFirstSync(
     db,
@@ -266,7 +86,7 @@ function readRecord(db: DatabaseSync, recordId: string): ContinuationRecord | un
       .selectAll()
       .where("record_id", "=", recordId),
   );
-  return row ? decodeRow(row) : undefined;
+  return row ? decodeContinuationRecordRow(row) : undefined;
 }
 
 /** FIFO list in `(created_at, record_id)` order; an absent first-use table has no records. */
@@ -300,7 +120,7 @@ export function listContinuationRecordsInDatabase(
     select = select.where("record_id", "in", query.recordIds);
   }
   return executeSqliteQuerySync(db, select.orderBy("created_at").orderBy("record_id")).rows.map(
-    decodeRow,
+    decodeContinuationRecordRow,
   );
 }
 
@@ -334,12 +154,14 @@ function commitFacts(
 function insertRecord(db: DatabaseSync, record: ContinuationRecord): void {
   executeSqliteQuerySync(
     db,
-    custodyDb(db).insertInto(CONTINUATION_RECORDS_TABLE).values(encodeRecord(record)),
+    custodyDb(db)
+      .insertInto(CONTINUATION_RECORDS_TABLE)
+      .values(encodeContinuationRecordRow(record)),
   );
 }
 
 function writeRecord(db: DatabaseSync, record: ContinuationRecord, expectedRevision: number): void {
-  const { record_id: _recordId, ...values } = encodeRecord(record);
+  const { record_id: _recordId, ...values } = encodeContinuationRecordRow(record);
   const result = executeSqliteQuerySync(
     db,
     custodyDb(db)
@@ -686,7 +508,7 @@ export function recordContinuationSpawnAttemptFailureInDatabase(
     recordId: input.recordId,
     reason,
   });
-  if (!FAILURE_PHASES.has(input.failurePhase)) {
+  if (!CONTINUATION_SPAWN_FAILURE_PHASES.has(input.failurePhase)) {
     return invalid("unknown spawn failure phase");
   }
   if (current.status !== "running" || latest?.attemptId !== input.attemptId) {

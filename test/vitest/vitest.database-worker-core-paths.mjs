@@ -173,6 +173,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/embedded-agent-runner/run.prepared-harness-source-delivery.integration.test.ts",
   "src/agents/embedded-agent-runner/run.shared-integration.test.ts",
   "src/auto-reply/dispatch.block-streaming-recovery.test.ts",
+  "src/auto-reply/continuation/custody/custody-store.test.ts",
   "src/auto-reply/reply/agent-runner-direct-runtime-config.test.ts",
   "src/auto-reply/reply/agent-runner-execution-cli-commentary.test.ts",
   "src/auto-reply/reply/agent-runner-source-identity.test.ts",

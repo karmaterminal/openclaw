@@ -4,6 +4,7 @@
 // commit this module installs the reported live sets into the hot-path
 // projection and releases the payload files whose references the commit
 // scrubbed. Nothing else reads or writes `continuation_records`.
+import { createSqliteWorkerWriteAdmission } from "../../../infra/sqlite-worker-store.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
 import { runOpenClawStateWorkerOperation } from "../../../state/openclaw-state-worker-store.js";
@@ -71,8 +72,15 @@ async function execute<Key extends keyof Operations>(
 ): Promise<Operations[Key]["output"]> {
   let output: Operations[Key]["output"];
   try {
-    output = await runOpenClawStateWorkerOperation(custody.context, (scope) =>
-      scope.execute({ type, input }),
+    const assertCurrent = () => custody.context.admission.assertCurrent();
+    output = await runOpenClawStateWorkerOperation(
+      custody.context,
+      (scope) => scope.execute({ type, input }),
+      {
+        assertCurrent,
+        // The worker asks for authority after BEGIN and again before COMMIT.
+        createAdmission: createSqliteWorkerWriteAdmission(assertCurrent, [databasePath(custody)]),
+      },
     );
   } catch (error) {
     invalidateContinuationCustodyOwners(databasePath(custody), touchedOwners);
