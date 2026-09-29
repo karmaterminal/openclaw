@@ -326,13 +326,15 @@ function importOwnerInTransaction(
     );
     const plan = planLegacyRow(row, {
       ...(queueEntry ? { queueEntryId: queueEntry.id } : {}),
+      // C spawned every delegate kind under this derived child key, so a
+      // claimed ordinary or post-compaction row is adopted from the same proof.
       registry:
-        row.kind === "post_compaction"
-          ? readSubagentRunsForChild(
+        row.kind === "work"
+          ? []
+          : readSubagentRunsForChild(
               db,
               deriveContinuationDelegateChildSessionKeyFromParent(owner, row.flow_id),
-            )
-          : [],
+            ),
       ownerHasLiveCustodyWork,
       ...(payloads.has(row.flow_id) ? { payload: payloads.get(row.flow_id) } : {}),
       now,

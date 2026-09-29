@@ -277,6 +277,74 @@ describe("continuation TaskFlow custody import", () => {
     ).toEqual([]);
   });
 
+  it("adopts a legacy running delegate admitted under its owner and fails a foreign-owned one", async () => {
+    const options = stateOptions();
+    const claimed = delegateState({ childSessionKey: undefined });
+    seedFlow(options, {
+      flowId: "delegate-admitted",
+      controller: "delegate",
+      status: "running",
+      state: claimed,
+    });
+    seedSubagentRun(options, {
+      runId: "continuation-delegate-admitted",
+      childSessionKey: deriveContinuationDelegateChildSessionKeyFromParent(
+        OWNER_A,
+        "delegate-admitted",
+      ),
+      requester: OWNER_A,
+    });
+    seedFlow(options, {
+      flowId: "delegate-collision",
+      controller: "delegate",
+      status: "running",
+      state: claimed,
+    });
+    seedSubagentRun(options, {
+      runId: "foreign-delegate-run",
+      childSessionKey: deriveContinuationDelegateChildSessionKeyFromParent(
+        OWNER_A,
+        "delegate-collision",
+      ),
+      requester: OWNER_B,
+    });
+
+    await run(options);
+
+    expect(record(options, "delegate-admitted")).toMatchObject({
+      status: "succeeded",
+      handoff: {
+        target: "subagent_runs",
+        childRunId: "continuation-delegate-admitted",
+        childSessionKey: deriveContinuationDelegateChildSessionKeyFromParent(
+          OWNER_A,
+          "delegate-admitted",
+        ),
+      },
+    });
+    expect(record(options, "delegate-collision")).toMatchObject({
+      status: "failed",
+      failureReason: "spawn-interrupted",
+    });
+    // The admitted child needs no interruption notice; the collision gets exactly one.
+    expect(
+      spawnInterruptedNotices(options).map(
+        (row): string => JSON.parse(row.entry_json).idempotencyKey,
+      ),
+    ).toEqual(["continuation-spawn-interrupted:record:delegate-collision"]);
+    const receipts = readReceipts(options);
+    expect(
+      JSON.parse(
+        receipts.find((row) => row.source_key.endsWith(":delegate-admitted"))!.report_json,
+      ),
+    ).toMatchObject({ handoff: "subagent_runs", interruptedNotice: false });
+    expect(
+      JSON.parse(
+        receipts.find((row) => row.source_key.endsWith(":delegate-collision"))!.report_json,
+      ),
+    ).toMatchObject({ registryCollision: true, interruptedNotice: true });
+  });
+
   it("settles legacy post-compaction claims by C-byte proof or terminalizes them (fold 2)", async () => {
     const options = stateOptions();
     const claimed = postCompactionState({ releasedAt: 1_900 });

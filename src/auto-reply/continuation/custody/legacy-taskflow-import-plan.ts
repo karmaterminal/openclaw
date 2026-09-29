@@ -318,9 +318,7 @@ function planDelegate(row: LegacyContinuationFlowRow, facts: RowFacts): RowPlan 
       report: { handoff: "session_delivery_queue" },
     };
   }
-  const { handoff, collision } = postCompaction
-    ? registryHandoff(row, facts)
-    : { collision: false };
+  const { handoff, collision } = registryHandoff(row, facts);
   if (handoff) {
     return {
       disposition: "imported",
