@@ -46,7 +46,7 @@ export function reportOwnedDelegateAdmissionFailure(params: {
     `[continuation:delegate-admission-failed] child=${params.childSessionKey}`,
   );
   enqueueSystemEvent(
-    "[continuation] Delegate was not scheduled because durable TaskFlow admission failed. Retry the delegation.",
+    "[continuation] Delegate was not scheduled because durable continuation custody admission failed. Retry the delegation.",
     withContinuationOwner(
       { sessionKey: params.eventSessionKey, trusted: true },
       params.ownerAgentId,

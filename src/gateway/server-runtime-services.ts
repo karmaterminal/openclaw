@@ -413,94 +413,92 @@ function startPendingSessionDeliveryRuntime(params: {
   };
 }
 
+/** Custody retention runs at boot and then on this interval (RFC §5.4.6). */
+const CONTINUATION_CUSTODY_PRUNE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
 function startPendingContinuationRecovery(params: {
   log: GatewayRuntimeServiceLogger;
 }): () => Promise<void> {
-  // Delegate recovery must run before same-session continue_work recovery to
-  // preserve normal post-turn ordering when a restart happens after both were
-  // queued in the same turn.
-  //
-  // Captured BEFORE the deferred timer as a boot-time cutoff: post-compaction
-  // recovery only resets rows that were already `running` at process start, so a
-  // live release claiming a row during the startup window is not requeued.
+  // Captured BEFORE the deferred timer as the boot-time cutoff: only records
+  // claimed at or before it belonged to the previous process, so a live
+  // dispatch claiming a record during the startup window is never mistaken for
+  // an abandoned claim.
   const recoveryArmedAt = Date.now();
   let stopped = false;
   let recovery: Promise<void> | undefined;
   let stopPromise: Promise<void> | undefined;
+  let pruneTimer: ReturnType<typeof setInterval> | undefined;
+  let releaseStopWait: () => void = () => {};
+  const stopWait = new Promise<void>((resolve) => {
+    releaseStopWait = resolve;
+  });
   const timer = setTimeout(() => {
     if (stopped) {
       return;
     }
     recovery = runWithGatewayIndependentRootWorkAdmission(async () => {
-      const [delegateRecoveryModule, workModule] = await Promise.all([
-        import("../auto-reply/continuation/delegate-dispatch-recovery.js"),
-        import("../auto-reply/continuation/work-dispatch.js"),
-      ]);
-      const delegateLog = params.log.child("continuation-delegate-recovery");
-      const delegateSummary = await delegateRecoveryModule.recoverPendingContinuationDelegates({
-        queuedCreatedAtOrBefore: recoveryArmedAt,
-        includeRunningUpdatedAtOrBefore: recoveryArmedAt,
+      const [{ runContinuationCustodyBoot, pruneExpiredContinuationCustody }, registry] =
+        await Promise.all([
+          import("../auto-reply/continuation/custody-boot.js"),
+          import("../agents/subagents/registry/subagent-registry.js"),
+        ]);
+      const bootLog = params.log.child("continuation-recovery");
+      // Doctor import fact, then registry activation, then custody recovery.
+      const summary = await runContinuationCustodyBoot({
+        armedAt: recoveryArmedAt,
+        // Stop must not wait on an activation that will never come.
+        whenSubagentRegistryActivated: async () => {
+          await Promise.race([registry.whenSubagentRegistryActivated(), stopWait]);
+          if (stopped) {
+            throw new Error("continuation recovery stopped before registry activation");
+          }
+        },
+        log: bootLog,
       });
+      const { delegates, postCompaction, work } = summary;
       if (
-        delegateSummary.sessions > 0 ||
-        delegateSummary.dispatched > 0 ||
-        delegateSummary.rejected > 0
+        delegates.sessions > 0 ||
+        postCompaction.sessions > 0 ||
+        work.sessions > 0 ||
+        work.terminalNotices > 0 ||
+        summary.awaitingNextCompactionRequeued > 0 ||
+        summary.pruned > 0
       ) {
-        delegateLog.info(
-          `replayed sessions=${delegateSummary.sessions} dispatched=${delegateSummary.dispatched} rejected=${delegateSummary.rejected}`,
+        bootLog.info(
+          `recovered delegates sessions=${delegates.sessions} dispatched=${delegates.dispatched} rejected=${delegates.rejected} postCompaction sessions=${postCompaction.sessions} released=${postCompaction.dispatched} failed=${postCompaction.failed} requeued=${summary.awaitingNextCompactionRequeued} work sessions=${work.sessions} dispatched=${work.dispatched} failed=${work.failed} reaped=${work.reaped} terminalNotices=${work.terminalNotices} pruned=${summary.pruned}`,
         );
       }
-      // Post-compaction delegates left `running` by a crash between
-      // release-claim and durable handoff must be re-dispatched now, not just
-      // requeued — for a session that already compacted there is no subsequent
-      // compaction seam to consume them, so a requeued row would sit forever.
-      // The boot-time cutoff excludes rows a live release claimed after startup,
-      // so recovery cannot double-drive an actively-releasing delegate.
-      const awaitingNextCompactionRequeue =
-        await delegateRecoveryModule.requeueAwaitingNextCompactionDelegates({
-          runningUpdatedAtOrBefore: recoveryArmedAt,
-        });
-      if (awaitingNextCompactionRequeue.requeued > 0) {
-        delegateLog.info(
-          `requeued awaiting-next-compaction delegates requeued=${awaitingNextCompactionRequeue.requeued}`,
-        );
+      if (stopped) {
+        return;
       }
-      const postCompactionRecovery =
-        await delegateRecoveryModule.recoverAndReleaseStagedPostCompactionDelegates({
-          runningUpdatedAtOrBefore: recoveryArmedAt,
-        });
-      if (
-        postCompactionRecovery.sessions > 0 ||
-        postCompactionRecovery.dispatched > 0 ||
-        postCompactionRecovery.failed > 0
-      ) {
-        delegateLog.info(
-          `recovered post-compaction delegates sessions=${postCompactionRecovery.sessions} dispatched=${postCompactionRecovery.dispatched} failed=${postCompactionRecovery.failed}`,
+      pruneTimer = setInterval(() => {
+        void runWithGatewayIndependentRootWorkAdmission(
+          async () => void (await pruneExpiredContinuationCustody()),
+          "runtime:continuation-custody-prune",
+        ).catch((err: unknown) =>
+          bootLog.warn(`Continuation custody retention prune failed: ${String(err)}`),
         );
+      }, CONTINUATION_CUSTODY_PRUNE_INTERVAL_MS);
+      pruneTimer.unref?.();
+    }, "runtime:continuation-recovery").catch((err: unknown) => {
+      if (!stopped) {
+        params.log.error(`Continuation recovery failed: ${String(err)}`);
       }
-
-      const workLog = params.log.child("continuation-work-recovery");
-      const workSummary = await workModule.recoverPendingContinuationWork();
-      if (
-        workSummary.sessions > 0 ||
-        workSummary.dispatched > 0 ||
-        workSummary.failed > 0 ||
-        workSummary.reaped > 0 ||
-        workSummary.terminalNotices > 0
-      ) {
-        workLog.info(
-          `replayed sessions=${workSummary.sessions} dispatched=${workSummary.dispatched} failed=${workSummary.failed} reaped=${workSummary.reaped} terminalNotices=${workSummary.terminalNotices}`,
-        );
-      }
-    }, "runtime:continuation-recovery").catch((err: unknown) =>
-      params.log.error(`Continuation recovery failed: ${String(err)}`),
-    );
+    });
   }, 1_400);
   timer.unref?.();
   return () => {
     stopped = true;
+    releaseStopWait();
     clearTimeout(timer);
-    stopPromise ??= recovery ?? Promise.resolve();
+    if (pruneTimer) {
+      clearInterval(pruneTimer);
+    }
+    stopPromise ??= (recovery ?? Promise.resolve()).then(() => {
+      if (pruneTimer) {
+        clearInterval(pruneTimer);
+      }
+    });
     return stopPromise;
   };
 }

@@ -23,8 +23,8 @@ import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { resolveContinuationRuntimeConfig } from "./config.js";
 import {
-  readClaimedDelegateAdmission,
-  type DelegateAdmissionEvidence,
+  partitionDelegateClaimsByAdmission,
+  type ClaimedDelegate,
 } from "./delegate-dispatch-accepted-children.js";
 import {
   DelegateTerminalChainStatePersistError,
@@ -46,6 +46,7 @@ import {
   createContinuationOwnerSessionLoader,
   registerContinuationDelegateDispatchClaim,
 } from "./delegate-spawn-authority.js";
+import { terminalizeInterruptedDelegateClaim } from "./delegate-spawn-interrupted.js";
 import {
   annotateQueuedDelegatesInheritedPolicy,
   clearRecoverableDelegatesChainTokensFold,
@@ -56,7 +57,6 @@ import {
   revalidatePendingDelegateForSpawn,
   requeuePendingDelegate,
   spawnResultNeverDispatched,
-  terminalizeInterruptedDelegateClaim,
 } from "./delegate-store.js";
 import { formatDelegateTaskForSystemEvent } from "./delegate-system-event.js";
 import { checkContinuationBudget, type ChainState } from "./scheduler.js";
@@ -68,14 +68,18 @@ export { resetDelegateDispatchHedgesForTests } from "./delegate-dispatch-hedge.j
 
 const log = createSubsystemLogger("continuation/delegate-dispatch");
 
-/** Delegates the dispatch must settle, with the admission evidence found for each. */
-type ClaimedDelegate = {
-  delegate: PendingContinuationDelegate;
-  /** Set when an earlier attempt, or an unresolved claim, has registry evidence. */
-  evidence?: DelegateAdmissionEvidence;
-  /** A claim a dead dispatch left behind: never spawned again (Q3). */
-  unresolved?: true;
-};
+function hedgeParamsFor(params: DelegateDispatchParams) {
+  return {
+    chainState: params.chainState,
+    ctx: params.ctx,
+    maxChainLength: params.maxChainLength,
+    ...(params.config ? { config: params.config } : {}),
+    loadFreshChainState: params.loadFreshChainState,
+    ...(params.applyDelegateChainTokensFold ? { applyDelegateChainTokensFold: true } : {}),
+    persistChainState: params.persistChainState,
+    ...(params.persistBeforeTerminalCommit ? { persistBeforeTerminalCommit: true } : {}),
+  };
+}
 
 /**
  * Consume and dispatch all pending tool-dispatched delegates for a session.
@@ -95,19 +99,9 @@ export async function dispatchToolDelegates(
     armDelegateDispatchHedge(
       sessionKey,
       Date.now() + DELEGATE_DISPATCH_RETRY_MS,
-      {
-        chainState: params.chainState,
-        ctx: params.ctx,
-        maxChainLength: params.maxChainLength,
-        ...(params.config ? { config: params.config } : {}),
-        loadFreshChainState: params.loadFreshChainState,
-        ...(params.applyDelegateChainTokensFold ? { applyDelegateChainTokensFold: true } : {}),
-        persistChainState: params.persistChainState,
-        ...(params.persistBeforeTerminalCommit ? { persistBeforeTerminalCommit: true } : {}),
-        // Deferred delegates go back to `queued`; the retry never resolves
-        // `running` claims, which belong to live dispatches in this process.
-        queuedCreatedAtOrBefore: hedgeQueuedCreatedAtOrBefore,
-      },
+      // Deferred delegates go back to `queued`; the retry never resolves
+      // `running` claims, which belong to live dispatches in this process.
+      { ...hedgeParamsFor(params), queuedCreatedAtOrBefore: hedgeQueuedCreatedAtOrBefore },
       dispatchToolDelegates,
     );
   };
@@ -170,14 +164,7 @@ export async function dispatchToolDelegates(
       sessionKey,
       earliestQueuedDueAt,
       {
-        chainState: params.chainState,
-        ctx: params.ctx,
-        maxChainLength: params.maxChainLength,
-        ...(params.config ? { config: params.config } : {}),
-        loadFreshChainState: params.loadFreshChainState,
-        ...(params.applyDelegateChainTokensFold ? { applyDelegateChainTokensFold: true } : {}),
-        persistChainState: params.persistChainState,
-        ...(params.persistBeforeTerminalCommit ? { persistBeforeTerminalCommit: true } : {}),
+        ...hedgeParamsFor(params),
         ...(params.recoverRunningDelegates ? { recoverRunningDelegates: true } : {}),
         queuedCreatedAtOrBefore: hedgeQueuedCreatedAtOrBefore,
         ...(params.includeRunningUpdatedAtOrBefore !== undefined
@@ -219,44 +206,19 @@ export async function dispatchToolDelegates(
     }
     return committed;
   };
-  // Admission evidence decides every claim that may already have a child: an
-  // unresolved claim, and a requeued record whose earlier attempt the registry
-  // may know (RFC §5.4.4, "Before a requeued record is claimed again").
-  const acceptedDelegates: ClaimedDelegate[] = [];
-  const interruptedDelegates: ClaimedDelegate[] = [];
-  const pendingDelegates: PendingContinuationDelegate[] = [];
-  const claims: ClaimedDelegate[] = [
-    ...unresolvedClaims.map((delegate) => ({ delegate, unresolved: true as const })),
-    ...toolDelegates.map((delegate) => ({ delegate })),
-  ];
-  for (const claim of claims) {
-    const earlierRunIds = claim.unresolved
-      ? claim.delegate.recordedChildRunIds
-      : claim.delegate.recordedChildRunIds?.filter(
-          (runId) => runId !== claim.delegate.spawnAttempt?.childRunId,
-        );
-    let evidence: DelegateAdmissionEvidence;
-    try {
-      evidence = await readClaimedDelegateAdmission(
-        { ...claim.delegate, recordedChildRunIds: earlierRunIds ?? [] },
-        sessionKey,
-      );
-    } catch (err) {
-      // An unreadable registry cannot prove anything either way; leave the
-      // claim for the next recovery pass rather than guess.
+  const {
+    accepted: acceptedDelegates,
+    interrupted: interruptedDelegates,
+    pending: pendingDelegates,
+  } = await partitionDelegateClaimsByAdmission({
+    unresolvedClaims,
+    claimed: toolDelegates,
+    ownerSessionKey: sessionKey,
+    onUnavailable: (delegate, err) =>
       log.warn(
-        `[continuation:delegate-admission-evidence-unavailable] flowId=${claim.delegate.flowId ?? "unknown"} session=${sessionKey} error=${formatErrorMessage(err)}`,
-      );
-      continue;
-    }
-    if (evidence.kind === "admitted") {
-      acceptedDelegates.push({ ...claim, evidence });
-    } else if (claim.unresolved || evidence.kind === "collision") {
-      interruptedDelegates.push({ ...claim, evidence });
-    } else {
-      pendingDelegates.push(claim.delegate);
-    }
-  }
+        `[continuation:delegate-admission-evidence-unavailable] flowId=${delegate.flowId ?? "unknown"} session=${sessionKey} error=${formatErrorMessage(err)}`,
+      ),
+  });
   const { dispatchableDelegates, unavailablePolicyDelegates } =
     await partitionManagedDelegatesForRuntime({
       delegates: pendingDelegates,

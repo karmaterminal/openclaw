@@ -10,7 +10,7 @@
  * capping fan-out within a single turn.
  *
  * This is deliberately volatile: the budget is turn-scoped rate state, not
- * durable delegate substrate (that stays in the TaskFlow-backed delegate-store).
+ * durable delegate substrate (that stays in the custody-backed delegate-store).
  * A lost budget on restart simply means the next turn starts at zero, which is
  * the correct post-restart state.
  */

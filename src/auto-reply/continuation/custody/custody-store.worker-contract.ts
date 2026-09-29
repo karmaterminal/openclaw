@@ -55,6 +55,11 @@ export type ContinuationCustodyWorkerOperations = {
     input: ContinuationPostCompactionReleaseInput;
     output: ContinuationPostCompactionReleaseResult;
   };
+  /** Owners whose legacy TaskFlow rows the Doctor import has not committed (§5.4.5). */
+  "continuationCustody.listAwaitingImportOwners": {
+    input: Record<string, never>;
+    output: string[];
+  };
   "continuationCustody.list": {
     input: ContinuationRecordQuery;
     output: ContinuationRecord[];

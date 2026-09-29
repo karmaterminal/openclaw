@@ -5,15 +5,7 @@
 // write, so a refusal commits nothing and a thrown write rolls the whole
 // transaction back.
 import type { DatabaseSync } from "node:sqlite";
-import { isDeepStrictEqual } from "node:util";
-import { upsertBoundDeliveryQueueEntryInDatabase } from "../../../infra/delivery-queue-sqlite-bound.js";
-import { getDeliveryQueueEntryOwnersInDatabase } from "../../../infra/delivery-queue-sqlite.kernel.js";
-import {
-  executeSqliteQuerySync,
-  executeSqliteQueryTakeFirstSync,
-  getNodeSqliteKysely,
-} from "../../../infra/kysely-sync.js";
-import { SESSION_DELIVERY_QUEUE_NAME } from "../../../infra/session-delivery-queue.records.js";
+import { executeSqliteQuerySync } from "../../../infra/kysely-sync.js";
 import type { SqliteWorkerCommand } from "../../../infra/sqlite-worker-contract.js";
 import { requestSqliteWorkerOperationAdmission } from "../../../infra/sqlite-worker-operation-admission.js";
 import {
@@ -22,7 +14,6 @@ import {
 } from "../../../shared/continuation-run-key.js";
 import type { OpenClawStateDatabase } from "../../../state/openclaw-state-db-contract.js";
 import { tableExists } from "../../../state/openclaw-state-db-schema-helpers.js";
-import type { DB as OpenClawStateKyselyDatabase } from "../../../state/openclaw-state-db.generated.js";
 import {
   runOpenClawStateWriteTransaction,
   type OpenClawStateDatabaseOptions,
@@ -30,48 +21,44 @@ import {
 import { createOpenClawStateSchemaEnsurer } from "../../../state/openclaw-state-feature-schema.js";
 import {
   CONTINUATION_SPAWN_FAILURE_PHASES,
-  decodeContinuationRecordRow,
-  encodeContinuationRecordRow,
   isTerminalContinuationStatus,
 } from "./custody-record-codec.js";
+import {
+  CONTINUATION_RECORDS_TABLE,
+  casCheck,
+  commitFacts,
+  custodyDb,
+  insertRecord,
+  LIVE_STATUSES,
+  newRecord,
+  planPatch,
+  readRecord,
+  selectRecords,
+  validateNewRecord,
+  writePlanned,
+  writeRecord,
+  type Planned,
+} from "./custody-store.kernel.js";
 import type {
   ContinuationAttemptFailureInput,
-  ContinuationCasFailure,
   ContinuationClaimResult,
-  ContinuationCommitFacts,
   ContinuationCreateResult,
   ContinuationDeleteResult,
   ContinuationElection,
   ContinuationElectionResult,
-  ContinuationEndedRecordFact,
-  ContinuationLiveRecordFact,
-  ContinuationLiveStatus,
-  ContinuationNoticeSettlementInput,
-  ContinuationNoticeSettlementResult,
-  ContinuationOwnerLiveSet,
-  ContinuationPostCompactionReleaseInput,
-  ContinuationPostCompactionReleaseResult,
   ContinuationPruneResult,
-  ContinuationQueueEntryStatus,
   ContinuationRecord,
-  ContinuationRecordPatch,
   ContinuationRecordQuery,
   ContinuationRecordUpdate,
   ContinuationUpdateResult,
   NewContinuationRecord,
 } from "./custody-store.types.js";
 import type { ContinuationCustodyWorkerOperations } from "./custody-store.worker-contract.js";
-
-export const CONTINUATION_RECORDS_TABLE = "continuation_records" as const;
-
-type CustodyDatabase = Pick<OpenClawStateKyselyDatabase, typeof CONTINUATION_RECORDS_TABLE>;
-
-const LIVE_STATUSES = ["queued", "running"] as const satisfies readonly ContinuationLiveStatus[];
-
-function custodyDb(db: DatabaseSync) {
-  return getNodeSqliteKysely<CustodyDatabase>(db);
-}
-
+import {
+  releaseContinuationPostCompactionInDatabase,
+  settleContinuationNoticeInDatabase,
+} from "./custody-store.worker-handoffs.js";
+import { listContinuationOwnersAwaitingImport } from "./legacy-taskflow-source.js";
 /**
  * Creates the canonical first-use table and indexes once per database handle,
  * before the first custody write transaction. Reads never create it.
@@ -82,17 +69,6 @@ export const ensureContinuationCustodySchema = createOpenClawStateSchemaEnsurer(
   operationLabel: "continuation.custody.schema.ensure",
 });
 
-function readRecord(db: DatabaseSync, recordId: string): ContinuationRecord | undefined {
-  const row = executeSqliteQueryTakeFirstSync(
-    db,
-    custodyDb(db)
-      .selectFrom(CONTINUATION_RECORDS_TABLE)
-      .selectAll()
-      .where("record_id", "=", recordId),
-  );
-  return row ? decodeContinuationRecordRow(row) : undefined;
-}
-
 /**
  * FIFO list in `(created_at, record_id)` order. The first-use table may be
  * absent on reads; presence comes from the handle's admitted schema facts.
@@ -102,250 +78,6 @@ export function listContinuationRecordsInDatabase(
   query: ContinuationRecordQuery,
 ): ContinuationRecord[] {
   return tableExists(db, CONTINUATION_RECORDS_TABLE) ? selectRecords(db, query) : [];
-}
-
-/** Write paths run after the schema ensure, so they select without a presence check. */
-function selectRecords(db: DatabaseSync, query: ContinuationRecordQuery): ContinuationRecord[] {
-  let select = custodyDb(db).selectFrom(CONTINUATION_RECORDS_TABLE).selectAll();
-  if (query.ownerSessionKey !== undefined) {
-    select = select.where("owner_session_key", "=", query.ownerSessionKey);
-  }
-  if (query.kinds !== undefined) {
-    if (query.kinds.length === 0) {
-      return [];
-    }
-    select = select.where("kind", "in", query.kinds);
-  }
-  if (query.statuses !== undefined) {
-    if (query.statuses.length === 0) {
-      return [];
-    }
-    select = select.where("status", "in", query.statuses);
-  }
-  if (query.recordIds !== undefined) {
-    if (query.recordIds.length === 0) {
-      return [];
-    }
-    select = select.where("record_id", "in", query.recordIds);
-  }
-  return executeSqliteQuerySync(db, select.orderBy("created_at").orderBy("record_id")).rows.map(
-    decodeContinuationRecordRow,
-  );
-}
-
-function readOwnerLiveSet(db: DatabaseSync, ownerSessionKey: string): ContinuationOwnerLiveSet {
-  const records: ContinuationLiveRecordFact[] = selectRecords(db, {
-    ownerSessionKey,
-    statuses: LIVE_STATUSES,
-  }).map((record) => {
-    const fact: ContinuationLiveRecordFact = {
-      recordId: record.recordId,
-      kind: record.kind,
-      // SAFETY: the query selected only live statuses.
-      status: record.status as ContinuationLiveStatus,
-      revision: record.revision,
-      cancelRequested: record.cancelRequestedAt !== undefined,
-      createdAt: record.createdAt,
-    };
-    if (record.dueAt !== undefined) {
-      fact.dueAt = record.dueAt;
-    }
-    return fact;
-  });
-  return { ownerSessionKey, records };
-}
-
-/** Post-commit facts for the owners a write touched, read inside the same transaction. */
-function commitFacts(
-  db: DatabaseSync,
-  owners: Iterable<string>,
-  releasedAttachments: ContinuationCommitFacts["releasedAttachments"],
-  ended: readonly ContinuationEndedRecordFact[] = [],
-): ContinuationCommitFacts {
-  return {
-    owners: [...new Set(owners)].map((owner) => readOwnerLiveSet(db, owner)),
-    releasedAttachments,
-    ended,
-  };
-}
-
-function insertRecord(db: DatabaseSync, record: ContinuationRecord): void {
-  executeSqliteQuerySync(
-    db,
-    custodyDb(db)
-      .insertInto(CONTINUATION_RECORDS_TABLE)
-      .values(encodeContinuationRecordRow(record)),
-  );
-}
-
-function writeRecord(db: DatabaseSync, record: ContinuationRecord, expectedRevision: number): void {
-  const { record_id: _recordId, ...values } = encodeContinuationRecordRow(record);
-  const result = executeSqliteQuerySync(
-    db,
-    custodyDb(db)
-      .updateTable(CONTINUATION_RECORDS_TABLE)
-      .set(values)
-      .where("record_id", "=", record.recordId)
-      .where("revision", "=", expectedRevision),
-  );
-  // Preconditions were checked in this transaction; a miss means the invariant broke.
-  if (Number(result.numAffectedRows ?? 0n) !== 1) {
-    throw new Error(`continuation record ${record.recordId} changed inside its write transaction`);
-  }
-}
-
-function newRecord(input: NewContinuationRecord): ContinuationRecord {
-  return {
-    recordId: input.recordId,
-    kind: input.kind,
-    ownerSessionKey: input.ownerSessionKey,
-    ...(input.chainId !== undefined ? { chainId: input.chainId } : {}),
-    revision: 0,
-    status: input.status,
-    ...(input.phase !== undefined ? { phase: input.phase } : {}),
-    createdAt: input.createdAt,
-    updatedAt: input.createdAt,
-    ...(input.dueAt !== undefined ? { dueAt: input.dueAt } : {}),
-    stateJson: input.stateJson,
-    spawnAttempts: [],
-    ...(input.attachmentId !== undefined ? { attachmentId: input.attachmentId } : {}),
-  };
-}
-
-function casCheck(
-  current: ContinuationRecord | undefined,
-  recordId: string,
-  expectedRevision: number,
-): ContinuationCasFailure | undefined {
-  if (!current) {
-    return { outcome: "not_found", recordId };
-  }
-  if (current.revision !== expectedRevision) {
-    return { outcome: "revision_conflict", recordId, revision: current.revision };
-  }
-  return undefined;
-}
-
-type Planned = {
-  next: ContinuationRecord;
-  expectedRevision: number;
-  released?: string;
-  ended?: ContinuationEndedRecordFact;
-};
-
-/**
- * Apply a patch in memory. Terminal statuses stamp `endedAt` and scrub the
- * attachment reference. A handoff is permanent: once custody moved to another
- * owner the record stays `succeeded` with that exact handoff, so it can never
- * be reopened and driven a second time.
- */
-function planPatch(
-  current: ContinuationRecord,
-  patch: ContinuationRecordPatch,
-  now: number,
-): Planned | { invalid: string } {
-  const status = patch.status ?? current.status;
-  if (
-    current.handoff &&
-    patch.handoff !== undefined &&
-    !isDeepStrictEqual(patch.handoff, current.handoff)
-  ) {
-    return { invalid: "a handoff cannot be cleared or replaced" };
-  }
-  const handoff = current.handoff ?? patch.handoff ?? undefined;
-  if (handoff && status !== "succeeded") {
-    return { invalid: "handed-off records stay succeeded" };
-  }
-  if (patch.stateJson !== undefined) {
-    try {
-      JSON.parse(patch.stateJson);
-    } catch {
-      return { invalid: "state_json must be JSON" };
-    }
-  }
-  const terminal = isTerminalContinuationStatus(status);
-  const scrub = terminal || patch.scrubAttachment === true;
-  const pick = <T>(value: T | null | undefined, fallback: T | undefined): T | undefined =>
-    value === null ? undefined : value === undefined ? fallback : value;
-  const next: ContinuationRecord = {
-    recordId: current.recordId,
-    kind: current.kind,
-    ownerSessionKey: current.ownerSessionKey,
-    ...(current.chainId !== undefined ? { chainId: current.chainId } : {}),
-    revision: current.revision + 1,
-    status,
-    createdAt: current.createdAt,
-    updatedAt: patch.updatedAt ?? now,
-    stateJson: patch.stateJson ?? current.stateJson,
-    spawnAttempts: current.spawnAttempts,
-  };
-  const optional = {
-    phase: pick(patch.phase, current.phase),
-    failureReason: pick(patch.failureReason, current.failureReason),
-    cancelRequestedAt: pick(patch.cancelRequestedAt, current.cancelRequestedAt),
-    endedAt: terminal
-      ? isTerminalContinuationStatus(current.status)
-        ? current.endedAt
-        : now
-      : undefined,
-    dueAt: pick(patch.dueAt, current.dueAt),
-    handoff,
-    rollbackOf: pick(patch.rollbackOf, current.rollbackOf),
-    attachmentId: scrub ? undefined : current.attachmentId,
-    terminalNoticePending: pick(patch.terminalNoticePending, current.terminalNoticePending),
-  };
-  for (const [key, value] of Object.entries(optional)) {
-    if (value !== undefined) {
-      Object.assign(next, { [key]: value });
-    }
-  }
-  const ended =
-    terminal && !isTerminalContinuationStatus(current.status) && next.endedAt !== undefined
-      ? {
-          recordId: next.recordId,
-          ownerSessionKey: next.ownerSessionKey,
-          kind: next.kind,
-          // SAFETY: `terminal` holds, so the status is one of the terminal statuses.
-          status: next.status as ContinuationEndedRecordFact["status"],
-          createdAt: next.createdAt,
-          endedAt: next.endedAt,
-        }
-      : undefined;
-  return {
-    next,
-    expectedRevision: current.revision,
-    ...(scrub && current.attachmentId !== undefined ? { released: current.attachmentId } : {}),
-    ...(ended ? { ended } : {}),
-  };
-}
-
-function writePlanned(db: DatabaseSync, planned: readonly Planned[]): ContinuationCommitFacts {
-  for (const { next, expectedRevision } of planned) {
-    writeRecord(db, next, expectedRevision);
-  }
-  return commitFacts(
-    db,
-    planned.map(({ next }) => next.ownerSessionKey),
-    planned.flatMap(({ next, released }) =>
-      released ? [{ recordId: next.recordId, attachmentId: released }] : [],
-    ),
-    planned.flatMap(({ ended }) => (ended ? [ended] : [])),
-  );
-}
-
-function validateNewRecord(input: NewContinuationRecord): string | undefined {
-  if (input.chainId !== undefined && input.kind !== "work") {
-    return "only work records carry a chain id";
-  }
-  if (input.attachmentId !== undefined && input.kind === "work") {
-    return "work records carry no attachments";
-  }
-  try {
-    JSON.parse(input.stateJson);
-  } catch {
-    return "state_json must be JSON";
-  }
-  return undefined;
 }
 
 /** Durable create keyed by owner and kind; an existing record ID is never overwritten. */
@@ -677,109 +409,6 @@ export function pruneContinuationRecordsInDatabase(
   return { deletedRecordIds: deleted.map((row) => row.record_id).toSorted() };
 }
 
-function readQueueEntryStatus(
-  database: OpenClawStateDatabase,
-  entryId: string,
-): ContinuationQueueEntryStatus {
-  const status = getDeliveryQueueEntryOwnersInDatabase(
-    database,
-    [SESSION_DELIVERY_QUEUE_NAME],
-    entryId,
-  ).get(SESSION_DELIVERY_QUEUE_NAME)?.status;
-  return status === "pending" || status === "completed" || status === "failed" ? status : "unknown";
-}
-
-function assertSessionQueueEntry(entry: ContinuationNoticeSettlementInput["notice"]): void {
-  if (entry.row.queue_name !== SESSION_DELIVERY_QUEUE_NAME || !entry.insertOnly) {
-    throw new Error("continuation custody inserts only new session-delivery rows");
-  }
-}
-
-/**
- * Deliver a terminal notice obligation (RFC §5.4.2): insert the notice row
- * (insert-if-absent under its record-derived key) and clear the obligation in
- * this one transaction, so the notice is neither lost nor enqueued twice.
- */
-export function settleContinuationNoticeInDatabase(
-  database: OpenClawStateDatabase,
-  input: ContinuationNoticeSettlementInput,
-): ContinuationNoticeSettlementResult {
-  assertSessionQueueEntry(input.notice);
-  const current = readRecord(database.db, input.recordId);
-  const failure = casCheck(current, input.recordId, input.expectedRevision);
-  if (failure || !current) {
-    return failure ?? { outcome: "not_found", recordId: input.recordId };
-  }
-  if (
-    current.ownerSessionKey !== input.ownerSessionKey ||
-    current.terminalNoticePending === undefined
-  ) {
-    return { outcome: "not_owed", recordId: input.recordId };
-  }
-  const plan = planPatch(current, { terminalNoticePending: null }, input.now);
-  if ("invalid" in plan) {
-    return { outcome: "not_owed", recordId: input.recordId };
-  }
-  upsertBoundDeliveryQueueEntryInDatabase(input.notice, database);
-  const entryId = input.notice.row.id;
-  const facts = writePlanned(database.db, [plan]);
-  return {
-    outcome: "settled",
-    record: plan.next,
-    entryId,
-    entryStatus: readQueueEntryStatus(database, entryId),
-    ...facts,
-  };
-}
-
-/**
- * Hand a claimed post-compaction record to the session delivery queue (RFC
- * §4.4, §5.4.4). The queue insert and the permanent handoff commit together;
- * a retry after an unseen commit finds the same deterministic entry ID.
- */
-export function releaseContinuationPostCompactionInDatabase(
-  database: OpenClawStateDatabase,
-  input: ContinuationPostCompactionReleaseInput,
-): ContinuationPostCompactionReleaseResult {
-  assertSessionQueueEntry(input.entry);
-  const current = readRecord(database.db, input.recordId);
-  const failure = casCheck(current, input.recordId, input.expectedRevision);
-  if (failure || !current) {
-    return failure ?? { outcome: "not_found", recordId: input.recordId };
-  }
-  const invalid = (reason: string): ContinuationPostCompactionReleaseResult => ({
-    outcome: "invalid_transition",
-    recordId: input.recordId,
-    reason,
-  });
-  if (current.ownerSessionKey !== input.ownerSessionKey) {
-    return invalid("record belongs to another owner");
-  }
-  if (current.kind !== "post_compaction" || current.status !== "running") {
-    return invalid("only a claimed post-compaction record can be released");
-  }
-  if (current.cancelRequestedAt !== undefined) {
-    return invalid("cancel requested");
-  }
-  const entryId = input.entry.row.id;
-  const plan = planPatch(
-    current,
-    {
-      status: "succeeded",
-      phase: input.phase,
-      failureReason: null,
-      stateJson: input.stateJson,
-      handoff: { target: "session_delivery_queue", queueEntryId: entryId, handedOffAt: input.now },
-    },
-    input.now,
-  );
-  if ("invalid" in plan) {
-    return invalid(plan.invalid);
-  }
-  upsertBoundDeliveryQueueEntryInDatabase(input.entry, database);
-  return { outcome: "released", record: plan.next, entryId, ...writePlanned(database.db, [plan]) };
-}
-
 export function isContinuationCustodyCommand(command: {
   type: string;
 }): command is SqliteWorkerCommand<ContinuationCustodyWorkerOperations> {
@@ -791,7 +420,11 @@ export function executeContinuationCustodyCommand(
   command: SqliteWorkerCommand<ContinuationCustodyWorkerOperations>,
   databaseOptions: OpenClawStateDatabaseOptions,
 ): ContinuationCustodyWorkerOperations[keyof ContinuationCustodyWorkerOperations]["output"] {
-  if (command.type !== "continuationCustody.list" && command.type !== "continuationCustody.prune") {
+  if (
+    command.type !== "continuationCustody.list" &&
+    command.type !== "continuationCustody.prune" &&
+    command.type !== "continuationCustody.listAwaitingImportOwners"
+  ) {
     ensureContinuationCustodySchema(databaseOptions);
   }
   return runOpenClawStateWriteTransaction((database) => {
@@ -830,6 +463,8 @@ function executeInTransaction(
       // Recovery and projection hydration read inside the write FIFO so they
       // observe every earlier committed custody write.
       return listContinuationRecordsInDatabase(db, command.input);
+    case "continuationCustody.listAwaitingImportOwners":
+      return listContinuationOwnersAwaitingImport(db);
   }
   throw new Error("Unknown continuation custody command");
 }

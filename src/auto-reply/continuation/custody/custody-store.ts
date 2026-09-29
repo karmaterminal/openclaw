@@ -419,6 +419,13 @@ export function listContinuationRecords(
   return execute(capture(options), "continuationCustody.list", { ...query }, []);
 }
 
+/** The Doctor import's boot fact: owners whose legacy rows are not imported yet (§5.4.5). */
+export function listContinuationOwnersAwaitingLegacyImport(
+  options?: ContinuationCustodyStoreOptions,
+): Promise<string[]> {
+  return execute(capture(options), "continuationCustody.listAwaitingImportOwners", {}, []);
+}
+
 /** Startup hydration of the hot-path projection from the committed live set. */
 export async function hydrateContinuationCustody(
   options?: ContinuationCustodyStoreOptions,

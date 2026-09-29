@@ -745,7 +745,7 @@ export function emitContinuationDisabledSpan(args: {
  *
  * Callsite invariants:
  *
- *  - Emit at the common TaskFlow dispatch fire seam — the fire event is
+ *  - Emit at the common custody dispatch fire seam — the fire event is
  *    wall-clock truth ("the delayed delegate matured"); whatever happens next
  *    (spawn accepted/rejected/failed) is recorded by the dispatch span and
  *    system-event breadcrumbs.

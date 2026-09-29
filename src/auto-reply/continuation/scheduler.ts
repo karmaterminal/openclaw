@@ -1,7 +1,7 @@
 /**
  * Continuation budget helpers.
  *
- * Delayed delegate scheduling is TaskFlow-backed via delegate-store and
+ * Delayed delegate scheduling is custody-backed via delegate-store and
  * delegate-dispatch; this module only owns the shared cap checks.
  */
 

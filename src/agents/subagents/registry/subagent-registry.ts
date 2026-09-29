@@ -721,11 +721,32 @@ export function initSubagentRegistry() {
   purgeExpiredDelegateArtifacts();
   state.restorer.restoreOnce();
 }
+let resolveRegistryActivation: () => void = () => {};
+const registryActivation = new Promise<void>((resolve) => {
+  resolveRegistryActivation = resolve;
+});
+
 export function activateSubagentRegistry(resolveGatewayContext: GatewayContextResolver) {
   // Reuse the instance's own fenced closure so late-restored siblings share one
   // authority across repeated activation; the raw holder can outlive that instance.
-  activeGatewayContextResolver = resolveGatewayContext()?.resolveGatewayContext;
-  subagentRestorer.activate();
+  try {
+    activeGatewayContextResolver = resolveGatewayContext()?.resolveGatewayContext;
+    subagentRestorer.activate();
+  } finally {
+    // Settle even when activation throws: waiters then read persisted rows,
+    // which the registry read path merges regardless of activation.
+    resolveRegistryActivation();
+  }
+}
+
+/**
+ * Settles once this process attempted registry activation. Continuation custody
+ * recovery waits on it so upstream's restart recovery owns interrupted
+ * children before continuation reads their rows (RFC
+ * docs/design/continue-work-signal-v2.md §5.4.4, crash-boundary table).
+ */
+export function whenSubagentRegistryActivated(): Promise<void> {
+  return registryActivation;
 }
 export const settleRequesterAfterSessionSpawns = publicApi.settleRequesterAfterSessionSpawns;
 export const markRequesterTurnYielded = publicApi.markRequesterTurnYielded;

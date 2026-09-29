@@ -3,6 +3,7 @@ import {
   createContinuationOwnerSessionLoader,
   registerContinuationDelegateDispatchClaim,
 } from "../auto-reply/continuation/delegate-spawn-authority.js";
+import { terminalizeInterruptedDelegateClaim } from "../auto-reply/continuation/delegate-spawn-interrupted.js";
 import { stagePostCompactionDelegate } from "../auto-reply/continuation/delegate-store-post-compaction.js";
 import {
   clearQueuedDelegatesChainTokensFold,
@@ -14,7 +15,6 @@ import {
   requeuePendingDelegate,
   revalidatePendingDelegateForSpawn,
   spawnResultNeverDispatched,
-  terminalizeInterruptedDelegateClaim,
 } from "../auto-reply/continuation/delegate-store.js";
 import { stripContinuationSignal } from "../auto-reply/continuation/signal.js";
 import {
@@ -22,8 +22,6 @@ import {
   persistContinuationChainState,
 } from "../auto-reply/continuation/state.js";
 import { withContinuationOwner } from "../auto-reply/continuation/system-event-ownership.js";
-import { scheduleContinuationWorkBatch } from "../auto-reply/continuation/work-dispatch.js";
-import { hasLiveContinuationCustody } from "../auto-reply/continuation/work-store.js";
 import { resolveAgentIdFromSessionKey, resolveSessionStorePathCore } from "../config/sessions.js";
 import { updateSessionEntry } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -40,6 +38,7 @@ import {
   rejectOwnedCrossSessionTargeting,
   reportOwnedDelegateAdmissionFailure,
 } from "./subagent-announce.continuation-owner-events.js";
+import { scheduleSubagentSelfContinuationWork } from "./subagent-announce.continuation-self-work.js";
 import {
   type ContinuationChainSource,
   type ContinuationChainState,
@@ -173,70 +172,6 @@ async function drainChildContinuationQueue(params: {
       `Subagent continuation delegate drain failed for ${params.childSessionKey}: ${String(error)}`,
     );
     return undefined;
-  }
-}
-
-async function scheduleSubagentSelfContinuationWork(params: {
-  cfg: OpenClawConfig;
-  childSessionKey: string;
-  childRunId: string;
-  delayMs?: number;
-  traceparent?: string;
-}): Promise<void> {
-  try {
-    if (await hasLiveContinuationCustody(params.childSessionKey)) {
-      return;
-    }
-    const config = resolveContinuationRuntimeConfig(params.cfg);
-    const childEntry = loadSessionEntryByKey(params.childSessionKey);
-    const result = await scheduleContinuationWorkBatch({
-      sessionKey: params.childSessionKey,
-      chainState: loadContinuationChainState(childEntry),
-      requests: [
-        {
-          reason: "subagent self-continuation (CONTINUE_WORK token)",
-          delaySeconds:
-            params.delayMs !== undefined ? params.delayMs / 1000 : config.defaultDelayMs / 1000,
-          ...(params.traceparent ? { traceparent: params.traceparent } : {}),
-        },
-      ],
-      config,
-      originRunId: params.childRunId,
-      originTurnId: params.childSessionKey,
-      log: (message) => defaultRuntime.log(message),
-    });
-    if (result.scheduledCount === 0) {
-      return;
-    }
-    persistContinuationChainState({
-      sessionEntry: childEntry,
-      count: result.chainState.currentChainCount,
-      startedAt: result.chainState.chainStartedAt,
-      tokens: result.chainState.accumulatedChainTokens,
-      ...(result.chainState.chainId ? { chainId: result.chainState.chainId } : {}),
-    });
-    const agentId = resolveAgentIdFromSessionKey(params.childSessionKey);
-    const storePath = resolveSessionStorePathCore(params.cfg.session?.store, { agentId });
-    const persisted = await updateSessionEntry(
-      { agentId, sessionKey: params.childSessionKey, storePath },
-      () => ({
-        continuationChainCount: result.chainState.currentChainCount,
-        continuationChainStartedAt: result.chainState.chainStartedAt,
-        continuationChainTokens: result.chainState.accumulatedChainTokens,
-        ...(result.chainState.chainId ? { continuationChainId: result.chainState.chainId } : {}),
-      }),
-      { requireWriteSuccess: true },
-    );
-    if (!persisted) {
-      throw new Error(`child entry not found: ${params.childSessionKey}`);
-    }
-    defaultRuntime.log(
-      `[subagent-chain-hop] Armed self-continuation continue_work wake for ${params.childSessionKey} (hop ${result.chainState.currentChainCount}) from completion-flow findings`,
-    );
-  } catch (error) {
-    defaultRuntime.error?.(
-      `[continuation:self-continuation-failed] child=${params.childSessionKey} error=${error instanceof Error ? error.message : String(error)}`,
-    );
   }
 }
 

@@ -31,7 +31,7 @@ function formatDelegateEchoForSystemEvent(value: string): string {
 type ContinuationUsage = { input?: number; output?: number } | undefined;
 
 // Owns CONTINUE_WORK / CONTINUE_DELEGATE response-signal admission.
-// Bracket delegates enter the same durable TaskFlow dispatch path as tool calls.
+// Bracket delegates enter the same durable custody dispatch path as tool calls.
 export async function handleContinuationSignal(context: {
   cfg: Parameters<typeof resolveLiveContinuationRuntimeConfig>[0];
   sessionKey: string | undefined;

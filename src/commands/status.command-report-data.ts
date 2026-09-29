@@ -54,7 +54,7 @@ import { formatUpdateAvailableHint } from "./status.update.js";
  * Format the /status continuation overview row per
  * docs/design/continue-work-signal-v2.md §6.3. Pure function over
  * already-resolved config + recent-session runtime counts; the live queries
- * (TaskFlow lookups per session key) live at the caller.
+ * (custody lookups per session key) live at the caller.
  *
  * @returns the formatted banner value, or `undefined` when continuation is
  *   disabled (so the caller can skip rendering the row).
@@ -152,23 +152,21 @@ export async function buildStatusCommandReportData(params: {
         const cfg = lazy.resolveContinuationRuntimeConfig();
 
         // docs/design/continue-work-signal-v2.md §6.3 — surface runtime continuation state.
-        // TaskFlow-backed counters are queryable cold-path from the CLI (SQLite
-        // persistent); in-memory counters live only in the gateway process.
+        // Custody counters are read from the state database on this cold CLI
+        // path; in-memory counters live only in the gateway process.
         let pendingRecent = 0;
         let stagedRecent = 0;
         if (cfg.enabled) {
           try {
-            const seen = new Set<string>();
-            for (const session of params.summary.sessions.recent) {
-              if (!session.key || seen.has(session.key)) {
-                continue;
-              }
-              seen.add(session.key);
-              pendingRecent += lazy.pendingDelegateCount(session.key);
-              stagedRecent += lazy.stagedPostCompactionDelegateCount(session.key);
-            }
+            const counts = await lazy.countQueuedDelegatesForSessions(
+              params.summary.sessions.recent.flatMap((session) =>
+                session.key ? [session.key] : [],
+              ),
+            );
+            pendingRecent = counts.pending;
+            stagedRecent = counts.staged;
           } catch {
-            // TaskFlow may be unavailable to this cold CLI path; retain config-only status.
+            // Custody may be unreadable on this cold CLI path; retain config-only status.
           }
         }
         return formatContinuationBannerValue({

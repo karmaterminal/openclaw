@@ -233,9 +233,6 @@
       "openclaw/plugin-sdk/test-state": [
         "../packages/plugin-sdk/dist/src/plugin-sdk/test-state.d.ts"
       ],
-      "openclaw/plugin-sdk/task-flow-test-runtime": [
-        "../packages/plugin-sdk/dist/src/plugin-sdk/task-flow-test-runtime.d.ts"
-      ],
       "openclaw/plugin-sdk/time-runtime": [
         "../packages/plugin-sdk/dist/src/plugin-sdk/time-runtime.d.ts"
       ],

@@ -90,3 +90,63 @@ export async function readClaimedDelegateAdmission(
   }
   return evidence;
 }
+
+/** A delegate the dispatch must settle, with the admission evidence found for it. */
+export type ClaimedDelegate = {
+  delegate: PendingContinuationDelegate;
+  /** Set when an earlier attempt, or an unresolved claim, has registry evidence. */
+  evidence?: DelegateAdmissionEvidence;
+  /** A claim a dead dispatch left behind: never spawned again (Q3). */
+  unresolved?: true;
+};
+
+/**
+ * Decide every claim that may already have a child (RFC §5.4.4): an
+ * unresolved claim, and a requeued record whose earlier attempt the registry
+ * may know ("Before a requeued record is claimed again"). Admitted claims are
+ * handed off, unresolved or colliding ones interrupted, and the rest spawn. A
+ * claim whose evidence cannot be read is left for the next recovery pass.
+ */
+export async function partitionDelegateClaimsByAdmission(params: {
+  unresolvedClaims: readonly PendingContinuationDelegate[];
+  claimed: readonly PendingContinuationDelegate[];
+  ownerSessionKey: string;
+  onUnavailable: (delegate: PendingContinuationDelegate, error: unknown) => void;
+}): Promise<{
+  accepted: ClaimedDelegate[];
+  interrupted: ClaimedDelegate[];
+  pending: PendingContinuationDelegate[];
+}> {
+  const accepted: ClaimedDelegate[] = [];
+  const interrupted: ClaimedDelegate[] = [];
+  const pending: PendingContinuationDelegate[] = [];
+  const claims: ClaimedDelegate[] = [
+    ...params.unresolvedClaims.map((delegate) => ({ delegate, unresolved: true as const })),
+    ...params.claimed.map((delegate) => ({ delegate })),
+  ];
+  for (const claim of claims) {
+    const earlierRunIds = claim.unresolved
+      ? claim.delegate.recordedChildRunIds
+      : claim.delegate.recordedChildRunIds?.filter(
+          (runId) => runId !== claim.delegate.spawnAttempt?.childRunId,
+        );
+    let evidence: DelegateAdmissionEvidence;
+    try {
+      evidence = await readClaimedDelegateAdmission(
+        { ...claim.delegate, recordedChildRunIds: earlierRunIds ?? [] },
+        params.ownerSessionKey,
+      );
+    } catch (error) {
+      params.onUnavailable(claim.delegate, error);
+      continue;
+    }
+    if (evidence.kind === "admitted") {
+      accepted.push({ ...claim, evidence });
+    } else if (claim.unresolved || evidence.kind === "collision") {
+      interrupted.push({ ...claim, evidence });
+    } else {
+      pending.push(claim.delegate);
+    }
+  }
+  return { accepted, interrupted, pending };
+}

@@ -289,7 +289,7 @@ export type SessionPostCompactionDelegate = {
   /** Optional provider/model override forwarded to the released delegate; omitted => inherit parent. */
   model?: string;
   /**
-   * Runtime-only TaskFlow claim handle for a delegate just released by
+   * Runtime-only custody claim handle for a delegate just released by
    * consumeStagedPostCompactionDelegates. Used to finalize or fail exactly the
    * claimed row after a durable handoff; never persisted in session entries.
    */
