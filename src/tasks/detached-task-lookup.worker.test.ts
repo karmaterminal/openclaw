@@ -189,6 +189,7 @@ it.each([
             entry,
             now: task.createdAt + 3,
             runs: new Map([[runId, entry]]),
+            storeCache: new Map(),
             getRunsForChildSession: () => [entry],
             completeSubagentRunWithRecovery: complete,
             retireSupersededRun: async () => {

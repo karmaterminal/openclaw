@@ -854,6 +854,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/continuation/cross-session-targeting.test.ts",
   "src/auto-reply/continuation/cross-session-targeting.nonexistent-target.test.ts",
   "src/auto-reply/continuation/trace-context-propagation.integration.test.ts",
+  "src/auto-reply/continuation/delegate-claim-boundaries.test.ts",
 ];
 
 const databaseWorkerCoreTestFileSet = new Set(databaseWorkerCoreTestFiles);
