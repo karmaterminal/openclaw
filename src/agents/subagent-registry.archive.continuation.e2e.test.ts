@@ -13,11 +13,19 @@ const taskStatusMocks = vi.hoisted(() => ({
   findTaskByRunIdForStatus: vi.fn(),
   listTasksForSessionKeyForStatus: vi.fn(() => [] as never[]),
 }));
+// Archive deferral reads the custody projection; the sweep's session delete
+// asks authoritative custody (RFC §5.4.6).
 const hasLiveOrRecentlyDispatchedContinuationWorkMock = vi.hoisted(() =>
   vi.fn<(_sessionKey: string) => boolean>(() => false),
 );
+const hasLiveContinuationCustodyMock = vi.hoisted(() =>
+  vi.fn<(_sessionKey: string) => Promise<boolean>>(async () => false),
+);
 const sessionAccessorMocks = vi.hoisted(() => ({
   listSessionEntriesReadOnly: vi.fn(() => [] as Array<{ sessionKey: string; entry: unknown }>),
+  loadSessionEntryReadOnly: vi.fn<
+    typeof import("../config/sessions/session-accessor.js").loadSessionEntryReadOnly
+  >(() => undefined),
 }));
 
 const noop = () => {};
@@ -61,6 +69,7 @@ vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
   return {
     ...actual,
     listSessionEntriesReadOnly: sessionAccessorMocks.listSessionEntriesReadOnly,
+    loadSessionEntryReadOnly: sessionAccessorMocks.loadSessionEntryReadOnly,
   };
 });
 
@@ -83,6 +92,7 @@ vi.mock("../config/config.js", async () => {
 });
 
 vi.mock("../auto-reply/continuation/work-store.js", () => ({
+  hasLiveContinuationCustody: hasLiveContinuationCustodyMock,
   hasLiveOrRecentlyDispatchedContinuationWork: hasLiveOrRecentlyDispatchedContinuationWorkMock,
 }));
 
@@ -156,6 +166,7 @@ describe("subagent registry archive behavior (continuation work)", () => {
     });
     loadConfigMock.mockClear();
     hasLiveOrRecentlyDispatchedContinuationWorkMock.mockReset().mockReturnValue(false);
+    hasLiveContinuationCustodyMock.mockReset().mockResolvedValue(false);
     vi.mocked(getAgentRunContext).mockReset().mockReturnValue(undefined);
     taskRuntimeMocks.finalizeTaskRunByRunId.mockClear();
     taskStatusMocks.findTaskByRunIdForStatus.mockReset();
@@ -163,6 +174,7 @@ describe("subagent registry archive behavior (continuation work)", () => {
     taskStatusMocks.listTasksForSessionKeyForStatus.mockReturnValue([]);
     sessionAccessorMocks.listSessionEntriesReadOnly.mockReset();
     sessionAccessorMocks.listSessionEntriesReadOnly.mockReturnValue([]);
+    sessionAccessorMocks.loadSessionEntryReadOnly.mockReset().mockReturnValue(undefined);
     taskStatusMocks.findTaskByRunIdForStatus.mockImplementation((runId: string) => {
       const entry = mod
         .listSubagentRunsForRequester("agent:main:main")
@@ -278,5 +290,62 @@ describe("subagent registry archive behavior (continuation work)", () => {
           ([request]) => (request as { method?: string } | undefined)?.method === "sessions.delete",
         ),
     ).toHaveLength(0);
+  });
+
+  it("keeps the session while authoritative custody is live even when the projection is clear", async () => {
+    // Archive deferral reads the projection, but the session delete itself asks
+    // authoritative custody, so a stale projection can never delete a session
+    // that still owns continuation custody.
+    const childSessionKey = "agent:main:subagent:delete-custody-live";
+    sessionAccessorMocks.loadSessionEntryReadOnly.mockReturnValue({
+      sessionId: "session-delete-custody-live",
+      lifecycleRevision: "lifecycle-delete-custody-live",
+      updatedAt: Date.now(),
+    });
+    addCanonicalSubagentRunForTests({
+      runId: "run-delete-custody-live",
+      childSessionKey,
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "guard the session delete on authoritative custody",
+      cleanup: "delete",
+      createdAt: Date.now() - 60_000,
+      endedAt: Date.now() - 1,
+      archiveAtMs: Date.now(),
+    });
+    hasLiveContinuationCustodyMock.mockResolvedValueOnce(true);
+    const sessionDeletes = () =>
+      vi
+        .mocked(callGateway)
+        .mock.calls.filter(
+          ([request]) => (request as { method?: string } | undefined)?.method === "sessions.delete",
+        );
+
+    await mod.testing.sweepOnceForTests();
+    await flushSweepMicrotasks();
+
+    expect(hasLiveOrRecentlyDispatchedContinuationWorkMock).toHaveBeenCalledWith(childSessionKey);
+    expect(hasLiveContinuationCustodyMock).toHaveBeenCalledWith(childSessionKey);
+    expect(sessionDeletes()).toHaveLength(0);
+    expect(mod.listSubagentRunsForRequester("agent:main:main")).toEqual([
+      expect.objectContaining({ runId: "run-delete-custody-live" }),
+    ]);
+
+    await mod.testing.sweepOnceForTests();
+    await flushSweepMicrotasks();
+
+    await waitForNoRequesterRuns();
+    expect(sessionDeletes()).toEqual([
+      [
+        expect.objectContaining({
+          method: "sessions.delete",
+          params: expect.objectContaining({
+            key: childSessionKey,
+            expectedSessionId: "session-delete-custody-live",
+            expectedLifecycleRevision: "lifecycle-delete-custody-live",
+          }),
+        }),
+      ],
+    ]);
   });
 });

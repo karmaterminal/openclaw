@@ -13,6 +13,9 @@ import {
   createContinueWorkTool,
   decodeWorkState,
   executePendingContinuationWork,
+  hydrateContinuationCustody,
+  listContinuationRecords,
+  resetContinuationCustodyProjection,
   resetContinuationWorkDispatchForTests,
   scheduleContinuationWorkBatch,
   type ContinuationRuntimeConfig,
@@ -33,10 +36,7 @@ import {
   registerDiagnosticTracePropagationBridge,
   runWithDiagnosticTraceContext,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
-import {
-  listTaskFlowsForOwnerKey,
-  resetTaskFlowRegistryForTests,
-} from "openclaw/plugin-sdk/task-flow-test-runtime";
+import { closeOpenClawStateDatabaseAsync } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { resetSystemEventsForTest } from "openclaw/plugin-sdk/test-fixtures";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { expect, test, vi } from "vitest";
@@ -307,9 +307,21 @@ function spanForChain(exporter: InMemorySpanExporter, name: string, chainId: str
   return span;
 }
 
-function queuedWorkTraceparent(sessionKey: string): string | undefined {
-  const queued = listTaskFlowsForOwnerKey(sessionKey).find((flow) => flow.status === "queued");
+async function queuedWorkTraceparent(sessionKey: string): Promise<string | undefined> {
+  const [queued] = await listContinuationRecords({
+    ownerSessionKey: sessionKey,
+    kinds: ["work"],
+    statuses: ["queued"],
+  });
   return queued ? decodeWorkState(queued)?.traceparent : undefined;
+}
+
+// A simulated Gateway restart: drop the continuation custody projection and
+// hydrate it from committed records as boot does.
+async function restartContinuationCustody(): Promise<void> {
+  await closeOpenClawStateDatabaseAsync();
+  resetContinuationCustodyProjection();
+  await hydrateContinuationCustody();
 }
 
 const TEST_MODEL: Model = {
@@ -439,7 +451,7 @@ async function runTypedContinuationTurn(params: {
   if (batch.scheduledCount !== 1) {
     throw new Error(`expected one scheduled continuation wake, got ${batch.scheduledCount}`);
   }
-  const persisted = queuedWorkTraceparent(params.plan.sessionKey);
+  const persisted = await queuedWorkTraceparent(params.plan.sessionKey);
   emitTrustedDiagnosticEvent({
     type: "run.completed",
     runId: params.plan.runId,
@@ -457,7 +469,7 @@ async function runTypedContinuationTurn(params: {
   };
 }
 
-test("exports the typed-tool origin through delayed TaskFlow restart", async () => {
+test("exports the typed-tool origin through delayed continuation custody restart", async () => {
   await withOpenClawTestState(
     { layout: "state-only", prefix: "openclaw-typed-tool-trace-" },
     async () => {
@@ -472,7 +484,6 @@ test("exports the typed-tool origin through delayed TaskFlow restart", async () 
         spanProcessors: [new SimpleSpanProcessor(exporter)],
       });
       resetDiagnosticEventsForTest();
-      resetTaskFlowRegistryForTests();
       const diagnostics = installProductionDiagnostics(provider);
       try {
         const harnessTrace: DiagnosticTraceContext = {
@@ -503,7 +514,7 @@ test("exports the typed-tool origin through delayed TaskFlow restart", async () 
         }
 
         resetContinuationWorkDispatchForTests();
-        resetTaskFlowRegistryForTests({ persist: false });
+        await restartContinuationCustody();
         await vi.advanceTimersByTimeAsync(1_000);
 
         for (const [index, turn] of turns.entries()) {
@@ -511,8 +522,8 @@ test("exports the typed-tool origin through delayed TaskFlow restart", async () 
           if (!plan) {
             throw new Error(`missing continuation turn plan ${index}`);
           }
-          expect(queuedWorkTraceparent(plan.sessionKey)).toBe(turn.persisted);
-          const [claimed] = consumePendingWork(plan.sessionKey);
+          expect(await queuedWorkTraceparent(plan.sessionKey)).toBe(turn.persisted);
+          const [claimed] = await consumePendingWork(plan.sessionKey);
           if (!claimed) {
             throw new Error(`expected restored continuation work for ${plan.sessionKey}`);
           }
@@ -577,7 +588,7 @@ test("exports the typed-tool origin through delayed TaskFlow restart", async () 
       } finally {
         diagnostics.stop();
         resetContinuationWorkDispatchForTests();
-        resetTaskFlowRegistryForTests();
+        resetContinuationCustodyProjection();
         resetSystemEventsForTest();
         resetDiagnosticEventsForTest();
         diagnostics.traces.stopActiveTrustedSpans();

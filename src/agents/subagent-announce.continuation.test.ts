@@ -70,8 +70,9 @@ vi.mock("../plugins/hook-runner-global.js", () => ({
   }),
 }));
 
+import { useContinuationCustodyTestState } from "../auto-reply/continuation/custody/custody.test-support.js";
 import { resetDelegateDispatchHedgesForTests } from "../auto-reply/continuation/delegate-dispatch-hedge.js";
-import { findContinuationDelegateFlowByOriginRun } from "../auto-reply/continuation/delegate-flow-store.js";
+import { findContinuationDelegateFlowByOriginRun } from "../auto-reply/continuation/delegate-store.js";
 import { hasLiveContinuationTimerRefs } from "../auto-reply/continuation/state.js";
 import { drainFormattedSystemEvents } from "../auto-reply/reply/session-system-events.js";
 import {
@@ -152,6 +153,8 @@ function makeBaseConfig(overrides?: {
 describe("subagent announce continuation chaining", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;
 
+  useContinuationCustodyTestState();
+
   beforeEach(async () => {
     vi.useRealTimers();
     resetDelegateDispatchHedgesForTests();
@@ -181,6 +184,7 @@ describe("subagent announce continuation chaining", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     resetDelegateDispatchHedgesForTests();
     spawnSpy.mockRestore();
     clearRuntimeConfigSnapshot();
@@ -338,7 +342,9 @@ describe("subagent announce continuation chaining", () => {
       agentSessionKey: childSessionKey,
       requesterAgentIdOverride: "main",
     });
-    expect(findContinuationDelegateFlowByOriginRun(childSessionKey, childRunId)).toMatchObject({
+    expect(
+      await findContinuationDelegateFlowByOriginRun(childSessionKey, childRunId),
+    ).toMatchObject({
       status: "succeeded",
     });
     errorSpy.mockRestore();
@@ -504,6 +510,10 @@ describe("subagent announce continuation chaining", () => {
   });
 
   it("routes a delayed chain-hop delegate through the durable pending store, then spawns via the hedge", async () => {
+    // Custody writes are worker round trips that can outlast the clamped 10ms
+    // delay, so the clock and the hedge timer stand still until the test
+    // advances them: the delegate is not due at dispatch, and the hedge owns it.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     await runContinuationAnnounce({
       childSessionKey: "agent:main:subagent:worker-live-tolerance",
       childTaskPrefix: "[continuation:chain-hop:1]",

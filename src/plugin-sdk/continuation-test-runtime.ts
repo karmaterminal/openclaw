@@ -4,6 +4,13 @@ export {
   createContinueWorkTool,
   type ContinueWorkRequest,
 } from "../agents/tools/continue-work-tool.js";
+// Custody inspection and a simulated Gateway restart: drop the hot-path
+// projection, then hydrate it from committed records as boot does.
+export { resetContinuationCustodyProjection } from "../auto-reply/continuation/custody/custody-projection.js";
+export {
+  hydrateContinuationCustody,
+  listContinuationRecords,
+} from "../auto-reply/continuation/custody/custody-store.js";
 export {
   cancelPendingDelegates,
   consumePendingDelegates,

@@ -12,7 +12,16 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decodeWorkState } from "../../auto-reply/continuation/work-flow-state.js";
+import type { ContinuationRecord } from "../../auto-reply/continuation/custody/custody-store.types.js";
+import {
+  custodyStateForTest,
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "../../auto-reply/continuation/custody/custody.test-support.js";
+import {
+  decodeWorkState,
+  type PendingContinuationWork,
+} from "../../auto-reply/continuation/work-flow-state.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import {
@@ -23,27 +32,41 @@ import { clearSessionStoreCacheForTest } from "../../config/sessions/store-write
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { peekSystemEvents, resetSystemEventsForTest } from "../../infra/system-events.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
-import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
 import { createTestPreparedRunAdmission } from "../admitted-run-context.test-support.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 import { runAgentAttempt } from "./attempt-execution.js";
 
-const workStoreTestSupportPath = "../../auto-reply/continuation/work-store.test-support.js";
+type OwnerRecord = ContinuationRecord & { state: Record<string, unknown> };
 
 function findFlowByReason(
-  flows: readonly TaskFlowRecord[],
+  records: readonly OwnerRecord[],
   reason: string,
-): TaskFlowRecord | undefined {
-  return flows.find((flow) => decodeWorkState(flow)?.reason === reason);
+): OwnerRecord | undefined {
+  return records.find((record) => decodeWorkState(record)?.reason === reason);
 }
 
-async function reloadTaskFlowsForOwnerKey(ownerKey: string): Promise<TaskFlowRecord[]> {
-  const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-  const { resetTaskFlowRegistryForTests } =
-    await import("../../tasks/task-runtime.test-helpers.js");
-  resetTaskFlowRegistryForTests({ persist: false });
-  return listTaskFlowsForOwnerKey(ownerKey);
+/** Every custody record the owner holds, FIFO, with its state parsed. */
+async function listOwnerRecords(ownerKey: string): Promise<OwnerRecord[]> {
+  return (await listCustodyRecordsForTest({ ownerSessionKey: ownerKey })).map((record) =>
+    Object.assign(record, { state: custodyStateForTest(record) }),
+  );
 }
+
+/** Seed queued same-session work the way a prior election commits it. */
+async function enqueuePendingWork(work: PendingContinuationWork) {
+  const { enqueuePendingWorkReplacing } =
+    await import("../../auto-reply/continuation/work-replacement-store.js");
+  const result = await enqueuePendingWorkReplacing({
+    work,
+    summary: work.reason ?? "seeded work",
+    maxPendingWork: 100,
+    replaceParkedWork: false,
+    expectedRunningFlowIds: [],
+  });
+  return result.applied ? result.work : null;
+}
+
+useContinuationCustodyTestState();
 
 const runEmbeddedAgentMock = vi.hoisted(() => vi.fn());
 const runCliAgentMock = vi.hoisted(() => vi.fn());
@@ -81,7 +104,7 @@ vi.mock("../../auto-reply/continuation/lazy.runtime.js", async (importOriginal) 
           throw new Error("same-origin test requires scheduling provenance");
         }
         const now = Date.now();
-        (await import(workStoreTestSupportPath)).enqueuePendingWork({
+        await enqueuePendingWork({
           sessionKey: args[0].sessionKey,
           hop: 99,
           delayMs: 30_000,
@@ -256,7 +279,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
   async function enqueuePriorParkedWork(reason: string) {
     const now = Date.now();
-    const work = (await import(workStoreTestSupportPath)).enqueuePendingWork({
+    const work = await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 30_000,
@@ -279,10 +302,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
   beforeEach(async () => {
     const { resetContinuationWorkDispatchForTests } =
       await import("../../auto-reply/continuation/work-dispatch.js");
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
     resetContinuationWorkDispatchForTests();
-    resetTaskFlowRegistryForTests({ persist: false });
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-746-trap-"));
     storePath = path.join(tmpDir, "sessions.json");
     runEmbeddedAgentMock.mockReset();
@@ -311,10 +331,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     vi.useRealTimers();
     const { resetContinuationWorkDispatchForTests } =
       await import("../../auto-reply/continuation/work-dispatch.js");
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
     resetContinuationWorkDispatchForTests();
-    resetTaskFlowRegistryForTests({ persist: false });
     resetSystemEventsForTest();
     clearRuntimeConfigSnapshot();
     clearSessionStoreCacheForTest();
@@ -425,8 +442,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
+    expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
     expect(sessionStore[sessionKey]?.continuationChainCount).toBeUndefined();
   });
 
@@ -442,8 +458,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
+    expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
     expect(sessionStore[sessionKey]).toMatchObject({
       continuationChainCount: 0,
       continuationChainTokens: 0,
@@ -463,8 +478,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig(), { abortSignal: abort.signal });
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
+    expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
     expect(sessionStore[sessionKey]).toMatchObject({
       continuationChainCount: 0,
       continuationChainTokens: 0,
@@ -483,8 +497,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
+    expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
     expect(sessionStore[sessionKey]?.continuationChainCount).toBeUndefined();
     expect(
       peekSystemEvents(sessionKey).some((event) =>
@@ -505,8 +518,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
+    expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
     expect(sessionStore[sessionKey]).toMatchObject({
       continuationChainCount: 1,
       continuationChainTokens: 2,
@@ -531,8 +543,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
+    expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
     expect(sessionStore[sessionKey]).toMatchObject({
       continuationChainCount: 1,
       continuationChainTokens: 2,
@@ -560,7 +571,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const flows = await reloadTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(flows).toHaveLength(1);
     expect(flows[0]).toMatchObject({ status: "failed" });
     expect(
@@ -588,7 +599,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const flows = await reloadTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(flows).toHaveLength(1);
     expect(flows[0]).toMatchObject({ status: "failed" });
     expect(sessionStore[sessionKey]?.continuationChainId).toBe(replacementChainId);
@@ -616,8 +627,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(flows).toHaveLength(2);
     expect(findFlowByReason(flows, "attempt-owned work")).toMatchObject({
       status: "failed",
@@ -644,7 +654,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const flows = await reloadTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(flows).toHaveLength(2);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({
       status: "queued",
@@ -673,8 +683,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(flows).toHaveLength(2);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({
       status: "queued",
@@ -700,8 +709,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig(), { durableSessionStore: false });
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
+    expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
     expect(sessionEntry.continuationChainCount).toBeUndefined();
     expect(
       peekSystemEvents(sessionKey).some((event) =>
@@ -731,11 +739,10 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     });
     await runEmbeddedAttempt(makeAtCapContinuationConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(flows).toHaveLength(1);
     expect(flows[0]).toMatchObject({ status: "queued" });
-    expect(flows[0]?.stateJson).toMatchObject({ reason: "prior parked work" });
+    expect(flows[0]?.state).toMatchObject({ reason: "prior parked work" });
   });
 
   it("preserves prior parked work when a hot-smaller limit rejects the replacement", async () => {
@@ -760,11 +767,10 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     });
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(flows).toHaveLength(1);
     expect(flows[0]).toMatchObject({ status: "queued" });
-    expect(flows[0]?.stateJson).toMatchObject({ reason: "prior parked work" });
+    expect(flows[0]?.state).toMatchObject({ reason: "prior parked work" });
   });
 
   it("merges a concurrent spawn-init chain advance before scheduling", async () => {
@@ -794,9 +800,8 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    const [flow] = listTaskFlowsForOwnerKey(sessionKey);
-    expect(flow?.stateJson).toMatchObject({
+    const [flow] = await listOwnerRecords(sessionKey);
+    expect(flow?.state).toMatchObject({
       hop: 8,
       chainId: concurrentChainId,
       accumulatedChainTokens: 102,
@@ -826,9 +831,8 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    const states = listTaskFlowsForOwnerKey(sessionKey)
-      .map((flow) => flow.stateJson as { delayMs?: number; hop?: number; reason?: string })
+    const states = (await listOwnerRecords(sessionKey))
+      .map((flow) => flow.state as { delayMs?: number; hop?: number; reason?: string })
       .toSorted((left, right) => (left.hop ?? 0) - (right.hop ?? 0));
 
     expect(states).toHaveLength(3);
@@ -866,9 +870,8 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    const states = listTaskFlowsForOwnerKey(sessionKey)
-      .map((flow) => flow.stateJson as { delayMs?: number; dueAt?: number; hop?: number })
+    const states = (await listOwnerRecords(sessionKey))
+      .map((flow) => flow.state as { delayMs?: number; dueAt?: number; hop?: number })
       .toSorted((left, right) => (left.hop ?? 0) - (right.hop ?? 0));
 
     expect(states).toHaveLength(3);
@@ -983,8 +986,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     const result = await runEmbeddedAttempt(makeAtCapContinuationConfig());
 
     expect(result.payloads?.[0]?.text).toBe("done");
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
+    expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
     expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
   });
 
@@ -1040,8 +1042,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toHaveLength(0);
+    expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
     expect(sessionStore[sessionKey]?.continuationChainCount).toBeUndefined();
   });
 
@@ -1072,9 +1073,8 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    const [flow] = listTaskFlowsForOwnerKey(sessionKey);
-    expect(flow?.stateJson).toMatchObject({
+    const [flow] = await listOwnerRecords(sessionKey);
+    expect(flow?.state).toMatchObject({
       kind: "continuation_work",
       delayMs: 15000,
     });
@@ -1098,9 +1098,8 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     const result = await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
     expect(result.payloads?.[0]?.text).toBe("done");
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    const states = listTaskFlowsForOwnerKey(sessionKey).map(
-      (flow) => flow.stateJson as { delayMs?: number; hop?: number; reason?: string },
+    const states = (await listOwnerRecords(sessionKey)).map(
+      (flow) => flow.state as { delayMs?: number; hop?: number; reason?: string },
     );
     expect(states).toHaveLength(1);
     expect(states[0]).toMatchObject({ hop: 1, delayMs: 60_000 });
@@ -1131,11 +1130,10 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const { listTaskFlowsForOwnerKey } = await import("../../tasks/task-flow-registry.js");
-    const [flow] = listTaskFlowsForOwnerKey(sessionKey);
+    const [flow] = await listOwnerRecords(sessionKey);
     expect(flow).toBeDefined();
-    expect(flow?.stateJson).toMatchObject({ kind: "continuation_work" });
-    expect(flow?.stateJson).not.toHaveProperty("parentRunId");
+    expect(flow?.state).toMatchObject({ kind: "continuation_work" });
+    expect(flow?.state).not.toHaveProperty("parentRunId");
   });
 
   it("captured continue_work request is invocable end-to-end on spawn-init (turn-1 cure-mechanism pin)", async () => {

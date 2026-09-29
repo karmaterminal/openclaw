@@ -19,6 +19,8 @@ import {
   emitContinuationDelegateSpan,
   emitContinuationWorkFireSpan,
   emitContinuationWorkSpan,
+  hydrateContinuationCustody,
+  resetContinuationCustodyProjection,
   resetContinueDelegateTurnAdmissionForTests,
   type ContinueWorkRequest,
 } from "openclaw/plugin-sdk/continuation-test-runtime";
@@ -34,7 +36,6 @@ import {
   setRuntimeConfigSnapshot,
 } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { closeOpenClawStateDatabaseAsync } from "openclaw/plugin-sdk/sqlite-runtime-testing";
-import { resetTaskFlowRegistryForTests } from "openclaw/plugin-sdk/task-flow-test-runtime";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { expect, test } from "vitest";
 import { setCodexTestToolFactory } from "../../codex/src/app-server/host-capability.test-support.js";
@@ -163,13 +164,13 @@ async function callDynamicTool(params: {
   )) as CodexToolResponse;
 }
 
-// The TaskFlow reset closes shared state handles synchronously, which is only safe
-// once no async state resource remains. The harness keeps a session reclamation
-// worker between requests, so drain it first; otherwise its stale admission
-// fails the harness's afterEach session cleanup.
-async function resetTaskFlowRegistryAfterStateDrain(opts?: { persist?: boolean }) {
+// A simulated Gateway restart: drain the shared state handles (the harness
+// keeps a session reclamation worker between requests), drop the continuation
+// custody projection, and hydrate it from committed records as boot does.
+async function restartContinuationCustodyAfterStateDrain() {
   await closeOpenClawStateDatabaseAsync();
-  resetTaskFlowRegistryForTests(opts);
+  resetContinuationCustodyProjection();
+  await hydrateContinuationCustody();
 }
 
 setupRunAttemptTestHooks();
@@ -226,10 +227,10 @@ test("exports Codex dynamic continuation origins through the production tool bou
             },
           },
         });
-        cancelPendingDelegates(SESSION_KEY);
-        consumePendingDelegates(SESSION_KEY);
+        await cancelPendingDelegates(SESSION_KEY);
+        await consumePendingDelegates(SESSION_KEY);
         resetContinueDelegateTurnAdmissionForTests();
-        await resetTaskFlowRegistryAfterStateDrain();
+        await restartContinuationCustodyAfterStateDrain();
 
         const params = createParams(
           path.join(tempDir, "session.jsonl"),
@@ -318,8 +319,8 @@ test("exports Codex dynamic continuation origins through the production tool bou
           mode: "silent-wake",
         });
 
-        await resetTaskFlowRegistryAfterStateDrain({ persist: false });
-        const delegates = consumePendingDelegates(SESSION_KEY, { ignoreDelay: true });
+        await restartContinuationCustodyAfterStateDrain();
+        const delegates = await consumePendingDelegates(SESSION_KEY, { ignoreDelay: true });
         expect(delegates).toHaveLength(1);
         const delegate = delegates[0]!;
         expect(delegate.traceparent).toBeDefined();
@@ -453,10 +454,10 @@ test("exports Codex dynamic continuation origins through the production tool bou
           ]);
         }
         closeHostCapabilities?.();
-        cancelPendingDelegates(SESSION_KEY);
-        consumePendingDelegates(SESSION_KEY);
+        await cancelPendingDelegates(SESSION_KEY);
+        await consumePendingDelegates(SESSION_KEY);
         resetContinueDelegateTurnAdmissionForTests();
-        await resetTaskFlowRegistryAfterStateDrain();
+        await restartContinuationCustodyAfterStateDrain();
         clearRuntimeConfigSnapshot();
         await stopStartedOtelServices();
         await provider.shutdown();

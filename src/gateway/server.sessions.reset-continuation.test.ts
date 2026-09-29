@@ -1,27 +1,47 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import {
   registerContinuationDispatchClaim,
   resetContinuationDispatchClaimsForTests,
 } from "../auto-reply/continuation/continuation-dispatch-claims.js";
+import { resetContinuationCustodyProjection } from "../auto-reply/continuation/custody/custody-projection.js";
+import { readCustodyRecordForTest } from "../auto-reply/continuation/custody/custody.test-support.js";
 import { enqueuePendingDelegate } from "../auto-reply/continuation/delegate-store.js";
-import { enqueuePendingWork } from "../auto-reply/continuation/work-store.test-support.js";
+import { enqueuePendingWorkReplacing } from "../auto-reply/continuation/work-replacement-store.js";
 import { loadSessionEntry } from "../config/sessions/session-accessor.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
-import { listTaskFlowRecords } from "../tasks/task-flow-registry.js";
-import { configureTaskFlowRegistryRuntime } from "../tasks/task-flow-registry.store.test-support.js";
-import { resetTaskFlowRegistryForTests } from "../tasks/task-runtime.test-helpers.js";
-import { createInMemoryTaskFlowRegistryStore } from "../test-utils/task-registry-store.js";
 import { embeddedRunMock } from "./test-helpers.js";
 import {
   directSessionReq,
   setupGatewaySessionsHandlerTestHarness,
 } from "./test/server-sessions.test-helpers.js";
 
+// A custody write that throws is the store's persistence failure (the worker
+// command did not report a commit); reset must surface it and leave custody,
+// the session, and live claims intact for a retry.
+const custodyWriteFailure = vi.hoisted(() => ({ message: undefined as string | undefined }));
+
+vi.mock("../auto-reply/continuation/custody/custody-store.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../auto-reply/continuation/custody/custody-store.js")>();
+  return {
+    ...actual,
+    updateContinuationRecords: async (
+      ...args: Parameters<typeof actual.updateContinuationRecords>
+    ) => {
+      if (custodyWriteFailure.message) {
+        throw new Error(custodyWriteFailure.message);
+      }
+      return await actual.updateContinuationRecords(...args);
+    },
+  };
+});
+
 const { seedActiveMainSession } = setupGatewaySessionsHandlerTestHarness();
 
 afterEach(() => {
+  custodyWriteFailure.message = undefined;
   resetContinuationDispatchClaimsForTests();
-  resetTaskFlowRegistryForTests();
+  resetContinuationCustodyProjection();
   closeOpenClawStateDatabaseForTest();
 });
 
@@ -40,86 +60,70 @@ async function resetMainSession() {
   }>("sessions.reset", { key: "main" });
 }
 
+async function enqueueQueuedWork() {
+  const now = Date.now();
+  const elected = await enqueuePendingWorkReplacing({
+    work: {
+      sessionKey: "agent:main:main",
+      hop: 1,
+      delayMs: 60_000,
+      electedAt: now,
+      dueAt: now + 60_000,
+      maxChainLength: 8,
+    },
+    summary: "queued before gateway reset",
+    maxPendingWork: 8,
+    replaceParkedWork: false,
+    expectedRunningFlowIds: [],
+  });
+  if (!elected.applied || !elected.work.flowId) {
+    throw new Error("expected durable continuation work");
+  }
+  return elected.work.flowId;
+}
+
 test("sessions.reset cancels durable continuation work and delegates", async () => {
   await seedWaitingActiveMainSession();
-  resetTaskFlowRegistryForTests();
-  const work = enqueuePendingWork({
-    sessionKey: "agent:main:main",
-    hop: 1,
-    delayMs: 60_000,
-    electedAt: Date.now(),
-    dueAt: Date.now() + 60_000,
-    maxChainLength: 8,
-  });
-  const delegate = enqueuePendingDelegate("agent:main:main", {
+  const workId = await enqueueQueuedWork();
+  const delegate = await enqueuePendingDelegate("agent:main:main", {
     task: "delegate after gateway reset",
     delayMs: 60_000,
   });
-  if (!work || !delegate) {
-    throw new Error("expected durable continuation rows");
-  }
 
   const reset = await resetMainSession();
 
   expect(reset.ok).toBe(true);
-  const flows = new Map(listTaskFlowRecords().map((flow) => [flow.flowId, flow]));
-  expect(flows.get(work.flowId!)?.status).toBe("cancelled");
-  expect(flows.get(delegate.flowId!)?.status).toBe("cancelled");
+  expect(await readCustodyRecordForTest(workId)).toMatchObject({ status: "cancelled" });
+  expect(await readCustodyRecordForTest(delegate.recordId)).toMatchObject({
+    status: "cancelled",
+  });
 });
 
 test("sessions.reset reports durable continuation cancellation failures", async () => {
   const { storePath } = await seedWaitingActiveMainSession();
-  resetTaskFlowRegistryForTests();
-  const work = enqueuePendingWork({
-    sessionKey: "agent:main:main",
-    hop: 1,
-    delayMs: 60_000,
-    electedAt: Date.now(),
-    dueAt: Date.now() + 60_000,
-    maxChainLength: 8,
-  });
-  if (!work) {
-    throw new Error("expected durable continuation work");
-  }
-  const delegate = enqueuePendingDelegate("agent:main:main", {
+  const workId = await enqueueQueuedWork();
+  const delegate = await enqueuePendingDelegate("agent:main:main", {
     task: "remain claimable after failed reset",
     delayMs: 60_000,
   });
-  if (!delegate) {
-    throw new Error("expected durable continuation delegate");
-  }
   const activeDelegate = registerContinuationDispatchClaim({
     sessionKey: "agent:main:main",
-    flowId: delegate.flowId,
+    flowId: delegate.recordId,
   });
-  configureTaskFlowRegistryRuntime({
-    store: {
-      // In-memory base supplies the read/sync members; only the writes fail.
-      ...createInMemoryTaskFlowRegistryStore(),
-      loadSnapshot: () => ({ flows: new Map() }),
-      upsertFlow: () => {
-        throw new Error("SQLITE_FULL: database or disk is full");
-      },
-      updateFlow: () => {
-        throw new Error("SQLITE_FULL: database or disk is full");
-      },
-      deleteFlow: () => {},
-    },
-  });
+  custodyWriteFailure.message = "SQLITE_FULL: database or disk is full";
 
   const reset = await resetMainSession();
 
   expect(reset.ok).toBe(false);
   expect(reset.error).toMatchObject({
     code: "UNAVAILABLE",
-    message: expect.stringContaining("could not cancel continuation flow"),
+    message: expect.stringContaining("could not cancel continuation record"),
   });
   expect(loadSessionEntry({ sessionKey: "agent:main:main", storePath })?.sessionId).toBe(
     "sess-main",
   );
-  expect(listTaskFlowRecords().find((flow) => flow.flowId === work.flowId)?.status).toBe("queued");
-  expect(listTaskFlowRecords().find((flow) => flow.flowId === delegate.flowId)?.status).toBe(
-    "queued",
-  );
+  custodyWriteFailure.message = undefined;
+  expect(await readCustodyRecordForTest(workId)).toMatchObject({ status: "queued" });
+  expect(await readCustodyRecordForTest(delegate.recordId)).toMatchObject({ status: "queued" });
   expect(activeDelegate.controller.signal.aborted).toBe(false);
 });
