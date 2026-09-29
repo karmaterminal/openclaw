@@ -25,6 +25,7 @@ import {
   shouldPreserveUserFacingSessionStateForInputProvenance,
 } from "../../sessions/input-provenance.js";
 import { isSubagentSessionKey } from "../../sessions/session-key-utils.js";
+import { isContinuationReservedRunId } from "../../shared/continuation-run-key.js";
 import { readAgentDatabaseAdmissionRefusal } from "../../state/agent-database-admission.js";
 import {
   resolveExpectedExistingSessionConstraint,
@@ -215,6 +216,11 @@ export function prepareAgentRequestPreflight(params: {
     return rejectInvalidRequest(
       "exec approval followup idempotency keys are reserved for backend callers.",
     );
+  }
+  // Continuation custody records a child run id before spawning and later matches
+  // `subagent_runs.run_id` against it; a client-chosen run in this namespace could squat it.
+  if (isContinuationReservedRunId(runId) && !canUseInternalRuntimeHandoff) {
+    return rejectInvalidRequest("continuation run ids are reserved for backend callers.");
   }
   const inputProvenance = normalizeInputProvenance(request.inputProvenance);
   if (isProgressCardRefreshInputProvenance(inputProvenance) && !canUseInternalRuntimeHandoff) {

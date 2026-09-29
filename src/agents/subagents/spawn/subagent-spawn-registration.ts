@@ -57,7 +57,11 @@ export function buildSubagentSpawnPipelineFailureResult(
     error: unknown;
     runId?: string;
   },
-  { childIdem, childSessionKey }: { childIdem: string; childSessionKey: string },
+  {
+    childIdem,
+    childSessionKey,
+    reportFailurePhase,
+  }: { childIdem: string; childSessionKey: string; reportFailurePhase: boolean },
 ): SpawnSubagentResult {
   const runId = pipelineResult.runId ?? childIdem;
   const spawnError =
@@ -78,5 +82,6 @@ export function buildSubagentSpawnPipelineFailureResult(
         : summarizeSpawnError(pipelineResult.error),
     childSessionKey,
     ...(pipelineResult.phase === "initialize" ? {} : { runId }),
+    ...(reportFailurePhase ? { failurePhase: pipelineResult.phase } : {}),
   };
 }

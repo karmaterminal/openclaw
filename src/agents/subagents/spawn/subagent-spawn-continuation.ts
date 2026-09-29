@@ -1,17 +1,21 @@
 /** Continuation-delegate spawn params: validation, child ids, launch fields, and registration fields. */
+import { parseContinuationChildRunId } from "../../../shared/continuation-run-key.js";
 import {
   deriveContinuationDelegateChildRunId,
   deriveContinuationDelegateChildSessionKey,
 } from "../../subagent-continuation-ids.js";
 import type { ContinuationSpawnParams } from "../announce/subagent-announce.runtime.js";
-import type { SpawnSubagentResult } from "./subagent-spawn-contract.js";
+import { getSubagentRunByRunId } from "../registry/subagent-registry.js";
+import type { SpawnSubagentParams, SpawnSubagentResult } from "./subagent-spawn-contract.js";
 import type { resolveSubagentSpawnRequest } from "./subagent-spawn-request.js";
 
+/** Rejects invalid continuation params before spawn creates any child state. */
 export function validateSubagentContinuationSpawnParams(
-  params: Pick<
-    ContinuationSpawnParams,
-    "drainsContinuationDelegateQueue" | "continuationChainState"
-  >,
+  params: Pick<SpawnSubagentParams, "collect" | "swarmLaunchReplayKey"> &
+    Pick<
+      ContinuationSpawnParams,
+      "drainsContinuationDelegateQueue" | "continuationChainState" | "continuationChildRunId"
+    >,
 ): SpawnSubagentResult | undefined {
   if (params.drainsContinuationDelegateQueue && !params.continuationChainState) {
     return {
@@ -19,13 +23,36 @@ export function validateSubagentContinuationSpawnParams(
       error: "continuationChainState is required when drainsContinuationDelegateQueue is true",
     };
   }
+  const launchRunId = params.continuationChildRunId;
+  if (launchRunId === undefined) {
+    return undefined;
+  }
+  if (!parseContinuationChildRunId(launchRunId)) {
+    return { status: "error", error: "continuationChildRunId must be a continuation child run id" };
+  }
+  if (params.collect || params.swarmLaunchReplayKey !== undefined) {
+    // Collector launch identity is the requester-scoped `swarm_<hash>` derivation.
+    return { status: "error", error: "continuationChildRunId is not supported for collectors" };
+  }
+  // Registration replaces a row with the same run id. A second launch under a key that
+  // already names a row, owned by this requester or another, must never overwrite it;
+  // resolving an existing row is the continuation owner's handoff decision, not spawn's.
+  if (getSubagentRunByRunId(launchRunId)) {
+    return {
+      status: "error",
+      error: `Launch run id ${launchRunId} is already registered; refusing to replace it.`,
+    };
+  }
   return undefined;
 }
 
 export function resolveSubagentContinuationChildRunId(
-  params: Pick<ContinuationSpawnParams, "continuationDelegateFlowId">,
+  params: Pick<ContinuationSpawnParams, "continuationDelegateFlowId" | "continuationChildRunId">,
   resolvedChildIdem: string,
 ): string {
+  if (params.continuationChildRunId) {
+    return params.continuationChildRunId;
+  }
   return params.continuationDelegateFlowId
     ? deriveContinuationDelegateChildRunId(params.continuationDelegateFlowId)
     : resolvedChildIdem;

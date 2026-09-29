@@ -659,6 +659,7 @@ export async function spawnSubagentDirect(
       return buildSubagentSpawnPipelineFailureResult(pipelineResult, {
         childIdem,
         childSessionKey,
+        reportFailurePhase: params.continuationChildRunId !== undefined,
       });
     }
     childRunId = pipelineResult.runId;

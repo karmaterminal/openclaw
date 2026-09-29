@@ -30,6 +30,12 @@ export type ContinuationSpawnParams = Pick<
   | "traceparent"
 > & {
   continuationDelegateFlowId?: string;
+  /**
+   * Precomputed `continuation:` child run id (RFC §5.4.4, Q2). Spawn uses it verbatim
+   * as the Gateway run id, so the admitted registry row's `run_id` equals it. In-process
+   * continuation callers only: `sessions_spawn` never forwards it.
+   */
+  continuationChildRunId?: string;
   drainsContinuationDelegateQueue?: boolean;
   continuationChainState?: {
     count: number;
