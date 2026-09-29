@@ -432,18 +432,6 @@ function startPendingContinuationRecovery(params: {
   const stopWait = new Promise<void>((resolve) => {
     releaseStopWait = resolve;
   });
-  // Phase A (legacy import, then the import gate and projection from one read)
-  // starts now rather than behind the recovery timer and registry activation.
-  // Custody mutations from turns admitted during startup wait for it (§5.4.5).
-  const readiness = runWithGatewayIndependentRootWorkAdmission(async () => {
-    const { whenContinuationCustodyReady } =
-      await import("../auto-reply/continuation/custody/custody-store.js");
-    await whenContinuationCustodyReady();
-  }, "runtime:continuation-readiness").catch((err: unknown) => {
-    if (!stopped) {
-      params.log.error(`Continuation custody readiness failed: ${String(err)}`);
-    }
-  });
   const timer = setTimeout(() => {
     if (stopped) {
       return;
@@ -509,7 +497,7 @@ function startPendingContinuationRecovery(params: {
     if (pruneTimer) {
       clearInterval(pruneTimer);
     }
-    stopPromise ??= Promise.all([readiness, recovery ?? Promise.resolve()]).then(() => {
+    stopPromise ??= (recovery ?? Promise.resolve()).then(() => {
       if (pruneTimer) {
         clearInterval(pruneTimer);
       }
