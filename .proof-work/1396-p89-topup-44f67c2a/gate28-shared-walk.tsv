@@ -1,0 +1,45 @@
+0	1	differs	apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json	fe609d4ce1 
+0	11	differs	config/assertion-safety-baseline.txt	87a5b397bd 22221e8ed0 c991b6bf8f 9ca49c5ac1 8b16e5328e 69809d7a94 fe609d4ce1 
+0	51	differs	scripts/lib/vitest-build-prerequisites.mts	e82ff061ff 
+0	12	differs	scripts/pr-lib/wrapper-components.txt	22221e8ed0 8b16e5328e fe609d4ce1 
+0	31	differs	src/agents/cli-runner/helpers.ts	9ca49c5ac1 fe609d4ce1 
+0	1	differs	src/agents/core-tool-factory-descriptors.ts	fe609d4ce1 
+0	0	differs	src/agents/embedded-agent-runner/prepared-compaction-runtime.ts	fe609d4ce1 
+0	4	differs	src/agents/embedded-agent-runner/run/attempt-system-prompt-prepare.ts	fe609d4ce1 
+0	26	differs	src/agents/embedded-agent-runner/skill-runtime.library-read.test.ts	ef696e5a6c 
+0	3	differs	src/agents/subagents/announce/subagent-announce-delivery.test.ts	9ca49c5ac1 
+4	4	differs	src/agents/subagents/announce/subagent-announce-descendant-wake.ts	9ca49c5ac1 
+0	32	differs	src/agents/subagents/announce/subagent-announce.format.e2e.test.ts	296228fbdf 
+0	10	differs	src/agents/subagents/registry/subagent-registry-lifecycle-announce-cleanup.ts	9ca49c5ac1 
+0	2	differs	src/agents/subagents/registry/subagent-registry-lifecycle.test.ts	9ca49c5ac1 
+0	22	differs	src/agents/subagents/registry/subagent-registry-queries.ts	3d62d4e2a5 
+0	0	differs	src/agents/subagents/registry/subagent-registry-queued-registration.test.ts	8b16e5328e 
+0	1	differs	src/agents/subagents/registry/subagent-registry-read.ts	3d62d4e2a5 
+0	2	differs	src/agents/subagents/registry/subagent-registry-read.types.ts	3d62d4e2a5 
+0	2	differs	src/agents/subagents/registry/subagent-registry-run-launch-record.ts	3d62d4e2a5 
+0	9	differs	src/agents/subagents/registry/subagent-registry-run-launch.ts	9ca49c5ac1 
+0	9	differs	src/agents/subagents/registry/subagent-registry-sweeper.ts	9ca49c5ac1 
+0	7	differs	src/agents/subagents/registry/subagent-registry-sweep-kill.ts	9ca49c5ac1 
+0	19	differs	src/agents/subagents/registry/subagent-registry.test.ts	6efe0434c9 
+0	1	differs	src/agents/subagents/registry/subagent-registry.types.ts	3d62d4e2a5 
+2	4	differs	src/agents/subagents/spawn/subagent-attachments.ts	9ca49c5ac1 
+0	5	differs	src/agents/subagents/spawn/subagent-spawn-request.ts	3d62d4e2a5 
+0	2	differs	src/agents/subagents/spawn/subagent-spawn.ts	3d62d4e2a5 9ca49c5ac1 
+0	5	differs	src/agents/system-prompt.ts	fe609d4ce1 
+0	2	differs	src/agents/tool-display-config.ts	fe609d4ce1 
+0	2	differs	src/auto-reply/reply/get-reply-run-execute.ts	22221e8ed0 
+0	1	differs	src/config/sessions/types.ts	3d62d4e2a5 
+0	1	differs	src/gateway/agent-turn/agent-turn-service.ts	ac4c248d77 
+0	15	differs	src/gateway/server-methods/agent.sessions-and-models.test-utils.ts	ac4c248d77 
+0	12	differs	src/gateway/server-methods/sessions-sharing.ts	d85ea8da3f 
+0	4	differs	src/gateway/server-runtime-state-prepare.ts	22221e8ed0 
+0	0	differs	src/state/openclaw-agent-db-lifecycle.ts	8b16e5328e 
+0	0	differs	src/state/openclaw-state-db-contract.ts	8b16e5328e 
+0	11	differs	src/state/openclaw-state-db-repair.ts	8b16e5328e 
+0	2	differs	src/state/openclaw-state-db.test.ts	8b16e5328e 
+0	3	differs	src/tasks/detached-task-lookup.worker.test.ts	8b16e5328e 
+0	0	differs	src/tasks/task-flow-registry.maintenance.ts	8b16e5328e 
+0	2	differs	src/tasks/task-flow-registry.records.ts	22221e8ed0 
+0	142	differs	test/scripts/test-projects-build-admission.test.ts	e82ff061ff 
+0	20	differs	test/vitest/vitest.database-worker-core-paths.mjs	8b16e5328e ac4c248d77 
+0	1	differs	ui/src/lib/chat/tool-cards.ts	f389bd5883 
