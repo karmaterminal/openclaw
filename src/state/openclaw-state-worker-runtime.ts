@@ -25,6 +25,10 @@ import {
 import { listAuditEventsInDatabase } from "../audit/audit-event-read.kernel.js";
 import { executeAuditWriterCommand } from "../audit/audit-event-writer.worker.js";
 import {
+  executeContinuationCustodyCommand,
+  isContinuationCustodyCommand,
+} from "../auto-reply/continuation/custody/custody-store.worker.js";
+import {
   isChannelIngressCommand,
   executeChannelIngressCommand,
 } from "../channels/message/ingress-queue.worker.js";
@@ -185,6 +189,9 @@ export function executeSharedStateCommand(
   });
   if (isMcpOAuthWorkerCommand(command)) {
     return executeMcpOAuthWorkerCommand(open(), command);
+  }
+  if (isContinuationCustodyCommand(command)) {
+    return executeContinuationCustodyCommand(command, { database: open(), ...stateOptions() });
   }
   if (command.type === "execApprovals.commitAuthorizations" || isOperatorApprovalCommand(command)) {
     const databaseOptions = {

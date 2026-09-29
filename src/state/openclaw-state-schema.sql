@@ -1854,6 +1854,46 @@ CREATE INDEX IF NOT EXISTS idx_flow_runs_status ON flow_runs(status);
 CREATE INDEX IF NOT EXISTS idx_flow_runs_owner_key ON flow_runs(owner_key);
 CREATE INDEX IF NOT EXISTS idx_flow_runs_updated_at ON flow_runs(updated_at);
 
+-- Continuation custody (RFC docs/design/continue-work-signal-v2.md §5.4). Only
+-- the continuation custody worker operations write it. revision is the CAS
+-- token; due_at is a derived recovery-scan copy of the clocks in state_json.
+-- spawn_attempts_json is append-only attempt evidence kept after terminal writes.
+CREATE TABLE IF NOT EXISTS continuation_records (
+  record_id TEXT NOT NULL PRIMARY KEY CHECK (length(record_id) > 0),
+  kind TEXT NOT NULL CHECK (kind IN ('work', 'delegate', 'post_compaction')),
+  owner_session_key TEXT NOT NULL CHECK (length(owner_session_key) > 0),
+  chain_id TEXT CHECK (chain_id IS NULL OR kind = 'work'),
+  revision INTEGER NOT NULL CHECK (revision >= 0),
+  status TEXT NOT NULL CHECK (
+    status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')
+  ),
+  phase TEXT,
+  failure_reason TEXT,
+  cancel_requested_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  ended_at INTEGER,
+  due_at INTEGER,
+  state_json TEXT NOT NULL,
+  spawn_attempts_json TEXT NOT NULL DEFAULT '[]',
+  handoff_json TEXT,
+  rollback_of TEXT,
+  attachment_id TEXT,
+  terminal_notice_pending TEXT CHECK (
+    terminal_notice_pending IS NULL OR terminal_notice_pending IN (
+      'retry-exhausted', 'delegate-spawn-interrupted', 'rollback-election-conflict'
+    )
+  ),
+  CHECK ((status IN ('succeeded', 'failed', 'cancelled')) = (ended_at IS NOT NULL)),
+  CHECK (attachment_id IS NULL OR status IN ('queued', 'running'))
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_continuation_records_owner
+  ON continuation_records(owner_session_key, kind, status);
+
+CREATE INDEX IF NOT EXISTS idx_continuation_records_due
+  ON continuation_records(status, kind, due_at);
+
 -- Durable meeting-capture sessions are gateway-global rather than agent-session
 -- transcripts. JSON/JSONL files are doctor import inputs or explicit CLI exports.
 CREATE TABLE IF NOT EXISTS meeting_transcript_sessions (

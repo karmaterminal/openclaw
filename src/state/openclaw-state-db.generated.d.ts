@@ -350,6 +350,28 @@ export interface ConfigRevisionKeys {
   id: Generated<number>;
 }
 
+export interface ContinuationRecords {
+  attachment_id: string | null;
+  cancel_requested_at: number | null;
+  chain_id: string | null;
+  created_at: number;
+  due_at: number | null;
+  ended_at: number | null;
+  failure_reason: string | null;
+  handoff_json: string | null;
+  kind: string;
+  owner_session_key: string;
+  phase: string | null;
+  record_id: string;
+  revision: number;
+  rollback_of: string | null;
+  spawn_attempts_json: Generated<string>;
+  state_json: string;
+  status: string;
+  terminal_notice_pending: string | null;
+  updated_at: number;
+}
+
 export interface CronJobRuntimeAuthorities {
   authority_input_fingerprint: string | null;
   authority_json: string | null;
@@ -1903,6 +1925,7 @@ export interface DB {
   config_health_entries: ConfigHealthEntries;
   config_machine_state: ConfigMachineState;
   config_revision_keys: ConfigRevisionKeys;
+  continuation_records: ContinuationRecords;
   cron_job_runtime_authorities: CronJobRuntimeAuthorities;
   cron_job_scratch: CronJobScratch;
   cron_jobs: CronJobs;
