@@ -103,6 +103,26 @@ async function bootGateway() {
       storePath,
     });
 
+  /** The continuation half of Gateway startup, with its boot-time cutoff. */
+  async function runContinuationRecovery(): Promise<void> {
+    const armedAt = Date.now();
+    await recovery.recoverPendingContinuationDelegates({
+      queuedCreatedAtOrBefore: armedAt,
+      includeRunningUpdatedAtOrBefore: armedAt,
+    });
+    await recovery.requeueAwaitingNextCompactionDelegates({ runningUpdatedAtOrBefore: armedAt });
+    await recovery.recoverAndReleaseStagedPostCompactionDelegates({
+      runningUpdatedAtOrBefore: armedAt,
+    });
+    await work.recoverPendingContinuationWork();
+  }
+
+  async function pendingOwnerDeliveries() {
+    return (await deliveryStorage.loadPendingSessionDeliveries()).filter(
+      (entry) => entry.sessionKey === OWNER,
+    );
+  }
+
   function followupRun(runId: string) {
     return {
       prompt: "",
@@ -226,7 +246,6 @@ async function bootGateway() {
      * continuation recovery (+1400 ms) in `server-runtime-services.ts` order.
      */
     async runStartupRecovery(): Promise<void> {
-      const armedAt = Date.now();
       const queueContext = workerContext.captureOpenClawStateWorkerContext();
       await deliveryRecovery.recoverPendingSessionDeliveries({
         deliver: (entry, context) =>
@@ -238,23 +257,12 @@ async function bootGateway() {
         queueContext,
         log: { info: () => {}, warn: () => {}, error: () => {} },
       });
-      await recovery.recoverPendingContinuationDelegates({
-        queuedCreatedAtOrBefore: armedAt,
-        includeRunningUpdatedAtOrBefore: armedAt,
-      });
-      await recovery.requeueAwaitingNextCompactionDelegates({ runningUpdatedAtOrBefore: armedAt });
-      await recovery.recoverAndReleaseStagedPostCompactionDelegates({
-        runningUpdatedAtOrBefore: armedAt,
-      });
-      await work.recoverPendingContinuationWork();
+      await runContinuationRecovery();
     },
-    async pendingOwnerDeliveries() {
-      return (await deliveryStorage.loadPendingSessionDeliveries()).filter(
-        (entry) => entry.sessionKey === OWNER,
-      );
-    },
+    runContinuationRecovery,
+    pendingOwnerDeliveries,
     async interruptedNotices(): Promise<string[]> {
-      return (await this.pendingOwnerDeliveries()).flatMap((entry) =>
+      return (await pendingOwnerDeliveries()).flatMap((entry) =>
         entry.kind === "systemEvent" && entry.text.includes(INTERRUPTED_NOTICE) ? [entry.text] : [],
       );
     },
@@ -262,26 +270,49 @@ async function bootGateway() {
 }
 
 /**
- * Drop everything a Gateway process holds in memory. Continuation's own state
- * (timers, hedges, dispatch claims, turn admission, delivery-drain claims) is
- * module-local and goes with the module graph. The process-wide singletons a
- * new process would not inherit are the Gateway lifecycle generation (its
- * rotation evicts prior-lifecycle reply runs) and the in-memory event queue.
+ * Drop everything a Gateway process holds in memory.
+ *
+ * A killed process cannot react to anything, so the dying graph's continuation
+ * machinery (idle-retry waiters, work and hedge timers, dispatch claims) is
+ * stopped first; otherwise its reply-run-ended waiter would wake on the reply
+ * run eviction below and drive work from beyond the grave. The rest of
+ * continuation's state is module-local and goes with the module graph. The
+ * process-wide singletons a new process would not inherit are the Gateway
+ * lifecycle generation (its rotation evicts prior-lifecycle reply runs) and
+ * the in-memory event queue.
  */
 async function discardProcessState(): Promise<void> {
-  const [agentEvents, systemEvents] = await Promise.all([
+  const [continuationRuntime, delegateDispatch, agentEvents, systemEvents] = await Promise.all([
+    import("../../plugin-sdk/continuation-test-runtime.js"),
+    import("./delegate-dispatch.js"),
     import("../../infra/agent-events.js"),
     import("../../infra/system-events.js"),
   ]);
+  continuationRuntime.resetContinuationWorkDispatchForTests();
+  continuationRuntime.resetContinueDelegateTurnAdmissionForTests();
+  delegateDispatch.resetDelegateDispatchHedgesForTests();
   agentEvents.rotateAgentEventLifecycleGeneration();
   systemEvents.drainSystemEventEntries(OWNER);
   vi.resetModules();
 }
 
+function boundaryCallCounts() {
+  return {
+    spawns: spawnSubagentDirectMock.mock.calls.length,
+    turns: getReplyFromConfigMock.mock.calls.length,
+  };
+}
+
 /** A crash: discard process state and boot a fresh module graph over the same state dir. */
 async function restartGateway(): Promise<Gateway> {
+  const beforeCrash = boundaryCallCounts();
   await discardProcessState();
-  return await bootGateway();
+  const gateway = await bootGateway();
+  // Anything the dead graph does after the crash would be a harness leak.
+  expect(boundaryCallCounts(), "the crashed module graph acted after the crash").toEqual(
+    beforeCrash,
+  );
+  return gateway;
 }
 
 async function withGateway(run: (gateway: Gateway, stateDir: string) => Promise<void>) {
@@ -309,25 +340,21 @@ function acceptSpawn() {
 }
 
 /**
- * A spawn the process never returns from. `boundary 2` stops before the
- * Gateway accepted the child; `boundary 3` after acceptance but before
- * `registerSubagentRun` committed. Continuation cannot tell them apart, which
- * is the point of Q3; `childStarted` records that the boundary-3 child ran.
+ * A spawn the process never returns from: the crash lands inside the spawn
+ * owner, after continuation claimed the delegate. Whether the Gateway had
+ * accepted the child (§5.4.4 boundary 3) or not (boundary 2) is invisible to
+ * continuation at recovery, which is why Q3 treats both the same way.
  */
-function crashInsideSpawn(boundary: 2 | 3) {
-  const effects = { childStarted: false };
+function crashInsideSpawn() {
   let entered!: () => void;
   const spawnEntered = new Promise<void>((resolve) => {
     entered = resolve;
   });
   const hang = async () => {
-    if (boundary === 3) {
-      effects.childStarted = true;
-    }
     entered();
     return await new Promise<never>(() => {});
   };
-  return { effects, spawnEntered, hang };
+  return { spawnEntered, hang };
 }
 
 function spawnedTasks(): string[] {
@@ -407,17 +434,21 @@ async function electDelegate(
   });
 }
 
-/** Start a turn whose due delegate is claimed and then crashes inside the spawn. */
-async function crashWhileClaimed(gateway: Gateway, form: DelegateForm, boundary: 2 | 3) {
-  const crash = crashInsideSpawn(boundary);
+/** Run a turn whose due delegate is claimed and then crashes inside the spawn. */
+async function crashWhileClaimed(gateway: Gateway, form: DelegateForm): Promise<void> {
+  const crash = crashInsideSpawn();
   spawnSubagentDirectMock.mockImplementationOnce(crash.hang);
-  void electDelegate(gateway, form, {
-    runId: `claimed-${form}-${boundary}`,
+  const turn = electDelegate(gateway, form, {
+    runId: `claimed-${form}`,
     task: "publish the release notes",
     delaySeconds: 0,
   });
-  await crash.spawnEntered;
-  return crash;
+  await Promise.race([
+    crash.spawnEntered,
+    turn.then(() => {
+      throw new Error("the turn finished without reaching the spawn owner");
+    }),
+  ]);
 }
 
 beforeEach(() => {
@@ -435,19 +466,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const CLAIM_MATRIX = [
-  { form: "tool", boundary: 2 },
-  { form: "tool", boundary: 3 },
-  { form: "token", boundary: 2 },
-  { form: "token", boundary: 3 },
-] as const satisfies ReadonlyArray<{ form: DelegateForm; boundary: 2 | 3 }>;
-
 describe("RFC §5.4.4 pre-spawn custody handoff: an unresolved claim is at-most-once (Q3)", () => {
-  it.fails.each(CLAIM_MATRIX)(
-    "[expected red until the §5.4 re-home] $form form, boundary $boundary: restart spawns no second child and leaves exactly one interrupted notice",
-    async ({ form, boundary }) => {
+  it.fails.each(["tool", "token"] as const)(
+    "[expected red until the §5.4 re-home] %s form, boundary 2/3: restart spawns no second child and leaves exactly one interrupted notice",
+    async (form) => {
       await withGateway(async (gateway) => {
-        await crashWhileClaimed(gateway, form, boundary);
+        await crashWhileClaimed(gateway, form);
         expect(spawnedTasks()).toHaveLength(1);
 
         let restarted = await restartGateway();
@@ -468,11 +492,11 @@ describe("RFC §5.4.4 pre-spawn custody handoff: an unresolved claim is at-most-
     },
   );
 
-  it.each(CLAIM_MATRIX)(
-    "$form form, boundary $boundary: the claimed delegate is never silently dropped by a restart (§5.4.9 item 1)",
-    async ({ form, boundary }) => {
+  it.each(["tool", "token"] as const)(
+    "%s form, boundary 2/3: the claimed delegate is never silently dropped by a restart (§5.4.9 item 1)",
+    async (form) => {
       await withGateway(async (gateway) => {
-        await crashWhileClaimed(gateway, form, boundary);
+        await crashWhileClaimed(gateway, form);
 
         const restarted = await restartGateway();
         await restarted.runStartupRecovery();
@@ -555,7 +579,11 @@ describe("RFC §5.4.9 item 1: queued work survives a restart until it is claimed
 
 describe("RFC §5.4.3 election replacement is one atomic owner-conditioned commit", () => {
   // An election made while its turn is still running is parked until that turn
-  // ends. A later election for the same session supersedes the parked one.
+  // ends, with its hedge due at maxDelayMs (300 s by default). A later election
+  // for the same session supersedes the parked one. Recovering just after the
+  // hedge is inside the dispatcher's backlog-fold grace (2 x maxDelayMs), so a
+  // second live election would fire its own turn instead of being folded.
+  const PARKED_HEDGE_DUE_MS = START_MS + 300_000;
   async function electWhileOwnerBusy(gateway: Gateway, runId: string, reason: string) {
     const requests: Array<{ reason: string; delaySeconds: number }> = [];
     await gateway.workTool(requests).execute(`${runId}-call`, { reason, delaySeconds: 0 });
@@ -568,7 +596,7 @@ describe("RFC §5.4.3 election replacement is one atomic owner-conditioned commi
       await electWhileOwnerBusy(gateway, "turn-a", "parked follow-up");
       await electWhileOwnerBusy(gateway, "turn-b", "replacement follow-up");
 
-      vi.setSystemTime(START_MS + 60 * 60_000);
+      vi.setSystemTime(PARKED_HEDGE_DUE_MS + 1_000);
       let restarted = await restartGateway();
       await restarted.runStartupRecovery();
       const wakes = continuationWakeTurns();
@@ -587,7 +615,7 @@ describe("RFC §5.4.3 election replacement is one atomic owner-conditioned commi
       gateway.beginOwnerReplyRun();
       await electWhileOwnerBusy(gateway, "turn-a", "parked follow-up");
 
-      vi.setSystemTime(START_MS + 60 * 60_000);
+      vi.setSystemTime(PARKED_HEDGE_DUE_MS + 1_000);
       const restarted = await restartGateway();
       await restarted.runStartupRecovery();
       const wakes = continuationWakeTurns();
@@ -606,7 +634,7 @@ describe("RFC §5.4.2 / §9.2.2 item 4: post-compaction release and queue insert
       mode: "post-compaction",
     });
     expect(spawnedTasks()).toEqual([]);
-    const crash = crashInsideSpawn(2);
+    const crash = crashInsideSpawn();
     spawnSubagentDirectMock.mockImplementationOnce(crash.hang);
     await gateway.releaseAfterCompaction(`compaction-${form}`);
     await crash.spawnEntered;
@@ -620,20 +648,9 @@ describe("RFC §5.4.2 / §9.2.2 item 4: post-compaction release and queue insert
         expect(spawnedTasks()).toHaveLength(1);
 
         const restarted = await restartGateway();
-        // Continuation recovery alone must not release the staged delegate again.
-        vi.setSystemTime(START_MS + 5_000);
-        const armedAt = Date.now();
-        const recovery = await import("./delegate-dispatch-recovery.js");
-        await recovery.recoverPendingContinuationDelegates({
-          queuedCreatedAtOrBefore: armedAt,
-          includeRunningUpdatedAtOrBefore: armedAt,
-        });
-        await recovery.requeueAwaitingNextCompactionDelegates({
-          runningUpdatedAtOrBefore: armedAt,
-        });
-        await recovery.recoverAndReleaseStagedPostCompactionDelegates({
-          runningUpdatedAtOrBefore: armedAt,
-        });
+        // Continuation recovery must not release the staged delegate a second
+        // time; the queue entry is the only remaining custody.
+        await restarted.runContinuationRecovery();
         expect(spawnedTasks()).toHaveLength(1);
         const queued = (await restarted.pendingOwnerDeliveries()).filter(
           (entry) => entry.kind === "postCompactionDelegate",
@@ -775,7 +792,7 @@ describe("RFC §2.2/§2.6 tool and token forms converge on one custody record (�
           delaySeconds: 0,
           mode: "post-compaction",
         });
-        const crash = crashInsideSpawn(2);
+        const crash = crashInsideSpawn();
         spawnSubagentDirectMock.mockImplementationOnce(crash.hang);
         await gateway.releaseAfterCompaction("parity-compaction");
         await crash.spawnEntered;
@@ -811,7 +828,9 @@ describe("RFC §2.2/§2.6 tool and token forms converge on one custody record (�
         await restarted.runStartupRecovery();
         expect(continuationWakeTurns()).toHaveLength(1);
         // Only the tool form carries a reason; provenance names per-record ids.
-        wakes.push(continuationWakeTurns()[0]!.replace(/ (Prior reason:|\[provenance\]).*$/, ""));
+        wakes.push(
+          (continuationWakeTurns()[0] ?? "").replace(/ (Prior reason:|\[provenance\]).*$/, ""),
+        );
       });
       getReplyFromConfigMock.mockClear();
       vi.setSystemTime(START_MS);
