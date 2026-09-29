@@ -1,12 +1,18 @@
 /** Continuation-delegate spawn params: validation, child ids, launch fields, and registration fields. */
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { parseContinuationChildRunId } from "../../../shared/continuation-run-key.js";
 import {
   deriveContinuationDelegateChildRunId,
   deriveContinuationDelegateChildSessionKey,
 } from "../../subagent-continuation-ids.js";
 import type { ContinuationSpawnParams } from "../announce/subagent-announce.runtime.js";
-import { getSubagentRunByRunId } from "../registry/subagent-registry.js";
-import type { SpawnSubagentParams, SpawnSubagentResult } from "./subagent-spawn-contract.js";
+import { prepareSubagentRunsByRunIds } from "../registry/subagent-registry.js";
+import {
+  isSpawnSubagentAdmissionCancelledError,
+  type SpawnSubagentAdmissionCancelledError,
+  type SpawnSubagentParams,
+  type SpawnSubagentResult,
+} from "./subagent-spawn-contract.js";
 import type { resolveSubagentSpawnRequest } from "./subagent-spawn-request.js";
 
 /** Rejects invalid continuation params before spawn creates any child state. */
@@ -34,16 +40,57 @@ export function validateSubagentContinuationSpawnParams(
     // Collector launch identity is the requester-scoped `swarm_<hash>` derivation.
     return { status: "error", error: "continuationChildRunId is not supported for collectors" };
   }
-  // Registration replaces a row with the same run id. A second launch under a key that
-  // already names a row, owned by this requester or another, must never overwrite it;
-  // resolving an existing row is the continuation owner's handoff decision, not spawn's.
-  if (getSubagentRunByRunId(launchRunId)) {
+  return undefined;
+}
+
+/**
+ * Refuses a launch key that already names a registry row, before any child side effect.
+ * Registration replaces a row with the same run id, and resolving an existing row is the
+ * continuation owner's handoff decision, not spawn's. This is a pre-dispatch refusal, not
+ * a lock: custody's claim CAS and never-reused attempt ids keep two launches of one key
+ * from racing past it.
+ */
+const CONTINUATION_LAUNCH_READ_ATTEMPTS = 8;
+
+export async function refuseRegisteredSubagentContinuationLaunch(
+  params: Pick<ContinuationSpawnParams, "continuationChildRunId">,
+): Promise<SpawnSubagentResult | undefined> {
+  const launchRunId = params.continuationChildRunId;
+  if (launchRunId === undefined) {
+    return undefined;
+  }
+  let registered: boolean | undefined;
+  try {
+    // A prepared read can be superseded by a concurrent registry write before it is
+    // consumed ({ ready: false }); re-prepare, as agents_wait does, but bounded.
+    for (let attempt = 0; attempt < CONTINUATION_LAUNCH_READ_ATTEMPTS; attempt += 1) {
+      const prepared = await prepareSubagentRunsByRunIds([launchRunId]);
+      const read = prepared.consume((runs) => runs.has(launchRunId));
+      if (read.ready) {
+        registered = read.value;
+        break;
+      }
+      await yieldToEventLoop();
+    }
+  } catch (error) {
+    // An unreadable registry cannot prove the key is free.
     return {
       status: "error",
-      error: `Launch run id ${launchRunId} is already registered; refusing to replace it.`,
+      error: `Could not verify launch run id ${launchRunId} is unregistered: ${String(error)}`,
     };
   }
-  return undefined;
+  if (registered === undefined) {
+    return {
+      status: "error",
+      error: `Could not verify launch run id ${launchRunId} is unregistered: registry read did not settle`,
+    };
+  }
+  return registered
+    ? {
+        status: "error",
+        error: `Launch run id ${launchRunId} is already registered; refusing to replace it.`,
+      }
+    : undefined;
 }
 
 export function resolveSubagentContinuationChildRunId(
@@ -128,4 +175,31 @@ export function resolveSubagentContinuationTaskRowOwnership(
   return taskRowOwnership === "gateway_best_effort" && params.continuationChainState
     ? undefined
     : taskRowOwnership;
+}
+
+/**
+ * Whether an admission cancel may be returned as `{ status: "cancelled" }`. A launch-keyed
+ * caller reads a phaseless cancel as "nothing dispatched"; once the spawn pipeline has
+ * started, only a thrown error keeps the outcome unknown (RFC §5.4.4, Q3).
+ */
+export function returnsPhaselessSubagentSpawnCancel(
+  error: unknown,
+  params: Pick<ContinuationSpawnParams, "continuationChildRunId">,
+  pipelineEntered: boolean,
+): error is SpawnSubagentAdmissionCancelledError {
+  return (
+    isSpawnSubagentAdmissionCancelledError(error) &&
+    !(pipelineEntered && params.continuationChildRunId !== undefined)
+  );
+}
+
+/** Validation, then the registered-key refusal: the first error a keyed launch must return. */
+export async function resolveSubagentContinuationLaunchError(
+  params: Parameters<typeof validateSubagentContinuationSpawnParams>[0] &
+    Parameters<typeof refuseRegisteredSubagentContinuationLaunch>[0],
+): Promise<SpawnSubagentResult | undefined> {
+  return (
+    validateSubagentContinuationSpawnParams(params) ??
+    (await refuseRegisteredSubagentContinuationLaunch(params))
+  );
 }

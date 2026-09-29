@@ -4,6 +4,7 @@ import { createRequireRecord } from "openclaw/plugin-sdk/test-fixtures";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatContinuationChildRunId } from "../../../shared/continuation-run-key.js";
 import { deriveContinuationDelegateChildSessionKey } from "../../subagent-continuation-ids.js";
+import { SpawnSubagentAdmissionCancelledError } from "./subagent-spawn-contract.js";
 import {
   createConfigOverride,
   loadSubagentSpawnModuleForTest,
@@ -15,7 +16,9 @@ const hoisted = vi.hoisted(() => ({
   registerSubagentRunMock: vi.fn(),
   updateSessionStoreMock: vi.fn(),
   resolveContextEngineMock: vi.fn(),
-  getSubagentRunByRunIdMock: vi.fn(),
+  registeredRunIds: new Set<string>(),
+  prepareSubagentRunsByRunIdsMock: vi.fn(),
+  recordAcceptedSubagentSpawnRollbackMock: vi.fn(),
   configOverride: {} as Record<string, unknown>,
 }));
 
@@ -44,7 +47,8 @@ describe("spawnSubagentDirect continuation launch key", () => {
       updateSessionStoreMock: hoisted.updateSessionStoreMock,
       registerSubagentRunMock: hoisted.registerSubagentRunMock,
       resolveContextEngineMock: hoisted.resolveContextEngineMock,
-      getSubagentRunByRunId: hoisted.getSubagentRunByRunIdMock,
+      prepareSubagentRunsByRunIds: hoisted.prepareSubagentRunsByRunIdsMock,
+      recordAcceptedSubagentSpawnRollbackMock: hoisted.recordAcceptedSubagentSpawnRollbackMock,
       sessionStorePath: "/tmp/subagent-spawn-launch-key-store.json",
     }));
   });
@@ -70,7 +74,24 @@ describe("spawnSubagentDirect continuation launch key", () => {
       return store;
     });
     hoisted.resolveContextEngineMock.mockReset().mockResolvedValue({});
-    hoisted.getSubagentRunByRunIdMock.mockReset().mockReturnValue(undefined);
+    hoisted.registeredRunIds.clear();
+    hoisted.prepareSubagentRunsByRunIdsMock
+      .mockReset()
+      .mockImplementation(async (runIds: readonly string[]) => ({
+        consume: (consume: (runs: Map<string, unknown>) => unknown) => ({
+          ready: true,
+          value: consume(
+            new Map(
+              runIds
+                .filter((runId) => hoisted.registeredRunIds.has(runId))
+                .map((runId) => [runId, { runId }]),
+            ),
+          ),
+        }),
+      }));
+    hoisted.recordAcceptedSubagentSpawnRollbackMock
+      .mockReset()
+      .mockReturnValue({ status: "persisted" });
   });
 
   it("launches and registers the child under the key verbatim", async () => {
@@ -90,7 +111,7 @@ describe("spawnSubagentDirect continuation launch key", () => {
     expect(requireRecord(hoisted.registerSubagentRunMock.mock.calls[0]?.[0]).runId).toBe(
       childRunId,
     );
-    expect(hoisted.getSubagentRunByRunIdMock).toHaveBeenCalledWith(childRunId);
+    expect(hoisted.prepareSubagentRunsByRunIdsMock).toHaveBeenCalledWith([childRunId]);
   });
 
   it("takes the run id from the key and the session key from the record identity", async () => {
@@ -142,7 +163,7 @@ describe("spawnSubagentDirect continuation launch key", () => {
   });
 
   it("refuses a key that already names a registry row before any child side effect", async () => {
-    hoisted.getSubagentRunByRunIdMock.mockReturnValue({ runId: childRunId });
+    hoisted.registeredRunIds.add(childRunId);
 
     const result = await spawnSubagentDirect(
       { task: "continue", continuationChildRunId: childRunId },
@@ -156,6 +177,79 @@ describe("spawnSubagentDirect continuation launch key", () => {
     expectNoChildSideEffects();
   });
 
+  it("refuses the key when the registry cannot be read", async () => {
+    hoisted.prepareSubagentRunsByRunIdsMock.mockRejectedValue(new Error("state worker offline"));
+
+    const result = await spawnSubagentDirect(
+      { task: "continue", continuationChildRunId: childRunId },
+      context,
+    );
+
+    expect(result).toEqual({
+      status: "error",
+      error: `Could not verify launch run id ${childRunId} is unregistered: Error: state worker offline`,
+    });
+    expectNoChildSideEffects();
+  });
+
+  it("re-prepares a superseded registry read and then launches", async () => {
+    hoisted.prepareSubagentRunsByRunIdsMock
+      .mockResolvedValueOnce({ consume: () => ({ ready: false }) })
+      .mockImplementation(async () => ({
+        consume: (consume: (runs: Map<string, unknown>) => unknown) => ({
+          ready: true,
+          value: consume(new Map()),
+        }),
+      }));
+
+    const result = await spawnSubagentDirect(
+      { task: "continue", continuationChildRunId: childRunId },
+      context,
+    );
+
+    expect(result).toMatchObject({ status: "accepted", runId: childRunId });
+    expect(hoisted.prepareSubagentRunsByRunIdsMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses the key when the registry read never settles", async () => {
+    hoisted.prepareSubagentRunsByRunIdsMock.mockResolvedValue({
+      consume: () => ({ ready: false }),
+    });
+
+    const result = await spawnSubagentDirect(
+      { task: "continue", continuationChildRunId: childRunId },
+      context,
+    );
+
+    expect(result).toEqual({
+      status: "error",
+      error: `Could not verify launch run id ${childRunId} is unregistered: registry read did not settle`,
+    });
+    expectNoChildSideEffects();
+  });
+
+  it("throws, not a phaseless cancel, when a keyed rollback fails after the Gateway accepted", async () => {
+    const cancelledAfterRegistration = () =>
+      Object.assign(new SpawnSubagentAdmissionCancelledError("delegate reset"), {
+        registrationOwnership: {
+          status: "new-row-survived",
+          attempted: { runId: childRunId, childSessionKey: "child", generation: 1, createdAt: 1 },
+        },
+      });
+    hoisted.registerSubagentRunMock.mockImplementation(() => {
+      throw cancelledAfterRegistration();
+    });
+    hoisted.recordAcceptedSubagentSpawnRollbackMock.mockReturnValue({ status: "rejected" });
+
+    await expect(
+      spawnSubagentDirect({ task: "continue", continuationChildRunId: childRunId }, context),
+    ).rejects.toMatchObject({ code: "CONTINUATION_DELEGATE_ADMISSION_CANCELLED" });
+    expect(agentRequests()).toHaveLength(1);
+
+    // Unkeyed callers keep the existing cancelled result.
+    const unkeyed = await spawnSubagentDirect({ task: "ordinary child" }, context);
+    expect(unkeyed).toMatchObject({ status: "cancelled" });
+  });
   it.each([
     {
       phase: "initialize",
