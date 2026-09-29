@@ -373,6 +373,70 @@ describe("payload custody and scrub", () => {
     ).toMatchObject({ recordId: "delegate-a", attachments });
   });
 
+  it("refuses a duplicate create that brings different bytes for the committed attachment", async () => {
+    const options = storeOptions();
+    await createContinuationRecord(delegate("delegate-a", ATTACHMENT_A), {
+      ...options,
+      payload: { attachments },
+    });
+    const committed = fs.readFileSync(payloadFile(options, ATTACHMENT_A));
+
+    const duplicate = await createContinuationRecord(delegate("delegate-a", ATTACHMENT_A), {
+      ...options,
+      payload: { attachments: [{ name: "notes.txt", content: "replacement" }] },
+    });
+    // The committed record's bytes are write-once; the retry is refused, not applied.
+    expect(fs.readFileSync(payloadFile(options, ATTACHMENT_A))).toEqual(committed);
+    expect(duplicate).toEqual({
+      outcome: "payload_conflict",
+      recordId: "delegate-a",
+      attachmentId: ATTACHMENT_A,
+    });
+    const [record] = await listContinuationRecords({ recordIds: ["delegate-a"] }, options);
+    expect(record).toMatchObject({ revision: 0, attachmentId: ATTACHMENT_A });
+    expect(
+      await loadContinuationCustodyPayload(
+        ATTACHMENT_A,
+        { recordId: "delegate-a", ownerKey: OWNER },
+        options.env,
+      ),
+    ).toMatchObject({ attachments });
+  });
+
+  it.each([
+    { name: "another record", recordId: "delegate-b", ownerSessionKey: OWNER },
+    { name: "another owner", recordId: "delegate-a", ownerSessionKey: "agent:main:someone-else" },
+  ])("fails an attachment ID collision with $name and keeps the original bytes", async (clash) => {
+    const options = storeOptions();
+    await createContinuationRecord(delegate("delegate-a", ATTACHMENT_A), {
+      ...options,
+      payload: { attachments },
+    });
+    const committed = fs.readFileSync(payloadFile(options, ATTACHMENT_A));
+
+    const collision = await createContinuationRecord(
+      { ...delegate(clash.recordId, ATTACHMENT_A), ownerSessionKey: clash.ownerSessionKey },
+      { ...options, payload: { attachments } },
+    );
+    expect(fs.readFileSync(payloadFile(options, ATTACHMENT_A))).toEqual(committed);
+    expect(collision).toEqual({
+      outcome: "payload_conflict",
+      recordId: clash.recordId,
+      attachmentId: ATTACHMENT_A,
+    });
+    // Nothing committed for the colliding create, and the owner still reads its payload.
+    expect((await listContinuationRecords({}, options)).map((record) => record.recordId)).toEqual([
+      "delegate-a",
+    ]);
+    expect(
+      await loadContinuationCustodyPayload(
+        ATTACHMENT_A,
+        { recordId: "delegate-a", ownerKey: OWNER },
+        options.env,
+      ),
+    ).toMatchObject({ attachments });
+  });
+
   it("releases its own payload when the record ID already exists", async () => {
     const options = storeOptions();
     await createContinuationRecord(delegate("delegate-a"), options);

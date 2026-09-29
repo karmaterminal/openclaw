@@ -15,6 +15,7 @@ import {
 import type {
   ContinuationElection,
   ContinuationRecord,
+  ContinuationRecordPatch,
   NewContinuationRecord,
 } from "./custody-store.types.js";
 import {
@@ -759,6 +760,69 @@ describe("list-by-owner, scrub and retention", () => {
         ),
       ).outcome,
     ).toBe("invalid_transition");
+  });
+
+  it("keeps a handoff permanent: it cannot be cleared, replaced, or left for a live status", () => {
+    const options = stateOptions();
+    write(options, (db) => createContinuationRecordInDatabase(db, delegate("delegate-a")));
+    const claimed = write(options, (db) =>
+      claimContinuationSpawnAttemptInDatabase(db, {
+        recordId: "delegate-a",
+        expectedRevision: 0,
+        now: 1_050,
+      }),
+    );
+    if (claimed.outcome !== "claimed") {
+      throw new Error("claim failed");
+    }
+    const handoff = {
+      target: "subagent_runs" as const,
+      childRunId: claimed.attempt.childRunId,
+      childSessionKey: "agent:main:subagent:child",
+      handedOffAt: 1_100,
+    };
+    const patchAt = (revision: number, patch: ContinuationRecordPatch) =>
+      write(options, (db) =>
+        updateContinuationRecordsInDatabase(
+          db,
+          [{ recordId: "delegate-a", ownerSessionKey: OWNER, expectedRevision: revision, patch }],
+          1_200,
+        ),
+      );
+    expect(patchAt(1, { status: "succeeded", handoff }).outcome).toBe("applied");
+    const handedOff = list(options)[0]!;
+
+    // Erasing the handoff must not reopen the record for a second spawn.
+    expect(patchAt(2, { handoff: null, status: "queued" })).toMatchObject({
+      outcome: "invalid_transition",
+      recordId: "delegate-a",
+    });
+    for (const patch of [
+      { handoff: null },
+      { handoff: { ...handoff, childSessionKey: "agent:main:subagent:other" } },
+      { handoff: { target: "session_delivery_queue" as const, queueEntryId: "q", handedOffAt: 1 } },
+      { status: "running" as const },
+      { status: "failed" as const, failureReason: "late" },
+      { status: "cancelled" as const },
+    ] satisfies ContinuationRecordPatch[]) {
+      expect(patchAt(2, patch).outcome).toBe("invalid_transition");
+    }
+    expect(list(options)[0]).toEqual(handedOff);
+    expect(
+      write(options, (db) =>
+        claimContinuationSpawnAttemptInDatabase(db, {
+          recordId: "delegate-a",
+          expectedRevision: 2,
+          now: 1_300,
+        }),
+      ).outcome,
+    ).toBe("not_claimable");
+
+    // Restating the same handoff on the succeeded record is an idempotent write.
+    expect(patchAt(2, { status: "succeeded", handoff: { ...handoff } })).toMatchObject({
+      outcome: "applied",
+      records: [{ status: "succeeded", handoff, revision: 3 }],
+    });
   });
 
   it("deletes at an exact revision and prunes only notice-free terminal records", () => {
