@@ -17,10 +17,11 @@
  * carries over. Work abandoned by the "crashed" graph (a spawn that never
  * returns) stays suspended forever, exactly like a killed process.
  *
- * Where the RFC changes today's behavior, the test is `it.fails` and its name
- * says which section changes it. Each such test is paired with a green test
- * that pins the invariant both designs share, so an expected-red test cannot
- * silently pass because its scenario stopped reaching the boundary.
+ * Where the RFC changed the TaskFlow-era behavior, the test name says which
+ * section changed it; these were `it.fails` until the §5.4 re-home (L4). Each
+ * is paired with a test that pins the invariant both designs share, so a
+ * changed-behavior test cannot pass because its scenario stopped reaching the
+ * boundary.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -90,8 +91,8 @@ async function bootGateway() {
     delegateTool,
     workTool,
     compactionTool,
-    recovery,
-    work,
+    custodyBoot,
+    legacyImport,
     signal,
     schedule,
     controller,
@@ -109,8 +110,8 @@ async function bootGateway() {
     import("../../agents/tools/continue-delegate-tool.js"),
     import("../../agents/tools/continue-work-tool.js"),
     import("../../agents/tools/request-compaction-tool.js"),
-    import("./delegate-dispatch-recovery.js"),
-    import("./work-dispatch.js"),
+    import("./custody-boot.js"),
+    import("./custody/legacy-taskflow-import.js"),
     import("./signal.js"),
     import("../reply/agent-runner-continuation-schedule.js"),
     import("../reply/agent-runner-continuation.js"),
@@ -133,23 +134,19 @@ async function bootGateway() {
     });
 
   /**
-   * The continuation half of Gateway startup, copied from
-   * `startPendingContinuationRecovery` in `server-runtime-services.ts` with its
-   * boot-time cutoff. This is the one harness seam that names TaskFlow-era
-   * recovery passes; the §5.4 re-home rewrites it to its own startup order
-   * (Doctor import, subagent registry activation, custody recovery).
+   * The continuation half of Gateway startup, in the order
+   * `startPendingContinuationRecovery` (`server-runtime-services.ts`) runs it
+   * with its boot-time cutoff: the Doctor custody import (which the startup
+   * preflight runs before the Gateway boots), subagent registry activation
+   * (this harness has no Gateway registry to activate), then custody recovery.
    */
   async function runContinuationRecovery(): Promise<void> {
     const armedAt = Date.now();
-    await recovery.recoverPendingContinuationDelegates({
-      queuedCreatedAtOrBefore: armedAt,
-      includeRunningUpdatedAtOrBefore: armedAt,
+    await legacyImport.migrateContinuationTaskFlowCustody({ env: process.env });
+    await custodyBoot.runContinuationCustodyBoot({
+      armedAt,
+      whenSubagentRegistryActivated: async () => {},
     });
-    await recovery.requeueAwaitingNextCompactionDelegates({ runningUpdatedAtOrBefore: armedAt });
-    await recovery.recoverAndReleaseStagedPostCompactionDelegates({
-      runningUpdatedAtOrBefore: armedAt,
-    });
-    await work.recoverPendingContinuationWork();
   }
 
   async function pendingOwnerDeliveries() {
@@ -425,9 +422,17 @@ function spawnProjection(call: unknown[] | undefined, options: { ownerEpoch?: "m
   const [request, context] = (call ?? []) as [Record<string, unknown>, Record<string, unknown>];
   const { continuationChainState: _chain, traceparent: _trace, task, ...rest } = request;
   // Record identity (today `continuationDelegateFlowId`) is dropped by shape so
-  // a renamed record-id field after the re-home is still ignored.
+  // a renamed record-id field after the re-home is still ignored. The launch
+  // key (§5.4.4) embeds that identity; only its attempt number is compared.
   const stable = Object.fromEntries(
-    Object.entries(rest).filter(([key]) => !/(flow|record)Id$/i.test(key)),
+    Object.entries(rest)
+      .filter(([key]) => !/(flow|record)Id$/i.test(key))
+      .map(([key, value]) => [
+        key,
+        key === "continuationChildRunId" && typeof value === "string"
+          ? value.replace(/^continuation:.+:(\d+)$/, "continuation:<record>:$1")
+          : value,
+      ]),
   );
   const projected = {
     request: {
@@ -542,8 +547,8 @@ afterAll(() => {
 describe("RFC §5.4.4 pre-spawn custody handoff: an unresolved claim is at-most-once (Q3)", () => {
   const CLAIM_CANARY = "custody-conjecture-claimed-attachment-canary-2c81d4";
 
-  it.fails.each(["tool", "token"] as const)(
-    "[expected red until the §5.4 re-home] %s form, boundary 2/3: restart spawns no second child, leaves exactly one interrupted notice, and releases the payload",
+  it.each(["tool", "token"] as const)(
+    "[§5.4 re-home] %s form, boundary 2/3: restart spawns no second child, leaves exactly one interrupted notice, and releases the payload",
     async (form) => {
       await withGateway(async (gateway, stateDir) => {
         await crashWhileClaimed(gateway, form, { attachmentCanary: CLAIM_CANARY });
@@ -555,7 +560,7 @@ describe("RFC §5.4.4 pre-spawn custody handoff: an unresolved claim is at-most-
         let restarted = await restartGateway();
         await restarted.runStartupRecovery();
 
-        // Today C re-dispatches the `running` row and spawns a second child.
+        // C re-dispatched the `running` row and spawned a second child.
         expect(spawnedTasks()).toHaveLength(1);
         const notices = await restarted.interruptedNotices();
         expect(notices).toHaveLength(1);
@@ -739,8 +744,8 @@ describe("RFC §5.4.2 / §9.2.2 item 4: post-compaction release and queue insert
     },
   );
 
-  it.fails.each(["tool", "token"] as const)(
-    "[expected red until the §5.4 re-home] %s form: redelivery after a crash inside the drain's spawn starts no second child and leaves exactly one interrupted notice (§5.4.4 post-compaction handoff)",
+  it.each(["tool", "token"] as const)(
+    "[§5.4 re-home] %s form: redelivery after a crash inside the drain's spawn starts no second child and leaves exactly one interrupted notice (§5.4.4 post-compaction handoff)",
     async (form) => {
       await withGateway(async (gateway) => {
         await releaseAndCrashInsideDrain(gateway, form);
@@ -748,7 +753,7 @@ describe("RFC §5.4.2 / §9.2.2 item 4: post-compaction release and queue insert
         let restarted = await restartGateway();
         await restarted.runStartupRecovery();
 
-        // Today C's drain redelivers the entry and spawns a second child.
+        // C's drain redelivered the entry and spawned a second child.
         expect(spawnedTasks()).toHaveLength(1);
         const notices = await restarted.interruptedNotices();
         expect(notices).toHaveLength(1);
@@ -859,14 +864,14 @@ describe("RFC §5.4.4 reset at any boundary", () => {
     });
   });
 
-  it.fails("[expected red until the §5.4 re-home] reset releases the attachment payload immediately, not at the next startup (§5.4.9 item 6)", async () => {
+  it("[§5.4 re-home] reset releases the attachment payload immediately, not at the next startup (§5.4.9 item 6)", async () => {
     await withGateway(async (gateway, stateDir) => {
       await queueWorkAndAttachedDelegate(gateway);
       expect(durableFilesHolding(stateDir, CANARY)).not.toEqual([]);
 
       await gateway.resetOwnerSession();
 
-      // Today the payload file waits for the startup custody reconcile.
+      // At C the payload file waited for the startup custody reconcile.
       expect(durableFilesHolding(stateDir, CANARY)).toEqual([]);
     });
   });
