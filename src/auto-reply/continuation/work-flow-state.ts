@@ -127,7 +127,12 @@ export function isRecoverableWorkFlow(flow: TaskFlowRecord): boolean {
 }
 
 export function decodeWorkState(flow: TaskFlowRecord): PendingWorkState | undefined {
-  const parsed = PendingWorkStateSchema.safeParse(flow.stateJson);
+  return decodeWorkStateJson(flow.stateJson);
+}
+
+/** The work codec over parsed state JSON; the Doctor custody import decodes source rows with it. */
+export function decodeWorkStateJson(value: unknown): PendingWorkState | undefined {
+  const parsed = PendingWorkStateSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
