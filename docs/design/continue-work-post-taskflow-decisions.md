@@ -111,3 +111,13 @@ Two derived extensions also need prince confirmation, because they go beyond the
 - `request_compaction()` stays outside durable custody.
 - Post-compaction delegate release is part of delegate custody.
 - The configuration surface and the "no opt-out" durability of RFC §5.1 are unchanged. Custody is still unconditional. Q3 narrows only what durability promises for a delegate once it is claimed (RFC §5.4.9).
+
+## Q3 timing for legacy claims (decided 2026-09-29)
+
+🌊 Ronan (Discord 1554498436848553985): legacy claimed delegates and claimed-for-release post-compaction rows are **decided inside the owner import transaction**, not imported as `running` for later recovery.
+
+- **Evidence order:** queue handoff, then owner-matching `subagent_runs`, then the Q3 failure with one source-ID-keyed notice.
+- **Scope:** work rows and `awaitingNextCompaction` rows are not flattened.
+- **Transaction:** release, notice, obligation clear, receipt, scrub and fence all commit in one owner transaction.
+- **L4:** no legacy-only branch.
+- **Source retirement:** stays implemented, tested and unregistered until its horizon (Q7).
