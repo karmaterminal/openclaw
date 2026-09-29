@@ -3,7 +3,7 @@
  *
  * If one delegate in a fanout batch errors mid-dispatch, sibling delegates
  * are NOT aborted. The parent (dispatch loop) collects partial results:
- * dispatched count + rejected count + per-delegate TaskFlow status
+ * dispatched count + rejected count + per-delegate custody status
  * (succeeded / failed). Each delegate is spawned independently via
  * `spawnSubagentDirect` and a single failure does NOT short-circuit the loop.
  *
@@ -12,33 +12,24 @@
  * to the targeted fanout shape: each delegate targets a DIFFERENT session via
  * `targetSessionKey`, and a mid-batch failure does not affect siblings.
  *
- * Mock infrastructure mirrors delegate-dispatch.test.ts to keep TaskFlow,
- * subagent-spawn, system-events, and subsystem logger all stubbed.
+ * subagent-spawn, system-events, and the subsystem logger are stubbed;
+ * continuation custody is the real store, so per-delegate record state is
+ * observed directly.
  */
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 
 // ---------------------------------------------------------------------------
-// Mock infrastructure — copied from delegate-dispatch.test.ts so this file
-// is self-contained and survives independent refactors of the original.
+// Mock infrastructure — self-contained so this file survives independent
+// refactors of delegate-dispatch.test.ts.
 // ---------------------------------------------------------------------------
 
-const mockFlows = new Map<string, Record<string, unknown>>();
 const enqueueSystemEventMock = vi.fn();
 const loggerRecords: Array<{ level: string; message: string }> = [];
 const spawnSubagentDirectMock = vi.fn();
-let flowIdCounter = 0;
 
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
-}));
-
-vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  getSubagentRunByChildSessionKey: () => null,
-  hasLiveContinuationDelegateChildRun: () => false,
-  isSubagentRunLive: () => false,
 }));
 
 vi.mock("../../infra/system-events.js", () => ({
@@ -68,84 +59,22 @@ vi.mock("../../logging/subsystem.js", () => {
   };
 });
 
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn((params: Record<string, unknown>) => {
-    const flowId = `flow-${++flowIdCounter}`;
-    mockFlows.set(flowId, {
-      flowId,
-      syncMode: "managed",
-      ownerKey: params.ownerKey,
-      controllerId: params.controllerId,
-      status: "queued",
-      stateJson: params.stateJson,
-      goal: params.goal,
-      currentStep: params.currentStep,
-      revision: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    return mockFlows.get(flowId);
-  }),
-  listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) => {
-    return [...mockFlows.values()].filter((f) => f.ownerKey === ownerKey);
-  }),
-  getTaskFlowById: vi.fn((flowId: string) => mockFlows.get(flowId)),
-  updateFlowRecordByIdExpectedRevision: vi.fn(
-    (params: { flowId: string; expectedRevision: number; patch: Record<string, unknown> }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return {
-          applied: false,
-          reason: flow ? "revision_conflict" : "not_found",
-          current: flow ? { ...flow } : undefined,
-        };
-      }
-      Object.assign(flow, params.patch);
-      flow.revision = flow.revision + 1;
-      return { applied: true, flow: { ...flow } };
-    },
-  ),
-  finishFlow: vi.fn(
-    (params: {
-      flowId: string;
-      expectedRevision: number;
-      stateJson?: unknown;
-      updatedAt?: number;
-      endedAt?: number;
-    }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      flow.status = "succeeded";
-      flow.stateJson = params.stateJson ?? flow.stateJson;
-      flow.endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
-      flow.updatedAt = params.updatedAt ?? flow.endedAt;
-      flow.revision = flow.revision + 1;
-      return { applied: true, flow: { ...flow } };
-    },
-  ),
-  failFlow: vi.fn((params: { flowId: string }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (flow) {
-      flow.status = "failed";
-    }
-    return { applied: Boolean(flow) };
-  }),
-  deleteTaskFlowRecordById: vi.fn((flowId: string) => {
-    mockFlows.delete(flowId);
-  }),
-}));
-
 import { clearRuntimeConfigSnapshot } from "../../config/config.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { resetContinuationTracer } from "../../infra/continuation-tracer.js";
+import { loadPendingSessionDeliveries } from "../../infra/session-delivery-queue-storage.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
+import {
+  listCustodyRecordsForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "./custody/custody.test-support.js";
+import { CONTINUATION_SPAWN_INTERRUPTED_NOTICE_TAG } from "./custody/spawn-interrupted-notice.js";
 import { dispatchToolDelegates, resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import { enqueuePendingDelegate } from "./delegate-store.js";
 import { resetContinuationStateForTests } from "./state.js";
 
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+useContinuationCustodyTestState();
 
 // Dispatch revalidates the owner session before claiming a delegate, so tests
 // that reach the spawn path seed the owner row in the isolated session store
@@ -163,12 +92,9 @@ async function seedOwnerSession(sessionKey: string): Promise<void> {
 
 beforeEach(() => {
   closeOpenClawAgentDatabasesForTest();
-  vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("openclaw-fanout-"));
-  mockFlows.clear();
   enqueueSystemEventMock.mockClear();
   loggerRecords.length = 0;
   spawnSubagentDirectMock.mockReset().mockResolvedValue({ status: "accepted" });
-  flowIdCounter = 0;
 });
 
 afterEach(() => {
@@ -176,9 +102,7 @@ afterEach(() => {
   resetContinuationStateForTests();
   resetContinuationTracer();
   clearRuntimeConfigSnapshot();
-  mockFlows.clear();
   closeOpenClawAgentDatabasesForTest();
-  vi.unstubAllEnvs();
 });
 
 describe("fanout error isolation", () => {
@@ -188,15 +112,15 @@ describe("fanout error isolation", () => {
 
     // Each delegate fans out to a DIFFERENT target session via targetSessionKey:
     // one tool turn, N delegates, each with an independent target.
-    enqueuePendingDelegate(sessionKey, {
+    await enqueuePendingDelegate(sessionKey, {
       task: "fanout-target-A",
       targetSessionKey: "channel:target-A",
     });
-    enqueuePendingDelegate(sessionKey, {
+    await enqueuePendingDelegate(sessionKey, {
       task: "fanout-target-B",
       targetSessionKey: "channel:target-B",
     });
-    enqueuePendingDelegate(sessionKey, {
+    await enqueuePendingDelegate(sessionKey, {
       task: "fanout-target-C",
       targetSessionKey: "channel:target-C",
     });
@@ -207,9 +131,13 @@ describe("fanout error isolation", () => {
       .mockRejectedValueOnce(new Error("session-B delivery failure"))
       .mockResolvedValueOnce({ status: "accepted" });
 
-    const queuedBefore = [...mockFlows.values()]
-      .filter((f) => f.ownerKey === sessionKey && f.status === "queued")
-      .map((f) => f.flowId as string);
+    const queuedBefore = (
+      await listCustodyRecordsForTest({
+        ownerSessionKey: sessionKey,
+        kinds: ["delegate"],
+        statuses: ["queued"],
+      })
+    ).map((record) => record.recordId);
     expect(queuedBefore).toHaveLength(3);
 
     const result = await dispatchToolDelegates({
@@ -237,16 +165,22 @@ describe("fanout error isolation", () => {
     expect(result.rejected).toBe(1);
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(3);
 
-    // Per-delegate TaskFlow status is recorded independently.
-    expect(mockFlows.get(expectDefined(queuedBefore.at(0), "first flow id"))?.status).toBe(
-      "succeeded",
-    );
-    expect(mockFlows.get(expectDefined(queuedBefore.at(1), "second flow id"))?.status).toBe(
-      "failed",
-    );
-    expect(mockFlows.get(expectDefined(queuedBefore.at(2), "third flow id"))?.status).toBe(
-      "succeeded",
-    );
+    // Per-delegate custody status is recorded independently. The thrown spawn
+    // began after the claim, so its admission is unproven: the record fails as
+    // spawn-interrupted and is never requeued (RFC §5.4.4, Q3).
+    expect(
+      (await readCustodyRecordForTest(expectDefined(queuedBefore.at(0), "first record id")))
+        ?.status,
+    ).toBe("succeeded");
+    const middleRecordId = expectDefined(queuedBefore.at(1), "second record id");
+    expect(await readCustodyRecordForTest(middleRecordId)).toMatchObject({
+      status: "failed",
+      failureReason: "spawn-interrupted",
+    });
+    expect(
+      (await readCustodyRecordForTest(expectDefined(queuedBefore.at(2), "third record id")))
+        ?.status,
+    ).toBe("succeeded");
 
     // The targetSessionKey was preserved end-to-end for the surviving siblings —
     // proves the third delegate's fanout target was NOT clobbered by the
@@ -257,14 +191,33 @@ describe("fanout error isolation", () => {
     expect(spawnParams[0]).toMatchObject({ task: expect.stringContaining("fanout-target-A") });
     expect(spawnParams[2]).toMatchObject({ task: expect.stringContaining("fanout-target-C") });
 
-    // The failure was surfaced as a system event for the originating session,
-    // but only for the failing delegate — siblings did NOT generate noise.
+    // The failure was surfaced to the originating session exactly once, and
+    // only for the failing delegate — siblings did NOT generate noise. A thrown
+    // spawn owes the durable interrupted notice (one session-delivery row plus
+    // its in-memory fast-path event), not the pre-spawn "spawn failed" event.
     const failureEvents = enqueueSystemEventMock.mock.calls.filter(
       (call) =>
-        typeof call[0] === "string" &&
-        call[0].includes("DELEGATE spawn failed: session-B delivery failure"),
+        typeof call[0] === "string" && call[0].includes(CONTINUATION_SPAWN_INTERRUPTED_NOTICE_TAG),
     );
     expect(failureEvents).toHaveLength(1);
+    expect(failureEvents[0]?.[0]).toContain(`Delegate record ${middleRecordId}`);
+    expect(failureEvents[0]?.[0]).toContain("fanout-target-B");
+    expect(failureEvents[0]?.[1]).toMatchObject({ sessionKey, trusted: true });
+    expect(
+      enqueueSystemEventMock.mock.calls.filter(
+        (call) => typeof call[0] === "string" && call[0].includes("DELEGATE spawn failed"),
+      ),
+    ).toHaveLength(0);
+    const noticeRows = (await loadPendingSessionDeliveries()).filter(
+      (entry) =>
+        entry.kind === "systemEvent" &&
+        entry.text.includes(CONTINUATION_SPAWN_INTERRUPTED_NOTICE_TAG),
+    );
+    expect(noticeRows).toHaveLength(1);
+    expect(noticeRows[0]).toMatchObject({
+      sessionKey,
+      idempotencyKey: `continuation-spawn-interrupted:record:${middleRecordId}`,
+    });
   });
 
   it("first delegate fails: subsequent siblings are NOT short-circuited", async () => {
@@ -274,15 +227,15 @@ describe("fanout error isolation", () => {
     const sessionKey = "session-fanout-head-failure";
     await seedOwnerSession(sessionKey);
 
-    enqueuePendingDelegate(sessionKey, {
+    await enqueuePendingDelegate(sessionKey, {
       task: "head-fails",
       targetSessionKey: "channel:head",
     });
-    enqueuePendingDelegate(sessionKey, {
+    await enqueuePendingDelegate(sessionKey, {
       task: "tail-1",
       targetSessionKey: "channel:tail-1",
     });
-    enqueuePendingDelegate(sessionKey, {
+    await enqueuePendingDelegate(sessionKey, {
       task: "tail-2",
       targetSessionKey: "channel:tail-2",
     });
@@ -292,9 +245,13 @@ describe("fanout error isolation", () => {
       .mockResolvedValueOnce({ status: "accepted" })
       .mockResolvedValueOnce({ status: "accepted" });
 
-    const queuedBefore = [...mockFlows.values()]
-      .filter((f) => f.ownerKey === sessionKey && f.status === "queued")
-      .map((f) => f.flowId as string);
+    const queuedBefore = (
+      await listCustodyRecordsForTest({
+        ownerSessionKey: sessionKey,
+        kinds: ["delegate"],
+        statuses: ["queued"],
+      })
+    ).map((record) => record.recordId);
 
     const result = await dispatchToolDelegates({
       sessionKey,
@@ -318,14 +275,17 @@ describe("fanout error isolation", () => {
     expect(result.dispatched).toBe(2);
     expect(result.rejected).toBe(1);
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(3);
-    expect(mockFlows.get(expectDefined(queuedBefore.at(0), "first flow id"))?.status).toBe(
-      "failed",
-    );
-    expect(mockFlows.get(expectDefined(queuedBefore.at(1), "second flow id"))?.status).toBe(
-      "succeeded",
-    );
-    expect(mockFlows.get(expectDefined(queuedBefore.at(2), "third flow id"))?.status).toBe(
-      "succeeded",
-    );
+    expect(
+      (await readCustodyRecordForTest(expectDefined(queuedBefore.at(0), "first record id")))
+        ?.status,
+    ).toBe("failed");
+    expect(
+      (await readCustodyRecordForTest(expectDefined(queuedBefore.at(1), "second record id")))
+        ?.status,
+    ).toBe("succeeded");
+    expect(
+      (await readCustodyRecordForTest(expectDefined(queuedBefore.at(2), "third record id")))
+        ?.status,
+    ).toBe("succeeded");
   });
 });

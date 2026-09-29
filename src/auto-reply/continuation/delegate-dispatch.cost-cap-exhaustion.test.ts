@@ -19,7 +19,7 @@
 //      same dispatch call is rejected as a CASCADE — the dispatcher
 //      doesn't re-check each one independently because the accumulated
 //      total can only grow.
-//   4. Cap-rejected delegates transition their TaskFlow record from
+//   4. Cap-rejected delegates transition their custody record from
 //      `queued` to `failed`, identical to chain-depth rejections.
 //   5. Cap rejections emit a system event with "cost-capped" text.
 //
@@ -29,28 +29,24 @@
 //   - just-over    → REJECT (proves the gate fires)
 //   - exact        → ALLOW (proves strict-greater-than, not >=)
 //   - cascade      → all-remaining-rejected (proves the loop short-circuits)
-//   - taskflow     → failed-state recorded (proves side-effect persists)
+//   - custody      → failed-state recorded (proves side-effect persists)
 //
 // If a future refactor changes the comparison operator (`>` → `>=`),
-// removes the cascade short-circuit, or skips the failFlow call on
+// removes the cascade short-circuit, or skips the terminal custody write on
 // cost-rejection, exactly one of these tests will fire and route the
 // reviewer to the budget block in delegate-dispatch.ts. The five-point
 // coverage is intentional — collapsing any two would leave a blind spot.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 
 // ─── Mock setup ──────────────────────────────────────────────────────────
-// Mock TaskFlow registry — same pattern as delegate-dispatch.test.ts.
-// All side-effect surfaces (spawn, system-events, task-flow-registry) are
-// mocked so we can assert on dispatcher INTENT rather than downstream
-// production state.
-const mockFlows = new Map<string, Record<string, unknown>>();
+// Spawn, system events, and the logger are mocked so we can assert on
+// dispatcher INTENT; continuation custody is the real store, so the persisted
+// record state is observed directly.
 const enqueueSystemEventMock = vi.fn();
 const loggerRecords: Array<{ level: string; message: string }> = [];
 const spawnSubagentDirectMock = vi.fn();
-let flowIdCounter = 0;
 
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
@@ -83,74 +79,21 @@ vi.mock("../../logging/subsystem.js", () => {
   };
 });
 
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn((params: Record<string, unknown>) => {
-    const flowId = `flow-${++flowIdCounter}`;
-    mockFlows.set(flowId, {
-      flowId,
-      syncMode: "managed",
-      ownerKey: params.ownerKey,
-      controllerId: params.controllerId,
-      status: "queued",
-      stateJson: params.stateJson,
-      goal: params.goal,
-      currentStep: params.currentStep,
-      revision: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    return mockFlows.get(flowId);
-  }),
-  listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) => {
-    return [...mockFlows.values()].filter((f) => f.ownerKey === ownerKey);
-  }),
-  getTaskFlowById: vi.fn((flowId: string) => mockFlows.get(flowId)),
-  updateFlowRecordByIdExpectedRevision: vi.fn(
-    (params: { flowId: string; expectedRevision: number; patch: Record<string, unknown> }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return {
-          applied: false,
-          reason: flow ? "revision_conflict" : "not_found",
-          current: flow ? { ...flow } : undefined,
-        };
-      }
-      Object.assign(flow, params.patch);
-      flow.revision = flow.revision + 1;
-      return { applied: true, flow: { ...flow } };
-    },
-  ),
-  finishFlow: vi.fn((params: { flowId: string; expectedRevision: number }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (!flow || flow.revision !== params.expectedRevision) {
-      return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-    }
-    flow.status = "succeeded";
-    flow.revision = flow.revision + 1;
-    return { applied: true, flow: { ...flow } };
-  }),
-  failFlow: vi.fn((params: { flowId: string }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (flow) {
-      flow.status = "failed";
-    }
-    return { applied: Boolean(flow) };
-  }),
-  deleteTaskFlowRecordById: vi.fn((flowId: string) => {
-    mockFlows.delete(flowId);
-  }),
-}));
-
 import { clearRuntimeConfigSnapshot } from "../../config/config.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { resetContinuationTracer } from "../../infra/continuation-tracer.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
+import {
+  listCustodyRecordsForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "./custody/custody.test-support.js";
 import { dispatchToolDelegates, resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import { enqueuePendingDelegate } from "./delegate-store.js";
 import { resetContinuationStateForTests } from "./state.js";
 
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+useContinuationCustodyTestState();
 
 // Dispatch revalidates the owner session before claiming a delegate, so tests
 // that reach the spawn path seed the owner row in the isolated session store
@@ -168,14 +111,11 @@ async function seedOwnerSession(sessionKey: string): Promise<void> {
 
 beforeEach(() => {
   closeOpenClawAgentDatabasesForTest();
-  vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("openclaw-cost-cap-"));
   // Fresh mock state per test — chain-state contamination between tests
   // could mask a real budget-check regression by carrying tokens forward.
-  mockFlows.clear();
   enqueueSystemEventMock.mockClear();
   loggerRecords.length = 0;
   spawnSubagentDirectMock.mockReset().mockResolvedValue({ status: "accepted" });
-  flowIdCounter = 0;
   vi.useFakeTimers();
 });
 
@@ -184,9 +124,7 @@ afterEach(() => {
   resetContinuationStateForTests();
   resetContinuationTracer();
   clearRuntimeConfigSnapshot();
-  mockFlows.clear();
   closeOpenClawAgentDatabasesForTest();
-  vi.unstubAllEnvs();
   vi.useRealTimers();
 });
 
@@ -196,7 +134,7 @@ describe("cost-cap exhaustion mid-chain", () => {
   //   accumulated = cap + 1   → REJECT  (sanity: gate fires)
   //   accumulated = cap       → ALLOW   (canon: strict-greater-than, not >=)
   //   cascade (3 queued, all over) → 3 rejected (canon: short-circuit loop)
-  //   side-effect (TaskFlow)       → failed-state (canon: persistent record)
+  //   side-effect (custody)        → failed-state (canon: persistent record)
 
   // ───────────────────────────────────────────────────────────────────────
   // JUST-UNDER case: accumulated = 499_999, cap = 500_000.
@@ -211,7 +149,7 @@ describe("cost-cap exhaustion mid-chain", () => {
   it("allows dispatch when accumulatedChainTokens is 1 below costCapTokens", async () => {
     const sessionKey = "session-cost-cap-just-under";
     await seedOwnerSession(sessionKey);
-    enqueuePendingDelegate(sessionKey, { task: "squeaks under the cap" });
+    await enqueuePendingDelegate(sessionKey, { task: "squeaks under the cap" });
 
     const result = await dispatchToolDelegates({
       sessionKey,
@@ -260,7 +198,7 @@ describe("cost-cap exhaustion mid-chain", () => {
   // ───────────────────────────────────────────────────────────────────────
   it("rejects dispatch when accumulatedChainTokens exceeds costCapTokens by 1", async () => {
     const sessionKey = "session-cost-cap-just-over";
-    enqueuePendingDelegate(sessionKey, { task: "over the budget" });
+    await enqueuePendingDelegate(sessionKey, { task: "over the budget" });
 
     const result = await dispatchToolDelegates({
       sessionKey,
@@ -315,9 +253,9 @@ describe("cost-cap exhaustion mid-chain", () => {
   it("rejects all remaining queued delegates once cost cap is crossed", async () => {
     const sessionKey = "session-cost-cap-remaining-rejected";
     await seedOwnerSession(sessionKey);
-    enqueuePendingDelegate(sessionKey, { task: "delegate-1" });
-    enqueuePendingDelegate(sessionKey, { task: "delegate-2" });
-    enqueuePendingDelegate(sessionKey, { task: "delegate-3" });
+    await enqueuePendingDelegate(sessionKey, { task: "delegate-1" });
+    await enqueuePendingDelegate(sessionKey, { task: "delegate-2" });
+    await enqueuePendingDelegate(sessionKey, { task: "delegate-3" });
 
     const result = await dispatchToolDelegates({
       sessionKey,
@@ -351,30 +289,32 @@ describe("cost-cap exhaustion mid-chain", () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────
-  // SIDE-EFFECT case: TaskFlow record state on cost-cap rejection.
+  // SIDE-EFFECT case: custody record state on cost-cap rejection.
   //
   // CANON GUARDED: cost-cap rejection transitions the persistent
-  // TaskFlow record from `queued` to `failed`, identical to chain-depth
+  // custody record from `queued` to `failed`, identical to chain-depth
   // rejections. The two budget-rejection paths must produce symmetric
   // observable state.
   //
-  // Regression indicator: if the TaskFlow stays `queued` after a cost-cap
-  // rejection, the failFlow call is missing from the cost-cap branch
+  // Regression indicator: if the record stays `queued` after a cost-cap
+  // rejection, the terminal write is missing from the cost-cap branch
   // (but possibly still present in the chain-depth branch — the sibling
   // test would still pass). This is a sneaky regression shape; reviewer
   // should diff the two rejection branches for parity.
   // ───────────────────────────────────────────────────────────────────────
-  it("marks TaskFlow records as failed for cost-cap-rejected delegates", async () => {
+  it("marks custody records as failed for cost-cap-rejected delegates", async () => {
     const sessionKey = "session-cost-cap-taskflow-failed";
-    enqueuePendingDelegate(sessionKey, { task: "doomed by cost" });
+    await enqueuePendingDelegate(sessionKey, { task: "doomed by cost" });
 
-    const queuedBefore = [...mockFlows.values()].filter(
-      (f) => f.ownerKey === sessionKey && f.status === "queued",
-    );
+    const queuedBefore = await listCustodyRecordsForTest({
+      ownerSessionKey: sessionKey,
+      kinds: ["delegate"],
+      statuses: ["queued"],
+    });
     expect(queuedBefore).toHaveLength(1);
-    const flowId = queuedBefore.at(0)?.flowId;
-    if (typeof flowId !== "string") {
-      throw new Error("expected queued flow id");
+    const recordId = queuedBefore.at(0)?.recordId;
+    if (typeof recordId !== "string") {
+      throw new Error("expected queued record id");
     }
 
     await dispatchToolDelegates({
@@ -402,7 +342,7 @@ describe("cost-cap exhaustion mid-chain", () => {
 
     // Final-state assertion: queued → failed. Symmetric with the
     // chain-depth equivalent test in the sibling file.
-    expect(mockFlows.get(flowId)?.status).toBe("failed");
+    expect((await readCustodyRecordForTest(recordId))?.status).toBe("failed");
   });
 
   // ───────────────────────────────────────────────────────────────────────
@@ -423,7 +363,7 @@ describe("cost-cap exhaustion mid-chain", () => {
   it("rejects at exact boundary (accumulatedChainTokens === costCapTokens is NOT over)", async () => {
     const sessionKey = "session-cost-cap-exact-boundary";
     await seedOwnerSession(sessionKey);
-    enqueuePendingDelegate(sessionKey, { task: "at exact cap" });
+    await enqueuePendingDelegate(sessionKey, { task: "at exact cap" });
 
     const result = await dispatchToolDelegates({
       sessionKey,
