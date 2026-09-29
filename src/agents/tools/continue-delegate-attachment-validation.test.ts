@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { useContinuationCustodyTestState } from "../../auto-reply/continuation/custody/custody.test-support.js";
 import {
   cancelPendingDelegates,
   consumePendingDelegates,
@@ -22,15 +23,17 @@ function withSafeAttachment(attachment: InlineAttachment): InlineAttachment[] {
 }
 
 describe("continue_delegate attachment validation redaction", () => {
-  beforeEach(() => {
-    cancelPendingDelegates("test-session");
-    consumePendingDelegates("test-session");
+  useContinuationCustodyTestState();
+
+  beforeEach(async () => {
+    await cancelPendingDelegates("test-session");
+    await consumePendingDelegates("test-session");
     resetContinueDelegateTurnAdmissionForTests();
     clearRuntimeConfigSnapshot();
   });
 
-  afterEach(() => {
-    cancelPendingDelegates("test-session");
+  afterEach(async () => {
+    await cancelPendingDelegates("test-session");
     resetContinueDelegateTurnAdmissionForTests();
     clearRuntimeConfigSnapshot();
   });
@@ -94,7 +97,7 @@ describe("continue_delegate attachment validation redaction", () => {
     for (const sensitiveValue of [mountPath, pathSentinel, receiptSentinel]) {
       expect(serialized).not.toContain(sensitiveValue);
     }
-    expect(consumePendingDelegates("test-session")).toEqual([]);
+    expect(await consumePendingDelegates("test-session")).toEqual([]);
   });
 
   it("returns a closed mount length reason without echoing the mount", async () => {
@@ -115,6 +118,6 @@ describe("continue_delegate attachment validation redaction", () => {
     for (const sensitiveValue of [mountPath, pathSentinel, receiptSentinel]) {
       expect(serialized).not.toContain(sensitiveValue);
     }
-    expect(consumePendingDelegates("test-session")).toEqual([]);
+    expect(await consumePendingDelegates("test-session")).toEqual([]);
   });
 });

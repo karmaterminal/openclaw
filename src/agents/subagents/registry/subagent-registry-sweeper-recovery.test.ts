@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
+import { resetContinuationCustodyProjection } from "../../../auto-reply/continuation/custody/custody-projection.js";
+import { hydrateContinuationCustody } from "../../../auto-reply/continuation/custody/custody-store.js";
 import {
   stagePostCompactionDelegate,
   stagedPostCompactionDelegateCount,
@@ -303,6 +305,8 @@ describe("subagent registry recovery scheduling", () => {
         .mocked(loadSubagentSessionEntry)
         .withImplementation(actual.loadSubagentSessionEntry, async () => {
           await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+            // The fixture moved the state directory; hydrate its custody projection.
+            await hydrateContinuationCustody();
             const { entry, runs, callGateway, sweeper } = createHarness({}, archivedRun());
             const sibling = archivedRun({
               runId: "sibling-run",
@@ -379,6 +383,7 @@ describe("subagent registry recovery scheduling", () => {
             } finally {
               await cancelPendingDelegates(sibling.childSessionKey);
               sweeper.reset();
+              resetContinuationCustodyProjection();
             }
           });
         });

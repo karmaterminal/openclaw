@@ -266,15 +266,20 @@ describe("list-by-owner and the hot-path projection", () => {
     await hydrateContinuationCustody(options);
     const hydrated = readContinuationLiveWork(databasePath, OWNER);
 
-    const facts = listed.map((record) => ({
-      recordId: record.recordId,
-      kind: record.kind,
-      status: record.status,
-      revision: record.revision,
-      cancelRequested: false,
-      createdAt: record.createdAt,
-      ...(record.dueAt !== undefined ? { dueAt: record.dueAt } : {}),
-    }));
+    const facts = listed.map((record) => {
+      const fact: Record<string, unknown> = {
+        recordId: record.recordId,
+        kind: record.kind,
+        status: record.status,
+        revision: record.revision,
+        cancelRequested: false,
+        createdAt: record.createdAt,
+      };
+      if (record.dueAt !== undefined) {
+        fact.dueAt = record.dueAt;
+      }
+      return fact;
+    });
     expect(facts.map((fact) => [fact.recordId, fact.status])).toEqual([
       ["delegate-a", "running"],
       ["elected", "queued"],

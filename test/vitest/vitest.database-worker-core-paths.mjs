@@ -161,6 +161,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/subagent-announce.live-tree-chain-proof.test.ts",
   "src/agents/subagent-announce.continuation-fallback-task-row.test.ts",
   // L4-G5: agents, gateway and tool suites on real continuation custody.
+  "src/agents/tools/continue-delegate-attachment-validation.test.ts",
   "src/agents/tools/continue-delegate-tool.import-gate.test.ts",
   "src/agents/subagent-announce.continuation-drain.bracket-hedge.test.ts",
   "src/agents/subagent-announce.continuation-tool-delegate-commit.test.ts",
@@ -168,8 +169,6 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/subagent-announce.postcompaction-route.test.ts",
   "src/agents/subagent-announce.self-continuation.test.ts",
   "src/agents/subagent-announce.spawn-reject-obs.test.ts",
-  "src/gateway/server.sessions.reset-continuation.test.ts",
-  "src/gateway/server.sessions.compaction.test.ts",
   "src/agents/subagent-announce.chain-guard.test.ts",
   "src/agents/tools/continuation-tools.current-span-traceparent.test.ts",
   "src/agents/tools/continue-delegate-tool.crosssession-gate.test.ts",
