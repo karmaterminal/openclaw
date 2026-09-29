@@ -56,6 +56,7 @@ import {
   queueEntryReceiptKey,
   readImportDispositions,
   readLegacyContinuationFlowRows,
+  readPendingLegacyReleases,
   readPendingPostCompactionEntries,
   readSubagentRunsForChild,
   type LegacyContinuationFlowRow,
@@ -494,7 +495,7 @@ export async function migrateContinuationTaskFlowCustody(
       try {
         await releaseLegacyPayload(env, release);
       } catch {
-        // The retirement step deletes files bound to the rows it deletes.
+        // The receipt records the owed delete; the next import pass retries it.
       }
     }
     totals.imported += result.imported;
@@ -502,6 +503,21 @@ export async function migrateContinuationTaskFlowCustody(
     totals.settledEntries += result.settledEntries;
     totals.notices += result.notices;
     warnings.push(...result.warnings);
+  }
+  // Retry legacy deletes that an earlier commit owed but a crash or failure left behind.
+  const owedReleases =
+    withExistingOpenClawStateDatabaseReadOnly(
+      ({ db }) => readPendingLegacyReleases(db, env),
+      stateOptions(env),
+    ) ?? [];
+  for (const release of owedReleases) {
+    try {
+      await releaseLegacyPayload(env, release);
+    } catch (error) {
+      warnings.push(
+        `A legacy continuation payload could not be deleted: ${describeFailure(error)}`,
+      );
+    }
   }
   if (anomalies > 0) {
     warnings.push(

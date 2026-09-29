@@ -278,6 +278,9 @@ function planDelegate(row: LegacyContinuationFlowRow, facts: RowFacts): RowPlan 
           attachmentCount: scrub.count,
         })
       : (row.state_json ?? "{}");
+    // A live record keeps needing its bytes: the source loses them (Q6 scrub,
+    // legacy delete) only once the new-root copy is confirmed.
+    const copied = facts.payload === "copied";
     return {
       disposition: "imported",
       record: {
@@ -287,13 +290,10 @@ function planDelegate(row: LegacyContinuationFlowRow, facts: RowFacts): RowPlan 
         ...(postCompaction ? {} : { dueAt: row.created_at + (state.delayMs ?? 0) }),
         ...(attachmentId ? { attachmentId } : {}),
       },
-      ...scrubbed,
+      ...(copied ? scrubbed : {}),
       fence: true,
-      ...release,
-      report: {
-        ...(scrub ? { payload: "inline-written" } : {}),
-        ...(legacyFile && facts.payload ? { payload: facts.payload } : {}),
-      },
+      ...(copied ? release : {}),
+      report: attachmentId ? { payload: facts.payload ?? "missing" } : {},
     };
   }
   // Claimed at C: C stored no child run key, so admission can never be proven.
@@ -384,6 +384,8 @@ export function planLegacyRow(row: LegacyContinuationFlowRow, facts: RowFacts): 
       : {}),
     fenced: plan.fence,
     interruptedNotice: plan.interruptedNotice !== undefined,
+    // The import pass retries this post-commit delete until the file is gone.
+    legacyRelease: plan.releaseLegacyAttachmentId !== undefined,
     ...plan.report,
   };
   return plan;

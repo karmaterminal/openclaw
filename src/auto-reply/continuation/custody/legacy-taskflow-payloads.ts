@@ -12,7 +12,10 @@ import {
 } from "../../../agents/subagents/subagent-attachment-cleanup.js";
 import { resolveStateDir } from "../../../config/state-dir.js";
 import { privateFileStore } from "../../../infra/private-file-store.js";
-import { storeContinuationCustodyPayload } from "./custody-payload-store.js";
+import {
+  ContinuationCustodyPayloadRejectedError,
+  storeContinuationCustodyPayload,
+} from "./custody-payload-store.js";
 import { payloadIntentFor } from "./legacy-taskflow-import-plan.js";
 import type { LegacyContinuationFlowRow } from "./legacy-taskflow-source.js";
 
@@ -45,21 +48,29 @@ const LegacyPayloadSchema = z
   })
   .strict();
 
+/**
+ * The legacy payload, or undefined when it is absent or not a valid C payload.
+ * I/O failures propagate: an unreadable file is not proof that it is gone.
+ */
 async function readLegacyPayload(env: NodeJS.ProcessEnv, attachmentId: string) {
   if (!isSubagentAttachmentId(attachmentId)) {
     return undefined;
   }
+  const text = await privateFileStore(legacyPayloadRoot(env)).readTextIfExists(
+    path.posix.join(attachmentId, "payload.json"),
+    { maxBytes: LEGACY_PAYLOAD_MAX_BYTES },
+  );
+  if (text === null) {
+    return undefined;
+  }
+  let raw: unknown;
   try {
-    const parsed = LegacyPayloadSchema.safeParse(
-      await privateFileStore(legacyPayloadRoot(env)).readJsonIfExists(
-        path.posix.join(attachmentId, "payload.json"),
-        { maxBytes: LEGACY_PAYLOAD_MAX_BYTES },
-      ),
-    );
-    return parsed.success ? parsed.data : undefined;
+    raw = JSON.parse(text);
   } catch {
     return undefined;
   }
+  const parsed = LegacyPayloadSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Delete a legacy payload after the commit that made it unreferenced; a foreign file stays. */
@@ -117,9 +128,13 @@ export async function preparePayloads(
         },
         env,
       );
-    } catch {
-      // The store rejects bytes its strict payload schema refuses; C failed
-      // such a record as corrupt at dispatch, and so will the new runtime.
+    } catch (error) {
+      // Only a rejection of the bytes themselves is final: C failed such a
+      // record as corrupt at dispatch, and so will the new runtime. Any I/O
+      // failure fails the owner, leaving the source and legacy file for a retry.
+      if (!(error instanceof ContinuationCustodyPayloadRejectedError)) {
+        throw error;
+      }
       results.set(row.flow_id, "missing");
       continue;
     }

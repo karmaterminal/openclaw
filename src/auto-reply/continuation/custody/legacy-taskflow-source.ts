@@ -4,9 +4,13 @@
 // downgrade-support horizon, the source-retirement step are its only readers.
 // Receipts, not imported records, are the authority for what was examined:
 // retention may prune an imported record, never its receipt.
+import fs from "node:fs";
+import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { safeParseJsonRecord } from "@openclaw/normalization-core";
 import type { Selectable } from "kysely";
+import { isSubagentAttachmentId } from "../../../agents/subagents/subagent-attachment-cleanup.js";
+import { resolveStateDir } from "../../../config/state-dir.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../../infra/kysely-sync.js";
 import { SESSION_DELIVERY_QUEUE_NAME } from "../../../infra/session-delivery-queue.records.js";
 import {
@@ -245,9 +249,58 @@ export function listContinuationOwnersAwaitingImport(db: DatabaseSync): string[]
   return [...owners].toSorted();
 }
 
+/**
+ * Legacy payload files whose delete the import owed after a committed receipt
+ * and that are still on disk (a crash or failure after the commit). Only a
+ * file bound to its flow counts, so a foreign file never keeps this non-empty.
+ */
+export function readPendingLegacyReleases(
+  db: DatabaseSync,
+  env: NodeJS.ProcessEnv,
+): { attachmentId: string; flowId: string }[] {
+  if (!tableExists(db, "migration_sources")) {
+    return [];
+  }
+  const owed = new Set(
+    executeSqliteQuerySync(
+      db,
+      sourceDb(db)
+        .selectFrom("migration_sources")
+        .select(["source_key", "report_json"])
+        .where("migration_kind", "=", CONTINUATION_TASKFLOW_CUSTODY_IMPORT_STEP_ID),
+    )
+      .rows.filter((row) => safeParseJsonRecord(row.report_json)?.legacyRelease === true)
+      .map((row) => row.source_key),
+  );
+  if (owed.size === 0) {
+    return [];
+  }
+  const root = path.join(resolveStateDir(env), "attachments", "continuation");
+  const releases: { attachmentId: string; flowId: string }[] = [];
+  for (const row of readLegacyContinuationFlowRows(db)) {
+    if (!owed.has(flowReceiptKey(row.flow_id)) || row.state_json === null) {
+      continue;
+    }
+    const attachmentId = safeParseJsonRecord(row.state_json)?.attachmentId;
+    if (typeof attachmentId !== "string" || !isSubagentAttachmentId(attachmentId)) {
+      continue;
+    }
+    let text: string;
+    try {
+      text = fs.readFileSync(path.join(root, attachmentId, "payload.json"), "utf8");
+    } catch {
+      continue;
+    }
+    if (safeParseJsonRecord(text)?.flowId === row.flow_id) {
+      releases.push({ attachmentId, flowId: row.flow_id });
+    }
+  }
+  return releases;
+}
+
 export type ContinuationTaskFlowImportDetection = {
   hasLegacy: boolean;
-  /** Receipt-less candidate rows plus covered pre-cutover queue entries. */
+  /** Receipt-less candidate rows, covered pre-cutover queue entries, and owed legacy deletes. */
   pendingSources: number;
 };
 
@@ -270,7 +323,8 @@ export function detectContinuationTaskFlowCustodyImport(params: {
         const unexamined = rows.filter((row) => !receipts.has(flowReceiptKey(row.flow_id)));
         return (
           unexamined.length +
-          readPendingPostCompactionEntries(db).filter((entry) => entry.covered).length
+          readPendingPostCompactionEntries(db).filter((entry) => entry.covered).length +
+          readPendingLegacyReleases(db, params.env).length
         );
       },
       { env: params.env },

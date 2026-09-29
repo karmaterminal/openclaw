@@ -3,6 +3,7 @@
 // injected with SQLite triggers so the production transaction fails between
 // its own writes.
 import fs from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import { deriveContinuationDelegateChildSessionKeyFromParent } from "../../../agents/subagent-continuation-ids.js";
@@ -547,5 +548,92 @@ describe("continuation TaskFlow custody import", () => {
     for (const secret of [SECRET_TASK, SECRET_BYTES, SECRET_REASON, OWNER_A]) {
       expect(receiptBytes).not.toContain(secret);
     }
+  });
+
+  it("fails the owner on a payload-copy I/O error, keeping the source bytes and the legacy file", async () => {
+    const options = stateOptions();
+    seedFlow(options, {
+      flowId: "delegate-file",
+      controller: "delegate",
+      status: "queued",
+      state: delegateState({ attachmentId: ATTACHMENT_ID, attachmentCount: 1 }),
+    });
+    const legacyFile = writeLegacyPayload(options, {
+      attachmentId: ATTACHMENT_ID,
+      flowId: "delegate-file",
+    });
+    seedFlow(options, {
+      flowId: "inline",
+      controller: "delegate",
+      status: "queued",
+      state: delegateState({ attachments: inlineAttachments(), attachmentCount: 1 }),
+    });
+    const before = dumpState(options);
+    // The new payload root cannot be created: a file sits where the directory goes.
+    const attachmentsDir = path.join(options.env.OPENCLAW_STATE_DIR!, "attachments");
+    fs.writeFileSync(path.join(attachmentsDir, "continuation-custody"), "blocked");
+
+    const result = await run(options);
+
+    expect(result.warnings.join("\n")).toContain("will be retried");
+    expect(records(options)).toEqual([]);
+    expect(dumpState(options).flowRuns).toEqual(before.flowRuns);
+    expect(fs.readFileSync(legacyFile, "utf8")).toContain(SECRET_BYTES);
+
+    fs.rmSync(path.join(attachmentsDir, "continuation-custody"));
+    await run(options);
+
+    expect(record(options, "delegate-file")).toMatchObject({ status: "queued" });
+    expect(fs.existsSync(legacyFile)).toBe(false);
+    expect(readFlow(options, "inline")?.state_json).not.toContain(SECRET_BYTES);
+  });
+
+  it("keeps the legacy file when the store rejects its bytes, and imports the reference as C would", async () => {
+    const options = stateOptions();
+    seedFlow(options, {
+      flowId: "delegate-file",
+      controller: "delegate",
+      status: "queued",
+      state: delegateState({ attachmentId: ATTACHMENT_ID, attachmentCount: 1 }),
+    });
+    const legacyFile = writeLegacyPayload(options, {
+      attachmentId: ATTACHMENT_ID,
+      flowId: "delegate-file",
+      attachAs: { mountPath: "../escape" },
+    });
+
+    await run(options);
+
+    expect(record(options, "delegate-file")).toMatchObject({ attachmentId: ATTACHMENT_ID });
+    expect(JSON.parse(readReceipts(options)[0]!.report_json)).toMatchObject({
+      payload: "missing",
+      legacyRelease: false,
+    });
+    expect(fs.existsSync(legacyFile)).toBe(true);
+  });
+
+  it("retries a legacy delete that a crash after the commit left behind", async () => {
+    const options = stateOptions();
+    seedFlow(options, {
+      flowId: "delegate-file",
+      controller: "delegate",
+      status: "queued",
+      state: delegateState({ attachmentId: ATTACHMENT_ID, attachmentCount: 1 }),
+    });
+    writeLegacyPayload(options, { attachmentId: ATTACHMENT_ID, flowId: "delegate-file" });
+    await run(options);
+    const committed = dumpState(options);
+    // The process died between the commit and the delete: the bound file is back.
+    const legacyFile = writeLegacyPayload(options, {
+      attachmentId: ATTACHMENT_ID,
+      flowId: "delegate-file",
+    });
+    expect(detectContinuationTaskFlowCustodyImport({ env: options.env }).hasLegacy).toBe(true);
+
+    await run(options);
+
+    expect(fs.existsSync(legacyFile)).toBe(false);
+    expect(dumpState(options)).toEqual(committed);
+    expect(detectContinuationTaskFlowCustodyImport({ env: options.env }).hasLegacy).toBe(false);
   });
 });

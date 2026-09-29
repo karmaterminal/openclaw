@@ -131,7 +131,12 @@ export function inlineAttachments() {
 
 export function writeLegacyPayload(
   options: Options,
-  params: { attachmentId: string; flowId: string; owner?: string },
+  params: {
+    attachmentId: string;
+    flowId: string;
+    owner?: string;
+    attachAs?: { mountPath: string };
+  },
 ): string {
   const dir = path.join(stateDirOf(options), "attachments", "continuation", params.attachmentId);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -143,6 +148,7 @@ export function writeLegacyPayload(
       flowId: params.flowId,
       ownerKey: params.owner ?? OWNER_A,
       attachments: inlineAttachments(),
+      ...(params.attachAs ? { attachAs: params.attachAs } : {}),
     })}\n`,
     { mode: 0o600 },
   );
