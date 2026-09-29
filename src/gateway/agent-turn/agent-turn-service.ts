@@ -219,8 +219,7 @@ export function createAgentTurnService(
         isNewSession = false;
       let cfgForAgent: OpenClawConfig | undefined;
       let resolvedSessionKey = requestedSessionKey;
-      let resolvedSessionAgentId: string | undefined;
-      let supersededSessionId: string | undefined;
+      let resolvedSessionAgentId: string | undefined, supersededSessionId: string | undefined;
       let skipAgentInitialSessionTouch = false;
       let pendingChatRun: { sessionKey: string; agentId?: string } | undefined;
       let admittedSessionId = resolvedSessionId ?? runId;

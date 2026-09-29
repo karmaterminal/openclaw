@@ -750,11 +750,8 @@ describe("subagent announce formatting", () => {
 
   it("omits continuationTrigger when continuation is disabled", async () => {
     await runSubagentAnnounceFlow({
-      childSessionKey: "agent:main:subagent:test",
-      childRunId: "run-no-continuation-trigger",
-      requesterSessionKey: "agent:main:main",
-      requesterDisplayKey: "main",
       ...defaultOutcomeAnnounce,
+      childRunId: "run-no-continuation-trigger",
     });
 
     const call = agentSpy.mock.calls[0]?.[0] as {

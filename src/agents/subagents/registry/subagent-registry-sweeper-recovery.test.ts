@@ -426,6 +426,40 @@ describe("subagent registry recovery scheduling", () => {
     },
   );
 
+  it("leaves a collector group untouched when a member is replaced during a groupmate's deletion", async () => {
+    const { entry, runs, callGateway, sweeper } = createHarness({}, archivedRun());
+    const collector = (runId: string, overrides: Partial<SubagentRunRecord> = {}) =>
+      archivedRun({
+        runId,
+        childSessionKey: `agent:main:subagent:${runId}`,
+        collect: true,
+        groupId: "group",
+        collectorCompletion: { status: "done" },
+        ...overrides,
+      });
+    const deleting = collector("deleting", { cleanup: "keep" });
+    const stale = collector("stale");
+    stale.execution.suppressSessionEffects = true;
+    runs.set(deleting.runId, deleting);
+    runs.set(stale.runId, stale);
+    const replacement = collector(stale.runId);
+    callGateway.mockResolvedValueOnce({}).mockImplementationOnce(async () => {
+      await Promise.resolve();
+      runs.set(replacement.runId, replacement);
+      return {};
+    });
+
+    await sweeper.sweepOnce();
+
+    expect(callGateway).toHaveBeenCalledTimes(2);
+    expect(runs.has(entry.runId)).toBe(false);
+    expect(runs.get(deleting.runId)).toBe(deleting);
+    expect(runs.get(replacement.runId)).toBe(replacement);
+    // Group cleanup stops at the replaced member instead of finishing the
+    // remaining phases for a group that the final membership check defers.
+    expect(deleting.contextEngineCleanupCompletedAt).toBeUndefined();
+  });
+
   it("drops a stale terminal retry when a newer generation wins during finalization", async () => {
     const runtime = { current: {} as GatewayRecoveryRuntime };
     recoverRow.mockResolvedValue({ status: "terminal", error: "interrupted" });
