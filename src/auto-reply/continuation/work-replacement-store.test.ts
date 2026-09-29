@@ -1,45 +1,80 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { updateContinuationRecords } from "./custody/custody-store.js";
+import type { ContinuationRecord } from "./custody/custody-store.types.js";
 import {
-  listTaskFlowsForOwnerKey,
-  updateFlowRecordByIdExpectedRevision,
-} from "../../tasks/task-flow-registry.js";
-import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
-import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
-import { decodeWorkState, type PendingContinuationWork } from "./work-flow-state.js";
+  custodyStateForTest,
+  listCustodyRecordsForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "./custody/custody.test-support.js";
+import { encodeWorkState, type PendingContinuationWork } from "./work-flow-state.js";
+import {
+  enqueuePendingWorkReplacing,
+  rollbackPendingWorkReplacement,
+} from "./work-replacement-store.js";
 import { enqueuePendingWork } from "./work-store.test-support.js";
 
-const runtimeState = vi.hoisted(() => ({
-  beforeAtomicCreate: undefined as (() => void) | undefined,
+// A concurrent writer lands between an election's snapshot read and its
+// transactional write: the hook runs just before each election command is
+// handed to the state worker, as another Gateway task's commit would.
+const workerHooks = vi.hoisted(() => ({
+  beforeElect: [] as Array<() => Promise<void>>,
+  running: false,
 }));
 
-vi.mock("../../tasks/task-flow-runtime-internal.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../tasks/task-flow-runtime-internal.js")>();
+vi.mock("../../state/openclaw-state-worker-store.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../state/openclaw-state-worker-store.js")>();
+  const probeStop = new Error("command probe");
+  async function commandType(
+    operation: Parameters<typeof actual.runOpenClawStateWorkerOperation>[1],
+  ): Promise<string | undefined> {
+    let type: string | undefined;
+    try {
+      await operation({
+        execute: async (command: { type?: string }) => {
+          type = command.type;
+          throw probeStop;
+        },
+      } as never);
+    } catch {
+      // The probe only reads the command type; it never reaches the worker.
+    }
+    return type;
+  }
   return {
     ...actual,
-    createManagedTaskFlowWithAtomicUpdates: (
-      params: Parameters<typeof actual.createManagedTaskFlowWithAtomicUpdates>[0],
+    runOpenClawStateWorkerOperation: async (
+      ...args: Parameters<typeof actual.runOpenClawStateWorkerOperation>
     ) => {
-      runtimeState.beforeAtomicCreate?.();
-      return actual.createManagedTaskFlowWithAtomicUpdates(params);
+      const [, operation] = args;
+      if (
+        !workerHooks.running &&
+        workerHooks.beforeElect.length > 0 &&
+        (await commandType(operation)) === "continuationCustody.elect"
+      ) {
+        const hook = workerHooks.beforeElect.shift();
+        workerHooks.running = true;
+        try {
+          await hook?.();
+        } finally {
+          workerHooks.running = false;
+        }
+      }
+      return await actual.runOpenClawStateWorkerOperation(...args);
     },
   };
 });
 
-const originalStateDir = process.env.OPENCLAW_STATE_DIR;
-
-function restoreStateDir(): void {
-  if (originalStateDir === undefined) {
-    delete process.env.OPENCLAW_STATE_DIR;
-  } else {
-    process.env.OPENCLAW_STATE_DIR = originalStateDir;
-  }
-}
+useContinuationCustodyTestState();
 
 function createWork(params: {
   sessionKey: string;
   reason: string;
   electedAt: number;
   parked: boolean;
+  originRunId?: string;
+  originTurnId?: string;
 }): PendingContinuationWork {
   return {
     sessionKey: params.sessionKey,
@@ -51,6 +86,8 @@ function createWork(params: {
     chainStartedAt: params.electedAt,
     accumulatedChainTokens: 0,
     reason: params.reason,
+    ...(params.originRunId ? { originRunId: params.originRunId } : {}),
+    ...(params.originTurnId ? { originTurnId: params.originTurnId } : {}),
     ...(params.parked
       ? {
           anchorPending: true,
@@ -64,213 +101,373 @@ function createWork(params: {
   };
 }
 
-function findFlow(sessionKey: string, reason: string) {
-  return listTaskFlowsForOwnerKey(sessionKey).find(
-    (flow) => decodeWorkState(flow)?.reason === reason,
+async function findRecord(
+  sessionKey: string,
+  reason: string,
+): Promise<ContinuationRecord | undefined> {
+  return (await listCustodyRecordsForTest({ ownerSessionKey: sessionKey })).find(
+    (record) => custodyStateForTest(record).reason === reason,
+  );
+}
+
+async function markRunning(record: Pick<ContinuationRecord, "recordId" | "ownerSessionKey">) {
+  const current = await readCustodyRecordForTest(record.recordId);
+  if (!current) {
+    throw new Error(`expected custody record ${record.recordId}`);
+  }
+  return await updateContinuationRecords(
+    [
+      {
+        recordId: current.recordId,
+        ownerSessionKey: current.ownerSessionKey,
+        expectedRevision: current.revision,
+        patch: { status: "running", phase: "Released to continuation wake scheduler" },
+      },
+    ],
+    { now: Date.now() },
   );
 }
 
 describe("continuation work replacement store", () => {
   beforeEach(() => {
-    runtimeState.beforeAtomicCreate = undefined;
-    resetTaskFlowRegistryForTests({ persist: false });
-  });
-
-  afterEach(() => {
-    runtimeState.beforeAtomicCreate = undefined;
-    resetTaskFlowRegistryForTests({ persist: false });
-    restoreStateDir();
+    workerHooks.beforeElect.length = 0;
+    workerHooks.running = false;
   });
 
   it("serializes two parked replacements that begin with no queued owner", async () => {
-    await withOpenClawTestState({ label: "work-replacement-empty-owner" }, async (state) => {
-      process.env.OPENCLAW_STATE_DIR = state.stateDir;
-      const sessionKey = "agent:main:empty-owner";
-      runtimeState.beforeAtomicCreate = () => {
-        runtimeState.beforeAtomicCreate = undefined;
-        expect(
-          enqueuePendingWork(
-            createWork({
-              sessionKey,
-              reason: "concurrent empty-owner parked work",
-              electedAt: Date.now(),
-              parked: true,
-            }),
-          ),
-        ).not.toBeNull();
-      };
-      const { enqueuePendingWorkReplacing } = await import("./work-replacement-store.js");
-
-      const result = enqueuePendingWorkReplacing({
-        work: createWork({
-          sessionKey,
-          reason: "newest empty-owner parked work",
-          electedAt: Date.now() + 1,
-          parked: true,
-        }),
-        summary: "superseded by concurrent empty-owner replacement",
-        maxPendingWork: 8,
-        replaceParkedWork: true,
-        expectedPriorFlowIds: [],
-        expectedRunningFlowIds: [],
-      });
-
-      expect(result.applied).toBe(true);
-      resetTaskFlowRegistryForTests({ persist: false });
-      expect(findFlow(sessionKey, "concurrent empty-owner parked work")).toMatchObject({
-        status: "succeeded",
-      });
+    const sessionKey = "agent:main:empty-owner";
+    workerHooks.beforeElect.push(async () => {
       expect(
-        listTaskFlowsForOwnerKey(sessionKey).filter((flow) => flow.status === "queued"),
-      ).toEqual([
-        expect.objectContaining({
-          stateJson: expect.objectContaining({ reason: "newest empty-owner parked work" }),
-        }),
-      ]);
-    });
-  });
-
-  it("rejects a newly running owner discovered from an empty snapshot", async () => {
-    await withOpenClawTestState({ label: "work-replacement-running-owner" }, async (state) => {
-      process.env.OPENCLAW_STATE_DIR = state.stateDir;
-      const sessionKey = "agent:main:running-owner";
-      runtimeState.beforeAtomicCreate = () => {
-        runtimeState.beforeAtomicCreate = undefined;
-        const concurrent = enqueuePendingWork(
+        await enqueuePendingWork(
           createWork({
             sessionKey,
-            reason: "concurrent running work",
+            reason: "concurrent empty-owner parked work",
             electedAt: Date.now(),
             parked: true,
           }),
-        );
-        if (!concurrent?.flowId || concurrent.expectedRevision === undefined) {
-          throw new Error("expected concurrent parked flow");
-        }
-        expect(
-          updateFlowRecordByIdExpectedRevision({
-            flowId: concurrent.flowId,
-            expectedRevision: concurrent.expectedRevision,
-            patch: { status: "running" },
-          }).applied,
-        ).toBe(true);
-      };
-      const { enqueuePendingWorkReplacing } = await import("./work-replacement-store.js");
+        ),
+      ).not.toBeNull();
+    });
 
-      const result = enqueuePendingWorkReplacing({
-        work: createWork({
+    const result = await enqueuePendingWorkReplacing({
+      work: createWork({
+        sessionKey,
+        reason: "newest empty-owner parked work",
+        electedAt: Date.now() + 1,
+        parked: true,
+      }),
+      summary: "superseded by concurrent empty-owner replacement",
+      maxPendingWork: 8,
+      replaceParkedWork: true,
+      expectedRunningFlowIds: [],
+    });
+
+    expect(result.applied).toBe(true);
+    expect(workerHooks.beforeElect).toEqual([]);
+    expect(await findRecord(sessionKey, "concurrent empty-owner parked work")).toMatchObject({
+      status: "succeeded",
+    });
+    const queued = await listCustodyRecordsForTest({
+      ownerSessionKey: sessionKey,
+      statuses: ["queued"],
+    });
+    expect(queued.map((record) => custodyStateForTest(record).reason)).toEqual([
+      "newest empty-owner parked work",
+    ]);
+  });
+
+  it("rejects a newly running owner discovered from an empty snapshot", async () => {
+    const sessionKey = "agent:main:running-owner";
+    workerHooks.beforeElect.push(async () => {
+      const concurrent = await enqueuePendingWork(
+        createWork({
           sessionKey,
-          reason: "rejected newest work",
-          electedAt: Date.now() + 1,
+          reason: "concurrent running work",
+          electedAt: Date.now(),
           parked: true,
         }),
-        summary: "superseded by empty-owner replacement",
-        maxPendingWork: 8,
-        replaceParkedWork: true,
-        expectedPriorFlowIds: [],
-        expectedRunningFlowIds: [],
-      });
-
-      expect(result).toMatchObject({ applied: false, reason: "running_owner" });
-      expect(findFlow(sessionKey, "concurrent running work")).toMatchObject({ status: "running" });
-      expect(findFlow(sessionKey, "rejected newest work")).toBeUndefined();
+      );
+      if (!concurrent?.flowId) {
+        throw new Error("expected concurrent parked record");
+      }
+      expect(
+        (await markRunning({ recordId: concurrent.flowId, ownerSessionKey: sessionKey })).outcome,
+      ).toBe("applied");
     });
+
+    const result = await enqueuePendingWorkReplacing({
+      work: createWork({
+        sessionKey,
+        reason: "rejected newest work",
+        electedAt: Date.now() + 1,
+        parked: true,
+      }),
+      summary: "superseded by empty-owner replacement",
+      maxPendingWork: 8,
+      replaceParkedWork: true,
+      expectedRunningFlowIds: [],
+    });
+
+    expect(result).toMatchObject({ applied: false, reason: "running_owner" });
+    expect(await findRecord(sessionKey, "concurrent running work")).toMatchObject({
+      status: "running",
+    });
+    expect(await findRecord(sessionKey, "rejected newest work")).toBeUndefined();
   });
 
   it("enforces maxPendingWork transactionally for ordinary enqueues", async () => {
-    await withOpenClawTestState({ label: "work-replacement-cap" }, async (state) => {
-      process.env.OPENCLAW_STATE_DIR = state.stateDir;
-      const sessionKey = "agent:main:ordinary-cap";
-      runtimeState.beforeAtomicCreate = () => {
-        runtimeState.beforeAtomicCreate = undefined;
+    const sessionKey = "agent:main:ordinary-cap";
+    workerHooks.beforeElect.push(async () => {
+      expect(
+        await enqueuePendingWork(
+          createWork({
+            sessionKey,
+            reason: "concurrent ordinary work",
+            electedAt: Date.now(),
+            parked: false,
+          }),
+        ),
+      ).not.toBeNull();
+    });
+
+    const result = await enqueuePendingWorkReplacing({
+      work: createWork({
+        sessionKey,
+        reason: "capped ordinary work",
+        electedAt: Date.now() + 1,
+        parked: false,
+      }),
+      summary: "ordinary enqueue",
+      maxPendingWork: 1,
+      replaceParkedWork: false,
+      expectedRunningFlowIds: [],
+    });
+
+    expect(result).toEqual({ applied: false, capped: true });
+    const records = await listCustodyRecordsForTest({ ownerSessionKey: sessionKey });
+    expect(records.map((record) => custodyStateForTest(record).reason)).toEqual([
+      "concurrent ordinary work",
+    ]);
+  });
+
+  it("rejects a queued owner that becomes running inside ordinary admission", async () => {
+    const sessionKey = "agent:main:status-race";
+    workerHooks.beforeElect.push(
+      async () => {
         expect(
-          enqueuePendingWork(
+          await enqueuePendingWork(
             createWork({
               sessionKey,
-              reason: "concurrent ordinary work",
+              reason: "concurrent queued work",
               electedAt: Date.now(),
               parked: false,
             }),
           ),
         ).not.toBeNull();
-      };
-      const { enqueuePendingWorkReplacing } = await import("./work-replacement-store.js");
+      },
+      async () => {
+        const concurrent = await findRecord(sessionKey, "concurrent queued work");
+        if (!concurrent) {
+          throw new Error("expected concurrent queued record");
+        }
+        expect((await markRunning(concurrent)).outcome).toBe("applied");
+      },
+    );
 
-      const result = enqueuePendingWorkReplacing({
-        work: createWork({
-          sessionKey,
-          reason: "capped ordinary work",
-          electedAt: Date.now() + 1,
-          parked: false,
-        }),
-        summary: "ordinary enqueue",
-        maxPendingWork: 1,
-        replaceParkedWork: false,
-        expectedPriorFlowIds: [],
-        expectedRunningFlowIds: [],
-      });
-
-      expect(result).toEqual({ applied: false, capped: true });
-      expect(listTaskFlowsForOwnerKey(sessionKey)).toEqual([
-        expect.objectContaining({
-          stateJson: expect.objectContaining({ reason: "concurrent ordinary work" }),
-        }),
-      ]);
+    const result = await enqueuePendingWorkReplacing({
+      work: createWork({
+        sessionKey,
+        reason: "rejected overlapping work",
+        electedAt: Date.now() + 1,
+        parked: false,
+      }),
+      summary: "ordinary enqueue",
+      maxPendingWork: 8,
+      replaceParkedWork: false,
+      expectedRunningFlowIds: [],
     });
+
+    expect(result).toMatchObject({ applied: false, reason: "revision_conflict" });
+    expect(workerHooks.beforeElect).toEqual([]);
+    expect(await findRecord(sessionKey, "concurrent queued work")).toMatchObject({
+      status: "running",
+    });
+    expect(await findRecord(sessionKey, "rejected overlapping work")).toBeUndefined();
   });
 
-  it("rejects a queued owner that becomes running inside ordinary admission", async () => {
-    await withOpenClawTestState({ label: "work-replacement-status-race" }, async (state) => {
-      process.env.OPENCLAW_STATE_DIR = state.stateDir;
-      const sessionKey = "agent:main:status-race";
-      let atomicCalls = 0;
-      runtimeState.beforeAtomicCreate = () => {
-        atomicCalls += 1;
-        if (atomicCalls === 1) {
-          expect(
-            enqueuePendingWork(
-              createWork({
-                sessionKey,
-                reason: "concurrent queued work",
-                electedAt: Date.now(),
-                parked: false,
-              }),
-            ),
-          ).not.toBeNull();
-          return;
-        }
-        runtimeState.beforeAtomicCreate = undefined;
-        const concurrent = findFlow(sessionKey, "concurrent queued work");
-        if (!concurrent) {
-          throw new Error("expected concurrent queued flow");
+  // RFC §5.4.3 and §9.2.2 item 1: a concurrent election, and a claim racing
+  // the replanned election, each fail the owner condition; the loser commits
+  // nothing and the winner's and the superseded prior's records are intact.
+  it("lets exactly one of two racing elections win and commits nothing for the loser", async () => {
+    const sessionKey = "agent:main:racing-elections";
+    const parked = await enqueuePendingWork(
+      createWork({
+        sessionKey,
+        reason: "parked prior",
+        electedAt: Date.now(),
+        parked: true,
+      }),
+    );
+    if (!parked?.flowId) {
+      throw new Error("expected a parked prior");
+    }
+    const priorBefore = await readCustodyRecordForTest(parked.flowId);
+    let winner: Awaited<ReturnType<typeof enqueuePendingWorkReplacing>> | undefined;
+    const winnerWork = createWork({
+      sessionKey,
+      reason: "winning election",
+      electedAt: Date.now() + 1,
+      parked: true,
+    });
+    workerHooks.beforeElect.push(
+      // The rival election commits first and supersedes the parked prior.
+      async () => {
+        winner = await enqueuePendingWorkReplacing({
+          work: winnerWork,
+          summary: "superseded by the winning election",
+          maxPendingWork: 8,
+          replaceParkedWork: true,
+          expectedRunningFlowIds: [],
+        });
+      },
+      // The loser replans against the winner; a claim of the winner lands
+      // before the loser's second write.
+      async () => {
+        if (!winner?.applied || !winner.work.flowId) {
+          throw new Error("expected the rival election to win");
         }
         expect(
-          updateFlowRecordByIdExpectedRevision({
-            flowId: concurrent.flowId,
-            expectedRevision: concurrent.revision,
-            patch: { status: "running" },
-          }).applied,
-        ).toBe(true);
-      };
-      const { enqueuePendingWorkReplacing } = await import("./work-replacement-store.js");
+          (await markRunning({ recordId: winner.work.flowId, ownerSessionKey: sessionKey }))
+            .outcome,
+        ).toBe("applied");
+      },
+    );
 
-      const result = enqueuePendingWorkReplacing({
-        work: createWork({
-          sessionKey,
-          reason: "rejected overlapping work",
-          electedAt: Date.now() + 1,
-          parked: false,
-        }),
-        summary: "ordinary enqueue",
-        maxPendingWork: 8,
-        replaceParkedWork: false,
-        expectedPriorFlowIds: [],
-        expectedRunningFlowIds: [],
-      });
-
-      expect(result).toMatchObject({ applied: false, reason: "revision_conflict" });
-      expect(findFlow(sessionKey, "concurrent queued work")).toMatchObject({ status: "running" });
-      expect(findFlow(sessionKey, "rejected overlapping work")).toBeUndefined();
+    const loser = await enqueuePendingWorkReplacing({
+      work: createWork({
+        sessionKey,
+        reason: "losing election",
+        electedAt: Date.now() + 2,
+        parked: true,
+      }),
+      summary: "superseded by the losing election",
+      maxPendingWork: 8,
+      replaceParkedWork: true,
+      expectedRunningFlowIds: [],
     });
+
+    expect(workerHooks.beforeElect).toEqual([]);
+    expect(loser).toEqual({ applied: false, capped: false, reason: "revision_conflict" });
+    expect(await findRecord(sessionKey, "losing election")).toBeUndefined();
+
+    if (!winner?.applied || !winner.work.flowId || !priorBefore) {
+      throw new Error("expected the winning election and its superseded prior");
+    }
+    const winnerRecord = await readCustodyRecordForTest(winner.work.flowId);
+    expect(winnerRecord).toMatchObject({
+      status: "running",
+      revision: 1,
+      phase: "Released to continuation wake scheduler",
+    });
+    expect(winnerRecord?.cancelRequestedAt).toBeUndefined();
+    // The winner's state is exactly what it elected: the loser never wrote it.
+    expect(winnerRecord?.stateJson).toBe(JSON.stringify(encodeWorkState(winnerWork)));
+
+    // The prior was superseded once, by the winner, and never touched again.
+    const prior = await readCustodyRecordForTest(parked.flowId);
+    expect(prior).toMatchObject({
+      status: "succeeded",
+      revision: priorBefore.revision + 1,
+      phase: "superseded: superseded by the winning election",
+    });
+    const { idleRetry: _idleRetry, ...priorStateBefore } = custodyStateForTest(priorBefore);
+    expect(prior && custodyStateForTest(prior)).toEqual({
+      ...priorStateBefore,
+      turnGrantedAt: expect.any(Number),
+    });
+    expect(winner.supersededFlows).toEqual([priorBefore]);
+  });
+
+  // RFC §5.4.2 "Work-scheduling rollback" and §9.2.2 item 1.
+  it("rolls back an election by restoring its superseded prior exactly and marking rollbackOf", async () => {
+    const sessionKey = "agent:main:rollback";
+    const parked = await enqueuePendingWork(
+      createWork({
+        sessionKey,
+        reason: "parked prior to restore",
+        electedAt: Date.now(),
+        parked: true,
+      }),
+    );
+    if (!parked?.flowId) {
+      throw new Error("expected a parked prior");
+    }
+    const priorBefore = await readCustodyRecordForTest(parked.flowId);
+    if (!priorBefore) {
+      throw new Error("expected the parked prior record");
+    }
+
+    const elected = await enqueuePendingWorkReplacing({
+      work: createWork({
+        sessionKey,
+        reason: "election whose turn failed to finalize",
+        electedAt: Date.now() + 1,
+        parked: true,
+        originRunId: "run-electing",
+        originTurnId: "turn-electing",
+      }),
+      summary: "superseded by the failing election",
+      maxPendingWork: 8,
+      replaceParkedWork: true,
+      expectedRunningFlowIds: [],
+    });
+    if (!elected.applied || !elected.work.flowId) {
+      throw new Error("expected the election to apply");
+    }
+    expect(await readCustodyRecordForTest(parked.flowId)).toMatchObject({ status: "succeeded" });
+
+    const rollback = await rollbackPendingWorkReplacement({
+      sessionKey,
+      createdFlowIds: [elected.work.flowId],
+      priorFlows: elected.supersededFlows,
+      originRunId: "run-electing",
+      originTurnId: "turn-electing",
+      summary: "electing turn failed to finalize",
+    });
+
+    expect(rollback).toEqual({
+      applied: true,
+      unresolvedCreatedFlowIds: [],
+      unrestoredPriorFlowIds: [],
+    });
+    const restored = await readCustodyRecordForTest(parked.flowId);
+    expect(restored).toMatchObject({
+      status: "queued",
+      phase: priorBefore.phase,
+      stateJson: priorBefore.stateJson,
+      rollbackOf: elected.work.flowId,
+      revision: priorBefore.revision + 2,
+    });
+    expect(restored?.cancelRequestedAt).toBe(priorBefore.cancelRequestedAt);
+    expect(restored?.endedAt).toBeUndefined();
+    expect(restored?.failureReason).toBeUndefined();
+    expect(await readCustodyRecordForTest(elected.work.flowId)).toMatchObject({
+      status: "failed",
+      phase: "spawn-init continuation finalization failed",
+      failureReason: "electing turn failed to finalize",
+    });
+
+    // A replayed rollback recognizes the exact restore and changes nothing.
+    expect(
+      await rollbackPendingWorkReplacement({
+        sessionKey,
+        createdFlowIds: [elected.work.flowId],
+        priorFlows: elected.supersededFlows,
+        originRunId: "run-electing",
+        originTurnId: "turn-electing",
+        summary: "electing turn failed to finalize",
+      }),
+    ).toEqual({ applied: true, unresolvedCreatedFlowIds: [], unrestoredPriorFlowIds: [] });
+    expect(await readCustodyRecordForTest(parked.flowId)).toEqual(restored);
   });
 });

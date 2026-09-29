@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createAtomicTaskFlowMocks as atomicMocks } from "./work-dispatch-flow-mock.test-support.js";
 const turnGrants: unknown[] = [];
 const systemEvents: unknown[] = [];
 const activeQueueDeliveries: unknown[] = [];
@@ -106,6 +105,7 @@ async function flushAsyncWork(iterations = 8): Promise<void> {
   for (let i = 0; i < iterations; i++) {
     await Promise.resolve();
   }
+  await settleWorkDispatchCustody();
 }
 
 async function waitForMockWaiter(
@@ -255,11 +255,9 @@ vi.mock("../reply/get-reply.js", () => ({
     // bump every continuation-work flow revision so markPendingWorkDelivered
     // fails its expected-revision check after the turn already ran.
     if (bumpWorkRevisionOnReply) {
-      for (const flow of mockFlows.values()) {
-        if (flow.controllerId === "core/continuation-work") {
-          flow.revision += 1;
-        }
-      }
+      const { bumpLiveWorkRecordRevisions } =
+        await import("./work-dispatch-flow-mock.test-support.js");
+      await bumpLiveWorkRecordRevisions(await import("./custody/custody-store.js"));
     }
     if (replyError) {
       throw replyError;
@@ -330,132 +328,11 @@ vi.mock("../../logging/subsystem.js", () => {
   return { createSubsystemLogger: () => logger };
 });
 
-type MockFlow = {
-  flowId: string;
-  syncMode: "managed";
-  ownerKey: string;
-  chainId?: string;
-  controllerId: string;
-  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
-  notifyPolicy: "silent";
-  goal: string;
-  currentStep?: string;
-  stateJson?: unknown;
-  revision: number;
-  createdAt: number;
-  updatedAt: number;
-  endedAt?: number;
-  cancelRequestedAt?: number;
-};
-
-const mockFlows = new Map<string, MockFlow>();
-let flowCounter = 0;
-let flowUpdateFailureReason: string | undefined;
-let flowUpdateRevisionConflictsRemaining = 0;
-
-function cloneFlow(flow: MockFlow): MockFlow {
-  return { ...flow };
-}
-
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn((params: Partial<MockFlow> & { ownerKey: string }) => {
-    const now = Date.now();
-    const flow: MockFlow = {
-      flowId: `flow-${++flowCounter}`,
-      syncMode: "managed",
-      ownerKey: params.ownerKey,
-      chainId: params.chainId,
-      controllerId: params.controllerId ?? "tests/controller",
-      status: params.status ?? "queued",
-      notifyPolicy: "silent",
-      goal: params.goal ?? "goal",
-      currentStep: params.currentStep,
-      stateJson: params.stateJson,
-      revision: 0,
-      createdAt: params.createdAt ?? now,
-      updatedAt: params.updatedAt ?? params.createdAt ?? now,
-    };
-    mockFlows.set(flow.flowId, flow);
-    return cloneFlow(flow);
-  }),
-  ...atomicMocks(
-    () => mockFlows,
-    () => `flow-${++flowCounter}`,
+vi.mock("./custody/custody-store.js", async (importOriginal) =>
+  (await import("./work-dispatch-flow-mock.test-support.js")).wrapCustodyStoreForWorkDispatch(
+    await importOriginal(),
   ),
-  listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
-    Array.from(
-      [...mockFlows.values()].filter((flow) => flow.ownerKey === ownerKey),
-      cloneFlow,
-    ),
-  ),
-  listTaskFlowRecords: vi.fn(() => Array.from(mockFlows.values(), cloneFlow)),
-  getTaskFlowById: vi.fn((flowId: string) => {
-    const flow = mockFlows.get(flowId);
-    return flow ? cloneFlow(flow) : undefined;
-  }),
-  updateFlowRecordByIdExpectedRevision: vi.fn(
-    (params: { flowId: string; expectedRevision: number; patch: Partial<MockFlow> }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (flowUpdateFailureReason) {
-        return { applied: false, reason: flowUpdateFailureReason };
-      }
-      if (flow && flowUpdateRevisionConflictsRemaining > 0) {
-        flowUpdateRevisionConflictsRemaining -= 1;
-        flow.revision += 1;
-        return { applied: false, reason: "revision_conflict", current: cloneFlow(flow) };
-      }
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return {
-          applied: false,
-          reason: flow ? "revision_conflict" : "not_found",
-          ...(flow ? { current: cloneFlow(flow) } : {}),
-        };
-      }
-      if (params.patch.currentStep === "Continuation wake delivered (durable mark)") {
-        workTransitionEvents.push("delivered-mark-committed");
-      } else if (params.patch.currentStep === "Continuation fold note delivered (durable mark)") {
-        workTransitionEvents.push("fold-delivered-mark-committed");
-      }
-      Object.assign(flow, params.patch, { revision: flow.revision + 1 });
-      return { applied: true, flow: cloneFlow(flow) };
-    },
-  ),
-  finishFlow: vi.fn(
-    (params: {
-      flowId: string;
-      expectedRevision: number;
-      currentStep?: string;
-      stateJson?: unknown;
-      updatedAt?: number;
-      endedAt?: number;
-    }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      workTransitionEvents.push(`flow-finished:${params.currentStep ?? "unknown"}`);
-      const endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
-      flow.status = "succeeded";
-      flow.currentStep = params.currentStep;
-      flow.stateJson = params.stateJson ?? flow.stateJson;
-      flow.updatedAt = params.updatedAt ?? endedAt;
-      flow.endedAt = endedAt;
-      flow.revision += 1;
-      return { applied: true, flow: cloneFlow(flow) };
-    },
-  ),
-  failFlow: vi.fn((params: { flowId: string }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (flow) {
-      flow.status = "failed";
-      flow.revision += 1;
-    }
-    return { applied: Boolean(flow) };
-  }),
-  deleteTaskFlowRecordById: vi.fn((flowId: string) => {
-    mockFlows.delete(flowId);
-  }),
-}));
+);
 
 import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
 import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent-registry.types.js";
@@ -472,6 +349,13 @@ import {
   recordNoOpRearmOutcome,
 } from "../reply/no-op-rearm-guard.js";
 import { clearSessionResetRuntimeState } from "../reply/session-reset-cleanup.js";
+import { updateContinuationRecords } from "./custody/custody-store.js";
+import {
+  custodyStateForTest,
+  listCustodyRecordsForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "./custody/custody.test-support.js";
 import {
   cancelPendingDelegates,
   enqueuePendingDelegate,
@@ -479,6 +363,12 @@ import {
 } from "./delegate-store.js";
 import { cancelSessionContinuations } from "./session-reset.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
+import {
+  describeWorkTransition,
+  resetWorkDispatchCustodyHooks,
+  settleWorkDispatchCustody,
+  workDispatchCustodyHooks,
+} from "./work-dispatch-flow-mock.test-support.js";
 import {
   bucket1ReapVerdict,
   classifyContinuationWorkReason,
@@ -531,12 +421,38 @@ const config = {
 } satisfies ContinuationRuntimeConfig;
 
 async function flushTimers(): Promise<void> {
+  await settleWorkDispatchCustody();
   await vi.runOnlyPendingTimersAsync();
-  await Promise.resolve();
+  await settleWorkDispatchCustody();
 }
 
-function claimMaturedWork(sessionKey: string) {
-  const enqueued = enqueuePendingWork({
+async function firstWorkRecord() {
+  return (await listCustodyRecordsForTest({ kinds: ["work"] })).at(0);
+}
+
+async function bumpRecordRevision(recordId: string): Promise<void> {
+  const record = await readCustodyRecordForTest(recordId);
+  if (!record) {
+    throw new Error(`expected custody record ${recordId}`);
+  }
+  const bumped = await updateContinuationRecords(
+    [
+      {
+        recordId,
+        ownerSessionKey: record.ownerSessionKey,
+        expectedRevision: record.revision,
+        patch: { updatedAt: record.updatedAt },
+      },
+    ],
+    { now: record.updatedAt },
+  );
+  if (bumped.outcome !== "applied") {
+    throw new Error(`expected concurrent revision bump to commit: ${bumped.outcome}`);
+  }
+}
+
+async function claimMaturedWork(sessionKey: string) {
+  const enqueued = await enqueuePendingWork({
     sessionKey,
     hop: 1,
     delayMs: 0,
@@ -548,7 +464,7 @@ function claimMaturedWork(sessionKey: string) {
   if (!enqueued) {
     throw new Error("expected continuation work enqueue");
   }
-  const [work] = consumePendingWork(sessionKey);
+  const [work] = await consumePendingWork(sessionKey);
   if (!work) {
     throw new Error("expected matured continuation work claim");
   }
@@ -580,6 +496,25 @@ const splitLintUse = [
 ];
 void splitLintUse;
 
+useContinuationCustodyTestState();
+
+/** Advance fake time; custody work started before or by the fired timers settles on both sides. */
+async function advanceTimers(ms: number): Promise<void> {
+  await settleWorkDispatchCustody();
+  await vi.advanceTimersByTimeAsync(ms);
+  await settleWorkDispatchCustody();
+}
+
+/**
+ * Fake timers owned by continuation dispatch. Every custody command re-arms
+ * the shared-state worker's one idle-retirement timer, which is not dispatch
+ * state, so the count is taken right after a custody read and excludes it.
+ */
+async function dispatchTimerCount(): Promise<number> {
+  await listCustodyRecordsForTest();
+  return vi.getTimerCount() - 1;
+}
+
 describe("durable continuation_work dispatch", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: 1_000_000 });
@@ -610,13 +545,16 @@ describe("durable continuation_work dispatch", () => {
         ({ sessionKey }: { sessionKey: string }) => mockSessionStore[sessionKey.trim()],
       );
     mockStorePath = "test-store";
-    mockFlows.clear();
-    flowCounter = 0;
+    resetWorkDispatchCustodyHooks();
+    workDispatchCustodyHooks.onApplied = (update) => {
+      const transition = describeWorkTransition(update);
+      if (transition) {
+        workTransitionEvents.push(transition);
+      }
+    };
     subagentRuns.clear();
     getReplyFromConfigMock.mockClear();
     continuationEnabledForTest = true;
-    flowUpdateFailureReason = undefined;
-    flowUpdateRevisionConflictsRemaining = 0;
     capturedReplyTraceparents.length = 0;
     bumpWorkRevisionOnReply = false;
     emitContinuationWorkFireSpanMock.mockReset();
@@ -628,7 +566,8 @@ describe("durable continuation_work dispatch", () => {
     resetGatewayWorkAdmission();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await settleWorkDispatchCustody();
     subagentRuns.clear();
     replyIdleWaiters.clear();
     laneIdleWaiters.clear();
@@ -639,11 +578,11 @@ describe("durable continuation_work dispatch", () => {
     vi.useRealTimers();
   });
 
-  it("returns the committed revision without mutating delivered-work input", () => {
-    const work = claimMaturedWork("agent:main:immutable-delivered");
+  it("returns the committed revision without mutating delivered-work input", async () => {
+    const work = await claimMaturedWork("agent:main:immutable-delivered");
     const input = structuredClone(work);
 
-    const result = markPendingWorkDelivered(work);
+    const result = await markPendingWorkDelivered(work);
 
     expect(result).toEqual({
       applied: true,
@@ -656,21 +595,20 @@ describe("durable continuation_work dispatch", () => {
       },
     });
     expect(work).toEqual(input);
-    expect(mockFlows.get(work.flowId ?? "")).toMatchObject({
-      revision: (input.expectedRevision ?? 0) + 1,
-      stateJson: {
-        deliveredAt: Date.now(),
-        disposition: "granted",
-        succeeded: { point: "optimal", durability: "durable" },
-      },
+    const record = await readCustodyRecordForTest(work.flowId ?? "");
+    expect(record?.revision).toBe((input.expectedRevision ?? 0) + 1);
+    expect(record && custodyStateForTest(record)).toMatchObject({
+      deliveredAt: Date.now(),
+      disposition: "granted",
+      succeeded: { point: "optimal", durability: "durable" },
     });
   });
 
-  it("returns the committed revision without mutating fold-delivered input", () => {
-    const work = claimMaturedWork("agent:main:immutable-fold-delivered");
+  it("returns the committed revision without mutating fold-delivered input", async () => {
+    const work = await claimMaturedWork("agent:main:immutable-fold-delivered");
     const input = structuredClone(work);
 
-    const result = markPendingWorkFoldDelivered(work, {
+    const result = await markPendingWorkFoldDelivered(work, {
       foldedAt: Date.now(),
       overdueByMs: 250,
     });
@@ -688,43 +626,45 @@ describe("durable continuation_work dispatch", () => {
       },
     });
     expect(work).toEqual(input);
-    expect(mockFlows.get(work.flowId ?? "")).toMatchObject({
-      revision: (input.expectedRevision ?? 0) + 1,
-      stateJson: {
-        disposition: "folded-active",
-        foldedAt: Date.now(),
-        overdueByMs: 250,
-        busySkipCount: 0,
-        succeeded: { point: "optimal", durability: "durable" },
-      },
+    const record = await readCustodyRecordForTest(work.flowId ?? "");
+    expect(record?.revision).toBe((input.expectedRevision ?? 0) + 1);
+    expect(record && custodyStateForTest(record)).toMatchObject({
+      disposition: "folded-active",
+      foldedAt: Date.now(),
+      overdueByMs: 250,
+      busySkipCount: 0,
+      succeeded: { point: "optimal", durability: "durable" },
     });
   });
 
   it.each([
     {
       name: "delivered",
-      apply: (work: ReturnType<typeof claimMaturedWork>) => markPendingWorkDelivered(work),
+      apply: (work: Awaited<ReturnType<typeof claimMaturedWork>>) => markPendingWorkDelivered(work),
     },
     {
       name: "fold-delivered",
-      apply: (work: ReturnType<typeof claimMaturedWork>) =>
+      apply: (work: Awaited<ReturnType<typeof claimMaturedWork>>) =>
         markPendingWorkFoldDelivered(work, { foldedAt: Date.now(), overdueByMs: 250 }),
     },
-  ])("returns the original $name work on a CAS conflict", ({ apply }) => {
-    const work = claimMaturedWork("agent:main:immutable-cas-conflict");
+  ])("returns the original $name work on a CAS conflict", async ({ apply }) => {
+    const work = await claimMaturedWork("agent:main:immutable-cas-conflict");
     const input = structuredClone(work);
-    const flow = mockFlows.get(work.flowId ?? "");
+    const flow = await readCustodyRecordForTest(work.flowId ?? "");
     if (!flow) {
-      throw new Error("expected claimed continuation work flow");
+      throw new Error("expected claimed continuation work record");
     }
-    const stateBeforeConflict = structuredClone(flow.stateJson);
-    flow.revision += 1;
+    const stateBeforeConflict = flow.stateJson;
+    // A concurrent writer commits between the claim and the delivered mark.
+    await bumpRecordRevision(flow.recordId);
 
-    const result = apply(work);
+    const result = await apply(work);
 
     expect(result).toEqual({ applied: false, work });
     expect(work).toEqual(input);
-    expect(flow.stateJson).toEqual(stateBeforeConflict);
+    const after = await readCustodyRecordForTest(flow.recordId);
+    expect(after?.revision).toBe(flow.revision + 1);
+    expect(after?.stateJson).toBe(stateBeforeConflict);
   });
 
   it("fences a claimed work turn when reset lands before final admission", async () => {
@@ -733,7 +673,7 @@ describe("durable continuation_work dispatch", () => {
       sessionId: "reset-before-work-admission-session",
       lifecycleRevision: "reset-before-work-admission-revision",
     };
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 0,
@@ -742,22 +682,30 @@ describe("durable continuation_work dispatch", () => {
       maxChainLength: 8,
       reason: "must not run after reset",
     });
-    const dispatch = dispatchPendingContinuationWork({ sessionKey });
-    for (let i = 0; i < 1_000 && [...mockFlows.values()].at(0)?.status !== "running"; i += 1) {
-      await Promise.resolve();
-    }
-    expect([...mockFlows.values()].at(0)?.status).toBe("running");
-    expect(getReplyFromConfigMock).not.toHaveBeenCalled();
+    // The reset lands at the admission session read: after the claim commits
+    // and before the final custody fence and the provider call.
+    let reset: Promise<void> | undefined;
+    let claimedStatusAtReset: Promise<string | undefined> | undefined;
+    let providerCalledAtReset: boolean | undefined;
+    const defaultSessionRead = loadSessionEntryMock.getMockImplementation();
+    loadSessionEntryMock.mockImplementationOnce((scope: { sessionKey: string }) => {
+      providerCalledAtReset = getReplyFromConfigMock.mock.calls.length > 0;
+      claimedStatusAtReset = firstWorkRecord().then((record) => record?.status);
+      reset = cancelSessionContinuations(sessionKey);
+      clearContinuationWorkDispatch(sessionKey);
+      return defaultSessionRead?.(scope);
+    });
 
-    cancelSessionContinuations(sessionKey);
-    clearContinuationWorkDispatch(sessionKey);
-    const result = await dispatch;
+    const result = await dispatchPendingContinuationWork({ sessionKey });
+    await reset;
 
+    expect(await claimedStatusAtReset).toBe("running");
+    expect(providerCalledAtReset).toBe(false);
     expect(result).toEqual({ dispatched: 0, failed: 0, reaped: 0 });
     expect(getReplyFromConfigMock).not.toHaveBeenCalled();
     expect(turnGrants).toStrictEqual([]);
-    expect([...mockFlows.values()].at(0)?.status).toBe("cancelled");
-    expect(consumePendingWork(sessionKey, { includeRunning: true })).toStrictEqual([]);
+    expect((await firstWorkRecord())?.status).toBe("cancelled");
+    expect(await consumePendingWork(sessionKey, { includeRunning: true })).toStrictEqual([]);
   });
 
   it("requeues claimed work when an implicit rollover changes lifecycle before admission", async () => {
@@ -775,7 +723,7 @@ describe("durable continuation_work dispatch", () => {
       sessionReadCount += 1;
       return sessionReadCount === 1 ? previousEntry : successorEntry;
     });
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 0,
@@ -789,7 +737,7 @@ describe("durable continuation_work dispatch", () => {
 
     expect(result).toEqual({ dispatched: 0, failed: 0, reaped: 0 });
     expect(getReplyFromConfigMock).not.toHaveBeenCalled();
-    expect([...mockFlows.values()].at(0)?.status).toBe("queued");
+    expect((await firstWorkRecord())?.status).toBe("queued");
   });
 
   it("keeps scheduled timers and idle ownership when durable reset cancellation fails", async () => {
@@ -811,22 +759,22 @@ describe("durable continuation_work dispatch", () => {
     });
     await waitForMockWaiter(replyIdleWaiters, sessionKey);
     const timersBeforeReset = vi.getTimerCount();
-    flowUpdateFailureReason = "persist_failed";
+    workDispatchCustodyHooks.refuseUpdatesWith = "persist_failed";
 
-    expect(() =>
+    await expect(
       clearSessionResetRuntimeState([sessionKey], {
         agentId: "main",
         reason: "reset",
         activeReplySessionId: "reset-persist-failure-session",
       }),
-    ).toThrow("could not cancel continuation flow");
+    ).rejects.toThrow("could not cancel continuation record");
 
     expect(replyIdleWaiters.has(sessionKey)).toBe(true);
     expect(vi.getTimerCount()).toBe(timersBeforeReset);
-    expect([...mockFlows.values()].at(0)?.status).toBe("queued");
+    expect((await firstWorkRecord())?.status).toBe("queued");
 
-    flowUpdateFailureReason = undefined;
-    clearSessionResetRuntimeState([sessionKey], {
+    delete workDispatchCustodyHooks.refuseUpdatesWith;
+    await clearSessionResetRuntimeState([sessionKey], {
       agentId: "main",
       reason: "reset",
       activeReplySessionId: "reset-persist-failure-session",
@@ -835,7 +783,7 @@ describe("durable continuation_work dispatch", () => {
 
     expect(replyIdleWaiters.has(sessionKey)).toBe(false);
     expect(vi.getTimerCount()).toBeLessThan(timersBeforeReset);
-    expect([...mockFlows.values()].at(0)?.status).toBe("cancelled");
+    expect((await firstWorkRecord())?.status).toBe("cancelled");
   });
 
   it("completes reset cancellation and transient cleanup after revision conflicts", async () => {
@@ -851,16 +799,17 @@ describe("durable continuation_work dispatch", () => {
     });
     await waitForMockWaiter(replyIdleWaiters, sessionKey);
     const timersBeforeReset = vi.getTimerCount();
-    flowUpdateRevisionConflictsRemaining = 2;
+    workDispatchCustodyHooks.revisionConflictsRemaining = 2;
 
-    clearSessionResetRuntimeState([sessionKey], {
+    await clearSessionResetRuntimeState([sessionKey], {
       agentId: "main",
       reason: "reset",
       activeReplySessionId: sessionId,
     });
     await flushAsyncWork();
 
-    expect([...mockFlows.values()].at(0)?.status).toBe("cancelled");
+    expect(workDispatchCustodyHooks.revisionConflictsRemaining).toBe(0);
+    expect((await firstWorkRecord())?.status).toBe("cancelled");
     expect(replyIdleWaiters.has(sessionKey)).toBe(false);
     expect(vi.getTimerCount()).toBeLessThan(timersBeforeReset);
   });
@@ -936,7 +885,7 @@ describe("durable continuation_work dispatch", () => {
   it("commits provider delivery before finishing the claimed row", async () => {
     const sessionKey = "agent:main:provider-finish-order";
     mockSessionStore[sessionKey] = { sessionKey };
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 0,
@@ -959,7 +908,7 @@ describe("durable continuation_work dispatch", () => {
     const sessionKey = "agent:main:fold-finish-order";
     mockSessionStore[sessionKey] = { sessionKey };
     activeSessions.add(sessionKey);
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 0,
@@ -987,7 +936,7 @@ describe("durable continuation_work dispatch", () => {
     activeSessions.add(replySessionKey);
     mainQueueSize = 1;
     for (const sessionKey of [replySessionKey, laneSessionKey]) {
-      enqueuePendingWork({
+      await enqueuePendingWork({
         sessionKey,
         hop: 1,
         delayMs: 0,
@@ -1000,19 +949,19 @@ describe("durable continuation_work dispatch", () => {
     }
     await waitForMockWaiter(replyIdleWaiters, replySessionKey);
     await waitForMockWaiter(laneIdleWaiters, "main");
-    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    expect(await dispatchTimerCount()).toBeGreaterThan(0);
 
     resetContinuationWorkDispatchForTests();
     await flushAsyncWork();
 
     expect(replyIdleWaiters.has(replySessionKey)).toBe(false);
     expect(laneIdleWaiters.has("main")).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(await dispatchTimerCount()).toBe(0);
   });
 
-  it("requeues without mutating its claimed work input and clears retry-only state", () => {
+  it("requeues without mutating its claimed work input and clears retry-only state", async () => {
     const sessionKey = "agent:main:immutable-requeue";
-    const enqueued = enqueuePendingWork({
+    const enqueued = await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 0,
@@ -1029,7 +978,7 @@ describe("durable continuation_work dispatch", () => {
     if (!enqueued) {
       throw new Error("expected continuation work enqueue");
     }
-    const [work] = consumePendingWork(sessionKey, { includeIdleRetry: true });
+    const [work] = await consumePendingWork(sessionKey, { includeIdleRetry: true });
     if (!work) {
       throw new Error("expected continuation work claim");
     }
@@ -1037,7 +986,7 @@ describe("durable continuation_work dispatch", () => {
     const nextDueAt = Date.now() + 5_000;
 
     expect(
-      requeuePendingWork(work, {
+      await requeuePendingWork(work, {
         dueAt: nextDueAt,
         summary: "immutable requeue characterization",
         busySkipCount: 2,
@@ -1045,20 +994,21 @@ describe("durable continuation_work dispatch", () => {
     ).toBe(true);
 
     expect(work).toEqual(input);
-    const flow = mockFlows.get(work.flowId ?? "");
+    const flow = await readCustodyRecordForTest(work.flowId ?? "");
     expect(flow).toMatchObject({
       status: "queued",
       revision: (input.expectedRevision ?? 0) + 1,
-      stateJson: { dueAt: nextDueAt, busySkipCount: 2 },
     });
-    expect(flow?.stateJson).not.toMatchObject({ idleRetry: expect.anything() });
-    expect(flow?.stateJson).not.toMatchObject({ recoveryDueAt: expect.anything() });
+    const state = flow ? custodyStateForTest(flow) : {};
+    expect(state).toMatchObject({ dueAt: nextDueAt, busySkipCount: 2 });
+    expect(state).not.toMatchObject({ idleRetry: expect.anything() });
+    expect(state).not.toMatchObject({ recoveryDueAt: expect.anything() });
   });
 
   it("honors hot-disabled continuation before consuming or driving queued work", async () => {
     const sessionKey = "agent:main:disabled-gate";
     mockSessionStore[sessionKey] = { sessionKey };
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 1_000,
@@ -1067,19 +1017,19 @@ describe("durable continuation_work dispatch", () => {
       maxChainLength: 8,
       reason: "disabled gate",
     });
-    await vi.advanceTimersByTimeAsync(1_000);
+    await advanceTimers(1_000);
 
     // Operator hot-disables continuation after the wake was armed.
     continuationEnabledForTest = false;
     const result = await dispatchPendingContinuationWork({ sessionKey });
     expect(result).toEqual({ dispatched: 0, failed: 0, reaped: 0 });
     expect(getReplyFromConfigMock).not.toHaveBeenCalled();
-    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    expect(await dispatchTimerCount()).toBeGreaterThan(0);
 
     // The queued row was not consumed/mutated, and the disabled callback left a
     // recheck timer so hot re-enable recovers it without waiting for startup or
     // unrelated traffic.
-    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    expect(await dispatchTimerCount()).toBeGreaterThan(0);
     continuationEnabledForTest = true;
     await dispatchPendingContinuationWork({
       sessionKey,
