@@ -13,8 +13,7 @@ import { normalizeChatType } from "../../channels/chat-type.js";
 import type { ProgressContinuationState } from "../../channels/progress-continuation.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
-import { stagedPostCompactionDelegateCount } from "../continuation/delegate-store-post-compaction.js";
-import { pendingDelegateCount } from "../continuation/delegate-store.js";
+import { resolveQueuedDelegateCounts } from "../continuation/delegate-store.js";
 import {
   buildFallbackClearedNotice,
   buildFallbackNotice,
@@ -429,10 +428,15 @@ export async function prepareReplyAgentPayloads(state: {
   // keep the typing indicator stuck. A tool-only continuation turn may have no visible
   // text while still needing delegate consumption/persistence below. Terminal failures are
   // likewise delivered after normal payload filtering.
+  // Exact counts: before custody hydration or after an unresolved write the
+  // projection is unknown, and reading that as zero would drop committed work.
+  const queuedDelegateCounts =
+    resolveLiveContinuationRuntimeConfig(cfg).enabled && sessionKey
+      ? await resolveQueuedDelegateCounts(sessionKey)
+      : undefined;
   const hasQueuedDelegateWork =
-    resolveLiveContinuationRuntimeConfig(cfg).enabled &&
-    sessionKey &&
-    (pendingDelegateCount(sessionKey) > 0 || stagedPostCompactionDelegateCount(sessionKey) > 0);
+    queuedDelegateCounts !== undefined &&
+    (queuedDelegateCounts.pending > 0 || queuedDelegateCounts.stagedPostCompaction > 0);
 
   if (
     payloadArray.length === 0 &&

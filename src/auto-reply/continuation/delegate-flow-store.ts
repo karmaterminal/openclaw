@@ -23,9 +23,10 @@ import {
   createContinuationRecord,
   deleteContinuationRecord,
   listContinuationRecords,
+  newContinuationRecordId,
   resolveContinuationCustodyDatabasePath,
   updateContinuationRecords,
-  newContinuationRecordId,
+  whenContinuationCustodyReady,
 } from "./custody/custody-store.js";
 import type {
   ContinuationRecord,
@@ -423,6 +424,8 @@ export async function createDelegateRecord(params: {
   attachmentConfig?: OpenClawConfig;
   now?: number;
 }): Promise<DelegateCustodyRecord> {
+  // Phase A installs the import gate; a turn admitted before boot waits for it.
+  await whenContinuationCustodyReady();
   assertContinuationCustodyOwnerImported(params.ownerKey);
   const delegate = params.delegate.recipientAuthorityBinding
     ? params.delegate
@@ -552,6 +555,37 @@ export function countStagedPostCompactionDelegates(sessionKey: string): number {
   return (readOwnerLiveDelegateFacts(sessionKey) ?? []).filter(
     (fact) => fact.kind === "post_compaction" && fact.status === "queued" && !fact.cancelRequested,
   ).length;
+}
+
+/**
+ * Queued delegate counts for a correctness decision (RFC §5.4.6). Before
+ * hydration this waits for custody phase A, so legacy work the import brings
+ * in is counted. After that it is the projection when it knows the owner, and
+ * otherwise (an unresolved write) the owner's committed rows. A decision never
+ * reads `unknown` as zero.
+ */
+export async function resolveQueuedDelegateCounts(
+  sessionKey: string,
+): Promise<{ pending: number; stagedPostCompaction: number }> {
+  if (readOwnerLiveDelegateFacts(sessionKey) === undefined) {
+    await whenContinuationCustodyReady();
+  }
+  const facts =
+    readOwnerLiveDelegateFacts(sessionKey) ??
+    (
+      await listContinuationRecords({
+        ownerSessionKey: sessionKey,
+        kinds: DELEGATE_KINDS,
+        statuses: ["queued"],
+      })
+    ).map((record) => ({
+      kind: record.kind,
+      status: record.status,
+      cancelRequested: record.cancelRequestedAt !== undefined,
+    }));
+  const queued = facts.filter((fact) => fact.status === "queued" && !fact.cancelRequested);
+  const pending = queued.filter((fact) => fact.kind === "delegate").length;
+  return { pending, stagedPostCompaction: queued.length - pending };
 }
 
 const continuationQueueDiagnostics = delegateFlowDiagnostics.createContinuationQueueDiagnostics({

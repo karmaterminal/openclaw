@@ -8,7 +8,7 @@ import {
 } from "../../../packages/gateway-protocol/src/index.js";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { resolveEmbeddedSessionLane } from "../../agents/embedded-agent-runner/lanes.js";
-import { stagedPostCompactionDelegateCount } from "../../auto-reply/continuation/delegate-store-post-compaction.js";
+import { resolveQueuedDelegateCounts } from "../../auto-reply/continuation/delegate-store.js";
 import type { FollowupRun } from "../../auto-reply/reply/queue.js";
 import { hasPendingFollowupQueueWork } from "../../auto-reply/reply/queue/state.js";
 import {
@@ -103,13 +103,13 @@ function buildManualCompactionReleaseFollowupRun(params: {
   };
 }
 
-function sessionHasPostCompactionDelegates(params: {
+async function sessionHasPostCompactionDelegates(params: {
   entry?: SessionEntry;
   sessionKey: string;
-}): boolean {
+}): Promise<boolean> {
   return (
-    stagedPostCompactionDelegateCount(params.sessionKey) > 0 ||
-    (params.entry?.pendingPostCompactionDelegates?.length ?? 0) > 0
+    (params.entry?.pendingPostCompactionDelegates?.length ?? 0) > 0 ||
+    (await resolveQueuedDelegateCounts(params.sessionKey)).stagedPostCompaction > 0
   );
 }
 
@@ -126,7 +126,7 @@ async function releaseManualPostCompactionDelegatesIfNeeded(params: {
   targetAgentId: string;
   workspaceDir: string;
 }): Promise<void> {
-  if (!sessionHasPostCompactionDelegates(params)) {
+  if (!(await sessionHasPostCompactionDelegates(params))) {
     return;
   }
   try {

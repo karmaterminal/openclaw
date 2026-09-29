@@ -64,4 +64,13 @@ export type ContinuationCustodyWorkerOperations = {
     input: ContinuationRecordQuery;
     output: ContinuationRecord[];
   };
+  /**
+   * Phase A of custody readiness (§5.4.5): the live set and the owners still
+   * awaiting the legacy import, read in one transaction so the projection and
+   * the import gate describe the same committed state.
+   */
+  "continuationCustody.readBootFacts": {
+    input: Record<string, never>;
+    output: { live: ContinuationRecord[]; awaitingImportOwners: string[] };
+  };
 };

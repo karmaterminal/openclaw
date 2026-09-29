@@ -1,14 +1,16 @@
 // Gateway boot for continuation custody (RFC docs/design/continue-work-signal-v2.md
 // §5.4.4 crash-boundary table, §5.4.5 "Update behavior", §5.4.6). The order is
-// fixed: the Doctor import's boot fact, then subagent registry activation, then
-// custody recovery. Recovery handles ordinary post-cutover custody only; every
-// legacy claim was already decided inside its owner's import transaction.
+// fixed: custody readiness (phase A: import gate and projection from one read),
+// then subagent registry activation, then custody recovery (phase B). Phase A
+// also runs on demand under the first custody mutation, so a turn admitted
+// before this boot runs cannot outrun the gate. Recovery handles ordinary
+// post-cutover custody only; every legacy claim was already decided inside its
+// owner's import transaction.
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { installContinuationCustodyImportGate } from "./custody-import-gate.js";
 import {
-  hydrateContinuationCustody,
   listContinuationOwnersAwaitingLegacyImport,
   pruneContinuationRecords,
+  whenContinuationCustodyReady,
 } from "./custody/custody-store.js";
 
 const log = createSubsystemLogger("continuation/custody-boot");
@@ -61,10 +63,11 @@ export async function runContinuationCustodyBoot(params: {
 }): Promise<ContinuationCustodyBootSummary> {
   const bootLog = params.log ?? log;
   const admit = params.admit ?? (<T>(step: () => Promise<T>) => step());
-  // 1. The Doctor import ran in startup preflight. Owners it could not import
-  //    keep refusing custody writes until an import commits (§5.4.5).
+  // 1. Phase A: install the import gate and hydrate the projection from one
+  //    committed read, unless a custody mutation already ran it. Owners whose
+  //    legacy rows are not imported keep refusing custody writes (§5.4.5).
+  await admit(() => whenContinuationCustodyReady());
   const awaitingImport = await admit(listContinuationOwnersAwaitingLegacyImport);
-  installContinuationCustodyImportGate(awaitingImport);
   if (awaitingImport.length > 0) {
     bootLog.warn(
       `continuation custody for ${awaitingImport.length} session(s) is waiting on legacy import; run \`openclaw doctor --fix\``,
@@ -72,8 +75,9 @@ export async function runContinuationCustodyBoot(params: {
   }
   // 2. Upstream restart recovery owns interrupted children first.
   await params.whenSubagentRegistryActivated();
-  // 3. Custody recovery. The projection is hydrated from committed rows before
-  //    any sync guard can answer from it.
+  // 3. Phase B: custody recovery. It never re-hydrates: phase A's projection
+  //    has been kept current by every commit since, and a late re-read would
+  //    overwrite newer committed facts.
   return await admit(async () => ({
     awaitingImportOwners: awaitingImport.length,
     ...(await recoverContinuationCustody(params.armedAt)),
@@ -83,7 +87,7 @@ export async function runContinuationCustodyBoot(params: {
 async function recoverContinuationCustody(
   armedAt: number,
 ): Promise<Omit<ContinuationCustodyBootSummary, "awaitingImportOwners">> {
-  await hydrateContinuationCustody();
+  await whenContinuationCustodyReady();
   const pruned = await pruneExpiredContinuationCustody();
   const [delegateRecovery, workModule] = await Promise.all([
     import("./delegate-dispatch-recovery.js"),

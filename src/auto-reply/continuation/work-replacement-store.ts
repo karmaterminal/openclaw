@@ -3,12 +3,13 @@
 import { abortContinuationDispatchClaim } from "./continuation-dispatch-claims.js";
 import { assertContinuationCustodyOwnerImported } from "./custody-import-gate.js";
 import {
+  type ContinuationElectionPlan,
   electContinuationWork,
   listContinuationRecords,
+  newContinuationRecordId,
   requestContinuationRecordCancel,
   updateContinuationRecords,
-  type ContinuationElectionPlan,
-  newContinuationRecordId,
+  whenContinuationCustodyReady,
 } from "./custody/custody-store.js";
 import type {
   ContinuationRecord,
@@ -106,6 +107,8 @@ export async function enqueuePendingWorkReplacing(params: {
   expectedRunningFlowIds: readonly string[];
 }): Promise<PendingWorkReplacementResult> {
   const sessionKey = params.work.sessionKey;
+  // Phase A installs the import gate; a turn admitted before boot waits for it.
+  await whenContinuationCustodyReady();
   assertContinuationCustodyOwnerImported(sessionKey);
   const state = encodeWorkState(params.work);
   const recordId = newContinuationRecordId();

@@ -1,12 +1,16 @@
 // Custody writes for owners whose legacy TaskFlow rows are not imported yet
 // (RFC docs/design/continue-work-signal-v2.md §5.4.5, "Update behavior").
-// Gateway startup runs the Doctor import, then installs the owners that still
-// have un-imported live rows as a prepared boot fact. Until an import commits
-// for such an owner, its elections and delegate enqueues are refused with a
-// visible hint: an election would otherwise bypass the owner condition over
-// rows the custody store cannot see. The fact is replaced only by the next
-// boot; a Doctor run in between takes effect at the next Gateway start.
-import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
+// Custody readiness (phase A, custody-store.ts) reads the owners that still
+// have un-imported live rows together with the live set, and installs them
+// before any custody mutation can run. Until an import commits for such an
+// owner, its elections and delegate enqueues are refused with a visible hint:
+// an election would otherwise bypass the owner condition over rows the custody
+// store cannot see. The fact is re-read whenever the projection is hydrated.
+import {
+  clearContinuationCustodyAwaitingImport,
+  installContinuationCustodyAwaitingImport,
+  isOwnerAwaitingContinuationCustodyImport,
+} from "./custody/custody-import-gate-state.js";
 import { resolveContinuationCustodyDatabasePath } from "./custody/custody-store.js";
 
 const CONTINUATION_CUSTODY_IMPORT_PENDING_MESSAGE =
@@ -19,27 +23,18 @@ class ContinuationCustodyImportPendingError extends Error {
   }
 }
 
-const awaitingImportByDatabase = resolveGlobalSingleton(
-  Symbol.for("openclaw.continuationCustodyAwaitingImport"),
-  () => new Map<string, ReadonlySet<string>>(),
-);
-
 /** Install the boot fact: owners whose legacy rows the startup import left behind. */
 export function installContinuationCustodyImportGate(
   owners: readonly string[],
   databasePath = resolveContinuationCustodyDatabasePath(),
 ): void {
-  if (owners.length === 0) {
-    awaitingImportByDatabase.delete(databasePath);
-    return;
-  }
-  awaitingImportByDatabase.set(databasePath, new Set(owners));
+  installContinuationCustodyAwaitingImport(databasePath, owners);
 }
 
 export function isContinuationCustodyOwnerAwaitingImport(ownerSessionKey: string): boolean {
-  return (
-    awaitingImportByDatabase.get(resolveContinuationCustodyDatabasePath())?.has(ownerSessionKey) ===
-    true
+  return isOwnerAwaitingContinuationCustodyImport(
+    resolveContinuationCustodyDatabasePath(),
+    ownerSessionKey,
   );
 }
 
@@ -51,5 +46,5 @@ export function assertContinuationCustodyOwnerImported(ownerSessionKey: string):
 }
 
 export function resetContinuationCustodyImportGateForTests(): void {
-  awaitingImportByDatabase.clear();
+  clearContinuationCustodyAwaitingImport();
 }

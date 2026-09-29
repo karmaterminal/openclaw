@@ -423,7 +423,8 @@ export function executeContinuationCustodyCommand(
   if (
     command.type !== "continuationCustody.list" &&
     command.type !== "continuationCustody.prune" &&
-    command.type !== "continuationCustody.listAwaitingImportOwners"
+    command.type !== "continuationCustody.listAwaitingImportOwners" &&
+    command.type !== "continuationCustody.readBootFacts"
   ) {
     ensureContinuationCustodySchema(databaseOptions);
   }
@@ -465,6 +466,11 @@ function executeInTransaction(
       return listContinuationRecordsInDatabase(db, command.input);
     case "continuationCustody.listAwaitingImportOwners":
       return listContinuationOwnersAwaitingImport(db);
+    case "continuationCustody.readBootFacts":
+      return {
+        live: listContinuationRecordsInDatabase(db, { statuses: ["queued", "running"] }),
+        awaitingImportOwners: listContinuationOwnersAwaitingImport(db),
+      };
   }
   throw new Error("Unknown continuation custody command");
 }

@@ -196,6 +196,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/embedded-agent-runner/run.shared-integration.test.ts",
   "src/auto-reply/dispatch.block-streaming-recovery.test.ts",
   "src/auto-reply/continuation/custody/custody-store.test.ts",
+  "src/auto-reply/continuation/custody/custody-readiness.test.ts",
   // L4-G1: continuation delegate store suites on real continuation custody.
   "src/auto-reply/continuation/delegate-store.test.ts",
   "src/auto-reply/continuation/delegate-store.queue.test.ts",

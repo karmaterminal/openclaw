@@ -18,7 +18,10 @@ import {
   decodeDelegateFlow,
   decodeDelegateFlowMetadata,
   decodeDelegateState,
+  type DelegateCustodyRecord,
   delegateDueAt,
+  type DelegateRecordWriteResult,
+  type DelegateStateChanges,
   delegateStateJsonWithChanges,
   deleteDelegateRecord,
   getDelegateRecord,
@@ -31,15 +34,13 @@ import {
   listDelegateRecords,
   listLiveDelegateRecords,
   listQueuedPendingFlows,
+  type PendingDelegateCutoffOptions,
   readAcceptedDelegateChildSessionKey,
   reconcileDelegateAttachmentCustody,
   rejectCorruptDelegateFlow,
   resetDelegateFlowDiagnosticsForTests,
+  resolveQueuedDelegateCounts as resolveQueuedDelegateCountsFromCustody,
   updateDelegateRecord,
-  type DelegateCustodyRecord,
-  type DelegateRecordWriteResult,
-  type DelegateStateChanges,
-  type PendingDelegateCutoffOptions,
 } from "./delegate-flow-store.js";
 import type { ChainState, PendingContinuationDelegate } from "./types.js";
 
@@ -618,9 +619,16 @@ export async function countQueuedDelegatesForSessions(
   return { pending, staged };
 }
 
-/** Queued pending delegates for a session, from the hot-path projection. */
+/** Queued pending delegates for a session, from the hot-path projection (display only). */
 export function pendingDelegateCount(sessionKey: string): number {
   return countQueuedPendingDelegates(sessionKey);
+}
+
+/** Exact queued delegate counts for a correctness decision; never a guessed zero. */
+export async function resolveQueuedDelegateCounts(
+  sessionKey: string,
+): Promise<{ pending: number; stagedPostCompaction: number }> {
+  return await resolveQueuedDelegateCountsFromCustody(sessionKey);
 }
 
 export async function annotateQueuedDelegatesChainTokensFold(

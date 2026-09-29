@@ -12,7 +12,10 @@ import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-
 import { defaultRuntime } from "../../runtime.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
 import { stagePostCompactionDelegate } from "../continuation/delegate-store-post-compaction.js";
-import { enqueuePendingDelegate, pendingDelegateCount } from "../continuation/delegate-store.js";
+import {
+  enqueuePendingDelegate,
+  resolveQueuedDelegateCounts,
+} from "../continuation/delegate-store.js";
 import type { ContinuationSignalExtraction } from "../continuation/signal.js";
 import { withContinuationOwner } from "../continuation/system-event-ownership.js";
 import { hasCrossSessionDelegateTargeting } from "../continuation/targeting-pure.js";
@@ -122,7 +125,9 @@ export async function handleContinuationSignal(context: {
     } = continuationRuntimeConfig;
 
     const currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
-    const allocatedChainHop = currentChainCount + pendingDelegateCount(sessionKey);
+    // Exact queued count: an unknown projection must not undercount the chain cap.
+    const allocatedChainHop =
+      currentChainCount + (await resolveQueuedDelegateCounts(sessionKey)).pending;
 
     if (allocatedChainHop >= maxChainLength) {
       // No mint-on-reject: the chain never advanced for this signal, so

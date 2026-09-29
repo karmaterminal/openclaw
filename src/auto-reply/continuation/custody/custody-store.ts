@@ -6,9 +6,12 @@
 // scrubbed. Nothing else reads or writes `continuation_records`.
 import { uuidv7 } from "../../../../packages/agent-core/src/harness/session/uuid.js";
 import { createSqliteWorkerWriteAdmission } from "../../../infra/sqlite-worker-store.js";
+import { createSubsystemLogger } from "../../../logging/subsystem.js";
+import { resolveGlobalSingleton } from "../../../shared/global-singleton.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
 import { runOpenClawStateWorkerOperation } from "../../../state/openclaw-state-worker-store.js";
+import { installContinuationCustodyAwaitingImport } from "./custody-import-gate-state.js";
 import {
   releaseContinuationCustodyPayload,
   storeContinuationCustodyPayload,
@@ -18,6 +21,7 @@ import {
   hydrateContinuationCustodyProjection,
   installContinuationCustodyCommit,
   invalidateContinuationCustodyOwners,
+  isContinuationCustodyProjectionHydrated,
 } from "./custody-projection.js";
 import type {
   ContinuationClaimResult,
@@ -75,6 +79,79 @@ function hasCommitFacts(value: unknown): value is ContinuationCommitFacts {
   return typeof value === "object" && value !== null && "owners" in value;
 }
 
+/** Commands that only read; every other command mutates custody. */
+const READ_COMMANDS: ReadonlySet<keyof Operations> = new Set<keyof Operations>([
+  "continuationCustody.list",
+  "continuationCustody.listAwaitingImportOwners",
+  "continuationCustody.readBootFacts",
+]);
+
+/** Phase A in flight per database. Only the pending read is shared; see `ensureReady`. */
+const readinessInFlight = resolveGlobalSingleton(
+  Symbol.for("openclaw.continuationCustodyReadiness"),
+  () => new Map<string, Promise<void>>(),
+);
+
+const log = createSubsystemLogger("continuation/custody-store");
+
+/**
+ * Phase A of custody readiness (§5.4.5). Read the live set and the owners
+ * awaiting the legacy import in one transaction. When owners await import, run
+ * the approved Doctor transform first ("Gateway startup invokes the same
+ * approved transform before continuation recovery"), then re-read, so the gate
+ * and the projection describe post-import state. An owner whose import fails
+ * stays awaiting import and keeps refusing writes; a thrown read or import
+ * installs nothing, so no write passes.
+ */
+async function readBootFactsAndInstall(custody: Custody): Promise<ContinuationRecord[]> {
+  let facts = await execute(custody, "continuationCustody.readBootFacts", {}, []);
+  if (facts.awaitingImportOwners.length > 0) {
+    const { migrateContinuationTaskFlowCustody } = await import("./legacy-taskflow-import.js");
+    const result = await migrateContinuationTaskFlowCustody({ env: custody.env });
+    for (const change of result.changes) {
+      log.info(change);
+    }
+    for (const warning of result.warnings) {
+      log.warn(warning);
+    }
+    facts = await execute(custody, "continuationCustody.readBootFacts", {}, []);
+  }
+  installContinuationCustodyAwaitingImport(databasePath(custody), facts.awaitingImportOwners);
+  hydrateContinuationCustodyProjection(databasePath(custody), facts.live);
+  return facts.live;
+}
+
+/**
+ * Every custody mutation waits for phase A, so no write can land before the
+ * import gate is installed or before the projection can account for it. The
+ * shared promise is only the in-flight read: it is dropped once it settles, so
+ * a failed read lets no write through and the next write retries it, and a
+ * reset projection is re-read rather than trusted.
+ */
+async function ensureReady(custody: Custody): Promise<void> {
+  const path = databasePath(custody);
+  if (isContinuationCustodyProjectionHydrated(path)) {
+    return;
+  }
+  let pending = readinessInFlight.get(path);
+  if (!pending) {
+    pending = readBootFactsAndInstall(custody)
+      .then(() => undefined)
+      .finally(() => {
+        readinessInFlight.delete(path);
+      });
+    readinessInFlight.set(path, pending);
+  }
+  await pending;
+}
+
+/** Wait for custody phase A; callers that check the import gate await this first. */
+export async function whenContinuationCustodyReady(
+  options?: ContinuationCustodyStoreOptions,
+): Promise<void> {
+  await ensureReady(capture(options));
+}
+
 /**
  * Run one custody command. A thrown command may or may not have committed, so
  * its owners become unknown in the projection until a later committed fact.
@@ -85,6 +162,9 @@ async function execute<Key extends keyof Operations>(
   input: Operations[Key]["input"],
   touchedOwners: readonly string[],
 ): Promise<Operations[Key]["output"]> {
+  if (!READ_COMMANDS.has(type)) {
+    await ensureReady(custody);
+  }
   let output: Operations[Key]["output"];
   try {
     const assertCurrent = () => custody.context.admission.assertCurrent();
@@ -401,19 +481,14 @@ export function listContinuationOwnersAwaitingLegacyImport(
   return execute(capture(options), "continuationCustody.listAwaitingImportOwners", {}, []);
 }
 
-/** Startup hydration of the hot-path projection from the committed live set. */
+/**
+ * Hydrate the hot-path projection and the import gate from one committed read
+ * (phase A), even when already hydrated. Mutations run it on demand.
+ */
 export async function hydrateContinuationCustody(
   options?: ContinuationCustodyStoreOptions,
 ): Promise<ContinuationRecord[]> {
-  const custody = capture(options);
-  const live = await execute(
-    custody,
-    "continuationCustody.list",
-    { statuses: ["queued", "running"] },
-    [],
-  );
-  hydrateContinuationCustodyProjection(databasePath(custody), live);
-  return live;
+  return await readBootFactsAndInstall(capture(options));
 }
 
 /** Retention: prune terminal records that ended before the cutoff and owe no notice. */

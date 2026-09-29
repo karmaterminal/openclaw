@@ -81,6 +81,11 @@ export function hydrateContinuationCustodyProjection(
   });
 }
 
+/** Whether startup hydration has installed this database's live set. */
+export function isContinuationCustodyProjectionHydrated(databasePath: string): boolean {
+  return projections.get(databasePath)?.hydrated === true;
+}
+
 /** Install the post-commit live sets a custody write reported. */
 export function installContinuationCustodyCommit(
   databasePath: string,
