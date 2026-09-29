@@ -10,6 +10,8 @@ import type { QueuedCompactionHostOptions } from "../agents/embedded-agent-runne
 import type { CompactEmbeddedAgentSessionParams } from "../agents/embedded-agent-runner/compact.types.js";
 import { acceptCompactionSuccessor } from "../agents/embedded-agent-runner/compaction-successor.js";
 import { resolveEmbeddedSessionLane } from "../agents/embedded-agent-runner/lanes.js";
+import { resetContinuationCustodyProjection } from "../auto-reply/continuation/custody/custody-projection.js";
+import { hydrateContinuationCustody } from "../auto-reply/continuation/custody/custody-store.js";
 import {
   stagePostCompactionDelegate,
   stagedPostCompactionDelegateCount,
@@ -42,7 +44,6 @@ import {
   isSessionWorkAdmissionActive,
 } from "../sessions/session-lifecycle-admission.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
-import { resetTaskFlowRegistryForTests } from "../tasks/task-runtime.test-helpers.js";
 import { withTestDir } from "../test-helpers/temp-dir.js";
 import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
 import {
@@ -89,12 +90,15 @@ function buildSessionTranscriptLines(sessionId: string, totalLines: number): str
   return [header, ...entries];
 }
 
-// The task-flow reset closes the shared state database synchronously. Periodic
-// WAL maintenance now runs off-thread and holds an idle reference while in
-// flight, so join it through the orderly async close first.
-async function resetTaskFlowRegistryAfterStateSettles(): Promise<void> {
+// Post-compaction cases rehydrate the continuation custody projection from the
+// harness state database, as Gateway boot does, so the synchronous staged
+// count reads committed custody. Periodic WAL maintenance runs off-thread and
+// holds an idle reference while in flight, so join it through the orderly
+// async close first.
+async function rehydrateContinuationCustodyAfterStateSettles(): Promise<void> {
   await closeOpenClawStateDatabaseAsync();
-  resetTaskFlowRegistryForTests({ persist: false });
+  resetContinuationCustodyProjection();
+  await hydrateContinuationCustody();
 }
 
 function isCompactOperationEvent(message: unknown, phase: "start" | "end") {
@@ -665,7 +669,7 @@ test("sessions.compact targets the persisted native CLI session", async () => {
 });
 
 test("sessions.compact releases queued post-compaction delegates after manual compaction", async () => {
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
   const { dir, storePath } = await createSessionStoreDir();
   await fs.writeFile(
     path.join(dir, "sess-post-compaction.jsonl"),
@@ -687,7 +691,7 @@ test("sessions.compact releases queued post-compaction delegates after manual co
     storePath,
     totalLines: 3,
   });
-  stagePostCompactionDelegate("agent:main:main", {
+  await stagePostCompactionDelegate("agent:main:main", {
     task: "rehydrate after dashboard compact",
     createdAt: Date.now(),
   });
@@ -704,11 +708,11 @@ test("sessions.compact releases queued post-compaction delegates after manual co
   expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(0);
   expect(loadSessionEntry({ sessionKey: "agent:main:main", storePath })?.compactionCount).toBe(1);
   ws.close();
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
 });
 
 test("sessions.compact preserves canonical route fields when releasing post-compaction delegates", async () => {
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
   const { dir, storePath } = await createSessionStoreDir();
   await fs.writeFile(
     path.join(dir, "sess-post-compaction-legacy.jsonl"),
@@ -735,7 +739,7 @@ test("sessions.compact preserves canonical route fields when releasing post-comp
     storePath,
     totalLines: 3,
   });
-  stagePostCompactionDelegate("agent:main:main", {
+  await stagePostCompactionDelegate("agent:main:main", {
     task: "rehydrate after compact with legacy route",
     createdAt: Date.now(),
   });
@@ -762,11 +766,11 @@ test("sessions.compact preserves canonical route fields when releasing post-comp
     threadId: "topic-9",
   });
   ws.close();
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
 });
 
 test("sessions.compact maxLines releases queued post-compaction delegates after trim", async () => {
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
   const { dir, storePath } = await createSessionStoreDir();
   const sessionId = "sess-post-compaction-trim";
   const transcriptPath = path.join(dir, `${sessionId}.jsonl`);
@@ -781,7 +785,7 @@ test("sessions.compact maxLines releases queued post-compaction delegates after 
     storePath,
     totalLines: 120,
   });
-  stagePostCompactionDelegate("agent:main:main", {
+  await stagePostCompactionDelegate("agent:main:main", {
     task: "rehydrate after maxLines compact",
     createdAt: Date.now(),
   });
@@ -808,7 +812,7 @@ test("sessions.compact maxLines releases queued post-compaction delegates after 
     expect.stringContaining("Queued 1 post-compaction delegate(s)"),
   );
   expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(0);
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
 });
 
 test("sessions.compact skips post-compaction lifecycle when no delegates exist", async () => {

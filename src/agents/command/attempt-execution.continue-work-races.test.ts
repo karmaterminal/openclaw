@@ -4,8 +4,24 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerContinuationDispatchClaim } from "../../auto-reply/continuation/continuation-dispatch-claims.js";
-import { decodeWorkState } from "../../auto-reply/continuation/work-flow-state.js";
-import { enqueuePendingWork } from "../../auto-reply/continuation/work-store.test-support.js";
+import { resetContinuationCustodyProjection } from "../../auto-reply/continuation/custody/custody-projection.js";
+import { hydrateContinuationCustody } from "../../auto-reply/continuation/custody/custody-store.js";
+import type {
+  ContinuationRecord,
+  ContinuationRecordPatch,
+} from "../../auto-reply/continuation/custody/custody-store.types.js";
+import {
+  custodyStateForTest,
+  listCustodyRecordsForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "../../auto-reply/continuation/custody/custody.test-support.js";
+import {
+  decodeWorkState,
+  encodeWorkState,
+  workRecordDueAt,
+  type PendingContinuationWork,
+} from "../../auto-reply/continuation/work-flow-state.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.js";
@@ -13,63 +29,116 @@ import { clearSessionStoreCacheForTest } from "../../config/sessions/store-write
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resetSystemEventsForTest } from "../../infra/system-events.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
-import {
-  finishFlow,
-  getTaskFlowById,
-  listTaskFlowsForOwnerKey,
-  requestFlowCancel,
-  updateFlowRecordByIdExpectedRevision,
-} from "../../tasks/task-flow-registry.js";
-import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
+import { closeOpenClawStateDatabaseAsync } from "../../state/openclaw-state-db.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 import { scheduleSpawnInitContinueWorkWake } from "./attempt-execution.continue-work.js";
 
-const taskFlowRuntimeState = vi.hoisted(() => ({
-  beforeFailFlow: undefined as ((flowId: string) => void) | undefined,
-  beforeAtomicCreate: undefined as (() => void) | undefined,
-  beforeAtomicUpdate: undefined as (() => void) | undefined,
-  beforeRequestFlowCancel: undefined as ((flowId: string) => void) | undefined,
-  atomicCreateCalls: 0,
-  failAtomicCreateCall: undefined as number | undefined,
-  failAtomicUpdate: false,
+type CustodyStoreModule = typeof import("../../auto-reply/continuation/custody/custody-store.js");
+type StateWorkerStoreModule = typeof import("../../state/openclaw-state-worker-store.js");
+
+// Hooks at the custody writes the spawn-init owner performs. Each hook runs a
+// real concurrent custody write at that point; `custodyActual` holds the
+// unwrapped store so those concurrent writes are not themselves intercepted.
+const custodyRuntimeState = vi.hoisted(() => ({
+  beforeFailRecord: undefined as ((recordId: string) => void | Promise<void>) | undefined,
+  /**
+   * Runs between the election planner's read of the owner's live work and the
+   * election commit (both are separate worker commands), with the 1-based
+   * index of the election commit.
+   */
+  beforeElectionCommit: undefined as ((commit: number) => Promise<void>) | undefined,
+  electionCommits: 0,
+  beforeAtomicUpdate: undefined as (() => Promise<void>) | undefined,
+  /** A concurrent writer advances a live record of every direct update first. */
+  contendAtomicUpdates: false,
+  beforeRequestCancel: undefined as ((recordId: string) => Promise<void>) | undefined,
 }));
+const custodyActual = vi.hoisted(() => ({ store: undefined as unknown }));
 const sessionAccessorState = vi.hoisted(() => ({
   afterPatchCall: undefined as ((call: number) => void | Promise<void>) | undefined,
   failPatchCall: undefined as number | undefined,
   patchCalls: 0,
 }));
 
-vi.mock("../../tasks/task-flow-runtime-internal.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../tasks/task-flow-runtime-internal.js")>();
+vi.mock("../../state/openclaw-state-worker-store.js", async (importOriginal) => {
+  const actual = await importOriginal<StateWorkerStoreModule>();
+  // Custody operations are pure forwarders of one command; replaying one
+  // against a recording scope names the command without running it.
+  const commandType = async (operation: (scope: never) => Promise<unknown>) => {
+    let type: unknown;
+    const recorder = {
+      execute: async (command: { type?: unknown }) => {
+        type = command.type;
+        return undefined;
+      },
+    };
+    try {
+      // SAFETY: the recorder implements the only scope member custody operations use.
+      await operation(recorder as never);
+    } catch {
+      // Not a custody forwarder; it runs unchanged below.
+    }
+    return type;
+  };
+  const run = async (...args: Parameters<typeof actual.runOpenClawStateWorkerOperation>) => {
+    const hook = custodyRuntimeState.beforeElectionCommit;
+    if (hook && (await commandType(args[1])) === "continuationCustody.elect") {
+      custodyRuntimeState.electionCommits += 1;
+      await hook(custodyRuntimeState.electionCommits);
+    }
+    return await actual.runOpenClawStateWorkerOperation(...args);
+  };
+  return { ...actual, runOpenClawStateWorkerOperation: run };
+});
+
+vi.mock("../../auto-reply/continuation/custody/custody-store.js", async (importOriginal) => {
+  const actual = await importOriginal<CustodyStoreModule>();
+  custodyActual.store = actual;
   return {
     ...actual,
-    failFlow: (params: Parameters<typeof actual.failFlow>[0]) => {
-      taskFlowRuntimeState.beforeFailFlow?.(params.flowId);
-      return actual.failFlow(params);
+    failContinuationRecord: async (...args: Parameters<typeof actual.failContinuationRecord>) => {
+      await custodyRuntimeState.beforeFailRecord?.(args[0].recordId);
+      return await actual.failContinuationRecord(...args);
     },
-    createManagedTaskFlowWithAtomicUpdates: (
-      params: Parameters<typeof actual.createManagedTaskFlowWithAtomicUpdates>[0],
+    updateContinuationRecords: async (
+      ...args: Parameters<typeof actual.updateContinuationRecords>
     ) => {
-      taskFlowRuntimeState.atomicCreateCalls += 1;
-      taskFlowRuntimeState.beforeAtomicCreate?.();
-      if (taskFlowRuntimeState.atomicCreateCalls === taskFlowRuntimeState.failAtomicCreateCall) {
-        return { applied: false, reason: "persist_failed" as const };
+      await custodyRuntimeState.beforeAtomicUpdate?.();
+      if (custodyRuntimeState.contendAtomicUpdates) {
+        const records = await actual.listContinuationRecords({
+          recordIds: args[0].map((update) => update.recordId),
+          statuses: ["queued", "running"],
+        });
+        const [contended] = records;
+        if (contended) {
+          await actual.updateContinuationRecords(
+            [
+              {
+                recordId: contended.recordId,
+                ownerSessionKey: contended.ownerSessionKey,
+                expectedRevision: contended.revision,
+                patch: { phase: "concurrent rollback contention" },
+              },
+            ],
+            { now: Date.now() },
+          );
+        }
       }
-      return actual.createManagedTaskFlowWithAtomicUpdates(params);
+      return await actual.updateContinuationRecords(...args);
     },
-    updateTaskFlowsAtomically: (params: Parameters<typeof actual.updateTaskFlowsAtomically>[0]) => {
-      taskFlowRuntimeState.beforeAtomicUpdate?.();
-      if (taskFlowRuntimeState.failAtomicUpdate) {
-        return { applied: false, reason: "persist_failed" as const };
-      }
-      return actual.updateTaskFlowsAtomically(params);
-    },
-    requestFlowCancel: (params: Parameters<typeof actual.requestFlowCancel>[0]) => {
-      taskFlowRuntimeState.beforeRequestFlowCancel?.(params.flowId);
-      return actual.requestFlowCancel(params);
+    requestContinuationRecordCancel: async (
+      ...args: Parameters<typeof actual.requestContinuationRecordCancel>
+    ) => {
+      await custodyRuntimeState.beforeRequestCancel?.(args[0].recordId);
+      return await actual.requestContinuationRecordCancel(...args);
     },
   };
 });
+
+function actualCustody(): CustodyStoreModule {
+  // SAFETY: the custody-store mock factory stores the real module before any test runs.
+  return custodyActual.store as CustodyStoreModule;
+}
 
 vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../config/sessions/session-accessor.js")>();
@@ -130,12 +199,87 @@ function makeRunResult(): EmbeddedAgentRunResult {
   };
 }
 
+type OwnerRecord = ContinuationRecord & { state: Record<string, unknown> };
+
 function findFlowByReason(
-  flows: readonly TaskFlowRecord[],
+  records: readonly OwnerRecord[],
   reason: string,
-): TaskFlowRecord | undefined {
-  return flows.find((flow) => decodeWorkState(flow)?.reason === reason);
+): OwnerRecord | undefined {
+  return records.find((record) => decodeWorkState(record)?.reason === reason);
 }
+
+async function listOwnerRecords(ownerKey: string): Promise<OwnerRecord[]> {
+  return (await listCustodyRecordsForTest({ ownerSessionKey: ownerKey })).map((record) =>
+    Object.assign(record, { state: custodyStateForTest(record) }),
+  );
+}
+
+/** Read the owner's records from a freshly reopened database and projection. */
+async function reloadOwnerRecords(ownerKey: string): Promise<OwnerRecord[]> {
+  resetContinuationCustodyProjection();
+  await closeOpenClawStateDatabaseAsync();
+  await hydrateContinuationCustody();
+  return await listOwnerRecords(ownerKey);
+}
+
+async function requireRecord(recordId: string): Promise<ContinuationRecord> {
+  const record = await readCustodyRecordForTest(recordId);
+  if (!record) {
+    throw new Error(`expected continuation record ${recordId}`);
+  }
+  return record;
+}
+
+/** A concurrent writer's revision CAS on one record. */
+async function concurrentPatch(
+  record: ContinuationRecord,
+  patch: ContinuationRecordPatch,
+): Promise<boolean> {
+  const result = await actualCustody().updateContinuationRecords(
+    [
+      {
+        recordId: record.recordId,
+        ownerSessionKey: record.ownerSessionKey,
+        expectedRevision: record.revision,
+        patch,
+      },
+    ],
+    { now: Date.now() },
+  );
+  return result.outcome === "applied";
+}
+
+async function concurrentFinish(record: ContinuationRecord, phase: string): Promise<boolean> {
+  const result = await actualCustody().finishContinuationRecord({
+    recordId: record.recordId,
+    ownerSessionKey: record.ownerSessionKey,
+    expectedRevision: record.revision,
+    now: Date.now(),
+    phase,
+  });
+  return result.outcome === "applied";
+}
+
+/** Seed queued same-session work as a committed election creates it. */
+async function enqueuePendingWork(
+  work: PendingContinuationWork,
+): Promise<ContinuationRecord | null> {
+  const state = encodeWorkState(work);
+  const result = await actualCustody().createContinuationRecord({
+    recordId: crypto.randomUUID(),
+    kind: "work",
+    ownerSessionKey: work.sessionKey,
+    ...(work.chainId ? { chainId: work.chainId } : {}),
+    status: "queued",
+    phase: "Queued for same-session continuation wake",
+    createdAt: work.electedAt,
+    dueAt: workRecordDueAt(state),
+    stateJson: JSON.stringify(state),
+  });
+  return result.outcome === "created" ? result.record : null;
+}
+
+useContinuationCustodyTestState();
 
 describe("spawn-init continuation cancellation races", () => {
   let tmpDir: string;
@@ -147,10 +291,7 @@ describe("spawn-init continuation cancellation races", () => {
   beforeEach(async () => {
     const { resetContinuationWorkDispatchForTests } =
       await import("../../auto-reply/continuation/work-dispatch.js");
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
     resetContinuationWorkDispatchForTests();
-    resetTaskFlowRegistryForTests({ persist: false });
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-spawn-init-races-"));
     storePath = path.join(tmpDir, "sessions.json");
     sessionEntry = {
@@ -161,13 +302,12 @@ describe("spawn-init continuation cancellation races", () => {
     sessionStore = { [sessionKey]: sessionEntry };
     replaceSessionEntrySync({ storePath, sessionKey }, sessionEntry);
     clearSessionStoreCacheForTest();
-    taskFlowRuntimeState.beforeFailFlow = undefined;
-    taskFlowRuntimeState.beforeAtomicCreate = undefined;
-    taskFlowRuntimeState.beforeAtomicUpdate = undefined;
-    taskFlowRuntimeState.beforeRequestFlowCancel = undefined;
-    taskFlowRuntimeState.atomicCreateCalls = 0;
-    taskFlowRuntimeState.failAtomicCreateCall = undefined;
-    taskFlowRuntimeState.failAtomicUpdate = false;
+    custodyRuntimeState.beforeFailRecord = undefined;
+    custodyRuntimeState.beforeElectionCommit = undefined;
+    custodyRuntimeState.electionCommits = 0;
+    custodyRuntimeState.beforeAtomicUpdate = undefined;
+    custodyRuntimeState.contendAtomicUpdates = false;
+    custodyRuntimeState.beforeRequestCancel = undefined;
     sessionAccessorState.afterPatchCall = undefined;
     sessionAccessorState.failPatchCall = undefined;
     sessionAccessorState.patchCalls = 0;
@@ -177,10 +317,7 @@ describe("spawn-init continuation cancellation races", () => {
   afterEach(async () => {
     const { resetContinuationWorkDispatchForTests } =
       await import("../../auto-reply/continuation/work-dispatch.js");
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
     resetContinuationWorkDispatchForTests();
-    resetTaskFlowRegistryForTests({ persist: false });
     resetSystemEventsForTest();
     clearRuntimeConfigSnapshot();
     clearSessionStoreCacheForTest();
@@ -210,7 +347,7 @@ describe("spawn-init continuation cancellation races", () => {
 
   async function enqueuePriorParkedWork(reason: string): Promise<void> {
     const now = Date.now();
-    const work = enqueuePendingWork({
+    const work = await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 30_000,
@@ -253,7 +390,7 @@ describe("spawn-init continuation cancellation races", () => {
       { abortSignal: abort.signal, maxPendingWork: 1 },
     );
 
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(flows).toHaveLength(1);
     expect(flows[0]).toMatchObject({ status: "failed" });
     expectRestoredChainState();
@@ -263,28 +400,23 @@ describe("spawn-init continuation cancellation races", () => {
     const abort = new AbortController();
     let wakeSignal: AbortSignal | undefined;
     let releaseClaim = () => {};
-    sessionAccessorState.afterPatchCall = (call) => {
+    sessionAccessorState.afterPatchCall = async (call) => {
       if (call !== 2) {
         return;
       }
       const created = findFlowByReason(
-        listTaskFlowsForOwnerKey(sessionKey),
+        await listOwnerRecords(sessionKey),
         "zero-delay running wake",
       );
       if (!created) {
         throw new Error("expected created continuation flow");
       }
-      const running = updateFlowRecordByIdExpectedRevision({
-        flowId: created.flowId,
-        expectedRevision: created.revision,
-        patch: { status: "running" },
-      });
-      if (!running.applied) {
+      if (!(await concurrentPatch(created, { status: "running" }))) {
         throw new Error("expected continuation flow to enter running state");
       }
       const claim = registerContinuationDispatchClaim({
         sessionKey,
-        flowId: created.flowId,
+        flowId: created.recordId,
       });
       wakeSignal = claim.controller.signal;
       releaseClaim = claim.release;
@@ -299,7 +431,7 @@ describe("spawn-init continuation cancellation races", () => {
     releaseClaim();
     expect(wakeSignal?.aborted).toBe(true);
     expect(postCancelSideEffects).toBe(0);
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toEqual([
+    expect(await listOwnerRecords(sessionKey)).toEqual([
       expect.objectContaining({ status: "failed" }),
     ]);
   });
@@ -308,21 +440,13 @@ describe("spawn-init continuation cancellation races", () => {
     const abort = new AbortController();
     let wakeSignal: AbortSignal | undefined;
     let releaseClaim = () => {};
-    taskFlowRuntimeState.beforeFailFlow = (flowId) => {
-      taskFlowRuntimeState.beforeFailFlow = undefined;
-      const queued = getTaskFlowById(flowId);
-      if (!queued) {
-        throw new Error("expected queued continuation flow");
-      }
-      const running = updateFlowRecordByIdExpectedRevision({
-        flowId,
-        expectedRevision: queued.revision,
-        patch: { status: "running" },
-      });
-      if (!running.applied) {
+    custodyRuntimeState.beforeFailRecord = async (recordId) => {
+      custodyRuntimeState.beforeFailRecord = undefined;
+      const queued = await requireRecord(recordId);
+      if (!(await concurrentPatch(queued, { status: "running" }))) {
         throw new Error("expected continuation flow to enter running state");
       }
-      const claim = registerContinuationDispatchClaim({ sessionKey, flowId });
+      const claim = registerContinuationDispatchClaim({ sessionKey, flowId: recordId });
       wakeSignal = claim.controller.signal;
       releaseClaim = claim.release;
     };
@@ -340,7 +464,7 @@ describe("spawn-init continuation cancellation races", () => {
     releaseClaim();
     expect(wakeSignal?.aborted).toBe(true);
     expect(postCancelSideEffects).toBe(0);
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toEqual([
+    expect(await listOwnerRecords(sessionKey)).toEqual([
       expect.objectContaining({ status: "failed" }),
     ]);
   });
@@ -352,8 +476,8 @@ describe("spawn-init continuation cancellation races", () => {
         abort.abort("test cancellation before multi-wake cleanup");
       }
     };
-    taskFlowRuntimeState.beforeFailFlow = () => {
-      taskFlowRuntimeState.beforeFailFlow = undefined;
+    custodyRuntimeState.beforeFailRecord = () => {
+      custodyRuntimeState.beforeFailRecord = undefined;
       throw new Error("synthetic first-flow cleanup failure");
     };
 
@@ -365,7 +489,7 @@ describe("spawn-init continuation cancellation races", () => {
       { abortSignal: abort.signal },
     );
 
-    expect(listTaskFlowsForOwnerKey(sessionKey)).toEqual([
+    expect(await listOwnerRecords(sessionKey)).toEqual([
       expect.objectContaining({ status: "failed" }),
       expect.objectContaining({ status: "failed" }),
     ]);
@@ -374,22 +498,19 @@ describe("spawn-init continuation cancellation races", () => {
 
   it("replaces a parked wake at the pending cap and preserves the replacement across reload", async () => {
     await enqueuePriorParkedWork("prior parked work");
-    let reloadedFlows: TaskFlowRecord[] = [];
+    let reloadedFlows: OwnerRecord[] = [];
     sessionAccessorState.afterPatchCall = async (call) => {
       if (call !== 2) {
         return;
       }
-      const { resetTaskFlowRegistryForTests } =
-        await import("../../tasks/task-runtime.test-helpers.js");
-      resetTaskFlowRegistryForTests({ persist: false });
-      reloadedFlows = listTaskFlowsForOwnerKey(sessionKey);
+      reloadedFlows = await reloadOwnerRecords(sessionKey);
     };
 
     await schedule([{ reason: "replacement work", delaySeconds: 30 }], { maxPendingWork: 1 });
 
     expect(reloadedFlows.filter((flow) => flow.status === "queued")).toEqual([
       expect.objectContaining({
-        stateJson: expect.objectContaining({ reason: "replacement work" }),
+        state: expect.objectContaining({ reason: "replacement work" }),
       }),
     ]);
     expect(findFlowByReason(reloadedFlows, "prior parked work")).toMatchObject({
@@ -399,23 +520,18 @@ describe("spawn-init continuation cancellation races", () => {
 
   it("retries around a concurrently cancelled prior wake without reviving it", async () => {
     await enqueuePriorParkedWork("prior parked work");
-    taskFlowRuntimeState.beforeAtomicCreate = () => {
-      taskFlowRuntimeState.beforeAtomicCreate = undefined;
-      const prior = findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "prior parked work");
+    custodyRuntimeState.beforeElectionCommit = async () => {
+      custodyRuntimeState.beforeElectionCommit = undefined;
+      const prior = findFlowByReason(await listOwnerRecords(sessionKey), "prior parked work");
       if (!prior) {
         throw new Error("expected prior parked flow");
       }
-      const cancelled = requestFlowCancel({
-        flowId: prior.flowId,
-        expectedRevision: prior.revision,
-        cancelRequestedAt: Date.now(),
-      });
-      expect(cancelled.applied).toBe(true);
+      expect(await concurrentPatch(prior, { cancelRequestedAt: Date.now() })).toBe(true);
     };
 
     await schedule([{ reason: "replacement work", delaySeconds: 30 }]);
 
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({
       status: "queued",
       cancelRequestedAt: expect.any(Number),
@@ -427,26 +543,23 @@ describe("spawn-init continuation cancellation races", () => {
   it("retries the whole replacement transition when one prior CAS advances", async () => {
     await enqueuePriorParkedWork("first prior parked work");
     await enqueuePriorParkedWork("second prior parked work");
-    taskFlowRuntimeState.beforeAtomicCreate = () => {
-      taskFlowRuntimeState.beforeAtomicCreate = undefined;
+    custodyRuntimeState.beforeElectionCommit = async () => {
+      custodyRuntimeState.beforeElectionCommit = undefined;
       const prior = findFlowByReason(
-        listTaskFlowsForOwnerKey(sessionKey),
+        await listOwnerRecords(sessionKey),
         "second prior parked work",
       );
       if (!prior) {
         throw new Error("expected second prior parked flow");
       }
-      const bumped = updateFlowRecordByIdExpectedRevision({
-        flowId: prior.flowId,
-        expectedRevision: prior.revision,
-        patch: { currentStep: "concurrent second prior-wake update" },
-      });
-      expect(bumped.applied).toBe(true);
+      expect(await concurrentPatch(prior, { phase: "concurrent second prior-wake update" })).toBe(
+        true,
+      );
     };
 
     await schedule([{ reason: "replacement work", delaySeconds: 30 }]);
 
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "first prior parked work")).toMatchObject({
       status: "succeeded",
     });
@@ -459,25 +572,20 @@ describe("spawn-init continuation cancellation races", () => {
 
   it("fails closed when a parked owner starts running before replacement admission", async () => {
     await enqueuePriorParkedWork("prior parked work");
-    taskFlowRuntimeState.beforeAtomicCreate = () => {
-      taskFlowRuntimeState.beforeAtomicCreate = undefined;
-      const prior = findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "prior parked work");
+    custodyRuntimeState.beforeElectionCommit = async () => {
+      custodyRuntimeState.beforeElectionCommit = undefined;
+      const prior = findFlowByReason(await listOwnerRecords(sessionKey), "prior parked work");
       if (!prior) {
         throw new Error("expected prior parked flow");
       }
-      const running = updateFlowRecordByIdExpectedRevision({
-        flowId: prior.flowId,
-        expectedRevision: prior.revision,
-        patch: { status: "running" },
-      });
-      expect(running.applied).toBe(true);
+      expect(await concurrentPatch(prior, { status: "running" })).toBe(true);
     };
 
     await expect(
       schedule([{ reason: "rejected replacement work", delaySeconds: 30 }]),
     ).rejects.toThrow("running_owner");
 
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "running" });
     expect(findFlowByReason(flows, "rejected replacement work")).toBeUndefined();
     expectRestoredChainState();
@@ -486,7 +594,7 @@ describe("spawn-init continuation cancellation races", () => {
   it("allows a stable running predecessor while replacing a distinct parked wake", async () => {
     await enqueuePriorParkedWork("prior parked work");
     const now = Date.now();
-    const predecessor = enqueuePendingWork({
+    const predecessor = await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 0,
@@ -498,19 +606,14 @@ describe("spawn-init continuation cancellation races", () => {
       reason: "stable running predecessor",
       anchorFinalizedAt: now,
     });
-    if (!predecessor?.flowId || predecessor.expectedRevision === undefined) {
+    if (!predecessor) {
       throw new Error("expected running predecessor flow");
     }
-    const running = updateFlowRecordByIdExpectedRevision({
-      flowId: predecessor.flowId,
-      expectedRevision: predecessor.expectedRevision,
-      patch: { status: "running" },
-    });
-    expect(running.applied).toBe(true);
+    expect(await concurrentPatch(predecessor, { status: "running" })).toBe(true);
 
     await schedule([{ reason: "replacement work", delaySeconds: 30 }]);
 
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "stable running predecessor")).toMatchObject({
       status: "running",
     });
@@ -518,51 +621,45 @@ describe("spawn-init continuation cancellation races", () => {
     expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "queued" });
   });
 
+  async function supersedeOriginalAndParkNewer(): Promise<void> {
+    custodyRuntimeState.beforeElectionCommit = undefined;
+    const original = findFlowByReason(
+      await listOwnerRecords(sessionKey),
+      "original prior parked work",
+    );
+    if (!original) {
+      throw new Error("expected original prior parked flow");
+    }
+    expect(await concurrentFinish(original, "superseded by concurrent replacement")).toBe(true);
+    const now = Date.now();
+    expect(
+      await enqueuePendingWork({
+        sessionKey,
+        hop: 2,
+        delayMs: 30_000,
+        electedAt: now,
+        dueAt: now + 60_000,
+        maxChainLength: 200,
+        chainStartedAt: now,
+        accumulatedChainTokens: 2,
+        reason: "concurrent newer parked work",
+        anchorPending: true,
+        idleRetry: {
+          trigger: "reply-run-ended",
+          reasonCategory: "follow-up-work",
+          armedAt: now,
+        },
+      }),
+    ).not.toBeNull();
+  }
+
   it("supersedes a newer parked owner discovered after the first replacement CAS loses", async () => {
     await enqueuePriorParkedWork("original prior parked work");
-    taskFlowRuntimeState.beforeAtomicCreate = () => {
-      taskFlowRuntimeState.beforeAtomicCreate = undefined;
-      const original = findFlowByReason(
-        listTaskFlowsForOwnerKey(sessionKey),
-        "original prior parked work",
-      );
-      if (!original) {
-        throw new Error("expected original prior parked flow");
-      }
-      const superseded = finishFlow({
-        flowId: original.flowId,
-        expectedRevision: original.revision,
-        currentStep: "superseded by concurrent replacement",
-      });
-      expect(superseded.applied).toBe(true);
-      const now = Date.now();
-      expect(
-        enqueuePendingWork({
-          sessionKey,
-          hop: 2,
-          delayMs: 30_000,
-          electedAt: now,
-          dueAt: now + 60_000,
-          maxChainLength: 200,
-          chainStartedAt: now,
-          accumulatedChainTokens: 2,
-          reason: "concurrent newer parked work",
-          anchorPending: true,
-          idleRetry: {
-            trigger: "reply-run-ended",
-            reasonCategory: "follow-up-work",
-            armedAt: now,
-          },
-        }),
-      ).not.toBeNull();
-    };
+    custodyRuntimeState.beforeElectionCommit = supersedeOriginalAndParkNewer;
 
     await schedule([{ reason: "newest replacement work", delaySeconds: 30 }]);
 
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
-    resetTaskFlowRegistryForTests({ persist: false });
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await reloadOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "original prior parked work")).toMatchObject({
       status: "succeeded",
     });
@@ -571,7 +668,7 @@ describe("spawn-init continuation cancellation races", () => {
     });
     expect(flows.filter((flow) => flow.status === "queued")).toEqual([
       expect.objectContaining({
-        stateJson: expect.objectContaining({ reason: "newest replacement work" }),
+        state: expect.objectContaining({ reason: "newest replacement work" }),
       }),
     ]);
   });
@@ -579,51 +676,13 @@ describe("spawn-init continuation cancellation races", () => {
   it("restores a newer parked owner discovered by retry when finalization fails", async () => {
     await enqueuePriorParkedWork("original prior parked work");
     sessionAccessorState.failPatchCall = 2;
-    taskFlowRuntimeState.beforeAtomicCreate = () => {
-      taskFlowRuntimeState.beforeAtomicCreate = undefined;
-      const original = findFlowByReason(
-        listTaskFlowsForOwnerKey(sessionKey),
-        "original prior parked work",
-      );
-      if (!original) {
-        throw new Error("expected original prior parked flow");
-      }
-      const superseded = finishFlow({
-        flowId: original.flowId,
-        expectedRevision: original.revision,
-        currentStep: "superseded by concurrent replacement",
-      });
-      expect(superseded.applied).toBe(true);
-      const now = Date.now();
-      expect(
-        enqueuePendingWork({
-          sessionKey,
-          hop: 2,
-          delayMs: 30_000,
-          electedAt: now,
-          dueAt: now + 60_000,
-          maxChainLength: 200,
-          chainStartedAt: now,
-          accumulatedChainTokens: 2,
-          reason: "concurrent newer parked work",
-          anchorPending: true,
-          idleRetry: {
-            trigger: "reply-run-ended",
-            reasonCategory: "follow-up-work",
-            armedAt: now,
-          },
-        }),
-      ).not.toBeNull();
-    };
+    custodyRuntimeState.beforeElectionCommit = supersedeOriginalAndParkNewer;
 
     await expect(
       schedule([{ reason: "newest replacement work", delaySeconds: 30 }]),
     ).rejects.toThrow();
 
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
-    resetTaskFlowRegistryForTests({ persist: false });
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await reloadOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "original prior parked work")).toMatchObject({
       status: "succeeded",
     });
@@ -638,34 +697,26 @@ describe("spawn-init continuation cancellation races", () => {
   it("does not restore a stale original when retry superseded an exact empty owner set", async () => {
     await enqueuePriorParkedWork("original prior parked work");
     sessionAccessorState.failPatchCall = 2;
-    taskFlowRuntimeState.beforeAtomicCreate = () => {
-      taskFlowRuntimeState.beforeAtomicCreate = undefined;
+    custodyRuntimeState.beforeElectionCommit = async () => {
+      custodyRuntimeState.beforeElectionCommit = undefined;
       const original = findFlowByReason(
-        listTaskFlowsForOwnerKey(sessionKey),
+        await listOwnerRecords(sessionKey),
         "original prior parked work",
       );
       if (!original) {
         throw new Error("expected original prior parked flow");
       }
-      const finished = finishFlow({
-        flowId: original.flowId,
-        expectedRevision: original.revision,
-        currentStep: "completed independently before retry",
-      });
-      expect(finished.applied).toBe(true);
+      expect(await concurrentFinish(original, "completed independently before retry")).toBe(true);
     };
 
     await expect(
       schedule([{ reason: "replacement after empty refresh", delaySeconds: 30 }]),
     ).rejects.toThrow();
 
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
-    resetTaskFlowRegistryForTests({ persist: false });
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await reloadOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "original prior parked work")).toMatchObject({
       status: "succeeded",
-      currentStep: "completed independently before retry",
+      phase: "completed independently before retry",
     });
     expect(findFlowByReason(flows, "replacement after empty refresh")).toMatchObject({
       status: "failed",
@@ -676,26 +727,23 @@ describe("spawn-init continuation cancellation races", () => {
     await enqueuePriorParkedWork("first prior parked work");
     await enqueuePriorParkedWork("second prior parked work");
     sessionAccessorState.failPatchCall = 2;
-    taskFlowRuntimeState.beforeAtomicUpdate = () => {
-      taskFlowRuntimeState.beforeAtomicUpdate = undefined;
+    custodyRuntimeState.beforeAtomicUpdate = async () => {
+      custodyRuntimeState.beforeAtomicUpdate = undefined;
       const prior = findFlowByReason(
-        listTaskFlowsForOwnerKey(sessionKey),
+        await listOwnerRecords(sessionKey),
         "second prior parked work",
       );
       if (!prior) {
         throw new Error("expected second prior parked flow");
       }
-      const bumped = updateFlowRecordByIdExpectedRevision({
-        flowId: prior.flowId,
-        expectedRevision: prior.revision,
-        patch: { currentStep: "concurrent second prior-wake update" },
-      });
-      expect(bumped.applied).toBe(true);
+      expect(await concurrentPatch(prior, { phase: "concurrent second prior-wake update" })).toBe(
+        true,
+      );
     };
 
     await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
 
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "first prior parked work")).toMatchObject({
       status: "queued",
     });
@@ -709,31 +757,28 @@ describe("spawn-init continuation cancellation races", () => {
   it("does not credit a concurrently requeued prior with changed rollback state", async () => {
     await enqueuePriorParkedWork("prior parked work");
     sessionAccessorState.failPatchCall = 2;
-    taskFlowRuntimeState.beforeAtomicUpdate = () => {
-      taskFlowRuntimeState.beforeAtomicUpdate = undefined;
-      const prior = findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "prior parked work");
+    custodyRuntimeState.beforeAtomicUpdate = async () => {
+      custodyRuntimeState.beforeAtomicUpdate = undefined;
+      const prior = findFlowByReason(await listOwnerRecords(sessionKey), "prior parked work");
       if (!prior) {
         throw new Error("expected superseded prior flow");
       }
-      const requeued = updateFlowRecordByIdExpectedRevision({
-        flowId: prior.flowId,
-        expectedRevision: prior.revision,
-        patch: {
+      expect(
+        await concurrentPatch(prior, {
           status: "queued",
-          currentStep: "concurrently requeued with different state",
-        },
-      });
-      expect(requeued.applied).toBe(true);
+          phase: "concurrently requeued with different state",
+        }),
+      ).toBe(true);
     };
 
     await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow(
       "spawn-init chain finalization and wake cleanup both failed",
     );
 
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({
       status: "queued",
-      currentStep: "concurrently requeued with different state",
+      phase: "concurrently requeued with different state",
     });
     expect(findFlowByReason(flows, "replacement work")).toMatchObject({ status: "failed" });
     expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
@@ -744,48 +789,34 @@ describe("spawn-init continuation cancellation races", () => {
     sessionAccessorState.failPatchCall = 2;
     let wakeSignal: AbortSignal | undefined;
     let releaseClaim = () => {};
-    taskFlowRuntimeState.beforeAtomicUpdate = () => {
-      taskFlowRuntimeState.beforeAtomicUpdate = undefined;
-      const replacement = findFlowByReason(
-        listTaskFlowsForOwnerKey(sessionKey),
-        "replacement work",
-      );
+    custodyRuntimeState.beforeAtomicUpdate = async () => {
+      custodyRuntimeState.beforeAtomicUpdate = undefined;
+      const replacement = findFlowByReason(await listOwnerRecords(sessionKey), "replacement work");
       if (!replacement) {
         throw new Error("expected replacement flow");
       }
-      const running = updateFlowRecordByIdExpectedRevision({
-        flowId: replacement.flowId,
-        expectedRevision: replacement.revision,
-        patch: { status: "running" },
-      });
-      if (!running.applied) {
+      if (!(await concurrentPatch(replacement, { status: "running" }))) {
         throw new Error("expected replacement flow to enter running state");
       }
       const claim = registerContinuationDispatchClaim({
         sessionKey,
-        flowId: replacement.flowId,
+        flowId: replacement.recordId,
       });
       wakeSignal = claim.controller.signal;
       releaseClaim = claim.release;
     };
-    taskFlowRuntimeState.beforeRequestFlowCancel = (flowId) => {
-      taskFlowRuntimeState.beforeRequestFlowCancel = undefined;
-      const running = getTaskFlowById(flowId);
-      if (!running) {
-        throw new Error("expected running replacement before cancellation");
-      }
-      const bumped = updateFlowRecordByIdExpectedRevision({
-        flowId,
-        expectedRevision: running.revision,
-        patch: { currentStep: "concurrent running cancellation revision" },
-      });
-      expect(bumped.applied).toBe(true);
+    custodyRuntimeState.beforeRequestCancel = async (recordId) => {
+      custodyRuntimeState.beforeRequestCancel = undefined;
+      const running = await requireRecord(recordId);
+      expect(
+        await concurrentPatch(running, { phase: "concurrent running cancellation revision" }),
+      ).toBe(true);
     };
 
     await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
 
     releaseClaim();
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(wakeSignal?.aborted).toBe(true);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "succeeded" });
     expect(findFlowByReason(flows, "replacement work")).toMatchObject({
@@ -805,10 +836,7 @@ describe("spawn-init continuation cancellation races", () => {
       ]),
     ).rejects.toThrow();
 
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
-    resetTaskFlowRegistryForTests({ persist: false });
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await reloadOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "queued" });
     expect(findFlowByReason(flows, "first replacement work")).toMatchObject({ status: "failed" });
     expect(findFlowByReason(flows, "second replacement work")).toMatchObject({ status: "failed" });
@@ -816,7 +844,20 @@ describe("spawn-init continuation cancellation races", () => {
 
   it("rolls back earlier durable work when a later batch enqueue fails", async () => {
     await enqueuePriorParkedWork("prior parked work");
-    taskFlowRuntimeState.failAtomicCreateCall = 2;
+    // The later election keeps losing its commit to a concurrent writer of
+    // the owner's live work, so it never commits.
+    custodyRuntimeState.beforeElectionCommit = async (commit) => {
+      if (commit < 2) {
+        return;
+      }
+      const first = findFlowByReason(await listOwnerRecords(sessionKey), "first replacement work");
+      if (!first) {
+        throw new Error("expected first replacement flow");
+      }
+      expect(await concurrentPatch(first, { phase: `concurrent owner write ${commit}` })).toBe(
+        true,
+      );
+    };
 
     await expect(
       schedule([
@@ -825,10 +866,7 @@ describe("spawn-init continuation cancellation races", () => {
       ]),
     ).rejects.toThrow("prior parked-wake supersession did not commit");
 
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
-    resetTaskFlowRegistryForTests({ persist: false });
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await reloadOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "queued" });
     expect(findFlowByReason(flows, "first replacement work")).toMatchObject({ status: "failed" });
     expect(findFlowByReason(flows, "failed second replacement work")).toBeUndefined();
@@ -838,21 +876,16 @@ describe("spawn-init continuation cancellation races", () => {
   it("cleans up safe siblings without restoring prior work after one replacement succeeded", async () => {
     await enqueuePriorParkedWork("prior parked work");
     sessionAccessorState.failPatchCall = 2;
-    taskFlowRuntimeState.beforeAtomicUpdate = () => {
-      taskFlowRuntimeState.beforeAtomicUpdate = undefined;
+    custodyRuntimeState.beforeAtomicUpdate = async () => {
+      custodyRuntimeState.beforeAtomicUpdate = undefined;
       const replacement = findFlowByReason(
-        listTaskFlowsForOwnerKey(sessionKey),
+        await listOwnerRecords(sessionKey),
         "second replacement work",
       );
       if (!replacement) {
         throw new Error("expected replacement flow");
       }
-      const finished = finishFlow({
-        flowId: replacement.flowId,
-        expectedRevision: replacement.revision,
-        currentStep: "replacement already delivered",
-      });
-      expect(finished.applied).toBe(true);
+      expect(await concurrentFinish(replacement, "replacement already delivered")).toBe(true);
     };
 
     await expect(
@@ -862,10 +895,7 @@ describe("spawn-init continuation cancellation races", () => {
       ]),
     ).rejects.toThrow();
 
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
-    resetTaskFlowRegistryForTests({ persist: false });
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await reloadOwnerRecords(sessionKey);
     expect(findFlowByReason(flows, "prior parked work")).toMatchObject({ status: "succeeded" });
     expect(findFlowByReason(flows, "first replacement work")).toMatchObject({ status: "failed" });
     expect(findFlowByReason(flows, "second replacement work")).toMatchObject({
@@ -877,22 +907,19 @@ describe("spawn-init continuation cancellation races", () => {
     await enqueuePriorParkedWork("first prior parked work");
     await enqueuePriorParkedWork("second prior parked work");
     sessionAccessorState.failPatchCall = 2;
-    taskFlowRuntimeState.failAtomicUpdate = true;
+    custodyRuntimeState.contendAtomicUpdates = true;
     let wakeSignal: AbortSignal | undefined;
     let releaseClaim = () => {};
-    taskFlowRuntimeState.beforeRequestFlowCancel = (flowId) => {
-      taskFlowRuntimeState.beforeRequestFlowCancel = undefined;
-      const flow = getTaskFlowById(flowId);
-      if (!flow) {
-        throw new Error("expected queued replacement before cancellation");
-      }
-      const bumped = updateFlowRecordByIdExpectedRevision({
-        flowId,
-        expectedRevision: flow.revision,
-        patch: { status: "running", currentStep: "concurrent cancellation revision" },
-      });
-      expect(bumped.applied).toBe(true);
-      const claim = registerContinuationDispatchClaim({ sessionKey, flowId });
+    custodyRuntimeState.beforeRequestCancel = async (recordId) => {
+      custodyRuntimeState.beforeRequestCancel = undefined;
+      const flow = await requireRecord(recordId);
+      expect(
+        await concurrentPatch(flow, {
+          status: "running",
+          phase: "concurrent cancellation revision",
+        }),
+      ).toBe(true);
+      const claim = registerContinuationDispatchClaim({ sessionKey, flowId: recordId });
       wakeSignal = claim.controller.signal;
       releaseClaim = claim.release;
     };
@@ -900,7 +927,7 @@ describe("spawn-init continuation cancellation races", () => {
     await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
 
     releaseClaim();
-    const flows = listTaskFlowsForOwnerKey(sessionKey);
+    const flows = await listOwnerRecords(sessionKey);
     expect(wakeSignal?.aborted).toBe(true);
     expect(findFlowByReason(flows, "first prior parked work")).toMatchObject({
       status: "succeeded",
@@ -918,29 +945,19 @@ describe("spawn-init continuation cancellation races", () => {
   it("marks an unresolved running replacement cancelled when atomic rollback keeps failing", async () => {
     await enqueuePriorParkedWork("prior parked work");
     sessionAccessorState.failPatchCall = 2;
-    taskFlowRuntimeState.failAtomicUpdate = true;
-    taskFlowRuntimeState.beforeAtomicUpdate = () => {
-      taskFlowRuntimeState.beforeAtomicUpdate = undefined;
-      const replacement = findFlowByReason(
-        listTaskFlowsForOwnerKey(sessionKey),
-        "replacement work",
-      );
+    custodyRuntimeState.contendAtomicUpdates = true;
+    custodyRuntimeState.beforeAtomicUpdate = async () => {
+      custodyRuntimeState.beforeAtomicUpdate = undefined;
+      const replacement = findFlowByReason(await listOwnerRecords(sessionKey), "replacement work");
       if (!replacement) {
         throw new Error("expected replacement flow");
       }
-      const running = updateFlowRecordByIdExpectedRevision({
-        flowId: replacement.flowId,
-        expectedRevision: replacement.revision,
-        patch: { status: "running" },
-      });
-      expect(running.applied).toBe(true);
+      expect(await concurrentPatch(replacement, { status: "running" })).toBe(true);
     };
 
     await expect(schedule([{ reason: "replacement work", delaySeconds: 30 }])).rejects.toThrow();
 
-    expect(
-      findFlowByReason(listTaskFlowsForOwnerKey(sessionKey), "replacement work"),
-    ).toMatchObject({
+    expect(findFlowByReason(await listOwnerRecords(sessionKey), "replacement work")).toMatchObject({
       status: "running",
       cancelRequestedAt: expect.any(Number),
     });

@@ -36,8 +36,13 @@ const taskStatusMocks = vi.hoisted(() => ({
   findTaskByRunIdForStatus: vi.fn(),
   listTasksForSessionKeyForStatus: vi.fn(() => [] as never[]),
 }));
+// Archive deferral reads the custody projection; the sweep's session delete
+// asks authoritative custody (RFC §5.4.6).
 const hasLiveOrRecentlyDispatchedContinuationWorkMock = vi.hoisted(() =>
   vi.fn<(_sessionKey: string) => boolean>(() => false),
+);
+const hasLiveContinuationCustodyMock = vi.hoisted(() =>
+  vi.fn<(_sessionKey: string) => Promise<boolean>>(async () => false),
 );
 const sessionAccessorMocks = vi.hoisted(() => ({
   loadSessionEntryReadOnly: vi.fn<
@@ -109,6 +114,7 @@ vi.mock("../../runtime-plugins.js", async () => {
 });
 
 vi.mock("../../../auto-reply/continuation/work-store.js", () => ({
+  hasLiveContinuationCustody: hasLiveContinuationCustodyMock,
   hasLiveOrRecentlyDispatchedContinuationWork: hasLiveOrRecentlyDispatchedContinuationWorkMock,
 }));
 vi.mock("../announce/subagent-announce.js", () => ({
@@ -174,6 +180,7 @@ describe("subagent registry archive behavior", () => {
     vi.mocked(captureSubagentCompletionReply).mockReset();
     vi.mocked(runSubagentAnnounceFlow).mockReset();
     hasLiveOrRecentlyDispatchedContinuationWorkMock.mockReset().mockReturnValue(false);
+    hasLiveContinuationCustodyMock.mockReset().mockResolvedValue(false);
     vi.mocked(getAgentRunContext).mockReset().mockReturnValue(undefined);
     taskRuntimeMocks.finalizeTaskRunByRunId
       .mockReset()
