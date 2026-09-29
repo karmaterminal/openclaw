@@ -1,0 +1,256 @@
+drift-cure-gate: 44f67c2a7d3b1752de4d8998fcc85cab1afbc756  HEAD=871c03c018f78a6c834d9a043737e997bac7f831  base=44f67c2a7d  PRcreate=1823d46c57
+files examined: 884
+
+  GENUINE        231
+  MIXED-CLOBBER  244
+  SAFE-NEW       409
+
+== FROZEN-STALE (high-confidence pure clobber; re-sync to upstream) ==
+
+== MIXED-CLOBBER (ranked by dropped post-fork upstream lines; triage top-down) ==
+    161  src/gateway/server-restart-sentinel.ts               fa85b5b237 fix(deepgram): retain transcripts from every au
+    156  src/agents/subagents/announce/subagent-announce.ts   fa85b5b237 fix(deepgram): retain transcripts from every au
+    102  src/agents/subagents/registry/subagent-registry-sweeper.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     96  src/agents/subagents/registry/subagent-registry.persistence.resume.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     93  src/agents/subagents/spawn/subagent-spawn.ts         fa85b5b237 fix(deepgram): retain transcripts from every au
+     92  src/agents/subagents/registry/subagent-registry.persistence.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     82  src/infra/heartbeat-wake.test.ts                     fa85b5b237 fix(deepgram): retain transcripts from every au
+     82  src/agents/subagents/spawn/subagent-attachments.ts   fa85b5b237 fix(deepgram): retain transcripts from every au
+     70  src/infra/session-event-wake.ts                      fa85b5b237 fix(deepgram): retain transcripts from every au
+     70  src/infra/diagnostic-trace-context.ts                fa85b5b237 fix(deepgram): retain transcripts from every au
+     65  src/infra/session-delivery-queue.records.ts          fa85b5b237 fix(deepgram): retain transcripts from every au
+     62  src/agents/subagents/registry/subagent-registry.ts   fa85b5b237 fix(deepgram): retain transcripts from every au
+     57  src/agents/embedded-agent-subscribe.reply-delivery.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     51  src/auto-reply/reply/agent-runner-result-accounting.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     45  src/agents/embedded-agent-subscribe.handlers.messages.lifecycle.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     44  src/agents/subagents/announce/subagent-announce-descendant-wake.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     37  src/agents/spawn-pipeline.ts                         fa85b5b237 fix(deepgram): retain transcripts from every au
+     34  src/agents/subagents/announce/subagent-announce-delivery.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     32  src/infra/session-delivery-queue.storage.test.ts     fa85b5b237 fix(deepgram): retain transcripts from every au
+     31  src/cli/daemon-cli/install.integration.test.ts       fa85b5b237 fix(deepgram): retain transcripts from every au
+     26  src/agents/tool-display.test.ts                      fa85b5b237 fix(deepgram): retain transcripts from every au
+     25  src/agents/embedded-agent-runner/run/run-attempt-dispatch.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     24  src/auto-reply/reply/agent-runner-result-payloads.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     24  src/auto-reply/reply/agent-runner-result-complete.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     23  src/infra/session-delivery-queue.worker.ts           fa85b5b237 fix(deepgram): retain transcripts from every au
+     22  src/config/sessions/session-accessor.sqlite-lifecycle.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     19  src/auto-reply/reply/session-system-events.ts        fa85b5b237 fix(deepgram): retain transcripts from every au
+     19  src/auto-reply/reply/queue/lifecycle.ts              da27b336c0 fix(gateway): keep session access and Stop boun
+     19  src/agents/embedded-agent-runner/run.overflow-compaction.harness.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     18  src/agents/embedded-agent-subscribe.ts               fa85b5b237 fix(deepgram): retain transcripts from every au
+     17  src/utils/directive-tags.ts                          fa85b5b237 fix(deepgram): retain transcripts from every au
+     16  src/sessions/user-turn-transcript.ts                 fa85b5b237 fix(deepgram): retain transcripts from every au
+     16  src/infra/session-delivery-queue-storage.ts          fa85b5b237 fix(deepgram): retain transcripts from every au
+     16  src/auto-reply/reply/block-reply-pipeline.ts         fa85b5b237 fix(deepgram): retain transcripts from every au
+     16  src/agents/embedded-agent-subscribe.handlers.ts      fa85b5b237 fix(deepgram): retain transcripts from every au
+     15  src/status/status-text.ts                            fa85b5b237 fix(deepgram): retain transcripts from every au
+     15  src/infra/system-events.ts                           fa85b5b237 fix(deepgram): retain transcripts from every au
+     15  src/auto-reply/reply/dispatch-from-config.choose-route.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     15  src/agents/embedded-agent-runner/run/payloads.ts     fa85b5b237 fix(deepgram): retain transcripts from every au
+     14  src/agents/subagents/registry/subagent-registry.archive.e2e.test.ts c61ba3ea5d refactor(agents): deslop subagents, sessions, w
+     13  src/gateway/config-reload.test.ts                    db911a4c2a test(core,ui,plugins,ci): remove low-value test
+     11  src/auto-reply/reply/session.test.ts                 fa85b5b237 fix(deepgram): retain transcripts from every au
+     11  src/agents/sessions/agent-session-compaction.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     11  src/agents/embedded-agent-subscribe.stream-rendering.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+     10  src/infra/heartbeat-runner-session.ts                fa85b5b237 fix(deepgram): retain transcripts from every au
+     10  src/infra/delivery-queue-sqlite.kernel.ts            fa85b5b237 fix(deepgram): retain transcripts from every au
+     10  src/agents/transcript-redact.ts                      fa85b5b237 fix(deepgram): retain transcripts from every au
+     10  src/agents/embedded-agent-subscribe.handlers.compaction.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      9  src/auto-reply/reply/queue.dedupe.test.ts            fa85b5b237 fix(deepgram): retain transcripts from every au
+      9  src/auto-reply/reply/commands-compact.ts             fa85b5b237 fix(deepgram): retain transcripts from every au
+      9  src/agents/embedded-agent-subscribe.handlers.lifecycle.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      8  src/agents/subagents/registry/subagent-registry-run-launch.ts 059ac3469f perf: prepare subagent facts for session and ta
+      8  src/agents/session-transcript-repair.ts              0e5d031d14 refactor: reuse shared readers, replay helpers,
+      7  src/infra/delivery-queue-sqlite.ts                   4f53213ad3 fix: keep delayed self-replies on their origina
+      7  extensions/msteams/src/monitor-handler/message-handler.ingress-lifecycle.test.ts 31f11ece37 test(channels): await ingress debounce and stop
+      7  extensions/diagnostics-otel/src/service.ts           fa85b5b237 fix(deepgram): retain transcripts from every au
+      6  src/logging/diagnostic.ts                            fa85b5b237 fix(deepgram): retain transcripts from every au
+      6  src/auto-reply/reply/reply-run-registry.registry.ts  fa85b5b237 fix(deepgram): retain transcripts from every au
+      6  src/agents/subagents/spawn/subagent-spawn-cleanup.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      6  src/agents/embedded-agent-subscribe.handlers.messages.update.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      6  src/agents/embedded-agent-runner/compact.hooks.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      6  extensions/codex/src/app-server/run-attempt-server-requests.ts 0073f4faa5 refactor(codex): deslop codex harness third pas
+      5  src/state/openclaw-agent-db-schema-helpers.ts        fa85b5b237 fix(deepgram): retain transcripts from every au
+      5  src/plugins/tool-metadata.ts                         fa85b5b237 fix(deepgram): retain transcripts from every au
+      5  src/infra/heartbeat-runner-scheduler.ts              fa85b5b237 fix(deepgram): retain transcripts from every au
+      5  src/infra/heartbeat-runner-scheduler.lazy.test.ts    fa85b5b237 fix(deepgram): retain transcripts from every au
+      5  src/infra/delivery-queue-sqlite-bound.ts             fa85b5b237 fix(deepgram): retain transcripts from every au
+      5  src/gateway/server-methods/sessions-sharing.ts       caa1422d1c refactor(gateway): deslop gateway (#156521)
+      5  src/auto-reply/reply/get-reply-run-admission.ts      fa85b5b237 fix(deepgram): retain transcripts from every au
+      5  src/agents/subagents/subagent-attachment-cleanup.ts  fa85b5b237 fix(deepgram): retain transcripts from every au
+      5  src/agents/subagents/registry/subagent-run-liveness.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      5  src/agents/embedded-agent-subscribe.handlers.types.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      5  extensions/codex/src/app-server/side-question.ts     fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  test/tsconfig/tsconfig.core.test.agents-tools.json   fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  src/tasks/task-flow-registry.maintenance.ts          e70ebea906 refactor(tasks): run flow maintenance in the SQ
+      4  src/state/openclaw-state-db-task-delivery-recovery.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  src/plugins/registry-api.ts                          4d1bb7cb6f refactor(plugins): deslop plugin subsystem (#15
+      4  src/infra/session-delivery-queue.worker-contract.ts  fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  src/infra/heartbeat-wake.ts                          fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  src/gateway/server-methods/usage.sessions-usage-owner-attribution.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  src/gateway/server-close.test.ts                     fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  src/auto-reply/reply/get-reply-run.media-only.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  src/agents/subagents/registry/subagent-registry-queued-registration-claims.test-support.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  src/agents/subagents/registry/subagent-registry-lifecycle-delivery.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  src/agents/embedded-agent-runner/prepared-compaction-runtime.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      4  extensions/codex/src/app-server/host-capability.test-support.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  ui/src/lib/chat/tool-cards.ts                        fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  test/scripts/full-release-validation-state.test.ts   fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  test/helpers/source-import-closure.ts                6b76b96ce1 test: cache source import dependencies (#155506
+      3  src/tui/components/tool-execution.ts                 fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/state/openclaw-agent-session-sharing-schema.ts   c65911334f refactor: compact agent storage and index full-
+      3  src/plugins/wired-hooks-compaction.test.ts           fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/plugins/plugin-module-loader-cache.ts            fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/plugin-sdk/test-helpers/agents/host-tool-factory.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/plugin-sdk/channel-ingress-runtime.ts            fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/gateway/session-reset-service.ts                 fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/gateway/server-runtime-services.ts               fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/gateway/server-methods/sessions.send-followup-status.test.ts 2afdf98a89 fix(tests): isolate session list fixture databa
+      3  src/auto-reply/reply/session.ts                      fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/agents/subagents/spawn/subagent-spawn.test-helpers.ts 715077a3be fix: preserve operator authority through queued
+      3  src/agents/subagents/spawn/subagent-spawn.context-resources.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/agents/subagents/spawn/subagent-spawn.attachments.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/agents/subagents/registry/subagent-session-reconciliation.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/agents/subagents/registry/subagent-registry-queued-registration.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/agents/subagents/announce/subagent-announce.format.e2e.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/agents/embedded-agent-subscribe.handlers.lifecycle.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/agents/embedded-agent-runner/server-endpoint-compaction.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  src/agents/embedded-agent-runner/compact-reasons.ts  fa85b5b237 fix(deepgram): retain transcripts from every au
+      3  extensions/codex/src/app-server/dynamic-tool-diagnostics.ts 6e008165e1 refactor(codex): deslop codex (#157080)
+      3  config/assertion-safety-baseline.txt                 146fba007c refactor(agents): keep spawn overrides in test 
+      2  test/tsconfig/tsconfig.core.test.agents-other.json   fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  test/scripts/test-projects-build-admission.test.ts   29fc01ac7a fix: keep ACP harness models out of native call
+      2  src/tasks/task-flow-registry.store.sqlite.ts         fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/tasks/task-flow-registry.audit.test.ts           fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/state/openclaw-state-db.test.ts                  fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/infra/outbound/delivery-queue-file-migration.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/infra/heartbeat-wake-policy.ts                   fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/infra/heartbeat-runner.ts                        fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/gateway/session-utils.queued-collector.test.ts   ed81a70423 improve: move operator profile database reads o
+      2  src/gateway/server-runtime-services.heartbeat-lifecycle.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/gateway/mcp-http.runtime.ts                      fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/gateway/agent-turn/agent-session-persist.ts      fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/config/zod-schema.agent-defaults-base.ts         fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/config/sessions/session-accessor.lifecycle.ts    fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/auto-reply/reply/session-reset-cleanup.test.ts   fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/auto-reply/reply/agent-runner-result-accounting.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/auto-reply/reply/agent-runner-result-accounting.fallback.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/auto-reply/reply/agent-runner-fallback-candidate.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/auto-reply/reply/agent-runner-embedded-candidate.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/agents/subagents/spawn/subagent-spawn-collector.ts d00524c295 fix(agents): retain collector rollback through 
+      2  src/agents/subagents/registry/subagent-session-cleanup.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/agents/subagents/registry/subagent-registry-run-recovery.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/agents/subagents/registry/subagent-registry-read.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/agents/subagents/registry/subagent-registry-lifecycle-announce-cleanup.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/agents/subagents/announce/subagent-announce.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/agents/embedded-agent-utils.ts                   c9e8fac0be improve: reduce repeated work when streaming fi
+      2  src/agents/embedded-agent-subscribe.handlers.messages.update-stream-phases.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/agents/embedded-agent-subscribe.handlers.messages.stream.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/agents/embedded-agent-subscribe.handlers.compaction.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/agents/command/attempt-execution.ts              fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  src/agents/command/attempt-execution.cli.test.ts     fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  scripts/plugin-sdk-surface-report.mts                19c6ef8d9e fix(proxy): keep capture persistence off the ma
+      2  extensions/diagnostics-otel/src/service-traces.ts    fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  extensions/diagnostics-otel/src/service.test.ts      fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  docs/tools/subagents/operations.md                   fa85b5b237 fix(deepgram): retain transcripts from every au
+      2  docs/.generated/config-baseline.sha256               c88ac865e1 perf(swarm): give collector groups independent 
+      1  test/vitest/vitest.test-shards.mjs                   fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  test/vitest-scoped-config.test.ts                    fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  test/tsconfig/tsconfig.core.test.agents-root.json    fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  test/fixtures/channel-ingress-gateway-restart.ts     fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/tui/tui-pty-local.e2e.test.ts                    fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/tasks/task-flow-registry.ts                      fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/tasks/task-flow-registry.store.test.ts           df4cee1617 test(runtime,plugins): remove low-value tests (
+      1  src/tasks/task-flow-registry.store.kernel.ts         fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/status/status-text.test.ts                       fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/status/status-message.ts                         fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/state/openclaw-state-db-repair.ts                fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/state/openclaw-agent-participants-migration.ts   fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/state/openclaw-agent-db-schema.ts                fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/state/openclaw-agent-db-lifecycle.ts             fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/state/openclaw-agent-db-existing-write.ts        e1c2a0b476 fix(update): complete schema upgrades from 2026
+      1  src/plugins/runtime/system-events.ts                 fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/plugins/runtime/runtime-taskflow.test.ts         fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/system-events.test.ts                      fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/session-delivery-queue-recovery.ts         fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/session-cost-usage.ts                      fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/session-cost-usage.test.ts                 fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/session-cost-usage-reporting.ts            fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/kysely-sync-cache-state.ts                 fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/heartbeat-wake-contracts.ts                fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/heartbeat-runner-run.ts                    fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/heartbeat-runner.ghost-reminder.test.ts    fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/heartbeat-reason.ts                        fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/heartbeat-reason.test.ts                   fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/infra/diagnostic-events.ts                       63b83ca523 feat(diagnostics): identify agents across messa
+      1  src/gateway/server.ts                                fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/gateway/server.sessions.compaction.test.ts       b86dc71207 refactor: remove compaction checkpoints (#15413
+      1  src/gateway/server-runtime-services.test-harness.ts  fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/gateway/server-methods/chat-broadcast.ts         fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/gateway/server-methods/agent.events-and-subagents.test-utils.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/gateway/server-maintenance.ts                    fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/gateway/server-http.ts                           97dd4d233b feat(gateway): download inline artifacts over H
+      1  src/gateway/mcp-http.test.ts                         fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/gateway/agent-turn/agent-turn-service.ts         fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/cron/service/timer-execution.script-wake.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/cron/service/startup-run-repair.auto-disable.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/cron/service.failure-alert-notifications.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/cron/isolated-agent/delivery-outbound.runtime.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/config/sessions/session-history-budget-owner.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/config/sessions/session-entry-projection.ts      fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/config/sessions/legacy-main-session-migration-operations.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/config/sessions/artifacts.ts                     fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/channels/message/ingress-drain.ts                f0b78f55d6 refactor(channels): route ingress queue through
+      1  src/channels/message/ingress-drain-lifecycle.ts      fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/boards/board-notices.ts                          fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/streaming-directives.ts         fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/session-updates.ts              fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/session-reset-cleanup.ts        fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/reply-state.test.ts             7b68c81b60 test(core,plugins,tooling): remove low-value te
+      1  src/auto-reply/reply-payload.ts                      fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/get-reply-run-execute.ts        fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/dispatch-from-config.prepare-context.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/dispatch-bash-poll.test.ts      fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/bash-command.stop.test.ts       fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/agent-runner-run.ts             fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/agent-runner-result-accounting.persistence.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/agent-runner-fallback-settlement.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/agent-runner-execution.ts       fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/agent-runner-execution-contract.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/auto-reply/reply/agent-runner-execute.ts         b1f980feb5 refactor(auto-reply): deslop auto-reply (#15637
+      1  src/auto-reply/reply/agent-runner-cli-candidate.ts   fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/tools/sessions-spawn-cloud.ts             fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/tools/sessions-send-tool.ts               fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/subagents/spawn/subagent-spawn-request.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/subagents/spawn/subagent-spawn.in-process-gateway.test-support.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/subagents/spawn/subagent-spawn-contract.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/subagents/spawn/subagent-spawn-cleanup.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/subagents/registry/subagent-registry-sweep-kill.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/subagents/registry/subagent-registry.persistence-fixture.test-support.ts d0d3ddec2f test: move subagent fixtures to module boundari
+      1  src/agents/subagents/registry/subagent-registry-completion-runtime.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/subagents/registry/subagent-control.late-registration.test-support.ts ed81a70423 improve: move operator profile database reads o
+      1  src/agents/subagents/announce/subagent-announce.timeout.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/embedded-agent-subscribe.handlers.messages.update-stream-items.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/embedded-agent-subscribe.handlers.messages.test-helpers.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/embedded-agent-subscribe.handlers.messages.snapshot.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/embedded-agent-subscribe.handlers.compaction.runtime.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/embedded-agent-runner/run.timeout-triggered-compaction.test-support.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/embedded-agent-runner/compact.types.ts    fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/embedded-agent-runner/compact.ts          fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/embedded-agent-helpers/sanitize-user-facing-text.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/bash-tools.process.delivery.test.ts       fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/bash-tools.notify-on-exit-ack.test.ts     fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  src/agents/agent-tools.before-tool-call.wrapper.ts   fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  scripts/protocol-gen.ts                              fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  scripts/protocol-gen-swift.ts                        fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  packages/gateway-protocol/src/schema/agent.ts        fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  packages/agent-core/src/agent-loop.ts                fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  extensions/mattermost/src/mattermost/monitor.inbound-system-event.test.ts 6c2ac526d4 refactor(channels): centralize progress and fin
+      1  extensions/codex/src/app-server/side-question.test.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  extensions/codex/src/app-server/side-question.test-support.ts fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  docs/reference/database-schemas/agent-schema-history.md fa85b5b237 fix(deepgram): retain transcripts from every au
+      1  docs/.generated/config-baseline.counts.json          6be8e0f993 feat(ui): opt into configured defaults for fres
+
+full TSV: /home/figs/flesh_beast_best_beast/p89-topup-44f67c2a-wip/gate27-out-871c03c018f78a6c834d9a043737e997bac7f831/classification.tsv

@@ -1,0 +1,129 @@
+[vitest-workers] local cache miss after 2130ms
+../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../openclaw-1396-p89-topup-44f67c2a/node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 96ms of this 3.6s build (3%).
+1 hook is listed without a time. Its calls overlapped, so the time inside one call includes work from other calls. To find its cost, profile the build with `node --cpu-prof`:
+  - tsdown:deps resolveId (514 calls)
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+
+[vitest-workers] prepared 378c37e38288 in 21603ms (13531 inputs, 17433 outputs)
+
+ RUN  v5.0.1 /home/figs/flesh_beast_best_beast/source/WORKTREES/p89t-parent-7b3815d7
+
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > only gives ended terminal children requester-wake priority over suspended delivery cleanup 26ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > only gives ended running children requester-wake priority over suspended delivery cleanup 6ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > observes a sibling completion committed while another completion is awaiting 548ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > canonically completes a stale orphan instead of pruning its task owner 4ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > retries stale-orphan completion after task persistence rejects 5ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > does not finalize interrupted work after its Gateway lifecycle changes during classification 55ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > does not finalize interrupted work after its Gateway runtime changes during classification 55ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > retries terminal settlement without dispatching a child 4ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > preserves a reset sibling during an earlier await in ordinary cleanup 1354ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > preserves a reset sibling during an earlier await in collector group cleanup 796ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > preserves a reset sibling during an earlier await in collector launch cleanup 780ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > defers a collector group with a replacement after an earlier cleanup await (suppressed: false) 92ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > defers a collector group with a replacement after an earlier cleanup await (suppressed: true) 3ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > defers a collector group with a new member after an earlier cleanup await (suppressed: false) 3ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > defers a collector group with a new member after an earlier cleanup await (suppressed: true) 3ms
+ × |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > leaves a collector group untouched when a member is replaced during a groupmate's deletion 5ms
+   → expected 1790663276263 to be undefined
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > drops a stale terminal retry when a newer generation wins during finalization 55ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > coalesces duplicate schedules before the owner pass starts 7ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > rechecks deferred ownership when the runtime becomes available 9ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > backs off each unresolved row without a sibling sweep resetting its deadline 4ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > rechecks a changed session without waiting for the row's backoff 4ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > rechecks a changed registry without waiting for the row's backoff 3ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > rechecks a changed generation without waiting for the row's backoff 3ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > does not terminalize a durable kill intent while runtime abort is rejected 3ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > terminalizes a legacy unowned kill without touching the current child session 2ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > does not apply a durable kill after same run id wins during runtime loading 7ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > does not apply a durable kill after newer generation wins during runtime loading 3ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > does not apply a durable kill after the same session id resets to a new revision 4ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > does not apply an older durable kill wh… 4ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > retires a superseded kill when its deta… 4ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > discards suspended retired recovery delivery without touching its child session 4ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > archives a retired recovery row without deleting its newer child session 4ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > retires an archived stale owner when guarded deletion sees a successor 6ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > reports an admitted registry sweep failure even when restart drain has started 4ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > releases the owner lane after an unexpected pass failure 3ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > superseded subagent retirement > restores the registry row when durable deletion fails 4ms
+ ✓ |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > superseded subagent retirement > clears lifecycle errors only after durable deletion succeeds 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |infra| src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts > subagent registry recovery scheduling > leaves a collector group untouched when a member is replaced during a groupmate's deletion
+AssertionError: expected 1790663276263 to be undefined
+
+- Expected:
+undefined
+
++ Received:
+1790663276263
+
+ ❯ src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts:460:54
+    458|     // Group cleanup stops at the replaced member instead of finishing…
+    459|     // remaining phases for a group that the final membership check de…
+    460|     expect(deleting.contextEngineCleanupCompletedAt).toBeUndefined();
+       |                                                      ^
+    461|   });
+    462|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 36 passed (37)
+   Start at  23:27:35
+   Duration  21.11s (transform 68%, tests 19%, import 12%, setup 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
