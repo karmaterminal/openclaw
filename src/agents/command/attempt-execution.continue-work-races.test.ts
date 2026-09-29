@@ -250,13 +250,17 @@ async function concurrentPatch(
 }
 
 async function concurrentFinish(record: ContinuationRecord, phase: string): Promise<boolean> {
-  const result = await actualCustody().finishContinuationRecord({
-    recordId: record.recordId,
-    ownerSessionKey: record.ownerSessionKey,
-    expectedRevision: record.revision,
-    now: Date.now(),
-    phase,
-  });
+  const result = await actualCustody().updateContinuationRecords(
+    [
+      {
+        recordId: record.recordId,
+        ownerSessionKey: record.ownerSessionKey,
+        expectedRevision: record.revision,
+        patch: { status: "succeeded", failureReason: null, phase },
+      },
+    ],
+    { now: Date.now() },
+  );
   return result.outcome === "applied";
 }
 

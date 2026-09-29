@@ -3,10 +3,7 @@
 // writes until Doctor imports it. (Split from continue-delegate-tool.test.ts,
 // which sits at the max-lines budget.)
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  CONTINUATION_CUSTODY_IMPORT_PENDING_MESSAGE,
-  installContinuationCustodyImportGate,
-} from "../../auto-reply/continuation/custody-import-gate.js";
+import { installContinuationCustodyImportGate } from "../../auto-reply/continuation/custody-import-gate.js";
 import {
   listCustodyRecordsForTest,
   useContinuationCustodyTestState,
@@ -14,6 +11,10 @@ import {
 import { resetContinueDelegateTurnAdmissionForTests } from "../../auto-reply/continuation/delegate-turn-admission.js";
 import { clearRuntimeConfigSnapshot } from "../../config/config.js";
 import { createContinueDelegateTool } from "./continue-delegate-tool.js";
+
+// The exact operator-facing refusal (RFC §5.4.5): names the repair command.
+const CONTINUATION_CUSTODY_IMPORT_PENDING_MESSAGE =
+  "continuation custody for this session is waiting on legacy import; run `openclaw doctor --fix`";
 
 describe("continue_delegate tool :: legacy import gate", () => {
   useContinuationCustodyTestState();

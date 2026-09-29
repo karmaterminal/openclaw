@@ -359,7 +359,7 @@ describe("subagent registry recovery scheduling", () => {
               }
               return deleted;
             });
-            stagePostCompactionDelegate(sibling.childSessionKey, {
+            await stagePostCompactionDelegate(sibling.childSessionKey, {
               task: "successor-owned work",
               createdAt: Date.now(),
               silent: true,
@@ -377,7 +377,7 @@ describe("subagent registry recovery scheduling", () => {
               });
               expect(stagedPostCompactionDelegateCount(sibling.childSessionKey)).toBe(1);
             } finally {
-              cancelPendingDelegates(sibling.childSessionKey);
+              await cancelPendingDelegates(sibling.childSessionKey);
               sweeper.reset();
             }
           });

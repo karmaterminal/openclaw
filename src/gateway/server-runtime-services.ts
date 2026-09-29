@@ -436,7 +436,7 @@ function startPendingContinuationRecovery(params: {
     if (stopped) {
       return;
     }
-    recovery = runWithGatewayIndependentRootWorkAdmission(async () => {
+    recovery = (async () => {
       const [{ runContinuationCustodyBoot, pruneExpiredContinuationCustody }, registry] =
         await Promise.all([
           import("../auto-reply/continuation/custody-boot.js"),
@@ -444,8 +444,11 @@ function startPendingContinuationRecovery(params: {
         ]);
       const bootLog = params.log.child("continuation-recovery");
       // Doctor import fact, then registry activation, then custody recovery.
+      // Only the custody steps run admitted; the activation wait does not.
       const summary = await runContinuationCustodyBoot({
         armedAt: recoveryArmedAt,
+        admit: (step) =>
+          runWithGatewayIndependentRootWorkAdmission(step, "runtime:continuation-recovery"),
         // Stop must not wait on an activation that will never come.
         whenSubagentRegistryActivated: async () => {
           await Promise.race([registry.whenSubagentRegistryActivated(), stopWait]);
@@ -480,7 +483,7 @@ function startPendingContinuationRecovery(params: {
         );
       }, CONTINUATION_CUSTODY_PRUNE_INTERVAL_MS);
       pruneTimer.unref?.();
-    }, "runtime:continuation-recovery").catch((err: unknown) => {
+    })().catch((err: unknown) => {
       if (!stopped) {
         params.log.error(`Continuation recovery failed: ${String(err)}`);
       }
