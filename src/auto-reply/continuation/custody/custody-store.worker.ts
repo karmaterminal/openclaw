@@ -547,7 +547,11 @@ export function recordContinuationSpawnAttemptFailureInDatabase(
   return { outcome: "applied", records: [record], ...facts };
 }
 
-/** Remove one record at an exact revision (an unaccepted delegate, RFC §5.4.8 item 4). */
+/**
+ * Remove one record at an exact revision (an unaccepted delegate, RFC §5.4.8
+ * item 4). A handed-off record was accepted; deleting it would free its ID
+ * for a create that reopens the custody the handoff moved away.
+ */
 export function deleteContinuationRecordInDatabase(
   db: DatabaseSync,
   input: { recordId: string; expectedRevision: number },
@@ -556,6 +560,13 @@ export function deleteContinuationRecordInDatabase(
   const failure = casCheck(current, input.recordId, input.expectedRevision);
   if (failure || !current) {
     return failure ?? { outcome: "not_found", recordId: input.recordId };
+  }
+  if (current.handoff) {
+    return {
+      outcome: "invalid_transition",
+      recordId: input.recordId,
+      reason: "a handed-off record cannot be deleted",
+    };
   }
   executeSqliteQuerySync(
     db,

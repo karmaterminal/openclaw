@@ -188,7 +188,8 @@ export type ContinuationAttemptFailureInput = {
 
 export type ContinuationDeleteResult =
   | ({ outcome: "deleted"; recordId: string } & ContinuationCommitFacts)
-  | ContinuationCasFailure;
+  | ContinuationCasFailure
+  | { outcome: "invalid_transition"; recordId: string; reason: string };
 
 export type ContinuationPruneResult = {
   deletedRecordIds: readonly string[];

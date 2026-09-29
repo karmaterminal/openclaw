@@ -818,6 +818,14 @@ describe("list-by-owner, scrub and retention", () => {
       ).outcome,
     ).toBe("not_claimable");
 
+    // Deleting it would free the ID for a create that reopens the moved custody.
+    expect(
+      write(options, (db) =>
+        deleteContinuationRecordInDatabase(db, { recordId: "delegate-a", expectedRevision: 2 }),
+      ).outcome,
+    ).toBe("invalid_transition");
+    expect(list(options)[0]).toEqual(handedOff);
+
     // Restating the same handoff on the succeeded record is an idempotent write.
     expect(patchAt(2, { status: "succeeded", handoff: { ...handoff } })).toMatchObject({
       outcome: "applied",
