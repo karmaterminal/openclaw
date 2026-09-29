@@ -86,6 +86,8 @@ export type ContinuationRecordPatch = {
 
 export type ContinuationRecordUpdate = {
   recordId: string;
+  /** The record's owner; the worker refuses a mismatch, so invalidation targets the right owner. */
+  ownerSessionKey: string;
   expectedRevision: number;
   patch: ContinuationRecordPatch;
 };
@@ -117,7 +119,7 @@ export type ContinuationCasFailure =
 
 export type ContinuationCreateResult =
   | ({ outcome: "created"; record: ContinuationRecord } & ContinuationCommitFacts)
-  | { outcome: "exists"; recordId: string };
+  | { outcome: "exists"; recordId: string; attachmentId?: string };
 
 export type ContinuationUpdateResult =
   | ({ outcome: "applied"; records: readonly ContinuationRecord[] } & ContinuationCommitFacts)

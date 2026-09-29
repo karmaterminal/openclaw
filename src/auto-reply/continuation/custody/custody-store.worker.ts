@@ -22,7 +22,7 @@ import {
   runOpenClawStateWriteTransaction,
   type OpenClawStateDatabaseOptions,
 } from "../../../state/openclaw-state-db.js";
-import { OPENCLAW_STATE_SCHEMA_SQL } from "../../../state/openclaw-state-schema.js";
+import { createOpenClawStateSchemaEnsurer } from "../../../state/openclaw-state-feature-schema.js";
 import {
   CONTINUATION_SPAWN_FAILURE_PHASES,
   decodeContinuationRecordRow,
@@ -55,28 +55,21 @@ export const CONTINUATION_RECORDS_TABLE = "continuation_records" as const;
 
 type CustodyDatabase = Pick<OpenClawStateKyselyDatabase, typeof CONTINUATION_RECORDS_TABLE>;
 
-const SCHEMA_START = `CREATE TABLE IF NOT EXISTS ${CONTINUATION_RECORDS_TABLE} (`;
-const SCHEMA_END = "ON continuation_records(status, kind, due_at);";
-
 const LIVE_STATUSES = ["queued", "running"] as const satisfies readonly ContinuationLiveStatus[];
 
 function custodyDb(db: DatabaseSync) {
   return getNodeSqliteKysely<CustodyDatabase>(db);
 }
 
-/** Create the canonical first-use table and its indexes at the first custody write. */
-function ensureContinuationCustodySchema(db: DatabaseSync): void {
-  if (tableExists(db, CONTINUATION_RECORDS_TABLE)) {
-    return;
-  }
-  const start = OPENCLAW_STATE_SCHEMA_SQL.indexOf(SCHEMA_START);
-  const end = start < 0 ? -1 : OPENCLAW_STATE_SCHEMA_SQL.indexOf(SCHEMA_END, start);
-  if (start < 0 || end < start) {
-    throw new Error("OpenClaw continuation custody schema marker is missing.");
-  }
-  // sqlite-allow-raw -- Canonical feature-local additive DDL only; custody rows use Kysely.
-  db.exec(OPENCLAW_STATE_SCHEMA_SQL.slice(start, end + SCHEMA_END.length));
-}
+/**
+ * Creates the canonical first-use table and indexes once per database handle,
+ * before the first custody write transaction. Reads never create it.
+ */
+export const ensureContinuationCustodySchema = createOpenClawStateSchemaEnsurer({
+  table: CONTINUATION_RECORDS_TABLE,
+  endMarker: "  ON continuation_records(status, kind, due_at);\n",
+  operationLabel: "continuation.custody.schema.ensure",
+});
 
 function readRecord(db: DatabaseSync, recordId: string): ContinuationRecord | undefined {
   const row = executeSqliteQueryTakeFirstSync(
@@ -89,14 +82,19 @@ function readRecord(db: DatabaseSync, recordId: string): ContinuationRecord | un
   return row ? decodeContinuationRecordRow(row) : undefined;
 }
 
-/** FIFO list in `(created_at, record_id)` order; an absent first-use table has no records. */
+/**
+ * FIFO list in `(created_at, record_id)` order. The first-use table may be
+ * absent on reads; presence comes from the handle's admitted schema facts.
+ */
 export function listContinuationRecordsInDatabase(
   db: DatabaseSync,
   query: ContinuationRecordQuery,
 ): ContinuationRecord[] {
-  if (!tableExists(db, CONTINUATION_RECORDS_TABLE)) {
-    return [];
-  }
+  return tableExists(db, CONTINUATION_RECORDS_TABLE) ? selectRecords(db, query) : [];
+}
+
+/** Write paths run after the schema ensure, so they select without a presence check. */
+function selectRecords(db: DatabaseSync, query: ContinuationRecordQuery): ContinuationRecord[] {
   let select = custodyDb(db).selectFrom(CONTINUATION_RECORDS_TABLE).selectAll();
   if (query.ownerSessionKey !== undefined) {
     select = select.where("owner_session_key", "=", query.ownerSessionKey);
@@ -125,7 +123,7 @@ export function listContinuationRecordsInDatabase(
 }
 
 function readOwnerLiveSet(db: DatabaseSync, ownerSessionKey: string): ContinuationOwnerLiveSet {
-  const records: ContinuationLiveRecordFact[] = listContinuationRecordsInDatabase(db, {
+  const records: ContinuationLiveRecordFact[] = selectRecords(db, {
     ownerSessionKey,
     statuses: LIVE_STATUSES,
   }).map((record) => ({
@@ -307,13 +305,17 @@ export function createContinuationRecordInDatabase(
   db: DatabaseSync,
   input: NewContinuationRecord,
 ): ContinuationCreateResult {
-  ensureContinuationCustodySchema(db);
   const invalid = validateNewRecord(input);
   if (invalid) {
     throw new Error(`invalid continuation record ${input.recordId}: ${invalid}`);
   }
-  if (readRecord(db, input.recordId)) {
-    return { outcome: "exists", recordId: input.recordId };
+  const existing = readRecord(db, input.recordId);
+  if (existing) {
+    return {
+      outcome: "exists",
+      recordId: input.recordId,
+      ...(existing.attachmentId !== undefined ? { attachmentId: existing.attachmentId } : {}),
+    };
   }
   const record = newRecord(input);
   insertRecord(db, record);
@@ -329,7 +331,6 @@ export function updateContinuationRecordsInDatabase(
   updates: readonly ContinuationRecordUpdate[],
   now: number,
 ): ContinuationUpdateResult {
-  ensureContinuationCustodySchema(db);
   const planned: Planned[] = [];
   const seen = new Set<string>();
   for (const update of updates) {
@@ -345,6 +346,13 @@ export function updateContinuationRecordsInDatabase(
     const failure = casCheck(current, update.recordId, update.expectedRevision);
     if (failure || !current) {
       return failure ?? { outcome: "not_found", recordId: update.recordId };
+    }
+    if (current.ownerSessionKey !== update.ownerSessionKey) {
+      return {
+        outcome: "invalid_transition",
+        recordId: update.recordId,
+        reason: "record belongs to another owner",
+      };
     }
     const plan = planPatch(current, update.patch, now);
     if ("invalid" in plan) {
@@ -366,7 +374,6 @@ export function electContinuationWorkInDatabase(
   db: DatabaseSync,
   election: ContinuationElection,
 ): ContinuationElectionResult {
-  ensureContinuationCustodySchema(db);
   const { create, ownerSessionKey } = election;
   if (create.kind !== "work" || create.ownerSessionKey !== ownerSessionKey) {
     throw new Error("continuation election must create a work record for its owner");
@@ -376,7 +383,7 @@ export function electContinuationWorkInDatabase(
     throw new Error(`invalid continuation record ${create.recordId}: ${invalid}`);
   }
   const live = new Map(
-    listContinuationRecordsInDatabase(db, {
+    selectRecords(db, {
       ownerSessionKey,
       kinds: ["work"],
       statuses: LIVE_STATUSES,
@@ -451,7 +458,6 @@ export function claimContinuationSpawnAttemptInDatabase(
   db: DatabaseSync,
   input: { recordId: string; expectedRevision: number; now: number },
 ): ContinuationClaimResult {
-  ensureContinuationCustodySchema(db);
   const current = readRecord(db, input.recordId);
   const failure = casCheck(current, input.recordId, input.expectedRevision);
   if (failure || !current) {
@@ -496,7 +502,6 @@ export function recordContinuationSpawnAttemptFailureInDatabase(
   input: ContinuationAttemptFailureInput,
   now: number,
 ): ContinuationUpdateResult {
-  ensureContinuationCustodySchema(db);
   const current = readRecord(db, input.recordId);
   const failure = casCheck(current, input.recordId, input.expectedRevision);
   if (failure || !current) {
@@ -537,7 +542,6 @@ export function deleteContinuationRecordInDatabase(
   db: DatabaseSync,
   input: { recordId: string; expectedRevision: number },
 ): ContinuationDeleteResult {
-  ensureContinuationCustodySchema(db);
   const current = readRecord(db, input.recordId);
   const failure = casCheck(current, input.recordId, input.expectedRevision);
   if (failure || !current) {
@@ -594,6 +598,9 @@ export function executeContinuationCustodyCommand(
   command: SqliteWorkerCommand<ContinuationCustodyWorkerOperations>,
   databaseOptions: OpenClawStateDatabaseOptions,
 ): ContinuationCustodyWorkerOperations[keyof ContinuationCustodyWorkerOperations]["output"] {
+  if (command.type !== "continuationCustody.list" && command.type !== "continuationCustody.prune") {
+    ensureContinuationCustodySchema(databaseOptions);
+  }
   return runOpenClawStateWriteTransaction(({ db }) => {
     requestSqliteWorkerOperationAdmission({ stage: "transaction", facts: undefined });
     const result = executeInTransaction(db, command);

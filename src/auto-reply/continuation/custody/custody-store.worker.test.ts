@@ -19,6 +19,7 @@ import type {
 } from "./custody-store.types.js";
 import {
   claimContinuationSpawnAttemptInDatabase,
+  ensureContinuationCustodySchema,
   createContinuationRecordInDatabase,
   deleteContinuationRecordInDatabase,
   electContinuationWorkInDatabase,
@@ -43,12 +44,21 @@ function stateOptions() {
 
 type Options = ReturnType<typeof stateOptions>;
 
-function write<T>(options: Options, operation: (db: import("node:sqlite").DatabaseSync) => T): T {
+type Db = import("node:sqlite").DatabaseSync;
+
+/** Mirrors the worker executor: custody writes run after the first-use schema ensure. */
+function write<T>(options: Options, operation: (db: Db) => T): T {
+  ensureContinuationCustodySchema(options);
+  return runOpenClawStateWriteTransaction(({ db }) => operation(db), options);
+}
+
+/** Reads, like the list and prune commands, never create the first-use table. */
+function read<T>(options: Options, operation: (db: Db) => T): T {
   return runOpenClawStateWriteTransaction(({ db }) => operation(db), options);
 }
 
 function list(options: Options, ownerSessionKey = OWNER): ContinuationRecord[] {
-  return write(options, (db) => listContinuationRecordsInDatabase(db, { ownerSessionKey }));
+  return read(options, (db) => listContinuationRecordsInDatabase(db, { ownerSessionKey }));
 }
 
 function work(recordId: string, extra: Partial<Omit<NewContinuationRecord, "kind">> = {}) {
@@ -95,6 +105,7 @@ function electionOver(priors: readonly ContinuationRecord[], newId: string): Con
     })),
     supersede: priors.map((prior) => ({
       recordId: prior.recordId,
+      ownerSessionKey: OWNER,
       expectedRevision: prior.revision,
       phase: `superseded: ${newId}`,
       stateJson: JSON.stringify({ kind: "work", superseded: true }),
@@ -165,6 +176,7 @@ function electSplit(options: Options, election: ContinuationElection): void {
       db,
       election.supersede.map((prior) => ({
         recordId: prior.recordId,
+        ownerSessionKey: OWNER,
         expectedRevision: prior.expectedRevision,
         patch: { status: "succeeded", phase: prior.phase, stateJson: prior.stateJson },
       })),
@@ -243,7 +255,14 @@ describe("owner-conditioned election replacement is one commit", () => {
     write(options, (db) =>
       updateContinuationRecordsInDatabase(
         db,
-        [{ recordId: "parked-a", expectedRevision: 0, patch: { status: "running" } }],
+        [
+          {
+            recordId: "parked-a",
+            ownerSessionKey: OWNER,
+            expectedRevision: 0,
+            patch: { status: "running" },
+          },
+        ],
         1_500,
       ),
     );
@@ -260,7 +279,14 @@ describe("owner-conditioned election replacement is one commit", () => {
     write(options, (db) =>
       updateContinuationRecordsInDatabase(
         db,
-        [{ recordId: "fenced", expectedRevision: 0, patch: { cancelRequestedAt: 1_100 } }],
+        [
+          {
+            recordId: "fenced",
+            ownerSessionKey: OWNER,
+            expectedRevision: 0,
+            patch: { cancelRequestedAt: 1_100 },
+          },
+        ],
         1_100,
       ),
     );
@@ -277,7 +303,14 @@ describe("owner-conditioned election replacement is one commit", () => {
     const claimed = write(options, (db) =>
       updateContinuationRecordsInDatabase(
         db,
-        [{ recordId: "running", expectedRevision: 0, patch: { status: "running" } }],
+        [
+          {
+            recordId: "running",
+            ownerSessionKey: OWNER,
+            expectedRevision: 0,
+            patch: { status: "running" },
+          },
+        ],
         1_100,
       ),
     );
@@ -310,7 +343,14 @@ describe("revision CAS", () => {
     write(options, (db) =>
       updateContinuationRecordsInDatabase(
         db,
-        [{ recordId: "work-a", expectedRevision: 0, patch: { phase: "anchored" } }],
+        [
+          {
+            recordId: "work-a",
+            ownerSessionKey: OWNER,
+            expectedRevision: 0,
+            patch: { phase: "anchored" },
+          },
+        ],
         1_100,
       ),
     );
@@ -319,12 +359,42 @@ describe("revision CAS", () => {
       write(options, (db) =>
         updateContinuationRecordsInDatabase(
           db,
-          [{ recordId: "work-a", expectedRevision: 0, patch: { phase: "stale writer" } }],
+          [
+            {
+              recordId: "work-a",
+              ownerSessionKey: OWNER,
+              expectedRevision: 0,
+              patch: { phase: "stale writer" },
+            },
+          ],
           1_200,
         ),
       ),
     ).toEqual({ outcome: "revision_conflict", recordId: "work-a", revision: 1 });
     expect(list(options)[0]).toMatchObject({ revision: 1, phase: "anchored", updatedAt: 1_100 });
+  });
+
+  it("refuses an update that names another owner, so invalidation targets the real owner", () => {
+    const options = stateOptions();
+    seedParkedWork(options, "work-a");
+
+    expect(
+      write(options, (db) =>
+        updateContinuationRecordsInDatabase(
+          db,
+          [
+            {
+              recordId: "work-a",
+              ownerSessionKey: "agent:main:someone-else",
+              expectedRevision: 0,
+              patch: { status: "failed" },
+            },
+          ],
+          1_100,
+        ),
+      ),
+    ).toMatchObject({ outcome: "invalid_transition", recordId: "work-a" });
+    expect(list(options)[0]).toMatchObject({ status: "queued", revision: 0 });
   });
 
   it("applies a multi-record CAS all or nothing", () => {
@@ -333,7 +403,14 @@ describe("revision CAS", () => {
     write(options, (db) =>
       updateContinuationRecordsInDatabase(
         db,
-        [{ recordId: "work-b", expectedRevision: 0, patch: { phase: "moved" } }],
+        [
+          {
+            recordId: "work-b",
+            ownerSessionKey: OWNER,
+            expectedRevision: 0,
+            patch: { phase: "moved" },
+          },
+        ],
         1_100,
       ),
     );
@@ -342,8 +419,18 @@ describe("revision CAS", () => {
       updateContinuationRecordsInDatabase(
         db,
         [
-          { recordId: "work-a", expectedRevision: 0, patch: { status: "failed" } },
-          { recordId: "work-b", expectedRevision: 0, patch: { status: "failed" } },
+          {
+            recordId: "work-a",
+            ownerSessionKey: OWNER,
+            expectedRevision: 0,
+            patch: { status: "failed" },
+          },
+          {
+            recordId: "work-b",
+            ownerSessionKey: OWNER,
+            expectedRevision: 0,
+            patch: { status: "failed" },
+          },
         ],
         1_200,
       ),
@@ -372,11 +459,13 @@ describe("revision CAS", () => {
         [
           {
             recordId: "elected",
+            ownerSessionKey: OWNER,
             expectedRevision: 0,
             patch: { status: "failed", failureReason: "rolled back" },
           },
           {
             recordId: "work-a",
+            ownerSessionKey: OWNER,
             expectedRevision: 1,
             patch: {
               status: "queued",
@@ -538,6 +627,7 @@ describe("spawn attempts", () => {
         [
           {
             recordId: "delegate-a",
+            ownerSessionKey: OWNER,
             expectedRevision: 1,
             patch: {
               status: "failed",
@@ -605,7 +695,12 @@ describe("list-by-owner, scrub and retention", () => {
 
   it("reports an empty store without creating the first-use table", () => {
     const options = stateOptions();
-    expect(write(options, (db) => listContinuationRecordsInDatabase(db, {}))).toEqual([]);
+    expect(read(options, (db) => listContinuationRecordsInDatabase(db, {}))).toEqual([]);
+    expect(
+      read(options, (db) => pruneContinuationRecordsInDatabase(db, { endedBefore: 1 })),
+    ).toEqual({
+      deletedRecordIds: [],
+    });
     const { db } = openOpenClawStateDatabase(options);
     expect(
       db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'continuation_records'").get(),
@@ -625,6 +720,7 @@ describe("list-by-owner, scrub and retention", () => {
         [
           {
             recordId: "delegate-a",
+            ownerSessionKey: OWNER,
             expectedRevision: 0,
             patch: {
               status: "succeeded",
@@ -651,7 +747,14 @@ describe("list-by-owner, scrub and retention", () => {
       write(options, (db) =>
         updateContinuationRecordsInDatabase(
           db,
-          [{ recordId: "delegate-a", expectedRevision: 1, patch: { status: "queued" } }],
+          [
+            {
+              recordId: "delegate-a",
+              ownerSessionKey: OWNER,
+              expectedRevision: 1,
+              patch: { status: "queued" },
+            },
+          ],
           1_200,
         ),
       ).outcome,
@@ -668,6 +771,7 @@ describe("list-by-owner, scrub and retention", () => {
           [
             {
               recordId,
+              ownerSessionKey: OWNER,
               expectedRevision: 0,
               patch: { status: "failed", ...(notice ? { terminalNoticePending: notice } : {}) },
             },

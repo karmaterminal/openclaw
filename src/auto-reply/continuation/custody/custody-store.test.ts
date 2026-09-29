@@ -151,14 +151,15 @@ describe("owner-conditioned election through the state worker", () => {
     await createContinuationRecord(work("parked"), options);
     const createAdmission = workerAdmission.createSqliteWorkerOperationAdmission;
     // An election is two commands: the owner snapshot list, then the election.
-    // Refuse only the second command's commit, after all of its writes.
+    // Refuse only the second command's commit. The kernel writes before its
+    // commit request, which custody-store.worker.test.ts proves directly.
     let commits = 0;
-    let electionWrote = false;
+    let electionReachedCommit = false;
     vi.spyOn(workerAdmission, "createSqliteWorkerOperationAdmission").mockImplementation(
       (admit, attachment) =>
         createAdmission((request, grant) => {
           if (request.stage === "commit" && ++commits === 2) {
-            electionWrote = true;
+            electionReachedCommit = true;
             throw new Error("synthetic commit refusal");
           }
           return admit(request, grant);
@@ -171,7 +172,7 @@ describe("owner-conditioned election through the state worker", () => {
         options,
       ),
     ).rejects.toThrow("synthetic commit refusal");
-    expect(electionWrote).toBe(true);
+    expect(electionReachedCommit).toBe(true);
     expect(await liveWork(options)).toEqual(["parked"]);
     const [parked] = await listContinuationRecords({ recordIds: ["parked"] }, options);
     expect(parked).toMatchObject({ status: "queued", revision: 0 });
@@ -348,6 +349,28 @@ describe("payload custody and scrub", () => {
     );
     expect(fs.existsSync(payloadFile(options, ATTACHMENT_A))).toBe(true);
     expect(await listContinuationRecords({}, options)).toEqual([]);
+  });
+
+  it("keeps the committed record's payload when a create is retried with the same attachment", async () => {
+    const options = storeOptions();
+    const create = () =>
+      createContinuationRecord(delegate("delegate-a", ATTACHMENT_A), {
+        ...options,
+        payload: { attachments },
+      });
+    // The first create committed even if its caller never saw the reply; the retry meets it.
+    expect((await create()).outcome).toBe("created");
+    expect(await create()).toMatchObject({ outcome: "exists", recordId: "delegate-a" });
+
+    const [record] = await listContinuationRecords({ recordIds: ["delegate-a"] }, options);
+    expect(record?.attachmentId).toBe(ATTACHMENT_A);
+    expect(
+      await loadContinuationCustodyPayload(
+        ATTACHMENT_A,
+        { recordId: "delegate-a", ownerKey: OWNER },
+        options.env,
+      ),
+    ).toMatchObject({ recordId: "delegate-a", attachments });
   });
 
   it("releases its own payload when the record ID already exists", async () => {

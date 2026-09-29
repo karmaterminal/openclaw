@@ -140,7 +140,14 @@ export async function createContinuationRecord(
   const result = await execute(custody, "continuationCustody.create", { record }, [
     record.ownerSessionKey,
   ]);
-  if (result.outcome === "exists" && payload && record.attachmentId !== undefined) {
+  // Release only a payload the existing record does not reference: a retry
+  // after an unseen commit meets its own record and must keep that file.
+  if (
+    result.outcome === "exists" &&
+    payload &&
+    record.attachmentId !== undefined &&
+    result.attachmentId !== record.attachmentId
+  ) {
     await releaseScrubbedPayloads(custody, {
       owners: [],
       releasedAttachments: [{ recordId: record.recordId, attachmentId: record.attachmentId }],
@@ -152,14 +159,14 @@ export async function createContinuationRecord(
 /** Revision CAS on one record, or an all-or-nothing multi-record CAS (rollback). */
 export async function updateContinuationRecords(
   updates: readonly ContinuationRecordUpdate[],
-  params: { now: number; ownerSessionKeys: readonly string[] },
+  params: { now: number },
   options?: ContinuationCustodyStoreOptions,
 ): Promise<ContinuationUpdateResult> {
   return execute(
     capture(options),
     "continuationCustody.update",
     { updates: [...updates], now: params.now },
-    params.ownerSessionKeys,
+    updates.map((update) => update.ownerSessionKey),
   );
 }
 
@@ -176,8 +183,15 @@ function transition(
   options?: ContinuationCustodyStoreOptions,
 ): Promise<ContinuationUpdateResult> {
   return updateContinuationRecords(
-    [{ recordId: target.recordId, expectedRevision: target.expectedRevision, patch }],
-    { now: target.now, ownerSessionKeys: [target.ownerSessionKey] },
+    [
+      {
+        recordId: target.recordId,
+        ownerSessionKey: target.ownerSessionKey,
+        expectedRevision: target.expectedRevision,
+        patch,
+      },
+    ],
+    { now: target.now },
     options,
   );
 }
