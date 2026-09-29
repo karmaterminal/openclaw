@@ -372,7 +372,6 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/continuation/work-dispatch.parent-lineage-and-restart.test.ts",
   "src/auto-reply/continuation/work-dispatch.retry-exhaustion.test.ts",
   "src/auto-reply/continuation/work-replacement-store.test.ts",
-  "src/auto-reply/continuation/work-terminal-notice.durability.test.ts",
   "src/agents/sessions/session-manager-target-capture.test.ts",
   "src/agents/sessions/sdk.metadata-cwd.test.ts",
   "src/agents/sessions/sdk.metadata-admission.test.ts",

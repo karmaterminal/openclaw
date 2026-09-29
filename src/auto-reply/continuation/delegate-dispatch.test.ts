@@ -224,7 +224,7 @@ function expectTrustedRawTaskEcho(
     // A durable notice's fast-path event is keyed by the owner and acks the
     // session-delivery row that owns delivery (RFC §5.4.2).
     expect(options).toEqual({
-      sessionKey,
+      sessionKey: resolveSystemEventQueueKey(sessionKey, "main"),
       trusted: true,
       sessionDeliveryAckId: expect.any(String),
       sessionDeliveryAwaitsTurnAdoption: true,
@@ -921,7 +921,8 @@ describe("raw trusted delegate task echoes", () => {
         if (
           ts.isCallExpression(node) &&
           ts.isIdentifier(node.expression) &&
-          node.expression.text === "enqueueSystemEvent"
+          // `notifyOwner` is dispatch's owner-bound wrapper over enqueueSystemEvent.
+          (node.expression.text === "enqueueSystemEvent" || node.expression.text === "notifyOwner")
         ) {
           enqueueCalls.push(node);
         }

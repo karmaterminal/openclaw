@@ -114,6 +114,13 @@ export function describeWorkTransition(update: ContinuationRecordUpdate): string
   return undefined;
 }
 
+// Synchronous exports stay unwrapped: an async wrapper would hand callers a
+// Promise where they expect a value (a record id, a database path).
+const SYNCHRONOUS_CUSTODY_EXPORTS = new Set([
+  "newContinuationRecordId",
+  "resolveContinuationCustodyDatabasePath",
+]);
+
 export function wrapCustodyStoreForWorkDispatch(actual: CustodyStoreModule): CustodyStoreModule {
   const updateContinuationRecords: CustodyStoreModule["updateContinuationRecords"] = async (
     updates,
@@ -152,7 +159,7 @@ export function wrapCustodyStoreForWorkDispatch(actual: CustodyStoreModule): Cus
   };
   const wrapped: Record<string, unknown> = { ...actual, updateContinuationRecords };
   for (const [name, value] of Object.entries(wrapped)) {
-    if (typeof value === "function" && name !== "resolveContinuationCustodyDatabasePath") {
+    if (typeof value === "function" && !SYNCHRONOUS_CUSTODY_EXPORTS.has(name)) {
       wrapped[name] = countInFlight(name, value as (...args: unknown[]) => Promise<unknown>);
     }
   }

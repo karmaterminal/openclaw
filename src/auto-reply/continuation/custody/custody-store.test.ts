@@ -272,6 +272,8 @@ describe("list-by-owner and the hot-path projection", () => {
       status: record.status,
       revision: record.revision,
       cancelRequested: false,
+      createdAt: record.createdAt,
+      ...(record.dueAt !== undefined ? { dueAt: record.dueAt } : {}),
     }));
     expect(facts.map((fact) => [fact.recordId, fact.status])).toEqual([
       ["delegate-a", "running"],

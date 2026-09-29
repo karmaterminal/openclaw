@@ -63,6 +63,7 @@ import { clearRuntimeConfigSnapshot } from "../../config/config.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { resetContinuationTracer } from "../../infra/continuation-tracer.js";
 import { loadPendingSessionDeliveries } from "../../infra/session-delivery-queue-storage.js";
+import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
 import {
   listCustodyRecordsForTest,
@@ -202,7 +203,10 @@ describe("fanout error isolation", () => {
     expect(failureEvents).toHaveLength(1);
     expect(failureEvents[0]?.[0]).toContain(`Delegate record ${middleRecordId}`);
     expect(failureEvents[0]?.[0]).toContain("fanout-target-B");
-    expect(failureEvents[0]?.[1]).toMatchObject({ sessionKey, trusted: true });
+    expect(failureEvents[0]?.[1]).toMatchObject({
+      sessionKey: resolveSystemEventQueueKey(sessionKey, "main"),
+      trusted: true,
+    });
     expect(
       enqueueSystemEventMock.mock.calls.filter(
         (call) => typeof call[0] === "string" && call[0].includes("DELEGATE spawn failed"),

@@ -616,11 +616,14 @@ describe("continuation_work terminal notice durability", () => {
         expect(scheduled).toEqual([]);
         expect(wakes).toEqual([]);
 
-        // The bounded retry finds nothing owed and never adds a second row.
+        // The bounded retry finds nothing owed and never adds a second row,
+        // but arms delivery for the row the lost-reply settle committed.
+        const [committedRow] = await loadPendingSessionDeliveries(stateDir);
         await vi.advanceTimersByTimeAsync(TERMINAL_NOTICE_RETRY_DELAYS_MS[0]);
         await vi.waitFor(() => {
-          expect(settleCalls).toBe(1);
+          expect(scheduled).toEqual([committedRow?.id]);
         });
+        expect(settleCalls).toBe(1);
         expect(await pendingDeliveryTexts(stateDir)).toEqual([
           CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE,
         ]);

@@ -250,15 +250,15 @@ const ALLOWLIST = [
       "Lost on process restart, which is the correct post-restart state: the next turn starts at a zero admission count and the durable delegate queue is unaffected.",
   },
   {
-    file: "src/auto-reply/continuation/delegate-taskflow-registry.test-harness.ts",
-    symbol: "mockTaskFlows",
-    owner: "continuation TaskFlow test harness",
+    file: "src/auto-reply/continuation/work-dispatch-flow-mock.test-support.ts",
+    symbol: "custodyCommandNamesInFlight",
+    owner: "continuation work-dispatch test support",
     purpose:
-      "Holds the in-memory TaskFlow rows a unit test registers in place of the durable TaskFlow store.",
+      "Counts in-flight custody worker commands by name so work-dispatch suites can wait for background custody replies that fake timers cannot advance, and name the stuck command when a settle times out.",
     safeVolatileClassification:
-      "Test-harness-only fixture state; it never runs in production and is reset between tests by resetMockTaskFlows().",
+      "Test-support-only instrumentation; it never runs in production and holds no delegate or work state, only command-name counters.",
     restartContract:
-      "Not applicable to production restarts; each test run starts from an empty map and the real durable store is untouched.",
+      "Not applicable to production restarts; each test starts with no command in flight and the durable custody store is untouched.",
   },
   {
     file: "src/auto-reply/continuation/work-terminal-notice.ts",

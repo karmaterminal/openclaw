@@ -868,7 +868,10 @@ describe("tool delegate dispatch contract", () => {
     );
     expect(interruptedText).toContain(`Delegate record ${thrownRecord.recordId}`);
     expect(interruptedText).toContain("Task: throws");
-    expect(interruptedOptions).toMatchObject({ sessionKey, trusted: true });
+    expect(interruptedOptions).toMatchObject({
+      sessionKey: resolveSystemEventQueueKey(sessionKey, "main"),
+      trusted: true,
+    });
     const { loadPendingSessionDeliveries } = await vi.importActual<
       typeof import("../../infra/session-delivery-queue-storage.js")
     >("../../infra/session-delivery-queue-storage.js");

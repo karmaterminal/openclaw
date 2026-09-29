@@ -21,8 +21,8 @@ import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { registerContinuationDispatchClaim } from "../continuation/continuation-dispatch-claims.js";
 import { resetContinuationCustodyProjection } from "../continuation/custody/custody-projection.js";
 import {
-  finishContinuationRecord,
   hydrateContinuationCustody,
+  updateContinuationRecords,
 } from "../continuation/custody/custody-store.js";
 import {
   custodyStateForTest,
@@ -329,13 +329,17 @@ describe("clearSessionResetRuntimeState", () => {
               sessionKey,
               flowId: delegate.recordId,
             });
-            const terminalized = await finishContinuationRecord({
-              recordId: terminalWork.flowId,
-              ownerSessionKey: sessionKey,
-              expectedRevision: terminalWork.expectedRevision!,
-              phase: "Already completed",
-              now: Date.now(),
-            });
+            const terminalized = await updateContinuationRecords(
+              [
+                {
+                  recordId: terminalWork.flowId,
+                  ownerSessionKey: sessionKey,
+                  expectedRevision: terminalWork.expectedRevision!,
+                  patch: { status: "succeeded", phase: "Already completed" },
+                },
+              ],
+              { now: Date.now() },
+            );
             expect(terminalized.outcome).toBe("applied");
 
             retainContinuationTimerRef(sessionKey);
