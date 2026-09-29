@@ -61,6 +61,7 @@ The key closes C's duplicate-spawn window, where a child was admitted but the ro
 
 - It imports every live or obligation-bearing row: queued and running rows, failed rows that still owe a notice, and handed-off post-compaction rows that reset must still see. Cancel-fenced rows come in as `cancelled`, and corrupt rows as `failed` with structural-only diagnostics. Legacy inline attachment bytes are moved into payload files. Terminal rows with no obligation are not imported. They receive a `retired-terminal` receipt, which the end-of-life step (Decision 4) relies on.
 - Legacy `running` delegate rows carry no run key. After import they get the Q3 policy: one `[continuation:delegate-spawn-interrupted]` notice, never a re-spawn.
+- Pending post-compaction queue entries that a C-era build enqueued get the same policy, in the owner's import transaction: one notice and no spawn, or settlement as delivered when C's derived child session key has a registry row for the owner. No such entry can be proven never attempted (RFC §5.4.5, "Pre-cutover queue entries").
 - Each record keeps `record_id = flow_id`. Payload files are copied into a new root (`attachments/continuation-custody/`) before the commit and deleted from the legacy root after it, so a C-era build's orphan reconcile can never delete new files.
 - Each owner session commits in one transaction. That transaction holds the imported records, their receipts, the Q6 scrub of legacy inline bytes, and the Q7 downgrade fence on every imported non-terminal source row. Until an owner is imported, its elections and delegate enqueues are refused with a Doctor hint, so the election owner condition never misses un-imported rows.
 - Receipts record structure, counts and hashes, never content. Once a source row's inline bytes are scrubbed, a re-run treats the committed receipt and the new record as authoritative.
@@ -93,12 +94,12 @@ The review required this fold. Q6 removes inline attachment bytes, but task text
 
 The details are in RFC §5.4.5 ("End of life for source rows").
 
-## Residual exposures for prince confirmation
+## Residual exposures
 
-Q3 and Q7 are folded as ruled. Two edge cases fall outside what the rulings can close, and the RFC names them instead of hiding them (RFC §5.4.5 and §5.4.9 item 4):
+Q3 and Q7 are folded as ruled. The draft named two edge cases that the rulings did not close. 🌊 Ronan ruled on both on 2026-09-29 (Discord message 1554437272479203381):
 
-1. **Pre-cutover post-compaction queue entries.** C's queue drain recorded no spawn attempt. An entry whose C-era spawn crashed mid-attempt therefore looks never-attempted, and it is delivered once more after the cutover. From the cutover on, the drain marks every attempt, so Q3 holds. The only way to close the gap fully is to terminalize every pre-cutover entry, which would also drop entries that were never attempted.
-2. **Terminal obligation rows on rollback.** Q7 fences non-terminal rows. A `failed` work row that still owes a retry-exhausted notice is terminal and unfenced. If the new build delivered that notice before a rollback, a C-era build can deliver it once more. The cost is a duplicate notice, never duplicate work.
+1. **Pre-cutover post-compaction queue entries: removed, not kept.** The draft delivered these entries once more after the cutover, because C's drain recorded no spawn attempt. 🌊's byte-walk found no stronger discriminator: C's `postCompactionDelegate` delivery bypassed the generic attempt marker, and C persisted failure metadata only after an error returned. A crash inside the spawn therefore leaves an entry indistinguishable from one never attempted, and a deliver-once promise contradicts Q3. The revision now terminalizes every covered entry in the owner's import transaction: one `[continuation:delegate-spawn-interrupted]` notice, the entry's identity kept as evidence, and no spawn. The post-cutover drain never spawns an entry without a `childRunId`. No subset is provably never claimed, so no entry keeps deliver-once. [RFC §5.4.5, "Pre-cutover queue entries"](/design/continue-work-signal-v2#pre-cutover-queue-entries) defines the covered entries and cites the legacy bytes.
+2. **Terminal obligation rows on rollback: accepted by 🌊** as a bounded exposure. Q7 fences non-terminal rows. A `failed` work row that still owes a retry-exhausted notice is terminal and unfenced. If the new build delivered that notice before a rollback, a C-era build can deliver it once more. The cost is a duplicate notice, never duplicate work.
 
 Two derived extensions also need prince confirmation, because they go beyond the literal rulings:
 
