@@ -436,3 +436,9 @@ Complete skill bundles are product artifacts under `<state-dir>/skill-library/<s
 Removing a skill excludes it from future selections; existing sessions retain their selected revisions. Published history and complete orphan revisions are retained conservatively. Expired upload records are pruned when another upload begins; clearly abandoned staging directories are cleaned during later publication. Back up both the state databases and the skill-library directory, not just the current revision pointers.
 
 Older same-schema readers ignore the new tables but cannot provide managed-library selection or authoring. Keep the tables and bundle directory intact when changing builds; do not lower schema markers or delete revisions to disable the feature. The accepted storage and ownership decision is recorded in [the profile-owned skills design issue](https://github.com/openclaw/openclaw/issues/133602).
+
+### Continuation custody
+
+Continuation custody uses the first-use `continuation_records` table in the shared state database without changing its schema version. The first continuation custody write creates it; reads of an absent table return no records. Elections, delegates, and post-compaction staging are canonical rows written only through the continuation custody worker operations, one state write transaction per operation. Delegate attachment bytes stay in private payload files under `<state-dir>/attachments/continuation-custody/`, each bound to its record and released after the commit that scrubs its reference.
+
+Terminal records are pruned seven days after they end unless they still owe a terminal notice. Older same-schema readers ignore the table. Keep the table and payload directory intact when changing builds. The storage decision and its invariants are recorded in [the continuation custody storage review](/design/continuation-custody-storage-review).
