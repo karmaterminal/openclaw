@@ -16,19 +16,26 @@ import {
   resetSystemEventsForTest,
 } from "../../infra/system-events.js";
 import { resetDiagnosticRunActivityForTest } from "../../logging/diagnostic-run-activity.js";
-import {
-  finishFlow,
-  listTaskFlowRecords,
-  reloadTaskFlowRegistryFromStore,
-} from "../../tasks/task-flow-registry.js";
-import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
+import { closeOpenClawStateDatabaseAsync } from "../../state/openclaw-state-db.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { registerContinuationDispatchClaim } from "../continuation/continuation-dispatch-claims.js";
+import { resetContinuationCustodyProjection } from "../continuation/custody/custody-projection.js";
+import {
+  finishContinuationRecord,
+  hydrateContinuationCustody,
+} from "../continuation/custody/custody-store.js";
+import {
+  custodyStateForTest,
+  listCustodyRecordsForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "../continuation/custody/custody.test-support.js";
 import { readAcceptedDelegateChildSessionKey } from "../continuation/delegate-flow-store.js";
 import {
-  claimStagedPostCompactionTaskFlowDelegates,
-  finalizeStagedPostCompactionDelegates,
-  stagePostCompactionTaskFlowDelegate,
+  claimStagedPostCompactionDelegates,
+  releaseStagedPostCompactionDelegateToQueue,
+  stagePostCompactionCustodyDelegate,
+  toSessionPostCompactionDelegate,
 } from "../continuation/delegate-store-post-compaction.js";
 import {
   consumePendingDelegates,
@@ -42,11 +49,47 @@ import {
   retainContinuationTimerRef,
 } from "../continuation/state.js";
 import { enqueueContinuationReturnDeliveries } from "../continuation/targeting.js";
+import type { PendingContinuationWork } from "../continuation/work-flow-state.js";
+import { enqueuePendingWorkReplacing } from "../continuation/work-replacement-store.js";
 import { consumePendingWork } from "../continuation/work-store.js";
-import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
 import { createReplyOperation, replyRunRegistry } from "./reply-run-registry.js";
 import { testing as replyRunTesting } from "./reply-run-registry.test-support.js";
 import { clearSessionResetRuntimeState } from "./session-reset-cleanup.js";
+
+useContinuationCustodyTestState();
+
+// Seed queued work through the real custody election path.
+async function enqueuePendingWork(work: PendingContinuationWork): Promise<PendingContinuationWork> {
+  const result = await enqueuePendingWorkReplacing({
+    work,
+    summary: "seeded reset test work",
+    maxPendingWork: Number.MAX_SAFE_INTEGER,
+    replaceParkedWork: false,
+    expectedRunningFlowIds: [],
+  });
+  if (!result.applied) {
+    throw new Error("expected seeded continuation work to be elected");
+  }
+  return result.work;
+}
+
+// Stage, claim and release one post-compaction delegate into the session
+// delivery queue: the release is the permanent durable handoff.
+async function handOffPostCompactionDelegate(sessionKey: string, task: string) {
+  await stagePostCompactionCustodyDelegate(sessionKey, { task, stagedAt: Date.now() });
+  const claimed = (await claimStagedPostCompactionDelegates(sessionKey))[0];
+  if (!claimed?.flowId) {
+    throw new Error("expected claimed post-compaction delegate");
+  }
+  expect(
+    await releaseStagedPostCompactionDelegateToQueue({
+      sessionKey,
+      delegate: toSessionPostCompactionDelegate(claimed),
+      sequence: 0,
+    }),
+  ).toMatchObject({ released: true });
+  return { ...claimed, flowId: claimed.flowId };
+}
 
 afterEach(() => {
   clearEmbeddedSessionPromptStates(["old-session"]);
@@ -56,24 +99,27 @@ afterEach(() => {
 });
 
 describe("clearSessionResetRuntimeState", () => {
-  it("disposes prompt projections with the archived session", () => {
+  it("disposes prompt projections with the archived session", async () => {
     const state = getEmbeddedSessionPromptState("old-session");
     state.sentUserTurnIds.add("sent-user-turn");
 
-    clearSessionResetRuntimeState(["old-session"], { agentId: "main", reason: "reset" });
+    await clearSessionResetRuntimeState(["old-session"], { agentId: "main", reason: "reset" });
 
     expect(getEmbeddedSessionPromptState("old-session")).not.toBe(state);
   });
 
-  it("clears reset queues and drains system events for normalized keys", () => {
+  it("clears reset queues and drains system events for normalized keys", async () => {
     enqueueSystemEvent("stale alpha", withSystemEventOwner({ sessionKey: "alpha" }, "main"));
     enqueueSystemEvent("stale beta", withSystemEventOwner({ sessionKey: "beta" }, "main"));
     enqueueSystemEvent("fresh gamma", withSystemEventOwner({ sessionKey: "gamma" }, "main"));
 
-    const result = clearSessionResetRuntimeState([" alpha ", undefined, " ", "alpha", "beta"], {
-      agentId: "main",
-      reason: "reset",
-    });
+    const result = await clearSessionResetRuntimeState(
+      [" alpha ", undefined, " ", "alpha", "beta"],
+      {
+        agentId: "main",
+        reason: "reset",
+      },
+    );
 
     expect(result.keys).toEqual(["alpha", "beta"]);
     expect(result.systemEventsCleared).toBe(2);
@@ -82,12 +128,12 @@ describe("clearSessionResetRuntimeState", () => {
     expect(peekSystemEvents("agent:main:gamma")).toEqual(["fresh gamma"]);
   });
 
-  it("preserves events owned by other agents during an agent-scoped reset", () => {
+  it("preserves events owned by other agents during an agent-scoped reset", async () => {
     enqueueSystemEvent("main", withSystemEventOwner({ sessionKey: "global" }, "main"));
     enqueueSystemEvent("alpha", withSystemEventOwner({ sessionKey: "global" }, "alpha"));
     enqueueSystemEvent("beta", withSystemEventOwner({ sessionKey: "global" }, "beta"));
 
-    const result = clearSessionResetRuntimeState(["global", "agent:beta:global"], {
+    const result = await clearSessionResetRuntimeState(["global", "agent:beta:global"], {
       agentId: " Alpha ",
       reason: "reset",
     });
@@ -98,7 +144,7 @@ describe("clearSessionResetRuntimeState", () => {
     expect(peekSystemEvents("agent:beta:global")).toEqual(["beta"]);
   });
 
-  it("releases active reply work owned by the archived reset session id", () => {
+  it("releases active reply work owned by the archived reset session id", async () => {
     const cancel = vi.fn();
     const operation = createReplyOperation({
       sessionKey: "agent:main:slack:room:1",
@@ -112,7 +158,7 @@ describe("clearSessionResetRuntimeState", () => {
     });
     operation.setPhase("running");
 
-    clearSessionResetRuntimeState(["agent:main:slack:room:1", "old-session"], {
+    await clearSessionResetRuntimeState(["agent:main:slack:room:1", "old-session"], {
       agentId: "main",
       activeReplySessionId: "old-session",
       reason: "reset",
@@ -128,7 +174,7 @@ describe("clearSessionResetRuntimeState", () => {
     expect(nextOperation.sessionId).toBe("new-session");
   });
 
-  it("does not clear a fresh active reply under the same key when only the archived id is reset", () => {
+  it("does not clear a fresh active reply under the same key when only the archived id is reset", async () => {
     const operation = createReplyOperation({
       sessionKey: "agent:main:slack:room:1",
       sessionId: "new-session",
@@ -136,7 +182,7 @@ describe("clearSessionResetRuntimeState", () => {
     });
     operation.setPhase("running");
 
-    clearSessionResetRuntimeState(["agent:main:slack:room:1", "old-session"], {
+    await clearSessionResetRuntimeState(["agent:main:slack:room:1", "old-session"], {
       agentId: "main",
       activeReplySessionId: "old-session",
       reason: "reset",
@@ -145,7 +191,7 @@ describe("clearSessionResetRuntimeState", () => {
     expect(replyRunRegistry.get("agent:main:slack:room:1")).toBe(operation);
   });
 
-  it("does not clear a replacement admitted while the archived run is cancelling", () => {
+  it("does not clear a replacement admitted while the archived run is cancelling", async () => {
     let replacement: ReturnType<typeof createReplyOperation> | undefined;
     const operation = createReplyOperation({
       sessionKey: "agent:main:slack:room:1",
@@ -167,7 +213,7 @@ describe("clearSessionResetRuntimeState", () => {
     });
     operation.setPhase("running");
 
-    clearSessionResetRuntimeState(["agent:main:slack:room:1", "old-session"], {
+    await clearSessionResetRuntimeState(["agent:main:slack:room:1", "old-session"], {
       agentId: "main",
       activeReplySessionId: "old-session",
       reason: "reset",
@@ -177,14 +223,14 @@ describe("clearSessionResetRuntimeState", () => {
     expect(replyRunRegistry.get("agent:main:slack:room:1")).toBe(replacement);
   });
 
-  it("leaves queued reservations for the archived id so session init can rebind them", () => {
+  it("leaves queued reservations for the archived id so session init can rebind them", async () => {
     const operation = createReplyOperation({
       sessionKey: "agent:main:slack:room:1",
       sessionId: "old-session",
       resetTriggered: false,
     });
 
-    clearSessionResetRuntimeState(["agent:main:slack:room:1", "old-session"], {
+    await clearSessionResetRuntimeState(["agent:main:slack:room:1", "old-session"], {
       agentId: "main",
       activeReplySessionId: "old-session",
       reason: "reset",
@@ -200,8 +246,9 @@ describe("clearSessionResetRuntimeState", () => {
       await withOpenClawTestState(
         { layout: "state-only", prefix: "openclaw-session-reset-continuation-" },
         async () => {
+          // The fixture moved the state directory; hydrate its custody projection.
+          await hydrateContinuationCustody();
           vi.useFakeTimers();
-          resetTaskFlowRegistryForTests();
           const sessionKey = "agent:main:slack:room:reset";
           const unrelatedSessionKey = "agent:main:slack:room:unrelated";
           let timer: ReturnType<typeof setTimeout> | undefined;
@@ -214,7 +261,7 @@ describe("clearSessionResetRuntimeState", () => {
               agentId: "main",
               sessionKey,
             });
-            const work = enqueuePendingWork({
+            const work = await enqueuePendingWork({
               sessionKey,
               hop: 1,
               delayMs: 60_000,
@@ -222,11 +269,11 @@ describe("clearSessionResetRuntimeState", () => {
               dueAt: Date.now() + 60_000,
               maxChainLength: 8,
             });
-            const delegate = enqueuePendingDelegate(sessionKey, {
+            const delegate = await enqueuePendingDelegate(sessionKey, {
               task: "continue after reset",
               delayMs: 60_000,
             });
-            const unrelatedWork = enqueuePendingWork({
+            const unrelatedWork = await enqueuePendingWork({
               sessionKey: unrelatedSessionKey,
               hop: 1,
               delayMs: 60_000,
@@ -234,7 +281,7 @@ describe("clearSessionResetRuntimeState", () => {
               dueAt: Date.now() + 60_000,
               maxChainLength: 8,
             });
-            const terminalWork = enqueuePendingWork({
+            const terminalWork = await enqueuePendingWork({
               sessionKey,
               hop: 1,
               delayMs: 0,
@@ -242,83 +289,88 @@ describe("clearSessionResetRuntimeState", () => {
               dueAt: Date.now(),
               maxChainLength: 8,
             });
-            stagePostCompactionTaskFlowDelegate(sessionKey, {
-              task: "do not replay handed-off work",
-              stagedAt: Date.now(),
-            });
-            const handedOffDelegate = claimStagedPostCompactionTaskFlowDelegates(sessionKey)[0];
-            if (!handedOffDelegate?.flowId) {
-              throw new Error("expected claimed post-compaction delegate");
-            }
-            expect(finalizeStagedPostCompactionDelegates([handedOffDelegate.flowId])).toBe(1);
-
-            stagePostCompactionTaskFlowDelegate(sessionKey, {
-              task: "already accepted post-compaction work",
-              stagedAt: Date.now(),
-            });
-            const acceptedPostCompaction =
-              claimStagedPostCompactionTaskFlowDelegates(sessionKey)[0];
-            if (!acceptedPostCompaction?.flowId) {
-              throw new Error("expected accepted post-compaction delegate");
-            }
-            expect(finalizeStagedPostCompactionDelegates([acceptedPostCompaction.flowId])).toBe(1);
-            const acceptedFlow = listTaskFlowRecords().find(
-              (flow) => flow.flowId === acceptedPostCompaction.flowId,
+            const handedOffDelegate = await handOffPostCompactionDelegate(
+              sessionKey,
+              "do not replay handed-off work",
             );
-            if (!acceptedFlow) {
-              throw new Error("expected finalized post-compaction flow");
+            const acceptedPostCompaction = await handOffPostCompactionDelegate(
+              sessionKey,
+              "already accepted post-compaction work",
+            );
+            const acceptedRecord = await readCustodyRecordForTest(acceptedPostCompaction.flowId);
+            if (!acceptedRecord) {
+              throw new Error("expected handed-off post-compaction record");
             }
             expect(
-              markPendingDelegateSpawnAccepted(
+              await markPendingDelegateSpawnAccepted(
                 {
                   ...acceptedPostCompaction,
-                  expectedRevision: acceptedFlow.revision,
+                  expectedRevision: acceptedRecord.revision,
                 },
                 "agent:main:subagent:accepted",
               ),
             ).toBe(true);
-            expect(
-              listTaskFlowRecords().find((flow) => flow.flowId === acceptedPostCompaction.flowId)
-                ?.stateJson,
-            ).toMatchObject({ childSessionKey: "agent:main:subagent:accepted" });
-            const acceptedAfterRecording = listTaskFlowRecords().find(
-              (flow) => flow.flowId === acceptedPostCompaction.flowId,
-            )!;
+            const acceptedAfterRecording = await readCustodyRecordForTest(
+              acceptedPostCompaction.flowId,
+            );
+            if (!acceptedAfterRecording) {
+              throw new Error("expected accepted post-compaction record");
+            }
+            expect(custodyStateForTest(acceptedAfterRecording)).toMatchObject({
+              childSessionKey: "agent:main:subagent:accepted",
+            });
             expect(readAcceptedDelegateChildSessionKey(acceptedAfterRecording)).toBe(
               "agent:main:subagent:accepted",
             );
-            if (!work || !delegate || !unrelatedWork || !terminalWork) {
-              throw new Error("expected durable continuation rows");
+            if (!work.flowId || !unrelatedWork.flowId || !terminalWork.flowId) {
+              throw new Error("expected durable continuation records");
             }
             const activeDelegate = registerContinuationDispatchClaim({
               sessionKey,
-              flowId: delegate.flowId,
+              flowId: delegate.recordId,
             });
-            const terminalized = finishFlow({
-              flowId: terminalWork.flowId!,
+            const terminalized = await finishContinuationRecord({
+              recordId: terminalWork.flowId,
+              ownerSessionKey: sessionKey,
               expectedRevision: terminalWork.expectedRevision!,
-              currentStep: "Already completed",
+              phase: "Already completed",
+              now: Date.now(),
             });
-            expect(terminalized.applied).toBe(true);
+            expect(terminalized.outcome).toBe("applied");
 
             retainContinuationTimerRef(sessionKey);
             timer = setTimeout(() => {}, 60_000);
             registerContinuationTimerHandle(sessionKey, timer);
             expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
 
-            clearSessionResetRuntimeState([sessionKey], { agentId: "main", reason });
+            await clearSessionResetRuntimeState([sessionKey], { agentId: "main", reason });
             await vi.advanceTimersByTimeAsync(0);
 
-            const flows = new Map(listTaskFlowRecords().map((flow) => [flow.flowId, flow]));
-            expect(flows.get(work.flowId!)?.status).toBe("cancelled");
-            expect(flows.get(delegate.flowId!)?.status).toBe("cancelled");
+            const records = new Map(
+              (await listCustodyRecordsForTest()).map((record) => [record.recordId, record]),
+            );
+            expect(records.get(work.flowId)?.status).toBe("cancelled");
+            expect(records.get(delegate.recordId)?.status).toBe("cancelled");
             expect(activeDelegate.controller.signal.aborted).toBe(true);
-            expect(flows.get(unrelatedWork.flowId!)?.status).toBe("queued");
-            expect(flows.get(terminalWork.flowId!)?.status).toBe("succeeded");
-            expect(flows.get(handedOffDelegate.flowId)?.status).toBe("cancelled");
-            expect(flows.get(acceptedPostCompaction.flowId)?.status).toBe("succeeded");
-            expect(consumePendingWork(sessionKey, { includeRunning: true })).toEqual([]);
-            expect(consumePendingDelegates(sessionKey, { includeRunning: true })).toEqual([]);
+            expect(records.get(unrelatedWork.flowId)?.status).toBe("queued");
+            expect(records.get(terminalWork.flowId)?.status).toBe("succeeded");
+            // Handoffs are permanent (RFC §5.4.4): reset fences the unaccepted
+            // handed-off record instead of cancelling it, and leaves the
+            // accepted one untouched.
+            expect(records.get(handedOffDelegate.flowId)).toMatchObject({
+              status: "succeeded",
+              cancelRequestedAt: expect.any(Number),
+            });
+            expect(records.get(acceptedPostCompaction.flowId)?.status).toBe("succeeded");
+            expect(records.get(acceptedPostCompaction.flowId)?.cancelRequestedAt).toBeUndefined();
+            expect(await consumePendingWork(sessionKey, { includeRunning: true })).toEqual([]);
+            expect(await consumePendingDelegates(sessionKey)).toEqual([]);
+            expect(
+              await listCustodyRecordsForTest({
+                ownerSessionKey: sessionKey,
+                statuses: ["queued", "running"],
+              }),
+            ).toEqual([]);
             expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
             expect(
               isSessionRecipientAuthorityCurrent(
@@ -338,22 +390,29 @@ describe("clearSessionResetRuntimeState", () => {
               "[continuation:enrichment-return] accepted child completed",
             );
 
-            reloadTaskFlowRegistryFromStore();
-            expect(consumePendingWork(sessionKey, { includeRunning: true })).toEqual([]);
-            expect(consumePendingDelegates(sessionKey, { includeRunning: true })).toEqual([]);
+            // Restart: reopen the state database and rehydrate custody from
+            // committed rows only.
+            resetContinuationCustodyProjection();
+            await closeOpenClawStateDatabaseAsync();
+            await hydrateContinuationCustody();
+            expect(await consumePendingWork(sessionKey, { includeRunning: true })).toEqual([]);
+            expect(await consumePendingDelegates(sessionKey)).toEqual([]);
             expect(
-              listTaskFlowRecords().find((flow) => flow.flowId === handedOffDelegate.flowId)
-                ?.status,
-            ).toBe("cancelled");
-            expect(
-              listTaskFlowRecords().find((flow) => flow.flowId === unrelatedWork.flowId)?.status,
-            ).toBe("queued");
+              await listCustodyRecordsForTest({
+                ownerSessionKey: sessionKey,
+                statuses: ["queued", "running"],
+              }),
+            ).toEqual([]);
+            expect(await readCustodyRecordForTest(handedOffDelegate.flowId)).toMatchObject({
+              status: "succeeded",
+              cancelRequestedAt: expect.any(Number),
+            });
+            expect((await readCustodyRecordForTest(unrelatedWork.flowId))?.status).toBe("queued");
           } finally {
             if (timer) {
               clearTimeout(timer);
             }
             releaseContinuationTimerRef(sessionKey);
-            resetTaskFlowRegistryForTests();
             vi.useRealTimers();
           }
         },

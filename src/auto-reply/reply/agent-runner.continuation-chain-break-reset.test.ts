@@ -29,11 +29,8 @@ import {
   type Tracer,
 } from "../../infra/continuation-tracer.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
-import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-runtime-internal.js";
-import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
+import { useContinuationCustodyTestState } from "../continuation/custody/custody.test-support.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
-import { enqueuePendingDelegate } from "../continuation/delegate-store.js";
-import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { testing as replyRunRegistryTesting } from "./reply-run-registry.test-support.js";
@@ -217,10 +214,11 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
   return { tracer, spans };
 }
 
+useContinuationCustodyTestState();
+
 beforeEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
-  resetTaskFlowRegistryForTests({ persist: false });
   runEmbeddedAgentMock.mockClear();
   runCliAgentMock.mockClear();
   runWithModelFallbackMock.mockClear();
@@ -274,7 +272,6 @@ afterEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   resetContinuationTracer();
   resetDelegateDispatchHedgesForTests();
-  resetTaskFlowRegistryForTests({ persist: false });
 });
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -377,9 +374,6 @@ async function runWorkTurn(
     isContinuationWake,
   });
 }
-
-const splitLintUse = [listTaskFlowsForOwnerKey, enqueuePendingDelegate, enqueuePendingWork];
-void splitLintUse;
 
 describe("runReplyAgent :: continuation chain-break reset", () => {
   const UNRELEASED_CHAIN_CONFIG = {

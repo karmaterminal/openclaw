@@ -1,7 +1,8 @@
 // The agent-runner `finally` must NOT
-// consume/claim queued delegates. `consumePendingDelegates` is a TaskFlow claim
-// (queued -> running), not a delete, so calling it in cleanup and discarding the
-// rows would strand a delegate matured/queued during a failed turn. The finally
+// consume/claim queued delegates. `consumePendingDelegates` is a custody claim
+// (queued -> running with a recorded spawn attempt), not a delete, so calling
+// it in cleanup and discarding the rows would strand a delegate
+// matured/queued during a failed turn. The finally
 // now only re-stages the in-memory preserve list; the shim `consumePendingDelegates`
 // (whose only caller was this finally) must never be invoked here, and the
 // dispatch-idle safety-net still fires.
@@ -15,6 +16,7 @@ import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runne
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
+import { useContinuationCustodyTestState } from "../continuation/custody/custody.test-support.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
 import { resetContinuationStateForTests } from "../continuation/state.js";
 import type { TemplateContext } from "../templating.js";
@@ -128,6 +130,8 @@ vi.mock("../continuation/delegate-store.js", async (importOriginal) => {
 });
 
 import { runReplyAgent } from "./agent-runner.js";
+
+useContinuationCustodyTestState();
 
 beforeEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();

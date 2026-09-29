@@ -33,11 +33,14 @@ import {
 } from "../../infra/continuation-tracer.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
 import { closeOpenClawAgentDatabasesForTestAsync } from "../../state/openclaw-agent-db-lifecycle.js";
-import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-runtime-internal.js";
-import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
+import {
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "../continuation/custody/custody.test-support.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
 import { enqueuePendingDelegate } from "../continuation/delegate-store.js";
-import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
+import type { PendingContinuationWork } from "../continuation/work-flow-state.js";
+import { enqueuePendingWorkReplacing } from "../continuation/work-replacement-store.js";
 import type { TemplateContext } from "../templating.js";
 import { isContinuationChainPatch } from "./agent-runner-entry.test-support.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
@@ -56,6 +59,32 @@ const compactState = vi.hoisted(() => ({
 }));
 const requestHeartbeatNowMock = vi.hoisted(() => vi.fn());
 const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
+const detachedWork = vi.hoisted(() => ({ pending: [] as Promise<unknown>[] }));
+
+// A fired hedge dispatches on detached Gateway work whose custody commands
+// complete on the state worker, outside fake time. Track that work so a test
+// can await the hedge's whole dispatch instead of polling for its effects.
+vi.mock("../../process/gateway-work-admission.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../process/gateway-work-admission.js")>();
+  return {
+    ...actual,
+    runWithGatewayDetachedWorkAdmission: <T>(
+      run: () => Promise<T>,
+      origin?: string,
+      signal?: AbortSignal,
+    ): Promise<T> => {
+      const work = actual.runWithGatewayDetachedWorkAdmission(run, origin, signal);
+      detachedWork.pending.push(work);
+      return work;
+    },
+  };
+});
+
+async function settleDetachedWork(): Promise<void> {
+  while (detachedWork.pending.length > 0) {
+    await Promise.allSettled(detachedWork.pending.splice(0));
+  }
+}
 const patchSessionEntryMock = vi.hoisted(() => vi.fn());
 const updateSessionEntryMock = vi.hoisted(() => vi.fn());
 const loadSessionEntryMock = vi.hoisted(() => vi.fn());
@@ -261,10 +290,11 @@ function testStorePath(fileName: string): string {
   return path.join(testStoreDir, fileName);
 }
 
+useContinuationCustodyTestState();
+
 beforeEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
-  resetTaskFlowRegistryForTests({ persist: false });
   runEmbeddedAgentMock.mockClear();
   runCliAgentMock.mockClear();
   runWithModelFallbackMock.mockClear();
@@ -323,6 +353,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  await settleDetachedWork();
   vi.useRealTimers();
   clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
@@ -330,7 +361,6 @@ afterEach(async () => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   resetContinuationTracer();
   resetDelegateDispatchHedgesForTests();
-  resetTaskFlowRegistryForTests({ persist: false });
   await closeOpenClawAgentDatabasesForTestAsync();
   if (testStoreDir) {
     fs.rmSync(testStoreDir, { recursive: true, force: true });
@@ -439,6 +469,21 @@ async function runWorkTurn(
   });
 }
 
+// Seed parked work through the real custody election path.
+async function seedQueuedWork(work: PendingContinuationWork): Promise<PendingContinuationWork> {
+  const result = await enqueuePendingWorkReplacing({
+    work,
+    summary: "seeded parked work",
+    maxPendingWork: Number.MAX_SAFE_INTEGER,
+    replaceParkedWork: false,
+    expectedRunningFlowIds: [],
+  });
+  if (!result.applied) {
+    throw new Error("expected seeded continuation work to be elected");
+  }
+  return result.work;
+}
+
 describe("runReplyAgent :: continuation.work span", () => {
   it("emits exactly one `continuation.work` span on accepted WORK with UUID chain.id and clamped chain.step.remaining", async () => {
     vi.useFakeTimers();
@@ -474,7 +519,9 @@ describe("runReplyAgent :: continuation.work span", () => {
     // transition; emitter consumes the same id (no re-derivation)
     expect(typeof attrs["chain.id"]).toBe("string");
     expect(attrs["chain.id"] as string).toMatch(UUID_REGEX);
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toMatchObject([{ status: "queued" }]);
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toMatchObject([
+      { status: "queued" },
+    ]);
   });
 
   it("uses a hot-reloaded continuation enablement value at the next enforcement point", async () => {
@@ -589,7 +636,7 @@ describe("runReplyAgent :: continuation.work span", () => {
     );
 
     expect(spans.filter((span) => span.name === "continuation.work")).toHaveLength(0);
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toHaveLength(0);
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toHaveLength(0);
     expect(run.sessionEntry.continuationChainCount).toBeUndefined();
   });
 
@@ -632,7 +679,7 @@ describe("runReplyAgent :: continuation.work span", () => {
 
     expect(continuationPersistenceCalls).toBe(1);
     expect(spans.filter((span) => span.name === "continuation.work")).toHaveLength(0);
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toHaveLength(0);
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toHaveLength(0);
     expect(run.sessionEntry.continuationChainCount).toBeUndefined();
   });
 
@@ -694,7 +741,7 @@ describe("runReplyAgent :: continuation.work span", () => {
 
     expect(continuationPersistenceCalls).toBe(2);
     expect(spans.filter((span) => span.name === "continuation.work")).toHaveLength(0);
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toHaveLength(0);
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toHaveLength(0);
     const storedEntry = sessionStore[run.sessionKey];
     expect(storedEntry).toBeDefined();
     if (!storedEntry) {
@@ -774,7 +821,7 @@ describe("runReplyAgent :: continuation.work span", () => {
     );
 
     expect(continuationPersistenceCalls).toBe(2);
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toHaveLength(1);
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toHaveLength(1);
     expect(sessionStore[run.sessionKey]?.continuationChainCount).toBe(1);
   });
 
@@ -864,7 +911,7 @@ describe("runReplyAgent :: continuation.work span", () => {
     );
 
     expect(continuationPersistenceCalls).toBe(2);
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toHaveLength(1);
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toHaveLength(1);
     expect(persistedEntry.continuationChainCount).toBe(1);
     expect(sessionStore[run.sessionKey]?.continuationChainCount).toBe(1);
   });
@@ -888,7 +935,7 @@ describe("runReplyAgent :: continuation.work span", () => {
         },
       },
     });
-    const existingWork = enqueuePendingWork({
+    const existingWork = await seedQueuedWork({
       sessionKey: run.sessionKey,
       hop: 1,
       delayMs: 1_000,
@@ -960,8 +1007,8 @@ describe("runReplyAgent :: continuation.work span", () => {
     );
 
     expect(continuationPersistenceCalls).toBe(2);
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toMatchObject([
-      { flowId: existingWork.flowId, status: "queued" },
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toMatchObject([
+      { recordId: existingWork.flowId, kind: "work", status: "queued" },
     ]);
     expect(persistedEntry.continuationChainCount).toBe(1);
     expect(persistedEntry.continuationChainTokens).toBe(0);
@@ -988,7 +1035,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       },
     );
     runEmbeddedAgentMock.mockImplementationOnce(async () => {
-      enqueuePendingDelegate(run.sessionKey, {
+      await enqueuePendingDelegate(run.sessionKey, {
         task: "persist before terminalizing this delayed delegate",
         delayMs: 1_000,
       });
@@ -1006,9 +1053,12 @@ describe("runReplyAgent :: continuation.work span", () => {
       testStorePath("openclaw-continuation-delegate-hedge-persist.json"),
     );
     await vi.advanceTimersByTimeAsync(1_000);
+    await settleDetachedWork();
 
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
     expect(continuationPersistenceCalls).toBe(1);
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toMatchObject([{ status: "running" }]);
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toMatchObject([
+      { status: "running" },
+    ]);
   });
 });

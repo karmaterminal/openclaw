@@ -1,7 +1,7 @@
 // C1 regression: a bracket [[CONTINUE_DELEGATE: ... | post-compaction]] staged
 // on a turn where auto-compaction ALSO fires must survive to the next compaction
 // seam. dispatchPostCompactionDelegates runs before staging, and the staged
-// delegate must remain queued in the TaskFlow-backed post-compaction store until
+// delegate must remain queued in the custody-backed post-compaction store until
 // the next seam consumes it.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,8 +13,10 @@ import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runne
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
-import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
-import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import {
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "../continuation/custody/custody.test-support.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
 import { stagedPostCompactionDelegateCount } from "../continuation/delegate-store-post-compaction.js";
 import { resetContinuationStateForTests } from "../continuation/state.js";
@@ -144,10 +146,11 @@ type RunWithModelFallbackParams = {
   runCandidate: (provider: string, model: string) => Promise<unknown>;
 };
 
+useContinuationCustodyTestState();
+
 beforeEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
-  resetTaskFlowRegistryForTests({ persist: false });
   runEmbeddedAgentMock.mockReset();
   runWithModelFallbackMock.mockReset();
   runtimeErrorMock.mockClear();
@@ -180,7 +183,6 @@ afterEach(() => {
   vi.useRealTimers();
   resetDelegateDispatchHedgesForTests();
   resetContinuationStateForTests();
-  resetTaskFlowRegistryForTests({ persist: false });
   clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
   replyRunRegistryTesting.resetReplyRunRegistry();
@@ -290,34 +292,28 @@ async function runDelegateTurn(
 
 describe("runReplyAgent :: post-compaction delegate survives same-turn auto-compaction (C1)", () => {
   it("persists the staged delegate when auto-compaction fires the same turn", async () => {
-    await withOpenClawTestState(
-      { layout: "state-only", prefix: "openclaw-c1-autocompaction-" },
-      async () => {
-        resetTaskFlowRegistryForTests({ persist: false });
-        const run = createContinuationRun({ sessionKey: "c1-autocompaction", compactionCount: 1 });
-        const sessionStore: Record<string, SessionEntry> = { [run.sessionKey]: run.sessionEntry };
+    const run = createContinuationRun({ sessionKey: "c1-autocompaction", compactionCount: 1 });
+    const sessionStore: Record<string, SessionEntry> = { [run.sessionKey]: run.sessionEntry };
 
-        await runDelegateTurn(run, sessionStore);
+    await runDelegateTurn(run, sessionStore);
 
-        expect(stagedPostCompactionDelegateCount(run.sessionKey)).toBe(1);
-        expect(sessionStore[run.sessionKey]?.pendingPostCompactionDelegates ?? []).toHaveLength(0);
-      },
-    );
+    expect(stagedPostCompactionDelegateCount(run.sessionKey)).toBe(1);
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toMatchObject([
+      { kind: "post_compaction", status: "queued" },
+    ]);
+    expect(sessionStore[run.sessionKey]?.pendingPostCompactionDelegates ?? []).toHaveLength(0);
   });
 
   it("persists the staged delegate on the normal path with no compaction (baseline)", async () => {
-    await withOpenClawTestState(
-      { layout: "state-only", prefix: "openclaw-c1-baseline-" },
-      async () => {
-        resetTaskFlowRegistryForTests({ persist: false });
-        const run = createContinuationRun({ sessionKey: "c1-baseline", compactionCount: 0 });
-        const sessionStore: Record<string, SessionEntry> = { [run.sessionKey]: run.sessionEntry };
+    const run = createContinuationRun({ sessionKey: "c1-baseline", compactionCount: 0 });
+    const sessionStore: Record<string, SessionEntry> = { [run.sessionKey]: run.sessionEntry };
 
-        await runDelegateTurn(run, sessionStore);
+    await runDelegateTurn(run, sessionStore);
 
-        expect(stagedPostCompactionDelegateCount(run.sessionKey)).toBe(1);
-        expect(sessionStore[run.sessionKey]?.pendingPostCompactionDelegates ?? []).toHaveLength(0);
-      },
-    );
+    expect(stagedPostCompactionDelegateCount(run.sessionKey)).toBe(1);
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toMatchObject([
+      { kind: "post_compaction", status: "queued" },
+    ]);
+    expect(sessionStore[run.sessionKey]?.pendingPostCompactionDelegates ?? []).toHaveLength(0);
   });
 });
