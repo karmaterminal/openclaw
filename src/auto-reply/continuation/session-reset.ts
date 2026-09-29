@@ -60,17 +60,27 @@ export async function cancelSessionContinuations(sessionKey: string): Promise<vo
       if (!patch) {
         break;
       }
-      const result = await updateContinuationRecords(
-        [
-          {
-            recordId: current.recordId,
-            ownerSessionKey: sessionKey,
-            expectedRevision: current.revision,
-            patch,
-          },
-        ],
-        { now },
-      );
+      let result: Awaited<ReturnType<typeof updateContinuationRecords>>;
+      try {
+        result = await updateContinuationRecords(
+          [
+            {
+              recordId: current.recordId,
+              ownerSessionKey: sessionKey,
+              expectedRevision: current.revision,
+              patch,
+            },
+          ],
+          { now },
+        );
+      } catch (err) {
+        // A failed write leaves the record as it was; report it as the
+        // retryable reset failure instead of an unclassified handler error.
+        throw new SessionContinuationResetError(
+          current.recordId,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
       if (result.outcome === "applied" || result.outcome === "not_found") {
         break;
       }
