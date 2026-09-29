@@ -114,7 +114,9 @@ describe("continuation TaskFlow source retirement", () => {
             .where("migration_kind", "=", "continuation-taskflow-source-retirement"),
         ).rows,
     );
-    expect(receipts.map((row) => JSON.parse(row.report_json).deleted).toSorted()).toEqual([1, 3]);
+    expect(
+      receipts.map((row): number => JSON.parse(row.report_json).deleted).toSorted((a, b) => a - b),
+    ).toEqual([1, 3]);
 
     const again = await retireContinuationTaskFlowSourceRows({
       env: options.env,

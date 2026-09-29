@@ -11,17 +11,10 @@
 // commit and the legacy file is deleted after it, so a crash at any point
 // leaves either the untouched source or a complete import.
 import { createHash } from "node:crypto";
-import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import { safeParseJsonRecord } from "@openclaw/normalization-core";
-import { z } from "zod";
 import { deriveContinuationDelegateChildSessionKeyFromParent } from "../../../agents/subagent-continuation-ids.js";
-import {
-  isSubagentAttachmentId,
-  removeSubagentAttachmentTree,
-} from "../../../agents/subagents/subagent-attachment-cleanup.js";
-import { resolveStateDir } from "../../../config/state-dir.js";
 import {
   terminalizeBoundDeliveryQueueEntry,
   upsertBoundDeliveryQueueEntryInDatabase,
@@ -32,7 +25,6 @@ import {
   type DeliveryQueueEntryState,
 } from "../../../infra/delivery-queue-sqlite.types.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../../infra/kysely-sync.js";
-import { privateFileStore } from "../../../infra/private-file-store.js";
 import { prepareSessionDeliveryEnqueue } from "../../../infra/session-delivery-queue-storage.js";
 import { SESSION_DELIVERY_QUEUE_NAME } from "../../../infra/session-delivery-queue.records.js";
 import {
@@ -44,7 +36,6 @@ import type { OpenClawStateDatabase } from "../../../state/openclaw-state-db-con
 import { withExistingOpenClawStateDatabaseReadOnly } from "../../../state/openclaw-state-db-readonly.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../../../state/openclaw-state-db.generated.js";
 import { runOpenClawStateWriteTransaction } from "../../../state/openclaw-state-db.js";
-import { storeContinuationCustodyPayload } from "./custody-payload-store.js";
 import {
   ensureContinuationCustodySchema,
   importContinuationRecordInDatabase,
@@ -52,11 +43,11 @@ import {
 } from "./custody-store.worker.js";
 import {
   describeInlineScrub,
-  payloadIntentFor,
   planLegacyRow,
   type ReceiptReport,
   type RowPlan,
 } from "./legacy-taskflow-import-plan.js";
+import { preparePayloads, releaseLegacyPayload } from "./legacy-taskflow-payloads.js";
 import {
   CONTINUATION_TASKFLOW_CUSTODY_IMPORT_STEP_ID,
   RETIREABLE_DISPOSITIONS,
@@ -74,8 +65,6 @@ import { buildContinuationSpawnInterruptedNotice } from "./spawn-interrupted-not
 
 export const CONTINUATION_TASKFLOW_SOURCE_RETIREMENT_STEP_ID =
   "continuation-taskflow-source-retirement";
-
-const LEGACY_PAYLOAD_MAX_BYTES = 8 * 1024 * 1024;
 
 type MigrationOptions = { env: NodeJS.ProcessEnv; now?: () => number };
 
@@ -105,121 +94,6 @@ const sha256 = (value: string) => createHash("sha256").update(value).digest("hex
 
 function stateOptions(env: NodeJS.ProcessEnv) {
   return { env };
-}
-
-function legacyPayloadRoot(env: NodeJS.ProcessEnv): string {
-  return path.join(resolveStateDir(env), "attachments", "continuation");
-}
-
-// C's payload format under the legacy root, which the import owns after the cutover.
-const LegacyPayloadSchema = z
-  .object({
-    version: z.literal(1),
-    flowId: z.string().min(1),
-    ownerKey: z.string().min(1),
-    attachments: z
-      .array(
-        z
-          .object({
-            name: z.string(),
-            content: z.string(),
-            encoding: z.enum(["utf8", "base64"]).optional(),
-            mimeType: z.string().optional(),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(50),
-    attachAs: z.object({ mountPath: z.string() }).strict().optional(),
-  })
-  .strict();
-
-async function readLegacyPayload(env: NodeJS.ProcessEnv, attachmentId: string) {
-  if (!isSubagentAttachmentId(attachmentId)) {
-    return undefined;
-  }
-  try {
-    const parsed = LegacyPayloadSchema.safeParse(
-      await privateFileStore(legacyPayloadRoot(env)).readJsonIfExists(
-        path.posix.join(attachmentId, "payload.json"),
-        { maxBytes: LEGACY_PAYLOAD_MAX_BYTES },
-      ),
-    );
-    return parsed.success ? parsed.data : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Delete a legacy payload after the commit that made it unreferenced; a foreign file stays. */
-async function releaseLegacyPayload(
-  env: NodeJS.ProcessEnv,
-  release: { attachmentId: string; flowId: string },
-): Promise<void> {
-  const payload = await readLegacyPayload(env, release.attachmentId);
-  if (payload?.flowId === release.flowId) {
-    await removeSubagentAttachmentTree(legacyPayloadRoot(env), release.attachmentId);
-  }
-}
-
-/**
- * Copy-first payload preparation, before the owner transaction. A crash after
- * this leaves only an unreferenced new-root file, which the custody reconcile
- * removes, and the legacy file stays for the retry.
- */
-async function preparePayloads(
-  env: NodeJS.ProcessEnv,
-  rows: readonly LegacyContinuationFlowRow[],
-): Promise<Map<string, "copied" | "missing">> {
-  const results = new Map<string, "copied" | "missing">();
-  for (const row of rows) {
-    const intent = payloadIntentFor(row);
-    if (!intent) {
-      continue;
-    }
-    const legacy =
-      intent.source === "legacy-file"
-        ? await readLegacyPayload(env, intent.attachmentId)
-        : undefined;
-    // A legacy file counts only when bound to this flow and owner, as C's projection required.
-    const bytes =
-      intent.source === "inline"
-        ? intent
-        : legacy?.flowId === row.flow_id && legacy.ownerKey === row.owner_key
-          ? legacy
-          : undefined;
-    if (!bytes) {
-      // The record keeps its reference and fails as a corrupt payload at
-      // dispatch, as C did when the legacy file was missing.
-      results.set(row.flow_id, "missing");
-      continue;
-    }
-    let stored: Awaited<ReturnType<typeof storeContinuationCustodyPayload>>;
-    try {
-      stored = await storeContinuationCustodyPayload(
-        {
-          attachments: bytes.attachments,
-          ...(bytes.attachAs ? { attachAs: bytes.attachAs } : {}),
-          attachmentId: intent.attachmentId,
-          recordId: row.flow_id,
-          ownerKey: row.owner_key,
-        },
-        env,
-      );
-    } catch {
-      // The store rejects bytes its strict payload schema refuses; C failed
-      // such a record as corrupt at dispatch, and so will the new runtime.
-      results.set(row.flow_id, "missing");
-      continue;
-    }
-    if (stored === "conflict") {
-      throw new Error(
-        `continuation custody payload ${intent.attachmentId} already holds different bytes`,
-      );
-    }
-    results.set(row.flow_id, "copied");
-  }
-  return results;
 }
 
 type ImportDatabase = Pick<OpenClawStateKyselyDatabase, "flow_runs">;

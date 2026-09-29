@@ -105,11 +105,11 @@ export function readLegacyContinuationFlowRows(
     select = select.where("owner_key", "=", query.ownerSessionKey);
   }
   return executeSqliteQuerySync(db, select.orderBy("created_at").orderBy("flow_id")).rows.map(
-    (row) => ({
-      ...row,
-      // SAFETY: the query selected only the three continuation controller IDs.
-      kind: LEGACY_CONTROLLER_KINDS[row.controller_id as string]!,
-    }),
+    (row) =>
+      Object.assign(row, {
+        // SAFETY: the query selected only the three continuation controller IDs.
+        kind: LEGACY_CONTROLLER_KINDS[row.controller_id as string]!,
+      }),
   );
 }
 

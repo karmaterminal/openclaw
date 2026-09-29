@@ -334,8 +334,8 @@ describe("continuation TaskFlow custody import", () => {
       failureReason: "spawn-interrupted",
     });
     const keys = spawnInterruptedNotices(options)
-      .map((row) => JSON.parse(row.entry_json).idempotencyKey)
-      .toSorted();
+      .map((row): string => JSON.parse(row.entry_json).idempotencyKey)
+      .toSorted((a, b) => a.localeCompare(b));
     // One notice per unresolved claim: the collision, the unproven row, and the queued entry.
     expect(keys).toEqual([
       `continuation-spawn-interrupted:queue-entry:${entryId}`,

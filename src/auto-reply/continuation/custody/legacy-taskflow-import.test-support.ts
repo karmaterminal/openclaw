@@ -250,18 +250,26 @@ export function readReceipts(options: Options) {
 /** Row-level dump of every table the import writes, for idempotency and rollback proofs. */
 export function dumpState(options: Options) {
   return write(options, (db) => {
-    const all = <T extends keyof Db>(table: T) =>
-      executeSqliteQuerySync(db, kysely(db).selectFrom(table).selectAll()).rows;
-    const sorted = <T>(rows: T[], key: (row: T) => string) =>
-      rows.toSorted((a, b) => key(a).localeCompare(key(b)));
+    const q = kysely(db);
     return {
-      flowRuns: sorted(all("flow_runs"), (row) => row.flow_id),
+      flowRuns: executeSqliteQuerySync(db, q.selectFrom("flow_runs").selectAll().orderBy("flow_id"))
+        .rows,
       records: tableExists(db, "continuation_records")
-        ? sorted(all("continuation_records"), (row) => row.record_id)
+        ? executeSqliteQuerySync(
+            db,
+            q.selectFrom("continuation_records").selectAll().orderBy("record_id"),
+          ).rows
         : [],
-      queue: sorted(all("delivery_queue_entries"), (row) => row.id),
-      sources: sorted(all("migration_sources"), (row) => row.source_key),
-      runs: sorted(all("migration_runs"), (row) => row.id),
+      queue: executeSqliteQuerySync(
+        db,
+        q.selectFrom("delivery_queue_entries").selectAll().orderBy("id"),
+      ).rows,
+      sources: executeSqliteQuerySync(
+        db,
+        q.selectFrom("migration_sources").selectAll().orderBy("source_key"),
+      ).rows,
+      runs: executeSqliteQuerySync(db, q.selectFrom("migration_runs").selectAll().orderBy("id"))
+        .rows,
     };
   });
 }

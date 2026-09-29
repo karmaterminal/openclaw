@@ -92,7 +92,9 @@ export function describeInlineScrub(state: Record<string, unknown> | undefined) 
     alreadyScrubbed: attachments.every((item) => item.content === ""),
     scrubbedStateJson: JSON.stringify({
       ...state,
-      attachments: attachments.map((item) => ({ ...item, content: "" })),
+      attachments: attachments.map(({ content: _content, ...rest }) =>
+        Object.assign(rest, { content: "" }),
+      ),
     }),
   };
 }
