@@ -1521,12 +1521,12 @@ When continuation is enabled and at least one field is non-zero, `/status` surfa
 
 The render is gated on (a) continuation enabled in the resolved config, and (b) at least one of the four fields being non-zero. Both gates are unit-tested in `src/auto-reply/status.test.ts`. The `volitional: N` field reflects successful agent-initiated compactions, not attempted or failed compactions; see §4.3.
 
-| Field                      | Source                                        | Meaning                                                                       |
-| -------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------- |
-| `chain X/Y`                | `continuationChainCount` and `maxChainLength` | current depth versus maximum                                                  |
-| `Z delegates pending`      | TaskFlow pending delegate queue               | delayed or not-yet-spawned tool-path work                                     |
-| `W post-compaction staged` | TaskFlow post-compaction queue                | delegates waiting for the next compaction lifecycle event                     |
-| `volitional: N`            | request-compaction counter                    | count of successful agent-initiated compactions observed in the last 24 hours |
+| Field                      | Source                                           | Meaning                                                                       |
+| -------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `chain X/Y`                | `continuationChainCount` and `maxChainLength`    | current depth versus maximum                                                  |
+| `Z delegates pending`      | custody-store `delegate` records (list-by-owner) | delayed or not-yet-spawned tool-path work                                     |
+| `W post-compaction staged` | custody-store `post_compaction` records          | delegates waiting for the next compaction lifecycle event                     |
+| `volitional: N`            | request-compaction counter                       | count of successful agent-initiated compactions observed in the last 24 hours |
 
 ### 6.4 Context-pressure telemetry and fleet evidence
 
@@ -1724,15 +1724,15 @@ root turn          (traceid: T, span: R)
 
 All spans share `traceid: T`. Each child names its producer as parent. Return-side spans (`Q`, `S`) preserve `T` so the return path is queryable as one tree, not as disconnected fragments per session boundary.
 
-**Producer-side IN: tool/token/TaskFlow MUST accept a trace carrier.** The producer side of every continuation primitive SHALL accept and persist a W3C `traceparent` so the spawned child knows which trace it is part of. This is the missing seam at the structured-tool, bracket-token, runtime-type, and TaskFlow-persistence layers; without it, a delegate spawned from a traced parent has no way to know it should join the parent's trace tree.
+**Producer-side IN: tool/token/durable custody MUST accept a trace carrier.** The producer side of every continuation primitive SHALL accept and persist a W3C `traceparent` so the spawned child knows which trace it is part of. This is the missing seam at the structured-tool, bracket-token, runtime-type, and TaskFlow-persistence layers; without it, a delegate spawned from a traced parent has no way to know it should join the parent's trace tree.
 
-| Surface                         | Required additive field        | Persistence requirement                                 |
-| ------------------------------- | ------------------------------ | ------------------------------------------------------- |
-| `continue_delegate` tool        | `traceparent` parameter        | passes through to enqueue/stage call sites              |
-| `[[CONTINUE_DELEGATE:...]]`     | `traceparent` directive option | parsed alongside silent/wake/target/fanout              |
-| `PendingContinuationDelegate`   | `traceparent` runtime field    | propagates from producer into spawn metadata            |
-| TaskFlow `PendingDelegateState` | `traceparent` durable field    | persisted through queued-flow lifecycle, restart-stable |
-| Producer span helpers           | `StartSpanOptions.traceparent` | the `diagnostics-otel` adapter already parent-stitches  |
+| Surface                                              | Required additive field        | Persistence requirement                                                                                                    |
+| ---------------------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `continue_delegate` tool                             | `traceparent` parameter        | passes through to enqueue/stage call sites                                                                                 |
+| `[[CONTINUE_DELEGATE:...]]`                          | `traceparent` directive option | parsed alongside silent/wake/target/fanout                                                                                 |
+| `PendingContinuationDelegate`                        | `traceparent` runtime field    | propagates from producer into spawn metadata                                                                               |
+| Custody-store `PendingDelegateState` (TaskFlow at C) | `traceparent` durable field    | persisted through the queued-record lifecycle, restart-stable; carried into the `SubagentRunRecord` at the custody handoff |
+| Producer span helpers                                | `StartSpanOptions.traceparent` | the `diagnostics-otel` adapter already parent-stitches                                                                     |
 
 The `diagnostics-otel` adapter already consumes `StartSpanOptions.traceparent` and parent-stitches via `trace.setSpanContext`; what is missing is the producer surfaces threading the carrier through to that consumption point. The carrier is additive at every layer — absence MUST NOT break any existing path; presence MUST stitch.
 
@@ -1802,7 +1802,15 @@ Additional deployment note: delegate returns rely on an internal announce path. 
 
 The delegated continuation path introduces a temporal gap between dispatch and return. During that period, task text, inline attachments, and pending delegate metadata are stored and transported as plaintext within the broader trust boundary of the OpenClaw instance.
 
-Existing bounds reduce accidental overreach but are not cryptographic guarantees. Response-token delegate tasks are truncated at 4096 characters and cannot carry inline attachment blobs. Typed attachments use strict names and encodings, shared file/count/byte limits, private receipt directories, and a manifest with per-file SHA-256 hashes after child materialization. Those hashes do not authenticate the earlier TaskFlow or session-delivery queue hops. Post-compaction context reads use boundary-file protections and reject symlink or hardlink escapes from the workspace root. Session-delivery queue files are local filesystem records, not encrypted envelopes.
+**Attachment custody across the gap (custody revision).** Custody of a typed input snapshot passes through these holders, in order. At each step exactly one owner is responsible for scrubbing it.
+
+1. **Pre-spawn.** The private payload file `<stateDir>/attachments/continuation/<attachmentId>/payload.json` (at most 8 MiB, bound to the custody record ID and owner session), referenced by a continuation custody store record.
+2. **Post-compaction queue, when used.** The `delivery_queue_entries` record, from the single release transaction until the queue entry settles.
+3. **Child receipt directory.** After spawn, `<stateDir>/attachments/subagents/...`, recorded as the `subagent_runs` row's `attachmentId` and owned by upstream's subagent cleanup.
+
+The continuation payload file is released when the custody handoff commits (§5.4.4), and on terminal failure, cancellation or reset. Session reset releases it immediately; at C that waited for the next startup reconcile. Payload files that no record references are removed by the startup custody reconcile. At C the owning record was a TaskFlow row. The Doctor import (§5.4.5) keeps each record ID equal to its legacy `flow_id`, so payload bindings survive the move without being rewritten. Any legacy inline bytes are moved into payload files. Whether their copies are also scrubbed from `flow_runs` is decision-record question Q6.
+
+Existing bounds reduce accidental overreach but are not cryptographic guarantees. Response-token delegate tasks are truncated at 4096 characters and cannot carry inline attachment blobs. Typed attachments use strict names and encodings, shared file/count/byte limits, private receipt directories, and a manifest with per-file SHA-256 hashes after child materialization. Those hashes do not authenticate the earlier custody-store (TaskFlow at C) or session-delivery queue hops. Post-compaction context reads use boundary-file protections and reject symlink or hardlink escapes from the workspace root. Session-delivery queue records and continuation payload files are local SQLite rows and private files, not encrypted envelopes.
 
 Threat model:
 
@@ -1911,18 +1919,41 @@ only as a tool-schema feature:
 1. omitted and empty `attachments` input are equivalent and persist neither a
    snapshot nor a mount-hint field through immediate, delayed/restart, or
    post-compaction dispatch;
-2. non-empty input is copied by value into TaskFlow, survives delayed recovery
+2. non-empty input is copied by value into durable custody (TaskFlow at C; the
+   continuation custody store and its payload file after §5.4), survives delayed recovery
    and post-compaction queue replay, and reaches the shared child materializer;
 3. the shared spawn boundary re-reads current
    `tools.sessions_spawn.attachments` policy and limits, so a snapshot queued
    under an earlier permissive configuration is rejected if policy tightens
    before spawn;
-4. terminal TaskFlow and post-compaction queue settlement remove raw inline
+4. terminal custody-store records and post-compaction queue settlement remove raw inline
    bytes, while generic `systemEvent` and `agentTurn` queue metadata is projected
    to descriptor-only `blob-sha256` references;
 5. malformed transcript or queue attachment state fails closed without
    preserving secret bytes, while already-redacted canonical transcript state
    remains identity-stable for signed-thinking replay.
+
+#### 9.2.2 Custody revision regression obligations
+
+The custody revision (§5.4) replaces the storage underneath already-tested behavior, so the existing suites have to be re-homed rather than deleted. At C, these test supports target TaskFlow directly:
+
+- `delegate-taskflow-registry.test-harness.ts`
+- `delegate-store-consumption.test-harness.ts`
+- `post-compaction-taskflow-rejection.test.ts`
+- `src/gateway/server-runtime-subscriptions.task-terminals.test-harness.ts`
+- the SDK test runtime `src/plugin-sdk/task-flow-test-runtime.ts`
+
+Each moves to the continuation custody store's worker operations, or is removed when its only subject was TaskFlow itself. Behavior assertions stay as they are: the durable/restart, dispatch, recovery, attachment, and RFC-contract scenario suites.
+
+The implementation lanes add deterministic regressions at the real ownership boundaries. They use no real timers and no per-test Gateway boots. Each regression must fail on the defect or window it names:
+
+1. **Election atomicity.** A concurrent election or parked-work supersede racing a claim fails the owner condition and commits nothing. A crash injected inside the worker transaction leaves either the pre-state or the post-state, never a partial one. Rollback restores superseded priors exactly (`phase`, state, cancel fence).
+2. **Delivered mark and terminal notice.** A crash between the durable delivered mark and the finish produces no second turn. A retry-exhausted failure delivers exactly one notice across restarts. The notice's queue insert and the obligation clear are observed together or not at all.
+3. **Custody handoff.** One test per boundary in the §5.4.4 table. Boundary 4 is the regression for the C defect: the child was admitted but the record was never marked, so a restart spawned a second child. The pre-fix control is C's re-dispatch of `running` rows. The post-fix expectation is that the handoff is marked with no spawn.
+4. **Post-compaction release.** Release and queue insert commit together. A crash after the commit re-releases nothing. A failed enqueue re-stages.
+5. **Legacy import.** Every row in the §5.4.5 table: idempotent re-runs, payload binding preserved through `record_id = flow_id`, corrupt rows with structural-only diagnostics, obligation rows delivering their notice, and (if Q7 is accepted) the downgrade fence.
+6. **Tool/token parity.** Work, delegate, and post-compaction produce identical custody records from the tool and token forms, apart from the attachment reference.
+7. **List-by-owner.** Recovery, reset, `/status` counts, and the subagent sweep guards see the same live set. The hot-path projection is invalidated on every committed write.
 
 ### 9.3 Blind enrichment methodology
 
@@ -2006,7 +2037,7 @@ The deferred test (`10-H1`) concerned fallback behavior under `tools.deny`; the 
 2. **LLMs confabulate absent enrichment.** When asked about enrichment that had not arrived, agents sometimes produced plausible but invented content. External verification is therefore mandatory for high-confidence recall.
 3. **Runtime testing found issues that code review missed.** The missing `doToolSpawn()` drain flag and the missing request-compaction wiring both survived prior review.
 4. **Continuation is resilient under pressure, but only with correct routing metadata.** Silent-wake, post-compaction dispatch, and sub-agent tool access all depend on small pieces of topology data being preserved end to end.
-5. **Session reset is an interruption boundary.** Explicit directive or inline-action reset cancels process timers, clears delayed reservations, resets chain state, and deletes pending TaskFlow work/delegates for the session. Delayed work should not be described as surviving `/new` unless the reset path explicitly preserves that substrate.
+5. **Session reset is an interruption boundary.** Explicit directive or inline-action reset cancels process timers, clears delayed reservations, resets chain state, and cancels pending durable work/delegates for the session (TaskFlow rows at C; custody-store records after §5.4, with payload files released immediately). Delayed work should not be described as surviving `/new` unless the reset path explicitly preserves that substrate.
 
 ## 10. Discussion and Future Work
 
@@ -2022,13 +2053,13 @@ The implemented capability consists of these connected parts:
 4. `request_compaction()` for volitional compaction after preparation (§2.5, §4.3).
 5. Post-compaction delegate release for lifecycle-aware recovery: pre-compaction work staged electively and released directly into the post-compaction lifecycle event (§4.4).
 6. Tool-primary design with response-token fallback for environments where tools are unavailable (§2.6, §2.7).
-7. Path-specific substrates: TaskFlow for same-session `continue_work`, pending delegates, and staged delegates; process timers only as ephemeral hedge/reservation prompts; and `session-delivery-queue` for targeted delegate returns, restart-recovered deliveries, and post-compaction handoff (§3.6).
+7. Path-specific substrates: the continuation custody store for same-session `continue_work`, pending delegates, and staged delegates (TaskFlow until #159179, §5.4); the subagent registry after the custody handoff; process timers only as ephemeral hedge/reservation prompts; and `session-delivery-queue` for targeted delegate returns, restart-recovered deliveries, and post-compaction handoff (§3.6).
 
 The feature ships disabled by default, respects human-user guardrails, and integrates with the existing compaction and sub-agent machinery rather than replacing it.
 
 ### 10.2 Future directions
 
-Several future directions are now technically credible because the continuation substrate exists. The nearest is better post-compaction recovery: richer savegames, stronger payload integrity, and recovery strategies that preserve working-state shape rather than only summary facts. TaskFlow can carry more durable background work; `session-delivery-queue` can carry more forms of addressed enrichment; trace context can make both auditable.
+Several future directions are now technically credible because the continuation substrate exists. The nearest is better post-compaction recovery: richer savegames, stronger payload integrity, and recovery strategies that preserve working-state shape rather than only summary facts. The continuation custody store can carry more durable continuation state; `session-delivery-queue` can carry more forms of addressed enrichment; trace context can make both auditable.
 
 Managed child-to-recipient artifact claims now ship through #666: child publication, completion finalization, metadata-only recipient projection, arrival context, durable multi-recipient delivery, retention, and explicit recipient materialization are implemented. The remaining next step is automatic byte presentation beyond that control plane—such as generic transcript, TUI, MCP-content, or channel rendering or forwarding. The typed input attachment path remains separate and does not become a return transport.
 
@@ -2111,7 +2142,7 @@ The typed-tool call validates the whole set **before it is queued** using the sa
 At successful typed-tool dispatch, the gateway captures validated attachment bytes by value in the pending delegate state. It does not defer a path lookup, URL fetch, or caller-workspace read until the child starts. The snapshot and mount hint must remain attached to exactly one new child delegate through all three execution routes:
 
 1. immediate pending-delegate consumption;
-2. delayed TaskFlow recovery after process restart; and
+2. delayed durable-custody recovery after process restart (TaskFlow at C; the custody store after §5.4); and
 3. post-compaction staging, durable session-delivery queue replay, and eventual child spawn.
 
 At child spawn, the shared sub-agent attachment materializer writes the bytes to the child workspace's private receipt directory (not the parent workspace and not `attachAs.mountPath` itself), emits only a count/byte/hash receipt, and tells the child that the materialized files are untrusted input. `attachAs.mountPath` is advisory prompt metadata, not authority to write to an arbitrary location. Existing session cleanup/retention policy governs the private receipt directory.
@@ -2127,7 +2158,7 @@ The #1192 acceptance suite must fail if the typed input surface disappears again
 3. immediate child spawn materializes the exact decoded bytes only in the child receipt directory;
 4. delayed restart recovery preserves the snapshot and mount hint until one child spawn;
 5. post-compaction staging and durable queue replay preserve the snapshot and mount hint until one child spawn;
-6. corrupted TaskFlow **and session-delivery queue** records containing attachment content report only safe structural diagnostics;
+6. corrupted durable custody **and session-delivery queue** records containing attachment content report only safe structural diagnostics;
 7. the token fallback and `continue_work()` remain attachment-free; and
 8. no return path receives the input snapshot merely because the child completed.
 
@@ -2175,7 +2206,7 @@ This is a closed capability request, not a caller-authored attachment/header bag
 `Pick<ArtifactSummary, …>` is **not** a sufficient enforcement mechanism: the
 existing runtime schema also admits `sessionKey`, `runId`, `taskId`,
 `messageSeq`, and `download` modes other than `unsupported`. Before any
-continuation/TaskFlow envelope is serialized, a private adapter named
+continuation custody envelope is serialized, a private adapter named
 `toDelegateArtifactSummaryV1(claim)` SHALL freshly construct and strict-validate
 this closed seven-field projection:
 
@@ -2210,13 +2241,13 @@ characters and path-, URI-, URL-, locator-, or bearer-shaped values in all
 three fields. It SHALL fail the private publication/claim validation rather
 than redact or substitute a child-derived scalar into a recipient projection.
 
-For a #666 return, `id` is the host-issued opaque claim ID, never a storage locator or bearer capability; `source` is the fixed host-authored value `"delegate-return"`; and `download` is always `{ mode: "unsupported" }`. The existing generic `artifacts.download` response is **not** the claim resolver: it can expose base64 `data` or a `url`, so it is excluded from this return path. A recipient sees the ordinary `ArtifactSummary` metadata in its typed continuation/TaskFlow result, then uses the separately authorized, recipient-bound list/inspect/materialize/discard operation from §A.6.4. That resolver checks the recipient/delivery/completion/policy binding before it reads private bytes; it does not delegate access to `ArtifactSummary.id`.
+For a #666 return, `id` is the host-issued opaque claim ID, never a storage locator or bearer capability; `source` is the fixed host-authored value `"delegate-return"`; and `download` is always `{ mode: "unsupported" }`. The existing generic `artifacts.download` response is **not** the claim resolver: it can expose base64 `data` or a `url`, so it is excluded from this return path. A recipient sees the ordinary `ArtifactSummary` metadata in its typed continuation custody result, then uses the separately authorized, recipient-bound list/inspect/materialize/discard operation from §A.6.4. That resolver checks the recipient/delivery/completion/policy binding before it reads private bytes; it does not delegate access to `ArtifactSummary.id`.
 
 The typed continuation return envelope may carry the outputs of
 `toDelegateArtifactSummaryV1()` as `ArtifactSummary[]` next to its ordinary
 text and host-authored arrival context, but it SHALL introduce no new public
 artifact descriptor, MIME/count header bag, or locator-bearing content part.
-The system-event/TaskFlow adapter is the existing recipient input boundary for
+The system-event/continuation-custody adapter is the existing recipient input boundary for
 this metadata-only projection; rendering or forwarding bytes remains an
 explicit post-return operation. Any use of `sessionKey`, `runId`, `taskId`, or
 `messageSeq` from the broader gateway schema in a #666 recipient projection is
@@ -2323,7 +2354,7 @@ The shipped implementation remains bound by regression tests that prove all of t
 9. **Publish/finalize crash safety:** crashes before retained-byte copy, after copy but before finalization, and after finalization but before delivery leave no resolvable unbound claim, create no duplicate claim, and deterministically finalize by the same idempotency key or orphan/revoke/purge the pending object.
 10. **Recipient privacy:** targeted and fan-out recipients receive only their own binding and approved origin/context/claim projection; they cannot infer sibling recipient identities, complete route/fan-out set or cardinality, or unauthorized claim metadata.
 11. **Publication-input isolation:** the child publication API accepts only a bounded relative candidate path under its approved output root; raw bytes, URLs, hashes, `media://` references, claim IDs, and parent-selected destinations are rejected and redacted. A missing or denied candidate is an explicit typed result and cannot become a claim from prose/tool output.
-12. **Canonical-content gate:** the implementation projects every V1 artifact class through the existing `ArtifactSummary` schema only, with its #666 subset exactly `id`, `type`, `title`, optional `mimeType`/`sizeBytes`, host-authored `source: "delegate-return"`, and `download: { mode: "unsupported" }`. A named private `toDelegateArtifactSummaryV1()` serializer/strict validator freshly creates that exact seven-field object and rejects or strips every other `ArtifactSummary` key before the continuation/TaskFlow envelope; `Pick<ArtifactSummary, …>` or a bare `ArtifactSummarySchema` parse is insufficient. It derives `title`, `type`, and `mimeType` only from host-validated claim metadata; rejects child-supplied arbitrary display strings, control characters, and path/URI/URL/locator/bearer-shaped values in each scalar; and validates present `mimeType` values as MIME syntax. Negative proofs show those scalars cannot reach continuation/TaskFlow envelopes, transcript collection, legacy artifact RPC, logs, diagnostics, or failed durable state. It proves that this projection carries neither raw bytes nor a path, URL, digest, generic `artifacts.get`/`artifacts.download` capability, `sessionKey`, `runId`, `taskId`, or `messageSeq`; that a #666 claim is addressable through neither legacy `artifacts.get` nor `artifacts.download`, never enters transcript collection, and never yields metadata or bytes through those routes; that `id` cannot resolve without the current recipient/delivery/completion/policy checks; and that image, PDF/report, audio, dataset, and patch all use this one metadata representation. Any new artifact descriptor, MIME/count header bag, locator-bearing content part, generic artifact-RPC fallback, or input path that bypasses the closed projection fails the gate.
+12. **Canonical-content gate:** the implementation projects every V1 artifact class through the existing `ArtifactSummary` schema only, with its #666 subset exactly `id`, `type`, `title`, optional `mimeType`/`sizeBytes`, host-authored `source: "delegate-return"`, and `download: { mode: "unsupported" }`. A named private `toDelegateArtifactSummaryV1()` serializer/strict validator freshly creates that exact seven-field object and rejects or strips every other `ArtifactSummary` key before the continuation custody envelope; `Pick<ArtifactSummary, …>` or a bare `ArtifactSummarySchema` parse is insufficient. It derives `title`, `type`, and `mimeType` only from host-validated claim metadata; rejects child-supplied arbitrary display strings, control characters, and path/URI/URL/locator/bearer-shaped values in each scalar; and validates present `mimeType` values as MIME syntax. Negative proofs show those scalars cannot reach continuation custody envelopes, transcript collection, legacy artifact RPC, logs, diagnostics, or failed durable state. It proves that this projection carries neither raw bytes nor a path, URL, digest, generic `artifacts.get`/`artifacts.download` capability, `sessionKey`, `runId`, `taskId`, or `messageSeq`; that a #666 claim is addressable through neither legacy `artifacts.get` nor `artifacts.download`, never enters transcript collection, and never yields metadata or bytes through those routes; that `id` cannot resolve without the current recipient/delivery/completion/policy checks; and that image, PDF/report, audio, dataset, and patch all use this one metadata representation. Any new artifact descriptor, MIME/count header bag, locator-bearing content part, generic artifact-RPC fallback, or input path that bypasses the closed projection fails the gate.
 13. **Runtime disable and terminal matrix:** tests distinguish all three windows: (a) disabled before spawn leaves valid work deferred with no child/input/claim/delivery/retry/chain mutation; (b) disabled after child completion but before finalization may retain only non-resolvable `staged` state and never privately create/finalize/publish an `available` claim or arrival event, and its resumed finalization atomically rechecks the current gate, producer/completion integrity, current deny/revoke/expiry policy, and parent continuity before it can proceed; and (c) disabled after finalization but before delivery retains the one finalized binding while deferring delivery/replay and all resolution/materialization. `staged` is runtime-disable-only. The proof SHALL exercise the complete terminal matrix: **global gate failure** records one immutable `global-failed(reason)` completion outcome, creates zero recipient bindings, and permits no route lookup/rebind/delivery/replay/retry/chain mutation or later fan-out; **mixed recipients after global success** finalize independently to one `available` or durable `unavailable(reason)` tombstone per original recipient, where later private-backing purge preserves the tombstone and can never erase/reopen/revive it; and **zero eligible recipients after global success** creates an `unavailable(reason)` tombstone for every original recipient with zero available bindings, then records exactly one `required-failed` completion failure for `required` or exactly one terminal non-failure `optional-zero-eligible` disposition for `optional`. Recovery/replay/cleanup/rebind may not revive, substitute, re-resolve, deliver, or charge a retry for any terminal case. Recipient-scoped projections expose neither sibling identities/outcomes nor route cardinality. Before the complete staged transaction commits, no recipient-visible ref/name/access path, delivery/replay, retry accounting, chain mutation, or replacement completion exists. Re-enable resumes only the same incomplete transaction with original provenance; no window spawns extra work, consumes a retry, widens authorization, or replaces completion identity.
 14. **Activation and absence:** omitted `returnOptions` is text-only/forbidden; optional accepts a text-only successful completion; forbidden rejects a child publish attempt without a claim; required with zero valid finalized claims yields one durable typed policy-completion failure. Replay preserves the original policy mode, completion identity/times, and recipient snapshot.
 15. **Explicit recipient operations:** list/inspect, materialize, and discard are typed, recipient-authorized, and auditable; their unavailable/unauthorized outcomes are stable and fail closed. No claim operation sends or forwards a channel message.
@@ -2404,7 +2435,7 @@ The continuation system inherits three broader limitations from persistent deplo
 
 1. **Self-bound context occlusion.** Too many recurring lifecycle messages can displace the agent's useful conversational context.
 2. **Channel context poisoning.** In open-listen multi-agent channels, one agent's passive status messages can influence the rest of the fleet.
-3. **Timer-handle volatility.** TaskFlow and `session-delivery-queue` provide durable records for their paths, including same-session `continue_work`; concrete in-process hedge timer handles and any remaining response-token delayed reservations can still be lost on restart. Recovery preserves the durable work while possibly changing exact wake timing.
+3. **Timer-handle volatility.** The continuation custody store and `session-delivery-queue` provide durable records for their paths, including same-session `continue_work`; concrete in-process hedge timer handles can still be lost on restart. Recovery preserves the durable work while possibly changing exact wake timing.
 
 These are not correctness bugs in continuation itself, but they materially shape safe deployment and future design work.
 
