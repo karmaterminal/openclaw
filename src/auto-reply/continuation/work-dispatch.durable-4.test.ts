@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createAtomicTaskFlowMocks } from "./work-dispatch-flow-mock.test-support.js";
 const turnGrants: unknown[] = [];
 const systemEvents: unknown[] = [];
 const activeQueueDeliveries: unknown[] = [];
@@ -109,6 +108,7 @@ async function flushAsyncWork(iterations = 8): Promise<void> {
   for (let i = 0; i < iterations; i++) {
     await Promise.resolve();
   }
+  await settleWorkDispatchCustody();
 }
 
 async function waitForMockWaiter(
@@ -256,11 +256,9 @@ vi.mock("../reply/get-reply.js", () => ({
     // bump every continuation-work flow revision so markPendingWorkDelivered
     // fails its expected-revision check after the turn already ran.
     if (bumpWorkRevisionOnReply) {
-      for (const flow of mockFlows.values()) {
-        if (flow.controllerId === "core/continuation-work") {
-          flow.revision += 1;
-        }
-      }
+      const { bumpLiveWorkRecordRevisions } =
+        await import("./work-dispatch-flow-mock.test-support.js");
+      await bumpLiveWorkRecordRevisions(await import("./custody/custody-store.js"));
     }
     if (replyError) {
       throw replyError;
@@ -329,118 +327,11 @@ vi.mock("../../logging/subsystem.js", () => {
   return { createSubsystemLogger: () => logger };
 });
 
-type MockFlow = {
-  flowId: string;
-  syncMode: "managed";
-  ownerKey: string;
-  chainId?: string;
-  controllerId: string;
-  status: "queued" | "running" | "succeeded" | "failed";
-  notifyPolicy: "silent";
-  goal: string;
-  currentStep?: string;
-  stateJson?: unknown;
-  revision: number;
-  createdAt: number;
-  updatedAt: number;
-  endedAt?: number;
-  cancelRequestedAt?: number;
-};
-
-const mockFlows = new Map<string, MockFlow>();
-let flowCounter = 0;
-
-function cloneFlow(flow: MockFlow): MockFlow {
-  return { ...flow };
-}
-
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn((params: Partial<MockFlow> & { ownerKey: string }) => {
-    const now = Date.now();
-    const flow: MockFlow = {
-      flowId: `flow-${++flowCounter}`,
-      syncMode: "managed",
-      ownerKey: params.ownerKey,
-      chainId: params.chainId,
-      controllerId: params.controllerId ?? "tests/controller",
-      status: params.status ?? "queued",
-      notifyPolicy: "silent",
-      goal: params.goal ?? "goal",
-      currentStep: params.currentStep,
-      stateJson: params.stateJson,
-      revision: 0,
-      createdAt: params.createdAt ?? now,
-      updatedAt: params.updatedAt ?? params.createdAt ?? now,
-    };
-    mockFlows.set(flow.flowId, flow);
-    return cloneFlow(flow);
-  }),
-  ...createAtomicTaskFlowMocks(
-    () => mockFlows,
-    () => `flow-${++flowCounter}`,
+vi.mock("./custody/custody-store.js", async (importOriginal) =>
+  (await import("./work-dispatch-flow-mock.test-support.js")).wrapCustodyStoreForWorkDispatch(
+    await importOriginal(),
   ),
-  listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
-    Array.from(
-      [...mockFlows.values()].filter((flow) => flow.ownerKey === ownerKey),
-      cloneFlow,
-    ),
-  ),
-  listTaskFlowRecords: vi.fn(() => Array.from(mockFlows.values(), cloneFlow)),
-  getTaskFlowById: vi.fn((flowId: string) => {
-    const flow = mockFlows.get(flowId);
-    return flow ? cloneFlow(flow) : undefined;
-  }),
-  updateFlowRecordByIdExpectedRevision: vi.fn(
-    (params: { flowId: string; expectedRevision: number; patch: Partial<MockFlow> }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      if (params.patch.currentStep === "Continuation wake delivered (durable mark)") {
-        workTransitionEvents.push("delivered-mark-committed");
-      } else if (params.patch.currentStep === "Continuation fold note delivered (durable mark)") {
-        workTransitionEvents.push("fold-delivered-mark-committed");
-      }
-      Object.assign(flow, params.patch, { revision: flow.revision + 1 });
-      return { applied: true, flow: cloneFlow(flow) };
-    },
-  ),
-  finishFlow: vi.fn(
-    (params: {
-      flowId: string;
-      expectedRevision: number;
-      currentStep?: string;
-      stateJson?: unknown;
-      updatedAt?: number;
-      endedAt?: number;
-    }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      workTransitionEvents.push(`flow-finished:${params.currentStep ?? "unknown"}`);
-      const endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
-      flow.status = "succeeded";
-      flow.currentStep = params.currentStep;
-      flow.stateJson = params.stateJson ?? flow.stateJson;
-      flow.updatedAt = params.updatedAt ?? endedAt;
-      flow.endedAt = endedAt;
-      flow.revision += 1;
-      return { applied: true, flow: cloneFlow(flow) };
-    },
-  ),
-  failFlow: vi.fn((params: { flowId: string }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (flow) {
-      flow.status = "failed";
-      flow.revision += 1;
-    }
-    return { applied: Boolean(flow) };
-  }),
-  deleteTaskFlowRecordById: vi.fn((flowId: string) => {
-    mockFlows.delete(flowId);
-  }),
-}));
+);
 
 import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
 import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent-registry.types.js";
@@ -457,11 +348,22 @@ import {
   recordNoOpRearmOutcome,
 } from "../reply/no-op-rearm-guard.js";
 import {
+  custodyStateForTest,
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "./custody/custody.test-support.js";
+import {
   cancelPendingDelegates,
   enqueuePendingDelegate,
   pendingDelegateCount,
 } from "./delegate-store.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
+import {
+  describeWorkTransition,
+  resetWorkDispatchCustodyHooks,
+  settleWorkDispatchCustody,
+  workDispatchCustodyHooks,
+} from "./work-dispatch-flow-mock.test-support.js";
 import {
   dispatchPendingContinuationWork,
   bucket1ReapVerdict,
@@ -513,12 +415,13 @@ const config = {
 } satisfies ContinuationRuntimeConfig;
 
 async function flushTimers(): Promise<void> {
+  await settleWorkDispatchCustody();
   await vi.runOnlyPendingTimersAsync();
-  await Promise.resolve();
+  await settleWorkDispatchCustody();
 }
 
-function claimMaturedWork(sessionKey: string) {
-  const enqueued = enqueuePendingWork({
+async function claimMaturedWork(sessionKey: string) {
+  const enqueued = await enqueuePendingWork({
     sessionKey,
     hop: 1,
     delayMs: 0,
@@ -530,7 +433,7 @@ function claimMaturedWork(sessionKey: string) {
   if (!enqueued) {
     throw new Error("expected continuation work enqueue");
   }
-  const [work] = consumePendingWork(sessionKey);
+  const [work] = await consumePendingWork(sessionKey);
   if (!work) {
     throw new Error("expected matured continuation work claim");
   }
@@ -562,6 +465,28 @@ const splitLintUse = [
 ];
 void splitLintUse;
 
+useContinuationCustodyTestState();
+
+/** Advance fake time; custody work started before or by the fired timers settles on both sides. */
+async function advanceTimers(ms: number): Promise<void> {
+  await settleWorkDispatchCustody();
+  await vi.advanceTimersByTimeAsync(ms);
+  await settleWorkDispatchCustody();
+}
+
+/**
+ * Custody records in creation order, optionally for one owner, with the state
+ * JSON parsed so assertions can match its fields.
+ */
+async function custodyRecords(ownerSessionKey?: string) {
+  const records = await listCustodyRecordsForTest(ownerSessionKey ? { ownerSessionKey } : {});
+  const views = [];
+  for (const record of records) {
+    views.push({ ...record, stateJson: custodyStateForTest(record) });
+  }
+  return views;
+}
+
 describe("durable continuation_work dispatch", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: 1_000_000 });
@@ -592,8 +517,13 @@ describe("durable continuation_work dispatch", () => {
         ({ sessionKey }: { sessionKey: string }) => mockSessionStore[sessionKey.trim()],
       );
     mockStorePath = "test-store";
-    mockFlows.clear();
-    flowCounter = 0;
+    resetWorkDispatchCustodyHooks();
+    workDispatchCustodyHooks.onApplied = (update) => {
+      const transition = describeWorkTransition(update);
+      if (transition) {
+        workTransitionEvents.push(transition);
+      }
+    };
     subagentRuns.clear();
     getReplyFromConfigMock.mockClear();
     continuationEnabledForTest = true;
@@ -608,7 +538,8 @@ describe("durable continuation_work dispatch", () => {
     resetGatewayWorkAdmission();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await settleWorkDispatchCustody();
     subagentRuns.clear();
     replyIdleWaiters.clear();
     laneIdleWaiters.clear();
@@ -623,7 +554,7 @@ describe("durable continuation_work dispatch", () => {
     const sessionKey = "agent:main:queued-user-turn";
     mockSessionStore[sessionKey] = { sessionKey };
     mainQueueSize = 1;
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 2,
       delayMs: 0,
@@ -637,9 +568,9 @@ describe("durable continuation_work dispatch", () => {
 
     expect(result).toEqual({ dispatched: 0, failed: 0, reaped: 0 });
     expect(turnGrants).toHaveLength(0);
-    expect([...mockFlows.values()][0]).toMatchObject({
+    expect((await custodyRecords())[0]).toMatchObject({
       status: "queued",
-      currentStep: "Requeued same-session continuation wake",
+      phase: "Requeued same-session continuation wake",
       stateJson: expect.objectContaining({
         dueAt: Date.now() + 60_000,
         idleRetry: expect.objectContaining({
@@ -651,7 +582,7 @@ describe("durable continuation_work dispatch", () => {
     expect(getReplyFromConfigMock).not.toHaveBeenCalled();
 
     await waitForMockWaiter(laneIdleWaiters, "main");
-    await vi.advanceTimersByTimeAsync(1_000);
+    await advanceTimers(1_000);
     await flushAsyncWork();
     expect(turnGrants).toHaveLength(0);
 
@@ -673,7 +604,7 @@ describe("durable continuation_work dispatch", () => {
     mockSessionStore[sessionKey] = { sessionKey };
     mainQueueSize = 1;
     commandLaneIdleError = new Error("idle waiter unavailable");
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 2,
       delayMs: 0,
@@ -687,7 +618,7 @@ describe("durable continuation_work dispatch", () => {
 
     expect(result).toEqual({ dispatched: 0, failed: 0, reaped: 0 });
     expect(turnGrants).toHaveLength(0);
-    expect([...mockFlows.values()][0]).toMatchObject({
+    expect((await custodyRecords())[0]).toMatchObject({
       status: "queued",
       stateJson: expect.objectContaining({
         dueAt: Date.now() + 60_000,
@@ -697,7 +628,7 @@ describe("durable continuation_work dispatch", () => {
 
     commandLaneIdleError = undefined;
     mainQueueSize = 0;
-    await vi.advanceTimersByTimeAsync(30_000);
+    await advanceTimers(30_000);
     await waitForTurnGrantCount(1);
 
     expect(turnGrants).toEqual([
@@ -715,7 +646,7 @@ describe("durable continuation_work dispatch", () => {
     mockSessionStore[sessionKey] = { sessionKey };
     mainQueueSize = 1;
     commandLaneIdleError = new Error("idle waiter unavailable");
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 2,
       delayMs: 0,
@@ -745,7 +676,7 @@ describe("durable continuation_work dispatch", () => {
       },
     });
 
-    await vi.advanceTimersByTimeAsync(30_000);
+    await advanceTimers(30_000);
     await waitForTurnGrantCount(1);
     expect(turnGrants).toEqual([
       expect.objectContaining({
@@ -755,7 +686,7 @@ describe("durable continuation_work dispatch", () => {
       }),
     ]);
 
-    await vi.advanceTimersByTimeAsync(15_000);
+    await advanceTimers(15_000);
     await waitForTurnGrantCount(2);
     expect(turnGrants).toEqual([
       expect.objectContaining({
@@ -775,7 +706,7 @@ describe("durable continuation_work dispatch", () => {
     const sessionKey = "agent:main:main-lane-busy-positive-control";
     mockSessionStore[sessionKey] = { sessionKey };
     mainQueueSize = 1;
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 2,
       delayMs: 0,
@@ -795,7 +726,7 @@ describe("durable continuation_work dispatch", () => {
     const sessionKey = "agent:main:lost-idle-event";
     mockSessionStore[sessionKey] = { sessionKey };
     activeSessions.add(sessionKey);
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 2,
       delayMs: 0,
@@ -809,11 +740,11 @@ describe("durable continuation_work dispatch", () => {
     await waitForMockWaiter(replyIdleWaiters, sessionKey);
     activeSessions.delete(sessionKey);
 
-    await vi.advanceTimersByTimeAsync(59_999);
+    await advanceTimers(59_999);
     await flushAsyncWork();
     expect(turnGrants).toHaveLength(0);
 
-    await vi.advanceTimersByTimeAsync(1);
+    await advanceTimers(1);
     await flushTimers();
 
     expect(turnGrants).toEqual([
@@ -830,7 +761,7 @@ describe("durable continuation_work dispatch", () => {
     const sessionKey = "agent:main:wait-shaped";
     mockSessionStore[sessionKey] = { sessionKey };
     activeSessions.add(sessionKey);
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 41,
       delayMs: 0,
@@ -844,7 +775,7 @@ describe("durable continuation_work dispatch", () => {
 
     expect(result).toEqual({ dispatched: 0, failed: 0, reaped: 0 });
     expect(getReplyFromConfigMock).not.toHaveBeenCalled();
-    const flow = [...mockFlows.values()][0];
+    const flow = (await custodyRecords())[0];
     expect(flow).toMatchObject({
       status: "queued",
       stateJson: expect.objectContaining({
@@ -857,11 +788,11 @@ describe("durable continuation_work dispatch", () => {
       }),
     });
 
-    await vi.advanceTimersByTimeAsync(1_000);
+    await advanceTimers(1_000);
     await flushAsyncWork();
 
     expect(turnGrants).toHaveLength(0);
-    expect([...mockFlows.values()][0]?.status).toBe("queued");
+    expect((await custodyRecords())[0]?.status).toBe("queued");
   });
 
   it("terminal-parks a continuation work row without a provider call once the no-op replay streak is tripped", async () => {
@@ -879,7 +810,7 @@ describe("durable continuation_work dispatch", () => {
       });
     }
 
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 12,
       delayMs: 0,
@@ -896,10 +827,10 @@ describe("durable continuation_work dispatch", () => {
     expect(result).toEqual({ dispatched: 0, failed: 1, reaped: 0 });
     // The row is superseded (clean terminal: finishFlow), not requeued or failed,
     // so it stops re-arming and emits no re-waking system warning.
-    const flow = [...mockFlows.values()][0];
+    const flow = (await custodyRecords())[0];
     expect(flow?.status).toBe("succeeded");
     expect(flow?.endedAt).toBeDefined();
-    expect(String(flow?.currentStep)).toContain("superseded");
+    expect(String(flow?.phase)).toContain("superseded");
     expect(systemEvents).toHaveLength(0);
   });
 
@@ -907,7 +838,7 @@ describe("durable continuation_work dispatch", () => {
     const sessionKey = "agent:main:busy-with-sooner-sibling";
     mockSessionStore[sessionKey] = { sessionKey };
     mainQueueSize = 1;
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 0,
@@ -916,7 +847,7 @@ describe("durable continuation_work dispatch", () => {
       maxChainLength: 8,
       reason: "busy now",
     });
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 2,
       delayMs: 5_000,
@@ -928,9 +859,9 @@ describe("durable continuation_work dispatch", () => {
 
     await dispatchPendingContinuationWork({ sessionKey });
 
-    await vi.advanceTimersByTimeAsync(4_999);
+    await advanceTimers(4_999);
     await flushAsyncWork();
-    const siblingBeforeDue = [...mockFlows.values()].find((flow) =>
+    const siblingBeforeDue = (await custodyRecords()).find((flow) =>
       String((flow.stateJson as { reason?: string } | undefined)?.reason).includes("due sooner"),
     );
     if (!siblingBeforeDue) {
@@ -940,10 +871,10 @@ describe("durable continuation_work dispatch", () => {
       (siblingBeforeDue.stateJson as { busySkipCount?: number }).busySkipCount,
     ).toBeUndefined();
 
-    await vi.advanceTimersByTimeAsync(1);
+    await advanceTimers(1);
     await flushAsyncWork();
 
-    const siblingAfterDue = [...mockFlows.values()].find((flow) =>
+    const siblingAfterDue = (await custodyRecords()).find((flow) =>
       String((flow.stateJson as { reason?: string } | undefined)?.reason).includes("due sooner"),
     );
     if (!siblingAfterDue) {

@@ -4,7 +4,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const turnGrants: unknown[] = [];
 const systemEvents: unknown[] = [];
-const sessionDeliveryEnqueues: { idempotencyKey?: string }[] = [];
 const scheduledDeliveries: string[] = [];
 const heartbeatWakes: { sessionKey?: string }[] = [];
 const sessionDeliveryAcks: string[] = [];
@@ -220,11 +219,9 @@ vi.mock("../reply/get-reply.js", () => ({
     // bump every continuation-work flow revision so markPendingWorkDelivered
     // fails its expected-revision check after the turn already ran.
     if (bumpWorkRevisionOnReply) {
-      for (const flow of mockFlows.values()) {
-        if (flow.controllerId === "core/continuation-work") {
-          flow.revision += 1;
-        }
-      }
+      const { bumpLiveWorkRecordRevisions } =
+        await import("./work-dispatch-flow-mock.test-support.js");
+      await bumpLiveWorkRecordRevisions(await import("./custody/custody-store.js"));
     }
     if (replyError) {
       throw replyError;
@@ -261,9 +258,9 @@ vi.mock("../../infra/system-events.js", () => ({
   },
 }));
 
-// The durable queue has its own real-store proof in
-// work-terminal-notice.durability.test.ts; here it is recorded so this unit
-// suite can assert the handoff without touching SQLite.
+// The notice row is inserted by the custody commit into the real durable
+// queue; delivery scheduling is recorded so the suite can assert the handoff
+// without running the delivery runtime.
 vi.mock("../../infra/session-delivery-queue-runtime.js", () => ({
   scheduleSessionDelivery: (id: string) => {
     scheduledDeliveries.push(id);
@@ -271,23 +268,17 @@ vi.mock("../../infra/session-delivery-queue-runtime.js", () => ({
   },
 }));
 
-vi.mock("../../infra/session-delivery-queue-storage.js", () => ({
-  enqueueSessionDeliveryWithStatus: (payload: { idempotencyKey?: string }) => {
-    sessionDeliveryEnqueues.push(payload);
-    return Promise.resolve({
-      id: `delivery-${payload.idempotencyKey ?? sessionDeliveryEnqueues.length}`,
-      status: "pending" as const,
-    });
-  },
-  enqueueSessionDelivery: (payload: { idempotencyKey?: string }) => {
-    sessionDeliveryEnqueues.push(payload);
-    return Promise.resolve(`delivery-${payload.idempotencyKey ?? sessionDeliveryEnqueues.length}`);
-  },
-  ackSessionDelivery: (id: string) => {
-    sessionDeliveryAcks.push(id);
-    return Promise.resolve();
-  },
-}));
+vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../infra/session-delivery-queue-storage.js")>();
+  return {
+    ...actual,
+    ackSessionDelivery: (...args: Parameters<typeof actual.ackSessionDelivery>) => {
+      sessionDeliveryAcks.push(args[0]);
+      return actual.ackSessionDelivery(...args);
+    },
+  };
+});
 
 vi.mock("../../infra/continuation-tracer.js", () => ({
   emitContinuationWorkFireSpan: emitContinuationWorkFireSpanMock,
@@ -328,135 +319,11 @@ vi.mock("../../logging/subsystem.js", () => ({
   createSubsystemLogger: () => subsystemLoggerMock,
 }));
 
-type MockFlow = {
-  flowId: string;
-  syncMode: "managed";
-  ownerKey: string;
-  chainId?: string;
-  controllerId: string;
-  status: "queued" | "running" | "succeeded" | "failed";
-  notifyPolicy: "silent";
-  goal: string;
-  currentStep?: string;
-  blockedSummary?: string | null;
-  stateJson?: unknown;
-  revision: number;
-  createdAt: number;
-  updatedAt: number;
-  endedAt?: number;
-  cancelRequestedAt?: number;
-};
-
-const mockFlows = new Map<string, MockFlow>();
-let flowCounter = 0;
-
-function cloneFlow(flow: MockFlow): MockFlow {
-  return { ...flow };
-}
-
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn((params: Partial<MockFlow> & { ownerKey: string }) => {
-    const now = Date.now();
-    const flow: MockFlow = {
-      flowId: `flow-${++flowCounter}`,
-      syncMode: "managed",
-      ownerKey: params.ownerKey,
-      chainId: params.chainId,
-      controllerId: params.controllerId ?? "tests/controller",
-      status: params.status ?? "queued",
-      notifyPolicy: "silent",
-      goal: params.goal ?? "goal",
-      currentStep: params.currentStep,
-      stateJson: params.stateJson,
-      revision: 0,
-      createdAt: params.createdAt ?? now,
-      updatedAt: params.updatedAt ?? params.createdAt ?? now,
-    };
-    mockFlows.set(flow.flowId, flow);
-    return cloneFlow(flow);
-  }),
-  listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
-    Array.from(
-      [...mockFlows.values()].filter((flow) => flow.ownerKey === ownerKey),
-      cloneFlow,
-    ),
+vi.mock("./custody/custody-store.js", async (importOriginal) =>
+  (await import("./work-dispatch-flow-mock.test-support.js")).wrapCustodyStoreForWorkDispatch(
+    await importOriginal(),
   ),
-  listTaskFlowRecords: vi.fn(() => Array.from(mockFlows.values(), cloneFlow)),
-  getTaskFlowById: vi.fn((flowId: string) => {
-    const flow = mockFlows.get(flowId);
-    return flow ? cloneFlow(flow) : undefined;
-  }),
-  updateFlowRecordByIdExpectedRevision: vi.fn(
-    (params: { flowId: string; expectedRevision: number; patch: Partial<MockFlow> }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      if (params.patch.currentStep === "Continuation wake delivered (durable mark)") {
-        workTransitionEvents.push("delivered-mark-committed");
-      } else if (params.patch.currentStep === "Continuation fold note delivered (durable mark)") {
-        workTransitionEvents.push("fold-delivered-mark-committed");
-      }
-      Object.assign(flow, params.patch, { revision: flow.revision + 1 });
-      return { applied: true, flow: cloneFlow(flow) };
-    },
-  ),
-  finishFlow: vi.fn(
-    (params: {
-      flowId: string;
-      expectedRevision: number;
-      currentStep?: string;
-      stateJson?: unknown;
-      updatedAt?: number;
-      endedAt?: number;
-    }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      workTransitionEvents.push(`flow-finished:${params.currentStep ?? "unknown"}`);
-      const endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
-      flow.status = "succeeded";
-      flow.currentStep = params.currentStep;
-      flow.stateJson = params.stateJson ?? flow.stateJson;
-      flow.updatedAt = params.updatedAt ?? endedAt;
-      flow.endedAt = endedAt;
-      flow.revision += 1;
-      return { applied: true, flow: cloneFlow(flow) };
-    },
-  ),
-  failFlow: vi.fn(
-    (params: {
-      flowId: string;
-      expectedRevision: number;
-      currentStep?: string | null;
-      blockedSummary?: string | null;
-      stateJson?: unknown;
-      updatedAt?: number;
-      endedAt?: number;
-    }) => {
-      // Mirrors updateFlowRecordByIdExpectedRevision. The expected-revision CAS
-      // is the durable once-only fact that terminal side effects key off, so a
-      // stale claim must lose here instead of always applying.
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      const endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
-      flow.status = "failed";
-      flow.currentStep = params.currentStep ?? flow.currentStep;
-      flow.blockedSummary = params.blockedSummary ?? null;
-      flow.stateJson = params.stateJson ?? flow.stateJson;
-      flow.updatedAt = params.updatedAt ?? endedAt;
-      flow.endedAt = endedAt;
-      flow.revision += 1;
-      return { applied: true, flow: cloneFlow(flow) };
-    },
-  ),
-  deleteTaskFlowRecordById: vi.fn((flowId: string) => {
-    mockFlows.delete(flowId);
-  }),
-}));
+);
 
 import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
 import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent-registry.types.js";
@@ -465,6 +332,7 @@ import {
   deleteSubagentSessionForCleanup,
   resetSubagentSessionCleanupForTests,
 } from "../../agents/subagents/registry/subagent-session-cleanup.js";
+import { loadPendingSessionDeliveries } from "../../infra/session-delivery-queue-storage.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
 import { runWithGatewayRootWorkAdmissionForTest as runWithGatewayRootWorkAdmission } from "../../process/gateway-work-admission.test-helpers.js";
 import { getReplyFromConfig } from "../reply/get-reply.js";
@@ -472,12 +340,26 @@ import {
   DEFAULT_NO_OP_REARM_THRESHOLD,
   recordNoOpRearmOutcome,
 } from "../reply/no-op-rearm-guard.js";
+import { updateContinuationRecords } from "./custody/custody-store.js";
+import type { ContinuationRecordPatch } from "./custody/custody-store.types.js";
+import {
+  custodyStateForTest,
+  listCustodyRecordsForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "./custody/custody.test-support.js";
 import {
   cancelPendingDelegates,
   enqueuePendingDelegate,
   pendingDelegateCount,
 } from "./delegate-store.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
+import {
+  describeWorkTransition,
+  resetWorkDispatchCustodyHooks,
+  settleWorkDispatchCustody,
+  workDispatchCustodyHooks,
+} from "./work-dispatch-flow-mock.test-support.js";
 import {
   dispatchPendingContinuationWork,
   bucket1ReapVerdict,
@@ -528,8 +410,8 @@ const config = {
   busySkipBackoff: { baseMs: 1_000, ceilingMs: 60_000, factor: 2 },
 } satisfies ContinuationRuntimeConfig;
 
-function claimMaturedWork(sessionKey: string) {
-  const enqueued = enqueuePendingWork({
+async function claimMaturedWork(sessionKey: string) {
+  const enqueued = await enqueuePendingWork({
     sessionKey,
     hop: 1,
     delayMs: 0,
@@ -541,7 +423,7 @@ function claimMaturedWork(sessionKey: string) {
   if (!enqueued) {
     throw new Error("expected continuation work enqueue");
   }
-  const [work] = consumePendingWork(sessionKey);
+  const [work] = await consumePendingWork(sessionKey);
   if (!work) {
     throw new Error("expected matured continuation work claim");
   }
@@ -576,12 +458,59 @@ const splitLintUse = [
 ];
 void splitLintUse;
 
+useContinuationCustodyTestState();
+
+/** Advance fake time; custody work started before or by the fired timers settles on both sides. */
+async function advanceTimers(ms: number): Promise<void> {
+  await settleWorkDispatchCustody();
+  await vi.advanceTimersByTimeAsync(ms);
+  await settleWorkDispatchCustody();
+}
+
+/**
+ * Custody records in creation order, optionally for one owner, with the state
+ * JSON parsed so assertions can match its fields.
+ */
+async function custodyRecords(ownerSessionKey?: string) {
+  const records = await listCustodyRecordsForTest(ownerSessionKey ? { ownerSessionKey } : {});
+  const views = [];
+  for (const record of records) {
+    views.push({ ...record, stateJson: custodyStateForTest(record) });
+  }
+  return views;
+}
+
+async function firstWorkRecord() {
+  return (await custodyRecords()).find((record) => record.kind === "work");
+}
+
+/** Commit a patch at the record's current revision, as a concurrent writer would. */
+async function writeRecordForTest(recordId: string, patch: ContinuationRecordPatch): Promise<void> {
+  const record = await readCustodyRecordForTest(recordId);
+  if (!record) {
+    throw new Error(`expected custody record ${recordId}`);
+  }
+  const written = await updateContinuationRecords(
+    [
+      {
+        recordId,
+        ownerSessionKey: record.ownerSessionKey,
+        expectedRevision: record.revision,
+        patch: { updatedAt: record.updatedAt, ...patch },
+      },
+    ],
+    { now: record.updatedAt },
+  );
+  if (written.outcome !== "applied") {
+    throw new Error(`expected concurrent custody write to commit: ${written.outcome}`);
+  }
+}
+
 describe("continuation_work transient-error retry exhaustion", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: 1_000_000 });
     turnGrants.length = 0;
     systemEvents.length = 0;
-    sessionDeliveryEnqueues.length = 0;
     sessionDeliveryAcks.length = 0;
     scheduledDeliveries.length = 0;
     heartbeatWakes.length = 0;
@@ -610,8 +539,13 @@ describe("continuation_work transient-error retry exhaustion", () => {
         ({ sessionKey }: { sessionKey: string }) => mockSessionStore[sessionKey.trim()],
       );
     mockStorePath = "test-store";
-    mockFlows.clear();
-    flowCounter = 0;
+    resetWorkDispatchCustodyHooks();
+    workDispatchCustodyHooks.onApplied = (update) => {
+      const transition = describeWorkTransition(update);
+      if (transition) {
+        workTransitionEvents.push(transition);
+      }
+    };
     subagentRuns.clear();
     getReplyFromConfigMock.mockClear();
     continuationEnabledForTest = true;
@@ -629,7 +563,8 @@ describe("continuation_work transient-error retry exhaustion", () => {
     resetGatewayWorkAdmission();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await settleWorkDispatchCustody();
     subagentRuns.clear();
     replyIdleWaiters.clear();
     laneIdleWaiters.clear();
@@ -644,17 +579,24 @@ describe("continuation_work transient-error retry exhaustion", () => {
   const MAX_TRANSIENT_RETRIES = 8;
   const DRIVE_GUARD = 40;
 
-  function workFlow(): MockFlow | undefined {
-    return [...mockFlows.values()][0];
+  async function workFlow() {
+    return await firstWorkRecord();
   }
 
-  function workRetryCount(): number {
-    return (workFlow()?.stateJson as { retryCount?: number } | undefined)?.retryCount ?? 0;
+  async function workRetryCount(): Promise<number> {
+    return ((await workFlow())?.stateJson as { retryCount?: number } | undefined)?.retryCount ?? 0;
   }
 
-  function enqueueErroringWork(sessionKey: string): void {
+  /** Terminal-notice rows in the real durable session-delivery queue. */
+  async function terminalNoticeRows() {
+    return (await loadPendingSessionDeliveries()).filter((entry) =>
+      entry.idempotencyKey?.startsWith("continuation-work-terminal-notice:"),
+    );
+  }
+
+  async function enqueueErroringWork(sessionKey: string): Promise<void> {
     mockSessionStore[sessionKey] = { sessionKey };
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 2,
       delayMs: 0,
@@ -673,11 +615,11 @@ describe("continuation_work transient-error retry exhaustion", () => {
    */
   async function driveTransientErrorRetries(
     sessionKey: string,
-    stop: () => boolean,
+    stop: () => Promise<boolean>,
   ): Promise<void> {
     await dispatchPendingContinuationWork({ sessionKey });
-    for (let tick = 0; tick < DRIVE_GUARD && !stop(); tick += 1) {
-      await vi.advanceTimersByTimeAsync(TRANSIENT_RETRY_ADVANCE_MS);
+    for (let tick = 0; tick < DRIVE_GUARD && !(await stop()); tick += 1) {
+      await advanceTimers(TRANSIENT_RETRY_ADVANCE_MS);
     }
   }
 
@@ -702,15 +644,18 @@ describe("continuation_work transient-error retry exhaustion", () => {
   it("keeps every pre-terminal attempt retryable and emits no terminal outcome", async () => {
     const sessionKey = "agent:main:exhaustion-pre-terminal";
     replyError = new Error("provider unavailable");
-    enqueueErroringWork(sessionKey);
+    await enqueueErroringWork(sessionKey);
 
-    await driveTransientErrorRetries(sessionKey, () => workRetryCount() >= MAX_TRANSIENT_RETRIES);
+    await driveTransientErrorRetries(
+      sessionKey,
+      async () => (await workRetryCount()) >= MAX_TRANSIENT_RETRIES,
+    );
 
     // The retry budget is fully consumed but the row is still recoverable.
-    expect(workRetryCount()).toBe(MAX_TRANSIENT_RETRIES);
-    expect(workFlow()).toMatchObject({
+    expect(await workRetryCount()).toBe(MAX_TRANSIENT_RETRIES);
+    expect(await workFlow()).toMatchObject({
       status: "queued",
-      currentStep: "Requeued same-session continuation wake",
+      phase: "Requeued same-session continuation wake",
     });
     expect(systemEvents).toEqual([]);
     expect(terminalExhaustionLogs()).toHaveLength(0);
@@ -719,13 +664,16 @@ describe("continuation_work transient-error retry exhaustion", () => {
   it("terminalizes the row and emits exactly one actionable outcome once retries are exhausted", async () => {
     const sessionKey = "agent:main:exhaustion-terminal";
     replyError = new Error("provider unavailable");
-    enqueueErroringWork(sessionKey);
+    await enqueueErroringWork(sessionKey);
 
-    await driveTransientErrorRetries(sessionKey, () => workFlow()?.status === "failed");
+    await driveTransientErrorRetries(
+      sessionKey,
+      async () => (await workFlow())?.status === "failed",
+    );
 
-    expect(workFlow()).toMatchObject({
+    expect(await workFlow()).toMatchObject({
       status: "failed",
-      currentStep: "Continuation work wake failed",
+      phase: "Continuation work wake failed",
     });
 
     // Exactly one agent-visible outcome, and nothing else was announced.
@@ -743,24 +691,25 @@ describe("continuation_work transient-error retry exhaustion", () => {
     // The notice is handed to the durable queue before the volatile fast path,
     // and the in-memory event carries that row's ack id so it is acknowledged
     // only after the prompt consumes it.
-    expect(sessionDeliveryEnqueues).toHaveLength(1);
-    expect(sessionDeliveryEnqueues[0]).toMatchObject({
-      kind: "systemEvent",
-      sessionKey,
-      idempotencyKey: `continuation-work-terminal-notice:${workFlow()?.flowId}`,
-    });
+    const rows = await terminalNoticeRows();
+    expect(rows).toEqual([
+      expect.objectContaining({
+        kind: "systemEvent",
+        sessionKey,
+        idempotencyKey: `continuation-work-terminal-notice:${(await workFlow())?.recordId}`,
+      }),
+    ]);
     expect(sessionDeliveryAcks).toEqual([]);
     // The row is actively armed and the target woken, so the outcome does not
     // wait for unrelated traffic.
-    expect(scheduledDeliveries).toHaveLength(1);
+    expect(scheduledDeliveries).toEqual([rows[0]?.id]);
     expect(heartbeatWakes).toEqual([expect.objectContaining({ sessionKey })]);
-    expect(terminalEvent?.options).toMatchObject({
-      sessionDeliveryAckId: expect.stringContaining("continuation-work-terminal-notice:"),
-    });
-    // The obligation is released only after that handoff.
+    expect(terminalEvent?.options).toMatchObject({ sessionDeliveryAckId: rows[0]?.id });
+    // The obligation is released in the same commit as that row's insert.
+    const settled = await workFlow();
+    expect(settled?.terminalNoticePending).toBeUndefined();
     expect(
-      (workFlow()?.stateJson as { terminalNoticePending?: string } | undefined)
-        ?.terminalNoticePending,
+      (settled?.stateJson as { terminalNoticePending?: string } | undefined)?.terminalNoticePending,
     ).toBeUndefined();
   });
 
@@ -771,32 +720,38 @@ describe("continuation_work transient-error retry exhaustion", () => {
     // must stay silent instead of enqueueing a duplicate.
     const sessionKey = "agent:main:exhaustion-revision-race";
     replyError = new Error("provider unavailable");
-    enqueueErroringWork(sessionKey);
+    await enqueueErroringWork(sessionKey);
 
-    await driveTransientErrorRetries(sessionKey, () => workRetryCount() >= MAX_TRANSIENT_RETRIES);
+    await driveTransientErrorRetries(
+      sessionKey,
+      async () => (await workRetryCount()) >= MAX_TRANSIENT_RETRIES,
+    );
     expect(systemEvents).toEqual([]);
 
     // The terminal attempt now races a competing writer that bumps the revision
     // before this attempt reaches its own terminalization.
     bumpWorkRevisionOnReply = true;
-    const revisionBeforeTerminalAttempt = workFlow()?.revision ?? 0;
-    await vi.advanceTimersByTimeAsync(TRANSIENT_RETRY_ADVANCE_MS);
+    const revisionBeforeTerminalAttempt = (await workFlow())?.revision ?? 0;
+    await advanceTimers(TRANSIENT_RETRY_ADVANCE_MS);
 
-    expect(workFlow()?.revision).toBeGreaterThan(revisionBeforeTerminalAttempt);
+    expect((await workFlow())?.revision).toBeGreaterThan(revisionBeforeTerminalAttempt);
     expect(terminalExhaustionEvents()).toHaveLength(0);
     expect(systemEvents).toEqual([]);
     expect(terminalExhaustionLogs()).toHaveLength(0);
     // The competing writer owns the row; this attempt committed nothing.
-    expect(workFlow()?.currentStep).not.toBe("Continuation work wake failed");
+    expect((await workFlow())?.phase).not.toBe("Continuation work wake failed");
   });
 
   it("keeps the raw driver error out of the agent-visible outcome", async () => {
     const sessionKey = "agent:main:exhaustion-redaction";
     const secret = "sk-live-9f3c1d2b7a";
     replyError = new Error(`provider rejected token ${secret} at https://api.example/v1/messages`);
-    enqueueErroringWork(sessionKey);
+    await enqueueErroringWork(sessionKey);
 
-    await driveTransientErrorRetries(sessionKey, () => workFlow()?.status === "failed");
+    await driveTransientErrorRetries(
+      sessionKey,
+      async () => (await workFlow())?.status === "failed",
+    );
 
     const [terminalEvent] = terminalExhaustionEvents();
     expect(terminalEvent?.text).toBeDefined();
@@ -805,16 +760,16 @@ describe("continuation_work transient-error retry exhaustion", () => {
     expect(terminalEvent?.text).not.toContain("provider rejected token");
     // Durable diagnostics and operator logs preserve the failure shape without
     // retaining the credential-like token.
-    expect(workFlow()?.blockedSummary).not.toContain(secret);
+    expect((await workFlow())?.failureReason).not.toContain(secret);
     expect(terminalExhaustionLogs()[0]).not.toContain(secret);
-    expect(workFlow()?.blockedSummary).toContain("sk-liv…2b7a");
+    expect((await workFlow())?.failureReason).toContain("sk-liv…2b7a");
   });
 
   it("leaves the sibling non-retryable skip outcome unchanged", async () => {
     // `missing-session` is not retryable, so it must still terminalize on the
     // first attempt through the pre-existing "was not granted" branch.
     const sessionKey = "agent:main:exhaustion-sibling";
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 2,
       delayMs: 0,
@@ -838,28 +793,35 @@ describe("continuation_work transient-error retry exhaustion", () => {
     // feature off afterwards must not strand a debt the agent is already owed.
     const sessionKey = "agent:main:exhaustion-disabled-recovery";
     replyError = new Error("provider unavailable");
-    enqueueErroringWork(sessionKey);
-    await driveTransientErrorRetries(sessionKey, () => workFlow()?.status === "failed");
-    expect(sessionDeliveryEnqueues).toHaveLength(1);
+    await enqueueErroringWork(sessionKey);
+    await driveTransientErrorRetries(
+      sessionKey,
+      async () => (await workFlow())?.status === "failed",
+    );
+    expect(await terminalNoticeRows()).toHaveLength(1);
 
     // Re-arm the obligation as a restart would observe it, then disable the
     // feature before recovery runs.
-    const flow = workFlow();
-    const state = flow?.stateJson as Record<string, unknown> | undefined;
-    if (!flow?.flowId || !state) {
-      throw new Error("expected a terminalized flow");
+    const flow = await workFlow();
+    if (!flow) {
+      throw new Error("expected a terminalized record");
     }
-    flow.stateJson = { ...state, terminalNoticePending: "retry-exhausted" };
-    sessionDeliveryEnqueues.length = 0;
+    await writeRecordForTest(flow.recordId, { terminalNoticePending: "retry-exhausted" });
+    const scheduledBeforeRecovery = scheduledDeliveries.length;
     continuationEnabledForTest = false;
 
     const summary = await recoverPendingContinuationWork();
 
     expect(summary.terminalNotices).toBe(1);
     expect(summary.sessions).toBe(0);
-    expect(sessionDeliveryEnqueues).toHaveLength(1);
-    expect(sessionDeliveryEnqueues[0]).toMatchObject({
-      idempotencyKey: `continuation-work-terminal-notice:${flow.flowId}`,
-    });
+    // The replayed settle reuses the record-keyed row and releases the debt.
+    const rows = await terminalNoticeRows();
+    expect(rows).toEqual([
+      expect.objectContaining({
+        idempotencyKey: `continuation-work-terminal-notice:${flow.recordId}`,
+      }),
+    ]);
+    expect(scheduledDeliveries.slice(scheduledBeforeRecovery)).toEqual([rows[0]?.id]);
+    expect((await readCustodyRecordForTest(flow.recordId))?.terminalNoticePending).toBeUndefined();
   });
 });

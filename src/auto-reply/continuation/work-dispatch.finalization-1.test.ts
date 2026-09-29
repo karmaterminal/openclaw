@@ -108,6 +108,7 @@ async function flushAsyncWork(iterations = 8): Promise<void> {
   for (let i = 0; i < iterations; i++) {
     await Promise.resolve();
   }
+  await settleWorkDispatchCustody();
 }
 
 async function waitForMockWaiter(
@@ -255,11 +256,9 @@ vi.mock("../reply/get-reply.js", () => ({
     // bump every continuation-work flow revision so markPendingWorkDelivered
     // fails its expected-revision check after the turn already ran.
     if (bumpWorkRevisionOnReply) {
-      for (const flow of mockFlows.values()) {
-        if (flow.controllerId === "core/continuation-work") {
-          flow.revision += 1;
-        }
-      }
+      const { bumpLiveWorkRecordRevisions } =
+        await import("./work-dispatch-flow-mock.test-support.js");
+      await bumpLiveWorkRecordRevisions(await import("./custody/custody-store.js"));
     }
     if (replyError) {
       throw replyError;
@@ -328,150 +327,11 @@ vi.mock("../../logging/subsystem.js", () => {
   return { createSubsystemLogger: () => logger };
 });
 
-type MockFlow = {
-  flowId: string;
-  syncMode: "managed";
-  ownerKey: string;
-  chainId?: string;
-  controllerId: string;
-  status: "queued" | "running" | "succeeded" | "failed";
-  notifyPolicy: "silent";
-  goal: string;
-  currentStep?: string;
-  stateJson?: unknown;
-  revision: number;
-  createdAt: number;
-  updatedAt: number;
-  endedAt?: number;
-  cancelRequestedAt?: number;
-};
-
-const mockFlows = new Map<string, MockFlow>();
-let flowCounter = 0;
-
-function cloneFlow(flow: MockFlow): MockFlow {
-  return { ...flow };
-}
-
-function createMockFlow(params: Partial<MockFlow> & { ownerKey: string }): MockFlow {
-  const now = Date.now();
-  const flow: MockFlow = {
-    flowId: `flow-${++flowCounter}`,
-    syncMode: "managed",
-    ownerKey: params.ownerKey,
-    chainId: params.chainId,
-    controllerId: params.controllerId ?? "tests/controller",
-    status: params.status ?? "queued",
-    notifyPolicy: "silent",
-    goal: params.goal ?? "goal",
-    currentStep: params.currentStep,
-    stateJson: params.stateJson,
-    revision: 0,
-    createdAt: params.createdAt ?? now,
-    updatedAt: params.updatedAt ?? params.createdAt ?? now,
-  };
-  mockFlows.set(flow.flowId, flow);
-  return cloneFlow(flow);
-}
-
-function updateMockFlowsAtomically(
-  updates: Array<{ flowId: string; expectedRevision: number; patch: Partial<MockFlow> }>,
-) {
-  for (const update of updates) {
-    const flow = mockFlows.get(update.flowId);
-    if (!flow || flow.revision !== update.expectedRevision) {
-      return {
-        applied: false as const,
-        reason: flow ? ("revision_conflict" as const) : ("not_found" as const),
-      };
-    }
-  }
-  const flows = updates.map((update) => {
-    const flow = mockFlows.get(update.flowId)!;
-    Object.assign(flow, update.patch, { revision: flow.revision + 1 });
-    return cloneFlow(flow);
-  });
-  return { applied: true as const, flows };
-}
-
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn(createMockFlow),
-  createManagedTaskFlowWithAtomicUpdates: vi.fn(
-    (params: {
-      create: Partial<MockFlow> & { ownerKey: string };
-      updates: Array<{ flowId: string; expectedRevision: number; patch: Partial<MockFlow> }>;
-    }) => {
-      const updated = updateMockFlowsAtomically(params.updates);
-      if (!updated.applied) {
-        return updated;
-      }
-      const created = createMockFlow(params.create);
-      return { applied: true, created, updated: updated.flows };
-    },
+vi.mock("./custody/custody-store.js", async (importOriginal) =>
+  (await import("./work-dispatch-flow-mock.test-support.js")).wrapCustodyStoreForWorkDispatch(
+    await importOriginal(),
   ),
-  updateTaskFlowsAtomically: vi.fn(updateMockFlowsAtomically),
-  listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
-    Array.from(
-      [...mockFlows.values()].filter((flow) => flow.ownerKey === ownerKey),
-      cloneFlow,
-    ),
-  ),
-  listTaskFlowRecords: vi.fn(() => Array.from(mockFlows.values(), cloneFlow)),
-  getTaskFlowById: vi.fn((flowId: string) => {
-    const flow = mockFlows.get(flowId);
-    return flow ? cloneFlow(flow) : undefined;
-  }),
-  updateFlowRecordByIdExpectedRevision: vi.fn(
-    (params: { flowId: string; expectedRevision: number; patch: Partial<MockFlow> }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      if (params.patch.currentStep === "Continuation wake delivered (durable mark)") {
-        workTransitionEvents.push("delivered-mark-committed");
-      } else if (params.patch.currentStep === "Continuation fold note delivered (durable mark)") {
-        workTransitionEvents.push("fold-delivered-mark-committed");
-      }
-      Object.assign(flow, params.patch, { revision: flow.revision + 1 });
-      return { applied: true, flow: cloneFlow(flow) };
-    },
-  ),
-  finishFlow: vi.fn(
-    (params: {
-      flowId: string;
-      expectedRevision: number;
-      currentStep?: string;
-      stateJson?: unknown;
-      updatedAt?: number;
-      endedAt?: number;
-    }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      workTransitionEvents.push(`flow-finished:${params.currentStep ?? "unknown"}`);
-      const endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
-      flow.status = "succeeded";
-      flow.currentStep = params.currentStep;
-      flow.stateJson = params.stateJson ?? flow.stateJson;
-      flow.updatedAt = params.updatedAt ?? endedAt;
-      flow.endedAt = endedAt;
-      flow.revision += 1;
-      return { applied: true, flow: cloneFlow(flow) };
-    },
-  ),
-  failFlow: vi.fn((params: { flowId: string }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (flow) {
-      flow.status = "failed";
-      flow.revision += 1;
-    }
-    return { applied: Boolean(flow) };
-  }),
-  deleteTaskFlowRecordById: vi.fn((flowId: string) => {
-    mockFlows.delete(flowId);
-  }),
-}));
+);
 
 import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
 import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent-registry.types.js";
@@ -487,12 +347,24 @@ import {
   DEFAULT_NO_OP_REARM_THRESHOLD,
   recordNoOpRearmOutcome,
 } from "../reply/no-op-rearm-guard.js";
+import { pruneContinuationRecords } from "./custody/custody-store.js";
+import {
+  custodyStateForTest,
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "./custody/custody.test-support.js";
 import {
   cancelPendingDelegates,
   enqueuePendingDelegate,
   pendingDelegateCount,
 } from "./delegate-store.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
+import {
+  describeWorkTransition,
+  resetWorkDispatchCustodyHooks,
+  settleWorkDispatchCustody,
+  workDispatchCustodyHooks,
+} from "./work-dispatch-flow-mock.test-support.js";
 import {
   dispatchPendingContinuationWork,
   bucket1ReapVerdict,
@@ -544,12 +416,13 @@ const config = {
 } satisfies ContinuationRuntimeConfig;
 
 async function flushTimers(): Promise<void> {
+  await settleWorkDispatchCustody();
   await vi.runOnlyPendingTimersAsync();
-  await Promise.resolve();
+  await settleWorkDispatchCustody();
 }
 
-function claimMaturedWork(sessionKey: string) {
-  const enqueued = enqueuePendingWork({
+async function claimMaturedWork(sessionKey: string) {
+  const enqueued = await enqueuePendingWork({
     sessionKey,
     hop: 1,
     delayMs: 0,
@@ -561,7 +434,7 @@ function claimMaturedWork(sessionKey: string) {
   if (!enqueued) {
     throw new Error("expected continuation work enqueue");
   }
-  const [work] = consumePendingWork(sessionKey);
+  const [work] = await consumePendingWork(sessionKey);
   if (!work) {
     throw new Error("expected matured continuation work claim");
   }
@@ -593,6 +466,28 @@ const splitLintUse = [
   claimMaturedWork,
 ];
 void splitLintUse;
+
+useContinuationCustodyTestState();
+
+/** Advance fake time; custody work started before or by the fired timers settles on both sides. */
+async function advanceTimers(ms: number): Promise<void> {
+  await settleWorkDispatchCustody();
+  await vi.advanceTimersByTimeAsync(ms);
+  await settleWorkDispatchCustody();
+}
+
+/**
+ * Custody records in creation order, optionally for one owner, with the state
+ * JSON parsed so assertions can match its fields.
+ */
+async function custodyRecords(ownerSessionKey?: string) {
+  const records = await listCustodyRecordsForTest(ownerSessionKey ? { ownerSessionKey } : {});
+  const views = [];
+  for (const record of records) {
+    views.push({ ...record, stateJson: custodyStateForTest(record) });
+  }
+  return views;
+}
 
 describe("continue_work end-of-turn finalization park + cross-turn coalesce", () => {
   const immediateConfig = {
@@ -630,8 +525,13 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
         ({ sessionKey }: { sessionKey: string }) => mockSessionStore[sessionKey.trim()],
       );
     mockStorePath = "test-store";
-    mockFlows.clear();
-    flowCounter = 0;
+    resetWorkDispatchCustodyHooks();
+    workDispatchCustodyHooks.onApplied = (update) => {
+      const transition = describeWorkTransition(update);
+      if (transition) {
+        workTransitionEvents.push(transition);
+      }
+    };
     subagentRuns.clear();
     getReplyFromConfigMock.mockClear();
     continuationEnabledForTest = true;
@@ -647,7 +547,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
 
     const warmupSessionKey = "agent:main:disabled-idle-retry-warmup";
     mockSessionStore[warmupSessionKey] = { sessionKey: warmupSessionKey };
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey: warmupSessionKey,
       hop: 1,
       delayMs: 1_000,
@@ -672,12 +572,16 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
       includeIdleRetry: true,
     });
     delete mockSessionStore[warmupSessionKey];
-    mockFlows.clear();
+    // The warmup only primes cold dispatch imports; drop its finished record.
+    await settleWorkDispatchCustody();
+    await pruneContinuationRecords({ endedBefore: Number.MAX_SAFE_INTEGER });
+    expect(await custodyRecords()).toEqual([]);
     turnGrants.length = 0;
     getReplyFromConfigMock.mockClear();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await settleWorkDispatchCustody();
     subagentRuns.clear();
     replyIdleWaiters.clear();
     laneIdleWaiters.clear();
@@ -703,7 +607,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     // The captured wake parks behind the end-of-turn event; no immediate timer
     // fires, no requests-in-flight skip, and the durable row carries the marker.
     await waitForMockWaiter(replyIdleWaiters, sessionKey);
-    const flow = [...mockFlows.values()][0];
+    const flow = (await custodyRecords())[0];
     expect(flow).toMatchObject({
       status: "queued",
       stateJson: expect.objectContaining({
@@ -719,7 +623,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
 
     // The Jun7/Jun8 signature was a sub-second hedge loop firing while the same
     // session was still active. Advancing far past any 1s hedge must NOT fire.
-    await vi.advanceTimersByTimeAsync(5_000);
+    await advanceTimers(5_000);
     await flushAsyncWork();
     expect(turnGrants).toHaveLength(0);
 
@@ -751,11 +655,11 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     // Finalize the electing turn; the offset is measured from this post-turn point.
     resolveReplyRunIdle(sessionKey);
 
-    await vi.advanceTimersByTimeAsync(4_999);
+    await advanceTimers(4_999);
     await flushAsyncWork();
     expect(turnGrants).toHaveLength(0);
 
-    await vi.advanceTimersByTimeAsync(1);
+    await advanceTimers(1);
     await flushTimers();
     expect(turnGrants).toEqual([
       expect.objectContaining({
@@ -779,12 +683,12 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
       config: immediateConfig,
     });
 
-    await vi.advanceTimersByTimeAsync(20_000);
+    await advanceTimers(20_000);
     await flushAsyncWork();
 
     expect(turnGrants).toHaveLength(0);
     expect(activeQueueDeliveries).toHaveLength(0);
-    expect([...mockFlows.values()][0]?.stateJson).toMatchObject({
+    expect((await custodyRecords())[0]?.stateJson).toMatchObject({
       anchorPending: true,
       dueAt: 1_060_000,
     });
@@ -820,14 +724,14 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
 
     // Rows stay bounded: only the newest election remains queued; the older
     // parked duplicates were folded (succeeded), not dropped by reason text.
-    const queued = [...mockFlows.values()].filter((flow) => flow.status === "queued");
+    const queued = (await custodyRecords()).filter((flow) => flow.status === "queued");
     expect(queued).toHaveLength(1);
     expect(queued[0]?.stateJson).toMatchObject({ reason: "standing by once more" });
-    const folded = [...mockFlows.values()].filter((flow) => flow.status === "succeeded");
+    const folded = (await custodyRecords()).filter((flow) => flow.status === "succeeded");
     expect(folded).toHaveLength(reasons.length - 1);
 
     // No high-frequency wake loop while the session is active.
-    await vi.advanceTimersByTimeAsync(5_000);
+    await advanceTimers(5_000);
     await flushAsyncWork();
     expect(turnGrants).toHaveLength(0);
 
@@ -859,11 +763,11 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     // Truthful: durable work was created (not refused by reason classification).
     expect(result.scheduled).toBe(true);
     expect(classifyContinuationWorkReason("standing by and yielding")).toBe("wait-shaped");
-    const flow = [...mockFlows.values()][0];
+    const flow = (await custodyRecords())[0];
     expect(flow?.status).toBe("queued");
 
     // And it delivers — the wait-shaped wake is not silently dropped.
-    await vi.advanceTimersByTimeAsync(0);
+    await advanceTimers(0);
     await flushAsyncWork();
     expect(turnGrants).toHaveLength(1);
   });
@@ -891,7 +795,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     // Both elections from THIS turn survive — cross-turn coalesce folds only
     // prior-turn parked rows, never the within-turn fan-out.
     expect(batch).toMatchObject({ scheduledCount: 2, cappedCount: 0 });
-    const queued = [...mockFlows.values()].filter((flow) => flow.status === "queued");
+    const queued = (await custodyRecords()).filter((flow) => flow.status === "queued");
     expect(queued).toHaveLength(2);
   });
 
@@ -928,10 +832,12 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     });
 
     expect(result).toMatchObject({ scheduledCount: 1, cappedCount: 1 });
+    expect(result.supersededFlows?.map((record) => custodyStateForTest(record))).toEqual([
+      expect.objectContaining({ reason: "prior parked work" }),
+    ]);
+    // The snapshot is the parked record as it was before the election.
     expect(result.supersededFlows).toEqual([
-      expect.objectContaining({
-        stateJson: expect.objectContaining({ reason: "prior parked work" }),
-      }),
+      expect.objectContaining({ status: "queued", revision: 0 }),
     ]);
   });
 
@@ -956,9 +862,9 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     await waitForMockWaiter(replyIdleWaiters, sessionKey);
 
     resolveReplyRunIdle(sessionKey);
-    await vi.advanceTimersByTimeAsync(19_999);
+    await advanceTimers(19_999);
     activeSessions.add(sessionKey);
-    await vi.advanceTimersByTimeAsync(1);
+    await advanceTimers(1);
     await flushAsyncWork();
 
     expect(turnGrants).toHaveLength(0);
@@ -971,7 +877,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     expect(note).toContain("Origin turn: turn-origin-A");
     expect(note).toContain("Disposition: folded-active");
     expect(note).toContain("Re-evaluate before acting");
-    const flow = [...mockFlows.values()][0];
+    const flow = (await custodyRecords())[0];
     expect(flow?.status).toBe("succeeded");
     expect(flow?.stateJson).toMatchObject({
       anchorFinalizedAt: 1_000_000,
@@ -982,7 +888,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     });
 
     resolveReplyRunIdle(sessionKey);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await advanceTimers(60_000);
     await flushAsyncWork();
     expect(turnGrants).toHaveLength(0);
   });
@@ -1003,7 +909,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     await waitForMockWaiter(replyIdleWaiters, sessionKey);
     resolveReplyRunIdle(sessionKey);
 
-    await vi.advanceTimersByTimeAsync(5_000);
+    await advanceTimers(5_000);
     await flushAsyncWork();
 
     expect(turnGrants).toHaveLength(1);
@@ -1018,7 +924,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
   it("keeps active-fold rows recoverable when durable note delivery fails", async () => {
     const sessionKey = "agent:main:fold-note-fails";
     mockSessionStore[sessionKey] = { sessionKey };
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 5_000,
@@ -1035,7 +941,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     await dispatchPendingContinuationWork({ sessionKey });
 
     expect(activeQueueDeliveries).toHaveLength(1);
-    const flow = [...mockFlows.values()][0];
+    const flow = (await custodyRecords())[0];
     expect(flow?.status).toBe("queued");
     expect(flow?.stateJson).toMatchObject({
       dueAt: 1_000_000,
@@ -1049,7 +955,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
   it("parks active-fold rows for idle grant when the active run cannot prove note delivery", async () => {
     const sessionKey = "agent:main:fold-active-no-proof";
     mockSessionStore[sessionKey] = { sessionKey };
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 5_000,
@@ -1066,7 +972,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     await dispatchPendingContinuationWork({ sessionKey });
 
     expect(activeQueueDeliveries).toHaveLength(0);
-    let flow = [...mockFlows.values()][0];
+    let flow = (await custodyRecords())[0];
     expect(flow?.status).toBe("queued");
     expect(flow?.stateJson).toMatchObject({
       dueAt: 1_000_000,
@@ -1079,7 +985,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     await waitForTurnGrantCount(1);
 
     expect(turnGrants).toHaveLength(1);
-    flow = [...mockFlows.values()][0];
+    flow = (await custodyRecords())[0];
     expect(flow?.status).toBe("succeeded");
     expect(flow?.stateJson).toMatchObject({
       disposition: "granted",
