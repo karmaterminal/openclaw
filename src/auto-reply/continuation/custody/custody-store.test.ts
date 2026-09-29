@@ -403,6 +403,36 @@ describe("payload custody and scrub", () => {
     ).toMatchObject({ attachments });
   });
 
+  it("keeps the first payload across a thrown create, so only a byte-identical retry commits", async () => {
+    const options = storeOptions();
+    const create = (content: string) =>
+      createContinuationRecord(delegate("delegate-a", ATTACHMENT_A), {
+        ...options,
+        payload: { attachments: [{ name: "notes.txt", content }] },
+      });
+    // The trigger needs the first-use table, which the first committed create makes.
+    await createContinuationRecord(work("seed"), options);
+    const clearFault = injectInsertFault(options, "delegate-a");
+    await expect(create("synthetic")).rejects.toThrow("injected custody fault");
+    clearFault();
+    const written = fs.readFileSync(payloadFile(options, ATTACHMENT_A));
+
+    expect(await create("replacement")).toMatchObject({ outcome: "payload_conflict" });
+    expect(fs.readFileSync(payloadFile(options, ATTACHMENT_A))).toEqual(written);
+    expect((await listContinuationRecords({}, options)).map((record) => record.recordId)).toEqual([
+      "seed",
+    ]);
+
+    expect(await create("synthetic")).toMatchObject({ outcome: "created" });
+    expect(
+      await loadContinuationCustodyPayload(
+        ATTACHMENT_A,
+        { recordId: "delegate-a", ownerKey: OWNER },
+        options.env,
+      ),
+    ).toMatchObject({ attachments: [{ name: "notes.txt", content: "synthetic" }] });
+  });
+
   it.each([
     { name: "another record", recordId: "delegate-b", ownerSessionKey: OWNER },
     { name: "another owner", recordId: "delegate-a", ownerSessionKey: "agent:main:someone-else" },

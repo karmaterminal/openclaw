@@ -13,7 +13,7 @@ import {
 } from "../../../agents/subagents/subagent-attachment-cleanup.js";
 import { resolveStateDir } from "../../../config/state-dir.js";
 import { hasErrnoCode } from "../../../infra/errno.js";
-import { FsSafeError } from "../../../infra/fs-safe.js";
+import { ensureAbsoluteDirectory, FsSafeError } from "../../../infra/fs-safe.js";
 import { privateFileStore } from "../../../infra/private-file-store.js";
 
 const PAYLOAD_VERSION = 1;
@@ -64,20 +64,54 @@ function payloadPath(attachmentId: string): string {
   return path.posix.join(attachmentId, "payload.json");
 }
 
-/** Write the payload before the record that references it commits (crash boundary 0). */
+/**
+ * Write the payload before the record that references it commits (crash
+ * boundary 0). A payload is write-once: publication never replaces an
+ * existing file, so a committed record's bytes cannot change under it. A
+ * byte-identical existing file is a retry (`unchanged`); anything else under
+ * that attachment ID, including another record's or owner's payload, is a
+ * `conflict` and stays untouched.
+ */
 export async function storeContinuationCustodyPayload(
   payload: Omit<ContinuationCustodyPayload, "version"> & { attachmentId: string },
   env: NodeJS.ProcessEnv = process.env,
-): Promise<void> {
+): Promise<"created" | "unchanged" | "conflict"> {
   const { attachmentId, ...binding } = payload;
   const parsed = PayloadSchema.safeParse({ version: PAYLOAD_VERSION, ...binding });
   if (!isSubagentAttachmentId(attachmentId) || !parsed.success) {
     throw new Error("invalid continuation custody payload");
   }
-  await privateFileStore(payloadRoot(env)).writeJson(payloadPath(attachmentId), parsed.data, {
-    maxBytes: PAYLOAD_MAX_BYTES,
-    trailingNewline: true,
-  });
+  const text = `${JSON.stringify(parsed.data, null, 2)}\n`;
+  if (Buffer.byteLength(text) > PAYLOAD_MAX_BYTES) {
+    throw new Error("continuation custody payload exceeds its size cap");
+  }
+  const rootDir = payloadRoot(env);
+  const ensured = await ensureAbsoluteDirectory(rootDir, { mode: 0o700 });
+  if (!ensured.ok) {
+    throw ensured.error;
+  }
+  const store = privateFileStore(rootDir);
+  try {
+    // Atomic create publishes complete content or nothing, so a crashed write
+    // never leaves a partial file that would block the retry.
+    await (
+      await store.root()
+    ).create(payloadPath(attachmentId), text, { atomic: true, private: true, durable: "file" });
+    return "created";
+  } catch (error) {
+    if (!(error instanceof FsSafeError && error.code === "already-exists")) {
+      throw error;
+    }
+  }
+  let existing: string | null;
+  try {
+    existing = await store.readTextIfExists(payloadPath(attachmentId), {
+      maxBytes: PAYLOAD_MAX_BYTES,
+    });
+  } catch {
+    return "conflict";
+  }
+  return existing === text ? "unchanged" : "conflict";
 }
 
 /** Read a payload only when it is bound to the given record and owner. */

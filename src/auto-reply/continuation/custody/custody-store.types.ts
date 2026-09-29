@@ -121,6 +121,13 @@ export type ContinuationCreateResult =
   | ({ outcome: "created"; record: ContinuationRecord } & ContinuationCommitFacts)
   | { outcome: "exists"; recordId: string; attachmentId?: string };
 
+/** Another payload already holds the attachment ID; the create wrote nothing. */
+export type ContinuationPayloadConflict = {
+  outcome: "payload_conflict";
+  recordId: string;
+  attachmentId: string;
+};
+
 export type ContinuationUpdateResult =
   | ({ outcome: "applied"; records: readonly ContinuationRecord[] } & ContinuationCommitFacts)
   | ContinuationCasFailure

@@ -5,6 +5,7 @@
 // write, so a refusal commits nothing and a thrown write rolls the whole
 // transaction back.
 import type { DatabaseSync } from "node:sqlite";
+import { isDeepStrictEqual } from "node:util";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
@@ -210,7 +211,9 @@ type Planned = { next: ContinuationRecord; expectedRevision: number; released?: 
 
 /**
  * Apply a patch in memory. Terminal statuses stamp `endedAt` and scrub the
- * attachment reference; a record whose custody was handed off stays terminal.
+ * attachment reference. A handoff is permanent: once custody moved to another
+ * owner the record stays `succeeded` with that exact handoff, so it can never
+ * be reopened and driven a second time.
  */
 function planPatch(
   current: ContinuationRecord,
@@ -218,7 +221,14 @@ function planPatch(
   now: number,
 ): Planned | { invalid: string } {
   const status = patch.status ?? current.status;
-  const handoff = patch.handoff === null ? undefined : (patch.handoff ?? current.handoff);
+  if (
+    current.handoff &&
+    patch.handoff !== undefined &&
+    !isDeepStrictEqual(patch.handoff, current.handoff)
+  ) {
+    return { invalid: "a handoff cannot be cleared or replaced" };
+  }
+  const handoff = current.handoff ?? patch.handoff ?? undefined;
   if (handoff && status !== "succeeded") {
     return { invalid: "handed-off records stay succeeded" };
   }

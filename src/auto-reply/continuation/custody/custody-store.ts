@@ -25,6 +25,7 @@ import type {
   ContinuationDeleteResult,
   ContinuationElection,
   ContinuationElectionResult,
+  ContinuationPayloadConflict,
   ContinuationPruneResult,
   ContinuationRecord,
   ContinuationRecordPatch,
@@ -113,21 +114,24 @@ async function releaseScrubbedPayloads(
 
 /**
  * Durable create keyed by owner and kind (RFC §5.4.8 capability 1). A payload
- * is written before the record commits (crash boundary 0) and released again
- * when the record ID already exists. After a thrown create the record may
- * have committed, so the file stays for the startup reconcile to judge.
+ * is written once, before the record commits (crash boundary 0), and released
+ * again when the record ID already exists without referencing it. A payload
+ * already stored under the attachment ID is reused only when byte-identical
+ * (a retry); any other file there is a `payload_conflict` and nothing is
+ * written. After a thrown create the record may have committed, so the file
+ * stays for the startup reconcile to judge.
  */
 export async function createContinuationRecord(
   record: NewContinuationRecord,
   options?: ContinuationCustodyStoreOptions & { payload?: ContinuationCustodyPayloadInput },
-): Promise<ContinuationCreateResult> {
+): Promise<ContinuationCreateResult | ContinuationPayloadConflict> {
   const custody = capture(options);
   const payload = options?.payload;
   if (payload) {
     if (record.attachmentId === undefined) {
       throw new Error("continuation custody payload needs the record's attachment id");
     }
-    await storeContinuationCustodyPayload(
+    const stored = await storeContinuationCustodyPayload(
       {
         ...payload,
         attachmentId: record.attachmentId,
@@ -136,12 +140,20 @@ export async function createContinuationRecord(
       },
       custody.env,
     );
+    if (stored === "conflict") {
+      return {
+        outcome: "payload_conflict",
+        recordId: record.recordId,
+        attachmentId: record.attachmentId,
+      };
+    }
   }
   const result = await execute(custody, "continuationCustody.create", { record }, [
     record.ownerSessionKey,
   ]);
   // Release only a payload the existing record does not reference: a retry
-  // after an unseen commit meets its own record and must keep that file.
+  // after an unseen commit meets its own record and must keep that file. The
+  // file here is bound to this record ID, so no other record can own it.
   if (
     result.outcome === "exists" &&
     payload &&
