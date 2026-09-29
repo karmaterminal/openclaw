@@ -122,6 +122,7 @@ export async function resolveSubagentSpawnRequest(
   // Capture the requester window before launch; a reset must not move child
   // progress receipts or private results to a replacement session at the same key.
   let completionRequesterSessionId: string | undefined;
+  let completionRequesterLifecycleRevision: string | undefined;
   const captureRequester = async () => {
     try {
       const target = await resolveGatewaySessionStoreTargetInWorker({
@@ -131,7 +132,9 @@ export async function resolveSubagentSpawnRequest(
         assertActive: ctx.assertActive,
       });
       ctx.assertActive?.();
-      completionRequesterSessionId = target.store[target.canonicalKey]?.sessionId;
+      const requesterEntry = target.store[target.canonicalKey];
+      completionRequesterSessionId = requesterEntry?.sessionId;
+      completionRequesterLifecycleRevision = requesterEntry?.lifecycleRevision;
     } catch (error) {
       return rejectSubagentSpawnRequest(
         "error",
@@ -354,6 +357,7 @@ export async function resolveSubagentSpawnRequest(
         cleanup,
         expectsCompletionMessage,
         completionRequesterSessionId,
+        completionRequesterLifecycleRevision,
       },
       runtime: {
         hookRunner,

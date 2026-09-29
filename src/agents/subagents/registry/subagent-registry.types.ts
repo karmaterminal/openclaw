@@ -67,7 +67,6 @@ type SubagentExecutionState = SubagentRunReadRecord["execution"] & {
   suppressSessionEffects?: true;
   acceptedAt?: number;
   interruptedAt?: number;
-  interruptionReason?: "gateway-restart";
   transcriptTarget?: AgentRunSessionTarget;
 };
 
@@ -200,6 +199,7 @@ export type SubagentRunRecord = Omit<SubagentRunReadRecord, "execution" | "colle
   expectsCompletionMessage?: boolean;
   completionTarget?: "parent";
   completionRequesterSessionId?: string;
+  completionRequesterLifecycleRevision?: string;
   wakeOnDescendantSettle?: boolean;
   execution: SubagentExecutionState;
   completion?: SubagentCompletionState;

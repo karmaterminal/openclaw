@@ -14,6 +14,7 @@ import type { createPluginRegistryOwner } from "../plugins/runtime.js";
 import { isGatewayDraining } from "../process/command-queue.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
+import { createDeferredCore } from "../shared/deferred.js";
 import {
   canIsolateAgentDatabase,
   listAgentDatabaseAdmissionRefusals,
@@ -412,10 +413,7 @@ export async function prepareGatewayKernelState(params: {
     dispatchReady: false,
   };
   const lifecycle = { closePreludeStarted: false };
-  let releaseStartupAccountStarts = () => {};
-  const startupAccountStartsReady = new Promise<void>((resolve) => {
-    releaseStartupAccountStarts = resolve;
-  });
+  const startupAccountStarts = createDeferredCore();
   const gatewayInstanceRuntimeRef: { current: GatewayInstanceRuntime | undefined } = {
     current: undefined,
   };
@@ -433,7 +431,7 @@ export async function prepareGatewayKernelState(params: {
     resolveChannelRuntime: getChannelRuntime,
     getPluginRegistry: () => pluginRuntime.registry,
     startupTrace,
-    deferStartupAccountStartsUntil: startupAccountStartsReady,
+    deferStartupAccountStartsUntil: startupAccountStarts.promise,
     getNativeApprovalRuntime: () => gatewayInstanceRuntimeRef.current?.nativeApprovals,
     ambientAutostartSuppressedChannelIds,
     ...(opts.tryRecoverChannelAutostartSuppression
@@ -589,7 +587,7 @@ export async function prepareGatewayKernelState(params: {
     readinessEventLoopHealth,
     startupState,
     lifecycle,
-    releaseStartupAccountStarts,
+    releaseStartupAccountStarts: startupAccountStarts.resolve,
     gatewayInstanceRuntimeRef,
     channelManager,
     sidecarStartup,

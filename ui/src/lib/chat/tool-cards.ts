@@ -119,6 +119,9 @@ function readToolExitCode(...values: unknown[]): number | undefined {
 }
 
 export function isToolCardSkipped(card: ToolCard): boolean {
+  if (card.activity) {
+    return card.activity.status === "skipped";
+  }
   const details = readRecord(card.details);
   return (
     (card.live !== true || card.completed === true) &&

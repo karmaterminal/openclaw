@@ -26,6 +26,7 @@ export type RegisterSubagentRunParams = {
   expectsCompletionMessage?: boolean;
   completionTarget?: "parent";
   completionRequesterSessionId?: string;
+  completionRequesterLifecycleRevision?: string;
   spawnMode?: "run" | "session";
   attachmentId?: string;
   attachmentsDir?: string;
@@ -117,6 +118,7 @@ export function createSubagentRegistrationRecord(
     expectsCompletionMessage: registerParams.expectsCompletionMessage,
     completionTarget: registerParams.completionTarget,
     completionRequesterSessionId: registerParams.completionRequesterSessionId,
+    completionRequesterLifecycleRevision: registerParams.completionRequesterLifecycleRevision,
     spawnMode,
     label: registerParams.label,
     model: registerParams.model,

@@ -425,15 +425,15 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
           const groupId = entry.groupId?.trim();
           const swarmRequesterSessionKey =
             entry.swarmRequesterSessionKey ?? entry.requesterSessionKey;
-          const groupKey = groupId
-            ? JSON.stringify([entry.requesterAgentId, swarmRequesterSessionKey, groupId])
-            : undefined;
-          if (groupKey && groupId) {
-            collectorArchiveCandidates.set(groupKey, {
-              requesterSessionKey: swarmRequesterSessionKey,
-              groupId,
-              requesterAgentId: entry.requesterAgentId,
-            });
+          if (groupId) {
+            collectorArchiveCandidates.set(
+              JSON.stringify([entry.requesterAgentId, swarmRequesterSessionKey, groupId]),
+              {
+                requesterSessionKey: swarmRequesterSessionKey,
+                groupId,
+                requesterAgentId: entry.requesterAgentId,
+              },
+            );
           }
           continue;
         }
@@ -519,7 +519,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
           });
         }
       }
-      for (const {
+      collectorGroups: for (const {
         requesterSessionKey,
         groupId,
         requesterAgentId,
@@ -541,9 +541,10 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
         ) {
           continue;
         }
-        let deleteFailed = false;
-        let groupMembershipChanged = false;
         for (const [candidateRunId, candidate] of groupEntries) {
+          if (runs.get(candidateRunId) !== candidate) {
+            continue collectorGroups;
+          }
           if (shouldSuppressSubagentRecoverySessionEffects(candidate)) {
             continue;
           }
@@ -565,8 +566,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
               candidate,
             );
             if (runs.get(candidateRunId) !== candidate) {
-              groupMembershipChanged = true;
-              break;
+              continue collectorGroups;
             }
             if (deletion === "changed") {
               candidate.execution = {
@@ -581,14 +581,9 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
               groupId,
               error,
             });
-            deleteFailed = true;
-            break;
+            continue collectorGroups;
           }
         }
-        if (deleteFailed || groupMembershipChanged) {
-          continue;
-        }
-        let attachmentCleanupFailed = false;
         for (const [candidateRunId, candidate] of groupEntries) {
           if (await safeRemoveAttachmentsDir(candidate)) {
             continue;
@@ -598,13 +593,8 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
             childSessionKey: candidate.childSessionKey,
             groupId,
           });
-          attachmentCleanupFailed = true;
-          break;
+          continue collectorGroups;
         }
-        if (attachmentCleanupFailed) {
-          continue;
-        }
-        let contextCleanupFailed = false;
         for (const [candidateRunId, candidate] of groupEntries) {
           if (
             candidate.cleanup === "delete" ||
@@ -627,12 +617,8 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
                 error,
               },
             );
-            contextCleanupFailed = true;
-            break;
+            continue collectorGroups;
           }
-        }
-        if (contextCleanupFailed) {
-          continue;
         }
         const expectedGroupEntries = new Map(groupEntries);
         const liveGroupEntries = readGroup();
