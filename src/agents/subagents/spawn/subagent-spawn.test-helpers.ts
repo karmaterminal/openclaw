@@ -256,6 +256,7 @@ export async function loadSubagentSpawnModuleForTest(params: {
   resolveAgentWorkspaceDir?: (cfg: Record<string, unknown>, agentId: string) => string;
   getSubagentDepthFromSessionStore?: (sessionKey: string, opts?: unknown) => number;
   countActiveRunsForSession?: (sessionKey: string) => number;
+  prepareSubagentRunsByRunIds?: (runIds: readonly string[]) => Promise<unknown>;
   listSwarmRunsForGroup?: (groupId: string) => unknown[];
   resolveSandboxRuntimeStatus?: (params: {
     cfg?: Record<string, unknown>;
@@ -498,6 +499,14 @@ export async function loadSubagentSpawnModuleForTest(params: {
   vi.doMock("../registry/subagent-registry.js", () => ({
     completeCollectorLaunchCleanup: params.completeCollectorLaunchCleanupMock ?? vi.fn(),
     countActiveRunsForSession: params.countActiveRunsForSession ?? (() => 0),
+    prepareSubagentRunsByRunIds:
+      params.prepareSubagentRunsByRunIds ??
+      (async () => ({
+        consume: (consume: (runs: Map<string, unknown>) => unknown) => ({
+          ready: true,
+          value: consume(new Map()),
+        }),
+      })),
     listSwarmRunsForGroup: params.listSwarmRunsForGroup ?? vi.fn(() => []),
     registerSubagentRun: vi.fn(
       (record: RegisterSubagentRunParams, options?: RegisterSubagentRunOptions) => {

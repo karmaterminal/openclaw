@@ -216,6 +216,38 @@ describe("sessions_spawn tool", () => {
     );
   });
 
+  it("exposes no continuation launch key and never forwards a model-supplied one", async () => {
+    const tool = createSessionsSpawnTool();
+    const schema = tool.parameters as { properties: Record<string, unknown> };
+    const launchKeyFields = [
+      "continuationChildRunId",
+      "childRunId",
+      "runId",
+      "idempotencyKey",
+      "launchKey",
+    ];
+    for (const field of launchKeyFields) {
+      expect(schema.properties).not.toHaveProperty(field);
+    }
+    const reservedKey = "continuation:record-1:1";
+
+    await tool.execute(
+      "model-launch-key",
+      Object.fromEntries([
+        ["task", "spawn with a smuggled key"],
+        ...launchKeyFields.map((field) => [field, reservedKey]),
+      ]),
+    );
+
+    expect(hoisted.spawnSubagentDirectMock).toHaveBeenCalledOnce();
+    const [spawnParams, spawnContext] = hoisted.spawnSubagentDirectMock.mock.calls[0] ?? [];
+    for (const field of launchKeyFields) {
+      expect(spawnParams).not.toHaveProperty(field);
+      expect(spawnContext).not.toHaveProperty(field);
+    }
+    expect(JSON.stringify([spawnParams, spawnContext])).not.toContain(reservedKey);
+  });
+
   it.each([{ runtime: "acp" }, { visible: true }, { completionTarget: "channel" }])(
     "rejects unsupported private tool routes before dispatch: %j",
     async (options) => {

@@ -634,3 +634,55 @@ describe("agent request session ownership preflight", () => {
     );
   });
 });
+
+describe("agent request reserved continuation run ids", () => {
+  const cliClient = {
+    connect: { client: { id: "cli", mode: "cli" }, scopes: ["operator.write"] },
+  };
+  const backendClient = {
+    connect: { client: { id: "gateway-client", mode: "backend" }, scopes: ["operator.write"] },
+  };
+
+  function runReservedKeyPreflight(idempotencyKey: string, client: unknown) {
+    const respond = vi.fn();
+    const result = prepareAgentRequestPreflight({
+      request: { message: "work", sessionKey: "agent:main:main", idempotencyKey },
+      io: createAgentTurnIo(respond),
+      context: { getRuntimeConfig: () => ({}), dedupe: new Map() },
+      client,
+    } as never);
+    return { respond, result };
+  }
+
+  it.each([
+    { caller: "cli", client: cliClient },
+    { caller: "anonymous", client: null },
+  ])("rejects a continuation idempotency key from a $caller caller", ({ client }) => {
+    const { respond, result } = runReservedKeyPreflight("continuation:record-1:1", client);
+
+    expect(result).toBeUndefined();
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "continuation run ids are reserved for backend callers.",
+      }),
+    );
+  });
+
+  it("admits a continuation key from a backend caller as the run id verbatim", () => {
+    const { respond, result } = runReservedKeyPreflight("continuation:record-1:1", backendClient);
+
+    expect(respond).not.toHaveBeenCalled();
+    expect(result?.runId).toBe("continuation:record-1:1");
+    expect(result?.agentDedupeKeys).toEqual(["agent:continuation:record-1:1"]);
+  });
+
+  it("leaves ordinary keys open to non-backend callers", () => {
+    const { respond, result } = runReservedKeyPreflight("client-run-1", cliClient);
+
+    expect(respond).not.toHaveBeenCalled();
+    expect(result?.runId).toBe("client-run-1");
+  });
+});

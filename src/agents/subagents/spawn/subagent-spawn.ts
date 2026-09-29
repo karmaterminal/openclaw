@@ -32,17 +32,17 @@ import {
 import {
   applySubagentContinuationLaunchFields,
   buildSubagentContinuationRegistrationFields,
+  resolveSubagentContinuationLaunchError,
+  returnsPhaselessSubagentSpawnCancel,
   resolveSubagentContinuationChildRunId,
   resolveSubagentContinuationChildSessionKey,
   resolveSubagentContinuationTaskRowOwnership,
-  validateSubagentContinuationSpawnParams,
 } from "./subagent-spawn-continuation.js";
 import type {
   SpawnSubagentContext as BaseSpawnSubagentContext,
   SpawnSubagentParams as BaseSpawnSubagentParams,
   SpawnSubagentResult as BaseSpawnSubagentResult,
 } from "./subagent-spawn-contract.js";
-import { isSpawnSubagentAdmissionCancelledError } from "./subagent-spawn-contract.js";
 import { prepareSubagentSpawnEnvelope } from "./subagent-spawn-envelope.js";
 import { withSubagentGatewayExecutionIdentity } from "./subagent-spawn-execution-identity.js";
 import { resolveSubagentSpawnFailureLifecycleHooks } from "./subagent-spawn-failure-hooks.js";
@@ -78,9 +78,9 @@ export async function spawnSubagentDirect(
   const requestThreadBinding = params.thread === true;
   const sandboxMode = params.sandbox === "require" ? "require" : "inherit";
   const requesterSessionKey = ctx.agentSessionKey;
-  const continuationParamsError = validateSubagentContinuationSpawnParams(params);
-  if (continuationParamsError) {
-    return continuationParamsError;
+  const continuationLaunchError = await resolveSubagentContinuationLaunchError(params);
+  if (continuationLaunchError) {
+    return continuationLaunchError;
   }
   // Upstream's chain subsumes our single-source lookup; operatorAuthority is a
   // SEPARATE gate from continuationChainState -- chain state is accounting, never
@@ -147,6 +147,7 @@ export async function spawnSubagentDirect(
   let releaseOperatorAuthority: (() => void) | undefined;
   let provisionalCleanupOpen = true;
   let contextEnginePreparation: PreparedContextEngineSubagentSpawn | undefined;
+  let pipelineEntered = false;
   try {
     assertActive?.();
     if (reservationPending && !swarmReservation?.isCurrent()) {
@@ -520,6 +521,7 @@ export async function spawnSubagentDirect(
         });
       },
     };
+    pipelineEntered = true;
     const pipelineResult = await runSpawnPipeline({
       adapter,
       assertActive,
@@ -659,6 +661,7 @@ export async function spawnSubagentDirect(
       return buildSubagentSpawnPipelineFailureResult(pipelineResult, {
         childIdem,
         childSessionKey,
+        reportFailurePhase: params.continuationChildRunId !== undefined,
       });
     }
     childRunId = pipelineResult.runId;
@@ -695,7 +698,7 @@ export async function spawnSubagentDirect(
       attachments: attachmentsReceipt,
     };
   } catch (error) {
-    if (isSpawnSubagentAdmissionCancelledError(error)) {
+    if (returnsPhaselessSubagentSpawnCancel(error, params, pipelineEntered)) {
       return { status: "cancelled", error: error.message };
     }
     throw error;
