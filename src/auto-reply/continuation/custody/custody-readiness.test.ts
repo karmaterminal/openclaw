@@ -14,6 +14,8 @@ import {
   pendingDelegateCount,
   resolveQueuedDelegateCounts,
 } from "../delegate-store.js";
+import { cancelSessionContinuations } from "../session-reset.js";
+import { hasLiveContinuationCustody } from "../work-store.js";
 import {
   invalidateContinuationCustodyOwners,
   resetContinuationCustodyProjection,
@@ -27,6 +29,7 @@ import {
   OWNER_A,
   OWNER_B,
   delegateState,
+  dumpState,
   readReceipts,
   seedFlow,
   writeLegacyPayload,
@@ -109,8 +112,10 @@ function seedUncopyableLegacyDelegate(flowId: string, owner: string): void {
   );
 }
 
+/** Committed record IDs, read raw: a public list would itself run phase A. */
 async function recordIds(): Promise<string[]> {
-  return (await listContinuationRecords()).map((record) => record.recordId).toSorted();
+  const records = dumpState(options).records as Array<{ record_id: string }>;
+  return records.map((record) => record.record_id).toSorted();
 }
 
 describe("continuation custody readiness (phase A)", () => {
@@ -210,6 +215,24 @@ describe("continuation custody readiness (phase A)", () => {
       stagedPostCompaction: 0,
     });
     expect(importControl.calls).toBe(1);
+  });
+
+  it("does not let a session reset outrun the legacy import (no resurrected work)", async () => {
+    seedLegacyQueuedDelegate("legacy-reset");
+
+    // A reset before anything else has triggered phase A.
+    await cancelSessionContinuations(OWNER_A);
+    await whenContinuationCustodyReady();
+
+    const imported = (await listContinuationRecords({ recordIds: ["legacy-reset"] }))[0];
+    expect(imported?.status).toBe("cancelled");
+    expect(pendingDelegateCount(OWNER_A)).toBe(0);
+  });
+
+  it("does not let the cleanup guard judge an owner empty before its legacy import", async () => {
+    seedLegacyQueuedDelegate("legacy-guarded");
+
+    expect(await hasLiveContinuationCustody(OWNER_A)).toBe(true);
   });
 
   it("does not re-run phase A in the late boot (phase B), so it cannot overwrite newer facts", async () => {

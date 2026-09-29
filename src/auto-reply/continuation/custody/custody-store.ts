@@ -79,9 +79,13 @@ function hasCommitFacts(value: unknown): value is ContinuationCommitFacts {
   return typeof value === "object" && value !== null && "owners" in value;
 }
 
-/** Commands that only read; every other command mutates custody. */
-const READ_COMMANDS: ReadonlySet<keyof Operations> = new Set<keyof Operations>([
-  "continuationCustody.list",
+/**
+ * Raw boot reads, the only commands that do not wait for phase A. Phase A
+ * issues them itself, so fencing them would recurse. Every other command,
+ * public list reads included, waits: a correctness read before the legacy
+ * import (reset's list, the cleanup guard) would miss un-imported work.
+ */
+const BOOT_READ_COMMANDS: ReadonlySet<keyof Operations> = new Set<keyof Operations>([
   "continuationCustody.listAwaitingImportOwners",
   "continuationCustody.readBootFacts",
 ]);
@@ -122,8 +126,9 @@ async function readBootFactsAndInstall(custody: Custody): Promise<ContinuationRe
 }
 
 /**
- * Every custody mutation waits for phase A, so no write can land before the
- * import gate is installed or before the projection can account for it. The
+ * Every custody command except the raw boot reads waits for phase A, so no
+ * write can land, and no list can answer, before the import gate is installed
+ * and the legacy import has run. The
  * shared promise is only the in-flight read: it is dropped once it settles, so
  * a failed read lets no write through and the next write retries it, and a
  * reset projection is re-read rather than trusted.
@@ -162,7 +167,7 @@ async function execute<Key extends keyof Operations>(
   input: Operations[Key]["input"],
   touchedOwners: readonly string[],
 ): Promise<Operations[Key]["output"]> {
-  if (!READ_COMMANDS.has(type)) {
+  if (!BOOT_READ_COMMANDS.has(type)) {
     await ensureReady(custody);
   }
   let output: Operations[Key]["output"];
