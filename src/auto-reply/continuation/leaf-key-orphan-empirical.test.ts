@@ -9,32 +9,35 @@ import {
   consumeStagedPostCompactionDelegates,
   stagedPostCompactionDelegateCount,
 } from "../continuation/delegate-store-post-compaction.js";
+import { useContinuationCustodyTestState } from "./custody/custody.test-support.js";
 
-describe("leaf-key post-compaction staging", () => {
+useContinuationCustodyTestState();
+
+describe("leaf-key post-compaction staging", async () => {
   const leafKey = "leaf-session::oneshot-deny-tools";
   const parentKey = "parent-session::live-requester";
 
-  beforeEach(() => {
-    consumeStagedPostCompactionDelegates(leafKey);
-    consumeStagedPostCompactionDelegates(parentKey);
+  beforeEach(async () => {
+    await consumeStagedPostCompactionDelegates(leafKey);
+    await consumeStagedPostCompactionDelegates(parentKey);
   });
 
-  it("keeps a leaf-keyed delegate invisible to the parent's consume", () => {
-    stagePostCompactionDelegate(leafKey, {
+  it("keeps a leaf-keyed delegate invisible to the parent's consume", async () => {
+    await stagePostCompactionDelegate(leafKey, {
       task: "leaf-keyed delegate",
       createdAt: 1_700_000_000_000,
     });
     expect(stagedPostCompactionDelegateCount(leafKey)).toBe(1);
 
     expect(stagedPostCompactionDelegateCount(parentKey)).toBe(0);
-    const parentConsumed = consumeStagedPostCompactionDelegates(parentKey);
+    const parentConsumed = await consumeStagedPostCompactionDelegates(parentKey);
     expect(parentConsumed).toHaveLength(0);
 
     expect(stagedPostCompactionDelegateCount(leafKey)).toBe(1);
   });
 
-  it("strands a leaf-keyed delegate when the leaf never compacts", () => {
-    stagePostCompactionDelegate(leafKey, {
+  it("strands a leaf-keyed delegate when the leaf never compacts", async () => {
+    await stagePostCompactionDelegate(leafKey, {
       task: "leaf-keyed delegate",
       createdAt: 1_700_000_000_000,
     });
@@ -44,11 +47,11 @@ describe("leaf-key post-compaction staging", () => {
     expect(stagedPostCompactionDelegateCount(leafKey)).toBe(1);
     expect(stagedPostCompactionDelegateCount(parentKey)).toBe(0);
 
-    stagePostCompactionDelegate(parentKey, {
+    await stagePostCompactionDelegate(parentKey, {
       task: "parent-keyed delegate",
       createdAt: 1_700_000_000_000,
     });
-    const parentFired = consumeStagedPostCompactionDelegates(parentKey);
+    const parentFired = await consumeStagedPostCompactionDelegates(parentKey);
     expect(parentFired).toHaveLength(1);
     expect(parentFired[0]).toMatchObject({
       task: "parent-keyed delegate",
@@ -57,15 +60,15 @@ describe("leaf-key post-compaction staging", () => {
     expect(stagedPostCompactionDelegateCount(leafKey)).toBe(1);
   });
 
-  it("no migration: deleting/cleaning the leaf lane does NOT move its delegate to the parent", () => {
-    stagePostCompactionDelegate(leafKey, {
+  it("no migration: deleting/cleaning the leaf lane does NOT move its delegate to the parent", async () => {
+    await stagePostCompactionDelegate(leafKey, {
       task: "leaf-keyed delegate",
       createdAt: 1_700_000_000_000,
     });
     // The parent stays empty unless the delegate is explicitly staged there.
     expect(stagedPostCompactionDelegateCount(parentKey)).toBe(0);
 
-    consumeStagedPostCompactionDelegates(leafKey);
+    await consumeStagedPostCompactionDelegates(leafKey);
     expect(stagedPostCompactionDelegateCount(parentKey)).toBe(0);
   });
 });
