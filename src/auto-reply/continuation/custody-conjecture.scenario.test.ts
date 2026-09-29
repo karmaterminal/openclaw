@@ -24,7 +24,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
 const getReplyFromConfigMock = vi.hoisted(() => vi.fn());
@@ -51,6 +51,35 @@ const CONFIG = {
 };
 
 type Gateway = Awaited<ReturnType<typeof bootGateway>>;
+
+/** Interrupted notices delivered into memory before a crash, keyed by identity. */
+const deliveredNoticeLedger = new Map<string, string>();
+
+function recordNotices(
+  notices: Map<string, string>,
+  events: ReadonlyArray<{ id?: string; text: string; ts: number; sessionDeliveryAckId?: string }>,
+): void {
+  for (const event of events) {
+    if (event.text.includes(INTERRUPTED_NOTICE)) {
+      notices.set(
+        event.sessionDeliveryAckId ?? event.id ?? `${event.ts}:${event.text}`,
+        event.text,
+      );
+    }
+  }
+}
+
+/**
+ * Harness failures (tripwire, a turn that never reaches the spawn owner). They
+ * are recorded here as well as thrown, because an `it.fails` test would absorb
+ * the throw; the green `afterAll` below fails the file if any occurred.
+ */
+const harnessFaults: string[] = [];
+
+function harnessFault(message: string): Error {
+  harnessFaults.push(message);
+  return new Error(message);
+}
 type DelegateForm = "tool" | "token";
 
 async function bootGateway() {
@@ -69,10 +98,10 @@ async function bootGateway() {
     postCompaction,
     resetCleanup,
     replyRuns,
-    deliveryRecovery,
     deliveryStorage,
     sentinel,
     workerContext,
+    systemEvents,
   ] = await Promise.all([
     import("../../config/config.js"),
     import("../../config/sessions.js"),
@@ -88,10 +117,10 @@ async function bootGateway() {
     import("../reply/post-compaction-delegate-dispatch.js"),
     import("../reply/session-reset-cleanup.js"),
     import("../reply/reply-run-registry.js"),
-    import("../../infra/session-delivery-queue-recovery.js"),
     import("../../infra/session-delivery-queue-storage.js"),
     import("../../gateway/server-restart-sentinel.js"),
     import("../../state/openclaw-state-worker-context.js"),
+    import("../../infra/system-events.js"),
   ]);
   config.setRuntimeConfigSnapshot(CONFIG as never);
   const storePath = sessionPaths.resolveSessionStorePathCore(undefined, { agentId: "main" });
@@ -103,7 +132,13 @@ async function bootGateway() {
       storePath,
     });
 
-  /** The continuation half of Gateway startup, with its boot-time cutoff. */
+  /**
+   * The continuation half of Gateway startup, copied from
+   * `startPendingContinuationRecovery` in `server-runtime-services.ts` with its
+   * boot-time cutoff. This is the one harness seam that names TaskFlow-era
+   * recovery passes; the §5.4 re-home rewrites it to its own startup order
+   * (Doctor import, subagent registry activation, custody recovery).
+   */
   async function runContinuationRecovery(): Promise<void> {
     const armedAt = Date.now();
     await recovery.recoverPendingContinuationDelegates({
@@ -238,33 +273,43 @@ async function bootGateway() {
         resetTriggered: false,
       });
     },
-    resetOwnerSession(): void {
-      resetCleanup.clearSessionResetRuntimeState([OWNER], { agentId: "main", reason: "reset" });
+    // Awaited through Promise.resolve so the test stays valid if reset becomes
+    // asynchronous with the custody store's worker APIs (§5.4.3).
+    async resetOwnerSession(): Promise<void> {
+      await Promise.resolve(
+        resetCleanup.clearSessionResetRuntimeState([OWNER], { agentId: "main", reason: "reset" }),
+      );
     },
     /**
      * Gateway startup: session-delivery recovery (scheduled at +1250 ms), then
      * continuation recovery (+1400 ms) in `server-runtime-services.ts` order.
      */
     async runStartupRecovery(): Promise<void> {
-      const queueContext = workerContext.captureOpenClawStateWorkerContext();
-      await deliveryRecovery.recoverPendingSessionDeliveries({
-        deliver: (entry, context) =>
-          sentinel.deliverQueuedSessionDelivery({
-            deps: {} as never,
-            entry,
-            queueContext: context.queueContext,
-          }),
-        queueContext,
+      await sentinel.recoverPendingRestartContinuationDeliveries({
+        deps: {} as never,
+        queueContext: workerContext.captureOpenClawStateWorkerContext(),
         log: { info: () => {}, warn: () => {}, error: () => {} },
+        maxEnqueuedAt: Date.now(),
       });
       await runContinuationRecovery();
     },
     runContinuationRecovery,
     pendingOwnerDeliveries,
+    /**
+     * Interrupted-spawn notices the owner has been given, by identity. A notice
+     * counts once whether it is still a pending durable row, was delivered into
+     * the in-memory queue (keyed by the row it acks), or was delivered before an
+     * earlier crash; two distinct notices always count twice.
+     */
     async interruptedNotices(): Promise<string[]> {
-      return (await pendingOwnerDeliveries()).flatMap((entry) =>
-        entry.kind === "systemEvent" && entry.text.includes(INTERRUPTED_NOTICE) ? [entry.text] : [],
-      );
+      const notices = new Map(deliveredNoticeLedger);
+      recordNotices(notices, systemEvents.peekSystemEventEntries(OWNER));
+      for (const entry of await pendingOwnerDeliveries()) {
+        if (entry.kind === "systemEvent" && entry.text.includes(INTERRUPTED_NOTICE)) {
+          notices.set(entry.id, entry.text);
+        }
+      }
+      return [...notices.values()];
     },
   };
 }
@@ -292,7 +337,7 @@ async function discardProcessState(): Promise<void> {
   continuationRuntime.resetContinueDelegateTurnAdmissionForTests();
   delegateDispatch.resetDelegateDispatchHedgesForTests();
   agentEvents.rotateAgentEventLifecycleGeneration();
-  systemEvents.drainSystemEventEntries(OWNER);
+  recordNotices(deliveredNoticeLedger, systemEvents.drainSystemEventEntries(OWNER));
   vi.resetModules();
 }
 
@@ -309,9 +354,12 @@ async function restartGateway(): Promise<Gateway> {
   await discardProcessState();
   const gateway = await bootGateway();
   // Anything the dead graph does after the crash would be a harness leak.
-  expect(boundaryCallCounts(), "the crashed module graph acted after the crash").toEqual(
-    beforeCrash,
-  );
+  const afterBoot = boundaryCallCounts();
+  if (afterBoot.spawns !== beforeCrash.spawns || afterBoot.turns !== beforeCrash.turns) {
+    throw harnessFault(
+      `the crashed module graph acted after the crash: ${JSON.stringify({ beforeCrash, afterBoot })}`,
+    );
+  }
   return gateway;
 }
 
@@ -320,6 +368,7 @@ async function withGateway(run: (gateway: Gateway, stateDir: string) => Promise<
     { layout: "state-only", prefix: "openclaw-continuation-custody-conjecture-" },
     async (state) => {
       await discardProcessState();
+      deliveredNoticeLedger.clear();
       const gateway = await bootGateway();
       await gateway.seedOwnerSession();
       await run(gateway, state.stateDir);
@@ -374,13 +423,12 @@ function continuationWakeTurns(): string[] {
  */
 function spawnProjection(call: unknown[] | undefined, options: { ownerEpoch?: "mask" } = {}) {
   const [request, context] = (call ?? []) as [Record<string, unknown>, Record<string, unknown>];
-  const {
-    continuationDelegateFlowId: _recordId,
-    continuationChainState: _chain,
-    traceparent: _trace,
-    task,
-    ...stable
-  } = request;
+  const { continuationChainState: _chain, traceparent: _trace, task, ...rest } = request;
+  // Record identity (today `continuationDelegateFlowId`) is dropped by shape so
+  // a renamed record-id field after the re-home is still ignored.
+  const stable = Object.fromEntries(
+    Object.entries(rest).filter(([key]) => !/(flow|record)Id$/i.test(key)),
+  );
   const projected = {
     request: {
       ...stable,
@@ -415,13 +463,27 @@ function durableFilesHolding(stateDir: string, canary: string): string[] {
 async function electDelegate(
   gateway: Gateway,
   form: DelegateForm,
-  params: { runId: string; task: string; delaySeconds: number; mode?: string },
+  params: {
+    runId: string;
+    task: string;
+    delaySeconds: number;
+    mode?: string;
+    /** Tool form only: the token grammar carries no attachments (§9.2 attachment-free policy). */
+    attachmentCanary?: string;
+  },
 ): Promise<void> {
   if (form === "tool") {
     await gateway.delegateTool(params.runId).execute(`${params.runId}-call`, {
       task: params.task,
       delaySeconds: params.delaySeconds,
       ...(params.mode ? { mode: params.mode } : {}),
+      ...(params.attachmentCanary
+        ? {
+            attachments: [
+              { name: "notes.txt", content: params.attachmentCanary, encoding: "utf8" },
+            ],
+          }
+        : {}),
     });
     await gateway.completeTurn({ runId: params.runId, finalText: "turn done" });
     return;
@@ -435,18 +497,25 @@ async function electDelegate(
 }
 
 /** Run a turn whose due delegate is claimed and then crashes inside the spawn. */
-async function crashWhileClaimed(gateway: Gateway, form: DelegateForm): Promise<void> {
+async function crashWhileClaimed(
+  gateway: Gateway,
+  form: DelegateForm,
+  options: { attachmentCanary?: string } = {},
+): Promise<void> {
   const crash = crashInsideSpawn();
   spawnSubagentDirectMock.mockImplementationOnce(crash.hang);
   const turn = electDelegate(gateway, form, {
     runId: `claimed-${form}`,
     task: "publish the release notes",
     delaySeconds: 0,
+    ...(form === "tool" && options.attachmentCanary
+      ? { attachmentCanary: options.attachmentCanary }
+      : {}),
   });
   await Promise.race([
     crash.spawnEntered,
     turn.then(() => {
-      throw new Error("the turn finished without reaching the spawn owner");
+      throw harnessFault("the turn finished without reaching the spawn owner");
     }),
   ]);
 }
@@ -466,13 +535,22 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+afterAll(() => {
+  expect(harnessFaults, "harness faults, including inside expected-red tests").toEqual([]);
+});
+
 describe("RFC §5.4.4 pre-spawn custody handoff: an unresolved claim is at-most-once (Q3)", () => {
+  const CLAIM_CANARY = "custody-conjecture-claimed-attachment-canary-2c81d4";
+
   it.fails.each(["tool", "token"] as const)(
-    "[expected red until the §5.4 re-home] %s form, boundary 2/3: restart spawns no second child and leaves exactly one interrupted notice",
+    "[expected red until the §5.4 re-home] %s form, boundary 2/3: restart spawns no second child, leaves exactly one interrupted notice, and releases the payload",
     async (form) => {
-      await withGateway(async (gateway) => {
-        await crashWhileClaimed(gateway, form);
+      await withGateway(async (gateway, stateDir) => {
+        await crashWhileClaimed(gateway, form, { attachmentCanary: CLAIM_CANARY });
         expect(spawnedTasks()).toHaveLength(1);
+        if (form === "tool") {
+          expect(durableFilesHolding(stateDir, CLAIM_CANARY)).not.toEqual([]);
+        }
 
         let restarted = await restartGateway();
         await restarted.runStartupRecovery();
@@ -482,6 +560,7 @@ describe("RFC §5.4.4 pre-spawn custody handoff: an unresolved claim is at-most-
         const notices = await restarted.interruptedNotices();
         expect(notices).toHaveLength(1);
         expect(notices[0]).toContain("publish the release notes");
+        expect(durableFilesHolding(stateDir, CLAIM_CANARY)).toEqual([]);
 
         // The notice stays single across a second restart.
         restarted = await restartGateway();
@@ -610,7 +689,7 @@ describe("RFC §5.4.3 election replacement is one atomic owner-conditioned commi
     });
   });
 
-  it("a crash before the replacement commits leaves exactly one live election, the parked one", async () => {
+  it("the pre-replacement state: a crash before the second election leaves exactly the parked election live", async () => {
     await withGateway(async (gateway) => {
       gateway.beginOwnerReplyRun();
       await electWhileOwnerBusy(gateway, "turn-a", "parked follow-up");
@@ -722,16 +801,32 @@ describe("RFC §5.4.4 reset at any boundary", () => {
       finalText: "turn done",
       continueWorkRequests: requests,
     });
+    await gateway.completeTurn({
+      runId: "reset-work-token",
+      finalText: "turn done\nCONTINUE_WORK:90",
+    });
   }
+
+  it("control: without a reset, the same queued work all fires after a restart", async () => {
+    await withGateway(async (gateway) => {
+      await queueWorkAndAttachedDelegate(gateway);
+
+      vi.setSystemTime(START_MS + 91_000);
+      const restarted = await restartGateway();
+      await restarted.runStartupRecovery();
+      expect(spawnedTasks()).toHaveLength(2);
+      expect(continuationWakeTurns()).toHaveLength(2);
+    });
+  });
 
   it("reset cancels queued delegates and elections from both forms, and the attachment bytes are gone after the next startup", async () => {
     await withGateway(async (gateway, stateDir) => {
       await queueWorkAndAttachedDelegate(gateway);
       expect(durableFilesHolding(stateDir, CANARY)).not.toEqual([]);
 
-      gateway.resetOwnerSession();
+      await gateway.resetOwnerSession();
 
-      vi.setSystemTime(START_MS + 61_000);
+      vi.setSystemTime(START_MS + 91_000);
       let restarted = await restartGateway();
       await restarted.runStartupRecovery();
       expect(spawnedTasks()).toEqual([]);
@@ -745,12 +840,31 @@ describe("RFC §5.4.4 reset at any boundary", () => {
     });
   });
 
+  it("reset of a claimed delegate (boundary 2/3) stops it: a restart spawns no second child and the payload is gone", async () => {
+    await withGateway(async (gateway, stateDir) => {
+      const canary = "custody-conjecture-reset-claimed-canary-91b0e7";
+      await crashWhileClaimed(gateway, "tool", { attachmentCanary: canary });
+      expect(durableFilesHolding(stateDir, canary)).not.toEqual([]);
+
+      await gateway.resetOwnerSession();
+
+      let restarted = await restartGateway();
+      await restarted.runStartupRecovery();
+      expect(spawnedTasks()).toHaveLength(1);
+      expect(durableFilesHolding(stateDir, canary)).toEqual([]);
+
+      restarted = await restartGateway();
+      await restarted.runStartupRecovery();
+      expect(spawnedTasks()).toHaveLength(1);
+    });
+  });
+
   it.fails("[expected red until the §5.4 re-home] reset releases the attachment payload immediately, not at the next startup (§5.4.9 item 6)", async () => {
     await withGateway(async (gateway, stateDir) => {
       await queueWorkAndAttachedDelegate(gateway);
       expect(durableFilesHolding(stateDir, CANARY)).not.toEqual([]);
 
-      gateway.resetOwnerSession();
+      await gateway.resetOwnerSession();
 
       // Today the payload file waits for the startup custody reconcile.
       expect(durableFilesHolding(stateDir, CANARY)).toEqual([]);
