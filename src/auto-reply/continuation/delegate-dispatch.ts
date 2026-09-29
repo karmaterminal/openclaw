@@ -3,7 +3,6 @@
  * Every outcome stays visible at info level; timer-only logging hides immediate work.
  */
 
-import { formatDelegateArtifactTaskInstruction } from "../../agents/delegate-artifact-policy.js";
 import {
   assertDelegateArtifactPolicyPrepared,
   removeUnacceptedDelegateArtifactPolicy,
@@ -41,6 +40,10 @@ import {
   DELEGATE_DISPATCH_RETRY_MS,
 } from "./delegate-dispatch-hedge.js";
 import { partitionManagedDelegatesForRuntime } from "./delegate-dispatch-managed-gates.js";
+import {
+  buildDelegateSpawnRequest,
+  delegateBudgetChainState,
+} from "./delegate-dispatch-request.js";
 import { commitPendingDelegateSpawnAcceptance } from "./delegate-spawn-acceptance.js";
 import {
   createContinuationOwnerSessionLoader,
@@ -282,26 +285,23 @@ export async function dispatchToolDelegates(
       throw error;
     }
   };
+  const persistTerminalFailure = (delegate: PendingContinuationDelegate) =>
+    persistTerminalChainState(delegate, terminalChainStateForDelegate(delegate), {
+      markPlannedChainState: appliedChainTokensFold > 0,
+      markerKind: "terminal",
+    });
+  const notifyOwner = (text: string): void => {
+    enqueueSystemEvent(text, ownerEventOptions({ sessionKey, trusted: true }));
+  };
 
   for (const { delegate, reason, error } of unavailablePolicyDelegates) {
     const summary = `DELEGATE spawn failed: accepted artifact policy is ${reason}`;
-    const failedDelegate = await persistTerminalChainState(
-      delegate,
-      terminalChainStateForDelegate(delegate),
-      {
-        markPlannedChainState: appliedChainTokensFold > 0,
-        markerKind: "terminal",
-      },
-    );
+    const failedDelegate = await persistTerminalFailure(delegate);
     if (!(await terminalizeRejectedDelegate(failedDelegate, summary))) {
       throw error;
     }
-    enqueueSystemEvent(
+    notifyOwner(
       `[continuation] ${summary}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-      ownerEventOptions({
-        sessionKey,
-        trusted: true,
-      }),
     );
   }
 
@@ -311,14 +311,11 @@ export async function dispatchToolDelegates(
     log.info(
       `[continuation:delegate-spawn-interrupted] flowId=${delegate.flowId ?? "unknown"} session=${sessionKey} evidence=${evidence?.kind ?? "none"}`,
     );
-    const failedDelegate = await persistTerminalChainState(
-      delegate,
-      terminalChainStateForDelegate(delegate),
-      { markPlannedChainState: appliedChainTokensFold > 0, markerKind: "terminal" },
-    );
+    const failedDelegate = await persistTerminalFailure(delegate);
     if (
       await terminalizeInterruptedDelegateClaim(failedDelegate, {
         collision: evidence?.kind === "collision",
+        ownerAgentId: ownerSession.agentId,
       })
     ) {
       removeRejectedArtifactPolicy(delegate);
@@ -330,21 +327,10 @@ export async function dispatchToolDelegates(
     log.info(
       `[continuation:delegate-rejected] maxDelegatesPerTurn=${maxDelegatesPerTurn} task=${dropped.task.slice(0, 80)} session=${sessionKey}`,
     );
-    const failedDelegate = await persistTerminalChainState(
-      dropped,
-      terminalChainStateForDelegate(dropped),
-      {
-        markPlannedChainState: appliedChainTokensFold > 0,
-        markerKind: "terminal",
-      },
-    );
+    const failedDelegate = await persistTerminalFailure(dropped);
     await terminalizeRejectedDelegate(failedDelegate, summary);
-    enqueueSystemEvent(
+    notifyOwner(
       `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(dropped.task)}`,
-      ownerEventOptions({
-        sessionKey,
-        trusted: true,
-      }),
     );
   }
 
@@ -384,21 +370,10 @@ export async function dispatchToolDelegates(
       log.info(
         `[continuation:delegate-rejected] policy.cross_session_targeting task=${delegate.task.slice(0, 80)} session=${sessionKey}`,
       );
-      const failedDelegate = await persistTerminalChainState(
-        delegate,
-        terminalChainStateForDelegate(delegate),
-        {
-          markPlannedChainState: appliedChainTokensFold > 0,
-          markerKind: "terminal",
-        },
-      );
+      const failedDelegate = await persistTerminalFailure(delegate);
       await markPendingDelegateFailed(failedDelegate, summary);
-      enqueueSystemEvent(
+      notifyOwner(
         `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        ownerEventOptions({
-          sessionKey,
-          trusted: true,
-        }),
       );
       emitContinuationDisabledSpan({
         chainId: undefined,
@@ -415,24 +390,12 @@ export async function dispatchToolDelegates(
     }
 
     const persistedChainStateKind = delegate.persistedChainStateKind ?? "advanced";
-    const budgetChainState: ChainState = delegate.persistedChainState
-      ? {
-          currentChainCount:
-            persistedChainStateKind === "advanced"
-              ? Math.max(0, delegate.persistedChainState.currentChainCount - 1)
-              : delegate.persistedChainState.currentChainCount,
-          chainStartedAt: delegate.persistedChainState.chainStartedAt,
-          accumulatedChainTokens: delegate.persistedChainState.accumulatedChainTokens,
-          ...(delegate.persistedChainState.chainId
-            ? { chainId: delegate.persistedChainState.chainId }
-            : {}),
-        }
-      : {
-          currentChainCount,
-          chainStartedAt: chainState.chainStartedAt,
-          accumulatedChainTokens: currentAccumulatedTokens,
-          ...(currentChainId ? { chainId: currentChainId } : {}),
-        };
+    const budgetChainState = delegateBudgetChainState(delegate, {
+      currentChainCount,
+      chainStartedAt: chainState.chainStartedAt,
+      accumulatedChainTokens: currentAccumulatedTokens,
+      ...(currentChainId ? { chainId: currentChainId } : {}),
+    });
     const budgetCheck = acceptedChildAlreadyKnown
       ? undefined
       : checkContinuationBudget({
@@ -446,21 +409,10 @@ export async function dispatchToolDelegates(
       log.info(
         `[continuation:delegate-rejected] ${budgetCheck} task=${delegate.task.slice(0, 80)} session=${sessionKey}`,
       );
-      const failedDelegate = await persistTerminalChainState(
-        delegate,
-        terminalChainStateForDelegate(delegate),
-        {
-          markPlannedChainState: appliedChainTokensFold > 0,
-          markerKind: "terminal",
-        },
-      );
+      const failedDelegate = await persistTerminalFailure(delegate);
       await terminalizeRejectedDelegate(failedDelegate, summary);
-      enqueueSystemEvent(
+      notifyOwner(
         `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        ownerEventOptions({
-          sessionKey,
-          trusted: true,
-        }),
       );
       rejected++;
       continue;
@@ -516,12 +468,12 @@ export async function dispatchToolDelegates(
       log.info(
         `[continuation:delegate-spawn-uncertain] flowId=${delegate.flowId ?? "unknown"} session=${sessionKey} reason=${reasonText}`,
       );
-      const failedDelegate = await persistTerminalChainState(
-        delegate,
-        terminalChainStateForDelegate(delegate),
-        { markPlannedChainState: appliedChainTokensFold > 0, markerKind: "terminal" },
-      );
-      if (await terminalizeInterruptedDelegateClaim(failedDelegate)) {
+      const failedDelegate = await persistTerminalFailure(delegate);
+      if (
+        await terminalizeInterruptedDelegateClaim(failedDelegate, {
+          ownerAgentId: ownerSession.agentId,
+        })
+      ) {
         removeRejectedArtifactPolicy(delegate);
       }
       rejected++;
@@ -593,50 +545,27 @@ export async function dispatchToolDelegates(
         );
         removeRejectedArtifactPolicy(delegate);
         dispatchSpan.setStatus("ERROR", spawnFence.summary);
-        enqueueSystemEvent(
+        notifyOwner(
           `[continuation] ${spawnFence.summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          ownerEventOptions({
-            sessionKey,
-            trusted: true,
-          }),
         );
         rejected++;
         continue;
       }
       spawnAttempted = true;
       const result = await spawnSubagentDirect(
-        {
-          task:
-            `[continuation:chain-hop:${nextHop}] Delegated task (turn ${nextHop}/${maxChainLength}): ${delegate.task}` +
-            formatDelegateArtifactTaskInstruction(delegate),
-          drainsContinuationDelegateQueue: true,
-          continuationChainState: {
-            count: nextHop,
+        buildDelegateSpawnRequest({
+          delegate,
+          nextHop,
+          maxChainLength,
+          chainState: {
             startedAt: plannedTerminalChainState.chainStartedAt,
             tokens,
             chainId: dispatchChainId,
           },
-          ...(delegate.model ? { model: delegate.model } : {}),
-          ...(delegate.attachments ? { attachments: delegate.attachments } : {}),
-          ...(delegate.attachAs?.mountPath ? { attachMountPath: delegate.attachAs.mountPath } : {}),
-          ...(delegate.flowId ? { continuationDelegateFlowId: delegate.flowId } : {}),
-          ...(delegate.spawnAttempt
-            ? { continuationChildRunId: delegate.spawnAttempt.childRunId }
-            : {}),
-          ...(silent ? { silentAnnounce: true } : {}),
-          ...(silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
-          ...(delegate.targetSessionKey
-            ? { continuationTargetSessionKey: delegate.targetSessionKey }
-            : {}),
-          ...(delegate.targetSessionKeys && delegate.targetSessionKeys.length > 0
-            ? { continuationTargetSessionKeys: delegate.targetSessionKeys }
-            : {}),
-          ...(delegate.fanoutMode ? { continuationFanoutMode: delegate.fanoutMode } : {}),
-          ...(delegate.recipientAuthorityBinding
-            ? { continuationRecipientAuthorityBinding: delegate.recipientAuthorityBinding }
-            : {}),
+          silent,
+          silentWake,
           ...(spawnTraceparent ? { traceparent: spawnTraceparent } : {}),
-        },
+        }),
         {
           agentSessionKey: sessionKey,
           requesterAgentIdOverride: activeDispatch.ownerAgentId,
@@ -721,28 +650,16 @@ export async function dispatchToolDelegates(
           }
           armManagedSpawnRetry();
           dispatchSpan.setStatus("ERROR", reasonText);
-          enqueueSystemEvent(
+          notifyOwner(
             `[continuation] ${summary}; managed work was deferred for retry. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-            ownerEventOptions({
-              sessionKey,
-              trusted: true,
-            }),
           );
           continue;
         }
-        const failedDelegate = await persistTerminalChainState(
-          delegate,
-          terminalChainStateForDelegate(delegate),
-          { markPlannedChainState: appliedChainTokensFold > 0, markerKind: "terminal" },
-        );
+        const failedDelegate = await persistTerminalFailure(delegate);
         await terminalizeRejectedDelegate(failedDelegate, summary);
         dispatchSpan.setStatus("ERROR", reasonText);
-        enqueueSystemEvent(
+        notifyOwner(
           `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          ownerEventOptions({
-            sessionKey,
-            trusted: true,
-          }),
         );
         rejected++;
       }
@@ -773,21 +690,10 @@ export async function dispatchToolDelegates(
         await settleUncertainSpawn(`thrown:${message}`);
         continue;
       }
-      const failedDelegate = await persistTerminalChainState(
-        delegate,
-        terminalChainStateForDelegate(delegate),
-        {
-          markPlannedChainState: appliedChainTokensFold > 0,
-          markerKind: "terminal",
-        },
-      );
+      const failedDelegate = await persistTerminalFailure(delegate);
       await terminalizeRejectedDelegate(failedDelegate, summary);
-      enqueueSystemEvent(
+      notifyOwner(
         `[continuation] ${summary}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-        ownerEventOptions({
-          sessionKey,
-          trusted: true,
-        }),
       );
       rejected++;
     } finally {

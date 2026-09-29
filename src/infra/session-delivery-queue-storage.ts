@@ -1,5 +1,6 @@
 // Persists queued session deliveries for retry and recovery.
 import type { SessionPostCompactionDelegate } from "../config/sessions/types.js";
+import { formatContinuationChildRunId } from "../shared/continuation-run-key.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { runOpenClawStateWorkerOperation } from "../state/openclaw-state-worker-store.js";
@@ -329,7 +330,12 @@ export async function enqueueSessionDeliveryWithStatus(
   return { id, status };
 }
 
-/** Enqueue a post-compaction delegate through the shared durable queue. */
+/**
+ * Enqueue a post-compaction delegate that has no custody record through the
+ * shared durable queue. Every entry carries a launch key (RFC
+ * docs/design/continue-work-signal-v2.md §5.4.4, Q2): without one the drain
+ * can never prove admission and ends the entry in the interrupted notice.
+ */
 export async function enqueuePostCompactionDelegateDelivery(
   params: {
     sessionKey: string;
@@ -343,7 +349,13 @@ export async function enqueuePostCompactionDelegateDelivery(
   },
   handle?: SessionDeliveryQueueHandle,
 ): Promise<string> {
-  return await enqueueSessionDelivery(buildPostCompactionDelegateDeliveryPayload(params), handle);
+  return await enqueueSessionDelivery(
+    buildPostCompactionDelegateDeliveryPayload({
+      ...params,
+      childRunId: formatContinuationChildRunId(generateSecureUuid(), 1),
+    }),
+    handle,
+  );
 }
 
 /** Enqueue and lease the first attempt to one caller before recovery can see it as eligible. */

@@ -2,7 +2,9 @@ import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { formatDelegateArtifactTaskInstruction } from "../../agents/delegate-artifact-policy.js";
 import {
   assertDelegateArtifactPolicyPrepared,
+  MissingDelegateArtifactPolicyError,
   removeUnacceptedDelegateArtifactPolicy,
+  UnavailableDelegateArtifactPolicyError,
 } from "../../agents/delegate-artifacts.js";
 import { deriveContinuationDelegateChildSessionKey } from "../../agents/subagent-continuation-ids.js";
 import { getSubagentRunByChildSessionKey } from "../../agents/subagents/registry/subagent-registry-read.js";
@@ -432,6 +434,32 @@ export async function deliverQueuedPostCompactionDelegate(
     );
     removeRejectedArtifactPolicy();
     return;
+  }
+  // An accepted artifact policy that is gone or expired can never become
+  // valid again: reject before the disabled deferral so the entry does not
+  // retry to its cap while holding the policy row and staying silent.
+  if (artifactMode === "optional" || artifactMode === "required") {
+    try {
+      assertDelegateArtifactPolicyPrepared(
+        resolveQueuedPostCompactionContinuationFlowId(params.entry),
+      );
+    } catch (error) {
+      const unavailable = error instanceof UnavailableDelegateArtifactPolicyError;
+      if (!unavailable && !(error instanceof MissingDelegateArtifactPolicyError)) {
+        throw error;
+      }
+      const summary = `Post-compaction delegate rejected: accepted artifact policy is ${unavailable ? "inactive or expired" : "missing"}.`;
+      deps.log(
+        `[continuation:post-compaction-policy-${unavailable ? "unavailable" : "missing"}] entryId=${params.entry.id} flowId=${params.entry.sourceFlowId ?? "none"}`,
+      );
+      deps.enqueueSystemEvent(
+        `[continuation] ${summary} Task: ${params.entry.task}`,
+        withContinuationOwner({ sessionKey: params.entry.sessionKey, trusted: true }, agentId),
+      );
+      await failSourceBackedPostCompactionDelivery(deps, params.entry, summary);
+      removeRejectedArtifactPolicy();
+      return;
+    }
   }
   const runtimeConfig = deps.resolveContinuationRuntimeConfig(cfg);
   if (!runtimeConfig.enabled) {

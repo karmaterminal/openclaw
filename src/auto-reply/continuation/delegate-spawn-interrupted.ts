@@ -30,7 +30,7 @@ const log = createSubsystemLogger("continuation/delegate-store");
  */
 export async function terminalizeInterruptedDelegateClaim(
   delegate: Pick<PendingContinuationDelegate, "flowId" | "expectedRevision">,
-  options: { collision?: boolean } = {},
+  options: { collision?: boolean; ownerAgentId?: string } = {},
 ): Promise<boolean> {
   const current = delegate.flowId ? await getDelegateRecord(delegate.flowId) : undefined;
   if (!current || current.revision !== delegate.expectedRevision) {
@@ -53,7 +53,10 @@ export async function terminalizeInterruptedDelegateClaim(
   if (!failed.applied) {
     return false;
   }
-  await deliverOwedDelegateNotice(failed.record);
+  await deliverOwedDelegateNotice(
+    failed.record,
+    options.ownerAgentId ? { ownerAgentId: options.ownerAgentId } : {},
+  );
   return true;
 }
 
@@ -74,6 +77,7 @@ function interruptedNoticeSource(
  */
 export async function deliverOwedDelegateNotice(
   record: DelegateCustodyRecord,
+  options: { ownerAgentId?: string } = {},
 ): Promise<{ entryId: string; entryStatus: string } | undefined> {
   if (record.terminalNoticePending !== "delegate-spawn-interrupted") {
     return undefined;
@@ -104,6 +108,7 @@ export async function deliverOwedDelegateNotice(
       entryId: settled.entryId,
       entryStatus: settled.entryStatus,
       sessionKey: record.ownerSessionKey,
+      ...(options.ownerAgentId ? { ownerAgentId: options.ownerAgentId } : {}),
       text: notice.text,
       reason: "continuation-delegate-spawn-interrupted",
     });

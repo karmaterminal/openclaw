@@ -3,6 +3,7 @@
 import { getRuntimeConfig } from "../../config/config.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { loadSessionEntry, updateSessionEntry } from "../../config/sessions/session-accessor.js";
+import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { parseAgentSessionKey } from "../../sessions/session-key-utils.js";
 import { deliveryContextFromSession } from "../../utils/delivery-context.read.js";
@@ -27,6 +28,7 @@ import {
   listPendingDelegateSessionKeysForRecovery,
   reconcileContinuationDelegateAttachmentCustody,
 } from "./delegate-store.js";
+import { formatDelegateTaskForSystemEvent } from "./delegate-system-event.js";
 import { rejectPostCompactionDelegate } from "./post-compaction-rejection.js";
 import {
   classifyPostCompactionDelegateAge,
@@ -34,6 +36,7 @@ import {
 } from "./post-compaction-staleness.js";
 import type { ChainState } from "./scheduler.js";
 import { loadContinuationChainState, persistContinuationChainState } from "./state.js";
+import { withContinuationOwner } from "./system-event-ownership.js";
 import type { PendingContinuationDelegate } from "./types.js";
 
 const log = createSubsystemLogger("continuation/delegate-dispatch");
@@ -326,13 +329,16 @@ export async function recoverAndReleaseStagedPostCompactionDelegates(options: {
       releasable.push(delegate);
     }
     for (const dropped of releasable.slice(maxDelegatesPerTurn)) {
-      if (
-        await rejectPostCompactionDelegate(
-          dropped,
-          `Post-compaction delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}).`,
-        )
-      ) {
+      const summary = `Post-compaction delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}).`;
+      if (await rejectPostCompactionDelegate(dropped, summary)) {
         failed++;
+        // Same owner notice the compaction seam emits for this cap.
+        if (agentId) {
+          enqueueSystemEvent(
+            `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(dropped.task)}`,
+            withContinuationOwner({ sessionKey, trusted: true }, agentId),
+          );
+        }
       }
     }
     const deliveryContext = deliveryContextFromSession(entry);

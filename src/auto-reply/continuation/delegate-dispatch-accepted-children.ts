@@ -57,7 +57,7 @@ export async function readDelegateAdmissionEvidence(params: {
  * for a managed delegate whose registry row was already archived, a recorded
  * artifact completion bound to this exact producer.
  */
-export async function readClaimedDelegateAdmission(
+async function readClaimedDelegateAdmission(
   delegate: Pick<PendingContinuationDelegate, "flowId" | "recordedChildRunIds" | "returnOptions">,
   ownerSessionKey: string,
 ): Promise<DelegateAdmissionEvidence> {

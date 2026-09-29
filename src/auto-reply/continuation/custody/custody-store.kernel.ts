@@ -85,10 +85,7 @@ export function selectRecords(
   );
 }
 
-export function readOwnerLiveSet(
-  db: DatabaseSync,
-  ownerSessionKey: string,
-): ContinuationOwnerLiveSet {
+function readOwnerLiveSet(db: DatabaseSync, ownerSessionKey: string): ContinuationOwnerLiveSet {
   const records: ContinuationLiveRecordFact[] = selectRecords(db, {
     ownerSessionKey,
     statuses: LIVE_STATUSES,

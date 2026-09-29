@@ -1,6 +1,5 @@
 // Same-session `continue_work` election and its rollback over the continuation
 // custody store (RFC docs/design/continue-work-signal-v2.md §5.4.3).
-import crypto from "node:crypto";
 import { abortContinuationDispatchClaim } from "./continuation-dispatch-claims.js";
 import { assertContinuationCustodyOwnerImported } from "./custody-import-gate.js";
 import {
@@ -9,6 +8,7 @@ import {
   requestContinuationRecordCancel,
   updateContinuationRecords,
   type ContinuationElectionPlan,
+  newContinuationRecordId,
 } from "./custody/custody-store.js";
 import type {
   ContinuationRecord,
@@ -108,7 +108,7 @@ export async function enqueuePendingWorkReplacing(params: {
   const sessionKey = params.work.sessionKey;
   assertContinuationCustodyOwnerImported(sessionKey);
   const state = encodeWorkState(params.work);
-  const recordId = crypto.randomUUID();
+  const recordId = newContinuationRecordId();
   let priorRecords: readonly ContinuationRecord[] = [];
   const result = await electContinuationWork<ElectionRejection>({
     ownerSessionKey: sessionKey,

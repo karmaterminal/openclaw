@@ -14,7 +14,7 @@ import {
 const log = createSubsystemLogger("continuation/custody-boot");
 
 /** Terminal records are retained this long unless they still owe a notice (§5.4.6). */
-export const CONTINUATION_CUSTODY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const CONTINUATION_CUSTODY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 type BootLogger = { info: (message: string) => void; warn: (message: string) => void };
 

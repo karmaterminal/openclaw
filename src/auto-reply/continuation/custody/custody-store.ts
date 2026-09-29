@@ -4,6 +4,7 @@
 // commit this module installs the reported live sets into the hot-path
 // projection and releases the payload files whose references the commit
 // scrubbed. Nothing else reads or writes `continuation_records`.
+import { uuidv7 } from "../../../../packages/agent-core/src/harness/session/uuid.js";
 import { createSqliteWorkerWriteAdmission } from "../../../infra/sqlite-worker-store.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
@@ -39,6 +40,15 @@ import type {
   NewContinuationRecord,
 } from "./custody-store.types.js";
 import type { ContinuationCustodyWorkerOperations } from "./custody-store.worker-contract.js";
+
+/**
+ * A new record id. Listings order ties on `created_at` by `record_id`, so ids
+ * sort in creation order (monotonic UUIDv7) and same-millisecond records keep
+ * the order their writers created them in.
+ */
+export function newContinuationRecordId(): string {
+  return uuidv7();
+}
 
 export type ContinuationCustodyStoreOptions = { env?: NodeJS.ProcessEnv };
 
@@ -213,25 +223,6 @@ function transition(
   );
 }
 
-/** Finish as `succeeded`; a handoff marks custody moved to another owner. */
-export function finishContinuationRecord(
-  target: LifecycleTarget & Pick<ContinuationRecordPatch, "phase" | "stateJson" | "handoff">,
-  options?: ContinuationCustodyStoreOptions,
-): Promise<ContinuationUpdateResult> {
-  const { phase, stateJson, handoff } = target;
-  return transition(
-    target,
-    {
-      status: "succeeded",
-      failureReason: null,
-      ...(phase !== undefined ? { phase } : {}),
-      ...(stateJson !== undefined ? { stateJson } : {}),
-      ...(handoff !== undefined ? { handoff } : {}),
-    },
-    options,
-  );
-}
-
 /** Fail with a reason, optionally leaving a terminal-notice obligation (RFC §5.4.2). */
 export function failContinuationRecord(
   target: LifecycleTarget & {
@@ -259,22 +250,6 @@ export function requestContinuationRecordCancel(
   options?: ContinuationCustodyStoreOptions,
 ): Promise<ContinuationUpdateResult> {
   return transition(target, { cancelRequestedAt: target.now }, options);
-}
-
-/** End the record as `cancelled` (reset, or a fenced record that will never run). */
-export function cancelContinuationRecord(
-  target: LifecycleTarget & Pick<ContinuationRecordPatch, "phase">,
-  options?: ContinuationCustodyStoreOptions,
-): Promise<ContinuationUpdateResult> {
-  return transition(
-    target,
-    {
-      status: "cancelled",
-      cancelRequestedAt: target.now,
-      ...(target.phase !== undefined ? { phase: target.phase } : {}),
-    },
-    options,
-  );
 }
 
 /** Delete an unaccepted record at its exact revision. */

@@ -121,12 +121,6 @@ export function isContinuationWorkFlow(record: ContinuationRecord): boolean {
   return record.kind === "work";
 }
 
-export function isRecoverableWorkFlow(record: ContinuationRecord): boolean {
-  return (
-    isContinuationWorkFlow(record) && (record.status === "queued" || record.status === "running")
-  );
-}
-
 export function decodeWorkState(record: ContinuationRecord): PendingWorkState | undefined {
   let parsed: unknown;
   try {

@@ -26,6 +26,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";
 import {
   defaultContinuationNoticeSurfaceDeps,
+  scheduleCommittedContinuationNotice,
   surfaceDurableContinuationNotice,
   type ContinuationNoticeSurfaceDeps,
 } from "./continuation-notice-surface.js";
@@ -59,6 +60,21 @@ const defaultDeps: ContinuationWorkTerminalNoticeDeps = {
   settleContinuationNotice,
 };
 
+function prepareTerminalNoticeEntry(flowId: string, sessionKey: string, now = Date.now()) {
+  return prepareSessionDeliveryEnqueue(
+    {
+      kind: "systemEvent",
+      sessionKey,
+      text: CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE,
+      idempotencyKey: continuationWorkTerminalNoticeIdempotencyKey(flowId),
+      // The row must outlive the in-memory event and survive until the prompt
+      // adopts it; see the delivery path's plain-event deferral.
+      awaitPromptAdoption: true,
+    },
+    now,
+  );
+}
+
 /** Hand one pending terminal notice to the durable queue and release the obligation. */
 export async function deliverPendingTerminalNotice(
   work: PendingContinuationWork,
@@ -74,18 +90,7 @@ export async function deliverPendingTerminalNotice(
     return false;
   }
   const now = Date.now();
-  const { bound } = prepareSessionDeliveryEnqueue(
-    {
-      kind: "systemEvent",
-      sessionKey: pending.sessionKey,
-      text: CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE,
-      idempotencyKey: continuationWorkTerminalNoticeIdempotencyKey(pending.flowId),
-      // The row must outlive the in-memory event and survive until the prompt
-      // adopts it; see the delivery path's plain-event deferral.
-      awaitPromptAdoption: true,
-    },
-    now,
-  );
+  const { bound } = prepareTerminalNoticeEntry(pending.flowId, pending.sessionKey, now);
   const settled = await deps.settleContinuationNotice({
     recordId: pending.flowId,
     ownerSessionKey: pending.sessionKey,
@@ -155,6 +160,14 @@ function armTerminalNoticeRetry(
         const owed = await readPendingTerminalNoticeWork(flowId);
         if (owed) {
           await deliverPendingTerminalNotice(owed, deps);
+        } else {
+          // The failed attempt's settle may have committed behind its error:
+          // nothing is owed, but its row still needs a delivery timer.
+          await scheduleCommittedContinuationNotice(
+            prepareTerminalNoticeEntry(flowId, work.sessionKey).id,
+            deps,
+            deps,
+          );
         }
       } catch (err) {
         log.error(

@@ -25,6 +25,7 @@ import {
   listContinuationRecords,
   resolveContinuationCustodyDatabasePath,
   updateContinuationRecords,
+  newContinuationRecordId,
 } from "./custody/custody-store.js";
 import type {
   ContinuationRecord,
@@ -441,7 +442,7 @@ export async function createDelegateRecord(params: {
         }),
       };
   const state = encodeDelegateState(delegate, params.attachmentConfig);
-  const recordId = crypto.randomUUID();
+  const recordId = newContinuationRecordId();
   const attachmentId = state.attachments ? crypto.randomUUID() : undefined;
   const createdAt = params.now ?? Date.now();
   const kind = params.controller === "post-compaction" ? "post_compaction" : "delegate";

@@ -202,7 +202,7 @@ export type ContinuationAttemptFailureInput = {
 };
 
 /** A session-delivery row bound on the main thread, inserted inside a custody transaction. */
-export type ContinuationBoundQueueEntry = ReturnType<typeof bindDeliveryQueueEntry>;
+type ContinuationBoundQueueEntry = ReturnType<typeof bindDeliveryQueueEntry>;
 
 export type ContinuationQueueEntryStatus = "pending" | "completed" | "failed" | "unknown";
 

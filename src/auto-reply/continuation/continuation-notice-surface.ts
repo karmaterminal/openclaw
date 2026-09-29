@@ -9,9 +9,13 @@ import {
   requestHeartbeatNow,
 } from "../../infra/heartbeat-wake.js";
 import type { scheduleSessionDelivery } from "../../infra/session-delivery-queue-runtime.js";
+import { withSystemEventOwner } from "../../infra/system-event-ownership.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";
+
+const log = createSubsystemLogger("continuation/notice-surface");
 
 export type ContinuationNoticeSurfaceDeps = {
   scheduleSessionDelivery: typeof scheduleSessionDelivery;
@@ -41,6 +45,8 @@ export async function surfaceDurableContinuationNotice(
     entryId: string;
     entryStatus: string;
     sessionKey: string;
+    /** Owning agent, when known; binds an unqualified owner key for the fast path. */
+    ownerAgentId?: string;
     text: string;
     reason: string;
     queueContext?: OpenClawStateWorkerContext;
@@ -51,7 +57,7 @@ export async function surfaceDurableContinuationNotice(
   if (params.entryStatus === "completed") {
     return false;
   }
-  deps.enqueueSystemEvent(params.text, {
+  const fastPath = {
     sessionKey: params.sessionKey,
     trusted: true,
     sessionDeliveryAckId: params.entryId,
@@ -59,18 +65,22 @@ export async function surfaceDurableContinuationNotice(
     // durably adopted, so an admission failure or crash replays the notice.
     sessionDeliveryAwaitsTurnAdoption: true,
     ...(params.stateDir ? { sessionDeliveryAckStateDir: params.stateDir } : {}),
-  });
+  };
+  try {
+    deps.enqueueSystemEvent(
+      params.text,
+      params.ownerAgentId ? withSystemEventOwner(fastPath, params.ownerAgentId) : fastPath,
+    );
+  } catch (err) {
+    // The row is already committed and owns delivery; losing only the fast
+    // path must not fail the turn or dispatch that settled it.
+    log.warn(
+      `[continuation:notice-fast-path-failed] deliveryId=${params.entryId} session=${params.sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   // Startup scans the delivery queue before continuation recovery runs, so a
   // row created now would otherwise wait for unrelated traffic.
-  await deps.scheduleSessionDelivery(
-    params.entryId,
-    params.queueContext ??
-      captureOpenClawStateWorkerContext({
-        env: params.stateDir
-          ? { ...process.env, OPENCLAW_STATE_DIR: params.stateDir }
-          : process.env,
-      }),
-  );
+  await scheduleCommittedContinuationNotice(params.entryId, params, deps);
   deps.requestHeartbeatNow(
     markTrustedContinuationHeartbeatWake({
       sessionKey: params.sessionKey,
@@ -80,4 +90,28 @@ export async function surfaceDurableContinuationNotice(
     }),
   );
   return true;
+}
+
+/**
+ * Arm the delivery timer for a notice row that is already committed. A row
+ * that is missing or no longer pending makes this a no-op, so a caller that
+ * cannot tell whether its settle committed may call it safely.
+ */
+export async function scheduleCommittedContinuationNotice(
+  entryId: string,
+  params: { queueContext?: OpenClawStateWorkerContext; stateDir?: string },
+  deps: Pick<
+    ContinuationNoticeSurfaceDeps,
+    "scheduleSessionDelivery"
+  > = defaultContinuationNoticeSurfaceDeps,
+): Promise<void> {
+  await deps.scheduleSessionDelivery(
+    entryId,
+    params.queueContext ??
+      captureOpenClawStateWorkerContext({
+        env: params.stateDir
+          ? { ...process.env, OPENCLAW_STATE_DIR: params.stateDir }
+          : process.env,
+      }),
+  );
 }

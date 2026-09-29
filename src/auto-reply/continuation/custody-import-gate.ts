@@ -9,10 +9,10 @@
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { resolveContinuationCustodyDatabasePath } from "./custody/custody-store.js";
 
-export const CONTINUATION_CUSTODY_IMPORT_PENDING_MESSAGE =
+const CONTINUATION_CUSTODY_IMPORT_PENDING_MESSAGE =
   "continuation custody for this session is waiting on legacy import; run `openclaw doctor --fix`";
 
-export class ContinuationCustodyImportPendingError extends Error {
+class ContinuationCustodyImportPendingError extends Error {
   constructor() {
     super(CONTINUATION_CUSTODY_IMPORT_PENDING_MESSAGE);
     this.name = "ContinuationCustodyImportPendingError";

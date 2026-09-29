@@ -54,7 +54,7 @@ function realpathOrNull(targetPath: string): string | null {
   }
 }
 
-export function removeSubagentAttachmentTreeSync(rootDir: string, attachmentId: string): void {
+function removeSubagentAttachmentTreeSync(rootDir: string, attachmentId: string): void {
   if (!isSubagentAttachmentId(attachmentId)) {
     throw new Error("invalid subagent attachment identity");
   }
