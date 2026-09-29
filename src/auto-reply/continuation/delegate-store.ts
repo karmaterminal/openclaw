@@ -341,19 +341,6 @@ export async function listUnresolvedDelegateClaims(
   return unresolved;
 }
 
-/** Sessions that own a claimed delegate left unresolved at or before the cutoff. */
-export async function listUnresolvedDelegateClaimSessionKeys(options: {
-  updatedAtOrBefore: number;
-}): Promise<string[]> {
-  const keys = (await listDelegateRecords({ kinds: ["delegate"], statuses: ["running"] }))
-    .filter(
-      (record) =>
-        record.cancelRequestedAt === undefined && record.updatedAt <= options.updatedAtOrBefore,
-    )
-    .map((record) => record.ownerSessionKey);
-  return [...new Set(keys)].toSorted();
-}
-
 async function currentRecordFor(delegate: DelegateRef): Promise<DelegateCustodyRecord | undefined> {
   return delegate.flowId ? await getDelegateRecord(delegate.flowId) : undefined;
 }

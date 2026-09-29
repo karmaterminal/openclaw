@@ -78,9 +78,7 @@ export type DelegateStateChanges = {
 const DELEGATE_KINDS = ["delegate", "post_compaction"] as const;
 const LIVE_STATUSES = ["queued", "running"] as const satisfies readonly ContinuationRecordStatus[];
 
-export function isContinuationDelegateRecord(
-  record: ContinuationRecord,
-): record is DelegateCustodyRecord {
+function isContinuationDelegateRecord(record: ContinuationRecord): record is DelegateCustodyRecord {
   return record.kind === "delegate" || record.kind === "post_compaction";
 }
 
@@ -97,10 +95,6 @@ export function isTerminalDelegateFlow(record: ContinuationRecord): boolean {
     isContinuationDelegateRecord(record) &&
     (record.status === "succeeded" || record.status === "failed" || record.status === "cancelled")
   );
-}
-
-export function isSucceededDelegateFlow(record: ContinuationRecord): boolean {
-  return isContinuationDelegateRecord(record) && record.status === "succeeded";
 }
 
 /** True while a post-compaction record sits handed off to the session queue (§4.4). */
