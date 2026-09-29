@@ -160,6 +160,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/subagents/announce/subagent-announce.requester-settle-wake.test.ts",
   "src/agents/subagent-announce.live-tree-chain-proof.test.ts",
   "src/agents/subagent-announce.continuation-fallback-task-row.test.ts",
+  // L4-G5: agents, gateway and tool suites on real continuation custody.
   "src/agents/subagents/registry/subagent-control.accounting.test.ts",
   "src/agents/subagents/registry/subagent-registry.persistence.test.ts",
   "src/agents/subagents/registry/subagent-registry-lifecycle.test.ts",
@@ -174,6 +175,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/embedded-agent-runner/run.shared-integration.test.ts",
   "src/auto-reply/dispatch.block-streaming-recovery.test.ts",
   "src/auto-reply/continuation/custody/custody-store.test.ts",
+  // L4-G1: continuation delegate store suites on real continuation custody.
   "src/auto-reply/reply/agent-runner-direct-runtime-config.test.ts",
   "src/auto-reply/reply/agent-runner-execution-cli-commentary.test.ts",
   "src/auto-reply/reply/agent-runner-source-identity.test.ts",
@@ -196,7 +198,9 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/session.test.ts",
   "src/auto-reply/continuation/work-terminal-notice.durability.test.ts",
   "src/auto-reply/continuation/custody-conjecture.scenario.test.ts",
+  "src/auto-reply/continuation/post-compaction-chain-charge.test.ts",
   "src/auto-reply/continuation/return-covenant-fixture/run.test.ts",
+  // L4-G2: continuation delegate dispatch suites on real continuation custody.
   "src/agents/worktrees/empty-source.test.ts",
   "src/agents/worktrees/registry-read.test.ts",
   "src/agents/worktrees/registry.test.ts",
@@ -334,6 +338,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/agent-runner.misc.runreplyagent.test.ts",
   "src/auto-reply/reply/agent-runner.continuation-work-span.test.ts",
   "src/auto-reply/reply/agent-runner.continuation-work-span.reservation.test.ts",
+  // L4-G3: continuation work suites on real continuation custody.
   "src/agents/sessions/session-manager-target-capture.test.ts",
   "src/agents/sessions/sdk.metadata-cwd.test.ts",
   "src/agents/sessions/sdk.metadata-admission.test.ts",
@@ -716,6 +721,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/subagents/completion/subagent-completion-admission.store.test.ts",
   "src/agents/subagent-announce.continuation.test.ts",
   "src/agents/subagent-announce.targeted-return.integration.test.ts",
+  // L4-G4: reply-side continuation suites on real continuation custody.
   "src/commands/doctor-db-bloat.worker.test.ts",
   "src/commands/doctor-device-pairing.worker.test.ts",
   "src/commands/doctor-device-pairing.test.ts",
