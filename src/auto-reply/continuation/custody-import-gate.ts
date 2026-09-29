@@ -8,7 +8,6 @@
 // store cannot see. The fact is re-read whenever the projection is hydrated.
 import {
   clearContinuationCustodyAwaitingImport,
-  installContinuationCustodyAwaitingImport,
   isOwnerAwaitingContinuationCustodyImport,
 } from "./custody/custody-import-gate-state.js";
 import { resolveContinuationCustodyDatabasePath } from "./custody/custody-store.js";
@@ -21,14 +20,6 @@ class ContinuationCustodyImportPendingError extends Error {
     super(CONTINUATION_CUSTODY_IMPORT_PENDING_MESSAGE);
     this.name = "ContinuationCustodyImportPendingError";
   }
-}
-
-/** Install the boot fact: owners whose legacy rows the startup import left behind. */
-export function installContinuationCustodyImportGate(
-  owners: readonly string[],
-  databasePath = resolveContinuationCustodyDatabasePath(),
-): void {
-  installContinuationCustodyAwaitingImport(databasePath, owners);
 }
 
 export function isContinuationCustodyOwnerAwaitingImport(ownerSessionKey: string): boolean {

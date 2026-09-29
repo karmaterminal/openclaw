@@ -1,0 +1,49 @@
+// Custody readiness belongs to one database lifetime, not to a path (RFC
+// §5.4.5): a database closed and replaced at the same path may hold legacy
+// rows that were never imported. Each path keeps an epoch and phase A's
+// in-flight promise. Ending a lifetime advances the epoch and drops the
+// projection, the import gate and any in-flight readiness together, so the next
+// custody command runs phase A against the current database, and a phase A
+// that began in the ended lifetime cannot publish.
+import { resolveGlobalSingleton } from "../../../shared/global-singleton.js";
+import { clearContinuationCustodyAwaitingImport } from "./custody-import-gate-state.js";
+import { resetContinuationCustodyProjection } from "./custody-projection.js";
+
+type DatabaseLifetime = {
+  epoch: number;
+  /** Unregisters the close watcher for this lifetime, once one is installed. */
+  unwatch?: () => void;
+  /** Phase A in flight for this lifetime; only the pending read is shared. */
+  readiness?: Promise<void>;
+};
+
+const lifetimes = resolveGlobalSingleton(
+  Symbol.for("openclaw.continuationCustodyLifetimes"),
+  () => new Map<string, DatabaseLifetime>(),
+);
+
+/** The current lifetime record for a custody database path. */
+export function continuationCustodyLifetime(databasePath: string): DatabaseLifetime {
+  let lifetime = lifetimes.get(databasePath);
+  if (!lifetime) {
+    lifetime = { epoch: 0 };
+    lifetimes.set(databasePath, lifetime);
+  }
+  return lifetime;
+}
+
+/**
+ * End the custody lifetime of a database: the state database closed (or, in
+ * the epoch-backstop test, ended without a close).
+ */
+export function invalidateContinuationCustodyLifetime(databasePath: string): void {
+  const lifetime = lifetimes.get(databasePath);
+  if (lifetime) {
+    lifetime.epoch += 1;
+    lifetime.unwatch?.();
+    lifetime.unwatch = undefined;
+    lifetime.readiness = undefined;
+  }
+  resetContinuationCustodyProjection(databasePath);
+  clearContinuationCustodyAwaitingImport(databasePath);
+}

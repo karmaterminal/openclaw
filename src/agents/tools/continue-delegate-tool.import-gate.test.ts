@@ -3,8 +3,8 @@
 // writes until Doctor imports it. (Split from continue-delegate-tool.test.ts,
 // which sits at the max-lines budget.)
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { installContinuationCustodyImportGate } from "../../auto-reply/continuation/custody-import-gate.js";
 import {
+  installContinuationCustodyImportGateForTest,
   listCustodyRecordsForTest,
   useContinuationCustodyTestState,
 } from "../../auto-reply/continuation/custody/custody.test-support.js";
@@ -30,7 +30,7 @@ describe("continue_delegate tool :: legacy import gate", () => {
   });
 
   it("refuses to enqueue for an owner awaiting legacy import and names the doctor fix", async () => {
-    installContinuationCustodyImportGate(["test-session"]);
+    installContinuationCustodyImportGateForTest(["test-session"]);
     const gatedTool = createContinueDelegateTool({ agentSessionKey: "test-session" });
 
     await expect(gatedTool.execute("call-0", { task: "gated delegate" })).rejects.toThrow(

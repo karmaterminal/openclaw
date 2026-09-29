@@ -8,7 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import { closeOpenClawStateDatabaseAsync } from "../../../state/openclaw-state-db.js";
 import { runContinuationCustodyBoot } from "../custody-boot.js";
-import { resetContinuationCustodyImportGateForTests } from "../custody-import-gate.js";
+import {
+  isContinuationCustodyOwnerAwaitingImport,
+  resetContinuationCustodyImportGateForTests,
+} from "../custody-import-gate.js";
 import {
   enqueuePendingDelegate,
   pendingDelegateCount,
@@ -18,6 +21,7 @@ import { cancelSessionContinuations } from "../session-reset.js";
 import { hasLiveContinuationCustody } from "../work-store.js";
 import {
   invalidateContinuationCustodyOwners,
+  isContinuationCustodyProjectionHydrated,
   resetContinuationCustodyProjection,
 } from "./custody-projection.js";
 import {
@@ -25,6 +29,7 @@ import {
   resolveContinuationCustodyDatabasePath,
   whenContinuationCustodyReady,
 } from "./custody-store.js";
+import { endContinuationCustodyLifetimeForTest } from "./custody.test-support.js";
 import {
   OWNER_A,
   OWNER_B,
@@ -287,6 +292,32 @@ describe("continuation custody readiness (phase A)", () => {
     // The next command re-runs phase A against the current database.
     await whenContinuationCustodyReady();
     expect(pendingDelegateCount(OWNER_A)).toBe(1);
+  });
+
+  it("epoch backstop: phase A from an ended lifetime installs no readiness, projection or gate", async () => {
+    // OWNER_A's legacy row imports; OWNER_B's cannot, so publication would gate B.
+    seedLegacyQueuedDelegate("legacy-epoch", OWNER_A);
+    seedUncopyableLegacyDelegate("legacy-epoch-stuck", OWNER_B);
+    let release: () => void = () => {};
+    importControl.pauseNext = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const stale = whenContinuationCustodyReady();
+    await vi.waitFor(() => expect(importControl.calls).toBe(1));
+    // End the lifetime without a close, so the state layer has nothing to
+    // refuse and phase A reaches publication holding old-lifetime facts.
+    endContinuationCustodyLifetimeForTest();
+    release();
+
+    await expect(stale).rejects.toThrow("closed during readiness");
+    const databasePath = resolveContinuationCustodyDatabasePath();
+    expect(isContinuationCustodyProjectionHydrated(databasePath)).toBe(false);
+    expect(isContinuationCustodyOwnerAwaitingImport(OWNER_B)).toBe(false);
+    // Readiness was not recorded either: the next command runs phase A again.
+    await whenContinuationCustodyReady();
+    expect(importControl.calls).toBe(2);
+    expect(isContinuationCustodyOwnerAwaitingImport(OWNER_B)).toBe(true);
   });
 
   it("does not re-run phase A in the late boot (phase B), so it cannot overwrite newer facts", async () => {
