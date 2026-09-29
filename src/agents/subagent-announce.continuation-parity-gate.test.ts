@@ -83,7 +83,11 @@ vi.mock("../auto-reply/continuation/state.js", async (importOriginal) => ({
   unregisterContinuationTimerHandle: vi.fn(),
 }));
 
-vi.mock("../auto-reply/continuation/delegate-store.js", () => ({
+// Stateful queue operations are observed through the mock; every other export
+// (origin-run lookup, requeue, spawn-result classification) is the real one,
+// backed by the suite's real custody state.
+vi.mock("../auto-reply/continuation/delegate-store.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../auto-reply/continuation/delegate-store.js")>()),
   annotateQueuedDelegatesChainTokensFold: vi.fn(() => 0),
   clearQueuedDelegatesChainTokensFold: vi.fn(() => 0),
   consumePendingDelegates: vi.fn(() => {
@@ -107,6 +111,7 @@ vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", () => ({
   stagePostCompactionDelegate: vi.fn(() => ({ status: "queued" })),
 }));
 
+import { useContinuationCustodyTestState } from "../auto-reply/continuation/custody/custody.test-support.js";
 import { stagePostCompactionDelegate } from "../auto-reply/continuation/delegate-store-post-compaction.js";
 import { enqueuePendingDelegate } from "../auto-reply/continuation/delegate-store.js";
 import {
@@ -189,6 +194,8 @@ function buildParityParams(bracket: string): AnnounceFlowParams {
 // --------------------------------------------------------------------------
 // exactly-once gate: delegate sub-mode parity matrix
 // --------------------------------------------------------------------------
+
+useContinuationCustodyTestState();
 
 describe("announce-path bracket delegate exactly-once dispatch", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;

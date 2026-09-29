@@ -160,6 +160,12 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/subagents/announce/subagent-announce.requester-settle-wake.test.ts",
   "src/agents/subagent-announce.live-tree-chain-proof.test.ts",
   "src/agents/subagent-announce.continuation-fallback-task-row.test.ts",
+  "src/agents/subagent-announce.silent-wake.test.ts",
+  "src/agents/subagent-announce.continuation-drain.chain-cost.test.ts",
+  "src/agents/subagent-announce.continuation-drain.test.ts",
+  "src/agents/subagent-announce.continuation-drain.tool-hop-order.test.ts",
+  "src/agents/subagent-announce.continuation-parity-gate.test.ts",
+  "src/agents/subagent-announce.continuation.work-scope.test.ts",
   // L4-G5: agents, gateway and tool suites on real continuation custody.
   "src/agents/tools/continue-delegate-attachment-validation.test.ts",
   "src/agents/tools/continue-delegate-tool.import-gate.test.ts",
