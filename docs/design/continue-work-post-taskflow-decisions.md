@@ -100,6 +100,11 @@ Q3 and Q7 are folded as ruled. Two edge cases fall outside what the rulings can 
 1. **Pre-cutover post-compaction queue entries.** C's queue drain recorded no spawn attempt. An entry whose C-era spawn crashed mid-attempt therefore looks never-attempted, and it is delivered once more after the cutover. From the cutover on, the drain marks every attempt, so Q3 holds. The only way to close the gap fully is to terminalize every pre-cutover entry, which would also drop entries that were never attempted.
 2. **Terminal obligation rows on rollback.** Q7 fences non-terminal rows. A `failed` work row that still owes a retry-exhausted notice is terminal and unfenced. If the new build delivered that notice before a rollback, a C-era build can deliver it once more. The cost is a duplicate notice, never duplicate work.
 
+Two derived extensions also need prince confirmation, because they go beyond the literal rulings:
+
+- **Spawn-phase exposure (widens Q2).** The spawn-owner change also reports the phase in which a spawn failed. Only a failure before dispatch proves the child never ran, and only such a failure may be retried in process (RFC §5.4.4, "In-process spawn failures").
+- **Q3 applied beyond restarts.** In-process spawn errors after dispatch, and post-compaction queue attempts, follow the same at-most-once rule as a claim left unresolved by a restart.
+
 ## Unchanged
 
 - `request_compaction()` stays outside durable custody.
