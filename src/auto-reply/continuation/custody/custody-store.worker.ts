@@ -333,6 +333,32 @@ export function createContinuationRecordInDatabase(
 }
 
 /**
+ * Insert-if-absent of a complete record carried over from a legacy source
+ * (RFC §5.4.5). Unlike a create, the caller supplies status, revision and
+ * clocks exactly, so the Doctor import can keep `created_at` (the delegate
+ * due-time base) and the source revision. It runs inside the importer's owner
+ * transaction; an existing record ID is never overwritten.
+ */
+export function importContinuationRecordInDatabase(
+  db: DatabaseSync,
+  record: ContinuationRecord,
+): "inserted" | "exists" {
+  const invalid =
+    validateNewRecord({ ...record, status: "queued" }) ??
+    (isTerminalContinuationStatus(record.status) === (record.endedAt === undefined)
+      ? "terminal records carry ended_at and live records do not"
+      : undefined);
+  if (invalid) {
+    throw new Error(`invalid imported continuation record ${record.recordId}: ${invalid}`);
+  }
+  if (readRecord(db, record.recordId)) {
+    return "exists";
+  }
+  insertRecord(db, record);
+  return "inserted";
+}
+
+/**
  * Revision CAS over one or more records, all or nothing. With several updates
  * this is the rollback write: no owner condition, only exact revisions.
  */

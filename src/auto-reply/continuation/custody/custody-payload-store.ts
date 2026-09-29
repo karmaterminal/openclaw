@@ -54,6 +54,18 @@ const PayloadSchema = z
 
 export type ContinuationCustodyPayload = z.infer<typeof PayloadSchema>;
 
+/** The bytes themselves are unacceptable (shape or size); retrying cannot store them. */
+export class ContinuationCustodyPayloadRejectedError extends Error {
+  constructor(reason: "invalid" | "too-large") {
+    super(
+      reason === "invalid"
+        ? "invalid continuation custody payload"
+        : "continuation custody payload exceeds its size cap",
+    );
+    this.name = "ContinuationCustodyPayloadRejectedError";
+  }
+}
+
 type PayloadBinding = { recordId: string; ownerKey: string };
 
 function payloadRoot(env: NodeJS.ProcessEnv): string {
@@ -79,11 +91,11 @@ export async function storeContinuationCustodyPayload(
   const { attachmentId, ...binding } = payload;
   const parsed = PayloadSchema.safeParse({ version: PAYLOAD_VERSION, ...binding });
   if (!isSubagentAttachmentId(attachmentId) || !parsed.success) {
-    throw new Error("invalid continuation custody payload");
+    throw new ContinuationCustodyPayloadRejectedError("invalid");
   }
   const text = `${JSON.stringify(parsed.data, null, 2)}\n`;
   if (Buffer.byteLength(text) > PAYLOAD_MAX_BYTES) {
-    throw new Error("continuation custody payload exceeds its size cap");
+    throw new ContinuationCustodyPayloadRejectedError("too-large");
   }
   const rootDir = payloadRoot(env);
   const ensured = await ensureAbsoluteDirectory(rootDir, { mode: 0o700 });

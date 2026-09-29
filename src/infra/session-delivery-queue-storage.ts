@@ -292,23 +292,36 @@ type SessionDeliveryEnqueueResult = {
   status: "pending" | "completed" | "unknown";
 };
 
-export async function enqueueSessionDeliveryWithStatus(
+/**
+ * Canonical insert-if-absent row for an enqueue. Owners that must commit the
+ * enqueue together with their own rows bind it here, before their synchronous
+ * write transaction, and insert it with `upsertBoundDeliveryQueueEntryInDatabase`.
+ */
+export function prepareSessionDeliveryEnqueue(
   params: QueuedSessionDeliveryPayload,
-  handle?: SessionDeliveryQueueHandle,
-): Promise<SessionDeliveryEnqueueResult> {
+  now = Date.now(),
+): { id: string; bound: ReturnType<typeof bindDeliveryQueueEntry> } {
   const payload = normalizeQueuedSessionDeliveryTraceparent(params);
   const id = buildEntryId(payload.idempotencyKey);
   const entry = normalizeSessionDeliveryForStorage({
     ...payload,
     ...(payload.completionRetention === "permanent" ? { retainOnFailure: true as const } : {}),
     id,
-    enqueuedAt: Date.now(),
+    enqueuedAt: now,
     retryCount: 0,
   });
+  return { id, bound: prepareEntry(entry, "insert") };
+}
+
+export async function enqueueSessionDeliveryWithStatus(
+  params: QueuedSessionDeliveryPayload,
+  handle?: SessionDeliveryQueueHandle,
+): Promise<SessionDeliveryEnqueueResult> {
+  const { id, bound } = prepareSessionDeliveryEnqueue(params);
   const context = resolveQueueContext(handle);
   const { status: current } = await executeSessionDelivery(context, {
     type: "sessionDelivery.enqueue",
-    input: prepareEntry(entry, "insert"),
+    input: bound,
   });
   const status = current === "completed" || current === "pending" ? current : "unknown";
   return { id, status };
