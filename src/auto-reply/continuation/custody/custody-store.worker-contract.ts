@@ -5,6 +5,10 @@ import type {
   ContinuationDeleteResult,
   ContinuationElection,
   ContinuationElectionResult,
+  ContinuationNoticeSettlementInput,
+  ContinuationNoticeSettlementResult,
+  ContinuationPostCompactionReleaseInput,
+  ContinuationPostCompactionReleaseResult,
   ContinuationPruneResult,
   ContinuationRecord,
   ContinuationRecordQuery,
@@ -42,6 +46,14 @@ export type ContinuationCustodyWorkerOperations = {
   "continuationCustody.prune": {
     input: { endedBefore: number };
     output: ContinuationPruneResult;
+  };
+  "continuationCustody.settleNotice": {
+    input: ContinuationNoticeSettlementInput;
+    output: ContinuationNoticeSettlementResult;
+  };
+  "continuationCustody.releasePostCompaction": {
+    input: ContinuationPostCompactionReleaseInput;
+    output: ContinuationPostCompactionReleaseResult;
   };
   "continuationCustody.list": {
     input: ContinuationRecordQuery;

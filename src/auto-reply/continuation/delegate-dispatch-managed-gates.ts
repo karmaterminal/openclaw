@@ -17,15 +17,15 @@ type UnavailablePolicyDelegate = {
   error: Error;
 };
 
-export function partitionManagedDelegatesForRuntime(params: {
+export async function partitionManagedDelegatesForRuntime(params: {
   delegates: PendingContinuationDelegate[];
   sessionKey: string;
   runtime: ManagedRuntimeGate;
-  defer: (delegate: PendingContinuationDelegate, currentStep?: string) => boolean;
-}): {
+  defer: (delegate: PendingContinuationDelegate, phase?: string) => Promise<boolean>;
+}): Promise<{
   dispatchableDelegates: PendingContinuationDelegate[];
   unavailablePolicyDelegates: UnavailablePolicyDelegate[];
-} {
+}> {
   const dispatchableDelegates: PendingContinuationDelegate[] = [];
   const unavailablePolicyDelegates: UnavailablePolicyDelegate[] = [];
   for (const delegate of params.delegates) {
@@ -54,7 +54,7 @@ export function partitionManagedDelegatesForRuntime(params: {
       }
     }
     if (managed && !params.runtime.enabled) {
-      params.defer(delegate);
+      await params.defer(delegate);
       continue;
     }
     if (
@@ -62,7 +62,10 @@ export function partitionManagedDelegatesForRuntime(params: {
       params.runtime.crossSessionTargeting === "disabled" &&
       hasCrossSessionDelegateTargeting(delegate, params.sessionKey)
     ) {
-      params.defer(delegate, "Deferred until cross-session continuation targeting is re-enabled");
+      await params.defer(
+        delegate,
+        "Deferred until cross-session continuation targeting is re-enabled",
+      );
       continue;
     }
     dispatchableDelegates.push(delegate);

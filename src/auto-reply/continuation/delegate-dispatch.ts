@@ -22,7 +22,10 @@ import { generateChainId } from "../../infra/secure-random.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { resolveContinuationRuntimeConfig } from "./config.js";
-import { partitionKnownAcceptedDelegateChildren } from "./delegate-dispatch-accepted-children.js";
+import {
+  readClaimedDelegateAdmission,
+  type DelegateAdmissionEvidence,
+} from "./delegate-dispatch-accepted-children.js";
 import {
   DelegateTerminalChainStatePersistError,
   formatDelegateDispatchError as formatErrorMessage,
@@ -47,10 +50,13 @@ import {
   annotateQueuedDelegatesInheritedPolicy,
   clearRecoverableDelegatesChainTokensFold,
   consumePendingDelegates,
+  listUnresolvedDelegateClaims,
   markPendingDelegateFailed,
   peekEarliestQueuedDelegateDueAt,
   revalidatePendingDelegateForSpawn,
   requeuePendingDelegate,
+  spawnResultNeverDispatched,
+  terminalizeInterruptedDelegateClaim,
 } from "./delegate-store.js";
 import { formatDelegateTaskForSystemEvent } from "./delegate-system-event.js";
 import { checkContinuationBudget, type ChainState } from "./scheduler.js";
@@ -61,6 +67,15 @@ import type { PendingContinuationDelegate } from "./types.js";
 export { resetDelegateDispatchHedgesForTests } from "./delegate-dispatch-hedge.js";
 
 const log = createSubsystemLogger("continuation/delegate-dispatch");
+
+/** Delegates the dispatch must settle, with the admission evidence found for each. */
+type ClaimedDelegate = {
+  delegate: PendingContinuationDelegate;
+  /** Set when an earlier attempt, or an unresolved claim, has registry evidence. */
+  evidence?: DelegateAdmissionEvidence;
+  /** A claim a dead dispatch left behind: never spawned again (Q3). */
+  unresolved?: true;
+};
 
 /**
  * Consume and dispatch all pending tool-dispatched delegates for a session.
@@ -89,21 +104,24 @@ export async function dispatchToolDelegates(
         ...(params.applyDelegateChainTokensFold ? { applyDelegateChainTokensFold: true } : {}),
         persistChainState: params.persistChainState,
         ...(params.persistBeforeTerminalCommit ? { persistBeforeTerminalCommit: true } : {}),
-        recoverRunningDelegates: true,
+        // Deferred delegates go back to `queued`; the retry never resolves
+        // `running` claims, which belong to live dispatches in this process.
         queuedCreatedAtOrBefore: hedgeQueuedCreatedAtOrBefore,
-        includeRunningUpdatedAtOrBefore: Date.now(),
       },
       dispatchToolDelegates,
     );
   };
-  const deferManagedDelegate = (
+  const deferManagedDelegate = async (
     delegate: PendingContinuationDelegate,
-    currentStep?: string,
-  ): boolean => {
-    const requeued = requeuePendingDelegate(delegate, currentStep, {
-      inheritedSilent: params.inheritedSilent,
-      inheritedWake: params.inheritedWake,
-    });
+    phase?: string,
+  ): Promise<boolean> => {
+    // Deferral happens before any spawn call for this claim.
+    const requeued = await requeuePendingDelegate(
+      delegate,
+      phase,
+      { inheritedSilent: params.inheritedSilent, inheritedWake: params.inheritedWake },
+      { failurePhase: "initialize" },
+    );
     if (requeued) {
       armManagedSpawnRetry();
     }
@@ -117,23 +135,30 @@ export async function dispatchToolDelegates(
   // a lossy hedge.
   const foldWithoutPersist = params.applyDelegateChainTokensFold && !params.persistChainState;
   const ignoreDelay = params.dispatchQueuedRegardlessOfDelay === true || foldWithoutPersist;
-  const toolDelegates = consumePendingDelegates(sessionKey, {
-    includeRunning: params.recoverRunningDelegates === true,
+  // Recovery resolves claims left `running` by a dead dispatch before it
+  // claims anything new. The cutoff is the boot time, so a claim this process
+  // made can never be mistaken for an abandoned one.
+  const unresolvedClaims =
+    params.recoverRunningDelegates === true && params.includeRunningUpdatedAtOrBefore !== undefined
+      ? await listUnresolvedDelegateClaims(sessionKey, {
+          updatedAtOrBefore: params.includeRunningUpdatedAtOrBefore,
+        })
+      : [];
+  const toolDelegates = await consumePendingDelegates(sessionKey, {
     queuedCreatedAtOrBefore: params.queuedCreatedAtOrBefore,
-    includeRunningUpdatedAtOrBefore: params.includeRunningUpdatedAtOrBefore,
     ignoreDelay,
   });
 
   // Arm (or re-arm) a hedge timer for any remaining queued delegates so a
   // deadline crossed during consumption still fires in a fully-quiet channel.
-  const earliestQueuedDueAt = peekEarliestQueuedDelegateDueAt(sessionKey, {
+  const earliestQueuedDueAt = await peekEarliestQueuedDelegateDueAt(sessionKey, {
     queuedCreatedAtOrBefore: hedgeQueuedCreatedAtOrBefore,
   });
   if (earliestQueuedDueAt !== undefined) {
     // Inherited silent/wake policy is recorded on each still-queued delegate
     // here, so the hedge never has to carry one chain's mode at the session
     // level and leak it onto an unrelated delegate queued by a later turn.
-    annotateQueuedDelegatesInheritedPolicy(
+    await annotateQueuedDelegatesInheritedPolicy(
       sessionKey,
       {
         ...(params.inheritedSilent ? { inheritedSilent: true } : {}),
@@ -165,14 +190,14 @@ export async function dispatchToolDelegates(
     clearDelegateDispatchHedge(sessionKey);
   }
 
-  if (toolDelegates.length === 0) {
+  if (toolDelegates.length === 0 && unresolvedClaims.length === 0) {
     return { dispatched: 0, rejected: 0, chainState };
   }
   const ownerSession = createContinuationOwnerSessionLoader(sessionKey, ctx.ownerAgentId);
   const ownerEventOptions = bindContinuationOwner(ownerSession.agentId);
 
   log.info(
-    `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}`,
+    `[continue_delegate] Consuming ${toolDelegates.length} tool delegate(s) for session ${sessionKey}${unresolvedClaims.length > 0 ? ` and resolving ${unresolvedClaims.length} unresolved claim(s)` : ""}`,
   );
 
   const { maxDelegatesPerTurn, maxChainLength, crossSessionTargeting } = config;
@@ -184,41 +209,77 @@ export async function dispatchToolDelegates(
       removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
     }
   };
-  const terminalizeRejectedDelegate = (
+  const terminalizeRejectedDelegate = async (
     delegate: PendingContinuationDelegate,
     summary: string,
-  ): boolean => {
-    const committed = markPendingDelegateFailed(delegate, summary);
+  ): Promise<boolean> => {
+    const committed = await markPendingDelegateFailed(delegate, summary);
     if (committed) {
       removeRejectedArtifactPolicy(delegate);
     }
     return committed;
   };
-  const { acceptedDelegates, pendingDelegates, acceptedChildSessionKeysByFlowId } =
-    partitionKnownAcceptedDelegateChildren({
-      delegates: toolDelegates,
-      parentSessionKey: () => sessionKey,
-    });
-  const { dispatchableDelegates, unavailablePolicyDelegates } = partitionManagedDelegatesForRuntime(
-    {
+  // Admission evidence decides every claim that may already have a child: an
+  // unresolved claim, and a requeued record whose earlier attempt the registry
+  // may know (RFC §5.4.4, "Before a requeued record is claimed again").
+  const acceptedDelegates: ClaimedDelegate[] = [];
+  const interruptedDelegates: ClaimedDelegate[] = [];
+  const pendingDelegates: PendingContinuationDelegate[] = [];
+  const claims: ClaimedDelegate[] = [
+    ...unresolvedClaims.map((delegate) => ({ delegate, unresolved: true as const })),
+    ...toolDelegates.map((delegate) => ({ delegate })),
+  ];
+  for (const claim of claims) {
+    const earlierRunIds = claim.unresolved
+      ? claim.delegate.recordedChildRunIds
+      : claim.delegate.recordedChildRunIds?.filter(
+          (runId) => runId !== claim.delegate.spawnAttempt?.childRunId,
+        );
+    let evidence: DelegateAdmissionEvidence;
+    try {
+      evidence = await readClaimedDelegateAdmission(
+        { ...claim.delegate, recordedChildRunIds: earlierRunIds ?? [] },
+        sessionKey,
+      );
+    } catch (err) {
+      // An unreadable registry cannot prove anything either way; leave the
+      // claim for the next recovery pass rather than guess.
+      log.warn(
+        `[continuation:delegate-admission-evidence-unavailable] flowId=${claim.delegate.flowId ?? "unknown"} session=${sessionKey} error=${formatErrorMessage(err)}`,
+      );
+      continue;
+    }
+    if (evidence.kind === "admitted") {
+      acceptedDelegates.push({ ...claim, evidence });
+    } else if (claim.unresolved || evidence.kind === "collision") {
+      interruptedDelegates.push({ ...claim, evidence });
+    } else {
+      pendingDelegates.push(claim.delegate);
+    }
+  }
+  const { dispatchableDelegates, unavailablePolicyDelegates } =
+    await partitionManagedDelegatesForRuntime({
       delegates: pendingDelegates,
       sessionKey,
       runtime: resolveContinuationRuntimeConfig(getRuntimeConfig()),
       defer: deferManagedDelegate,
-    },
-  );
+    });
   const delegateSlotsAvailable = Math.max(0, maxDelegatesPerTurn - acceptedDelegates.length);
-  const delegatesWithinLimit = acceptedDelegates.concat(
-    dispatchableDelegates.slice(0, delegateSlotsAvailable),
+  const delegatesWithinLimit: ClaimedDelegate[] = acceptedDelegates.concat(
+    dispatchableDelegates.slice(0, delegateSlotsAvailable).map((delegate) => ({ delegate })),
   );
   const delegatesOverLimit = dispatchableDelegates.slice(delegateSlotsAvailable);
   let dispatched = 0,
-    rejected = delegatesOverLimit.length + unavailablePolicyDelegates.length;
+    rejected =
+      delegatesOverLimit.length + unavailablePolicyDelegates.length + interruptedDelegates.length;
   let currentChainCount = chainState.currentChainCount;
-  const foldBearingDelegates = acceptedDelegates.concat(
-    dispatchableDelegates,
-    unavailablePolicyDelegates.map(({ delegate }) => delegate),
-  );
+  const foldBearingDelegates = acceptedDelegates
+    .map(({ delegate }) => delegate)
+    .concat(
+      interruptedDelegates.map(({ delegate }) => delegate),
+      dispatchableDelegates,
+      unavailablePolicyDelegates.map(({ delegate }) => delegate),
+    );
   const appliedChainTokensFold = params.applyDelegateChainTokensFold
     ? Math.max(0, ...foldBearingDelegates.map((delegate) => delegate.chainTokensFold ?? 0))
     : 0;
@@ -254,7 +315,7 @@ export async function dispatchToolDelegates(
         chainStatePersistedBeforeTerminalCommit &&
         appliedChainTokensFold > 0;
       if (persistedFoldNeedsCleanup) {
-        clearRecoverableDelegatesChainTokensFold(sessionKey);
+        await clearRecoverableDelegatesChainTokensFold(sessionKey);
       }
       throw error;
     }
@@ -270,7 +331,7 @@ export async function dispatchToolDelegates(
         markerKind: "terminal",
       },
     );
-    if (!terminalizeRejectedDelegate(failedDelegate, summary)) {
+    if (!(await terminalizeRejectedDelegate(failedDelegate, summary))) {
       throw error;
     }
     enqueueSystemEvent(
@@ -280,6 +341,26 @@ export async function dispatchToolDelegates(
         trusted: true,
       }),
     );
+  }
+
+  // Q3 (RFC §5.4.4): a claim whose admission cannot be proven ends in one
+  // durable interrupted notice and is never spawned again.
+  for (const { delegate, evidence } of interruptedDelegates) {
+    log.info(
+      `[continuation:delegate-spawn-interrupted] flowId=${delegate.flowId ?? "unknown"} session=${sessionKey} evidence=${evidence?.kind ?? "none"}`,
+    );
+    const failedDelegate = await persistTerminalChainState(
+      delegate,
+      terminalChainStateForDelegate(delegate),
+      { markPlannedChainState: appliedChainTokensFold > 0, markerKind: "terminal" },
+    );
+    if (
+      await terminalizeInterruptedDelegateClaim(failedDelegate, {
+        collision: evidence?.kind === "collision",
+      })
+    ) {
+      removeRejectedArtifactPolicy(delegate);
+    }
   }
 
   for (const dropped of delegatesOverLimit) {
@@ -295,7 +376,7 @@ export async function dispatchToolDelegates(
         markerKind: "terminal",
       },
     );
-    terminalizeRejectedDelegate(failedDelegate, summary);
+    await terminalizeRejectedDelegate(failedDelegate, summary);
     enqueueSystemEvent(
       `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(dropped.task)}`,
       ownerEventOptions({
@@ -305,20 +386,20 @@ export async function dispatchToolDelegates(
     );
   }
 
-  for (const delegate of delegatesWithinLimit) {
-    const childSessionKey = delegate.flowId
-      ? (acceptedChildSessionKeysByFlowId.get(delegate.flowId) ??
-        deriveContinuationDelegateChildSessionKeyFromParent(sessionKey, delegate.flowId))
-      : undefined;
-    const acceptedChildAlreadyKnown = Boolean(
-      delegate.flowId && acceptedChildSessionKeysByFlowId.has(delegate.flowId),
-    );
+  for (const { delegate, evidence } of delegatesWithinLimit) {
+    const admitted = evidence?.kind === "admitted" ? evidence : undefined;
+    const childSessionKey =
+      admitted?.childSessionKey ??
+      (delegate.flowId
+        ? deriveContinuationDelegateChildSessionKeyFromParent(sessionKey, delegate.flowId)
+        : undefined);
+    const acceptedChildAlreadyKnown = admitted !== undefined;
     const managedArtifacts = hasManagedArtifacts(delegate);
     const currentArtifactRuntime = managedArtifacts
       ? resolveContinuationRuntimeConfig(getRuntimeConfig())
       : undefined;
     if (!acceptedChildAlreadyKnown && managedArtifacts && !currentArtifactRuntime?.enabled) {
-      deferManagedDelegate(delegate);
+      await deferManagedDelegate(delegate);
       continue;
     }
     const effectiveTargeting =
@@ -329,7 +410,7 @@ export async function dispatchToolDelegates(
       hasCrossSessionDelegateTargeting(delegate, sessionKey)
     ) {
       if (managedArtifacts) {
-        deferManagedDelegate(
+        await deferManagedDelegate(
           delegate,
           "Deferred until cross-session continuation targeting is re-enabled",
         );
@@ -349,7 +430,7 @@ export async function dispatchToolDelegates(
           markerKind: "terminal",
         },
       );
-      markPendingDelegateFailed(failedDelegate, summary);
+      await markPendingDelegateFailed(failedDelegate, summary);
       enqueueSystemEvent(
         `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
         ownerEventOptions({
@@ -411,7 +492,7 @@ export async function dispatchToolDelegates(
           markerKind: "terminal",
         },
       );
-      terminalizeRejectedDelegate(failedDelegate, summary);
+      await terminalizeRejectedDelegate(failedDelegate, summary);
       enqueueSystemEvent(
         `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
         ownerEventOptions({
@@ -467,6 +548,22 @@ export async function dispatchToolDelegates(
       ownerSession,
       ownerSessionKey: sessionKey,
     });
+    // An uncertain spawn outcome ends the claim with the interrupted notice
+    // (Q3); only a spawn that provably never dispatched goes back to the queue.
+    const settleUncertainSpawn = async (reasonText: string): Promise<void> => {
+      log.info(
+        `[continuation:delegate-spawn-uncertain] flowId=${delegate.flowId ?? "unknown"} session=${sessionKey} reason=${reasonText}`,
+      );
+      const failedDelegate = await persistTerminalChainState(
+        delegate,
+        terminalChainStateForDelegate(delegate),
+        { markPlannedChainState: appliedChainTokensFold > 0, markerKind: "terminal" },
+      );
+      if (await terminalizeInterruptedDelegateClaim(failedDelegate)) {
+        removeRejectedArtifactPolicy(delegate);
+      }
+      rejected++;
+    };
     try {
       dispatchSpan = startContinuationDelegateSpan({
         chainId: dispatchChainId,
@@ -504,6 +601,8 @@ export async function dispatchToolDelegates(
             acceptedDelegate,
             childSessionKey,
             Boolean(params.persistChainState),
+            undefined,
+            admitted?.runId,
           );
         } catch (err) {
           const errorMessage = formatErrorMessage(err);
@@ -525,7 +624,7 @@ export async function dispatchToolDelegates(
       ) {
         assertDelegateArtifactPolicyPrepared(delegate.flowId);
       }
-      const spawnFence = revalidatePendingDelegateForSpawn(delegate, "pending");
+      const spawnFence = await revalidatePendingDelegateForSpawn(delegate, "pending");
       if (!spawnFence.allowed) {
         log.info(
           `[continuation:delegate-spawn-fenced] reason=${spawnFence.reason} flowId=${delegate.flowId ?? "unknown"} session=${sessionKey}`,
@@ -559,6 +658,9 @@ export async function dispatchToolDelegates(
           ...(delegate.attachments ? { attachments: delegate.attachments } : {}),
           ...(delegate.attachAs?.mountPath ? { attachMountPath: delegate.attachAs.mountPath } : {}),
           ...(delegate.flowId ? { continuationDelegateFlowId: delegate.flowId } : {}),
+          ...(delegate.spawnAttempt
+            ? { continuationChildRunId: delegate.spawnAttempt.childRunId }
+            : {}),
           ...(silent ? { silentAnnounce: true } : {}),
           ...(silentWake ? { silentAnnounce: true, wakeOnReturn: true } : {}),
           ...(delegate.targetSessionKey
@@ -609,6 +711,7 @@ export async function dispatchToolDelegates(
               acceptedChildSessionKey,
               Boolean(params.persistChainState),
               result.rollbackAccepted,
+              result.runId ?? delegate.spawnAttempt?.childRunId,
             );
           } catch (err) {
             const errorMessage = formatErrorMessage(err);
@@ -622,7 +725,18 @@ export async function dispatchToolDelegates(
         }
         dispatchSpan.setStatus("OK");
         commitPlannedChainState(dispatchChainId);
+      } else if (!spawnResultNeverDispatched(result)) {
+        dispatchSpan.setStatus("ERROR", result.error ?? `delegate spawn ${result.status}`);
+        await settleUncertainSpawn(`${result.status}:${result.failurePhase ?? "unknown-phase"}`);
       } else if (result.status === "cancelled") {
+        // Nothing dispatched: keep the delegate for a later dispatch unless
+        // reset or a fence already ended the record.
+        await requeuePendingDelegate(
+          delegate,
+          "Admission cancelled before spawn",
+          { inheritedSilent, inheritedWake },
+          { failurePhase: "initialize" },
+        );
         removeRejectedArtifactPolicy(delegate);
         dispatchSpan.setStatus("ERROR", result.error ?? "delegate admission cancelled");
         rejected++;
@@ -634,10 +748,12 @@ export async function dispatchToolDelegates(
         );
         if (managedArtifacts && result.status === "error") {
           if (
-            !requeuePendingDelegate(delegate, "Deferred after transient delegate spawn failure", {
-              inheritedSilent,
-              inheritedWake,
-            })
+            !(await requeuePendingDelegate(
+              delegate,
+              "Deferred after transient delegate spawn failure",
+              { inheritedSilent, inheritedWake },
+              { failurePhase: "initialize" },
+            ))
           ) {
             throw new Error("transient managed delegate spawn failure could not be requeued");
           }
@@ -657,7 +773,7 @@ export async function dispatchToolDelegates(
           terminalChainStateForDelegate(delegate),
           { markPlannedChainState: appliedChainTokensFold > 0, markerKind: "terminal" },
         );
-        terminalizeRejectedDelegate(failedDelegate, summary);
+        await terminalizeRejectedDelegate(failedDelegate, summary);
         dispatchSpan.setStatus("ERROR", reasonText);
         enqueueSystemEvent(
           `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
@@ -670,7 +786,7 @@ export async function dispatchToolDelegates(
       }
     } catch (err) {
       await rollbackAcceptedSpawn?.();
-      if (isSpawnSubagentAdmissionCancelledError(err)) {
+      if (isSpawnSubagentAdmissionCancelledError(err) && !spawnAttempted) {
         removeRejectedArtifactPolicy(delegate);
         dispatchSpan?.setStatus("ERROR", err.message);
         rejected++;
@@ -690,23 +806,9 @@ export async function dispatchToolDelegates(
       dispatchSpan?.recordException(err);
       dispatchSpan?.setStatus("ERROR", message);
       log.info(`[continuation:delegate-spawn-failed] error=${message} session=${sessionKey}`);
-      if (managedArtifacts && spawnAttempted) {
-        if (
-          !requeuePendingDelegate(delegate, "Deferred after transient delegate spawn failure", {
-            inheritedSilent,
-            inheritedWake,
-          })
-        ) {
-          throw err;
-        }
-        armManagedSpawnRetry();
-        enqueueSystemEvent(
-          `[continuation] ${summary}; managed work was deferred for retry. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          ownerEventOptions({
-            sessionKey,
-            trusted: true,
-          }),
-        );
+      if (spawnAttempted) {
+        // A thrown spawn has no phase: admission is unproven (RFC §5.4.4).
+        await settleUncertainSpawn(`thrown:${message}`);
         continue;
       }
       const failedDelegate = await persistTerminalChainState(
@@ -717,7 +819,7 @@ export async function dispatchToolDelegates(
           markerKind: "terminal",
         },
       );
-      terminalizeRejectedDelegate(failedDelegate, summary);
+      await terminalizeRejectedDelegate(failedDelegate, summary);
       enqueueSystemEvent(
         `[continuation] ${summary}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
         ownerEventOptions({

@@ -6,17 +6,21 @@
 // transaction back.
 import type { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
+import { upsertBoundDeliveryQueueEntryInDatabase } from "../../../infra/delivery-queue-sqlite-bound.js";
+import { getDeliveryQueueEntryOwnersInDatabase } from "../../../infra/delivery-queue-sqlite.kernel.js";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
   getNodeSqliteKysely,
 } from "../../../infra/kysely-sync.js";
+import { SESSION_DELIVERY_QUEUE_NAME } from "../../../infra/session-delivery-queue.records.js";
 import type { SqliteWorkerCommand } from "../../../infra/sqlite-worker-contract.js";
 import { requestSqliteWorkerOperationAdmission } from "../../../infra/sqlite-worker-operation-admission.js";
 import {
   formatContinuationChildRunId,
   type ContinuationSpawnAttempt,
 } from "../../../shared/continuation-run-key.js";
+import type { OpenClawStateDatabase } from "../../../state/openclaw-state-db-contract.js";
 import { tableExists } from "../../../state/openclaw-state-db-schema-helpers.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../../../state/openclaw-state-db.generated.js";
 import {
@@ -39,10 +43,16 @@ import type {
   ContinuationDeleteResult,
   ContinuationElection,
   ContinuationElectionResult,
+  ContinuationEndedRecordFact,
   ContinuationLiveRecordFact,
   ContinuationLiveStatus,
+  ContinuationNoticeSettlementInput,
+  ContinuationNoticeSettlementResult,
   ContinuationOwnerLiveSet,
+  ContinuationPostCompactionReleaseInput,
+  ContinuationPostCompactionReleaseResult,
   ContinuationPruneResult,
+  ContinuationQueueEntryStatus,
   ContinuationRecord,
   ContinuationRecordPatch,
   ContinuationRecordQuery,
@@ -127,14 +137,21 @@ function readOwnerLiveSet(db: DatabaseSync, ownerSessionKey: string): Continuati
   const records: ContinuationLiveRecordFact[] = selectRecords(db, {
     ownerSessionKey,
     statuses: LIVE_STATUSES,
-  }).map((record) => ({
-    recordId: record.recordId,
-    kind: record.kind,
-    // SAFETY: the query selected only live statuses.
-    status: record.status as ContinuationLiveStatus,
-    revision: record.revision,
-    cancelRequested: record.cancelRequestedAt !== undefined,
-  }));
+  }).map((record) => {
+    const fact: ContinuationLiveRecordFact = {
+      recordId: record.recordId,
+      kind: record.kind,
+      // SAFETY: the query selected only live statuses.
+      status: record.status as ContinuationLiveStatus,
+      revision: record.revision,
+      cancelRequested: record.cancelRequestedAt !== undefined,
+      createdAt: record.createdAt,
+    };
+    if (record.dueAt !== undefined) {
+      fact.dueAt = record.dueAt;
+    }
+    return fact;
+  });
   return { ownerSessionKey, records };
 }
 
@@ -143,10 +160,12 @@ function commitFacts(
   db: DatabaseSync,
   owners: Iterable<string>,
   releasedAttachments: ContinuationCommitFacts["releasedAttachments"],
+  ended: readonly ContinuationEndedRecordFact[] = [],
 ): ContinuationCommitFacts {
   return {
     owners: [...new Set(owners)].map((owner) => readOwnerLiveSet(db, owner)),
     releasedAttachments,
+    ended,
   };
 }
 
@@ -207,7 +226,12 @@ function casCheck(
   return undefined;
 }
 
-type Planned = { next: ContinuationRecord; expectedRevision: number; released?: string };
+type Planned = {
+  next: ContinuationRecord;
+  expectedRevision: number;
+  released?: string;
+  ended?: ContinuationEndedRecordFact;
+};
 
 /**
  * Apply a patch in memory. Terminal statuses stamp `endedAt` and scrub the
@@ -275,10 +299,23 @@ function planPatch(
       Object.assign(next, { [key]: value });
     }
   }
+  const ended =
+    terminal && !isTerminalContinuationStatus(current.status) && next.endedAt !== undefined
+      ? {
+          recordId: next.recordId,
+          ownerSessionKey: next.ownerSessionKey,
+          kind: next.kind,
+          // SAFETY: `terminal` holds, so the status is one of the terminal statuses.
+          status: next.status as ContinuationEndedRecordFact["status"],
+          createdAt: next.createdAt,
+          endedAt: next.endedAt,
+        }
+      : undefined;
   return {
     next,
     expectedRevision: current.revision,
     ...(scrub && current.attachmentId !== undefined ? { released: current.attachmentId } : {}),
+    ...(ended ? { ended } : {}),
   };
 }
 
@@ -292,6 +329,7 @@ function writePlanned(db: DatabaseSync, planned: readonly Planned[]): Continuati
     planned.flatMap(({ next, released }) =>
       released ? [{ recordId: next.recordId, attachmentId: released }] : [],
     ),
+    planned.flatMap(({ ended }) => (ended ? [ended] : [])),
   );
 }
 
@@ -481,7 +519,12 @@ export function electContinuationWorkInDatabase(
     outcome: "elected",
     created,
     superseded: planned.map(({ next }) => next),
-    ...commitFacts(db, [ownerSessionKey], []),
+    ...commitFacts(
+      db,
+      [ownerSessionKey],
+      [],
+      planned.flatMap(({ ended }) => (ended ? [ended] : [])),
+    ),
   };
 }
 
@@ -634,6 +677,109 @@ export function pruneContinuationRecordsInDatabase(
   return { deletedRecordIds: deleted.map((row) => row.record_id).toSorted() };
 }
 
+function readQueueEntryStatus(
+  database: OpenClawStateDatabase,
+  entryId: string,
+): ContinuationQueueEntryStatus {
+  const status = getDeliveryQueueEntryOwnersInDatabase(
+    database,
+    [SESSION_DELIVERY_QUEUE_NAME],
+    entryId,
+  ).get(SESSION_DELIVERY_QUEUE_NAME)?.status;
+  return status === "pending" || status === "completed" || status === "failed" ? status : "unknown";
+}
+
+function assertSessionQueueEntry(entry: ContinuationNoticeSettlementInput["notice"]): void {
+  if (entry.row.queue_name !== SESSION_DELIVERY_QUEUE_NAME || !entry.insertOnly) {
+    throw new Error("continuation custody inserts only new session-delivery rows");
+  }
+}
+
+/**
+ * Deliver a terminal notice obligation (RFC §5.4.2): insert the notice row
+ * (insert-if-absent under its record-derived key) and clear the obligation in
+ * this one transaction, so the notice is neither lost nor enqueued twice.
+ */
+export function settleContinuationNoticeInDatabase(
+  database: OpenClawStateDatabase,
+  input: ContinuationNoticeSettlementInput,
+): ContinuationNoticeSettlementResult {
+  assertSessionQueueEntry(input.notice);
+  const current = readRecord(database.db, input.recordId);
+  const failure = casCheck(current, input.recordId, input.expectedRevision);
+  if (failure || !current) {
+    return failure ?? { outcome: "not_found", recordId: input.recordId };
+  }
+  if (
+    current.ownerSessionKey !== input.ownerSessionKey ||
+    current.terminalNoticePending === undefined
+  ) {
+    return { outcome: "not_owed", recordId: input.recordId };
+  }
+  const plan = planPatch(current, { terminalNoticePending: null }, input.now);
+  if ("invalid" in plan) {
+    return { outcome: "not_owed", recordId: input.recordId };
+  }
+  upsertBoundDeliveryQueueEntryInDatabase(input.notice, database);
+  const entryId = input.notice.row.id;
+  const facts = writePlanned(database.db, [plan]);
+  return {
+    outcome: "settled",
+    record: plan.next,
+    entryId,
+    entryStatus: readQueueEntryStatus(database, entryId),
+    ...facts,
+  };
+}
+
+/**
+ * Hand a claimed post-compaction record to the session delivery queue (RFC
+ * §4.4, §5.4.4). The queue insert and the permanent handoff commit together;
+ * a retry after an unseen commit finds the same deterministic entry ID.
+ */
+export function releaseContinuationPostCompactionInDatabase(
+  database: OpenClawStateDatabase,
+  input: ContinuationPostCompactionReleaseInput,
+): ContinuationPostCompactionReleaseResult {
+  assertSessionQueueEntry(input.entry);
+  const current = readRecord(database.db, input.recordId);
+  const failure = casCheck(current, input.recordId, input.expectedRevision);
+  if (failure || !current) {
+    return failure ?? { outcome: "not_found", recordId: input.recordId };
+  }
+  const invalid = (reason: string): ContinuationPostCompactionReleaseResult => ({
+    outcome: "invalid_transition",
+    recordId: input.recordId,
+    reason,
+  });
+  if (current.ownerSessionKey !== input.ownerSessionKey) {
+    return invalid("record belongs to another owner");
+  }
+  if (current.kind !== "post_compaction" || current.status !== "running") {
+    return invalid("only a claimed post-compaction record can be released");
+  }
+  if (current.cancelRequestedAt !== undefined) {
+    return invalid("cancel requested");
+  }
+  const entryId = input.entry.row.id;
+  const plan = planPatch(
+    current,
+    {
+      status: "succeeded",
+      phase: input.phase,
+      failureReason: null,
+      stateJson: input.stateJson,
+      handoff: { target: "session_delivery_queue", queueEntryId: entryId, handedOffAt: input.now },
+    },
+    input.now,
+  );
+  if ("invalid" in plan) {
+    return invalid(plan.invalid);
+  }
+  upsertBoundDeliveryQueueEntryInDatabase(input.entry, database);
+  return { outcome: "released", record: plan.next, entryId, ...writePlanned(database.db, [plan]) };
+}
+
 export function isContinuationCustodyCommand(command: {
   type: string;
 }): command is SqliteWorkerCommand<ContinuationCustodyWorkerOperations> {
@@ -648,18 +794,19 @@ export function executeContinuationCustodyCommand(
   if (command.type !== "continuationCustody.list" && command.type !== "continuationCustody.prune") {
     ensureContinuationCustodySchema(databaseOptions);
   }
-  return runOpenClawStateWriteTransaction(({ db }) => {
+  return runOpenClawStateWriteTransaction((database) => {
     requestSqliteWorkerOperationAdmission({ stage: "transaction", facts: undefined });
-    const result = executeInTransaction(db, command);
+    const result = executeInTransaction(database, command);
     requestSqliteWorkerOperationAdmission({ stage: "commit", facts: undefined });
     return result;
   }, databaseOptions);
 }
 
 function executeInTransaction(
-  db: DatabaseSync,
+  database: OpenClawStateDatabase,
   command: SqliteWorkerCommand<ContinuationCustodyWorkerOperations>,
 ): ContinuationCustodyWorkerOperations[keyof ContinuationCustodyWorkerOperations]["output"] {
+  const { db } = database;
   switch (command.type) {
     case "continuationCustody.create":
       return createContinuationRecordInDatabase(db, command.input.record);
@@ -675,6 +822,10 @@ function executeInTransaction(
       return deleteContinuationRecordInDatabase(db, command.input);
     case "continuationCustody.prune":
       return pruneContinuationRecordsInDatabase(db, command.input);
+    case "continuationCustody.settleNotice":
+      return settleContinuationNoticeInDatabase(database, command.input);
+    case "continuationCustody.releasePostCompaction":
+      return releaseContinuationPostCompactionInDatabase(database, command.input);
     case "continuationCustody.list":
       // Recovery and projection hydration read inside the write FIFO so they
       // observe every earlier committed custody write.

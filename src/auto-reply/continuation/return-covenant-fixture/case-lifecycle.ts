@@ -32,7 +32,7 @@ import {
   settleManagedSystemEventsAfterTurnAdoption,
 } from "../../reply/session-system-event-adoption.js";
 import { prepareFormattedSystemEvents } from "../../reply/session-system-events.js";
-import { delegateFlowRecords } from "../delegate-flow-store.js";
+import { getDelegateRecord, listLiveDelegateRecords } from "../delegate-flow-store.js";
 import { cancelPendingDelegates } from "../delegate-store.js";
 import {
   acceptPostCompactionReturnCovenantCase,
@@ -149,7 +149,7 @@ export async function transitionReturnCovenantCase(params: {
       const queueStillHeld =
         state.deliveryId &&
         (await loadPendingSessionDelivery(state.deliveryId, stateDirectory(context)));
-      if (!queueStillHeld || !delegateFlowRecords.get(state.delegate?.flowId ?? "")) {
+      if (!queueStillHeld || !(await getDelegateRecord(state.delegate?.flowId ?? ""))) {
         throw new Error("gateway restart did not preserve accepted delegate state");
       }
       restart = restartReceipt({ attestation, context, lineage: restartLineage });
@@ -542,7 +542,7 @@ export async function cleanupReturnCovenantCase(params: {
 }): Promise<void> {
   const { context, state } = params;
   removeSystemEvents(state.casePlan.logicalSessionKey, () => true);
-  cancelPendingDelegates(state.casePlan.logicalSessionKey);
+  await cancelPendingDelegates(state.casePlan.logicalSessionKey);
   if (state.childSessionKey) {
     await deleteSessionEntryLifecycle({
       agentId: "proof",
@@ -590,13 +590,9 @@ export async function retainedReturnCovenantResources(params: {
 }> {
   const { context } = params;
   const runSessionPrefix = `agent:proof:${context.plan.runId}:`;
-  const delegates = delegateFlowRecords
-    .listAll()
-    .filter(
-      (flow) =>
-        flow.ownerKey.startsWith(runSessionPrefix) &&
-        (flow.status === "queued" || flow.status === "running"),
-    ).length;
+  const delegates = (await listLiveDelegateRecords()).filter((record) =>
+    record.ownerSessionKey.startsWith(runSessionPrefix),
+  ).length;
   const queueItems = (await loadPendingSessionDeliveries(stateDirectory(context))).length;
   const temporarySessions = context.profiles.countTemporarySessions(runSessionPrefix);
   return { delegates, queueItems, temporarySessions };

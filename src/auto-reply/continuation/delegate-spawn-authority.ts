@@ -13,7 +13,7 @@ import {
 } from "../../infra/agent-events.js";
 import { registerContinuationDispatchClaim } from "./continuation-dispatch-claims.js";
 import {
-  revalidatePendingDelegateForSpawn,
+  checkPendingDelegateClaimInProjection,
   type DelegateSpawnFenceController,
 } from "./delegate-store.js";
 
@@ -82,7 +82,9 @@ export function registerContinuationDelegateDispatchClaim(params: {
       throw new SpawnSubagentAdmissionCancelledError("Continuation delegate admission closed.");
     }
     if (flowId !== undefined && source) {
-      const fence = revalidatePendingDelegateForSpawn(source, controller);
+      // Spawn-owner boundaries are synchronous, so they read the custody
+      // projection; the authoritative read ran just before the spawn call.
+      const fence = checkPendingDelegateClaimInProjection(source, controller, ownerSessionKey);
       if (!fence.allowed) {
         throw new SpawnSubagentAdmissionCancelledError(fence.summary);
       }

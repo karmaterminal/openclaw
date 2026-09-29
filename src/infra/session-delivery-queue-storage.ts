@@ -215,6 +215,7 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
   compactionCount?: number;
   deliveryContext?: SessionDeliveryContext;
   idempotencyKey?: string;
+  childRunId?: string;
 }): QueuedSessionDeliveryPayload {
   return {
     kind: "postCompactionDelegate",
@@ -257,6 +258,7 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
     ...(params.delegate.expectedRevision !== undefined
       ? { sourceExpectedRevision: params.delegate.expectedRevision }
       : {}),
+    ...(params.childRunId ? { childRunId: params.childRunId } : {}),
     ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
     idempotencyKey:
       params.idempotencyKey ??

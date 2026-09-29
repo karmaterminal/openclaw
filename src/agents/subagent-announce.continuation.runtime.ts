@@ -1,5 +1,4 @@
 import { dispatchToolDelegates } from "../auto-reply/continuation/delegate-dispatch.js";
-import { findContinuationDelegateFlowByOriginRun } from "../auto-reply/continuation/delegate-flow-store.js";
 import {
   createContinuationOwnerSessionLoader,
   registerContinuationDelegateDispatchClaim,
@@ -9,9 +8,13 @@ import {
   clearQueuedDelegatesChainTokensFold,
   consumePendingDelegates,
   enqueuePendingDelegate,
+  findContinuationDelegateFlowByOriginRun,
   markPendingDelegateFailed,
   markPendingDelegateSpawnAccepted,
+  requeuePendingDelegate,
   revalidatePendingDelegateForSpawn,
+  spawnResultNeverDispatched,
+  terminalizeInterruptedDelegateClaim,
 } from "../auto-reply/continuation/delegate-store.js";
 import { stripContinuationSignal } from "../auto-reply/continuation/signal.js";
 import {
@@ -20,7 +23,7 @@ import {
 } from "../auto-reply/continuation/state.js";
 import { withContinuationOwner } from "../auto-reply/continuation/system-event-ownership.js";
 import { scheduleContinuationWorkBatch } from "../auto-reply/continuation/work-dispatch.js";
-import { hasLiveOrRecentlyDispatchedContinuationWork } from "../auto-reply/continuation/work-store.js";
+import { hasLiveContinuationCustody } from "../auto-reply/continuation/work-store.js";
 import { resolveAgentIdFromSessionKey, resolveSessionStorePathCore } from "../config/sessions.js";
 import { updateSessionEntry } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -53,7 +56,7 @@ import { spawnSubagentDirect } from "./subagents/spawn/subagent-spawn.js";
 export { routeSubagentContinuationReturn } from "./subagent-announce.continuation-return.js";
 
 type OriginDelegateFlowStatus = NonNullable<
-  ReturnType<typeof findContinuationDelegateFlowByOriginRun>
+  Awaited<ReturnType<typeof findContinuationDelegateFlowByOriginRun>>
 >["status"];
 type ChildContinuationDrainResult = Awaited<ReturnType<typeof dispatchToolDelegates>>;
 
@@ -130,7 +133,7 @@ async function drainChildContinuationQueue(params: {
       const persisted = await persistAdvancedChainState(chainState);
       forceDispatch ||= !persisted;
       if (persisted) {
-        clearQueuedDelegatesChainTokensFold(params.childSessionKey);
+        await clearQueuedDelegatesChainTokensFold(params.childSessionKey);
       }
     }
     const dispatchResult = await dispatchToolDelegates({
@@ -162,7 +165,7 @@ async function drainChildContinuationQueue(params: {
       dispatchResult.dispatched > 0 &&
       (await persistAdvancedChainState(dispatchResult.chainState))
     ) {
-      clearQueuedDelegatesChainTokensFold(params.childSessionKey);
+      await clearQueuedDelegatesChainTokensFold(params.childSessionKey);
     }
     return dispatchResult;
   } catch (error) {
@@ -181,7 +184,7 @@ async function scheduleSubagentSelfContinuationWork(params: {
   traceparent?: string;
 }): Promise<void> {
   try {
-    if (hasLiveOrRecentlyDispatchedContinuationWork(params.childSessionKey)) {
+    if (await hasLiveContinuationCustody(params.childSessionKey)) {
       return;
     }
     const config = resolveContinuationRuntimeConfig(params.cfg);
@@ -321,13 +324,22 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
     });
   }
 
-  const toolDelegates = isChain ? consumePendingDelegates(params.childSessionKey) : [];
+  const toolDelegates = isChain ? await consumePendingDelegates(params.childSessionKey) : [];
   if (!isChain) {
-    const orphaned = consumePendingDelegates(params.childSessionKey);
+    const orphaned = await consumePendingDelegates(params.childSessionKey);
     if (orphaned.length > 0) {
       defaultRuntime.log(
         `[subagent-chain-hop] WARNING: ${orphaned.length} tool delegate(s) orphaned from non-chain-hop subagent ${params.childSessionKey} — drainsContinuationDelegateQueue was set but task has no chain-hop prefix`,
       );
+      // A claim is never replayed (RFC §5.4.4), so an orphaned claim ends here
+      // with its reason instead of surfacing later as an interrupted spawn.
+      for (const delegate of orphaned) {
+        await markPendingDelegateFailed(
+          delegate,
+          "Tool delegate orphaned: the sub-agent is not a continuation chain hop.",
+          "Delegate rejected",
+        );
+      }
     }
   }
 
@@ -356,7 +368,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
     const parentWasSilent = params.silentAnnounce === true;
     const chainSilent = signal.silent || signal.silentWake || parentWasSilent;
     const chainWake = signal.silentWake || (parentWasSilent && params.wakeOnReturn === true);
-    const existingOriginFlow = findContinuationDelegateFlowByOriginRun(
+    const existingOriginFlow = await findContinuationDelegateFlowByOriginRun(
       params.childSessionKey,
       params.childRunId,
     );
@@ -365,7 +377,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
       bracketReserved = existingOriginFlow.status === "succeeded";
       bracketDrainArmed = true;
     } else if (signal.postCompaction) {
-      const staged = stagePostCompactionDelegate(params.childSessionKey, {
+      const staged = await stagePostCompactionDelegate(params.childSessionKey, {
         task: signal.task,
         createdAt: Date.now(),
         ...(signal.targetSessionKey ? { targetSessionKey: signal.targetSessionKey } : {}),
@@ -437,7 +449,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
           (signal.delayMs ?? 0) > 0
             ? Math.max(config.minDelayMs, Math.min(config.maxDelayMs, signal.delayMs ?? 0))
             : 0;
-        const admitted = enqueuePendingDelegate(params.childSessionKey, {
+        const admitted = await enqueuePendingDelegate(params.childSessionKey, {
           task: signal.task,
           ...(delayMs > 0 ? { delayMs } : {}),
           ...(chainWake ? { mode: "silent-wake" } : chainSilent ? { mode: "silent" } : {}),
@@ -481,9 +493,11 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
               inheritedWake: params.wakeOnReturn === true,
             });
             bracketReserved = (dispatchResult?.dispatched ?? 0) > 0;
-            originDelegateFlowStatus = findContinuationDelegateFlowByOriginRun(
-              params.childSessionKey,
-              params.childRunId,
+            originDelegateFlowStatus = (
+              await findContinuationDelegateFlowByOriginRun(
+                params.childSessionKey,
+                params.childRunId,
+              )
             )?.status;
             bracketDrainArmed = true;
           }
@@ -512,7 +526,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
             ? `Tool delegate rejected: chain length ${nextHop} exceeds maxChainLength ${config.maxChainLength}.`
             : `Tool delegate rejected: cost cap exceeded (${parentTokens} > ${config.costCapTokens}).`;
         for (const dropped of toolDelegates.slice(index)) {
-          markPendingDelegateFailed(dropped, summary, "Delegate rejected");
+          await markPendingDelegateFailed(dropped, summary, "Delegate rejected");
         }
         break;
       }
@@ -530,6 +544,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
         ownerSessionKey: params.childSessionKey,
       });
       let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
+      let spawnAttempted = false;
       try {
         if (
           await rejectOwnedCrossSessionTargeting({
@@ -548,7 +563,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
             task: delegate.task,
           })
         ) {
-          markPendingDelegateFailed(
+          await markPendingDelegateFailed(
             delegate,
             "Tool delegate rejected: cross-session targeting is disabled by policy.",
             "Delegate rejected",
@@ -556,7 +571,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
           continue;
         }
         const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
-        const spawnFence = revalidatePendingDelegateForSpawn(delegate, "pending");
+        const spawnFence = await revalidatePendingDelegateForSpawn(delegate, "pending");
         if (!spawnFence.allowed) {
           if (
             delegate.flowId &&
@@ -580,6 +595,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
           );
           continue;
         }
+        spawnAttempted = true;
         const spawnResult = await spawnSubagentDirect(
           {
             task: `[continuation:chain-hop:${nextHop}] Tool-delegated from sub-agent (depth ${childDepth}): ${delegate.task}`,
@@ -595,6 +611,9 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
             drainsContinuationDelegateQueue: true,
             continuationChainState: accounting.buildChildContinuationSpawnState(nextHop),
             ...(delegate.flowId ? { continuationDelegateFlowId: delegate.flowId } : {}),
+            ...(delegate.spawnAttempt
+              ? { continuationChildRunId: delegate.spawnAttempt.childRunId }
+              : {}),
             ...(delegate.model ? { model: delegate.model } : {}),
             ...(delegate.attachments ? { attachments: delegate.attachments } : {}),
             ...(delegate.attachAs?.mountPath
@@ -616,17 +635,18 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
         if (spawnResult.status === "accepted") {
           rollbackAcceptedSpawn = spawnResult.rollbackAccepted;
           if (delegate.flowId) {
-            const committed = markPendingDelegateSpawnAccepted(
+            const committed = await markPendingDelegateSpawnAccepted(
               delegate,
               spawnResult.childSessionKey ??
                 deriveContinuationDelegateChildSessionKeyFromParent(
                   params.targetRequesterSessionKey,
                   delegate.flowId,
                 ),
+              { childRunId: spawnResult.runId ?? delegate.spawnAttempt?.childRunId },
             );
             if (!committed) {
               await spawnResult.rollbackAccepted?.();
-              markPendingDelegateFailed(
+              await markPendingDelegateFailed(
                 delegate,
                 "Tool delegate source acceptance became stale.",
                 "Delegate cancelled",
@@ -635,9 +655,20 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
             }
           }
           toolHopBase = nextHop;
-        } else if (spawnResult.status !== "cancelled") {
+        } else if (!spawnResultNeverDispatched(spawnResult)) {
+          // Admission is unproven (RFC §5.4.4, Q3): one notice, never a respawn.
+          await terminalizeInterruptedDelegateClaim(delegate);
+          defaultRuntime.log(
+            `[subagent-chain-hop] Tool delegate spawn outcome unproven (${spawnResult.status}:${spawnResult.failurePhase ?? "unknown-phase"}) from ${params.childSessionKey}`,
+          );
+        } else if (spawnResult.status === "cancelled") {
+          // Nothing dispatched: the delegate stays queued unless reset ended it.
+          await requeuePendingDelegate(delegate, "Admission cancelled before spawn", undefined, {
+            failurePhase: "initialize",
+          });
+        } else {
           const reason = spawnResult.error ?? "delegation was not accepted.";
-          markPendingDelegateFailed(
+          await markPendingDelegateFailed(
             delegate,
             `Tool delegate spawn ${spawnResult.status}: ${reason}`,
             spawnResult.status === "forbidden" ? "Delegate rejected" : "Delegate spawn failed",
@@ -648,7 +679,12 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
         }
       } catch (error) {
         await rollbackAcceptedSpawn?.();
-        markPendingDelegateFailed(delegate, `Tool delegate spawn failed: ${String(error)}`);
+        if (spawnAttempted) {
+          // A thrown spawn has no phase: admission is unproven (Q3).
+          await terminalizeInterruptedDelegateClaim(delegate);
+        } else {
+          await markPendingDelegateFailed(delegate, `Tool delegate spawn failed: ${String(error)}`);
+        }
         defaultRuntime.log(
           `[subagent-chain-hop] Tool delegate spawn failed from ${params.childSessionKey}: ${String(error)}`,
         );

@@ -3,8 +3,7 @@ import type {
   DiagnosticContinuationQueueMetrics,
   DiagnosticContinuationQueueOwnerSample,
 } from "../../infra/diagnostic-events.js";
-import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
-import type { PendingContinuationDelegate } from "./types.js";
+import type { readContinuationCustodySnapshot } from "./custody/custody-projection.js";
 
 const CONTINUATION_QUEUE_HISTORY_LIMIT = 8;
 
@@ -15,28 +14,11 @@ export function describeDelegateState(stateJson: unknown): string {
   return `stateType=object keyCount=${Object.keys(stateJson).length}`;
 }
 
-type ContinuationQueueDiagnosticDeps = {
-  listFlows: () => TaskFlowRecord[];
-  isContinuationDelegateFlow: (flow: TaskFlowRecord) => boolean;
-  isPostCompactionDelegateFlow: (flow: TaskFlowRecord) => boolean;
-  decodeDelegateFlow: (flow: TaskFlowRecord) => PendingContinuationDelegate | undefined;
-  delegateDueAt: (flow: TaskFlowRecord, delegate: PendingContinuationDelegate) => number;
-};
+type ContinuationQueueSnapshot = ReturnType<typeof readContinuationCustodySnapshot>;
 
-function countFlowsChangedSince(
-  flows: TaskFlowRecord[],
-  status: TaskFlowRecord["status"],
-  since: number | undefined,
-  now: number,
-): number {
-  if (since === undefined) {
-    return 0;
-  }
-  return flows.filter((flow) => {
-    const changedAt = flow.endedAt ?? flow.updatedAt;
-    return flow.status === status && changedAt > since && changedAt <= now;
-  }).length;
-}
+type ContinuationQueueDiagnosticDeps = {
+  readSnapshot: () => ContinuationQueueSnapshot;
+};
 
 function createEmptyOwnerQueueSample(sessionKey: string): DiagnosticContinuationQueueOwnerSample {
   return {
@@ -50,13 +32,13 @@ function createEmptyOwnerQueueSample(sessionKey: string): DiagnosticContinuation
   };
 }
 
-function noteOwnerQueuedFlow(
+function noteOwnerQueuedRecord(
   owner: DiagnosticContinuationQueueOwnerSample,
-  flow: TaskFlowRecord,
+  createdAt: number,
   now: number,
 ): void {
   owner.totalQueued += 1;
-  const queuedAgeMs = Math.max(0, now - flow.createdAt);
+  const queuedAgeMs = Math.max(0, now - createdAt);
   owner.oldestQueuedAgeMs = Math.max(owner.oldestQueuedAgeMs ?? 0, queuedAgeMs);
   owner.newestQueuedAgeMs =
     owner.newestQueuedAgeMs === undefined
@@ -72,37 +54,46 @@ export function createContinuationQueueDiagnostics(deps: ContinuationQueueDiagno
   const history: DiagnosticContinuationQueueHistoryPoint[] = [];
 
   const sample = (now = Date.now()): DiagnosticContinuationQueueMetrics | undefined => {
-    const flows = deps.listFlows().filter(deps.isContinuationDelegateFlow);
+    const snapshot = deps.readSnapshot();
+    if (snapshot.state !== "known") {
+      return undefined;
+    }
+    const isDelegateKind = (kind: string) => kind === "delegate" || kind === "post_compaction";
     const intervalMs = lastSampleAt !== undefined ? Math.max(0, now - lastSampleAt) : undefined;
     const previousSampleAt = lastSampleAt;
-    const enqueuedSinceLastSample =
-      previousSampleAt === undefined
-        ? 0
-        : flows.filter((flow) => flow.createdAt > previousSampleAt && flow.createdAt <= now).length;
-    const drainedSinceLastSample = countFlowsChangedSince(
-      flows,
-      "succeeded",
-      previousSampleAt,
-      now,
+    const ended = snapshot.ended.filter((fact) => isDelegateKind(fact.kind));
+    const live = [...snapshot.owners.entries()].flatMap(([ownerSessionKey, facts]) =>
+      facts.filter((fact) => isDelegateKind(fact.kind)).map((fact) => ({ fact, ownerSessionKey })),
     );
-    const failedSinceLastSample = countFlowsChangedSince(flows, "failed", previousSampleAt, now);
+    const inWindow = (at: number) =>
+      previousSampleAt !== undefined && at > previousSampleAt && at <= now;
+    const enqueuedSinceLastSample =
+      live.filter(({ fact }) => inWindow(fact.createdAt)).length +
+      ended.filter((fact) => inWindow(fact.createdAt)).length;
+    const drainedSinceLastSample = ended.filter(
+      (fact) => fact.status === "succeeded" && inWindow(fact.endedAt),
+    ).length;
+    const failedSinceLastSample = ended.filter(
+      (fact) => fact.status === "failed" && inWindow(fact.endedAt),
+    ).length;
 
     const owners = new Map<string, DiagnosticContinuationQueueOwnerSample>();
     let pendingQueued = 0;
     let pendingRunnable = 0;
     let pendingScheduled = 0;
     let stagedPostCompaction = 0;
-    let invalidQueued = 0;
+    // Undecodable records are failed at claim time; the projection holds none.
+    const invalidQueued = 0;
 
-    for (const flow of flows) {
-      if (flow.status !== "queued") {
+    for (const { fact, ownerSessionKey } of live) {
+      if (fact.status !== "queued" || fact.cancelRequested) {
         continue;
       }
-      const owner = owners.get(flow.ownerKey) ?? createEmptyOwnerQueueSample(flow.ownerKey);
-      owners.set(flow.ownerKey, owner);
-      noteOwnerQueuedFlow(owner, flow, now);
+      const owner = owners.get(ownerSessionKey) ?? createEmptyOwnerQueueSample(ownerSessionKey);
+      owners.set(ownerSessionKey, owner);
+      noteOwnerQueuedRecord(owner, fact.createdAt, now);
 
-      if (deps.isPostCompactionDelegateFlow(flow)) {
+      if (fact.kind === "post_compaction") {
         stagedPostCompaction += 1;
         owner.stagedPostCompaction += 1;
         continue;
@@ -110,13 +101,7 @@ export function createContinuationQueueDiagnostics(deps: ContinuationQueueDiagno
 
       pendingQueued += 1;
       owner.pendingQueued += 1;
-      const delegate = deps.decodeDelegateFlow(flow);
-      if (!delegate) {
-        invalidQueued += 1;
-        owner.invalidQueued += 1;
-        continue;
-      }
-      if (deps.delegateDueAt(flow, delegate) <= now) {
+      if ((fact.dueAt ?? fact.createdAt) <= now) {
         pendingRunnable += 1;
         owner.pendingRunnable += 1;
       } else {
@@ -144,7 +129,7 @@ export function createContinuationQueueDiagnostics(deps: ContinuationQueueDiagno
     lastSampleAt = now;
 
     if (
-      flows.length === 0 &&
+      live.length === 0 &&
       totalQueued === 0 &&
       enqueuedSinceLastSample === 0 &&
       drainedSinceLastSample === 0 &&

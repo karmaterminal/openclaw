@@ -261,7 +261,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         })
       : null;
   let result: Awaited<ReturnType<typeof scheduleContinuationWorkBatch>>;
-  let failCreatedWork: ((summary: string) => void) | undefined;
+  let failCreatedWork: ((summary: string) => Promise<void>) | undefined;
   const createdFlowIds: string[] = [];
   if (reservedRequests.length === 0 || liveBudgetRejection) {
     result = {
@@ -273,27 +273,34 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   } else {
     try {
       const [
-        { failFlow, getTaskFlowById, listTaskFlowsForOwnerKey, requestFlowCancel },
+        { listContinuationRecords, requestContinuationRecordCancel, failContinuationRecord },
         { abortContinuationDispatchClaim },
         { decodeWorkState, isContinuationWorkFlow },
         { rollbackPendingWorkReplacement },
       ] = await Promise.all([
-        import("../../tasks/task-flow-runtime-internal.js"),
+        import("../../auto-reply/continuation/custody/custody-store.js"),
         import("../../auto-reply/continuation/continuation-dispatch-claims.js"),
         import("../../auto-reply/continuation/work-flow-state.js"),
         import("../../auto-reply/continuation/work-replacement-store.js"),
       ]);
-      const existingFlows = listTaskFlowsForOwnerKey(params.sessionKey);
-      const priorParkedFlows = existingFlows.filter((flow) => {
-        const state = isContinuationWorkFlow(flow) ? decodeWorkState(flow) : undefined;
-        return flow.status === "queued" && state?.idleRetry?.trigger === "reply-run-ended";
+      const existingWork = await listContinuationRecords({
+        ownerSessionKey: params.sessionKey,
+        kinds: ["work"],
+        statuses: ["queued", "running"],
       });
+      const priorParkedFlows = existingWork.filter(
+        (record) =>
+          record.status === "queued" &&
+          decodeWorkState(record)?.idleRetry?.trigger === "reply-run-ended",
+      );
       let supersededPriorParkedFlows: readonly (typeof priorParkedFlows)[number][] =
         priorParkedFlows;
       let replacementApplied = false;
-      failCreatedWork = (summary) => {
+      const readRecord = async (recordId: string) =>
+        (await listContinuationRecords({ recordIds: [recordId] }))[0];
+      failCreatedWork = async (summary) => {
         if (replacementApplied) {
-          const rollback = rollbackPendingWorkReplacement({
+          const rollback = await rollbackPendingWorkReplacement({
             sessionKey: params.sessionKey,
             createdFlowIds,
             priorFlows: supersededPriorParkedFlows,
@@ -305,14 +312,14 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
           if (rollback.unresolvedCreatedFlowIds.length > 0) {
             cleanupErrors.push(
               new Error(
-                `failed to terminalize continuation flow(s): ${rollback.unresolvedCreatedFlowIds.join(", ")}`,
+                `failed to terminalize continuation record(s): ${rollback.unresolvedCreatedFlowIds.join(", ")}`,
               ),
             );
           }
           if (rollback.unrestoredPriorFlowIds.length > 0) {
             cleanupErrors.push(
               new Error(
-                `failed to restore prior continuation flow(s): ${rollback.unrestoredPriorFlowIds.join(", ")}`,
+                `failed to restore prior continuation record(s): ${rollback.unrestoredPriorFlowIds.join(", ")}`,
               ),
             );
           }
@@ -330,51 +337,54 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         }
         const cleanupErrors: Error[] = [];
         const unresolvedFlowIds: string[] = [];
-        for (const flowId of createdFlowIds) {
+        for (const recordId of createdFlowIds) {
           let resolved = false;
           let lastError: unknown;
           for (let attempt = 0; attempt < 3; attempt += 1) {
             try {
-              let flow = getTaskFlowById(flowId);
-              if (!flow || (flow.status !== "queued" && flow.status !== "running")) {
+              let record = await readRecord(recordId);
+              if (!record || (record.status !== "queued" && record.status !== "running")) {
                 resolved = true;
                 break;
               }
-              if (!isContinuationWorkFlow(flow)) {
+              if (!isContinuationWorkFlow(record)) {
                 break;
               }
-              const state = decodeWorkState(flow);
+              const state = decodeWorkState(record);
               if (
                 state?.originRunId !== params.originRunId ||
                 state.originTurnId !== params.originTurnId
               ) {
                 break;
               }
-              if (flow.status === "running") {
+              if (record.status === "running") {
                 abortContinuationDispatchClaim({
                   sessionKey: params.sessionKey,
-                  flowId: flow.flowId,
+                  flowId: record.recordId,
                   reason: summary,
                 });
-                if (flow.cancelRequestedAt === undefined) {
-                  const cancelled = requestFlowCancel({
-                    flowId: flow.flowId,
-                    expectedRevision: flow.revision,
+                if (record.cancelRequestedAt === undefined) {
+                  const cancelled = await requestContinuationRecordCancel({
+                    recordId: record.recordId,
+                    ownerSessionKey: record.ownerSessionKey,
+                    expectedRevision: record.revision,
+                    now: Date.now(),
                   });
-                  if (!cancelled.applied) {
+                  if (cancelled.outcome !== "applied" || !cancelled.records[0]) {
                     continue;
                   }
-                  flow = cancelled.flow;
+                  record = cancelled.records[0];
                 }
               }
-              const failed = failFlow({
-                flowId: flow.flowId,
-                expectedRevision: flow.revision,
-                currentStep: "spawn-init continuation finalization failed",
-                stateJson: flow.stateJson,
-                blockedSummary: summary,
+              const failed = await failContinuationRecord({
+                recordId: record.recordId,
+                ownerSessionKey: record.ownerSessionKey,
+                expectedRevision: record.revision,
+                now: Date.now(),
+                phase: "spawn-init continuation finalization failed",
+                failureReason: summary,
               });
-              if (failed.applied) {
+              if (failed.outcome === "applied") {
                 resolved = true;
                 break;
               }
@@ -383,17 +393,19 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
             }
           }
           if (!resolved) {
-            const latest = getTaskFlowById(flowId);
+            const latest = await readRecord(recordId).catch(() => undefined);
             if (
               latest &&
               (latest.status === "queued" || latest.status === "running") &&
               latest.cancelRequestedAt === undefined
             ) {
-              unresolvedFlowIds.push(latest.flowId);
+              unresolvedFlowIds.push(latest.recordId);
             }
             if (lastError) {
               cleanupErrors.push(
-                new Error(`failed to clean up continuation flow ${flowId}`, { cause: lastError }),
+                new Error(`failed to clean up continuation record ${recordId}`, {
+                  cause: lastError,
+                }),
               );
             }
           }
@@ -401,7 +413,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         if (unresolvedFlowIds.length > 0) {
           cleanupErrors.push(
             new Error(
-              `failed to terminalize or cancel continuation flow(s): ${unresolvedFlowIds.join(", ")}`,
+              `failed to terminalize or cancel continuation record(s): ${unresolvedFlowIds.join(", ")}`,
             ),
           );
         }
@@ -410,7 +422,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
           throw cleanupError;
         }
         if (cleanupErrors.length > 1) {
-          throw new AggregateError(cleanupErrors, "continuation flow cleanup failed");
+          throw new AggregateError(cleanupErrors, "continuation record cleanup failed");
         }
       };
       result = await scheduleContinuationWorkBatch({
@@ -429,9 +441,9 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         config: liveSchedulingConfig,
         coalescePriorParkedWork: false,
         priorParkedFlowsToSupersede: priorParkedFlows,
-        expectedRunningFlowIds: existingFlows
-          .filter((flow) => isContinuationWorkFlow(flow) && flow.status === "running")
-          .map((flow) => flow.flowId),
+        expectedRunningFlowIds: existingWork
+          .filter((record) => record.status === "running")
+          .map((record) => record.recordId),
         onFlowEnqueued: (flowId) => {
           createdFlowIds.push(flowId);
           replacementApplied ||= priorParkedFlows.length > 0;
@@ -448,7 +460,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
       result.cappedCount += unreservedRequestCount;
       result.capped ||= unreservedRequestCount > 0;
     } catch (error) {
-      failCreatedWork?.("continue_work scheduling failed after durable chain reservation.");
+      await failCreatedWork?.("continue_work scheduling failed after durable chain reservation.");
       enqueueSystemEvent(
         "[continuation] continue_work scheduling failed; the reserved chain budget remains fail-closed.",
         { sessionKey: params.sessionKey, trusted: true },
@@ -459,7 +471,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
 
   const failCreatedWorkAndRestoreReservation = async (summary: string): Promise<void> => {
     try {
-      failCreatedWork?.(summary);
+      await failCreatedWork?.(summary);
     } catch (error) {
       throw normalizeCleanupError(error, "continuation flow cleanup failed");
     }
@@ -532,7 +544,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   } catch (error) {
     let cleanupError: unknown;
     try {
-      failCreatedWork?.("continue_work chain-state finalization did not commit.");
+      await failCreatedWork?.("continue_work chain-state finalization did not commit.");
     } catch (caught) {
       cleanupError = caught;
     }

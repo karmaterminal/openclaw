@@ -6,11 +6,15 @@
 // unknown invalidates its owners until the next committed fact for them.
 import { resolveGlobalSingleton } from "../../../shared/global-singleton.js";
 import type {
+  ContinuationEndedRecordFact,
   ContinuationLiveRecordFact,
   ContinuationOwnerLiveSet,
   ContinuationRecord,
   ContinuationRecordKind,
 } from "./custody-store.types.js";
+
+/** Terminal transitions kept for queue-rate metrics; older ones age out. */
+const ENDED_FACT_LIMIT = 1_024;
 
 export type ContinuationLiveWorkAnswer =
   | { state: "known"; records: readonly ContinuationLiveRecordFact[] }
@@ -20,6 +24,7 @@ type DatabaseProjection = {
   hydrated: boolean;
   owners: Map<string, readonly ContinuationLiveRecordFact[]>;
   invalidOwners: Set<string>;
+  ended: ContinuationEndedRecordFact[];
 };
 
 const projections = resolveGlobalSingleton(
@@ -30,7 +35,7 @@ const projections = resolveGlobalSingleton(
 function projectionFor(databasePath: string): DatabaseProjection {
   let projection = projections.get(databasePath);
   if (!projection) {
-    projection = { hydrated: false, owners: new Map(), invalidOwners: new Set() };
+    projection = { hydrated: false, owners: new Map(), invalidOwners: new Set(), ended: [] };
     projections.set(databasePath, projection);
   }
   return projection;
@@ -62,6 +67,8 @@ export function hydrateContinuationCustodyProjection(
       status: record.status,
       revision: record.revision,
       cancelRequested: record.cancelRequestedAt !== undefined,
+      createdAt: record.createdAt,
+      ...(record.dueAt !== undefined ? { dueAt: record.dueAt } : {}),
     });
     grouped.set(record.ownerSessionKey, facts);
   }
@@ -69,6 +76,8 @@ export function hydrateContinuationCustodyProjection(
     hydrated: true,
     owners: grouped,
     invalidOwners: new Set(),
+    // Terminal transitions committed before hydration stay counted.
+    ended: projections.get(databasePath)?.ended ?? [],
   });
 }
 
@@ -76,10 +85,17 @@ export function hydrateContinuationCustodyProjection(
 export function installContinuationCustodyCommit(
   databasePath: string,
   owners: readonly ContinuationOwnerLiveSet[],
+  ended: readonly ContinuationEndedRecordFact[] = [],
 ): void {
   const projection = projectionFor(databasePath);
   for (const live of owners) {
     installOwner(projection, live);
+  }
+  if (ended.length > 0) {
+    projection.ended.push(...ended);
+    if (projection.ended.length > ENDED_FACT_LIMIT) {
+      projection.ended.splice(0, projection.ended.length - ENDED_FACT_LIMIT);
+    }
   }
 }
 
@@ -110,6 +126,25 @@ export function readContinuationLiveWork(
     state: "known",
     records: kinds ? records.filter((record) => kinds.includes(record.kind)) : records,
   };
+}
+
+/**
+ * Every owner's live facts plus recent terminal transitions, for queue
+ * metrics. `unknown` before hydration; owners with an unresolved write are
+ * left out rather than reported stale.
+ */
+export function readContinuationCustodySnapshot(databasePath: string):
+  | {
+      state: "known";
+      owners: ReadonlyMap<string, readonly ContinuationLiveRecordFact[]>;
+      ended: readonly ContinuationEndedRecordFact[];
+    }
+  | { state: "unknown" } {
+  const projection = projections.get(databasePath);
+  if (!projection?.hydrated) {
+    return { state: "unknown" };
+  }
+  return { state: "known", owners: projection.owners, ended: projection.ended };
 }
 
 /** Drop the projection with its database lifecycle (close, reset, or test teardown). */

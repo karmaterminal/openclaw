@@ -25,7 +25,11 @@ import type {
   ContinuationDeleteResult,
   ContinuationElection,
   ContinuationElectionResult,
+  ContinuationNoticeSettlementInput,
+  ContinuationNoticeSettlementResult,
   ContinuationPayloadConflict,
+  ContinuationPostCompactionReleaseInput,
+  ContinuationPostCompactionReleaseResult,
   ContinuationPruneResult,
   ContinuationRecord,
   ContinuationRecordPatch,
@@ -88,7 +92,7 @@ async function execute<Key extends keyof Operations>(
     throw error;
   }
   if (hasCommitFacts(output)) {
-    installContinuationCustodyCommit(databasePath(custody), output.owners);
+    installContinuationCustodyCommit(databasePath(custody), output.owners, output.ended);
     await releaseScrubbedPayloads(custody, output);
   }
   return output;
@@ -163,6 +167,7 @@ export async function createContinuationRecord(
     await releaseScrubbedPayloads(custody, {
       owners: [],
       releasedAttachments: [{ recordId: record.recordId, attachmentId: record.attachmentId }],
+      ended: [],
     });
   }
   return result;
@@ -381,6 +386,29 @@ export function recordContinuationSpawnAttemptFailure(
     { recordId, expectedRevision, attemptId, failurePhase, now, ...(patch ? { patch } : {}) },
     [target.ownerSessionKey],
   );
+}
+
+/**
+ * Deliver one terminal notice obligation: the notice row insert and the
+ * obligation clear are one commit (RFC §5.4.2).
+ */
+export function settleContinuationNotice(
+  input: ContinuationNoticeSettlementInput,
+  options?: ContinuationCustodyStoreOptions,
+): Promise<ContinuationNoticeSettlementResult> {
+  return execute(capture(options), "continuationCustody.settleNotice", input, [
+    input.ownerSessionKey,
+  ]);
+}
+
+/** Release a claimed post-compaction record into the session queue in one commit (RFC §4.4). */
+export function releaseContinuationPostCompaction(
+  input: ContinuationPostCompactionReleaseInput,
+  options?: ContinuationCustodyStoreOptions,
+): Promise<ContinuationPostCompactionReleaseResult> {
+  return execute(capture(options), "continuationCustody.releasePostCompaction", input, [
+    input.ownerSessionKey,
+  ]);
 }
 
 /** List-by-owner and recovery scans, ordered FIFO by creation (RFC §5.4.6). */

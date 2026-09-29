@@ -2,7 +2,7 @@ import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { callGateway } from "../../../gateway/call.js";
 import { callSubagentRegistryGateway } from "./subagent-registry-deps.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
-import { hasContinuationWorkForSweepEntry } from "./subagent-registry-sweep-guards.js";
+import { hasLiveContinuationCustodyForSweepEntry } from "./subagent-registry-sweep-guards.js";
 
 export async function callGatewayForSweep<T>(
   request: Parameters<typeof callGateway>[0],
@@ -13,7 +13,7 @@ export async function callGatewayForSweep<T>(
       const entry = [...subagentRuns.values()].find(
         (candidate) => candidate.childSessionKey === key,
       );
-      if (entry && hasContinuationWorkForSweepEntry(entry)) {
+      if (entry && (await hasLiveContinuationCustodyForSweepEntry(entry))) {
         throw new Error("subagent session still owns live continuation work");
       }
     }

@@ -84,7 +84,7 @@ export async function handleContinuationSignal(context: {
     effectiveContinuationSignal.kind === "delegate" &&
     effectiveContinuationSignal.postCompaction
   ) {
-    stagePostCompactionDelegate(sessionKey, {
+    await stagePostCompactionDelegate(sessionKey, {
       task: effectiveContinuationSignal.task,
       createdAt: Date.now(),
       originRunId: runId,
@@ -244,7 +244,7 @@ export async function handleContinuationSignal(context: {
               : effectiveContinuationSignal.silent
                 ? "silent"
                 : "normal";
-            enqueuePendingDelegate(sessionKey, {
+            await enqueuePendingDelegate(sessionKey, {
               task: delegateTask,
               originRunId: runId,
               ...(delayMs > 0 ? { delayMs } : {}),

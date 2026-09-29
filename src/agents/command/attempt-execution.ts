@@ -936,7 +936,7 @@ export async function runAgentAttempt(params: {
             );
             if (params.opts.abortSignal?.aborted) {
               if (params.sessionKey) {
-                failQueuedDelegatesOwnedByRun(
+                await failQueuedDelegatesOwnedByRun(
                   params.sessionKey,
                   {
                     originRunId: params.runId,
@@ -1119,7 +1119,7 @@ export async function runAgentAttempt(params: {
             `[continuation] Ignoring ${attemptContinueWorkRequests.length} continue_work election(s) because the spawn-init turn was cancelled for session ${sanitizeForLog(params.sessionKey)}`,
           );
         }
-        const failedDelegateRows = failQueuedDelegatesOwnedByRun(
+        const failedDelegateRows = await failQueuedDelegatesOwnedByRun(
           params.sessionKey,
           {
             originRunId: params.runId,
@@ -1143,7 +1143,7 @@ export async function runAgentAttempt(params: {
             `[continuation] Ignoring ${attemptContinueWorkRequests.length} continue_work election(s) because the spawn-init turn was incomplete and replay-unsafe for session ${sanitizeForLog(params.sessionKey)}`,
           );
         }
-        const failedDelegateRows = failQueuedDelegatesOwnedByRun(
+        const failedDelegateRows = await failQueuedDelegatesOwnedByRun(
           params.sessionKey,
           {
             originRunId: params.runId,

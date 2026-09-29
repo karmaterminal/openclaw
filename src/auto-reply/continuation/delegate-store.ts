@@ -1,48 +1,63 @@
-/** Canonical continuation-delegate business transitions over TaskFlow. */
+/**
+ * Canonical continuation-delegate business transitions over the continuation
+ * custody store (RFC docs/design/continue-work-signal-v2.md §5.4).
+ */
 
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { surfaceDurableContinuationNotice } from "./continuation-notice-surface.js";
+import { readContinuationLiveWork } from "./custody/custody-projection.js";
 import {
+  claimContinuationSpawnAttempt,
+  recordContinuationSpawnAttemptFailure,
+  resolveContinuationCustodyDatabasePath,
+  settleContinuationNotice,
+} from "./custody/custody-store.js";
+import type { ContinuationRecordPatch } from "./custody/custody-store.types.js";
+import {
+  buildContinuationSpawnInterruptedNotice,
+  type ContinuationSpawnInterruptedSource,
+} from "./custody/spawn-interrupted-notice.js";
+import {
+  countQueuedPendingDelegates,
+  createDelegateRecord,
   decodeDelegateFlow,
   decodeDelegateFlowMetadata,
+  decodeDelegateState,
   delegateDueAt,
-  delegateFlowRecords,
+  delegateStateJsonWithChanges,
+  deleteDelegateRecord,
+  getDelegateRecord,
   isDurablyHandedOffPostCompactionFlow,
   isPendingDelegateFlow,
   isPostCompactionDelegateFlow,
   isRecoverableContinuationDelegateFlow,
-  isRecoverablePendingFlow,
   isRecoverablePendingFlowWithinCutoffs,
-  isSucceededDelegateFlow,
   isTerminalDelegateFlow,
+  listDelegateRecords,
+  listLiveDelegateRecords,
   listQueuedPendingFlows,
-  listRecoverablePendingFlows,
   readAcceptedDelegateChildSessionKey,
   reconcileDelegateAttachmentCustody,
   rejectCorruptDelegateFlow,
   resetDelegateFlowDiagnosticsForTests,
-  scrubCancellationRequestedDelegateFlowState,
+  updateDelegateRecord,
+  type DelegateCustodyRecord,
+  type DelegateRecordWriteResult,
+  type DelegateStateChanges,
   type PendingDelegateCutoffOptions,
 } from "./delegate-flow-store.js";
 import type { ChainState, PendingContinuationDelegate } from "./types.js";
 
 const log = createSubsystemLogger("continuation/delegate-store");
-type DelegateFlowRecord = ReturnType<typeof delegateFlowRecords.listAll>[number];
 
+type DelegateRef = Pick<PendingContinuationDelegate, "flowId" | "expectedRevision" | "task">;
+
+/** Session-queue settle and payload release follow a committed CAS; see custody-store.ts. */
 export async function reconcileContinuationDelegateAttachmentCustody(
   orphanedBefore: number,
 ): Promise<{ removed: number; failed: number }> {
   return await reconcileDelegateAttachmentCustody(orphanedBefore);
-}
-
-export function scrubCancellationRequestedDelegateFlows(
-  flows: readonly DelegateFlowRecord[],
-): void {
-  for (const flow of flows) {
-    if (flow.cancelRequestedAt != null) {
-      scrubCancellationRequestedDelegateFlowState(flow);
-    }
-  }
 }
 
 export type DelegateSpawnFenceController = "pending" | "post-compaction";
@@ -51,15 +66,45 @@ export type DelegateSpawnFenceResult =
   | { allowed: true }
   | { allowed: false; reason: "cancelled" | "stale"; summary: string };
 
-/**
- * Re-read a claimed delegate at the last synchronous boundary before spawn.
- * Once a claim is cancelled or superseded, terminalize its current row so
- * recovery cannot replay stale work.
- */
-export function revalidatePendingDelegateForSpawn(
-  delegate: Pick<PendingContinuationDelegate, "flowId" | "expectedRevision" | "task">,
+function fenceSummary(reason: "cancelled" | "stale"): string {
+  return reason === "cancelled"
+    ? "Continuation delegate cancelled before spawn."
+    : "Continuation delegate claim became stale before spawn.";
+}
+
+function isExpectedClaim(
+  record: DelegateCustodyRecord,
   controller: DelegateSpawnFenceController,
-): DelegateSpawnFenceResult {
+  expectedRevision: number,
+): boolean {
+  if (record.cancelRequestedAt !== undefined) {
+    return false;
+  }
+  if (controller === "pending") {
+    return (
+      isPendingDelegateFlow(record) &&
+      record.status === "running" &&
+      record.revision === expectedRevision
+    );
+  }
+  // A released post-compaction delegate is owned by its queue entry; the
+  // record stays handed off unless reset fenced it.
+  return (
+    isPostCompactionDelegateFlow(record) &&
+    ((record.status === "running" && record.revision === expectedRevision) ||
+      isDurablyHandedOffPostCompactionFlow(record))
+  );
+}
+
+/**
+ * Re-read a claimed delegate at the last boundary before spawn. A pending
+ * claim that was cancelled or superseded is terminalized so recovery cannot
+ * replay stale work; a handed-off post-compaction record is left to its queue.
+ */
+export async function revalidatePendingDelegateForSpawn(
+  delegate: DelegateRef,
+  controller: DelegateSpawnFenceController,
+): Promise<DelegateSpawnFenceResult> {
   const { flowId, expectedRevision } = delegate;
   if ((flowId === undefined) !== (expectedRevision === undefined)) {
     return {
@@ -71,323 +116,536 @@ export function revalidatePendingDelegateForSpawn(
   if (flowId === undefined || expectedRevision === undefined) {
     return { allowed: true };
   }
-
-  let current = delegateFlowRecords.get(flowId);
-  const isExpectedController =
-    controller === "pending" ? isPendingDelegateFlow : isPostCompactionDelegateFlow;
-  const isExpectedClaimRevision =
-    current?.revision === expectedRevision && current?.status === "running";
-  const isExpectedDurableHandoffRevision =
-    controller === "post-compaction" &&
-    isDurablyHandedOffPostCompactionFlow(current, expectedRevision);
-  if (
-    current &&
-    isExpectedController(current) &&
-    (isExpectedClaimRevision || isExpectedDurableHandoffRevision) &&
-    current.cancelRequestedAt == null
-  ) {
+  let current = await getDelegateRecord(flowId);
+  if (current && isExpectedClaim(current, controller, expectedRevision)) {
     return { allowed: true };
   }
-
   const reason =
-    current?.cancelRequestedAt != null || current?.status === "cancelled" ? "cancelled" : "stale";
-  const summary =
-    reason === "cancelled"
-      ? "Continuation delegate cancelled before spawn."
-      : "Continuation delegate claim became stale before spawn.";
-
-  for (let attempt = 0; attempt < 2 && current && isExpectedController(current); attempt += 1) {
+    current?.cancelRequestedAt !== undefined || current?.status === "cancelled"
+      ? "cancelled"
+      : "stale";
+  const summary = fenceSummary(reason);
+  for (let attempt = 0; attempt < 2 && current; attempt += 1) {
     if (isTerminalDelegateFlow(current)) {
-      if (current.cancelRequestedAt != null) {
-        scrubCancellationRequestedDelegateFlowState(current);
-      }
       break;
     }
-    const failed = delegateFlowRecords.fail({
-      flowId: current.flowId,
-      expectedRevision: current.revision,
-      currentStep:
-        reason === "cancelled"
-          ? "Cancelled before continuation delegate spawn"
-          : "Rejected stale continuation delegate spawn claim",
-      blockedSummary: summary,
-      updatedAt: Date.now(),
+    const failed = await updateDelegateRecord({
+      record: current,
+      patch: {
+        status: "failed",
+        phase:
+          reason === "cancelled"
+            ? "Cancelled before continuation delegate spawn"
+            : "Rejected stale continuation delegate spawn claim",
+        failureReason: summary,
+      },
     });
-    if (failed.applied || failed.reason === "not_found" || !failed.current) {
+    if (failed.applied || !failed.current) {
       break;
     }
     current = failed.current;
   }
-
   return { allowed: false, reason, summary };
 }
 
-/** Enqueue a delegate from the `continue_delegate` tool. */
-export function enqueuePendingDelegate(
+/**
+ * Synchronous claim check for spawn-admission boundaries, answered from the
+ * hot-path projection (§5.4.6). A pending claim must still be the live
+ * `running` record at the claimed revision. The authoritative read happened in
+ * {@link revalidatePendingDelegateForSpawn} just before spawn; this notices a
+ * cancel or supersede committed since. An owner the projection cannot answer
+ * for is left to that read and to the dispatch claim's abort signal. A
+ * released post-compaction delegate is owned by its queue entry, which reset
+ * settles directly, so it has no projected claim to check.
+ */
+export function checkPendingDelegateClaimInProjection(
+  delegate: DelegateRef,
+  controller: DelegateSpawnFenceController,
+  ownerSessionKey: string,
+): DelegateSpawnFenceResult {
+  const { flowId, expectedRevision } = delegate;
+  if (controller !== "pending" || flowId === undefined || expectedRevision === undefined) {
+    return { allowed: true };
+  }
+  const answer = readContinuationLiveWork(
+    resolveContinuationCustodyDatabasePath(),
+    ownerSessionKey,
+    ["delegate"],
+  );
+  if (answer.state !== "known") {
+    return { allowed: true };
+  }
+  const fact = answer.records.find((record) => record.recordId === flowId);
+  if (fact?.status === "running" && fact.revision === expectedRevision && !fact.cancelRequested) {
+    return { allowed: true };
+  }
+  const reason = fact?.cancelRequested ? "cancelled" : "stale";
+  return { allowed: false, reason, summary: fenceSummary(reason) };
+}
+
+/** The delegate a run already elected, so a replayed terminal token does not elect twice. */
+export async function findContinuationDelegateFlowByOriginRun(
+  ownerSessionKey: string,
+  originRunId: string,
+): Promise<DelegateCustodyRecord | undefined> {
+  return (await listDelegateRecords({ ownerSessionKey })).find(
+    (record) => decodeDelegateState(record)?.originRunId === originRunId,
+  );
+}
+
+/** Whether a failed spawn provably never reached the Gateway (RFC §5.4.4). */
+export function spawnResultNeverDispatched(result: {
+  failurePhase?: "initialize" | "dispatch" | "register";
+  runId?: string;
+}): boolean {
+  return result.failurePhase !== undefined
+    ? result.failurePhase === "initialize"
+    : result.runId === undefined;
+}
+
+/** Enqueue a delegate from the `continue_delegate` tool or the response token. */
+export async function enqueuePendingDelegate(
   sessionKey: string,
   delegate: PendingContinuationDelegate,
   options: { attachmentConfig?: OpenClawConfig } = {},
-) {
+): Promise<DelegateCustodyRecord> {
   const isPostCompaction = delegate.mode === "post-compaction";
-  return delegateFlowRecords.create({
+  return await createDelegateRecord({
     ownerKey: sessionKey,
     controller: isPostCompaction ? "post-compaction" : "pending",
     delegate,
-    currentStep: isPostCompaction
+    phase: isPostCompaction
       ? "Staged for release after compaction"
       : "Queued for continuation dispatch",
-    attachmentConfig: options.attachmentConfig,
+    ...(options.attachmentConfig ? { attachmentConfig: options.attachmentConfig } : {}),
   });
 }
 
-export function listPendingDelegateSessionKeysForRecovery(
+async function listCutoffEligibleDelegateRecords(
+  options: Omit<PendingDelegateCutoffOptions, "includeRunning">,
+): Promise<DelegateCustodyRecord[]> {
+  return (await listLiveDelegateRecords({ kinds: ["delegate"] })).filter((record) =>
+    isRecoverablePendingFlowWithinCutoffs(record, {
+      includeRunning: true,
+      queuedCreatedAtOrBefore: options.queuedCreatedAtOrBefore,
+      includeRunningUpdatedAtOrBefore: options.includeRunningUpdatedAtOrBefore,
+    }),
+  );
+}
+
+export async function listPendingDelegateSessionKeysForRecovery(
   options: Omit<PendingDelegateCutoffOptions, "includeRunning"> = {},
-): string[] {
+): Promise<string[]> {
   const sessionKeys: string[] = [];
-  const flows = delegateFlowRecords.listAll();
-  scrubCancellationRequestedDelegateFlows(flows);
-  for (const flow of flows) {
-    if (
-      !isRecoverablePendingFlowWithinCutoffs(flow, {
-        includeRunning: true,
-        queuedCreatedAtOrBefore: options.queuedCreatedAtOrBefore,
-        includeRunningUpdatedAtOrBefore: options.includeRunningUpdatedAtOrBefore,
-      })
-    ) {
+  for (const record of await listCutoffEligibleDelegateRecords(options)) {
+    // Validate before the recovery dispatcher loads the owning session: a
+    // missing session must not leave malformed state recoverable forever.
+    if (!(await decodeDelegateFlow(record))) {
+      await rejectCorruptDelegateFlow(record, {
+        kind: "pending",
+        sessionKey: record.ownerSessionKey,
+      });
       continue;
     }
-    // Validate before the recovery dispatcher attempts to load the owning
-    // session. A missing/deleted session must not leave malformed inline bytes
-    // in a recoverable TaskFlow row forever.
-    if (!decodeDelegateFlow(flow)) {
-      rejectCorruptDelegateFlow(flow, { kind: "pending", sessionKey: flow.ownerKey });
-      continue;
-    }
-    sessionKeys.push(flow.ownerKey);
+    sessionKeys.push(record.ownerSessionKey);
   }
   return [...new Set(sessionKeys)].toSorted();
 }
 
-/** Decode cutoff-eligible recovery rows solely to terminalize malformed state. */
-export function classifyRecoverablePendingDelegates(
+/** Decode cutoff-eligible recovery records solely to terminalize malformed state. */
+export async function classifyRecoverablePendingDelegates(
   options: Omit<PendingDelegateCutoffOptions, "includeRunning"> = {},
-): void {
-  const flows = delegateFlowRecords.listAll();
-  scrubCancellationRequestedDelegateFlows(flows);
-  for (const flow of flows) {
-    if (
-      !isRecoverablePendingFlowWithinCutoffs(flow, {
-        includeRunning: true,
-        queuedCreatedAtOrBefore: options.queuedCreatedAtOrBefore,
-        includeRunningUpdatedAtOrBefore: options.includeRunningUpdatedAtOrBefore,
-      })
-    ) {
-      continue;
-    }
-    if (!decodeDelegateFlow(flow)) {
-      rejectCorruptDelegateFlow(flow, { kind: "pending", sessionKey: flow.ownerKey });
+): Promise<void> {
+  for (const record of await listCutoffEligibleDelegateRecords(options)) {
+    if (!(await decodeDelegateFlow(record))) {
+      await rejectCorruptDelegateFlow(record, {
+        kind: "pending",
+        sessionKey: record.ownerSessionKey,
+      });
     }
   }
 }
 
 /**
- * Claim matured delegates in FIFO order. Queued rows retain their original
- * delay horizon; already-running recovery rows are never delay-gated.
+ * Claim matured delegates in FIFO order (RFC §5.4.4). The claim records a new,
+ * never-reused spawn attempt and its precomputed child run ID in the same
+ * commit that marks the record `running`, before anything calls the spawn
+ * owner. Records already `running` are never claimed again: a claim that
+ * outlived its dispatch is resolved by {@link listUnresolvedDelegateClaims}.
  */
-export function consumePendingDelegates(
+export async function consumePendingDelegates(
   sessionKey: string,
-  options: PendingDelegateCutoffOptions & { ignoreDelay?: boolean } = {},
-): PendingContinuationDelegate[] {
+  options: Pick<PendingDelegateCutoffOptions, "queuedCreatedAtOrBefore"> & {
+    ignoreDelay?: boolean;
+  } = {},
+): Promise<PendingContinuationDelegate[]> {
   const delegates: PendingContinuationDelegate[] = [];
   const now = Date.now();
-  scrubCancellationRequestedDelegateFlows(delegateFlowRecords.listForOwner(sessionKey));
-
-  for (const flow of listRecoverablePendingFlows(sessionKey, options)) {
-    const delegate = decodeDelegateFlow(flow);
+  for (const record of await listQueuedPendingFlows(sessionKey)) {
+    if (
+      options.queuedCreatedAtOrBefore !== undefined &&
+      record.createdAt > options.queuedCreatedAtOrBefore
+    ) {
+      continue;
+    }
+    const delegate = await decodeDelegateFlow(record);
     if (!delegate) {
-      rejectCorruptDelegateFlow(flow, { kind: "pending", sessionKey });
+      await rejectCorruptDelegateFlow(record, { kind: "pending", sessionKey });
       continue;
     }
-    if (!options.ignoreDelay && flow.status === "queued" && now < delegateDueAt(flow, delegate)) {
+    if (!options.ignoreDelay && now < delegateDueAt(record, delegate)) {
       continue;
     }
-
-    const releasedAt = Date.now();
-    const claimed = delegateFlowRecords.update({
-      flowId: flow.flowId,
-      expectedRevision: flow.revision,
-      changes: { releasedAt },
-      patch: {
-        status: "running",
-        currentStep:
-          flow.status === "running"
-            ? "Re-driving continuation delegate spawn"
-            : "Released to continuation scheduler",
-        waitJson: null,
-        blockedTaskId: null,
-        blockedSummary: null,
-        endedAt: null,
-        updatedAt: releasedAt,
-      },
+    const claimed = await claimContinuationSpawnAttempt({
+      recordId: record.recordId,
+      ownerSessionKey: sessionKey,
+      expectedRevision: record.revision,
+      now: Date.now(),
     });
-    if (!claimed.applied) {
+    if (claimed.outcome !== "claimed") {
       continue;
     }
-    const claimedDelegate = decodeDelegateFlow(claimed.flow);
+    const claimedDelegate = await decodeDelegateFlow(claimed.record);
     if (claimedDelegate) {
-      delegates.push(claimedDelegate);
+      delegates.push({
+        ...claimedDelegate,
+        spawnAttempt: {
+          attemptId: claimed.attempt.attemptId,
+          childRunId: claimed.attempt.childRunId,
+        },
+      });
     }
   }
-
   return delegates;
 }
 
-export function markPendingDelegateSpawnAccepted(
-  delegate: Pick<PendingContinuationDelegate, "flowId" | "expectedRevision" | "task">,
+/**
+ * Claimed delegates whose dispatch did not finish (RFC §5.4.4 boundaries 2-4):
+ * `running` records last touched at or before the cutoff. The caller decides
+ * each one from `subagent_runs` and never spawns it again (Q3).
+ */
+export async function listUnresolvedDelegateClaims(
+  sessionKey: string,
+  options: { updatedAtOrBefore: number },
+): Promise<PendingContinuationDelegate[]> {
+  const unresolved: PendingContinuationDelegate[] = [];
+  for (const record of await listDelegateRecords({
+    ownerSessionKey: sessionKey,
+    kinds: ["delegate"],
+    statuses: ["running"],
+  })) {
+    if (record.cancelRequestedAt !== undefined || record.updatedAt > options.updatedAtOrBefore) {
+      continue;
+    }
+    const delegate = await decodeDelegateFlowMetadata(record);
+    if (!delegate) {
+      await rejectCorruptDelegateFlow(record, { kind: "pending", sessionKey });
+      continue;
+    }
+    unresolved.push(delegate);
+  }
+  return unresolved;
+}
+
+/** Sessions that own a claimed delegate left unresolved at or before the cutoff. */
+export async function listUnresolvedDelegateClaimSessionKeys(options: {
+  updatedAtOrBefore: number;
+}): Promise<string[]> {
+  const keys = (await listDelegateRecords({ kinds: ["delegate"], statuses: ["running"] }))
+    .filter(
+      (record) =>
+        record.cancelRequestedAt === undefined && record.updatedAt <= options.updatedAtOrBefore,
+    )
+    .map((record) => record.ownerSessionKey);
+  return [...new Set(keys)].toSorted();
+}
+
+async function currentRecordFor(delegate: DelegateRef): Promise<DelegateCustodyRecord | undefined> {
+  return delegate.flowId ? await getDelegateRecord(delegate.flowId) : undefined;
+}
+
+/**
+ * Commit a spawn the Gateway accepted. A pending delegate hands custody to
+ * `subagent_runs` permanently (§5.4.4); a released post-compaction record is
+ * already handed to its queue entry and only records the accepted child.
+ */
+export async function markPendingDelegateSpawnAccepted(
+  delegate: DelegateRef & Pick<PendingContinuationDelegate, "spawnAttempt">,
   childSessionKey: string,
-  options: { requireWriteSuccess?: boolean } = {},
-): boolean {
+  options: { requireWriteSuccess?: boolean; childRunId?: string } = {},
+): Promise<boolean> {
   if (!delegate.flowId || delegate.expectedRevision === undefined) {
     log.warn(
       "[continuation:delegate-accept-missing-flow] cannot commit accepted delegate because flow metadata is missing",
     );
     return false;
   }
-  const current = delegateFlowRecords.get(delegate.flowId);
-  const expectedRevision = delegate.expectedRevision;
+  const current = await currentRecordFor(delegate);
   const now = Date.now();
-  if (current && isSucceededDelegateFlow(current)) {
-    return recordAcceptedSucceededDelegate(current, expectedRevision, childSessionKey, now);
+  if (!current) {
+    return failAcceptance(delegate, options);
   }
-  const currentDelegate = (current && decodeDelegateFlow(current)) ?? { task: delegate.task };
-  const finished = delegateFlowRecords.finish({
-    flowId: delegate.flowId,
-    expectedRevision,
-    fallbackDelegate: currentDelegate,
-    changes: { childSessionKey },
-    currentStep: "Accepted by continuation subagent",
-    updatedAt: now,
-    endedAt: now,
-  });
-  if (!finished.applied) {
-    if (finished.current && isSucceededDelegateFlow(finished.current)) {
-      return recordAcceptedSucceededDelegate(
-        finished.current,
-        expectedRevision,
-        childSessionKey,
-        now,
-      );
-    }
-    const message = `[continuation:delegate-accept-not-committed] flowId=${delegate.flowId} expectedRevision=${expectedRevision} acceptance was not committed`;
-    log.warn(message);
-    if (options.requireWriteSuccess === true) {
-      throw new Error(message);
-    }
-  }
-  return finished.applied;
-}
-
-function recordAcceptedSucceededDelegate(
-  flow: DelegateFlowRecord,
-  expectedRevision: number,
-  childSessionKey: string,
-  now: number,
-): boolean {
-  const accepted = decodeDelegateFlowMetadata(flow);
-  const acceptedChildSessionKey = readAcceptedDelegateChildSessionKey(flow);
-  if (acceptedChildSessionKey === childSessionKey) {
+  if (readAcceptedDelegateChildSessionKey(current) === childSessionKey) {
     return true;
   }
-  const canRecordHandedOffChild =
-    isPostCompactionDelegateFlow(flow) &&
-    acceptedChildSessionKey === undefined &&
-    (flow.revision === expectedRevision ||
-      isDurablyHandedOffPostCompactionFlow(flow, expectedRevision));
-  if (!canRecordHandedOffChild) {
-    return false;
+  if (isPostCompactionDelegateFlow(current)) {
+    const canRecord =
+      readAcceptedDelegateChildSessionKey(current) === undefined &&
+      (current.revision === delegate.expectedRevision ||
+        isDurablyHandedOffPostCompactionFlow(current));
+    if (!canRecord) {
+      return failAcceptance(delegate, options);
+    }
+    const recorded = await updateDelegateRecord({
+      record: current,
+      changes: { childSessionKey },
+      patch: {
+        phase: "Accepted by continuation subagent",
+        ...(current.status === "running" ? { status: "succeeded" as const } : {}),
+      },
+      now,
+    });
+    return recorded.applied || failAcceptance(delegate, options);
   }
-  return delegateFlowRecords.update({
-    flowId: flow.flowId,
-    expectedRevision: flow.revision,
-    fallbackDelegate: accepted,
+  if (current.revision !== delegate.expectedRevision || current.status !== "running") {
+    return failAcceptance(delegate, options);
+  }
+  const childRunId =
+    options.childRunId ??
+    delegate.spawnAttempt?.childRunId ??
+    current.spawnAttempts.at(-1)?.childRunId;
+  const finished = await updateDelegateRecord({
+    record: current,
     changes: { childSessionKey },
     patch: {
-      currentStep: "Accepted by continuation subagent",
-      updatedAt: now,
+      status: "succeeded",
+      phase: "Accepted by continuation subagent",
+      failureReason: null,
+      ...(childRunId
+        ? {
+            handoff: {
+              target: "subagent_runs" as const,
+              childRunId,
+              childSessionKey,
+              handedOffAt: now,
+            },
+          }
+        : {}),
     },
-  }).applied;
+    now,
+  });
+  return finished.applied || failAcceptance(delegate, options);
 }
 
-export function markPendingDelegateFailed(
-  delegate: Pick<PendingContinuationDelegate, "flowId" | "expectedRevision" | "task">,
-  blockedSummary: string,
-  currentStep = "Delegate spawn failed",
-): boolean {
+function failAcceptance(delegate: DelegateRef, options: { requireWriteSuccess?: boolean }): false {
+  const message = `[continuation:delegate-accept-not-committed] flowId=${delegate.flowId} expectedRevision=${delegate.expectedRevision} acceptance was not committed`;
+  log.warn(message);
+  if (options.requireWriteSuccess === true) {
+    throw new Error(message);
+  }
+  return false;
+}
+
+export async function markPendingDelegateFailed(
+  delegate: DelegateRef,
+  failureReason: string,
+  phase = "Delegate spawn failed",
+): Promise<boolean> {
   if (!delegate.flowId || delegate.expectedRevision === undefined) {
     log.warn(
       "[continuation:delegate-fail-missing-flow] cannot mark consumed delegate failed because flow metadata is missing",
     );
     return false;
   }
-
-  const failed = delegateFlowRecords.fail({
-    flowId: delegate.flowId,
-    expectedRevision: delegate.expectedRevision,
-    currentStep,
-    blockedSummary,
-    updatedAt: Date.now(),
-  });
-  if (failed.applied) {
+  const current = await currentRecordFor(delegate);
+  if (!current) {
+    return false;
+  }
+  if (current.status === "failed") {
     return true;
   }
-  return failed.current?.status === "failed";
+  if (current.revision !== delegate.expectedRevision) {
+    return false;
+  }
+  const failed = await updateDelegateRecord({
+    record: current,
+    patch: { status: "failed", phase, failureReason },
+  });
+  return failed.applied || failed.current?.status === "failed";
 }
 
-export function requeuePendingDelegate(
-  delegate: Pick<PendingContinuationDelegate, "flowId" | "expectedRevision" | "task">,
-  currentStep = "Deferred until continuation is re-enabled",
+/**
+ * Terminalize a claim whose child admission cannot be proven (RFC §5.4.4, Q3):
+ * the record fails with its attempts kept, owes exactly one
+ * `[continuation:delegate-spawn-interrupted]` notice, and is never spawned
+ * again. The obligation and its delivery are separate commits, as for the work
+ * notice; a crash between them leaves the obligation for recovery.
+ */
+export async function terminalizeInterruptedDelegateClaim(
+  delegate: DelegateRef,
+  options: { collision?: boolean } = {},
+): Promise<boolean> {
+  const current = await currentRecordFor(delegate);
+  if (!current || current.revision !== delegate.expectedRevision) {
+    return false;
+  }
+  if (options.collision) {
+    log.warn(
+      `[continuation:delegate-run-id-collision] flowId=${current.recordId} a subagent run under a recorded child run id belongs to another requester; not adopted`,
+    );
+  }
+  const failed = await updateDelegateRecord({
+    record: current,
+    patch: {
+      status: "failed",
+      phase: "Delegate spawn interrupted before admission could be proven",
+      failureReason: "spawn-interrupted",
+      terminalNoticePending: "delegate-spawn-interrupted",
+    },
+  });
+  if (!failed.applied) {
+    return false;
+  }
+  await deliverOwedDelegateNotice(failed.record);
+  return true;
+}
+
+function interruptedNoticeSource(
+  record: DelegateCustodyRecord,
+): ContinuationSpawnInterruptedSource {
+  return {
+    kind: "record",
+    recordId: record.recordId,
+    childRunIds: record.spawnAttempts.map((attempt) => attempt.childRunId),
+  };
+}
+
+/**
+ * Deliver an owed interrupted-spawn notice: the notice row insert and the
+ * obligation clear commit together (RFC §5.4.2). Returns the queue entry ID
+ * the notice lives in, or undefined when nothing was owed.
+ */
+export async function deliverOwedDelegateNotice(
+  record: DelegateCustodyRecord,
+): Promise<{ entryId: string; entryStatus: string } | undefined> {
+  if (record.terminalNoticePending !== "delegate-spawn-interrupted") {
+    return undefined;
+  }
+  const { prepareSessionDeliveryEnqueue } =
+    await import("../../infra/session-delivery-queue-storage.js");
+  const task = decodeDelegateState(record)?.task ?? "";
+  const now = Date.now();
+  const notice = buildContinuationSpawnInterruptedNotice({
+    sessionKey: record.ownerSessionKey,
+    source: interruptedNoticeSource(record),
+    task,
+  });
+  const { bound } = prepareSessionDeliveryEnqueue(notice, now);
+  const settled = await settleContinuationNotice({
+    recordId: record.recordId,
+    ownerSessionKey: record.ownerSessionKey,
+    expectedRevision: record.revision,
+    notice: bound,
+    now,
+  });
+  if (settled.outcome !== "settled") {
+    return undefined;
+  }
+  log.info(
+    `[continuation:delegate-spawn-interrupted-notice] flowId=${record.recordId} session=${record.ownerSessionKey} deliveryId=${settled.entryId}`,
+  );
+  if (notice.kind === "systemEvent") {
+    await surfaceDurableContinuationNotice({
+      entryId: settled.entryId,
+      entryStatus: settled.entryStatus,
+      sessionKey: record.ownerSessionKey,
+      text: notice.text,
+      reason: "continuation-delegate-spawn-interrupted",
+    });
+  }
+  return { entryId: settled.entryId, entryStatus: settled.entryStatus };
+}
+
+/** Every delegate record that still owes its interrupted-spawn notice. */
+export async function listOwedDelegateNotices(): Promise<DelegateCustodyRecord[]> {
+  return (await listDelegateRecords({ kinds: ["delegate"], statuses: ["failed"] })).filter(
+    (record) => record.terminalNoticePending === "delegate-spawn-interrupted",
+  );
+}
+
+/**
+ * Put a claimed delegate back in the queue. Only a claim whose spawn provably
+ * never dispatched may be requeued (RFC §5.4.4, "In-process spawn failures");
+ * `failurePhase: "initialize"` records that on the claimed attempt.
+ */
+export async function requeuePendingDelegate(
+  delegate: DelegateRef & Pick<PendingContinuationDelegate, "spawnAttempt">,
+  phase = "Deferred until continuation is re-enabled",
   inheritedPolicy?: Pick<PendingContinuationDelegate, "inheritedSilent" | "inheritedWake">,
-): boolean {
+  options: { failurePhase?: "initialize" } = {},
+): Promise<boolean> {
   if (!delegate.flowId || delegate.expectedRevision === undefined) {
     return false;
   }
-  const current = delegateFlowRecords.get(delegate.flowId);
-  const currentDelegate = (current && decodeDelegateFlow(current)) ?? { task: delegate.task };
-  const canInheritPolicy = currentDelegate.mode === undefined || currentDelegate.mode === "normal";
-  const requeued = delegateFlowRecords.update({
-    flowId: delegate.flowId,
-    expectedRevision: delegate.expectedRevision,
-    fallbackDelegate: currentDelegate,
-    changes: {
-      releasedAt: null,
-      ...(canInheritPolicy && inheritedPolicy?.inheritedSilent === true
-        ? { inheritedSilent: true }
-        : {}),
-      ...(canInheritPolicy && inheritedPolicy?.inheritedWake === true
-        ? { inheritedWake: true }
-        : {}),
-    },
-    patch: {
-      status: "queued",
-      currentStep,
-      waitJson: null,
-      blockedTaskId: null,
-      blockedSummary: null,
-      endedAt: null,
-      updatedAt: Date.now(),
-    },
-  });
+  const current = await currentRecordFor(delegate);
+  if (!current || current.revision !== delegate.expectedRevision) {
+    return false;
+  }
+  const currentDelegate = await decodeDelegateFlowMetadata(current);
+  const canInheritPolicy = currentDelegate?.mode === undefined || currentDelegate.mode === "normal";
+  const changes: DelegateStateChanges = {
+    releasedAt: null,
+    ...(canInheritPolicy && inheritedPolicy?.inheritedSilent === true
+      ? { inheritedSilent: true }
+      : {}),
+    ...(canInheritPolicy && inheritedPolicy?.inheritedWake === true ? { inheritedWake: true } : {}),
+  };
+  const stateJson = delegateStateJsonWithChanges(current, changes);
+  if (stateJson === undefined) {
+    return false;
+  }
+  const patch: ContinuationRecordPatch = {
+    status: "queued",
+    phase,
+    failureReason: null,
+    stateJson,
+  };
+  const latest = current.spawnAttempts.at(-1);
+  if (
+    options.failurePhase === "initialize" &&
+    latest &&
+    latest.attemptId === delegate.spawnAttempt?.attemptId &&
+    latest.failurePhase === undefined &&
+    current.status === "running"
+  ) {
+    const result = await recordContinuationSpawnAttemptFailure({
+      recordId: current.recordId,
+      ownerSessionKey: current.ownerSessionKey,
+      expectedRevision: current.revision,
+      now: Date.now(),
+      attemptId: latest.attemptId,
+      failurePhase: "initialize",
+      patch,
+    });
+    return result.outcome === "applied";
+  }
+  const requeued = await updateDelegateRecord({ record: current, patch });
   return requeued.applied;
 }
 
-export function markPendingDelegateChainStatePersistPlanned(
+export async function markPendingDelegateChainStatePersistPlanned(
   delegate: Pick<
     PendingContinuationDelegate,
-    "flowId" | "expectedRevision" | "task" | "persistedChainState" | "persistedChainStateKind"
+    | "flowId"
+    | "expectedRevision"
+    | "task"
+    | "persistedChainState"
+    | "persistedChainStateKind"
+    | "spawnAttempt"
   >,
   chainState: ChainState,
   kind: "advanced" | "terminal" = "advanced",
-): PendingContinuationDelegate {
+): Promise<PendingContinuationDelegate> {
   if (!delegate.flowId || delegate.expectedRevision === undefined) {
     log.warn(
       "[continuation:delegate-chain-state-plan-missing-flow] cannot mark planned chain state because flow metadata is missing",
@@ -402,47 +660,51 @@ export function markPendingDelegateChainStatePersistPlanned(
         : {}),
     };
   }
-  const planned = delegateFlowRecords.update({
-    flowId: delegate.flowId,
-    expectedRevision: delegate.expectedRevision,
-    fallbackDelegate: { task: delegate.task },
-    changes: {
-      chainTokensFold: null,
-      persistedChainState: chainState,
-      persistedChainStateKind: kind,
-    },
-    patch: { updatedAt: Date.now() },
-  });
+  const current = await currentRecordFor(delegate);
+  const planned =
+    current && current.revision === delegate.expectedRevision
+      ? await updateDelegateRecord({
+          record: current,
+          changes: {
+            chainTokensFold: null,
+            persistedChainState: chainState,
+            persistedChainStateKind: kind,
+          },
+        })
+      : ({ applied: false, reason: "revision_conflict" } satisfies DelegateRecordWriteResult);
   if (!planned.applied) {
     throw new Error(
       `planned delegate chain-state marker was not committed for flow ${delegate.flowId}`,
     );
   }
-  const plannedDelegate = decodeDelegateFlowMetadata(planned.flow);
+  const plannedDelegate = await decodeDelegateFlowMetadata(planned.record);
   if (!plannedDelegate) {
     throw new Error(`planned delegate chain-state marker was corrupt for flow ${delegate.flowId}`);
   }
-  return plannedDelegate;
+  return {
+    ...plannedDelegate,
+    ...(delegate.spawnAttempt ? { spawnAttempt: delegate.spawnAttempt } : {}),
+  };
 }
 
-export function peekEarliestQueuedDelegateDueAt(
+export async function peekEarliestQueuedDelegateDueAt(
   sessionKey: string,
   options: Pick<PendingDelegateCutoffOptions, "queuedCreatedAtOrBefore"> = {},
-): number | undefined {
+): Promise<number | undefined> {
   let soonest: number | undefined;
-  for (const flow of listQueuedPendingFlows(sessionKey)) {
+  for (const record of await listQueuedPendingFlows(sessionKey)) {
     if (
       options.queuedCreatedAtOrBefore !== undefined &&
-      flow.createdAt > options.queuedCreatedAtOrBefore
+      record.createdAt > options.queuedCreatedAtOrBefore
     ) {
       continue;
     }
-    const delegate = decodeDelegateFlow(flow);
+    const delegate = await decodeDelegateFlow(record);
     if (!delegate) {
-      rejectCorruptDelegateFlow(flow, { kind: "pending", sessionKey });
+      await rejectCorruptDelegateFlow(record, { kind: "pending", sessionKey });
       continue;
     }
-    const dueAt = delegateDueAt(flow, delegate);
+    const dueAt = delegateDueAt(record, delegate);
     if (soonest === undefined || dueAt < soonest) {
       soonest = dueAt;
     }
@@ -450,35 +712,24 @@ export function peekEarliestQueuedDelegateDueAt(
   return soonest;
 }
 
+/** Queued pending delegates for a session, from the hot-path projection. */
 export function pendingDelegateCount(sessionKey: string): number {
-  return listQueuedPendingFlows(sessionKey).length;
+  return countQueuedPendingDelegates(sessionKey);
 }
 
-export function hasRecoverablePendingDelegate(sessionKey: string): boolean {
-  const flows = delegateFlowRecords.listForOwner(sessionKey);
-  scrubCancellationRequestedDelegateFlows(flows);
-  return flows.some(isRecoverablePendingFlow);
-}
-
-export function annotateQueuedDelegatesChainTokensFold(
+export async function annotateQueuedDelegatesChainTokensFold(
   sessionKey: string,
   chainTokensFold: number,
-): number {
+): Promise<number> {
   if (!(chainTokensFold > 0)) {
     return 0;
   }
   let annotated = 0;
-  for (const flow of listQueuedPendingFlows(sessionKey)) {
-    const delegate = decodeDelegateFlow(flow);
-    if (!delegate) {
+  for (const record of await listQueuedPendingFlows(sessionKey)) {
+    if (!decodeDelegateState(record)) {
       continue;
     }
-    const result = delegateFlowRecords.update({
-      flowId: flow.flowId,
-      expectedRevision: flow.revision,
-      changes: { chainTokensFold },
-      patch: { updatedAt: Date.now() },
-    });
+    const result = await updateDelegateRecord({ record, changes: { chainTokensFold } });
     if (result.applied) {
       annotated += 1;
     }
@@ -486,19 +737,15 @@ export function annotateQueuedDelegatesChainTokensFold(
   return annotated;
 }
 
-function clearDelegatesChainTokensFold(flows: readonly DelegateFlowRecord[]): number {
+async function clearDelegatesChainTokensFold(
+  records: readonly DelegateCustodyRecord[],
+): Promise<number> {
   let cleared = 0;
-  for (const flow of flows) {
-    const delegate = decodeDelegateFlow(flow);
-    if (!delegate?.chainTokensFold) {
+  for (const record of records) {
+    if (!decodeDelegateState(record)?.chainTokensFold) {
       continue;
     }
-    const result = delegateFlowRecords.update({
-      flowId: flow.flowId,
-      expectedRevision: flow.revision,
-      changes: { chainTokensFold: null },
-      patch: { updatedAt: Date.now() },
-    });
+    const result = await updateDelegateRecord({ record, changes: { chainTokensFold: null } });
     if (result.applied) {
       cleared += 1;
     }
@@ -506,42 +753,44 @@ function clearDelegatesChainTokensFold(flows: readonly DelegateFlowRecord[]): nu
   return cleared;
 }
 
-export function clearQueuedDelegatesChainTokensFold(sessionKey: string): number {
-  return clearDelegatesChainTokensFold(listQueuedPendingFlows(sessionKey));
+export async function clearQueuedDelegatesChainTokensFold(sessionKey: string): Promise<number> {
+  return await clearDelegatesChainTokensFold(await listQueuedPendingFlows(sessionKey));
 }
 
-export function clearRecoverableDelegatesChainTokensFold(sessionKey: string): number {
-  return clearDelegatesChainTokensFold(
-    delegateFlowRecords.listForOwner(sessionKey).filter(isRecoverablePendingFlow),
+export async function clearRecoverableDelegatesChainTokensFold(
+  sessionKey: string,
+): Promise<number> {
+  return await clearDelegatesChainTokensFold(
+    (await listLiveDelegateRecords({ ownerSessionKey: sessionKey, kinds: ["delegate"] })).filter(
+      (record) => record.cancelRequestedAt === undefined,
+    ),
   );
 }
 
-export function annotateQueuedDelegatesInheritedPolicy(
+export async function annotateQueuedDelegatesInheritedPolicy(
   sessionKey: string,
   policy: { inheritedSilent?: boolean; inheritedWake?: boolean },
   queuedCreatedAtOrBefore?: number,
-): number {
+): Promise<number> {
   if (policy.inheritedSilent !== true && policy.inheritedWake !== true) {
     return 0;
   }
   let annotated = 0;
-  for (const flow of listQueuedPendingFlows(sessionKey)) {
-    if (queuedCreatedAtOrBefore !== undefined && flow.createdAt > queuedCreatedAtOrBefore) {
+  for (const record of await listQueuedPendingFlows(sessionKey)) {
+    if (queuedCreatedAtOrBefore !== undefined && record.createdAt > queuedCreatedAtOrBefore) {
       continue;
     }
-    const delegate = decodeDelegateFlow(flow);
-    // Persisted normal/default mode is represented by an omitted `mode`.
-    if (!delegate || delegate.mode !== undefined) {
+    const state = decodeDelegateState(record);
+    // Persisted normal/default mode is represented by omitted mode flags.
+    if (!state || state.silent || state.silentWake || state.postCompaction) {
       continue;
     }
-    const result = delegateFlowRecords.update({
-      flowId: flow.flowId,
-      expectedRevision: flow.revision,
+    const result = await updateDelegateRecord({
+      record,
       changes: {
         ...(policy.inheritedSilent ? { inheritedSilent: true } : {}),
         ...(policy.inheritedWake ? { inheritedWake: true } : {}),
       },
-      patch: { updatedAt: Date.now() },
     });
     if (result.applied) {
       annotated += 1;
@@ -550,49 +799,58 @@ export function annotateQueuedDelegatesInheritedPolicy(
   return annotated;
 }
 
-export function cancelPendingDelegates(sessionKey: string): void {
-  for (const flow of delegateFlowRecords
-    .listForOwner(sessionKey)
-    .filter(
-      (candidate) => isPendingDelegateFlow(candidate) || isPostCompactionDelegateFlow(candidate),
-    )) {
-    delegateFlowRecords.delete(flow.flowId);
+/** Remove every unclaimed delegate a session queued or staged. */
+export async function cancelPendingDelegates(sessionKey: string): Promise<void> {
+  for (const record of await listDelegateRecords({
+    ownerSessionKey: sessionKey,
+    statuses: ["queued"],
+  })) {
+    await deleteDelegateRecord(record);
   }
 }
 
-export function removeUnacceptedContinuationDelegate(flowId: string): void {
-  delegateFlowRecords.delete(flowId);
+/** Remove a delegate that was never accepted (RFC §5.4.8 capability 4). */
+export async function removeUnacceptedContinuationDelegate(flowId: string): Promise<void> {
+  const record = await getDelegateRecord(flowId);
+  if (record && record.status === "queued") {
+    await deleteDelegateRecord(record);
+  }
 }
 
-export function failQueuedDelegatesOwnedByRun(
+export async function failQueuedDelegatesOwnedByRun(
   sessionKey: string,
   owner: {
     originRunId: string;
     legacyCreatedAfter: number;
   },
-  blockedSummary: string,
-): number {
+  failureReason: string,
+): Promise<number> {
   let failed = 0;
-  for (const flow of delegateFlowRecords.listForOwner(sessionKey)) {
-    if (!isRecoverableContinuationDelegateFlow(flow) || flow.status !== "queued") {
+  for (const record of await listDelegateRecords({
+    ownerSessionKey: sessionKey,
+    statuses: ["queued"],
+  })) {
+    if (!isRecoverableContinuationDelegateFlow(record)) {
       continue;
     }
-    const delegate = decodeDelegateFlow(flow);
-    // Current rows carry immutable producer identity. Only ownerless legacy
-    // rows fall back to time, and equality stays untouched because another
+    const state = decodeDelegateState(record);
+    // Current records carry immutable producer identity. Only ownerless
+    // records fall back to time, and equality stays untouched because another
     // attempt can begin in the same millisecond.
     const ownedByAttempt =
-      delegate?.originRunId !== undefined
-        ? delegate.originRunId === owner.originRunId
-        : flow.createdAt > owner.legacyCreatedAfter;
+      state?.originRunId !== undefined
+        ? state.originRunId === owner.originRunId
+        : record.createdAt > owner.legacyCreatedAfter;
     if (!ownedByAttempt) {
       continue;
     }
-    const result = delegateFlowRecords.fail({
-      flowId: flow.flowId,
-      expectedRevision: flow.revision,
-      currentStep: "Rejected replay-unsafe continuation delegate election",
-      blockedSummary,
+    const result = await updateDelegateRecord({
+      record,
+      patch: {
+        status: "failed",
+        phase: "Rejected replay-unsafe continuation delegate election",
+        failureReason,
+      },
     });
     if (result.applied) {
       failed += 1;

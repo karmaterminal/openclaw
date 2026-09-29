@@ -9,10 +9,10 @@ import { createReplyContinuationController } from "../../reply/agent-runner-cont
 import type { FollowupRun } from "../../reply/queue.js";
 import {
   decodeDelegateFlow,
-  delegateFlowRecords,
   isPostCompactionDelegateFlow,
+  listDelegateRecords,
 } from "../delegate-flow-store.js";
-import { claimStagedPostCompactionTaskFlowDelegates } from "../delegate-store-post-compaction.js";
+import { claimStagedPostCompactionDelegates } from "../delegate-store-post-compaction.js";
 import { consumePendingDelegates, markPendingDelegateSpawnAccepted } from "../delegate-store.js";
 import {
   continuationRecipientAuthorityMap,
@@ -199,25 +199,23 @@ export async function dispatchReturnCovenantCase(params: {
   state: ReturnCovenantCaseState;
 }): Promise<ReturnCovenantAcceptanceReceipt> {
   const { context, state } = params;
-  const flowIdsBefore = new Set(
-    delegateFlowRecords.listForOwner(state.casePlan.logicalSessionKey).map((flow) => flow.flowId),
+  const ownerSessionKey = state.casePlan.logicalSessionKey;
+  const recordIdsBefore = new Set(
+    (await listDelegateRecords({ ownerSessionKey })).map((record) => record.recordId),
   );
   const invocation = await invokeReturnCovenantDelegateForm(params);
-  const newFlows = delegateFlowRecords
-    .listForOwner(state.casePlan.logicalSessionKey)
-    .filter((flow) => !flowIdsBefore.has(flow.flowId));
+  const ownerRecords = await listDelegateRecords({ ownerSessionKey });
+  const newFlows = ownerRecords.filter((record) => !recordIdsBefore.has(record.recordId));
   if (newFlows.length !== 1) {
     throw new Error(
-      `delegate form created ${newFlows.length} flow rows instead of one: ${stableStringify({
+      `delegate form created ${newFlows.length} custody records instead of one: ${stableStringify({
         bracketTokensAccumulated: invocation.bracketTokensAccumulated,
-        ownerFlows: delegateFlowRecords
-          .listForOwner(state.casePlan.logicalSessionKey)
-          .map((flow) => ({
-            controllerId: flow.controllerId,
-            flowId: flow.flowId,
-            revision: flow.revision,
-            status: flow.status,
-          })),
+        ownerFlows: ownerRecords.map((record) => ({
+          kind: record.kind,
+          flowId: record.recordId,
+          revision: record.revision,
+          status: record.status,
+        })),
         systemEvents: peekSystemEventEntries(state.casePlan.logicalSessionKey).map(
           (event) => event.text,
         ),
@@ -230,11 +228,11 @@ export async function dispatchReturnCovenantCase(params: {
     if (!flow || !isPostCompactionDelegateFlow(flow) || flow.status !== "queued") {
       throw new Error("post-compaction form did not stage one queued flow");
     }
-    delegate = decodeDelegateFlow(flow);
+    delegate = await decodeDelegateFlow(flow);
   } else {
-    delegate = consumePendingDelegates(state.casePlan.logicalSessionKey, {
-      ignoreDelay: true,
-    }).find((entry) => entry.flowId === flow?.flowId);
+    delegate = (
+      await consumePendingDelegates(state.casePlan.logicalSessionKey, { ignoreDelay: true })
+    ).find((entry) => entry.flowId === flow?.recordId);
   }
   if (!delegate?.flowId || delegate.expectedRevision === undefined) {
     throw new Error("accepted delegate did not expose durable flow ownership");
@@ -274,9 +272,9 @@ export async function dispatchReturnCovenantCase(params: {
     await materializeReturnCovenantChild({ context, state });
     if (
       !state.childSessionKey ||
-      !markPendingDelegateSpawnAccepted(delegate, state.childSessionKey, {
+      !(await markPendingDelegateSpawnAccepted(delegate, state.childSessionKey, {
         requireWriteSuccess: true,
-      })
+      }))
     ) {
       throw new Error("accepted delegate flow did not commit its child session");
     }
@@ -291,7 +289,7 @@ export async function acceptPostCompactionReturnCovenantCase(params: {
 }): Promise<void> {
   const { context, state } = params;
   const flowId = state.delegate?.flowId;
-  const claimed = claimStagedPostCompactionTaskFlowDelegates(state.casePlan.logicalSessionKey).find(
+  const claimed = (await claimStagedPostCompactionDelegates(state.casePlan.logicalSessionKey)).find(
     (delegate) => delegate.flowId === flowId,
   );
   if (!claimed) {
@@ -301,9 +299,9 @@ export async function acceptPostCompactionReturnCovenantCase(params: {
   await materializeReturnCovenantChild({ context, state });
   if (
     !state.childSessionKey ||
-    !markPendingDelegateSpawnAccepted(claimed, state.childSessionKey, {
+    !(await markPendingDelegateSpawnAccepted(claimed, state.childSessionKey, {
       requireWriteSuccess: true,
-    })
+    }))
   ) {
     throw new Error("post-compaction delegate handoff did not persist");
   }

@@ -1,27 +1,30 @@
 /**
- * Durable continue_work store — TaskFlow-backed same-session continuation.
+ * Durable continue_work store over the continuation custody store (RFC
+ * docs/design/continue-work-signal-v2.md §5.4.2).
  *
  * `continue_work` elects another turn in the same session. The volatile timer is
- * only a maturity wake; the election itself lives in TaskFlow so gateway restart
- * can re-arm it and subagent cleanup can retain the session until the wake is
- * delivered.
+ * only a maturity wake; the election itself is a custody `work` record, so a
+ * Gateway restart can re-arm it and subagent cleanup can retain the session
+ * until the wake is delivered.
  */
 
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
+import { readContinuationLiveWork } from "./custody/custody-projection.js";
 import {
-  failFlow,
-  finishFlow,
-  getTaskFlowById,
-  listTaskFlowRecords,
-  listTaskFlowsForOwnerKey,
-  updateFlowRecordByIdExpectedRevision,
-} from "../../tasks/task-flow-runtime-internal.js";
+  listContinuationRecords,
+  resolveContinuationCustodyDatabasePath,
+  updateContinuationRecords,
+} from "./custody/custody-store.js";
+import type {
+  ContinuationRecord,
+  ContinuationRecordPatch,
+  ContinuationUpdateResult,
+} from "./custody/custody-store.types.js";
 import {
   buildFallbackWorkState,
   decodeWorkState,
   isContinuationWorkFlow,
-  isRecoverableWorkFlow,
+  workRecordDueAt,
   workToRuntime,
   type PendingContinuationIdleRetry,
   type PendingContinuationWork,
@@ -40,68 +43,122 @@ type ContinuationWorkTurnFenceResult =
   | { allowed: true }
   | { allowed: false; reason: "cancelled" | "stale" };
 
-/** Re-read a claimed work row at the final synchronous boundary before turn admission. */
-export function revalidatePendingWorkForTurn(
+async function readWorkRecord(recordId: string): Promise<ContinuationRecord | undefined> {
+  const record = (await listContinuationRecords({ recordIds: [recordId], kinds: ["work"] }))[0];
+  return record && isContinuationWorkFlow(record) ? record : undefined;
+}
+
+async function listOwnerWorkRecords(
+  sessionKey: string,
+  statuses?: readonly ("queued" | "running" | "failed")[],
+): Promise<ContinuationRecord[]> {
+  return await listContinuationRecords({
+    ownerSessionKey: sessionKey,
+    kinds: ["work"],
+    ...(statuses ? { statuses } : {}),
+  });
+}
+
+/** One revision CAS on a work record. */
+async function writeWork(
+  record: Pick<ContinuationRecord, "recordId" | "ownerSessionKey">,
+  expectedRevision: number,
+  patch: ContinuationRecordPatch,
+  now = Date.now(),
+): Promise<ContinuationUpdateResult> {
+  return await updateContinuationRecords(
+    [
+      {
+        recordId: record.recordId,
+        ownerSessionKey: record.ownerSessionKey,
+        expectedRevision,
+        patch,
+      },
+    ],
+    { now },
+  );
+}
+
+function appliedRecord(result: ContinuationUpdateResult): ContinuationRecord | undefined {
+  return result.outcome === "applied" ? result.records[0] : undefined;
+}
+
+/** State JSON plus its derived due-time column (RFC §5.4.2, `due_at`). */
+function statePatch(state: PendingWorkState): Pick<ContinuationRecordPatch, "stateJson" | "dueAt"> {
+  return { stateJson: JSON.stringify(state), dueAt: workRecordDueAt(state) };
+}
+
+/** Re-read a claimed work record at the final boundary before turn admission. */
+export async function revalidatePendingWorkForTurn(
   work: Pick<PendingContinuationWork, "flowId" | "expectedRevision">,
-): ContinuationWorkTurnFenceResult {
+): Promise<ContinuationWorkTurnFenceResult> {
   if (!work.flowId || work.expectedRevision === undefined) {
     return { allowed: false, reason: "stale" };
   }
-  const flow = getTaskFlowById(work.flowId);
+  const record = await readWorkRecord(work.flowId);
   if (
-    flow &&
-    isContinuationWorkFlow(flow) &&
-    flow.status === "running" &&
-    flow.revision === work.expectedRevision &&
-    flow.cancelRequestedAt == null
+    record &&
+    record.status === "running" &&
+    record.revision === work.expectedRevision &&
+    record.cancelRequestedAt === undefined
   ) {
     return { allowed: true };
   }
   return {
     allowed: false,
-    reason: flow?.status === "cancelled" || flow?.cancelRequestedAt != null ? "cancelled" : "stale",
+    reason:
+      record?.status === "cancelled" || record?.cancelRequestedAt !== undefined
+        ? "cancelled"
+        : "stale",
   };
 }
 
-function finalizeDeliveredWorkFlow(flow: TaskFlowRecord, state: PendingWorkState): void {
+async function finalizeDeliveredWorkRecord(
+  record: ContinuationRecord,
+  state: PendingWorkState,
+): Promise<void> {
   const now = Date.now();
   const foldedActive = state.disposition === "folded-active";
   const { recoveryDueAt: _recoveryDueAt, ...terminalState } = state;
-  const finished = finishFlow({
-    flowId: flow.flowId,
-    expectedRevision: flow.revision,
-    currentStep: foldedActive
-      ? "folded-into-active-turn: recovered delivered fold note"
-      : "Same-session continuation turn granted",
-    stateJson: {
-      ...terminalState,
-      ...(foldedActive
-        ? { foldedAt: state.foldedAt ?? now }
-        : {
-            deliveredAt: state.deliveredAt ?? now,
-            turnGrantedAt: state.turnGrantedAt ?? state.deliveredAt ?? now,
-          }),
-      disposition: state.disposition ?? (foldedActive ? "folded-active" : "granted"),
-      busySkipCount: 0,
+  const finished = await writeWork(
+    record,
+    record.revision,
+    {
+      status: "succeeded",
+      phase: foldedActive
+        ? "folded-into-active-turn: recovered delivered fold note"
+        : "Same-session continuation turn granted",
+      failureReason: null,
+      stateJson: JSON.stringify({
+        ...terminalState,
+        ...(foldedActive
+          ? { foldedAt: state.foldedAt ?? now }
+          : {
+              deliveredAt: state.deliveredAt ?? now,
+              turnGrantedAt: state.turnGrantedAt ?? state.deliveredAt ?? now,
+            }),
+        disposition: state.disposition ?? (foldedActive ? "folded-active" : "granted"),
+        busySkipCount: 0,
+      }),
+      updatedAt: now,
     },
-    updatedAt: now,
-    endedAt: now,
-  });
-  if (!finished.applied) {
+    now,
+  );
+  if (finished.outcome !== "applied") {
     log.warn(
-      `[continuation:work-delivered-finish-not-committed] flowId=${flow.flowId} expectedRevision=${flow.revision}`,
+      `[continuation:work-delivered-finish-not-committed] flowId=${record.recordId} expectedRevision=${record.revision}`,
     );
   }
 }
 
-export function listPendingWorkSessionKeysForRecovery(): string[] {
-  const keys = listTaskFlowRecords()
-    .filter(isRecoverableWorkFlow)
-    .map((flow) => flow.ownerKey);
+export async function listPendingWorkSessionKeysForRecovery(): Promise<string[]> {
+  const keys = (
+    await listContinuationRecords({ kinds: ["work"], statuses: ["queued", "running"] })
+  ).map((record) => record.ownerSessionKey);
   return [...new Set(keys)].toSorted();
 }
 
-export function consumePendingWork(
+export async function consumePendingWork(
   sessionKey: string,
   options: {
     includeRunning?: boolean;
@@ -109,111 +166,96 @@ export function consumePendingWork(
     includeIdleRetry?: boolean;
     includeRunningIdleRetry?: boolean;
   } = {},
-): PendingContinuationWork[] {
+): Promise<PendingContinuationWork[]> {
   const now = Date.now();
   const work: PendingContinuationWork[] = [];
-  for (const flow of listTaskFlowsForOwnerKey(sessionKey)
-    .filter(isContinuationWorkFlow)
-    .toSorted((a, b) => a.createdAt - b.createdAt)) {
-    // Pillar-0 (dedup harden): a cancel-requested flow is terminating
-    // — never consume/drive it. cancelFlowById finalizes managed continuation
-    // work to `cancelled` synchronously, but a transient revision conflict can
-    // leave it cancelRequestedAt-marked yet not-yet-terminal until the
-    // maintenance reaper (task-flow-registry.maintenance.ts) finalizes it.
-    // Honoring the request here means a cancelled wake is never granted a turn
-    // out from under the cancel. Terminal statuses are already excluded below.
-    if (flow.cancelRequestedAt != null) {
+  for (const record of await listOwnerWorkRecords(sessionKey, ["queued", "running"])) {
+    // A cancel-fenced record is terminating: never consume or drive it, so a
+    // cancelled wake is never granted a turn out from under the cancel.
+    if (record.cancelRequestedAt !== undefined) {
       continue;
     }
-    if (flow.status !== "queued" && flow.status !== "running") {
-      continue;
-    }
-    const state = decodeWorkState(flow);
+    const state = decodeWorkState(record);
     if (!state) {
       log.warn(
-        `[continuation:work-decode-failed] flowId=${flow.flowId} session=${sessionKey} raw=${JSON.stringify(flow.stateJson).slice(0, 200)}`,
+        `[continuation:work-decode-failed] flowId=${record.recordId} session=${sessionKey} stateBytes=${record.stateJson.length}`,
       );
-      failFlow({
-        flowId: flow.flowId,
-        expectedRevision: flow.revision,
-        currentStep: "Rejected invalid continuation work payload",
-        blockedSummary: "Pending continuation work payload could not be decoded.",
+      await writeWork(record, record.revision, {
+        status: "failed",
+        phase: "Rejected invalid continuation work payload",
+        failureReason: "Pending continuation work payload could not be decoded.",
       });
       continue;
     }
-    // locus-3 read-guard: a durably delivered-marked flow was confirmed
-    // delivered before the persist-gap. Even if its status is still `running`
-    // (the process died after the durable mark but before finishFlow finalized
-    // it), never re-consume it — that would be a restart-gap double-delivery.
+    // locus-3 read-guard: a durably delivered-marked record was confirmed
+    // delivered before the persist-gap. Even if it is still `running` (the
+    // process died after the durable mark but before the finish), never
+    // re-consume it: that would be a restart-gap double delivery.
     if (state.succeeded) {
-      finalizeDeliveredWorkFlow(flow, state);
+      await finalizeDeliveredWorkRecord(record, state);
       continue;
     }
     if (state.anchorPending === true) {
       continue;
     }
     const canConsumeRunning =
-      flow.status === "running" &&
+      record.status === "running" &&
       options.includeRunning === true &&
       (options.includeRunningUpdatedAtOrBefore === undefined ||
-        flow.updatedAt <= options.includeRunningUpdatedAtOrBefore);
-    if (flow.status !== "queued" && !canConsumeRunning) {
+        record.updatedAt <= options.includeRunningUpdatedAtOrBefore);
+    if (record.status !== "queued" && !canConsumeRunning) {
       continue;
     }
     const idleRetryReady =
       state.idleRetry !== undefined &&
       (options.includeIdleRetry === true ||
-        (options.includeRunningIdleRetry === true && flow.status === "running"));
-    const retryEligibleAt = Math.max(state.dueAt, state.recoveryDueAt ?? state.dueAt);
-    if (now < retryEligibleAt && !idleRetryReady) {
+        (options.includeRunningIdleRetry === true && record.status === "running"));
+    if (now < workRecordDueAt(state) && !idleRetryReady) {
       continue;
     }
     const releasedAt = Date.now();
-    const claimed = updateFlowRecordByIdExpectedRevision({
-      flowId: flow.flowId,
-      expectedRevision: flow.revision,
-      patch: {
-        status: "running",
-        currentStep:
-          flow.status === "running"
-            ? "Re-driving same-session continuation wake"
-            : "Released to continuation wake scheduler",
-        stateJson: { ...state, releasedAt },
-        waitJson: null,
-        blockedTaskId: null,
-        blockedSummary: null,
-        endedAt: null,
-        updatedAt: releasedAt,
-      },
-    });
-    if (!claimed.applied || !claimed.flow) {
+    const nextState = { ...state, releasedAt };
+    const claimed = appliedRecord(
+      await writeWork(
+        record,
+        record.revision,
+        {
+          status: "running",
+          phase:
+            record.status === "running"
+              ? "Re-driving same-session continuation wake"
+              : "Released to continuation wake scheduler",
+          failureReason: null,
+          ...statePatch(nextState),
+          updatedAt: releasedAt,
+        },
+        releasedAt,
+      ),
+    );
+    if (!claimed) {
       continue;
     }
-    // Carry the PRE-claim durable status: the claim above flips every consumed
-    // flow to `running`, so claimed.flow.status can no longer distinguish a
-    // recovered active turn from freshly-released queued backlog. The fold-side
-    // write-guard keys off this original status.
-    const originalStatus: "queued" | "running" = flow.status === "running" ? "running" : "queued";
-    work.push(workToRuntime(claimed.flow, { ...state, releasedAt }, originalStatus));
+    // Carry the PRE-claim durable status: the claim flips every consumed
+    // record to `running`, so the claimed record can no longer tell a
+    // recovered active turn from freshly released queued backlog. The
+    // fold-side write-guard keys off this original status.
+    const originalStatus: "queued" | "running" = record.status === "running" ? "running" : "queued";
+    work.push(workToRuntime(claimed, nextState, originalStatus));
   }
   return work;
 }
 
-export function finalizeAnchorPendingWork(
+export async function finalizeAnchorPendingWork(
   sessionKey: string,
   anchorFinalizedAt: number,
   options: { activeSessionId?: string; matureOverdueAnchors?: boolean } = {},
-): number {
+): Promise<number> {
   let anchored = 0;
-  for (const flow of listTaskFlowsForOwnerKey(sessionKey)) {
-    if (
-      !isContinuationWorkFlow(flow) ||
-      flow.status !== "queued" ||
-      flow.cancelRequestedAt != null
-    ) {
+  for (const record of await listOwnerWorkRecords(sessionKey, ["queued"])) {
+    if (record.cancelRequestedAt !== undefined) {
       continue;
     }
-    const state = decodeWorkState(flow);
+    const state = decodeWorkState(record);
     if (!state || state.succeeded || state.anchorPending !== true) {
       continue;
     }
@@ -234,90 +276,80 @@ export function finalizeAnchorPendingWork(
       ...stateWithoutPending
     } = state;
     const dueAt = effectiveAnchorFinalizedAt + state.delayMs;
-    const updated = updateFlowRecordByIdExpectedRevision({
-      flowId: flow.flowId,
-      expectedRevision: flow.revision,
-      patch: {
-        currentStep: "Anchored same-session continuation wake to electing turn finalization",
-        stateJson: {
-          ...stateWithoutPending,
-          dueAt,
-          anchorFinalizedAt: effectiveAnchorFinalizedAt,
-        },
-        waitJson: null,
-        blockedTaskId: null,
-        blockedSummary: null,
-        updatedAt: effectiveAnchorFinalizedAt,
-      },
+    // Anchoring sets `updated_at` to the anchor time on purpose (§5.4.2).
+    const updated = await writeWork(record, record.revision, {
+      phase: "Anchored same-session continuation wake to electing turn finalization",
+      ...statePatch({
+        ...stateWithoutPending,
+        dueAt,
+        anchorFinalizedAt: effectiveAnchorFinalizedAt,
+      }),
+      updatedAt: effectiveAnchorFinalizedAt,
     });
-    if (updated.applied) {
+    if (updated.outcome === "applied") {
       anchored++;
     } else {
       log.warn(
-        `[continuation:work-anchor-not-committed] flowId=${flow.flowId} expectedRevision=${flow.revision}`,
+        `[continuation:work-anchor-not-committed] flowId=${record.recordId} expectedRevision=${record.revision}`,
       );
     }
   }
   return anchored;
 }
 
+function ownerOf(work: PendingContinuationWork, flowId: string) {
+  return { recordId: flowId, ownerSessionKey: work.sessionKey };
+}
+
 /**
- * Finish a continuation-work flow cleanly (terminal, no failure/retry).
+ * Finish a continuation-work record cleanly (terminal, no failure or retry).
  *
- * Shared by the turn-granted, superseded, and orphan-reaped paths:
- * each is an INTENTIONAL terminal — the wake will not re-arm — distinct from
- * {@link markPendingWorkFailed} (error path). `stateExtra` carries the
- * path-specific durable state; `turnGrantedAt` is always stamped so the flow
- * reads as delivered/closed by downstream consumers.
+ * Shared by the turn-granted, superseded, and orphan-reaped paths: each is an
+ * INTENTIONAL terminal (the wake will not re-arm), distinct from
+ * {@link markPendingWorkFailed}. `stateExtra` carries the path-specific
+ * durable state; `turnGrantedAt` is always stamped so the record reads as
+ * delivered or closed downstream.
  */
-function finishContinuationWorkFlow(
+async function finishContinuationWorkRecord(
   work: PendingContinuationWork,
-  params: { currentStep: string; stateExtra?: Record<string, unknown>; notCommittedTag: string },
-): boolean {
+  params: { phase: string; stateExtra?: Record<string, unknown>; notCommittedTag: string },
+): Promise<boolean> {
   if (!work.flowId || work.expectedRevision === undefined) {
     return false;
   }
-  const current = getTaskFlowById(work.flowId);
+  const current = await readWorkRecord(work.flowId);
   const state = current ? decodeWorkState(current) : undefined;
   const now = Date.now();
-  const baseState: PendingWorkState = state ?? buildFallbackWorkState(work);
-  const patch = buildFinishedWorkPatch(baseState, {
-    currentStep: params.currentStep,
+  const patch = buildFinishedWorkPatch(state ?? buildFallbackWorkState(work), {
+    phase: params.phase,
     ...(params.stateExtra ? { stateExtra: params.stateExtra } : {}),
     now,
   });
-  const finished = finishFlow({
-    flowId: work.flowId,
-    expectedRevision: work.expectedRevision,
-    currentStep: patch.currentStep,
-    stateJson: patch.stateJson,
-    updatedAt: patch.updatedAt,
-    endedAt: patch.endedAt ?? now,
-  });
-  if (!finished.applied) {
+  const finished = await writeWork(ownerOf(work, work.flowId), work.expectedRevision, patch, now);
+  if (finished.outcome !== "applied") {
     log.warn(
       `[continuation:${params.notCommittedTag}] flowId=${work.flowId} expectedRevision=${work.expectedRevision}`,
     );
   }
-  return finished.applied;
+  return finished.outcome === "applied";
 }
 
-export function markPendingWorkTurnGranted(work: PendingContinuationWork): boolean {
-  return finishContinuationWorkFlow(work, {
-    currentStep: "Same-session continuation turn granted",
-    // A flow that drove is no longer busy-deferred — clear the busy counter so
-    // the granted record never carries stale retry state.
+export async function markPendingWorkTurnGranted(work: PendingContinuationWork): Promise<boolean> {
+  return await finishContinuationWorkRecord(work, {
+    phase: "Same-session continuation turn granted",
+    // A record that drove is no longer busy-deferred; clear the busy counter
+    // so the granted record never carries stale retry state.
     stateExtra: { busySkipCount: 0 },
     notCommittedTag: "work-finish-not-committed",
   });
 }
 
-export function markPendingWorkFolded(
+export async function markPendingWorkFolded(
   work: PendingContinuationWork,
   params: { summary: string; foldedAt: number; overdueByMs: number },
-): boolean {
-  return finishContinuationWorkFlow(work, {
-    currentStep: `folded-into-active-turn: ${params.summary}`.slice(0, 200),
+): Promise<boolean> {
+  return await finishContinuationWorkRecord(work, {
+    phase: `folded-into-active-turn: ${params.summary}`.slice(0, 200),
     stateExtra: {
       disposition: "folded-active",
       foldedAt: params.foldedAt,
@@ -328,50 +360,64 @@ export function markPendingWorkFolded(
   });
 }
 
-export function markPendingWorkFoldDelivered(
+async function writeDeliveredMark(
   work: PendingContinuationWork,
-  params: { foldedAt: number; overdueByMs: number },
-): PendingWorkDeliveryCommitResult {
+  params: {
+    phase: string;
+    at: number;
+    stateExtra: Partial<PendingWorkState>;
+    notCommittedTag: string;
+  },
+): Promise<PendingWorkDeliveryCommitResult> {
   if (!work.flowId || work.expectedRevision === undefined) {
     return { applied: false, work };
   }
-  const current = getTaskFlowById(work.flowId);
+  const current = await readWorkRecord(work.flowId);
   const state = current ? decodeWorkState(current) : undefined;
   const succeeded = { point: "optimal", durability: "durable" } as const;
-  const updated = updateFlowRecordByIdExpectedRevision({
-    flowId: work.flowId,
-    expectedRevision: work.expectedRevision,
-    patch: {
-      currentStep: "Continuation fold note delivered (durable mark)",
-      stateJson: {
-        ...(state ?? buildFallbackWorkState(work)),
-        disposition: "folded-active",
-        foldedAt: params.foldedAt,
-        overdueByMs: params.overdueByMs,
-        busySkipCount: 0,
-        succeeded,
+  const updated = appliedRecord(
+    await writeWork(
+      ownerOf(work, work.flowId),
+      work.expectedRevision,
+      {
+        phase: params.phase,
+        stateJson: JSON.stringify({
+          ...(state ?? buildFallbackWorkState(work)),
+          ...params.stateExtra,
+          succeeded,
+        }),
+        updatedAt: params.at,
       },
-      updatedAt: params.foldedAt,
-    },
-  });
-  if (!updated.applied || !updated.flow) {
+      params.at,
+    ),
+  );
+  if (!updated) {
     log.warn(
-      `[continuation:work-fold-deliver-mark-not-committed] flowId=${work.flowId} expectedRevision=${work.expectedRevision}`,
+      `[continuation:${params.notCommittedTag}] flowId=${work.flowId} expectedRevision=${work.expectedRevision}`,
     );
     return { applied: false, work };
   }
   return {
     applied: true,
-    work: {
-      ...work,
-      expectedRevision: updated.flow.revision,
+    work: { ...work, ...params.stateExtra, expectedRevision: updated.revision, succeeded },
+  };
+}
+
+export async function markPendingWorkFoldDelivered(
+  work: PendingContinuationWork,
+  params: { foldedAt: number; overdueByMs: number },
+): Promise<PendingWorkDeliveryCommitResult> {
+  return await writeDeliveredMark(work, {
+    phase: "Continuation fold note delivered (durable mark)",
+    at: params.foldedAt,
+    stateExtra: {
       disposition: "folded-active",
       foldedAt: params.foldedAt,
       overdueByMs: params.overdueByMs,
       busySkipCount: 0,
-      succeeded,
     },
-  };
+    notCommittedTag: "work-fold-deliver-mark-not-committed",
+  });
 }
 
 /**
@@ -379,121 +425,83 @@ export function markPendingWorkFoldDelivered(
  *
  * Written the instant a wake is confirmed delivered (the agent turn ran),
  * before the dispatch loop's follow-on {@link markPendingWorkTurnGranted}
- * finalizes the flow. The flow stays `running`; only `stateJson.succeeded` is
- * set, so a crash in the deliver→finalize window leaves a row the consume
- * read-guard recognizes as delivered (no restart-gap re-delivery). The returned
- * committed value carries the bumped revision and durable marker so the
- * follow-on finishFlow still applies without mutating caller-owned state.
- * INVARIANT (load-bearing): the mark is durably persisted here — an
+ * finalizes the record. The record stays `running`; only the state's
+ * `succeeded` marker is set, so a crash in the deliver-to-finalize window
+ * leaves a record the consume read-guard recognizes as delivered. The returned
+ * value carries the bumped revision so the follow-on finish still applies.
+ * INVARIANT (load-bearing): the mark is durably persisted here; an
  * in-memory-only mark is lost with the process and the gap stays open.
  */
-export function markPendingWorkDelivered(
+export async function markPendingWorkDelivered(
   work: PendingContinuationWork,
-): PendingWorkDeliveryCommitResult {
-  if (!work.flowId || work.expectedRevision === undefined) {
-    return { applied: false, work };
-  }
-  const current = getTaskFlowById(work.flowId);
-  const state = current ? decodeWorkState(current) : undefined;
+): Promise<PendingWorkDeliveryCommitResult> {
   const now = Date.now();
-  const succeeded = { point: "optimal", durability: "durable" } as const;
-  const updated = updateFlowRecordByIdExpectedRevision({
-    flowId: work.flowId,
-    expectedRevision: work.expectedRevision,
-    patch: {
-      currentStep: "Continuation wake delivered (durable mark)",
-      stateJson: {
-        ...(state ?? buildFallbackWorkState(work)),
-        deliveredAt: now,
-        disposition: "granted",
-        succeeded,
-      },
-      updatedAt: now,
-    },
+  return await writeDeliveredMark(work, {
+    phase: "Continuation wake delivered (durable mark)",
+    at: now,
+    stateExtra: { deliveredAt: now, disposition: "granted" },
+    notCommittedTag: "work-deliver-mark-not-committed",
   });
-  if (!updated.applied || !updated.flow) {
-    log.warn(
-      `[continuation:work-deliver-mark-not-committed] flowId=${work.flowId} expectedRevision=${work.expectedRevision}`,
-    );
-    return { applied: false, work };
-  }
-  return {
-    applied: true,
-    work: {
-      ...work,
-      expectedRevision: updated.flow.revision,
-      deliveredAt: now,
-      disposition: "granted",
-      succeeded,
-    },
-  };
 }
 
 /**
- * Reconcile a continuation work row whose durable delivered-mark lost the
- * expected-revision race after the provider turn already executed. The turn is
- * spent, so restart-gap replay must be
- * prevented AND the row must not linger `running`: dispatchPendingContinuationWork
- * skips markPendingWorkTurnGranted on this path (work.expectedRevision is stale),
- * so nothing else finalizes it. Terminalize the CURRENT-revision row here — a
- * lingering `running` row would keep live-work bookkeeping and cleanup gates
- * (hasLiveOrRecentlyDispatchedContinuationWork) blocked until a later recovery
- * pass even though the turn is spent. If finishing races too, fail the row
- * non-retryably — dropping a stale row is strictly safer than replaying an
- * already-executed turn.
+ * Reconcile a work record whose durable delivered mark lost the revision race
+ * after the provider turn already executed. The turn is spent, so restart-gap
+ * replay must be prevented AND the record must not linger `running`. Finish the
+ * CURRENT-revision record here; if finishing races too, fail it non-retryably:
+ * dropping a stale record is strictly safer than replaying an executed turn.
  *
- * No-ops when the row is gone, already terminal, cancel-owned, or re-queued by
- * another actor: none of those replay THIS turn (a fresh election is a new flow
- * / a deliberate requeue, not a restart-gap redelivery).
+ * No-ops when the record is gone, already terminal, cancel-owned, or requeued
+ * by another actor: none of those replay THIS turn.
  */
-export function reconcileUndeliverableGrantedWork(work: PendingContinuationWork): void {
+export async function reconcileUndeliverableGrantedWork(
+  work: PendingContinuationWork,
+): Promise<void> {
   if (!work.flowId) {
     return;
   }
-  const current = getTaskFlowById(work.flowId);
-  if (!current || current.status !== "running" || current.cancelRequestedAt != null) {
+  const current = await readWorkRecord(work.flowId);
+  if (!current || current.status !== "running" || current.cancelRequestedAt !== undefined) {
     return;
   }
   const state = decodeWorkState(current) ?? buildFallbackWorkState(work);
   const { idleRetry: _idleRetry, recoveryDueAt: _recoveryDueAt, ...terminalState } = state;
   const now = Date.now();
   const succeeded = { point: "optimal", durability: "durable" } as const;
-  // Finish (terminalize) against the CURRENT revision — the turn already ran, so
-  // this is a clean delivered/granted close, not a failure. Stamp both the
-  // delivered read-guard and turnGrantedAt so the finished row reads identically
-  // to the normal deliver-then-grant path.
-  const finished = finishFlow({
-    flowId: current.flowId,
-    expectedRevision: current.revision,
-    currentStep: "Continuation wake delivered (post-race reconcile)",
-    stateJson: {
-      ...terminalState,
-      deliveredAt: state.deliveredAt ?? now,
-      turnGrantedAt: now,
-      disposition: "granted",
-      succeeded,
+  const finished = await writeWork(
+    current,
+    current.revision,
+    {
+      status: "succeeded",
+      phase: "Continuation wake delivered (post-race reconcile)",
+      failureReason: null,
+      stateJson: JSON.stringify({
+        ...terminalState,
+        deliveredAt: state.deliveredAt ?? now,
+        turnGrantedAt: now,
+        disposition: "granted",
+        succeeded,
+      }),
+      updatedAt: now,
     },
-    updatedAt: now,
-    endedAt: now,
-  });
-  if (finished.applied) {
+    now,
+  );
+  if (finished.outcome === "applied") {
     return;
   }
-  const latest = getTaskFlowById(work.flowId);
-  if (!latest || latest.status !== "running" || latest.cancelRequestedAt != null) {
+  const latest = await readWorkRecord(work.flowId);
+  if (!latest || latest.status !== "running" || latest.cancelRequestedAt !== undefined) {
     return;
   }
-  failFlow({
-    flowId: latest.flowId,
-    expectedRevision: latest.revision,
-    currentStep: "Continuation turn executed; delivered-mark lost revision race",
-    blockedSummary:
+  await writeWork(latest, latest.revision, {
+    status: "failed",
+    phase: "Continuation turn executed; delivered-mark lost revision race",
+    failureReason:
       "Provider turn already ran; parking non-retryable to prevent restart-gap replay.",
-    updatedAt: Date.now(),
   });
 }
 
-export function requeuePendingWork(
+export async function requeuePendingWork(
   work: PendingContinuationWork,
   params: {
     dueAt: number;
@@ -502,11 +510,11 @@ export function requeuePendingWork(
     busySkipCount?: number;
     idleRetry?: PendingContinuationIdleRetry;
   },
-): boolean {
+): Promise<boolean> {
   if (!work.flowId || work.expectedRevision === undefined) {
     return false;
   }
-  const current = getTaskFlowById(work.flowId);
+  const current = await readWorkRecord(work.flowId);
   const state = current ? decodeWorkState(current) : undefined;
   const baseState: PendingWorkState = state ?? {
     kind: "continuation_work",
@@ -522,6 +530,8 @@ export function requeuePendingWork(
     recoveryDueAt: _recoveryDueAt,
     ...stateWithoutIdleRetry
   } = baseState;
+  // Retries of an anchored record never move semantic `dueAt`; they write only
+  // the retry time (RFC §5.4.2, "Timing clocks").
   const preserveSemanticDueAt = baseState.anchorFinalizedAt !== undefined;
   const nextState: PendingWorkState = {
     ...stateWithoutIdleRetry,
@@ -531,187 +541,129 @@ export function requeuePendingWork(
     ...(params.busySkipCount !== undefined ? { busySkipCount: params.busySkipCount } : {}),
     ...(params.idleRetry ? { idleRetry: params.idleRetry } : {}),
   };
-  const updated = updateFlowRecordByIdExpectedRevision({
-    flowId: work.flowId,
-    expectedRevision: work.expectedRevision,
-    patch: {
-      status: "queued",
-      currentStep: "Requeued same-session continuation wake",
-      stateJson: nextState,
-      waitJson: null,
-      blockedTaskId: null,
-      blockedSummary: params.summary,
-      endedAt: null,
-      updatedAt: Date.now(),
-    },
+  const updated = await writeWork(ownerOf(work, work.flowId), work.expectedRevision, {
+    status: "queued",
+    phase: "Requeued same-session continuation wake",
+    failureReason: params.summary,
+    ...statePatch(nextState),
   });
-  if (!updated.applied) {
+  if (updated.outcome !== "applied") {
     log.warn(
       `[continuation:work-requeue-not-committed] flowId=${work.flowId} expectedRevision=${work.expectedRevision}`,
     );
   }
-  return updated.applied;
+  return updated.outcome === "applied";
 }
 
 /**
- * Terminalize a continuation-work flow as failed.
+ * Terminalize a continuation-work record as failed.
  *
- * Returns whether THIS caller committed the terminal transition, mirroring the
- * sibling terminalizers ({@link markPendingWorkSuperseded},
- * {@link markPendingWorkReaped}). The expected-revision CAS is the durable
- * once-only fact: a re-entrant or recovered caller holding a stale claim loses
- * the race and gets `false`, so terminal side effects that must happen exactly
- * once (operator log, agent-visible outcome) can key off the return value
- * instead of a separate dedupe path.
+ * Returns whether THIS caller committed the terminal transition: the revision
+ * CAS is the durable once-only fact, so terminal side effects that must happen
+ * exactly once key off the return value.
  *
  * `terminalNoticePending` records, in this same CAS write, that the agent still
- * owes a visible outcome. Persisting the obligation atomically with the failure
- * is what makes the notice survive a crash: the in-memory system-event queue is
- * explicitly non-durable, and recovery skips terminal rows unless they carry
- * this flag ({@link listPendingTerminalNoticeWork}).
+ * owes a visible outcome, so the notice survives a crash. The store never
+ * prunes a record while the obligation is set (RFC §5.4.6).
  */
-export function markPendingWorkFailed(
+export async function markPendingWorkFailed(
   work: PendingContinuationWork,
   summary: string,
   options: { terminalNoticePending?: "retry-exhausted" } = {},
-): boolean {
+): Promise<boolean> {
   if (!work.flowId || work.expectedRevision === undefined) {
     return false;
   }
-  const current = getTaskFlowById(work.flowId);
-  const state = (current ? decodeWorkState(current) : undefined) ?? buildFallbackWorkState(work);
-  return failFlow({
-    flowId: work.flowId,
-    expectedRevision: work.expectedRevision,
-    currentStep: "Continuation work wake failed",
-    blockedSummary: summary,
+  const result = await writeWork(ownerOf(work, work.flowId), work.expectedRevision, {
+    status: "failed",
+    phase: "Continuation work wake failed",
+    failureReason: summary,
     ...(options.terminalNoticePending
-      ? { stateJson: { ...state, terminalNoticePending: options.terminalNoticePending } }
+      ? { terminalNoticePending: options.terminalNoticePending }
       : {}),
-    updatedAt: Date.now(),
-  }).applied;
+  });
+  return result.outcome === "applied";
 }
 
-/**
- * Every terminalized row still owing the agent a visible outcome.
- *
- * Terminal rows are invisible to {@link listPendingWorkSessionKeysForRecovery}
- * (it only yields queued/running work), so this is the dedicated recovery read
- * for the notice obligation.
- */
-export function listPendingTerminalNoticeWork(): PendingContinuationWork[] {
-  const pending: PendingContinuationWork[] = [];
-  for (const flow of listTaskFlowRecords()) {
-    if (!isContinuationWorkFlow(flow) || flow.status !== "failed") {
-      continue;
-    }
-    const state = decodeWorkState(flow);
-    if (!state?.terminalNoticePending) {
-      continue;
-    }
-    pending.push(workToRuntime(flow, state, "running"));
-  }
-  return pending;
-}
-
-/**
- * Read one row's outstanding notice obligation with a current revision.
- *
- * The caller that terminalized the row holds a pre-CAS revision, so it cannot
- * drive the follow-up clear itself; both the live and recovery paths re-read
- * here to act on fresh state.
- */
-export function readPendingTerminalNoticeWork(flowId: string): PendingContinuationWork | undefined {
-  const flow = getTaskFlowById(flowId);
-  if (!flow || !isContinuationWorkFlow(flow) || flow.status !== "failed") {
+function toNoticeWork(record: ContinuationRecord): PendingContinuationWork | undefined {
+  if (!isContinuationWorkFlow(record) || record.status !== "failed") {
     return undefined;
   }
-  const state = decodeWorkState(flow);
-  return state?.terminalNoticePending ? workToRuntime(flow, state, "running") : undefined;
+  if (record.terminalNoticePending !== "retry-exhausted") {
+    return undefined;
+  }
+  const state = decodeWorkState(record);
+  return state
+    ? { ...workToRuntime(record, state, "running"), terminalNoticePending: "retry-exhausted" }
+    : undefined;
 }
 
 /**
- * Release the notice obligation once delivery is durably owned elsewhere.
- *
- * CAS-guarded like every other transition here, so two concurrent drains cannot
- * both hand off the same notice.
+ * Every terminalized record still owing the agent a visible outcome. Terminal
+ * records are invisible to {@link listPendingWorkSessionKeysForRecovery}, so
+ * this is the dedicated recovery read for the notice obligation.
  */
-export function clearPendingTerminalNotice(work: PendingContinuationWork): boolean {
-  if (!work.flowId || work.expectedRevision === undefined) {
-    return false;
-  }
-  const current = getTaskFlowById(work.flowId);
-  if (!current) {
-    return false;
-  }
-  const state = decodeWorkState(current);
-  if (!state?.terminalNoticePending) {
-    return false;
-  }
-  const { terminalNoticePending: _cleared, ...rest } = state;
-  const updated = updateFlowRecordByIdExpectedRevision({
-    flowId: work.flowId,
-    expectedRevision: work.expectedRevision,
-    patch: { stateJson: rest, updatedAt: Date.now() },
-  });
-  if (!updated.applied) {
-    log.warn(
-      `[continuation:work-terminal-notice-clear-not-committed] flowId=${work.flowId} expectedRevision=${work.expectedRevision}`,
-    );
-  }
-  return updated.applied;
+export async function listPendingTerminalNoticeWork(): Promise<PendingContinuationWork[]> {
+  return (await listContinuationRecords({ kinds: ["work"], statuses: ["failed"] })).flatMap(
+    (record) => toNoticeWork(record) ?? [],
+  );
+}
+
+/** Read one record's outstanding notice obligation with a current revision. */
+export async function readPendingTerminalNoticeWork(
+  flowId: string,
+): Promise<PendingContinuationWork | undefined> {
+  const record = await readWorkRecord(flowId);
+  return record ? toNoticeWork(record) : undefined;
 }
 
 /**
- * Mark a matured continuation-work flow superseded (drain-superseded).
- *
- * Used when a stale backlog member is collapsed in favour of a newer election in
- * the same drain batch — the wake is NOT driven; the flow is finished cleanly so
- * it stops re-arming. Distinct from failure (no system-warning, no retry): a
- * superseded wake was intentionally folded, not dropped by error.
+ * Mark a matured continuation-work record superseded (drain-superseded): a
+ * stale backlog member collapsed in favor of a newer election in the same
+ * drain batch. The wake is NOT driven; the record finishes cleanly.
  */
-export function markPendingWorkSuperseded(work: PendingContinuationWork, summary: string): boolean {
-  return finishContinuationWorkFlow(work, {
-    currentStep: `superseded: ${summary}`.slice(0, 200),
+export async function markPendingWorkSuperseded(
+  work: PendingContinuationWork,
+  summary: string,
+): Promise<boolean> {
+  return await finishContinuationWorkRecord(work, {
+    phase: `superseded: ${summary}`.slice(0, 200),
     notCommittedTag: "work-supersede-not-committed",
   });
 }
 
 /**
- * Reap an orphan continuation-work flow (bucket-1 cull).
- *
- * Used when the flow's parent run is CONFIDENT-terminal and can never rehydrate
- * it (read-time liveness join). Finished cleanly like a supersede — no
- * system-warning, no retry — because it is an intentional terminal, not an
- * error. The delegate-flow-gate + confident-terminal requirement upstream
- * guarantee a same-session/uncertain flow is never reaped here.
+ * Reap an orphan continuation-work record (bucket-1 cull): its parent run is
+ * CONFIDENT-terminal and can never rehydrate it. Finished cleanly like a
+ * supersede, because it is an intentional terminal, not an error.
  */
-export function markPendingWorkReaped(work: PendingContinuationWork, summary: string): boolean {
-  return finishContinuationWorkFlow(work, {
-    currentStep: `reaped: ${summary}`.slice(0, 200),
+export async function markPendingWorkReaped(
+  work: PendingContinuationWork,
+  summary: string,
+): Promise<boolean> {
+  return await finishContinuationWorkRecord(work, {
+    phase: `reaped: ${summary}`.slice(0, 200),
     notCommittedTag: "work-reap-not-committed",
   });
 }
 
-export function peekSoonestUnmaturedWorkDueAt(sessionKey: string): number | undefined {
-  const now = Date.now();
-  return peekSoonestQueuedWorkDueAt(sessionKey, { after: now });
+export async function peekSoonestUnmaturedWorkDueAt(
+  sessionKey: string,
+): Promise<number | undefined> {
+  return await peekSoonestQueuedWorkDueAt(sessionKey, { after: Date.now() });
 }
 
-export function peekSoonestQueuedWorkDueAt(
+export async function peekSoonestQueuedWorkDueAt(
   sessionKey: string,
   options: { after?: number } = {},
-): number | undefined {
+): Promise<number | undefined> {
   let soonest: number | undefined;
-  for (const flow of listTaskFlowsForOwnerKey(sessionKey)) {
-    if (!isContinuationWorkFlow(flow) || flow.status !== "queued") {
-      continue;
-    }
-    const state = decodeWorkState(flow);
+  for (const record of await listOwnerWorkRecords(sessionKey, ["queued"])) {
+    const state = decodeWorkState(record);
     if (!state) {
       continue;
     }
-    const queuedDueAt = Math.max(state.dueAt, state.recoveryDueAt ?? state.dueAt);
+    const queuedDueAt = workRecordDueAt(state);
     if (options.after !== undefined && queuedDueAt <= options.after) {
       continue;
     }
@@ -720,31 +672,24 @@ export function peekSoonestQueuedWorkDueAt(
   return soonest;
 }
 
-export function peekSoonestRunningWorkRecoveryDueAt(
+export async function peekSoonestRunningWorkRecoveryDueAt(
   sessionKey: string,
   staleMs: number,
   now = Date.now(),
-): number | undefined {
+): Promise<number | undefined> {
   let soonest: number | undefined;
-  for (const flow of listTaskFlowsForOwnerKey(sessionKey)) {
-    if (!isContinuationWorkFlow(flow) || flow.status !== "running") {
+  for (const record of await listOwnerWorkRecords(sessionKey, ["running"])) {
+    const state = decodeWorkState(record);
+    // locus-3: a delivered-marked record stuck `running` (crash before the
+    // finish) must not arm a recovery wake: consume skips it, so re-arming
+    // would spin a no-op recovery loop.
+    if (!state || state.succeeded) {
       continue;
     }
-    const state = decodeWorkState(flow);
-    if (!state) {
-      continue;
-    }
-    // locus-3: a delivered-marked flow stuck `running` (crash before
-    // finishFlow) must not arm a recovery wake — consume would skip it via the
-    // read-guard, so re-arming here would spin a tight no-op recovery loop.
-    if (state.succeeded) {
-      continue;
-    }
-    const semanticOrRetryDueAt = Math.max(state.dueAt, state.recoveryDueAt ?? state.dueAt);
     const recoveryDueAt =
       state.idleRetry !== undefined
-        ? flow.updatedAt + staleMs
-        : Math.max(semanticOrRetryDueAt, flow.updatedAt + staleMs);
+        ? record.updatedAt + staleMs
+        : Math.max(workRecordDueAt(state), record.updatedAt + staleMs);
     if (recoveryDueAt <= now) {
       return now;
     }
@@ -753,51 +698,63 @@ export function peekSoonestRunningWorkRecoveryDueAt(
   return soonest;
 }
 
-export function hasPendingIdleRetryWork(
+export async function hasPendingIdleRetryWork(
   sessionKey: string,
   params: { trigger: PendingContinuationIdleRetry["trigger"]; excludeFlowId?: string },
-): boolean {
-  return listTaskFlowsForOwnerKey(sessionKey).some((flow) => {
-    if (!isContinuationWorkFlow(flow) || (flow.status !== "queued" && flow.status !== "running")) {
+): Promise<boolean> {
+  return (await listOwnerWorkRecords(sessionKey, ["queued", "running"])).some((record) => {
+    if (params.excludeFlowId !== undefined && record.recordId === params.excludeFlowId) {
       return false;
     }
-    if (params.excludeFlowId !== undefined && flow.flowId === params.excludeFlowId) {
+    if (record.cancelRequestedAt !== undefined) {
       return false;
     }
-    if (flow.cancelRequestedAt != null) {
-      return false;
-    }
-    const state = decodeWorkState(flow);
-    if (!state || state.succeeded) {
-      return false;
-    }
-    return state.idleRetry?.trigger === params.trigger;
+    const state = decodeWorkState(record);
+    return Boolean(state && !state.succeeded && state.idleRetry?.trigger === params.trigger);
   });
 }
 
+/**
+ * Authoritative (async) cleanup guard: does the session still own live
+ * continuation custody that needs it? Live work that is not durably delivered,
+ * or a live pending delegate. Staged post-compaction delegates are excluded:
+ * cleanup fails them when it deletes the session.
+ */
+export async function hasLiveContinuationCustody(sessionKey: string): Promise<boolean> {
+  const live = await listContinuationRecords({
+    ownerSessionKey: sessionKey,
+    kinds: ["work", "delegate"],
+    statuses: ["queued", "running"],
+  });
+  return live.some((record) => {
+    if (record.kind === "delegate") {
+      return record.cancelRequestedAt === undefined;
+    }
+    // A durably delivered record left `running` by a crash is done, not live.
+    return decodeWorkState(record)?.succeeded === undefined;
+  });
+}
+
+function readOwnerLiveWorkFacts(sessionKey: string) {
+  const answer = readContinuationLiveWork(resolveContinuationCustodyDatabasePath(), sessionKey, [
+    "work",
+  ]);
+  return answer.state === "known" ? answer.records : undefined;
+}
+
+/** Live work records for a session, from the hot-path projection (§5.4.6). */
 export function pendingWorkCount(sessionKey: string): number {
-  return listTaskFlowsForOwnerKey(sessionKey).filter(isRecoverableWorkFlow).length;
+  return readOwnerLiveWorkFacts(sessionKey)?.length ?? 0;
 }
 
+/**
+ * Synchronous cleanup guard: does the session hold live continuation work?
+ * Read from the hot-path projection. An owner the projection cannot answer
+ * for counts as live, so subagent cleanup errs toward retention. A durably
+ * delivered record left `running` by a crash reads as live here until startup
+ * recovery finalizes it.
+ */
 export function hasLiveOrRecentlyDispatchedContinuationWork(sessionKey: string): boolean {
-  return listTaskFlowsForOwnerKey(sessionKey).some((flow) => {
-    if (!isContinuationWorkFlow(flow)) {
-      return false;
-    }
-    if (flow.status !== "queued" && flow.status !== "running") {
-      return false;
-    }
-    // a durably delivered-marked flow is DONE, not live. The
-    // locus-3 mark deliberately leaves it `status:running` until finishFlow
-    // finalizes it; if the process crashed in the mark->finishFlow gap, the row
-    // stays `running` but is already delivered. The consume guards already exclude
-    // `state.succeeded` rows from re-delivery; the cleanup
-    // live-check must match, or `deleteSubagentSessionForCleanup` /
-    // the registry sweep treat the delivered row as live and strand its child
-    // session forever. Exclude delivered-marked rows here too.
-    if (decodeWorkState(flow)?.succeeded) {
-      return false;
-    }
-    return true;
-  });
+  const facts = readOwnerLiveWorkFacts(sessionKey);
+  return facts === undefined ? true : facts.length > 0;
 }

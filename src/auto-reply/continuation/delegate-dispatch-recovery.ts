@@ -1,16 +1,8 @@
-/** Stateless startup and post-compaction recovery for continuation delegates. */
+/** Stateless startup recovery for continuation delegates (RFC §5.4.4, §4.4). */
 
-import { deriveContinuationDelegateChildRunId } from "../../agents/subagent-continuation-ids.js";
-import { getSubagentRunByChildSessionKey } from "../../agents/subagents/registry/subagent-registry-read.js";
-import { rollbackSubagentRunRegistration } from "../../agents/subagents/registry/subagent-registry.js";
-import { terminateAcceptedCollectorRun } from "../../agents/subagents/spawn/subagent-spawn-cleanup.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { loadSessionEntry, updateSessionEntry } from "../../config/sessions/session-accessor.js";
-import {
-  loadPendingSessionDeliveries,
-  type QueuedSessionDelivery,
-} from "../../infra/session-delivery-queue-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { parseAgentSessionKey } from "../../sessions/session-key-utils.js";
 import { deliveryContextFromSession } from "../../utils/delivery-context.read.js";
@@ -19,21 +11,24 @@ import { DelegateTerminalChainStatePersistError } from "./delegate-dispatch-chai
 import type { DelegateDispatchContext } from "./delegate-dispatch-contract.js";
 import { dispatchToolDelegates } from "./delegate-dispatch.js";
 import {
-  assertStagedPostCompactionFinalizationComplete,
-  finalizeStagedPostCompactionDelegates,
   listRecoverableStagedPostCompactionDelegates,
+  releaseStagedPostCompactionDelegateToQueue,
   requeueAwaitingNextCompactionDelegatesRaw as requeueAwaitingNextCompactionDelegateRows,
+  toSessionPostCompactionDelegate,
 } from "./delegate-store-post-compaction.js";
 import {
   classifyRecoverablePendingDelegates,
   clearRecoverableDelegatesChainTokensFold,
+  deliverOwedDelegateNotice,
+  listOwedDelegateNotices,
   listPendingDelegateSessionKeysForRecovery,
   reconcileContinuationDelegateAttachmentCustody,
 } from "./delegate-store.js";
+import { rejectPostCompactionDelegate } from "./post-compaction-rejection.js";
 import {
-  dispatchStagedPostCompactionDelegates,
-  type PostCompactionSpawnContext,
-} from "./post-compaction-staged-dispatch.js";
+  classifyPostCompactionDelegateAge,
+  formatPostCompactionStaleRejection,
+} from "./post-compaction-staleness.js";
 import type { ChainState } from "./scheduler.js";
 import { loadContinuationChainState, persistContinuationChainState } from "./state.js";
 import type { PendingContinuationDelegate } from "./types.js";
@@ -42,6 +37,24 @@ const log = createSubsystemLogger("continuation/delegate-dispatch");
 
 function formatErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** Deliver every interrupted-spawn notice custody still owes (RFC §5.4.2). */
+async function drainOwedDelegateNotices(): Promise<number> {
+  let delivered = 0;
+  for (const record of await listOwedDelegateNotices()) {
+    try {
+      if (await deliverOwedDelegateNotice(record)) {
+        delivered += 1;
+      }
+    } catch (err) {
+      // The obligation stays set for the next recovery pass.
+      log.warn(
+        `[continuation:delegate-notice-drain-failed] flowId=${record.recordId} error=${formatErrorMessage(err)}`,
+      );
+    }
+  }
+  return delivered;
 }
 
 export async function recoverPendingContinuationDelegates(
@@ -68,9 +81,12 @@ export async function recoverPendingContinuationDelegates(
       `[continuation:delegate-attachment-reconcile-failed] failures=${custody.failed} removed=${custody.removed}`,
     );
   }
+  // Owed interrupted-spawn notices are delivered even when continuation is
+  // disabled: the debt is a visible outcome of work that already ran.
+  await drainOwedDelegateNotices();
   const runtimeConfig = resolveContinuationRuntimeConfig();
   const includeRunningUpdatedAtOrBefore = params.includeRunningUpdatedAtOrBefore ?? Date.now();
-  classifyRecoverablePendingDelegates({
+  await classifyRecoverablePendingDelegates({
     queuedCreatedAtOrBefore: params.queuedCreatedAtOrBefore,
     includeRunningUpdatedAtOrBefore,
   });
@@ -80,7 +96,7 @@ export async function recoverPendingContinuationDelegates(
   if (!runtimeConfig.enabled) {
     return { sessions: 0, dispatched: 0, rejected: 0 };
   }
-  const sessionKeys = listPendingDelegateSessionKeysForRecovery({
+  const sessionKeys = await listPendingDelegateSessionKeysForRecovery({
     queuedCreatedAtOrBefore: params.queuedCreatedAtOrBefore,
     includeRunningUpdatedAtOrBefore,
   });
@@ -159,6 +175,9 @@ export async function recoverPendingContinuationDelegates(
         chainState: recoveryChainState,
         ctx: { ...params.ctx, sessionKey },
         maxChainLength: params.maxChainLength ?? runtimeConfig.maxChainLength,
+        // Claims left `running` at or before the boot cutoff belonged to a dead
+        // dispatch: the dispatcher decides each from `subagent_runs` and never
+        // spawns it again (RFC §5.4.4, Q3).
         recoverRunningDelegates: true,
         queuedCreatedAtOrBefore: params.queuedCreatedAtOrBefore,
         includeRunningUpdatedAtOrBefore,
@@ -193,7 +212,7 @@ export async function recoverPendingContinuationDelegates(
         await persistRecoveredChainState(result.chainState);
       }
       if (result.appliedChainTokensFold && result.appliedChainTokensFold > 0) {
-        clearRecoverableDelegatesChainTokensFold(sessionKey);
+        await clearRecoverableDelegatesChainTokensFold(sessionKey);
       }
     }
   }
@@ -206,101 +225,45 @@ export async function recoverPendingContinuationDelegates(
 
 const postCompactionRecoveryLog = createSubsystemLogger("continuation/compaction");
 
-function pendingPostCompactionSourceKey(sessionKey: string, sourceFlowId: string): string {
-  return `${sessionKey}\0${sourceFlowId}`;
-}
-
-function isPendingPostCompactionDeliveryForSourceFlow(
-  entry: QueuedSessionDelivery,
-): entry is QueuedSessionDelivery & {
-  kind: "postCompactionDelegate";
-  sourceFlowId: string;
-} {
-  return entry.kind === "postCompactionDelegate" && typeof entry.sourceFlowId === "string";
-}
-
-async function loadPendingPostCompactionDeliverySourceKeys(): Promise<Set<string>> {
-  const sourceKeys = new Set<string>();
-  for (const entry of await loadPendingSessionDeliveries()) {
-    if (!isPendingPostCompactionDeliveryForSourceFlow(entry)) {
-      continue;
-    }
-    sourceKeys.add(pendingPostCompactionSourceKey(entry.sessionKey, entry.sourceFlowId));
-  }
-  return sourceKeys;
-}
-
-/**
- * Startup recovery for post-compaction delegates left `running` by a crash
- * between release-claim and durable handoff.
- *
- * The normal consumers of staged post-compaction delegates are the compaction
- * release seams (`dispatchPostCompactionDelegates` / `releasePostCompactionLifecycle`).
- * A row orphaned to `running` by a crash has no further seam for a session that
- * already compacted, so it would sit forever. This re-drives those rows to
- * delivery immediately at startup WITHOUT waiting for another compaction seam:
- * it dispatches only the crash-orphaned `running` rows (never queued
- * awaiting-seam rows, which are staged for a compaction that has not happened),
- * finalizes ONLY the rows whose spawn was accepted, terminalizes deterministic
- * policy/cap/forbidden rejections as failed, and leaves transient spawn
- * failures `running` so they stay recoverable on the next restart — no silent
- * drop, no premature terminalize. At-least-once on the crash seam is
- * intentional.
- *
- * Honors the continuation deny-gate: when continuation is disabled, recovery
- * classifies cutoff-eligible crash-orphans only to dead-letter malformed rows,
- * then performs no dispatch. Valid rows stay recoverable for when it is
- * re-enabled, matching {@link recoverPendingContinuationDelegates}.
- */
-
+/** Startup: records persisted for the next compaction seam go back to staged. */
 export async function requeueAwaitingNextCompactionDelegates(options: {
   runningUpdatedAtOrBefore: number;
 }): Promise<{ requeued: number }> {
   return {
-    requeued: requeueAwaitingNextCompactionDelegateRows({
+    requeued: await requeueAwaitingNextCompactionDelegateRows({
       runningUpdatedAtOrBefore: options.runningUpdatedAtOrBefore,
     }),
   };
 }
 
+/**
+ * Startup recovery for post-compaction delegates a crash left claimed for
+ * release before the release committed (RFC §4.4). Release and queue insert
+ * are one commit, so such a record has no queue entry and no spawn can have
+ * begun for it. For a session that already compacted there is no later seam
+ * to consume it, so recovery finishes the release now: stale work fails, the
+ * per-turn budget applies as at the seam, and the rest go to the queue in the
+ * same atomic release. Only the entries released here are drained; entries
+ * that already existed belong to session-delivery recovery.
+ */
 export async function recoverAndReleaseStagedPostCompactionDelegates(options: {
   runningUpdatedAtOrBefore: number;
 }): Promise<{ sessions: number; dispatched: number; failed: number }> {
-  const recoverable = listRecoverableStagedPostCompactionDelegates({
+  const recoverable = await listRecoverableStagedPostCompactionDelegates({
     runningUpdatedAtOrBefore: options.runningUpdatedAtOrBefore,
   });
   if (recoverable.length === 0) {
     return { sessions: 0, dispatched: 0, failed: 0 };
   }
-  let pendingDeliverySourceKeys: Set<string>;
-  try {
-    pendingDeliverySourceKeys = await loadPendingPostCompactionDeliverySourceKeys();
-  } catch (err) {
-    postCompactionRecoveryLog.warn(
-      `[continuation:post-compaction-recovery-delivery-gate-failed] leaving staged delegates recoverable: ${formatErrorMessage(err)}`,
-    );
-    return { sessions: 0, dispatched: 0, failed: 0 };
-  }
-
-  // Group the crash-orphaned rows by owner session so each session releases once
-  // against its own persisted chain-state basis.
   const delegatesBySession = new Map<string, PendingContinuationDelegate[]>();
   for (const { sessionKey, delegate } of recoverable) {
-    if (
-      delegate.flowId &&
-      pendingDeliverySourceKeys.has(pendingPostCompactionSourceKey(sessionKey, delegate.flowId))
-    ) {
-      postCompactionRecoveryLog.info(
-        `[continuation:post-compaction-recovery-deferred-for-delivery] session=${sessionKey} flowId=${delegate.flowId}`,
-      );
-      continue;
-    }
     const list = delegatesBySession.get(sessionKey) ?? [];
     list.push(delegate);
     delegatesBySession.set(sessionKey, list);
   }
   const runtimeConfigSnapshot = getRuntimeConfig();
-  let dispatched = 0;
+  const { maxDelegatesPerTurn } = resolveContinuationRuntimeConfig(runtimeConfigSnapshot);
+  let released = 0;
   let failed = 0;
   let recoveredSessions = 0;
   for (const [sessionKey, delegates] of delegatesBySession) {
@@ -322,73 +285,69 @@ export async function recoverAndReleaseStagedPostCompactionDelegates(options: {
       );
       continue;
     }
-    if (!entry) {
+    if (!entry?.sessionId) {
       postCompactionRecoveryLog.warn(
         `[continuation:post-compaction-recovery-session-missing] path=${storePath} session=${sessionKey} leaving staged delegates recoverable`,
       );
       continue;
     }
     recoveredSessions++;
-    const chainState = loadContinuationChainState(entry);
-    const deliveryContext = deliveryContextFromSession(entry);
-    const spawnCtx: PostCompactionSpawnContext = {
-      agentSessionKey: sessionKey,
-      ...(deliveryContext?.channel ? { agentChannel: deliveryContext.channel } : {}),
-      ...(deliveryContext?.accountId ? { agentAccountId: deliveryContext.accountId } : {}),
-      ...(deliveryContext?.to ? { agentTo: deliveryContext.to } : {}),
-      ...(deliveryContext?.threadId !== undefined
-        ? { agentThreadId: deliveryContext.threadId }
-        : {}),
-    };
-    const result = await dispatchStagedPostCompactionDelegates(delegates, sessionKey, spawnCtx, {
-      chainState,
-      holdPendingWhileDisabled: true,
-      rollbackAcceptedFlow: async ({ flowId, childSessionKey }) => {
-        const runId =
-          getSubagentRunByChildSessionKey(childSessionKey)?.runId ??
-          deriveContinuationDelegateChildRunId(flowId);
-        rollbackSubagentRunRegistration({ runId, childSessionKey });
-        await terminateAcceptedCollectorRun({
-          childSessionKey,
-          gatewayRunId: runId,
-          retry: false,
-        });
-      },
-      finalizeAcceptedFlow: async ({ flowId, chainState: acceptedChainState }) => {
-        const updated = await updateSessionEntry(
-          { sessionKey, storePath },
-          (sessionEntry) => {
-            persistContinuationChainState({
-              sessionEntry,
-              count: acceptedChainState.currentChainCount,
-              startedAt: acceptedChainState.chainStartedAt,
-              tokens: acceptedChainState.accumulatedChainTokens,
-              ...(acceptedChainState.chainId ? { chainId: acceptedChainState.chainId } : {}),
-            });
-            return sessionEntry;
-          },
-          { requireWriteSuccess: true },
+    const now = Date.now();
+    const releasable: PendingContinuationDelegate[] = [];
+    for (const delegate of delegates) {
+      const staleness = classifyPostCompactionDelegateAge(delegate, now);
+      if (staleness.stale) {
+        postCompactionRecoveryLog.warn(
+          `[continuation:post-compaction-release-stale] flowId=${delegate.flowId ?? "none"} session=${sessionKey} ageMs=${staleness.ageMs}`,
         );
-        if (!updated) {
-          throw new Error(`session entry disappeared during recovery: ${sessionKey}`);
+        if (
+          await rejectPostCompactionDelegate(
+            delegate,
+            formatPostCompactionStaleRejection(staleness.ageMs),
+          )
+        ) {
+          failed++;
         }
-        persistContinuationChainState({
-          sessionEntry: entry,
-          count: acceptedChainState.currentChainCount,
-          startedAt: acceptedChainState.chainStartedAt,
-          tokens: acceptedChainState.accumulatedChainTokens,
-          ...(acceptedChainState.chainId ? { chainId: acceptedChainState.chainId } : {}),
-        });
-        const finalized = finalizeStagedPostCompactionDelegates([flowId]);
-        assertStagedPostCompactionFinalizationComplete({
-          flowIds: [flowId],
-          finalized,
-          context: `post-compaction startup recovery for ${sessionKey}`,
-        });
-      },
-    });
-    dispatched += result.dispatched;
-    failed += result.failed;
+        continue;
+      }
+      releasable.push(delegate);
+    }
+    for (const dropped of releasable.slice(maxDelegatesPerTurn)) {
+      if (
+        await rejectPostCompactionDelegate(
+          dropped,
+          `Post-compaction delegate rejected: maxDelegatesPerTurn exceeded (${maxDelegatesPerTurn}).`,
+        )
+      ) {
+        failed++;
+      }
+    }
+    const deliveryContext = deliveryContextFromSession(entry);
+    const entryIds: string[] = [];
+    for (const [sequence, delegate] of releasable.slice(0, maxDelegatesPerTurn).entries()) {
+      const result = await releaseStagedPostCompactionDelegateToQueue({
+        sessionKey,
+        delegate: toSessionPostCompactionDelegate(delegate, now),
+        sourceSessionId: entry.sessionId,
+        ...(entry.lifecycleRevision ? { sourceLifecycleRevision: entry.lifecycleRevision } : {}),
+        sequence,
+        ...(entry.compactionCount !== undefined ? { compactionCount: entry.compactionCount } : {}),
+        ...(deliveryContext ? { deliveryContext } : {}),
+      });
+      if (result.released) {
+        entryIds.push(result.entryId);
+        released++;
+      } else {
+        postCompactionRecoveryLog.warn(
+          `[continuation:post-compaction-recovery-release-not-committed] flowId=${delegate.flowId ?? "none"} session=${sessionKey} reason=${result.reason}`,
+        );
+      }
+    }
+    if (entryIds.length > 0) {
+      const { drainPostCompactionDelegateDeliveries } =
+        await import("../reply/post-compaction-delegate-dispatch.js");
+      await drainPostCompactionDelegateDeliveries({ sessionKey, entryIds });
+    }
   }
-  return { sessions: recoveredSessions, dispatched, failed };
+  return { sessions: recoveredSessions, dispatched: released, failed };
 }

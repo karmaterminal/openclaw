@@ -334,7 +334,11 @@ async function driveContinuationTurn(
   if (signal.aborted) {
     return { status: "skipped", reason: CONTINUATION_TURN_RESET_REASON };
   }
-  const workFence = revalidatePendingWorkForTurn(work);
+  const workFence = await revalidatePendingWorkForTurn(work);
+  // The fence read yielded; a reset in that window aborted this claim.
+  if (signal.aborted) {
+    return { status: "skipped", reason: CONTINUATION_TURN_RESET_REASON };
+  }
   if (!workFence.allowed) {
     return {
       status: "skipped",
@@ -387,9 +391,9 @@ async function driveContinuationTurn(
   }
   // The provider ran. Persist the replay guard before finishing, then advance
   // only with the committed revision-bearing value returned by the CAS.
-  const deliveredMark = markPendingWorkDelivered(work);
+  const deliveredMark = await markPendingWorkDelivered(work);
   if (!deliveredMark.applied) {
-    reconcileUndeliverableGrantedWork(work);
+    await reconcileUndeliverableGrantedWork(work);
     return { status: "ran-finalized" };
   }
   return { status: "ran", work: deliveredMark.work };
@@ -446,11 +450,11 @@ export async function prepareFoldedContinuationWork(
   return { now, retryDelayMs: policy.retryDelayMs, delivery };
 }
 
-export function commitFoldedContinuationWork(
+export async function commitFoldedContinuationWork(
   sessionKey: string,
   candidates: readonly ContinuationWorkFoldCandidate[],
   attempt: ContinuationWorkFoldAttempt,
-): ContinuationWorkFoldExecutionResult {
+): Promise<ContinuationWorkFoldExecutionResult> {
   const works = candidates.map((candidate) => candidate.work);
   const { delivery, now } = attempt;
   if (!delivery.delivered) {
@@ -462,7 +466,7 @@ export function commitFoldedContinuationWork(
     for (const candidate of candidates) {
       const { work } = candidate;
       const retryTrigger = retryAfterActiveRun ? ({ kind: "reply-run-ended" } as const) : undefined;
-      const requeued = requeuePendingWork(work, {
+      const requeued = await requeuePendingWork(work, {
         dueAt: retryDueAt,
         summary: `Continuation fold-note delivery failed (${delivery.reason}); keeping row recoverable.`,
         ...(retryAfterActiveRun
@@ -495,14 +499,14 @@ export function commitFoldedContinuationWork(
     log.info(
       `[continuation:work-folded-active] flowId=${work.flowId ?? "none"} session=${sessionKey} hop=${work.hop} overdueMs=${overdueByMs} folded into active turn`,
     );
-    const deliveredMark = markPendingWorkFoldDelivered(work, {
+    const deliveredMark = await markPendingWorkFoldDelivered(work, {
       foldedAt: delivery.deliveredAt,
       overdueByMs,
     });
     if (!deliveredMark.applied) {
       continue;
     }
-    markPendingWorkFolded(deliveredMark.work, {
+    await markPendingWorkFolded(deliveredMark.work, {
       summary: "matured while a later turn was active",
       foldedAt: delivery.deliveredAt,
       overdueByMs,
@@ -540,7 +544,7 @@ export async function executePendingContinuationWork(
       signal,
     );
     if (result.status === "ran") {
-      markPendingWorkTurnGranted(result.work);
+      await markPendingWorkTurnGranted(result.work);
       return { kind: "dispatched" };
     }
     if (result.status === "ran-finalized") {
@@ -561,7 +565,7 @@ export async function executePendingContinuationWork(
       return { kind: "unchanged" };
     }
     if (skippedReason === CONTINUATION_TURN_NOOP_REARM_BLOCKED_REASON) {
-      markPendingWorkSuperseded(
+      await markPendingWorkSuperseded(
         work,
         `No-op replay guard suppressed continuation turn (${skippedReason}).`,
       );
@@ -582,7 +586,7 @@ export async function executePendingContinuationWork(
         log.info(
           `[continuation:work-orphan-reaped] flowId=${work.flowId ?? "none"} session=${work.sessionKey} parentRunId=${work.parentRunId} — parent confident-terminal, can never rehydrate`,
         );
-        markPendingWorkReaped(
+        await markPendingWorkReaped(
           work,
           `Orphan continuation reaped: parent run ${work.parentRunId} is confident-terminal and can never rehydrate this flow.`,
         );
@@ -591,7 +595,7 @@ export async function executePendingContinuationWork(
       const priorBusySkips = work.busySkipCount ?? 0;
       const retryDueAt =
         now + (result.retryTrigger ? policy.idleRetryHedgeMs : policy.busyRetryDelayMs);
-      const requeued = requeuePendingWork(work, {
+      const requeued = await requeuePendingWork(work, {
         dueAt: retryDueAt,
         summary: `Retryable continuation skip: ${skippedReason}`,
         busySkipCount: priorBusySkips + 1,
@@ -619,7 +623,7 @@ export async function executePendingContinuationWork(
       `[system:continuation-warning] continue_work turn was not granted (${skippedReason}).`,
       { sessionKey: work.sessionKey, trusted: true },
     );
-    markPendingWorkFailed(work, `Continuation turn was not granted: ${skippedReason}`);
+    await markPendingWorkFailed(work, `Continuation turn was not granted: ${skippedReason}`);
     return { kind: "failed" };
   } catch (err) {
     if (signal.aborted) {
@@ -635,7 +639,7 @@ export async function executePendingContinuationWork(
       log.warn(
         `[continuation:work-drive-error-retry] flowId=${work.flowId ?? "none"} session=${work.sessionKey} retry=${retryCount}/${MAX_TRANSIENT_ERROR_RETRY_COUNT} error=${message}`,
       );
-      const requeued = requeuePendingWork(work, {
+      const requeued = await requeuePendingWork(work, {
         dueAt: retryDueAt,
         summary: `Transient continuation turn error: ${message}`,
         retryCount,
@@ -650,7 +654,7 @@ export async function executePendingContinuationWork(
     // the in-memory event queue. The CAS result stays the dedupe authority: a
     // re-entrant or recovered caller holding a stale claim loses it and reports
     // nothing.
-    const terminalized = markPendingWorkFailed(work, message, {
+    const terminalized = await markPendingWorkFailed(work, message, {
       terminalNoticePending: "retry-exhausted",
     });
     if (terminalized) {

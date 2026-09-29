@@ -3,90 +3,63 @@
  *
  * `enqueueSystemEvent` is an explicitly non-durable in-process queue, so it
  * cannot on its own satisfy the product invariant that every action ends in a
- * visible outcome: a gateway restart between the terminal write and the next
- * prompt drain would silently discard the notice, and terminal rows are invisible
- * to normal continuation recovery.
+ * visible outcome: a Gateway restart between the terminal write and the next
+ * prompt drain would silently discard the notice, and terminal records are
+ * invisible to normal continuation recovery.
  *
- * The obligation therefore moves through three owners, each handoff either
- * CAS-guarded or idempotent, so no crash window can lose or duplicate it:
+ * The obligation therefore moves through two owners (RFC
+ * docs/design/continue-work-signal-v2.md §5.4.2):
  *
  *   1. `work-store` persists `terminalNoticePending` in the SAME CAS that fails
- *      the row. A crash here leaves the obligation readable in the store.
- *   2. this module hands the notice to the durable session-delivery queue under
- *      a flow-stable idempotency key, then CAS-clears the flag. A crash between
- *      those two steps replays step 2, and the stable key collapses the retry
- *      onto the same durable row rather than enqueueing a second one.
- *   3. the delivery queue owns delivery from that point. The in-memory event is
- *      only the fast path; it carries the durable row's ack id, and that row is
- *      acknowledged only after the prompt actually consumes it, so a restart
- *      before consumption replays the notice instead of dropping it.
+ *      the record. A crash here leaves the obligation readable in custody.
+ *   2. this module inserts the notice's session-delivery row and clears the
+ *      obligation in ONE custody transaction, under a record-stable
+ *      idempotency key, so the notice is neither lost nor enqueued twice.
  *
- * This mirrors the durable-return path in `targeting.ts`, which uses the same
- * queue, ack-id, and idempotency-key primitives.
+ * The delivery queue owns delivery from that point. The in-memory event is
+ * only the fast path; it carries the durable row's ack id, and that row is
+ * acknowledged only after the prompt actually consumes it.
  */
 
-import {
-  markTrustedContinuationHeartbeatWake,
-  requestHeartbeatNow,
-} from "../../infra/heartbeat-wake.js";
-import type { scheduleSessionDelivery } from "../../infra/session-delivery-queue-runtime.js";
-import { enqueueSessionDeliveryWithStatus } from "../../infra/session-delivery-queue-storage.js";
-import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
+import { prepareSessionDeliveryEnqueue } from "../../infra/session-delivery-queue-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";
-import type { PendingContinuationWork } from "./work-flow-state.js";
 import {
-  clearPendingTerminalNotice,
-  listPendingTerminalNoticeWork,
-  readPendingTerminalNoticeWork,
-} from "./work-store.js";
+  defaultContinuationNoticeSurfaceDeps,
+  surfaceDurableContinuationNotice,
+  type ContinuationNoticeSurfaceDeps,
+} from "./continuation-notice-surface.js";
+import { settleContinuationNotice } from "./custody/custody-store.js";
+import type { PendingContinuationWork } from "./work-flow-state.js";
+import { listPendingTerminalNoticeWork, readPendingTerminalNoticeWork } from "./work-store.js";
 
 const log = createSubsystemLogger("continuation/work-terminal-notice");
 
 /**
  * Operator-facing detail (provider payloads, URLs, credentials) never reaches
  * this string: it is injected into the model's context. The raw driver error
- * stays on the durable row's blocked summary and in the terminal error log.
+ * stays on the durable record's failure reason and in the terminal error log.
  */
 export const CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE =
   "[system:continuation-warning] continue_work permanently failed after exhausting its retries; the scheduled follow-up turn will not run. Reissue continue_work if the work is still needed.";
 
-/** Flow-stable so a replayed handoff reuses one durable row instead of adding another. */
-function continuationWorkTerminalNoticeIdempotencyKey(flowId: string): string {
-  return `continuation-work-terminal-notice:${flowId}`;
+/** Record-stable so a replayed handoff reuses one durable row instead of adding another. */
+function continuationWorkTerminalNoticeIdempotencyKey(recordId: string): string {
+  return `continuation-work-terminal-notice:${recordId}`;
 }
 
-type ContinuationWorkTerminalNoticeDeps = {
-  enqueueSessionDeliveryWithStatus: typeof enqueueSessionDeliveryWithStatus;
-  scheduleSessionDelivery: typeof scheduleSessionDelivery;
-  enqueueSystemEvent: typeof enqueueSystemEvent;
-  requestHeartbeatNow: typeof requestHeartbeatNow;
+type ContinuationWorkTerminalNoticeDeps = ContinuationNoticeSurfaceDeps & {
+  settleContinuationNotice: typeof settleContinuationNotice;
   queueContext?: OpenClawStateWorkerContext;
   stateDir?: string;
 };
 
 const defaultDeps: ContinuationWorkTerminalNoticeDeps = {
-  enqueueSessionDeliveryWithStatus,
-  // Resolved on first CALL, not at module evaluation. An eager binding read here
-  // forces every upstream-shared test that mocks session-delivery-queue-runtime.js
-  // to declare this export in its vi.mock factory, even when it never invokes it.
-  // See karmaterminal/openclaw#1361.
-  scheduleSessionDelivery: async (...args) =>
-    await (
-      await import("../../infra/session-delivery-queue-runtime.js")
-    ).scheduleSessionDelivery(...args),
-  enqueueSystemEvent,
-  requestHeartbeatNow,
+  ...defaultContinuationNoticeSurfaceDeps,
+  settleContinuationNotice,
 };
 
-/**
- * Hand one pending terminal notice to the durable queue and release the flag.
- *
- * Enqueue precedes the clear on purpose: losing the clear only replays an
- * idempotent enqueue, whereas clearing first would reopen the crash window the
- * durable flag exists to close.
- */
+/** Hand one pending terminal notice to the durable queue and release the obligation. */
 export async function deliverPendingTerminalNotice(
   work: PendingContinuationWork,
   deps: ContinuationWorkTerminalNoticeDeps = defaultDeps,
@@ -94,80 +67,54 @@ export async function deliverPendingTerminalNotice(
   if (!work.flowId) {
     return false;
   }
-  // Re-read under a current revision: the caller that terminalized the row holds
-  // the pre-CAS revision, and another drain may already have taken ownership.
-  const pending = readPendingTerminalNoticeWork(work.flowId);
-  if (!pending) {
+  // Re-read under a current revision: the caller that terminalized the record
+  // holds the pre-CAS revision, and another drain may already have settled it.
+  const pending = await readPendingTerminalNoticeWork(work.flowId);
+  if (!pending?.flowId || pending.expectedRevision === undefined) {
     return false;
   }
-  const queueContext =
-    deps.queueContext ??
-    captureOpenClawStateWorkerContext({
-      env: deps.stateDir ? { ...process.env, OPENCLAW_STATE_DIR: deps.stateDir } : process.env,
-    });
-  const enqueued = await deps.enqueueSessionDeliveryWithStatus(
+  const now = Date.now();
+  const { bound } = prepareSessionDeliveryEnqueue(
     {
       kind: "systemEvent",
       sessionKey: pending.sessionKey,
       text: CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE,
-      idempotencyKey: continuationWorkTerminalNoticeIdempotencyKey(work.flowId),
+      idempotencyKey: continuationWorkTerminalNoticeIdempotencyKey(pending.flowId),
       // The row must outlive the in-memory event and survive until the prompt
       // adopts it; see the delivery path's plain-event deferral.
       awaitPromptAdoption: true,
     },
-    queueContext,
+    now,
   );
-  if (enqueued.status === "unknown") {
-    // The authoritative read was inconclusive, so this row may already be a
-    // completed tombstone. Surfacing now could duplicate a settled outcome, and
-    // clearing the flag would discard the only restart backstop. Treat it as a
-    // failed handoff: keep the obligation and let the bounded retry re-resolve.
-    throw new Error(`continuation terminal notice enqueue status unresolved for ${enqueued.id}`);
-  }
-  if (enqueued.status === "completed") {
-    // A tombstone already settled this key: the outcome was delivered and
-    // adopted on an earlier pass, and the durable enqueue above was a no-op.
-    // Releasing the stale flag is the whole job — emitting another in-memory
-    // event or wake here would surface a second copy of a settled outcome.
-    if (clearPendingTerminalNotice(pending)) {
-      log.info(
-        `[continuation:work-terminal-notice-already-settled] flowId=${work.flowId} session=${pending.sessionKey} deliveryId=${enqueued.id}`,
-      );
-    }
-    return false;
-  }
-  if (!clearPendingTerminalNotice(pending)) {
-    // Another drain won the clear. The deterministic idempotency key means it
-    // owns THIS row, not a duplicate — acknowledging here would complete the
-    // winner's only durable record before the prompt ever consumed it. Leave it
-    // alone; a completed tombstone already makes re-enqueue a no-op.
-    return false;
-  }
-  deps.enqueueSystemEvent(CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE, {
-    sessionKey: pending.sessionKey,
-    trusted: true,
-    sessionDeliveryAckId: enqueued.id,
-    // Prompt preparation is not adoption. Settle only once the prepared turn is
-    // durably adopted, so an admission failure or crash replays the notice.
-    sessionDeliveryAwaitsTurnAdoption: true,
-    ...(deps.stateDir ? { sessionDeliveryAckStateDir: deps.stateDir } : {}),
+  const settled = await deps.settleContinuationNotice({
+    recordId: pending.flowId,
+    ownerSessionKey: pending.sessionKey,
+    expectedRevision: pending.expectedRevision,
+    notice: bound,
+    now,
   });
-  // Startup scans the delivery queue before continuation recovery runs, so a
-  // row created here would otherwise carry no timer and wait for unrelated
-  // traffic. Arm it explicitly and wake the target.
-  await deps.scheduleSessionDelivery(enqueued.id, queueContext);
-  deps.requestHeartbeatNow(
-    markTrustedContinuationHeartbeatWake({
+  if (settled.outcome !== "settled") {
+    // Another drain settled it first; its row is the only one.
+    return false;
+  }
+  const surfaced = await surfaceDurableContinuationNotice(
+    {
+      entryId: settled.entryId,
+      entryStatus: settled.entryStatus,
       sessionKey: pending.sessionKey,
-      source: "other" as const,
-      intent: "immediate" as const,
+      text: CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE,
       reason: "continuation-terminal-notice",
-    }),
+      ...(deps.queueContext ? { queueContext: deps.queueContext } : {}),
+      ...(deps.stateDir ? { stateDir: deps.stateDir } : {}),
+    },
+    deps,
   );
   log.info(
-    `[continuation:work-terminal-notice-handed-off] flowId=${work.flowId} session=${pending.sessionKey} deliveryId=${enqueued.id}`,
+    surfaced
+      ? `[continuation:work-terminal-notice-handed-off] flowId=${pending.flowId} session=${pending.sessionKey} deliveryId=${settled.entryId}`
+      : `[continuation:work-terminal-notice-already-settled] flowId=${pending.flowId} session=${pending.sessionKey} deliveryId=${settled.entryId}`,
   );
-  return true;
+  return surfaced;
 }
 
 /** Hard bound on live retries of a failed durable handoff. */
@@ -186,10 +133,10 @@ export function resetTerminalNoticeRetriesForTests(): void {
 /**
  * Arm a bounded live retry for a handoff that failed before reaching the queue.
  *
- * A flag-only obligation is invisible to the delivery scheduler (it has no row
- * yet), so without this it would wait for the next gateway restart. Retries are
- * hard-capped; the durable flag is never cleared by a failure, so a restart
- * remains the final backstop.
+ * An obligation without a queue row is invisible to the delivery scheduler, so
+ * without this it would wait for the next Gateway restart. Retries are
+ * hard-capped; a failure never clears the obligation, so a restart remains the
+ * final backstop.
  */
 function armTerminalNoticeRetry(
   work: PendingContinuationWork,
@@ -204,17 +151,16 @@ function armTerminalNoticeRetry(
   const timer = setTimeout(() => {
     retryTimers.delete(flowId);
     void (async () => {
-      const owed = readPendingTerminalNoticeWork(flowId);
-      if (!owed) {
-        return;
-      }
       try {
-        await deliverPendingTerminalNotice(owed, deps);
+        const owed = await readPendingTerminalNoticeWork(flowId);
+        if (owed) {
+          await deliverPendingTerminalNotice(owed, deps);
+        }
       } catch (err) {
         log.error(
           `[continuation:work-terminal-notice-retry-error] flowId=${flowId} attempt=${attempt + 1}/${TERMINAL_NOTICE_RETRY_DELAYS_MS.length} error=${err instanceof Error ? err.message : String(err)}`,
         );
-        armTerminalNoticeRetry(owed, attempt + 1, deps);
+        armTerminalNoticeRetry(work, attempt + 1, deps);
       }
     })();
   }, delayMs);
@@ -225,8 +171,8 @@ function armTerminalNoticeRetry(
 /**
  * Hand off one notice, arming a bounded live retry if the durable enqueue fails.
  *
- * The flag survives every failure, so the obligation is never lost; the retry
- * only removes the dependency on an unrelated restart.
+ * The obligation survives every failure, so it is never lost; the retry only
+ * removes the dependency on an unrelated restart.
  */
 export async function deliverPendingTerminalNoticeWithRetry(
   work: PendingContinuationWork,
@@ -244,20 +190,20 @@ export async function deliverPendingTerminalNoticeWithRetry(
 }
 
 /**
- * Replay every notice the store still owes. Safe to call on every startup: rows
- * whose notice already reached the delivery queue no longer carry the flag.
+ * Replay every notice custody still owes. Safe to call on every startup:
+ * records whose notice already reached the delivery queue no longer owe it.
  */
 export async function drainPendingTerminalNotices(
   deps: ContinuationWorkTerminalNoticeDeps = defaultDeps,
 ): Promise<number> {
   let delivered = 0;
-  for (const work of listPendingTerminalNoticeWork()) {
+  for (const work of await listPendingTerminalNoticeWork()) {
     try {
       if (await deliverPendingTerminalNoticeWithRetry(work, deps)) {
         delivered += 1;
       }
     } catch (err) {
-      // Leave the flag set so the next drain retries; never drop the obligation.
+      // The obligation stays set so the next drain retries; never drop it.
       log.error(
         `[continuation:work-terminal-notice-drain-error] flowId=${work.flowId ?? "none"} session=${work.sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
       );

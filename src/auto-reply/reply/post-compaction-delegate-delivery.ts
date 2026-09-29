@@ -5,10 +5,7 @@ import {
   removeUnacceptedDelegateArtifactPolicy,
 } from "../../agents/delegate-artifacts.js";
 import { deriveContinuationDelegateChildSessionKey } from "../../agents/subagent-continuation-ids.js";
-import {
-  getSubagentRunByChildSessionKey,
-  hasLiveContinuationDelegateChildRun,
-} from "../../agents/subagents/registry/subagent-registry-read.js";
+import { getSubagentRunByChildSessionKey } from "../../agents/subagents/registry/subagent-registry-read.js";
 import {
   spawnSubagentDirect,
   type SpawnSubagentContext,
@@ -26,27 +23,42 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolveContinuationTraceparent } from "../../infra/continuation-tracer.js";
 import { generateChainId } from "../../infra/secure-random.js";
 import {
+  enqueueSessionDeliveryWithStatus,
+  markSessionDeliveryAttemptStarted,
   SessionDeliveryDeadLetteredError,
   SessionDeliveryDeferredError,
+  SessionDeliverySafeRetryError,
   type QueuedSessionDelivery,
   type SessionDeliveryContext,
 } from "../../infra/session-delivery-queue-storage.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
+import {
+  formatContinuationChildRunId,
+  parseContinuationChildRunId,
+} from "../../shared/continuation-run-key.js";
+import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";
 import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
+import { surfaceDurableContinuationNotice } from "../continuation/continuation-notice-surface.js";
+import { buildContinuationSpawnInterruptedNotice } from "../continuation/custody/spawn-interrupted-notice.js";
+import {
+  readDelegateAdmissionEvidence,
+  type DelegateAdmissionEvidence,
+} from "../continuation/delegate-dispatch-accepted-children.js";
 import { registerContinuationDelegateDispatchClaim } from "../continuation/delegate-spawn-authority.js";
 import {
   markPendingDelegateSpawnAccepted,
   revalidatePendingDelegateForSpawn,
+  spawnResultNeverDispatched,
   type DelegateSpawnFenceResult,
 } from "../continuation/delegate-store.js";
 import { reserveAcceptedPostCompactionChainHop } from "../continuation/post-compaction-chain-charge.js";
+import { failReleasedPostCompactionDelegate } from "../continuation/post-compaction-rejection.js";
 import {
   classifyPostCompactionDelegateAge,
   formatPostCompactionStaleRejection,
   POST_COMPACTION_DELEGATE_TTL_MS,
 } from "../continuation/post-compaction-staleness.js";
-import { failReleasedPostCompactionDelegate } from "../continuation/post-compaction-taskflow-rejection.js";
 import { withContinuationOwner } from "../continuation/system-event-ownership.js";
 import { hasCrossSessionDelegateTargeting } from "../continuation/targeting-pure.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
@@ -85,21 +97,60 @@ export type PostCompactionDelegateDeliveryDeps = {
   revalidatePendingDelegateForSpawn(
     delegate: { flowId?: string; expectedRevision?: number; task: string },
     controller: "post-compaction",
-  ): DelegateSpawnFenceResult;
+  ): Promise<DelegateSpawnFenceResult>;
   markPendingDelegateSpawnAccepted(
     delegate: { flowId?: string; expectedRevision?: number; task: string },
     childSessionKey: string,
-  ): boolean;
+  ): Promise<boolean>;
   failReleasedPostCompactionDelegate(
     delegate: { flowId?: string; expectedRevision?: number; task: string },
-    blockedSummary: string,
-    currentStep?: string,
-  ): boolean;
+    failureReason: string,
+    phase?: string,
+  ): Promise<boolean>;
   reserveAcceptedPostCompactionChainHop(
     delegate: { flowId?: string; expectedRevision?: number; task: string },
     plannedChainState: ChainState,
-  ): { chainState: ChainState; expectedRevision: number | undefined };
+  ): Promise<{ chainState: ChainState; expectedRevision: number | undefined }>;
+  /** Registry evidence under the entry's attempt keys (RFC §5.4.4). */
+  readAdmissionEvidence(params: {
+    runIds: readonly string[];
+    requesterSessionKey: string;
+  }): Promise<DelegateAdmissionEvidence>;
+  /** Persist attempt ownership on the entry before any spawn begins. */
+  markAttemptStarted(
+    entry: QueuedPostCompactionDelegateDelivery,
+    queueContext?: OpenClawStateWorkerContext,
+  ): Promise<void>;
+  /** Enqueue the entry's interrupted notice and surface it (idempotent per entry). */
+  enqueueInterruptedNotice(params: {
+    entry: QueuedPostCompactionDelegateDelivery;
+    queueContext?: OpenClawStateWorkerContext;
+  }): Promise<void>;
 };
+
+async function enqueueQueueEntryInterruptedNotice(params: {
+  entry: QueuedPostCompactionDelegateDelivery;
+  queueContext?: OpenClawStateWorkerContext;
+}): Promise<void> {
+  const notice = buildContinuationSpawnInterruptedNotice({
+    sessionKey: params.entry.sessionKey,
+    source: { kind: "queue-entry", entryId: params.entry.id },
+    task: params.entry.task,
+  });
+  // Insert-if-absent under the entry-derived key: a redelivery after a crash
+  // between this insert and the entry's settlement resolves to the same row.
+  const enqueued = await enqueueSessionDeliveryWithStatus(notice, params.queueContext);
+  if (notice.kind === "systemEvent" && enqueued.status !== "unknown") {
+    await surfaceDurableContinuationNotice({
+      entryId: enqueued.id,
+      entryStatus: enqueued.status,
+      sessionKey: params.entry.sessionKey,
+      text: notice.text,
+      reason: "continuation-delegate-spawn-interrupted",
+      ...(params.queueContext ? { queueContext: params.queueContext } : {}),
+    });
+  }
+}
 
 const defaultPostCompactionDelegateDeliveryDeps: PostCompactionDelegateDeliveryDeps = {
   enqueueSystemEvent,
@@ -116,6 +167,9 @@ const defaultPostCompactionDelegateDeliveryDeps: PostCompactionDelegateDeliveryD
   markPendingDelegateSpawnAccepted,
   failReleasedPostCompactionDelegate,
   reserveAcceptedPostCompactionChainHop,
+  readAdmissionEvidence: readDelegateAdmissionEvidence,
+  markAttemptStarted: markSessionDeliveryAttemptStarted,
+  enqueueInterruptedNotice: enqueueQueueEntryInterruptedNotice,
 };
 
 function syncPendingPostCompactionDelegates(params: {
@@ -267,15 +321,15 @@ export async function takePendingPostCompactionDelegates(params: {
   return persisted.length > 0 ? persisted : localDelegates;
 }
 
-function failSourceBackedPostCompactionDelivery(
+async function failSourceBackedPostCompactionDelivery(
   deps: Pick<PostCompactionDelegateDeliveryDeps, "failReleasedPostCompactionDelegate" | "log">,
   entry: QueuedPostCompactionDelegateDelivery,
   summary: string,
-): void {
+): Promise<void> {
   if (!entry.sourceFlowId || entry.sourceExpectedRevision === undefined) {
     return;
   }
-  const applied = deps.failReleasedPostCompactionDelegate(
+  const applied = await deps.failReleasedPostCompactionDelegate(
     {
       flowId: entry.sourceFlowId,
       expectedRevision: entry.sourceExpectedRevision,
@@ -292,10 +346,10 @@ function failSourceBackedPostCompactionDelivery(
 }
 
 /**
- * The continuation flow id this entry's child is spawned under. Source-backed
- * entries reuse their TaskFlow row id; a source-less entry falls back to the
- * queue entry id. The accepted-child replay guard MUST derive from the same
- * value the spawn does, or a retry after an accepted spawn re-spawns the child.
+ * The continuation record id this entry's child is spawned under. Source-backed
+ * entries reuse their custody record id; a source-less entry falls back to the
+ * queue entry id. The derived child session key MUST come from the same value
+ * the spawn uses.
  */
 function resolveQueuedPostCompactionContinuationFlowId(
   entry: QueuedPostCompactionDelegateDelivery,
@@ -328,7 +382,7 @@ async function commitAcceptedPostCompactionChainCharge(params: {
   storePath: string;
 }): Promise<{ expectedRevision: number | undefined }> {
   const { deps, entry, sessionEntry, storePath } = params;
-  const reserved = deps.reserveAcceptedPostCompactionChainHop(
+  const reserved = await deps.reserveAcceptedPostCompactionChainHop(
     {
       ...(entry.sourceFlowId ? { flowId: entry.sourceFlowId } : {}),
       ...(entry.sourceExpectedRevision !== undefined
@@ -375,23 +429,49 @@ async function commitAcceptedPostCompactionChainCharge(params: {
   return { expectedRevision: reserved.expectedRevision };
 }
 
-async function maybeFinalizePreviouslyAcceptedDelivery(params: {
-  acceptedChildSessionKey: string;
+/** Every attempt key the entry may have launched under, oldest first (RFC §5.4.4). */
+function queuedAttemptRunIds(entry: QueuedPostCompactionDelegateDelivery): string[] {
+  const base = entry.childRunId ? parseContinuationChildRunId(entry.childRunId) : undefined;
+  if (!base) {
+    return [];
+  }
+  const attempts = Math.max(base.attemptId, entry.retryCount + 1);
+  return Array.from({ length: attempts }, (_, index) =>
+    formatContinuationChildRunId(base.recordId, index + 1),
+  );
+}
+
+/** Settle an unproven entry: one interrupted notice, then the entry fails (Q3). */
+async function settleInterruptedQueuedDelivery(params: {
   deps: PostCompactionDelegateDeliveryDeps;
   entry: QueuedPostCompactionDelegateDelivery;
+  queueContext?: OpenClawStateWorkerContext;
+  reason: string;
+}): Promise<never> {
+  params.deps.log(
+    `[continuation:post-compaction-delivery-interrupted] entryId=${params.entry.id} flowId=${params.entry.sourceFlowId ?? "none"} reason=${params.reason}`,
+  );
+  await params.deps.enqueueInterruptedNotice({
+    entry: params.entry,
+    ...(params.queueContext ? { queueContext: params.queueContext } : {}),
+  });
+  throw new SessionDeliveryDeadLetteredError(
+    `post-compaction delegate admission could not be proven (${params.reason})`,
+  );
+}
+
+async function maybeFinalizePreviouslyAcceptedDelivery(params: {
+  deps: PostCompactionDelegateDeliveryDeps;
+  entry: QueuedPostCompactionDelegateDelivery;
+  evidence: DelegateAdmissionEvidence;
   ownerAgentId: string;
   storePath: string;
 }): Promise<boolean> {
-  const { acceptedChildSessionKey, deps, entry, ownerAgentId, storePath } = params;
-  if (
-    !getSubagentRunByChildSessionKey(acceptedChildSessionKey) &&
-    !hasLiveContinuationDelegateChildRun({
-      childSessionKey: acceptedChildSessionKey,
-      flowId: resolveQueuedPostCompactionContinuationFlowId(entry),
-    })
-  ) {
+  const { deps, entry, evidence, ownerAgentId, storePath } = params;
+  if (evidence.kind !== "admitted") {
     return false;
   }
+  const acceptedChildSessionKey = evidence.childSessionKey;
   const sourceEntry = deps.loadSessionEntry({ storePath, sessionKey: entry.sessionKey });
   assertPostCompactionSourceLifecycle(entry, sourceEntry);
   if (entry.sourceFlowId && entry.sourceExpectedRevision !== undefined) {
@@ -412,11 +492,11 @@ async function maybeFinalizePreviouslyAcceptedDelivery(params: {
       entry,
       deps.loadSessionEntry({ storePath, sessionKey: entry.sessionKey }),
     );
-    const committed = deps.markPendingDelegateSpawnAccepted(
+    const committed = await deps.markPendingDelegateSpawnAccepted(
       {
         flowId: entry.sourceFlowId,
-        // The marker write leaves the row a revision past the queued claim, so
-        // acceptance must commit against where the row actually is.
+        // The marker write leaves the record a revision past the queued claim, so
+        // acceptance must commit against where the record actually is.
         expectedRevision: expectedRevision ?? entry.sourceExpectedRevision,
         task: entry.task,
       },
@@ -428,7 +508,7 @@ async function maybeFinalizePreviouslyAcceptedDelivery(params: {
       );
     }
   }
-  // A source-less entry has no TaskFlow row, so no durable marker can prove
+  // A source-less entry has no custody record, so no durable marker can prove
   // whether the accepted hop was already charged. Re-charging here could double
   // count it, so the replay only reclaims the delivery: preventing a duplicate
   // spawn for a child that is already live is the load-bearing job.
@@ -453,9 +533,24 @@ async function maybeFinalizePreviouslyAcceptedDelivery(params: {
   return true;
 }
 
+/**
+ * Drain one queued post-compaction delegate (RFC §4.4, §5.4.4). The drain is
+ * the only place a released post-compaction delegate is spawned, at most once:
+ *
+ * - an entry without a `childRunId` was enqueued by a build that recorded no
+ *   attempt, so it is never spawned; an owner-matching child under C's derived
+ *   child session key settles it, anything else ends in one interrupted notice;
+ * - every delivery first checks `subagent_runs` under the entry's attempt keys,
+ *   and an owner-matching row there settles the entry as delivered;
+ * - an entry whose attempt started (`deliveryStartedAt`) with no such row is an
+ *   unresolved claim: one interrupted notice, never a second spawn;
+ * - attempt ownership is persisted before the spawn, and only a spawn that
+ *   provably never dispatched releases it for a retry.
+ */
 export async function deliverQueuedPostCompactionDelegate(
   params: {
     entry: QueuedPostCompactionDelegateDelivery;
+    queueContext?: OpenClawStateWorkerContext;
   },
   deps: PostCompactionDelegateDeliveryDeps = defaultPostCompactionDelegateDeliveryDeps,
 ): Promise<void> {
@@ -476,18 +571,58 @@ export async function deliverQueuedPostCompactionDelegate(
       removeUnacceptedDelegateArtifactPolicy(params.entry.sourceFlowId);
     }
   };
-  // An already-accepted child settles first and is never re-gated: its spawn is
-  // live, so re-running policy or staleness here would strand a running child.
-  if (
-    await maybeFinalizePreviouslyAcceptedDelivery({
-      acceptedChildSessionKey,
+  const queueContextOption = params.queueContext ? { queueContext: params.queueContext } : {};
+  const attemptRunIds = queuedAttemptRunIds(params.entry);
+  if (attemptRunIds.length === 0) {
+    // Backstop for entries a build without attempt keys enqueued (§5.4.5,
+    // "Drain backstop"): C's own replay guard is the only admission proof.
+    const legacyRun = getSubagentRunByChildSessionKey(acceptedChildSessionKey);
+    const legacyEvidence: DelegateAdmissionEvidence =
+      legacyRun?.requesterSessionKey === params.entry.sessionKey
+        ? { kind: "admitted", runId: legacyRun.runId, childSessionKey: acceptedChildSessionKey }
+        : { kind: "none" };
+    if (
+      await maybeFinalizePreviouslyAcceptedDelivery({
+        deps,
+        entry: params.entry,
+        evidence: legacyEvidence,
+        ownerAgentId: agentId,
+        storePath,
+      })
+    ) {
+      return;
+    }
+    return await settleInterruptedQueuedDelivery({
       deps,
       entry: params.entry,
+      ...queueContextOption,
+      reason: legacyRun ? "registry-collision" : "no-attempt-key",
+    });
+  }
+  // An already-accepted child settles first and is never re-gated: its spawn is
+  // live, so re-running policy or staleness here would strand a running child.
+  const evidence = await deps.readAdmissionEvidence({
+    runIds: attemptRunIds,
+    requesterSessionKey: params.entry.sessionKey,
+  });
+  if (
+    await maybeFinalizePreviouslyAcceptedDelivery({
+      deps,
+      entry: params.entry,
+      evidence,
       ownerAgentId: agentId,
       storePath,
     })
   ) {
     return;
+  }
+  if (evidence.kind === "collision" || params.entry.deliveryStartedAt !== undefined) {
+    return await settleInterruptedQueuedDelivery({
+      deps,
+      entry: params.entry,
+      ...queueContextOption,
+      reason: evidence.kind === "collision" ? "registry-collision" : "unproven-started-attempt",
+    });
   }
   // RFC §4.4 stale work dies before every other gate, including the disabled
   // deferral, so a released row cannot outlive the staged row it came from and
@@ -501,7 +636,7 @@ export async function deliverQueuedPostCompactionDelegate(
     deps.log(
       `[continuation:post-compaction-delivery-stale] entryId=${params.entry.id} flowId=${params.entry.sourceFlowId ?? "none"} ageMs=${staleness.ageMs} ttlMs=${POST_COMPACTION_DELEGATE_TTL_MS}`,
     );
-    failSourceBackedPostCompactionDelivery(
+    await failSourceBackedPostCompactionDelivery(
       deps,
       params.entry,
       formatPostCompactionStaleRejection(staleness.ageMs),
@@ -542,7 +677,7 @@ export async function deliverQueuedPostCompactionDelegate(
         ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
       }),
     );
-    failSourceBackedPostCompactionDelivery(
+    await failSourceBackedPostCompactionDelivery(
       deps,
       params.entry,
       `Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached.`,
@@ -562,7 +697,7 @@ export async function deliverQueuedPostCompactionDelegate(
         ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
       }),
     );
-    failSourceBackedPostCompactionDelivery(
+    await failSourceBackedPostCompactionDelivery(
       deps,
       params.entry,
       `Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}).`,
@@ -590,7 +725,7 @@ export async function deliverQueuedPostCompactionDelegate(
         ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
       }),
     );
-    failSourceBackedPostCompactionDelivery(
+    await failSourceBackedPostCompactionDelivery(
       deps,
       params.entry,
       "Post-compaction delegate rejected: cross-session targeting was disabled at delivery time.",
@@ -635,7 +770,7 @@ export async function deliverQueuedPostCompactionDelegate(
   });
   let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
   try {
-    const spawnFence = deps.revalidatePendingDelegateForSpawn(
+    const spawnFence = await deps.revalidatePendingDelegateForSpawn(
       {
         flowId: params.entry.sourceFlowId,
         expectedRevision: params.entry.sourceExpectedRevision,
@@ -651,63 +786,86 @@ export async function deliverQueuedPostCompactionDelegate(
       throw new SessionDeliveryDeadLetteredError(spawnFence.summary);
     }
 
-    const spawnResult = await deps.spawnSubagentDirect(
-      {
-        task:
-          `[continuation:post-compaction] ` +
-          `[continuation:chain-hop:${nextCompactionChainCount}] ` +
-          `Compaction just completed. Carry this working state to the post-compaction session: ${params.entry.task}` +
-          formatDelegateArtifactTaskInstruction(params.entry),
-        ...(delegateSilentAnnounce ? { silentAnnounce: true } : {}),
-        ...(delegateWakeOnReturn ? { silentAnnounce: true, wakeOnReturn: true } : {}),
-        ...(params.entry.targetSessionKey
-          ? { continuationTargetSessionKey: params.entry.targetSessionKey }
-          : {}),
-        ...(params.entry.targetSessionKeys && params.entry.targetSessionKeys.length > 0
-          ? { continuationTargetSessionKeys: params.entry.targetSessionKeys }
-          : {}),
-        ...(params.entry.fanoutMode ? { continuationFanoutMode: params.entry.fanoutMode } : {}),
-        ...(params.entry.recipientAuthorityBinding
-          ? { continuationRecipientAuthorityBinding: params.entry.recipientAuthorityBinding }
-          : {}),
-        drainsContinuationDelegateQueue: true,
-        continuationDelegateFlowId: resolveQueuedPostCompactionContinuationFlowId(params.entry),
-        continuationChainState: {
-          count: nextCompactionChainCount,
-          startedAt: compactionChainStartedAt,
-          tokens: compactionChainTokens,
-          chainId: compactionChainId,
+    // Attempt ownership is durable before any spawn side effect: from here
+    // on, a restart finds `deliveryStartedAt` and never spawns again.
+    await deps.markAttemptStarted(params.entry, params.queueContext);
+    let spawnResult: Awaited<ReturnType<PostCompactionDelegateSpawn>>;
+    try {
+      spawnResult = await deps.spawnSubagentDirect(
+        {
+          task:
+            `[continuation:post-compaction] ` +
+            `[continuation:chain-hop:${nextCompactionChainCount}] ` +
+            `Compaction just completed. Carry this working state to the post-compaction session: ${params.entry.task}` +
+            formatDelegateArtifactTaskInstruction(params.entry),
+          ...(delegateSilentAnnounce ? { silentAnnounce: true } : {}),
+          ...(delegateWakeOnReturn ? { silentAnnounce: true, wakeOnReturn: true } : {}),
+          ...(params.entry.targetSessionKey
+            ? { continuationTargetSessionKey: params.entry.targetSessionKey }
+            : {}),
+          ...(params.entry.targetSessionKeys && params.entry.targetSessionKeys.length > 0
+            ? { continuationTargetSessionKeys: params.entry.targetSessionKeys }
+            : {}),
+          ...(params.entry.fanoutMode ? { continuationFanoutMode: params.entry.fanoutMode } : {}),
+          ...(params.entry.recipientAuthorityBinding
+            ? { continuationRecipientAuthorityBinding: params.entry.recipientAuthorityBinding }
+            : {}),
+          drainsContinuationDelegateQueue: true,
+          continuationDelegateFlowId: resolveQueuedPostCompactionContinuationFlowId(params.entry),
+          continuationChildRunId: attemptRunIds.at(-1),
+          continuationChainState: {
+            count: nextCompactionChainCount,
+            startedAt: compactionChainStartedAt,
+            tokens: compactionChainTokens,
+            chainId: compactionChainId,
+          },
+          ...(params.entry.model ? { model: params.entry.model } : {}),
+          ...(params.entry.attachments ? { attachments: params.entry.attachments } : {}),
+          ...(params.entry.attachAs?.mountPath
+            ? { attachMountPath: params.entry.attachAs.mountPath }
+            : {}),
+          ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
         },
-        ...(params.entry.model ? { model: params.entry.model } : {}),
-        ...(params.entry.attachments ? { attachments: params.entry.attachments } : {}),
-        ...(params.entry.attachAs?.mountPath
-          ? { attachMountPath: params.entry.attachAs.mountPath }
-          : {}),
-        ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
-      },
-      {
-        agentSessionKey: params.entry.sessionKey,
-        requesterAgentIdOverride: activeDispatch.ownerAgentId,
-        agentChannel: params.entry.deliveryContext?.channel,
-        agentAccountId: params.entry.deliveryContext?.accountId,
-        agentTo: params.entry.deliveryContext?.to,
-        agentThreadId: params.entry.deliveryContext?.threadId,
-        continuationDelegateAdmission: activeDispatch.authority,
-      },
-    );
-    if (spawnResult.status === "cancelled") {
-      removeRejectedArtifactPolicy();
-      throw new SessionDeliveryDeadLetteredError(
-        spawnResult.error ?? "Continuation delegate admission cancelled.",
+        {
+          agentSessionKey: params.entry.sessionKey,
+          requesterAgentIdOverride: activeDispatch.ownerAgentId,
+          agentChannel: params.entry.deliveryContext?.channel,
+          agentAccountId: params.entry.deliveryContext?.accountId,
+          agentTo: params.entry.deliveryContext?.to,
+          agentThreadId: params.entry.deliveryContext?.threadId,
+          continuationDelegateAdmission: activeDispatch.authority,
+        },
       );
+    } catch (error) {
+      // A thrown spawn has no phase: the child may have been admitted.
+      return await settleInterruptedQueuedDelivery({
+        deps,
+        entry: params.entry,
+        ...queueContextOption,
+        reason: `spawn-threw:${error instanceof Error ? error.name : "unknown"}`,
+      });
     }
     if (spawnResult.status !== "accepted") {
+      if (!spawnResultNeverDispatched(spawnResult)) {
+        return await settleInterruptedQueuedDelivery({
+          deps,
+          entry: params.entry,
+          ...queueContextOption,
+          reason: `spawn-${spawnResult.status}:${spawnResult.failurePhase ?? "unknown-phase"}`,
+        });
+      }
+      if (spawnResult.status === "cancelled") {
+        removeRejectedArtifactPolicy();
+        throw new SessionDeliveryDeadLetteredError(
+          spawnResult.error ?? "Continuation delegate admission cancelled.",
+        );
+      }
       if (
         spawnResult.status === "forbidden" &&
         params.entry.sourceFlowId &&
         params.entry.sourceExpectedRevision !== undefined
       ) {
-        failSourceBackedPostCompactionDelivery(
+        await failSourceBackedPostCompactionDelivery(
           deps,
           params.entry,
           `Post-compaction delegate spawn forbidden: ${spawnResult.error ?? "delegation was not accepted"}.`,
@@ -715,7 +873,10 @@ export async function deliverQueuedPostCompactionDelegate(
         removeRejectedArtifactPolicy();
         return;
       }
-      throw new Error(`post-compaction delegate spawn ${spawnResult.status}`);
+      // Provably never dispatched: release attempt ownership for a retry.
+      throw new SessionDeliverySafeRetryError(
+        `post-compaction delegate spawn ${spawnResult.status}`,
+      );
     }
     rollbackAcceptedSpawn = spawnResult.rollbackAccepted;
     // Charge the chain only now that a child is actually accepted. Everything
@@ -741,7 +902,7 @@ export async function deliverQueuedPostCompactionDelegate(
     );
     if (params.entry.sourceFlowId && params.entry.sourceExpectedRevision !== undefined) {
       const spawnedChildSessionKey = spawnResult.childSessionKey ?? acceptedChildSessionKey;
-      const committed = deps.markPendingDelegateSpawnAccepted(
+      const committed = await deps.markPendingDelegateSpawnAccepted(
         {
           flowId: params.entry.sourceFlowId,
           expectedRevision: acceptedRevision ?? params.entry.sourceExpectedRevision,
