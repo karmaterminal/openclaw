@@ -26,6 +26,11 @@ export function isOwnerAwaitingContinuationCustodyImport(
   return awaitingImportByDatabase.get(databasePath)?.has(ownerSessionKey) === true;
 }
 
-export function clearContinuationCustodyAwaitingImport(): void {
-  awaitingImportByDatabase.clear();
+/** Drop the boot fact for one database, or for all of them. */
+export function clearContinuationCustodyAwaitingImport(databasePath?: string): void {
+  if (databasePath === undefined) {
+    awaitingImportByDatabase.clear();
+  } else {
+    awaitingImportByDatabase.delete(databasePath);
+  }
 }

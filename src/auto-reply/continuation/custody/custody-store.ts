@@ -8,10 +8,14 @@ import { uuidv7 } from "../../../../packages/agent-core/src/harness/session/uuid
 import { createSqliteWorkerWriteAdmission } from "../../../infra/sqlite-worker-store.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { resolveGlobalSingleton } from "../../../shared/global-singleton.js";
+import { registerOpenClawStateDatabaseAsyncResource } from "../../../state/openclaw-state-db-cache.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
 import { runOpenClawStateWorkerOperation } from "../../../state/openclaw-state-worker-store.js";
-import { installContinuationCustodyAwaitingImport } from "./custody-import-gate-state.js";
+import {
+  clearContinuationCustodyAwaitingImport,
+  installContinuationCustodyAwaitingImport,
+} from "./custody-import-gate-state.js";
 import {
   releaseContinuationCustodyPayload,
   storeContinuationCustodyPayload,
@@ -22,6 +26,7 @@ import {
   installContinuationCustodyCommit,
   invalidateContinuationCustodyOwners,
   isContinuationCustodyProjectionHydrated,
+  resetContinuationCustodyProjection,
 } from "./custody-projection.js";
 import type {
   ContinuationClaimResult,
@@ -99,6 +104,54 @@ const readinessInFlight = resolveGlobalSingleton(
 const log = createSubsystemLogger("continuation/custody-store");
 
 /**
+ * Custody readiness belongs to one database lifetime, not to a path: a database
+ * closed and replaced at the same path may hold legacy rows that were never
+ * imported. Each path keeps an epoch and a close watcher. Closing the database
+ * advances the epoch and drops the projection, the import gate and any
+ * in-flight readiness together, so the next command runs phase A against the
+ * new database; phase A publishes only if the epoch it started in is current.
+ */
+type DatabaseLifetime = { epoch: number; unwatch?: () => void };
+
+const lifetimes = resolveGlobalSingleton(
+  Symbol.for("openclaw.continuationCustodyLifetimes"),
+  () => new Map<string, DatabaseLifetime>(),
+);
+
+function invalidateDatabaseLifetime(path: string): void {
+  const lifetime = lifetimes.get(path);
+  if (lifetime) {
+    lifetime.epoch += 1;
+    lifetime.unwatch?.();
+    lifetime.unwatch = undefined;
+  }
+  readinessInFlight.delete(path);
+  resetContinuationCustodyProjection(path);
+  clearContinuationCustodyAwaitingImport(path);
+}
+
+/** Watch the database this custody context admits; returns the current epoch. */
+function watchDatabaseLifetime(custody: Custody): number {
+  const path = databasePath(custody);
+  let lifetime = lifetimes.get(path);
+  if (!lifetime) {
+    lifetime = { epoch: 0 };
+    lifetimes.set(path, lifetime);
+  }
+  if (!lifetime.unwatch) {
+    const identityKey = custody.context.admission.identity.key;
+    lifetime.unwatch = registerOpenClawStateDatabaseAsyncResource({
+      close: async (identity) => {
+        if (!identity || identity.key === identityKey) {
+          invalidateDatabaseLifetime(path);
+        }
+      },
+    });
+  }
+  return lifetime.epoch;
+}
+
+/**
  * Phase A of custody readiness (§5.4.5). Read the live set and the owners
  * awaiting the legacy import in one transaction. When owners await import, run
  * the approved Doctor transform first ("Gateway startup invokes the same
@@ -108,6 +161,7 @@ const log = createSubsystemLogger("continuation/custody-store");
  * installs nothing, so no write passes.
  */
 async function readBootFactsAndInstall(custody: Custody): Promise<ContinuationRecord[]> {
+  const epoch = watchDatabaseLifetime(custody);
   let facts = await execute(custody, "continuationCustody.readBootFacts", {}, []);
   if (facts.awaitingImportOwners.length > 0) {
     const { migrateContinuationTaskFlowCustody } = await import("./legacy-taskflow-import.js");
@@ -119,6 +173,10 @@ async function readBootFactsAndInstall(custody: Custody): Promise<ContinuationRe
       log.warn(warning);
     }
     facts = await execute(custody, "continuationCustody.readBootFacts", {}, []);
+  }
+  // A database closed or replaced while this ran must not receive these facts.
+  if (lifetimes.get(databasePath(custody))?.epoch !== epoch) {
+    throw new Error("continuation custody database closed during readiness; retry");
   }
   installContinuationCustodyAwaitingImport(databasePath(custody), facts.awaitingImportOwners);
   hydrateContinuationCustodyProjection(databasePath(custody), facts.live);
@@ -140,12 +198,16 @@ async function ensureReady(custody: Custody): Promise<void> {
   }
   let pending = readinessInFlight.get(path);
   if (!pending) {
-    pending = readBootFactsAndInstall(custody)
+    const started: Promise<void> = readBootFactsAndInstall(custody)
       .then(() => undefined)
       .finally(() => {
-        readinessInFlight.delete(path);
+        // Only its own entry: a close may already have started a newer phase A.
+        if (readinessInFlight.get(path) === started) {
+          readinessInFlight.delete(path);
+        }
       });
-    readinessInFlight.set(path, pending);
+    readinessInFlight.set(path, started);
+    pending = started;
   }
   await pending;
 }

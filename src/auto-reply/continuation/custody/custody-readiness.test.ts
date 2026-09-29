@@ -36,7 +36,11 @@ import {
   type Options,
 } from "./legacy-taskflow-import.test-support.js";
 
-const importControl = vi.hoisted(() => ({ calls: 0, throwNext: false }));
+const importControl = vi.hoisted(() => ({
+  calls: 0,
+  throwNext: false,
+  pauseNext: undefined as Promise<void> | undefined,
+}));
 
 vi.mock("./legacy-taskflow-import.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./legacy-taskflow-import.js")>();
@@ -46,6 +50,11 @@ vi.mock("./legacy-taskflow-import.js", async (importOriginal) => {
       options: Parameters<typeof actual.migrateContinuationTaskFlowCustody>[0],
     ) => {
       importControl.calls += 1;
+      if (importControl.pauseNext) {
+        const pause = importControl.pauseNext;
+        importControl.pauseNext = undefined;
+        await pause;
+      }
       if (importControl.throwNext) {
         importControl.throwNext = false;
         throw new Error("injected import failure");
@@ -76,6 +85,7 @@ beforeEach(() => {
   options = { env: { ...process.env, OPENCLAW_STATE_DIR: stateDir } };
   importControl.calls = 0;
   importControl.throwNext = false;
+  importControl.pauseNext = undefined;
 });
 
 function seedLegacyQueuedDelegate(flowId: string, owner = OWNER_A): void {
@@ -110,6 +120,13 @@ function seedUncopyableLegacyDelegate(flowId: string, owner: string): void {
     path.join(options.env.OPENCLAW_STATE_DIR!, "attachments", "continuation-custody"),
     "blocked",
   );
+}
+
+function removeStateDatabaseFiles(): void {
+  const databasePath = resolveContinuationCustodyDatabasePath();
+  for (const suffix of ["", "-wal", "-shm"]) {
+    fs.rmSync(`${databasePath}${suffix}`, { force: true });
+  }
 }
 
 /** Committed record IDs, read raw: a public list would itself run phase A. */
@@ -233,6 +250,43 @@ describe("continuation custody readiness (phase A)", () => {
     seedLegacyQueuedDelegate("legacy-guarded");
 
     expect(await hasLiveContinuationCustody(OWNER_A)).toBe(true);
+  });
+
+  it("runs phase A again for a database replaced at the same path", async () => {
+    await enqueuePendingDelegate(OWNER_B, { task: "first database" });
+    expect(importControl.calls).toBe(0);
+
+    // Orderly close, then a different database file at the same path whose
+    // legacy work for OWNER_A was never imported (and cannot be).
+    await closeOpenClawStateDatabaseAsync();
+    removeStateDatabaseFiles();
+    seedUncopyableLegacyDelegate("legacy-in-replacement", OWNER_A);
+
+    await expect(enqueuePendingDelegate(OWNER_A, { task: "would bypass" })).rejects.toThrow(
+      IMPORT_PENDING,
+    );
+    expect(importControl.calls).toBe(1);
+  });
+
+  it("does not let phase A from a closed database publish into its replacement", async () => {
+    seedLegacyQueuedDelegate("legacy-closing");
+    let release: () => void = () => {};
+    importControl.pauseNext = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const stale = whenContinuationCustodyReady();
+    await vi.waitFor(() => expect(importControl.calls).toBe(1));
+    await closeOpenClawStateDatabaseAsync();
+    release();
+
+    // Refused either by the state layer's admission check or by phase A's own
+    // lifetime epoch; what matters is that nothing from the old lifetime publishes.
+    await expect(stale).rejects.toThrow();
+    expect(pendingDelegateCount(OWNER_A)).toBe(0);
+    // The next command re-runs phase A against the current database.
+    await whenContinuationCustodyReady();
+    expect(pendingDelegateCount(OWNER_A)).toBe(1);
   });
 
   it("does not re-run phase A in the late boot (phase B), so it cannot overwrite newer facts", async () => {

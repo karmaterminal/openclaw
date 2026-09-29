@@ -134,6 +134,7 @@ Two derived extensions also need prince confirmation, because they go beyond the
 
 - **Phase A (custody readiness):** one read of the live set and the owners awaiting import, then the approved L3 transform only (never broader Doctor repairs), then a fresh re-read, then install the gate and the projection. It is keyed per custody database, and a throw installs nothing.
 - **Fence:** every custody command except the raw boot reads awaits phase A: mutations, list reads (reset, the cleanup guard; 🌊 successor review) and correctness counts. The first to run triggers it, and startup recovery runs it before recovering. The importer writes beneath that fence, so it cannot deadlock.
+- **Database lifetime** (🩸): readiness, projection and gate are invalidated together when the state database closes. A phase A from the closed lifetime cannot publish into a replacement.
 - **Phase B (recovery):** never re-hydrates.
 - **Decisions:** empty-turn finalization, chain-hop allocation and the compaction release check use an exact count. They never read `unknown` as zero, and chain depth never uses a guessed value.
 - **Q3 wording** (🌫, accepted by 🌊 in 1554602065093857381): "`running` implies a recorded attempt" holds for pending delegates only. A post-compaction record's first `running` state is a release claim. Its child run ID becomes durable with the queue insert and handoff (RFC §5.4.4).
