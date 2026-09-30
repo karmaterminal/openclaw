@@ -340,6 +340,19 @@ describe("continuation custody readiness (phase A)", () => {
     expect(await hasLiveContinuationCustody(OWNER_A)).toBe(true);
   });
 
+  it("refuses a reset (retryable) while the owner's legacy import has failed", async () => {
+    // The public inventory for this owner is empty, but its legacy rows are not.
+    seedUncopyableLegacyDelegate("legacy-reset-blocked", OWNER_A);
+
+    await expect(cancelSessionContinuations(OWNER_A)).rejects.toThrow(IMPORT_PENDING);
+  });
+
+  it("treats an owner whose legacy import failed as live for cleanup, never empty", async () => {
+    seedUncopyableLegacyDelegate("legacy-cleanup-blocked", OWNER_A);
+
+    expect(await hasLiveContinuationCustody(OWNER_A)).toBe(true);
+  });
+
   it("runs phase A again for a database replaced at the same path", async () => {
     await enqueuePendingDelegate(OWNER_B, { task: "first database" });
     expect(importControl.calls).toBe(0);

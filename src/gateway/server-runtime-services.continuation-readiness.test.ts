@@ -125,7 +125,7 @@ it("imports legacy continuation rows at Gateway startup and fences writes behind
   );
   await whenContinuationCustodyReady();
 
-  const records = (await listContinuationRecords()).map((record) => record.recordId).toSorted();
+  const records = (await listContinuationRecords({})).map((record) => record.recordId).toSorted();
   expect(records).toEqual(["legacy-queued", admitted.recordId].toSorted());
   expect(readReceipts(options).some((row) => row.source_key.endsWith(":legacy-queued"))).toBe(true);
   expect(pendingDelegateCount(OWNER_A)).toBe(2);
