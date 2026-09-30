@@ -107,9 +107,18 @@ async function sessionHasPostCompactionDelegates(params: {
   entry?: SessionEntry;
   sessionKey: string;
 }): Promise<boolean> {
+  const counts = await resolveQueuedDelegateCounts(params.sessionKey);
+  if (counts.awaitingImport) {
+    // Legacy work for this session is not imported: nothing is released until
+    // it is (release writes custody, which the import gate refuses anyway).
+    log.info(
+      `[sessions.compact:post-compaction-release-deferred] session=${params.sessionKey} reason=legacy-import-pending`,
+    );
+    return false;
+  }
   return (
     (params.entry?.pendingPostCompactionDelegates?.length ?? 0) > 0 ||
-    (await resolveQueuedDelegateCounts(params.sessionKey)).stagedPostCompaction > 0
+    counts.stagedPostCompaction > 0
   );
 }
 

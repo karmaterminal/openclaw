@@ -40,6 +40,7 @@ import {
   rejectCorruptDelegateFlow,
   resetDelegateFlowDiagnosticsForTests,
   resolveQueuedDelegateCounts as resolveQueuedDelegateCountsFromCustody,
+  type QueuedDelegateCounts,
   updateDelegateRecord,
 } from "./delegate-flow-store.js";
 import type { ChainState, PendingContinuationDelegate } from "./types.js";
@@ -627,7 +628,7 @@ export function pendingDelegateCount(sessionKey: string): number {
 /** Exact queued delegate counts for a correctness decision; never a guessed zero. */
 export async function resolveQueuedDelegateCounts(
   sessionKey: string,
-): Promise<{ pending: number; stagedPostCompaction: number }> {
+): Promise<QueuedDelegateCounts> {
   return await resolveQueuedDelegateCountsFromCustody(sessionKey);
 }
 

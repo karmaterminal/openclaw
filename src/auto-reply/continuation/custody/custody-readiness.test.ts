@@ -352,6 +352,7 @@ describe("continuation custody readiness (phase A)", () => {
     expect(await resolveQueuedDelegateCounts(OWNER_A)).toEqual({
       pending: 1,
       stagedPostCompaction: 0,
+      awaitingImport: false,
     });
   });
 
@@ -363,8 +364,52 @@ describe("continuation custody readiness (phase A)", () => {
     expect(await resolveQueuedDelegateCounts(OWNER_A)).toEqual({
       pending: 1,
       stagedPostCompaction: 0,
+      awaitingImport: false,
     });
     expect(importControl.calls).toBe(1);
+  });
+
+  it("reports awaitingImport from the hydrated projection when the owner's legacy import failed", async () => {
+    seedUncopyableLegacyDelegate("legacy-counts-hydrated", OWNER_A);
+    await whenContinuationCustodyReady();
+    expect(isContinuationCustodyProjectionHydrated(resolveContinuationCustodyDatabasePath())).toBe(
+      true,
+    );
+    expect(isContinuationCustodyOwnerAwaitingImport(OWNER_A)).toBe(true);
+
+    // The legacy delegate is not in custody, so zero counts are only a lower bound.
+    expect(await resolveQueuedDelegateCounts(OWNER_A)).toEqual({
+      pending: 0,
+      stagedPostCompaction: 0,
+      awaitingImport: true,
+    });
+    // An owner with no legacy work reads exact counts.
+    expect(await resolveQueuedDelegateCounts(OWNER_B)).toEqual({
+      pending: 0,
+      stagedPostCompaction: 0,
+      awaitingImport: false,
+    });
+  });
+
+  it("reports awaitingImport from the committed inventory when the projection does not know the owner", async () => {
+    seedUncopyableLegacyDelegate("legacy-counts-inventory", OWNER_A);
+    await whenContinuationCustodyReady();
+    // Force the inventory path for both owners.
+    invalidateContinuationCustodyOwners(resolveContinuationCustodyDatabasePath(), [
+      OWNER_A,
+      OWNER_B,
+    ]);
+
+    expect(await resolveQueuedDelegateCounts(OWNER_A)).toEqual({
+      pending: 0,
+      stagedPostCompaction: 0,
+      awaitingImport: true,
+    });
+    expect(await resolveQueuedDelegateCounts(OWNER_B)).toEqual({
+      pending: 0,
+      stagedPostCompaction: 0,
+      awaitingImport: false,
+    });
   });
 
   it("does not let a session reset outrun the legacy import (no resurrected work)", async () => {
