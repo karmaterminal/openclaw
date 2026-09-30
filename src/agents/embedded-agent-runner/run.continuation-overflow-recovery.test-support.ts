@@ -15,7 +15,7 @@ import {
   mockCallArg,
 } from "./run.continuation-fixture.test-support.js";
 import {
-  makeAttemptResult,
+  type makeAttemptResult,
   makeCompactionSuccess,
   makeOverflowError,
 } from "./run.overflow-compaction.fixture.js";
@@ -45,6 +45,16 @@ let overflowBaseRunParams: Awaited<
   ReturnType<typeof createSharedRunIntegrationSession>
 >["runParams"];
 
+/** Attempts report the case's own session id; the durable writer fence rejects any other. */
+function makeCaseAttemptResult(
+  overrides?: Parameters<typeof makeAttemptResult>[0],
+): ReturnType<typeof makeAttemptResult> {
+  if (!fixture) {
+    throw new Error("overflow recovery case fixture is not initialized");
+  }
+  return fixture.makeAttemptResult(overrides);
+}
+
 function mockOverflowRetrySuccess(params: {
   runEmbeddedAttempt: {
     mockResolvedValueOnce: (value: ReturnType<typeof makeAttemptResult>) => unknown;
@@ -60,9 +70,9 @@ function mockOverflowRetrySuccess(params: {
   const overflowError = makeOverflowError(params.overflowMessage);
 
   params.runEmbeddedAttempt.mockResolvedValueOnce(
-    makeAttemptResult({ terminal: { kind: "failed", source: "prompt", error: overflowError } }),
+    makeCaseAttemptResult({ terminal: { kind: "failed", source: "prompt", error: overflowError } }),
   );
-  params.runEmbeddedAttempt.mockResolvedValueOnce(makeAttemptResult());
+  params.runEmbeddedAttempt.mockResolvedValueOnce(makeCaseAttemptResult());
   params.compactDirect.mockImplementationOnce(async () => {
     params.beforeCompact?.();
     return makeCompactionSuccess({
@@ -82,7 +92,7 @@ function queueOverflowAttemptWithOversizedToolOutput(
   overflowError: Error = makeOverflowError(),
 ): Error {
   runEmbeddedAttempt.mockResolvedValueOnce(
-    makeAttemptResult({
+    makeCaseAttemptResult({
       terminal: { kind: "failed", source: "prompt", error: overflowError },
       messagesSnapshot: [
         {
@@ -152,9 +162,9 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
 
     expect(mockedCompactDirect).toHaveBeenCalledTimes(1);
     const compactParams = expectMockCallFields(mockedCompactDirect, {
-      sessionId: "test-session",
+      sessionId: overflowBaseRunParams.sessionId,
       sessionTarget: expect.objectContaining({
-        sessionId: "test-session",
+        sessionId: overflowBaseRunParams.sessionId,
         sessionKey: overflowBaseRunParams.sessionKey,
       }),
     });
@@ -231,7 +241,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
     const { clearAgentHarnesses, registerAgentHarness } = await import("../harness/registry.js");
     const overflowError = makeOverflowError();
     const pluginRunAttempt = vi.fn<AgentHarness["runAttempt"]>(async () =>
-      makeAttemptResult({
+      makeCaseAttemptResult({
         promptError: overflowError,
         promptErrorSource: "prompt",
         assistantTexts: [],
@@ -281,7 +291,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
   it("threads prompt-cache runtime context into overflow compaction", async () => {
     mockedRunEmbeddedAttempt
       .mockResolvedValueOnce(
-        makeAttemptResult({
+        makeCaseAttemptResult({
           promptError: makeOverflowError(),
           promptCache: {
             retention: "short",
@@ -298,7 +308,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
           },
         }),
       )
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
+      .mockResolvedValueOnce(makeCaseAttemptResult({ promptError: null }));
     mockedCompactDirect.mockResolvedValueOnce(
       makeCompactionSuccess({
         summary: "Compacted session",
@@ -334,7 +344,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
     await replaceSessionEntry(
       { sessionKey: overflowBaseRunParams.sessionKey, storePath },
       {
-        sessionId: "test-session",
+        sessionId: overflowBaseRunParams.sessionId,
         updatedAt: 1,
         totalTokens: 1_500_000,
         totalTokensFresh: true,
@@ -366,7 +376,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
 
     mockedRunEmbeddedAttempt
       .mockResolvedValueOnce(
-        makeAttemptResult({
+        makeCaseAttemptResult({
           promptError: makeOverflowError(),
           promptErrorSource: "precheck",
           preflightRecovery: { route: "compact_only" },
@@ -392,7 +402,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
           assistantTexts: [],
         }),
       )
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
+      .mockResolvedValueOnce(makeCaseAttemptResult({ promptError: null }));
     mockedCompactDirect.mockResolvedValueOnce({
       ok: true,
       compacted: false,
@@ -437,7 +447,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
     );
     const terminalLifecycleMeta: Array<Record<string, unknown>> = [];
     mockedRunEmbeddedAttempt.mockResolvedValueOnce(
-      makeAttemptResult({
+      makeCaseAttemptResult({
         promptError,
         promptErrorSource: "prompt",
         assistantTexts: [],
@@ -470,9 +480,9 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
       makeOverflowError(),
     );
     mockedRunEmbeddedAttempt
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: overflowError }))
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: overflowError }))
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: overflowError }));
+      .mockResolvedValueOnce(makeCaseAttemptResult({ promptError: overflowError }))
+      .mockResolvedValueOnce(makeCaseAttemptResult({ promptError: overflowError }))
+      .mockResolvedValueOnce(makeCaseAttemptResult({ promptError: overflowError }));
 
     mockedCompactDirect
       .mockResolvedValueOnce({
@@ -524,9 +534,9 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
       (hookName) => hookName === "before_compaction" || hookName === "after_compaction",
     );
     mockedRunEmbeddedAttempt
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: makeOverflowError() }))
+      .mockResolvedValueOnce(makeCaseAttemptResult({ promptError: makeOverflowError() }))
       .mockResolvedValueOnce(
-        makeAttemptResult({
+        makeCaseAttemptResult({
           promptError: null,
           sessionIdUsed: "rotated-session",
           sessionFileUsed: successorTarget.sessionKey,
@@ -544,7 +554,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
 
     const replyOperation = createReplyOperation({
       sessionKey: overflowBaseRunParams.sessionKey,
-      sessionId: "test-session",
+      sessionId: overflowBaseRunParams.sessionId,
       resetTriggered: false,
     });
     const onSessionIdChanged = vi.fn();
@@ -580,7 +590,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
       expect(replyOperation.sessionId).toBe("rotated-session");
       expect(onSessionIdChanged).toHaveBeenCalledWith("rotated-session");
       expectRecordFields(mockCallArg(mockedGlobalHookRunner.runAfterCompaction), {
-        previousSessionId: "test-session",
+        previousSessionId: overflowBaseRunParams.sessionId,
         sessionFile: successorTarget.sessionKey,
       });
       expectRecordFields(mockCallArg(mockedGlobalHookRunner.runAfterCompaction, 0, 1), {
@@ -597,7 +607,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
       (hookName) => hookName === "before_compaction" || hookName === "after_compaction",
     );
     mockedRunEmbeddedAttempt.mockResolvedValueOnce(
-      makeAttemptResult({ promptError: makeOverflowError() }),
+      makeCaseAttemptResult({ promptError: makeOverflowError() }),
     );
     mockedCompactDirect.mockRejectedValueOnce(new Error("engine boom"));
 
@@ -614,8 +624,8 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
     mockedContextEngine.info.ownsCompaction = true;
     const abortController = new AbortController();
     mockedRunEmbeddedAttempt
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: makeOverflowError() }))
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
+      .mockResolvedValueOnce(makeCaseAttemptResult({ promptError: makeOverflowError() }))
+      .mockResolvedValueOnce(makeCaseAttemptResult({ promptError: null }));
     mockedCompactDirect.mockResolvedValueOnce(
       makeCompactionSuccess({ summary: "engine-owned compaction", tokensAfter: 50 }),
     );
