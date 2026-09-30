@@ -68,7 +68,9 @@ const arrivals = vi.hoisted(() => {
       if ((counts.get(name) ?? 0) >= count) {
         return Promise.resolve();
       }
-      return new Promise((resolve) => waiters.push({ name, count, resolve }));
+      return new Promise((resolve) => {
+        waiters.push({ name, count, resolve });
+      });
     },
     reset(): void {
       counts.clear();
