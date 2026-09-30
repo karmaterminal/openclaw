@@ -87,7 +87,16 @@ function payloadPath(attachmentId: string): string {
 export async function storeContinuationCustodyPayload(
   payload: Omit<ContinuationCustodyPayload, "version"> & { attachmentId: string },
   env: NodeJS.ProcessEnv = process.env,
+  options: {
+    /**
+     * Runs immediately before each filesystem mutation (root creation and the
+     * atomic create). The Doctor import passes its database-lifetime check, so
+     * a stale import never writes into a replacement database's payload root.
+     */
+    assertBeforeMutation?: () => void;
+  } = {},
 ): Promise<"created" | "unchanged" | "conflict"> {
+  const { assertBeforeMutation } = options;
   const { attachmentId, ...binding } = payload;
   const parsed = PayloadSchema.safeParse({ version: PAYLOAD_VERSION, ...binding });
   if (!isSubagentAttachmentId(attachmentId) || !parsed.success) {
@@ -98,6 +107,7 @@ export async function storeContinuationCustodyPayload(
     throw new ContinuationCustodyPayloadRejectedError("too-large");
   }
   const rootDir = payloadRoot(env);
+  assertBeforeMutation?.();
   const ensured = await ensureAbsoluteDirectory(rootDir, { mode: 0o700 });
   if (!ensured.ok) {
     throw ensured.error;
@@ -108,7 +118,12 @@ export async function storeContinuationCustodyPayload(
     // never leaves a partial file that would block the retry.
     await (
       await store.root()
-    ).create(payloadPath(attachmentId), text, { atomic: true, private: true, durable: "file" });
+    ).create(payloadPath(attachmentId), text, {
+      atomic: true,
+      private: true,
+      durable: "file",
+      ...(assertBeforeMutation ? { assertBeforeMutation } : {}),
+    });
     return "created";
   } catch (error) {
     if (!(error instanceof FsSafeError && error.code === "already-exists")) {

@@ -82,8 +82,8 @@ export async function releaseLegacyPayload(
 ): Promise<void> {
   const payload = await readLegacyPayload(env, release.attachmentId);
   if (payload?.flowId === release.flowId) {
-    assertCurrent();
-    await removeSubagentAttachmentTree(legacyPayloadRoot(env), release.attachmentId);
+    // Checked again by the remove itself, immediately before it mutates.
+    await removeSubagentAttachmentTree(legacyPayloadRoot(env), release.attachmentId, assertCurrent);
   }
 }
 
@@ -122,8 +122,6 @@ export async function preparePayloads(
       continue;
     }
     let stored: Awaited<ReturnType<typeof storeContinuationCustodyPayload>>;
-    // No new-root write for a database whose lifetime ended while this awaited.
-    assertCurrent();
     try {
       stored = await storeContinuationCustodyPayload(
         {
@@ -134,6 +132,7 @@ export async function preparePayloads(
           ownerKey: row.owner_key,
         },
         env,
+        { assertBeforeMutation: assertCurrent },
       );
     } catch (error) {
       // Only a rejection of the bytes themselves is final: C failed such a

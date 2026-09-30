@@ -39,6 +39,7 @@ import {
   OWNER_B,
   delegateState,
   dumpState,
+  newRootPayloadPath,
   readReceipts,
   seedFlow,
   writeLegacyPayload,
@@ -96,6 +97,54 @@ vi.mock("./legacy-taskflow-payloads.js", async (importOriginal) => {
   };
 });
 
+// Pause points at the filesystem mutations themselves: after every caller-side
+// lifetime check, before the payload create or legacy delete runs.
+const fsControl = vi.hoisted(() => ({
+  pauseStore: undefined as Promise<void> | undefined,
+  storeEntered: 0,
+  pauseRemove: undefined as Promise<void> | undefined,
+  removeEntered: 0,
+}));
+
+vi.mock("./custody-payload-store.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./custody-payload-store.js")>();
+  return {
+    ...actual,
+    storeContinuationCustodyPayload: async (
+      ...args: Parameters<typeof actual.storeContinuationCustodyPayload>
+    ) => {
+      fsControl.storeEntered += 1;
+      if (fsControl.pauseStore) {
+        const pause = fsControl.pauseStore;
+        fsControl.pauseStore = undefined;
+        await pause;
+      }
+      return await actual.storeContinuationCustodyPayload(...args);
+    },
+  };
+});
+
+vi.mock("../../../agents/subagents/subagent-attachment-cleanup.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../../agents/subagents/subagent-attachment-cleanup.js")
+    >();
+  return {
+    ...actual,
+    removeSubagentAttachmentTree: async (
+      ...args: Parameters<typeof actual.removeSubagentAttachmentTree>
+    ) => {
+      fsControl.removeEntered += 1;
+      if (fsControl.pauseRemove) {
+        const pause = fsControl.pauseRemove;
+        fsControl.pauseRemove = undefined;
+        await pause;
+      }
+      return await actual.removeSubagentAttachmentTree(...args);
+    },
+  };
+});
+
 const IMPORT_PENDING = "waiting on legacy import";
 
 let options: Options;
@@ -120,6 +169,10 @@ beforeEach(() => {
   importControl.pauseNext = undefined;
   payloadControl.pauseNext = undefined;
   payloadControl.entered = 0;
+  fsControl.pauseStore = undefined;
+  fsControl.storeEntered = 0;
+  fsControl.pauseRemove = undefined;
+  fsControl.removeEntered = 0;
 });
 
 function seedLegacyQueuedDelegate(flowId: string, owner = OWNER_A): void {
@@ -135,6 +188,7 @@ function seedLegacyQueuedDelegate(flowId: string, owner = OWNER_A): void {
 }
 
 const STUCK_ATTACHMENT_ID = "0b6f5d7e-8c1a-4b2f-9e3d-5a6b7c8d9e0f";
+const FILE_ATTACHMENT_ID = "3d1e8a4c-2b6f-4c1d-9a7e-5f0b2c8d4e6a";
 
 /**
  * Seeds a legacy delegate whose payload file cannot be copied into the new
@@ -381,6 +435,79 @@ describe("continuation custody readiness (phase A)", () => {
     await whenContinuationCustodyReady();
     expect(await recordIds()).toEqual(["legacy-shared-id"]);
     expect(importControl.calls).toBe(2);
+  });
+
+  it("does not let a stale importer create payload bytes in a replacement's payload root", async () => {
+    const legacyRow = {
+      flowId: "legacy-with-file",
+      owner: OWNER_A,
+      controller: "delegate" as const,
+      status: "queued",
+      state: delegateState({ attachmentId: FILE_ATTACHMENT_ID, attachmentCount: 1 }),
+      createdAt: 1_000,
+      updatedAt: 2_000,
+    };
+    seedFlow(options, legacyRow);
+    writeLegacyPayload(options, { attachmentId: FILE_ATTACHMENT_ID, flowId: "legacy-with-file" });
+    let release: () => void = () => {};
+    fsControl.pauseStore = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const stale = whenContinuationCustodyReady();
+    // Past every caller-side check, before the payload store mutates anything.
+    await vi.waitFor(() => expect(fsControl.storeEntered).toBe(1));
+    await closeOpenClawStateDatabaseByPathAsync(resolveContinuationCustodyDatabasePath());
+    removeStateDatabaseFiles();
+    seedFlow(options, legacyRow);
+    ensureContinuationCustodySchema({ env: options.env });
+    release();
+
+    await expect(stale).rejects.toThrow();
+    expect(fs.existsSync(newRootPayloadPath(options, FILE_ATTACHMENT_ID))).toBe(false);
+    // The replacement's own import writes the payload and releases the legacy file.
+    await whenContinuationCustodyReady();
+    expect(fs.existsSync(newRootPayloadPath(options, FILE_ATTACHMENT_ID))).toBe(true);
+    expect(await recordIds()).toEqual(["legacy-with-file"]);
+  });
+
+  it("does not let a stale importer delete a legacy payload a replacement still needs", async () => {
+    const legacyRow = {
+      flowId: "legacy-delete-race",
+      owner: OWNER_A,
+      controller: "delegate" as const,
+      status: "queued",
+      state: delegateState({ attachmentId: FILE_ATTACHMENT_ID, attachmentCount: 1 }),
+      createdAt: 1_000,
+      updatedAt: 2_000,
+    };
+    seedFlow(options, legacyRow);
+    const legacyFile = writeLegacyPayload(options, {
+      attachmentId: FILE_ATTACHMENT_ID,
+      flowId: "legacy-delete-race",
+    });
+    let release: () => void = () => {};
+    fsControl.pauseRemove = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const stale = whenContinuationCustodyReady();
+    // The old lifetime committed its import and now wants to delete the legacy file.
+    await vi.waitFor(() => expect(fsControl.removeEntered).toBe(1));
+    await closeOpenClawStateDatabaseByPathAsync(resolveContinuationCustodyDatabasePath());
+    removeStateDatabaseFiles();
+    // The replacement still holds the un-imported row that needs that file.
+    seedFlow(options, legacyRow);
+    ensureContinuationCustodySchema({ env: options.env });
+    release();
+
+    await expect(stale).rejects.toThrow();
+    expect(fs.existsSync(legacyFile)).toBe(true);
+    // The replacement imports the payload as copied, not missing.
+    await whenContinuationCustodyReady();
+    const [imported] = await listContinuationRecords({ recordIds: ["legacy-delete-race"] });
+    expect(imported?.attachmentId).toBe(FILE_ATTACHMENT_ID);
+    expect(fs.existsSync(newRootPayloadPath(options, FILE_ATTACHMENT_ID))).toBe(true);
   });
 
   it("epoch backstop: phase A from an ended lifetime installs no readiness, projection or gate", async () => {
