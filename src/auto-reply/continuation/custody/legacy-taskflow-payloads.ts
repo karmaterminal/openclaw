@@ -77,9 +77,12 @@ async function readLegacyPayload(env: NodeJS.ProcessEnv, attachmentId: string) {
 export async function releaseLegacyPayload(
   env: NodeJS.ProcessEnv,
   release: { attachmentId: string; flowId: string },
+  /** Throws once the database lifetime this import began in has ended. */
+  assertCurrent: () => void = () => {},
 ): Promise<void> {
   const payload = await readLegacyPayload(env, release.attachmentId);
   if (payload?.flowId === release.flowId) {
+    assertCurrent();
     await removeSubagentAttachmentTree(legacyPayloadRoot(env), release.attachmentId);
   }
 }
@@ -92,6 +95,8 @@ export async function releaseLegacyPayload(
 export async function preparePayloads(
   env: NodeJS.ProcessEnv,
   rows: readonly LegacyContinuationFlowRow[],
+  /** Throws once the database lifetime this import began in has ended. */
+  assertCurrent: () => void = () => {},
 ): Promise<Map<string, "copied" | "missing">> {
   const results = new Map<string, "copied" | "missing">();
   for (const row of rows) {
@@ -117,6 +122,8 @@ export async function preparePayloads(
       continue;
     }
     let stored: Awaited<ReturnType<typeof storeContinuationCustodyPayload>>;
+    // No new-root write for a database whose lifetime ended while this awaited.
+    assertCurrent();
     try {
       stored = await storeContinuationCustodyPayload(
         {

@@ -6,7 +6,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
-import { closeOpenClawStateDatabaseAsync } from "../../../state/openclaw-state-db.js";
+import {
+  closeOpenClawStateDatabaseAsync,
+  closeOpenClawStateDatabaseByPathAsync,
+} from "../../../state/openclaw-state-db.js";
 import { runContinuationCustodyBoot } from "../custody-boot.js";
 import {
   isContinuationCustodyOwnerAwaitingImport,
@@ -29,6 +32,7 @@ import {
   resolveContinuationCustodyDatabasePath,
   whenContinuationCustodyReady,
 } from "./custody-store.js";
+import { ensureContinuationCustodySchema } from "./custody-store.worker.js";
 import { endContinuationCustodyLifetimeForTest } from "./custody.test-support.js";
 import {
   OWNER_A,
@@ -69,6 +73,29 @@ vi.mock("./legacy-taskflow-import.js", async (importOriginal) => {
   };
 });
 
+const payloadControl = vi.hoisted(() => ({
+  pauseNext: undefined as Promise<void> | undefined,
+  entered: 0,
+}));
+
+// Pause point inside the importer, after it snapshotted the legacy rows and
+// before its first write: payload preparation for the first owner.
+vi.mock("./legacy-taskflow-payloads.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./legacy-taskflow-payloads.js")>();
+  return {
+    ...actual,
+    preparePayloads: async (...args: Parameters<typeof actual.preparePayloads>) => {
+      payloadControl.entered += 1;
+      if (payloadControl.pauseNext) {
+        const pause = payloadControl.pauseNext;
+        payloadControl.pauseNext = undefined;
+        await pause;
+      }
+      return await actual.preparePayloads(...args);
+    },
+  };
+});
+
 const IMPORT_PENDING = "waiting on legacy import";
 
 let options: Options;
@@ -91,6 +118,8 @@ beforeEach(() => {
   importControl.calls = 0;
   importControl.throwNext = false;
   importControl.pauseNext = undefined;
+  payloadControl.pauseNext = undefined;
+  payloadControl.entered = 0;
 });
 
 function seedLegacyQueuedDelegate(flowId: string, owner = OWNER_A): void {
@@ -292,6 +321,66 @@ describe("continuation custody readiness (phase A)", () => {
     // The next command re-runs phase A against the current database.
     await whenContinuationCustodyReady();
     expect(pendingDelegateCount(OWNER_A)).toBe(1);
+  });
+
+  it("invalidates on a path-scoped close when readiness began before the database existed", async () => {
+    // No database file yet: the watcher captures a provisional identity.
+    await enqueuePendingDelegate(OWNER_B, { task: "created the database" });
+
+    // A path-scoped close reports the physical file identity.
+    await closeOpenClawStateDatabaseByPathAsync(resolveContinuationCustodyDatabasePath());
+    removeStateDatabaseFiles();
+    seedUncopyableLegacyDelegate("legacy-after-path-close", OWNER_A);
+
+    await expect(enqueuePendingDelegate(OWNER_A, { task: "would bypass" })).rejects.toThrow(
+      IMPORT_PENDING,
+    );
+    expect(importControl.calls).toBe(1);
+  });
+
+  it("does not let a stale importer write into a replacement database", async () => {
+    // Two lifetimes of the same legacy row, byte-identical. A replacement whose
+    // rows differ is already refused by the importer's own snapshot check
+    // ("legacy continuation rows changed during the import"); identical rows
+    // pass it, so only the lifetime binding keeps the ended lifetime's import
+    // run (its records, receipts and payload copies) out of the replacement.
+    const legacyRow = {
+      flowId: "legacy-shared-id",
+      owner: OWNER_A,
+      controller: "delegate" as const,
+      status: "queued",
+      state: delegateState(),
+      createdAt: 1_000,
+      updatedAt: 2_000,
+    };
+    seedFlow(options, legacyRow);
+    let release: () => void = () => {};
+    payloadControl.pauseNext = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const stale = whenContinuationCustodyReady();
+    // Paused inside the importer, after its legacy snapshot and before any write.
+    await vi.waitFor(() => expect(payloadControl.entered).toBe(1));
+    await closeOpenClawStateDatabaseByPathAsync(resolveContinuationCustodyDatabasePath());
+    removeStateDatabaseFiles();
+    seedFlow(options, legacyRow);
+    // Like a restored post-cutover backup, the replacement already has the
+    // custody schema, so a stale write would land rather than fail.
+    ensureContinuationCustodySchema({ env: options.env });
+    release();
+
+    await expect(stale).rejects.toThrow();
+    // The ended lifetime's import wrote nothing: no record, no receipt.
+    expect(dumpState(options).records).toEqual([]);
+    expect(readReceipts(options)).toEqual([]);
+    expect(isContinuationCustodyProjectionHydrated(resolveContinuationCustodyDatabasePath())).toBe(
+      false,
+    );
+    // The replacement's own phase A imports it on the next command.
+    await whenContinuationCustodyReady();
+    expect(await recordIds()).toEqual(["legacy-shared-id"]);
+    expect(importControl.calls).toBe(2);
   });
 
   it("epoch backstop: phase A from an ended lifetime installs no readiness, projection or gate", async () => {

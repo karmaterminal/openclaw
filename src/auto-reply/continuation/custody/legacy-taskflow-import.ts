@@ -36,6 +36,7 @@ import type { OpenClawStateDatabase } from "../../../state/openclaw-state-db-con
 import { withExistingOpenClawStateDatabaseReadOnly } from "../../../state/openclaw-state-db-readonly.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../../../state/openclaw-state-db.generated.js";
 import { runOpenClawStateWriteTransaction } from "../../../state/openclaw-state-db.js";
+import { ContinuationCustodyLifetimeEndedError } from "./custody-lifetime.js";
 import {
   ensureContinuationCustodySchema,
   importContinuationRecordInDatabase,
@@ -67,7 +68,17 @@ import { buildContinuationSpawnInterruptedNotice } from "./spawn-interrupted-not
 export const CONTINUATION_TASKFLOW_SOURCE_RETIREMENT_STEP_ID =
   "continuation-taskflow-source-retirement";
 
-type MigrationOptions = { env: NodeJS.ProcessEnv; now?: () => number };
+type MigrationOptions = {
+  env: NodeJS.ProcessEnv;
+  now?: () => number;
+  /**
+   * Gateway phase A binds the import to one database lifetime: this throws
+   * `ContinuationCustodyLifetimeEndedError` once that lifetime has ended, and
+   * the import then stops before its next write rather than writing old-lifetime
+   * facts into a replacement database. Doctor runs without it.
+   */
+  assertCurrent?: () => void;
+};
 
 type OwnerSnapshot = {
   ownerSessionKey: string;
@@ -470,23 +481,33 @@ export async function migrateContinuationTaskFlowCustody(
 ): Promise<MigrationMessages> {
   const { env } = options;
   const now = options.now ?? Date.now;
+  const assertCurrent = options.assertCurrent ?? (() => {});
   const { owners, anomalies } = readOwnerSnapshots(env);
   const totals = { imported: 0, retired: 0, settledEntries: 0, notices: 0, failed: 0 };
   const warnings: string[] = [];
   if (owners.length > 0) {
+    assertCurrent();
     ensureContinuationCustodySchema(stateOptions(env));
   }
   for (const snapshot of owners) {
+    assertCurrent();
     let result: OwnerResult;
     try {
-      const payloads = await preparePayloads(env, snapshot.rows);
+      const payloads = await preparePayloads(env, snapshot.rows, assertCurrent);
       const at = now();
+      // Checked synchronously right before the synchronous owner transaction,
+      // so no close can fall between the check and the write.
+      assertCurrent();
       result = runOpenClawStateWriteTransaction(
         (database) => importOwnerInTransaction(database, snapshot, payloads, at),
         stateOptions(env),
         { operationLabel: "continuation.custody.legacy-import" },
       );
     } catch (error) {
+      // An ended lifetime aborts the whole import; it is not an owner failure.
+      if (error instanceof ContinuationCustodyLifetimeEndedError) {
+        throw error;
+      }
       totals.failed += 1;
       warnings.push(
         `Continuation custody import failed for one session and will be retried: ${describeFailure(error)}`,
@@ -495,8 +516,11 @@ export async function migrateContinuationTaskFlowCustody(
     }
     for (const release of result.releaseLegacyAttachments) {
       try {
-        await releaseLegacyPayload(env, release);
-      } catch {
+        await releaseLegacyPayload(env, release, assertCurrent);
+      } catch (error) {
+        if (error instanceof ContinuationCustodyLifetimeEndedError) {
+          throw error;
+        }
         // The receipt records the owed delete; the next import pass retries it.
       }
     }
@@ -507,6 +531,7 @@ export async function migrateContinuationTaskFlowCustody(
     warnings.push(...result.warnings);
   }
   // Retry legacy deletes that an earlier commit owed but a crash or failure left behind.
+  assertCurrent();
   const owedReleases =
     withExistingOpenClawStateDatabaseReadOnly(
       ({ db }) => readPendingLegacyReleases(db, env),
@@ -514,8 +539,11 @@ export async function migrateContinuationTaskFlowCustody(
     ) ?? [];
   for (const release of owedReleases) {
     try {
-      await releaseLegacyPayload(env, release);
+      await releaseLegacyPayload(env, release, assertCurrent);
     } catch (error) {
+      if (error instanceof ContinuationCustodyLifetimeEndedError) {
+        throw error;
+      }
       warnings.push(
         `A legacy continuation payload could not be deleted: ${describeFailure(error)}`,
       );

@@ -13,6 +13,7 @@ import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-w
 import { runOpenClawStateWorkerOperation } from "../../../state/openclaw-state-worker-store.js";
 import { installContinuationCustodyAwaitingImport } from "./custody-import-gate-state.js";
 import {
+  assertContinuationCustodyLifetime,
   continuationCustodyLifetime,
   invalidateContinuationCustodyLifetime,
 } from "./custody-lifetime.js";
@@ -101,10 +102,18 @@ function watchDatabaseLifetime(custody: Custody): number {
   const path = databasePath(custody);
   const lifetime = continuationCustodyLifetime(path);
   if (!lifetime.unwatch) {
-    const identityKey = custody.context.admission.identity.key;
+    // Match a close by identity key or by canonical path: a watcher installed
+    // before the database file existed captured a provisional `path:` identity,
+    // while a later path-scoped close reports the physical `file:` identity.
+    const captured = custody.context.admission.identity;
     lifetime.unwatch = registerOpenClawStateDatabaseAsyncResource({
       close: async (identity) => {
-        if (!identity || identity.key === identityKey) {
+        if (
+          !identity ||
+          identity.key === captured.key ||
+          identity.canonicalPath === captured.canonicalPath ||
+          identity.canonicalPath === path
+        ) {
           invalidateContinuationCustodyLifetime(path);
         }
       },
@@ -124,10 +133,13 @@ function watchDatabaseLifetime(custody: Custody): number {
  */
 async function readBootFactsAndInstall(custody: Custody): Promise<ContinuationRecord[]> {
   const epoch = watchDatabaseLifetime(custody);
+  const assertCurrent = () => assertContinuationCustodyLifetime(databasePath(custody), epoch);
   let facts = await execute(custody, "continuationCustody.readBootFacts", {}, []);
   if (facts.awaitingImportOwners.length > 0) {
     const { migrateContinuationTaskFlowCustody } = await import("./legacy-taskflow-import.js");
-    const result = await migrateContinuationTaskFlowCustody({ env: custody.env });
+    // The import is bound to this lifetime, so it never writes old-lifetime
+    // facts into a database that replaced this one mid-import.
+    const result = await migrateContinuationTaskFlowCustody({ env: custody.env, assertCurrent });
     for (const change of result.changes) {
       log.info(change);
     }
@@ -137,9 +149,7 @@ async function readBootFactsAndInstall(custody: Custody): Promise<ContinuationRe
     facts = await execute(custody, "continuationCustody.readBootFacts", {}, []);
   }
   // A database closed or replaced while this ran must not receive these facts.
-  if (continuationCustodyLifetime(databasePath(custody)).epoch !== epoch) {
-    throw new Error("continuation custody database closed during readiness; retry");
-  }
+  assertCurrent();
   installContinuationCustodyAwaitingImport(databasePath(custody), facts.awaitingImportOwners);
   hydrateContinuationCustodyProjection(databasePath(custody), facts.live);
   return facts.live;

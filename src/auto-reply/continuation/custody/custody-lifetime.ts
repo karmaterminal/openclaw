@@ -47,3 +47,18 @@ export function invalidateContinuationCustodyLifetime(databasePath: string): voi
   resetContinuationCustodyProjection(databasePath);
   clearContinuationCustodyAwaitingImport(databasePath);
 }
+
+/** Thrown when work started in a custody database lifetime that has since ended. */
+export class ContinuationCustodyLifetimeEndedError extends Error {
+  constructor() {
+    super("continuation custody database closed during readiness; retry");
+    this.name = "ContinuationCustodyLifetimeEndedError";
+  }
+}
+
+/** Refuse to continue work begun in `epoch` once that lifetime has ended. */
+export function assertContinuationCustodyLifetime(databasePath: string, epoch: number): void {
+  if (continuationCustodyLifetime(databasePath).epoch !== epoch) {
+    throw new ContinuationCustodyLifetimeEndedError();
+  }
+}
