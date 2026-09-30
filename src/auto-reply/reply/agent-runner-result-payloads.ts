@@ -446,9 +446,13 @@ export async function prepareReplyAgentPayloads(state: {
     resolveLiveContinuationRuntimeConfig(cfg).enabled && sessionKey
       ? await resolveQueuedDelegateCounts(sessionKey)
       : undefined;
+  // An owner awaiting its legacy import may hold delegates these counts miss:
+  // never finalize its turn as empty.
   const hasQueuedDelegateWork =
     queuedDelegateCounts !== undefined &&
-    (queuedDelegateCounts.pending > 0 || queuedDelegateCounts.stagedPostCompaction > 0);
+    (queuedDelegateCounts.awaitingImport ||
+      queuedDelegateCounts.pending > 0 ||
+      queuedDelegateCounts.stagedPostCompaction > 0);
 
   if (
     payloadArray.length === 0 &&

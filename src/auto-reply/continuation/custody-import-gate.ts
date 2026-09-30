@@ -29,10 +29,15 @@ export function isContinuationCustodyOwnerAwaitingImport(ownerSessionKey: string
   );
 }
 
+/** Refuse work for an owner whose inventory is incomplete until its legacy import commits. */
+export function refuseContinuationCustodyImportPending(): never {
+  throw new ContinuationCustodyImportPendingError();
+}
+
 /** Refuse a custody write for an owner that is still waiting on the legacy import. */
 export function assertContinuationCustodyOwnerImported(ownerSessionKey: string): void {
   if (isContinuationCustodyOwnerAwaitingImport(ownerSessionKey)) {
-    throw new ContinuationCustodyImportPendingError();
+    refuseContinuationCustodyImportPending();
   }
 }
 

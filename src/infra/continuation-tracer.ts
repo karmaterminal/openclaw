@@ -116,6 +116,8 @@ export type ContinuationSpanAttrs = {
    *   - `"cap.chain"` — `continuationChainCount` reached `maxChainLength`
    *   - `"cap.cost"` — accumulated input+output tokens exceeded `costCapTokens`
    *   - `"cap.delegates_per_turn"` — per-turn delegate-budget cap
+   *   - `"custody.import_pending"` — the owner's legacy continuation work is
+   *     not imported, so its queued count is not exact
    *
    * The enum captures anything that prevented follow-through, not only cap
    * axes. Cap is one shape of gate; transport or policy loss can add future
@@ -678,7 +680,7 @@ export function emitContinuationDelegateSpan(args: {
  *
  *  - `disabled.reason` (`"cap.chain" | "cap.cost" |
  *    "cap.delegates_per_turn" |
- *    "policy.cross_session_targeting"`): which gate
+ *    "policy.cross_session_targeting" | "custody.import_pending"`): which gate
  *    prevented follow-through. The family covers cap axes and non-cap gates.
  *  - `signal.kind` ({@link ContinuationDisabledSignalKind}): the kind of
  *    signal that was rejected. Values derived from {@link CONTINUATION_SIGNAL_KINDS} SSOT.
@@ -705,7 +707,8 @@ export function emitContinuationDisabledSpan(args: {
     | "cap.chain"
     | "cap.cost"
     | "cap.delegates_per_turn"
-    | "policy.cross_session_targeting";
+    | "policy.cross_session_targeting"
+    | "custody.import_pending";
   signalKind: ContinuationDisabledSignalKind;
   delegateDelivery?: "immediate" | "timer" | undefined;
   delegateMode?: string | undefined;

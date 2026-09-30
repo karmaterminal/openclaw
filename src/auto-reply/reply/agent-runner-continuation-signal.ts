@@ -126,10 +126,25 @@ export async function handleContinuationSignal(context: {
 
     const currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
     // Exact queued count: an unknown projection must not undercount the chain cap.
-    const allocatedChainHop =
-      currentChainCount + (await resolveQueuedDelegateCounts(sessionKey)).pending;
+    const queuedCounts = await resolveQueuedDelegateCounts(sessionKey);
+    const allocatedChainHop = currentChainCount + queuedCounts.pending;
 
-    if (allocatedChainHop >= maxChainLength) {
+    if (queuedCounts.awaitingImport) {
+      // Legacy delegates this session owns are not imported, so the queued
+      // count is only a lower bound: no hop is allocated from it.
+      emitBracketContinuationRejected({
+        sessionKey,
+        ownerAgentId: followupRun.run.agentId,
+        signal: effectiveContinuationSignal,
+        defaultDelayMs,
+        chainId: activeSessionEntry?.continuationChainId,
+        chainStepRemaining: Math.max(0, maxChainLength - allocatedChainHop),
+        disabledReason: "custody.import_pending",
+        logMessage: `Continuation deferred for session ${sessionKey}: legacy continuation work is not imported yet`,
+        systemEventMessage:
+          "[continuation] Bracket continuation deferred: this session's earlier continuation work has not been imported yet; run `openclaw doctor --fix`.",
+      });
+    } else if (allocatedChainHop >= maxChainLength) {
       // No mint-on-reject: the chain never advanced for this signal, so
       // chainId passes through as-is.
       emitBracketContinuationRejected({

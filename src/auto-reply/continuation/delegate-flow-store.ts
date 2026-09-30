@@ -14,6 +14,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { registerDiagnosticContinuationQueueMetricsProvider } from "../../logging/diagnostic-continuation-queues.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { assertContinuationCustodyOwnerImported } from "./custody-import-gate.js";
+import { isOwnerAwaitingContinuationCustodyImport } from "./custody/custody-import-gate-state.js";
 import { loadContinuationCustodyPayload } from "./custody/custody-payload-store.js";
 import {
   readContinuationCustodySnapshot,
@@ -24,6 +25,7 @@ import {
   deleteContinuationRecord,
   listContinuationRecords,
   newContinuationRecordId,
+  readContinuationOwnerInventory,
   resolveContinuationCustodyDatabasePath,
   updateContinuationRecords,
   whenContinuationCustodyReady,
@@ -559,35 +561,78 @@ export function countStagedPostCompactionDelegates(sessionKey: string): number {
   ).length;
 }
 
+/** Queued delegate counts, and whether they can be complete. */
+export type QueuedDelegateCounts = {
+  pending: number;
+  stagedPostCompaction: number;
+  /**
+   * The owner's legacy import has not committed: its legacy delegates are not
+   * in these counts, so they are a lower bound. A decision must fail closed.
+   */
+  awaitingImport: boolean;
+};
+
+type DelegateFact = { kind: ContinuationRecordKind; status: string; cancelRequested: boolean };
+
+/**
+ * Projection facts and the import gate for one owner, or undefined when the
+ * projection does not know the owner. Phase A installs both and a closing
+ * database clears both, and nothing awaits between the two reads, so the
+ * answer belongs to one database lifetime.
+ */
+function readOwnerDelegateFactsWithImportState(
+  sessionKey: string,
+): { facts: readonly DelegateFact[]; awaitingImport: boolean } | undefined {
+  const facts = readOwnerLiveDelegateFacts(sessionKey);
+  if (facts === undefined) {
+    return undefined;
+  }
+  return {
+    facts,
+    awaitingImport: isOwnerAwaitingContinuationCustodyImport(
+      resolveContinuationCustodyDatabasePath(),
+      sessionKey,
+    ),
+  };
+}
+
 /**
  * Queued delegate counts for a correctness decision (RFC §5.4.6). Before
  * hydration this waits for custody phase A, so legacy work the import brings
  * in is counted. After that it is the projection when it knows the owner, and
  * otherwise (an unresolved write) the owner's committed rows. A decision never
- * reads `unknown` as zero.
+ * reads `unknown` as zero, and an owner whose legacy import failed is reported
+ * as `awaitingImport` rather than as exact counts.
  */
 export async function resolveQueuedDelegateCounts(
   sessionKey: string,
-): Promise<{ pending: number; stagedPostCompaction: number }> {
+): Promise<QueuedDelegateCounts> {
   if (readOwnerLiveDelegateFacts(sessionKey) === undefined) {
     await whenContinuationCustodyReady();
   }
-  const facts =
-    readOwnerLiveDelegateFacts(sessionKey) ??
-    (
-      await listContinuationRecords({
-        ownerSessionKey: sessionKey,
-        kinds: DELEGATE_KINDS,
-        statuses: ["queued"],
-      })
-    ).map((record) => ({
-      kind: record.kind,
-      status: record.status,
-      cancelRequested: record.cancelRequestedAt !== undefined,
-    }));
-  const queued = facts.filter((fact) => fact.status === "queued" && !fact.cancelRequested);
+  let answer = readOwnerDelegateFactsWithImportState(sessionKey);
+  if (!answer) {
+    const inventory = await readContinuationOwnerInventory({
+      ownerSessionKey: sessionKey,
+      kinds: DELEGATE_KINDS,
+      statuses: ["queued"],
+    });
+    answer = {
+      facts: inventory.records.map((record) => ({
+        kind: record.kind,
+        status: record.status,
+        cancelRequested: record.cancelRequestedAt !== undefined,
+      })),
+      awaitingImport: inventory.awaitingImport,
+    };
+  }
+  const queued = answer.facts.filter((fact) => fact.status === "queued" && !fact.cancelRequested);
   const pending = queued.filter((fact) => fact.kind === "delegate").length;
-  return { pending, stagedPostCompaction: queued.length - pending };
+  return {
+    pending,
+    stagedPostCompaction: queued.length - pending,
+    awaitingImport: answer.awaitingImport,
+  };
 }
 
 const continuationQueueDiagnostics = delegateFlowDiagnostics.createContinuationQueueDiagnostics({
