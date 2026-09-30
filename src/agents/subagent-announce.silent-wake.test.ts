@@ -181,6 +181,7 @@ vi.mock("../infra/heartbeat-wake.js", () => ({
   requestHeartbeatNow: (options: unknown) => requestHeartbeatNowMock(options),
 }));
 
+import { useContinuationCustodyTestState } from "../auto-reply/continuation/custody/custody.test-support.js";
 import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 
 const childSessionKey = "agent:main:subagent:silent-test";
@@ -219,6 +220,7 @@ const baseParams = {
 };
 
 describe("subagent-announce silent / silent-wake / wakeOnReturn routing (RFC §2.3)", () => {
+  useContinuationCustodyTestState();
   beforeEach(() => {
     callGatewayMock.mockReset().mockImplementation(async () => ({}));
     dispatchToolDelegatesMock.mockReset().mockResolvedValue({ dispatched: 0, rejected: 0 });

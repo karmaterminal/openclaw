@@ -3,6 +3,7 @@
 // completion settles, so the coordinator's delegate drain must own a live scope
 // or every child spawn it attempts is refused.
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useContinuationCustodyTestState } from "../auto-reply/continuation/custody/custody.test-support.js";
 import type { DelegateDispatchParams } from "../auto-reply/continuation/delegate-dispatch-contract.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { AsyncWorkScope, trackAsyncWork } from "../shared/async-work-scope.js";
@@ -28,6 +29,8 @@ const { coordinateSubagentContinuation } =
   await import("./subagent-announce.continuation.runtime.js");
 
 const cfg: OpenClawConfig = { agents: { defaults: { continuation: { enabled: true } } } };
+
+useContinuationCustodyTestState();
 
 describe("subagent continuation coordination work ownership", () => {
   afterEach(() => {

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as SubagentRegistry from "../../agents/subagents/registry/subagent-registry.js";
 import type { ProgressContinuationReceipt } from "../../channels/progress-continuation.js";
 import type * as ProgressRequester from "../../tasks/task-progress-requester.js";
+import type * as DelegateStore from "../continuation/delegate-store.js";
 import { getReplyPayloadMetadata } from "../reply-payload.js";
 import type { ReplyPayload } from "../types.js";
 import { markAgentRunFailureReplyPayload } from "./agent-runner-failure-reply.js";
@@ -19,9 +20,17 @@ import {
 } from "./test-helpers.js";
 import { createTypingSignaler } from "./typing-mode.js";
 
-const { createContinuation, settleRequester } = vi.hoisted(() => ({
+const { createContinuation, settleRequester, resolveQueuedCounts } = vi.hoisted(() => ({
   createContinuation: vi.fn<typeof ProgressRequester.createTaskProgressContinuation>(),
   settleRequester: vi.fn<typeof SubagentRegistry.settleRequesterAfterSessionSpawns>(() => true),
+  resolveQueuedCounts: vi.fn<typeof DelegateStore.resolveQueuedDelegateCounts>(),
+}));
+
+// Only continuation-enabled cases below read queued counts; the rest run with
+// continuation disabled and never reach the resolver.
+vi.mock("../continuation/delegate-store.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof DelegateStore>()),
+  resolveQueuedDelegateCounts: resolveQueuedCounts,
 }));
 
 vi.mock("../../tasks/task-progress-requester.js", async (importOriginal) => ({
@@ -152,6 +161,7 @@ async function prepare(lane: "ordinary" | "queued", context: FinalizeReplyAgentR
 }
 
 beforeEach(() => {
+  resolveQueuedCounts.mockReset();
   settleRequester.mockReset().mockReturnValue(true);
   createContinuation.mockReset().mockImplementation(async (params) => {
     let open = true;
@@ -309,4 +319,53 @@ it("releases child delivery if a receipt-backed handoff fails after an ambiguous
     { yielded: false, presentation: undefined },
   ]);
   await expect(adopt?.(receipt)).resolves.toBe(false);
+});
+
+describe("empty-reply decision with queued delegate counts", () => {
+  function createEmptyContinuationContext(): FinalizeReplyAgentRunInput {
+    const context = createContext();
+    // A turn with nothing to send: no payloads, no yield, no spawns, no
+    // required terminal reply, with continuation enabled for the session.
+    context.followupRun.run.terminalReplyExpectation = "optional";
+    context.execution.result.payloads = [];
+    context.execution.result.meta = { durationMs: 0 };
+    context.execution.result.acceptedSessionSpawns = undefined;
+    context.cfg = { agents: { defaults: { continuation: { enabled: true } } } };
+    return context;
+  }
+
+  it("finishes a turn with no payloads and exact zero counts as an empty reply", async () => {
+    resolveQueuedCounts.mockResolvedValue({
+      pending: 0,
+      stagedPostCompaction: 0,
+      awaitingImport: false,
+    });
+    const context = createEmptyContinuationContext();
+
+    const prepared = await prepareReplyAgentPayloads({
+      context,
+      accounting: await accountAgentTurn(context),
+    });
+
+    expect(resolveQueuedCounts).toHaveBeenCalledWith(context.sessionKey);
+    expect(prepared.kind).toBe("return");
+  });
+
+  it("does not finish as an empty reply while the owner's legacy import is pending, even with zero counts", async () => {
+    resolveQueuedCounts.mockResolvedValue({
+      pending: 0,
+      stagedPostCompaction: 0,
+      awaitingImport: true,
+    });
+    const context = createEmptyContinuationContext();
+
+    const prepared = await prepareReplyAgentPayloads({
+      context,
+      accounting: await accountAgentTurn(context),
+    });
+
+    expect(resolveQueuedCounts).toHaveBeenCalledWith(context.sessionKey);
+    // The legacy delegates the counts miss still need the continuation handling.
+    expect(prepared.kind).toBe("continue");
+  });
 });

@@ -413,6 +413,9 @@ export const databaseWorkerExtensionTestFiles = [
   "extensions/imessage/src/approval-reactions.persistence.test.ts",
   "extensions/imessage/src/send.sqlite.test.ts",
   "extensions/imessage/src/send.test.ts",
+  // L4-G5: continuation custody writes run through the shared-state worker.
+  "extensions/diagnostics-otel/src/codex-dynamic-tool-origin.integration.test.ts",
+  "extensions/diagnostics-otel/src/continuation-tracer-adapter.integration.test.ts",
 ];
 
 export function isDatabaseWorkerExtensionRoot(root) {

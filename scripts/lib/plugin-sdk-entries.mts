@@ -67,7 +67,6 @@ const nonProductionPluginSdkSubpathSet = new Set([
   ...privateQaPluginSdkEntrypoints,
   "reply-payload-testing",
   "sqlite-runtime-testing",
-  "task-flow-test-runtime",
   "test-env",
   "test-fixtures",
   "test-live",

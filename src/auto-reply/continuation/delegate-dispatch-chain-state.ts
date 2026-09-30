@@ -30,7 +30,7 @@ export async function persistChainStateBeforeTerminalCommit(
   }
   try {
     const plannedDelegate = options.markPlannedChainState
-      ? markPendingDelegateChainStatePersistPlanned(
+      ? await markPendingDelegateChainStatePersistPlanned(
           delegate,
           chainState,
           options.markerKind ?? "advanced",

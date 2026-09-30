@@ -3,7 +3,6 @@
  *
  * Combines persisted snapshots with in-memory live runs for UI, announce, control, and recovery paths.
  */
-import { getAgentRunContext } from "../../../infra/agent-run-registry.js";
 import { isVitestRuntimeEnv } from "../../../infra/env.js";
 import { getAsyncWorkSignal } from "../../../shared/async-work-scope.js";
 import {
@@ -13,7 +12,6 @@ import {
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
 import { normalizeDeliveryContext } from "../../../utils/delivery-context.shared.js";
 import type { DeliveryContext } from "../../../utils/delivery-context.types.js";
-import { deriveContinuationDelegateChildRunId } from "../../subagent-continuation-ids.js";
 import { getSubagentRunsForChildSession, subagentRuns } from "./subagent-registry-memory.js";
 import { getSubagentRegistryPublicationRevision } from "./subagent-registry-publication.js";
 import {
@@ -206,15 +204,6 @@ export function listSubagentRunsForRequester(
 ): SubagentRunRecord[] {
   // Request-run lifetime scoping must observe the raw live map, including rows not persisted yet.
   return listRunsForRequesterFromRuns(subagentRuns, requesterSessionKey, options);
-}
-
-/** Returns whether a continuation child was accepted before its registry row was written. */
-export function hasLiveContinuationDelegateChildRun(params: {
-  childSessionKey: string;
-  flowId: string;
-}): boolean {
-  const runContext = getAgentRunContext(deriveContinuationDelegateChildRunId(params.flowId));
-  return runContext?.sessionKey === params.childSessionKey;
 }
 
 /** Lists ancestor session keys for a session, walking the requester chain. */

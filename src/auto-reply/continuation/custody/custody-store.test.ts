@@ -19,7 +19,6 @@ import {
   resetContinuationCustodyProjection,
 } from "./custody-projection.js";
 import {
-  cancelContinuationRecord,
   claimContinuationSpawnAttempt,
   createContinuationRecord,
   deleteContinuationRecord,
@@ -28,6 +27,7 @@ import {
   hydrateContinuationCustody,
   listContinuationRecords,
   resolveContinuationCustodyDatabasePath,
+  updateContinuationRecords,
   type ContinuationElectionPlan,
 } from "./custody-store.js";
 import type { ContinuationRecord, NewContinuationRecord } from "./custody-store.types.js";
@@ -244,8 +244,16 @@ describe("list-by-owner and the hot-path projection", () => {
       options,
     );
     expect(claimed.outcome).toBe("claimed");
-    await cancelContinuationRecord(
-      { recordId: "delegate-b", ownerSessionKey: OWNER, expectedRevision: 0, now: 2_200 },
+    await updateContinuationRecords(
+      [
+        {
+          recordId: "delegate-b",
+          ownerSessionKey: OWNER,
+          expectedRevision: 0,
+          patch: { status: "cancelled", cancelRequestedAt: 2_200 },
+        },
+      ],
+      { now: 2_200 },
       options,
     );
 
@@ -258,13 +266,20 @@ describe("list-by-owner and the hot-path projection", () => {
     await hydrateContinuationCustody(options);
     const hydrated = readContinuationLiveWork(databasePath, OWNER);
 
-    const facts = listed.map((record) => ({
-      recordId: record.recordId,
-      kind: record.kind,
-      status: record.status,
-      revision: record.revision,
-      cancelRequested: false,
-    }));
+    const facts = listed.map((record) => {
+      const fact: Record<string, unknown> = {
+        recordId: record.recordId,
+        kind: record.kind,
+        status: record.status,
+        revision: record.revision,
+        cancelRequested: false,
+        createdAt: record.createdAt,
+      };
+      if (record.dueAt !== undefined) {
+        fact.dueAt = record.dueAt;
+      }
+      return fact;
+    });
     expect(facts.map((fact) => [fact.recordId, fact.status])).toEqual([
       ["delegate-a", "running"],
       ["elected", "queued"],

@@ -529,7 +529,7 @@ describe("subagent-announce continuation drain (F7)", () => {
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
     expect(
       peekSystemEventEntries("agent:main:main").some((entry) =>
-        entry.text.includes("durable TaskFlow admission failed"),
+        entry.text.includes("durable continuation custody admission failed"),
       ),
     ).toBe(true);
   });

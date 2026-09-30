@@ -15,7 +15,7 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { TaskFlowRecord } from "./task-flow-registry.types.js";
 
 /** State keys whose presence means a terminal flow still owes durable work. */
-export const PENDING_OBLIGATION_STATE_KEYS = ["terminalNoticePending"] as const;
+const PENDING_OBLIGATION_STATE_KEYS = ["terminalNoticePending"] as const;
 
 export function hasUnfulfilledDurableObligation(flow: TaskFlowRecord): boolean {
   const state = flow.stateJson;

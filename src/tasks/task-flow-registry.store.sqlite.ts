@@ -1,16 +1,12 @@
 // Persists task-flow records through the global shared-state database owner.
-import type { DatabaseSync } from "node:sqlite";
 import type { AdmittedRunContext } from "../agents/admitted-run-context.js";
 import {
   executionOwnerBindingFromAdmission,
   type ExecutionOwnerBindingResult,
 } from "../audit/execution-owner-binding.js";
-import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
-import { normalizeSqliteNumber } from "../infra/sqlite-number.js";
 import { stageSqliteTransactionState } from "../infra/sqlite-post-commit.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withExistingOpenClawStateDatabaseReadOnly } from "../state/openclaw-state-db-readonly.js";
-import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-db.generated.js";
 import {
   closeOpenClawStateDatabase,
   openOpenClawStateDatabase,
@@ -24,14 +20,12 @@ import type { TaskFlowSyncInput } from "./task-flow-registry.records.js";
 import {
   bindTaskFlowRecord,
   deleteTaskFlowRowInDatabase,
-  readTaskFlowRecord,
   readTaskFlowRegistrySnapshot,
   syncTaskMirroredFlowRecordInDatabase,
   updateTaskFlowRecordInDatabase,
   upsertTaskFlowRowInDatabase,
 } from "./task-flow-registry.store.kernel.js";
 import type {
-  TaskFlowRegistryAtomicWrite,
   TaskFlowRegistryMirroredSync,
   TaskFlowRegistryObservedUpdate,
   TaskFlowRegistryStoreSnapshot,
@@ -39,15 +33,9 @@ import type {
   TaskFlowRegistryUpdatePublication,
   TaskFlowRegistryUpdateResult,
 } from "./task-flow-registry.store.types.js";
-import { parseTaskFlowStatus, type TaskFlowRecord } from "./task-flow-registry.types.js";
-
-type FlowRegistryStoreDatabase = Pick<OpenClawStateKyselyDatabase, "flow_runs">;
+import type { TaskFlowRecord } from "./task-flow-registry.types.js";
 
 const log = createSubsystemLogger("tasks/task-flow-registry");
-
-function getFlowRegistryKysely(db: DatabaseSync) {
-  return getNodeSqliteKysely<FlowRegistryStoreDatabase>(db);
-}
 
 function withWriteTransaction(write: (database: OpenClawStateDatabase) => void) {
   const database = openOpenClawStateDatabase();
@@ -127,66 +115,6 @@ export function updateTaskFlowRegistryRecordInSqlite(
   });
 }
 
-export function upsertTaskFlowRegistryRecordsToSqlite(write: TaskFlowRegistryAtomicWrite): boolean {
-  const { changes } = write;
-  if (changes.length === 0) {
-    return true;
-  }
-  let applied = false;
-  withWriteTransaction(({ db }) => {
-    if (write.ownerCondition) {
-      let query = getFlowRegistryKysely(db)
-        .selectFrom("flow_runs")
-        .select(["flow_id", "revision", "status"])
-        .where("owner_key", "=", write.ownerCondition.ownerKey)
-        .where("controller_id", "=", write.ownerCondition.controllerId)
-        .where("status", "in", write.ownerCondition.statuses);
-      if (write.ownerCondition.excludeCancelRequested) {
-        query = query.where("cancel_requested_at", "is", null);
-      }
-      const currentFlows = executeSqliteQuerySync(db, query)
-        .rows.map((row) => ({
-          flowId: row.flow_id,
-          revision: normalizeSqliteNumber(row.revision) ?? 0,
-          status: parseTaskFlowStatus(row.status),
-        }))
-        .toSorted((left, right) => left.flowId.localeCompare(right.flowId));
-      const expectedFlows = [...write.ownerCondition.expectedFlows].toSorted((left, right) =>
-        left.flowId.localeCompare(right.flowId),
-      );
-      if (
-        currentFlows.length !== expectedFlows.length ||
-        currentFlows.some((flow, index) => {
-          const expected = expectedFlows[index];
-          return (
-            !expected ||
-            flow.flowId !== expected.flowId ||
-            flow.revision !== expected.revision ||
-            flow.status !== expected.status
-          );
-        })
-      ) {
-        return;
-      }
-    }
-    for (const change of changes) {
-      const current = readTaskFlowRecord(db, change.flow.flowId);
-      if (
-        change.expectedRevision === undefined
-          ? current !== undefined
-          : current?.revision !== change.expectedRevision
-      ) {
-        return;
-      }
-    }
-    for (const change of changes) {
-      upsertTaskFlowRowInDatabase(db, bindTaskFlowRecord(change.flow));
-    }
-    applied = true;
-  });
-  return applied;
-}
-
 /** Binds only the exact flow selected before admission; lifecycle settlement stays owner-native. */
 export async function bindTaskFlowExecution(params: {
   admitted: AdmittedRunContext;
@@ -224,9 +152,7 @@ export async function bindTaskFlowExecution(params: {
 }
 
 export function deleteTaskFlowRegistryRecordFromSqlite(flowId: string) {
-  withWriteTransaction(({ db }) => {
-    deleteTaskFlowRowInDatabase(db, flowId);
-  });
+  withWriteTransaction(({ db }) => deleteTaskFlowRowInDatabase(db, flowId));
 }
 
 export function closeTaskFlowRegistryDatabase() {

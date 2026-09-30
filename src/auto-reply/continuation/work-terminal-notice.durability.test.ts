@@ -1,5 +1,5 @@
 // Covers durable restart recovery of the terminal continue_work outcome against
-// the real SQLite task-flow registry, the real session-delivery queue, and the
+// the real continuation custody store, the real session-delivery queue, and the
 // real gateway delivery path.
 //
 // The in-memory system-event queue is explicitly non-durable, so these tests
@@ -16,26 +16,27 @@ import { deliverQueuedSessionDelivery } from "../../gateway/server-restart-senti
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { recoverPendingSessionDeliveries } from "../../infra/session-delivery-queue-recovery.js";
 import { scheduleSessionDelivery } from "../../infra/session-delivery-queue-runtime.js";
-import {
-  enqueueSessionDeliveryWithStatus,
-  loadPendingSessionDeliveries,
-} from "../../infra/session-delivery-queue-storage.js";
+import { loadPendingSessionDeliveries } from "../../infra/session-delivery-queue-storage.js";
 import {
   drainSystemEventEntries,
   enqueueSystemEventRaw as enqueueSystemEvent,
   peekSystemEvents,
 } from "../../infra/system-events.js";
+import { closeOpenClawStateDatabaseAsync } from "../../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
-import {
-  listTaskFlowRecords,
-  reloadTaskFlowRegistryFromStore,
-  updateFlowRecordByIdExpectedRevision,
-} from "../../tasks/task-flow-registry.js";
-import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
-import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { settleManagedSystemEventsAfterTurnAdoption } from "../reply/session-system-event-adoption.js";
 import { prepareFormattedSystemEvents } from "../reply/session-system-events.js";
-import { CONTINUATION_WORK_CONTROLLER_ID } from "./work-flow-state.js";
+import { resetContinuationCustodyProjection } from "./custody/custody-projection.js";
+import {
+  hydrateContinuationCustody,
+  settleContinuationNotice,
+  updateContinuationRecords,
+} from "./custody/custody-store.js";
+import {
+  listCustodyRecordsForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "./custody/custody.test-support.js";
 import { listPendingTerminalNoticeWork, markPendingWorkFailed } from "./work-store.js";
 import { enqueuePendingWork } from "./work-store.test-support.js";
 import {
@@ -51,6 +52,8 @@ const SESSION_KEY = "agent:main:terminal-notice-durability";
 const RAW_DRIVER_ERROR =
   "provider rejected token sk-live-9f3c1d2b7a at https://api.example/v1/messages";
 
+const custody = useContinuationCustodyTestState();
+
 /**
  * Real production collaborators, pinned to the temp state dir. Nothing here is
  * mocked: the point of these tests is that the durable stores carry the notice.
@@ -60,7 +63,7 @@ function realDeps(stateDir: string) {
     env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
   });
   return {
-    enqueueSessionDeliveryWithStatus,
+    settleContinuationNotice,
     scheduleSessionDelivery,
     enqueueSystemEvent,
     requestHeartbeatNow,
@@ -101,25 +104,15 @@ async function adoptPreparedTurn(
 }
 
 async function withDurableState<T>(run: (stateDir: string) => Promise<T>): Promise<T> {
-  return await withOpenClawTestState(
-    { layout: "state-only", prefix: "openclaw-continuation-terminal-notice-" },
-    async (state) => {
-      resetTaskFlowRegistryForTests();
-      try {
-        return await run(state.stateDir);
-      } finally {
-        resetTaskFlowRegistryForTests();
-      }
-    },
-  );
+  return await run(custody.stateDir());
 }
 
 /**
- * Terminalize a claimed row exactly as the retry-exhaustion branch does: the
+ * Terminalize a claimed record exactly as the retry-exhaustion branch does: the
  * notice obligation is written in the same CAS as the failure.
  */
-function terminalizeWithPendingNotice(): void {
-  const enqueued = enqueuePendingWork({
+async function terminalizeWithPendingNotice(): Promise<string> {
+  const enqueued = await enqueuePendingWork({
     sessionKey: SESSION_KEY,
     hop: 2,
     delayMs: 0,
@@ -128,43 +121,53 @@ function terminalizeWithPendingNotice(): void {
     maxChainLength: 8,
     reason: "durable exhaustion proof",
   });
-  if (!enqueued) {
-    throw new Error("expected durable continuation work row");
+  if (!enqueued?.flowId) {
+    throw new Error("expected durable continuation work record");
   }
-  const failed = markPendingWorkFailed(enqueued, RAW_DRIVER_ERROR, {
+  const failed = await markPendingWorkFailed(enqueued, RAW_DRIVER_ERROR, {
     terminalNoticePending: "retry-exhausted",
   });
   if (!failed) {
     throw new Error("expected terminal CAS to commit");
   }
+  return enqueued.flowId;
 }
 
 /**
- * Re-arm the durable obligation on an already-terminal row, simulating a stale
- * flag observed after the delivery row was settled.
+ * Re-arm the durable obligation on an already-terminal record, simulating a
+ * stale obligation observed after the delivery row was settled.
  */
-function restorePendingNoticeFlag(): void {
-  const flow = listTaskFlowRecords().find(
-    (record) => record.controllerId === CONTINUATION_WORK_CONTROLLER_ID,
-  );
-  if (!flow) {
-    throw new Error("expected a continuation work flow");
+async function restorePendingNoticeFlag(): Promise<void> {
+  const [record] = await listCustodyRecordsForTest({ kinds: ["work"] });
+  if (!record) {
+    throw new Error("expected a continuation work record");
   }
-  const state = flow.stateJson as Record<string, unknown>;
-  const updated = updateFlowRecordByIdExpectedRevision({
-    flowId: flow.flowId,
-    expectedRevision: flow.revision,
-    patch: { stateJson: { ...state, terminalNoticePending: "retry-exhausted" } },
-  });
-  if (!updated.applied) {
-    throw new Error("expected stale-flag restore to commit");
+  const updated = await updateContinuationRecords(
+    [
+      {
+        recordId: record.recordId,
+        ownerSessionKey: record.ownerSessionKey,
+        expectedRevision: record.revision,
+        patch: { terminalNoticePending: "retry-exhausted" },
+      },
+    ],
+    { now: Date.now() },
+  );
+  if (updated.outcome !== "applied") {
+    throw new Error("expected stale-obligation restore to commit");
   }
 }
 
 /** Drop every process-local trace of the notice, as a gateway restart would. */
-function simulateGatewayRestart(): void {
+async function simulateGatewayRestart(): Promise<void> {
   drainSystemEventEntries(SESSION_KEY);
-  reloadTaskFlowRegistryFromStore();
+  resetContinuationCustodyProjection();
+  await closeOpenClawStateDatabaseAsync();
+  await hydrateContinuationCustody();
+}
+
+function terminalNoticeIdempotencyKey(recordId: string): string {
+  return `continuation-work-terminal-notice:${recordId}`;
 }
 
 const SESSION_ID = "session-terminal-notice-1";
@@ -246,10 +249,10 @@ async function pendingDeliveryTexts(stateDir: string): Promise<string[]> {
 describe("continuation_work terminal notice durability", () => {
   it("persists the terminal failure and its pending notice across a restart", async () => {
     await withDurableState(async () => {
-      terminalizeWithPendingNotice();
-      simulateGatewayRestart();
+      await terminalizeWithPendingNotice();
+      await simulateGatewayRestart();
 
-      const pending = listPendingTerminalNoticeWork();
+      const pending = await listPendingTerminalNoticeWork();
       expect(pending).toHaveLength(1);
       expect(pending[0]?.sessionKey).toBe(SESSION_KEY);
       expect(pending[0]?.terminalNoticePending).toBe("retry-exhausted");
@@ -258,11 +261,11 @@ describe("continuation_work terminal notice durability", () => {
 
   it("keeps the durable row pending through the real delivery path until the prompt adopts it", async () => {
     await withDurableState(async (stateDir) => {
-      terminalizeWithPendingNotice();
+      await terminalizeWithPendingNotice();
       expect(await drainPendingTerminalNotices(realDeps(stateDir))).toBe(1);
 
       // Crash after the handoff but before the prompt ever consumed the event.
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
 
       // The REAL delivery executor re-enqueues the event in memory. It must NOT
@@ -275,7 +278,7 @@ describe("continuation_work terminal notice durability", () => {
       ]);
 
       // Crash again before consumption: the notice must still replay.
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
       await runProductionDeliveryRecovery(stateDir);
       expect(peekSystemEvents(SESSION_KEY)).toEqual([CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE]);
@@ -284,9 +287,9 @@ describe("continuation_work terminal notice durability", () => {
 
   it("keeps the durable row pending through REAL prompt preparation until the turn is adopted", async () => {
     await withDurableState(async (stateDir) => {
-      terminalizeWithPendingNotice();
+      await terminalizeWithPendingNotice();
       await drainPendingTerminalNotices(realDeps(stateDir));
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       await runProductionDeliveryRecovery(stateDir);
 
       // Real prompt preparation surfaces the notice to the model AND hands back
@@ -304,7 +307,7 @@ describe("continuation_work terminal notice durability", () => {
       ]);
 
       // Admission fails / process dies after preparation but before adoption.
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       await runProductionDeliveryRecovery(stateDir);
       expect(peekSystemEvents(SESSION_KEY)).toEqual([CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE]);
       expect(await pendingDeliveryTexts(stateDir)).toEqual([
@@ -315,9 +318,9 @@ describe("continuation_work terminal notice durability", () => {
 
   it("completes the durable row only once a prepared turn is durably adopted, then stops replaying", async () => {
     await withDurableState(async (stateDir) => {
-      terminalizeWithPendingNotice();
+      await terminalizeWithPendingNotice();
       await drainPendingTerminalNotices(realDeps(stateDir));
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       await runProductionDeliveryRecovery(stateDir);
 
       const prepared = await preparePrompt(stateDir);
@@ -329,7 +332,7 @@ describe("continuation_work terminal notice durability", () => {
 
       // After adoption, restart + recovery must produce NO further outcome, and
       // the completed tombstone must reject a re-enqueue of the same notice.
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       await runProductionDeliveryRecovery(stateDir);
       expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
 
@@ -340,17 +343,17 @@ describe("continuation_work terminal notice durability", () => {
 
   it("clears a stale work flag against a completed tombstone without a second event or wake", async () => {
     await withDurableState(async (stateDir) => {
-      terminalizeWithPendingNotice();
+      await terminalizeWithPendingNotice();
       await drainPendingTerminalNotices(realDeps(stateDir));
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       await runProductionDeliveryRecovery(stateDir);
       await adoptPreparedTurn(await preparePrompt(stateDir));
       expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
 
       // A stale obligation is observed after the row was already settled.
-      restorePendingNoticeFlag();
-      simulateGatewayRestart();
-      expect(listPendingTerminalNoticeWork()).toHaveLength(1);
+      await restorePendingNoticeFlag();
+      await simulateGatewayRestart();
+      expect(await listPendingTerminalNoticeWork()).toHaveLength(1);
 
       const scheduled: string[] = [];
       const wakes: unknown[] = [];
@@ -367,7 +370,7 @@ describe("continuation_work terminal notice durability", () => {
 
       // The tombstone settled this key: release the flag, surface nothing.
       expect(handed).toBe(0);
-      expect(listPendingTerminalNoticeWork()).toEqual([]);
+      expect(await listPendingTerminalNoticeWork()).toEqual([]);
       expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
       expect(scheduled).toEqual([]);
       expect(wakes).toEqual([]);
@@ -377,10 +380,10 @@ describe("continuation_work terminal notice durability", () => {
 
   it("retries a transiently failed durable handoff without waiting for a restart", async () => {
     await withDurableState(async (stateDir) => {
-      vi.useFakeTimers();
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
       try {
-        terminalizeWithPendingNotice();
-        const [owed] = listPendingTerminalNoticeWork();
+        await terminalizeWithPendingNotice();
+        const [owed] = await listPendingTerminalNoticeWork();
         if (!owed) {
           throw new Error("expected a pending terminal notice");
         }
@@ -388,18 +391,18 @@ describe("continuation_work terminal notice durability", () => {
         let attempts = 0;
         const deps = {
           ...realDeps(stateDir),
-          enqueueSessionDeliveryWithStatus: (async (payload, dir) => {
+          settleContinuationNotice: (async (input, options) => {
             attempts += 1;
             if (attempts === 1) {
               throw new Error("transient sqlite failure");
             }
-            return await enqueueSessionDeliveryWithStatus(payload, dir);
-          }) as typeof enqueueSessionDeliveryWithStatus,
+            return await settleContinuationNotice(input, options);
+          }) as typeof settleContinuationNotice,
         };
 
-        // First handoff fails; the flag must survive and a live retry arm.
+        // First handoff fails; the obligation must survive and a live retry arm.
         expect(await deliverPendingTerminalNoticeWithRetry(owed, deps)).toBe(false);
-        expect(listPendingTerminalNoticeWork()).toHaveLength(1);
+        expect(await listPendingTerminalNoticeWork()).toHaveLength(1);
         expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
 
         // No gateway restart: the armed retry completes the handoff.
@@ -408,7 +411,7 @@ describe("continuation_work terminal notice durability", () => {
           expect(await loadPendingSessionDeliveries(stateDir)).toHaveLength(1);
         });
         expect(attempts).toBe(2);
-        expect(listPendingTerminalNoticeWork()).toEqual([]);
+        expect(await listPendingTerminalNoticeWork()).toEqual([]);
         expect(await pendingDeliveryTexts(stateDir)).toEqual([
           CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE,
         ]);
@@ -419,10 +422,47 @@ describe("continuation_work terminal notice durability", () => {
     });
   });
 
+  it("commits the notice row and the obligation clear together, and replays add no row", async () => {
+    await withDurableState(async (stateDir) => {
+      const recordId = await terminalizeWithPendingNotice();
+      const [owed] = await listPendingTerminalNoticeWork();
+      if (!owed) {
+        throw new Error("expected a pending terminal notice");
+      }
+      expect(await readCustodyRecordForTest(recordId)).toMatchObject({
+        status: "failed",
+        terminalNoticePending: "retry-exhausted",
+      });
+      expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
+
+      expect(await deliverPendingTerminalNotice(owed, realDeps(stateDir))).toBe(true);
+
+      // One commit: the record owes nothing and exactly one notice row exists.
+      const settled = await readCustodyRecordForTest(recordId);
+      expect(settled?.status).toBe("failed");
+      expect(settled?.terminalNoticePending).toBeUndefined();
+      const rows = await loadPendingSessionDeliveries(stateDir);
+      expect(rows).toEqual([
+        expect.objectContaining({
+          kind: "systemEvent",
+          sessionKey: SESSION_KEY,
+          text: CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE,
+          idempotencyKey: terminalNoticeIdempotencyKey(recordId),
+        }),
+      ]);
+
+      // A second deliver of the same obligation and a full drain add nothing.
+      expect(await deliverPendingTerminalNotice(owed, realDeps(stateDir))).toBe(false);
+      expect(await drainPendingTerminalNotices(realDeps(stateDir))).toBe(0);
+      expect(await loadPendingSessionDeliveries(stateDir)).toEqual(rows);
+      expect((await readCustodyRecordForTest(recordId))?.revision).toBe(settled?.revision);
+    });
+  });
+
   it("never lets a losing concurrent handoff complete the winner's shared row", async () => {
     await withDurableState(async (stateDir) => {
-      terminalizeWithPendingNotice();
-      const [owed] = listPendingTerminalNoticeWork();
+      await terminalizeWithPendingNotice();
+      const [owed] = await listPendingTerminalNoticeWork();
       if (!owed) {
         throw new Error("expected a pending terminal notice");
       }
@@ -439,10 +479,10 @@ describe("continuation_work terminal notice durability", () => {
       expect(await pendingDeliveryTexts(stateDir)).toEqual([
         CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE,
       ]);
-      expect(listPendingTerminalNoticeWork()).toEqual([]);
+      expect(await listPendingTerminalNoticeWork()).toEqual([]);
 
       // And it is still deliverable through the production path.
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       await runProductionDeliveryRecovery(stateDir);
       expect(peekSystemEvents(SESSION_KEY)).toEqual([CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE]);
     });
@@ -450,13 +490,13 @@ describe("continuation_work terminal notice durability", () => {
 
   it("schedules a notice recovered after the startup queue scan instead of waiting for traffic", async () => {
     await withDurableState(async (stateDir) => {
-      terminalizeWithPendingNotice();
-      simulateGatewayRestart();
+      await terminalizeWithPendingNotice();
+      await simulateGatewayRestart();
 
       // Startup scans the delivery queue BEFORE continuation recovery runs, so
       // at scan time this notice is flag-only with no queue row to arm.
       expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
-      expect(listPendingTerminalNoticeWork()).toHaveLength(1);
+      expect(await listPendingTerminalNoticeWork()).toHaveLength(1);
 
       const scheduled: string[] = [];
       const wakes: { sessionKey?: string }[] = [];
@@ -482,17 +522,17 @@ describe("continuation_work terminal notice durability", () => {
 
   it("cannot produce a duplicate outcome across repeated recovery", async () => {
     await withDurableState(async (stateDir) => {
-      terminalizeWithPendingNotice();
+      await terminalizeWithPendingNotice();
       const deps = realDeps(stateDir);
 
       expect(await drainPendingTerminalNotices(deps)).toBe(1);
 
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       expect(await drainPendingTerminalNotices(deps)).toBe(0);
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       expect(await drainPendingTerminalNotices(deps)).toBe(0);
 
-      expect(listPendingTerminalNoticeWork()).toEqual([]);
+      expect(await listPendingTerminalNoticeWork()).toEqual([]);
       expect(await loadPendingSessionDeliveries(stateDir)).toHaveLength(1);
     });
   });
@@ -500,9 +540,9 @@ describe("continuation_work terminal notice durability", () => {
   it("reconciles an already-adopted ack id after a crash before queue settlement", async () => {
     await withDurableState(async (stateDir) => {
       await seedSessionEntry(stateDir);
-      terminalizeWithPendingNotice();
+      await terminalizeWithPendingNotice();
       await drainPendingTerminalNotices(realDeps(stateDir));
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       await runProductionDeliveryRecovery(stateDir);
 
       const prepared = await preparePrompt(stateDir);
@@ -511,7 +551,7 @@ describe("continuation_work terminal notice durability", () => {
 
       // The turn is durably adopted, then the process dies BEFORE the queue ack.
       await persistAdoptedTurnWithoutQueueAck(stateDir, deliveryIds);
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       await runProductionDeliveryRecovery(stateDir);
       expect(await loadPendingSessionDeliveries(stateDir)).toHaveLength(1);
 
@@ -526,25 +566,34 @@ describe("continuation_work terminal notice durability", () => {
     });
   });
 
-  it("treats an inconclusive enqueue status as a failed handoff", async () => {
+  // Contract change (RFC §5.4.2): the notice row insert and the obligation
+  // clear are one custody commit, so there is no separate "inconclusive
+  // enqueue" state. The inconclusive case is now a settle that committed but
+  // whose caller saw an error: the durable row is the only outcome, the
+  // obligation is already released, and the bounded retry adds nothing.
+  it("treats a settle that committed behind an error as settled, never as a second notice", async () => {
     await withDurableState(async (stateDir) => {
-      vi.useFakeTimers();
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
       try {
-        terminalizeWithPendingNotice();
-        const [owed] = listPendingTerminalNoticeWork();
+        const recordId = await terminalizeWithPendingNotice();
+        const [owed] = await listPendingTerminalNoticeWork();
         if (!owed) {
           throw new Error("expected a pending terminal notice");
         }
 
-        let inconclusive = true;
+        let settleCalls = 0;
         const scheduled: string[] = [];
         const wakes: unknown[] = [];
         const deps = {
           ...realDeps(stateDir),
-          enqueueSessionDeliveryWithStatus: (async (payload, dir) => {
-            const result = await enqueueSessionDeliveryWithStatus(payload, dir);
-            return inconclusive ? { id: result.id, status: "unknown" as const } : result;
-          }) as typeof enqueueSessionDeliveryWithStatus,
+          settleContinuationNotice: (async (input, options) => {
+            settleCalls += 1;
+            const result = await settleContinuationNotice(input, options);
+            if (settleCalls === 1) {
+              throw new Error("worker reply lost after commit");
+            }
+            return result;
+          }) as typeof settleContinuationNotice,
           scheduleSessionDelivery: async (id: string) => {
             scheduled.push(id);
             return true;
@@ -556,21 +605,34 @@ describe("continuation_work terminal notice durability", () => {
 
         expect(await deliverPendingTerminalNoticeWithRetry(owed, deps)).toBe(false);
 
-        // Unknown status must not clear the flag, surface, schedule, or wake.
-        expect(listPendingTerminalNoticeWork()).toHaveLength(1);
+        // The committed half is authoritative: no obligation, one durable row,
+        // and nothing surfaced from a call whose outcome the caller never saw.
+        expect(await listPendingTerminalNoticeWork()).toEqual([]);
+        expect((await readCustodyRecordForTest(recordId))?.terminalNoticePending).toBeUndefined();
+        expect(await pendingDeliveryTexts(stateDir)).toEqual([
+          CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE,
+        ]);
         expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
         expect(scheduled).toEqual([]);
         expect(wakes).toEqual([]);
 
-        // The bounded retry resolves it once the read is conclusive again.
-        inconclusive = false;
+        // The bounded retry finds nothing owed and never adds a second row,
+        // but arms delivery for the row the lost-reply settle committed.
+        const [committedRow] = await loadPendingSessionDeliveries(stateDir);
         await vi.advanceTimersByTimeAsync(TERMINAL_NOTICE_RETRY_DELAYS_MS[0]);
         await vi.waitFor(() => {
-          expect(listPendingTerminalNoticeWork()).toEqual([]);
+          expect(scheduled).toEqual([committedRow?.id]);
         });
+        expect(settleCalls).toBe(1);
         expect(await pendingDeliveryTexts(stateDir)).toEqual([
           CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE,
         ]);
+        expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
+
+        // The row still owns delivery through the production path.
+        await simulateGatewayRestart();
+        await runProductionDeliveryRecovery(stateDir);
+        expect(peekSystemEvents(SESSION_KEY)).toEqual([CONTINUATION_WORK_RETRY_EXHAUSTED_NOTICE]);
       } finally {
         resetTerminalNoticeRetriesForTests();
         vi.useRealTimers();
@@ -580,9 +642,9 @@ describe("continuation_work terminal notice durability", () => {
 
   it("never exposes the raw driver error to the agent", async () => {
     await withDurableState(async (stateDir) => {
-      terminalizeWithPendingNotice();
+      await terminalizeWithPendingNotice();
       await drainPendingTerminalNotices(realDeps(stateDir));
-      simulateGatewayRestart();
+      await simulateGatewayRestart();
       await runProductionDeliveryRecovery(stateDir);
 
       const durableText = (await pendingDeliveryTexts(stateDir))[0] ?? "";

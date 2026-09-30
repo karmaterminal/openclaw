@@ -121,3 +121,25 @@ Two derived extensions also need prince confirmation, because they go beyond the
 - **Transaction:** release, notice, obligation clear, receipt, scrub and fence all commit in one owner transaction.
 - **L4:** no legacy-only branch.
 - **Source retirement:** stays implemented, tested and unregistered until its horizon (Q7).
+
+## Startup window: custody readiness (decided 2026-09-29, L4 review)
+
+🌊 Ronan and 🩸 Cael found in their L4 review (Discord 1554599452537262142, 1554600143481737227) that custody boot ran after channels attached, behind a timer and registry activation. Three things followed:
+
+- a turn could write custody for an owner whose legacy rows were not yet imported;
+- committed work could read as zero from the unhydrated projection;
+- production startup never ran the import at all.
+
+🌊 chose **(a), keep the RFC promise** (Discord 1554600472835264644, narrowed in 1554600753694507090):
+
+- **Phase A (custody readiness):** one read of the live set and the owners awaiting import, then the approved L3 transform only (never broader Doctor repairs), then a fresh re-read, then install the gate and the projection. It is keyed per custody database, and a throw installs nothing.
+- **Fence:** every custody command except the raw boot reads awaits phase A: mutations, list reads (reset, the cleanup guard; 🌊 successor review) and correctness counts. The first to run triggers it, and startup recovery runs it before recovering. The importer writes beneath that fence, so it cannot deadlock.
+- **Database lifetime** (🩸, 🌫):
+  - Readiness, projection and gate are invalidated together when the state database closes. Closes are matched by key or canonical path.
+  - A phase A from the closed lifetime cannot publish into a replacement, and its import cannot write into one either. The import is lifetime-bound at every write boundary; the importer's own snapshot check separately refuses changed rows.
+- **Phase B (recovery):** never re-hydrates.
+- **Failed import is unknown, not empty** (🩸 successor review): reset for an owner still awaiting import fails with the retryable import-pending error, and the cleanup guard reports that owner as live. Neither may succeed over legacy rows that a later import would resurrect. The records and the import state come from one database lifetime (`readContinuationOwnerInventory`); a close between them discards the answer (🩸 second successor review).
+- **Counts fail closed for an unimported owner** (🌫): `resolveQueuedDelegateCounts` carries `awaitingImport` from the same lifetime. Chain-hop rejects (`custody.import_pending`), empty-turn finalization keeps the turn, and manual post-compaction release waits for the import.
+- **Queue-only owners import at startup** (🌻): the startup owner gate includes covered, receipt-less pre-cutover queue entries, not only `flow_runs` rows.
+- **Decisions:** empty-turn finalization, chain-hop allocation and the compaction release check use an exact count. They never read `unknown` as zero, and chain depth never uses a guessed value.
+- **Q3 wording** (🌫, accepted by 🌊 in 1554602065093857381): "`running` implies a recorded attempt" holds for pending delegates only. A post-compaction record's first `running` state is a release claim. Its child run ID becomes durable with the queue insert and handoff (RFC §5.4.4).

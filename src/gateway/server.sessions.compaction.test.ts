@@ -10,6 +10,8 @@ import type { QueuedCompactionHostOptions } from "../agents/embedded-agent-runne
 import type { CompactEmbeddedAgentSessionParams } from "../agents/embedded-agent-runner/compact.types.js";
 import { acceptCompactionSuccessor } from "../agents/embedded-agent-runner/compaction-successor.js";
 import { resolveEmbeddedSessionLane } from "../agents/embedded-agent-runner/lanes.js";
+import { resetContinuationCustodyProjection } from "../auto-reply/continuation/custody/custody-projection.js";
+import { hydrateContinuationCustody } from "../auto-reply/continuation/custody/custody-store.js";
 import {
   stagePostCompactionDelegate,
   stagedPostCompactionDelegateCount,
@@ -42,7 +44,6 @@ import {
   isSessionWorkAdmissionActive,
 } from "../sessions/session-lifecycle-admission.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
-import { resetTaskFlowRegistryForTests } from "../tasks/task-runtime.test-helpers.js";
 import { withTestDir } from "../test-helpers/temp-dir.js";
 import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
 import {
@@ -61,6 +62,44 @@ import {
   directSessionReq,
   expectNoSessionQueueCleanup,
 } from "./test/server-sessions.test-helpers.js";
+
+// Post-compaction release decision seams. The count override is set only by the
+// import-pending cases; everything else reads real custody and releases for real.
+const postCompactionReleaseSeams = vi.hoisted(() => ({
+  countsOverride: undefined as
+    | { pending: number; stagedPostCompaction: number; awaitingImport: boolean }
+    | undefined,
+  releaseCalls: [] as string[],
+}));
+
+vi.mock("../auto-reply/continuation/delegate-store.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../auto-reply/continuation/delegate-store.js")>();
+  return {
+    ...actual,
+    resolveQueuedDelegateCounts: async (
+      ...args: Parameters<typeof actual.resolveQueuedDelegateCounts>
+    ) =>
+      postCompactionReleaseSeams.countsOverride ??
+      (await actual.resolveQueuedDelegateCounts(...args)),
+  };
+});
+
+vi.mock("../auto-reply/reply/agent-runner-post-compaction-release.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../auto-reply/reply/agent-runner-post-compaction-release.js")
+    >();
+  return {
+    ...actual,
+    releasePostCompactionDelegatesAfterCompaction: async (
+      ...args: Parameters<typeof actual.releasePostCompactionDelegatesAfterCompaction>
+    ) => {
+      postCompactionReleaseSeams.releaseCalls.push(args[0].sessionKey ?? "");
+      return await actual.releasePostCompactionDelegatesAfterCompaction(...args);
+    },
+  };
+});
 
 const { createSessionStoreDir, openClient } = setupGatewaySessionsTestHarness();
 
@@ -89,12 +128,15 @@ function buildSessionTranscriptLines(sessionId: string, totalLines: number): str
   return [header, ...entries];
 }
 
-// The task-flow reset closes the shared state database synchronously. Periodic
-// WAL maintenance now runs off-thread and holds an idle reference while in
-// flight, so join it through the orderly async close first.
-async function resetTaskFlowRegistryAfterStateSettles(): Promise<void> {
+// Post-compaction cases rehydrate the continuation custody projection from the
+// harness state database, as Gateway boot does, so the synchronous staged
+// count reads committed custody. Periodic WAL maintenance runs off-thread and
+// holds an idle reference while in flight, so join it through the orderly
+// async close first.
+async function rehydrateContinuationCustodyAfterStateSettles(): Promise<void> {
   await closeOpenClawStateDatabaseAsync();
-  resetTaskFlowRegistryForTests({ persist: false });
+  resetContinuationCustodyProjection();
+  await hydrateContinuationCustody();
 }
 
 function isCompactOperationEvent(message: unknown, phase: "start" | "end") {
@@ -665,7 +707,7 @@ test("sessions.compact targets the persisted native CLI session", async () => {
 });
 
 test("sessions.compact releases queued post-compaction delegates after manual compaction", async () => {
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
   const { dir, storePath } = await createSessionStoreDir();
   await fs.writeFile(
     path.join(dir, "sess-post-compaction.jsonl"),
@@ -687,7 +729,7 @@ test("sessions.compact releases queued post-compaction delegates after manual co
     storePath,
     totalLines: 3,
   });
-  stagePostCompactionDelegate("agent:main:main", {
+  await stagePostCompactionDelegate("agent:main:main", {
     task: "rehydrate after dashboard compact",
     createdAt: Date.now(),
   });
@@ -704,11 +746,11 @@ test("sessions.compact releases queued post-compaction delegates after manual co
   expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(0);
   expect(loadSessionEntry({ sessionKey: "agent:main:main", storePath })?.compactionCount).toBe(1);
   ws.close();
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
 });
 
 test("sessions.compact preserves canonical route fields when releasing post-compaction delegates", async () => {
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
   const { dir, storePath } = await createSessionStoreDir();
   await fs.writeFile(
     path.join(dir, "sess-post-compaction-legacy.jsonl"),
@@ -735,7 +777,7 @@ test("sessions.compact preserves canonical route fields when releasing post-comp
     storePath,
     totalLines: 3,
   });
-  stagePostCompactionDelegate("agent:main:main", {
+  await stagePostCompactionDelegate("agent:main:main", {
     task: "rehydrate after compact with legacy route",
     createdAt: Date.now(),
   });
@@ -762,11 +804,11 @@ test("sessions.compact preserves canonical route fields when releasing post-comp
     threadId: "topic-9",
   });
   ws.close();
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
 });
 
 test("sessions.compact maxLines releases queued post-compaction delegates after trim", async () => {
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
   const { dir, storePath } = await createSessionStoreDir();
   const sessionId = "sess-post-compaction-trim";
   const transcriptPath = path.join(dir, `${sessionId}.jsonl`);
@@ -781,7 +823,7 @@ test("sessions.compact maxLines releases queued post-compaction delegates after 
     storePath,
     totalLines: 120,
   });
-  stagePostCompactionDelegate("agent:main:main", {
+  await stagePostCompactionDelegate("agent:main:main", {
     task: "rehydrate after maxLines compact",
     createdAt: Date.now(),
   });
@@ -808,7 +850,7 @@ test("sessions.compact maxLines releases queued post-compaction delegates after 
     expect.stringContaining("Queued 1 post-compaction delegate(s)"),
   );
   expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(0);
-  await resetTaskFlowRegistryAfterStateSettles();
+  await rehydrateContinuationCustodyAfterStateSettles();
 });
 
 test("sessions.compact skips post-compaction lifecycle when no delegates exist", async () => {
@@ -857,6 +899,79 @@ test("sessions.compact skips post-compaction lifecycle when no delegates exist",
     expect.stringContaining("[system:post-compaction]"),
   );
   ws.close();
+});
+
+async function seedMaxLinesCompactionSession(sessionId: string): Promise<void> {
+  const { dir, storePath } = await createSessionStoreDir();
+  const transcriptPath = path.join(dir, `${sessionId}.jsonl`);
+  await fs.writeFile(
+    transcriptPath,
+    `${buildSessionTranscriptLines(sessionId, 120).join("\n")}\n`,
+    "utf-8",
+  );
+  await writeSessionStore({
+    entries: { main: sessionStoreEntry(sessionId, { sessionFile: transcriptPath }) },
+  });
+  await seedTranscriptRows({
+    sessionId,
+    sessionKey: "agent:main:main",
+    storePath,
+    totalLines: 120,
+  });
+}
+
+test("sessions.compact does not release post-compaction delegates while the legacy import is pending", async () => {
+  await rehydrateContinuationCustodyAfterStateSettles();
+  await seedMaxLinesCompactionSession("sess-post-compaction-import-pending");
+  postCompactionReleaseSeams.releaseCalls.length = 0;
+  // Staged work is reported, but the owner's legacy import has not committed.
+  postCompactionReleaseSeams.countsOverride = {
+    pending: 0,
+    stagedPostCompaction: 1,
+    awaitingImport: true,
+  };
+  try {
+    const compacted = await directSessionReq<{ ok: true; compacted: boolean; kept?: number }>(
+      "sessions.compact",
+      { key: "main", maxLines: 50 },
+    );
+
+    expect(compacted.ok).toBe(true);
+    expect(compacted.payload?.compacted).toBe(true);
+    expect(postCompactionReleaseSeams.releaseCalls).toEqual([]);
+  } finally {
+    postCompactionReleaseSeams.countsOverride = undefined;
+  }
+  await rehydrateContinuationCustodyAfterStateSettles();
+});
+
+test("sessions.compact releases staged post-compaction delegates when no legacy import is pending", async () => {
+  await rehydrateContinuationCustodyAfterStateSettles();
+  await seedMaxLinesCompactionSession("sess-post-compaction-imported");
+  await stagePostCompactionDelegate("agent:main:main", {
+    task: "release when imported",
+    createdAt: Date.now(),
+  });
+  postCompactionReleaseSeams.releaseCalls.length = 0;
+  postCompactionReleaseSeams.countsOverride = {
+    pending: 0,
+    stagedPostCompaction: 1,
+    awaitingImport: false,
+  };
+  try {
+    const compacted = await directSessionReq<{ ok: true; compacted: boolean; kept?: number }>(
+      "sessions.compact",
+      { key: "main", maxLines: 50 },
+    );
+
+    expect(compacted.ok).toBe(true);
+    expect(compacted.payload?.compacted).toBe(true);
+    expect(postCompactionReleaseSeams.releaseCalls).toEqual(["agent:main:main"]);
+    expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(0);
+  } finally {
+    postCompactionReleaseSeams.countsOverride = undefined;
+  }
+  await rehydrateContinuationCustodyAfterStateSettles();
 });
 
 test("sessions.compact emits a terminal operation event when persistence fails", async () => {

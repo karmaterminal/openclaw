@@ -161,7 +161,10 @@ async function deliverResolvedQueuedSessionDelivery(params: {
   params.queueContext.admission.assertCurrent();
   const stateDir = params.queueContext.environment.OPENCLAW_STATE_DIR;
   if (params.entry.kind === "postCompactionDelegate") {
-    await deliverQueuedPostCompactionDelegate({ entry: params.entry });
+    await deliverQueuedPostCompactionDelegate({
+      entry: params.entry,
+      queueContext: params.queueContext,
+    });
     return;
   }
   const isContinuationReturn =

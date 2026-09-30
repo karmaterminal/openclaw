@@ -2,6 +2,7 @@
 // docs/design/continue-work-signal-v2.md §5.4.2). The store interprets only
 // the fields below; per-kind controller state stays opaque JSON owned by the
 // continuation codecs.
+import type { bindDeliveryQueueEntry } from "../../../infra/delivery-queue-sqlite-bound.js";
 import type {
   ContinuationSpawnAttempt,
   ContinuationSpawnFailurePhase,
@@ -104,6 +105,18 @@ export type ContinuationLiveRecordFact = {
   status: ContinuationLiveStatus;
   revision: number;
   cancelRequested: boolean;
+  createdAt: number;
+  dueAt?: number;
+};
+
+/** A record this commit moved from a live status to a terminal one. */
+export type ContinuationEndedRecordFact = {
+  recordId: string;
+  ownerSessionKey: string;
+  kind: ContinuationRecordKind;
+  status: Exclude<ContinuationRecordStatus, ContinuationLiveStatus>;
+  createdAt: number;
+  endedAt: number;
 };
 
 /** Every write reports what it committed so callers release files and refresh projections. */
@@ -111,6 +124,8 @@ export type ContinuationCommitFacts = {
   owners: readonly ContinuationOwnerLiveSet[];
   /** Attachment references this commit removed from records, keyed to their record. */
   releasedAttachments: readonly { recordId: string; attachmentId: string }[];
+  /** Records this commit terminalized; queue metrics count drains and failures from these. */
+  ended: readonly ContinuationEndedRecordFact[];
 };
 
 export type ContinuationCasFailure =
@@ -185,6 +200,60 @@ export type ContinuationAttemptFailureInput = {
   failurePhase: ContinuationSpawnFailurePhase;
   patch?: ContinuationRecordPatch;
 };
+
+/** A session-delivery row bound on the main thread, inserted inside a custody transaction. */
+type ContinuationBoundQueueEntry = ReturnType<typeof bindDeliveryQueueEntry>;
+
+export type ContinuationQueueEntryStatus = "pending" | "completed" | "failed" | "unknown";
+
+/**
+ * Deliver a terminal notice obligation (RFC §5.4.2): the notice's queue insert
+ * and the obligation clear commit in one transaction. The notice row is
+ * insert-if-absent under its record-derived idempotency key, so a replay
+ * resolves to the same row.
+ */
+export type ContinuationNoticeSettlementInput = {
+  recordId: string;
+  ownerSessionKey: string;
+  expectedRevision: number;
+  notice: ContinuationBoundQueueEntry;
+  now: number;
+};
+
+export type ContinuationNoticeSettlementResult =
+  | ({
+      outcome: "settled";
+      record: ContinuationRecord;
+      entryId: string;
+      /** `completed` means an earlier pass already delivered and adopted this notice. */
+      entryStatus: ContinuationQueueEntryStatus;
+    } & ContinuationCommitFacts)
+  | ContinuationCasFailure
+  | { outcome: "not_owed"; recordId: string };
+
+/**
+ * Release a claimed post-compaction record to the session delivery queue
+ * (RFC §4.4, §5.4.4): the queue insert and the record's handoff commit in one
+ * transaction, so a crash can neither lose the delegate nor release it twice.
+ */
+export type ContinuationPostCompactionReleaseInput = {
+  recordId: string;
+  ownerSessionKey: string;
+  expectedRevision: number;
+  entry: ContinuationBoundQueueEntry;
+  phase: string;
+  stateJson: string;
+  now: number;
+};
+
+export type ContinuationPostCompactionReleaseResult =
+  | ({
+      outcome: "released";
+      record: ContinuationRecord;
+      entryId: string;
+    } & ContinuationCommitFacts)
+  | ContinuationCasFailure
+  | { outcome: "invalid_transition"; recordId: string; reason: string };
 
 export type ContinuationDeleteResult =
   | ({ outcome: "deleted"; recordId: string } & ContinuationCommitFacts)

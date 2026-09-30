@@ -2026,6 +2026,9 @@ describe("scheduleRestartSentinelWake", () => {
           kind: "postCompactionDelegate",
           sessionKey: "agent:main:main",
           task: "remain pending while continuation is disabled",
+          // Every entry this build enqueues carries its launch key (RFC §5.4.4
+          // Q2); a keyless entry would end on the no-attempt-key rule instead.
+          childRunId: "continuation:post-compaction-disabled-record:1",
           // Freshly armed: an entry stamped at epoch 1 would terminalize on the
           // RFC §4.4 stale gate instead of reaching the disabled deferral.
           createdAt: Date.now(),

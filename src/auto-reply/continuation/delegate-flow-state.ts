@@ -138,7 +138,7 @@ const PendingDelegateStateSchema = z
     inheritedWake: z.boolean().optional(),
     originRunId: z.string().min(1).optional(),
     // Pre-cure rows may contain these overrides. Decode accepts but never projects
-    // them, so restart rebinds the spawn to authoritative TaskFlow ownerKey.
+    // them, so restart rebinds the spawn to the authoritative custody owner.
     spawnRequesterSessionKey: z.string().min(1).optional(),
     spawnRequesterChannel: z.string().min(1).optional(),
     spawnRequesterAccountId: z.string().min(1).optional(),

@@ -151,7 +151,7 @@ export async function prepareSubagentContinuationAccounting(params: {
         params.invalidateSessionEntry(params.childSessionKey);
       } catch (error) {
         childChainTokensToFold = accumulatedChildTokens;
-        const annotated = annotateQueuedDelegatesChainTokensFold(
+        const annotated = await annotateQueuedDelegatesChainTokensFold(
           params.childSessionKey,
           accumulatedChildTokens,
         );

@@ -1,4 +1,4 @@
-import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
+import type { ContinuationRecord } from "./custody/custody-store.types.js";
 import type {
   ContinuationWorkBatchParams,
   ContinuationWorkBatchResult,
@@ -16,9 +16,9 @@ export async function scheduleContinuationWorkBatchWith(
 ): Promise<ContinuationWorkBatchResult> {
   let chainState = params.chainState;
   let scheduledCount = 0;
-  let supersededFlows: readonly TaskFlowRecord[] | undefined;
+  let supersededFlows: readonly ContinuationRecord[] | undefined;
   const { priorParkedFlows, expectedRunningFlowIds } =
-    prepareContinuationWorkBatchReplacement(params);
+    await prepareContinuationWorkBatchReplacement(params);
   const replacePriorParkedWork =
     params.priorParkedFlowsToSupersede !== undefined || params.coalescePriorParkedWork !== false;
   for (const request of params.requests) {

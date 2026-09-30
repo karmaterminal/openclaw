@@ -62,13 +62,18 @@ const contracts: GuardContract[] = [
     callers: ["src/agents/embedded-agent-utils.ts"],
   },
   {
-    guard: "hasLiveContinuationDelegateChildRun",
+    // #1408 L4 replaced the live-registry check (hasLiveContinuationDelegateChildRun)
+    // with admission evidence read under every recorded child run ID (Q3 at-most-once).
+    guard: "readDelegateAdmissionEvidence",
     protects:
-      "post-compaction delegate delivery must not settle while a continuation delegate child run is still live",
-    callers: [
-      "src/auto-reply/continuation/delegate-dispatch-accepted-children.ts",
-      "src/auto-reply/reply/post-compaction-delegate-delivery.ts",
-    ],
+      "a claimed delegate settles, respawns or is interrupted only from registry evidence read under every recorded child run ID; without it dispatch can re-spawn an already admitted child or settle while that child is still live",
+    callers: ["src/auto-reply/continuation/delegate-dispatch-accepted-children.ts"],
+  },
+  {
+    guard: "readAdmissionEvidence",
+    protects:
+      "post-compaction delegate delivery must not settle or re-spawn while the entry's recorded child run may be live or admitted; it consults admission evidence under every recorded attempt run ID",
+    callers: ["src/auto-reply/reply/post-compaction-delegate-delivery.ts"],
   },
   {
     guard: "hasTrustedContinuationHeartbeatWake",
@@ -100,7 +105,8 @@ const contracts: GuardContract[] = [
     callers: [
       "src/agents/subagents/spawn/subagent-spawn-rollback.ts",
       "src/agents/subagents/spawn/subagent-spawn-session-patch.ts",
-      "src/agents/subagents/spawn/subagent-spawn.ts",
+      // The spawn outcome mapping moved here in the max-lines split (L2).
+      "src/agents/subagents/spawn/subagent-spawn-registration.ts",
       "src/auto-reply/continuation/delegate-dispatch.ts",
     ],
   },

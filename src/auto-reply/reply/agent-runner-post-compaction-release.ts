@@ -106,7 +106,7 @@ export async function releasePostCompactionDelegatesAfterCompaction(params: {
     storePath: params.storePath,
   });
   for (const delegate of delegatesToPreserve) {
-    stagePostCompactionDelegate(params.sessionKey, delegate);
+    await stagePostCompactionDelegate(params.sessionKey, delegate);
   }
 
   const { emitContinuationCompactionReleasedSpan } =

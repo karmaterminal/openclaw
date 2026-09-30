@@ -1,13 +1,11 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useContinuationCustodyTestState } from "../../auto-reply/continuation/custody/custody.test-support.js";
 import {
-  claimStagedPostCompactionTaskFlowDelegates,
+  claimStagedPostCompactionDelegates,
   consumeStagedPostCompactionDelegates,
 } from "../../auto-reply/continuation/delegate-store-post-compaction.js";
-import {
-  cancelPendingDelegates,
-  consumePendingDelegates,
-} from "../../auto-reply/continuation/delegate-store.js";
+import { consumePendingDelegates } from "../../auto-reply/continuation/delegate-store.js";
 import {
   resetContinueDelegateTurnAdmissionForTests,
   resetContinueDelegateTurnBudget,
@@ -33,16 +31,14 @@ const ACTIVE_TRACE_CONTEXT: DiagnosticTraceContext = {
 };
 
 describe("continue_delegate tool", () => {
+  useContinuationCustodyTestState();
+
   beforeEach(() => {
-    cancelPendingDelegates("test-session");
-    consumePendingDelegates("test-session");
-    consumeStagedPostCompactionDelegates("test-session");
     resetContinueDelegateTurnAdmissionForTests();
     clearRuntimeConfigSnapshot();
   });
 
   afterEach(() => {
-    cancelPendingDelegates("test-session");
     resetContinueDelegateTurnAdmissionForTests();
     clearRuntimeConfigSnapshot();
     resetDiagnosticTraceContextForTest();
@@ -155,8 +151,8 @@ describe("continue_delegate tool", () => {
 
       const delegates =
         mode === "post-compaction"
-          ? claimStagedPostCompactionTaskFlowDelegates("test-session")
-          : consumePendingDelegates("test-session");
+          ? await claimStagedPostCompactionDelegates("test-session")
+          : await consumePendingDelegates("test-session");
       expect(delegates).toMatchObject([
         {
           task: `${mode} owned work`,
@@ -191,7 +187,7 @@ describe("continue_delegate tool", () => {
       recipientContext: { purpose: "Use the report to compare current results." },
     });
 
-    const delegates = consumePendingDelegates("test-session");
+    const delegates = await consumePendingDelegates("test-session");
     expect(delegates[0]).not.toHaveProperty("returnOptions");
     expect(delegates[0]).not.toHaveProperty("recipientContext");
     expect(delegates[1]).toMatchObject({
@@ -308,7 +304,7 @@ describe("continue_delegate tool", () => {
       attachAs: { mountPath: "handoff/path" },
     });
     expect(JSON.stringify(result)).not.toContain(attachmentContent);
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "read the attached handoff",
         attachments: [
@@ -337,12 +333,12 @@ describe("continue_delegate tool", () => {
     });
     expect(emptyResult).toMatchObject({ status: "scheduled", attachmentCount: 1 });
     expect(emptyResult).not.toHaveProperty("attachAs");
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         attachments: [{ name: "handoff.txt", content: "snapshot" }],
       }),
     ]);
-    expect(consumePendingDelegates("test-session")).toEqual([]);
+    expect(await consumePendingDelegates("test-session")).toEqual([]);
 
     const snakeResult = await executeTool(tool, 1, {
       task: "carry the mounted handoff",
@@ -354,7 +350,7 @@ describe("continue_delegate tool", () => {
       attachmentCount: 1,
       attachAs: { mountPath: "handoff" },
     });
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({ attachAs: { mountPath: "handoff" } }),
     ]);
   });
@@ -371,7 +367,7 @@ describe("continue_delegate tool", () => {
     expect(emptyResult).not.toHaveProperty("attachmentCount");
     expect(emptyResult).not.toHaveProperty("attachAs");
     const emptyDelegate = expectDefined(
-      consumePendingDelegates("test-session").at(0),
+      (await consumePendingDelegates("test-session")).at(0),
       "empty delegate",
     );
     expect(emptyDelegate).not.toHaveProperty("attachments");
@@ -386,7 +382,7 @@ describe("continue_delegate tool", () => {
     expect(emptyPostCompactionResult).not.toHaveProperty("attachmentCount");
     expect(emptyPostCompactionResult).not.toHaveProperty("attachAs");
     const emptyStagedDelegate = expectDefined(
-      consumeStagedPostCompactionDelegates("test-session").at(0),
+      (await consumeStagedPostCompactionDelegates("test-session")).at(0),
       "empty staged delegate",
     );
     expect(emptyStagedDelegate).not.toHaveProperty("attachments");
@@ -422,7 +418,7 @@ describe("continue_delegate tool", () => {
         attachAs: { mountPath: "unsafe\npath" },
       }),
     ).rejects.toThrow("attachAs.mountPath invalid (reason=unsupported_characters)");
-    expect(consumePendingDelegates("test-session")).toEqual([]);
+    expect(await consumePendingDelegates("test-session")).toEqual([]);
   });
 
   it("applies shared attachment safety validation before durable enqueue", async () => {
@@ -474,7 +470,7 @@ describe("continue_delegate tool", () => {
       }),
     ).rejects.toThrow("attachments_file_bytes_exceeded");
 
-    expect(consumePendingDelegates("test-session")).toEqual([]);
+    expect(await consumePendingDelegates("test-session")).toEqual([]);
   });
 
   it.each([
@@ -574,7 +570,7 @@ describe("continue_delegate tool", () => {
         expect(serialized).not.toContain(attachment.content);
       }
       expect(serialized).not.toContain(mountPath);
-      expect(consumePendingDelegates("test-session")).toEqual([]);
+      expect(await consumePendingDelegates("test-session")).toEqual([]);
     },
   );
 
@@ -599,7 +595,7 @@ describe("continue_delegate tool", () => {
         attachments: [{ name: "handoff.txt", content: "x".repeat(1024 * 1024 + 1) }],
       }),
     ).rejects.toThrow("attachments_file_bytes_exceeded");
-    expect(consumePendingDelegates("test-session")).toEqual([]);
+    expect(await consumePendingDelegates("test-session")).toEqual([]);
   });
 
   it("rejects oversized serialized attachment metadata before TaskFlow staging", async () => {
@@ -629,7 +625,7 @@ describe("continue_delegate tool", () => {
         }),
       ).rejects.toThrow();
     }
-    expect(consumeStagedPostCompactionDelegates("test-session")).toEqual([]);
+    expect(await consumeStagedPostCompactionDelegates("test-session")).toEqual([]);
   });
 
   it("resets the per-turn budget at the provider-turn boundary for the same tool instance", async () => {
@@ -666,7 +662,7 @@ describe("continue_delegate tool", () => {
       delegateIndex: 1,
       delegatesThisTurn: 1,
     });
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({ task: "fresh turn immediate" }),
     ]);
   });
@@ -711,10 +707,10 @@ describe("continue_delegate tool", () => {
       status: "scheduled",
       delaySeconds: 2,
     });
-    expect(consumePendingDelegates("test-session")).toEqual([]);
+    expect(await consumePendingDelegates("test-session")).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({ task: "clamped delayed delegate", delayMs: 2_000 }),
     ]);
   });
@@ -731,7 +727,7 @@ describe("continue_delegate tool", () => {
       status: "scheduled",
       mode: "silent-wake",
     });
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({ task: "mixed-case mode delegate", mode: "silent-wake" }),
     ]);
   });
@@ -752,7 +748,7 @@ describe("continue_delegate tool", () => {
     expect(result).not.toHaveProperty("model");
     expect(result).not.toHaveProperty("targetSessionKey");
     expect(result).not.toHaveProperty("targetSessionKeys");
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "default return without explicit targets",
         mode: "silent-wake",
@@ -775,7 +771,7 @@ describe("continue_delegate tool", () => {
     });
     expect(result).not.toHaveProperty("targetSessionKey");
     expect(result).not.toHaveProperty("targetSessionKeys");
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "silent default return",
         mode: "silent",
@@ -798,7 +794,7 @@ describe("continue_delegate tool", () => {
       status: "scheduled",
       targetSessionKey: "agent:main:root",
     });
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "return to root",
         targetSessionKey: "agent:main:root",
@@ -824,7 +820,7 @@ describe("continue_delegate tool", () => {
       targetSessionKey: "agent:main:discord:channel:000000000000000001",
     });
     expect(result).not.toHaveProperty("fanoutMode");
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "targeted return",
         mode: "silent-wake",
@@ -848,7 +844,7 @@ describe("continue_delegate tool", () => {
       status: "scheduled",
       targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
     });
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "return to siblings",
         targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
@@ -867,7 +863,7 @@ describe("continue_delegate tool", () => {
       status: "scheduled",
       fanoutMode: "tree",
     });
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({ task: "return up the chain", fanoutMode: "tree" }),
     ]);
 
@@ -884,7 +880,7 @@ describe("continue_delegate tool", () => {
       status: "scheduled",
       fanoutMode: "all",
     });
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({ task: "return to everyone", fanoutMode: "all" }),
     ]);
   });
@@ -905,7 +901,7 @@ describe("continue_delegate tool", () => {
     });
     expect(result).not.toHaveProperty("targetSessionKey");
     expect(result).not.toHaveProperty("targetSessionKeys");
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "fan out to ancestors",
         mode: "silent-wake",
@@ -927,7 +923,7 @@ describe("continue_delegate tool", () => {
       status: "scheduled",
     });
     expect(result).not.toHaveProperty("traceparent");
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "continue active traced chain",
         traceparent: ACTIVE_TRACEPARENT,
@@ -949,7 +945,7 @@ describe("continue_delegate tool", () => {
       status: "scheduled",
     });
     expect(result).not.toHaveProperty("traceparent");
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "ignore attacker hidden traceparent",
         traceparent: ACTIVE_TRACEPARENT,
@@ -963,7 +959,7 @@ describe("continue_delegate tool", () => {
 
     await executeTool(tool, 0, { task: "continue untraced chain" });
 
-    const delegates = consumePendingDelegates("test-session");
+    const delegates = await consumePendingDelegates("test-session");
     expect(delegates).toHaveLength(1);
     expect(expectDefined(delegates.at(0), "delegate").traceparent).toBeUndefined();
   });
@@ -1016,7 +1012,7 @@ describe("continue_delegate tool", () => {
       attachmentCount: 1,
       attachAs: { mountPath: "handoff" },
     });
-    expect(consumeStagedPostCompactionDelegates("test-session")).toEqual([
+    expect(await consumeStagedPostCompactionDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "carry compacted working state forward",
         silent: true,
@@ -1041,7 +1037,7 @@ describe("continue_delegate tool", () => {
       status: "queued-for-compaction",
     });
     expect(result).not.toHaveProperty("traceparent");
-    expect(consumeStagedPostCompactionDelegates("test-session")).toEqual([
+    expect(await consumeStagedPostCompactionDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "carry traced compacted working state forward",
         traceparent: ACTIVE_TRACEPARENT,
@@ -1061,7 +1057,7 @@ describe("continue_delegate tool", () => {
       status: "scheduled",
       model: "github-copilot/claude-haiku-4.5",
     });
-    expect(consumePendingDelegates("test-session")).toEqual([
+    expect(await consumePendingDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "route to a cheaper model",
         model: "github-copilot/claude-haiku-4.5",
@@ -1075,7 +1071,7 @@ describe("continue_delegate tool", () => {
     const result = await executeTool(tool, 0, { task: "inherit parent model" });
 
     expect(result).not.toHaveProperty("model");
-    const delegates = consumePendingDelegates("test-session");
+    const delegates = await consumePendingDelegates("test-session");
     expect(delegates).toHaveLength(1);
     expect(expectDefined(delegates.at(0), "delegate").model).toBeUndefined();
   });
@@ -1089,7 +1085,7 @@ describe("continue_delegate tool", () => {
     });
 
     expect(result).not.toHaveProperty("model");
-    const delegates = consumePendingDelegates("test-session");
+    const delegates = await consumePendingDelegates("test-session");
     expect(delegates).toHaveLength(1);
     expect(expectDefined(delegates.at(0), "delegate").model).toBeUndefined();
   });
@@ -1107,7 +1103,7 @@ describe("continue_delegate tool", () => {
       status: "queued-for-compaction",
       model: "github-copilot/claude-sonnet-4.6",
     });
-    expect(consumeStagedPostCompactionDelegates("test-session")).toEqual([
+    expect(await consumeStagedPostCompactionDelegates("test-session")).toEqual([
       expect.objectContaining({
         task: "carry compacted state to a specific model",
         model: "github-copilot/claude-sonnet-4.6",

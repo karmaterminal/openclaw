@@ -14,16 +14,26 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import * as sessionAccessorModule from "../../config/sessions/session-accessor.js";
 import * as sessionStoreModule from "../../config/sessions/store-writer-state.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
-  enqueuePostCompactionDelegateDelivery as enqueuePostCompactionDelegateDeliveryQueue,
   loadPendingSessionDelivery,
+  SessionDeliveryDeadLetteredError,
+  SessionDeliverySafeRetryError,
 } from "../../infra/session-delivery-queue-storage.js";
+import { formatContinuationChildRunId } from "../../shared/continuation-run-key.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
+import { useContinuationCustodyTestState } from "../continuation/custody/custody.test-support.js";
+import {
+  claimStagedPostCompactionDelegates,
+  releaseStagedPostCompactionDelegateToQueue,
+  stagePostCompactionCustodyDelegate,
+  toSessionPostCompactionDelegate,
+} from "../continuation/delegate-store-post-compaction.js";
 import { POST_COMPACTION_DELEGATE_TTL_MS } from "../continuation/post-compaction-staleness.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
@@ -35,6 +45,8 @@ import { drainPostCompactionDelegateDeliveries } from "./post-compaction-delegat
 
 const mockRegistryState = vi.hoisted(() => ({
   acceptedChildSessionKeys: new Set<string>(),
+  /** Registry rows keyed by attempt run ID: runId -> child session key. */
+  admittedRunIds: new Map<string, string>(),
 }));
 const { assertDelegateArtifactPolicyPreparedMock, removeUnacceptedDelegateArtifactPolicyMock } =
   vi.hoisted(() => ({
@@ -90,6 +102,7 @@ function createQueuedEntry(
     firstArmedAt: DELIVERY_NOW_MS,
     enqueuedAt: DELIVERY_NOW_MS,
     retryCount: 0,
+    childRunId: firstAttemptRunId(overrides?.sourceFlowId ?? overrides?.id ?? "queue-1"),
     ...overrides,
   };
 }
@@ -99,10 +112,24 @@ function deriveTestContinuationChildSessionKey(agentId: string, flowId: string):
   return `agent:${agentId}:subagent:continuation-${digest}`;
 }
 
+/** The first attempt key a release records for `recordId` (RFC §5.4.4). */
+function firstAttemptRunId(recordId: string): string {
+  return formatContinuationChildRunId(recordId, 1);
+}
+
+/** Put an owner-matching registry row under `recordId`'s first attempt key. */
+function admitFirstAttempt(recordId: string, agentId = "main"): string {
+  const childSessionKey = deriveTestContinuationChildSessionKey(agentId, recordId);
+  mockRegistryState.admittedRunIds.set(firstAttemptRunId(recordId), childSessionKey);
+  return childSessionKey;
+}
+
 function createDeliveryDeps(params: {
   storePath: string;
   runtimeConfig?: Partial<ContinuationRuntimeConfig>;
   spawnStatus?: "accepted" | "forbidden" | "error";
+  /** Spawn pipeline phase a failed spawn reports (RFC §5.4.4). */
+  spawnFailurePhase?: "initialize" | "dispatch" | "register";
   spawnError?: Error;
   /** Pre-existing accepted-hop marker on the source row, as a replay would see. */
   reservedChainState?: ChainState;
@@ -114,23 +141,51 @@ function createDeliveryDeps(params: {
       throw params.spawnError;
     }
     const status = params.spawnStatus ?? "accepted";
-    return status === "accepted" ? { status, context: "isolated" as const } : { status };
+    return status === "accepted"
+      ? { status, context: "isolated" as const }
+      : {
+          status,
+          ...(params.spawnFailurePhase ? { failurePhase: params.spawnFailurePhase } : {}),
+        };
   });
   const loadSessionEntry = vi.fn(({ storePath, sessionKey }) =>
     sessionAccessorModule.loadSessionEntry({ storePath, sessionKey }),
   );
-  const markPendingDelegateSpawnAccepted = vi.fn(() => true);
-  const failReleasedPostCompactionDelegate = vi.fn(() => true);
-  const revalidatePendingDelegateForSpawn = vi.fn(() => ({ allowed: true }) as const);
-  // Mirrors the real store: the marker write bumps the TaskFlow revision, and a
-  // row that already carries a marker returns that same hop on every replay.
+  const markPendingDelegateSpawnAccepted = vi.fn(async () => true);
+  const failReleasedPostCompactionDelegate = vi.fn(async () => true);
+  const revalidatePendingDelegateForSpawn = vi.fn(async () => ({ allowed: true }) as const);
+  // Mirrors the real store: the marker write bumps the custody revision, and a
+  // record that already carries a marker returns that same hop on every replay.
   const reserveAcceptedPostCompactionChainHop = vi.fn(
-    (flowRef: { flowId?: string; expectedRevision?: number }, plannedChainState: ChainState) => ({
+    async (
+      flowRef: { flowId?: string; expectedRevision?: number },
+      plannedChainState: ChainState,
+    ) => ({
       chainState: params.reservedChainState ?? plannedChainState,
       expectedRevision:
         flowRef.expectedRevision === undefined ? undefined : flowRef.expectedRevision + 1,
     }),
   );
+  // Registry evidence under the entry's attempt keys (RFC §5.4.4): a row whose
+  // requester is the owner is an admitted child.
+  const readAdmissionEvidence = vi.fn<PostCompactionDelegateDeliveryDeps["readAdmissionEvidence"]>(
+    async ({ runIds }) => {
+      const runId = runIds.find((candidate) => mockRegistryState.admittedRunIds.has(candidate));
+      return runId
+        ? {
+            kind: "admitted",
+            runId,
+            childSessionKey: mockRegistryState.admittedRunIds.get(runId)!,
+          }
+        : { kind: "none" };
+    },
+  );
+  const markAttemptStarted = vi.fn<PostCompactionDelegateDeliveryDeps["markAttemptStarted"]>(
+    async () => undefined,
+  );
+  const enqueueInterruptedNotice = vi.fn<
+    PostCompactionDelegateDeliveryDeps["enqueueInterruptedNotice"]
+  >(async () => undefined);
   const deps: PostCompactionDelegateDeliveryDeps = {
     enqueueSystemEvent,
     getRuntimeConfig: vi.fn(() => cfg),
@@ -149,9 +204,15 @@ function createDeliveryDeps(params: {
     markPendingDelegateSpawnAccepted,
     failReleasedPostCompactionDelegate,
     reserveAcceptedPostCompactionChainHop,
+    readAdmissionEvidence,
+    markAttemptStarted,
+    enqueueInterruptedNotice,
   };
   return {
     deps,
+    enqueueInterruptedNotice,
+    markAttemptStarted,
+    readAdmissionEvidence,
     enqueueSystemEvent,
     loadSessionEntry,
     log,
@@ -203,6 +264,7 @@ afterEach(() => {
   assertDelegateArtifactPolicyPreparedMock.mockClear();
   removeUnacceptedDelegateArtifactPolicyMock.mockClear();
   mockRegistryState.acceptedChildSessionKeys.clear();
+  mockRegistryState.admittedRunIds.clear();
   sessionStoreModule.clearSessionStoreCacheForTest();
 });
 
@@ -211,36 +273,49 @@ describe("post-compaction delivery: continuation depth follows accepted children
     await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
-      const { deps, reserveAcceptedPostCompactionChainHop } = createDeliveryDeps({
-        storePath,
-        spawnError: new Error("spawn unavailable"),
+      const { deps, enqueueInterruptedNotice, reserveAcceptedPostCompactionChainHop } =
+        createDeliveryDeps({
+          storePath,
+          spawnStatus: "error",
+          spawnFailurePhase: "initialize",
+        });
+      const entry = createQueuedEntry({
+        sourceFlowId: "pc-flow-source",
+        sourceExpectedRevision: 7,
+        returnOptions: { artifacts: "optional" },
       });
 
-      // Repeated transient spawn failures — the shape a flaky attachment
-      // materialization or a briefly unavailable spawner produces.
+      // Repeated transient spawn failures before the Gateway dispatch — the
+      // shape a flaky attachment materialization or a briefly unavailable
+      // spawner produces. They provably dispatched nothing, so each releases
+      // attempt ownership for a retry (RFC §5.4.4).
       for (let attempt = 0; attempt < 5; attempt += 1) {
-        await expect(
-          deliverQueuedPostCompactionDelegate(
-            {
-              entry: createQueuedEntry({
-                sourceFlowId: "pc-flow-source",
-                sourceExpectedRevision: 7,
-                returnOptions: { artifacts: "optional" },
-              }),
-            },
-            deps,
-          ),
-        ).rejects.toThrow("spawn unavailable");
+        await expect(deliverQueuedPostCompactionDelegate({ entry }, deps)).rejects.toBeInstanceOf(
+          SessionDeliverySafeRetryError,
+        );
       }
+      expect(removeUnacceptedDelegateArtifactPolicyMock).not.toHaveBeenCalled();
+      expect(enqueueInterruptedNotice).not.toHaveBeenCalled();
+
+      // Contract change (RFC §5.4.4, Q3): a THROWN spawn has no phase, so the
+      // child may have been admitted. It is never retried: one interrupted
+      // notice, then the entry dead-letters. It still charges nothing.
+      const thrown = createDeliveryDeps({ storePath, spawnError: new Error("spawn unavailable") });
+      await expect(
+        deliverQueuedPostCompactionDelegate({ entry }, thrown.deps),
+      ).rejects.toBeInstanceOf(SessionDeliveryDeadLetteredError);
+      expect(thrown.enqueueInterruptedNotice).toHaveBeenCalledTimes(1);
+      expect(thrown.enqueueInterruptedNotice).toHaveBeenCalledWith({ entry });
       expect(removeUnacceptedDelegateArtifactPolicyMock).not.toHaveBeenCalled();
 
       // A retry that never reached an accepted child must consume ZERO chain
       // budget: nothing is charged, so the entry stays retryable instead of
       // walking itself into `maxChainLength` and stranding the snapshot.
       expect(reserveAcceptedPostCompactionChainHop).not.toHaveBeenCalled();
+      expect(thrown.reserveAcceptedPostCompactionChainHop).not.toHaveBeenCalled();
       const stored = readSessionStore(storePath);
-      for (const entry of Object.values(stored)) {
-        expect(entry.continuationChainCount ?? 0).toBe(0);
+      for (const storedEntry of Object.values(stored)) {
+        expect(storedEntry.continuationChainCount ?? 0).toBe(0);
       }
     });
   });
@@ -287,8 +362,7 @@ describe("post-compaction delivery: continuation depth follows accepted children
           continuationChainCount: 2,
         },
       });
-      const childSessionKey = deriveTestContinuationChildSessionKey("main", "pc-flow-source");
-      mockRegistryState.acceptedChildSessionKeys.add(childSessionKey);
+      admitFirstAttempt("pc-flow-source");
       const { deps, spawnSubagentDirect } = createDeliveryDeps({
         storePath,
         reservedChainState: {
@@ -322,8 +396,7 @@ describe("post-compaction delivery: continuation depth follows accepted children
       await seedSessionStore(storePath, {
         main: { sessionId: "session", updatedAt: Date.now(), continuationChainCount: 1 },
       });
-      const childSessionKey = deriveTestContinuationChildSessionKey("main", "pc-flow-source");
-      mockRegistryState.acceptedChildSessionKeys.add(childSessionKey);
+      const childSessionKey = admitFirstAttempt("pc-flow-source");
       const { deps, markPendingDelegateSpawnAccepted, spawnSubagentDirect } = createDeliveryDeps({
         storePath,
       });
@@ -408,16 +481,25 @@ describe("post-compaction delivery: continuation depth follows accepted children
         "persist failed",
       );
       expect(spawnSubagentDirect).toHaveBeenCalledTimes(1);
-
-      // The child the first attempt accepted is keyed off the QUEUE ENTRY ID,
-      // because that is what the spawn passes as `continuationDelegateFlowId`.
-      // The replay guard must derive it the same way or this retry duplicates
-      // the child.
-      mockRegistryState.acceptedChildSessionKeys.add(
-        deriveTestContinuationChildSessionKey("main", "queue-sourceless"),
+      // The spawn runs under the entry's attempt key, which the registry row
+      // of an admitted child carries as its run ID (RFC §5.4.4).
+      expect(spawnSubagentDirect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          continuationDelegateFlowId: "queue-sourceless",
+          continuationChildRunId: firstAttemptRunId("queue-sourceless"),
+        }),
+        expect.any(Object),
       );
+
+      // The redelivery carries the started attempt and a bumped retry count;
+      // the replay guard must look the child up under the same attempt key or
+      // this retry duplicates the child.
+      admitFirstAttempt("queue-sourceless");
       deps.patchSessionEntryCore = sessionAccessorModule.patchSessionEntryCore;
-      await deliverQueuedPostCompactionDelegate({ entry }, deps);
+      await deliverQueuedPostCompactionDelegate(
+        { entry: { ...entry, deliveryStartedAt: DELIVERY_NOW_MS, retryCount: 1 } },
+        deps,
+      );
       expect(spawnSubagentDirect).toHaveBeenCalledTimes(1);
       // No durable marker exists for a source-less row, so the replay reclaims
       // the delivery without risking a second charge for the same accepted hop.
@@ -568,9 +650,7 @@ describe("post-compaction delivery: RFC §4.4 stale work dies before materializa
     await withTestDir({ prefix: "openclaw-post-compaction-stale-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
-      mockRegistryState.acceptedChildSessionKeys.add(
-        deriveTestContinuationChildSessionKey("main", "pc-flow-source"),
-      );
+      admitFirstAttempt("pc-flow-source");
       const harness = createDeliveryDeps({ storePath });
 
       await deliverQueuedPostCompactionDelegate(
@@ -589,29 +669,51 @@ describe("post-compaction delivery: RFC §4.4 stale work dies before materializa
       expect(harness.markPendingDelegateSpawnAccepted).toHaveBeenCalledTimes(1);
     });
   });
+});
+
+// The durable entry comes from the real release commit (RFC §4.4), so it has
+// the attempt key the drain requires before it applies any gate (§5.4.4).
+describe("post-compaction delivery: stale custody-released entries in a queue drain", () => {
+  const custody = useContinuationCustodyTestState();
+  beforeEach(() => {
+    // Staging and decoding a delegate's attachments both read this policy.
+    setRuntimeConfigSnapshot({ tools: { sessions_spawn: { attachments: { enabled: true } } } });
+  });
+  afterEach(() => {
+    clearRuntimeConfigSnapshot();
+  });
 
   it("drops a stale entry during a queue drain without re-queuing it for a later restart", async () => {
     await withTestDir({ prefix: "openclaw-post-compaction-stale-drain-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
+      const stateDir = custody.stateDir();
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
-      const deliveryId = await enqueuePostCompactionDelegateDeliveryQueue(
-        {
-          sessionKey: "main",
-          delegate: {
-            task: SECRET_TASK,
-            createdAt: DELIVERY_NOW_MS - POST_COMPACTION_DELEGATE_TTL_MS - 1,
-            firstArmedAt: DELIVERY_NOW_MS - POST_COMPACTION_DELEGATE_TTL_MS - 1,
-            attachments: [{ name: "state.md", content: SECRET_ATTACHMENT }],
-          },
-          sequence: 0,
-        },
-        tempDir,
+      const armedAt = DELIVERY_NOW_MS - POST_COMPACTION_DELEGATE_TTL_MS - 1;
+      const staged = await stagePostCompactionCustodyDelegate("main", {
+        task: SECRET_TASK,
+        stagedAt: armedAt,
+        firstArmedAt: armedAt,
+        attachments: [{ name: "state.md", content: SECRET_ATTACHMENT }],
+      });
+      const claimed = expectDefined(
+        (await claimStagedPostCompactionDelegates("main"))[0],
+        "claimed post-compaction delegate",
       );
+      const released = await releaseStagedPostCompactionDelegateToQueue({
+        sessionKey: "main",
+        sourceSessionId: "session",
+        delegate: toSessionPostCompactionDelegate(claimed),
+        sequence: 0,
+      });
+      if (!released.released) {
+        throw new Error(`release did not commit: ${released.reason}`);
+      }
+      const deliveryId = released.entryId;
       const harness = createDeliveryDeps({ storePath });
 
       await drainPostCompactionDelegateDeliveries({
         sessionKey: "main",
-        stateDir: tempDir,
+        stateDir,
         deliveryDeps: harness.deps,
         log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
       });
@@ -619,7 +721,18 @@ describe("post-compaction delivery: RFC §4.4 stale work dies before materializa
       // Terminal, not retryable: the entry leaves `pending/` so no restart or
       // later compaction can resurrect the expired snapshot.
       expect(harness.spawnSubagentDirect).not.toHaveBeenCalled();
-      expect(await loadPendingSessionDelivery(deliveryId, tempDir)).toBeNull();
+      expect(harness.markAttemptStarted).not.toHaveBeenCalled();
+      expect(harness.enqueueInterruptedNotice).not.toHaveBeenCalled();
+      expect(harness.failReleasedPostCompactionDelegate).toHaveBeenCalledWith(
+        {
+          flowId: staged.recordId,
+          expectedRevision: claimed.expectedRevision,
+          task: SECRET_TASK,
+        },
+        `Post-compaction delegate rejected as stale after ${POST_COMPACTION_DELEGATE_TTL_MS + 1}ms.`,
+        "Post-compaction delegate rejected",
+      );
+      expect(await loadPendingSessionDelivery(deliveryId, stateDir)).toBeNull();
       expect(collectEmittedText(harness)).not.toContain(SECRET_ATTACHMENT);
     });
   });

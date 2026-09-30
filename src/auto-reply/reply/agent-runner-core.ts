@@ -482,19 +482,19 @@ export async function cleanupReplyAgentRun(context: {
   blockReplyPipeline?.stop();
   typing.markRunComplete();
   // do NOT consume/claim queued delegates in cleanup. consume APIs are
-  // TaskFlow claims (queued -> running), not deletes; claiming here and
+  // custody claims (queued -> running), not deletes; claiming here and
   // discarding the returned rows would strand a delegate matured/queued during
   // a failed turn in `running` until restart recovery. Durable queued delegates
   // must survive a failed turn and be dispatched by the next turn's dispatcher
   // or restart recovery — so leave them queued. Only re-stage the in-memory
   // preserve list (delegates a durable handoff could not persist), which would
-  // otherwise be lost with the process. Guard the TaskFlow call: a throw here
+  // otherwise be lost with the process. Guard the custody write: a throw here
   // runs inside the finally, so it would both mask the original run error and
   // skip markDispatchIdle() below, leaking the typing keepalive loop (I4).
   if (sessionKey && postCompactionDelegatesToPreserve.length > 0) {
     try {
       for (const delegate of postCompactionDelegatesToPreserve) {
-        stagePostCompactionDelegate(sessionKey, delegate);
+        await stagePostCompactionDelegate(sessionKey, delegate);
       }
     } catch (drainError) {
       logVerbose(

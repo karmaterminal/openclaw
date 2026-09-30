@@ -73,6 +73,10 @@ vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", async (i
   };
 });
 
+import {
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "../auto-reply/continuation/custody/custody.test-support.js";
 import { stagePostCompactionDelegate } from "../auto-reply/continuation/delegate-store-post-compaction.js";
 import { resetDelegateStoreForTests } from "../auto-reply/continuation/delegate-store.js";
 import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
@@ -84,11 +88,6 @@ import {
 } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { drainSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
-import {
-  configureTaskFlowRegistryRuntime,
-  resetTaskFlowRegistryForTests,
-} from "../tasks/task-runtime.test-helpers.js";
-import { createInMemoryTaskFlowRegistryStore } from "../test-utils/task-registry-store.js";
 import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 import * as subagentSpawn from "./subagents/spawn/subagent-spawn.js";
 
@@ -152,9 +151,9 @@ describe("announce-path post-compaction routing", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;
   const stageMock = vi.mocked(stagePostCompactionDelegate);
 
+  useContinuationCustodyTestState();
+
   beforeEach(async () => {
-    resetTaskFlowRegistryForTests({ persist: false });
-    configureTaskFlowRegistryRuntime({ store: createInMemoryTaskFlowRegistryStore() });
     resetDelegateStoreForTests();
     const params = buildLeafParams("");
     await writeSessionStore({
@@ -176,7 +175,6 @@ describe("announce-path post-compaction routing", () => {
     clearRuntimeConfigSnapshot();
     resetSystemEventsForTest();
     resetDelegateStoreForTests();
-    resetTaskFlowRegistryForTests({ persist: false });
   });
 
   it("post-compaction bracket → stagePostCompactionDelegate, NOT chain-spawn (the lifeboat-drop fix)", async () => {
@@ -188,9 +186,14 @@ describe("announce-path post-compaction routing", () => {
 
     // The :995 fix: post-compaction routes to staging...
     expect(stageMock).toHaveBeenCalledTimes(1);
-    // The staged TaskFlow remains child-owned until the post-compaction seam releases it.
+    // The staged custody record remains child-owned until the post-compaction seam releases it.
     const stagedSessionKey = stageMock.mock.calls[0]?.[0];
     expect(stagedSessionKey).toBe("agent:main:subagent:postcompaction-route");
+    expect(
+      await listCustodyRecordsForTest({
+        ownerSessionKey: "agent:main:subagent:postcompaction-route",
+      }),
+    ).toEqual([expect.objectContaining({ kind: "post_compaction", status: "queued" })]);
     const stagedArg = stageMock.mock.calls[0]?.[1] as { task?: string };
     expect(stagedArg.task).toContain("lifeboat leaf");
     // ...AND the normal chain-spawn is NOT taken (mutual exclusion).

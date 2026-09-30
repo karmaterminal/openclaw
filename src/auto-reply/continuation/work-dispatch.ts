@@ -12,6 +12,7 @@ import {
   registerContinuationDispatchClaim,
   resetContinuationDispatchClaimsForTests,
 } from "./continuation-dispatch-claims.js";
+import { isContinuationCustodyOwnerAwaitingImport } from "./custody-import-gate.js";
 import { checkContinuationBudget } from "./scheduler.js";
 import type {
   ChainState,
@@ -140,7 +141,8 @@ function armWorkTimer(
       .catch((err: unknown) => {
         const message = formatErrorMessage(err);
         log.error(`[continuation:work-hedge-error] error=${message} session=${sessionKey}`);
-        armNextWorkTimer(sessionKey, Date.now() + HEDGE_DISPATCH_FAILURE_RETRY_MS);
+        // The retry dispatch re-reads custody and re-arms from the soonest record.
+        armWorkTimer(sessionKey, Date.now() + HEDGE_DISPATCH_FAILURE_RETRY_MS, options);
       });
   }, fireIn);
   handle.unref();
@@ -267,7 +269,7 @@ function idleRetryTriggerFromWork(
     : { kind: "command-lane-idle", lane: MAIN_COMMAND_LANE };
 }
 
-function clearIdleRetryForWork(work: PendingContinuationWork): void {
+async function clearIdleRetryForWork(work: PendingContinuationWork): Promise<void> {
   const idleRetry = work.idleRetry;
   const trigger = idleRetryTriggerFromWork(work);
   if (!idleRetry || !trigger) {
@@ -279,11 +281,15 @@ function clearIdleRetryForWork(work: PendingContinuationWork): void {
     return;
   }
   if (
-    hasPendingIdleRetryWork(work.sessionKey, {
+    await hasPendingIdleRetryWork(work.sessionKey, {
       trigger: idleRetry.trigger,
       ...(work.flowId ? { excludeFlowId: work.flowId } : {}),
     })
   ) {
+    return;
+  }
+  // The store read yielded; only abort the controller that is still armed.
+  if (idleRetryControllers.get(key) !== controller) {
     return;
   }
   controller.abort();
@@ -374,9 +380,9 @@ function earlierDueAt(left: number | undefined, right: number | undefined): numb
   return right === undefined ? left : Math.min(left, right);
 }
 
-function armNextWorkTimer(sessionKey: string, dueAt: number): void {
-  const soonestQueued = peekSoonestQueuedWorkDueAt(sessionKey);
-  const runningRecoveryDueAt = peekSoonestRunningWorkRecoveryDueAt(
+async function armNextWorkTimer(sessionKey: string, dueAt: number): Promise<void> {
+  const soonestQueued = await peekSoonestQueuedWorkDueAt(sessionKey);
+  const runningRecoveryDueAt = await peekSoonestRunningWorkRecoveryDueAt(
     sessionKey,
     RUNNING_WORK_RECOVERY_STALE_MS,
   );
@@ -453,11 +459,13 @@ export function partitionSupersededWork(
   return { drive, superseded };
 }
 
-function applyExecutionDirective(directive: ContinuationWorkExecutionDirective): void {
+async function applyExecutionDirective(
+  directive: ContinuationWorkExecutionDirective,
+): Promise<void> {
   if (directive.kind !== "requeued") {
     return;
   }
-  armNextWorkTimer(directive.sessionKey, directive.dueAt);
+  await armNextWorkTimer(directive.sessionKey, directive.dueAt);
   if (directive.retryTrigger) {
     registerIdleRetry(directive.sessionKey, directive.retryTrigger);
   }
@@ -516,14 +524,14 @@ export async function dispatchPendingContinuationWork(
     : undefined;
   const runningRecoveryBlockedByActiveReply = recoverRunning && sessionActive;
   if (activeSessionId) {
-    finalizeAnchorPendingWork(params.sessionKey, Date.now(), {
+    await finalizeAnchorPendingWork(params.sessionKey, Date.now(), {
       activeSessionId,
       matureOverdueAnchors: true,
     });
   } else {
-    finalizeAnchorPendingWork(params.sessionKey, Date.now(), { matureOverdueAnchors: true });
+    await finalizeAnchorPendingWork(params.sessionKey, Date.now(), { matureOverdueAnchors: true });
   }
-  const works = consumePendingWork(params.sessionKey, {
+  const works = await consumePendingWork(params.sessionKey, {
     includeRunning: recoverRunning && !runningRecoveryBlockedByActiveReply,
     includeRunningUpdatedAtOrBefore: params.includeRunningUpdatedAtOrBefore,
     includeIdleRetry: params.includeIdleRetry === true,
@@ -540,12 +548,12 @@ export async function dispatchPendingContinuationWork(
   );
   if (superseded.length > 0) {
     for (const stale of superseded) {
-      clearIdleRetryForWork(stale);
+      await clearIdleRetryForWork(stale);
       const overdueMs = Date.now() - stale.dueAt;
       log.info(
         `[continuation:work-superseded] flowId=${stale.flowId ?? "none"} session=${stale.sessionKey} hop=${stale.hop} overdueMs=${overdueMs} — folded into newer election`,
       );
-      markPendingWorkSuperseded(
+      await markPendingWorkSuperseded(
         stale,
         `Superseded by a newer continue_work election after a ${overdueMs}ms stale backlog.`,
       );
@@ -555,8 +563,8 @@ export async function dispatchPendingContinuationWork(
       { sessionKey: params.sessionKey, trusted: true },
     );
   }
-  const soonestQueued = peekSoonestUnmaturedWorkDueAt(params.sessionKey);
-  const runningRecoveryDueAt = peekSoonestRunningWorkRecoveryDueAt(
+  const soonestQueued = await peekSoonestUnmaturedWorkDueAt(params.sessionKey);
+  const runningRecoveryDueAt = await peekSoonestRunningWorkRecoveryDueAt(
     params.sessionKey,
     RUNNING_WORK_RECOVERY_STALE_MS,
   );
@@ -592,20 +600,20 @@ export async function dispatchPendingContinuationWork(
       // Match the durable ordering: transcript proof first, then lifecycle-owned
       // controller cleanup, then the execution owner's row transitions.
       for (const work of foldWorks) {
-        clearIdleRetryForWork(work);
+        await clearIdleRetryForWork(work);
       }
-      const foldResult = commitFoldedContinuationWork(
+      const foldResult = await commitFoldedContinuationWork(
         params.sessionKey,
         foldCandidates,
         foldAttempt,
       );
       for (const directive of foldResult.requeues) {
-        applyExecutionDirective(directive);
+        await applyExecutionDirective(directive);
       }
     }
   }
   for (const work of worksToGrant) {
-    clearIdleRetryForWork(work);
+    await clearIdleRetryForWork(work);
     const activeDispatch = registerContinuationDispatchClaim({
       sessionKey: work.sessionKey,
       ...(work.flowId ? { flowId: work.flowId } : {}),
@@ -620,7 +628,7 @@ export async function dispatchPendingContinuationWork(
     } finally {
       activeDispatch.release();
     }
-    applyExecutionDirective(directive);
+    await applyExecutionDirective(directive);
     if (directive.kind === "dispatched") {
       dispatched++;
     } else if (directive.kind === "failed") {
@@ -693,12 +701,12 @@ export async function scheduleContinuationWork(
     ...(electingTurnActive ? { anchorPending: true } : { anchorFinalizedAt: electedAt }),
     ...(idleRetry ? { idleRetry } : {}),
   };
-  const enqueueResult = enqueueContinuationWorkForSchedule({ work, schedule: params });
+  const enqueueResult = await enqueueContinuationWorkForSchedule({ work, schedule: params });
   if (!enqueueResult.scheduled) {
     return enqueueResult;
   }
   if (!enqueueResult.work.flowId) {
-    throw new Error("continuation work enqueue did not return a durable flow ID");
+    throw new Error("continuation work enqueue did not return a durable record ID");
   }
   params.onFlowEnqueued?.(enqueueResult.work.flowId);
   emitContinuationWorkSpan({
@@ -714,10 +722,10 @@ export async function scheduleContinuationWork(
       `[continuation:work-parked-on-turn-end] session=${params.sessionKey} hop=${hop} reasonCategory=${idleRetry?.reasonCategory ?? "unknown"}`,
     );
     registerIdleRetry(params.sessionKey, { kind: "reply-run-ended" });
-    armNextWorkTimer(params.sessionKey, enqueueResult.work.dueAt);
+    await armNextWorkTimer(params.sessionKey, enqueueResult.work.dueAt);
   } else {
     // Defer even zero-delay work until callers can persist advanced chain state.
-    armNextWorkTimer(params.sessionKey, enqueueResult.work.dueAt);
+    await armNextWorkTimer(params.sessionKey, enqueueResult.work.dueAt);
   }
   return {
     scheduled: true,
@@ -727,7 +735,7 @@ export async function scheduleContinuationWork(
   };
 }
 
-/** Schedules one durable flow per same-turn continue_work election. */
+/** Schedules one durable custody record per same-turn continue_work election. */
 export async function scheduleContinuationWorkBatch(
   params: ContinuationWorkBatchParams,
 ): Promise<ContinuationWorkBatchResult> {
@@ -748,12 +756,17 @@ export async function recoverPendingContinuationWork(): Promise<{
   if (!runtimeConfig.enabled) {
     return { sessions: 0, dispatched: 0, failed: 0, reaped: 0, terminalNotices };
   }
-  const sessionKeys = listPendingWorkSessionKeysForRecovery();
+  const sessionKeys = await listPendingWorkSessionKeysForRecovery();
   const includeRunningUpdatedAtOrBefore = Date.now() - RUNNING_WORK_RECOVERY_STALE_MS;
   let dispatched = 0;
   let failed = 0;
   let reaped = 0;
   for (const sessionKey of sessionKeys) {
+    // Owners still waiting on the legacy import keep their custody untouched
+    // until an import commits (RFC §5.4.5, "Update behavior").
+    if (isContinuationCustodyOwnerAwaitingImport(sessionKey)) {
+      continue;
+    }
     const result = await dispatchPendingContinuationWork({
       sessionKey,
       recoverRunning: true,

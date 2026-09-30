@@ -1,23 +1,29 @@
-import { createManagedTaskFlow } from "../../tasks/task-flow-runtime-internal.js";
+// Seed a queued continuation-work record straight into custody, bypassing the
+// election's owner condition and cap, as a pre-existing record would be. Tests
+// that exercise the election itself call `enqueuePendingWorkReplacing`.
+import crypto from "node:crypto";
+import { createContinuationRecord } from "./custody/custody-store.js";
 import {
-  CONTINUATION_WORK_CONTROLLER_ID,
   encodeWorkState,
-  workGoal,
+  workRecordDueAt,
   workToRuntime,
   type PendingContinuationWork,
 } from "./work-flow-state.js";
 
-export function enqueuePendingWork(work: PendingContinuationWork): PendingContinuationWork | null {
+export async function enqueuePendingWork(
+  work: PendingContinuationWork,
+): Promise<PendingContinuationWork | null> {
   const state = encodeWorkState(work);
-  const flow = createManagedTaskFlow({
-    ownerKey: work.sessionKey,
+  const created = await createContinuationRecord({
+    recordId: crypto.randomUUID(),
+    kind: "work",
+    ownerSessionKey: work.sessionKey,
     ...(work.chainId ? { chainId: work.chainId } : {}),
-    controllerId: CONTINUATION_WORK_CONTROLLER_ID,
-    notifyPolicy: "silent",
-    goal: workGoal(work),
-    currentStep: "Queued for same-session continuation wake",
-    stateJson: state,
+    status: "queued",
+    phase: "Queued for same-session continuation wake",
     createdAt: work.electedAt,
+    dueAt: workRecordDueAt(state),
+    stateJson: JSON.stringify(state),
   });
-  return flow ? workToRuntime(flow, state, "queued") : null;
+  return created.outcome === "created" ? workToRuntime(created.record, state, "queued") : null;
 }

@@ -19,7 +19,11 @@ import os from "node:os";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CONTINUATION_WORK_CONTROLLER_ID } from "../../auto-reply/continuation/work-flow-state.js";
+import {
+  custodyStateForTest,
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "../../auto-reply/continuation/custody/custody.test-support.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
@@ -30,7 +34,6 @@ import {
   type DiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
 import { resetSystemEventsForTest } from "../../infra/system-events.js";
-import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-registry.js";
 import { createTestPreparedRunAdmission } from "../admitted-run-context.test-support.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 import { runAgentAttempt } from "./attempt-execution.js";
@@ -60,6 +63,8 @@ vi.mock("../../auto-reply/reply/get-reply.js", () => ({
 }));
 
 const sessionKey = "agent:main:subagent:952-token";
+
+useContinuationCustodyTestState();
 const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
 const INHERITED_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 const ATTACKER_TRACEPARENT = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
@@ -124,10 +129,7 @@ describe("subagent CONTINUE_WORK token self-continuation (token-form parity)", (
   afterEach(async () => {
     const { resetContinuationWorkDispatchForTests } =
       await import("../../auto-reply/continuation/work-dispatch.js");
-    const { resetTaskFlowRegistryForTests } =
-      await import("../../tasks/task-runtime.test-helpers.js");
     resetContinuationWorkDispatchForTests();
-    resetTaskFlowRegistryForTests({ persist: false });
     resetSystemEventsForTest();
     clearRuntimeConfigSnapshot();
     clearSessionStoreCacheForTest();
@@ -185,17 +187,15 @@ describe("subagent CONTINUE_WORK token self-continuation (token-form parity)", (
     });
   }
 
-  function readQueuedTraceState(): {
-    traceparent?: string;
-    traceparentProvenance?: string;
-  } {
-    const flow = listTaskFlowsForOwnerKey(sessionKey).find(
-      (candidate) => candidate.controllerId === CONTINUATION_WORK_CONTROLLER_ID,
-    );
-    return (
-      (flow?.stateJson as { traceparent?: string; traceparentProvenance?: string } | undefined) ??
-      {}
-    );
+  async function readQueuedTraceState(): Promise<{
+    traceparent?: unknown;
+    traceparentProvenance?: unknown;
+  }> {
+    const [record] = await listCustodyRecordsForTest({
+      ownerSessionKey: sessionKey,
+      kinds: ["work"],
+    });
+    return record ? custodyStateForTest(record) : {};
   }
 
   it("bare CONTINUE_WORK:N token arms a durable wake and re-drives the SAME subagent (hop-2 executes)", async () => {
@@ -236,7 +236,7 @@ describe("subagent CONTINUE_WORK token self-continuation (token-form parity)", (
       ),
     );
 
-    const { traceparent, traceparentProvenance } = readQueuedTraceState();
+    const { traceparent, traceparentProvenance } = await readQueuedTraceState();
     expect(traceparent).toBe(ACTIVE_TRACEPARENT);
     expect(traceparentProvenance).toBe("internal");
     expect(traceparent).not.toBe(ATTACKER_TRACEPARENT);
@@ -254,7 +254,7 @@ describe("subagent CONTINUE_WORK token self-continuation (token-form parity)", (
       ),
     );
 
-    const { traceparent, traceparentProvenance } = readQueuedTraceState();
+    const { traceparent, traceparentProvenance } = await readQueuedTraceState();
     expect(traceparent).toBe(INHERITED_TRACEPARENT);
     expect(traceparentProvenance).toBe("internal");
     expect(traceparent).not.toBe(ACTIVE_TRACEPARENT);

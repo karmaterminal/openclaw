@@ -41,11 +41,11 @@ export async function scheduleReplyContinuation(context: {
   };
 
   // Post-compaction delegates staged after this turn's compaction release stay
-  // queued in TaskFlow for the NEXT seam. Do not consume them here: the consume
+  // staged in custody for the NEXT seam. Do not consume them here: the consume
   // API marks rows `running`, which startup recovery interprets as already
   // released crash-orphans and would dispatch before the next compaction.
 
-  // Consume and dispatch TaskFlow-backed delegates before silent returns so
+  // Consume and dispatch custody-backed delegates before silent returns so
   // delayed delegates still arm their quiet-channel hedge.
   let toolDelegateDispatchResult:
     | { dispatched: number; rejected: number; chainState: ChainState }

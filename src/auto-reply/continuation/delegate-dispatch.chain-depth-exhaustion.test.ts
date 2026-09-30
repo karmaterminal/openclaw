@@ -15,34 +15,31 @@
 //   3. On rejection, the dispatcher:
 //        a. Emits a system event with "chain-capped" in the message text
 //           (visible to the model on next turn — see continue-work-signal-v2).
-//        b. Marks the corresponding TaskFlow record as `failed` (NOT
-//           succeeded, NOT left queued) — so listTaskFlowsForOwnerKey
-//           surfaces the rejection state to ops/observability.
+//        b. Marks the corresponding custody record as `failed` (NOT
+//           succeeded, NOT left queued) — so custody listings surface
+//           the rejection state to ops/observability.
 //   4. Within a single dispatch call, currentChainCount is INCREMENTED
 //      per successful spawn — so a single call can dispatch N delegates
 //      and then reject the (N+1)th when the running counter hits the cap.
 //
 // These three tests pin distinct corners of the
 // bounded-chain contract. If the dispatch loop is ever changed to skip
-// the chain-depth check, OR if the TaskFlow-failure-marking is dropped on
+// the chain-depth check, OR if the custody failure-marking is dropped on
 // rejection, one of these tests will fire and point reviewers straight at
 // the budget-check block in delegate-dispatch.ts. The bounded-chain
 // invariant prevents unbounded successor chains.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 
 // ─── Mock setup ──────────────────────────────────────────────────────────
-// Mock TaskFlow registry — same pattern as delegate-dispatch.test.ts.
 // The mocks reproduce the side-effect-bearing surfaces (spawn,
-// system-events, task-flow-registry) so we can assert on what the
-// dispatcher TRIED to do rather than on downstream production state.
-const mockFlows = new Map<string, Record<string, unknown>>();
+// system-events) so we can assert on what the dispatcher TRIED to do;
+// continuation custody is the real store, so the persisted record state
+// is observed directly.
 const enqueueSystemEventMock = vi.fn();
 const loggerRecords: Array<{ level: string; message: string }> = [];
 const spawnSubagentDirectMock = vi.fn();
-let flowIdCounter = 0;
 
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
@@ -75,78 +72,21 @@ vi.mock("../../logging/subsystem.js", () => {
   };
 });
 
-// The TaskFlow registry mock preserves enough state to observe the
-// queued → failed transition we expect on chain-cap rejection. If a
-// future refactor changes the registry surface (e.g. renames `failFlow`),
-// these mocks fail loudly rather than silently passing.
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn((params: Record<string, unknown>) => {
-    const flowId = `flow-${++flowIdCounter}`;
-    mockFlows.set(flowId, {
-      flowId,
-      syncMode: "managed",
-      ownerKey: params.ownerKey,
-      controllerId: params.controllerId,
-      status: "queued",
-      stateJson: params.stateJson,
-      goal: params.goal,
-      currentStep: params.currentStep,
-      revision: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    return mockFlows.get(flowId);
-  }),
-  listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) => {
-    return [...mockFlows.values()].filter((f) => f.ownerKey === ownerKey);
-  }),
-  getTaskFlowById: vi.fn((flowId: string) => mockFlows.get(flowId)),
-  updateFlowRecordByIdExpectedRevision: vi.fn(
-    (params: { flowId: string; expectedRevision: number; patch: Record<string, unknown> }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return {
-          applied: false,
-          reason: flow ? "revision_conflict" : "not_found",
-          current: flow ? { ...flow } : undefined,
-        };
-      }
-      Object.assign(flow, params.patch);
-      flow.revision = flow.revision + 1;
-      return { applied: true, flow: { ...flow } };
-    },
-  ),
-  finishFlow: vi.fn((params: { flowId: string; expectedRevision: number }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (!flow || flow.revision !== params.expectedRevision) {
-      return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-    }
-    flow.status = "succeeded";
-    flow.revision = flow.revision + 1;
-    return { applied: true, flow: { ...flow } };
-  }),
-  failFlow: vi.fn((params: { flowId: string }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (flow) {
-      flow.status = "failed";
-    }
-    return { applied: Boolean(flow) };
-  }),
-  deleteTaskFlowRecordById: vi.fn((flowId: string) => {
-    mockFlows.delete(flowId);
-  }),
-}));
-
 import { clearRuntimeConfigSnapshot } from "../../config/config.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { resetContinuationTracer } from "../../infra/continuation-tracer.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
+import {
+  listCustodyRecordsForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "./custody/custody.test-support.js";
 import { dispatchToolDelegates, resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import { enqueuePendingDelegate } from "./delegate-store.js";
 import { resetContinuationStateForTests } from "./state.js";
 
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+useContinuationCustodyTestState();
 
 // Dispatch revalidates the owner session before claiming a delegate, so tests
 // that reach the spawn path seed the owner row in the isolated session store
@@ -164,14 +104,11 @@ async function seedOwnerSession(sessionKey: string): Promise<void> {
 
 beforeEach(() => {
   closeOpenClawAgentDatabasesForTest();
-  vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("openclaw-chain-depth-"));
   // Fresh state per test so chain-state contamination from a prior test
   // can't mask a real budget-check regression.
-  mockFlows.clear();
   enqueueSystemEventMock.mockClear();
   loggerRecords.length = 0;
   spawnSubagentDirectMock.mockReset().mockResolvedValue({ status: "accepted" });
-  flowIdCounter = 0;
   vi.useFakeTimers();
 });
 
@@ -180,9 +117,7 @@ afterEach(() => {
   resetContinuationStateForTests();
   resetContinuationTracer();
   clearRuntimeConfigSnapshot();
-  mockFlows.clear();
   closeOpenClawAgentDatabasesForTest();
-  vi.unstubAllEnvs();
   vi.useRealTimers();
 });
 
@@ -191,11 +126,11 @@ describe("chain-depth exhaustion", () => {
   // currentChainCount-vs-maxChainLength relationship:
   //   at-limit (count == max)           → all delegates rejected
   //   under-limit transitioning to limit → first dispatches, rest reject
-  //   rejection side-effects             → TaskFlow record marked failed
+  //   rejection side-effects             → custody record marked failed
   //
   // Together these three guard the WHOLE budget-check block in
   // delegate-dispatch.ts. Removing the check, off-by-one'ing the
-  // comparison, or skipping the failFlow call will trip exactly one of
+  // comparison, or skipping the terminal custody write will trip exactly one of
   // them and point reviewers at the precise regression.
 
   // ───────────────────────────────────────────────────────────────────────
@@ -211,7 +146,7 @@ describe("chain-depth exhaustion", () => {
   // ───────────────────────────────────────────────────────────────────────
   it("rejects a delegate when currentChainCount equals maxChainLength", async () => {
     const sessionKey = "session-chain-depth-at-limit";
-    enqueuePendingDelegate(sessionKey, { task: "work at the ceiling" });
+    await enqueuePendingDelegate(sessionKey, { task: "work at the ceiling" });
 
     const result = await dispatchToolDelegates({
       sessionKey,
@@ -258,8 +193,8 @@ describe("chain-depth exhaustion", () => {
   it("accepts a delegate at count 9/10, then rejects the next at 10/10", async () => {
     const sessionKey = "session-chain-depth-incremental";
     await seedOwnerSession(sessionKey);
-    enqueuePendingDelegate(sessionKey, { task: "first delegate" });
-    enqueuePendingDelegate(sessionKey, { task: "second delegate" });
+    await enqueuePendingDelegate(sessionKey, { task: "first delegate" });
+    await enqueuePendingDelegate(sessionKey, { task: "second delegate" });
 
     const result = await dispatchToolDelegates({
       sessionKey,
@@ -299,34 +234,36 @@ describe("chain-depth exhaustion", () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────
-  // SIDE-EFFECT case: TaskFlow record state on chain-depth rejection.
+  // SIDE-EFFECT case: custody record state on chain-depth rejection.
   //
   // CANON GUARDED: a chain-depth rejection isn't just an in-memory
-  // counter event — it must also transition the persistent TaskFlow
+  // counter event — it must also transition the persistent custody
   // record from `queued` to `failed`. Leaving it `queued` would make ops
-  // surfaces (listTaskFlowsForOwnerKey) report a delegate as still
+  // surfaces (custody listings) report a delegate as still
   // pending forever; transitioning it to `succeeded` would be a lie.
   //
-  // Regression indicator: if the TaskFlow record stays `queued` after
-  // rejection, the failFlow call was dropped from the rejection branch;
-  // reviewer should look for failFlow / "mark failed" lines in
+  // Regression indicator: if the custody record stays `queued` after
+  // rejection, the terminal write was dropped from the rejection branch;
+  // reviewer should look for the terminal / "mark failed" lines in
   // delegate-dispatch.ts and verify they're in the cap-rejection
   // branch, not behind a `dispatched > 0` guard.
   // ───────────────────────────────────────────────────────────────────────
-  it("marks the TaskFlow record as failed for chain-depth-rejected delegates", async () => {
+  it("marks the custody record as failed for chain-depth-rejected delegates", async () => {
     const sessionKey = "session-chain-depth-taskflow-status";
-    enqueuePendingDelegate(sessionKey, { task: "doomed by chain depth" });
+    await enqueuePendingDelegate(sessionKey, { task: "doomed by chain depth" });
 
     // Snapshot the pre-state: the enqueue should have created exactly one
-    // queued TaskFlow record. If this assertion fails, the test fixture
-    // (enqueuePendingDelegate → createManagedTaskFlow) has drifted.
-    const queuedBefore = [...mockFlows.values()].filter(
-      (f) => f.ownerKey === sessionKey && f.status === "queued",
-    );
+    // queued custody record. If this assertion fails, the test fixture
+    // (enqueuePendingDelegate → custody create) has drifted.
+    const queuedBefore = await listCustodyRecordsForTest({
+      ownerSessionKey: sessionKey,
+      kinds: ["delegate"],
+      statuses: ["queued"],
+    });
     expect(queuedBefore).toHaveLength(1);
-    const flowId = queuedBefore.at(0)?.flowId;
-    if (typeof flowId !== "string") {
-      throw new Error("expected queued flow id");
+    const recordId = queuedBefore.at(0)?.recordId;
+    if (typeof recordId !== "string") {
+      throw new Error("expected queued record id");
     }
 
     await dispatchToolDelegates({
@@ -342,6 +279,6 @@ describe("chain-depth exhaustion", () => {
 
     // Final-state assertion: queued → failed. NOT queued (would mean the
     // record was leaked); NOT succeeded (would mean we lied to ops).
-    expect(mockFlows.get(flowId)?.status).toBe("failed");
+    expect((await readCustodyRecordForTest(recordId))?.status).toBe("failed");
   });
 });

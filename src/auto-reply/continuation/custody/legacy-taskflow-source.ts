@@ -39,6 +39,10 @@ export type LegacyImportDisposition =
   | "interrupted-pre-cutover-entry"
   | "delivered-pre-cutover-entry";
 
+function isLegacyImportDisposition(value: unknown): value is LegacyImportDisposition {
+  return typeof value === "string" && DISPOSITIONS.has(value);
+}
+
 const DISPOSITIONS: ReadonlySet<string> = new Set<LegacyImportDisposition>([
   "imported",
   "retired-terminal",
@@ -139,10 +143,7 @@ export function readImportDispositions(
       const disposition = safeParseJsonRecord(row.report_json)?.disposition;
       dispositions.set(
         row.source_key,
-        typeof disposition === "string" && DISPOSITIONS.has(disposition)
-          ? // SAFETY: membership in DISPOSITIONS was checked above.
-            (disposition as LegacyImportDisposition)
-          : "unreadable",
+        isLegacyImportDisposition(disposition) ? disposition : "unreadable",
       );
     }
   }
@@ -230,20 +231,29 @@ function owesImport(row: LegacyContinuationFlowRow): boolean {
 }
 
 /**
- * Owners whose live or obligation-bearing rows have no committed receipt. The
- * runtime refuses custody writes for these owners until an import commits,
- * so an election can never bypass the owner condition over un-imported rows.
+ * Owners whose live or obligation-bearing legacy sources have no committed
+ * receipt: receipt-less `flow_runs` rows, and covered pre-cutover
+ * `postCompactionDelegate` queue entries (the same set the importer snapshots).
+ * The runtime refuses custody writes for these owners until an import commits,
+ * so an election can never bypass the owner condition over un-imported work,
+ * and phase A runs the import for a queue-only owner too.
  */
 export function listContinuationOwnersAwaitingImport(db: DatabaseSync): string[] {
   const rows = readLegacyContinuationFlowRows(db);
-  const receipts = readImportDispositions(
-    db,
-    rows.map((row) => flowReceiptKey(row.flow_id)),
-  );
+  const entries = readPendingPostCompactionEntries(db).filter((entry) => entry.covered);
+  const receipts = readImportDispositions(db, [
+    ...rows.map((row) => flowReceiptKey(row.flow_id)),
+    ...entries.map((entry) => queueEntryReceiptKey(entry.id)),
+  ]);
   const owners = new Set<string>();
   for (const row of rows) {
     if (!receipts.has(flowReceiptKey(row.flow_id)) && owesImport(row)) {
       owners.add(row.owner_key);
+    }
+  }
+  for (const entry of entries) {
+    if (!receipts.has(queueEntryReceiptKey(entry.id))) {
+      owners.add(entry.sessionKey);
     }
   }
   return [...owners].toSorted();

@@ -131,6 +131,17 @@ vi.mock("../auto-reply/continuation/work-dispatch.js", () => ({
   recoverPendingContinuationWork: runtimeServiceMocks.recoverPendingContinuationWork,
 }));
 
+// Custody boot's own worker reads (phase A, the awaiting-import list, retention
+// prune) answer at once here, like the recovery owners above. A real worker
+// reply arrives over a MessagePort that fake-timer advances do not wait for,
+// which would leave recovery's root-work admission open across these tests.
+vi.mock("../auto-reply/continuation/custody/custody-store.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../auto-reply/continuation/custody/custody-store.js")>()),
+  whenContinuationCustodyReady: async () => undefined,
+  listContinuationOwnersAwaitingLegacyImport: async () => [],
+  pruneContinuationRecords: async () => ({ deletedRecordIds: [] }),
+}));
+
 vi.mock("./channel-health-monitor.js", () => ({
   startChannelHealthMonitor: runtimeServiceMocks.startChannelHealthMonitor,
 }));

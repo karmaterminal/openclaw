@@ -60,14 +60,13 @@ vi.mock("./subagents/registry/subagent-registry-runtime.js", () => ({
 }));
 
 vi.mock("../auto-reply/continuation/delegate-store.js", () => ({
-  annotateQueuedDelegatesChainTokensFold: vi.fn(() => 0),
-  clearQueuedDelegatesChainTokensFold: vi.fn(() => 0),
-  consumePendingDelegates: vi.fn(() => []),
+  annotateQueuedDelegatesChainTokensFold: vi.fn(async () => 0),
+  clearQueuedDelegatesChainTokensFold: vi.fn(async () => 0),
+  consumePendingDelegates: vi.fn(async () => []),
   enqueuePendingDelegate: vi.fn(),
-  hasRecoverablePendingDelegate: vi.fn(() => false),
   markPendingDelegateFailed: vi.fn(),
   markPendingDelegateSpawnAccepted: vi.fn(),
-  peekEarliestQueuedDelegateDueAt: vi.fn(() => undefined),
+  peekEarliestQueuedDelegateDueAt: vi.fn(async () => undefined),
 }));
 
 vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", () => ({
@@ -84,6 +83,12 @@ vi.mock("./subagents/announce/subagent-announce-delivery.js", async (importOrigi
 }));
 
 import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
+import { resetContinuationCustodyProjection } from "../auto-reply/continuation/custody/custody-projection.js";
+import { hydrateContinuationCustody } from "../auto-reply/continuation/custody/custody-store.js";
+import {
+  custodyStateForTest,
+  listCustodyRecordsForTest,
+} from "../auto-reply/continuation/custody/custody.test-support.js";
 import { loadContinuationChainState } from "../auto-reply/continuation/state.js";
 import {
   resetContinuationWorkDispatchForTests,
@@ -93,8 +98,7 @@ import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/
 import { resolveSessionStorePathCore } from "../config/sessions.js";
 import { clearSessionStoreCacheForTest } from "../config/sessions/store-writer-state.js";
 import { saveLegacySessionStore as saveSessionStore } from "../infra/state-migrations.legacy-session-store.js";
-import { listTaskFlowsForOwnerKey } from "../tasks/task-flow-registry.js";
-import { resetTaskFlowRegistryForTests } from "../tasks/task-runtime.test-helpers.js";
+import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
@@ -153,23 +157,26 @@ function buildParams(reply: string): AnnounceFlowParams {
   };
 }
 
-function continuationWorkFlows() {
-  return listTaskFlowsForOwnerKey(childSessionKey).filter(
-    (flow) =>
-      (flow.stateJson as { kind?: string } | undefined)?.kind === "continuation_work" &&
-      (flow.status === "queued" || flow.status === "running"),
-  );
+async function continuationWorkFlows() {
+  return (
+    await listCustodyRecordsForTest({
+      ownerSessionKey: childSessionKey,
+      kinds: ["work"],
+      statuses: ["queued", "running"],
+    })
+  ).map((record) => Object.assign(record, { state: custodyStateForTest(record) }));
 }
 
 describe("subagent self-continuation via announce/completion flow", () => {
   let state: OpenClawTestState;
 
   beforeEach(async () => {
-    // Isolate the shared state DB (TaskFlow registry + session store) per test
-    // so continuation_work flows never leak across tests or worktrees.
+    // Isolate the shared state DB (continuation custody + session store) per
+    // test so continuation work never leaks across tests or worktrees, and
+    // hydrate the custody projection from it as Gateway boot does.
     state = await createOpenClawTestState({ layout: "state-only", prefix: "oc952-self-cont-" });
     resetContinuationWorkDispatchForTests();
-    resetTaskFlowRegistryForTests();
+    await hydrateContinuationCustody();
     await writeSessionStore({
       [childSessionKey]: { sessionId: "child-sid", updatedAt: Date.now() },
     });
@@ -179,23 +186,21 @@ describe("subagent self-continuation via announce/completion flow", () => {
 
   afterEach(async () => {
     resetContinuationWorkDispatchForTests();
-    resetTaskFlowRegistryForTests();
+    resetContinuationCustodyProjection();
+    await closeOpenClawStateDatabaseAsync();
     clearRuntimeConfigSnapshot();
     clearSessionStoreCacheForTest();
     await state.cleanup();
   });
 
   it("arms a same-session continue_work wake from the CONTINUE_WORK token in findings", async () => {
-    expect(continuationWorkFlows()).toHaveLength(0);
+    expect(await continuationWorkFlows()).toHaveLength(0);
 
     await runSubagentAnnounceFlow(buildParams("Research progress so far.\nCONTINUE_WORK:5"));
 
-    const flows = continuationWorkFlows();
+    const flows = await continuationWorkFlows();
     expect(flows).toHaveLength(1);
-    expect(
-      (expectDefined(flows.at(0), "continuation flow").stateJson as { sessionKey?: string })
-        .sessionKey,
-    ).toBe(childSessionKey);
+    expect(expectDefined(flows.at(0), "continuation flow").state.sessionKey).toBe(childSessionKey);
   });
 
   it("strips the CONTINUE_WORK token from the findings announced to the parent", async () => {
@@ -233,17 +238,17 @@ describe("subagent self-continuation via announce/completion flow", () => {
       parentRunId: "run-own-turn",
     });
     expect(armed.scheduled).toBe(true);
-    expect(continuationWorkFlows()).toHaveLength(1);
+    expect(await continuationWorkFlows()).toHaveLength(1);
 
     await runSubagentAnnounceFlow(buildParams("More progress.\nCONTINUE_WORK:5"));
 
     // Still exactly one wake — the announce fallback saw the live wake and
     // skipped, so the child does not get two hop-2 turns.
-    expect(continuationWorkFlows()).toHaveLength(1);
+    expect(await continuationWorkFlows()).toHaveLength(1);
   });
 
   it("does not arm a wake when findings carry no CONTINUE_WORK token", async () => {
     await runSubagentAnnounceFlow(buildParams("All done, nothing left to do."));
-    expect(continuationWorkFlows()).toHaveLength(0);
+    expect(await continuationWorkFlows()).toHaveLength(0);
   });
 });

@@ -3,7 +3,7 @@
  * Canonical staleness policy for staged/released post-compaction delegate work
  * (RFC §4.4).
  *
- * Every owner that can move staged work closer to a child — TaskFlow release,
+ * Every owner that can move staged work closer to a child — custody release,
  * startup recovery, the post-compaction release dispatcher, and queued delivery
  * retry — reads the TTL from here. Duplicating the arithmetic is what let a
  * released queue row outlive the staged row it came from.

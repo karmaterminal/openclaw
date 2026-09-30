@@ -196,7 +196,7 @@ export function armDelegateDispatchHedge(
           await activeParams.persistChainState(result.chainState);
         }
         if (result.appliedChainTokensFold && result.appliedChainTokensFold > 0) {
-          clearRecoverableDelegatesChainTokensFold(sessionKey);
+          await clearRecoverableDelegatesChainTokensFold(sessionKey);
         }
       }
     }).catch((err: unknown) => {

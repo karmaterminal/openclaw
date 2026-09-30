@@ -78,16 +78,24 @@ vi.mock("../auto-reply/continuation/state.js", async (importOriginal) => ({
   unregisterContinuationTimerHandle: vi.fn(),
 }));
 
-vi.mock("../auto-reply/continuation/delegate-store.js", () => ({
-  annotateQueuedDelegatesChainTokensFold: vi.fn(() => 0),
-  clearQueuedDelegatesChainTokensFold: vi.fn(() => 0),
-  consumePendingDelegates: vi.fn(() => []),
+vi.mock("../auto-reply/continuation/delegate-store.js", async (importOriginal) => ({
+  annotateQueuedDelegatesChainTokensFold: vi.fn(async () => 0),
+  clearQueuedDelegatesChainTokensFold: vi.fn(async () => 0),
+  consumePendingDelegates: vi.fn(async () => []),
   enqueuePendingDelegate: vi.fn(),
-  hasRecoverablePendingDelegate: vi.fn(() => false),
   markPendingDelegateFailed: vi.fn(),
   markPendingDelegateSpawnAccepted: vi.fn(),
-  peekEarliestQueuedDelegateDueAt: vi.fn(() => undefined),
-  revalidatePendingDelegateForSpawn: vi.fn(() => ({ allowed: true })),
+  peekEarliestQueuedDelegateDueAt: vi.fn(async () => undefined),
+  requeuePendingDelegate: vi.fn(),
+  revalidatePendingDelegateForSpawn: vi.fn(async () => ({ allowed: true })),
+  // The phase classifier is pure; keep the owner's rule.
+  spawnResultNeverDispatched: (
+    await importOriginal<typeof import("../auto-reply/continuation/delegate-store.js")>()
+  ).spawnResultNeverDispatched,
+}));
+
+vi.mock("../auto-reply/continuation/delegate-spawn-interrupted.js", () => ({
+  terminalizeInterruptedDelegateClaim: vi.fn(async () => undefined),
 }));
 
 vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", () => ({
@@ -113,6 +121,7 @@ function failSharedDelegateDispatchOnce(): void {
   dispatchToolDelegatesMock.mockRejectedValueOnce(new Error("shared delegate dispatch failed"));
 }
 
+import { terminalizeInterruptedDelegateClaim } from "../auto-reply/continuation/delegate-spawn-interrupted.js";
 import {
   consumePendingDelegates,
   markPendingDelegateFailed,
@@ -185,6 +194,7 @@ function buildToolDelegateParams(): AnnounceFlowParams {
 
 const mockedConsumePendingDelegates = vi.mocked(consumePendingDelegates);
 const mockedMarkPendingDelegateFailed = vi.mocked(markPendingDelegateFailed);
+const mockedTerminalizeInterruptedDelegateClaim = vi.mocked(terminalizeInterruptedDelegateClaim);
 
 describe("subagent-announce tool-delegate rejection observability", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;
@@ -200,19 +210,20 @@ describe("subagent-announce tool-delegate rejection observability", () => {
     setRuntimeConfigSnapshot(makeConfig());
     spawnSpy = vi.spyOn(subagentSpawn, "spawnSubagentDirect");
     logSpy = vi.spyOn(defaultRuntime, "log").mockImplementation(() => {});
-    mockedConsumePendingDelegates.mockReset().mockReturnValue([]);
+    mockedConsumePendingDelegates.mockReset().mockResolvedValue([]);
     dispatchToolDelegatesMock.mockReset().mockImplementation(async (params) => ({
       dispatched: 0,
       rejected: 0,
       chainState: params.chainState,
     }));
     mockedMarkPendingDelegateFailed.mockClear();
+    mockedTerminalizeInterruptedDelegateClaim.mockClear();
   });
 
   afterEach(async () => {
     spawnSpy.mockRestore();
     logSpy.mockRestore();
-    mockedConsumePendingDelegates.mockReturnValue([]);
+    mockedConsumePendingDelegates.mockResolvedValue([]);
     dispatchToolDelegatesMock.mockReset().mockImplementation(async (params) => ({
       dispatched: 0,
       rejected: 0,
@@ -225,7 +236,7 @@ describe("subagent-announce tool-delegate rejection observability", () => {
 
   it("surfaces spawnResult.error in `reason=...` log + markPendingDelegateFailed summary when present", async () => {
     const REASON = "tool-delegate depth cap exceeded";
-    mockedConsumePendingDelegates.mockReturnValueOnce([{ task: "tool task to reject" }]);
+    mockedConsumePendingDelegates.mockResolvedValueOnce([{ task: "tool task to reject" }]);
     failSharedDelegateDispatchOnce();
     spawnSpy.mockResolvedValue({ status: "forbidden", error: REASON });
 
@@ -262,7 +273,7 @@ describe("subagent-announce tool-delegate rejection observability", () => {
   });
 
   it("falls back to `delegation was not accepted.` when spawnResult.error is absent", async () => {
-    mockedConsumePendingDelegates.mockReturnValueOnce([{ task: "tool task no reason" }]);
+    mockedConsumePendingDelegates.mockResolvedValueOnce([{ task: "tool task no reason" }]);
     failSharedDelegateDispatchOnce();
     spawnSpy.mockResolvedValue({ status: "forbidden" });
 
@@ -291,5 +302,36 @@ describe("subagent-announce tool-delegate rejection observability", () => {
         "delegate failure title",
       ),
     ).toBe("Delegate rejected");
+  });
+
+  it("terminalizes an unproven spawn outcome with one interrupted notice instead of a rejection", async () => {
+    // RFC §5.4.4 (Q3): a spawn that may have dispatched is never replayed or
+    // reported as a rejection; the claim ends with one interrupted notice.
+    const delegate = { task: "tool task with unproven admission" };
+    mockedConsumePendingDelegates.mockResolvedValueOnce([delegate]);
+    failSharedDelegateDispatchOnce();
+    spawnSpy.mockResolvedValue({
+      status: "error",
+      error: "gateway dropped the connection",
+      runId: "run-maybe-dispatched",
+      failurePhase: "dispatch",
+    });
+
+    await runSubagentAnnounceFlow(buildToolDelegateParams());
+    await new Promise((r) => {
+      setTimeout(r, 50);
+    });
+
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    expect(mockedTerminalizeInterruptedDelegateClaim).toHaveBeenCalledTimes(1);
+    expect(mockedTerminalizeInterruptedDelegateClaim).toHaveBeenCalledWith(delegate);
+    expect(mockedMarkPendingDelegateFailed).not.toHaveBeenCalled();
+    const logs = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(
+      logs.filter((m: string) => m.includes("[subagent-chain-hop] Tool delegate spawn rejected")),
+    ).toEqual([]);
+    expect(logs).toContainEqual(
+      expect.stringContaining("Tool delegate spawn outcome unproven (error:dispatch)"),
+    );
   });
 });

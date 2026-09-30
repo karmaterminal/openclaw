@@ -66,16 +66,20 @@ vi.mock("../auto-reply/continuation/state.js", async (importOriginal) => ({
   unregisterContinuationTimerHandle: vi.fn(),
 }));
 
-vi.mock("../auto-reply/continuation/delegate-store.js", () => ({
-  annotateQueuedDelegatesChainTokensFold: vi.fn(() => 0),
-  clearQueuedDelegatesChainTokensFold: vi.fn(() => 0),
-  consumePendingDelegates: vi.fn(() => []),
+vi.mock("../auto-reply/continuation/delegate-store.js", async (importOriginal) => ({
+  annotateQueuedDelegatesChainTokensFold: vi.fn(async () => 0),
+  clearQueuedDelegatesChainTokensFold: vi.fn(async () => 0),
+  consumePendingDelegates: vi.fn(async () => []),
   enqueuePendingDelegate: vi.fn(),
-  hasRecoverablePendingDelegate: vi.fn(() => false),
   markPendingDelegateFailed: vi.fn(),
-  markPendingDelegateSpawnAccepted: vi.fn(() => true),
-  peekEarliestQueuedDelegateDueAt: vi.fn(() => undefined),
-  revalidatePendingDelegateForSpawn: vi.fn(() => ({ allowed: true })),
+  markPendingDelegateSpawnAccepted: vi.fn(async () => true),
+  peekEarliestQueuedDelegateDueAt: vi.fn(async () => undefined),
+  requeuePendingDelegate: vi.fn(),
+  revalidatePendingDelegateForSpawn: vi.fn(async () => ({ allowed: true })),
+  // The phase classifier is pure; keep the owner's rule.
+  spawnResultNeverDispatched: (
+    await importOriginal<typeof import("../auto-reply/continuation/delegate-store.js")>()
+  ).spawnResultNeverDispatched,
 }));
 
 vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", () => ({
@@ -168,7 +172,7 @@ const mockedConsumePendingDelegates = vi.mocked(consumePendingDelegates);
 const mockedMarkPendingDelegateFailed = vi.mocked(markPendingDelegateFailed);
 const mockedMarkPendingDelegateSpawnAccepted = vi.mocked(markPendingDelegateSpawnAccepted);
 
-describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", () => {
+describe("announce tool-delegate accepted spawn commits the custody record (C2)", () => {
   let spawnSpy: ReturnType<typeof vi.spyOn>;
   let testState: OpenClawTestState;
 
@@ -190,15 +194,15 @@ describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", 
       childSessionKey: "agent:main:subagent:continuation-child",
       runId: "run-continuation-child",
     });
-    mockedConsumePendingDelegates.mockReturnValue([]);
+    mockedConsumePendingDelegates.mockResolvedValue([]);
     dispatchToolDelegatesMock.mockClear();
     mockedMarkPendingDelegateFailed.mockClear();
-    mockedMarkPendingDelegateSpawnAccepted.mockReset().mockReturnValue(true);
+    mockedMarkPendingDelegateSpawnAccepted.mockReset().mockResolvedValue(true);
   });
 
   afterEach(async () => {
     spawnSpy.mockRestore();
-    mockedConsumePendingDelegates.mockReturnValue([]);
+    mockedConsumePendingDelegates.mockResolvedValue([]);
     dispatchToolDelegatesMock.mockReset().mockImplementation(async (params) => ({
       dispatched: 0,
       rejected: 0,
@@ -209,8 +213,13 @@ describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", 
   });
 
   it("threads continuationDelegateFlowId and commits the flow via markPendingDelegateSpawnAccepted", async () => {
-    mockedConsumePendingDelegates.mockReturnValueOnce([
-      { task: "continue next step", flowId: "flow-tool-c2", expectedRevision: 3 },
+    mockedConsumePendingDelegates.mockResolvedValueOnce([
+      {
+        task: "continue next step",
+        flowId: "flow-tool-c2",
+        expectedRevision: 3,
+        spawnAttempt: { attemptId: 1, childRunId: "continuation:flow-tool-c2:1" },
+      },
     ]);
     failSharedDelegateDispatchOnce();
 
@@ -223,6 +232,8 @@ describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", 
     expect(dispatchToolDelegatesMock).toHaveBeenCalledTimes(1);
     const spawnArgs = spawnSpy.mock.calls[0][0] as Record<string, unknown>;
     expect(spawnArgs.continuationDelegateFlowId).toBe("flow-tool-c2");
+    // The claim's precomputed child run ID is the spawn's run ID (RFC §5.4.4).
+    expect(spawnArgs.continuationChildRunId).toBe("continuation:flow-tool-c2:1");
     expect(spawnArgs.drainsContinuationDelegateQueue).toBe(true);
 
     // Accepted spawn commits the consumed row so recovery does not re-drive it.
@@ -233,6 +244,7 @@ describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", 
     );
     expect(acceptArgs[0]).toMatchObject({ flowId: "flow-tool-c2", expectedRevision: 3 });
     expect(acceptArgs[1]).toBe("agent:main:subagent:continuation-child");
+    expect(acceptArgs[2]).toEqual({ childRunId: "run-continuation-child" });
     expect(mockedMarkPendingDelegateFailed).not.toHaveBeenCalled();
   });
 
@@ -245,7 +257,7 @@ describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", 
         mimeType: "text/markdown",
       },
     ];
-    mockedConsumePendingDelegates.mockReturnValueOnce([
+    mockedConsumePendingDelegates.mockResolvedValueOnce([
       {
         task: "continue with recovered inputs",
         delayMs: 30_000,
@@ -269,7 +281,7 @@ describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", 
   });
 
   it("does not commit the flow when the spawn is rejected", async () => {
-    mockedConsumePendingDelegates.mockReturnValueOnce([
+    mockedConsumePendingDelegates.mockResolvedValueOnce([
       { task: "continue next step", flowId: "flow-tool-c2-reject", expectedRevision: 1 },
     ]);
     failSharedDelegateDispatchOnce();
@@ -287,7 +299,7 @@ describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", 
 
   it("rolls back an accepted child and preserves the hop when source acceptance is stale", async () => {
     const rollbackAccepted = vi.fn(async () => undefined);
-    mockedConsumePendingDelegates.mockReturnValueOnce([
+    mockedConsumePendingDelegates.mockResolvedValueOnce([
       { task: "continue stale step", flowId: "flow-tool-stale", expectedRevision: 2 },
     ]);
     failSharedDelegateDispatchOnce();
@@ -298,7 +310,7 @@ describe("announce tool-delegate accepted spawn commits the TaskFlow row (C2)", 
       runId: "run-stale-child",
       rollbackAccepted,
     });
-    mockedMarkPendingDelegateSpawnAccepted.mockReturnValueOnce(false);
+    mockedMarkPendingDelegateSpawnAccepted.mockResolvedValueOnce(false);
 
     await runSubagentAnnounceFlow(buildToolDelegateParams());
     await vi.waitFor(() => {

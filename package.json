@@ -260,8 +260,6 @@
     "!dist/plugin-sdk/test-media-understanding.d.ts",
     "!dist/plugin-sdk/test-state.js",
     "!dist/plugin-sdk/test-state.d.ts",
-    "!dist/plugin-sdk/task-flow-test-runtime.js",
-    "!dist/plugin-sdk/task-flow-test-runtime.d.ts",
     "!dist/plugin-sdk/test-node-mocks.js",
     "!dist/plugin-sdk/test-node-mocks.d.ts",
     "!dist/plugin-sdk/text-autolink-runtime.d.ts",

@@ -1,44 +1,48 @@
-import crypto from "node:crypto";
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { expectDefined } from "@openclaw/normalization-core";
+/**
+ * Startup recovery for claimed post-compaction delegates over real continuation
+ * custody (RFC docs/design/continue-work-signal-v2.md §4.4, §5.4.4).
+ *
+ * A post-compaction record a crash left claimed (`running`) before its release
+ * committed has no queue entry, so no spawn can have begun for it. Recovery
+ * releases it into the session-delivery queue in the same commit as its
+ * handoff and drains only the entries it released; the queue drain is the only
+ * post-compaction spawn path. Outcomes are observed at the spawn owner, the
+ * custody record, the session-delivery queue, and the owner's session entry.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock TaskFlow registry — delegate-store resolves it transitively.
-const mockFlows = new Map<string, Record<string, unknown>>();
 const enqueueSystemEventMock = vi.fn();
 const loggerRecords: Array<{ level: string; message: string }> = [];
 // Observable persisted session entries for recovery persist assertions.
 const recoveryStoreByPath = new Map<string, Record<string, unknown>>();
 const spawnSubagentDirectMock = vi.fn();
 const {
+  admittedRuns,
   assertDelegateArtifactPolicyPreparedMock,
+  beforeAdmissionReadHook,
   hasRecordedDelegateArtifactCompletionForProducerMock,
+  markSpawnAcceptedFailure,
   removeUnacceptedDelegateArtifactPolicyMock,
 } = vi.hoisted(() => ({
+  // subagent_runs rows by run ID: the registry evidence the drain reads.
+  admittedRuns: new Map<string, { requesterSessionKey: string; childSessionKey: string }>(),
   assertDelegateArtifactPolicyPreparedMock: vi.fn(),
+  // Runs inside the drain's registry read, before its spawn fence: the point
+  // where a concurrent writer (session reset) can race the release.
+  beforeAdmissionReadHook: { current: undefined as (() => Promise<void>) | undefined },
   hasRecordedDelegateArtifactCompletionForProducerMock: vi.fn(() => false),
+  markSpawnAcceptedFailure: { enabled: false },
   removeUnacceptedDelegateArtifactPolicyMock: vi.fn(),
 }));
-let flowIdCounter = 0;
-let listTaskFlowsShouldThrow = false;
-const activeRegistryChildSessionKeys = new Set<string>();
-const staleRegistryChildSessionKeys = new Set<string>();
-const acceptedChildSessionKeys = new Set<string>();
-let finishFlowShouldPersistFail = false;
-// recovery derives the chain cost basis from the PERSISTED session entry
-// (no explicit chainState survives a restart), so tests inject the persisted
-// store here to prove the cost cap is enforced against the post-run child total.
+let patchSessionEntryShouldThrow = false;
+// Recovery derives the release source lifecycle and the drain its chain cost
+// basis from the PERSISTED session entry, so tests inject the persisted store.
 const loadSessionStoreForRecoveryMock = vi.fn(
   (_storePath: string) => ({}) as Record<string, unknown>,
 );
-const pendingSessionDeliveriesForRecovery: Record<string, unknown>[] = [];
-const updateSessionStoreForRecoveryOptions: Array<Record<string, unknown> | undefined> = [];
-let updateSessionStoreForRecoveryShouldThrow = false;
-let updateSessionStoreForRecoveryRequiredWriteCalls = 0;
-let updateSessionStoreForRecoveryThrowOnRequiredWriteCall: number | undefined;
+const patchSessionEntryOptions: Array<Record<string, unknown> | undefined> = [];
 
-// Dispatch revalidates the owner session before claiming a delegate, so the
+// Dispatch revalidates the owner session before spawning a delegate, so the
 // default store must resolve every owner key with a stable lifecycle identity
 // (mirrors delegate-dispatch.test.ts). Tests that need an absent owner set {}.
 const loadOwnerSession = (_target: object, sessionKey: string | symbol) =>
@@ -46,6 +50,19 @@ const loadOwnerSession = (_target: object, sessionKey: string | symbol) =>
     ? { sessionId: `session-${sessionKey}`, lifecycleRevision: "revision-1" }
     : undefined;
 const ownerSessionStore = new Proxy<Record<string, unknown>>({}, { get: loadOwnerSession });
+
+function loadRecoverySessionEntry(
+  storePath: string,
+  sessionKey: string,
+): Record<string, unknown> | undefined {
+  const persisted = recoveryStoreByPath.get(storePath)?.[sessionKey];
+  if (persisted) {
+    return persisted as Record<string, unknown>;
+  }
+  return loadSessionStoreForRecoveryMock(storePath)[sessionKey] as
+    | Record<string, unknown>
+    | undefined;
+}
 
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
@@ -59,55 +76,67 @@ vi.mock("../../agents/delegate-artifacts.js", async (importOriginal) => ({
   removeUnacceptedDelegateArtifactPolicy: removeUnacceptedDelegateArtifactPolicyMock,
 }));
 
-vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  getSubagentRunByChildSessionKey: (childSessionKey: string) =>
-    activeRegistryChildSessionKeys.has(childSessionKey)
-      ? { runId: "run-active", childSessionKey }
-      : staleRegistryChildSessionKeys.has(childSessionKey)
-        ? { runId: "run-stale", childSessionKey }
-        : null,
-  hasLiveContinuationDelegateChildRun: (params: { childSessionKey: string }) =>
-    acceptedChildSessionKeys.has(params.childSessionKey),
-  isSubagentRunLive: (entry: { runId?: string } | null | undefined) =>
-    entry?.runId === "run-active",
+// Admission evidence (RFC §5.4.4) is a subagent_runs row under a recorded
+// child run ID whose requester is the owner.
+vi.mock("../../agents/subagents/registry/subagent-registry.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../agents/subagents/registry/subagent-registry.js")
+  >()),
+  prepareSubagentRunsByRunIds: async (runIds: readonly string[]) => {
+    await beforeAdmissionReadHook.current?.();
+    return {
+      consume: <T>(consume: (runs: Map<string, unknown>) => T) => ({
+        ready: true as const,
+        value: consume(
+          new Map(
+            runIds.flatMap((runId) => {
+              const run = admittedRuns.get(runId);
+              return run ? [[runId, { runId, ...run }] as const] : [];
+            }),
+          ),
+        ),
+      }),
+    };
+  },
 }));
 
-vi.mock("../../infra/system-events.js", () => ({
+vi.mock("./delegate-store.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./delegate-store.js")>();
+  return {
+    ...actual,
+    markPendingDelegateSpawnAccepted: async (
+      ...args: Parameters<typeof actual.markPendingDelegateSpawnAccepted>
+    ) =>
+      markSpawnAcceptedFailure.enabled
+        ? false
+        : await actual.markPendingDelegateSpawnAccepted(...args),
+  };
+});
+
+vi.mock("../../infra/system-events.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../infra/system-events.js")>()),
   enqueueSystemEventRaw: (text: string, options: unknown) => enqueueSystemEventMock(text, options),
 }));
 
-vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../config/sessions/session-accessor.js")>()),
-  loadSessionEntry: ({ sessionKey, storePath }: { sessionKey: string; storePath: string }) => {
-    const store = loadSessionStoreForRecoveryMock(storePath);
-    return store[sessionKey];
-  },
-  updateSessionEntry: async (
+vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../config/sessions/session-accessor.js")>();
+  const writeEntry = async (
     { sessionKey, storePath }: { sessionKey: string; storePath: string },
-    update: (
+    patchFor: (
       entry: Record<string, unknown>,
     ) => Promise<Record<string, unknown> | null> | Record<string, unknown> | null,
     options?: Record<string, unknown>,
   ): Promise<Record<string, unknown> | null> => {
-    updateSessionStoreForRecoveryOptions.push(options);
-    if (options?.requireWriteSuccess === true) {
-      updateSessionStoreForRecoveryRequiredWriteCalls++;
-      if (
-        updateSessionStoreForRecoveryShouldThrow ||
-        updateSessionStoreForRecoveryRequiredWriteCalls ===
-          updateSessionStoreForRecoveryThrowOnRequiredWriteCall
-      ) {
-        throw new Error("session store write failed");
-      }
+    patchSessionEntryOptions.push(options);
+    if (options?.requireWriteSuccess === true && patchSessionEntryShouldThrow) {
+      throw new Error("session store write failed");
     }
-    const sourceStore = loadSessionStoreForRecoveryMock(storePath);
-    const sourceEntry = recoveryStoreByPath.get(storePath)?.[sessionKey] ?? sourceStore[sessionKey];
+    const sourceEntry = loadRecoverySessionEntry(storePath, sessionKey);
     if (!sourceEntry) {
       return null;
     }
-    const entry = { ...(sourceEntry as Record<string, unknown>) };
-    const patch = await update(entry);
+    const entry = { ...sourceEntry };
+    const patch = await patchFor(entry);
     if (!patch) {
       return entry;
     }
@@ -116,13 +145,15 @@ vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => (
     recoveryStoreByPath.set(storePath, store);
     store[sessionKey] = persisted;
     return persisted;
-  },
-}));
-
-vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../infra/session-delivery-queue-storage.js")>()),
-  loadPendingSessionDeliveries: vi.fn(async () => pendingSessionDeliveriesForRecovery),
-}));
+  };
+  return {
+    ...actual,
+    loadSessionEntry: ({ sessionKey, storePath }: { sessionKey: string; storePath: string }) =>
+      loadRecoverySessionEntry(storePath, sessionKey),
+    updateSessionEntry: writeEntry,
+    patchSessionEntryCore: writeEntry,
+  };
+});
 
 vi.mock("../../logging/subsystem.js", () => {
   const record =
@@ -147,116 +178,44 @@ vi.mock("../../logging/subsystem.js", () => {
   };
 });
 
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn((params: Record<string, unknown>) => {
-    const flowId = `flow-${++flowIdCounter}`;
-    mockFlows.set(flowId, {
-      flowId,
-      syncMode: "managed",
-      ownerKey: params.ownerKey,
-      controllerId: params.controllerId,
-      status: "queued",
-      stateJson: params.stateJson,
-      goal: params.goal,
-      currentStep: params.currentStep,
-      revision: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    return mockFlows.get(flowId);
-  }),
-  listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) => {
-    if (listTaskFlowsShouldThrow) {
-      throw new Error("taskflow unavailable");
-    }
-    return [...mockFlows.values()].filter((f) => f.ownerKey === ownerKey);
-  }),
-  listTaskFlowRecords: vi.fn(() => [...mockFlows.values()]),
-  getTaskFlowById: vi.fn((flowId: string) => mockFlows.get(flowId)),
-  updateFlowRecordByIdExpectedRevision: vi.fn(
-    (params: { flowId: string; expectedRevision: number; patch: Record<string, unknown> }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return {
-          applied: false,
-          reason: flow ? "revision_conflict" : "not_found",
-          current: flow ? { ...flow } : undefined,
-        };
-      }
-      Object.assign(flow, params.patch);
-      flow.revision = flow.revision + 1;
-      return { applied: true, flow: { ...flow } };
-    },
-  ),
-  finishFlow: vi.fn(
-    (params: {
-      flowId: string;
-      expectedRevision: number;
-      stateJson?: unknown;
-      updatedAt?: number;
-      endedAt?: number;
-    }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      if (finishFlowShouldPersistFail) {
-        return { applied: false, reason: "persist_failed", current: { ...flow } };
-      }
-      flow.status = "succeeded";
-      flow.stateJson = params.stateJson ?? flow.stateJson;
-      flow.endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
-      flow.updatedAt = params.updatedAt ?? flow.endedAt;
-      flow.revision = flow.revision + 1;
-      return { applied: true, flow: { ...flow } };
-    },
-  ),
-  failFlow: vi.fn((params: { flowId: string; stateJson?: unknown }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (flow) {
-      flow.status = "failed";
-      flow.stateJson = params.stateJson ?? flow.stateJson;
-    }
-    return { applied: Boolean(flow) };
-  }),
-  deleteTaskFlowRecordById: vi.fn((flowId: string) => {
-    mockFlows.delete(flowId);
-  }),
-}));
-
+import { expectDefined } from "@openclaw/normalization-core";
 import {
   MissingDelegateArtifactPolicyError,
   UnavailableDelegateArtifactPolicyError,
 } from "../../agents/delegate-artifacts.js";
-import { deriveContinuationDelegateChildSessionKeyFromParent } from "../../agents/subagent-continuation-ids.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
+import { resetContinuationTracer } from "../../infra/continuation-tracer.js";
+import { loadPendingSessionDeliveries } from "../../infra/session-delivery-queue-storage.js";
+import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
+import { formatContinuationChildRunId } from "../../shared/continuation-run-key.js";
+import { drainPostCompactionDelegateDeliveries } from "../reply/post-compaction-delegate-dispatch.js";
+import { updateContinuationRecords } from "./custody/custody-store.js";
 import {
-  noopTracer,
-  resetContinuationTracer,
-  setContinuationTracer,
-} from "../../infra/continuation-tracer.js";
-import {
-  isGatewaySubordinateWorkAdmissionClosed,
-  resetGatewayWorkAdmission,
-} from "../../process/gateway-work-admission.js";
-import { runWithGatewayRootWorkAdmissionForTest as runWithGatewayRootWorkAdmission } from "../../process/gateway-work-admission.test-helpers.js";
+  custodyStateForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "./custody/custody.test-support.js";
 import {
   recoverAndReleaseStagedPostCompactionDelegates,
-  recoverPendingContinuationDelegates,
   requeueAwaitingNextCompactionDelegates,
 } from "./delegate-dispatch-recovery.js";
-import { dispatchToolDelegates, resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
-import { continuationConfig, ROLE_MARKED_DELEGATE_TASK } from "./delegate-dispatch.test-support.js";
+import { resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import {
-  claimStagedPostCompactionTaskFlowDelegates,
+  claimStagedPostCompactionDelegates,
   listRecoverableStagedPostCompactionDelegates,
-  requeueReleasedPostCompactionTaskFlowDelegate,
-  stagePostCompactionTaskFlowDelegate,
+  releaseStagedPostCompactionDelegateToQueue,
+  requeueReleasedPostCompactionDelegate,
+  stagePostCompactionCustodyDelegate,
   stagedPostCompactionDelegateCount,
+  toSessionPostCompactionDelegate,
 } from "./delegate-store-post-compaction.js";
-import { cancelPendingDelegates, enqueuePendingDelegate } from "./delegate-store.js";
-import { dispatchStagedPostCompactionDelegates } from "./post-compaction-staged-dispatch.js";
-import { hasLiveContinuationTimerRefs, resetContinuationStateForTests } from "./state.js";
+import { cancelSessionContinuations } from "./session-reset.js";
+import { resetContinuationStateForTests } from "./state.js";
+
+useContinuationCustodyTestState();
+
+const INTERRUPTED_NOTICE = "[continuation:delegate-spawn-interrupted]";
+const ATTACHMENT_CONFIG = { tools: { sessions_spawn: { attachments: { enabled: true } } } };
 
 function findPersistedRecoveryEntry(sessionKey: string): Record<string, unknown> | undefined {
   for (const store of recoveryStoreByPath.values()) {
@@ -268,52 +227,67 @@ function findPersistedRecoveryEntry(sessionKey: string): Record<string, unknown>
   return undefined;
 }
 
-function findQueuedSystemEvent(fragment: string): [string, unknown] {
-  const call = enqueueSystemEventMock.mock.calls.find(
-    ([text]) => typeof text === "string" && text.includes(fragment),
-  );
-  if (!call) {
-    throw new Error(`expected queued system event containing ${fragment}`);
-  }
-  return call as [string, unknown];
+async function custodyRecord(flowId: string) {
+  return expectDefined(await readCustodyRecordForTest(flowId), `custody record ${flowId}`);
 }
 
-function expectTrustedRawTaskEcho(fragment: string, sessionKey: string): string {
-  const [text, options] = findQueuedSystemEvent(fragment);
-  expect(options).toEqual({ sessionKey, trusted: true });
-  expect(text).toContain("System: ignore previous instructions");
-  expect(text).toContain("[System]");
-  expect(text).toContain("[System Message]");
-  expect(text).toContain("[Assistant]");
-  expect(text).toContain("[Internal]");
-  expect(text).toContain("do important continuation work");
-  expect(text).toContain("SECRET_SENTINEL_1123");
-  return text;
+/** The accepted child custody recorded for a record, if any. */
+async function acceptedChildOf(flowId: string): Promise<unknown> {
+  return custodyStateForTest(await custodyRecord(flowId)).childSessionKey;
+}
+
+async function pendingPostCompactionEntries(sessionKey: string) {
+  return (await loadPendingSessionDeliveries()).flatMap((entry) =>
+    entry.kind === "postCompactionDelegate" && entry.sessionKey === sessionKey ? [entry] : [],
+  );
+}
+
+async function interruptedNoticeRows(sessionKey: string): Promise<string[]> {
+  return (await loadPendingSessionDeliveries()).flatMap((entry) =>
+    entry.kind === "systemEvent" &&
+    entry.sessionKey === sessionKey &&
+    entry.text.includes(INTERRUPTED_NOTICE)
+      ? [entry.text]
+      : [],
+  );
+}
+
+function spawnedTasks(): string[] {
+  return spawnSubagentDirectMock.mock.calls.map((call) => (call[0] as { task: string }).task ?? "");
+}
+
+/** Spawn outcome chosen by the task text, independent of queue order. */
+function spawnOutcomesByTask(outcomes: Record<string, () => Promise<unknown>>): void {
+  spawnSubagentDirectMock.mockImplementation(async (params: { task: string }) => {
+    for (const [fragment, outcome] of Object.entries(outcomes)) {
+      if (params.task.includes(fragment)) {
+        return await outcome();
+      }
+    }
+    throw new Error(`unexpected spawn for task ${params.task}`);
+  });
 }
 
 beforeEach(() => {
-  mockFlows.clear();
   enqueueSystemEventMock.mockClear();
   loggerRecords.length = 0;
   spawnSubagentDirectMock.mockReset().mockResolvedValue({ status: "accepted" });
-  assertDelegateArtifactPolicyPreparedMock.mockClear();
-  hasRecordedDelegateArtifactCompletionForProducerMock.mockClear().mockReturnValue(false);
-  removeUnacceptedDelegateArtifactPolicyMock.mockClear();
+  assertDelegateArtifactPolicyPreparedMock.mockReset();
+  hasRecordedDelegateArtifactCompletionForProducerMock.mockReset().mockReturnValue(false);
+  removeUnacceptedDelegateArtifactPolicyMock.mockReset();
   loadSessionStoreForRecoveryMock.mockReset().mockReturnValue(ownerSessionStore);
-  flowIdCounter = 0;
-  listTaskFlowsShouldThrow = false;
-  activeRegistryChildSessionKeys.clear();
-  staleRegistryChildSessionKeys.clear();
-  acceptedChildSessionKeys.clear();
+  admittedRuns.clear();
+  beforeAdmissionReadHook.current = undefined;
+  markSpawnAcceptedFailure.enabled = false;
   recoveryStoreByPath.clear();
-  pendingSessionDeliveriesForRecovery.length = 0;
-  updateSessionStoreForRecoveryOptions.length = 0;
-  updateSessionStoreForRecoveryShouldThrow = false;
-  finishFlowShouldPersistFail = false;
-  updateSessionStoreForRecoveryRequiredWriteCalls = 0;
-  updateSessionStoreForRecoveryThrowOnRequiredWriteCall = undefined;
+  patchSessionEntryOptions.length = 0;
+  patchSessionEntryShouldThrow = false;
   resetGatewayWorkAdmission();
-  vi.useFakeTimers();
+  // Custody commands run through the shared-state worker; fake only the clock
+  // and timer APIs so the worker round-trips still settle.
+  vi.useFakeTimers({
+    toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+  });
 });
 
 afterEach(() => {
@@ -321,39 +295,14 @@ afterEach(() => {
   resetContinuationStateForTests();
   resetContinuationTracer();
   clearRuntimeConfigSnapshot();
-  mockFlows.clear();
-  listTaskFlowsShouldThrow = false;
-  activeRegistryChildSessionKeys.clear();
-  staleRegistryChildSessionKeys.clear();
-  acceptedChildSessionKeys.clear();
-  pendingSessionDeliveriesForRecovery.length = 0;
-  updateSessionStoreForRecoveryOptions.length = 0;
-  updateSessionStoreForRecoveryShouldThrow = false;
-  finishFlowShouldPersistFail = false;
-  updateSessionStoreForRecoveryRequiredWriteCalls = 0;
-  updateSessionStoreForRecoveryThrowOnRequiredWriteCall = undefined;
+  admittedRuns.clear();
+  beforeAdmissionReadHook.current = undefined;
+  markSpawnAcceptedFailure.enabled = false;
+  patchSessionEntryOptions.length = 0;
+  patchSessionEntryShouldThrow = false;
   resetGatewayWorkAdmission();
   vi.useRealTimers();
 });
-
-const splitLintUse = [
-  readFileSync,
-  path,
-  expectDefined,
-  noopTracer,
-  setContinuationTracer,
-  isGatewaySubordinateWorkAdmissionClosed,
-  runWithGatewayRootWorkAdmission,
-  recoverPendingContinuationDelegates,
-  dispatchToolDelegates,
-  cancelPendingDelegates,
-  enqueuePendingDelegate,
-  hasLiveContinuationTimerRefs,
-  ROLE_MARKED_DELEGATE_TASK,
-  continuationConfig,
-  expectTrustedRawTaskEcho,
-];
-void splitLintUse;
 
 describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
   beforeEach(() => {
@@ -371,103 +320,150 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     });
   });
 
-  function stageAndClaimRunning(sessionKey: string, task: string): string {
-    // Stage (queued) then consume (claim → running) to model a delegate that was
-    // mid-release when the gateway crashed before the durable handoff/finalize.
-    stagePostCompactionTaskFlowDelegate(sessionKey, { task, stagedAt: Date.now() });
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey);
+  async function stageAndClaimRunning(
+    sessionKey: string,
+    task: string,
+    extra: Partial<Parameters<typeof stagePostCompactionCustodyDelegate>[1]> = {},
+  ): Promise<string> {
+    // Stage (queued) then claim (running) to model a delegate that was
+    // mid-release when the gateway crashed before the release committed.
+    await stagePostCompactionCustodyDelegate(
+      sessionKey,
+      { task, stagedAt: Date.now(), ...extra },
+      extra.attachments ? { attachmentConfig: ATTACHMENT_CONFIG as never } : {},
+    );
+    const claimed = await claimStagedPostCompactionDelegates(sessionKey);
     expect(claimed).toHaveLength(1);
     const flowId = claimed[0]?.flowId;
     expect(flowId).toBeDefined();
     return flowId as string;
   }
 
-  it("partitions accepted, forbidden, error, and thrown staged outcomes without advancing transient hops", async () => {
+  function seedOwnerSession(sessionKey: string, entry: Record<string, unknown>): void {
+    loadSessionStoreForRecoveryMock.mockReturnValue({ [sessionKey]: entry });
+  }
+
+  // Contract change (RFC §4.4): the direct staged spawn from recovery
+  // (post-compaction-staged-dispatch.ts) is gone. Every outcome now comes
+  // from the queue drain of the entries recovery released.
+  it("partitions accepted, forbidden, error, and thrown outcomes of released rows without advancing transient hops", async () => {
     const sessionKey = "agent:main:subagent:pc-direct-partitions";
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const flowIds: Record<string, string> = {};
     for (const task of ["accepted", "forbidden", "error", "thrown"]) {
-      stagePostCompactionTaskFlowDelegate(sessionKey, {
-        task,
-        stagedAt: Date.now(),
+      flowIds[task] = await stageAndClaimRunning(sessionKey, `outcome ${task}`, {
         returnOptions: { artifacts: "optional" },
       });
     }
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey);
-    expect(claimed).toHaveLength(4);
-    const [accepted, forbidden, transient, thrown] = claimed;
-    expect(accepted?.flowId).toBeDefined();
-    expect(forbidden?.flowId).toBeDefined();
-    expect(transient?.flowId).toBeDefined();
-    expect(thrown?.flowId).toBeDefined();
-    spawnSubagentDirectMock
-      .mockResolvedValueOnce({ status: "accepted" })
-      .mockResolvedValueOnce({ status: "forbidden", error: "blocked" })
-      .mockResolvedValueOnce({ status: "error", error: "busy" })
-      .mockRejectedValueOnce(new Error("transport unavailable"));
-
-    const result = await dispatchStagedPostCompactionDelegates(claimed, sessionKey, {
-      agentSessionKey: sessionKey,
+    spawnOutcomesByTask({
+      "outcome accepted": async () => ({ status: "accepted" }),
+      "outcome forbidden": async () => ({ status: "forbidden", error: "blocked" }),
+      "outcome error": async () => ({ status: "error", error: "busy" }),
+      "outcome thrown": async () => {
+        throw new Error("transport unavailable");
+      },
     });
 
-    expect(result).toMatchObject({
-      dispatched: 1,
-      failed: 3,
-      dispatchedFlowIds: [accepted?.flowId],
-      terminalRejectedFlowIds: [forbidden?.flowId],
-      transientFailedFlowIds: [transient?.flowId, thrown?.flowId],
-      chainState: { currentChainCount: 1 },
+    const result = await recoverAndReleaseStagedPostCompactionDelegates({
+      runningUpdatedAtOrBefore: Date.now(),
     });
-    expect(mockFlows.get(forbidden?.flowId as string)).toMatchObject({ status: "failed" });
-    expect(mockFlows.get(transient?.flowId as string)).toMatchObject({ status: "running" });
-    expect(mockFlows.get(thrown?.flowId as string)).toMatchObject({ status: "running" });
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledTimes(1);
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(forbidden?.flowId);
-    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+
+    // `dispatched` counts records released to the queue (RFC §4.4).
+    expect(result).toEqual({ sessions: 1, dispatched: 4, failed: 0 });
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(4);
+    const acceptedCall = spawnSubagentDirectMock.mock.calls.find(([params]) =>
+      (params as { task: string }).task.includes("outcome accepted"),
+    );
+    expect(acceptedCall?.[0]).toMatchObject({
       task: expect.stringContaining("[Managed delegate return]"),
+      continuationChildRunId: formatContinuationChildRunId(flowIds.accepted!, 1),
     });
+    // Only the accepted child is charged a hop.
+    expect(findPersistedRecoveryEntry(sessionKey)).toMatchObject({ continuationChainCount: 1 });
+    expect(await acceptedChildOf(flowIds.accepted!)).toEqual(expect.any(String));
+    // Every released record keeps its permanent handoff; the forbidden one
+    // records the rejection on the record and loses its artifact policy.
+    for (const task of ["forbidden", "error", "thrown"]) {
+      const record = await custodyRecord(flowIds[task]!);
+      expect(record).toMatchObject({
+        status: "succeeded",
+        handoff: expect.objectContaining({ target: "session_delivery_queue" }),
+      });
+      expect(custodyStateForTest(record).childSessionKey).toBeUndefined();
+    }
+    expect((await custodyRecord(flowIds.forbidden!)).phase).toContain(
+      "Post-compaction delegate spawn forbidden: blocked.",
+    );
+    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledTimes(1);
+    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(flowIds.forbidden);
+    // The never-dispatched error keeps its entry for a retry with attempt
+    // ownership released; the thrown spawn may have been admitted, so it ends
+    // in exactly one interrupted notice instead of a retry (RFC §5.4.4).
+    const pending = await pendingPostCompactionEntries(sessionKey);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({ sourceFlowId: flowIds.error, retryCount: 1 });
+    expect(pending[0]?.deliveryStartedAt).toBeUndefined();
+    const notices = await interruptedNoticeRows(sessionKey);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain("outcome thrown");
   });
 
-  it("rolls back an accepted recovery child when source finalization fails", async () => {
+  // Contract change (RFC §4.4, §5.4.4): the finalization hook of the deleted
+  // direct dispatch is replaced by the drain's post-accept commit; a reset
+  // racing the release rolls the accepted child back instead of failing
+  // recovery with the finalization error.
+  it("rolls back an accepted recovery child when a session reset races its acceptance", async () => {
     const sessionKey = "agent:main:subagent:pc-finalization-race";
-    stagePostCompactionTaskFlowDelegate(sessionKey, {
-      task: "recover exact child",
-      stagedAt: Date.now(),
+    seedOwnerSession(sessionKey, {
+      sessionId: "session-child",
+      lifecycleRevision: "revision-1",
+      continuationChainCount: 0,
     });
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey);
-    const flowId = claimed[0]?.flowId;
-    expect(flowId).toBeDefined();
+    const flowId = await stageAndClaimRunning(sessionKey, "recover exact child");
     const rollbackAccepted = vi.fn(async () => undefined);
-    spawnSubagentDirectMock.mockResolvedValueOnce({
-      status: "accepted",
-      childSessionKey: "agent:main:subagent:pc-finalization-child",
-      runId: "pc-finalization-run",
-      rollbackAccepted,
+    spawnSubagentDirectMock.mockImplementationOnce(async () => {
+      // A reset lands while the spawn is in flight: the owner session gets a
+      // new lifecycle and custody fences the handed-off record.
+      seedOwnerSession(sessionKey, {
+        sessionId: "session-child-after-reset",
+        lifecycleRevision: "revision-2",
+        continuationChainCount: 0,
+      });
+      await cancelSessionContinuations(sessionKey);
+      return {
+        status: "accepted",
+        childSessionKey: "agent:main:subagent:pc-finalization-child",
+        runId: formatContinuationChildRunId(flowId, 1),
+        rollbackAccepted,
+      };
     });
 
-    await expect(
-      dispatchStagedPostCompactionDelegates(
-        claimed,
-        sessionKey,
-        { agentSessionKey: sessionKey },
-        {
-          finalizeAcceptedFlow: async () => {
-            mockFlows.get(flowId!)!.status = "cancelled";
-            throw new Error("source reset during finalization");
-          },
-        },
-      ),
-    ).rejects.toThrow("source reset during finalization");
+    const result = await recoverAndReleaseStagedPostCompactionDelegates({
+      runningUpdatedAtOrBefore: Date.now(),
+    });
 
+    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
     expect(rollbackAccepted).toHaveBeenCalledOnce();
-    expect(mockFlows.get(flowId!)).toMatchObject({ status: "cancelled" });
+    const record = await custodyRecord(flowId);
+    expect(record.cancelRequestedAt).toEqual(expect.any(Number));
+    expect(custodyStateForTest(record).childSessionKey).toBeUndefined();
+    const pending = await pendingPostCompactionEntries(sessionKey);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      sourceFlowId: flowId,
+      retryCount: 1,
+      lastError: expect.stringContaining("lifecycle changed"),
+    });
   });
 
   it("requeues awaiting-next-compaction running rows on startup recovery", async () => {
     const sessionKey = "agent:main:subagent:pc-next-seam-startup-requeue";
-    stagePostCompactionTaskFlowDelegate(sessionKey, {
+    await stagePostCompactionCustodyDelegate(sessionKey, {
       task: "rehydrate after crash before session-store persist",
       stagedAt: Date.now(),
     });
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey, {
+    const claimed = await claimStagedPostCompactionDelegates(sessionKey, {
       claimFor: "next-seam-persist",
     });
     expect(claimed).toHaveLength(1);
@@ -476,34 +472,32 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     if (!flowId) {
       throw new Error("expected claimed flow id");
     }
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "running" });
+    expect(await custodyRecord(flowId)).toMatchObject({ status: "running" });
 
     const result = await requeueAwaitingNextCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
 
     expect(result).toEqual({ requeued: 1 });
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "queued" });
+    expect(await custodyRecord(flowId)).toMatchObject({ status: "queued" });
     expect(stagedPostCompactionDelegateCount(sessionKey)).toBe(1);
-    expect(listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
   });
 
   it("does not recover a next-seam persist claim before the next compaction", async () => {
     const sessionKey = "agent:main:subagent:pc-next-seam-persist";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
-    });
-    stagePostCompactionTaskFlowDelegate(sessionKey, {
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    await stagePostCompactionCustodyDelegate(sessionKey, {
       task: "rehydrate at the next compaction seam",
       stagedAt: Date.now(),
     });
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey, {
+    const claimed = await claimStagedPostCompactionDelegates(sessionKey, {
       claimFor: "next-seam-persist",
     });
     expect(claimed).toHaveLength(1);
     const flowId = claimed[0]?.flowId;
     expect(flowId).toBeDefined();
-    expect(mockFlows.get(flowId as string)).toMatchObject({ status: "running" });
+    expect(await custodyRecord(flowId as string)).toMatchObject({ status: "running" });
 
     const result = await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
@@ -511,17 +505,18 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
 
     expect(result).toMatchObject({ sessions: 0, dispatched: 0, failed: 0 });
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
-    expect(mockFlows.get(flowId as string)).toMatchObject({ status: "running" });
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
+    expect(await custodyRecord(flowId as string)).toMatchObject({ status: "running" });
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
   });
 
   it("requeues a next-seam persist claim on session-store persist failure", async () => {
     const sessionKey = "agent:main:subagent:pc-next-seam-requeue";
-    stagePostCompactionTaskFlowDelegate(sessionKey, {
+    await stagePostCompactionCustodyDelegate(sessionKey, {
       task: "rehydrate after failed persist",
       stagedAt: Date.now(),
     });
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey, {
+    const claimed = await claimStagedPostCompactionDelegates(sessionKey, {
       claimFor: "next-seam-persist",
     });
     expect(claimed).toHaveLength(1);
@@ -531,25 +526,23 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     if (!delegate) {
       throw new Error("expected claimed post-compaction delegate");
     }
-    expect(requeueReleasedPostCompactionTaskFlowDelegate(delegate)).toBe("requeued");
+    expect(await requeueReleasedPostCompactionDelegate(delegate)).toBe("requeued");
 
     const flowId = delegate.flowId;
     expect(flowId).toBeDefined();
     if (!flowId) {
       throw new Error("expected claimed delegate flow id");
     }
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "queued" });
+    expect(await custodyRecord(flowId)).toMatchObject({ status: "queued" });
     expect(stagedPostCompactionDelegateCount(sessionKey)).toBe(1);
-    expect(listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
   });
 
-  it("re-dispatches a crash-orphaned running row without a new compaction, finalizing it", async () => {
+  it("releases a crash-orphaned running row without a new compaction and drains it once", async () => {
     const sessionKey = "agent:main:subagent:pc-recover";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
-    });
-    const flowId = stageAndClaimRunning(sessionKey, "rehydrate after compaction");
-    // Queued lane is empty — the row is `running` (mid-handoff), not awaiting a seam.
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const flowId = await stageAndClaimRunning(sessionKey, "rehydrate after compaction");
+    // Queued lane is empty — the row is `running` (mid-release), not awaiting a seam.
     expect(stagedPostCompactionDelegateCount(sessionKey)).toBe(0);
     spawnSubagentDirectMock.mockResolvedValue({ status: "accepted" });
 
@@ -558,7 +551,7 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     });
 
     // Handed off WITHOUT waiting for another compaction seam.
-    expect(result).toMatchObject({ sessions: 1, dispatched: 1, failed: 0 });
+    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
     const spawnParams = spawnSubagentDirectMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(spawnParams).toMatchObject({
@@ -566,6 +559,8 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
       silentAnnounce: true,
       wakeOnReturn: true,
       drainsContinuationDelegateQueue: true,
+      continuationDelegateFlowId: flowId,
+      continuationChildRunId: formatContinuationChildRunId(flowId, 1),
     });
     expect(spawnParams.task).toEqual(expect.stringContaining("rehydrate after compaction"));
     const persisted = findPersistedRecoveryEntry(sessionKey);
@@ -573,261 +568,290 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
       continuationChainCount: 1,
       continuationChainTokens: 0,
     });
-    // The accepted row is finalized (terminal) so it cannot replay.
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "succeeded" });
-    expect(listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
+    // The record is permanently handed off with its accepted child, and the
+    // released entry is settled, so nothing can replay it.
+    const record = await custodyRecord(flowId);
+    expect(record).toMatchObject({
+      status: "succeeded",
+      handoff: expect.objectContaining({ target: "session_delivery_queue" }),
+    });
+    expect(custodyStateForTest(record).childSessionKey).toEqual(expect.any(String));
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
+    expect(enqueueSystemEventMock).toHaveBeenCalledWith(
+      expect.stringContaining("[continuation:compaction-delegate-spawned]"),
+      expect.objectContaining({ sessionKey }),
+    );
   });
 
-  it("terminalizes a post-compaction delegate cancelled after claim but before direct spawn", async () => {
+  // Contract change (RFC §4.4, §5.4.4): cancellation after the release is a
+  // reset fence on the handed-off record, which the drain's spawn fence
+  // refuses; the record keeps its handoff (handoffs are permanent).
+  it("dead-letters a released delegate a reset fenced before its spawn", async () => {
+    setRuntimeConfigSnapshot({
+      agents: { defaults: { continuation: { enabled: true, maxDelegatesPerTurn: 5 } } },
+      ...ATTACHMENT_CONFIG,
+    });
     const sessionKey = "agent:main:subagent:pc-cancelled-before-spawn";
-    stagePostCompactionTaskFlowDelegate(sessionKey, {
-      task: "must not rehydrate after cancellation",
-      stagedAt: Date.now(),
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const secret = "RECOVERY_CANCELLED_SECRET";
+    const flowId = await stageAndClaimRunning(sessionKey, "must not rehydrate after cancellation", {
       returnOptions: { artifacts: "required" },
-    });
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey);
-    const flowId = claimed[0]?.flowId;
-    expect(flowId).toBeDefined();
-    const flow = expectDefined(mockFlows.get(flowId as string), "claimed flow");
-    flow.stateJson = {
-      ...(flow.stateJson as Record<string, unknown>),
-      attachments: [{ name: "private.md", content: "RECOVERY_CANCELLED_SECRET" }],
+      attachments: [{ name: "private.md", content: secret, encoding: "utf8" }],
       attachAs: { mountPath: "handoff" },
+    });
+    beforeAdmissionReadHook.current = async () => {
+      beforeAdmissionReadHook.current = undefined;
+      await cancelSessionContinuations(sessionKey);
     };
-    flow.cancelRequestedAt = Date.now();
-    flow.revision = Number(flow.revision) + 1;
 
-    const result = await dispatchStagedPostCompactionDelegates(claimed, sessionKey, {
-      agentSessionKey: sessionKey,
+    const result = await recoverAndReleaseStagedPostCompactionDelegates({
+      runningUpdatedAtOrBefore: Date.now(),
     });
 
-    expect(result).toMatchObject({
-      dispatched: 0,
-      failed: 1,
-      terminalRejectedFlowIds: [flowId],
-      transientFailedFlowIds: [],
-    });
+    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(flow).toMatchObject({ status: "failed" });
-    expect(flow.stateJson).not.toHaveProperty("attachments");
-    expect(flow.stateJson).not.toHaveProperty("attachAs");
-    expect(JSON.stringify(flow.stateJson)).not.toContain("RECOVERY_CANCELLED_SECRET");
+    const record = await custodyRecord(flowId);
+    expect(record).toMatchObject({
+      status: "succeeded",
+      cancelRequestedAt: expect.any(Number),
+    });
+    expect(record.attachmentId).toBeUndefined();
+    const state = custodyStateForTest(record);
+    expect(state).not.toHaveProperty("attachments");
+    expect(state).not.toHaveProperty("attachAs");
+    expect(state.childSessionKey).toBeUndefined();
+    expect(record.stateJson).not.toContain(secret);
     expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(flowId);
-    expect(listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
   });
 
+  // Suspected product gap (reported to the lead): recovery used to terminalize
+  // a claimed managed row whose accepted policy is missing or expired. Routed
+  // through the queue drain (RFC §4.4), the policy error is charged as an
+  // ordinary retry instead, so the policy is never removed and the entry is
+  // redriven. These keep the old invariant: no spawn, policy removed, no retry.
   it("terminalizes a crash-orphaned artifact row whose accepted policy is missing", async () => {
     const sessionKey = "agent:main:subagent:pc-recover-policy-missing";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
-    });
-    stagePostCompactionTaskFlowDelegate(sessionKey, {
-      task: "rehydrate artifact return after crash",
-      stagedAt: Date.now(),
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const flowId = await stageAndClaimRunning(sessionKey, "rehydrate artifact return after crash", {
       returnOptions: { artifacts: "optional" },
     });
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey);
-    const flowId = claimed[0]?.flowId;
-    expect(flowId).toBeDefined();
     assertDelegateArtifactPolicyPreparedMock.mockImplementationOnce(() => {
       throw new MissingDelegateArtifactPolicyError();
     });
 
-    const result = await recoverAndReleaseStagedPostCompactionDelegates({
+    await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
 
-    expect(result).toMatchObject({ sessions: 1, dispatched: 0, failed: 1 });
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(mockFlows.get(flowId as string)).toMatchObject({ status: "failed" });
+    expect(await acceptedChildOf(flowId)).toBeUndefined();
     expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(flowId);
-    expect(listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
   });
 
   it("terminalizes a crash-orphaned artifact row whose accepted policy expired", async () => {
     const sessionKey = "agent:main:subagent:pc-recover-policy-expired";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
-    });
-    stagePostCompactionTaskFlowDelegate(sessionKey, {
-      task: "reject expired artifact return after crash",
-      stagedAt: Date.now(),
-      returnOptions: { artifacts: "required" },
-    });
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey);
-    const flowId = claimed[0]?.flowId;
-    expect(flowId).toBeDefined();
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const flowId = await stageAndClaimRunning(
+      sessionKey,
+      "reject expired artifact return after crash",
+      { returnOptions: { artifacts: "required" } },
+    );
     assertDelegateArtifactPolicyPreparedMock.mockImplementationOnce(() => {
       throw new UnavailableDelegateArtifactPolicyError();
     });
 
-    const result = await recoverAndReleaseStagedPostCompactionDelegates({
+    await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
 
-    expect(result).toMatchObject({ sessions: 1, dispatched: 0, failed: 1 });
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(mockFlows.get(flowId as string)).toMatchObject({ status: "failed" });
+    expect(await acceptedChildOf(flowId)).toBeUndefined();
     expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(flowId);
-    expect(listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
   });
 
-  it("accepts a crash-orphaned artifact row whose terminal policy proves its child ran", async () => {
-    // Sibling surface for the dispatch-side reconcile: after a restart the
-    // registry cannot vouch for an ended child, so the durable terminal policy
-    // bound to this producer must keep recovery from re-spawning it or
-    // reporting a false spawn failure.
+  // Contract change (RFC §4.4): a claim whose release never committed has no
+  // queue entry, so no spawn can have begun and no child can have produced an
+  // artifact; the producer-completion shortcut is not consulted. The registry
+  // row under the entry's attempt key is the only admission proof.
+  it("releases a crash-orphaned artifact row without consulting producer artifact completion", async () => {
     const sessionKey = "agent:main:subagent:pc-recover-policy-terminal";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
-    });
-    stagePostCompactionTaskFlowDelegate(sessionKey, {
-      task: "already produced artifact return before the crash",
-      stagedAt: Date.now(),
-      returnOptions: { artifacts: "required" },
-    });
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey);
-    const flowId = claimed[0]?.flowId;
-    expect(flowId).toBeDefined();
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const flowId = await stageAndClaimRunning(
+      sessionKey,
+      "already produced artifact return before the crash",
+      { returnOptions: { artifacts: "required" } },
+    );
     hasRecordedDelegateArtifactCompletionForProducerMock.mockReturnValue(true);
 
     const result = await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
 
-    expect(result).toMatchObject({ sessions: 1, dispatched: 1, failed: 0 });
-    expect(hasRecordedDelegateArtifactCompletionForProducerMock).toHaveBeenCalledWith({
-      flowId,
-      producerSessionKey: deriveContinuationDelegateChildSessionKeyFromParent(
-        sessionKey,
-        flowId as string,
-      ),
+    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
+    expect(hasRecordedDelegateArtifactCompletionForProducerMock).not.toHaveBeenCalled();
+    expect(assertDelegateArtifactPolicyPreparedMock).toHaveBeenCalledWith(flowId);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      continuationChildRunId: formatContinuationChildRunId(flowId, 1),
     });
-    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(assertDelegateArtifactPolicyPreparedMock).not.toHaveBeenCalled();
     expect(removeUnacceptedDelegateArtifactPolicyMock).not.toHaveBeenCalled();
-    expect(mockFlows.get(flowId as string)).toMatchObject({ status: "succeeded" });
+    expect(await acceptedChildOf(flowId)).toEqual(expect.any(String));
   });
 
-  it("defers TaskFlow recovery while a queued delivery still owns the same source flow", async () => {
+  // Contract change (RFC §4.4): recovery no longer defers on a queue entry
+  // for a running record. Release and queue insert are one commit, so a
+  // record with an entry is already handed off; its entry belongs to the
+  // session-delivery drain, which alone spawns it.
+  it("leaves a released record to its queue entry and never re-releases it", async () => {
     const sessionKey = "agent:main:subagent:pc-recover-delivery-owned";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
-    });
-    const flowId = stageAndClaimRunning(sessionKey, "rehydrate via queued delivery");
-    pendingSessionDeliveriesForRecovery.push({
-      id: "delivery-1",
-      kind: "postCompactionDelegate",
-      sessionKey,
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    await stagePostCompactionCustodyDelegate(sessionKey, {
       task: "rehydrate via queued delivery",
-      createdAt: Date.now(),
-      enqueuedAt: Date.now(),
-      retryCount: 0,
-      sourceFlowId: flowId,
-      sourceExpectedRevision: 1,
+      stagedAt: Date.now(),
     });
+    const [claimed] = await claimStagedPostCompactionDelegates(sessionKey);
+    const flowId = expectDefined(claimed?.flowId, "claimed flow id");
+    const release = await releaseStagedPostCompactionDelegateToQueue({
+      sessionKey,
+      delegate: toSessionPostCompactionDelegate(expectDefined(claimed, "claimed delegate")),
+      sourceSessionId: "session-child",
+      sequence: 0,
+    });
+    expect(release).toMatchObject({ released: true });
 
     const deferred = await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
 
-    expect(deferred).toMatchObject({ sessions: 0, dispatched: 0, failed: 0 });
+    expect(deferred).toEqual({ sessions: 0, dispatched: 0, failed: 0 });
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "running" });
-    expect(loggerRecords).toContainEqual(
-      expect.objectContaining({
-        level: "info",
-        message: expect.stringContaining("post-compaction-recovery-deferred-for-delivery"),
-      }),
-    );
+    expect(await custodyRecord(flowId)).toMatchObject({
+      status: "succeeded",
+      handoff: expect.objectContaining({ target: "session_delivery_queue" }),
+    });
+    expect(await pendingPostCompactionEntries(sessionKey)).toHaveLength(1);
 
-    pendingSessionDeliveriesForRecovery.length = 0;
-    const orphaned = await recoverAndReleaseStagedPostCompactionDelegates({
+    await drainPostCompactionDelegateDeliveries({ sessionKey });
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(await acceptedChildOf(flowId)).toEqual(expect.any(String));
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
+    const again = await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
-
-    expect(orphaned).toMatchObject({ sessions: 1, dispatched: 1, failed: 0 });
+    expect(again).toEqual({ sessions: 0, dispatched: 0, failed: 0 });
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "succeeded" });
   });
 
-  it("keeps accepted rows recoverable when required recovered chain-state persist fails", async () => {
+  // Contract change (RFC §4.4, §5.4.4): the chain-state persist failure is
+  // recorded on the released entry (recovery no longer rethrows it); the
+  // redelivery settles the admitted child from subagent_runs without a second
+  // spawn and charges the same reserved hop.
+  it("keeps an accepted child's entry for redelivery when the required chain-state persist fails", async () => {
     const sessionKey = "agent:main:subagent:pc-recover-persist-fail";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
-    });
-    const flowId = stageAndClaimRunning(sessionKey, "rehydrate then persist fails");
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const flowId = await stageAndClaimRunning(sessionKey, "rehydrate then persist fails");
     spawnSubagentDirectMock.mockResolvedValue({ status: "accepted" });
-    updateSessionStoreForRecoveryShouldThrow = true;
-
-    await expect(
-      recoverAndReleaseStagedPostCompactionDelegates({
-        runningUpdatedAtOrBefore: Date.now(),
-      }),
-    ).rejects.toThrow("store write failed");
-
-    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
-    expect(updateSessionStoreForRecoveryOptions).toContainEqual({ requireWriteSuccess: true });
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "running" });
-    expect(findPersistedRecoveryEntry(sessionKey)).toBeUndefined();
-
-    const digest = crypto.createHash("sha256").update(flowId).digest("hex").slice(0, 32);
-    acceptedChildSessionKeys.add(`agent:main:subagent:continuation-${digest}`);
-    updateSessionStoreForRecoveryShouldThrow = false;
-    spawnSubagentDirectMock.mockClear();
-
-    const reconciled = await recoverAndReleaseStagedPostCompactionDelegates({
-      runningUpdatedAtOrBefore: Date.now(),
-    });
-
-    expect(reconciled).toMatchObject({ sessions: 1, dispatched: 1, failed: 0 });
-    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "succeeded" });
-    expect(findPersistedRecoveryEntry(sessionKey)).toMatchObject({
-      continuationChainCount: 1,
-      continuationChainTokens: 0,
-    });
-  });
-
-  it("fails recovery instead of reporting success when accepted-row finalization fails", async () => {
-    const sessionKey = "agent:main:subagent:pc-recover-finalize-fail";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
-    });
-    const flowId = stageAndClaimRunning(sessionKey, "rehydrate then finalize fails");
-    spawnSubagentDirectMock.mockResolvedValue({ status: "accepted" });
-    finishFlowShouldPersistFail = true;
-
-    await expect(
-      recoverAndReleaseStagedPostCompactionDelegates({
-        runningUpdatedAtOrBefore: Date.now(),
-      }),
-    ).rejects.toThrow("post-compaction-finalize-incomplete");
-
-    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "running" });
-    expect(
-      listRecoverableStagedPostCompactionDelegates().map(({ delegate }) => delegate.flowId),
-    ).toEqual([flowId]);
-  });
-
-  it("finalizes a crash-orphaned row whose deterministic child was already accepted", async () => {
-    const sessionKey = "agent:main:subagent:pc-recover-accepted-child";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
-    });
-    const flowId = stageAndClaimRunning(sessionKey, "rehydrate already accepted child");
-    const digest = crypto.createHash("sha256").update(flowId).digest("hex").slice(0, 32);
-    acceptedChildSessionKeys.add(`agent:main:subagent:continuation-${digest}`);
+    patchSessionEntryShouldThrow = true;
 
     const result = await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
 
-    expect(result).toMatchObject({ sessions: 1, dispatched: 1, failed: 0 });
+    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(patchSessionEntryOptions).toContainEqual(
+      expect.objectContaining({ requireWriteSuccess: true }),
+    );
+    expect(await acceptedChildOf(flowId)).toBeUndefined();
+    expect(findPersistedRecoveryEntry(sessionKey)).toBeUndefined();
+    const [pending] = await pendingPostCompactionEntries(sessionKey);
+    expect(pending).toMatchObject({
+      sourceFlowId: flowId,
+      retryCount: 1,
+      lastError: expect.stringContaining("store write failed"),
+      deliveryStartedAt: expect.any(Number),
+    });
+
+    const childSessionKey = "agent:main:subagent:pc-recover-persist-fail-child";
+    admittedRuns.set(formatContinuationChildRunId(flowId, 1), {
+      requesterSessionKey: sessionKey,
+      childSessionKey,
+    });
+    patchSessionEntryShouldThrow = false;
+    spawnSubagentDirectMock.mockClear();
+
+    await drainPostCompactionDelegateDeliveries({
+      sessionKey,
+      entryIds: [expectDefined(pending?.id, "pending entry id")],
+    });
+
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "succeeded" });
-    expect(listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
+    expect(await acceptedChildOf(flowId)).toBe(childSessionKey);
+    expect(findPersistedRecoveryEntry(sessionKey)).toMatchObject({
+      continuationChainCount: 1,
+      continuationChainTokens: 0,
+    });
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
+  });
+
+  // Contract change (RFC §4.4): an acceptance that cannot commit fails the
+  // released entry (kept for redelivery) instead of throwing out of recovery.
+  it("does not settle a released entry as delivered when accepted-record finalization fails", async () => {
+    const sessionKey = "agent:main:subagent:pc-recover-finalize-fail";
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const flowId = await stageAndClaimRunning(sessionKey, "rehydrate then finalize fails");
+    const rollbackAccepted = vi.fn(async () => undefined);
+    spawnSubagentDirectMock.mockResolvedValue({ status: "accepted", rollbackAccepted });
+    markSpawnAcceptedFailure.enabled = true;
+
+    const result = await recoverAndReleaseStagedPostCompactionDelegates({
+      runningUpdatedAtOrBefore: Date.now(),
+    });
+
+    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(rollbackAccepted).toHaveBeenCalledOnce();
+    expect(await acceptedChildOf(flowId)).toBeUndefined();
+    const pending = await pendingPostCompactionEntries(sessionKey);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      sourceFlowId: flowId,
+      retryCount: 1,
+      lastError: expect.stringContaining("post-compaction-source-accept-not-committed"),
+    });
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
+  });
+
+  // Contract change (RFC §5.4.4): admission is read from subagent_runs under
+  // the entry's attempt key, not from the derived child session key.
+  it("settles a crash-orphaned row whose attempt child the registry already admitted", async () => {
+    const sessionKey = "agent:main:subagent:pc-recover-accepted-child";
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const flowId = await stageAndClaimRunning(sessionKey, "rehydrate already accepted child");
+    const childSessionKey = "agent:main:subagent:pc-recover-accepted-child-run";
+    admittedRuns.set(formatContinuationChildRunId(flowId, 1), {
+      requesterSessionKey: sessionKey,
+      childSessionKey,
+    });
+
+    const result = await recoverAndReleaseStagedPostCompactionDelegates({
+      runningUpdatedAtOrBefore: Date.now(),
+    });
+
+    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
+    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+    expect(await acceptedChildOf(flowId)).toBe(childSessionKey);
+    expect(findPersistedRecoveryEntry(sessionKey)).toMatchObject({ continuationChainCount: 1 });
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
   });
 
   it("reconciles an accepted managed child before disabled runtime and policy gates", async () => {
@@ -835,18 +859,17 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
       agents: { defaults: { continuation: { enabled: false } } },
     });
     const sessionKey = "agent:main:subagent:pc-recover-accepted-managed-disabled";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const flowId = await stageAndClaimRunning(
+      sessionKey,
+      "finalize accepted managed child while disabled",
+      { returnOptions: { artifacts: "required" } },
+    );
+    const childSessionKey = "agent:main:subagent:pc-recover-accepted-managed-child";
+    admittedRuns.set(formatContinuationChildRunId(flowId, 1), {
+      requesterSessionKey: sessionKey,
+      childSessionKey,
     });
-    stagePostCompactionTaskFlowDelegate(sessionKey, {
-      task: "finalize accepted managed child while disabled",
-      stagedAt: Date.now(),
-      returnOptions: { artifacts: "required" },
-    });
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey);
-    const flowId = expectDefined(claimed[0]?.flowId, "accepted managed flow id");
-    const digest = crypto.createHash("sha256").update(flowId).digest("hex").slice(0, 32);
-    acceptedChildSessionKeys.add(`agent:main:subagent:continuation-${digest}`);
     assertDelegateArtifactPolicyPreparedMock.mockImplementation(() => {
       throw new UnavailableDelegateArtifactPolicyError();
     });
@@ -855,67 +878,80 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
       runningUpdatedAtOrBefore: Date.now(),
     });
 
-    expect(result).toMatchObject({ sessions: 1, dispatched: 1, failed: 0 });
+    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
     expect(assertDelegateArtifactPolicyPreparedMock).not.toHaveBeenCalled();
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "succeeded" });
+    expect(await acceptedChildOf(flowId)).toBe(childSessionKey);
     expect(findPersistedRecoveryEntry(sessionKey)).toMatchObject({
       continuationChainCount: 1,
     });
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
   });
 
+  // Suspected product gap (reported to the lead), same family as the policy
+  // tests above: the drain defers while continuation is disabled before its
+  // policy gate, so an expired policy is kept until re-enable.
   it("terminalizes an expired managed policy before disabled-runtime deferral", async () => {
     setRuntimeConfigSnapshot({
       agents: { defaults: { continuation: { enabled: false } } },
     });
     const sessionKey = "agent:main:subagent:pc-recover-expired-disabled";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
-    });
-    stagePostCompactionTaskFlowDelegate(sessionKey, {
-      task: "reject expired managed policy while disabled",
-      stagedAt: Date.now(),
-      returnOptions: { artifacts: "optional" },
-    });
-    const claimed = claimStagedPostCompactionTaskFlowDelegates(sessionKey);
-    const flowId = expectDefined(claimed[0]?.flowId, "expired managed flow id");
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const flowId = await stageAndClaimRunning(
+      sessionKey,
+      "reject expired managed policy while disabled",
+      { returnOptions: { artifacts: "optional" } },
+    );
     assertDelegateArtifactPolicyPreparedMock.mockImplementation(() => {
       throw new UnavailableDelegateArtifactPolicyError();
     });
 
-    const result = await recoverAndReleaseStagedPostCompactionDelegates({
+    await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
 
-    expect(result).toMatchObject({ sessions: 1, dispatched: 0, failed: 1 });
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "failed" });
+    expect(await acceptedChildOf(flowId)).toBeUndefined();
     expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(flowId);
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
   });
 
-  it("leaves a transient spawn-failed row running and recoverable — no terminalize, no silent drop", async () => {
+  // Contract change (RFC §4.4, §5.4.4): a never-dispatched spawn failure keeps
+  // the released entry for retry (attempt ownership released) instead of
+  // leaving the record `running`; the record is handed off to that entry.
+  it("keeps a transient spawn failure's entry for retry — no terminalize, no silent drop", async () => {
     const sessionKey = "agent:main:subagent:pc-recover-fail";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child" },
-    });
-    const flowId = stageAndClaimRunning(sessionKey, "rehydrate that fails");
-    // Spawn/handoff fails.
+    seedOwnerSession(sessionKey, { sessionId: "session-child" });
+    const flowId = await stageAndClaimRunning(sessionKey, "rehydrate that fails");
+    // Spawn/handoff fails before any dispatch.
     spawnSubagentDirectMock.mockResolvedValue({ status: "error", error: "gateway unavailable" });
 
     const result = await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
 
-    expect(result).toMatchObject({ sessions: 1, dispatched: 0, failed: 1 });
-    // The row is NOT finalized — it stays `running` so the next restart recovers
-    // it again (fails closed instead of dropping the staged work).
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "running" });
-    const stillRecoverable = listRecoverableStagedPostCompactionDelegates();
-    expect(stillRecoverable).toHaveLength(1);
-    expect(stillRecoverable[0]?.delegate).toMatchObject({ task: "rehydrate that fails" });
+    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(await custodyRecord(flowId)).toMatchObject({
+      status: "succeeded",
+      handoff: expect.objectContaining({ target: "session_delivery_queue" }),
+    });
+    expect(await acceptedChildOf(flowId)).toBeUndefined();
+    const stillQueued = await pendingPostCompactionEntries(sessionKey);
+    expect(stillQueued).toHaveLength(1);
+    expect(stillQueued[0]).toMatchObject({
+      sourceFlowId: flowId,
+      task: "rehydrate that fails",
+      retryCount: 1,
+    });
+    expect(stillQueued[0]?.deliveryStartedAt).toBeUndefined();
+    expect(await interruptedNoticeRows(sessionKey)).toEqual([]);
   });
 
-  it("finalizes accepted post-compaction rows, fails forbidden rows, and keeps transient errors recoverable", async () => {
+  // Contract change (RFC §4.4): a forbidden spawn of a released record keeps
+  // its permanent handoff and records the rejection on the record; transient
+  // failures are retried from the queue entry.
+  it("accepts released rows, rejects forbidden rows, and keeps transient errors queued", async () => {
     setRuntimeConfigSnapshot({
       agents: {
         defaults: {
@@ -929,32 +965,41 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
       },
     });
     const sessionKey = "agent:main:subagent:pc-spawn-statuses";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const acceptedFlowId = await stageAndClaimRunning(sessionKey, "accepted post-compaction row");
+    const forbiddenFlowId = await stageAndClaimRunning(sessionKey, "forbidden post-compaction row");
+    const transientFlowId = await stageAndClaimRunning(sessionKey, "transient post-compaction row");
+    spawnOutcomesByTask({
+      "accepted post-compaction row": async () => ({ status: "accepted" }),
+      "forbidden post-compaction row": async () => ({
+        status: "forbidden",
+        error: "max children reached",
+      }),
+      "transient post-compaction row": async () => ({
+        status: "error",
+        error: "gateway unavailable",
+      }),
     });
-    const acceptedFlowId = stageAndClaimRunning(sessionKey, "accepted post-compaction row");
-    const forbiddenFlowId = stageAndClaimRunning(sessionKey, "forbidden post-compaction row");
-    const transientFlowId = stageAndClaimRunning(sessionKey, "transient post-compaction row");
-    spawnSubagentDirectMock
-      .mockResolvedValueOnce({ status: "accepted" })
-      .mockResolvedValueOnce({ status: "forbidden", error: "max children reached" })
-      .mockResolvedValueOnce({ status: "error", error: "gateway unavailable" });
 
     const result = await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
 
-    expect(result).toMatchObject({ sessions: 1, dispatched: 1, failed: 2 });
+    expect(result).toEqual({ sessions: 1, dispatched: 3, failed: 0 });
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(3);
-    expect(mockFlows.get(acceptedFlowId)).toMatchObject({ status: "succeeded" });
-    expect(mockFlows.get(forbiddenFlowId)).toMatchObject({ status: "failed" });
-    expect(mockFlows.get(transientFlowId)).toMatchObject({ status: "running" });
+    expect(await acceptedChildOf(acceptedFlowId)).toEqual(expect.any(String));
+    const forbidden = await custodyRecord(forbiddenFlowId);
+    expect(forbidden).toMatchObject({ status: "succeeded" });
+    expect(forbidden.phase).toContain("max children reached");
+    expect(custodyStateForTest(forbidden).childSessionKey).toBeUndefined();
+    expect(await acceptedChildOf(transientFlowId)).toBeUndefined();
     expect(
-      listRecoverableStagedPostCompactionDelegates().map(({ delegate }) => delegate.flowId),
+      (await pendingPostCompactionEntries(sessionKey)).map((entry) => entry.sourceFlowId),
     ).toEqual([transientFlowId]);
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
   });
 
-  it("finalizes accepted rows, fails deterministic rejections, and keeps transient failures recoverable", async () => {
+  it("accepts released rows, fails per-turn cap rejections, and keeps transient failures queued", async () => {
     setRuntimeConfigSnapshot({
       agents: {
         defaults: {
@@ -968,34 +1013,36 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
       },
     });
     const sessionKey = "agent:main:subagent:pc-mixed-recover";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child", continuationChainCount: 0 },
+    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
+    const acceptedFlowId = await stageAndClaimRunning(sessionKey, "accepted rehydrate");
+    const transientFlowId = await stageAndClaimRunning(sessionKey, "transient spawn outage");
+    const rejectedFlowId = await stageAndClaimRunning(sessionKey, "over per-turn cap");
+    spawnOutcomesByTask({
+      "accepted rehydrate": async () => ({ status: "accepted" }),
+      "transient spawn outage": async () => ({ status: "error", error: "gateway unavailable" }),
     });
-    const acceptedFlowId = stageAndClaimRunning(sessionKey, "accepted rehydrate");
-    const transientFlowId = stageAndClaimRunning(sessionKey, "transient spawn outage");
-    const rejectedFlowId = stageAndClaimRunning(sessionKey, "over per-turn cap");
-    spawnSubagentDirectMock
-      .mockResolvedValueOnce({ status: "accepted" })
-      .mockResolvedValueOnce({ status: "error", error: "gateway unavailable" });
 
     const result = await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
 
-    expect(result).toMatchObject({ sessions: 1, dispatched: 1, failed: 2 });
+    expect(result).toEqual({ sessions: 1, dispatched: 2, failed: 1 });
     expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(2);
-    expect(mockFlows.get(acceptedFlowId)).toMatchObject({ status: "succeeded" });
-    expect(mockFlows.get(transientFlowId)).toMatchObject({ status: "running" });
-    expect(mockFlows.get(rejectedFlowId)).toMatchObject({ status: "failed" });
-    const recoverableFlowIds = listRecoverableStagedPostCompactionDelegates().map(
-      ({ delegate }) => delegate.flowId,
-    );
-    expect(recoverableFlowIds).toEqual([transientFlowId]);
+    expect(spawnedTasks().some((task) => task.includes("over per-turn cap"))).toBe(false);
+    expect(await acceptedChildOf(acceptedFlowId)).toEqual(expect.any(String));
+    expect(await custodyRecord(rejectedFlowId)).toMatchObject({
+      status: "failed",
+      failureReason: expect.stringContaining("maxDelegatesPerTurn exceeded (2)"),
+    });
+    expect(
+      (await pendingPostCompactionEntries(sessionKey)).map((entry) => entry.sourceFlowId),
+    ).toEqual([transientFlowId]);
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
   });
 
   it("leaves staged post-compaction rows recoverable when the session store cannot load", async () => {
     const sessionKey = "agent:main:subagent:pc-store-load-fail";
-    const flowId = stageAndClaimRunning(sessionKey, "rehydrate after failed load");
+    const flowId = await stageAndClaimRunning(sessionKey, "rehydrate after failed load");
     loadSessionStoreForRecoveryMock.mockImplementation(() => {
       throw new Error("store unreadable");
     });
@@ -1006,8 +1053,9 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
 
     expect(result).toMatchObject({ sessions: 0, dispatched: 0, failed: 0 });
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "running" });
-    expect(listRecoverableStagedPostCompactionDelegates()).toHaveLength(1);
+    expect(await custodyRecord(flowId)).toMatchObject({ status: "running" });
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(1);
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
     expect(loggerRecords).toContainEqual(
       expect.objectContaining({
         level: "warn",
@@ -1018,7 +1066,7 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
 
   it("leaves staged post-compaction rows recoverable when the session row is missing", async () => {
     const sessionKey = "agent:main:subagent:pc-missing-session-row";
-    const flowId = stageAndClaimRunning(sessionKey, "rehydrate after missing row");
+    const flowId = await stageAndClaimRunning(sessionKey, "rehydrate after missing row");
     loadSessionStoreForRecoveryMock.mockReturnValue({});
 
     const result = await recoverAndReleaseStagedPostCompactionDelegates({
@@ -1027,8 +1075,9 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
 
     expect(result).toMatchObject({ sessions: 0, dispatched: 0, failed: 0 });
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(mockFlows.get(flowId)).toMatchObject({ status: "running" });
-    expect(listRecoverableStagedPostCompactionDelegates()).toHaveLength(1);
+    expect(await custodyRecord(flowId)).toMatchObject({ status: "running" });
+    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(1);
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
     expect(loggerRecords).toContainEqual(
       expect.objectContaining({
         level: "warn",
@@ -1039,11 +1088,9 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
 
   it("does not touch queued (awaiting-seam) rows — only crash-orphaned running rows", async () => {
     const sessionKey = "agent:main:subagent:pc-awaiting-seam";
-    loadSessionStoreForRecoveryMock.mockReturnValue({
-      [sessionKey]: { sessionId: "session-child" },
-    });
+    seedOwnerSession(sessionKey, { sessionId: "session-child" });
     // A queued post-compaction row staged for a compaction that has NOT happened.
-    stagePostCompactionTaskFlowDelegate(sessionKey, {
+    await stagePostCompactionCustodyDelegate(sessionKey, {
       task: "await compaction",
       stagedAt: Date.now(),
     });
@@ -1057,37 +1104,62 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     expect(result).toMatchObject({ sessions: 0, dispatched: 0, failed: 0 });
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
     expect(stagedPostCompactionDelegateCount(sessionKey)).toBe(1);
+    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
   });
 
-  it("classifies corrupt stale rows but holds valid rows when continuation is disabled", async () => {
+  // Contract change (RFC §4.4): recovery releases the valid claim while
+  // continuation is disabled; the queue drain's disabled gate defers its
+  // spawn, so the entry waits in the queue instead of the record in `running`.
+  it("rejects corrupt stale rows but defers valid rows when continuation is disabled", async () => {
     setRuntimeConfigSnapshot({
       agents: { defaults: { continuation: { enabled: false } } },
     });
-    const validFlowId = stageAndClaimRunning(
-      "agent:main:subagent:pc-disabled-valid",
+    const validSessionKey = "agent:main:subagent:pc-disabled-valid";
+    const corruptSessionKey = "agent:main:subagent:pc-disabled-corrupt";
+    const validFlowId = await stageAndClaimRunning(
+      validSessionKey,
       "should not fire while disabled",
     );
-    const corruptFlowId = stageAndClaimRunning(
-      "agent:main:subagent:pc-disabled-corrupt",
+    const corruptFlowId = await stageAndClaimRunning(
+      corruptSessionKey,
       "must be scrubbed while disabled",
     );
     const secret = "DISABLED_POST_COMPACTION_ROOT_SECRET_MUST_NOT_RETAIN";
-    const corruptFlow = expectDefined(mockFlows.get(corruptFlowId), "corrupt disabled flow");
-    corruptFlow.stateJson = {
-      ...(corruptFlow.stateJson as Record<string, unknown>),
-      extra: secret,
-    };
+    const corrupt = await custodyRecord(corruptFlowId);
+    const corrupted = await updateContinuationRecords(
+      [
+        {
+          recordId: corrupt.recordId,
+          ownerSessionKey: corrupt.ownerSessionKey,
+          expectedRevision: corrupt.revision,
+          patch: {
+            stateJson: JSON.stringify({ ...custodyStateForTest(corrupt), extra: secret }),
+          },
+        },
+      ],
+      { now: Date.now() },
+    );
+    expect(corrupted.outcome).toBe("applied");
 
     const result = await recoverAndReleaseStagedPostCompactionDelegates({
       runningUpdatedAtOrBefore: Date.now(),
     });
 
-    // The corrupt row is scrubbed at listing time, so only the valid owner session
-    // reaches recovery; it is counted, then held because continuation is off.
-    expect(result).toMatchObject({ sessions: 1, dispatched: 0, failed: 0 });
+    // The corrupt row is scrubbed at listing time, so only the valid owner
+    // session reaches recovery; it is released, then its spawn is deferred.
+    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(mockFlows.get(validFlowId)).toMatchObject({ status: "running" });
-    expect(mockFlows.get(corruptFlowId)).toMatchObject({ status: "failed", stateJson: {} });
-    expect(JSON.stringify(mockFlows.get(corruptFlowId)?.stateJson)).not.toContain(secret);
+    expect(await custodyRecord(validFlowId)).toMatchObject({
+      status: "succeeded",
+      handoff: expect.objectContaining({ target: "session_delivery_queue" }),
+    });
+    const deferred = await pendingPostCompactionEntries(validSessionKey);
+    expect(deferred).toHaveLength(1);
+    expect(deferred[0]).toMatchObject({ sourceFlowId: validFlowId, retryCount: 0 });
+    const scrubbed = await custodyRecord(corruptFlowId);
+    expect(scrubbed).toMatchObject({ status: "failed" });
+    expect(custodyStateForTest(scrubbed)).toEqual({});
+    expect(scrubbed.stateJson).not.toContain(secret);
+    expect(await pendingPostCompactionEntries(corruptSessionKey)).toEqual([]);
   });
 });

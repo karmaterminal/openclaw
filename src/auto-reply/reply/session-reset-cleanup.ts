@@ -79,14 +79,14 @@ function interruptsContinuationAuthority(reason: SessionRuntimeCleanupReason): b
 }
 
 /** Clears queued follow-ups and pending system events visible to the resetting agent. */
-export function clearSessionResetRuntimeState(
+export async function clearSessionResetRuntimeState(
   keys: Array<string | undefined>,
   opts: {
     agentId: string;
     reason: SessionRuntimeCleanupReason;
     activeReplySessionId?: string;
   },
-): ClearSessionResetRuntimeStateResult {
+): Promise<ClearSessionResetRuntimeStateResult> {
   const normalizedKeys = [
     ...new Set(keys.flatMap((key) => (typeof key === "string" && key.trim() ? [key.trim()] : []))),
   ];
@@ -95,7 +95,7 @@ export function clearSessionResetRuntimeState(
     // Durable authority must close before timers, waiters, or queues are destroyed.
     // A persistence failure leaves every transient claim path intact for retry.
     for (const key of normalizedKeys) {
-      cancelSessionContinuations(key);
+      await cancelSessionContinuations(key);
     }
   }
 

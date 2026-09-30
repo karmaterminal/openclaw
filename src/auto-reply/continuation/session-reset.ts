@@ -1,74 +1,110 @@
+// Explicit reset is an interruption boundary for continuation custody (RFC
+// docs/design/continue-work-signal-v2.md §5.4.4, "Reset at any boundary").
+import { refuseContinuationCustodyImportPending } from "./custody-import-gate.js";
 import {
-  isContinuationDelegateFlow,
-  scrubStoredDelegateAttachmentState,
-} from "../../tasks/task-flow-continuation-state.js";
-import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
-import {
-  listTaskFlowsForOwnerKey,
-  updateFlowRecordByIdExpectedRevision,
-} from "../../tasks/task-flow-runtime-internal.js";
-import {
-  isPostCompactionDelegateFlow,
-  readAcceptedDelegateChildSessionKey,
-} from "./delegate-flow-store.js";
-import { isContinuationWorkFlow } from "./work-flow-state.js";
+  listContinuationRecords,
+  readContinuationOwnerInventory,
+  updateContinuationRecords,
+} from "./custody/custody-store.js";
+import type { ContinuationRecord, ContinuationRecordPatch } from "./custody/custody-store.types.js";
 
 const MAX_SESSION_RESET_CANCELLATION_ATTEMPTS = 8;
 
 export class SessionContinuationResetError extends Error {
-  constructor(flowId: string, reason: string) {
-    super(`Session reset could not cancel continuation flow ${flowId}: ${reason}. Retry.`);
+  constructor(recordId: string, reason: string) {
+    super(`Session reset could not cancel continuation record ${recordId}: ${reason}. Retry.`);
     this.name = "SessionContinuationResetError";
   }
 }
 
-function isResettableContinuationFlow(flow: TaskFlowRecord): boolean {
-  const handedOffPostCompaction =
-    flow.status === "succeeded" &&
-    isPostCompactionDelegateFlow(flow) &&
-    readAcceptedDelegateChildSessionKey(flow) === undefined;
+/**
+ * A post-compaction record handed off to the session queue whose child was
+ * not accepted yet. Handoffs are permanent, so reset fences the record; the
+ * queue drain refuses to spawn a fenced source.
+ */
+function isUnacceptedPostCompactionHandoff(record: ContinuationRecord): boolean {
   return (
-    (isContinuationWorkFlow(flow) || isContinuationDelegateFlow(flow)) &&
-    (flow.status === "queued" || flow.status === "running" || handedOffPostCompaction)
+    record.kind === "post_compaction" &&
+    record.status === "succeeded" &&
+    record.handoff?.target === "session_delivery_queue" &&
+    record.cancelRequestedAt === undefined &&
+    !stateHasAcceptedChild(record)
   );
 }
 
+function stateHasAcceptedChild(record: ContinuationRecord): boolean {
+  try {
+    const state: unknown = JSON.parse(record.stateJson);
+    return (
+      typeof state === "object" &&
+      state !== null &&
+      // SAFETY: state is a non-null object; only its `childSessionKey` property is read.
+      typeof (state as { childSessionKey?: unknown }).childSessionKey === "string"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function resetPatch(record: ContinuationRecord, now: number): ContinuationRecordPatch | undefined {
+  if (record.status === "queued" || record.status === "running") {
+    // Cancel is terminal: the same commit scrubs the attachment reference and
+    // the store releases the payload file right after it (§5.4.9 item 6).
+    return { status: "cancelled", phase: "Cancelled by session reset", cancelRequestedAt: now };
+  }
+  return isUnacceptedPostCompactionHandoff(record) ? { cancelRequestedAt: now } : undefined;
+}
+
 /** Terminalize durable continuation work owned by one reset session. */
-export function cancelSessionContinuations(sessionKey: string): void {
-  const flows = listTaskFlowsForOwnerKey(sessionKey).filter(isResettableContinuationFlow);
-  const endedAt = Date.now();
-  for (const flow of flows) {
-    let current = flow;
-    for (let attempt = 0; attempt < MAX_SESSION_RESET_CANCELLATION_ATTEMPTS; attempt += 1) {
-      const result = updateFlowRecordByIdExpectedRevision({
-        flowId: current.flowId,
-        expectedRevision: current.revision,
-        patch: {
-          status: "cancelled",
-          currentStep: "Cancelled by session reset",
-          waitJson: null,
-          blockedTaskId: null,
-          blockedSummary: null,
-          cancelRequestedAt: endedAt,
-          endedAt,
-          updatedAt: endedAt,
-          ...(isContinuationDelegateFlow(current)
-            ? { stateJson: scrubStoredDelegateAttachmentState(current.stateJson) }
-            : {}),
-        },
-      });
-      if (result.applied || (result.current && !isResettableContinuationFlow(result.current))) {
+export async function cancelSessionContinuations(sessionKey: string): Promise<void> {
+  const now = Date.now();
+  const { records, awaitingImport } = await readContinuationOwnerInventory({
+    ownerSessionKey: sessionKey,
+  });
+  // An owner whose legacy import failed still has live rows this inventory
+  // cannot show; resetting now would report success and let a later import
+  // resurrect them. Fail as retryable until the import commits.
+  if (awaitingImport) {
+    refuseContinuationCustodyImportPending();
+  }
+  for (const initial of records) {
+    let current: ContinuationRecord | undefined = initial;
+    for (let attempt = 0; current; attempt += 1) {
+      const patch = resetPatch(current, now);
+      if (!patch) {
+        break;
+      }
+      let result: Awaited<ReturnType<typeof updateContinuationRecords>>;
+      try {
+        result = await updateContinuationRecords(
+          [
+            {
+              recordId: current.recordId,
+              ownerSessionKey: sessionKey,
+              expectedRevision: current.revision,
+              patch,
+            },
+          ],
+          { now },
+        );
+      } catch (err) {
+        // A failed write leaves the record as it was; report it as the
+        // retryable reset failure instead of an unclassified handler error.
+        throw new SessionContinuationResetError(
+          current.recordId,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+      if (result.outcome === "applied" || result.outcome === "not_found") {
         break;
       }
       if (
-        result.reason === "revision_conflict" &&
-        result.current &&
-        attempt + 1 < MAX_SESSION_RESET_CANCELLATION_ATTEMPTS
+        result.outcome !== "revision_conflict" ||
+        attempt + 1 >= MAX_SESSION_RESET_CANCELLATION_ATTEMPTS
       ) {
-        current = result.current;
-        continue;
+        throw new SessionContinuationResetError(current.recordId, result.outcome);
       }
-      throw new SessionContinuationResetError(current.flowId, result.reason);
+      current = (await listContinuationRecords({ recordIds: [current.recordId] }))[0];
     }
   }
 }

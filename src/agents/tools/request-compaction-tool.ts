@@ -34,7 +34,7 @@ const VOLITIONAL_COMPACTION_COUNT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 /**
  * Per-session state for guards.
  *
- * Module-level map — unlike the durable TaskFlow-backed delegate store.
+ * Module-level map — unlike the durable custody-backed delegate store.
  * Does not survive gateway restarts. This is intentional: the guards are
  * rate-limiters, not durable state. A restart resets the cooldown, which is
  * fine — the session itself is fresh.
