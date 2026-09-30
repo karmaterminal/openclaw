@@ -508,6 +508,8 @@ export const releaseSubagentRunKillClaim = subagentRunManager.releaseSubagentRun
 export const rollbackSubagentRunRegistration = subagentRunManager.rollbackSubagentRunRegistration;
 export const recordAcceptedSubagentSpawnRollback =
   subagentRunManager.recordAcceptedSubagentSpawnRollback;
+export const releaseAcceptedSubagentSpawnRollback =
+  subagentRunManager.releaseAcceptedSubagentSpawnRollback;
 // Matches upstream's awaitable `void | Promise<void>` contract: in-process Gateway
 // callers prepare completion authority asynchronously, so any registration may settle
 // later. Callers await it and read the ownership the continuation spawn path checks.

@@ -225,8 +225,6 @@ export function enqueueSystemEventEntry(
   return event ? cloneSystemEvent(event) : null;
 }
 
-export const enqueueSystemEventEntryRaw = enqueueSystemEventEntry;
-
 function enqueueOwnedSystemEventEntry(
   text: string,
   options: SystemEventOptions,

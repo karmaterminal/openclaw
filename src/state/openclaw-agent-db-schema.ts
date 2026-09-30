@@ -77,6 +77,7 @@ import {
   migrateSessionRecipientAuthority,
   migrateSessionTranscriptActiveProjection,
   migrateSessionTranscriptGenerations,
+  withoutSessionRecipientAuthoritySchema,
 } from "./openclaw-agent-db-session-migrations.js";
 import { migrateSessionNodesAndWindows } from "./openclaw-agent-db-session-nodes-migration.js";
 import { backfillSessionEntryProvenance } from "./openclaw-agent-db-session-provenance.js";
@@ -411,8 +412,12 @@ function ensureAgentSchema(
         return;
       }
       if (previousVersion === AGENT_MEDIA_SCHEMA_VERSION) {
-        const legacySql = withLegacySessionParticipantsSchema(
-          withLegacyAgentStorageSchema(OPENCLAW_AGENT_SCHEMA_SQL),
+        // Schema 17 predates the continuation recipient-authority table (schema
+        // 19); the migration below creates it, so its preflight must not require it.
+        const legacySql = withoutSessionRecipientAuthoritySchema(
+          withLegacySessionParticipantsSchema(
+            withLegacyAgentStorageSchema(OPENCLAW_AGENT_SCHEMA_SQL),
+          ),
         );
         ensureSessionAdditiveColumns(db);
         verifyAndRepairCanonicalSqliteIndexes(db, pathname, legacySql, {

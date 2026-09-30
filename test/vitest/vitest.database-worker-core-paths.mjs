@@ -967,6 +967,11 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/tools/sessions-spawn-tool.test.ts",
   "src/auto-reply/reply/agent-runner-result-accounting.persistence.test.ts",
   "src/auto-reply/reply/agent-runner-result-accounting.test.ts",
+  // Provisional spawn cleanup now consults continuation custody before
+  // sessions.delete, and upstream's timing writer commits through the worker
+  // session reader, so both suites need the host broker.
+  "src/agents/sessions-spawn-hooks.test.ts",
+  "src/agents/subagent-registry.persistence.timing.test.ts",
 ];
 
 const databaseWorkerCoreTestFileSet = new Set(databaseWorkerCoreTestFiles);

@@ -273,8 +273,13 @@ export async function wakeSubagentRunAfterDescendants(
     return await settleWake(wakeDispatchId);
   }
   // The deterministic ID binds itself to this request. A distinct runtime ID
-  // needs the Gateway's accepted discriminant before it can claim the reservation.
-  if (wakeRunId !== wakeDispatchId && wakeResponse?.status !== "accepted") {
+  // needs a Gateway success discriminant for this request (accepted, or ok for a
+  // turn that already completed) before it can claim the reservation.
+  if (
+    wakeRunId !== wakeDispatchId &&
+    wakeResponse?.status !== "accepted" &&
+    wakeResponse?.status !== "ok"
+  ) {
     return await settleUnboundWake(wakeRunId);
   }
   const acceptedState = await recordAcceptedWake(wakeRunId);

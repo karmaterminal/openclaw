@@ -1,14 +1,12 @@
 import { onTestFinished, vi } from "vitest";
 import type { createOpenClawCodingToolsInternal } from "../../../agents/agent-tools.js";
 
-type CreateTools = typeof createOpenClawCodingToolsInternal;
-/** Receives the real builder so a test can extend the production surface without re-entering this spy. */
-type ToolsFactory = (
-  options: Parameters<CreateTools>[0],
-  actual: CreateTools,
-) => ReturnType<CreateTools>;
-let createTools: CreateTools | undefined;
+type ToolsFactory = typeof createOpenClawCodingToolsInternal;
+let createTools: ToolsFactory | undefined;
 const factories = new Map<string, ToolsFactory>();
+// Runs whose factory is executing: a factory that extends the real surface through the
+// public builder re-enters this spy, and that inner build must be the real one.
+const activeRuns = new Set<string>();
 
 /** Substitutes construction while preserving the real host's private authority and bindings. */
 export async function setHostToolFactoryForTest(
@@ -21,11 +19,21 @@ export async function setHostToolFactoryForTest(
   const spy = vi
     .spyOn(agentTools, "createOpenClawCodingToolsInternal")
     .mockImplementation((...args) => {
-      const runFactory = args[0]?.runId ? factories.get(args[0].runId) : undefined;
-      return runFactory ? runFactory(args[0], actual) : actual(...args);
+      const runId = args[0]?.runId;
+      const runFactory = runId && !activeRuns.has(runId) ? factories.get(runId) : undefined;
+      if (!runId || !runFactory) {
+        return actual(...args);
+      }
+      activeRuns.add(runId);
+      try {
+        return runFactory(...args);
+      } finally {
+        activeRuns.delete(runId);
+      }
     });
   onTestFinished(() => {
     factories.clear();
+    activeRuns.clear();
     spy.mockRestore();
   });
 }

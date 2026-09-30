@@ -1,12 +1,7 @@
 import { createOpenClawCodingTools } from "openclaw/plugin-sdk/agent-harness";
 import type { EmbeddedRunAttemptParamsV2 as EmbeddedRunAttemptParams } from "openclaw/plugin-sdk/agent-harness-runtime";
 
-type CreateTools = typeof createOpenClawCodingTools;
-/** Receives the real builder so a test can append synthetic tools to the real surface. */
-type ToolsFactory = (
-  options: Parameters<CreateTools>[0],
-  actual: CreateTools,
-) => ReturnType<CreateTools>;
+type ToolsFactory = typeof createOpenClawCodingTools;
 type HostCapabilities = EmbeddedRunAttemptParams["hostCapabilities"];
 const toolFactories = new WeakMap<object, ToolsFactory | undefined>();
 
@@ -44,13 +39,11 @@ export function createCodexTestHostCapabilities(
       release: () => {},
     }),
     bindToolSurface: (tools) => tools,
-    createToolSurface: (options, bindingOptions) => {
-      const factory = toolFactories.get(host);
-      return host.bindToolSurface(
-        factory ? factory(options, createOpenClawCodingTools) : createOpenClawCodingTools(options),
+    createToolSurface: (options, bindingOptions) =>
+      host.bindToolSurface(
+        (toolFactories.get(host) ?? createOpenClawCodingTools)(options),
         bindingOptions,
-      );
-    },
+      ),
     runBeforeToolCall: async (request) => ({ blocked: false, params: request.params }),
     requestApproval: async () => undefined,
     waitForApproval: async () => undefined,

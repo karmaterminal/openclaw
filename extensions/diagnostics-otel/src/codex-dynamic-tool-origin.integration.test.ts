@@ -11,6 +11,7 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { ATTR_GEN_AI_TOOL_CALL_ID } from "@opentelemetry/semantic-conventions/incubating";
 import type { AgentToolResult } from "openclaw/plugin-sdk/agent-core";
+import { createOpenClawCodingTools } from "openclaw/plugin-sdk/agent-harness";
 import type { AnyAgentTool } from "openclaw/plugin-sdk/agent-harness-runtime";
 import {
   cancelPendingDelegates,
@@ -241,7 +242,10 @@ test("exports Codex dynamic continuation origins through the production tool bou
             sessionKey: SESSION_KEY,
           },
         );
-        setCodexTestToolFactory(params, (options, actual) => [...actual(options), timeoutTool]);
+        setCodexTestToolFactory(params, (options) => [
+          ...createOpenClawCodingTools(options),
+          timeoutTool,
+        ]);
         params.config = {
           ...params.config,
           agents: {

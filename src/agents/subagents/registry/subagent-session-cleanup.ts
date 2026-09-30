@@ -7,6 +7,10 @@ import { SESSION_LIFECYCLE_CHANGED_ERROR_REASON } from "../../../config/sessions
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { withPluginRuntimeGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
+import {
+  isGatewayRestartDrainError,
+  runWithGatewayDetachedWorkAdmission,
+} from "../../../process/gateway-work-admission.js";
 import type { SpawnSubagentMode } from "../spawn/subagent-spawn.types.js";
 
 type CallGateway = (options: {
@@ -71,7 +75,20 @@ function scheduleDeferredCleanupRetry(params: DeleteSubagentSessionForCleanupPar
   }
   const handle = setTimeout(() => {
     cleanupRetryTimers.delete(params.childSessionKey);
-    void deleteSubagentSessionForCleanup(params);
+    // The retry outlives the request that deferred it; the timer still carries
+    // that request's (now drained) work scope, whose cancellation would abort the
+    // prepared descendant read. Run it as its own delayed Gateway work.
+    void runWithGatewayDetachedWorkAdmission(
+      () => deleteSubagentSessionForCleanup(params),
+      "subagents:session-cleanup-retry",
+    ).catch((error: unknown) => {
+      if (isGatewayRestartDrainError(error)) {
+        return;
+      }
+      log.warn(
+        `[subagent-session-cleanup-retry-failed] child=${params.childSessionKey} error=${String(error)}`,
+      );
+    });
   }, DEFERRED_SESSION_CLEANUP_RETRY_MS);
   handle.unref();
   cleanupRetryTimers.set(params.childSessionKey, handle);

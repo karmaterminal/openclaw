@@ -42,6 +42,11 @@ import type { SubagentRunRecord } from "./subagent-registry.types.js";
 export { preserveSubagentRunForRestart } from "./subagent-registry-run-wait.js";
 
 const log = createSubsystemLogger("agents/subagent-registry");
+// Rollback records whose custody introduced completion-delivery suppression,
+// so a confirmed release restores the row's own delivery state.
+const rollbackSuppressedDelivery = new WeakSet<
+  NonNullable<SubagentRunRecord["acceptedSpawnRollback"]>
+>();
 
 class SubagentRunManager extends SubagentLaunchManager {
   readonly recordAcceptedSubagentSpawnRollback = (params: {
@@ -76,13 +81,19 @@ class SubagentRunManager extends SubagentLaunchManager {
     if (existing && existing.gatewayRunId !== gatewayRunId) {
       return { status: "rejected" };
     }
-    entry.acceptedSpawnRollback = existing ?? {
-      gatewayRunId,
-      requestedAt: Date.now(),
-      reason,
-      expectedSessionId: params.expectedSessionId?.trim() || undefined,
-      expectedLifecycleRevision: params.expectedLifecycleRevision?.trim() || undefined,
-    };
+    if (!existing) {
+      const rollback = {
+        gatewayRunId,
+        requestedAt: Date.now(),
+        reason,
+        expectedSessionId: params.expectedSessionId?.trim() || undefined,
+        expectedLifecycleRevision: params.expectedLifecycleRevision?.trim() || undefined,
+      };
+      if (entry.suppressCompletionDelivery !== true) {
+        rollbackSuppressedDelivery.add(rollback);
+      }
+      entry.acceptedSpawnRollback = rollback;
+    }
     entry.suppressCompletionDelivery = true;
     if (entry.execution.status !== "terminal") {
       entry.execution = { ...entry.execution, suppressSessionEffects: true };
@@ -94,6 +105,51 @@ class SubagentRunManager extends SubagentLaunchManager {
       this.options.startSweeper();
       this.options.scheduleSweep({ delayMs: 1_000 });
       return { status: "pending-persistence", error };
+    }
+  };
+
+  /**
+   * Releases accepted-spawn rollback custody once the launch owner has confirmed
+   * the accepted child stopped. Only the exact marker for that gateway run is
+   * cleared; if the release cannot persist, the marker stays for the sweeper.
+   */
+  readonly releaseAcceptedSubagentSpawnRollback = (params: {
+    runId: string;
+    childSessionKey: string;
+    gatewayRunId: string;
+  }): boolean => {
+    const entry = this.options.runs.get(params.runId.trim());
+    const rollback = entry?.acceptedSpawnRollback;
+    if (
+      !entry ||
+      !rollback ||
+      entry.childSessionKey !== params.childSessionKey ||
+      rollback.gatewayRunId !== params.gatewayRunId.trim()
+    ) {
+      return false;
+    }
+    const restoreDelivery =
+      rollbackSuppressedDelivery.has(rollback) && entry.suppressCompletionDelivery === true;
+    delete entry.acceptedSpawnRollback;
+    if (restoreDelivery) {
+      delete entry.suppressCompletionDelivery;
+    }
+    try {
+      this.options.persistOrThrow(entry.runId);
+      rollbackSuppressedDelivery.delete(rollback);
+      return true;
+    } catch (error) {
+      if (entry.acceptedSpawnRollback === undefined) {
+        entry.acceptedSpawnRollback = rollback;
+        if (restoreDelivery) {
+          entry.suppressCompletionDelivery = true;
+        }
+      }
+      log.warn("failed to persist accepted spawn rollback release", {
+        runId: entry.runId,
+        error,
+      });
+      return false;
     }
   };
 

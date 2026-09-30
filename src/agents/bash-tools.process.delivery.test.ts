@@ -4,7 +4,7 @@ import { copyInternalToolResultState } from "../../packages/agent-core/src/inter
 import { runWithAgentToolExecutionContext } from "../../packages/agent-core/src/tool-execution-context.js";
 import { typeCheckSources } from "../../test/helpers/typescript.js";
 import {
-  enqueueSystemEventEntryRaw as enqueueSystemEventEntry,
+  enqueueSystemEventEntry,
   enqueueSystemEventWithReceipt,
   peekSystemEventEntries,
   resetSystemEventsForTest,

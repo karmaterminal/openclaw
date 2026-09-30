@@ -23,7 +23,7 @@ import {
 import { withSystemEventOwner } from "../../infra/system-event-ownership.js";
 import {
   enqueueSystemEvent,
-  enqueueSystemEventEntryRaw as enqueueSystemEventEntry,
+  enqueueSystemEventEntry,
   peekSystemEventEntries,
   resetSystemEventsForTest,
 } from "../../infra/system-events.js";

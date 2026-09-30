@@ -10,6 +10,7 @@ import { summarizeSpawnError } from "../../spawn-pipeline.js";
 import {
   completeCollectorLaunchCleanup,
   recordAcceptedSubagentSpawnRollback,
+  releaseAcceptedSubagentSpawnRollback,
   settleFailedQueuedSubagentLaunch,
   startQueuedSubagentRun,
 } from "../registry/subagent-registry.js";
@@ -221,8 +222,9 @@ export function createCollectorLaunchCallbacks(params: {
         await publication;
       }
       if (pendingLaunchTermination && !launchTerminationConfirmed) {
+        let terminated: boolean;
         try {
-          await terminateAcceptedCollectorRun({
+          terminated = await terminateAcceptedCollectorRun({
             childSessionKey,
             gatewayRunId: pendingLaunchTermination,
             ...provisionalSessionIdentity,
@@ -241,6 +243,15 @@ export function createCollectorLaunchCallbacks(params: {
           throw aggregate;
         }
         launchTerminationConfirmed = true;
+        if (terminated) {
+          // The accepted child is proven stopped, so the rollback custody recorded
+          // for the sweeper is discharged; an unconfirmed stop keeps it.
+          releaseAcceptedSubagentSpawnRollback({
+            runId: childRunId,
+            childSessionKey,
+            gatewayRunId: pendingLaunchTermination,
+          });
+        }
       }
       const launchError = summarizeSpawnError(error);
       const settleFailure = async () => {

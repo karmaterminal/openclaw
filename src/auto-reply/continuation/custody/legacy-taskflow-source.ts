@@ -13,6 +13,7 @@ import { isSubagentAttachmentId } from "../../../agents/subagents/subagent-attac
 import { resolveStateDir } from "../../../config/state-dir.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../../infra/kysely-sync.js";
 import { SESSION_DELIVERY_QUEUE_NAME } from "../../../infra/session-delivery-queue.records.js";
+import { isSqliteSchemaVersionError } from "../../../infra/sqlite-user-version.js";
 import {
   withExistingOpenClawStateDatabaseArtifactPreservingReadOnly,
   withExistingOpenClawStateDatabaseReadOnly,
@@ -314,7 +315,11 @@ export type ContinuationTaskFlowImportDetection = {
   pendingSources: number;
 };
 
-/** Read-only Doctor detection; an absent state database has nothing to import. */
+/**
+ * Read-only Doctor detection; an absent state database has nothing to import.
+ * A state database from a newer build is not this build's to import from: the
+ * shared-schema step reports that refusal, so detection finds no work here.
+ */
 export function detectContinuationTaskFlowCustodyImport(params: {
   env: NodeJS.ProcessEnv;
   artifactPreservingReadOnly?: boolean;
@@ -322,7 +327,25 @@ export function detectContinuationTaskFlowCustodyImport(params: {
   const read = params.artifactPreservingReadOnly
     ? withExistingOpenClawStateDatabaseArtifactPreservingReadOnly
     : withExistingOpenClawStateDatabaseReadOnly;
-  const pendingSources =
+  let pendingSources: number;
+  try {
+    pendingSources = readPendingSourceCount(read, params.env);
+  } catch (error) {
+    if (isSqliteSchemaVersionError(error)) {
+      return { hasLegacy: false, pendingSources: 0 };
+    }
+    throw error;
+  }
+  return { hasLegacy: pendingSources > 0, pendingSources };
+}
+
+function readPendingSourceCount(
+  read:
+    | typeof withExistingOpenClawStateDatabaseReadOnly
+    | typeof withExistingOpenClawStateDatabaseArtifactPreservingReadOnly,
+  env: NodeJS.ProcessEnv,
+): number {
+  return (
     read(
       ({ db }) => {
         const rows = readLegacyContinuationFlowRows(db);
@@ -334,10 +357,10 @@ export function detectContinuationTaskFlowCustodyImport(params: {
         return (
           unexamined.length +
           readPendingPostCompactionEntries(db).filter((entry) => entry.covered).length +
-          readPendingLegacyReleases(db, params.env).length
+          readPendingLegacyReleases(db, env).length
         );
       },
-      { env: params.env },
-    ) ?? 0;
-  return { hasLegacy: pendingSources > 0, pendingSources };
+      { env },
+    ) ?? 0
+  );
 }

@@ -1567,22 +1567,25 @@ function buildLegacyStateMigrationSteps(
   const finalSteps: LegacyStateMigrationStep[] = [
     ownerStep("restart-sentinel", detected.restartSentinel, migrateLegacyRestartSentinel),
     // Startup runs this too (scope "all"), so a restart that skipped Doctor still
-    // imports before continuation recovery reads the custody store.
-    ownerStep(
-      "continuation-taskflow-custody-import",
-      detected.continuationCustody,
-      async (options) => {
-        if (options.detected?.hasLegacy !== true) {
-          return { changes: [], warnings: [] };
-        }
-        const { migrateContinuationTaskFlowCustody } =
-          await import("../auto-reply/continuation/custody/legacy-taskflow-import.js");
-        return migrateContinuationTaskFlowCustody({
-          env: { ...options.env, OPENCLAW_STATE_DIR: options.stateDir },
-          now,
-        });
-      },
-    ),
+    // imports before continuation recovery reads the custody store. Like
+    // commitments, the step exists only when its detector found work: a state
+    // with no legacy TaskFlow source has no continuation import to order or block.
+    ...(detected.continuationCustody?.hasLegacy === true
+      ? [
+          ownerStep(
+            "continuation-taskflow-custody-import",
+            detected.continuationCustody,
+            async (options) => {
+              const { migrateContinuationTaskFlowCustody } =
+                await import("../auto-reply/continuation/custody/legacy-taskflow-import.js");
+              return migrateContinuationTaskFlowCustody({
+                env: { ...options.env, OPENCLAW_STATE_DIR: options.stateDir },
+                now,
+              });
+            },
+          ),
+        ]
+      : []),
     {
       ...ownerStep("workspace-state", detected.workspace, async (options) => {
         // Shared/agent schemas are ready here. Repair alias ownership before

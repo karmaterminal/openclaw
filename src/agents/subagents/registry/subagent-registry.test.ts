@@ -6,6 +6,8 @@ import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
+import { resetContinuationCustodyProjection } from "../../../auto-reply/continuation/custody/custody-projection.js";
+import { hydrateContinuationCustody } from "../../../auto-reply/continuation/custody/custody-store.js";
 import { cleanupBrowserSessionsForLifecycleEnd } from "../../../browser-lifecycle-cleanup.js";
 import { captureSessionEntryCurrentRead } from "../../../config/sessions/session-entry-current-runtime.js";
 import { withSessionEntryReadOnlyInWorker } from "../../../config/sessions/session-entry-read-runtime.js";
@@ -277,6 +279,9 @@ describe("subagent registry seam flow", () => {
 
   beforeEach(async () => {
     resetGatewayWorkAdmission();
+    // Archive deferral reads the continuation custody projection, which errs
+    // toward retention until hydrated; hydrate it as Gateway boot does.
+    await hydrateContinuationCustody();
     vi.clearAllMocks();
     mocks.callGateway.mockReset();
     mocks.captureSubagentCompletionReply.mockReset().mockResolvedValue("final completion reply");
@@ -369,6 +374,7 @@ describe("subagent registry seam flow", () => {
 
   afterEach(() => {
     resetGatewayWorkAdmission();
+    resetContinuationCustodyProjection();
     vi.mocked(cleanupBrowserSessionsForLifecycleEnd).mockReset();
     mod.resetSubagentRegistryForTests({ persist: false });
     swarmSchedulerTesting.reset();

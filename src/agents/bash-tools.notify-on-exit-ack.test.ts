@@ -7,7 +7,7 @@ import {
   withTempTelegramHeartbeatSandbox,
 } from "../infra/heartbeat-runner.test-utils.js";
 import {
-  enqueueSystemEventEntryRaw as enqueueSystemEventEntry,
+  enqueueSystemEventEntry,
   peekSystemEventEntries,
   resetSystemEventsForTest,
 } from "../infra/system-events.js";

@@ -33,7 +33,7 @@ import {
 } from "../../infra/outbound/session-binding-service.js";
 import {
   enqueueSystemEventRaw as enqueueSystemEvent,
-  enqueueSystemEventEntryRaw as enqueueSystemEventEntry,
+  enqueueSystemEventEntry,
   peekSystemEvents,
   resetSystemEventsForTest,
 } from "../../infra/system-events.js";
