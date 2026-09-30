@@ -25,6 +25,10 @@ import {
   warnSuspendedDeliveryPressure,
 } from "./subagent-registry-suspended-delivery.js";
 import {
+  type CollectorArchiveCandidate,
+  sweepCollectorArchiveGroups,
+} from "./subagent-registry-sweep-collector-groups.js";
+import {
   reconcileAcceptedSteerDispatch,
   reconcileAcceptedSpawnRollback,
   reconcileDurableSubagentKillIntent,
@@ -165,10 +169,7 @@ export function createSubagentRegistrySweeper(
       const now = Date.now();
       const storeCache: SubagentSessionStoreCache = new Map();
       const mutatedRunIds = new Set<string>();
-      const collectorArchiveCandidates = new Map<
-        string,
-        { requesterSessionKey: string; groupId: string; requesterAgentId?: string }
-      >();
+      const collectorArchiveCandidates = new Map<string, CollectorArchiveCandidate>();
       const acceptedSteerCandidates: Array<{ runId: string; entry: SubagentRunRecord }> = [];
       const acceptedSpawnRollbackCandidates: Array<{
         runId: string;
@@ -564,128 +565,16 @@ export function createSubagentRegistrySweeper(
           });
         }
       }
-      collectorGroups: for (const {
-        requesterSessionKey,
-        groupId,
-        requesterAgentId,
-      } of collectorArchiveCandidates.values()) {
-        const readGroup = () => [
-          ...params.getRunsForCollectorGroup(requesterSessionKey, groupId, requesterAgentId),
-        ];
-        const groupEntries = readGroup();
-        if (
-          groupEntries.some(
-            ([, candidate]) =>
-              !candidate.collectorCompletion ||
-              candidate.collectorLaunchCleanupPending === true ||
-              candidate.archiveAtMs === undefined ||
-              candidate.archiveAtMs > now ||
-              params.shouldDeferArchive(candidate) ||
-              !cleanupIdentities.has(candidate),
-          )
-        ) {
-          continue;
-        }
-        for (const [candidateRunId, candidate] of groupEntries) {
-          if (runs.get(candidateRunId) !== candidate) {
-            continue collectorGroups;
-          }
-          if (shouldSuppressSubagentRecoverySessionEffects(candidate)) {
-            continue;
-          }
-          const sessionIdentity = cleanupIdentities.get(candidate);
-          if (!sessionIdentity) {
-            candidate.execution = {
-              ...candidate.execution,
-              suppressSessionEffects: true,
-            };
-            continue;
-          }
-          try {
-            const deletion = await deleteSession(
-              candidate.childSessionKey,
-              sessionIdentity,
-              () =>
-                runs.get(candidateRunId) === candidate &&
-                isSessionIdentityCurrent(candidate.childSessionKey, sessionIdentity),
-              candidate,
-            );
-            if (runs.get(candidateRunId) !== candidate) {
-              continue collectorGroups;
-            }
-            if (deletion === "changed") {
-              candidate.execution = {
-                ...candidate.execution,
-                suppressSessionEffects: true,
-              };
-            }
-          } catch (error) {
-            params.warn("sessions.delete failed during collector group sweep; keeping group", {
-              runId: candidateRunId,
-              childSessionKey: candidate.childSessionKey,
-              groupId,
-              error,
-            });
-            continue collectorGroups;
-          }
-        }
-        for (const [candidateRunId, candidate] of groupEntries) {
-          if (await safeRemoveAttachmentsDir(candidate)) {
-            continue;
-          }
-          params.warn("attachment cleanup failed during collector group sweep; keeping group", {
-            runId: candidateRunId,
-            childSessionKey: candidate.childSessionKey,
-            groupId,
-          });
-          continue collectorGroups;
-        }
-        for (const [candidateRunId, candidate] of groupEntries) {
-          if (
-            candidate.cleanup === "delete" ||
-            shouldSuppressSubagentRecoverySessionEffects(candidate) ||
-            typeof candidate.contextEngineCleanupCompletedAt === "number"
-          ) {
-            continue;
-          }
-          try {
-            await params.runContextEngineSubagentEnded(sweptContext(candidate));
-            candidate.contextEngineCleanupCompletedAt = Date.now();
-            params.persist(candidateRunId);
-          } catch (error) {
-            params.warn(
-              "context-engine cleanup failed during collector group sweep; keeping group",
-              {
-                runId: candidateRunId,
-                childSessionKey: candidate.childSessionKey,
-                groupId,
-                error,
-              },
-            );
-            continue collectorGroups;
-          }
-        }
-        const expectedGroupEntries = new Map(groupEntries);
-        const liveGroupEntries = readGroup();
-        if (
-          liveGroupEntries.length !== groupEntries.length ||
-          liveGroupEntries.some(
-            ([candidateRunId, candidate]) =>
-              expectedGroupEntries.get(candidateRunId) !== candidate ||
-              !candidate.collectorCompletion ||
-              candidate.collectorLaunchCleanupPending === true ||
-              candidate.archiveAtMs === undefined ||
-              candidate.archiveAtMs > now,
-          )
-        ) {
-          continue;
-        }
-        for (const [candidateRunId] of liveGroupEntries) {
-          params.clearPendingLifecycleError(candidateRunId);
-          runs.delete(candidateRunId);
-          mutatedRunIds.add(candidateRunId);
-        }
-      }
+      await sweepCollectorArchiveGroups({
+        candidates: collectorArchiveCandidates,
+        now,
+        cleanupIdentities,
+        mutatedRunIds,
+        deleteSession,
+        isSessionIdentityCurrent,
+        sweptContext,
+        params,
+      });
       params.sweepPendingLifecycle(now);
 
       if (mutatedRunIds.size > 0) {

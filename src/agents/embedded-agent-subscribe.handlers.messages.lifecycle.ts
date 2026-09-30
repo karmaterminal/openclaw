@@ -494,7 +494,7 @@ export function handleMessageEnd(
       const payload = {
         text: displayTextLocal,
         mediaUrls: mediaUrlsLocal?.length ? mediaUrlsLocal : undefined,
-        audioAsVoice: audioAsVoice ?? false,
+        audioAsVoice: audioAsVoice || undefined,
         replyToId,
         replyToTag,
         replyToCurrent,

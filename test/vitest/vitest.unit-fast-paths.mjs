@@ -208,6 +208,9 @@ const ownerRoutedUnitTestPatterns = [
   "src/agents/embedded-agent-runner/run.inherited-auth-owner.test.ts",
   "src/agents/embedded-agent-runner/run.session-permissions.test.ts",
   "src/agents/embedded-agent-runner/run.shared-integration.test.ts",
+  // Split from subagent-registry-queries.test.ts for the max-lines cap; keep it
+  // in the parent's agents-support lane.
+  "src/agents/subagents/registry/subagent-registry-queries.requester-window.test.ts",
   "src/auto-reply/reply/dispatch-from-config.test.ts",
   "src/auto-reply/reply/dispatch-from-config.delivery.test.ts",
   "src/auto-reply/reply/dispatch-from-config.lifecycle.test.ts",

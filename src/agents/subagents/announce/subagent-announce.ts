@@ -14,12 +14,7 @@ import {
   buildAnnounceIdFromChildRun,
   buildAnnounceIdempotencyKey,
 } from "../../announce-idempotency.js";
-import {
-  finalizeDelegateArtifacts,
-  isDelegateArtifactReturnConfigured,
-  prepareDelegateArtifactDelivery,
-  type DelegateArtifactRecipientProjectionV1,
-} from "../../delegate-artifacts.js";
+import { isDelegateArtifactReturnConfigured } from "../../delegate-artifacts.js";
 import { buildSubagentAnnounceMessages } from "../../subagent-announce-message.js";
 import {
   normalizeSubagentAnnounceReply,
@@ -38,15 +33,16 @@ import { deleteSubagentSessionForCleanup } from "../registry/subagent-session-cl
 import { getSubagentDepthFromSessionStore } from "../spawn/subagent-depth.js";
 import type { SubagentRunOutcome } from "../subagent-run-outcome.types.js";
 import {
+  finalizeSubagentAnnounceArtifacts,
+  prepareSubagentAnnounceArtifactProjections,
+} from "./subagent-announce-artifacts.js";
+import {
   deliverSubagentAnnouncement,
   loadSessionEntryByKey,
 } from "./subagent-announce-delivery.js";
 import { loadSubagentContinuationRuntime, subagentAnnounceDeps } from "./subagent-announce-deps.js";
-import {
-  isWakeContinuationRun,
-  stripWakeRunSuffixes,
-  wakeSubagentRunAfterDescendants,
-} from "./subagent-announce-descendant-wake.js";
+import { wakeSubagentRunWithDescendantFindings } from "./subagent-announce-descendant-findings-wake.js";
+import { isWakeContinuationRun } from "./subagent-announce-descendant-wake.js";
 import type { SubagentAnnounceDeliveryResult } from "./subagent-announce-dispatch.js";
 import {
   resolveAnnounceOrigin,
@@ -69,7 +65,6 @@ import {
   createSubagentAnnounceEntryReaders,
   formatSubagentAnnounceOwnerFailure,
 } from "./subagent-announce-owner-coordination.js";
-import { readSessionIdByKeySync } from "./subagent-announce-session-id.js";
 import {
   isEmbeddedAgentRunActive,
   waitForEmbeddedAgentRunEnd,
@@ -315,23 +310,13 @@ async function runSubagentAnnounceFlowBound(
       subagentRegistryRuntime &&
       !childRunAlreadyWoken
     ) {
-      const wakeAnnounceId = buildAnnounceIdFromChildRun({
-        childSessionKey: params.childSessionKey,
-        childRunId: stripWakeRunSuffixes(params.childRunId),
-      });
-      const wake = await wakeSubagentRunAfterDescendants(
+      const wake = await wakeSubagentRunWithDescendantFindings(
+        params,
         {
-          runId: params.childRunId,
-          childSessionKey: params.childSessionKey,
-          runTimeoutSeconds: params.runTimeoutSeconds,
-          taskLabel: params.label || params.task || "task",
           findings: childCompletionFindings,
-          announceId: wakeAnnounceId,
           prepareCurrent: prepareChildSessionEffects,
           isChildSessionEffectsAllowed: () =>
             childSessionEffectsAllowed() && completionDeliveryAllowed(),
-          resolveGatewayContext: params.resolveGatewayContext,
-          signal: params.signal,
         },
         subagentAnnounceDeps,
       );
@@ -492,26 +477,14 @@ async function runSubagentAnnounceFlowBound(
     }
 
     const cfg = subagentAnnounceDeps.getRuntimeConfig();
-    const artifactConfig = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
-    const announceSessionId =
-      childSessionCurrent && childSessionEffectsAllowed() ? childSessionId || "unknown" : "unknown";
-    const artifactFinalization =
-      childSessionCurrent && childSessionEffectsAllowed()
-        ? finalizeDelegateArtifacts({
-            producerSessionKey: params.childSessionKey,
-            producerSessionId: announceSessionId,
-            producerRunId: params.childRunId,
-            completionId: announceId,
-            finalizationKey: `delegate-artifact-finalization:${announceId}`,
-            completionStatus: outcome.status,
-            completedAt: params.endedAt ?? Date.now(),
-            silent: params.silentAnnounce === true,
-            runtimeEnabled: artifactConfig.enabled,
-            crossSessionEnabled: artifactConfig.crossSessionTargeting === "enabled",
-            // Runs inside finalization's synchronous transaction: a synchronous read.
-            resolveSessionId: readSessionIdByKeySync,
-          })
-        : ({ status: "not-configured" } as const);
+    const { announceSessionId, artifactFinalization } = finalizeSubagentAnnounceArtifacts({
+      cfg,
+      flow: params,
+      childSessionId,
+      isChildSessionEffectsCurrent: () => childSessionCurrent && childSessionEffectsAllowed(),
+      announceId,
+      outcomeStatus: outcome.status,
+    });
     if (artifactFinalization.status === "deferred") {
       return "retryable";
     }
@@ -620,29 +593,12 @@ async function runSubagentAnnounceFlowBound(
       (await prepareChildSessionEffects()) && childSessionEffectsAllowed()
         ? candidateStatsLine
         : undefined;
-    const finalizedArtifactProjections =
-      "projections" in artifactFinalization ? artifactFinalization.projections : undefined;
-    let artifactProjections: Map<string, DelegateArtifactRecipientProjectionV1> | undefined;
-    if (finalizedArtifactProjections) {
-      const deliveryConfig = subagentAnnounceDeps.resolveContinuationRuntimeConfig(
-        subagentAnnounceDeps.getRuntimeConfig(),
-      );
-      artifactProjections = new Map();
-      for (const [sessionKey, projection] of finalizedArtifactProjections) {
-        const delivery = prepareDelegateArtifactDelivery({
-          projection,
-          runtimeEnabled: deliveryConfig.enabled,
-          crossSessionEnabled: deliveryConfig.crossSessionTargeting === "enabled",
-          currentRecipientSessionId: (await loadSessionEntryByKey(sessionKey))?.sessionId,
-        });
-        if (delivery.status === "deferred") {
-          return "retryable";
-        }
-        if (delivery.status === "ready") {
-          artifactProjections.set(sessionKey, delivery.projection);
-        }
-      }
+    const preparedArtifactProjections =
+      await prepareSubagentAnnounceArtifactProjections(artifactFinalization);
+    if (preparedArtifactProjections === "deferred") {
+      return "retryable";
     }
+    const artifactProjections = preparedArtifactProjections;
     const { internalEvents, triggerMessage, artifactTriggerMessages } =
       buildSubagentAnnounceMessages({
         requesterIsSubagent,

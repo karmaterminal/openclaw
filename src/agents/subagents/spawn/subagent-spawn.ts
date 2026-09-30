@@ -1,16 +1,10 @@
 import { resolveSessionStorePathCore } from "../../../config/sessions/paths.js";
-import { getPluginRuntimeGatewayRequestScope } from "../../../plugins/runtime/gateway-request-scope.js";
 import { recordSessionParticipantBestEffort } from "../../../sessions/session-participant-recording.js";
 import { recordSubagentSpawned } from "../../../sessions/session-state-events.js";
 import { parseInlineAttachmentMountPath } from "../../../shared/inline-attachments.js";
 import { hasDeliveryTargetFields } from "../../../utils/delivery-context.shared.js";
 import { runSpawnPipeline, type SpawnBackendAdapter } from "../../spawn-pipeline.js";
-import { registerSubagentTraceparentHandoff } from "../../subagent-traceparent-handoff.js";
-import {
-  getGatewayToolCallerIdentity,
-  resolveGatewayToolOperatorSelection,
-  withGatewayToolOperatorContinuation,
-} from "../../tools/gateway-caller-context.js";
+import { withGatewayToolOperatorContinuation } from "../../tools/gateway-caller-context.js";
 import {
   buildContinuationSessionPatch,
   type ContinuationSpawnParams,
@@ -20,6 +14,7 @@ import {
   rollbackSubagentRunRegistration,
 } from "../registry/subagent-registry.js";
 import { materializeSubagentAttachments } from "./subagent-attachments.js";
+import { createSubagentChildRunLauncher } from "./subagent-spawn-child-launch.js";
 import { resolveSubagentChildPlan } from "./subagent-spawn-child-plan.js";
 import {
   bindSubagentSpawnCleanup,
@@ -40,6 +35,7 @@ import {
   returnsPhaselessSubagentSpawnCancel,
   resolveSubagentContinuationChildRunId,
   resolveSubagentContinuationChildSessionKey,
+  resolveSubagentSpawnOperatorBinding,
 } from "./subagent-spawn-continuation.js";
 import type {
   SpawnSubagentContext as BaseSpawnSubagentContext,
@@ -47,10 +43,9 @@ import type {
   SpawnSubagentResult as BaseSpawnSubagentResult,
 } from "./subagent-spawn-contract.js";
 import { prepareSubagentSpawnEnvelope } from "./subagent-spawn-envelope.js";
-import { withSubagentGatewayExecutionIdentity } from "./subagent-spawn-execution-identity.js";
 import { resolveSubagentSpawnFailureLifecycleHooks } from "./subagent-spawn-failure-hooks.js";
 import { buildSubagentSpawnGatewayIdentity } from "./subagent-spawn-gateway-identity.js";
-import { callNativeSubagentGateway, readGatewayRunId } from "./subagent-spawn-gateway.js";
+import { readGatewayRunId } from "./subagent-spawn-gateway.js";
 import { buildSubagentLaunchRequest } from "./subagent-spawn-launch-request.js";
 import { createSubagentSpawnLifecycleEmitter } from "./subagent-spawn-lifecycle.js";
 import {
@@ -85,18 +80,7 @@ export async function spawnSubagentDirect(
   if (continuationLaunchError) {
     return continuationLaunchError;
   }
-  // Upstream's chain subsumes our single-source lookup; operatorAuthority is a
-  // SEPARATE gate from continuationChainState -- chain state is accounting, never
-  // authorization (Ronan's ruling on this absorb).
-  const gatewayCaller = getGatewayToolCallerIdentity();
-  const gatewayScope = getPluginRuntimeGatewayRequestScope();
-  const gatewayContextResolver =
-    gatewayCaller?.gatewayContextResolver ??
-    gatewayScope?.resolveGatewayContext ??
-    gatewayScope?.context?.resolveGatewayContext;
-  const operatorAuthority =
-    resolveGatewayToolOperatorSelection().operatorAuthority ??
-    gatewayScope?.client?.internal?.operatorRunAuthority;
+  const { gatewayContextResolver, operatorAuthority } = resolveSubagentSpawnOperatorBinding();
   const requestResolution = await resolveSubagentSpawnRequest(params, ctx);
   if (!requestResolution.ok) {
     return requestResolution.result;
@@ -402,42 +386,30 @@ export async function spawnSubagentDirect(
         storePath: resolveSessionStorePathCore(cfg.session?.store, { agentId: targetAgentId }),
       });
     let acceptedChildRunId: string | undefined;
-    const launchChildRun = async (assertDispatchCurrent?: () => void) => {
-      // Our continuation-ownership gate runs before dispatch; upstream's accepted-run
-      // binding runs after it. Independent gates, both required.
-      ctx.continuationDelegateAdmission?.assertCurrent("gateway-dispatch");
-      registerSubagentTraceparentHandoff({
-        idempotencyKey: childIdem,
-        sessionKey: childSessionKey,
-        traceparent: params.traceparent,
-      });
-      const launch = await callNativeSubagentGateway(
-        withSubagentGatewayExecutionIdentity(
-          {
-            method: "agent",
-            assertDispatchCurrent,
-            params: childLaunch.request,
-            timeoutMs: childLaunch.timeoutMs,
-          },
-          buildSubagentSpawnGatewayIdentity({
-            cfg,
-            ctx,
-            requesterAgentId,
-            requesterInternalKey,
-            controllerSessionKey: ownership.controllerSessionKey,
-            childDepth,
-            maxSpawnDepth,
-            targetAgentId,
-            sandboxMode,
-          }),
-        ),
-        childLaunch.authorization,
-        gatewayContextResolver,
-      );
-      acceptedChildRunId = readGatewayRunId(launch.response) ?? childIdem;
-      cleanupOwner?.bindAcceptedRun(acceptedChildRunId);
-      return launch;
-    };
+    const launchChildRun = createSubagentChildRunLauncher({
+      ctx,
+      traceparent: params.traceparent,
+      childIdem,
+      childSessionKey,
+      childLaunch,
+      gatewayIdentity: () =>
+        buildSubagentSpawnGatewayIdentity({
+          cfg,
+          ctx,
+          requesterAgentId,
+          requesterInternalKey,
+          controllerSessionKey: ownership.controllerSessionKey,
+          childDepth,
+          maxSpawnDepth,
+          targetAgentId,
+          sandboxMode,
+        }),
+      gatewayContextResolver,
+      cleanupOwner,
+      onAccepted: (runId) => {
+        acceptedChildRunId = runId;
+      },
+    });
 
     const emitSpawnLifecycleHooks = createSubagentSpawnLifecycleEmitter({
       hookRunner,

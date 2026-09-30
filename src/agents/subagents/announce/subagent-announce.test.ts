@@ -52,6 +52,8 @@ const { subagentRegistryRuntimeMock } = vi.hoisted(() => ({
     shouldIgnorePostCompletionAnnounceForSession: vi.fn(() => false),
     isSubagentSessionRunActive: vi.fn(() => true),
     countPendingDescendantRuns: vi.fn(() => 0),
+    // Continuation cleanup counts live descendants before deleting a child session.
+    countActiveDescendantRuns: vi.fn(async () => 0),
     getLatestSubagentRunByChildSessionKey: vi.fn(() => undefined),
     getLatestLiveSubagentRunByChildSessionKey: vi.fn(() => undefined),
     listSubagentRunsForRequester: vi.fn<() => SubagentRunRecord[]>(() => []),
@@ -203,6 +205,22 @@ vi.mock("./subagent-announce-delivery.js", () => ({
   runAnnounceDeliveryWithRetry: async <T>(params: { run: () => Promise<T> }) => await params.run(),
 }));
 
+// Child-session cleanup consults continuation custody before deleting; these
+// seam tests own no custody state, so it reports none (custody behaviour is
+// covered by the continuation custody suites).
+vi.mock("../../../auto-reply/continuation/work-store.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../auto-reply/continuation/work-store.js")>()),
+  hasLiveContinuationCustody: vi.fn(async () => false),
+}));
+vi.mock(
+  "../../../auto-reply/continuation/delegate-store-post-compaction.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../auto-reply/continuation/delegate-store-post-compaction.js")
+    >()),
+    failStagedPostCompactionDelegatesForCleanup: vi.fn(async () => 0),
+  }),
+);
 vi.mock("../registry/subagent-registry-read.js", () => subagentRegistryRuntimeMock);
 vi.mock("../registry/subagent-registry-runtime.js", () => subagentRegistryRuntimeMock);
 import { defaultRuntime } from "../../../runtime.js";

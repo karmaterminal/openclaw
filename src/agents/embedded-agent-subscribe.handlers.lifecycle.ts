@@ -383,9 +383,17 @@ export function handleAgentEnd(
     if (!isCurrentDeliveryGeneration()) {
       return;
     }
-    ctx.releaseDeferredReplies();
-    finalizeAgentEnd();
-    return ctx.flushBlockReplyBuffer();
+    const flushCheckpoint = () => {
+      if (!isCurrentDeliveryGeneration()) {
+        return undefined;
+      }
+      finalizeAgentEnd();
+      return ctx.flushBlockReplyBuffer();
+    };
+    const released = ctx.releaseDeferredReplies();
+    return isPromiseLike<void>(released)
+      ? Promise.resolve(released).then(flushCheckpoint)
+      : flushCheckpoint();
   };
 
   let lifecycleTerminalEmitted = false;

@@ -962,6 +962,11 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/continuation/cross-session-targeting.nonexistent-target.test.ts",
   "src/auto-reply/continuation/trace-context-propagation.integration.test.ts",
   "src/auto-reply/continuation/delegate-claim-boundaries.test.ts",
+  // Continuation custody and counts reach shared state from these suites' spawn,
+  // result-accounting and cleanup paths (L5 absorb), so they need the host broker.
+  "src/agents/tools/sessions-spawn-tool.test.ts",
+  "src/auto-reply/reply/agent-runner-result-accounting.persistence.test.ts",
+  "src/auto-reply/reply/agent-runner-result-accounting.test.ts",
 ];
 
 const databaseWorkerCoreTestFileSet = new Set(databaseWorkerCoreTestFiles);

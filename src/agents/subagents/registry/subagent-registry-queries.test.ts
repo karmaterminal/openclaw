@@ -12,7 +12,6 @@ import {
   countPendingDescendantRunsFromRuns,
   hasDescendantRunAwaitingSettleFromRuns,
   getSubagentRunByChildSessionKeyFromRuns,
-  listRunsForRequesterFromRuns,
   resolveRequesterForChildSessionFromRuns,
   shouldIgnorePostCompletionAnnounceForSessionFromRuns,
 } from "./subagent-registry-queries.js";
@@ -696,77 +695,6 @@ describe("subagent registry query regressions", () => {
     ]);
 
     expect(countActiveRunsForSessionFromRuns(runs, "agent:main:main")).toBe(1);
-  });
-
-  it("scopes direct child listings to the requester run window when requesterRunId is provided", () => {
-    const requesterSessionKey = "agent:main:subagent:orchestrator";
-    const runs = toRunMap([
-      makeRun({
-        runId: "run-parent-old",
-        childSessionKey: requesterSessionKey,
-        requesterSessionKey: "agent:main:main",
-        createdAt: 100,
-        startedAt: 100,
-        endedAt: 150,
-      }),
-      makeRun({
-        runId: "run-parent-current",
-        childSessionKey: requesterSessionKey,
-        requesterSessionKey: "agent:main:main",
-        createdAt: 200,
-        startedAt: 200,
-        endedAt: 260,
-      }),
-      makeRun({
-        runId: "run-child-stale",
-        childSessionKey: `${requesterSessionKey}:subagent:stale`,
-        requesterSessionKey,
-        createdAt: 130,
-      }),
-      makeRun({
-        runId: "run-child-current-a",
-        childSessionKey: `${requesterSessionKey}:subagent:current-a`,
-        requesterSessionKey,
-        createdAt: 210,
-      }),
-      makeRun({
-        runId: "run-child-current-b",
-        childSessionKey: `${requesterSessionKey}:subagent:current-b`,
-        requesterSessionKey,
-        createdAt: 220,
-      }),
-      makeRun({
-        runId: "run-child-future",
-        childSessionKey: `${requesterSessionKey}:subagent:future`,
-        requesterSessionKey,
-        createdAt: 270,
-      }),
-      makeRun({
-        runId: "run-child-bound-current-late",
-        requesterTurnRunId: "run-parent-current",
-        childSessionKey: `${requesterSessionKey}:subagent:bound-current-late`,
-        requesterSessionKey,
-        createdAt: 270,
-      }),
-      makeRun({
-        runId: "run-child-bound-other-in-window",
-        requesterTurnRunId: "run-parent-old",
-        childSessionKey: `${requesterSessionKey}:subagent:bound-other-in-window`,
-        requesterSessionKey,
-        createdAt: 230,
-      }),
-    ]);
-
-    const scoped = listRunsForRequesterFromRuns(runs, requesterSessionKey, {
-      requesterRunId: "run-parent-current",
-    });
-    const scopedRunIds = scoped.map((entry) => entry.runId).toSorted();
-
-    expect(scopedRunIds).toEqual([
-      "run-child-bound-current-late",
-      "run-child-current-a",
-      "run-child-current-b",
-    ]);
   });
 
   it("regression post-completion gating, run-mode sessions ignore late announces after cleanup completes", () => {
