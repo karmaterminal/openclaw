@@ -215,7 +215,7 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
       );
     }
     if (sessionKey) {
-      const failedDelegateRows = failQueuedDelegatesOwnedByRun(
+      const failedDelegateRows = await failQueuedDelegatesOwnedByRun(
         sessionKey,
         {
           originRunId: runId,

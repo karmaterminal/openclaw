@@ -41,13 +41,22 @@ export async function releaseQueuedCompactionCompletion(params: {
     return;
   }
 
+  // Compaction counts persist only through the writer-serialized row; there is no
+  // in-memory-only increment, so a release without a store path records nothing.
+  if (!params.storePath) {
+    logVerbose(
+      `[request_compaction:post-compaction-release-skipped] session=${params.sessionKey} reason=store-path-unavailable`,
+    );
+    return;
+  }
+  const storePath = params.storePath;
   const { incrementCompactionCount } = await import("./session-updates.js");
   const compactionId = await incrementCompactionCount({
     agentId: params.followupRun.run.agentId,
     sessionEntry,
     sessionStore: params.activeSessionStore,
     sessionKey: params.sessionKey,
-    storePath: params.storePath,
+    storePath,
     amount: 1,
     tokensAfter: params.compactionResult.result?.tokensAfter,
     newSessionId: params.compactionResult.result?.sessionId,
@@ -97,7 +106,7 @@ export async function releasePostCompactionDelegatesAfterCompaction(params: {
     storePath: params.storePath,
   });
   for (const delegate of delegatesToPreserve) {
-    stagePostCompactionDelegate(params.sessionKey, delegate);
+    await stagePostCompactionDelegate(params.sessionKey, delegate);
   }
 
   const { emitContinuationCompactionReleasedSpan } =

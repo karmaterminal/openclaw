@@ -1,5 +1,4 @@
 import { expectDefined } from "@openclaw/normalization-core";
-// Converts streaming reply directives into payload delivery decisions.
 import { hasOutboundReplyContent } from "openclaw/plugin-sdk/reply-payload";
 import {
   buildCodeSpanIndex,
@@ -70,13 +69,11 @@ export const splitTrailingDirective = (
   let bufferStart = text.length;
   let trimTextBeforeTail = false;
 
-  // 1. Unclosed `[[…` reply/audio directive tail.
+  // Unclosed `[[…` reply/audio directive tail.
   const openIndex = text.lastIndexOf("[[");
   if (openIndex >= 0 && !text.includes("]]", openIndex + 2)) {
-    if (openIndex < bufferStart) {
-      bufferStart = openIndex;
-      trimTextBeforeTail = true;
-    }
+    bufferStart = openIndex;
+    trimTextBeforeTail = true;
   }
   if (text.endsWith("[") && text.length - 1 < bufferStart) {
     bufferStart = text.length - 1;

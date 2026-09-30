@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { normalizeDiagnosticTraceparent } from "../../infra/diagnostic-trace-context-pure.js";
-import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
-
-export const CONTINUATION_WORK_CONTROLLER_ID = "core/continuation-work";
+import type { ContinuationRecord } from "./custody/custody-store.types.js";
 
 const PendingWorkStateSchema = z.object({
   kind: z.literal("continuation_work"),
@@ -104,12 +102,13 @@ export type PendingContinuationWork = {
   // locus-3: durable delivered-mark (see schema). PRESENT once a wake was
   // confirmed delivered; the consume read-guard refuses to re-drive it.
   succeeded?: { point: "optimal"; durability: "durable" };
-  // F1: durable pending-notice obligation (see schema). PRESENT means the row
+  // F1: durable pending-notice obligation. PRESENT means the record
   // terminalized but the agent has not yet been told.
   terminalNoticePending?: "retry-exhausted";
+  /** Custody record ID (RFC §5.4.5 keeps `record_id = flow_id`). */
   flowId?: string;
   expectedRevision?: number;
-  // Durable flow status carried onto the runtime object by the store reader
+  // Durable record status carried onto the runtime object by the store reader
   // ({@link workToRuntime}), sourced from the flow's PRE-claim status. The
   // fold-side write-guard needs this to tell a recovered `running`
   // turn (actively executing) from genuine `queued` backlog so a live turn is
@@ -118,16 +117,31 @@ export type PendingContinuationWork = {
   status?: "queued" | "running";
 };
 
-export function isContinuationWorkFlow(flow: TaskFlowRecord): boolean {
-  return flow.syncMode === "managed" && flow.controllerId === CONTINUATION_WORK_CONTROLLER_ID;
+export function isContinuationWorkFlow(record: ContinuationRecord): boolean {
+  return record.kind === "work";
 }
 
-export function isRecoverableWorkFlow(flow: TaskFlowRecord): boolean {
-  return isContinuationWorkFlow(flow) && (flow.status === "queued" || flow.status === "running");
+export function decodeWorkState(record: ContinuationRecord): PendingWorkState | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(record.stateJson);
+  } catch {
+    return undefined;
+  }
+  return decodeWorkStateJson(parsed);
 }
 
-export function decodeWorkState(flow: TaskFlowRecord): PendingWorkState | undefined {
-  const parsed = PendingWorkStateSchema.safeParse(flow.stateJson);
+/**
+ * The derived due time the custody store indexes for recovery scans (RFC
+ * §5.4.2): semantic `dueAt`, or the later retry time when one is set.
+ */
+export function workRecordDueAt(state: Pick<PendingWorkState, "dueAt" | "recoveryDueAt">): number {
+  return Math.max(state.dueAt, state.recoveryDueAt ?? state.dueAt);
+}
+
+/** The work codec over parsed state JSON; the Doctor custody import decodes source rows with it. */
+export function decodeWorkStateJson(value: unknown): PendingWorkState | undefined {
+  const parsed = PendingWorkStateSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -181,13 +195,8 @@ export function buildFallbackWorkState(work: PendingContinuationWork): PendingWo
   };
 }
 
-export function workGoal(work: PendingContinuationWork): string {
-  const reason = work.reason?.trim();
-  return reason ? `Continuation work: ${reason.slice(0, 80)}` : "Continuation work";
-}
-
 export function workToRuntime(
-  flow: TaskFlowRecord,
+  record: ContinuationRecord,
   state: PendingWorkState,
   status: "queued" | "running",
 ): PendingContinuationWork {
@@ -225,7 +234,7 @@ export function workToRuntime(
     ...(state.succeeded ? { succeeded: state.succeeded } : {}),
     ...(state.terminalNoticePending ? { terminalNoticePending: state.terminalNoticePending } : {}),
     status,
-    flowId: flow.flowId,
-    expectedRevision: flow.revision,
+    flowId: record.recordId,
+    expectedRevision: record.revision,
   };
 }

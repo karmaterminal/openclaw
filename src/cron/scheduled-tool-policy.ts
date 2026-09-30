@@ -256,3 +256,11 @@ export function resolveCronScheduledToolPolicy(params: {
     ? policy
     : undefined;
 }
+
+/**
+ * Cron owns its retry lifecycle; same-session continuation dispatch is an
+ * auto-reply turn contract and would strand work from this lane.
+ */
+export function withoutContinuation<T extends object>(params: T) {
+  return { ...params, disableContinuationTools: true as const };
+}

@@ -114,6 +114,7 @@ async function flushAsyncWork(iterations = 8): Promise<void> {
   for (let i = 0; i < iterations; i++) {
     await Promise.resolve();
   }
+  await settleWorkDispatchCustody();
 }
 
 async function waitForMockWaiter(
@@ -264,11 +265,9 @@ vi.mock("../reply/get-reply.js", () => ({
     // bump every continuation-work flow revision so markPendingWorkDelivered
     // fails its expected-revision check after the turn already ran.
     if (bumpWorkRevisionOnReply) {
-      for (const flow of mockFlows.values()) {
-        if (flow.controllerId === "core/continuation-work") {
-          flow.revision += 1;
-        }
-      }
+      const { bumpLiveWorkRecordRevisions } =
+        await import("./work-dispatch-flow-mock.test-support.js");
+      await bumpLiveWorkRecordRevisions(await import("./custody/custody-store.js"));
     }
     const replyError = getReplyError();
     if (replyError) {
@@ -338,150 +337,11 @@ vi.mock("../../logging/subsystem.js", () => {
   return { createSubsystemLogger: () => logger };
 });
 
-type MockFlow = {
-  flowId: string;
-  syncMode: "managed";
-  ownerKey: string;
-  chainId?: string;
-  controllerId: string;
-  status: "queued" | "running" | "succeeded" | "failed";
-  notifyPolicy: "silent";
-  goal: string;
-  currentStep?: string;
-  stateJson?: unknown;
-  revision: number;
-  createdAt: number;
-  updatedAt: number;
-  endedAt?: number;
-  cancelRequestedAt?: number;
-};
-
-const mockFlows = new Map<string, MockFlow>();
-let flowCounter = 0;
-
-function cloneFlow(flow: MockFlow): MockFlow {
-  return { ...flow };
-}
-
-function createMockFlow(params: Partial<MockFlow> & { ownerKey: string }): MockFlow {
-  const now = Date.now();
-  const flow: MockFlow = {
-    flowId: `flow-${++flowCounter}`,
-    syncMode: "managed",
-    ownerKey: params.ownerKey,
-    chainId: params.chainId,
-    controllerId: params.controllerId ?? "tests/controller",
-    status: params.status ?? "queued",
-    notifyPolicy: "silent",
-    goal: params.goal ?? "goal",
-    currentStep: params.currentStep,
-    stateJson: params.stateJson,
-    revision: 0,
-    createdAt: params.createdAt ?? now,
-    updatedAt: params.updatedAt ?? params.createdAt ?? now,
-  };
-  mockFlows.set(flow.flowId, flow);
-  return cloneFlow(flow);
-}
-
-function updateMockFlowsAtomically(
-  updates: Array<{ flowId: string; expectedRevision: number; patch: Partial<MockFlow> }>,
-) {
-  for (const update of updates) {
-    const flow = mockFlows.get(update.flowId);
-    if (!flow || flow.revision !== update.expectedRevision) {
-      return {
-        applied: false as const,
-        reason: flow ? ("revision_conflict" as const) : ("not_found" as const),
-      };
-    }
-  }
-  const flows = updates.map((update) => {
-    const flow = mockFlows.get(update.flowId)!;
-    Object.assign(flow, update.patch, { revision: flow.revision + 1 });
-    return cloneFlow(flow);
-  });
-  return { applied: true as const, flows };
-}
-
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn(createMockFlow),
-  createManagedTaskFlowWithAtomicUpdates: vi.fn(
-    (params: {
-      create: Partial<MockFlow> & { ownerKey: string };
-      updates: Array<{ flowId: string; expectedRevision: number; patch: Partial<MockFlow> }>;
-    }) => {
-      const updated = updateMockFlowsAtomically(params.updates);
-      if (!updated.applied) {
-        return updated;
-      }
-      const created = createMockFlow(params.create);
-      return { applied: true, created, updated: updated.flows };
-    },
+vi.mock("./custody/custody-store.js", async (importOriginal) =>
+  (await import("./work-dispatch-flow-mock.test-support.js")).wrapCustodyStoreForWorkDispatch(
+    await importOriginal(),
   ),
-  updateTaskFlowsAtomically: vi.fn(updateMockFlowsAtomically),
-  listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
-    Array.from(
-      [...mockFlows.values()].filter((flow) => flow.ownerKey === ownerKey),
-      cloneFlow,
-    ),
-  ),
-  listTaskFlowRecords: vi.fn(() => Array.from(mockFlows.values(), cloneFlow)),
-  getTaskFlowById: vi.fn((flowId: string) => {
-    const flow = mockFlows.get(flowId);
-    return flow ? cloneFlow(flow) : undefined;
-  }),
-  updateFlowRecordByIdExpectedRevision: vi.fn(
-    (params: { flowId: string; expectedRevision: number; patch: Partial<MockFlow> }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      if (params.patch.currentStep === "Continuation wake delivered (durable mark)") {
-        workTransitionEvents.push("delivered-mark-committed");
-      } else if (params.patch.currentStep === "Continuation fold note delivered (durable mark)") {
-        workTransitionEvents.push("fold-delivered-mark-committed");
-      }
-      Object.assign(flow, params.patch, { revision: flow.revision + 1 });
-      return { applied: true, flow: cloneFlow(flow) };
-    },
-  ),
-  finishFlow: vi.fn(
-    (params: {
-      flowId: string;
-      expectedRevision: number;
-      currentStep?: string;
-      stateJson?: unknown;
-      updatedAt?: number;
-      endedAt?: number;
-    }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      workTransitionEvents.push(`flow-finished:${params.currentStep ?? "unknown"}`);
-      const endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
-      flow.status = "succeeded";
-      flow.currentStep = params.currentStep;
-      flow.stateJson = params.stateJson ?? flow.stateJson;
-      flow.updatedAt = params.updatedAt ?? endedAt;
-      flow.endedAt = endedAt;
-      flow.revision += 1;
-      return { applied: true, flow: cloneFlow(flow) };
-    },
-  ),
-  failFlow: vi.fn((params: { flowId: string }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (flow) {
-      flow.status = "failed";
-      flow.revision += 1;
-    }
-    return { applied: Boolean(flow) };
-  }),
-  deleteTaskFlowRecordById: vi.fn((flowId: string) => {
-    mockFlows.delete(flowId);
-  }),
-}));
+);
 
 import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
 import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent-registry.types.js";
@@ -497,12 +357,26 @@ import {
   DEFAULT_NO_OP_REARM_THRESHOLD,
   recordNoOpRearmOutcome,
 } from "../reply/no-op-rearm-guard.js";
+import { updateContinuationRecords } from "./custody/custody-store.js";
+import type { ContinuationRecordPatch } from "./custody/custody-store.types.js";
+import {
+  custodyStateForTest,
+  listCustodyRecordsForTest,
+  readCustodyRecordForTest,
+  useContinuationCustodyTestState,
+} from "./custody/custody.test-support.js";
 import {
   cancelPendingDelegates,
   enqueuePendingDelegate,
   pendingDelegateCount,
 } from "./delegate-store.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
+import {
+  describeWorkTransition,
+  resetWorkDispatchCustodyHooks,
+  settleWorkDispatchCustody,
+  workDispatchCustodyHooks,
+} from "./work-dispatch-flow-mock.test-support.js";
 import {
   dispatchPendingContinuationWork,
   bucket1ReapVerdict,
@@ -554,12 +428,13 @@ const config = {
 } satisfies ContinuationRuntimeConfig;
 
 async function flushTimers(): Promise<void> {
+  await settleWorkDispatchCustody();
   await vi.runOnlyPendingTimersAsync();
-  await Promise.resolve();
+  await settleWorkDispatchCustody();
 }
 
-function claimMaturedWork(sessionKey: string) {
-  const enqueued = enqueuePendingWork({
+async function claimMaturedWork(sessionKey: string) {
+  const enqueued = await enqueuePendingWork({
     sessionKey,
     hop: 1,
     delayMs: 0,
@@ -571,7 +446,7 @@ function claimMaturedWork(sessionKey: string) {
   if (!enqueued) {
     throw new Error("expected continuation work enqueue");
   }
-  const [claimedWork] = consumePendingWork(sessionKey);
+  const [claimedWork] = await consumePendingWork(sessionKey);
   if (!claimedWork) {
     throw new Error("expected matured continuation work claim");
   }
@@ -609,6 +484,43 @@ const splitLintUse = [
   claimMaturedWork,
 ];
 void splitLintUse;
+
+useContinuationCustodyTestState();
+
+/**
+ * Custody records in creation order, optionally for one owner, with the state
+ * JSON parsed so assertions can match its fields.
+ */
+async function custodyRecords(ownerSessionKey?: string) {
+  const records = await listCustodyRecordsForTest(ownerSessionKey ? { ownerSessionKey } : {});
+  const views = [];
+  for (const record of records) {
+    views.push({ ...record, stateJson: custodyStateForTest(record) });
+  }
+  return views;
+}
+
+/** Commit a patch at the record's current revision, as a concurrent writer would. */
+async function writeRecordForTest(recordId: string, patch: ContinuationRecordPatch): Promise<void> {
+  const record = await readCustodyRecordForTest(recordId);
+  if (!record) {
+    throw new Error(`expected custody record ${recordId}`);
+  }
+  const written = await updateContinuationRecords(
+    [
+      {
+        recordId,
+        ownerSessionKey: record.ownerSessionKey,
+        expectedRevision: record.revision,
+        patch: { updatedAt: record.updatedAt, ...patch },
+      },
+    ],
+    { now: record.updatedAt },
+  );
+  if (written.outcome !== "applied") {
+    throw new Error(`expected concurrent custody write to commit: ${written.outcome}`);
+  }
+}
 
 describe("Pillar-0 computeBusySkipBackoffMs (exp-backoff)", () => {
   const params = (ceilingMs: number) => ({ baseMs: 1_000, ceilingMs, factor: 2 });
@@ -783,8 +695,13 @@ describe("partitionSupersededWork (drain-superseded)", () => {
 describe("maxPendingWork cap (Guard 1)", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: 1_000_000 });
-    mockFlows.clear();
-    flowCounter = 0;
+    resetWorkDispatchCustodyHooks();
+    workDispatchCustodyHooks.onApplied = (update) => {
+      const transition = describeWorkTransition(update);
+      if (transition) {
+        workTransitionEvents.push(transition);
+      }
+    };
     resetContinuationWorkDispatchForTests();
   });
   afterEach(() => {
@@ -802,7 +719,7 @@ describe("maxPendingWork cap (Guard 1)", () => {
       maxChainLength: 100,
     } satisfies ContinuationRuntimeConfig;
     // Pre-fill the store to the cap (2 queued flows).
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 1_000,
@@ -810,7 +727,7 @@ describe("maxPendingWork cap (Guard 1)", () => {
       dueAt: 1_001_000,
       maxChainLength: 100,
     });
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 2,
       delayMs: 1_000,
@@ -854,7 +771,7 @@ describe("maxPendingWork cap (Guard 1)", () => {
     expect(result.cappedCount).toBe(2);
     expect(result.capped).toBe(true);
     // The 3 earlier elections stayed durably enqueued (not silently dropped).
-    const queued = [...mockFlows.values()].filter((f) => f.ownerKey === sessionKey);
+    const queued = (await custodyRecords()).filter((f) => f.ownerSessionKey === sessionKey);
     expect(queued).toHaveLength(3);
   });
 
@@ -868,7 +785,7 @@ describe("maxPendingWork cap (Guard 1)", () => {
     // `running` (its turn is being driven; markPendingWorkTurnGranted hasn't run
     // yet). A serial chain at maxPendingWork:1 must still schedule the successor
     // — the running driver is NOT a pending future wake.
-    enqueuePendingWork({
+    await enqueuePendingWork({
       sessionKey,
       hop: 1,
       delayMs: 1_000,
@@ -876,9 +793,11 @@ describe("maxPendingWork cap (Guard 1)", () => {
       dueAt: 1_001_000,
       maxChainLength: 100,
     });
-    const driver = [...mockFlows.values()].find((f) => f.ownerKey === sessionKey);
+    const driver = (await custodyRecords()).find((f) => f.ownerSessionKey === sessionKey);
     if (driver) {
-      driver.status = "running";
+      await writeRecordForTest(driver.recordId, {
+        status: "running",
+      });
     }
 
     const result = await scheduleContinuationWork({
@@ -912,6 +831,6 @@ describe("maxPendingWork cap (Guard 1)", () => {
       coalescePriorParkedWork: false,
     });
 
-    expect([...mockFlows.values()].filter((flow) => flow.status === "queued")).toHaveLength(2);
+    expect((await custodyRecords()).filter((flow) => flow.status === "queued")).toHaveLength(2);
   });
 });

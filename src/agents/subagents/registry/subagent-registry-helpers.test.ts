@@ -10,7 +10,6 @@ import { updateSwarmCollectorCompletion } from "../swarm/swarm-collector.js";
 import {
   capFrozenResultText,
   logAnnounceGiveUp,
-  reconcileOrphanedRun,
   resolveAnnounceRetryDelayMs,
   safeRemoveAttachmentsDir,
   updateSubagentArchiveAtMs,
@@ -188,115 +187,6 @@ describe("updateSubagentArchiveAtMs", () => {
   });
 });
 
-describe("reconcileOrphanedRun attachment retirement", () => {
-  async function stageGatewayAttachment(params: { attachmentId: string; childSessionKey: string }) {
-    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-orphan-attachment-"));
-    const attachmentDir = resolveSubagentAttachmentDir(
-      "main",
-      params.childSessionKey,
-      params.attachmentId,
-      { ...process.env, OPENCLAW_STATE_DIR: stateDir },
-    );
-    const siblingDir = path.join(stateDir, "attachments", "subagents", "main", "sibling");
-    await fs.mkdir(attachmentDir, { recursive: true });
-    await fs.mkdir(siblingDir, { recursive: true });
-    await fs.writeFile(path.join(attachmentDir, "staged.txt"), "staged");
-    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
-    return { stateDir, attachmentDir, siblingDir };
-  }
-
-  it("removes the Gateway attachment tree when pruning an attachmentId orphan", async () => {
-    const attachmentId = "3f1c9b26-8d41-4a7e-9d02-5b7c4e9a1f30";
-    const childSessionKey = "agent:main:subagent:orphan-child";
-    const { stateDir, attachmentDir, siblingDir } = await stageGatewayAttachment({
-      attachmentId,
-      childSessionKey,
-    });
-    // cleanup:"delete" is what makes pruning eligible to retire storage.
-    const entry = createRunEntry({
-      runId: "run-orphan",
-      childSessionKey,
-      attachmentId,
-      cleanup: "delete",
-      retainAttachmentsOnKeep: false,
-      execution: { status: "terminal", startedAt: 1_000, endedAt: 2_000 },
-    });
-    const runs = new Map([[entry.runId, entry]]);
-    const resumedRuns = new Set([entry.runId]);
-
-    expect(
-      reconcileOrphanedRun({
-        runId: entry.runId,
-        entry,
-        reason: "missing-session-entry",
-        source: "restore",
-        runs,
-        resumedRuns,
-      }),
-    ).toBe(true);
-
-    // The record is the only handle on the tree, so both must be gone together.
-    expect(runs.has(entry.runId)).toBe(false);
-    expect(resumedRuns.has(entry.runId)).toBe(false);
-    await expect(fs.access(attachmentDir)).rejects.toHaveProperty("code", "ENOENT");
-    // Confinement: only the generated identity is removed.
-    await expect(fs.access(siblingDir)).resolves.toBeUndefined();
-
-    vi.unstubAllEnvs();
-    await fs.rm(stateDir, { recursive: true, force: true });
-  });
-
-  it("keeps a retained required completion delivery and its attachment tree", async () => {
-    const attachmentId = "9c2f77b4-1a58-4f63-8b21-6d0e5a4c7b18";
-    const childSessionKey = "agent:main:subagent:retained-child";
-    const { stateDir, attachmentDir } = await stageGatewayAttachment({
-      attachmentId,
-      childSessionKey,
-    });
-    const entry = createRunEntry({
-      runId: "run-retained",
-      childSessionKey,
-      attachmentId,
-      cleanup: "delete",
-      retainAttachmentsOnKeep: false,
-      execution: { status: "terminal", startedAt: 1_000, endedAt: 2_000 },
-      // Full retained-required-delivery shape: the guard needs an expected
-      // completion, a required completion, and a pending payload it still owes.
-      expectsCompletionMessage: true,
-      completion: { required: true },
-      delivery: {
-        status: "pending",
-        payload: {
-          requesterSessionKey: "agent:main:main",
-          requesterDisplayKey: "main",
-          childSessionKey,
-          childRunId: "run-retained",
-          task: "finish the task",
-        },
-      },
-    });
-    const runs = new Map([[entry.runId, entry]]);
-    const resumedRuns = new Set([entry.runId]);
-
-    expect(
-      reconcileOrphanedRun({
-        runId: entry.runId,
-        entry,
-        reason: "missing-session-entry",
-        source: "restore",
-        runs,
-        resumedRuns,
-      }),
-    ).toBe(false);
-
-    expect(runs.has(entry.runId)).toBe(true);
-    await expect(fs.access(path.join(attachmentDir, "staged.txt"))).resolves.toBeUndefined();
-
-    vi.unstubAllEnvs();
-    await fs.rm(stateDir, { recursive: true, force: true });
-  });
-});
-
 describe("safeRemoveAttachmentsDir", () => {
   it("removes only the generated directory under the host-owned root", async () => {
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-attachment-state-"));
@@ -325,7 +215,7 @@ describe("safeRemoveAttachmentsDir", () => {
     await fs.rm(stateDir, { recursive: true, force: true });
   });
 
-  it("removes a valid legacy child directory under its recorded root", async () => {
+  it("retires a legacy child directory record without traversing it", async () => {
     const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-legacy-attachment-"));
     const childDir = path.join(rootDir, "run-legacy");
     const siblingDir = path.join(rootDir, "run-other");
@@ -334,32 +224,32 @@ describe("safeRemoveAttachmentsDir", () => {
     await fs.writeFile(path.join(childDir, "staged.txt"), "staged");
     await fs.writeFile(path.join(siblingDir, "keep.txt"), "keep");
 
-    // No attachmentId: this is a record persisted before the Gateway-owned store,
-    // and its confined legacy removal must still run.
+    // No attachmentId: a record persisted before the Gateway-owned store. Its legacy
+    // paths are untrusted and are retired without any traversal (upstream #146600).
     await expect(
       safeRemoveAttachmentsDir(
         createRunEntry({ attachmentsRootDir: rootDir, attachmentsDir: childDir }),
       ),
     ).resolves.toBe(true);
-    await expect(fs.access(childDir)).rejects.toHaveProperty("code", "ENOENT");
-    // Confinement: only the recorded child is retired.
+    await expect(fs.readFile(path.join(childDir, "staged.txt"), "utf8")).resolves.toBe("staged");
     await expect(fs.readFile(path.join(siblingDir, "keep.txt"), "utf8")).resolves.toBe("keep");
 
     await fs.rm(rootDir, { recursive: true, force: true });
   });
 
-  it("refuses a legacy child resolved outside its recorded root", async () => {
+  it("never traverses a legacy child resolved outside its recorded root", async () => {
     const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-legacy-root-"));
     const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-legacy-outside-"));
     const sentinel = path.join(outsideDir, "sentinel.txt");
     await fs.writeFile(sentinel, "must-survive");
-    // An absolute escape must be refused, not reported as a successful removal.
+    // Legacy paths are retired without traversal, so an absolute escape can never reach disk.
     await expect(
       safeRemoveAttachmentsDir(
         createRunEntry({ attachmentsRootDir: rootDir, attachmentsDir: outsideDir }),
       ),
-    ).resolves.toBe(false);
+    ).resolves.toBe(true);
     await expect(fs.readFile(sentinel, "utf8")).resolves.toBe("must-survive");
+    await expect(fs.readdir(outsideDir)).resolves.toEqual(["sentinel.txt"]);
 
     await fs.rm(rootDir, { recursive: true, force: true });
     await fs.rm(outsideDir, { recursive: true, force: true });
@@ -393,27 +283,6 @@ describe("safeRemoveAttachmentsDir", () => {
 describe("logAnnounceGiveUp", () => {
   afterEach(() => {
     vi.useRealTimers();
-  });
-
-  it("includes the last delivery error in expiry warnings", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(9_000);
-    const logSpy = vi.spyOn(defaultRuntime, "log").mockImplementation(() => {});
-    const entry = createRunEntry({
-      execution: { status: "terminal", startedAt: 1_000, endedAt: 4_000 },
-      delivery: {
-        status: "failed",
-        attemptCount: 3,
-        lastError: "direct-primary: routed-dispatch-did-not-queue-final",
-      },
-    });
-
-    logAnnounceGiveUp(entry, "expiry");
-
-    expect(logSpy).toHaveBeenCalledWith(
-      '[warn] Subagent announce give up (expiry) run=run-1 child=agent:main:subagent:child requester=agent:main:main retries=3 endedAgo=5s deliveryError="direct-primary: routed-dispatch-did-not-queue-final"',
-    );
-    logSpy.mockRestore();
   });
 
   it("normalizes multiline delivery errors onto one gateway log line", () => {

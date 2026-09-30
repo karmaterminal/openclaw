@@ -32,10 +32,6 @@ import { stripMentions, stripStructuralPrefixes } from "./mentions.js";
 
 const compactRuntimeLoader = createLazyImportLoader(() => import("./commands-compact.runtime.js"));
 
-function loadCompactRuntime(): Promise<typeof import("./commands-compact.runtime.js")> {
-  return compactRuntimeLoader.load();
-}
-
 function extractCompactInstructions(params: {
   rawBody?: string;
   ctx: import("../templating.js").MsgContext;
@@ -48,15 +44,10 @@ function extractCompactInstructions(params: {
     ? stripMentions(raw, params.ctx, params.cfg, params.agentId)
     : raw;
   const trimmed = stripped.trim();
-  if (!trimmed) {
+  if (!normalizeLowercaseStringOrEmpty(trimmed).startsWith("/compact")) {
     return undefined;
   }
-  const lowered = normalizeLowercaseStringOrEmpty(trimmed);
-  const prefix = lowered.startsWith("/compact") ? "/compact" : null;
-  if (!prefix) {
-    return undefined;
-  }
-  let rest = trimmed.slice(prefix.length).trimStart();
+  let rest = trimmed.slice("/compact".length).trimStart();
   if (rest.startsWith(":")) {
     rest = rest.slice(1).trimStart();
   }
@@ -102,18 +93,12 @@ function resolveManualCompactContextTokenBudget(params: {
   liveContextTokens?: number;
   persistedContextTokens?: number;
 }): number | undefined {
-  const inheritedContextTokens =
-    typeof params.liveContextTokens === "number" &&
-    Number.isFinite(params.liveContextTokens) &&
-    params.liveContextTokens > 0
-      ? Math.floor(params.liveContextTokens)
-      : undefined;
-  const liveContextTokens = inheritedContextTokens;
+  const liveContextTokens = normalizeContextTokenBudget(params.liveContextTokens);
 
   const model = normalizeOptionalString(params.model);
   const provider = normalizeOptionalString(params.provider);
   if (!model || !provider) {
-    return liveContextTokens ?? resolvePersistedContextTokens(params.persistedContextTokens);
+    return liveContextTokens ?? normalizeContextTokenBudget(params.persistedContextTokens);
   }
 
   const harnessPolicy = resolveAgentHarnessPolicy({
@@ -149,10 +134,10 @@ function resolveManualCompactContextTokenBudget(params: {
     return liveContextTokens;
   }
 
-  return resolvePersistedContextTokens(params.persistedContextTokens);
+  return normalizeContextTokenBudget(params.persistedContextTokens);
 }
 
-function resolvePersistedContextTokens(value: number | undefined): number | undefined {
+function normalizeContextTokenBudget(value: number | undefined): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.floor(value)
     : undefined;
@@ -188,7 +173,11 @@ function resolveManualCompactContextModelId(params: {
   return model;
 }
 
-export const handleCompactCommand: CommandHandler = async (params) => {
+export async function handleCompactCommand(
+  params: Parameters<CommandHandler>[0],
+  _allowTextCommands: boolean,
+  assertOwnerCurrent?: () => void,
+): ReturnType<CommandHandler> {
   const compactRequested =
     params.command.commandBodyNormalized === "/compact" ||
     params.command.commandBodyNormalized.startsWith("/compact ");
@@ -199,6 +188,8 @@ export const handleCompactCommand: CommandHandler = async (params) => {
   if (unauthorized) {
     return unauthorized;
   }
+  const operatorAuthority = params.opts?.operatorAuthority;
+  operatorAuthority?.assertCurrent();
   const targetSessionEntry = params.commandInvocationSignal
     ? params.compactionSessionEntry
     : (params.sessionStore?.[params.sessionKey] ?? params.sessionEntry);
@@ -208,7 +199,7 @@ export const handleCompactCommand: CommandHandler = async (params) => {
       "⚙️ Compaction unavailable (missing session id).",
     );
   }
-  const runtime = await loadCompactRuntime();
+  const runtime = await compactRuntimeLoader.load();
   const sessionId = targetSessionEntry.sessionId;
   const sessionAgentId = params.sessionKey
     ? resolveSessionAgentId({
@@ -246,6 +237,13 @@ export const handleCompactCommand: CommandHandler = async (params) => {
       resolveSessionStorePathCore(params.cfg.session?.store, { agentId: sessionAgentId }),
   });
   let expectedSession: InternalSessionEntry = targetSessionEntry;
+  let compactionAccepted = false;
+  const assertOwnerBeforeAcceptance = () => {
+    operatorAuthority?.assertCurrent();
+    if (!compactionAccepted) {
+      assertOwnerCurrent?.();
+    }
+  };
   const resolveCurrentEntry = () =>
     runtime.resolveCurrentSessionEntry({
       agentId: sessionAgentId,
@@ -268,6 +266,7 @@ export const handleCompactCommand: CommandHandler = async (params) => {
   if (failure) {
     return failure;
   }
+  assertOwnerBeforeAcceptance();
   if (runtime.isEmbeddedAgentRunAbortableForCompaction(sessionId)) {
     runtime.abortEmbeddedAgentRun(sessionId);
     const drained = await runtime.waitForEmbeddedAgentRunEnd(sessionId, 15_000);
@@ -275,6 +274,7 @@ export const handleCompactCommand: CommandHandler = async (params) => {
     if (failure) {
       return failure;
     }
+    assertOwnerBeforeAcceptance();
     if (!drained) {
       return compactionUnavailable(
         "the previous run is still stopping",
@@ -287,6 +287,7 @@ export const handleCompactCommand: CommandHandler = async (params) => {
   if (failure) {
     return failure;
   }
+  assertOwnerBeforeAcceptance();
   // Draining a run does not clear its durable writer fence. Capture the current
   // row after the drain instead of accounting against the command's older snapshot.
   const refreshedEntry = resolveCurrentEntry();
@@ -307,6 +308,15 @@ export const handleCompactCommand: CommandHandler = async (params) => {
   });
   const replyOperation = params.opts?.replyOperation;
   replyOperation?.setPhase("preflight_compacting");
+  const assertActive = () => {
+    assertOwnerBeforeAcceptance();
+    params.opts?.abortSignal?.throwIfAborted();
+    params.commandInvocationSignal?.throwIfAborted();
+    const current = resolveCurrentEntry();
+    if (!current || current.activeWriterRunId !== expectedSession.activeWriterRunId) {
+      throw new Error("command session changed");
+    }
+  };
   const compaction = runtime.compactEmbeddedAgentSession(
     {
       abortSignal: params.opts?.abortSignal,
@@ -369,20 +379,18 @@ export const handleCompactCommand: CommandHandler = async (params) => {
       }),
     },
     {
-      assertActive: () => {
-        params.opts?.abortSignal?.throwIfAborted();
-        params.commandInvocationSignal?.throwIfAborted();
-        const current = resolveCurrentEntry();
-        if (!current || current.activeWriterRunId !== expectedSession.activeWriterRunId) {
-          throw new Error("command session changed");
-        }
-      },
+      assertActive,
+      sourceAuthority: { assertActive, operatorAuthority },
       onCommitted: (accepted) => {
+        compactionAccepted = true;
         // Update the expectation before identity observers run, not from public result metadata.
         expectedSession = accepted.entry;
         if (params.sessionStore) {
           params.sessionStore[params.sessionKey] = accepted.entry;
         }
+      },
+      onHostCompactionCommitted: () => {
+        compactionAccepted = true;
       },
     },
   );
@@ -456,4 +464,4 @@ export const handleCompactCommand: CommandHandler = async (params) => {
       isStatusNotice: true,
     },
   };
-};
+}

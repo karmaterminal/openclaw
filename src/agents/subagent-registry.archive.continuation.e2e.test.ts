@@ -3,21 +3,20 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { callGateway } from "../gateway/call.js";
 import { getAgentRunContext } from "../infra/agent-run-registry.js";
-import { SUBAGENT_KILL_TASK_ERROR } from "../tasks/detached-task-runtime-contract.js";
-import { resetDetachedTaskLifecycleRuntimeForTests } from "../tasks/task-runtime.test-helpers.js";
 
-const taskRuntimeMocks = vi.hoisted(() => ({
-  finalizeTaskRunByRunId: vi.fn<(_params: unknown) => unknown[]>(() => [{}]),
-}));
-const taskStatusMocks = vi.hoisted(() => ({
-  findTaskByRunIdForStatus: vi.fn(),
-  listTasksForSessionKeyForStatus: vi.fn(() => [] as never[]),
-}));
+// Archive deferral reads the custody projection; the sweep's session delete
+// asks authoritative custody (RFC §5.4.6).
 const hasLiveOrRecentlyDispatchedContinuationWorkMock = vi.hoisted(() =>
   vi.fn<(_sessionKey: string) => boolean>(() => false),
 );
+const hasLiveContinuationCustodyMock = vi.hoisted(() =>
+  vi.fn<(_sessionKey: string) => Promise<boolean>>(async () => false),
+);
 const sessionAccessorMocks = vi.hoisted(() => ({
   listSessionEntriesReadOnly: vi.fn(() => [] as Array<{ sessionKey: string; entry: unknown }>),
+  loadSessionEntryReadOnly: vi.fn<
+    typeof import("../config/sessions/session-accessor.js").loadSessionEntryReadOnly
+  >(() => undefined),
 }));
 
 const noop = () => {};
@@ -43,24 +42,12 @@ vi.mock("../gateway/call.js", () => ({
   }),
 }));
 
-vi.mock("../tasks/detached-task-runtime.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../tasks/detached-task-runtime.js")>();
-  return {
-    ...actual,
-    finalizeTaskRunByRunId: taskRuntimeMocks.finalizeTaskRunByRunId,
-  };
-});
-
-vi.mock("../tasks/task-status-access.js", () => ({
-  findTaskByRunIdForStatus: taskStatusMocks.findTaskByRunIdForStatus,
-  listTasksForSessionKeyForStatus: taskStatusMocks.listTasksForSessionKeyForStatus,
-}));
-
 vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../config/sessions/session-accessor.js")>();
   return {
     ...actual,
     listSessionEntriesReadOnly: sessionAccessorMocks.listSessionEntriesReadOnly,
+    loadSessionEntryReadOnly: sessionAccessorMocks.loadSessionEntryReadOnly,
   };
 });
 
@@ -83,11 +70,31 @@ vi.mock("../config/config.js", async () => {
 });
 
 vi.mock("../auto-reply/continuation/work-store.js", () => ({
+  hasLiveContinuationCustody: hasLiveContinuationCustodyMock,
   hasLiveOrRecentlyDispatchedContinuationWork: hasLiveOrRecentlyDispatchedContinuationWorkMock,
 }));
 
 vi.mock("./subagents/announce/subagent-announce.js", () => ({
   runSubagentAnnounceFlow: vi.fn(async () => true),
+  // loadSubagentAnnounceModule() is typed as a Pick of exactly these two, so this
+  // is the whole surface the registry reaches through that loader.
+  captureSubagentCompletionReply: vi.fn(async () => undefined),
+}));
+
+vi.mock("./subagents/announce/subagent-announce.requester-settle-wake.js", () => ({
+  maybeWakeRequesterAfterAllChildrenSettled: vi.fn(
+    async (params: {
+      settledEntry: { runId: string };
+      completeBatch: (runIds: string[]) => void;
+    }) => {
+      params.completeBatch([params.settledEntry.runId]);
+      return false;
+    },
+  ),
+}));
+
+vi.mock("./runtime-plugins.js", () => ({
+  loadAgentRuntimePluginRegistryHandle: vi.fn(),
 }));
 
 vi.mock("../plugins/hook-runner-global.js", () => ({
@@ -110,21 +117,6 @@ describe("subagent registry archive behavior (continuation work)", () => {
     mod = await import("./subagents/registry/subagent-registry.test-helpers.js");
   });
 
-  const setRegistryTestDeps = (
-    overrides: NonNullable<Parameters<typeof mod.testing.setDepsForTest>[0]> = {},
-  ) => {
-    mod.testing.setDepsForTest({
-      callGateway,
-      getRuntimeConfig: loadConfigMock as typeof import("../config/config.js").getRuntimeConfig,
-      loadAgentRuntimePluginRegistryHandle: vi.fn(),
-      maybeWakeRequesterAfterAllChildrenSettled: vi.fn(async (params) => {
-        params.completeBatch([params.settledEntry.runId]);
-        return false;
-      }),
-      ...overrides,
-    });
-  };
-
   const addCanonicalSubagentRunForTests = (
     entry: Parameters<typeof mod.addSubagentRunForTests>[0],
   ) => {
@@ -138,7 +130,6 @@ describe("subagent registry archive behavior (continuation work)", () => {
   };
 
   beforeEach(() => {
-    resetDetachedTaskLifecycleRuntimeForTests();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
     vi.mocked(callGateway).mockReset();
@@ -152,36 +143,15 @@ describe("subagent registry archive behavior (continuation work)", () => {
     });
     loadConfigMock.mockClear();
     hasLiveOrRecentlyDispatchedContinuationWorkMock.mockReset().mockReturnValue(false);
+    hasLiveContinuationCustodyMock.mockReset().mockResolvedValue(false);
     vi.mocked(getAgentRunContext).mockReset().mockReturnValue(undefined);
-    taskRuntimeMocks.finalizeTaskRunByRunId.mockClear();
-    taskStatusMocks.findTaskByRunIdForStatus.mockReset();
-    taskStatusMocks.listTasksForSessionKeyForStatus.mockReset();
-    taskStatusMocks.listTasksForSessionKeyForStatus.mockReturnValue([]);
     sessionAccessorMocks.listSessionEntriesReadOnly.mockReset();
     sessionAccessorMocks.listSessionEntriesReadOnly.mockReturnValue([]);
-    taskStatusMocks.findTaskByRunIdForStatus.mockImplementation((runId: string) => {
-      const entry = mod
-        .listSubagentRunsForRequester("agent:main:main")
-        .find((candidate) => candidate.runId === runId);
-      return entry
-        ? ({
-            taskId: `task-${runId}`,
-            runId,
-            runtime: "subagent",
-            childSessionKey: entry.childSessionKey,
-            createdAt: entry.createdAt,
-            status: "cancelled",
-            error: SUBAGENT_KILL_TASK_ERROR,
-          } as never)
-        : undefined;
-    });
-    setRegistryTestDeps();
+    sessionAccessorMocks.loadSessionEntryReadOnly.mockReset().mockReturnValue(undefined);
     mod.resetSubagentRegistryForTests({ persist: false });
   });
 
   afterEach(() => {
-    resetDetachedTaskLifecycleRuntimeForTests();
-    mod.testing.setDepsForTest();
     mod.resetSubagentRegistryForTests({ persist: false });
     vi.useRealTimers();
   });
@@ -276,5 +246,62 @@ describe("subagent registry archive behavior (continuation work)", () => {
           ([request]) => (request as { method?: string } | undefined)?.method === "sessions.delete",
         ),
     ).toHaveLength(0);
+  });
+
+  it("keeps the session while authoritative custody is live even when the projection is clear", async () => {
+    // Archive deferral reads the projection, but the session delete itself asks
+    // authoritative custody, so a stale projection can never delete a session
+    // that still owns continuation custody.
+    const childSessionKey = "agent:main:subagent:delete-custody-live";
+    sessionAccessorMocks.loadSessionEntryReadOnly.mockReturnValue({
+      sessionId: "session-delete-custody-live",
+      lifecycleRevision: "lifecycle-delete-custody-live",
+      updatedAt: Date.now(),
+    });
+    addCanonicalSubagentRunForTests({
+      runId: "run-delete-custody-live",
+      childSessionKey,
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "guard the session delete on authoritative custody",
+      cleanup: "delete",
+      createdAt: Date.now() - 60_000,
+      endedAt: Date.now() - 1,
+      archiveAtMs: Date.now(),
+    });
+    hasLiveContinuationCustodyMock.mockResolvedValueOnce(true);
+    const sessionDeletes = () =>
+      vi
+        .mocked(callGateway)
+        .mock.calls.filter(
+          ([request]) => (request as { method?: string } | undefined)?.method === "sessions.delete",
+        );
+
+    await mod.testing.sweepOnceForTests();
+    await flushSweepMicrotasks();
+
+    expect(hasLiveOrRecentlyDispatchedContinuationWorkMock).toHaveBeenCalledWith(childSessionKey);
+    expect(hasLiveContinuationCustodyMock).toHaveBeenCalledWith(childSessionKey);
+    expect(sessionDeletes()).toHaveLength(0);
+    expect(mod.listSubagentRunsForRequester("agent:main:main")).toEqual([
+      expect.objectContaining({ runId: "run-delete-custody-live" }),
+    ]);
+
+    await mod.testing.sweepOnceForTests();
+    await flushSweepMicrotasks();
+
+    await waitForNoRequesterRuns();
+    expect(sessionDeletes()).toEqual([
+      [
+        expect.objectContaining({
+          method: "sessions.delete",
+          params: expect.objectContaining({
+            key: childSessionKey,
+            expectedSessionId: "session-delete-custody-live",
+            expectedLifecycleRevision: "lifecycle-delete-custody-live",
+          }),
+        }),
+      ],
+    ]);
   });
 });

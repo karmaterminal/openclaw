@@ -1,4 +1,7 @@
-import { projectAgentToolActivity } from "openclaw/plugin-sdk/agent-harness-runtime";
+import {
+  inferToolMetaFromArgs,
+  projectAgentToolActivity,
+} from "openclaw/plugin-sdk/agent-harness-runtime";
 import {
   onInternalDiagnosticEvent,
   type DiagnosticTraceContext,
@@ -19,7 +22,6 @@ import {
   isDynamicToolTerminalDiagnosticEvent,
   isMatchingDynamicToolTerminalDiagnostic,
   resolveDynamicToolCallTimeoutMs,
-  shouldBlockTerminalReleaseForNonTerminalDynamicToolResult,
   toCodexDynamicToolProgressResponse,
   toCodexDynamicToolProtocolResponse,
 } from "./dynamic-tool-execution.js";
@@ -35,7 +37,6 @@ import type { CodexAttemptResources } from "./run-attempt-resources.js";
 import { toTranscriptToolResult } from "./run-attempt-tools.js";
 import type { CodexAttemptTurnState } from "./run-attempt-turn-state.js";
 import {
-  inferCodexDynamicToolMeta,
   isCodexCommandBearingToolCall,
   resolveCodexToolProgressDetailMode,
   sanitizeCodexToolArguments,
@@ -211,13 +212,12 @@ export function createCodexAttemptServerRequestController(
         tool: call.tool,
         toolCallId: call.callId,
       });
-      const toolMeta = inferCodexDynamicToolMeta(
-        call,
-        resolveCodexToolProgressDetailMode(params.toolProgressDetail),
-      );
+      const toolMeta = inferToolMetaFromArgs(call.tool, call.arguments, {
+        detailMode: resolveCodexToolProgressDetailMode(params.toolProgressDetail),
+      });
       const toolArgs = sanitizeCodexToolArguments(call.arguments);
       const commandBearing = isCodexCommandBearingToolCall(call.tool, toolArgs);
-      const shouldEmitDynamicToolProgress = shouldEmitTranscriptToolProgress(call.tool, toolArgs);
+      const shouldEmitDynamicToolProgress = shouldEmitTranscriptToolProgress(call.tool);
       if (shouldEmitDynamicToolProgress) {
         const activity = projectAgentToolActivity({
           toolCallId: call.callId,
@@ -261,11 +261,8 @@ export function createCodexAttemptServerRequestController(
           if (
             isDynamicToolTerminalDiagnosticEvent(event) &&
             isMatchingDynamicToolTerminalDiagnostic({
+              ...dynamicToolDiagnosticContext,
               event,
-              call,
-              runId: params.runId,
-              sessionId: params.sessionId,
-              sessionKey: params.sessionKey,
             })
           ) {
             terminalDiagnosticObserved = true;
@@ -371,12 +368,7 @@ export function createCodexAttemptServerRequestController(
         }
         if (
           !terminalDiagnosticObserved &&
-          !hasPendingDynamicToolTerminalDiagnostic({
-            call,
-            runId: params.runId,
-            sessionId: params.sessionId,
-            sessionKey: params.sessionKey,
-          })
+          !hasPendingDynamicToolTerminalDiagnostic(dynamicToolDiagnosticContext)
         ) {
           emitDynamicToolTerminalDiagnostic({
             ...dynamicToolDiagnosticContext,
@@ -394,7 +386,7 @@ export function createCodexAttemptServerRequestController(
             response,
             durationMs: toolDurationMs,
           });
-        } else if (!shouldBlockTerminalReleaseForNonTerminalDynamicToolResult(response)) {
+        } else if (response.asyncStarted === true) {
           scheduleTerminalDynamicToolReleaseCheck();
         } else {
           state.currentTurnHadNonTerminalDynamicToolResult = true;
@@ -405,12 +397,7 @@ export function createCodexAttemptServerRequestController(
         pendingOpenClawDynamicToolCompletionIds.delete(call.callId);
         if (
           !terminalDiagnosticObserved &&
-          !hasPendingDynamicToolTerminalDiagnostic({
-            call,
-            runId: params.runId,
-            sessionId: params.sessionId,
-            sessionKey: params.sessionKey,
-          })
+          !hasPendingDynamicToolTerminalDiagnostic(dynamicToolDiagnosticContext)
         ) {
           emitDynamicToolErrorDiagnostic({
             ...dynamicToolDiagnosticContext,

@@ -3,23 +3,20 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./subagents/registry/subagent-registry.mocks.shared.js";
+import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
-import * as detachedTaskRuntime from "../tasks/detached-task-runtime.js";
 import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
 import { runSpawnPipeline } from "./spawn-pipeline.js";
 import type {
   RegisterSubagentRunParams,
   SubagentRegistrationIdentity,
 } from "./subagents/registry/subagent-registry-run-launch.js";
-import { persistSubagentRunsToDiskOrThrow } from "./subagents/registry/subagent-registry-state.js";
 import {
+  markSubagentRunTerminated,
   recordAcceptedSubagentSpawnRollback,
   rollbackSubagentRunRegistration,
 } from "./subagents/registry/subagent-registry.js";
-import {
-  createSubagentRegistryTestDeps,
-  canonicalSubagentRunFixtures,
-} from "./subagents/registry/subagent-registry.persistence.test-support.js";
+import { canonicalSubagentRunFixtures } from "./subagents/registry/subagent-registry.persistence.test-support.js";
 import {
   loadSubagentRegistryFromSqlite,
   saveSubagentRegistryToSqlite,
@@ -34,6 +31,34 @@ import {
 } from "./subagents/registry/subagent-registry.test-helpers.js";
 import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.types.js";
 
+type PersistDisk =
+  typeof import("./subagents/registry/subagent-registry-state.js").persistSubagentRunsToDisk;
+type PersistOrThrow =
+  typeof import("./subagents/registry/subagent-registry-state.js").persistSubagentRunsToDiskOrThrow;
+
+// Two INDEPENDENT override slots, not one global redirect: only one case in this
+// file swaps persistSubagentRunsToDisk for the sqlite writer, and redirecting it
+// for every case would silently change what the others exercise. The or-throw
+// override is handed the REAL implementation, because this module is mocked and a
+// top-level import of it would resolve to the wrapper and recurse.
+let persistDiskOverride: PersistDisk | undefined;
+let persistOrThrowOverride:
+  | ((real: PersistOrThrow, ...args: Parameters<PersistOrThrow>) => void)
+  | undefined;
+vi.mock("./subagents/registry/subagent-registry-state.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./subagents/registry/subagent-registry-state.js")>();
+  return {
+    ...actual,
+    persistSubagentRunsToDisk: (...args: Parameters<PersistDisk>) =>
+      (persistDiskOverride ?? actual.persistSubagentRunsToDisk)(...args),
+    persistSubagentRunsToDiskOrThrow: (...args: Parameters<PersistOrThrow>) =>
+      persistOrThrowOverride
+        ? persistOrThrowOverride(actual.persistSubagentRunsToDiskOrThrow, ...args)
+        : actual.persistSubagentRunsToDiskOrThrow(...args),
+  };
+});
+
 describe("subagent registration rollback", () => {
   const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
   let tempStateDir: string | undefined;
@@ -41,12 +66,12 @@ describe("subagent registration rollback", () => {
   beforeEach(async () => {
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-rollback-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
-    testing.setDepsForTest(createSubagentRegistryTestDeps());
   });
 
   afterEach(async () => {
     closeOpenClawStateDatabaseForTest();
-    testing.setDepsForTest();
+    persistDiskOverride = undefined;
+    persistOrThrowOverride = undefined;
     resetSubagentRegistryForTests({ persist: false });
     if (tempStateDir) {
       await fs.rm(tempStateDir, { recursive: true, force: true });
@@ -110,7 +135,6 @@ describe("subagent registration rollback", () => {
       requesterDisplayKey: "main",
       task: "registration ownership integration",
       cleanup: "keep" as const,
-      taskRowOwnership: "required" as const,
     };
   }
 
@@ -160,7 +184,7 @@ describe("subagent registration rollback", () => {
     generation: 1,
     createdAt: 10,
     execution: { status: "running", startedAt: 10 },
-    completion: { required: false, resultText: null, capturedAt: null },
+    completion: { required: false, resultText: null },
     delivery: { status: "not_required" },
   });
 
@@ -199,7 +223,47 @@ describe("subagent registration rollback", () => {
     expect(loadSubagentRegistryFromSqlite().get(runId)).toMatchObject({
       acceptedSpawnRollback: { gatewayRunId: runId },
       suppressCompletionDelivery: true,
+      execution: { suppressSessionEffects: true },
     });
+  });
+
+  it("preserves kill-owned terminal execution while recording accepted rollback custody", async () => {
+    const childSessionKey = "agent:main:subagent:rollback-after-kill";
+    const runId = "run-rollback-after-kill";
+    const liveRun = createAcceptedLiveRun(runId, childSessionKey);
+    addSubagentRunForTests(liveRun);
+    saveSubagentRegistryToSqlite(
+      canonicalSubagentRunFixtures(new Map([[runId, structuredClone(liveRun)]])),
+    );
+
+    await expect(markSubagentRunTerminated({ runId, reason: "manual kill" })).resolves.toBe(1);
+    const killed = getSubagentRunByChildSessionKey(childSessionKey);
+    expect(killed).not.toBeNull();
+    const killedExecution = structuredClone(killed!.execution);
+    const killedReconciliation = structuredClone(killed!.killReconciliation);
+
+    const result = recordAcceptedSubagentSpawnRollback({
+      runId,
+      childSessionKey,
+      gatewayRunId: runId,
+      reason: "accepted launch completed after manual kill",
+      expectedRegistration: { runId, childSessionKey, generation: 1, createdAt: 10 },
+    });
+
+    expect(result).toEqual({ status: "persisted" });
+    expect(getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
+      acceptedSpawnRollback: { gatewayRunId: runId },
+      suppressCompletionDelivery: true,
+      killReconciliation: killedReconciliation,
+    });
+    expect(getSubagentRunByChildSessionKey(childSessionKey)?.execution).toEqual(killedExecution);
+    const persisted = loadSubagentRegistryFromSqlite().get(runId);
+    expect(persisted).toMatchObject({
+      acceptedSpawnRollback: { gatewayRunId: runId },
+      suppressCompletionDelivery: true,
+      killReconciliation: killedReconciliation,
+    });
+    expect(persisted?.execution).toEqual(killedExecution);
   });
 
   it("rejects rollback custody when the registration identity no longer matches", () => {
@@ -220,7 +284,11 @@ describe("subagent registration rollback", () => {
     expect(getSubagentRunByChildSessionKey(childSessionKey)?.acceptedSpawnRollback).toBeUndefined();
   });
 
-  it("restores same-id and older kill state after task registration throws", () => {
+  // Upstream removed the Tasks runtime (6652f7eac8), so the post-persist task-row
+  // failure that used to drive this case no longer exists. The same rollback now
+  // runs when the registration's own persistence fails, and must still restore
+  // both the same-id row and the older generation's kill reconciliation.
+  it("restores same-id and older kill state after registration persistence throws", () => {
     const childSessionKey = "agent:main:subagent:task-registration-fails";
     const runId = "run-task-registration-fails";
     const priorSameIdRun = createPriorSameIdRun(runId, childSessionKey);
@@ -237,56 +305,40 @@ describe("subagent registration rollback", () => {
     );
     const expectedKillReconciliation = structuredClone(olderRun.killReconciliation);
     const persistenceScopes: string[][] = [];
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDiskOrThrow: (runs, changedRunIds) => {
-        persistenceScopes.push([...(changedRunIds ?? [])]);
-        persistSubagentRunsToDiskOrThrow(runs, changedRunIds);
-      },
-    });
-    const taskError = new Error("task runtime unavailable");
-    const createTaskSpy = vi
-      .spyOn(detachedTaskRuntime, "createRunningTaskRun")
-      .mockImplementationOnce(() => {
-        throw taskError;
-      });
+    const persistError = new Error("registration sqlite busy");
+    persistOrThrowOverride = (_real, _runs, changedRunIds) => {
+      persistenceScopes.push([...(changedRunIds ?? [])]);
+      throw persistError;
+    };
 
-    try {
-      expect(() =>
-        registerSubagentRun({
-          runId,
-          childSessionKey,
-          requesterSessionKey: "agent:main:main",
-          requesterDisplayKey: "main",
-          task: "task registration failure",
-          cleanup: "keep",
-          taskRowOwnership: "required",
-        }),
-      ).toThrow(expect.objectContaining({ cause: taskError }));
-      expect(
-        listSubagentRunsForRequester("agent:main:main").find((entry) => entry.runId === runId),
-      ).toMatchObject({
-        task: priorSameIdRun.task,
-        generation: priorSameIdRun.generation,
-      });
-      expect(
-        listSubagentRunsForRequester("agent:main:main").find(
-          (entry) => entry.runId === olderRun.runId,
-        )?.killReconciliation,
-      ).toEqual(expectedKillReconciliation);
-      const persisted = loadSubagentRegistryFromSqlite();
-      expect(persisted.get(runId)).toMatchObject({
-        task: priorSameIdRun.task,
-        generation: priorSameIdRun.generation,
-      });
-      expect(persisted.get(olderRun.runId)?.killReconciliation).toEqual(expectedKillReconciliation);
-      expect(persistenceScopes).toEqual([
-        [runId, olderRun.runId],
-        [runId, olderRun.runId],
-      ]);
-    } finally {
-      createTaskSpy.mockRestore();
-    }
+    expect(() =>
+      registerSubagentRun({
+        runId,
+        childSessionKey,
+        requesterSessionKey: "agent:main:main",
+        requesterDisplayKey: "main",
+        task: "task registration failure",
+        cleanup: "keep",
+      }),
+    ).toThrow(expect.objectContaining({ cause: persistError }));
+    expect(
+      listSubagentRunsForRequester("agent:main:main").find((entry) => entry.runId === runId),
+    ).toMatchObject({
+      task: priorSameIdRun.task,
+      generation: priorSameIdRun.generation,
+    });
+    expect(
+      listSubagentRunsForRequester("agent:main:main").find(
+        (entry) => entry.runId === olderRun.runId,
+      )?.killReconciliation,
+    ).toEqual(expectedKillReconciliation);
+    const persisted = loadSubagentRegistryFromSqlite();
+    expect(persisted.get(runId)).toMatchObject({
+      task: priorSameIdRun.task,
+      generation: priorSameIdRun.generation,
+    });
+    expect(persisted.get(olderRun.runId)?.killReconciliation).toEqual(expectedKillReconciliation);
+    expect(persistenceScopes).toEqual([[runId, olderRun.runId]]);
   });
 
   it("restores a same-id run when initial registration persistence fails", () => {
@@ -298,13 +350,10 @@ describe("subagent registration rollback", () => {
       canonicalSubagentRunFixtures(new Map([[priorSameIdRun.runId, priorSameIdRun]])),
     );
     const persistError = new Error("initial sqlite busy");
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDisk: saveSubagentRegistryToSqlite,
-      persistSubagentRunsToDiskOrThrow: () => {
-        throw persistError;
-      },
-    });
+    persistDiskOverride = saveSubagentRegistryToSqlite;
+    persistOrThrowOverride = () => {
+      throw persistError;
+    };
 
     expect(() =>
       registerSubagentRun({
@@ -328,129 +377,62 @@ describe("subagent registration rollback", () => {
     });
   });
 
-  it("surfaces task registration and rollback persistence failures together", () => {
-    const taskError = new Error("task runtime unavailable");
-    const rollbackError = new Error("rollback sqlite busy");
-    let persistAttempt = 0;
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDiskOrThrow: (runs, changedRunIds) => {
-        persistAttempt += 1;
-        if (persistAttempt === 2) {
-          throw rollbackError;
-        }
-        persistSubagentRunsToDiskOrThrow(runs, changedRunIds);
-      },
-    });
-    const createTaskSpy = vi
-      .spyOn(detachedTaskRuntime, "createRunningTaskRun")
-      .mockImplementationOnce(() => {
-        throw taskError;
-      });
-
-    try {
-      let thrown: unknown;
-      try {
-        registerSubagentRun({
-          runId: "run-rollback-persist-fails",
-          childSessionKey: "agent:main:subagent:rollback-persist-fails",
-          requesterSessionKey: "agent:main:main",
-          requesterDisplayKey: "main",
-          task: "rollback persistence failure",
-          cleanup: "keep",
-          taskRowOwnership: "required",
-        });
-      } catch (error) {
-        thrown = error;
-      }
-      expect(thrown).toBeInstanceOf(AggregateError);
-      expect((thrown as AggregateError).errors).toEqual([taskError, rollbackError]);
-      expect((thrown as AggregateError).cause).toBe(taskError);
-      expect(
-        getSubagentRunByChildSessionKey("agent:main:subagent:rollback-persist-fails"),
-      ).toMatchObject({
-        runId: "run-rollback-persist-fails",
-        task: "rollback persistence failure",
-      });
-    } finally {
-      createTaskSpy.mockRestore();
-    }
-  });
-
+  // Upstream's Tasks removal (6652f7eac8) deleted the post-persist task-row step
+  // that used to leave a surviving row. A committed registration still fails
+  // after persistence when its publication throws; the pipeline must then keep
+  // exact rollback authority on the durable row while termination is incomplete.
   it("retains exact rollback authority when registration survives and termination is incomplete", async () => {
-    const taskError = new Error("task runtime unavailable");
-    const rollbackPersistError = new Error("rollback sqlite busy");
+    const publishError = new Error("registration publication failed");
     const terminationError = new Error("gateway termination unavailable");
-    let persistAttempt = 0;
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDiskOrThrow: (runs, changedRunIds) => {
-        persistAttempt += 1;
-        if (persistAttempt === 2) {
-          throw rollbackPersistError;
-        }
-        persistSubagentRunsToDiskOrThrow(runs, changedRunIds);
-      },
-    });
-    const createTaskSpy = vi
-      .spyOn(detachedTaskRuntime, "createRunningTaskRun")
-      .mockImplementationOnce(() => {
-        throw taskError;
-      });
     const cleanupOnFailure = vi.fn(async () => {
       throw terminationError;
     });
     const childSessionKey = "agent:main:subagent:pipeline-registration";
     const registration = createRegistration("run-pipeline-registration", childSessionKey);
 
+    let thrown: unknown;
     try {
-      let thrown: unknown;
-      try {
-        await runSpawnPipeline({
-          adapter: createPipelineAdapter(cleanupOnFailure),
-          progressSessionKey: "agent:main:main",
-          buildRegistration: () => registration,
-          recordAcceptedRollback,
-          rollbackRegistration,
-        });
-      } catch (error) {
-        thrown = error;
-      }
-
-      expect(cleanupOnFailure).toHaveBeenCalledOnce();
-      expect(thrown).toBeInstanceOf(AggregateError);
-      const registrationError = (thrown as AggregateError).errors[0] as AggregateError & {
-        registrationOwnership: { status: string };
-      };
-      expect(registrationError.errors).toEqual([taskError, rollbackPersistError]);
-      expect(registrationError.cause).toBe(taskError);
-      expect(registrationError.registrationOwnership.status).toBe("new-row-survived");
-      const retained = getSubagentRunByChildSessionKey(childSessionKey);
-      expect(retained).toMatchObject({
-        runId: registration.runId,
-        acceptedSpawnRollback: {
-          gatewayRunId: registration.runId,
-          reason: expect.stringContaining("rollback persistence both failed"),
+      await runSpawnPipeline({
+        adapter: createPipelineAdapter(cleanupOnFailure),
+        progressSessionKey: "agent:main:main",
+        buildRegistration: () => registration,
+        publishRegistration: () => {
+          throw publishError;
         },
-        suppressCompletionDelivery: true,
-        execution: { suppressSessionEffects: true },
+        recordAcceptedRollback,
+        rollbackRegistration,
       });
-      expect(retained?.execution.restartRecovery).toBeUndefined();
-      expect(loadSubagentRegistryFromSqlite().get(registration.runId)).toMatchObject({
-        acceptedSpawnRollback: { gatewayRunId: registration.runId },
-        suppressCompletionDelivery: true,
-        execution: { suppressSessionEffects: true },
-      });
-      await testing.sweepOnceForTests();
-      expect(getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
-        runId: registration.runId,
-        acceptedSpawnRollback: { gatewayRunId: registration.runId },
-        suppressCompletionDelivery: true,
-        execution: { suppressSessionEffects: true },
-      });
-    } finally {
-      createTaskSpy.mockRestore();
+    } catch (error) {
+      thrown = error;
     }
+
+    expect(cleanupOnFailure).toHaveBeenCalledOnce();
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors[0]).toBe(publishError);
+    expect((thrown as AggregateError).cause).toBe(publishError);
+    const retained = getSubagentRunByChildSessionKey(childSessionKey);
+    expect(retained).toMatchObject({
+      runId: registration.runId,
+      acceptedSpawnRollback: {
+        gatewayRunId: registration.runId,
+        reason: expect.stringContaining("registration publication failed"),
+      },
+      suppressCompletionDelivery: true,
+      execution: { suppressSessionEffects: true },
+    });
+    expect(retained?.execution.restartRecovery).toBeUndefined();
+    expect(loadSubagentRegistryFromSqlite().get(registration.runId)).toMatchObject({
+      acceptedSpawnRollback: { gatewayRunId: registration.runId },
+      suppressCompletionDelivery: true,
+      execution: { suppressSessionEffects: true },
+    });
+    await testing.sweepOnceForTests();
+    expect(getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
+      runId: registration.runId,
+      acceptedSpawnRollback: { gatewayRunId: registration.runId },
+      suppressCompletionDelivery: true,
+      execution: { suppressSessionEffects: true },
+    });
   });
 
   it("preserves a restored same-id predecessor after failed replacement registration", async () => {
@@ -459,61 +441,54 @@ describe("subagent registration rollback", () => {
     const predecessor = createPriorSameIdRun(runId, childSessionKey);
     addSubagentRunForTests(predecessor);
     saveSubagentRegistryToSqlite(canonicalSubagentRunFixtures(new Map([[runId, predecessor]])));
-    const taskError = new Error("task runtime unavailable");
-    const createTaskSpy = vi
-      .spyOn(detachedTaskRuntime, "createRunningTaskRun")
-      .mockImplementationOnce(() => {
-        throw taskError;
-      });
+    // The Tasks runtime is gone upstream (6652f7eac8); fail the replacement at
+    // its own persistence instead of at the removed task-row step.
+    const persistError = new Error("replacement sqlite busy");
+    persistOrThrowOverride = () => {
+      throw persistError;
+    };
     const cleanupOnFailure = vi.fn(async () => {});
 
-    try {
-      const result = await runSpawnPipeline({
-        adapter: createPipelineAdapter(cleanupOnFailure),
-        progressSessionKey: "agent:main:main",
-        buildRegistration: () => createRegistration(runId, childSessionKey),
-        recordAcceptedRollback,
-        rollbackRegistration,
-      });
+    const result = await runSpawnPipeline({
+      adapter: createPipelineAdapter(cleanupOnFailure),
+      progressSessionKey: "agent:main:main",
+      buildRegistration: () => createRegistration(runId, childSessionKey),
+      recordAcceptedRollback,
+      rollbackRegistration,
+    });
 
-      expect(result).toMatchObject({ ok: false, phase: "register" });
-      if (result.ok) {
-        throw new Error("expected replacement registration failure");
-      }
-      expect(
-        (
-          result.error as Error & {
-            registrationOwnership: { status: string; predecessor: { createdAt: number } };
-          }
-        ).registrationOwnership,
-      ).toEqual(
-        expect.objectContaining({
-          status: "predecessor-restored",
-          predecessor: expect.objectContaining({ createdAt: predecessor.createdAt }),
-        }),
-      );
-      expect(cleanupOnFailure).toHaveBeenCalledOnce();
-      const restored = getSubagentRunByChildSessionKey(childSessionKey);
-      expect(restored).toMatchObject({
-        runId,
-        task: predecessor.task,
-        generation: predecessor.generation,
-      });
-      expect(restored?.acceptedSpawnRollback).toBeUndefined();
-      expect(restored?.execution).toEqual(predecessor.execution);
-    } finally {
-      createTaskSpy.mockRestore();
+    expect(result).toMatchObject({ ok: false, phase: "register" });
+    if (result.ok) {
+      throw new Error("expected replacement registration failure");
     }
+    expect(
+      (
+        result.error as Error & {
+          registrationOwnership: { status: string; predecessor: { createdAt: number } };
+        }
+      ).registrationOwnership,
+    ).toEqual(
+      expect.objectContaining({
+        status: "predecessor-restored",
+        predecessor: expect.objectContaining({ createdAt: predecessor.createdAt }),
+      }),
+    );
+    expect(cleanupOnFailure).toHaveBeenCalledOnce();
+    const restored = getSubagentRunByChildSessionKey(childSessionKey);
+    expect(restored).toMatchObject({
+      runId,
+      task: predecessor.task,
+      generation: predecessor.generation,
+    });
+    expect(restored?.acceptedSpawnRollback).toBeUndefined();
+    expect(restored?.execution).toEqual(predecessor.execution);
   });
 
   it("attempts external cleanup without a rollback marker when no durable row survives", async () => {
     const persistError = new Error("initial sqlite busy");
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDiskOrThrow: () => {
-        throw persistError;
-      },
-    });
+    persistOrThrowOverride = () => {
+      throw persistError;
+    };
     const cleanupOnFailure = vi.fn(async () => {});
     const childSessionKey = "agent:main:subagent:pipeline-no-row";
 

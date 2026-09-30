@@ -120,15 +120,13 @@ function findPlugin(report: PluginStatusReport, rawName: string): PluginRecord |
 }
 
 async function loadPluginCommandConfig(): Promise<
-  | { ok: true; path: string; snapshot: ConfigSnapshotForInstallPersist }
-  | { ok: false; path: string; error: string }
+  { ok: true; snapshot: ConfigSnapshotForInstallPersist } | { ok: false; error: string }
 > {
   const prepared = await readConfigFileSnapshotForWrite();
   const snapshot = prepared.snapshot;
   if (!snapshot.valid) {
     return {
       ok: false,
-      path: snapshot.path,
       error: "Config file is invalid; fix it before using /plugins.",
     };
   }
@@ -141,13 +139,11 @@ async function loadPluginCommandConfig(): Promise<
   if (pluginMutation.mode === "blocked") {
     return {
       ok: false,
-      path: snapshot.path,
       error: pluginMutation.reason,
     };
   }
   return {
     ok: true,
-    path: snapshot.path,
     snapshot: {
       config: structuredClone(snapshot.sourceConfig),
       baseHash: snapshot.hash,
@@ -180,7 +176,7 @@ export const handlePluginsCommand: CommandHandler = defineAuthorizedTextCommand(
       if (missingAdminScope) {
         return missingAdminScope;
       }
-      if (!params.command.senderIsOwner && !hasGatewayAdminScope(params)) {
+      if (!hasGatewayAdminScope(params)) {
         const nonOwner = rejectNonOwnerCommand(params, "/plugins write");
         if (nonOwner) {
           return nonOwner;
@@ -198,6 +194,9 @@ export const handlePluginsCommand: CommandHandler = defineAuthorizedTextCommand(
         getPluginRuntimeGatewayRequestScope()?.resolveGatewayContext;
       const context = resolveContext?.();
       const assertInvokerOwned = () => {
+        if (!hasGatewayAdminScope(params)) {
+          params.command.assertOwnerCurrent?.();
+        }
         params.commandInvocationSignal?.throwIfAborted();
         params.opts?.abortSignal?.throwIfAborted();
         if (resolveContext && (!context || resolveContext() !== context)) {
@@ -293,6 +292,9 @@ export const handlePluginsCommand: CommandHandler = defineAuthorizedTextCommand(
           pluginId: plugin.id,
           enabled: pluginsCommand.action === "enable",
           action: pluginsCommand.action,
+          assertCurrent: hasGatewayAdminScope(params)
+            ? undefined
+            : params.command.assertOwnerCurrent,
           ...resolvePluginCapabilityConsentCliOptions({
             acceptCapabilities:
               pluginsCommand.action === "enable" && pluginsCommand.acceptCapabilities,

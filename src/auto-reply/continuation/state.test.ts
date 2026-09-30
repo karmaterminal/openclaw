@@ -166,7 +166,7 @@ describe("continuation timer state", () => {
 });
 
 describe("hasDelegatePending", () => {
-  it("derives pending state from pending and staged TaskFlow counts", () => {
+  it("derives pending state from the custody projection's pending and staged counts", () => {
     expect(hasDelegatePending("session")).toBe(false);
 
     delegateCounts.pendingDelegates = 1;

@@ -1,9 +1,9 @@
 import { createLazyImportLoader } from "../../../shared/lazy-promise.js";
+import * as subagentAnnounceRuntime from "./subagent-announce.runtime.js";
 import {
-  callGateway,
+  callSubagentLifecycleGateway,
   dispatchGatewayMethodInProcess,
   getRuntimeConfig,
-  resolveContinuationRuntimeConfig,
 } from "./subagent-announce.runtime.js";
 
 const subagentRegistryRuntimeLoader = createLazyImportLoader(
@@ -22,15 +22,25 @@ export function loadSubagentContinuationRuntime() {
 }
 
 type SubagentAnnounceDeps = {
-  callGateway: typeof callGateway;
+  // Cleanup and descendant-wake termination keep the run's inherited Gateway binding (#146369).
+  callGateway: typeof callSubagentLifecycleGateway;
   dispatchGatewayMethodInProcess: typeof dispatchGatewayMethodInProcess;
   getRuntimeConfig: typeof getRuntimeConfig;
   loadSubagentRegistryRuntime: typeof loadSubagentRegistryRuntime;
-  resolveContinuationRuntimeConfig: typeof resolveContinuationRuntimeConfig;
+  resolveContinuationRuntimeConfig: typeof subagentAnnounceRuntime.resolveContinuationRuntimeConfig;
 };
 
+// Continuation config is resolved through the runtime barrel at call time, not
+// bound at import. Upstream's announce tests replace that barrel with a mock that
+// lists only upstream's exports; binding a fork-only export at import would make
+// every such suite fail to load, while call-time access keeps our mocks of it
+// effective for the continuation paths that actually use it.
+const resolveContinuationRuntimeConfig: SubagentAnnounceDeps["resolveContinuationRuntimeConfig"] = (
+  ...args
+) => subagentAnnounceRuntime.resolveContinuationRuntimeConfig(...args);
+
 const defaultSubagentAnnounceDeps: SubagentAnnounceDeps = {
-  callGateway,
+  callGateway: callSubagentLifecycleGateway,
   dispatchGatewayMethodInProcess,
   getRuntimeConfig,
   loadSubagentRegistryRuntime,
@@ -42,7 +52,7 @@ export let subagentAnnounceDeps: SubagentAnnounceDeps = defaultSubagentAnnounceD
 export const testing = {
   setDepsForTest(
     overrides?: Partial<SubagentAnnounceDeps> & {
-      callGateway?: typeof callGateway;
+      callGateway?: typeof callSubagentLifecycleGateway;
     },
   ) {
     const callGatewayOverride = overrides?.callGateway;

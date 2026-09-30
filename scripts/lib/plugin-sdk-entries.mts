@@ -67,7 +67,6 @@ const nonProductionPluginSdkSubpathSet = new Set([
   ...privateQaPluginSdkEntrypoints,
   "reply-payload-testing",
   "sqlite-runtime-testing",
-  "task-flow-test-runtime",
   "test-env",
   "test-fixtures",
   "test-live",
@@ -128,30 +127,20 @@ export function buildPluginSdkEntrySources(entries: readonly string[] = pluginSd
 export function buildPluginSdkPackageExports() {
   return Object.fromEntries(
     pluginSdkEntrypoints.flatMap((entry) => {
-      if (publicPluginSdkEntrypoints.includes(entry)) {
-        return [
-          [
-            `./plugin-sdk/${entry}`,
-            {
-              types: `./dist/plugin-sdk/${entry}.d.ts`,
-              default: `./dist/plugin-sdk/${entry}.js`,
-            },
-          ],
-        ];
+      const publicEntry = publicPluginSdkEntrypoints.includes(entry);
+      if (!publicEntry && !packagedPrivatePluginSdkRuntimeEntrypoints.includes(entry)) {
+        return [];
       }
-      if (packagedPrivatePluginSdkRuntimeEntrypoints.includes(entry)) {
-        // Official plugins ship separately but execute against the host's private runtime.
-        // Their declarations stay pack-excluded by listUnpackagedPrivatePluginSdkDistArtifacts.
-        return [
-          [
-            `./plugin-sdk/${entry}`,
-            {
-              default: `./dist/plugin-sdk/${entry}.js`,
-            },
-          ],
-        ];
-      }
-      return [];
+      // Official plugins use private host runtime exports without publishing declarations.
+      return [
+        [
+          `./plugin-sdk/${entry}`,
+          {
+            ...(publicEntry ? { types: `./dist/plugin-sdk/${entry}.d.ts` } : {}),
+            default: `./dist/plugin-sdk/${entry}.js`,
+          },
+        ],
+      ];
     }),
   );
 }

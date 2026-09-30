@@ -5,7 +5,7 @@ import {
   resolveContinuationRuntimeConfig,
 } from "../../auto-reply/continuation/config.js";
 import { getContinuationDelegateQueueDepths } from "../../auto-reply/continuation/delegate-flow-store.js";
-import { stagePostCompactionTaskFlowDelegate } from "../../auto-reply/continuation/delegate-store-post-compaction.js";
+import { stagePostCompactionCustodyDelegate } from "../../auto-reply/continuation/delegate-store-post-compaction.js";
 import {
   enqueuePendingDelegate,
   removeUnacceptedContinuationDelegate,
@@ -333,23 +333,20 @@ function readArtifactReturnFields(params: Record<string, unknown>): {
   };
 }
 
-function prepareAcceptedDelegateArtifactPolicy(params: {
-  flow: { flowId: string; revision: number } | null;
+async function prepareAcceptedDelegateArtifactPolicy(params: {
+  record: { recordId: string; revision: number };
   cfg: ReturnType<typeof getRuntimeConfig>;
   config: ReturnType<typeof resolveContinuationRuntimeConfig>;
   dispatchingSessionKey: string;
   delegate: PendingContinuationDelegate;
   acceptedAt: number;
   prepareArtifactPolicy?: typeof prepareDelegateArtifactPolicy;
-}): void {
+}): Promise<void> {
   if (
     params.delegate.returnOptions?.artifacts !== "optional" &&
     params.delegate.returnOptions?.artifacts !== "required"
   ) {
     return;
-  }
-  if (!params.flow) {
-    throw new ToolInputError("artifact-capable continuation dispatch could not be persisted.");
   }
   try {
     (params.prepareArtifactPolicy ?? prepareDelegateArtifactPolicy)({
@@ -357,13 +354,13 @@ function prepareAcceptedDelegateArtifactPolicy(params: {
       config: params.config,
       dispatchingSessionKey: params.dispatchingSessionKey,
       delegate: params.delegate,
-      flowId: params.flow.flowId,
-      dispatchRevision: params.flow.revision,
+      flowId: params.record.recordId,
+      dispatchRevision: params.record.revision,
       acceptedAt: params.acceptedAt,
     });
   } catch {
-    removeUnacceptedDelegateArtifactPolicy(params.flow.flowId);
-    removeUnacceptedContinuationDelegate(params.flow.flowId);
+    removeUnacceptedDelegateArtifactPolicy(params.record.recordId);
+    await removeUnacceptedContinuationDelegate(params.record.recordId);
     throw new ToolInputError("artifact-capable continuation dispatch could not be authorized.");
   }
 }
@@ -550,12 +547,12 @@ export function createContinueDelegateTool(opts: {
           ...traceContextFields,
           ...modelField,
         };
-        const flow = stagePostCompactionTaskFlowDelegate(sessionKey, {
+        const record = await stagePostCompactionCustodyDelegate(sessionKey, {
           ...delegate,
           stagedAt: acceptedAt,
         });
-        prepareAcceptedDelegateArtifactPolicy({
-          flow,
+        await prepareAcceptedDelegateArtifactPolicy({
+          record,
           cfg: runtimeConfig,
           config: continuationConfig,
           dispatchingSessionKey: sessionKey,
@@ -597,9 +594,9 @@ export function createContinueDelegateTool(opts: {
         ...traceContextFields,
         ...modelField,
       };
-      const flow = enqueuePendingDelegate(sessionKey, delegate);
-      prepareAcceptedDelegateArtifactPolicy({
-        flow,
+      const record = await enqueuePendingDelegate(sessionKey, delegate);
+      await prepareAcceptedDelegateArtifactPolicy({
+        record,
         cfg: runtimeConfig,
         config: continuationConfig,
         dispatchingSessionKey: sessionKey,

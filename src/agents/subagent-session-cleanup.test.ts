@@ -5,9 +5,14 @@ import {
   resetSubagentSessionCleanupForTests,
 } from "./subagents/registry/subagent-session-cleanup.js";
 
-const hasLiveOrRecentlyDispatchedContinuationWorkMock = vi.hoisted(() => vi.fn(() => false));
-const hasRecoverablePendingDelegateMock = vi.hoisted(() => vi.fn(() => false));
-const failStagedPostCompactionDelegatesForCleanupMock = vi.hoisted(() => vi.fn(() => 0));
+// The authoritative custody guard covers live work and queued or claimed
+// delegates of the child (RFC §5.4.6); the projection is not trusted here.
+const hasLiveContinuationCustodyMock = vi.hoisted(() =>
+  vi.fn(async (_sessionKey: string) => false),
+);
+const failStagedPostCompactionDelegatesForCleanupMock = vi.hoisted(() =>
+  vi.fn(async (_sessionKey: string, _reason: string) => 0),
+);
 const countActiveDescendantRunsMock = vi.hoisted(() => vi.fn(() => 0));
 const logWarnMock = vi.hoisted(() => vi.fn());
 const cleanupSessionIdentity = {
@@ -22,11 +27,7 @@ vi.mock("../logging/subsystem.js", () => ({
 }));
 
 vi.mock("../auto-reply/continuation/work-store.js", () => ({
-  hasLiveOrRecentlyDispatchedContinuationWork: hasLiveOrRecentlyDispatchedContinuationWorkMock,
-}));
-
-vi.mock("../auto-reply/continuation/delegate-store.js", () => ({
-  hasRecoverablePendingDelegate: hasRecoverablePendingDelegateMock,
+  hasLiveContinuationCustody: hasLiveContinuationCustodyMock,
 }));
 
 vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", () => ({
@@ -45,9 +46,8 @@ describe("deleteSubagentSessionForCleanup", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetSubagentSessionCleanupForTests();
-    hasLiveOrRecentlyDispatchedContinuationWorkMock.mockReset().mockReturnValue(false);
-    hasRecoverablePendingDelegateMock.mockReset().mockReturnValue(false);
-    failStagedPostCompactionDelegatesForCleanupMock.mockReset().mockReturnValue(0);
+    hasLiveContinuationCustodyMock.mockReset().mockResolvedValue(false);
+    failStagedPostCompactionDelegatesForCleanupMock.mockReset().mockResolvedValue(0);
     countActiveDescendantRunsMock.mockReset().mockReturnValue(0);
     logWarnMock.mockReset();
   });
@@ -71,8 +71,7 @@ describe("deleteSubagentSessionForCleanup", () => {
 
     expect(result).toBe("failed");
     expect(callGateway).not.toHaveBeenCalled();
-    expect(hasLiveOrRecentlyDispatchedContinuationWorkMock).not.toHaveBeenCalled();
-    expect(hasRecoverablePendingDelegateMock).not.toHaveBeenCalled();
+    expect(hasLiveContinuationCustodyMock).not.toHaveBeenCalled();
     expect(countActiveDescendantRunsMock).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(5_000);
@@ -116,7 +115,7 @@ describe("deleteSubagentSessionForCleanup", () => {
     ): Promise<T> {
       return { ok: true } as T;
     }) as typeof defaultCallGateway;
-    hasRecoverablePendingDelegateMock.mockReturnValueOnce(true).mockReturnValueOnce(false);
+    hasLiveContinuationCustodyMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
     await deleteSubagentSessionForCleanup({
       callGateway,
@@ -146,8 +145,8 @@ describe("deleteSubagentSessionForCleanup", () => {
     ): Promise<T> {
       return { ok: true } as T;
     }) as typeof defaultCallGateway;
-    failStagedPostCompactionDelegatesForCleanupMock.mockReturnValueOnce(1);
-    hasRecoverablePendingDelegateMock.mockReturnValue(false);
+    failStagedPostCompactionDelegatesForCleanupMock.mockResolvedValueOnce(1);
+    hasLiveContinuationCustodyMock.mockResolvedValue(false);
     countActiveDescendantRunsMock.mockReturnValue(0);
 
     await deleteSubagentSessionForCleanup({
@@ -160,7 +159,7 @@ describe("deleteSubagentSessionForCleanup", () => {
       "agent:main:subagent:post-compaction-owner",
       expect.stringContaining("will not receive a future compaction seam"),
     );
-    expect(hasRecoverablePendingDelegateMock).toHaveBeenCalledWith(
+    expect(hasLiveContinuationCustodyMock).toHaveBeenCalledWith(
       "agent:main:subagent:post-compaction-owner",
     );
     expect(logWarnMock).toHaveBeenCalledWith(
@@ -194,8 +193,7 @@ describe("deleteSubagentSessionForCleanup", () => {
     });
 
     expect(result).toBe("changed");
-    expect(hasLiveOrRecentlyDispatchedContinuationWorkMock).not.toHaveBeenCalled();
-    expect(hasRecoverablePendingDelegateMock).not.toHaveBeenCalled();
+    expect(hasLiveContinuationCustodyMock).not.toHaveBeenCalled();
     expect(countActiveDescendantRunsMock).not.toHaveBeenCalled();
     expect(failStagedPostCompactionDelegatesForCleanupMock).not.toHaveBeenCalled();
     expect(callGateway).not.toHaveBeenCalled();

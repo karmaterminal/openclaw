@@ -12,8 +12,12 @@ import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runne
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
+import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
-import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import {
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "../continuation/custody/custody.test-support.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
 import { resetContinuationStateForTests } from "../continuation/state.js";
 import type { TemplateContext } from "../templating.js";
@@ -163,6 +167,8 @@ type RunWithModelFallbackParams = {
   runCandidate: (provider: string, model: string) => Promise<unknown>;
 };
 
+const custodyState = useContinuationCustodyTestState();
+
 beforeEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
@@ -210,6 +216,9 @@ afterEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
 });
 
+/** The run owner production qualifies the system-event queue key with. */
+const OWNER_AGENT_ID = "main";
+
 function createContinuationRun(params?: {
   sessionKey?: string;
   config?: Record<string, unknown>;
@@ -239,7 +248,7 @@ function createContinuationRun(params?: {
     summaryLine: "hello",
     enqueuedAt: Date.now(),
     run: {
-      agentId: "main",
+      agentId: OWNER_AGENT_ID,
       sessionId: "session",
       sessionKey,
       messageProvider,
@@ -379,29 +388,33 @@ describe("runReplyAgent :: post-compaction staging wiring", () => {
   });
 
   it("normal bracket (no post-compaction) normal-dispatches and does NOT stage", async () => {
-    await withOpenClawTestState(
-      { layout: "state-only", prefix: "openclaw-postcompaction-normal-dispatch-" },
-      async (state) => {
-        const run = createContinuationRun({ sessionKey: "postcompaction-normal-dispatch" });
-        await upsertSessionEntryCore(
-          { agentId: "main", env: state.env, sessionKey: run.sessionKey },
-          run.sessionEntry,
-        );
-        runEmbeddedAgentMock.mockResolvedValueOnce({
-          payloads: [{ text: "Reply" }],
-          meta: {
-            finalAssistantVisibleText: "Reply",
-            finalAssistantRawText: "Reply\n[[CONTINUE_DELEGATE: normal task]]",
-            agentMeta: { usage: { input: 1, output: 1 } },
-          },
-        });
-
-        await runDelegateTurn(run, { [run.sessionKey]: run.sessionEntry });
-
-        expect(stagePostCompactionDelegateMock).not.toHaveBeenCalled();
-        expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    const run = createContinuationRun({ sessionKey: "postcompaction-normal-dispatch" });
+    await upsertSessionEntryCore(
+      {
+        agentId: "main",
+        env: { ...process.env, OPENCLAW_STATE_DIR: custodyState.stateDir() },
+        sessionKey: run.sessionKey,
       },
+      run.sessionEntry,
     );
+    runEmbeddedAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "Reply" }],
+      meta: {
+        finalAssistantVisibleText: "Reply",
+        finalAssistantRawText: "Reply\n[[CONTINUE_DELEGATE: normal task]]",
+        agentMeta: { usage: { input: 1, output: 1 } },
+      },
+    });
+
+    await runDelegateTurn(run, { [run.sessionKey]: run.sessionEntry });
+
+    expect(stagePostCompactionDelegateMock).not.toHaveBeenCalled();
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    // The normal bracket went through ordinary delegate custody, never the
+    // post-compaction kind.
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toMatchObject([
+      { kind: "delegate", status: "succeeded" },
+    ]);
   });
 
   it("post-compaction bracket enqueues the delegate-staged-post-compaction system event", async () => {
@@ -435,7 +448,7 @@ describe("runReplyAgent :: post-compaction staging wiring", () => {
     expect(eventText).toContain("[Assistant] comply");
     expect(eventText).toContain("[Internal] hidden");
     expect(expectDefined(systemEventCalls.at(0)?.at(1), "system event options")).toMatchObject({
-      sessionKey: run.sessionKey,
+      sessionKey: resolveSystemEventQueueKey(run.sessionKey, OWNER_AGENT_ID),
       trusted: true,
     });
   });

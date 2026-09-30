@@ -1,4 +1,4 @@
-import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
+import type { ContinuationRecord } from "./custody/custody-store.types.js";
 import type {
   ContinuationWorkBatchParams,
   ContinuationWorkBatchResult,
@@ -16,11 +16,11 @@ type ScheduledWorkEnqueueResult =
   | {
       scheduled: true;
       work: PendingContinuationWork;
-      supersededFlows: readonly TaskFlowRecord[];
+      supersededFlows: readonly ContinuationRecord[];
     }
   | Extract<ContinuationWorkScheduleResult, { scheduled: false }>;
 
-export function enqueueContinuationWorkForSchedule(params: {
+export async function enqueueContinuationWorkForSchedule(params: {
   work: PendingContinuationWork;
   schedule: Pick<
     ContinuationWorkScheduleParams,
@@ -32,11 +32,11 @@ export function enqueueContinuationWorkForSchedule(params: {
     | "replaceQueuedTurnEndParkedWork"
     | "sessionKey"
   >;
-}): ScheduledWorkEnqueueResult {
-  return enqueueContinuationWorkAtomically(params);
+}): Promise<ScheduledWorkEnqueueResult> {
+  return await enqueueContinuationWorkAtomically(params);
 }
 
-function enqueueContinuationWorkAtomically(params: {
+async function enqueueContinuationWorkAtomically(params: {
   work: PendingContinuationWork;
   schedule: Pick<
     ContinuationWorkScheduleParams,
@@ -48,17 +48,15 @@ function enqueueContinuationWorkAtomically(params: {
     | "replaceQueuedTurnEndParkedWork"
     | "sessionKey"
   >;
-}): ScheduledWorkEnqueueResult {
-  const replacement = enqueuePendingWorkReplacing({
+}): Promise<ScheduledWorkEnqueueResult> {
+  const replacement = await enqueuePendingWorkReplacing({
     work: params.work,
     summary: "Superseded by a newer continue_work election after its replacement became durable.",
     maxPendingWork: params.schedule.config.maxPendingWork,
     replaceParkedWork: params.schedule.replaceQueuedTurnEndParkedWork !== false,
-    expectedPriorFlowIds:
-      params.schedule.priorParkedFlowsToSupersede?.map((flow) => flow.flowId) ?? [],
     expectedRunningFlowIds:
       params.schedule.expectedRunningFlowIds ??
-      listRunningContinuationWorkIds(params.schedule.sessionKey),
+      (await listRunningContinuationWorkIds(params.schedule.sessionKey)),
   });
   if (!replacement.applied) {
     if (replacement.capped) {
@@ -85,27 +83,21 @@ function enqueueContinuationWorkAtomically(params: {
   };
 }
 
-export function prepareContinuationWorkBatchReplacement(params: ContinuationWorkBatchParams): {
-  priorParkedFlows: readonly TaskFlowRecord[];
+export async function prepareContinuationWorkBatchReplacement(
+  params: ContinuationWorkBatchParams,
+): Promise<{
+  priorParkedFlows: readonly ContinuationRecord[];
   expectedRunningFlowIds: readonly string[];
-} {
+}> {
   const priorParkedFlows =
     params.priorParkedFlowsToSupersede ??
     (params.coalescePriorParkedWork === false
       ? []
-      : listQueuedTurnEndParkedWork(params.sessionKey));
-  if (priorParkedFlows.length === 0) {
-    return {
-      priorParkedFlows,
-      expectedRunningFlowIds:
-        params.expectedRunningFlowIds ?? listRunningContinuationWorkIds(params.sessionKey),
-    };
-  }
-
+      : await listQueuedTurnEndParkedWork(params.sessionKey));
   return {
     priorParkedFlows,
     expectedRunningFlowIds:
-      params.expectedRunningFlowIds ?? listRunningContinuationWorkIds(params.sessionKey),
+      params.expectedRunningFlowIds ?? (await listRunningContinuationWorkIds(params.sessionKey)),
   };
 }
 
@@ -114,7 +106,7 @@ export function buildContinuationWorkBatchFailure(input: {
   scheduledCount: number;
   requestCount: number;
   chainState: ContinuationWorkBatchResult["chainState"];
-  supersededFlows?: readonly TaskFlowRecord[];
+  supersededFlows?: readonly ContinuationRecord[];
 }): ContinuationWorkBatchResult {
   return {
     scheduledCount: input.scheduledCount,

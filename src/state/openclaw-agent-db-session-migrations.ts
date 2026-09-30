@@ -5,6 +5,7 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import { normalizeChatType, type ChatType } from "../channels/chat-type.js";
 import { parseSqliteSessionEntryRecord } from "../config/sessions/session-entry-json.js";
 import type { SessionEntry } from "../config/sessions/types.js";
+import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
 import { normalizeAccountId } from "../routing/account-id.js";
 import { buildConversationRef, normalizeConversationPeerId } from "../routing/conversation-ref.js";
 import { deriveSessionChatTypeFromKey } from "../sessions/session-chat-type-shared.js";
@@ -60,12 +61,14 @@ export function migrateSessionTranscriptGenerations(
   if (previousVersion >= 13) {
     return;
   }
-  db.prepare(
+  const insert = db.prepare(
     `INSERT OR IGNORE INTO transcript_rewrite_watermarks (session_id, generation, updated_at)
      SELECT session_id, lower(hex(randomblob(16))), ?
      FROM transcript_events
      GROUP BY session_id`,
-  ).run(Date.now());
+  );
+  insert.setReadBigInts(true);
+  insert.run(Date.now());
 }
 
 export function migrateSessionTranscriptActiveProjection(
@@ -297,6 +300,15 @@ export function backfillSessionConversations(db: DatabaseSync): void {
   const updatePrimary = db.prepare(
     "UPDATE sessions SET primary_conversation_id = ? WHERE session_id = ?",
   );
+  for (const statement of [
+    upsertConversation,
+    deleteMatchingRelated,
+    demotePrimary,
+    linkConversation,
+    updatePrimary,
+  ]) {
+    statement.setReadBigInts(true);
+  }
   for (const row of rows) {
     const sessionId = normalizeOptionalString(row.session_id);
     const entry = parseConversationEntry(row.entry_json);
@@ -346,10 +358,7 @@ export function readSqliteTableColumns(db: DatabaseSync, tableName: string): Set
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
     throw new Error(`invalid SQLite table identifier: ${tableName}`);
   }
-  const table = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
-    .get(tableName);
-  if (!table) {
+  if (!tableExists(db, tableName)) {
     return null;
   }
   const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{
@@ -413,6 +422,20 @@ export function withoutSessionRecipientAuthoritySchema(sql: string): string {
 
 function hasSessionRecipientAuthoritySchema(db: DatabaseSync): boolean {
   return readSqliteTableColumns(db, "session_recipient_authority") !== null;
+}
+
+/**
+ * Upstream-lineage databases share schema versions 19+ without this additive
+ * table. Create it before exact-shape checks; such databases carry no entry-local
+ * return epochs, so there is nothing to move.
+ */
+export function ensureSessionRecipientAuthoritySchemaInTransaction(
+  db: DatabaseSync,
+  schemaSql: string,
+): void {
+  if (!hasSessionRecipientAuthoritySchema(db)) {
+    db.exec(extractSqliteTableSchema(schemaSql, "session_recipient_authority")); // sqlite-allow-raw -- Idempotent additive lazy ensure.
+  }
 }
 
 /** Moves the unshipped entry-local return epoch to its logical session-key owner. */
@@ -513,6 +536,8 @@ export function ensureSessionEntryValidityProjection(db: DatabaseSync): void {
     "SELECT current_session_id, entry_json, session_key, updated_at FROM session_nodes WHERE entry_valid = 0 ORDER BY session_key LIMIT 256",
   );
   const update = db.prepare("UPDATE session_nodes SET entry_valid = ? WHERE session_key = ?");
+  // run() also returns the connection's last insert rowid, including after rollback.
+  update.setReadBigInts(true);
   while (true) {
     // Exhaust the bounded SELECT before updating its source table; SQLite does not define
     // stepping a cursor while the same connection mutates rows visible to that cursor.
@@ -549,6 +574,7 @@ export function migrateSessionEntryStatusProjection(
     session_key?: unknown;
   }>;
   const update = db.prepare("UPDATE session_entries SET status = ? WHERE session_key = ?");
+  update.setReadBigInts(true);
   for (const row of rows) {
     if (typeof row.session_key === "string") {
       update.run(readStatus(row.entry_json), row.session_key);
@@ -563,6 +589,7 @@ export function migrateSessionCreatorNamespaces(db: DatabaseSync, previousVersio
   const update = db.prepare(
     "UPDATE session_nodes SET entry_json = ?, created_actor_type = ?, created_actor_id = ? WHERE session_key = ?",
   );
+  update.setReadBigInts(true);
   const rows = db.prepare(`SELECT session_key, entry_json FROM session_nodes
     WHERE json_valid(entry_json) AND (json_extract(entry_json, '$.createdActor.type') = 'human'
       OR (json_type(entry_json, '$.createdActor') IS NULL AND json_type(entry_json, '$.createdBy') = 'object'))`);

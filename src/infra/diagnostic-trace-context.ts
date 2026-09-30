@@ -37,28 +37,16 @@ type DiagnosticTraceScopeState = {
   storage: AsyncLocalStorage<DiagnosticTraceContext | undefined>;
 };
 
-function randomHex(bytes: number): string {
-  return randomBytes(bytes).toString("hex");
-}
-
 function isNonZeroHex(value: string): boolean {
   return !/^0+$/.test(value);
 }
 
-function randomTraceId(): string {
-  let traceId = randomHex(16);
-  while (!isNonZeroHex(traceId)) {
-    traceId = randomHex(16);
+function randomNonZeroHex(bytes: number): string {
+  let value = randomBytes(bytes).toString("hex");
+  while (!isNonZeroHex(value)) {
+    value = randomBytes(bytes).toString("hex");
   }
-  return traceId;
-}
-
-function randomSpanId(): string {
-  let spanId = randomHex(8);
-  while (!isNonZeroHex(spanId)) {
-    spanId = randomHex(8);
-  }
-  return spanId;
+  return value;
 }
 
 function createDiagnosticTraceScopeState(): DiagnosticTraceScopeState {
@@ -120,9 +108,9 @@ export function createDiagnosticTraceContext(
   input: DiagnosticTraceContextInput = {},
 ): DiagnosticTraceContext {
   const parsed = parseDiagnosticTraceparent(input.traceparent);
-  const traceId = normalizeTraceId(input.traceId) ?? parsed?.traceId ?? randomTraceId();
+  const traceId = normalizeTraceId(input.traceId) ?? parsed?.traceId ?? randomNonZeroHex(16);
   const explicitSpanId = normalizeSpanId(input.spanId);
-  const spanId = explicitSpanId ?? parsed?.spanId ?? randomSpanId();
+  const spanId = explicitSpanId ?? parsed?.spanId ?? randomNonZeroHex(8);
   const parentSpanId = normalizeSpanId(input.parentSpanId);
   const spanIdSource =
     input.spanIdSource === "remote" || (!explicitSpanId && parsed?.spanId) ? "remote" : undefined;

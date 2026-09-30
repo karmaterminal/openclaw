@@ -16,22 +16,11 @@ function createMaintenanceTimerDeps() {
   };
 }
 
-async function stopMaintenanceTimers(timers: {
-  tickInterval: NodeJS.Timeout;
-  healthInterval: NodeJS.Timeout;
-  dedupeCleanup: NodeJS.Timeout;
-  stopMediaCleanup: () => Promise<"drained" | "timed-out">;
-  worktreeCleanup: NodeJS.Timeout;
-  delegateArtifactCleanup: NodeJS.Timeout;
-  skillUsageCleanup: () => void;
-}) {
-  clearInterval(timers.tickInterval);
-  clearInterval(timers.healthInterval);
-  clearInterval(timers.dedupeCleanup);
-  clearInterval(timers.worktreeCleanup);
-  clearInterval(timers.delegateArtifactCleanup);
-  await timers.stopMediaCleanup();
-  timers.skillUsageCleanup();
+async function stopMaintenanceTimers(
+  timers: ReturnType<typeof import("./server-maintenance.js").startGatewayMaintenanceTimers>,
+) {
+  await timers.stopPeriodicTasks();
+  await timers.skillUsageCleanup();
 }
 
 describe("delegate artifact gateway maintenance", () => {
@@ -69,7 +58,6 @@ describe("delegate artifact gateway maintenance", () => {
       .mockResolvedValueOnce(12);
 
     const timers = startGatewayMaintenanceTimers(deps);
-    clearInterval(timers.delegateArtifactCleanup);
     for (let index = 0; index < 10; index += 1) {
       await Promise.resolve();
     }
@@ -87,7 +75,6 @@ describe("delegate artifact gateway maintenance", () => {
     }
 
     const timers = startGatewayMaintenanceTimers(deps);
-    clearInterval(timers.delegateArtifactCleanup);
     for (let index = 0; index < 20; index += 1) {
       await Promise.resolve();
     }

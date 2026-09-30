@@ -1,4 +1,6 @@
 import type { callGateway } from "../gateway/call.js";
+import { getGatewayContextResolver } from "../plugins/runtime/gateway-request-scope.js";
+import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.types.js";
 import { deleteSubagentSessionForCleanup } from "./subagents/registry/subagent-session-cleanup.js";
 import {
   loadSubagentSessionEntry,
@@ -36,10 +38,13 @@ export function createSubagentSweepSessionCleanup(call: typeof callGateway) {
     childSessionKey: string,
     identity: FrozenSessionIdentity,
     isCurrent: () => boolean,
+    run: SubagentRunRecord,
   ): Promise<"deleted" | "changed"> => {
     let failure: unknown;
     const outcome = await deleteSubagentSessionForCleanup({
       callGateway: call,
+      // Delete in the run's own inherited Gateway context, not whatever is ambient.
+      gatewayBinding: { resolveGatewayContext: getGatewayContextResolver(run) },
       childSessionKey,
       expectedSessionId: identity.sessionId,
       expectedLifecycleRevision: identity.lifecycleRevision,

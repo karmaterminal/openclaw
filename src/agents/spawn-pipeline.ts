@@ -232,8 +232,8 @@ async function executeSpawnPipeline<TState>(
     params.assertActive?.();
     registration = params.buildRegistration(state, runId);
     params.assertRegistrationAdmission?.();
-    // Required queued registrations await durable persistence; ordinary child
-    // admission keeps the synchronous handoff.
+    // Registration may await durable persistence or completion-authority
+    // preparation; the registry re-checks this caller's authority afterwards.
     const registrationOutcome = registration.queued
       ? registerSubagentRun(registration, {
           assertCurrent: params.assertActive,
@@ -241,7 +241,7 @@ async function executeSpawnPipeline<TState>(
             registrationScope = scope;
           },
         })
-      : registerSubagentRun(registration);
+      : registerSubagentRun(registration, { assertCurrent: params.assertActive });
     const registrationResult =
       registrationOutcome instanceof Promise ? await registrationOutcome : registrationOutcome;
     if (registrationResult.status !== "new-row-committed") {

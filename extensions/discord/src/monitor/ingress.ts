@@ -186,9 +186,6 @@ export function createDiscordIngressMonitor(params: {
             : "Discord message identity changed after durable admission",
         ),
     },
-    // Gateway mapping is intentionally delayed until after the durable claim.
-    resolvePendingDisposition: async (record, _context) =>
-      await resolveDiscordIngressPendingDisposition(params.client, record, _context.now),
     deliver: async (rawMessage, lifecycle) => {
       const event = mapGatewayDispatchData(
         params.client,
@@ -206,6 +203,9 @@ export function createDiscordIngressMonitor(params: {
     },
     appendRetryDelaysMs: [0],
     drain: {
+      // Stale backlog is rejected before a pending row can win a lane.
+      resolvePendingDisposition: async (record, context) =>
+        await resolveDiscordIngressPendingDisposition(params.client, record, context.now),
       retryPolicy: {
         maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
         deadLetterMinAgeMs: 0,

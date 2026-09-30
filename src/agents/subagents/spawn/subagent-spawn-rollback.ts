@@ -12,7 +12,8 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
   runId: string;
   childSessionKey: string;
   acceptedChildRunId?: string;
-  taskRowOwnership: "required" | "gateway_best_effort";
+  /** Only a run whose registration is required is terminated on register failure. */
+  registrationRequired: boolean;
   contextEnginePreparation?: PreparedContextEngineSubagentSpawn;
   attachmentId?: string;
   expectedSessionId?: string;
@@ -36,7 +37,7 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
     ownsChild &&
     params.phase === "register" &&
     params.acceptedChildRunId &&
-    (params.taskRowOwnership === "required" || isSpawnSubagentAdmissionCancelledError(params.error))
+    (params.registrationRequired || isSpawnSubagentAdmissionCancelledError(params.error))
   ) {
     try {
       const terminated = await terminateAcceptedCollectorRun({

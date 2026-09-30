@@ -11,6 +11,9 @@
 //      `continuation.work` span emitted (rejected requests don't
 //      advance the chain, so they MUST NOT emit `continuation.work`)
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   abortEmbeddedAgentRun,
@@ -28,13 +31,17 @@ import {
   type StartSpanOptions,
   type Tracer,
 } from "../../infra/continuation-tracer.js";
+import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
+import { drainSystemEventEntries } from "../../infra/system-events.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
-import { listTaskFlowsForOwnerKey } from "../../tasks/task-flow-runtime-internal.js";
-import { resetTaskFlowRegistryForTests } from "../../tasks/task-runtime.test-helpers.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../state/openclaw-agent-db-lifecycle.js";
+import {
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "../continuation/custody/custody.test-support.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
 import { enqueuePendingDelegate } from "../continuation/delegate-store.js";
 import { resetContinuationWorkDispatchForTests } from "../continuation/work-dispatch.js";
-import { enqueuePendingWork } from "../continuation/work-store.test-support.js";
 import type { TemplateContext } from "../templating.js";
 import { isContinuationChainPatch } from "./agent-runner-entry.test-support.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
@@ -56,6 +63,23 @@ const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
 const patchSessionEntryMock = vi.hoisted(() => vi.fn());
 const updateSessionEntryMock = vi.hoisted(() => vi.fn());
 const loadSessionEntryMock = vi.hoisted(() => vi.fn());
+// When set, the queued-delegate count resolver reports this answer instead of
+// reading custody (the owner's legacy import has failed, for example).
+const queuedCountsOverride = vi.hoisted(() => ({
+  value: undefined as
+    | { pending: number; stagedPostCompaction: number; awaitingImport: boolean }
+    | undefined,
+}));
+
+vi.mock("../continuation/delegate-store.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../continuation/delegate-store.js")>();
+  return {
+    ...actual,
+    resolveQueuedDelegateCounts: async (
+      ...args: Parameters<typeof actual.resolveQueuedDelegateCounts>
+    ) => queuedCountsOverride.value ?? (await actual.resolveQueuedDelegateCounts(...args)),
+  };
+});
 
 vi.mock("../../agents/model-fallback-runner.js", () => ({
   runWithModelFallback: (params: {
@@ -249,10 +273,21 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
   return { tracer, spans };
 }
 
+let testStoreDir: string | undefined;
+
+// Durable chain-state lands beside the store path; a per-test directory keeps
+// runs hermetic instead of reusing agent databases left in the shared tmpdir.
+function testStorePath(fileName: string): string {
+  testStoreDir ??= fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-continuation-work-span-"));
+  return path.join(testStoreDir, fileName);
+}
+
+useContinuationCustodyTestState();
+
 beforeEach(() => {
+  queuedCountsOverride.value = undefined;
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
-  resetTaskFlowRegistryForTests({ persist: false });
   runEmbeddedAgentMock.mockClear();
   runCliAgentMock.mockClear();
   runWithModelFallbackMock.mockClear();
@@ -310,7 +345,7 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
   resetContinuationWorkDispatchForTests();
   vi.useRealTimers();
   clearRuntimeConfigSnapshot();
@@ -319,10 +354,12 @@ afterEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
   resetContinuationTracer();
   resetDelegateDispatchHedgesForTests();
-  resetTaskFlowRegistryForTests({ persist: false });
+  await closeOpenClawAgentDatabasesForTestAsync();
+  if (testStoreDir) {
+    fs.rmSync(testStoreDir, { recursive: true, force: true });
+    testStoreDir = undefined;
+  }
 });
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function createContinuationRun(params?: {
   sessionKey?: string;
@@ -423,9 +460,6 @@ async function runWorkTurn(
   });
 }
 
-const splitLintUse = [enqueuePendingWork, UUID_REGEX];
-void splitLintUse;
-
 describe("runReplyAgent :: continuation.work span", () => {
   it("preserves child-token updates committed while a work reservation is active", async () => {
     vi.useFakeTimers();
@@ -479,7 +513,7 @@ describe("runReplyAgent :: continuation.work span", () => {
       sessionStore,
       "Working on it\nCONTINUE_WORK:1",
       true,
-      "/tmp/openclaw-continuation-work-concurrent-token-accounting.json",
+      testStorePath("openclaw-continuation-work-concurrent-token-accounting.json"),
     );
 
     expect(continuationPersistenceCalls).toBe(2);
@@ -491,7 +525,7 @@ describe("runReplyAgent :: continuation.work span", () => {
     expect(storedEntry.continuationChainCount).toBe(2);
     expect(storedEntry.continuationChainTokens).toBe(22);
     expect(storedEntry.continuationChainId).toBe(chainId);
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toHaveLength(1);
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toHaveLength(1);
   });
 
   it("suppresses continue_work tool callbacks from incomplete non-replay-safe turns", async () => {
@@ -547,7 +581,7 @@ describe("runReplyAgent :: continuation.work span", () => {
     });
     runEmbeddedAgentMock.mockImplementationOnce(async (args: unknown) => {
       const attempt = args as { runId: string; sessionId: string };
-      enqueuePendingDelegate(run.sessionKey, {
+      await enqueuePendingDelegate(run.sessionKey, {
         task: "unsafe delegate",
         originRunId: attempt.runId,
       });
@@ -574,11 +608,12 @@ describe("runReplyAgent :: continuation.work span", () => {
 
     expect(spans.filter((s) => s.name === "continuation.work")).toHaveLength(0);
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(listTaskFlowsForOwnerKey(run.sessionKey)).toMatchObject([
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toMatchObject([
       {
+        kind: "delegate",
         status: "failed",
-        currentStep: "Rejected replay-unsafe continuation delegate election",
-        blockedSummary:
+        phase: "Rejected replay-unsafe continuation delegate election",
+        failureReason:
           "Continuation delegate election ignored because the enclosing turn was incomplete and replay-unsafe.",
       },
     ]);
@@ -756,4 +791,53 @@ describe("runReplyAgent :: continuation.work span", () => {
       },
     });
   });
+
+  it.each([
+    { signalKind: "bracket-work", text: "Keep going\nCONTINUE_WORK:1" },
+    {
+      signalKind: "bracket-delegate",
+      text: "Keep going\n[[CONTINUE_DELEGATE: legacy-blind task]]",
+    },
+  ])(
+    "defers a $signalKind hop while the owner's legacy import is pending, even with zero queued delegates",
+    async ({ signalKind, text }) => {
+      vi.useFakeTimers();
+      const { tracer, spans } = createRecordingTracer();
+      setContinuationTracer(tracer);
+      // Zero counts are only a lower bound: the owner's legacy delegates are not imported.
+      queuedCountsOverride.value = { pending: 0, stagedPostCompaction: 0, awaitingImport: true };
+
+      const run = createContinuationRun({
+        sessionKey: `continuation-import-pending-${signalKind}`,
+      });
+      const queueKey = resolveSystemEventQueueKey(run.sessionKey, "main");
+      drainSystemEventEntries(queueKey);
+      runEmbeddedAgentMock.mockResolvedValueOnce({
+        payloads: [{ text }],
+        meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+      });
+
+      await runWorkTurn(run, { [run.sessionKey]: run.sessionEntry }, text);
+
+      // Rejected as import-pending, never as an allocated hop.
+      expect(spans).toHaveLength(1);
+      expect(spans[0]).toMatchObject({
+        name: "continuation.disabled",
+        attributes: {
+          "disabled.reason": "custody.import_pending",
+          "signal.kind": signalKind,
+          "continuation.disabled": true,
+        },
+      });
+      // No work elected and no delegate enqueued or spawned.
+      expect(spans.filter((s) => s.name === "continuation.work")).toHaveLength(0);
+      expect(run.sessionEntry.continuationChainCount).toBeUndefined();
+      expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+      expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toEqual([]);
+      // The session is told the continuation is deferred pending the import.
+      expect(drainSystemEventEntries(queueKey).map((entry) => entry.text)).toContain(
+        "[continuation] Bracket continuation deferred: this session's earlier continuation work has not been imported yet; run `openclaw doctor --fix`.",
+      );
+    },
+  );
 });

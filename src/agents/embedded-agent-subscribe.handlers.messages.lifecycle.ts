@@ -4,10 +4,11 @@ import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
  * Handles assistant message lifecycle boundaries, and final reconciliation.
  */
 import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
+import { setReplyPayloadMetadata } from "../auto-reply/reply-payload.js";
 import { parseReplyDirectives } from "../auto-reply/reply/reply-directives.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { splitMediaFromOutput } from "../media/parse.js";
-import { extractTextFromChatContent } from "../shared/chat-content.js";
+import { coerceChatContentText, extractTextFromChatContent } from "../shared/chat-content.js";
 import {
   parseAssistantTextSignature,
   resolveAssistantMessagePhase,
@@ -128,14 +129,17 @@ export function handleMessageEnd(
   }
   ctx.noteLastAssistant(assistantMessage);
   if (suppressVisibleAssistantOutput) {
-    appendRawStream(() => ({
-      ts: Date.now(),
-      event: "assistant_message_end",
-      runId: ctx.params.runId,
-      sessionId: (ctx.params.session as { id?: string }).id,
-      rawText: extractEmbeddedAssistantText(assistantMessage),
-      rawThinking: extractAssistantThinking(assistantMessage),
-    }));
+    appendRawStream(
+      () => ({
+        ts: Date.now(),
+        event: "assistant_message_end",
+        runId: ctx.params.runId,
+        sessionId: (ctx.params.session as { id?: string }).id,
+        rawText: coerceChatContentText(extractEmbeddedAssistantText(assistantMessage)),
+        rawThinking: extractAssistantThinking(assistantMessage),
+      }),
+      ctx.params.sessionKey,
+    );
     emitAssistantCommentaryStreamData(ctx, assistantMessage, true);
     // Commentary-tagged tool turns can still carry durable reasoning under /reasoning on.
     const suppressedTrimmedReasoning = ctx.state.includeReasoning
@@ -167,14 +171,17 @@ export function handleMessageEnd(
       }) ?? "");
   const snapshot = extractAssistantStreamSnapshot(ctx, assistantMessage);
   const rawVisibleText = snapshot.text;
-  appendRawStream(() => ({
-    ts: Date.now(),
-    event: "assistant_message_end",
-    runId: ctx.params.runId,
-    sessionId: (ctx.params.session as { id?: string }).id,
-    rawText: getRawText(),
-    rawThinking: extractAssistantThinking(assistantMessage),
-  }));
+  appendRawStream(
+    () => ({
+      ts: Date.now(),
+      event: "assistant_message_end",
+      runId: ctx.params.runId,
+      sessionId: (ctx.params.session as { id?: string }).id,
+      rawText: getRawText(),
+      rawThinking: extractAssistantThinking(assistantMessage),
+    }),
+    ctx.params.sessionKey,
+  );
   warnIfAssistantEmittedSuspiciousText(ctx, assistantMessage);
   const standaloneMessageToolText = extractStandaloneMessageToolText(rawVisibleText, {
     allowRoutedReply: isOpenAiCompletionsAssistantMessage(assistantMessage),
@@ -484,25 +491,28 @@ export function handleMessageEnd(
       if (displayTextLocal && deliveredTextSlot !== undefined) {
         ctx.state.attemptedBlockReplyTexts?.splice(deliveredTextSlot, 0, displayTextLocal);
       }
-      ctx.emitBlockReply(
-        {
-          text: displayTextLocal,
-          mediaUrls: mediaUrlsLocal?.length ? mediaUrlsLocal : undefined,
-          audioAsVoice: audioAsVoice ?? false,
-          replyToId,
-          replyToTag,
-          replyToCurrent,
+      const payload = {
+        text: displayTextLocal,
+        mediaUrls: mediaUrlsLocal?.length ? mediaUrlsLocal : undefined,
+        audioAsVoice: audioAsVoice || undefined,
+        replyToId,
+        replyToTag,
+        replyToCurrent,
+      };
+      // Same terminal classification emitBlockChunk carries (#146361): a
+      // directive-only NO_REPLY frame must stay silent on this path too.
+      if (splitResult.isSilent) {
+        setReplyPayloadMetadata(payload, { silentReply: true });
+      }
+      ctx.emitBlockReply(payload, {
+        assistantMessageIndex: ctx.state.assistantMessageIndex,
+        onDelivered: () => {
+          if (displayTextLocal && deliveredTextSlot !== undefined) {
+            ctx.state.deliveredBlockReplyTexts[deliveredTextSlot] = displayTextLocal;
+          }
+          onDelivered?.();
         },
-        {
-          assistantMessageIndex: ctx.state.assistantMessageIndex,
-          onDelivered: () => {
-            if (displayTextLocal && deliveredTextSlot !== undefined) {
-              ctx.state.deliveredBlockReplyTexts[deliveredTextSlot] = displayTextLocal;
-            }
-            onDelivered?.();
-          },
-        },
-      );
+      });
     }
   };
 
@@ -593,6 +603,10 @@ export function handleMessageEnd(
     };
   };
 
+  // Upstream's snapshot reconciliation (#146361) already re-queued any canonical
+  // text recipients lack. With nothing queued, a ledger mismatch is only a
+  // presentation difference (re-fenced code, a superseded block), not missing text.
+  const reconciledTextPending = ctx.blockChunker.hasBuffered();
   const hasBufferedBlockReply = textEndDeliveredText == null && ctx.blockChunker.hasBuffered();
   const hasPendingToolMedia = ctx.state.pendingToolMediaUrls.length > 0;
   if (
@@ -657,7 +671,7 @@ export function handleMessageEnd(
       if (
         ctx.state.blockReplyBreak === "text_end" &&
         ctx.state.lastBlockReplyText != null &&
-        !finalTextCorrection &&
+        (!finalTextCorrection || (textEndDeliveredText != null && !reconciledTextPending)) &&
         !finalDirectives.hasMetadata
       ) {
         ctx.log.debug(

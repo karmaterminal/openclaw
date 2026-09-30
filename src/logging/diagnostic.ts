@@ -1,5 +1,3 @@
-// Diagnostic logger records structured runtime events, timings, and health snapshots.
-import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { resolveCompactionTimeoutMs } from "../agents/embedded-agent-runner/compaction-safety-timeout.js";
 import { resolveActiveEmbeddedRunRecoveryBlocker } from "../agents/embedded-agent-runner/run-state.js";
 import { getRuntimeConfig } from "../config/config.js";
@@ -9,13 +7,29 @@ import {
   emitInternalDiagnosticEvent as emitDiagnosticEvent,
   isDiagnosticsEnabled,
   type DiagnosticContinuationQueueMetrics,
+  type DiagnosticEventPayload,
   type DiagnosticPhaseSnapshot,
-  type DiagnosticLivenessWarningReason,
 } from "../infra/diagnostic-events.js";
-import { emitChildProcessSpawnSample } from "../process/spawn-utils.js";
+import type { GatewayScheduler, GatewayScheduledJob } from "../infra/gateway-scheduler.js";
+import { emitChildProcessSpawnSample } from "../process/spawn-diagnostics.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
-import { getDiagnosticContinuationQueueMetrics } from "./diagnostic-continuation-queues.js";
+import {
+  emitDiagnosticContinuationQueueSample,
+  formatContinuationQueueLogSuffix,
+  hasContinuationQueueActivity,
+  hasContinuationQueueMotion,
+  safeGetDiagnosticContinuationQueueMetrics,
+} from "./diagnostic-continuation-queue-log.js";
 import { reconcileDiagnosticGcObserver, stopDiagnosticGcObserver } from "./diagnostic-gc.js";
+import {
+  DEFAULT_LIVENESS_EVENT_LOOP_DELAY_WARN_MS,
+  sampleDiagnosticLiveness,
+  shouldEmitDiagnosticLivenessEvent,
+  shouldEmitDiagnosticLivenessWarning,
+  startDiagnosticLivenessSampler,
+  stopDiagnosticLivenessSampler,
+  type DiagnosticLivenessSample,
+} from "./diagnostic-liveness.js";
 import {
   emitDiagnosticMemorySample,
   resetDiagnosticMemoryForTest,
@@ -43,12 +57,13 @@ import {
 } from "./diagnostic-runtime.js";
 import {
   classifySessionAttention,
+  isRepeatedModelRequestStalled,
   isTerminalDiagnosticProgressReason,
   type SessionAttentionClassification,
 } from "./diagnostic-session-attention.js";
 import {
-  formatCronSessionDiagnosticFields,
-  resolveCronSessionDiagnosticContext,
+  logWithSessionDiagnosticContext,
+  retireSessionDiagnosticLogs,
 } from "./diagnostic-session-context.js";
 import {
   requestStuckSessionRecovery,
@@ -79,6 +94,12 @@ import {
   startDiagnosticStabilityRecorder,
   stopDiagnosticStabilityRecorder,
 } from "./diagnostic-stability.js";
+import {
+  getDiagnosticWorkSnapshot,
+  hasOpenDiagnosticWork,
+  resolveDiagnosticQueuedBacklog,
+  type DiagnosticWorkSnapshot,
+} from "./diagnostic-work-snapshot.js";
 
 export { diagnosticLogger } from "./diagnostic-runtime.js";
 
@@ -86,47 +107,16 @@ const webhookStats = {
   received: 0,
   processed: 0,
   errors: 0,
-  lastReceived: 0,
 };
 
 const DEFAULT_STUCK_SESSION_WARN_MS = 120_000;
 const MIN_STALLED_EMBEDDED_RUN_ABORT_MS = 5 * 60_000;
 const STALLED_EMBEDDED_RUN_ABORT_WARN_MULTIPLIER = 3;
 const RECENT_DIAGNOSTIC_ACTIVITY_MS = 120_000;
-const DEFAULT_LIVENESS_EVENT_LOOP_DELAY_WARN_MS = 1_000;
-const DEFAULT_LIVENESS_EVENT_LOOP_UTILIZATION_WARN = 0.95;
-const DEFAULT_LIVENESS_CPU_CORE_RATIO_WARN = 0.9;
-const DEFAULT_LIVENESS_WARN_COOLDOWN_MS = 120_000;
 const DIAGNOSTIC_HEARTBEAT_INTERVAL_MS = 30_000;
 const loadStuckSessionRecoveryRuntime = createLazyRuntimeModule(
   () => import("./diagnostic-stuck-session-recovery.runtime.js"),
 );
-
-type EventLoopDelayMonitor = ReturnType<typeof monitorEventLoopDelay>;
-type EventLoopUtilization = ReturnType<typeof performance.eventLoopUtilization>;
-type CpuUsage = ReturnType<typeof process.cpuUsage>;
-
-type DiagnosticWorkSnapshot = {
-  activeCount: number;
-  waitingCount: number;
-  queuedCount: number;
-  activeLabels: string[];
-  waitingLabels: string[];
-  queuedLabels: string[];
-};
-
-type DiagnosticLivenessSample = {
-  reasons: DiagnosticLivenessWarningReason[];
-  intervalMs: number;
-  degradedSinceMs?: number;
-  eventLoopDelayP99Ms?: number;
-  eventLoopDelayMaxMs?: number;
-  eventLoopUtilization?: number;
-  cpuUserMs?: number;
-  cpuSystemMs?: number;
-  cpuTotalMs?: number;
-  cpuCoreRatio?: number;
-};
 
 type SampleDiagnosticLiveness = (
   now: number,
@@ -145,13 +135,6 @@ type StartDiagnosticHeartbeatOptions = {
     stuckSessionAbortMs: number;
   };
 };
-
-let diagnosticLivenessMonitor: EventLoopDelayMonitor | null = null;
-let lastDiagnosticLivenessWallAt = 0;
-let lastDiagnosticLivenessCpuUsage: CpuUsage | null = null;
-let lastDiagnosticLivenessEventLoopUtilization: EventLoopUtilization | null = null;
-let lastDiagnosticLivenessEventAt = 0;
-let lastDiagnosticLivenessWarnAt = 0;
 
 const loadCommandPollBackoffRuntime = createLazyRuntimeModule(
   () => import("../agents/command-poll-backoff.runtime.js"),
@@ -175,311 +158,13 @@ async function recoverStuckSession(
     });
 }
 
-function pushLimitedDiagnosticLabel(
-  labels: string[],
-  state: {
-    sessionId?: string;
-    sessionKey?: string;
-    state: SessionStateValue;
-    queueDepth: number;
-    activeQueuedTurn?: boolean;
-    lastActivity: number;
-  },
-  now: number,
-): void {
-  const label = state.sessionKey ?? state.sessionId ?? "unknown";
-  const ageSeconds = Math.round(Math.max(0, now - state.lastActivity) / 1000);
-  const activity = getDiagnosticSessionActivitySnapshot(
-    { sessionId: state.sessionId, sessionKey: state.sessionKey },
-    now,
-  );
-  // Activity lookup reconciles aliases even when the bounded label list is full.
-  if (labels.length >= 5) {
-    return;
-  }
-  const workKind = activity.activeWorkKind ? `/${activity.activeWorkKind}` : "";
-  const lastProgress = activity.lastProgressReason ? ` last=${activity.lastProgressReason}` : "";
-  labels.push(
-    `${label}(${state.state}${workKind},q=${state.queueDepth},age=${ageSeconds}s${lastProgress})`,
-  );
-}
-
-function resolveDiagnosticQueuedBacklog(state: {
-  activeQueuedTurn?: boolean;
-  queueDepth: number;
-  state: SessionStateValue;
-}): number {
-  return Math.max(
-    0,
-    state.queueDepth - (state.state === "processing" && state.activeQueuedTurn ? 1 : 0),
-  );
-}
-
-function getDiagnosticWorkSnapshot(now = Date.now()): DiagnosticWorkSnapshot {
-  let activeCount = 0;
-  let waitingCount = 0;
-  let queuedCount = 0;
-  const activeLabels: string[] = [];
-  const waitingLabels: string[] = [];
-  const queuedLabels: string[] = [];
-
-  for (const state of diagnosticSessionStates.values()) {
-    if (state.state === "processing") {
-      activeCount += 1;
-      pushLimitedDiagnosticLabel(activeLabels, state, now);
-    } else if (state.state === "waiting") {
-      waitingCount += 1;
-      pushLimitedDiagnosticLabel(waitingLabels, state, now);
-    }
-    const queuedBacklog = resolveDiagnosticQueuedBacklog(state);
-    if (queuedBacklog > 0) {
-      pushLimitedDiagnosticLabel(queuedLabels, state, now);
-    }
-    queuedCount += queuedBacklog;
-  }
-
-  return { activeCount, waitingCount, queuedCount, activeLabels, waitingLabels, queuedLabels };
-}
-
-function hasOpenDiagnosticWork(snapshot: DiagnosticWorkSnapshot): boolean {
-  return snapshot.activeCount > 0 || snapshot.waitingCount > 0 || snapshot.queuedCount > 0;
-}
-
 function hasRecentDiagnosticActivity(now: number): boolean {
   const lastActivityAt = getLastDiagnosticActivityAt();
   return lastActivityAt > 0 && now - lastActivityAt <= RECENT_DIAGNOSTIC_ACTIVITY_MS;
 }
 
-function roundDiagnosticMetric(value: number, digits = 3): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  const factor = 10 ** digits;
-  return Math.round(value * factor) / factor;
-}
-
-function nanosecondsToMilliseconds(value: number): number {
-  return roundDiagnosticMetric(value / 1_000_000, 1);
-}
-
 function formatOptionalDiagnosticMetric(value: number | undefined): string {
   return value === undefined ? "unknown" : String(value);
-}
-
-function startDiagnosticLivenessSampler(): void {
-  lastDiagnosticLivenessWallAt = Date.now();
-  lastDiagnosticLivenessCpuUsage = process.cpuUsage();
-  lastDiagnosticLivenessEventLoopUtilization = performance.eventLoopUtilization();
-  lastDiagnosticLivenessEventAt = 0;
-  lastDiagnosticLivenessWarnAt = 0;
-
-  if (diagnosticLivenessMonitor) {
-    diagnosticLivenessMonitor.reset();
-    return;
-  }
-
-  try {
-    diagnosticLivenessMonitor = monitorEventLoopDelay({ resolution: 20 });
-    diagnosticLivenessMonitor.enable();
-    diagnosticLivenessMonitor.reset();
-  } catch (err) {
-    diagnosticLivenessMonitor = null;
-    diag.debug(`diagnostic liveness monitor unavailable: ${String(err)}`);
-  }
-}
-
-function stopDiagnosticLivenessSampler(): void {
-  diagnosticLivenessMonitor?.disable();
-  diagnosticLivenessMonitor = null;
-  lastDiagnosticLivenessWallAt = 0;
-  lastDiagnosticLivenessCpuUsage = null;
-  lastDiagnosticLivenessEventLoopUtilization = null;
-  lastDiagnosticLivenessEventAt = 0;
-  lastDiagnosticLivenessWarnAt = 0;
-}
-
-function sampleDiagnosticLiveness(now: number): DiagnosticLivenessSample | null {
-  if (
-    !diagnosticLivenessMonitor ||
-    !lastDiagnosticLivenessCpuUsage ||
-    !lastDiagnosticLivenessEventLoopUtilization ||
-    lastDiagnosticLivenessWallAt <= 0
-  ) {
-    startDiagnosticLivenessSampler();
-    return null;
-  }
-
-  const intervalMs = Math.max(1, now - lastDiagnosticLivenessWallAt);
-  const cpuUsage = process.cpuUsage(lastDiagnosticLivenessCpuUsage);
-  const currentEventLoopUtilization = performance.eventLoopUtilization();
-  const eventLoopUtilization = performance.eventLoopUtilization(
-    currentEventLoopUtilization,
-    lastDiagnosticLivenessEventLoopUtilization,
-  ).utilization;
-  const eventLoopDelayP99Ms = nanosecondsToMilliseconds(diagnosticLivenessMonitor.percentile(99));
-  const eventLoopDelayMaxMs = nanosecondsToMilliseconds(diagnosticLivenessMonitor.max);
-  diagnosticLivenessMonitor.reset();
-  lastDiagnosticLivenessWallAt = now;
-  lastDiagnosticLivenessCpuUsage = process.cpuUsage();
-  lastDiagnosticLivenessEventLoopUtilization = currentEventLoopUtilization;
-
-  const cpuUserMs = roundDiagnosticMetric(cpuUsage.user / 1_000, 1);
-  const cpuSystemMs = roundDiagnosticMetric(cpuUsage.system / 1_000, 1);
-  const cpuTotalMs = roundDiagnosticMetric(cpuUserMs + cpuSystemMs, 1);
-  const cpuCoreRatio = roundDiagnosticMetric(cpuTotalMs / intervalMs, 3);
-  const eventLoopUtilizationRatio = roundDiagnosticMetric(eventLoopUtilization, 3);
-  const reasons: DiagnosticLivenessWarningReason[] = [];
-
-  if (
-    eventLoopDelayP99Ms >= DEFAULT_LIVENESS_EVENT_LOOP_DELAY_WARN_MS ||
-    eventLoopDelayMaxMs >= DEFAULT_LIVENESS_EVENT_LOOP_DELAY_WARN_MS
-  ) {
-    reasons.push("event_loop_delay");
-  }
-  if (eventLoopUtilizationRatio >= DEFAULT_LIVENESS_EVENT_LOOP_UTILIZATION_WARN) {
-    reasons.push("event_loop_utilization");
-  }
-  if (cpuCoreRatio >= DEFAULT_LIVENESS_CPU_CORE_RATIO_WARN) {
-    reasons.push("cpu");
-  }
-  if (reasons.length === 0) {
-    return null;
-  }
-
-  return {
-    reasons,
-    intervalMs,
-    eventLoopDelayP99Ms,
-    eventLoopDelayMaxMs,
-    eventLoopUtilization: eventLoopUtilizationRatio,
-    cpuUserMs,
-    cpuSystemMs,
-    cpuTotalMs,
-    cpuCoreRatio,
-  };
-}
-
-function shouldEmitDiagnosticLivenessEvent(now: number): boolean {
-  if (
-    lastDiagnosticLivenessEventAt > 0 &&
-    now - lastDiagnosticLivenessEventAt < DEFAULT_LIVENESS_WARN_COOLDOWN_MS
-  ) {
-    return false;
-  }
-  lastDiagnosticLivenessEventAt = now;
-  return true;
-}
-
-function shouldEmitDiagnosticLivenessWarning(
-  now: number,
-  work: DiagnosticWorkSnapshot,
-  continuationQueue: DiagnosticContinuationQueueMetrics | undefined,
-): boolean {
-  if (!hasOpenDiagnosticWork(work) && !hasContinuationQueueActivity(continuationQueue)) {
-    return false;
-  }
-  if (
-    lastDiagnosticLivenessWarnAt > 0 &&
-    now - lastDiagnosticLivenessWarnAt < DEFAULT_LIVENESS_WARN_COOLDOWN_MS
-  ) {
-    return false;
-  }
-  lastDiagnosticLivenessWarnAt = now;
-  return true;
-}
-
-function formatContinuationQueueNumber(value: number | undefined): string {
-  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "n/a";
-}
-
-function hasContinuationQueueActivity(
-  continuationQueue: DiagnosticContinuationQueueMetrics | undefined,
-): continuationQueue is DiagnosticContinuationQueueMetrics {
-  return (
-    continuationQueue !== undefined &&
-    (continuationQueue.totalQueued > 0 ||
-      continuationQueue.enqueuedSinceLastSample > 0 ||
-      continuationQueue.drainedSinceLastSample > 0 ||
-      continuationQueue.failedSinceLastSample > 0)
-  );
-}
-
-// Liveness-warn predicate: only fires on motion (enqueue/drain/fail since
-// last sample), NOT on persistent queue depth alone. This keeps healthy
-// sessions with steady-state queue depth from re-introducing the same
-// per-heartbeat noise that v2026.5.3's session-attention throttle removed
-// for `recovery=none` long-running warnings (see
-// `lastLongRunningWarnAgeMs` in `logSessionAttention`). Depth is still
-// surfaced via the message suffix and event payload so observers can see
-// it; we just don't escalate to warn on presence alone.
-function hasContinuationQueueMotion(
-  continuationQueue: DiagnosticContinuationQueueMetrics | undefined,
-): continuationQueue is DiagnosticContinuationQueueMetrics {
-  return (
-    continuationQueue !== undefined &&
-    (continuationQueue.enqueuedSinceLastSample > 0 ||
-      continuationQueue.drainedSinceLastSample > 0 ||
-      continuationQueue.failedSinceLastSample > 0)
-  );
-}
-
-function safeGetDiagnosticContinuationQueueMetrics(
-  now: number,
-): DiagnosticContinuationQueueMetrics | undefined {
-  try {
-    return getDiagnosticContinuationQueueMetrics(now);
-  } catch (err) {
-    diag.debug(`continuation queue diagnostics failed: ${String(err)}`);
-    return undefined;
-  }
-}
-
-function formatContinuationQueueTopQueues(
-  continuationQueue: DiagnosticContinuationQueueMetrics,
-): string {
-  return continuationQueue.topQueues
-    .map(
-      (queue) =>
-        `${queue.sessionKey}(total=${queue.totalQueued},runnable=${queue.pendingRunnable},scheduled=${queue.pendingScheduled},staged=${queue.stagedPostCompaction},invalid=${queue.invalidQueued})`,
-    )
-    .join(",");
-}
-
-function formatContinuationQueueHistory(
-  continuationQueue: DiagnosticContinuationQueueMetrics,
-): string {
-  return JSON.stringify(
-    continuationQueue.queueDepthHistory.map((point) => ({
-      sampled_at: point.sampledAt,
-      total_queued: point.totalQueued,
-      runnable: point.pendingRunnable,
-      scheduled: point.pendingScheduled,
-      staged_post_compaction: point.stagedPostCompaction,
-      invalid_queued: point.invalidQueued,
-      enqueued: point.enqueued,
-      drained: point.drained,
-      failed: point.failed,
-    })),
-  );
-}
-
-function formatContinuationQueueLogSuffix(
-  continuationQueue: DiagnosticContinuationQueueMetrics | undefined,
-): string {
-  if (!hasContinuationQueueActivity(continuationQueue)) {
-    return "";
-  }
-  return ` continuationQueueTotal=${continuationQueue.totalQueued} continuationQueueRunnable=${continuationQueue.pendingRunnable} continuationQueueScheduled=${continuationQueue.pendingScheduled} continuationQueueStagedPostCompaction=${continuationQueue.stagedPostCompaction} continuationQueueInvalid=${continuationQueue.invalidQueued} continuationQueueEnqueued=${continuationQueue.enqueuedSinceLastSample} continuationQueueDrained=${continuationQueue.drainedSinceLastSample} continuationQueueFailed=${continuationQueue.failedSinceLastSample} continuationQueueEnqueueRatePerMinute=${formatContinuationQueueNumber(continuationQueue.enqueueRatePerMinute)} continuationQueueDrainRatePerMinute=${formatContinuationQueueNumber(continuationQueue.drainRatePerMinute)} continuationQueueFailedRatePerMinute=${formatContinuationQueueNumber(continuationQueue.failedRatePerMinute)} continuationQueueTop=[${formatContinuationQueueTopQueues(continuationQueue)}] queue_depth_history=${formatContinuationQueueHistory(continuationQueue)}`;
-}
-
-function emitDiagnosticContinuationQueueSample(
-  continuationQueue: DiagnosticContinuationQueueMetrics,
-): void {
-  emitDiagnosticEvent({
-    type: "diagnostic.continuation_queue.sample",
-    continuationQueue,
-  });
-  markActivity();
 }
 
 function emitDiagnosticLivenessWarning(
@@ -607,19 +292,14 @@ function isActiveAbortRecoveryEligible(params: {
   if (classification.classification !== "stalled_agent_run") {
     return false;
   }
+  // Repeated requests can be stalled while a tool owns the current phase.
+  // Transport liveness must not replace that independent semantic evidence.
+  if (isRepeatedModelRequestStalled(activity, stuckSessionAbortMs)) {
+    return true;
+  }
   const modelAllowanceExpired =
     activity.activeModelCallRequestTimeoutMs === undefined ||
     lastProgressAgeMs >= activity.activeModelCallRequestTimeoutMs;
-  // Repeated requests can be stalled while a tool owns the current phase.
-  // Transport liveness must not replace that independent semantic evidence.
-  if (
-    activity.hasActiveEmbeddedRun &&
-    (activity.repeatedRequestNoProgressAgeMs ?? 0) >=
-      Math.max(stuckSessionAbortMs, activity.activeModelCallRequestTimeoutMs ?? 0) &&
-    modelAllowanceExpired
-  ) {
-    return true;
-  }
   return (
     (classification.activeWorkKind === "model_call" ||
       classification.activeWorkKind === "embedded_run") &&
@@ -637,31 +317,27 @@ function isIdleQueuedRecoverableSessionStall(params: {
   activity: DiagnosticSessionActivitySnapshot;
   staleMs: number;
 }): boolean {
-  const hasEmbeddedOwner =
-    params.activity.activeWorkKind === "embedded_run" ||
-    params.activity.hasActiveEmbeddedRun === true;
   // Also detect orphaned activity (model_call or tool_call left behind
   // without an active embedded owner) so recovery can pump the stale queue.
-  const hasOrphanedActivity =
-    params.activity.activeWorkKind !== undefined && params.activity.hasActiveEmbeddedRun !== true;
   return (
     params.state.state === "idle" &&
     params.state.queueDepth > 0 &&
-    (hasEmbeddedOwner || hasOrphanedActivity) &&
+    (params.activity.activeWorkKind !== undefined ||
+      params.activity.hasActiveEmbeddedRun === true) &&
     (params.activity.lastProgressAgeMs ?? 0) > params.staleMs
   );
 }
 
-export function logWebhookReceived(params: {
-  channel: string;
-  updateType?: string;
-  chatId?: number | string;
-}) {
+type DiagnosticLogParams<T extends DiagnosticEventPayload["type"]> = Omit<
+  Extract<DiagnosticEventPayload, { type: T }>,
+  "type" | "seq" | "ts" | "trace"
+>;
+
+export function logWebhookReceived(params: DiagnosticLogParams<"webhook.received">) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
   }
   webhookStats.received += 1;
-  webhookStats.lastReceived = Date.now();
   if (diag.isEnabled("debug")) {
     diag.debug(
       `webhook received: channel=${params.channel} type=${params.updateType ?? "unknown"} chatId=${
@@ -678,12 +354,7 @@ export function logWebhookReceived(params: {
   markActivity();
 }
 
-export function logWebhookProcessed(params: {
-  channel: string;
-  updateType?: string;
-  chatId?: number | string;
-  durationMs?: number;
-}) {
+export function logWebhookProcessed(params: DiagnosticLogParams<"webhook.processed">) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
   }
@@ -707,12 +378,7 @@ export function logWebhookProcessed(params: {
   markActivity();
 }
 
-export function logWebhookError(params: {
-  channel: string;
-  updateType?: string;
-  chatId?: number | string;
-  error: string;
-}) {
+export function logWebhookError(params: DiagnosticLogParams<"webhook.error">) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
   }
@@ -732,23 +398,13 @@ export function logWebhookError(params: {
   markActivity();
 }
 
-export function logMessageQueued(params: {
-  sessionId?: string;
-  sessionKey?: string;
-  channel?: string;
-  source: string;
-}) {
+export function logMessageQueued(
+  params: Omit<DiagnosticLogParams<"message.queued">, "queueDepth">,
+) {
   logMessageQueuedWithBacklogPolicy(params, true);
 }
 
-export function logMessageReceived(params: {
-  sessionId?: string;
-  sessionKey?: string;
-  channel?: string;
-  messageId?: number | string;
-  chatId?: number | string;
-  source: string;
-}) {
+export function logMessageReceived(params: DiagnosticLogParams<"message.received">) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
   }
@@ -773,12 +429,7 @@ export function logMessageReceived(params: {
   markActivity();
 }
 
-export function logMessageDispatchStarted(params: {
-  sessionId?: string;
-  sessionKey?: string;
-  channel?: string;
-  source: string;
-}) {
+export function logMessageDispatchStarted(params: DiagnosticLogParams<"message.dispatch.started">) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
   }
@@ -799,20 +450,14 @@ export function logMessageDispatchStarted(params: {
   markActivity();
 }
 
-export function logMessageDispatchCompleted(params: {
-  sessionId?: string;
-  sessionKey?: string;
-  channel?: string;
-  source: string;
-  durationMs: number;
-  outcome: "completed" | "skipped" | "error";
-  reason?: string;
-  error?: string;
-}) {
+export function logMessageDispatchCompleted(
+  params: DiagnosticLogParams<"message.dispatch.completed">,
+) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
   }
-  if (diag.isEnabled(params.outcome === "error" ? "error" : "debug")) {
+  const level = params.outcome === "error" ? "error" : "debug";
+  if (diag.isEnabled(level)) {
     const payload = `message dispatch completed: channel=${params.channel ?? "unknown"} sessionId=${
       params.sessionId ?? "unknown"
     } sessionKey=${params.sessionKey ?? "unknown"} source=${params.source} outcome=${
@@ -820,11 +465,7 @@ export function logMessageDispatchCompleted(params: {
     } duration=${params.durationMs}ms${params.reason ? ` reason=${params.reason}` : ""}${
       params.error ? ` error="${params.error}"` : ""
     }`;
-    if (params.outcome === "error") {
-      diag.error(payload);
-    } else {
-      diag.debug(payload);
-    }
+    diag[level](payload);
   }
   emitDiagnosticEvent({
     type: "message.dispatch.completed",
@@ -840,22 +481,12 @@ export function logMessageDispatchCompleted(params: {
   markActivity();
 }
 
-export function logMessageProcessed(params: {
-  channel: string;
-  messageId?: number | string;
-  chatId?: number | string;
-  sessionId?: string;
-  sessionKey?: string;
-  durationMs?: number;
-  outcome: "completed" | "skipped" | "error";
-  reason?: string;
-  error?: string;
-}) {
+export function logMessageProcessed(params: DiagnosticLogParams<"message.processed">) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
   }
-  const wantsLog = params.outcome === "error" ? diag.isEnabled("error") : diag.isEnabled("debug");
-  if (wantsLog) {
+  const level = params.outcome === "error" ? "error" : "debug";
+  if (diag.isEnabled(level)) {
     const payload = `message processed: channel=${params.channel} chatId=${
       params.chatId ?? "unknown"
     } messageId=${params.messageId ?? "unknown"} sessionId=${
@@ -865,11 +496,7 @@ export function logMessageProcessed(params: {
     }ms${params.reason ? ` reason=${params.reason}` : ""}${
       params.error ? ` error="${params.error}"` : ""
     }`;
-    if (params.outcome === "error") {
-      diag.error(payload);
-    } else {
-      diag.debug(payload);
-    }
+    diag[level](payload);
   }
   emitDiagnosticEvent({
     type: "message.processed",
@@ -878,6 +505,7 @@ export function logMessageProcessed(params: {
     messageId: params.messageId,
     sessionId: params.sessionId,
     sessionKey: params.sessionKey,
+    ...(params.agentId ? { agentId: params.agentId } : {}),
     durationMs: params.durationMs,
     outcome: params.outcome,
     reason: params.reason,
@@ -886,14 +514,7 @@ export function logMessageProcessed(params: {
   markActivity();
 }
 
-export function logSessionTurnCreated(params: {
-  runId: string;
-  sessionId?: string;
-  sessionKey?: string;
-  agentId?: string;
-  channel?: string;
-  trigger: "user" | "heartbeat";
-}) {
+export function logSessionTurnCreated(params: DiagnosticLogParams<"session.turn.created">) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
   }
@@ -1067,41 +688,22 @@ function logSessionAttention(
       ? { classification, allowActiveAbort }
       : undefined;
   // Warning backoff throttles reports, never recovery justified by this observation.
-  let suppressWarning = false;
-  if (classification.eventType === "session.stuck") {
+  const warningAgeField =
+    classification.eventType === "session.stuck"
+      ? "lastStuckWarnAgeMs"
+      : classification.eventType === "session.long_running"
+        ? "lastLongRunningWarnAgeMs"
+        : undefined;
+  if (warningAgeField) {
+    const lastWarnAgeMs = state[warningAgeField];
     const nextWarnAgeMs =
-      state.lastStuckWarnAgeMs === undefined
+      lastWarnAgeMs === undefined
         ? params.thresholdMs
-        : Math.max(state.lastStuckWarnAgeMs + params.thresholdMs, state.lastStuckWarnAgeMs * 2);
+        : Math.max(lastWarnAgeMs + params.thresholdMs, lastWarnAgeMs * 2);
     if (params.ageMs < nextWarnAgeMs) {
-      if (!recovery) {
-        return undefined;
-      }
-      suppressWarning = true;
-    } else {
-      state.lastStuckWarnAgeMs = params.ageMs;
+      return recovery;
     }
-  }
-  if (classification.eventType === "session.long_running") {
-    const nextWarnAgeMs =
-      state.lastLongRunningWarnAgeMs === undefined
-        ? params.thresholdMs
-        : Math.max(
-            state.lastLongRunningWarnAgeMs + params.thresholdMs,
-            state.lastLongRunningWarnAgeMs * 2,
-          );
-    if (params.ageMs < nextWarnAgeMs) {
-      if (!recovery) {
-        return undefined;
-      }
-      suppressWarning = true;
-    } else {
-      state.lastLongRunningWarnAgeMs = params.ageMs;
-    }
-  }
-  if (suppressWarning) {
-    // Warning backoff must not delay a recovery already justified by this observation.
-    return recovery;
+    state[warningAgeField] = params.ageMs;
   }
   const label =
     classification.eventType === "session.stuck"
@@ -1109,26 +711,24 @@ function logSessionAttention(
       : classification.eventType === "session.stalled"
         ? "stalled session"
         : "long-running session";
-  const activityFields = formatSessionActivityLogFields(activity);
-  const sessionFields = formatCronSessionDiagnosticFields(
-    resolveCronSessionDiagnosticContext({
-      sessionKey: params.sessionKey,
-      activeSessionId: params.sessionId,
-    }),
-  );
-  const detailFields = [activityFields, sessionFields].filter(Boolean).join(" ");
-  const message = `${label}: sessionId=${params.sessionId ?? "unknown"} sessionKey=${
-    params.sessionKey ?? "unknown"
-  } state=${params.expectedState} age=${Math.round(params.ageMs / 1000)}s queueDepth=${
-    queueDepth
-  } reason=${classification.reason} classification=${classification.classification}${
-    classification.activeWorkKind ? ` activeWorkKind=${classification.activeWorkKind}` : ""
-  }${detailFields ? ` ${detailFields}` : ""} recovery=${recovery ? "checking" : "none"}`;
-  if (classification.eventType === "session.long_running" && queueDepth <= 0) {
-    diag.debug(message);
-  } else {
-    diag.warn(message);
-  }
+  void logWithSessionDiagnosticContext({
+    level:
+      classification.eventType === "session.long_running" && queueDepth <= 0 ? "debug" : "warn",
+    sessionKey: params.sessionKey,
+    activeSessionId: params.sessionId,
+    format: (sessionFields) => {
+      const detailFields = [formatSessionActivityLogFields(activity), sessionFields]
+        .filter(Boolean)
+        .join(" ");
+      return `${label}: sessionId=${params.sessionId ?? "unknown"} sessionKey=${
+        params.sessionKey ?? "unknown"
+      } state=${params.expectedState} age=${Math.round(params.ageMs / 1000)}s queueDepth=${
+        queueDepth
+      } reason=${classification.reason} classification=${classification.classification}${
+        classification.activeWorkKind ? ` activeWorkKind=${classification.activeWorkKind}` : ""
+      }${detailFields ? ` ${detailFields}` : ""} recovery=${recovery ? "checking" : "none"}`;
+    },
+  });
   const baseEvent = {
     sessionId: params.sessionId,
     sessionKey: params.sessionKey,
@@ -1161,55 +761,12 @@ function logSessionAttention(
   return recovery;
 }
 
-export function logToolLoopAction(
-  params: SessionRef & {
-    toolName: string;
-    level: "warning" | "critical";
-    action: "warn" | "block";
-    detector:
-      | "generic_repeat"
-      | "argument_churn"
-      | "unknown_tool_repeat"
-      | "known_poll_no_progress"
-      | "global_circuit_breaker"
-      | "ping_pong";
-    count: number;
-    message: string;
-    pairedToolName?: string;
-  },
-) {
-  if (!areDiagnosticsEnabledForProcess()) {
-    return;
-  }
-  const payload = `tool loop: sessionId=${params.sessionId ?? "unknown"} sessionKey=${
-    params.sessionKey ?? "unknown"
-  } tool=${params.toolName} level=${params.level} action=${params.action} detector=${
-    params.detector
-  } count=${params.count}${params.pairedToolName ? ` pairedTool=${params.pairedToolName}` : ""} message="${params.message}"`;
-  if (params.level === "critical") {
-    diag.error(payload);
-  } else {
-    diag.warn(payload);
-  }
-  emitDiagnosticEvent({
-    type: "tool.loop",
-    sessionId: params.sessionId,
-    sessionKey: params.sessionKey,
-    toolName: params.toolName,
-    level: params.level,
-    action: params.action,
-    detector: params.detector,
-    count: params.count,
-    message: params.message,
-    pairedToolName: params.pairedToolName,
-  });
-  markActivity();
-}
-
-let heartbeatInterval: NodeJS.Timeout | null = null;
+let heartbeatJob: GatewayScheduledJob | undefined;
+let detachHeartbeatOwner: (() => void) | undefined;
 let lastDiagnosticHeartbeatTickAt: number | undefined;
 
-export function startDiagnosticHeartbeat(
+export function startGatewayDiagnosticHeartbeat(
+  scheduler: GatewayScheduler,
   config?: OpenClawConfig,
   opts?: StartDiagnosticHeartbeatOptions,
 ) {
@@ -1222,7 +779,7 @@ export function startDiagnosticHeartbeat(
   startDiagnosticStabilityRecorder();
   installDiagnosticStabilityFatalHook();
   reconcileDiagnosticGcObserver();
-  if (heartbeatInterval) {
+  if (heartbeatJob) {
     return;
   }
   // Gateway supplies its lifecycle-owned monitor; other runtimes retain the
@@ -1231,9 +788,11 @@ export function startDiagnosticHeartbeat(
     startDiagnosticLivenessSampler();
   }
   const livenessGraceUntil =
-    opts?.startupGraceMs != null && opts.startupGraceMs > 0 ? Date.now() + opts.startupGraceMs : 0;
-  lastDiagnosticHeartbeatTickAt = Date.now();
-  heartbeatInterval = setInterval(() => {
+    opts?.startupGraceMs != null && opts.startupGraceMs > 0
+      ? scheduler.now() + opts.startupGraceMs
+      : 0;
+  lastDiagnosticHeartbeatTickAt = scheduler.now();
+  const tick = () => {
     // Reuse this tick for exporter demand changes; GC collection never adds a timer.
     reconcileDiagnosticGcObserver();
     emitChildProcessSpawnSample();
@@ -1249,7 +808,7 @@ export function startDiagnosticHeartbeat(
     const stuckSessionAbortMs =
       opts?.testTimings?.stuckSessionAbortMs ?? resolveStuckSessionAbortMs(stuckSessionWarnMs);
     const compactionSafetyTimeoutMs = resolveCompactionTimeoutMs(heartbeatConfig);
-    const now = Date.now();
+    const now = scheduler.now();
     const heartbeatElapsedMs =
       lastDiagnosticHeartbeatTickAt === undefined ? 0 : now - lastDiagnosticHeartbeatTickAt;
     lastDiagnosticHeartbeatTickAt = now;
@@ -1274,7 +833,11 @@ export function startDiagnosticHeartbeat(
     const shouldEmitLivenessEvent =
       livenessSample !== null && shouldEmitDiagnosticLivenessEvent(now);
     const shouldEmitLivenessWarning =
-      livenessSample !== null && shouldEmitDiagnosticLivenessWarning(now, work, continuationQueue);
+      livenessSample !== null &&
+      shouldEmitDiagnosticLivenessWarning(
+        now,
+        hasOpenDiagnosticWork(work) || hasContinuationQueueActivity(continuationQueue),
+      );
     const hasContinuationActivity = hasContinuationQueueActivity(continuationQueue);
     const shouldEmitLivenessReport = shouldEmitLivenessEvent || shouldEmitLivenessWarning;
     const shouldRecordMemorySample =
@@ -1303,7 +866,7 @@ export function startDiagnosticHeartbeat(
     }
 
     diag.debug(
-      `heartbeat: webhooks=${webhookStats.received}/${webhookStats.processed}/${webhookStats.errors} active=${work.activeCount} waiting=${work.waitingCount} queued=${work.queuedCount}${formatContinuationQueueLogSuffix(continuationQueue)}`,
+      `heartbeat: webhooks=${webhookStats.received}/${webhookStats.processed}/${webhookStats.errors} active=${work.activeCount} waiting=${work.waitingCount} queued=${work.queuedCount} nextWakeAtMs=${scheduler.nextWakeAtMs ?? "none"}${formatContinuationQueueLogSuffix(continuationQueue)}`,
     );
     emitDiagnosticEvent({
       type: "diagnostic.heartbeat",
@@ -1387,21 +950,41 @@ export function startDiagnosticHeartbeat(
             ...(recovery.allowActiveAbort
               ? { allowActiveAbort: true }
               : { staleActiveProgressAbortMs: stuckSessionAbortMs }),
+            ...(recovery.classification.reason === "repeated_model_requests_without_progress"
+              ? { repeatedRequestNoProgressAbortMs: stuckSessionAbortMs }
+              : {}),
             compactionSafetyTimeoutMs,
           },
         });
       }
     }
-  }, DIAGNOSTIC_HEARTBEAT_INTERVAL_MS);
-  heartbeatInterval.unref?.();
+  };
+  const job = scheduler.schedule({
+    id: "diagnostic-heartbeat",
+    atMs: scheduler.now() + DIAGNOSTIC_HEARTBEAT_INTERVAL_MS,
+    everyMs: DIAGNOSTIC_HEARTBEAT_INTERVAL_MS,
+    run: tick,
+  });
+  heartbeatJob = job;
+  const stopOwnedHeartbeat = () => {
+    if (heartbeatJob === job) {
+      stopGatewayDiagnosticHeartbeat();
+    }
+  };
+  scheduler.signal.addEventListener("abort", stopOwnedHeartbeat, { once: true });
+  detachHeartbeatOwner = () => scheduler.signal.removeEventListener("abort", stopOwnedHeartbeat);
+  if (scheduler.signal.aborted) {
+    stopOwnedHeartbeat();
+  }
 }
 
-export function stopDiagnosticHeartbeat() {
+export function stopGatewayDiagnosticHeartbeat() {
+  detachHeartbeatOwner?.();
+  detachHeartbeatOwner = undefined;
+  retireSessionDiagnosticLogs();
   stopDiagnosticGcObserver();
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval);
-    heartbeatInterval = null;
-  }
+  heartbeatJob?.cancel();
+  heartbeatJob = undefined;
   lastDiagnosticHeartbeatTickAt = undefined;
   stopDiagnosticRunActivityTracking();
   retireDiagnosticSessionObservations();
@@ -1411,7 +994,7 @@ export function stopDiagnosticHeartbeat() {
 }
 
 function resetDiagnosticStateForTest(): void {
-  stopDiagnosticHeartbeat();
+  stopGatewayDiagnosticHeartbeat();
   resetDiagnosticSessionRecoveryCoordinatorForTest();
   resetDiagnosticSessionStateForTest();
   resetDiagnosticActivityForTest();
@@ -1419,7 +1002,6 @@ function resetDiagnosticStateForTest(): void {
   webhookStats.received = 0;
   webhookStats.processed = 0;
   webhookStats.errors = 0;
-  webhookStats.lastReceived = 0;
   resetDiagnosticMemoryForTest();
   resetDiagnosticPhasesForTest();
   resetDiagnosticStabilityRecorderForTest();

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useContinuationCustodyTestState } from "../auto-reply/continuation/custody/custody.test-support.js";
 import { resetDelegateStoreForTests } from "../auto-reply/continuation/delegate-store.js";
 import type { FollowupRun, QueueSettings } from "../auto-reply/reply/queue.js";
 import { testing as replyRunRegistryTesting } from "../auto-reply/reply/reply-run-registry.test-support.js";
@@ -22,11 +23,6 @@ import {
   type Tracer,
 } from "../infra/continuation-tracer.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
-import {
-  configureTaskFlowRegistryRuntime,
-  resetTaskFlowRegistryForTests,
-} from "../tasks/task-runtime.test-helpers.js";
-import { createInMemoryTaskFlowRegistryStore } from "../test-utils/task-registry-store.js";
 import { abortEmbeddedAgentRun, isEmbeddedAgentRunActive } from "./embedded-agent-runner/runs.js";
 import { testing as embeddedRunTesting } from "./embedded-agent-runner/runs.test-support.js";
 
@@ -295,9 +291,9 @@ async function runDelegateTurn(run: ReturnType<typeof createContinuationRun>): P
   });
 }
 
+useContinuationCustodyTestState();
+
 beforeEach(() => {
-  resetTaskFlowRegistryForTests({ persist: false });
-  configureTaskFlowRegistryRuntime({ store: createInMemoryTaskFlowRegistryStore() });
   resetDelegateStoreForTests();
   embeddedRunTesting.resetActiveEmbeddedRuns();
   replyRunRegistryTesting.resetReplyRunRegistry();
@@ -338,7 +334,6 @@ afterEach(() => {
   replyRunRegistryTesting.resetReplyRunRegistry();
   embeddedRunTesting.resetActiveEmbeddedRuns();
   resetDelegateStoreForTests();
-  resetTaskFlowRegistryForTests({ persist: false });
 });
 
 describe("continuation cross-session targeting bracket gate", () => {

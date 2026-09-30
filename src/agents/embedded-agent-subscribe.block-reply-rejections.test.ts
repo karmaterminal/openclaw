@@ -625,8 +625,8 @@ describe("subscribeEmbeddedAgentSession block reply rejections", () => {
       // This is the chunked stream-rendering path: src/media/parse-output.ts
       // omits the flag entirely when it is false (`...(hasAudioAsVoice ? {...} : {})`)
       // and stream-rendering passes it through untouched, so "not voice" reads as
-      // undefined here. Do not generalise -- the sibling emission site in
-      // handlers.messages.lifecycle.ts still writes `audioAsVoice ?? false`.
+      // undefined here. The sibling emission site in handlers.messages.lifecycle.ts
+      // also omits the flag when false, matching upstream's delivered payload shape.
       // The assertion still pins that the replacement reply is NOT delivered as voice.
     ).toEqual([
       { text: "Old", audioAsVoice: true },

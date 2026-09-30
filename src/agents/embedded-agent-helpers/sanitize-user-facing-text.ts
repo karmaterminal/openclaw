@@ -39,7 +39,14 @@ import {
 
 const TOOL_CALLS_OMITTED_PLACEHOLDER_LINE_RE = /^[ \t]*\[tool calls omitted\][ \t]*$/i;
 
-function stripInternalPlaceholderLines(text: string): string {
+/**
+ * Internal placeholder lines the user-facing projection removes. Exported so a
+ * reconciler comparing already-delivered block text against the canonical
+ * final text can put both operands in the same alphabet: the delivered ledger
+ * holds the block bytes as handed to the consumer, placeholders included, while
+ * canonical text has already been through this filter.
+ */
+export function stripInternalPlaceholderLines(text: string): string {
   if (
     !text.toLowerCase().includes("[tool calls omitted]") &&
     !text.includes(EXEC_NO_OUTPUT_PLACEHOLDER)

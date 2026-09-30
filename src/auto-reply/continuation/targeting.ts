@@ -9,7 +9,10 @@ import {
   markTrustedContinuationHeartbeatWake,
   requestHeartbeatNow,
 } from "../../infra/heartbeat-wake.js";
-import { enqueueSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
+import {
+  ackSessionDelivery,
+  enqueueSessionDelivery,
+} from "../../infra/session-delivery-queue-storage.js";
 import type {
   DelegateArtifactDeliveryReceipt,
   QueuedSessionDeliveryPayload,
@@ -213,6 +216,8 @@ export async function enqueueContinuationReturnDeliveries(
           };
     const deliveryId = await deps.enqueueSessionDelivery(payload, params.stateDir);
     if (!recipientAuthorityCurrent()) {
+      // Stale authority can never adopt this row; retire it now rather than leave it until replay.
+      await (deps.ackSessionDelivery ?? ackSessionDelivery)(deliveryId, params.stateDir);
       continue;
     }
 
@@ -262,6 +267,7 @@ export async function enqueueContinuationReturnDeliveries(
           event.sessionDeliveryAckId === deliveryId &&
           event.sessionDeliveryAckStateDir === params.stateDir,
       );
+      await (deps.ackSessionDelivery ?? ackSessionDelivery)(deliveryId, params.stateDir);
       continue;
     }
     if (params.wakeRecipients) {

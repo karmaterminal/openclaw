@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { useContinuationCustodyTestState } from "../../auto-reply/continuation/custody/custody.test-support.js";
 import { getContinuationDelegateQueueDepths } from "../../auto-reply/continuation/delegate-flow-store.js";
 import {
-  cancelPendingDelegates,
   consumePendingDelegates,
   resetDelegateStoreForTests,
 } from "../../auto-reply/continuation/delegate-store.js";
@@ -54,6 +54,8 @@ async function expectContinueDelegateError(params: {
 }
 
 describe("continue_delegate cross-session targeting gate", () => {
+  useContinuationCustodyTestState();
+
   beforeEach(() => {
     resetDelegateStoreForTests();
     resetContinueDelegateTurnAdmissionForTests();
@@ -61,7 +63,6 @@ describe("continue_delegate cross-session targeting gate", () => {
   });
 
   afterEach(() => {
-    cancelPendingDelegates(DISPATCHING_SESSION);
     resetDelegateStoreForTests();
     resetContinueDelegateTurnAdmissionForTests();
     clearRuntimeConfigSnapshot();
@@ -74,7 +75,7 @@ describe("continue_delegate cross-session targeting gate", () => {
         args: { targetSessionKey: "agent:main:other" },
       }),
     ).rejects.toThrow("cross-session continuation targeting is disabled");
-    expect(consumePendingDelegates(DISPATCHING_SESSION)).toEqual([]);
+    expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([]);
   });
 
   it("case 2: disabled rejects targetSessionKeys", async () => {
@@ -84,7 +85,7 @@ describe("continue_delegate cross-session targeting gate", () => {
         args: { targetSessionKeys: ["agent:main:a", "agent:main:b"] },
       }),
     ).rejects.toThrow("cross-session continuation targeting is disabled");
-    expect(consumePendingDelegates(DISPATCHING_SESSION)).toEqual([]);
+    expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([]);
   });
 
   it("case 3: disabled allows fanoutMode=tree", async () => {
@@ -93,7 +94,7 @@ describe("continue_delegate cross-session targeting gate", () => {
       args: { fanoutMode: "tree" },
     });
     expect(result).toMatchObject({ status: "scheduled", fanoutMode: "tree" });
-    expect(consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
+    expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
       expect.objectContaining({ fanoutMode: "tree" }),
     ]);
   });
@@ -105,13 +106,13 @@ describe("continue_delegate cross-session targeting gate", () => {
         args: { fanoutMode: "all" },
       }),
     ).rejects.toThrow("cross-session continuation targeting is disabled");
-    expect(consumePendingDelegates(DISPATCHING_SESSION)).toEqual([]);
+    expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([]);
   });
 
   it("case 5: disabled allows no targeting", async () => {
     const result = await executeContinueDelegate({ crossSessionTargeting: "disabled" });
     expect(result).toMatchObject({ status: "scheduled" });
-    expect(consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
+    expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
       expect.objectContaining({ task: "delegate task" }),
     ]);
   });
@@ -125,7 +126,7 @@ describe("continue_delegate cross-session targeting gate", () => {
       status: "scheduled",
       targetSessionKey: DISPATCHING_SESSION,
     });
-    expect(consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
+    expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
       expect.objectContaining({ targetSessionKey: DISPATCHING_SESSION }),
     ]);
 
@@ -138,7 +139,7 @@ describe("continue_delegate cross-session targeting gate", () => {
       status: "scheduled",
       targetSessionKeys: [DISPATCHING_SESSION],
     });
-    expect(consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
+    expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
       expect.objectContaining({ targetSessionKeys: [DISPATCHING_SESSION] }),
     ]);
   });
@@ -152,7 +153,7 @@ describe("continue_delegate cross-session targeting gate", () => {
       status: "scheduled",
       targetSessionKey: "agent:main:other",
     });
-    expect(consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
+    expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
       expect.objectContaining({ targetSessionKey: "agent:main:other" }),
     ]);
   });
@@ -163,7 +164,7 @@ describe("continue_delegate cross-session targeting gate", () => {
       args: { fanoutMode: "all" },
     });
     expect(result).toMatchObject({ status: "scheduled", fanoutMode: "all" });
-    expect(consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
+    expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
       expect.objectContaining({ fanoutMode: "all" }),
     ]);
   });
@@ -178,7 +179,7 @@ describe("continue_delegate cross-session targeting gate", () => {
       "fanoutMode cannot be combined with targetSessionKey or targetSessionKeys.",
     );
     expect(error.message).not.toContain("cross-session continuation targeting is disabled");
-    expect(consumePendingDelegates(DISPATCHING_SESSION)).toEqual([]);
+    expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([]);
   });
 
   it("case 13: disabled rejects mixed self and cross-session targetSessionKeys without enqueueing", async () => {
@@ -192,7 +193,7 @@ describe("continue_delegate cross-session targeting gate", () => {
       stagedPostCompaction: 0,
       totalQueued: 0,
     });
-    expect(consumePendingDelegates(DISPATCHING_SESSION)).toEqual([]);
+    expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([]);
   });
 
   it("case 14: disabled rejects cross-session post-compaction delegate without staging", async () => {

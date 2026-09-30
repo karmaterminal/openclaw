@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  cancelPendingDelegates,
-  consumePendingDelegates,
-} from "../../auto-reply/continuation/delegate-store.js";
+import { useContinuationCustodyTestState } from "../../auto-reply/continuation/custody/custody.test-support.js";
+import { consumePendingDelegates } from "../../auto-reply/continuation/delegate-store.js";
 import { resetContinueDelegateTurnAdmissionForTests } from "../../auto-reply/continuation/delegate-turn-admission.js";
 import type { ContinueWorkRequest } from "../../auto-reply/continuation/types.js";
 import { clearRuntimeConfigSnapshot } from "../../config/config.js";
@@ -48,7 +46,7 @@ const typedContinuationTools: ReadonlyArray<{
       await runWithDiagnosticTraceContext(trace, () =>
         tool.execute("call-1", { task: "follow up on the current turn" }),
       );
-      return consumePendingDelegates(SESSION_KEY).at(0)?.traceparent;
+      return (await consumePendingDelegates(SESSION_KEY)).at(0)?.traceparent;
     },
   },
   {
@@ -92,16 +90,15 @@ const typedContinuationTools: ReadonlyArray<{
 ];
 
 describe("typed continuation tools :: current-span traceparent", () => {
+  useContinuationCustodyTestState();
+
   beforeEach(() => {
-    cancelPendingDelegates(SESSION_KEY);
-    consumePendingDelegates(SESSION_KEY);
     resetContinueDelegateTurnAdmissionForTests();
     clearRuntimeConfigSnapshot();
     _resetGuardState();
   });
 
   afterEach(() => {
-    cancelPendingDelegates(SESSION_KEY);
     resetContinueDelegateTurnAdmissionForTests();
     clearRuntimeConfigSnapshot();
     _resetGuardState();

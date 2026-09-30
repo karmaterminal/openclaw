@@ -1,5 +1,17 @@
 // Persists queued session deliveries for retry and recovery.
+import path from "node:path";
+import { getRuntimeConfig } from "../config/config.js";
+import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
+import { withSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import type { SessionPostCompactionDelegate } from "../config/sessions/types.js";
+import {
+  assertExpectedExistingSession,
+  ExpectedExistingSessionChangedError,
+} from "../gateway/server-methods/agent-expected-session.js";
+import { resolveAgentIdFromSessionKey } from "../routing/session-key.js";
+import { parseCronRunScopeSuffix } from "../sessions/session-key-utils.js";
+import { beginSessionWorkAdmission } from "../sessions/session-lifecycle-admission.js";
+import { formatContinuationChildRunId } from "../shared/continuation-run-key.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { runOpenClawStateWorkerOperation } from "../state/openclaw-state-worker-store.js";
@@ -35,6 +47,108 @@ import type {
   SessionDeliveryAgentRunUpdate,
   SessionDeliveryWorkerOperations,
 } from "./session-delivery-queue.worker-contract.js";
+import { createSqliteWorkerWriteAdmission } from "./sqlite-worker-store.js";
+
+/** Queue publication and continuation deletion share the existing session lifecycle owner. */
+export async function withSessionDeliveryEnqueueAdmission<T>(
+  payload: QueuedSessionDeliveryPayload,
+  context: OpenClawStateWorkerContext,
+  run: (assertCurrent: () => void) => T | Promise<T>,
+): Promise<T> {
+  const binding =
+    payload.kind === "agentTurn" && payload.requesterBinding
+      ? { ...payload.requesterBinding }
+      : undefined;
+  const sessionKey = payload.sessionKey;
+  const unavailable = "session delivery original requester is no longer available";
+  const assertQueueCurrent = () => {
+    context.admission.assertCurrent();
+    if (
+      binding &&
+      path.resolve(binding.storePath) !==
+        path.resolve(
+          resolveSessionStorePathCore(getRuntimeConfig().session?.store, {
+            agentId: binding.agentId,
+            env: context.environment,
+          }),
+        )
+    ) {
+      throw new SessionDeliveryDeadLetteredError(unavailable);
+    }
+  };
+  assertQueueCurrent();
+  if (!binding && !parseCronRunScopeSuffix(sessionKey).runId) {
+    return await run(assertQueueCurrent);
+  }
+  if (binding && binding.sessionKey !== sessionKey) {
+    throw new SessionDeliveryDeadLetteredError(unavailable);
+  }
+  const agentId = binding?.agentId ?? resolveAgentIdFromSessionKey(sessionKey);
+  const storePath =
+    binding?.storePath ??
+    resolveSessionStorePathCore(getRuntimeConfig().session?.store, {
+      agentId,
+      env: context.environment,
+    });
+  const scope = {
+    agentId,
+    storePath,
+    sessionKey,
+    env: context.environment,
+    hydrateSkillPromptRefs: false,
+  };
+  const readEntry = () =>
+    withSessionEntryReadOnlyInWorker(scope, assertQueueCurrent, async (read) => {
+      if (!read.ok) {
+        throw read.error;
+      }
+      if (!read.value) {
+        throw new SessionDeliveryDeadLetteredError(unavailable);
+      }
+      return read.value;
+    });
+  const original = await readEntry();
+  const constraint = binding ?? {
+    sessionId: original.sessionId,
+    lifecycleRevision: original.lifecycleRevision ?? null,
+  };
+  let interruption: Error | undefined;
+  let lease: Awaited<ReturnType<typeof beginSessionWorkAdmission>> | undefined;
+  try {
+    lease = await beginSessionWorkAdmission({
+      scope: storePath,
+      identities: [sessionKey, constraint.sessionId],
+      assertAllowed: async (signal) => {
+        signal.throwIfAborted();
+        assertExpectedExistingSession({
+          constraint,
+          entry: await readEntry(),
+          message: unavailable,
+        });
+      },
+      onInterrupt(reason) {
+        interruption = reason ?? new Error("session delivery admission interrupted");
+      },
+    });
+    const assertCurrent = () => {
+      assertQueueCurrent();
+      if (interruption) {
+        throw interruption;
+      }
+      if (!lease?.isActive()) {
+        throw new Error("session delivery admission closed");
+      }
+    };
+    return await lease.run(async () => await run(assertCurrent));
+  } catch (error) {
+    if (error instanceof ExpectedExistingSessionChangedError) {
+      throw new SessionDeliveryDeadLetteredError(unavailable);
+    }
+    throw error;
+  } finally {
+    lease?.release();
+  }
+}
 
 export type {
   DelegateArtifactDeliveryReceipt,
@@ -215,6 +329,7 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
   compactionCount?: number;
   deliveryContext?: SessionDeliveryContext;
   idempotencyKey?: string;
+  childRunId?: string;
 }): QueuedSessionDeliveryPayload {
   return {
     kind: "postCompactionDelegate",
@@ -257,6 +372,7 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
     ...(params.delegate.expectedRevision !== undefined
       ? { sourceExpectedRevision: params.delegate.expectedRevision }
       : {}),
+    ...(params.childRunId ? { childRunId: params.childRunId } : {}),
     ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
     idempotencyKey:
       params.idempotencyKey ??
@@ -292,36 +408,58 @@ type SessionDeliveryEnqueueResult = {
   status: "pending" | "completed" | "unknown";
 };
 
-export async function enqueueSessionDeliveryWithStatus(
+/**
+ * Canonical insert-if-absent row for an enqueue. Owners that must commit the
+ * enqueue together with their own rows bind it here, before their synchronous
+ * write transaction, and insert it with `upsertBoundDeliveryQueueEntryInDatabase`.
+ */
+export function prepareSessionDeliveryEnqueue(
   params: QueuedSessionDeliveryPayload,
-  handle?: SessionDeliveryQueueHandle,
-): Promise<SessionDeliveryEnqueueResult> {
+  now = Date.now(),
+): { id: string; bound: ReturnType<typeof bindDeliveryQueueEntry> } {
   const payload = normalizeQueuedSessionDeliveryTraceparent(params);
   const id = buildEntryId(payload.idempotencyKey);
   const entry = normalizeSessionDeliveryForStorage({
     ...payload,
     ...(payload.completionRetention === "permanent" ? { retainOnFailure: true as const } : {}),
     id,
-    enqueuedAt: Date.now(),
+    enqueuedAt: now,
     retryCount: 0,
   });
+  return { id, bound: prepareEntry(entry, "insert") };
+}
+
+export async function enqueueSessionDeliveryWithStatus(
+  params: QueuedSessionDeliveryPayload,
+  handle?: SessionDeliveryQueueHandle,
+): Promise<SessionDeliveryEnqueueResult> {
+  const { id, bound } = prepareSessionDeliveryEnqueue(params);
   const context = resolveQueueContext(handle);
-  const stateDir = resolveStateDir(handle);
-  await executeSessionDelivery(context, {
-    type: "sessionDelivery.enqueue",
-    input: prepareEntry(entry, "insert"),
-  });
-  let status: SessionDeliveryEnqueueResult["status"];
-  try {
-    const current = getDeliveryQueueEntryStatus(SESSION_DELIVERY_QUEUE_NAME, id, stateDir);
-    status = current === "completed" ? "completed" : current === "pending" ? "pending" : "unknown";
-  } catch {
-    status = "unknown";
-  }
+  const { status: current } = await withSessionDeliveryEnqueueAdmission(
+    params,
+    context,
+    (assertCurrent) =>
+      runOpenClawStateWorkerOperation(
+        context,
+        (scope) => scope.execute({ type: "sessionDelivery.enqueue", input: bound }),
+        {
+          assertCurrent,
+          createAdmission: createSqliteWorkerWriteAdmission(assertCurrent, [
+            context.admission.databasePath,
+          ]),
+        },
+      ),
+  );
+  const status = current === "completed" || current === "pending" ? current : "unknown";
   return { id, status };
 }
 
-/** Enqueue a post-compaction delegate through the shared durable queue. */
+/**
+ * Enqueue a post-compaction delegate that has no custody record through the
+ * shared durable queue. Every entry carries a launch key (RFC
+ * docs/design/continue-work-signal-v2.md §5.4.4, Q2): without one the drain
+ * can never prove admission and ends the entry in the interrupted notice.
+ */
 export async function enqueuePostCompactionDelegateDelivery(
   params: {
     sessionKey: string;
@@ -335,7 +473,13 @@ export async function enqueuePostCompactionDelegateDelivery(
   },
   handle?: SessionDeliveryQueueHandle,
 ): Promise<string> {
-  return await enqueueSessionDelivery(buildPostCompactionDelegateDeliveryPayload(params), handle);
+  return await enqueueSessionDelivery(
+    buildPostCompactionDelegateDeliveryPayload({
+      ...params,
+      childRunId: formatContinuationChildRunId(generateSecureUuid(), 1),
+    }),
+    handle,
+  );
 }
 
 /** Enqueue and lease the first attempt to one caller before recovery can see it as eligible. */
@@ -344,10 +488,21 @@ export async function enqueueClaimedSessionDelivery(
   initialAttemptLeaseMs: number,
   handle?: SessionDeliveryQueueHandle,
 ): Promise<SessionDeliveryWorkerOperations["sessionDelivery.enqueueClaimed"]["output"]> {
-  return executeSessionDelivery(resolveQueueContext(handle), {
-    type: "sessionDelivery.enqueueClaimed",
-    input: prepareEntry(prepareClaimedSessionDelivery(params, initialAttemptLeaseMs), "insert"),
-  });
+  const context = resolveQueueContext(handle);
+  const entry = prepareClaimedSessionDelivery(params, initialAttemptLeaseMs);
+  const input = prepareEntry(entry, "insert");
+  return withSessionDeliveryEnqueueAdmission(entry, context, (assertCurrent) =>
+    runOpenClawStateWorkerOperation(
+      context,
+      (scope) => scope.execute({ type: "sessionDelivery.enqueueClaimed", input }),
+      {
+        assertCurrent,
+        createAdmission: createSqliteWorkerWriteAdmission(assertCurrent, [
+          context.admission.databasePath,
+        ]),
+      },
+    ),
+  );
 }
 
 /** Release the initial-attempt lease so runtime recovery can retry immediately. */

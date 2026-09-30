@@ -1,12 +1,12 @@
-import assert from "node:assert/strict";
 import { channel } from "node:diagnostics_channel";
 import fs from "node:fs";
 import path from "node:path";
 import type { SQLInputValue } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import type { Worker } from "node:worker_threads";
-import ts from "typescript";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import * as ts from "typescript/unstable/ast";
+import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
+import { createNativeTypeScriptParser } from "../../../scripts/lib/native-typescript.mts";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { openNodeSqliteDatabase } from "../../infra/node-sqlite.js";
 import * as queue from "../../shared/store-writer-queue.js";
@@ -19,7 +19,10 @@ import {
   openOpenClawAgentDatabase,
   resolveIncognitoOpenClawAgentSqlitePath,
 } from "../../state/openclaw-agent-db.js";
-import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
+import {
+  closeOpenClawStateDatabaseAsync,
+  closeOpenClawStateDatabaseForTest,
+} from "../../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../../state/openclaw-state-db.paths.js";
 import {
   createOpenClawTestState,
@@ -31,7 +34,7 @@ import { appendTranscriptMessage, resetSessionEntryLifecycle } from "./session-a
 import * as archiveStore from "./session-accessor.sqlite-archive-store.js";
 import * as archives from "./session-accessor.sqlite-archive.js";
 import { patchSessionEntryCore, replaceSessionEntrySync } from "./session-accessor.sqlite-entry.js";
-import * as reclamation from "./session-accessor.sqlite-reclamation.js";
+import * as reclamation from "./session-accessor.sqlite-reclamation-run.js";
 import {
   joinSessionHistoryBudgetSweeps,
   type SessionHistoryBudgetQueueObservation,
@@ -44,6 +47,9 @@ import {
 } from "./session-history-eviction.js";
 import { resolveSqliteTargetFromSessionStorePath } from "./session-sqlite-target.js";
 import { resolveMaintenanceConfigFromInput } from "./store-maintenance.js";
+
+const sourceParser = createNativeTypeScriptParser();
+afterAll(() => sourceParser.close());
 
 const states: OpenClawTestState[] = [];
 const work: Promise<unknown>[] = [];
@@ -60,6 +66,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await closeOpenClawAgentDatabasesAsync();
   closeOpenClawAgentDatabasesForTest();
+  await closeOpenClawStateDatabaseAsync();
   closeOpenClawStateDatabaseForTest();
   workerChannel.unsubscribe(trackWorker);
   // Archive/reclamation promises above already joined their Workers; the measurement pool is idle.
@@ -76,7 +83,7 @@ function isTypeOnlyImportDeclaration(node: ts.ImportDeclaration): boolean {
   const clause = node.importClause;
   return Boolean(
     clause &&
-    (clause.isTypeOnly ||
+    (clause.phaseModifier === ts.SyntaxKind.TypeKeyword ||
       (!clause.name &&
         clause.namedBindings &&
         ts.isNamedImports(clause.namedBindings) &&
@@ -103,12 +110,7 @@ function readRuntimeImports(relativePath: string): {
   staticImports: Set<string>;
 } {
   const sourcePath = fileURLToPath(new URL(relativePath, import.meta.url));
-  const sourceFile = ts.createSourceFile(
-    sourcePath,
-    fs.readFileSync(sourcePath, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const sourceFile = sourceParser.parseSourceFile(sourcePath, fs.readFileSync(sourcePath, "utf8"));
   const dynamicImports = new Set<string>();
   const staticImports = new Set<string>();
   const visit = (node: ts.Node) => {
@@ -140,7 +142,7 @@ function readRuntimeImports(relativePath: string): {
         dynamicImports.add(argument.text);
       }
     }
-    ts.forEachChild(node, visit);
+    node.forEachChild(visit);
   };
   visit(sourceFile);
   return { dynamicImports, staticImports };
@@ -284,15 +286,17 @@ it.each([
             ),
           ).toEqual({ current_session_id: originalId });
           // Evict the host handle before the lazy loader without revoking this active sweep's workers.
-          const cached = getOpenClawAgentDatabaseIfOpen({
+          const databaseOptions = {
             agentId: target.agentId ?? "main",
             path: databasePath,
             env: state.env,
-          });
-          assert(cached);
-          closeCachedOpenClawAgentDatabase(cached, { eviction: true });
+          };
+          const cached = getOpenClawAgentDatabaseIfOpen(databaseOptions);
+          if (cached) {
+            closeCachedOpenClawAgentDatabase(cached, { eviction: true });
+          }
           clearOpenClawAgentDatabaseValidationCache(state.root);
-          expect(cached.db.isOpen).toBe(false);
+          expect(getOpenClawAgentDatabaseIfOpen(databaseOptions)).toBeUndefined();
         }
         return await deleteEntry(...args);
       },

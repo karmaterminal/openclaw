@@ -302,12 +302,15 @@ vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => ({
   ) => updateSessionEntryMock(scope, update, options),
 }));
 
+import { useContinuationCustodyTestState } from "../auto-reply/continuation/custody/custody.test-support.js";
 import { resolveSessionStorePathCore } from "../config/sessions.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 
 const splitLintUse = [validTraceparent];
 void splitLintUse;
+
+useContinuationCustodyTestState();
 
 describe("subagent-announce continuation drain (F7)", () => {
   let testState: OpenClawTestState;

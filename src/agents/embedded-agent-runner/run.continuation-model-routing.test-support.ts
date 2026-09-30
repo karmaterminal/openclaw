@@ -108,10 +108,17 @@ describe("runEmbeddedAgent continuation model routing", () => {
       runId: "run-before-model-resolve-thinking-revalidation",
     });
 
+    // Ultra is a harness mode on the OpenClaw runtime (upstream #155393): the attempt keeps it
+    // logical, and the hook-selected model's own effort ladder bounds the provider-facing level.
     expectMockCallFields(mockedRunEmbeddedAttempt, {
       provider: "openai",
       modelId: "gpt-5.5",
-      thinkLevel: "xhigh",
+      thinkLevel: "ultra",
+    });
+    expectMockCallFields(mockedBuildAgentRuntimePlan, {
+      provider: "openai",
+      modelId: "gpt-5.5",
+      thinkingLevel: "xhigh",
     });
   });
 
@@ -232,10 +239,25 @@ describe("runEmbeddedAgent continuation model routing", () => {
   });
 
   it("keeps Ultra logical for the attempt and maps the runtime plan to max", async () => {
+    // The provider boundary lowers Ultra to the model's highest native effort (upstream
+    // #155393), so the selected model must natively support max for Ultra to reach it.
+    mockedResolveModelAsync.mockResolvedValueOnce({
+      model: {
+        id: "claude-opus-4-7",
+        provider: "anthropic",
+        contextWindow: 200000,
+        api: "anthropic-messages",
+        reasoning: true,
+      },
+      error: null,
+      authStorage: { setRuntimeApiKey: vi.fn() },
+      modelRegistry: {},
+    });
     mockedRunEmbeddedAttempt.mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
 
     await runEmbeddedAgent({
       ...overflowBaseRunParams,
+      model: "claude-opus-4-7",
       runId: "ultra-runtime-plan-boundary",
       thinkLevel: "ultra",
     });

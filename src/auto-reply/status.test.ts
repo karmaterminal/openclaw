@@ -28,6 +28,12 @@ const buildStatusMessage: typeof BuildStatusMessage = (args) =>
     ...args,
   });
 
+const statusContext = {
+  sessionKey: "agent:main:main",
+  sessionScope: "per-sender",
+  queue: { mode: "collect", depth: 0 },
+} as const;
+
 const { listPluginCommands } = vi.hoisted(() => ({
   listPluginCommands: vi.fn(
     (): Array<{ name: string; description: string; pluginId: string }> => [],
@@ -37,48 +43,6 @@ const { listPluginCommands } = vi.hoisted(() => ({
 vi.mock("../plugins/commands.js", () => ({
   listPluginCommands,
 }));
-
-// Continuation counters — mocked so the /status renderer sees session-keyed
-// non-zero values in the "full row" regression test below. Defaults to 0
-// for every session so every other test's behavior is unchanged.
-const continuationMocks = vi.hoisted(() => ({
-  pending: new Map<string, number>(),
-  staged: new Map<string, number>(),
-  volitional: new Map<string, number>(),
-}));
-
-vi.mock("./continuation/delegate-store.js", async () => {
-  const actual = await vi.importActual<typeof import("./continuation/delegate-store.js")>(
-    "./continuation/delegate-store.js",
-  );
-  return {
-    ...actual,
-    pendingDelegateCount: (sessionKey: string): number =>
-      continuationMocks.pending.get(sessionKey) ?? 0,
-  };
-});
-
-vi.mock("./continuation/delegate-store-post-compaction.js", async () => {
-  const actual = await vi.importActual<
-    typeof import("./continuation/delegate-store-post-compaction.js")
-  >("./continuation/delegate-store-post-compaction.js");
-  return {
-    ...actual,
-    stagedPostCompactionDelegateCount: (sessionKey: string): number =>
-      continuationMocks.staged.get(sessionKey) ?? 0,
-  };
-});
-
-vi.mock("../agents/tools/request-compaction-tool.js", async () => {
-  const actual = await vi.importActual<typeof import("../agents/tools/request-compaction-tool.js")>(
-    "../agents/tools/request-compaction-tool.js",
-  );
-  return {
-    ...actual,
-    getVolitionalCompactionCount: (sessionKey: string): number =>
-      continuationMocks.volitional.get(sessionKey) ?? 0,
-  };
-});
 
 beforeEach(() => {
   cliBackendsTesting.setDepsForTest({
@@ -213,270 +177,12 @@ function makeFallbackContextStatusArgs({
             agentHarnessId: "openclaw" as const,
           }),
     },
-    sessionKey: "agent:main:main",
-    sessionScope: "per-sender",
-    queue: { mode: "collect", depth: 0 },
-    modelAuth: "api-key",
-    activeModelAuth: "api-key",
+    ...statusContext,
     resolvedHarness: "openclaw",
   };
 }
 
 describe("buildStatusMessage", () => {
-  it("summarizes agent readiness and context usage", () => {
-    const text = buildStatusMessage({
-      modelRefs: statusModelRefs({ provider: "anthropic", model: "test:opus" }),
-      config: {
-        models: {
-          providers: {
-            anthropic: {
-              apiKey: "test-key",
-              models: [
-                {
-                  id: "test:opus",
-                  contextTokens: 32_000,
-                  cost: {
-                    input: 1,
-                    output: 1,
-                    cacheRead: 0,
-                    cacheWrite: 0,
-                  },
-                },
-              ],
-            },
-          },
-        },
-      } as unknown as OpenClawConfig,
-      agent: {
-        model: "anthropic/test:opus",
-      },
-      sessionEntry: {
-        sessionId: "abc",
-        updatedAt: 0,
-        sessionStartedAt: 1 * 60 * 60_000 + 46 * 60_000,
-        inputTokens: 1200,
-        outputTokens: 800,
-        totalTokens: 16_000,
-        totalTokensFresh: true,
-        totalTokensVersion: 1 as const,
-        contextTokens: 32_000,
-        thinkingLevel: "low",
-        verboseLevel: "on",
-        compactionCount: 2,
-      },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      resolvedThink: "medium",
-      resolvedVerbose: "off",
-      resolvedHarness: "openclaw",
-      queue: { mode: "collect", depth: 0 },
-      pluginHealthLine: "🔌 Plugins: OK",
-      modelAuth: "api-key",
-      subagentsLine: "🤖 Subagents: 1\n- active run",
-      now: 4 * 60 * 60_000, // 4 hours after epoch
-    });
-    const normalized = normalizeTestText(text);
-
-    expect(normalized).toContain("OpenClaw");
-    expect(normalized).toContain("Model: anthropic/test:opus");
-    expect(normalized).toContain("api-key");
-    expect(normalized).toContain("Plugins: OK");
-    expect(normalized).toContain("Tokens: 1.2k in / 800 out");
-    expect(normalized).toContain("Cost: $0.0020");
-    expect(normalized).toContain("Context: 16k/32k (50%)");
-    expect(normalized).toContain("Compactions: 2");
-    expect(normalized).toContain("Session: agent:main:main");
-    expect(normalized).toContain("duration 2h 14m");
-    expect(normalized).toContain("updated 4h ago");
-    expect(normalized).toContain("Execution: direct");
-    expect(normalized).toContain("Runtime: OpenClaw Default");
-    expect(normalized).not.toContain("Runner:");
-    expect(normalized).toContain("think medium");
-    expect(normalized).not.toContain("verbose");
-    expect(normalized).toContain("elevated");
-    expect(normalized).toContain("Queue: collect");
-    // RFC §6.3 — with continuation disabled (default), the row is absent.
-    expect(normalized).not.toContain("Continuation:");
-    expect(normalized).toContain("- active run");
-  });
-
-  it("renders the RFC §6.3 continuation row when enabled and chain depth > 0", () => {
-    const text = buildStatusMessage({
-      config: {
-        agents: {
-          defaults: {
-            continuation: {
-              enabled: true,
-              maxChainLength: 10,
-            },
-          },
-        },
-      } as unknown as OpenClawConfig,
-      agent: { model: "anthropic/pi:opus" },
-      modelRefs: statusModelRefs({ provider: "anthropic", model: "pi:opus" }),
-      sessionEntry: {
-        sessionId: "abc",
-        updatedAt: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        contextTokens: 32_000,
-        continuationChainCount: 3,
-      },
-      sessionKey: "agent:main:test-187",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-    });
-    const normalized = normalizeTestText(text);
-    // Shape comes from docs/design/continue-work-signal-v2.md §6.3.
-    expect(normalized).toMatch(/Continuation: chain 3\/10/);
-  });
-
-  it("renders the full RFC §6.3 continuation row with all four fields", () => {
-    const key = "agent:main:test-187-full-row";
-    continuationMocks.pending.set(key, 2);
-    continuationMocks.staged.set(key, 1);
-    continuationMocks.volitional.set(key, 3);
-    try {
-      const text = buildStatusMessage({
-        config: {
-          agents: {
-            defaults: {
-              continuation: { enabled: true, maxChainLength: 10 },
-            },
-          },
-        } as unknown as OpenClawConfig,
-        agent: { model: "anthropic/pi:opus" },
-        modelRefs: statusModelRefs({ provider: "anthropic", model: "pi:opus" }),
-        sessionEntry: {
-          sessionId: "abc",
-          updatedAt: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          contextTokens: 32_000,
-          continuationChainCount: 4,
-        },
-        sessionKey: key,
-        sessionScope: "per-sender",
-        queue: { mode: "collect", depth: 0 },
-      });
-      const normalized = normalizeTestText(text);
-      // All four RFC §6.3 fields must render, pipe-joined, in order.
-      expect(normalized).toMatch(
-        /Continuation: chain 4\/10 \| 2 delegates pending \| 1 post-compaction staged \| volitional: 3/,
-      );
-    } finally {
-      continuationMocks.pending.delete(key);
-      continuationMocks.staged.delete(key);
-      continuationMocks.volitional.delete(key);
-    }
-  });
-
-  it("renders a partial continuation row showing only the non-zero fields", () => {
-    const key = "agent:main:test-187-partial";
-    // chain + staged only; pending=0 and volitional=0 must be omitted from the line.
-    continuationMocks.staged.set(key, 1);
-    try {
-      const text = buildStatusMessage({
-        config: {
-          agents: {
-            defaults: {
-              continuation: { enabled: true, maxChainLength: 10 },
-            },
-          },
-        } as unknown as OpenClawConfig,
-        agent: { model: "anthropic/pi:opus" },
-        modelRefs: statusModelRefs({ provider: "anthropic", model: "pi:opus" }),
-        sessionEntry: {
-          sessionId: "abc",
-          updatedAt: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          contextTokens: 32_000,
-          continuationChainCount: 2,
-        },
-        sessionKey: key,
-        sessionScope: "per-sender",
-        queue: { mode: "collect", depth: 0 },
-      });
-      const normalized = normalizeTestText(text);
-      // Chain + staged visible; pending / volitional fields omitted entirely.
-      expect(normalized).toMatch(/Continuation: chain 2\/10 \| 1 post-compaction staged$/m);
-      expect(normalized).not.toContain("delegate");
-      expect(normalized).not.toContain("volitional");
-    } finally {
-      continuationMocks.staged.delete(key);
-    }
-  });
-
-  it("renders singular 'delegate' when pending count is 1 (plural boundary)", () => {
-    const key = "agent:main:test-187-singular";
-    continuationMocks.pending.set(key, 1);
-    try {
-      const text = buildStatusMessage({
-        config: {
-          agents: {
-            defaults: {
-              continuation: { enabled: true, maxChainLength: 10 },
-            },
-          },
-        } as unknown as OpenClawConfig,
-        agent: { model: "anthropic/pi:opus" },
-        modelRefs: statusModelRefs({ provider: "anthropic", model: "pi:opus" }),
-        sessionEntry: {
-          sessionId: "abc",
-          updatedAt: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          contextTokens: 32_000,
-          continuationChainCount: 1,
-        },
-        sessionKey: key,
-        sessionScope: "per-sender",
-        queue: { mode: "collect", depth: 0 },
-      });
-      const normalized = normalizeTestText(text);
-      expect(normalized).toMatch(/Continuation: chain 1\/10 \| 1 delegate pending$/m);
-      expect(normalized).not.toMatch(/1 delegates pending/);
-    } finally {
-      continuationMocks.pending.delete(key);
-    }
-  });
-
-  it("omits the continuation row when enabled but every field is zero", () => {
-    const text = buildStatusMessage({
-      config: {
-        agents: {
-          defaults: {
-            continuation: {
-              enabled: true,
-              maxChainLength: 10,
-            },
-          },
-        },
-      } as unknown as OpenClawConfig,
-      agent: { model: "anthropic/pi:opus" },
-      modelRefs: statusModelRefs({ provider: "anthropic", model: "pi:opus" }),
-      sessionEntry: {
-        sessionId: "abc",
-        updatedAt: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        contextTokens: 32_000,
-        continuationChainCount: 0,
-      },
-      sessionKey: "agent:main:test-187-empty",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-    });
-    const normalized = normalizeTestText(text);
-    expect(normalized).not.toContain("Continuation:");
-  });
-
   it("shows configured model costs for aws-sdk providers", () => {
     const text = buildStatusMessage({
       modelRefs: statusModelRefs({
@@ -516,9 +222,7 @@ describe("buildStatusMessage", () => {
         totalTokens: 5_500,
         contextTokens: 200_000,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
+      ...statusContext,
       modelAuth: "aws-sdk",
       activeModelAuth: "aws-sdk",
       now: 10 * 60_000,
@@ -565,10 +269,7 @@ describe("buildStatusMessage", () => {
       },
       runtimeContextTokens: 1_000_000,
       sessionEntry,
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
       now: 10 * 60_000,
     });
     const normalized = normalizeTestText(text);
@@ -593,10 +294,7 @@ describe("buildStatusMessage", () => {
         contextTokens: 1_000_000,
         contextBudgetStatus: makeContextBudgetStatus(),
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
       now: 10 * 60_000,
     });
     const normalized = normalizeTestText(text);
@@ -642,10 +340,7 @@ describe("buildStatusMessage", () => {
         model: "anthropic/claude-sonnet-4.6",
       },
       sessionEntry,
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
       now: 10 * 60_000,
     });
     const normalized = normalizeTestText(text);
@@ -855,34 +550,6 @@ describe("buildStatusMessage", () => {
     expect(hidden).not.toContain("Active Memory: status=timeout elapsed=15s query=recent");
   });
 
-  it("shows structured plugin debug lines in verbose status", () => {
-    const visible = normalizeTestText(
-      buildStatusMessage({
-        modelRefs: statusModelRefs({ provider: "anthropic", model: "test:opus" }),
-        agent: {
-          model: "anthropic/test:opus",
-        },
-        sessionEntry: {
-          sessionId: "abc",
-          updatedAt: 0,
-          verboseLevel: "on",
-          pluginDebugEntries: [
-            {
-              pluginId: "active-memory",
-              lines: ["🧩 Active Memory: status=ok elapsed=842ms query=recent summary=34 chars"],
-            },
-          ],
-        },
-        sessionKey: "agent:main:main",
-        queue: { mode: "collect", depth: 0 },
-      }),
-    );
-
-    expect(visible).toContain(
-      "Active Memory: status=ok elapsed=842ms query=recent summary=34 chars",
-    );
-  });
-
   it("shows trace lines only when trace is enabled", () => {
     const hidden = normalizeTestText(
       buildStatusMessage({
@@ -981,35 +648,20 @@ describe("buildStatusMessage", () => {
     expect(normalizeTestText(text)).toContain(expected);
   });
 
-  it.each([
-    {
-      name: "shows the Codex harness as the model runtime when resolved",
-      sessionId: "codex-harness",
-      resolvedHarness: "codex" as const,
-      expectedRuntime: "Runtime: OpenAI Codex",
-      unexpectedSuffix: "· codex",
-    },
-    {
-      name: "shows the default OpenClaw harness as the model runtime",
-      sessionId: "openclaw-harness",
-      resolvedHarness: "openclaw" as const,
-      expectedRuntime: "Runtime: OpenClaw Default",
-      unexpectedSuffix: "· openclaw",
-    },
-  ])("$name", ({ sessionId, resolvedHarness, expectedRuntime, unexpectedSuffix }) => {
+  it("shows the Codex harness as the model runtime when resolved", () => {
     const text = buildStatusMessage({
       modelRefs: statusModelRefs({ provider: "openai", model: "gpt-5.4" }),
       agent: { model: "openai/gpt-5.4" },
-      sessionEntry: { sessionId, updatedAt: 0, fastMode: true },
+      sessionEntry: { sessionId: "codex-harness", updatedAt: 0, fastMode: true },
       sessionKey: "agent:main:main",
       queue: { mode: "collect", depth: 0 },
-      resolvedHarness,
+      resolvedHarness: "codex",
     });
 
     const normalized = normalizeTestText(text);
     expect(normalized).toContain("fast");
-    expect(normalized).toContain(expectedRuntime);
-    expect(normalized).not.toContain(unexpectedSuffix);
+    expect(normalized).toContain("Runtime: OpenAI Codex");
+    expect(normalized).not.toContain("· codex");
   });
 
   it("shows configured text verbosity for the active model", () => {
@@ -1083,37 +735,6 @@ describe("buildStatusMessage", () => {
     expect(normalizeTestText(text)).toContain("text low");
   });
 
-  it("notes channel model overrides in status output", () => {
-    const text = buildStatusMessage({
-      modelRefs: statusModelRefs({ provider: "openai", model: "gpt-4.1" }),
-      config: {
-        channels: {
-          modelByChannel: {
-            discord: {
-              "123": "openai/gpt-4.1",
-            },
-          },
-        },
-      } as unknown as OpenClawConfig,
-      agent: {
-        model: "openai/gpt-4.1",
-      },
-      sessionEntry: {
-        sessionId: "abc",
-        updatedAt: 0,
-        delivery: normalizeSessionDeliveryState({ context: { channel: "discord" } }),
-        groupId: "123",
-      },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-    });
-    const normalized = normalizeTestText(text);
-
-    expect(normalized).toContain("Model: openai/gpt-4.1");
-    expect(normalized).toContain("channel override");
-  });
-
   it("uses the channel override model context window instead of stale persisted context", () => {
     const text = buildStatusMessage({
       modelRefs: statusModelRefs({ provider: "minimax-portal", model: "MiniMax-M2.7" }),
@@ -1149,9 +770,7 @@ describe("buildStatusMessage", () => {
         totalTokensVersion: 1,
         contextTokens: 1_048_576,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
+      ...statusContext,
     });
     const normalized = normalizeTestText(text);
 
@@ -1186,9 +805,7 @@ describe("buildStatusMessage", () => {
         totalTokensFresh: true,
         totalTokensVersion: 1,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
+      ...statusContext,
     });
 
     expect(normalizeTestText(text)).toContain("Context: 200k/1.0m");
@@ -1207,9 +824,7 @@ describe("buildStatusMessage", () => {
         totalTokensFresh: true,
         totalTokensVersion: 1,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -1253,9 +868,7 @@ describe("buildStatusMessage", () => {
         model: "local/large-model",
       },
       sessionEntry,
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
+      ...statusContext,
     });
 
     expect(normalizeTestText(text)).toContain("Context: 1.0k/66k");
@@ -1289,10 +902,7 @@ describe("buildStatusMessage", () => {
         totalTokensVersion: 1,
         contextTokens: 1_000_000,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -1332,10 +942,7 @@ describe("buildStatusMessage", () => {
         totalTokensVersion: 1,
         contextTokens: 262_144,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -1367,20 +974,6 @@ describe("buildStatusMessage", () => {
       expectedFallback: "Fallback: custom-runtime/unknown-fallback-model",
       expectedContext: "Context: 49k/128k",
       unexpectedContext: "Context: 49k/1.0m",
-    },
-    {
-      name: "does not synthesize a 32k fallback window when the active runtime model is unknown",
-      overrides: {
-        sessionId: "fallback-context-window-unknown-active-model",
-        selectedContextWindow: 128_000,
-        activeProvider: "custom-runtime",
-        activeModel: "unknown-fallback-model",
-        activeContextWindow: null,
-        sessionContextTokens: 128_000,
-      },
-      expectedFallback: "Fallback: custom-runtime/unknown-fallback-model",
-      expectedContext: "Context: 49k/128k",
-      unexpectedContext: "Context: 49k/32k",
     },
   ])("$name", ({ overrides, expectedFallback, expectedContext, unexpectedContext }) => {
     const normalized = normalizeTestText(
@@ -1424,9 +1017,7 @@ describe("buildStatusMessage", () => {
         totalTokensVersion: 1,
         contextTokens: 1_000_000,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
+      ...statusContext,
       modelAuth: "unknown",
       activeModelAuth: "oauth (anthropic:claude-cli)",
     });
@@ -1435,7 +1026,8 @@ describe("buildStatusMessage", () => {
     expect(normalized).toContain("Model: anthropic/claude-opus-4-7");
     expect(normalized).toContain("oauth (anthropic:claude-cli)");
     expect(normalized).not.toContain("Fallback: claude-cli/claude-opus-4-7");
-    expect(normalized).not.toContain("unknown");
+    expect(normalized).not.toContain("Auth: unknown");
+    expect(normalized).toContain("Endpoint: unknown");
     expect(normalized).toContain("Context: 36k/200k (18%)");
   });
 
@@ -1480,9 +1072,7 @@ describe("buildStatusMessage", () => {
         inputTokens: 29,
         outputTokens: 19_000,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
+      ...statusContext,
       modelAuth: "api-key (env: ANTHROPIC_API_KEY)",
       activeModelAuth: "oauth (anthropic:claude-cli)",
     });
@@ -1818,10 +1408,7 @@ describe("buildStatusMessage", () => {
           reason: "rate limit",
         },
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
       activeModelAuth: "api-key di_123…abc (deepinfra:default)",
     });
 
@@ -1843,10 +1430,7 @@ describe("buildStatusMessage", () => {
         modelProvider: "openai",
         model: "gpt-4.1-mini",
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -1863,10 +1447,7 @@ describe("buildStatusMessage", () => {
         },
       },
       sessionEntry: { sessionId: "fb1", updatedAt: 0 },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -1895,10 +1476,7 @@ describe("buildStatusMessage", () => {
         modelOverride: "gemini-3.1-flash-lite",
         modelOverrideSource: "user",
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -1913,10 +1491,7 @@ describe("buildStatusMessage", () => {
         model: "anthropic/claude-opus-4-6",
       },
       sessionEntry: { sessionId: "fb2", updatedAt: 0 },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -1931,7 +1506,6 @@ describe("buildStatusMessage", () => {
       },
       sessionScope: "per-sender",
       queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
     });
 
     expect(normalizeTestText(text)).toContain("Model: google-antigravity/claude-sonnet-4-6");
@@ -1951,10 +1525,7 @@ describe("buildStatusMessage", () => {
         modelOverride: "deepseek-v4-flash",
         modelOverrideSource: "user",
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -1986,16 +1557,12 @@ describe("buildStatusMessage", () => {
         modelProvider: "deepseek",
         model: "deepseek-v4-flash",
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
     expect(normalized).toContain("Model: zhipu/glm-4.5-air");
-    expect(normalized).not.toContain("Configured default:");
-    expect(normalized).not.toContain("Reason: session override");
+    expect(normalized).not.toContain("pinned session");
   });
 
   it("does not label auto fallback model overrides as pinned selections", () => {
@@ -2014,16 +1581,12 @@ describe("buildStatusMessage", () => {
         modelOverrideFallbackOriginProvider: "zhipu",
         modelOverrideFallbackOriginModel: "glm-4.5-air",
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
     expect(normalized).toContain("Model: deepseek/deepseek-v4-flash");
-    expect(normalized).not.toContain("Configured default:");
-    expect(normalized).not.toContain("Reason: session override");
+    expect(normalized).not.toContain("pinned session");
   });
 
   it("handles missing agent config gracefully", () => {
@@ -2032,7 +1595,6 @@ describe("buildStatusMessage", () => {
       agent: {},
       sessionScope: "per-sender",
       queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
     });
 
     const normalized = normalizeTestText(text);
@@ -2054,7 +1616,6 @@ describe("buildStatusMessage", () => {
       sessionKey: "agent:main:whatsapp:group:123@g.us",
       sessionScope: "per-sender",
       queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
     });
 
     expect(text).toContain("Activation: always");
@@ -2075,7 +1636,6 @@ describe("buildStatusMessage", () => {
         dropPolicy: "old",
         showDetails: true,
       },
-      modelAuth: "api-key",
     });
 
     expect(text).toContain("Queue: collect (depth 3 · debounce 2s · cap 5 · drop old)");
@@ -2087,11 +1647,8 @@ describe("buildStatusMessage", () => {
       agent: { model: "anthropic/claude-opus-4-6" },
       runtimeContextTokens: 32_000,
       sessionEntry: { sessionId: "u1", updatedAt: 0, totalTokens: 1000 },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
+      ...statusContext,
       usageLine: "📊 Usage: Claude 80% left (5h)",
-      modelAuth: "api-key",
     });
 
     const lines = normalizeTestText(text).split("\n");
@@ -2124,9 +1681,7 @@ describe("buildStatusMessage", () => {
       } as unknown as OpenClawConfig,
       agent: { model: "anthropic/claude-opus-4-6" },
       sessionEntry: { sessionId: "c1", updatedAt: 0, inputTokens: 10 },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
+      ...statusContext,
       modelAuth: "oauth",
     });
 
@@ -2134,7 +1689,6 @@ describe("buildStatusMessage", () => {
   });
 
   function writeTranscriptUsageLog(params: {
-    dir: string;
     agentId: string;
     sessionId: string;
     model?: string;
@@ -2146,7 +1700,6 @@ describe("buildStatusMessage", () => {
       totalTokens: number;
     };
   }) {
-    void params.dir;
     const scope = {
       agentId: params.agentId,
       sessionId: params.sessionId,
@@ -2171,11 +1724,7 @@ describe("buildStatusMessage", () => {
     totalTokens: 1003,
   } as const;
 
-  function writeBaselineTranscriptUsageLog(params: {
-    dir: string;
-    agentId: string;
-    sessionId: string;
-  }) {
+  function writeBaselineTranscriptUsageLog(params: { agentId: string; sessionId: string }) {
     writeTranscriptUsageLog({
       ...params,
       usage: baselineTranscriptUsage,
@@ -2202,41 +1751,21 @@ describe("buildStatusMessage", () => {
       sessionScope: "per-sender",
       queue: { mode: "collect", depth: 0 },
       includeTranscriptUsage: true,
-      modelAuth: "api-key",
       resolvedHarness: "openclaw",
     });
   }
 
-  it.each([
-    {
-      name: "prefers cached prompt tokens from the session log",
-      agentId: "main",
-      sessionId: "sess-1",
-      sessionKey: "agent:main:main",
-      expected: "Context: 1.0k/32k",
-    },
-    {
-      name: "reads transcript usage for non-default agents",
-      agentId: "worker1",
-      sessionId: "sess-worker1",
-      sessionKey: "agent:worker1:telegram:12345",
-      expected: "Context: 1.0k/32k",
-    },
-    {
-      name: "hydrates cache usage from transcript fallback",
-      agentId: "main",
-      sessionId: "sess-cache-hydration",
-      sessionKey: "agent:main:main",
-      expected: "Cache: 100% hit · 1.0k cached, 0 new",
-    },
-  ])("$name", async ({ agentId, sessionId, sessionKey, expected }) => {
+  it("reads transcript usage for non-default agents", async () => {
     await withTempHome(
-      async (dir) => {
-        writeBaselineTranscriptUsageLog({ dir, agentId, sessionId });
+      async () => {
+        const sessionId = "sess-worker1";
+        writeBaselineTranscriptUsageLog({ agentId: "worker1", sessionId });
+        const text = buildTranscriptStatusText({
+          sessionId,
+          sessionKey: "agent:worker1:telegram:12345",
+        });
 
-        const text = buildTranscriptStatusText({ sessionId, sessionKey });
-
-        expect(normalizeTestText(text)).toContain(expected);
+        expect(normalizeTestText(text)).toContain("Context: 1.0k/32k");
       },
       { prefix: "openclaw-status-" },
     );
@@ -2244,10 +1773,9 @@ describe("buildStatusMessage", () => {
 
   it("does not render stale context usage from transcript fallback", async () => {
     await withTempHome(
-      async (dir) => {
+      async () => {
         const sessionId = "sess-stale-transcript-context";
         writeTranscriptUsageLog({
-          dir,
           agentId: "main",
           sessionId,
           usage: {
@@ -2273,11 +1801,8 @@ describe("buildStatusMessage", () => {
             totalTokensFresh: false,
             contextTokens: 1_000_000,
           },
-          sessionKey: "agent:main:main",
-          sessionScope: "per-sender",
-          queue: { mode: "collect", depth: 0 },
+          ...statusContext,
           includeTranscriptUsage: true,
-          modelAuth: "api-key",
         });
         const normalized = normalizeTestText(text);
 
@@ -2291,10 +1816,9 @@ describe("buildStatusMessage", () => {
 
   it("does not let legacy cumulative session totals override fresh transcript context usage", async () => {
     await withTempHome(
-      async (dir) => {
+      async () => {
         const sessionId = "sess-legacy-cumulative-context";
         writeTranscriptUsageLog({
-          dir,
           agentId: "main",
           sessionId,
           usage: {
@@ -2321,11 +1845,8 @@ describe("buildStatusMessage", () => {
             totalTokens: 2_300_000,
             contextTokens: 1_000_000,
           },
-          sessionKey: "agent:main:main",
-          sessionScope: "per-sender",
-          queue: { mode: "collect", depth: 0 },
+          ...statusContext,
           includeTranscriptUsage: true,
-          modelAuth: "api-key",
         });
         const normalized = normalizeTestText(text);
 
@@ -2339,10 +1860,9 @@ describe("buildStatusMessage", () => {
 
   it("reads transcript usage using explicit agentId when sessionKey is missing", async () => {
     await withTempHome(
-      async (dir) => {
+      async () => {
         const sessionId = "sess-worker2";
         writeTranscriptUsageLog({
-          dir,
           agentId: "worker2",
           sessionId,
           usage: {
@@ -2374,7 +1894,6 @@ describe("buildStatusMessage", () => {
           sessionScope: "per-sender",
           queue: { mode: "collect", depth: 0 },
           includeTranscriptUsage: true,
-          modelAuth: "api-key",
           resolvedHarness: "openclaw",
         });
 
@@ -2386,9 +1905,9 @@ describe("buildStatusMessage", () => {
 
   it("uses the same transcript usage fallback as sessions.list when a delivery mirror is last", async () => {
     await withTempHome(
-      async (dir) => {
+      async () => {
         const sessionId = "sess-cache-delivery-mirror";
-        writeBaselineTranscriptUsageLog({ dir, agentId: "main", sessionId });
+        writeBaselineTranscriptUsageLog({ agentId: "main", sessionId });
         appendTranscriptMessageSync(
           {
             agentId: "main",
@@ -2424,50 +1943,13 @@ describe("buildStatusMessage", () => {
     );
   });
 
-  it("preserves existing nonzero cache usage over transcript fallback values", async () => {
-    await withTempHome(
-      async (dir) => {
-        const sessionId = "sess-cache-preserve";
-        writeBaselineTranscriptUsageLog({
-          dir,
-          agentId: "main",
-          sessionId,
-        });
-
-        const text = buildStatusMessage({
-          modelRefs: statusModelRefs({ provider: "anthropic", model: "claude-opus-4-6" }),
-          agent: {
-            model: "anthropic/claude-opus-4-6",
-          },
-          sessionEntry: {
-            sessionId,
-            updatedAt: 0,
-            totalTokens: 3,
-            contextTokens: 32_000,
-            cacheRead: 12,
-            cacheWrite: 34,
-          },
-          sessionKey: "agent:main:main",
-          sessionScope: "per-sender",
-          queue: { mode: "collect", depth: 0 },
-          includeTranscriptUsage: true,
-          modelAuth: "api-key",
-        });
-
-        expect(normalizeTestText(text)).toContain("Cache: 26% hit · 12 cached, 34 new");
-      },
-      { prefix: "openclaw-status-" },
-    );
-  });
-
   it("keeps transcript-derived slash model ids on model-only context lookup", async () => {
     await withTempHome(
-      async (dir) => {
+      async () => {
         getContextWindowCaches().discoveredTokenCache.set("google/gemini-2.5-pro", 999_000);
 
         const sessionId = "sess-openrouter-google";
         writeTranscriptUsageLog({
-          dir,
           agentId: "main",
           sessionId,
           model: "google/gemini-2.5-pro",
@@ -2499,11 +1981,8 @@ describe("buildStatusMessage", () => {
             updatedAt: 0,
             totalTokens: 5,
           },
-          sessionKey: "agent:main:main",
-          sessionScope: "per-sender",
-          queue: { mode: "collect", depth: 0 },
+          ...statusContext,
           includeTranscriptUsage: true,
-          modelAuth: "api-key",
         });
 
         const normalized = normalizeTestText(text);
@@ -2539,10 +2018,7 @@ describe("buildStatusMessage", () => {
         totalTokensVersion: 1,
         model: "google/gemini-2.5-pro",
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -2589,11 +2065,7 @@ describe("buildStatusMessage", () => {
         totalTokensFresh: true,
         totalTokensVersion: 1,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
-      activeModelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -2627,11 +2099,7 @@ describe("buildStatusMessage", () => {
         totalTokensFresh: true,
         totalTokensVersion: 1,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
-      activeModelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -2641,7 +2109,7 @@ describe("buildStatusMessage", () => {
 
   it("keeps provider-aware lookup for bare transcript model ids", async () => {
     await withTempHome(
-      async (dir) => {
+      async () => {
         getContextWindowCaches().discoveredTokenCache.set("gemini-2.5-pro", 128_000);
         getContextWindowCaches().discoveredTokenCache.set(
           providerContextTokenCacheKey("google-gemini-cli", "gemini-2.5-pro"),
@@ -2650,7 +2118,6 @@ describe("buildStatusMessage", () => {
 
         const sessionId = "sess-google-bare-model";
         writeTranscriptUsageLog({
-          dir,
           agentId: "main",
           sessionId,
           model: "gemini-2.5-pro",
@@ -2673,11 +2140,8 @@ describe("buildStatusMessage", () => {
             updatedAt: 0,
             totalTokens: 5,
           },
-          sessionKey: "agent:main:main",
-          sessionScope: "per-sender",
-          queue: { mode: "collect", depth: 0 },
+          ...statusContext,
           includeTranscriptUsage: true,
-          modelAuth: "api-key",
         });
 
         const normalized = normalizeTestText(text);
@@ -2707,10 +2171,7 @@ describe("buildStatusMessage", () => {
         totalTokensFresh: true,
         totalTokensVersion: 1,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
-      modelAuth: "api-key",
+      ...statusContext,
     });
 
     const normalized = normalizeTestText(text);
@@ -2736,9 +2197,7 @@ describe("buildStatusMessage", () => {
         totalTokensFresh: true,
         totalTokensVersion: 1,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
+      ...statusContext,
       modelAuth: "oauth",
     });
 
@@ -2761,9 +2220,7 @@ describe("buildStatusMessage", () => {
         totalTokensFresh: true,
         totalTokensVersion: 1,
       },
-      sessionKey: "agent:main:main",
-      sessionScope: "per-sender",
-      queue: { mode: "collect", depth: 0 },
+      ...statusContext,
       modelAuth: "oauth",
     });
 

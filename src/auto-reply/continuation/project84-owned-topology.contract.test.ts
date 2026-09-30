@@ -1,8 +1,18 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import * as ts from "typescript/unstable/ast";
+import { afterAll, describe, expect, it } from "vitest";
+import { createNativeTypeScriptParser } from "../../../scripts/lib/native-typescript.mts";
+
+const sourceParser = createNativeTypeScriptParser();
+afterAll(() => sourceParser.close());
+
+function isStringLiteralLike(
+  node: ts.Node,
+): node is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral {
+  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
+}
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -18,7 +28,7 @@ const MONITORED_MODULES = [
   "src/process/command-queue-waiters.ts",
   "src/auto-reply/reply/agent-runner-embedded-candidate.ts",
   "src/auto-reply/reply/agent-runner-post-compaction-release.ts",
-  "src/gateway/server-methods.ts",
+  "src/gateway/server-methods/core-handlers.ts",
   "src/gateway/server-methods/sessions-compact.ts",
   "src/auto-reply/continuation/work-store.ts",
   "src/auto-reply/continuation/work-flow-state.ts",
@@ -32,7 +42,7 @@ const MONITORED_MODULES = [
   "src/gateway/server-restart-sentinel-delivery.ts",
   "src/auto-reply/continuation/delegate-dispatch.ts",
   "src/auto-reply/continuation/delegate-dispatch-recovery.ts",
-  "src/auto-reply/continuation/post-compaction-staged-dispatch.ts",
+  "src/auto-reply/continuation/custody-boot.ts",
   "src/gateway/server-runtime-services.ts",
 ] as const;
 
@@ -52,7 +62,7 @@ type ScanResult = Readonly<{
 const monitoredModuleSet = new Set<string>(MONITORED_MODULES);
 
 function resolveStaticString(expression: ts.Expression): string | undefined {
-  if (ts.isStringLiteralLike(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+  if (isStringLiteralLike(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
     return expression.text;
   }
   if (ts.isParenthesizedExpression(expression)) {
@@ -60,7 +70,7 @@ function resolveStaticString(expression: ts.Expression): string | undefined {
   }
   if (
     ts.isAsExpression(expression) ||
-    ts.isTypeAssertionExpression(expression) ||
+    ts.isTypeAssertion(expression) ||
     ts.isNonNullExpression(expression) ||
     ts.isSatisfiesExpression(expression)
   ) {
@@ -89,9 +99,9 @@ function resolveStaticString(expression: ts.Expression): string | undefined {
 }
 
 function resolveImportTypeString(node: ts.ImportTypeNode): string | undefined {
-  return ts.isLiteralTypeNode(node.argument)
-    ? resolveStaticString(node.argument.literal)
-    : undefined;
+  // import("...") type arguments are string literal types; TS7 types `literal` as a Node.
+  const literal = ts.isLiteralTypeNode(node.argument) ? node.argument.literal : undefined;
+  return literal && isStringLiteralLike(literal) ? literal.text : undefined;
 }
 
 function resolveMonitoredModule(
@@ -128,12 +138,9 @@ function scanOwnedTopology(): ScanResult {
   const unresolvedDynamicImports: string[] = [];
 
   for (const from of MONITORED_MODULES) {
-    const sourceFile = ts.createSourceFile(
+    const sourceFile = sourceParser.parseSourceFile(
       from,
       readFileSync(path.resolve(REPO_ROOT, from), "utf8"),
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS,
     );
 
     const recordEdge = (specifier: string, kind: EdgeKind): void => {
@@ -181,7 +188,7 @@ function scanOwnedTopology(): ScanResult {
           recordEdge(specifier, "import-type");
         }
       }
-      ts.forEachChild(node, visit);
+      node.forEachChild(visit);
     };
     visit(sourceFile);
   }
@@ -301,32 +308,50 @@ describe("Project 84 owned topology contract", () => {
     );
   });
 
-  it("keeps Card 5 recovery above live dispatch and neutral staged dispatch", () => {
+  // Post-compaction startup recovery releases into the session-delivery queue
+  // and drains only through the queue owner; the direct-spawn staged dispatch
+  // module is retired (RFC docs/design/continue-work-signal-v2.md §4.4, §5.4).
+  it("keeps Card 5 recovery above live dispatch and the neutral post-compaction queue drain", () => {
     expectEdge(
       "src/auto-reply/continuation/delegate-dispatch-recovery.ts",
       "src/auto-reply/continuation/delegate-dispatch.ts",
     );
     expectEdge(
       "src/auto-reply/continuation/delegate-dispatch-recovery.ts",
-      "src/auto-reply/continuation/post-compaction-staged-dispatch.ts",
+      "src/auto-reply/reply/post-compaction-delegate-dispatch.ts",
+      "dynamic-import",
     );
     expectEdge(
       "src/gateway/server-runtime-services.ts",
+      "src/auto-reply/continuation/custody-boot.ts",
+      "dynamic-import",
+    );
+    expectEdge(
+      "src/auto-reply/continuation/custody-boot.ts",
       "src/auto-reply/continuation/delegate-dispatch-recovery.ts",
       "dynamic-import",
     );
     expectNoEdge(
-      "src/auto-reply/continuation/delegate-dispatch.ts",
+      "src/gateway/server-runtime-services.ts",
       "src/auto-reply/continuation/delegate-dispatch-recovery.ts",
     );
     expectNoEdge(
-      "src/auto-reply/continuation/post-compaction-staged-dispatch.ts",
       "src/auto-reply/continuation/delegate-dispatch.ts",
-    );
-    expectNoEdge(
-      "src/auto-reply/continuation/post-compaction-staged-dispatch.ts",
       "src/auto-reply/continuation/delegate-dispatch-recovery.ts",
     );
+    for (const neutral of [
+      "src/auto-reply/reply/post-compaction-delegate-dispatch.ts",
+      "src/auto-reply/reply/post-compaction-delegate-delivery.ts",
+    ] as const) {
+      expectNoEdge(neutral, "src/auto-reply/continuation/delegate-dispatch.ts");
+      expectNoEdge(neutral, "src/auto-reply/continuation/delegate-dispatch-recovery.ts");
+    }
+    expect(
+      existsSync(
+        path.resolve(REPO_ROOT, "src/auto-reply/continuation/post-compaction-staged-dispatch.ts"),
+      ),
+      "retired post-compaction-staged-dispatch.ts direct-spawn module must stay absent",
+    ).toBe(false);
   });
 
   it("keeps continuation registration and lane waiters below their assemblers", () => {
@@ -367,7 +392,7 @@ describe("Project 84 owned topology contract", () => {
       "src/auto-reply/reply/agent-runner-post-compaction-release.ts",
     );
     expectEdge(
-      "src/gateway/server-methods.ts",
+      "src/gateway/server-methods/core-handlers.ts",
       "src/gateway/server-methods/sessions-compact.ts",
       "dynamic-import",
     );

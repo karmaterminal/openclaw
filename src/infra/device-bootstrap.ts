@@ -30,38 +30,6 @@ function assertBootstrapTokenCurrent(facts: DeviceBootstrapMutationAdmission): v
   }
 }
 
-function resolveIssuedBootstrapProfileInput(params: {
-  profile?: DeviceBootstrapProfileInput;
-  roles?: readonly string[];
-  scopes?: readonly string[];
-}): DeviceBootstrapProfileInput | undefined {
-  if (params.profile) {
-    return params.profile;
-  }
-  if (params.roles || params.scopes) {
-    return {
-      roles: params.roles,
-      scopes: params.scopes,
-    };
-  }
-  return undefined;
-}
-
-function resolveIssuedBootstrapProfile(params: {
-  profile?: DeviceBootstrapProfileInput;
-  roles?: readonly string[];
-  scopes?: readonly string[];
-}): DeviceBootstrapProfile {
-  const input = resolveIssuedBootstrapProfileInput(params);
-  if (input) {
-    // Issued tokens can request many roles/scopes, but bootstrap handoff persists only the allowlist.
-    return normalizeDeviceBootstrapHandoffProfile(input);
-  }
-  // Generic bootstrap callers stay least-privilege. Official mobile setup
-  // passes the full profile explicitly after validating the advertised URL.
-  return PAIRING_SETUP_BOOTSTRAP_PROFILE;
-}
-
 function warnIfIssuedBootstrapScopesWereStripped(params: {
   input: DeviceBootstrapProfileInput | undefined;
   profile: DeviceBootstrapProfile;
@@ -89,6 +57,8 @@ function warnIfIssuedBootstrapScopesWereStripped(params: {
 }
 
 type DeviceBootstrapTokenIssueParams = {
+  /** Revalidate caller authority at the worker's transaction and commit boundaries. */
+  assertCurrent?: () => void;
   baseDir?: string;
   profile?: DeviceBootstrapProfileInput;
   roles?: readonly string[];
@@ -98,15 +68,19 @@ type DeviceBootstrapTokenIssueParams = {
 async function issueDeviceBootstrapTokenRecord(
   params: DeviceBootstrapTokenIssueParams & { setupId?: string },
 ): Promise<{ token: string; expiresAtMs: number }> {
+  const assertCurrent = params.assertCurrent;
   return await withLock(async () => {
-    const profile = resolveIssuedBootstrapProfile(params);
-    warnIfIssuedBootstrapScopesWereStripped({
-      input: resolveIssuedBootstrapProfileInput(params),
-      profile,
-    });
+    const input =
+      params.profile ||
+      (params.roles || params.scopes ? { roles: params.roles, scopes: params.scopes } : undefined);
+    // Explicit profiles retain only the handoff allowlist; generic callers stay least-privilege.
+    const profile = input
+      ? normalizeDeviceBootstrapHandoffProfile(input)
+      : PAIRING_SETUP_BOOTSTRAP_PROFILE;
+    warnIfIssuedBootstrapScopesWereStripped({ input, profile });
     return await executeDevicePairingMutation(
       { type: "bootstrap.issue", input: { profile, setupId: params.setupId, nowMs: Date.now() } },
-      { baseDir: params.baseDir },
+      { baseDir: params.baseDir, assertCurrent },
     );
   });
 }
@@ -211,13 +185,13 @@ export async function readDevicePairSetupCompletion(
 
 /** Remove every outstanding bootstrap token. */
 export async function clearDeviceBootstrapTokens(
-  params: BootstrapParams<"bootstrap.clear"> = {},
+  params: BootstrapParams<"bootstrap.clear"> & { assertCurrent?: () => void } = {},
 ): Promise<DeviceBootstrapOperations["bootstrap.clear"]["output"]> {
-  const { baseDir, ...input } = params;
+  const { baseDir, assertCurrent, ...input } = params;
   return await withLock(() =>
     executeDevicePairingMutation(
       { type: "bootstrap.clear", input: { ...input, nowMs: Date.now() } },
-      { baseDir },
+      { baseDir, assertCurrent },
     ),
   );
 }

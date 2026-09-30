@@ -1,11 +1,21 @@
 import type { SessionEntry } from "../../config/sessions.js";
 import { emitContinuationDisabledSpan } from "../../infra/continuation-tracer.js";
 import { generateChainId } from "../../infra/secure-random.js";
-import { enqueueSystemEvent } from "../../infra/system-events.js";
+// Imported through the Raw alias, as every other continuation module does.
+// enqueueSystemEventRaw IS enqueueSystemEvent (system-events.ts:328), so the
+// two imports behave identically -- but a suite that stubs the alias cannot
+// observe a caller holding the original binding. The absorb switched this one
+// import to the direct symbol, which silently made
+// agent-runner.continuation-postcompaction-staging.test.ts blind to the
+// [continuation:delegate-staged-post-compaction] event it asserts. openclaw#1380.
+import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
 import { stagePostCompactionDelegate } from "../continuation/delegate-store-post-compaction.js";
-import { enqueuePendingDelegate, pendingDelegateCount } from "../continuation/delegate-store.js";
+import {
+  enqueuePendingDelegate,
+  resolveQueuedDelegateCounts,
+} from "../continuation/delegate-store.js";
 import type { ContinuationSignalExtraction } from "../continuation/signal.js";
 import { withContinuationOwner } from "../continuation/system-event-ownership.js";
 import { hasCrossSessionDelegateTargeting } from "../continuation/targeting-pure.js";
@@ -24,7 +34,7 @@ function formatDelegateEchoForSystemEvent(value: string): string {
 type ContinuationUsage = { input?: number; output?: number } | undefined;
 
 // Owns CONTINUE_WORK / CONTINUE_DELEGATE response-signal admission.
-// Bracket delegates enter the same durable TaskFlow dispatch path as tool calls.
+// Bracket delegates enter the same durable custody dispatch path as tool calls.
 export async function handleContinuationSignal(context: {
   cfg: Parameters<typeof resolveLiveContinuationRuntimeConfig>[0];
   sessionKey: string | undefined;
@@ -77,7 +87,7 @@ export async function handleContinuationSignal(context: {
     effectiveContinuationSignal.kind === "delegate" &&
     effectiveContinuationSignal.postCompaction
   ) {
-    stagePostCompactionDelegate(sessionKey, {
+    await stagePostCompactionDelegate(sessionKey, {
       task: effectiveContinuationSignal.task,
       createdAt: Date.now(),
       originRunId: runId,
@@ -115,9 +125,26 @@ export async function handleContinuationSignal(context: {
     } = continuationRuntimeConfig;
 
     const currentChainCount = activeSessionEntry?.continuationChainCount ?? 0;
-    const allocatedChainHop = currentChainCount + pendingDelegateCount(sessionKey);
+    // Exact queued count: an unknown projection must not undercount the chain cap.
+    const queuedCounts = await resolveQueuedDelegateCounts(sessionKey);
+    const allocatedChainHop = currentChainCount + queuedCounts.pending;
 
-    if (allocatedChainHop >= maxChainLength) {
+    if (queuedCounts.awaitingImport) {
+      // Legacy delegates this session owns are not imported, so the queued
+      // count is only a lower bound: no hop is allocated from it.
+      emitBracketContinuationRejected({
+        sessionKey,
+        ownerAgentId: followupRun.run.agentId,
+        signal: effectiveContinuationSignal,
+        defaultDelayMs,
+        chainId: activeSessionEntry?.continuationChainId,
+        chainStepRemaining: Math.max(0, maxChainLength - allocatedChainHop),
+        disabledReason: "custody.import_pending",
+        logMessage: `Continuation deferred for session ${sessionKey}: legacy continuation work is not imported yet`,
+        systemEventMessage:
+          "[continuation] Bracket continuation deferred: this session's earlier continuation work has not been imported yet; run `openclaw doctor --fix`.",
+      });
+    } else if (allocatedChainHop >= maxChainLength) {
       // No mint-on-reject: the chain never advanced for this signal, so
       // chainId passes through as-is.
       emitBracketContinuationRejected({
@@ -237,7 +264,7 @@ export async function handleContinuationSignal(context: {
               : effectiveContinuationSignal.silent
                 ? "silent"
                 : "normal";
-            enqueuePendingDelegate(sessionKey, {
+            await enqueuePendingDelegate(sessionKey, {
               task: delegateTask,
               originRunId: runId,
               ...(delayMs > 0 ? { delayMs } : {}),

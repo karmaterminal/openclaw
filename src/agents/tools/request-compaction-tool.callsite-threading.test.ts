@@ -146,17 +146,22 @@ function buildTriggerCompactionClosure(
       const compactionAuthProfileId =
         innerProvider === run.provider ? run.authProfileId : undefined;
 
-      const result = await compactEmbeddedAgentSession({
-        sessionId: run.sessionId ?? "",
-        sessionKey: run.sessionKey,
-        sessionFile: run.sessionFile ?? "",
-        workspaceDir: run.workspaceDir ?? process.cwd(),
-        messageProvider: run.messageProvider,
-        provider: innerProvider,
-        model: innerModel,
-        authProfileId: compactionAuthProfileId,
-        customInstructions: request.customInstructions,
-      });
+      const result = await compactEmbeddedAgentSession(
+        {
+          sessionId: run.sessionId ?? "",
+          sessionKey: run.sessionKey,
+          sessionFile: run.sessionFile ?? "",
+          workspaceDir: run.workspaceDir ?? process.cwd(),
+          messageProvider: run.messageProvider,
+          provider: innerProvider,
+          model: innerModel,
+          authProfileId: compactionAuthProfileId,
+          customInstructions: request.customInstructions,
+        },
+        // This replica asserts provider/model/profile threading only; source authority is
+        // covered at the real call sites, so it passes the explicit System-work source.
+        { sourceAuthority: { assertActive: () => {}, operatorAuthority: undefined } },
+      );
 
       return {
         ok: result.ok,

@@ -18,6 +18,5 @@
 export { resolveContinuationRuntimeConfig } from "./config.js";
 export { dispatchToolDelegates } from "./delegate-dispatch.js";
 export { scheduleContinuationWorkBatch } from "./work-dispatch.js";
-export { pendingDelegateCount } from "./delegate-store.js";
-export { stagedPostCompactionDelegateCount } from "./delegate-store-post-compaction.js";
+export { countQueuedDelegatesForSessions } from "./delegate-store.js";
 export { loadContinuationChainState } from "./state.js";

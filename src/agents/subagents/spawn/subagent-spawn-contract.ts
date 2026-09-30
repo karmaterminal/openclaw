@@ -1,3 +1,4 @@
+import type { ContinuationSpawnFailurePhase } from "../../../shared/continuation-run-key.js";
 import type { FastMode } from "../../../shared/fast-mode.js";
 import type { SpawnedToolContext } from "../../spawned-context.js";
 import type {
@@ -117,6 +118,11 @@ export type SpawnSubagentResult = {
   resolvedProvider?: string;
   modelApplied?: boolean;
   error?: string;
+  /**
+   * Pipeline phase that failed, reported only to launch-keyed continuation spawns. Only an
+   * `initialize` failure proves the Gateway never saw the run.
+   */
+  failurePhase?: ContinuationSpawnFailurePhase;
   /** Removes and terminates this exact accepted run if its source handoff loses authority. */
   rollbackAccepted?: () => Promise<void>;
   attachments?: {

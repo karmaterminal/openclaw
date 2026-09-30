@@ -147,6 +147,8 @@ describe("runEmbeddedAgent retry and fallback continuation", () => {
       profileId: "test-profile",
       authMode: "oauth",
     });
-    expect(mockedResolveFailoverStatus).toHaveBeenCalledWith("rate_limit");
+    // The prompt-failure owner forwards the normalized error code alongside the reason; this
+    // fixture's normalized failover carries no code.
+    expect(mockedResolveFailoverStatus).toHaveBeenCalledWith("rate_limit", undefined);
   });
 });

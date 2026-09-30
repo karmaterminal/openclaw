@@ -15,7 +15,8 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import * as sessionAccessorModule from "../../config/sessions/session-accessor.js";
 import * as sessionStoreModule from "../../config/sessions/store-writer-state.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
@@ -23,11 +24,25 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   enqueuePostCompactionDelegateDelivery as enqueuePostCompactionDelegateDeliveryQueue,
   loadPendingSessionDelivery,
+  markSessionDeliveryAttemptStarted,
   SessionDeliveryDeadLetteredError,
   SessionDeliveryDeferredError,
 } from "../../infra/session-delivery-queue-storage.js";
+import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
+import { formatContinuationChildRunId } from "../../shared/continuation-run-key.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
-import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
+import { useContinuationCustodyTestState } from "../continuation/custody/custody.test-support.js";
+import {
+  claimStagedPostCompactionDelegates,
+  releaseStagedPostCompactionDelegateToQueue,
+  stagePostCompactionCustodyDelegate,
+  toSessionPostCompactionDelegate,
+} from "../continuation/delegate-store-post-compaction.js";
+import type {
+  ChainState,
+  ContinuationRuntimeConfig,
+  StagedPostCompactionDelegate,
+} from "../continuation/types.js";
 import {
   deliverQueuedPostCompactionDelegate,
   persistPendingPostCompactionDelegates,
@@ -44,8 +59,24 @@ import {
 import { normalizePostCompactionDelegate } from "./post-compaction-delegate-normalize.js";
 import type { FollowupRun } from "./queue/types.js";
 
+// Upstream's system-event ownership qualifies the queue key by owning agent:
+// resolveSystemEventQueueKey("main", "main") -> "agent:main:main". That file
+// (src/infra/system-event-ownership.ts) is BYTE-IDENTICAL to upstream/main in
+// this tree, and its contract is explicit -- "Queue identity is scoped without
+// rewriting the caller's persisted session key". The caller's own sessionKey
+// stays "main" (see the inputs below, deliberately unchanged); only the
+// enqueued event's queue identity is qualified.
+//
+// These expectations previously asserted the bare "main", which was our
+// pre-absorb behaviour and is what the oracle 3821eaef72 carried. Derived from
+// the resolver rather than re-hardcoded, so the assertion tracks the contract
+// instead of a second literal that can rot the same way. See openclaw#1380.
+const OWNED_MAIN_QUEUE_KEY = resolveSystemEventQueueKey("main", "main");
+
 const mockRegistryState = vi.hoisted(() => ({
   acceptedChildSessionKeys: new Set<string>(),
+  /** Registry rows keyed by attempt run ID: runId -> child session key. */
+  admittedRunIds: new Map<string, string>(),
 }));
 const { assertDelegateArtifactPolicyPreparedMock, removeUnacceptedDelegateArtifactPolicyMock } =
   vi.hoisted(() => ({
@@ -161,14 +192,23 @@ function createDispatchDeps(options?: {
     return `queue-${sequence}`;
   });
   const drainPostCompactionDelegateDeliveries = vi.fn(async () => undefined);
-  const finalizeStagedPostCompactionDelegates = vi.fn(
-    (flowIds: readonly (string | undefined)[]) => flowIds.filter(Boolean).length,
-  );
-  const requeueReleasedPostCompactionDelegate = vi.fn(() => "missing" as const);
+  // A claimed custody delegate is released through one commit (queue insert
+  // plus permanent handoff); a session-store delegate uses the plain enqueue.
+  const releasePostCompactionDelegateToQueue = vi.fn<
+    PostCompactionDelegateDispatchDeps["releasePostCompactionDelegateToQueue"]
+  >(async ({ sequence }) => {
+    if (options?.rejectEnqueueAt === sequence) {
+      throw new Error("queue write failed");
+    }
+    return { released: true, entryId: `queue-${sequence}` };
+  });
+  const requeueReleasedPostCompactionDelegate = vi.fn<
+    PostCompactionDelegateDispatchDeps["requeueReleasedPostCompactionDelegate"]
+  >(async () => "missing");
   const stagePostCompactionDelegate = vi.fn();
   const deps: PostCompactionDelegateDispatchDeps = {
-    consumeStagedPostCompactionDelegates: vi.fn(() => options?.staged ?? []),
-    finalizeStagedPostCompactionDelegates,
+    consumeStagedPostCompactionDelegates: vi.fn(async () => options?.staged ?? []),
+    releasePostCompactionDelegateToQueue,
     requeueReleasedPostCompactionDelegate,
     stagePostCompactionDelegate,
     drainPostCompactionDelegateDeliveries,
@@ -186,7 +226,7 @@ function createDispatchDeps(options?: {
     drainPostCompactionDelegateDeliveries,
     enqueuePostCompactionDelegateDelivery,
     enqueueSystemEvent,
-    finalizeStagedPostCompactionDelegates,
+    releasePostCompactionDelegateToQueue,
     log,
     readPostCompactionContext,
     requeueReleasedPostCompactionDelegate,
@@ -215,6 +255,7 @@ function createQueuedEntry(
     firstArmedAt: DELIVERY_NOW_MS,
     enqueuedAt: DELIVERY_NOW_MS,
     retryCount: 0,
+    childRunId: firstAttemptRunId(overrides?.sourceFlowId ?? overrides?.id ?? "queue-1"),
     ...overrides,
     ...(overrides?.traceparent && overrides.traceparentProvenance === undefined
       ? { traceparentProvenance: "internal" as const }
@@ -225,6 +266,18 @@ function createQueuedEntry(
 function deriveTestContinuationChildSessionKey(agentId: string, flowId: string): string {
   const digest = crypto.createHash("sha256").update(flowId).digest("hex").slice(0, 32);
   return `agent:${agentId}:subagent:continuation-${digest}`;
+}
+
+/** The first attempt key a release records for `recordId` (RFC §5.4.4). */
+function firstAttemptRunId(recordId: string): string {
+  return formatContinuationChildRunId(recordId, 1);
+}
+
+/** Put an owner-matching registry row under `recordId`'s first attempt key. */
+function admitFirstAttempt(recordId: string, agentId = "main"): string {
+  const childSessionKey = deriveTestContinuationChildSessionKey(agentId, recordId);
+  mockRegistryState.admittedRunIds.set(firstAttemptRunId(recordId), childSessionKey);
+  return childSessionKey;
 }
 
 function createDeliveryDeps(params: {
@@ -257,20 +310,43 @@ function createDeliveryDeps(params: {
   const loadSessionEntry = vi.fn(({ storePath, sessionKey }) =>
     sessionAccessorModule.loadSessionEntry({ storePath, sessionKey }),
   );
-  const markPendingDelegateSpawnAccepted = vi.fn(() => true);
-  const failReleasedPostCompactionDelegate = vi.fn(() => true);
+  const markPendingDelegateSpawnAccepted = vi.fn(async () => true);
+  const failReleasedPostCompactionDelegate = vi.fn(async () => true);
   const revalidatePendingDelegateForSpawn = vi.fn(
-    () => params.spawnFence ?? ({ allowed: true } as const),
+    async () => params.spawnFence ?? ({ allowed: true } as const),
   );
-  // Mirrors the real store: the marker write bumps the TaskFlow revision, and a
-  // row that already carries a marker returns that same hop on every replay.
+  // Mirrors the real store: the marker write bumps the custody revision, and a
+  // record that already carries a marker returns that same hop on every replay.
   const reserveAcceptedPostCompactionChainHop = vi.fn(
-    (flowRef: { flowId?: string; expectedRevision?: number }, plannedChainState: ChainState) => ({
+    async (
+      flowRef: { flowId?: string; expectedRevision?: number },
+      plannedChainState: ChainState,
+    ) => ({
       chainState: params.reservedChainState ?? plannedChainState,
       expectedRevision:
         flowRef.expectedRevision === undefined ? undefined : flowRef.expectedRevision + 1,
     }),
   );
+  // Registry evidence under the entry's attempt keys (RFC §5.4.4): a row whose
+  // requester is the owner is an admitted child.
+  const readAdmissionEvidence = vi.fn<PostCompactionDelegateDeliveryDeps["readAdmissionEvidence"]>(
+    async ({ runIds }) => {
+      const runId = runIds.find((candidate) => mockRegistryState.admittedRunIds.has(candidate));
+      return runId
+        ? {
+            kind: "admitted",
+            runId,
+            childSessionKey: mockRegistryState.admittedRunIds.get(runId)!,
+          }
+        : { kind: "none" };
+    },
+  );
+  const markAttemptStarted = vi.fn<PostCompactionDelegateDeliveryDeps["markAttemptStarted"]>(
+    async () => undefined,
+  );
+  const enqueueInterruptedNotice = vi.fn<
+    PostCompactionDelegateDeliveryDeps["enqueueInterruptedNotice"]
+  >(async () => undefined);
   const deps: PostCompactionDelegateDeliveryDeps = {
     enqueueSystemEvent,
     getRuntimeConfig: vi.fn(() => cfg),
@@ -289,9 +365,15 @@ function createDeliveryDeps(params: {
     markPendingDelegateSpawnAccepted,
     failReleasedPostCompactionDelegate,
     reserveAcceptedPostCompactionChainHop,
+    readAdmissionEvidence,
+    markAttemptStarted,
+    enqueueInterruptedNotice,
   };
   return {
     deps,
+    enqueueInterruptedNotice,
+    markAttemptStarted,
+    readAdmissionEvidence,
     enqueueSystemEvent,
     loadSessionEntry,
     log,
@@ -333,6 +415,7 @@ afterEach(() => {
   assertDelegateArtifactPolicyPreparedMock.mockClear();
   removeUnacceptedDelegateArtifactPolicyMock.mockClear();
   mockRegistryState.acceptedChildSessionKeys.clear();
+  mockRegistryState.admittedRunIds.clear();
   sessionStoreModule.clearSessionStoreCacheForTest();
 });
 
@@ -361,6 +444,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
       const {
         deps,
+        markAttemptStarted,
         markPendingDelegateSpawnAccepted,
         revalidatePendingDelegateForSpawn,
         spawnSubagentDirect,
@@ -392,12 +476,14 @@ describe("post-compaction delegate dispatch extraction", () => {
         "post-compaction",
       );
       expect(spawnSubagentDirect).not.toHaveBeenCalled();
+      // A fenced delivery never claims the attempt: nothing was started.
+      expect(markAttemptStarted).not.toHaveBeenCalled();
       expect(markPendingDelegateSpawnAccepted).not.toHaveBeenCalled();
       expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith("pc-flow-source");
     });
   });
 
-  it("uses queued source flow ids for idempotent post-compaction spawns and commits accepted TaskFlow rows", async () => {
+  it("uses queued source flow ids for idempotent post-compaction spawns and commits accepted custody records", async () => {
     await withTestDir({ prefix: "openclaw-post-compaction-source-flow-" }, async (tempDir) => {
       const storePath = path.join(tempDir, "sessions.json");
       await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
@@ -413,6 +499,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       expect(spawnSubagentDirect).toHaveBeenCalledWith(
         expect.objectContaining({
           continuationDelegateFlowId: "pc-flow-source",
+          continuationChildRunId: firstAttemptRunId("pc-flow-source"),
         }),
         expect.objectContaining({
           agentSessionKey: "main",
@@ -450,7 +537,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       } = createDeliveryDeps({
         storePath,
       });
-      markPendingDelegateSpawnAccepted.mockReturnValue(false);
+      markPendingDelegateSpawnAccepted.mockResolvedValue(false);
 
       await expect(
         deliverQueuedPostCompactionDelegate(
@@ -492,8 +579,8 @@ describe("post-compaction delegate dispatch extraction", () => {
           continuationChainCount: 1,
         },
       });
-      const childSessionKey = deriveTestContinuationChildSessionKey("main", "pc-flow-source");
-      mockRegistryState.acceptedChildSessionKeys.add(childSessionKey);
+      // The registry already holds the owner's row under the entry's attempt key.
+      const childSessionKey = admitFirstAttempt("pc-flow-source");
       const {
         deps,
         enqueueSystemEvent,
@@ -529,7 +616,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: queued delegate",
-        { sessionKey: "main" },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY },
       );
       expect(log).toHaveBeenCalledWith(
         expect.stringContaining("post-compaction-source-accepted-recovered"),
@@ -543,8 +630,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       await seedSessionStore(storePath, {
         main: { sessionId: "replacement", lifecycleRevision: "revision-2", updatedAt: Date.now() },
       });
-      const childSessionKey = deriveTestContinuationChildSessionKey("main", "pc-flow-source");
-      mockRegistryState.acceptedChildSessionKeys.add(childSessionKey);
+      admitFirstAttempt("pc-flow-source");
       const { deps, enqueueSystemEvent, markPendingDelegateSpawnAccepted, spawnSubagentDirect } =
         createDeliveryDeps({ storePath });
 
@@ -664,7 +750,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: queued delegate",
-        { sessionKey: "main", traceparent },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY, traceparent },
       );
     });
   });
@@ -686,7 +772,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation:compaction-delegate-spawned] Post-compaction shard dispatched: queued delegate",
-        { sessionKey: "main" },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY },
       );
     });
   });
@@ -708,111 +794,6 @@ describe("post-compaction delegate dispatch extraction", () => {
         expect.objectContaining({ model: "github-copilot/claude-sonnet-4.6" }),
         expect.any(Object),
       );
-    });
-  });
-
-  it("persists attachment input in the durable queue and forwards it on replay", async () => {
-    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
-      const storePath = path.join(tempDir, "sessions.json");
-      const stateDir = path.join(tempDir, "state");
-      const attachments = [{ name: "state.md", content: "durable compacted input" }];
-      await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
-      const deliveryId = await enqueuePostCompactionDelegateDeliveryQueue(
-        {
-          sessionKey: "main",
-          sourceSessionId: "session",
-          delegate: {
-            task: "queued delegate",
-            createdAt: DELIVERY_NOW_MS,
-            attachments,
-            attachAs: { mountPath: "handoff" },
-          },
-          sequence: 0,
-        },
-        stateDir,
-      );
-      const queued = expectDefined(
-        await loadPendingSessionDelivery(deliveryId, stateDir),
-        "queued delivery",
-      );
-      expect(queued).toMatchObject({
-        kind: "postCompactionDelegate",
-        attachments,
-        attachAs: { mountPath: "handoff" },
-      });
-      const { deps, spawnSubagentDirect } = createDeliveryDeps({ storePath });
-
-      await deliverQueuedPostCompactionDelegate(
-        { entry: queued as QueuedPostCompactionDelegateDelivery },
-        deps,
-      );
-
-      expect(spawnSubagentDirect).toHaveBeenCalledWith(
-        expect.objectContaining({
-          attachments,
-          attachMountPath: "handoff",
-        }),
-        expect.any(Object),
-      );
-    });
-  });
-
-  it("defers disabled queued delivery without mutating source state and delivers exactly once after re-enable", async () => {
-    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
-      const storePath = path.join(tempDir, "sessions.json");
-      const stateDir = path.join(tempDir, "state");
-      await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
-      const deliveryId = await enqueuePostCompactionDelegateDeliveryQueue(
-        {
-          sessionKey: "main",
-          sourceSessionId: "session",
-          delegate: {
-            task: "hold while continuation is disabled",
-            createdAt: DELIVERY_NOW_MS,
-            attachments: [{ name: "state.md", content: "must not materialize while disabled" }],
-          },
-          sequence: 0,
-        },
-        stateDir,
-      );
-      const entry = expectDefined(
-        await loadPendingSessionDelivery(deliveryId, stateDir),
-        "queued disabled delivery",
-      ) as QueuedPostCompactionDelegateDelivery;
-      const disabled = createDeliveryDeps({ storePath, runtimeConfig: { enabled: false } });
-
-      await expect(
-        deliverQueuedPostCompactionDelegate({ entry }, disabled.deps),
-      ).rejects.toBeInstanceOf(SessionDeliveryDeferredError);
-      expect(disabled.loadSessionEntry).not.toHaveBeenCalled();
-      expect(disabled.spawnSubagentDirect).not.toHaveBeenCalled();
-      expect(disabled.markPendingDelegateSpawnAccepted).not.toHaveBeenCalled();
-      expect(disabled.failReleasedPostCompactionDelegate).not.toHaveBeenCalled();
-      expect(await loadPendingSessionDelivery(deliveryId, stateDir)).toBeTruthy();
-
-      await drainPostCompactionDelegateDeliveriesDispatch({
-        sessionKey: "main",
-        stateDir,
-        deliveryDeps: disabled.deps,
-      });
-      expect(disabled.spawnSubagentDirect).not.toHaveBeenCalled();
-      expect(await loadPendingSessionDelivery(deliveryId, stateDir)).toBeTruthy();
-
-      const enabled = createDeliveryDeps({ storePath, runtimeConfig: { enabled: true } });
-      await drainPostCompactionDelegateDeliveriesDispatch({
-        sessionKey: "main",
-        stateDir,
-        deliveryDeps: enabled.deps,
-      });
-      expect(enabled.spawnSubagentDirect).toHaveBeenCalledTimes(1);
-      expect(await loadPendingSessionDelivery(deliveryId, stateDir)).toBeNull();
-
-      await drainPostCompactionDelegateDeliveriesDispatch({
-        sessionKey: "main",
-        stateDir,
-        deliveryDeps: enabled.deps,
-      });
-      expect(enabled.spawnSubagentDirect).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -849,7 +830,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation] Post-compaction delegate rejected: chain length 2 reached. Task: queued delegate",
-        { sessionKey: "main" },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY },
       );
       expect(failReleasedPostCompactionDelegate).toHaveBeenCalledWith(
         {
@@ -896,7 +877,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation] Post-compaction delegate rejected: cost cap exceeded (11 > 10). Task: queued delegate",
-        { sessionKey: "main" },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY },
       );
       expect(failReleasedPostCompactionDelegate).toHaveBeenCalledWith(
         {
@@ -943,7 +924,7 @@ describe("post-compaction delegate dispatch extraction", () => {
       );
       expect(enqueueSystemEvent).toHaveBeenCalledWith(
         "[continuation] Post-compaction delegate rejected: cross-session targeting was disabled at delivery time. Task: queued delegate",
-        { sessionKey: "main", traceparent: VALID_TRACEPARENT },
+        { sessionKey: OWNED_MAIN_QUEUE_KEY, traceparent: VALID_TRACEPARENT },
       );
       const stored = readSessionStore(storePath);
       expect(Object.values(stored).some((entry) => entry.continuationChainCount != null)).toBe(
@@ -979,6 +960,139 @@ describe("post-compaction delegate dispatch extraction", () => {
         expect.objectContaining({ continuationTargetSessionKey: "other" }),
         expect.any(Object),
       );
+    });
+  });
+});
+
+// Entries this build enqueues come from the release commit (RFC §4.4), which
+// writes the queue entry, its first attempt key and the record handoff
+// together. These tests drive that real release so the durable entry has the
+// shape the drain requires before any spawn (§5.4.4).
+describe("post-compaction delivery of custody-released queue entries", () => {
+  const custody = useContinuationCustodyTestState();
+  beforeEach(() => {
+    // Staging and decoding a delegate's attachments both read this policy.
+    setRuntimeConfigSnapshot({ tools: { sessions_spawn: { attachments: { enabled: true } } } });
+  });
+  afterEach(() => {
+    clearRuntimeConfigSnapshot();
+  });
+
+  async function releaseStagedDelegate(
+    delegateInput: Omit<StagedPostCompactionDelegate, "stagedAt" | "firstArmedAt">,
+  ): Promise<{ entryId: string; recordId: string }> {
+    const staged = await stagePostCompactionCustodyDelegate("main", {
+      ...delegateInput,
+      stagedAt: DELIVERY_NOW_MS,
+      firstArmedAt: DELIVERY_NOW_MS,
+    });
+    const claimed = expectDefined(
+      (await claimStagedPostCompactionDelegates("main"))[0],
+      "claimed post-compaction delegate",
+    );
+    const released = await releaseStagedPostCompactionDelegateToQueue({
+      sessionKey: "main",
+      sourceSessionId: "session",
+      delegate: toSessionPostCompactionDelegate(claimed),
+      sequence: 0,
+    });
+    if (!released.released) {
+      throw new Error(`release did not commit: ${released.reason}`);
+    }
+    return { entryId: released.entryId, recordId: staged.recordId };
+  }
+
+  it("persists attachment input in the durable queue and forwards it on replay", async () => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      const stateDir = custody.stateDir();
+      const attachments = [{ name: "state.md", content: "durable compacted input" }];
+      await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
+      const { entryId: deliveryId, recordId } = await releaseStagedDelegate({
+        task: "queued delegate",
+        attachments,
+        attachAs: { mountPath: "handoff" },
+      });
+      const queued = expectDefined(
+        await loadPendingSessionDelivery(deliveryId, stateDir),
+        "queued delivery",
+      );
+      expect(queued).toMatchObject({
+        kind: "postCompactionDelegate",
+        attachments,
+        attachAs: { mountPath: "handoff" },
+        sourceFlowId: recordId,
+        childRunId: firstAttemptRunId(recordId),
+      });
+      const { deps, spawnSubagentDirect } = createDeliveryDeps({ storePath });
+
+      await deliverQueuedPostCompactionDelegate(
+        { entry: queued as QueuedPostCompactionDelegateDelivery },
+        deps,
+      );
+
+      expect(spawnSubagentDirect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments,
+          attachMountPath: "handoff",
+          continuationChildRunId: firstAttemptRunId(recordId),
+        }),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it("defers disabled queued delivery without mutating source state and delivers exactly once after re-enable", async () => {
+    await withTestDir({ prefix: "openclaw-post-compaction-delivery-" }, async (tempDir) => {
+      const storePath = path.join(tempDir, "sessions.json");
+      const stateDir = custody.stateDir();
+      await seedSessionStore(storePath, { main: { sessionId: "session", updatedAt: Date.now() } });
+      const { entryId: deliveryId } = await releaseStagedDelegate({
+        task: "hold while continuation is disabled",
+        attachments: [{ name: "state.md", content: "must not materialize while disabled" }],
+      });
+      const entry = expectDefined(
+        await loadPendingSessionDelivery(deliveryId, stateDir),
+        "queued disabled delivery",
+      ) as QueuedPostCompactionDelegateDelivery;
+      const disabled = createDeliveryDeps({ storePath, runtimeConfig: { enabled: false } });
+
+      await expect(
+        deliverQueuedPostCompactionDelegate({ entry }, disabled.deps),
+      ).rejects.toBeInstanceOf(SessionDeliveryDeferredError);
+      expect(disabled.loadSessionEntry).not.toHaveBeenCalled();
+      expect(disabled.spawnSubagentDirect).not.toHaveBeenCalled();
+      expect(disabled.markAttemptStarted).not.toHaveBeenCalled();
+      expect(disabled.markPendingDelegateSpawnAccepted).not.toHaveBeenCalled();
+      expect(disabled.failReleasedPostCompactionDelegate).not.toHaveBeenCalled();
+      expect(await loadPendingSessionDelivery(deliveryId, stateDir)).toBeTruthy();
+
+      await drainPostCompactionDelegateDeliveriesDispatch({
+        sessionKey: "main",
+        stateDir,
+        deliveryDeps: disabled.deps,
+      });
+      expect(disabled.spawnSubagentDirect).not.toHaveBeenCalled();
+      expect(await loadPendingSessionDelivery(deliveryId, stateDir)).toBeTruthy();
+
+      const enabled = createDeliveryDeps({ storePath, runtimeConfig: { enabled: true } });
+      // The drain persists attempt ownership on the real queue row.
+      enabled.markAttemptStarted.mockImplementation(markSessionDeliveryAttemptStarted);
+      await drainPostCompactionDelegateDeliveriesDispatch({
+        sessionKey: "main",
+        stateDir,
+        deliveryDeps: enabled.deps,
+      });
+      expect(enabled.spawnSubagentDirect).toHaveBeenCalledTimes(1);
+      expect(enabled.markAttemptStarted).toHaveBeenCalledTimes(1);
+      expect(await loadPendingSessionDelivery(deliveryId, stateDir)).toBeNull();
+
+      await drainPostCompactionDelegateDeliveriesDispatch({
+        sessionKey: "main",
+        stateDir,
+        deliveryDeps: enabled.deps,
+      });
+      expect(enabled.spawnSubagentDirect).toHaveBeenCalledTimes(1);
     });
   });
 });

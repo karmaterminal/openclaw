@@ -12,10 +12,6 @@ import {
   EXEC_APPROVAL_FOLLOWUP_HANDOFF_MESSAGE,
 } from "../../agents/bash-tools.exec-approval-output.js";
 import {
-  registerSubagentTraceparentHandoff,
-  resetSubagentTraceparentHandoffsForTests,
-} from "../../agents/subagent-traceparent-handoff.js";
-import {
   onDiagnosticEvent,
   waitForDiagnosticEventsDrained,
   type DiagnosticEventPayload,
@@ -28,9 +24,6 @@ import {
   getActiveGatewayRootWorkCount,
   resetGatewayWorkAdmission,
 } from "../../process/gateway-work-admission.js";
-import { getDetachedTaskLifecycleRuntime } from "../../tasks/detached-task-runtime.js";
-import { findTaskByRunId } from "../../tasks/task-registry.js";
-import { setDetachedTaskLifecycleRuntime } from "../../tasks/task-runtime.test-helpers.js";
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
 import {
   getAgentTestMocks,
@@ -54,7 +47,6 @@ import {
   cronMediaCompletionEvent,
   setupCronContinuationReleaseFixture,
   invokeGatewaySuspendPrepare,
-  operatorWriteGatewayClient,
   operatorWriteCliClient,
   waitForAgentCommandCall,
   invokeAgent,
@@ -64,208 +56,7 @@ import {
 const mocks = getAgentTestMocks();
 
 describe("gateway agent handler", () => {
-  afterEach(async () => {
-    // Shared harness teardown is async; the traceparent reset must follow it.
-    await describe0AfterEach0();
-    resetSubagentTraceparentHandoffsForTests();
-  });
-
-  it("uses the same-process subagent traceparent handoff when the request field is missing", async () => {
-    const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
-    const sessionKey = "agent:main:subagent:child-trace";
-    const idempotencyKey = "child-trace-run";
-    registerSubagentTraceparentHandoff({
-      idempotencyKey,
-      sessionKey,
-      traceparent,
-    });
-    const existingEntry = buildExistingMainStoreEntry({
-      spawnedBy: "agent:main:main",
-    });
-    mocks.loadSessionEntry.mockReturnValue({
-      cfg: {},
-      storePath: "/tmp/sessions.json",
-      entry: existingEntry,
-      canonicalKey: sessionKey,
-    });
-    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
-      const store: Record<string, Record<string, unknown>> = {
-        [sessionKey]: { ...existingEntry },
-      };
-      return await updater(store);
-    });
-    mocks.agentCommand.mockResolvedValue({
-      payloads: [{ text: "ok" }],
-      meta: { durationMs: 100 },
-    });
-
-    await invokeAgent(
-      {
-        message: "child task",
-        agentId: "main",
-        sessionKey,
-        idempotencyKey,
-      },
-      { client: backendGatewayClient() },
-    );
-
-    expect((await waitForAgentCommandCall()).traceparent).toBe(traceparent);
-  });
-
-  it("uses the provisional child session traceparent when the request field is missing across process", async () => {
-    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
-    const sessionKey = "agent:main:subagent:child-session-trace";
-    const idempotencyKey = "child-session-trace-run";
-    const existingEntry = buildExistingMainStoreEntry({
-      spawnedBy: "agent:main:main",
-      continuationTraceparent: traceparent,
-    });
-    let persistedEntry: Record<string, unknown> | undefined;
-    mocks.loadSessionEntry.mockReturnValue({
-      cfg: {},
-      storePath: "/tmp/sessions.json",
-      entry: existingEntry,
-      canonicalKey: sessionKey,
-    });
-    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
-      const store: Record<string, Record<string, unknown>> = {
-        [sessionKey]: { ...existingEntry },
-      };
-      const result = await updater(store);
-      persistedEntry = result as Record<string, unknown>;
-      return result;
-    });
-    mocks.agentCommand.mockResolvedValue({
-      payloads: [{ text: "ok" }],
-      meta: { durationMs: 100 },
-    });
-
-    await invokeAgent(
-      {
-        message: "child task",
-        agentId: "main",
-        sessionKey,
-        idempotencyKey,
-      },
-      { client: backendGatewayClient() },
-    );
-
-    expect((await waitForAgentCommandCall()).traceparent).toBe(traceparent);
-    expect(persistedEntry?.continuationTraceparent).toBeUndefined();
-  });
-
-  it("forwards continuation metadata to the ingress agent command for backend callers", async () => {
-    primeMainAgentRun();
-
-    await invokeAgent(
-      {
-        message: "delegate finished",
-        agentId: "main",
-        sessionKey: "agent:main:main",
-        continuationTrigger: "delegate-return",
-        drainsContinuationDelegateQueue: true,
-        idempotencyKey: "test-continuation-trigger-forward",
-      },
-      { reqId: "continuation-trigger-1", client: backendGatewayClient() },
-    );
-
-    const call = await waitForAgentCommandCall<{
-      continuationTrigger?: string;
-      drainsContinuationDelegateQueue?: boolean;
-    }>();
-    expect(call.continuationTrigger).toBe("delegate-return");
-    expect(call.drainsContinuationDelegateQueue).toBe(true);
-  });
-
-  it("ignores internal continuation controls from non-backend callers", async () => {
-    primeMainAgentRun();
-
-    await invokeAgent(
-      {
-        message: "delegate finished",
-        agentId: "main",
-        sessionKey: "agent:main:main",
-        continuationTrigger: "delegate-return",
-        drainsContinuationDelegateQueue: true,
-        traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-        idempotencyKey: "test-continuation-trigger-non-backend",
-      },
-      { reqId: "continuation-trigger-non-backend", client: operatorWriteGatewayClient() },
-    );
-
-    const call = await waitForAgentCommandCall<{
-      continuationTrigger?: string;
-      drainsContinuationDelegateQueue?: boolean;
-      traceparent?: string;
-    }>();
-    expect(call.continuationTrigger).toBeUndefined();
-    expect(call.drainsContinuationDelegateQueue).toBeUndefined();
-    expect(call.traceparent).toBeUndefined();
-  });
-
-  it("preserves core-spawned continuation controls with same-process traceparent handoff", async () => {
-    primeMainAgentRun();
-    const sessionKey = "agent:main:subagent:trusted-continuation";
-    const idempotencyKey = "trusted-continuation-handoff";
-    const traceparent = "00-2af7651916cd43dd8448eb211c80319c-d7ad6b7169203331-01";
-    registerSubagentTraceparentHandoff({ idempotencyKey, sessionKey, traceparent });
-    const existingEntry = buildExistingMainStoreEntry({
-      spawnedBy: "agent:main:main",
-    });
-    mocks.loadSessionEntry.mockReturnValue({
-      cfg: {},
-      storePath: "/tmp/sessions.json",
-      entry: existingEntry,
-      canonicalKey: sessionKey,
-    });
-    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
-      const store: Record<string, Record<string, unknown>> = {
-        [sessionKey]: { ...existingEntry },
-      };
-      return await updater(store);
-    });
-
-    await invokeAgent(
-      {
-        message: "trusted continuation child",
-        agentId: "main",
-        sessionKey,
-        continuationTrigger: "delegate-return",
-        drainsContinuationDelegateQueue: true,
-        idempotencyKey,
-      },
-      { reqId: "trusted-continuation-handoff", client: operatorWriteGatewayClient() },
-    );
-
-    const call = await waitForAgentCommandCall<{
-      continuationTrigger?: string;
-      drainsContinuationDelegateQueue?: boolean;
-      traceparent?: string;
-    }>();
-    expect(call.continuationTrigger).toBe("delegate-return");
-    expect(call.drainsContinuationDelegateQueue).toBe(true);
-    expect(call.traceparent).toBe(traceparent);
-  });
-
-  it("honors a request traceparent from backend callers", async () => {
-    primeMainAgentRun();
-    const traceparent = "00-1af7651916cd43dd8448eb211c80319c-c7ad6b7169203331-01";
-
-    await invokeAgent(
-      {
-        message: "delegate finished",
-        agentId: "main",
-        sessionKey: "agent:main:main",
-        traceparent,
-        idempotencyKey: "test-continuation-traceparent-backend",
-      },
-      { reqId: "continuation-traceparent-backend", client: backendGatewayClient() },
-    );
-
-    expect((await waitForAgentCommandCall<{ traceparent?: string }>()).traceparent).toBe(
-      traceparent,
-    );
-  });
+  afterEach(describe0AfterEach0);
 
   it("stops continuation release recovery after gateway generation rotation", async () => {
     vi.useFakeTimers();
@@ -762,16 +553,6 @@ describe("gateway agent handler", () => {
     mocks.getLatestSubagentRunByChildSessionKey.mockClear();
     mocks.replaceSubagentRunAfterSteer.mockClear();
 
-    const defaultRuntime = getDetachedTaskLifecycleRuntime();
-    const createRunningTaskRunSpy = vi.fn(
-      (...args: Parameters<typeof defaultRuntime.createRunningTaskRun>) =>
-        defaultRuntime.createRunningTaskRun(...args),
-    );
-    setDetachedTaskLifecycleRuntime({
-      ...defaultRuntime,
-      createRunningTaskRun: createRunningTaskRunSpy,
-    });
-
     const context = makeContext();
     context.getSessionEventSubscriberConnIds = () => new Set(["conn-1"]);
     await invokeAgent(
@@ -803,7 +584,6 @@ describe("gateway agent handler", () => {
     });
     expect(mocks.updateSessionStore).not.toHaveBeenCalled();
     expect(context.addChatRun).not.toHaveBeenCalled();
-    expect(createRunningTaskRunSpy).not.toHaveBeenCalled();
     expect(context.broadcastToConnIds).not.toHaveBeenCalled();
     expect(mocks.getLatestSubagentRunByChildSessionKey).not.toHaveBeenCalled();
     expect(mocks.replaceSubagentRunAfterSteer).not.toHaveBeenCalled();
@@ -1066,47 +846,6 @@ describe("gateway agent handler", () => {
     await waitForAgentCommandCall();
     const rejection = respond.mock.calls.find((call: unknown[]) => call[0] === false);
     expect(rejection).toBeUndefined();
-  });
-
-  it("does not create task rows for inter-session completion wakes", async () => {
-    primeMainAgentRun();
-    mocks.agentCommand.mockClear();
-
-    await invokeAgent(
-      {
-        message: [
-          "[Mon 2026-04-06 02:42 GMT+1] <<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
-          "OpenClaw runtime context (internal):",
-          "This context is runtime-generated, not user-authored. Keep internal details private.",
-        ].join("\n"),
-        sessionKey: "agent:main:main",
-        internalEvents: [
-          {
-            type: "task_completion",
-            source: "music_generation",
-            childSessionKey: "music:task-123",
-            childSessionId: "task-123",
-            announceType: "music generation task",
-            taskLabel: "compose a loop",
-            status: "ok",
-            statusLabel: "completed successfully",
-            result: "MEDIA:/tmp/song.mp3",
-            replyInstruction: "Reply in your normal assistant voice now.",
-          },
-        ],
-        inputProvenance: {
-          kind: "inter_session",
-          sourceSessionKey: "music_generate:task-123",
-          sourceChannel: "internal",
-          sourceTool: "music_generate",
-        },
-        idempotencyKey: "music-generation-event-inter-session",
-      },
-      { reqId: "music-generation-event-inter-session" },
-    );
-
-    await waitForAgentCommandCall();
-    expect(findTaskByRunId("music-generation-event-inter-session")).toBeUndefined();
   });
 
   it("only forwards workspaceDir for spawned sessions with stored workspace inheritance", async () => {

@@ -569,6 +569,12 @@ CREATE TABLE IF NOT EXISTS operator_approval_standing_grants (
 CREATE INDEX IF NOT EXISTS idx_operator_approval_standing_grants_binding
   ON operator_approval_standing_grants(agent_id, cron_job_id, operation_binding, created_at_ms DESC);
 
+CREATE TABLE IF NOT EXISTS operator_approval_standing_grant_generations (
+  grant_id TEXT NOT NULL PRIMARY KEY
+    REFERENCES operator_approval_standing_grants(grant_id) ON DELETE CASCADE,
+  job_definition_generation INTEGER NOT NULL CHECK (job_definition_generation >= 1)
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS schema_meta (
   meta_key TEXT NOT NULL PRIMARY KEY,
   role TEXT NOT NULL,
@@ -980,6 +986,14 @@ CREATE TABLE IF NOT EXISTS node_worker_launch_cleanup (
     REFERENCES node_worker_launches(launch_id) ON DELETE CASCADE,
   cleanup_mode TEXT NOT NULL CHECK (cleanup_mode IN ('process-group', 'owned-anchor')),
   lineage_settled INTEGER CHECK (lineage_settled IS NULL OR lineage_settled = 1)
+) STRICT;
+
+-- Older readers retain owned-anchor custody: lineage EOF is not this certificate.
+CREATE TABLE IF NOT EXISTS node_worker_launch_process_scopes (
+  launch_id TEXT NOT NULL PRIMARY KEY
+    REFERENCES node_worker_launches(launch_id) ON DELETE CASCADE,
+  scope_kind TEXT NOT NULL CHECK (scope_kind = 'linux-subreaper'),
+  descendants_reaped INTEGER CHECK (descendants_reaped IS NULL OR descendants_reaped = 1)
 ) STRICT;
 
 -- Turn receipts have a shorter lifetime than their physical worker owner.
@@ -1461,6 +1475,9 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
   agent_id TEXT,
   payload_kind TEXT NOT NULL,
   job_json TEXT NOT NULL,
+  grant_definition_revision TEXT,
+  grant_definition_generation INTEGER,
+  grant_definition_updated_at INTEGER,
   state_json TEXT NOT NULL DEFAULT '{}',
   runtime_updated_at_ms INTEGER,
   schedule_identity TEXT,
@@ -1845,6 +1862,46 @@ CREATE INDEX IF NOT EXISTS idx_flow_runs_status ON flow_runs(status);
 CREATE INDEX IF NOT EXISTS idx_flow_runs_owner_key ON flow_runs(owner_key);
 CREATE INDEX IF NOT EXISTS idx_flow_runs_updated_at ON flow_runs(updated_at);
 
+-- Continuation custody (RFC docs/design/continue-work-signal-v2.md §5.4). Only
+-- the continuation custody worker operations write it. revision is the CAS
+-- token; due_at is a derived recovery-scan copy of the clocks in state_json.
+-- spawn_attempts_json is append-only attempt evidence kept after terminal writes.
+CREATE TABLE IF NOT EXISTS continuation_records (
+  record_id TEXT NOT NULL PRIMARY KEY CHECK (length(record_id) > 0),
+  kind TEXT NOT NULL CHECK (kind IN ('work', 'delegate', 'post_compaction')),
+  owner_session_key TEXT NOT NULL CHECK (length(owner_session_key) > 0),
+  chain_id TEXT CHECK (chain_id IS NULL OR kind = 'work'),
+  revision INTEGER NOT NULL CHECK (revision >= 0),
+  status TEXT NOT NULL CHECK (
+    status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')
+  ),
+  phase TEXT,
+  failure_reason TEXT,
+  cancel_requested_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  ended_at INTEGER,
+  due_at INTEGER,
+  state_json TEXT NOT NULL,
+  spawn_attempts_json TEXT NOT NULL DEFAULT '[]',
+  handoff_json TEXT,
+  rollback_of TEXT,
+  attachment_id TEXT,
+  terminal_notice_pending TEXT CHECK (
+    terminal_notice_pending IS NULL OR terminal_notice_pending IN (
+      'retry-exhausted', 'delegate-spawn-interrupted', 'rollback-election-conflict'
+    )
+  ),
+  CHECK ((status IN ('succeeded', 'failed', 'cancelled')) = (ended_at IS NOT NULL)),
+  CHECK (attachment_id IS NULL OR status IN ('queued', 'running'))
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_continuation_records_owner
+  ON continuation_records(owner_session_key, kind, status);
+
+CREATE INDEX IF NOT EXISTS idx_continuation_records_due
+  ON continuation_records(status, kind, due_at);
+
 -- Durable meeting-capture sessions are gateway-global rather than agent-session
 -- transcripts. JSON/JSONL files are doctor import inputs or explicit CLI exports.
 CREATE TABLE IF NOT EXISTS meeting_transcript_sessions (
@@ -1968,7 +2025,8 @@ CREATE TABLE IF NOT EXISTS worktrees (
   created_at INTEGER NOT NULL,
   last_active_at INTEGER NOT NULL,
   removed_at INTEGER,
-  run_end_cleanup_json TEXT
+  run_end_cleanup_json TEXT,
+  gc_protection_json TEXT
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_worktrees_repo_fingerprint
@@ -2191,6 +2249,7 @@ CREATE TABLE IF NOT EXISTS github_repository_publication_requests (
   request_digest TEXT NOT NULL,
   session_id TEXT NOT NULL,
   session_lifecycle_revision TEXT,
+  requester_authority_json TEXT,
   session_key TEXT NOT NULL,
   agent_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
@@ -2629,6 +2688,7 @@ CREATE TABLE IF NOT EXISTS github_publication_session_lifecycles (
   publication_kind TEXT NOT NULL CHECK (publication_kind IN ('shared', 'personal')),
   request_id TEXT NOT NULL,
   lifecycle_revision TEXT,
+  requester_authority_json TEXT,
   PRIMARY KEY (publication_kind, request_id)
 ) STRICT;
 
@@ -2803,6 +2863,21 @@ CREATE TABLE IF NOT EXISTS claw_mcp_server_refs (
   updated_at_ms INTEGER NOT NULL,
   PRIMARY KEY (agent_id, name)
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS user_profile_identities (
+  provider TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  canonical_login TEXT,
+  created_at INTEGER NOT NULL,
+  authorization_id TEXT,
+  authorization_basis_json TEXT,
+  PRIMARY KEY (provider, subject)
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_user_profile_identities_profile_id
+  ON user_profile_identities(profile_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_profile_identities_authorization
+  ON user_profile_identities(authorization_id);
 
 CREATE TABLE IF NOT EXISTS outbound_media_provenance (
   realpath TEXT NOT NULL PRIMARY KEY,

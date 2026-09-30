@@ -3,7 +3,7 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { z } from "zod";
 import { loadSessionEntry } from "../../../config/sessions/session-accessor.js";
 import { loadPendingSessionDelivery } from "../../../infra/session-delivery-queue-storage.js";
-import { decodeDelegateFlow, delegateFlowRecords } from "../delegate-flow-store.js";
+import { decodeDelegateFlow, getDelegateRecord } from "../delegate-flow-store.js";
 import { returnCovenantAuthorityFromDelegate } from "./case-dispatch.js";
 import type { ReturnCovenantCaseState, ReturnCovenantFixtureContext } from "./case-state.js";
 import type { ReturnCovenantDatabaseProfilesSnapshot } from "./database.js";
@@ -102,8 +102,8 @@ export async function restoreReturnCovenantActiveState(params: {
     throw new Error("return-covenant restart database receipt changed across generations");
   }
   const flowId = snapshot.acceptance?.originEvidence.receiptId;
-  const flow = flowId ? delegateFlowRecords.get(flowId) : undefined;
-  const delegate = flow ? decodeDelegateFlow(flow) : undefined;
+  const record = flowId ? await getDelegateRecord(flowId) : undefined;
+  const delegate = record ? await decodeDelegateFlow(record) : undefined;
   if (!delegate || delegate.flowId !== flowId) {
     throw new Error("return-covenant restart did not recover its durable delegate flow");
   }

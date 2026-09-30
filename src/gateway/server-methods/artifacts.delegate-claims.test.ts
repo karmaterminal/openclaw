@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { artifactsHandlers } from "./artifacts.js";
 import { expectArtifactList, expectErrorDetails, expectFields } from "./artifacts.test-support.js";
 
@@ -20,10 +23,10 @@ vi.mock("../session-transcript-readers.js", async () => {
   const actual = await vi.importActual<typeof import("../session-transcript-readers.js")>(
     "../session-transcript-readers.js",
   );
-  return {
-    ...actual,
-    visitSessionMessagesAsync: hoisted.visitSessionMessagesAsync,
-  };
+  // Route readSessionArtifacts through the fixture visitor too; otherwise the handler
+  // reaches the real transcript worker and opens the agent DB beside `storePath`.
+  const { withArtifactFixtureReader } = await import("./artifacts.test-support.js");
+  return withArtifactFixtureReader(actual, hoisted.visitSessionMessagesAsync);
 });
 
 function mockMessages(messages: unknown[]) {
@@ -52,12 +55,19 @@ async function invokeArtifactHandler(
 }
 
 describe("managed delegate artifact claim projections", () => {
-  beforeEach(() => {
+  let tempDir: string;
+
+  beforeEach(async () => {
     vi.clearAllMocks();
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-artifacts-delegate-claims-"));
     hoisted.loadSessionEntry.mockReturnValue({
-      storePath: "/tmp/sessions.json",
-      entry: { sessionId: "sess-main", sessionFile: "/tmp/sess-main.jsonl" },
+      storePath: path.join(tempDir, "sessions.json"),
+      entry: { sessionId: "sess-main", sessionFile: path.join(tempDir, "sess-main.jsonl") },
     });
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
   });
 
   it("does not collect or resolve claim projections", async () => {
@@ -84,6 +94,7 @@ describe("managed delegate artifact claim projections", () => {
     const listed = await invokeArtifactHandler("artifacts.list", {
       sessionKey: "agent:main:main",
     });
+    expect(hoisted.visitSessionMessagesAsync).toHaveBeenCalled();
     expect(expectArtifactList(listed).artifacts).toEqual([]);
     for (const method of ["artifacts.get", "artifacts.download"] as const) {
       const result = await invokeArtifactHandler(method, {

@@ -11,6 +11,7 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { ATTR_GEN_AI_TOOL_CALL_ID } from "@opentelemetry/semantic-conventions/incubating";
 import type { AgentToolResult } from "openclaw/plugin-sdk/agent-core";
+import { createOpenClawCodingTools } from "openclaw/plugin-sdk/agent-harness";
 import type { AnyAgentTool } from "openclaw/plugin-sdk/agent-harness-runtime";
 import {
   cancelPendingDelegates,
@@ -19,6 +20,8 @@ import {
   emitContinuationDelegateSpan,
   emitContinuationWorkFireSpan,
   emitContinuationWorkSpan,
+  hydrateContinuationCustody,
+  resetContinuationCustodyProjection,
   resetContinueDelegateTurnAdmissionForTests,
   type ContinueWorkRequest,
 } from "openclaw/plugin-sdk/continuation-test-runtime";
@@ -33,10 +36,11 @@ import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "openclaw/plugin-sdk/runtime-config-snapshot";
-import { resetTaskFlowRegistryForTests } from "openclaw/plugin-sdk/task-flow-test-runtime";
+import { closeOpenClawStateDatabaseAsync } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { expect, test } from "vitest";
 import { setCodexTestToolFactory } from "../../codex/src/app-server/host-capability.test-support.js";
+import type { JsonObject } from "../../codex/src/app-server/protocol-json.js";
 import {
   bindProductionHarnessHostCapabilitiesForTest,
   createCodexRuntimePlanFixture,
@@ -143,7 +147,7 @@ async function callDynamicTool(params: {
   runTrace: DiagnosticTraceContext;
   callId: string;
   tool: string;
-  arguments: Record<string, unknown>;
+  arguments: JsonObject;
 }): Promise<CodexToolResponse> {
   return (await runWithDiagnosticTraceContext(params.runTrace, () =>
     params.harness.handleServerRequest({
@@ -159,6 +163,15 @@ async function callDynamicTool(params: {
       },
     }),
   )) as CodexToolResponse;
+}
+
+// A simulated Gateway restart: drain the shared state handles (the harness
+// keeps a session reclamation worker between requests), drop the continuation
+// custody projection, and hydrate it from committed records as boot does.
+async function restartContinuationCustodyAfterStateDrain() {
+  await closeOpenClawStateDatabaseAsync();
+  resetContinuationCustodyProjection();
+  await hydrateContinuationCustody();
 }
 
 setupRunAttemptTestHooks();
@@ -215,10 +228,10 @@ test("exports Codex dynamic continuation origins through the production tool bou
             },
           },
         });
-        cancelPendingDelegates(SESSION_KEY);
-        consumePendingDelegates(SESSION_KEY);
+        await cancelPendingDelegates(SESSION_KEY);
+        await consumePendingDelegates(SESSION_KEY);
         resetContinueDelegateTurnAdmissionForTests();
-        resetTaskFlowRegistryForTests();
+        await restartContinuationCustodyAfterStateDrain();
 
         const params = createParams(
           path.join(tempDir, "session.jsonl"),
@@ -229,7 +242,10 @@ test("exports Codex dynamic continuation origins through the production tool bou
             sessionKey: SESSION_KEY,
           },
         );
-        setCodexTestToolFactory(params, (options, actual) => [...actual(options), timeoutTool]);
+        setCodexTestToolFactory(params, (options) => [
+          ...createOpenClawCodingTools(options),
+          timeoutTool,
+        ]);
         params.config = {
           ...params.config,
           agents: {
@@ -270,7 +286,7 @@ test("exports Codex dynamic continuation origins through the production tool bou
         );
         let turnStarted = false;
         await Promise.race([
-          harness.waitForMethod("turn/start", 10_000).then(() => {
+          harness.waitForMethod("turn/start").then(() => {
             turnStarted = true;
           }),
           Promise.resolve(run).then(
@@ -307,8 +323,8 @@ test("exports Codex dynamic continuation origins through the production tool bou
           mode: "silent-wake",
         });
 
-        resetTaskFlowRegistryForTests({ persist: false });
-        const delegates = consumePendingDelegates(SESSION_KEY, { ignoreDelay: true });
+        await restartContinuationCustodyAfterStateDrain();
+        const delegates = await consumePendingDelegates(SESSION_KEY, { ignoreDelay: true });
         expect(delegates).toHaveLength(1);
         const delegate = delegates[0]!;
         expect(delegate.traceparent).toBeDefined();
@@ -442,10 +458,10 @@ test("exports Codex dynamic continuation origins through the production tool bou
           ]);
         }
         closeHostCapabilities?.();
-        cancelPendingDelegates(SESSION_KEY);
-        consumePendingDelegates(SESSION_KEY);
+        await cancelPendingDelegates(SESSION_KEY);
+        await consumePendingDelegates(SESSION_KEY);
         resetContinueDelegateTurnAdmissionForTests();
-        resetTaskFlowRegistryForTests();
+        await restartContinuationCustodyAfterStateDrain();
         clearRuntimeConfigSnapshot();
         await stopStartedOtelServices();
         await provider.shutdown();

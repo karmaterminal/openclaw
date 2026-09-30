@@ -7,7 +7,6 @@ import { replaceManagedDelegateReturnInPrompt } from "../agents/internal-events.
 import type { RuntimeContextFragment } from "../agents/internal-runtime-context.js";
 import { resolveCorrelatedSubagentDelivery } from "../agents/subagents/completion/subagent-completion-delivery.js";
 import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
-import { REPLY_RUN_STILL_SHUTTING_DOWN_TEXT } from "../auto-reply/reply/get-reply-run-queue.js";
 import { finalizeInboundContext } from "../auto-reply/reply/inbound-context.js";
 import { deliverQueuedPostCompactionDelegate } from "../auto-reply/reply/post-compaction-delegate-delivery.js";
 import { dispatchReplyWithBufferedBlockDispatcherCore } from "../auto-reply/reply/provider-dispatcher.js";
@@ -17,7 +16,7 @@ import type { CliDeps } from "../cli/deps.types.js";
 import { isSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.js";
 import type { SessionRecipientAuthority } from "../config/sessions/session-recipient-authority-types.js";
 import { toErrorObject } from "../infra/errors.js";
-import { requestHeartbeatRaw as requestHeartbeat } from "../infra/heartbeat-wake.js";
+import { requestHeartbeat } from "../infra/heartbeat-wake.js";
 import {
   markSessionDeliveryAttemptStarted,
   markSessionDeliverySettlement,
@@ -27,28 +26,28 @@ import {
   type QueuedSessionDelivery,
 } from "../infra/session-delivery-queue-storage.js";
 import { withSystemEventOwner } from "../infra/system-event-ownership.js";
-import {
-  enqueueSystemEventRaw as enqueueSystemEvent,
-  removeSystemEvents,
-} from "../infra/system-events.js";
+import { enqueueSystemEvent, removeSystemEvents } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import type { OutboundReplyPayload } from "../plugin-sdk/reply-payload.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import { deliverQueuedGeneratedMediaAgentTurn } from "./server-restart-sentinel-agent-delivery.js";
+import {
+  isRestartContinuationBusyPayload,
+  resolveQueuedRestartContinuationMessageId,
+  RESTART_CONTINUATION_BUSY_RETRY_ERROR,
+} from "./server-restart-sentinel-continuation-intent.js";
 import { loadSessionEntry } from "./session-utils.js";
 
 const log = createSubsystemLogger("gateway/restart-sentinel");
-const RESTART_CONTINUATION_BUSY_RETRY_ERROR =
-  "restart continuation deferred because previous run is still shutting down";
 
-type QueuedAgentTurnSessionDelivery = Extract<QueuedSessionDelivery, { kind: "agentTurn" }>;
 type ResolvedQueuedSessionDelivery = QueuedSessionDelivery & {
   runtimeContextFragments?: RuntimeContextFragment[];
 };
 
 function enqueueRestartSentinelWake(params: {
+  /** Durable queue row id; keys the wake so recovered work keeps its turn budget. */
+  entryId: string;
   message: string;
   sessionKey: string;
   agentId: string;
@@ -71,6 +70,8 @@ function enqueueRestartSentinelWake(params: {
 }): boolean {
   const eventOptions = {
     sessionKey: params.sessionKey,
+    // Recovered work keeps its ordinary turn budget when delivered by heartbeat.
+    contextKey: `task:restart-sentinel:${params.entryId}`,
     trusted: true,
     // The durable row owns this contract; a replayed event must carry it too, or
     // the re-created in-memory copy would be acked at prompt preparation.
@@ -105,23 +106,6 @@ function enqueueRestartSentinelWake(params: {
     sessionKey: params.sessionKey,
   });
   return true;
-}
-
-function isRestartContinuationBusyPayload(payload: OutboundReplyPayload): boolean {
-  return (
-    typeof payload.text === "string" && payload.text.trim() === REPLY_RUN_STILL_SHUTTING_DOWN_TEXT
-  );
-}
-
-export function isRestartContinuationBusyRetry(entry: QueuedSessionDelivery | null): boolean {
-  return entry?.lastError === RESTART_CONTINUATION_BUSY_RETRY_ERROR;
-}
-
-function resolveQueuedRestartContinuationMessageId(entry: QueuedAgentTurnSessionDelivery): string {
-  if (isRestartContinuationBusyRetry(entry) && entry.retryCount > 0) {
-    return `${entry.messageId}:retry:${entry.retryCount}`;
-  }
-  return entry.messageId;
 }
 
 function resolveQueuedSessionDeliveryContext(entry: QueuedSessionDelivery):
@@ -164,7 +148,10 @@ async function deliverResolvedQueuedSessionDelivery(params: {
   params.queueContext.admission.assertCurrent();
   const stateDir = params.queueContext.environment.OPENCLAW_STATE_DIR;
   if (params.entry.kind === "postCompactionDelegate") {
-    await deliverQueuedPostCompactionDelegate({ entry: params.entry });
+    await deliverQueuedPostCompactionDelegate({
+      entry: params.entry,
+      queueContext: params.queueContext,
+    });
     return;
   }
   const isContinuationReturn =
@@ -341,6 +328,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       deliveryText = replaceManagedDelegateReturnInPrompt(params.entry.text, refreshed.projection);
     }
     const replayed = enqueueRestartSentinelWake({
+      entryId: params.entry.id,
       message: deliveryText,
       sessionKey: canonicalKey,
       agentId: params.entry.agentId ?? agentId,
@@ -389,6 +377,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       actualSessionId: entry?.sessionId ?? null,
     });
     enqueueRestartSentinelWake({
+      entryId: params.entry.id,
       message: params.entry.message,
       sessionKey: canonicalKey,
       agentId,
@@ -402,6 +391,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
 
   if (!params.entry.route) {
     enqueueRestartSentinelWake({
+      entryId: params.entry.id,
       message: params.entry.message,
       sessionKey: canonicalKey,
       agentId,

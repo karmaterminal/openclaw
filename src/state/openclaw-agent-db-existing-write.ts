@@ -30,7 +30,11 @@ export function withExistingAgentLeaseWrite<T>(
     {
       operationLabel: "agent.database.maintenance.admission",
       schemaSql: existingAgentLeaseSchema,
-      busyTimeoutMs: 0,
+      // No busyTimeoutMs override: the contract default
+      // (OPENCLAW_SQLITE_BUSY_TIMEOUT_MS, 5s) is what every other existing-state
+      // write gets. Overriding it to 0 gave this BEGIN one attempt and zero wait,
+      // so it lost deterministically to a concurrent state.write that the same
+      // startup creates. See karmaterminal/openclaw#1365.
     },
   );
 }

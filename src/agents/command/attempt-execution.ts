@@ -1,23 +1,5 @@
-/**
- * Orchestrates one agent attempt across embedded, CLI, and ACP runtimes.
- */
-import type { AcpRuntimeEvent } from "@openclaw/acp-core/runtime/types";
-import {
-  normalizeOptionalLowercaseString,
-  type FastMode,
-} from "@openclaw/normalization-core/string-coerce";
-import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+import type { FastMode } from "@openclaw/normalization-core/string-coerce";
 import { sanitizeForLog } from "../../../packages/terminal-core/src/ansi.js";
-import { ACP_TURN_TIMEOUT_DETAIL_CODE } from "../../acp/control-plane/manager.turn-timeout.js";
-import { formatAcpErrorChain } from "../../acp/runtime/errors.js";
-import { resolveAcpToolTerminalOutcome } from "../../acp/tool-status.js";
-import { failQueuedDelegatesOwnedByRun } from "../../auto-reply/continuation/delegate-store.js";
-import {
-  computeRequestCompactionContextUsage,
-  releaseQueuedCompactionTolerant,
-} from "../../auto-reply/reply/agent-runner-post-compaction-release.js";
-import { normalizeReplyPayload } from "../../auto-reply/reply/normalize-reply.js";
-import type { FollowupRun } from "../../auto-reply/reply/queue.js";
 import {
   readChannelSourceTurnId,
   readChannelSourceTurnSameThreadRequired,
@@ -37,14 +19,6 @@ import {
   injectTimestamp,
   timestampOptsFromConfig,
 } from "../../gateway/server-methods/agent-timestamp.js";
-import { emitAgentAuditEvent, emitAgentEvent } from "../../infra/agent-events.js";
-import {
-  formatActiveContinuationTraceparent,
-  resolveContinuationTraceparent,
-} from "../../infra/continuation-tracer.js";
-import { emitTrustedDiagnosticEvent } from "../../infra/diagnostic-events.js";
-import { runWithDiagnosticTraceparent } from "../../infra/diagnostic-trace-context.js";
-import { redactSensitiveText } from "../../logging/redact.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { isSubagentSessionKey } from "../../routing/session-key.js";
@@ -52,21 +26,10 @@ import { resolveSessionPinnedHarnessId } from "../../sessions/agent-harness-sess
 import { annotateInterSessionPromptText } from "../../sessions/input-provenance.js";
 import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import type { SkillSnapshot } from "../../skills/types.js";
-import {
-  getGeneratedMediaTaskIdsForSessionKey,
-  hasNewGeneratedMediaTaskForSessionKey,
-} from "../../tasks/task-status-access.js";
 import { resolveUserPath } from "../../utils.js";
 import { resolveMessageChannel } from "../../utils/message-channel.js";
 import type { PreparedAgentRunAdmission } from "../admitted-run-context.js";
-import { buildAgentRunTerminalOutcomeFromLifecycleEvent } from "../agent-run-terminal-outcome.js";
-import type { AgentRunTerminalReplySnapshot } from "../agent-run-terminal-reply.types.js";
-import { resolveAuthProfileOrder } from "../auth-profiles/order.js";
-import { ensureAuthProfileStore } from "../auth-profiles/store-runtime.js";
-import {
-  resizeExecApprovalContinuationPrompt,
-  type ExecApprovalContinuationPromptRange,
-} from "../bash-tools.exec-approval-output.js";
+import { resizeExecApprovalContinuationPrompt } from "../bash-tools.exec-approval-output.js";
 import { resolveBootstrapWarningSignaturesSeen } from "../bootstrap-budget.js";
 import { resolveCliBackendConfig } from "../cli-backends.js";
 import {
@@ -83,7 +46,6 @@ import {
   resolveCliSessionClearReason,
   shouldClearFailedCliSessionBinding,
 } from "../cli-session.js";
-import type { RequestCompactionInvocation } from "../compaction-attribution.js";
 import { resolveConversationCapabilityProfile } from "../conversation-capability-profile.js";
 import { resolveConversationToolPolicies } from "../conversation-tool-policy-pipeline.js";
 import { resolveDelegationCapability } from "../delegation-capability.js";
@@ -95,6 +57,10 @@ import type { ContextEngineLogicalTurnLease } from "../harness/context-engine-lo
 import type { ContextEngineTurnAttemptFacts } from "../harness/context-engine-turn-attempt.js";
 import { resolveAvailableAgentHarnessPolicy } from "../harness/selection.js";
 import { AGENT_LANE_SUBAGENT } from "../lanes.js";
+import {
+  getGeneratedMediaTaskIdsForSessionKey,
+  hasNewGeneratedMediaTaskForSessionKey,
+} from "../media-generation-activity.js";
 import type { ModelFallbackResultClassification } from "../model-fallback-attempt.js";
 import type { ModelFallbackAttemptProvenance } from "../model-fallback.types.js";
 import { resolveCliRuntimeExecutionProvider } from "../model-runtime-aliases.js";
@@ -102,10 +68,7 @@ import { isCliProvider } from "../model-selection.js";
 import { resolveOpenAIRuntimeProvider } from "../openai-routing.js";
 import type { PreparedModelRuntimePluginGeneration } from "../prepared-model-runtime.types.js";
 import { hasVerifiedRequesterCompletionHandoff } from "../requester-tool-policy.js";
-import {
-  createAgentRunSupersededAbortError,
-  resolveAgentRunAbortLifecycleFields,
-} from "../run-termination.js";
+import { createAgentRunSupersededAbortError } from "../run-termination.js";
 import { buildAgentRuntimeAuthPlan } from "../runtime-plan/auth.js";
 import type { AgentMessage } from "../runtime/index.js";
 import { resolveSandboxRuntimeStatus } from "../sandbox/runtime-status.js";
@@ -116,142 +79,24 @@ import {
 } from "../subagents/announce/subagent-announce-handoff.js";
 import { isRuntimeToolAllowed, isToolAllowedByPolicies } from "../tool-policy-match.js";
 import { DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS } from "../tool-result-limits.js";
-import type { ContinueWorkRequest } from "../tools/continue-work-tool.js";
-import { scheduleSpawnInitContinueWorkWake } from "./attempt-execution.continue-work.js";
+import { resolveHarnessAuthProfileSelection } from "./attempt-auth-selection.js";
+import { emitAgentAttemptRuntimeStart } from "./attempt-callbacks.js";
+import { startAttemptContinuation } from "./attempt-execution.continuation.js";
 import {
-  buildClaudeCliFallbackContextPrelude,
   claudeCliSessionTranscriptHasContent,
+  isClaudeCliProvider,
+  resolveClaudeCliFallbackPrelude,
   resolveFallbackRetryPrompt,
+  rebaseExecApprovalContinuationPromptRange,
 } from "./attempt-execution.helpers.js";
-import { resolveAgentRunContext } from "./run-context.js";
 import {
   consumeCliSessionForkInStore,
   persistCliSessionForkSuccessorInStore,
   restoreCliSessionForkInStore,
 } from "./session-store.js";
-import type { AgentCommandOpts } from "./types.js";
-
-export {
-  createAcpVisibleTextAccumulator,
-  sessionTranscriptHasContent,
-} from "./attempt-execution.helpers.js";
+import type { AgentCommandOpts, AgentRunContext } from "./types.js";
 
 const log = createSubsystemLogger("agents/agent-command");
-
-function rebaseExecApprovalContinuationPromptRange(params: {
-  body: string;
-  prompt: string;
-  range?: ExecApprovalContinuationPromptRange;
-}): ExecApprovalContinuationPromptRange | undefined {
-  if (!params.range) {
-    return undefined;
-  }
-  if (!params.prompt.endsWith(params.body)) {
-    throw new Error("exec approval continuation prompt range could not be rebased");
-  }
-  const offset = params.prompt.length - params.body.length;
-  return {
-    start: offset + params.range.start,
-    end: offset + params.range.end,
-  };
-}
-
-function shouldSuppressEmbeddedLiveStreamOutput(params: { opts: AgentCommandOpts }): boolean {
-  return params.opts.sessionEffects === "internal" && params.opts.deliver !== true;
-}
-
-type HarnessAuthProfileSelection = {
-  authProfileId?: string;
-  authProfileIdSource?: "auto" | "user";
-  authProfileProvider: string;
-  authProfileMode?: string;
-};
-
-function resolveProfileAuthFromStore(params: { agentDir: string; profileId: string | undefined }): {
-  provider?: string;
-  mode?: string;
-} {
-  const profileId = params.profileId?.trim();
-  if (!profileId) {
-    return {};
-  }
-  const credential = ensureAuthProfileStore(params.agentDir, {
-    allowKeychainPrompt: false,
-    externalCliProfileIds: [profileId],
-  }).profiles[profileId];
-  return { provider: credential?.provider, mode: credential?.type };
-}
-
-function resolveHarnessAuthProfileSelection(params: {
-  config: OpenClawConfig;
-  agentDir: string;
-  workspaceDir: string;
-  provider: string;
-  authProfileProvider: string;
-  sessionAuthProfileId?: string;
-  sessionAuthProfileSource?: "auto" | "user";
-  harnessId?: string;
-  harnessRuntime?: string;
-  metadataSnapshot?: PluginMetadataSnapshot;
-  providerAuthAliasesEnabled?: boolean;
-  allowHarnessAuthProfileForwarding: boolean;
-}): HarnessAuthProfileSelection {
-  const sessionAuthProfileId = params.sessionAuthProfileId?.trim();
-  if (sessionAuthProfileId) {
-    const profileAuth = resolveProfileAuthFromStore({
-      agentDir: params.agentDir,
-      profileId: sessionAuthProfileId,
-    });
-    return {
-      authProfileId: sessionAuthProfileId,
-      authProfileIdSource: params.sessionAuthProfileSource,
-      authProfileProvider: profileAuth.provider ?? params.authProfileProvider,
-      authProfileMode: profileAuth.mode,
-    };
-  }
-
-  if (!params.allowHarnessAuthProfileForwarding) {
-    return { authProfileProvider: params.authProfileProvider };
-  }
-
-  const runtimeAuthPlan = buildAgentRuntimeAuthPlan({
-    provider: params.provider,
-    authProfileProvider: params.authProfileProvider,
-    config: params.config,
-    workspaceDir: params.workspaceDir,
-    ...(params.metadataSnapshot ? { metadataSnapshot: params.metadataSnapshot } : {}),
-    providerAuthAliasesEnabled: params.providerAuthAliasesEnabled,
-    harnessId: params.harnessId,
-    harnessRuntime: params.harnessRuntime,
-    allowHarnessAuthProfileForwarding: params.allowHarnessAuthProfileForwarding,
-  });
-  const harnessAuthProvider = runtimeAuthPlan.harnessAuthProvider;
-  if (!harnessAuthProvider) {
-    return { authProfileProvider: params.authProfileProvider };
-  }
-
-  const store = ensureAuthProfileStore(params.agentDir, {
-    allowKeychainPrompt: false,
-    externalCliProviderIds: [harnessAuthProvider],
-  });
-  const authProfileId = resolveAuthProfileOrder({
-    cfg: params.config,
-    store,
-    provider: harnessAuthProvider,
-  })[0];
-
-  return authProfileId
-    ? {
-        authProfileId,
-        authProfileIdSource: "auto",
-        authProfileProvider: harnessAuthProvider,
-      }
-    : { authProfileProvider: params.authProfileProvider };
-}
-
-function isClaudeCliProvider(provider: string): boolean {
-  return provider.trim().toLowerCase() === "claude-cli";
-}
 
 export async function runAgentAttempt(params: {
   preparedRunAdmission: PreparedAgentRunAdmission;
@@ -287,7 +132,7 @@ export async function runAgentAttempt(params: {
   runId: string;
   lifecycleGeneration: string;
   opts: AgentCommandOpts;
-  runContext: ReturnType<typeof resolveAgentRunContext>;
+  runContext: AgentRunContext;
   spawnedBy: string | undefined;
   messageChannel: ReturnType<typeof resolveMessageChannel>;
   skillsSnapshot: SkillSnapshot | undefined;
@@ -325,14 +170,7 @@ export async function runAgentAttempt(params: {
     authProfileIdSource?: "auto" | "user";
   }) => void;
 }) {
-  const onRuntimeActivity = (info: { phase: string }) => {
-    // CLI preparation and child launch do not prove a native turn. Parsed
-    // assistant/tool activity does, even when the backend omits lifecycle events.
-    if (info.phase === "assistant_output_started" || info.phase === "tool_execution_started") {
-      void params.onAgentEvent({ stream: "lifecycle", data: { phase: "start" } });
-    }
-  };
-  const runStartedAt = Date.now();
+  const continuation = startAttemptContinuation(params);
   const sessionAuthProfileId = params.sessionEntry?.authProfileOverride?.trim();
   const sessionAuthProfileSource = resolveCollapsedSessionAuthPinSource(params.sessionEntry);
   // An explicit session choice owns the conversation. Otherwise the profile
@@ -353,19 +191,17 @@ export async function runAgentAttempt(params: {
     inputProvenance: params.opts.inputProvenance,
     internalEvents: params.opts.internalEvents,
   });
-  const exactSubagentAnnounceHandoff =
-    isSubagentAnnounceHandoff &&
-    isTrustedSubagentCompletionHandoffForRun({
-      handoff: params.opts.trustedInternalHandoff,
-      inputProvenance: params.opts.inputProvenance,
-      internalEvents: params.opts.internalEvents,
-      sessionKey: params.sessionKey,
-      sessionId: params.sessionId,
-      provider: params.providerOverride,
-      model: params.modelOverride,
-    });
-  const trustedSubagentAnnounceHandoff =
-    exactSubagentAnnounceHandoff &&
+  const exactSubagentCompletionHandoff = isTrustedSubagentCompletionHandoffForRun({
+    handoff: params.opts.trustedInternalHandoff,
+    inputProvenance: params.opts.inputProvenance,
+    internalEvents: params.opts.internalEvents,
+    sessionKey: params.sessionKey,
+    sessionId: params.sessionId,
+    provider: params.providerOverride,
+    model: params.modelOverride,
+  });
+  const trustedSubagentCompletionHandoff =
+    exactSubagentCompletionHandoff &&
     hasVerifiedRequesterCompletionHandoff({
       config: params.cfg,
       sessionKey: params.sessionKey,
@@ -375,6 +211,8 @@ export async function runAgentAttempt(params: {
       modelProvider: params.providerOverride,
       modelId: params.modelOverride,
     });
+  const trustedSubagentAnnounceHandoff =
+    isSubagentAnnounceHandoff && trustedSubagentCompletionHandoff;
   const completionRequestsMessageDelivery =
     trustedSubagentAnnounceHandoff &&
     !isRawModelRun &&
@@ -420,15 +258,7 @@ export async function runAgentAttempt(params: {
     completionToolPolicies !== undefined &&
     isToolAllowedByPolicies("message", Object.values(completionToolPolicies)) &&
     isRuntimeToolAllowed("message", params.opts.toolsAllow);
-  const claudeCliFallbackPrelude =
-    !isRawModelRun &&
-    params.isFallbackRetry &&
-    isClaudeCliProvider(params.originalProvider) &&
-    !isClaudeCliProvider(params.providerOverride)
-      ? buildClaudeCliFallbackContextPrelude({
-          cliSessionId: getCliSessionBinding(params.sessionEntry, "claude-cli")?.sessionId,
-        })
-      : "";
+  const claudeCliFallbackPrelude = resolveClaudeCliFallbackPrelude(params, isRawModelRun);
   const resolvedPrompt = resolveFallbackRetryPrompt({
     body: params.body,
     isFallbackRetry: params.isFallbackRetry,
@@ -640,12 +470,16 @@ export async function runAgentAttempt(params: {
       runTimeoutOverrideMs: params.runTimeoutOverrideMs,
       runId: params.runId,
       lifecycleGeneration: params.lifecycleGeneration,
-      onExecutionPhase: onRuntimeActivity,
+      onExecutionPhase: (info) => emitAgentAttemptRuntimeStart(info, params.onAgentEvent),
       lane: params.opts.lane,
+      swarmExecutionLane: params.opts.swarmExecutionLane,
       extraSystemPrompt: params.opts.extraSystemPrompt,
       inputProvenance: params.opts.inputProvenance,
       skillLibraryAuthoring: params.opts.skillLibraryAuthoring,
       sourceReplyDeliveryMode: params.opts.sourceReplyDeliveryMode,
+      taskSuggestionDeliveryMode: params.opts.taskSuggestionDeliveryMode,
+      clientCaps: params.opts.clientCaps,
+      gatewayUiCommandTarget: params.opts.gatewayUiCommandTarget,
       media: params.opts.media,
       skillsSnapshot: params.skillsSnapshot,
       streamParams: params.opts.streamParams,
@@ -674,6 +508,7 @@ export async function runAgentAttempt(params: {
       async (assertSettlementCurrent) => {
         if (params.sessionKey && params.storePath) {
           params.sessionEntry = loadSessionEntry({
+            agentId: params.sessionAgentId,
             sessionKey: params.sessionKey,
             storePath: params.storePath,
             readConsistency: "latest",
@@ -734,6 +569,7 @@ export async function runAgentAttempt(params: {
         const mutableCliSessionStore =
           params.sessionKey && params.sessionStore && params.storePath
             ? {
+                agentId: params.sessionAgentId,
                 sessionKey: params.sessionKey,
                 sessionStore: params.sessionStore,
                 storePath: params.storePath,
@@ -741,7 +577,7 @@ export async function runAgentAttempt(params: {
                 assertCommitAllowed: assertSettlementCurrent,
               }
             : undefined;
-        const resolveReusableCliSessionBinding = async () => {
+        const prepareCliSessionBinding = async () => {
           const hasManagedClaudeLiveSession = Boolean(
             isClaudeCliProvider(cliExecutionProvider) &&
             cliSessionBinding?.sessionId &&
@@ -763,7 +599,7 @@ export async function runAgentAttempt(params: {
               workspaceDir: cliProcessCwd,
             }))
           ) {
-            return cliSessionBinding;
+            return;
           }
 
           log.warn(
@@ -777,20 +613,23 @@ export async function runAgentAttempt(params: {
                 ...mutableCliSessionStore,
               })) ?? params.sessionEntry;
           }
-
-          // The store is already cleared above, so no stale --resume can leak to a
-          // later turn. Still return the bound id as the reuse candidate: prepare
-          // re-detects the missing transcript, keeps useResume=false, and arms
-          // raw-transcript reseed from prior OpenClaw history. Returning undefined
-          // strips the candidate and starves reseed, losing warm-stdin continuity.
-          return cliSessionBinding;
         };
-        const mediaTaskIdsBefore = getGeneratedMediaTaskIdsForSessionKey(params.sessionKey);
-        const runCliWithSession = async (
-          nextCliSessionId: string | undefined,
-          activeCliSessionBinding = cliSessionBinding,
-        ) => {
-          const forkCliSessionOnResume = activeCliSessionBinding?.forkNextResume === true;
+        const mediaTaskIdsBefore = getGeneratedMediaTaskIdsForSessionKey(
+          params.sessionKey,
+          params.sessionAgentId,
+        );
+        const hasNewMediaTask = () =>
+          hasNewGeneratedMediaTaskForSessionKey(
+            params.sessionKey,
+            mediaTaskIdsBefore,
+            params.sessionAgentId,
+          );
+        await prepareCliSessionBinding();
+        // Retain the cleared binding as the preparation candidate so missing-transcript
+        // recovery can reseed history without resuming the stale CLI session.
+        let result: EmbeddedAgentRunResult;
+        try {
+          const forkCliSessionOnResume = cliSessionBinding?.forkNextResume === true;
           const resolvedCliBackend = resolveCliBackendConfig(cliExecutionProvider, params.cfg, {
             agentId: params.sessionAgentId,
           });
@@ -799,10 +638,10 @@ export async function runAgentAttempt(params: {
             throw new Error(`CLI backend "${cliExecutionProvider}" does not support session forks`);
           }
           const forkStoreParams =
-            supportsCliSessionFork && nextCliSessionId && mutableCliSessionStore
+            supportsCliSessionFork && cliSessionBinding?.sessionId && mutableCliSessionStore
               ? {
                   provider: cliExecutionProvider,
-                  expectedCliSessionId: nextCliSessionId,
+                  expectedCliSessionId: cliSessionBinding.sessionId,
                   ...mutableCliSessionStore,
                   assertCommitAllowed: () => {
                     assertSettlementCurrent();
@@ -810,7 +649,7 @@ export async function runAgentAttempt(params: {
                   },
                 }
               : undefined;
-          return await runCliAgent({
+          result = await runCliAgent({
             ...buildCommonRunParams(),
             diagnosticOwner,
             sessionEntry: params.sessionEntry,
@@ -828,11 +667,8 @@ export async function runAgentAttempt(params: {
             requireExplicitMessageTarget:
               params.opts.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
             cliSessionBindingFacts: params.opts.cliSessionBindingFacts,
-            cliSessionId: nextCliSessionId,
-            cliSessionBinding:
-              nextCliSessionId === activeCliSessionBinding?.sessionId
-                ? activeCliSessionBinding
-                : undefined,
+            cliSessionId: cliSessionBinding?.sessionId,
+            cliSessionBinding,
             forkCliSessionOnResume,
             ...(forkStoreParams
               ? {
@@ -899,13 +735,7 @@ export async function runAgentAttempt(params: {
             ...(forkStoreParams && !forkCliSessionOnResume
               ? {
                   onBeforeForkedCliSessionRetry: async (retry) => {
-                    if (
-                      hasNewGeneratedMediaTaskForSessionKey(
-                        params.sessionKey,
-                        mediaTaskIdsBefore,
-                      ) ||
-                      retry.sessionId !== activeCliSessionBinding?.sessionId
-                    ) {
+                    if (hasNewMediaTask() || retry.sessionId !== cliSessionBinding?.sessionId) {
                       return false;
                     }
 
@@ -925,12 +755,10 @@ export async function runAgentAttempt(params: {
               ? {
                   onBeforeFreshCliSessionRetry: async (retry) => {
                     if (
-                      hasNewGeneratedMediaTaskForSessionKey(
-                        params.sessionKey,
-                        mediaTaskIdsBefore,
-                      ) ||
+                      hasNewMediaTask() ||
                       getCliSessionBinding(
                         loadSessionEntry({
+                          agentId: params.sessionAgentId,
                           sessionKey: mutableCliSessionStore.sessionKey,
                           storePath: mutableCliSessionStore.storePath,
                           readConsistency: "latest",
@@ -959,14 +787,6 @@ export async function runAgentAttempt(params: {
                 }
               : {}),
           });
-        };
-        const activeCliSessionBinding = await resolveReusableCliSessionBinding();
-        let result: EmbeddedAgentRunResult;
-        try {
-          result = await runCliWithSession(
-            activeCliSessionBinding?.sessionId,
-            activeCliSessionBinding,
-          );
         } catch (err) {
           const failedCliSessionBinding = getCliSessionBinding(
             params.sessionEntry,
@@ -978,11 +798,8 @@ export async function runAgentAttempt(params: {
             shouldClearFailedCliSessionBinding({
               error: err,
               binding: failedCliSessionBinding,
-              bindingReplacedDuringRun: failedCliSessionId !== activeCliSessionBinding?.sessionId,
-              hasNewGeneratedMediaTask: hasNewGeneratedMediaTaskForSessionKey(
-                params.sessionKey,
-                mediaTaskIdsBefore,
-              ),
+              bindingReplacedDuringRun: failedCliSessionId !== cliSessionBinding?.sessionId,
+              hasNewGeneratedMediaTask: hasNewMediaTask(),
             }) &&
             failedCliSessionId &&
             mutableCliSessionStore
@@ -1006,6 +823,7 @@ export async function runAgentAttempt(params: {
           (!classification || result.meta.agentMeta?.clearCliSessionBinding === true)
         ) {
           return await persistCliSessionBindingResult({
+            agentId: params.sessionAgentId,
             provider: cliExecutionProvider,
             result,
             sessionKey: params.sessionKey,
@@ -1028,127 +846,6 @@ export async function runAgentAttempt(params: {
       },
     );
   }
-
-  const continuationEnabled = params.cfg.agents?.defaults?.continuation?.enabled === true;
-  const attemptContinueWorkRequests: ContinueWorkRequest[] = [];
-  const continueWorkOpts = continuationEnabled
-    ? {
-        requestContinuation: (request: ContinueWorkRequest) => {
-          attemptContinueWorkRequests.push(request);
-        },
-      }
-    : undefined;
-
-  const requestCompactionOpts = continuationEnabled
-    ? {
-        sessionId: params.sessionId,
-        ownerAgentId: params.sessionAgentId,
-        contextUsageOrigin: "live_runner" as const,
-        getContextUsage: () =>
-          computeRequestCompactionContextUsage({
-            entry: params.sessionEntry,
-            cfg: params.cfg,
-            provider: embeddedAgentProvider,
-            model: params.modelOverride,
-          }),
-        triggerCompaction: async (request: RequestCompactionInvocation) => {
-          try {
-            const { compactEmbeddedAgentSession } =
-              await import("../embedded-agent-runner/compact.queued.js");
-            const result = await compactEmbeddedAgentSession({
-              sessionId: params.sessionId,
-              runId: request.runId ?? params.runId,
-              sessionKey: params.sessionKey,
-              sessionFile: params.sessionFile,
-              workspaceDir: params.workspaceDir,
-              cwd: params.cwd,
-              config: params.cfg,
-              messageChannel: params.messageChannel,
-              messageProvider: params.opts.messageProvider ?? params.messageChannel,
-              agentAccountId: params.runContext.accountId,
-              provider: embeddedAgentProvider,
-              model: params.modelOverride,
-              authProfileId,
-              customInstructions: request.customInstructions,
-              trigger: request.trigger,
-              diagId: request.diagId,
-              traceparent: request.traceparent,
-              abortSignal: params.opts.abortSignal,
-            });
-            if (params.opts.abortSignal?.aborted) {
-              if (params.sessionKey) {
-                failQueuedDelegatesOwnedByRun(
-                  params.sessionKey,
-                  {
-                    originRunId: params.runId,
-                    legacyCreatedAfter: runStartedAt,
-                  },
-                  "Continuation delegate election ignored because the spawn-init turn was cancelled.",
-                );
-              }
-              return result;
-            }
-            if (result.ok && result.compacted) {
-              const releaseOriginatingTo = params.opts.replyTo ?? params.opts.to;
-              const releaseMessageProvider = params.opts.messageProvider ?? params.messageChannel;
-              const compactionReleaseFollowupRun: FollowupRun = {
-                prompt: effectivePrompt,
-                enqueuedAt: Date.now(),
-                ...(params.runContext.messageChannel
-                  ? { originatingChannel: params.runContext.messageChannel }
-                  : {}),
-                ...(releaseOriginatingTo ? { originatingTo: releaseOriginatingTo } : {}),
-                ...(params.runContext.accountId
-                  ? { originatingAccountId: params.runContext.accountId }
-                  : {}),
-                ...(params.opts.threadId != null
-                  ? { originatingThreadId: params.opts.threadId }
-                  : {}),
-                abortSignal: params.opts.abortSignal,
-                run: {
-                  agentId: params.sessionAgentId,
-                  agentDir: params.agentDir,
-                  sessionId: params.sessionId,
-                  ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
-                  sessionFile: params.sessionFile,
-                  workspaceDir: params.workspaceDir,
-                  ...(params.cwd ? { cwd: params.cwd } : {}),
-                  config: params.cfg,
-                  provider: embeddedAgentProvider,
-                  model: params.modelOverride,
-                  ...(releaseMessageProvider ? { messageProvider: releaseMessageProvider } : {}),
-                  ...(params.runContext.accountId
-                    ? { agentAccountId: params.runContext.accountId }
-                    : {}),
-                  timeoutMs: params.timeoutMs,
-                  blockReplyBreak: "message_end",
-                },
-              };
-              await releaseQueuedCompactionTolerant({
-                ...(params.sessionStore ? { activeSessionStore: params.sessionStore } : {}),
-                compactionResult: result,
-                followupRun: compactionReleaseFollowupRun,
-                getActiveSessionEntry: () => params.sessionEntry,
-                ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
-                ...(params.storePath ? { storePath: params.storePath } : {}),
-                ...(request.traceparent ? { traceparent: request.traceparent } : {}),
-              });
-            }
-            return {
-              ok: result.ok,
-              compacted: result.compacted,
-              reason: result.reason,
-            };
-          } catch (err) {
-            return {
-              ok: false,
-              compacted: false,
-              reason: err instanceof Error ? err.message : String(err),
-            };
-          }
-        },
-      }
-    : undefined;
 
   const embeddedRunParams: RunEmbeddedAgentInternalParams = {
     ...buildCommonRunParams(),
@@ -1174,6 +871,7 @@ export async function runAgentAttempt(params: {
     images: shouldForwardImagesToEmbedded ? params.opts.images : undefined,
     imageOrder: shouldForwardImagesToEmbedded ? params.opts.imageOrder : undefined,
     clientTools: params.opts.clientTools,
+    toolBindings: params.opts.toolBindings,
     provider: embeddedAgentProvider,
     requestedRouteResolution: "resolved",
     modelThinkingCapability: params.modelThinkingCapability,
@@ -1186,13 +884,14 @@ export async function runAgentAttempt(params: {
     execApprovalContinuationPromptRange: embeddedExecApprovalContinuationPromptRange,
     execApprovalContinuationTranscriptPromptRange: continuationTranscriptPromptRange,
     // Hidden internal runs lack an event consumer; visible lanes still feed UI and parent relays.
-    suppressLiveStreamOutput: shouldSuppressEmbeddedLiveStreamOutput(params),
+    suppressLiveStreamOutput:
+      params.opts.sessionEffects === "internal" && params.opts.deliver !== true,
     abortSignal: params.opts.abortSignal,
     bootstrapContextMode: params.opts.bootstrapContextMode,
     bootstrapContextRunKind: params.opts.bootstrapContextRunKind,
     toolsAllow: runtimeToolsAllow,
     runtimePluginToolGrant: params.opts.runtimePluginToolGrant,
-    trustedInternalHandoff: trustedSubagentAnnounceHandoff
+    trustedInternalHandoff: trustedSubagentCompletionHandoff
       ? params.opts.trustedInternalHandoff
       : undefined,
     cronCreatorAuthorityCapability: params.opts.cronCreatorAuthorityCapability,
@@ -1238,570 +937,13 @@ export async function runAgentAttempt(params: {
       }
     },
     onSessionIdChanged: params.opts.onSessionIdChanged,
-    continueWorkOpts,
-    requestCompactionOpts,
+    ...continuation.runOpts(embeddedAgentProvider, authProfileId, effectivePrompt),
   };
   setChannelSourceTurnId(embeddedRunParams, readChannelSourceTurnId(params.runContext));
   setChannelSourceTurnSameThreadRequired(
     embeddedRunParams,
     readChannelSourceTurnSameThreadRequired(params.runContext),
   );
-  const embeddedRunResult = await runWithDiagnosticTraceparent(params.opts.traceparent, () =>
-    runEmbeddedAgent(embeddedRunParams),
-  );
-
-  if (continuationEnabled && params.sessionKey) {
-    try {
-      if (embeddedRunResult.meta?.aborted === true || params.opts.abortSignal?.aborted === true) {
-        if (attemptContinueWorkRequests.length > 0) {
-          log.info(
-            `[continuation] Ignoring ${attemptContinueWorkRequests.length} continue_work election(s) because the spawn-init turn was cancelled for session ${sanitizeForLog(params.sessionKey)}`,
-          );
-        }
-        const failedDelegateRows = failQueuedDelegatesOwnedByRun(
-          params.sessionKey,
-          {
-            originRunId: params.runId,
-            legacyCreatedAfter: runStartedAt,
-          },
-          "Continuation delegate election ignored because the spawn-init turn was cancelled.",
-        );
-        if (failedDelegateRows > 0) {
-          log.info(
-            `[continuation] Failed ${failedDelegateRows} queued continue_delegate election(s) because the spawn-init turn was cancelled for session ${sanitizeForLog(params.sessionKey)}`,
-          );
-        }
-        return embeddedRunResult;
-      }
-      const suppressContinuationAfterReplayUnsafeRun =
-        embeddedRunResult.meta?.error?.kind === "incomplete_turn" &&
-        embeddedRunResult.meta?.replayInvalid === true;
-      if (suppressContinuationAfterReplayUnsafeRun) {
-        if (attemptContinueWorkRequests.length > 0) {
-          log.info(
-            `[continuation] Ignoring ${attemptContinueWorkRequests.length} continue_work election(s) because the spawn-init turn was incomplete and replay-unsafe for session ${sanitizeForLog(params.sessionKey)}`,
-          );
-        }
-        const failedDelegateRows = failQueuedDelegatesOwnedByRun(
-          params.sessionKey,
-          {
-            originRunId: params.runId,
-            legacyCreatedAfter: runStartedAt,
-          },
-          "Continuation delegate election ignored because the spawn-init turn was incomplete and replay-unsafe.",
-        );
-        if (failedDelegateRows > 0) {
-          log.info(
-            `[continuation] Failed ${failedDelegateRows} queued continue_delegate election(s) because the spawn-init turn was incomplete and replay-unsafe for session ${sanitizeForLog(params.sessionKey)}`,
-          );
-        }
-        return embeddedRunResult;
-      }
-      const { extractContinuationSignal, stripContinuationSignal } =
-        await import("../../auto-reply/continuation/signal.js");
-      const continuationPayloads = embeddedRunResult.payloads ?? [];
-      const firstWorkRequest = attemptContinueWorkRequests[0];
-      const extraction = extractContinuationSignal({
-        payloads: continuationPayloads.map((payload) => ({ ...payload })),
-        ...(firstWorkRequest ? { continueWorkRequest: firstWorkRequest } : {}),
-        enabled: true,
-        sessionKey: params.sessionKey,
-      });
-      if (extraction.signal?.kind === "work") {
-        const internalBracketTraceparent = extraction.fromBracket
-          ? (resolveContinuationTraceparent(params.opts.traceparent) ??
-            formatActiveContinuationTraceparent())
-          : undefined;
-        const requests =
-          !extraction.fromBracket && attemptContinueWorkRequests.length > 0
-            ? attemptContinueWorkRequests
-            : [
-                {
-                  reason: extraction.workReason ?? "",
-                  ...(extraction.signal.delayMs !== undefined
-                    ? { delaySeconds: extraction.signal.delayMs / 1000 }
-                    : {}),
-                  ...(internalBracketTraceparent
-                    ? { traceparent: internalBracketTraceparent }
-                    : {}),
-                },
-              ];
-        if (extraction.fromBracket) {
-          for (let i = continuationPayloads.length - 1; i >= 0; i--) {
-            const payload = continuationPayloads[i];
-            if (!payload?.text) {
-              continue;
-            }
-            const stripped = stripContinuationSignal(payload.text);
-            if (stripped.signal?.kind !== "work") {
-              continue;
-            }
-            payload.text = stripped.text;
-            break;
-          }
-        }
-        await scheduleSpawnInitContinueWorkWake({
-          sessionKey: params.sessionKey,
-          sessionEntry: params.sessionStore?.[params.sessionKey] ?? params.sessionEntry,
-          sessionStore: params.sessionStore,
-          storePath: params.storePath,
-          requests,
-          cfg: params.cfg,
-          runResult: embeddedRunResult,
-          originRunId: params.runId,
-          originTurnId: params.sessionId,
-          abortSignal: params.opts.abortSignal,
-        });
-      }
-    } catch (err) {
-      log.warn(
-        `[attempt-execution] failed to schedule continue_work wake for ${sanitizeForLog(params.sessionKey)}: ${sanitizeForLog(String(err))}`,
-      );
-    }
-  }
-
-  return embeddedRunResult;
-}
-
-export function buildAcpResult(params: {
-  payloadText: string;
-  terminalReply?: AgentRunTerminalReplySnapshot;
-  startedAt: number;
-  stopReason?: string;
-  resultStatus?: Extract<AcpRuntimeEvent, { type: "done" }>["status"];
-  abortSignal?: AbortSignal;
-}) {
-  const normalizedFinalPayload = normalizeReplyPayload({
-    text: params.payloadText,
-  });
-  const payloads = normalizedFinalPayload ? [normalizedFinalPayload] : [];
-  const abortFields = resolveAgentRunAbortLifecycleFields(params.abortSignal);
-  const resultCancelled = params.resultStatus === "cancelled";
-  return {
-    payloads,
-    meta: {
-      durationMs: Date.now() - params.startedAt,
-      aborted: abortFields.aborted ?? resultCancelled,
-      stopReason: abortFields.stopReason ?? (resultCancelled ? "stop" : params.stopReason),
-      ...(params.terminalReply ? { terminalReply: params.terminalReply } : {}),
-    },
-  };
-}
-
-type AcpRunIdentity = Pick<
-  Parameters<typeof emitAgentEvent>[0],
-  "runId" | "sessionKey" | "agentId"
->;
-type AcpLifecycleContext = AcpRunIdentity & {
-  lifecycleGeneration?: string;
-  auditOnly?: boolean;
-  completionSource?: "reply-dispatch";
-};
-
-function acpRunIdentity(params: AcpRunIdentity) {
-  return {
-    runId: params.runId,
-    ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
-    ...(params.agentId ? { agentId: params.agentId } : {}),
-  };
-}
-
-function emitAcpLifecycleEvent(params: AcpLifecycleContext, data: Record<string, unknown>) {
-  const emit = params.auditOnly ? emitAgentAuditEvent : emitAgentEvent;
-  emit({
-    ...acpRunIdentity(params),
-    ...(params.lifecycleGeneration ? { lifecycleGeneration: params.lifecycleGeneration } : {}),
-    stream: "lifecycle",
-    data,
-  });
-}
-
-export function emitAcpLifecycleStart(params: AcpLifecycleContext & { startedAt: number }) {
-  emitAcpLifecycleEvent(params, {
-    phase: "start",
-    ...(params.completionSource ? { completionSource: params.completionSource } : {}),
-    startedAt: params.startedAt,
-  });
-}
-
-const ACP_PROXY_ENV_KEYS = [
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "ALL_PROXY",
-  "http_proxy",
-  "https_proxy",
-  "all_proxy",
-] as const;
-type ActiveAcpTool = AcpRunIdentity & {
-  toolCallId: string;
-  toolName: string;
-  startedAt: number;
-};
-
-export type AcpToolLifecycleTracker = {
-  active: Map<string, ActiveAcpTool>;
-  terminalToolCallIds: Set<string>;
-  saturated: boolean;
-};
-
-const MAX_TRACKED_ACP_TOOLS = 4_096;
-
-export function createAcpToolLifecycleTracker(): AcpToolLifecycleTracker {
-  return {
-    active: new Map(),
-    terminalToolCallIds: new Set(),
-    saturated: false,
-  };
-}
-
-function acpAuditToolName(kind: unknown): string {
-  switch (kind) {
-    case "read":
-    case "edit":
-    case "delete":
-    case "move":
-    case "search":
-    case "execute":
-    case "fetch":
-    case "switch_mode":
-    case "think":
-    case "other":
-      return `acp_${kind}`;
-    default:
-      return "acp_tool";
-  }
-}
-
-function resolveAcpToolTerminalReason(
-  signal: AbortSignal | undefined,
-  stopReason?: string,
-  error?: unknown,
-  resultStatus?: Extract<AcpRuntimeEvent, { type: "done" }>["status"],
-): "failed" | "cancelled" | "timed_out" {
-  const abortFields = resolveAgentRunAbortLifecycleFields(signal);
-  if (abortFields.aborted) {
-    return abortFields.stopReason === "timeout" ? "timed_out" : "cancelled";
-  }
-  const normalizedStopReason = normalizeOptionalLowercaseString(stopReason);
-  if (normalizedStopReason === "timeout") {
-    return "timed_out";
-  }
-  if (resultStatus === "cancelled") {
-    return "cancelled";
-  }
-  if (
-    error instanceof Error &&
-    (error as Error & { detailCode?: unknown }).detailCode === ACP_TURN_TIMEOUT_DETAIL_CODE
-  ) {
-    return "timed_out";
-  }
-  if (
-    normalizedStopReason === "cancel" ||
-    normalizedStopReason === "cancelled" ||
-    normalizedStopReason === "manual-cancel"
-  ) {
-    return "cancelled";
-  }
-  return "failed";
-}
-
-export function resolveAcpLifecycleEndFields(
-  signal: AbortSignal | undefined,
-  stopReason?: string,
-  resultStatus?: Extract<AcpRuntimeEvent, { type: "done" }>["status"],
-) {
-  const abortFields = resolveAgentRunAbortLifecycleFields(signal);
-  if (abortFields.aborted) {
-    return abortFields;
-  }
-  const terminalReason = resolveAcpToolTerminalReason(
-    undefined,
-    stopReason,
-    undefined,
-    resultStatus,
-  );
-  if (terminalReason === "timed_out") {
-    return { aborted: true, stopReason: "timeout", status: "timed_out" } as const;
-  }
-  if (terminalReason === "cancelled") {
-    return { aborted: true, stopReason: "stop", status: "cancelled" } as const;
-  }
-  return {};
-}
-
-function emitAcpToolExecutionEvent(
-  params: AcpRunIdentity & {
-    toolTracker: AcpToolLifecycleTracker;
-    abortSignal?: AbortSignal;
-    event: Extract<AcpRuntimeEvent, { type: "tool_call" }>;
-  },
-): void {
-  const { event } = params;
-  const now = Date.now();
-  const toolCallId = event.toolCallId?.trim() ? event.toolCallId : undefined;
-  const activeTool = toolCallId ? params.toolTracker.active.get(toolCallId) : undefined;
-  const terminalOutcome = resolveAcpToolTerminalOutcome(event.status);
-  const toolName = acpAuditToolName(event.kind);
-  // ACP runtimes may replay terminal updates. Keep the closed identity until the run ends so a
-  // late progress/terminal pair cannot reopen one invocation as a second durable audit action.
-  if (toolCallId && !activeTool) {
-    if (params.toolTracker.terminalToolCallIds.has(toolCallId)) {
-      return;
-    }
-    // Never evict an open identity: once this run reaches its bound, ignore new identities until
-    // lifecycle cleanup releases the complete set. Other runs own independent trackers.
-    const trackedIdentities =
-      params.toolTracker.active.size + params.toolTracker.terminalToolCallIds.size;
-    if (params.toolTracker.saturated || trackedIdentities >= MAX_TRACKED_ACP_TOOLS) {
-      params.toolTracker.saturated = true;
-      return;
-    }
-  }
-  // Without an identity, wait for a terminal event so every observed action closes immediately.
-  // Opening on progress would leave an unmatched audit action if the runtime omits its result.
-  const startsUnidentifiedTool = toolCallId === undefined && terminalOutcome !== undefined;
-  if (!activeTool && (toolCallId !== undefined || startsUnidentifiedTool)) {
-    emitTrustedDiagnosticEvent({
-      type: "tool.execution.started",
-      ...acpRunIdentity(params),
-      ...(toolCallId ? { toolCallId } : {}),
-      toolName,
-      toolSource: "core",
-      toolOwner: "acp",
-    });
-    if (toolCallId) {
-      params.toolTracker.active.set(toolCallId, {
-        ...acpRunIdentity(params),
-        toolCallId,
-        toolName,
-        startedAt: now,
-      });
-    }
-  }
-  if (!terminalOutcome) {
-    return;
-  }
-  const terminalReason = resolveAcpToolTerminalReason(
-    params.abortSignal,
-    undefined,
-    undefined,
-    terminalOutcome === "cancelled" ? "cancelled" : undefined,
-  );
-  const durationMs = Math.max(0, now - (activeTool?.startedAt ?? now));
-  const terminalFields = {
-    ...acpRunIdentity(params),
-    ...(toolCallId ? { toolCallId } : {}),
-    toolName: activeTool?.toolName ?? toolName,
-    toolSource: "core" as const,
-    toolOwner: "acp",
-    durationMs,
-  };
-  emitTrustedDiagnosticEvent(
-    terminalOutcome === "completed"
-      ? { type: "tool.execution.completed", ...terminalFields }
-      : {
-          type: "tool.execution.error",
-          ...terminalFields,
-          errorCategory: terminalReason === "cancelled" ? "aborted" : "acp_tool",
-          terminalReason,
-        },
-  );
-  if (toolCallId) {
-    params.toolTracker.active.delete(toolCallId);
-    params.toolTracker.terminalToolCallIds.add(toolCallId);
-  }
-}
-
-function finalizeAcpToolsForRun(
-  toolTracker: AcpToolLifecycleTracker,
-  runId: string,
-  terminalReason: "failed" | "cancelled" | "timed_out",
-): void {
-  const now = Date.now();
-  for (const activeTool of toolTracker.active.values()) {
-    emitTrustedDiagnosticEvent({
-      type: "tool.execution.error",
-      runId,
-      ...(activeTool.sessionKey ? { sessionKey: activeTool.sessionKey } : {}),
-      ...(activeTool.agentId ? { agentId: activeTool.agentId } : {}),
-      toolName: activeTool.toolName,
-      toolSource: "core",
-      toolOwner: "acp",
-      toolCallId: activeTool.toolCallId,
-      durationMs: Math.max(0, now - activeTool.startedAt),
-      errorCategory: terminalReason === "cancelled" ? "aborted" : "acp_tool_incomplete",
-      terminalReason,
-    });
-  }
-  toolTracker.active.clear();
-  toolTracker.terminalToolCallIds.clear();
-  toolTracker.saturated = false;
-}
-
-function resolvePresentProxyEnvKeys(env: NodeJS.ProcessEnv = process.env): string[] {
-  return ACP_PROXY_ENV_KEYS.filter((key) => Boolean(env[key]?.trim()));
-}
-
-function sanitizeAcpDiagnosticText(value: string): string {
-  return truncateUtf16Safe(redactSensitiveText(value).replace(/\s+/g, " ").trim(), 240);
-}
-
-function acpRuntimeEventDiagnostics(event: AcpRuntimeEvent): Record<string, unknown> {
-  if (event.type === "status" || event.type === "tool_call") {
-    return {
-      eventType: event.type,
-      text: sanitizeAcpDiagnosticText(event.text),
-      ...(event.tag ? { tag: event.tag } : {}),
-      ...(event.type === "tool_call"
-        ? {
-            ...(event.status ? { status: sanitizeAcpDiagnosticText(event.status) } : {}),
-            ...(event.title ? { title: sanitizeAcpDiagnosticText(event.title) } : {}),
-            ...(event.toolCallId
-              ? { toolCallId: sanitizeAcpDiagnosticText(event.toolCallId) }
-              : {}),
-          }
-        : {}),
-    };
-  }
-  if (event.type === "error") {
-    return {
-      eventType: event.type,
-      message: sanitizeAcpDiagnosticText(event.message),
-      ...(event.code ? { code: sanitizeAcpDiagnosticText(event.code) } : {}),
-      ...(typeof event.retryable === "boolean" ? { retryable: event.retryable } : {}),
-    };
-  }
-  if (event.type === "done") {
-    return {
-      eventType: event.type,
-      ...(event.status ? { status: event.status } : {}),
-      ...(event.stopReason ? { stopReason: sanitizeAcpDiagnosticText(event.stopReason) } : {}),
-    };
-  }
-  return {
-    eventType: event.type,
-    stream: event.stream ?? "output",
-  };
-}
-
-export function emitAcpPromptSubmitted(params: { runId: string; sessionKey?: string; at: number }) {
-  emitAgentEvent({
-    runId: params.runId,
-    stream: "acp",
-    ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
-    data: {
-      phase: "prompt_submitted",
-      at: params.at,
-      proxyEnvKeys: resolvePresentProxyEnvKeys(),
-    },
-  });
-}
-
-export function emitAcpRuntimeEvent(
-  params: AcpRunIdentity & {
-    toolTracker: AcpToolLifecycleTracker;
-    event: AcpRuntimeEvent;
-    abortSignal?: AbortSignal;
-    auditOnly?: boolean;
-  },
-) {
-  if (params.event.type === "tool_call") {
-    emitAcpToolExecutionEvent({
-      runId: params.runId,
-      toolTracker: params.toolTracker,
-      ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
-      ...(params.agentId ? { agentId: params.agentId } : {}),
-      ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
-      event: params.event,
-    });
-  }
-  if (!params.auditOnly) {
-    emitAgentEvent({
-      runId: params.runId,
-      stream: "acp",
-      ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
-      ...(params.agentId ? { agentId: params.agentId } : {}),
-      data: {
-        phase: "runtime_event",
-        ...acpRuntimeEventDiagnostics(params.event),
-      },
-    });
-  }
-}
-
-function emitAcpTerminalLifecycle(
-  params: AcpLifecycleContext,
-  terminal: Record<string, unknown> & { phase: "end" | "error"; endedAt: number },
-) {
-  const data = {
-    ...terminal,
-    executionSettled: true,
-    ...(params.completionSource ? { completionSource: params.completionSource } : {}),
-  };
-  emitAcpLifecycleEvent(params, data);
-  return buildAgentRunTerminalOutcomeFromLifecycleEvent({
-    phase: terminal.phase,
-    data,
-    endedAt: terminal.endedAt,
-  });
-}
-
-export function emitAcpLifecycleEnd(
-  params: AcpLifecycleContext & {
-    toolTracker: AcpToolLifecycleTracker;
-    endFields: ReturnType<typeof resolveAcpLifecycleEndFields>;
-    terminalReply?: AgentRunTerminalReplySnapshot;
-  },
-) {
-  finalizeAcpToolsForRun(
-    params.toolTracker,
-    params.runId,
-    params.endFields.stopReason === "timeout"
-      ? "timed_out"
-      : params.endFields.aborted
-        ? "cancelled"
-        : "failed",
-  );
-  return emitAcpTerminalLifecycle(params, {
-    phase: "end",
-    endedAt: Date.now(),
-    ...params.endFields,
-    ...(params.terminalReply ? { terminalReply: params.terminalReply } : {}),
-  });
-}
-
-export function emitAcpLifecycleError(
-  params: AcpLifecycleContext & {
-    toolTracker: AcpToolLifecycleTracker;
-    error: unknown;
-    abortSignal?: AbortSignal;
-    terminalOutcome?: "blocked";
-  },
-) {
-  const terminalReason = resolveAcpToolTerminalReason(params.abortSignal, undefined, params.error);
-  finalizeAcpToolsForRun(params.toolTracker, params.runId, terminalReason);
-  const lifecycleFields =
-    params.terminalOutcome === "blocked"
-      ? ({ livenessState: "blocked" } as const)
-      : terminalReason === "timed_out"
-        ? ({ aborted: true, stopReason: "timeout", status: "timed_out" } as const)
-        : resolveAgentRunAbortLifecycleFields(params.abortSignal);
-  return emitAcpTerminalLifecycle(params, {
-    phase: "error",
-    ...(!params.auditOnly ? { error: formatAcpErrorChain(params.error) } : {}),
-    endedAt: Date.now(),
-    ...lifecycleFields,
-  });
-}
-
-export function emitAcpAssistantDelta(params: { runId: string; text: string; delta: string }) {
-  emitAgentEvent({
-    runId: params.runId,
-    stream: "assistant",
-    data: {
-      text: params.text,
-      delta: params.delta,
-    },
-  });
+  return continuation.run(() => runEmbeddedAgent(embeddedRunParams));
 }
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

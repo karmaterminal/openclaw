@@ -109,6 +109,8 @@ export type OpenClawCodingToolsOptions = {
   };
   /** True when runtimeToolAllowlist is real parent authority that child sessions inherit. */
   inheritRuntimeToolAllowlist?: boolean;
+  /** Plugin-owned optional tools granted to this run (e.g. subagent toolsAlsoAllow). */
+  runtimePluginToolGrant?: import("../plugins/runtime/tool-grant.js").RuntimePluginToolGrant;
   /** Mutable spawn capability snapshot refreshed after late-bound runtime tools are authorized. */
   inheritedToolAllowlistRef?: string[];
   /** Mutable cron creator cap ref for callers that append final runtime tools later. */
@@ -168,3 +170,21 @@ export type OpenClawCodingToolsOptions = {
   AgentRunClientContext &
   AgentRunMessageContext &
   AgentRunChannelContext;
+
+/**
+ * Adds the continuation tool options forwarded to createOpenClawTools.
+ * Memory-flush runs cannot schedule post-turn continuation work.
+ */
+export function withContinuationOpts<T extends object>(
+  options: OpenClawCodingToolsOptions | undefined,
+  base: T,
+) {
+  return {
+    ...base,
+    drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
+    disableContinuationTools:
+      options?.disableContinuationTools === true || options?.trigger === "memory",
+    continueWorkOpts: options?.continueWorkOpts,
+    requestCompactionOpts: options?.requestCompactionOpts,
+  };
+}

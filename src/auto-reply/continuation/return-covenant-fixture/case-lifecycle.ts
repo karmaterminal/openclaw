@@ -24,17 +24,15 @@ import {
 } from "../../../infra/session-delivery-queue-storage.js";
 import { peekSystemEventEntries, removeSystemEvents } from "../../../infra/system-events.js";
 import { buildPersistedUserTurnMessage } from "../../../sessions/user-turn-transcript.message.js";
-import {
-  closeOpenClawAgentDatabasesForTestAsync,
-  runOpenClawAgentWriteTransaction,
-} from "../../../state/openclaw-agent-db.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../../state/openclaw-agent-db-lifecycle.js";
+import { runOpenClawAgentWriteTransaction } from "../../../state/openclaw-agent-db.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import {
   resolveFinalSystemEventAdoption,
   settleManagedSystemEventsAfterTurnAdoption,
 } from "../../reply/session-system-event-adoption.js";
 import { prepareFormattedSystemEvents } from "../../reply/session-system-events.js";
-import { delegateFlowRecords } from "../delegate-flow-store.js";
+import { getDelegateRecord, listLiveDelegateRecords } from "../delegate-flow-store.js";
 import { cancelPendingDelegates } from "../delegate-store.js";
 import {
   acceptPostCompactionReturnCovenantCase,
@@ -151,7 +149,7 @@ export async function transitionReturnCovenantCase(params: {
       const queueStillHeld =
         state.deliveryId &&
         (await loadPendingSessionDelivery(state.deliveryId, stateDirectory(context)));
-      if (!queueStillHeld || !delegateFlowRecords.get(state.delegate?.flowId ?? "")) {
+      if (!queueStillHeld || !(await getDelegateRecord(state.delegate?.flowId ?? ""))) {
         throw new Error("gateway restart did not preserve accepted delegate state");
       }
       restart = restartReceipt({ attestation, context, lineage: restartLineage });
@@ -207,7 +205,16 @@ export async function transitionReturnCovenantCase(params: {
       }
       break;
     case "forbidden-member-access-removal":
-      if (!removeSessionMember(returnCovenantCaseScope(state, context), "return-covenant-member")) {
+      // session-sharing-store re-exports the worker-backed
+      // removeSessionMemberInWorker, which returns a Promise. Without the await
+      // the negation is always false, so this guard could never throw and the
+      // fixture continued before the removal committed.
+      if (
+        !(await removeSessionMember(
+          returnCovenantCaseScope(state, context),
+          "return-covenant-member",
+        ))
+      ) {
         throw new Error("return-covenant member removal did not commit");
       }
       break;
@@ -372,9 +379,15 @@ export async function observeReturnCovenantCase(params: {
     promptText,
   });
   if (allowed) {
+    // Record the adopted delivery ids on the persisted turn exactly as the
+    // production turn (get-reply-run-execute) does; adoption settlement only
+    // acknowledges deliveries this durable receipt names (c38c5a04d2).
     const message = buildPersistedUserTurnMessage({
       text: promptText,
       timestamp: context.clock.wallNow(),
+      ...(adoption.managedDeliveries.size > 0
+        ? { sessionDeliveryAckIds: [...adoption.managedDeliveries.keys()] }
+        : {}),
     });
     await appendTranscriptMessage(
       {
@@ -413,6 +426,10 @@ export async function observeReturnCovenantCase(params: {
     systemEvents,
     transcript,
   });
+  // Report the durable queue record's real state rather than asserting it.
+  const retainedQueueRecord = state.deliveryId
+    ? await loadPendingSessionDelivery(state.deliveryId, stateDirectory(context))
+    : undefined;
   const current = currentAuthority(state, context);
   const captured = state.acceptance?.capturedAuthorityGeneration;
   const admission = allowed
@@ -464,9 +481,9 @@ export async function observeReturnCovenantCase(params: {
       queue: {
         recordId: state.deliveryId,
         status: allowed ? "adopted" : `${admission}-acknowledged`,
-        acknowledged: true,
-        removed: true,
-        retryScheduled: false,
+        acknowledged: !retainedQueueRecord,
+        removed: !retainedQueueRecord,
+        retryScheduled: (retainedQueueRecord?.retryCount ?? 0) > 0,
       },
     },
     effects: {
@@ -525,7 +542,7 @@ export async function cleanupReturnCovenantCase(params: {
 }): Promise<void> {
   const { context, state } = params;
   removeSystemEvents(state.casePlan.logicalSessionKey, () => true);
-  cancelPendingDelegates(state.casePlan.logicalSessionKey);
+  await cancelPendingDelegates(state.casePlan.logicalSessionKey);
   if (state.childSessionKey) {
     await deleteSessionEntryLifecycle({
       agentId: "proof",
@@ -573,13 +590,9 @@ export async function retainedReturnCovenantResources(params: {
 }> {
   const { context } = params;
   const runSessionPrefix = `agent:proof:${context.plan.runId}:`;
-  const delegates = delegateFlowRecords
-    .listAll()
-    .filter(
-      (flow) =>
-        flow.ownerKey.startsWith(runSessionPrefix) &&
-        (flow.status === "queued" || flow.status === "running"),
-    ).length;
+  const delegates = (await listLiveDelegateRecords()).filter((record) =>
+    record.ownerSessionKey.startsWith(runSessionPrefix),
+  ).length;
   const queueItems = (await loadPendingSessionDeliveries(stateDirectory(context))).length;
   const temporarySessions = context.profiles.countTemporarySessions(runSessionPrefix);
   return { delegates, queueItems, temporarySessions };

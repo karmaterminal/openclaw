@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { describe, expect, it, vi } from "vitest";
 import { resetGatewayWorkAdmission } from "../../../process/gateway-work-admission.js";
 import { AsyncWorkScope } from "../../../shared/async-work-scope.js";
@@ -33,7 +32,8 @@ vi.mock("./subagent-registry-lifecycle-delivery.js", () => ({
 }));
 vi.mock("../completion/subagent-completion-admission.store.js", () => ({
   blockSubagentCompletionDelivery: vi.fn(),
-  settleRequesterCompletionBatch: vi.fn(),
+  // Upstream 10e951e857 reads the settlement's publication receipt.
+  settleRequesterCompletionBatch: vi.fn(async () => ({ applied: true, publication: "published" })),
 }));
 vi.mock("../../agent-bundle-mcp-tools.js", () => ({
   retireSessionMcpRuntimeForSessionKey: vi.fn(),
@@ -60,7 +60,7 @@ type Harness = {
   readonly origin: AsyncWorkScope;
 };
 
-function buildHarness(taskLookup: "available" | "unavailable", wakeFailure: Error): Harness {
+function buildHarness(wakeFailure: Error): Harness {
   const entry: SubagentRunRecord = {
     runId: "rejection-run",
     childSessionKey: "agent:main:subagent:rejection-child",
@@ -93,11 +93,13 @@ function buildHarness(taskLookup: "available" | "unavailable", wakeFailure: Erro
     getRuntimeConfig: () => ({}),
     persist: vi.fn(),
     persistOrThrow: (...runIds: string[]) => persisted.push(runIds),
+    persistAsyncOrThrow: async (_context, _publication, ...runIds) => {
+      persisted.push(runIds);
+    },
     clearPendingLifecycleError: vi.fn(),
-    countPendingDescendantRuns: () => 0,
+    countPendingDescendantRuns: async () => 0,
     getLatestRunForChildSession: () => null,
     suppressAnnounceForSteerRestart: () => false,
-    resolveSubagentTask: () => ({ lookup: taskLookup }),
     shouldEmitEndedHookForRun: () => false,
     emitSubagentEndedHookForRun: unexpected,
     emitSubagentProgressEndedForRun: unexpected,
@@ -119,31 +121,17 @@ function warnedMessages(warn: ReturnType<typeof vi.fn>): string[] {
 }
 
 // karmaterminal/openclaw#1363. A requester settle wake that fails must be able to
-// record its own rejection. It records that rejection through
-// completeRequesterSettleWakeBatch with an outcome, which resolves the owning
-// detached task FIRST and throws "subagent completion owner unavailable before
-// settlement" when the lookup is not available. A task that has gone away does
-// not come back, so that write throws on every later attempt and the row is never
-// given a terminal state: it stays armed and re-fires for the life of the process.
-//
-// Observed on the silas seat as an exact 1:1 pair of "requester settle wake failed"
-// and "failed to persist requester settle wake rejection" at a rigid 60s cadence
-// (360 of each over three hours). The rigid 60s is itself the proof that
-// deferWakeCommit's 30s/60s/120s backoff is NOT driving the loop, so
-// pending.failures never accumulates across cycles and a ceiling on it could
-// never fire.
-//
-// BELLED ROPE: the second case below pins the CURRENT DEFECTIVE behavior. If you
-// are fixing #1363, it SHOULD fail — change it deliberately, and keep the first
-// case, which is the contract that must survive any fix.
+// record its own rejection through completeRequesterSettleWakeBatch with an
+// outcome. The seat defect (the rejection write resolving the owning detached task
+// first and throwing "subagent completion owner unavailable before settlement"
+// forever once that task was gone) was a Tasks-runtime owner lookup; upstream's
+// Tasks/TaskFlow removal (6652f7eac8) deleted that lookup, so only the surviving
+// contract is pinned here.
 describe("requester settle wake rejection write", () => {
   it("records the rejection through settlement when the completion owner is available", async () => {
     vi.clearAllMocks();
     resetGatewayWorkAdmission();
-    const { controller, entry, warn, origin } = buildHarness(
-      "available",
-      new Error("wake transport refused"),
-    );
+    const { controller, entry, warn, origin } = buildHarness(new Error("wake transport refused"));
     try {
       origin.run(() => controller.resumeRequesterSettleWake(entry.runId, entry));
       await vi.waitFor(() => {
@@ -160,37 +148,6 @@ describe("requester settle wake rejection write", () => {
       const settled = vi.mocked(settleRequesterCompletionBatch).mock.calls[0]?.[0];
       expect(settled?.outcome).toMatchObject({ delivered: false, path: "none" });
       expect(settled?.entries.map((member) => member.subagent.runId)).toEqual(["rejection-run"]);
-    } finally {
-      controller.clearScheduledResumeTimers();
-      await origin.drain();
-      resetGatewayWorkAdmission();
-    }
-  });
-
-  it("cannot record the rejection and leaves the row armed when the completion owner is gone", async () => {
-    vi.clearAllMocks();
-    resetGatewayWorkAdmission();
-    const { controller, entry, warn, persisted, origin } = buildHarness(
-      "unavailable",
-      new Error("wake transport refused"),
-    );
-    try {
-      origin.run(() => controller.resumeRequesterSettleWake(entry.runId, entry));
-      await vi.waitFor(() => {
-        expect(warnedMessages(warn)).toContain("failed to persist requester settle wake rejection");
-      });
-      const messages = warnedMessages(warn);
-      // The exact 1:1 pair seen on the seat: the second line is the caller
-      // observing commitRequesterWake's intentional rethrow, not a second fault.
-      expect(messages.filter((m) => m === "requester settle wake failed")).toHaveLength(1);
-      expect(
-        messages.filter((m) => m === "failed to persist requester settle wake rejection"),
-      ).toHaveLength(1);
-      // The throw happens while resolving the owner, BEFORE any durable write.
-      expect(persisted).toEqual([]);
-      // No terminal state was reached, so the row remains eligible to re-fire.
-      expect(entry.requesterSettleWake).toBeDefined();
-      expect(entry.requesterSettleWake?.rearmGeneration).toBe(1);
     } finally {
       controller.clearScheduledResumeTimers();
       await origin.drain();

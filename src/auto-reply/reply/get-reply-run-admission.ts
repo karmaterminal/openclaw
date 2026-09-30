@@ -41,9 +41,9 @@ import {
   resolvePreparedReplyQueueState,
 } from "./get-reply-run-queue.js";
 import { buildReplyPromptEnvelope } from "./prompt-prelude.js";
-import { resolveActiveRunQueueAction, resolveReplyQueueAdmissionState } from "./queue-policy.js";
+import { resolveActiveRunQueueAction } from "./queue-policy.js";
 import { resolveQueueSettings } from "./queue/settings-runtime.js";
-import { getExistingFollowupQueue } from "./queue/state.js";
+import { hasPendingFollowupQueueWork } from "./queue/state.js";
 import {
   REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS,
   interruptReplyRunTarget,
@@ -442,7 +442,7 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
         sessionKey: context.runtimePolicySessionKey,
       });
   const resolveRuntimeAuthProfile = async () => {
-    if (useFastReplyRuntime && !params.configuredProfileId) {
+    if (useFastReplyRuntime && !params.configuredProfileId && !modelState.operatorModelOverride) {
       return {
         authProfileId: preparedSessionState.sessionEntry?.authProfileOverride,
         authProfileIdSource: resolveCollapsedSessionAuthPinSource(
@@ -451,7 +451,9 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
       };
     }
     const shouldUseEphemeralSession =
-      params.autoFallbackPrimaryProbe !== undefined || params.configuredProfileId !== undefined;
+      params.autoFallbackPrimaryProbe !== undefined ||
+      params.configuredProfileId !== undefined ||
+      modelState.operatorModelOverride === true;
     const authSessionKey = shouldUseEphemeralSession ? (sessionKey ?? sessionIdFinal) : sessionKey;
     const authSessionEntry =
       shouldUseEphemeralSession && preparedSessionState.sessionEntry
@@ -546,6 +548,7 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
   };
   if (commandTurnContinuationTargetKey && providedReplyOperation) {
     const adoption = await admitReplyTurn({
+      providerReviewAcknowledgment: opts?.providerReviewAcknowledgment,
       agentId,
       sessionKey: commandTurnContinuationTargetKey,
       sessionId: providedReplyOperation.sessionId,
@@ -579,15 +582,10 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
     activeRunQueueMode === "interrupt" && sessionKey
       ? replyRunRegistry.resolveCurrentInterruptTarget(sessionKey)
       : undefined;
-  const pendingQueue = getExistingFollowupQueue(queueKey);
-  const queueAdmissionState = resolveReplyQueueAdmissionState(
-    pendingQueue,
-    replyRunRegistry.get(queueKey),
-  );
+  const hasQueuedFollowups = hasPendingFollowupQueueWork([queueKey]);
   const activeRunAcceptsCurrentThread = resolveActiveRunAcceptsCurrentThread({ isActive });
   const shouldSteer =
     !isRoomEvent &&
-    queueAdmissionState !== "ready" &&
     activeRunAcceptsCurrentThread &&
     !context.isHeartbeat &&
     !effectiveResetTriggered &&
@@ -603,11 +601,10 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
           resolvedQueue.mode === "followup" ||
           resolvedQueue.mode === "collect")));
   const activeRunQueueAction = resolveActiveRunQueueAction({
-    queueAdmissionState,
+    hasQueuedFollowups,
     isActive,
     isHeartbeat: context.isHeartbeat,
     shouldFollowup,
-    queueMode: activeRunQueueMode,
     resetTriggered: effectiveResetTriggered,
   });
   if (isActive && activeRunQueueAction === "run-now") {
@@ -615,8 +612,6 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
       activeRunQueueAction,
       activeSessionId: activeSessionId ?? resolveActiveQueueSessionId(),
       queueMode: activeRunQueueMode,
-      sessionKey,
-      sessionId: sessionIdFinal,
       interruptActiveRun: async () => {
         if (activeRunInterruptTarget) {
           return (
@@ -645,7 +640,6 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
         preparedSessionState = resolvePreparedSessionState();
         // The interrupted run may have changed goal or suggestion state while admission waited.
         await refreshInboundContextAfterAdmissionWait();
-        sessionEntry = context.getSessionEntry();
         promptBodies = await traceRunPhase("reply.build_prompt_bodies", () =>
           rebuildPromptBodies(),
         );
@@ -683,7 +677,6 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
     resolvedThinkLevel,
     thinkLevelOverride,
     thinkingCatalog,
-    sessionEntry,
     skillsSnapshot,
     prefixedCommandBody,
     queuedBody,
@@ -705,7 +698,7 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
     queueKey,
     shouldSteer,
     shouldFollowup,
-    queueAdmissionState,
+    hasQueuedFollowups,
     isActive,
     authProfileId,
     authProfileIdSource,

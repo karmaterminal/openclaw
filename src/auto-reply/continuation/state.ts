@@ -22,11 +22,11 @@ const continuationTimerHandles = new Map<string, Set<ContinuationTimerHandle>>()
 // continuation state should be kept alive).
 const continuationTimerRefs = new Map<string, number>();
 // ---------------------------------------------------------------------------
-// Delegate-pending queries — derived from TaskFlow, not a separate Map
+// Delegate-pending queries — derived from continuation custody, not a separate Map
 //
 // The old branch had a volatile delegatePendingFlags Map that duplicated
-// information already in TaskFlow via pendingDelegateCount. Removed:
-// the source of truth is the TaskFlow registry.
+// information already in custody via pendingDelegateCount. Removed: the source
+// of truth is the continuation custody store, read through its projection.
 // ---------------------------------------------------------------------------
 
 export function hasDelegatePending(sessionKey: string): boolean {
@@ -202,5 +202,5 @@ export function persistContinuationChainState(params: {
 export function resetContinuationStateForTests(): void {
   continuationTimerHandles.clear();
   continuationTimerRefs.clear();
-  // delegatePendingFlags removed — derived from TaskFlow.
+  // delegatePendingFlags removed — derived from continuation custody.
 }

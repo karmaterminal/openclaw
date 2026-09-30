@@ -7,6 +7,7 @@ import type {
 
 export type {
   SessionDeliveryContext,
+  SessionDeliveryRequesterBinding,
   SessionDeliveryRoute,
   SessionDeliverySettledOutcome,
 } from "./session-delivery-queue-codec.js";

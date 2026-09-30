@@ -39,7 +39,13 @@ export function createContext(
       pendingToolAudioAsVoice: false,
       deferredBlockReplies: [],
       replayState: { replayInvalid: false, hadPotentialSideEffects: false },
-      blockState: {
+      // Upstream's lifecycle handler now reads these on terminal events; mirror
+      // lifecycle.test-helpers.ts so our deferred-reply cases build a valid state.
+      toolMetas: [],
+      itemActiveIds: new Set(),
+      itemStartedCount: 0,
+      itemCompletedCount: 0,
+      partialBlockState: {
         thinking: true,
         final: true,
         inlineCode: createInlineCodeState(),

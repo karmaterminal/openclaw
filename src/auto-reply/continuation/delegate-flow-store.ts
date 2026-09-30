@@ -1,222 +1,57 @@
-import { z } from "zod";
+/**
+ * Continuation delegate custody records (RFC docs/design/continue-work-signal-v2.md
+ * §5.4.2). Pending (`delegate`) and post-compaction (`post_compaction`) delegates
+ * live in the continuation custody store; this module is their codec and their
+ * record-level reads and writes. A record's ID is the delegate's `flowId`: the
+ * Doctor import keeps `record_id = flow_id` (§5.4.5), and every durable key that
+ * names a delegate (queue `sourceFlowId`, artifact policies, derived child keys)
+ * still spells it that way.
+ */
+import crypto from "node:crypto";
 import { validateSubagentAttachments } from "../../agents/subagents/spawn/subagent-attachments.js";
 import { getRuntimeConfig } from "../../config/config.js";
-import { ContinuationRecipientAuthorityBindingSchema } from "../../config/sessions/session-recipient-authority-types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import {
-  DIAGNOSTIC_TRACEPARENT_PATTERN,
-  normalizeDiagnosticTraceparent,
-} from "../../infra/diagnostic-trace-context.js";
 import { registerDiagnosticContinuationQueueMetricsProvider } from "../../logging/diagnostic-continuation-queues.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { assertContinuationCustodyOwnerImported } from "./custody-import-gate.js";
+import { isOwnerAwaitingContinuationCustodyImport } from "./custody/custody-import-gate-state.js";
+import { loadContinuationCustodyPayload } from "./custody/custody-payload-store.js";
 import {
-  parseInlineAttachmentMountPath,
-  validateInlineAttachmentSnapshots,
-  type InlineAttachment,
-} from "../../shared/inline-attachments.js";
+  readContinuationCustodySnapshot,
+  readContinuationLiveWork,
+} from "./custody/custody-projection.js";
 import {
-  CONTINUATION_DELEGATE_CONTROLLER_ID,
-  CONTINUATION_POST_COMPACTION_CONTROLLER_ID,
-  hasStoredDelegateAttachmentState,
-  isContinuationDelegateFlow,
-  scrubStoredDelegateAttachmentState,
-} from "../../tasks/task-flow-continuation-state.js";
-import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
-import {
-  createManagedTaskFlow,
-  deleteTaskFlowRecordById,
-  failFlow,
-  finishFlow,
-  getTaskFlowById,
-  listTaskFlowRecords,
-  listTaskFlowsForOwnerKey,
-  updateFlowRecordByIdExpectedRevision,
-} from "../../tasks/task-flow-runtime-internal.js";
-import {
-  projectDelegateFlow,
-  releaseDelegateAttachmentPayload,
-  resetDelegateAttachmentPayloadsForTests,
-  storeDelegateAttachmentPayload,
-} from "./delegate-attachment-payload-store.js";
+  createContinuationRecord,
+  deleteContinuationRecord,
+  listContinuationRecords,
+  newContinuationRecordId,
+  readContinuationOwnerInventory,
+  resolveContinuationCustodyDatabasePath,
+  updateContinuationRecords,
+  whenContinuationCustodyReady,
+} from "./custody/custody-store.js";
+import type {
+  ContinuationRecord,
+  ContinuationRecordKind,
+  ContinuationRecordPatch,
+  ContinuationRecordStatus,
+  ContinuationUpdateResult,
+} from "./custody/custody-store.types.js";
 import * as delegateFlowDiagnostics from "./delegate-flow-diagnostics.js";
-import { createContinuationRecipientAuthorityBinding } from "./recipient-authority-binding.js";
 import {
-  CONTINUATION_DELEGATE_FANOUT_MODES,
-  normalizeContinuationTargetKey,
-  normalizeContinuationTargetKeys,
-} from "./targeting.js";
+  decodeDelegateStateJson,
+  encodeDelegateState,
+  type PendingDelegateState,
+} from "./delegate-flow-state.js";
+import { createContinuationRecipientAuthorityBinding } from "./recipient-authority-binding.js";
 import type { ChainState, PendingContinuationDelegate } from "./types.js";
 
 const log = createSubsystemLogger("continuation/delegate-store");
 
-type DecodedDelegateFlow = PendingContinuationDelegate | undefined;
-
-export { CONTINUATION_DELEGATE_CONTROLLER_ID, CONTINUATION_POST_COMPACTION_CONTROLLER_ID };
-
-const TraceparentStateSchema = z
-  .preprocess(
-    (value) => (value === null ? undefined : value),
-    z
-      .string()
-      .regex(new RegExp(DIAGNOSTIC_TRACEPARENT_PATTERN))
-      .refine((value) => normalizeDiagnosticTraceparent(value) !== undefined, {
-        message: "invalid W3C traceparent",
-      })
-      .transform((value) => normalizeDiagnosticTraceparent(value)!)
-      .optional(),
-  )
-  .optional();
-
-const InlineAttachmentStateSchema = z
-  .object({
-    name: z.string(),
-    content: z.string(),
-    encoding: z.enum(["utf8", "base64"]).optional(),
-    mimeType: z.string().optional(),
-  })
-  .strict();
-
-function parseDelegateAttachmentMountPath(
-  value: unknown,
-  options: { requireCanonicalInput?: boolean } = {},
-) {
-  const parsed = parseInlineAttachmentMountPath(value);
-  if (parsed.status !== "valid") {
-    if (
-      parsed.status === "absent" &&
-      options.requireCanonicalInput === true &&
-      value !== undefined &&
-      value !== null
-    ) {
-      return { status: "invalid" } as const;
-    }
-    return parsed;
-  }
-  if (
-    (options.requireCanonicalInput === true && value !== parsed.mountPath) ||
-    parsed.mountPath.startsWith("/") ||
-    parsed.mountPath.endsWith("/") ||
-    parsed.mountPath.includes("//") ||
-    !/^[A-Za-z0-9._\-/]+$/.test(parsed.mountPath) ||
-    parsed.mountPath.split("/").some((segment) => segment === "." || segment === "..")
-  ) {
-    return { status: "invalid" } as const;
-  }
-  return parsed;
-}
-
-const InlineAttachmentMountStateSchema = z
-  .object({
-    mountPath: z.string().optional(),
-  })
-  .strict()
-  .transform((mount, ctx) => {
-    const parsed = parseDelegateAttachmentMountPath(mount.mountPath, {
-      requireCanonicalInput: true,
-    });
-    if (parsed.status === "invalid") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "attachAs.mountPath is unsafe or noncanonical",
-      });
-      return z.NEVER;
-    }
-    return parsed.status === "valid" ? { mountPath: parsed.mountPath } : undefined;
-  });
-
-const PendingDelegateStateSchema = z
-  .object({
-    kind: z.literal("continuation_delegate"),
-    task: z.string().min(1),
-    delayMs: z.number().int().nonnegative().optional(),
-    silent: z.boolean().optional(),
-    silentWake: z.boolean().optional(),
-    postCompaction: z.boolean().optional(),
-    firstArmedAt: z.number().int().nonnegative().optional(),
-    attachments: z
-      .array(InlineAttachmentStateSchema)
-      .max(50)
-      .transform((attachments) => (attachments.length > 0 ? attachments : undefined))
-      .optional(),
-    attachmentCount: z.number().int().positive().max(50).optional(),
-    attachAs: InlineAttachmentMountStateSchema.optional(),
-    targetSessionKey: z.string().min(1).optional(),
-    targetSessionKeys: z.array(z.string().min(1)).optional(),
-    fanoutMode: z.enum(CONTINUATION_DELEGATE_FANOUT_MODES).optional(),
-    recipientAuthorityBinding: ContinuationRecipientAuthorityBindingSchema.optional(),
-    returnOptions: z
-      .object({
-        artifacts: z.enum(["forbidden", "optional", "required"]).optional(),
-      })
-      .strict()
-      .optional(),
-    recipientContext: z
-      .object({
-        purpose: z.string().trim().min(1).max(1024),
-      })
-      .strict()
-      .optional(),
-    traceparent: TraceparentStateSchema,
-    traceparentProvenance: z.literal("internal").optional(),
-    model: z.string().min(1).optional(),
-    releasedAt: z.number().int().nonnegative().optional(),
-    childSessionKey: z.string().min(1).optional(),
-    chainTokensFold: z.number().int().nonnegative().optional(),
-    persistedChainState: z
-      .object({
-        currentChainCount: z.number().int().nonnegative(),
-        chainStartedAt: z.number().int().nonnegative(),
-        accumulatedChainTokens: z.number().int().nonnegative(),
-        chainId: z.string().min(1).optional(),
-      })
-      .optional(),
-    persistedChainStateKind: z.enum(["advanced", "terminal"]).optional(),
-    inheritedSilent: z.boolean().optional(),
-    inheritedWake: z.boolean().optional(),
-    originRunId: z.string().min(1).optional(),
-    // Pre-cure rows may contain these overrides. Decode accepts but never projects
-    // them, so restart rebinds the spawn to authoritative TaskFlow ownerKey.
-    spawnRequesterSessionKey: z.string().min(1).optional(),
-    spawnRequesterChannel: z.string().min(1).optional(),
-    spawnRequesterAccountId: z.string().min(1).optional(),
-    spawnRequesterTo: z.string().min(1).optional(),
-    spawnRequesterThreadId: z.union([z.string().min(1), z.number()]).optional(),
-    awaitingNextCompaction: z.boolean().optional(),
-  })
-  .strict()
-  .superRefine((state, ctx) => {
-    const hasSilent = state.silent === true;
-    const hasSilentWake = state.silentWake === true;
-    const hasPostCompaction = state.postCompaction === true;
-    const flagCount = [hasSilent, hasSilentWake, hasPostCompaction].filter(Boolean).length;
-    if (
-      state.fanoutMode &&
-      (state.targetSessionKey || (state.targetSessionKeys && state.targetSessionKeys.length > 0))
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "continuation delegate payload cannot combine explicit targets with fanoutMode",
-      });
-      return;
-    }
-    if (validateInlineAttachmentSnapshots({ attachments: state.attachments })) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["attachments"],
-        message: "invalid inline attachment snapshot",
-      });
-      return;
-    }
-    if (flagCount <= 1 || (hasSilent && hasSilentWake && !hasPostCompaction)) {
-      return;
-    }
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "continuation delegate payload has incompatible mode flags",
-    });
-  });
-
-type PendingDelegateState = z.infer<typeof PendingDelegateStateSchema>;
+/** A pending or post-compaction delegate record. */
+export type DelegateCustodyRecord = ContinuationRecord & {
+  kind: Extract<ContinuationRecordKind, "delegate" | "post_compaction">;
+};
 
 export type PendingDelegateCutoffOptions = {
   includeRunning?: boolean;
@@ -232,7 +67,7 @@ type ContinuationDelegateQueueDepths = {
   totalQueued: number;
 };
 
-type DelegateStateChanges = {
+export type DelegateStateChanges = {
   releasedAt?: number | null;
   childSessionKey?: string | null;
   chainTokensFold?: number | null;
@@ -243,101 +78,196 @@ type DelegateStateChanges = {
   awaitingNextCompaction?: true | null;
 };
 
-function delegateGoal(delegate: PendingContinuationDelegate): string {
-  const task = delegate.task.trim();
-  const isPostCompaction = delegate.mode === "post-compaction";
-  if (!task) {
-    return isPostCompaction ? "Post-compaction continuation delegate" : "Continuation delegate";
-  }
-  const excerpt = task.length > 80 ? `${task.slice(0, 77)}...` : task;
-  return isPostCompaction
-    ? `Post-compaction delegate: ${excerpt}`
-    : `Continuation delegate: ${excerpt}`;
+const DELEGATE_KINDS = ["delegate", "post_compaction"] as const;
+const LIVE_STATUSES = ["queued", "running"] as const satisfies readonly ContinuationRecordStatus[];
+
+function isContinuationDelegateRecord(record: ContinuationRecord): record is DelegateCustodyRecord {
+  return record.kind === "delegate" || record.kind === "post_compaction";
 }
 
-function canonicalizeDelegateAttachments(
-  config: OpenClawConfig,
-  attachments: InlineAttachment[] | undefined,
-): InlineAttachment[] | undefined {
-  if (!attachments || attachments.length === 0) {
+export function isPendingDelegateFlow(record: ContinuationRecord): boolean {
+  return record.kind === "delegate";
+}
+
+export function isPostCompactionDelegateFlow(record: ContinuationRecord): boolean {
+  return record.kind === "post_compaction";
+}
+
+export function isTerminalDelegateFlow(record: ContinuationRecord): boolean {
+  return (
+    isContinuationDelegateRecord(record) &&
+    (record.status === "succeeded" || record.status === "failed" || record.status === "cancelled")
+  );
+}
+
+/** True while a post-compaction record sits handed off to the session queue (§4.4). */
+export function isDurablyHandedOffPostCompactionFlow(
+  record: ContinuationRecord | undefined,
+): boolean {
+  return (
+    record !== undefined &&
+    isPostCompactionDelegateFlow(record) &&
+    record.status === "succeeded" &&
+    record.handoff?.target === "session_delivery_queue"
+  );
+}
+
+export function isRecoverableContinuationDelegateFlow(record: ContinuationRecord): boolean {
+  return (
+    isContinuationDelegateRecord(record) &&
+    record.cancelRequestedAt === undefined &&
+    (record.status === "queued" || record.status === "running")
+  );
+}
+
+export function isRecoverablePendingFlowWithinCutoffs(
+  record: ContinuationRecord,
+  options: PendingDelegateCutoffOptions = {},
+): boolean {
+  if (!isPendingDelegateFlow(record) || record.cancelRequestedAt !== undefined) {
+    return false;
+  }
+  if (record.status === "queued") {
+    return (
+      options.queuedCreatedAtOrBefore === undefined ||
+      record.createdAt <= options.queuedCreatedAtOrBefore
+    );
+  }
+  if (record.status !== "running" || options.includeRunning !== true) {
+    return false;
+  }
+  return (
+    options.includeRunningUpdatedAtOrBefore === undefined ||
+    record.updatedAt <= options.includeRunningUpdatedAtOrBefore
+  );
+}
+
+export function decodeDelegateState(record: ContinuationRecord): PendingDelegateState | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(record.stateJson);
+  } catch {
     return undefined;
   }
-  const canonical = attachments.map((attachment) => ({
-    name: attachment.name.trim(),
-    content: attachment.content,
-    ...(attachment.encoding ? { encoding: attachment.encoding } : {}),
-    ...(attachment.mimeType !== undefined ? { mimeType: attachment.mimeType.trim() } : {}),
-  }));
-  const error = validateSubagentAttachments({
-    config,
-    attachments: canonical,
-    redactContinuationErrorDetails: true,
-  });
-  if (error) {
-    throw new Error(error);
-  }
-  return canonical;
+  return decodeDelegateStateJson(parsed);
 }
 
-function encodeDelegateState(
-  delegate: PendingContinuationDelegate,
-  attachmentConfig: OpenClawConfig = getRuntimeConfig(),
-): PendingDelegateState {
-  // Durable TaskFlow writers are also called outside the tool surface. Apply
-  // the exact sessions_spawn attachment policy before any stateJson write.
-  const attachments = canonicalizeDelegateAttachments(attachmentConfig, delegate.attachments);
-  const targetSessionKey = normalizeContinuationTargetKey(delegate.targetSessionKey);
-  const targetSessionKeys = normalizeContinuationTargetKeys(delegate.targetSessionKeys);
-  const traceparent = normalizeDiagnosticTraceparent(delegate.traceparent);
-  const rawAttachAs = delegate.attachAs;
-  if (
-    rawAttachAs !== undefined &&
-    (!rawAttachAs || typeof rawAttachAs !== "object" || Array.isArray(rawAttachAs))
-  ) {
-    throw new Error("invalid continuation delegate attachment mount path");
-  }
-  const parsedMountPath = parseDelegateAttachmentMountPath(rawAttachAs?.mountPath);
-  if (parsedMountPath.status === "invalid") {
-    throw new Error("invalid continuation delegate attachment mount path");
-  }
+function projectDelegate(
+  record: ContinuationRecord,
+  state: PendingDelegateState,
+  payload: { attachments?: PendingContinuationDelegate["attachments"]; attachAs?: unknown },
+): PendingContinuationDelegate {
+  const attachments = payload.attachments ?? state.attachments;
   const attachAs =
-    attachments?.length && parsedMountPath.status === "valid"
-      ? { mountPath: parsedMountPath.mountPath }
-      : undefined;
+    // SAFETY: loadContinuationCustodyPayload parsed attachAs with the strict mount schema.
+    (payload.attachAs as PendingDelegateState["attachAs"]) ?? state.attachAs;
+  const mode =
+    state.postCompaction === true || record.kind === "post_compaction"
+      ? "post-compaction"
+      : state.silentWake === true
+        ? "silent-wake"
+        : state.silent === true
+          ? "silent"
+          : undefined;
   return {
-    kind: "continuation_delegate",
-    task: delegate.task,
-    ...(delegate.delayMs !== undefined ? { delayMs: delegate.delayMs } : {}),
-    ...(delegate.mode === "silent" ? { silent: true } : {}),
-    ...(delegate.mode === "silent-wake" ? { silentWake: true } : {}),
-    ...(delegate.mode === "post-compaction" ? { postCompaction: true } : {}),
-    ...(delegate.firstArmedAt !== undefined || delegate.delayMs !== undefined
-      ? { firstArmedAt: delegate.firstArmedAt ?? Date.now() }
+    task: state.task,
+    ...(state.delayMs !== undefined ? { delayMs: state.delayMs } : {}),
+    ...(mode !== undefined ? { mode } : {}),
+    ...(state.firstArmedAt !== undefined ? { firstArmedAt: state.firstArmedAt } : {}),
+    ...(attachments ? { attachments: structuredClone(attachments) } : {}),
+    ...(attachAs ? { attachAs: { ...attachAs } } : {}),
+    ...(state.targetSessionKey ? { targetSessionKey: state.targetSessionKey } : {}),
+    ...(state.targetSessionKeys?.length ? { targetSessionKeys: state.targetSessionKeys } : {}),
+    ...(state.fanoutMode ? { fanoutMode: state.fanoutMode } : {}),
+    ...(state.recipientAuthorityBinding
+      ? { recipientAuthorityBinding: state.recipientAuthorityBinding }
       : {}),
-    ...(attachments ? { attachments } : {}),
-    ...(attachments ? { attachmentCount: attachments.length } : {}),
-    ...(attachAs ? { attachAs } : {}),
-    ...(targetSessionKey ? { targetSessionKey } : {}),
-    ...(targetSessionKeys.length > 0 ? { targetSessionKeys } : {}),
-    ...(delegate.fanoutMode ? { fanoutMode: delegate.fanoutMode } : {}),
-    ...(delegate.recipientAuthorityBinding
-      ? { recipientAuthorityBinding: delegate.recipientAuthorityBinding }
+    ...(state.returnOptions ? { returnOptions: state.returnOptions } : {}),
+    ...(state.recipientContext ? { recipientContext: state.recipientContext } : {}),
+    ...(state.traceparent && state.traceparentProvenance === "internal"
+      ? { traceparent: state.traceparent }
       : {}),
-    ...(delegate.returnOptions ? { returnOptions: delegate.returnOptions } : {}),
-    ...(delegate.recipientContext ? { recipientContext: delegate.recipientContext } : {}),
-    ...(traceparent ? { traceparent, traceparentProvenance: "internal" as const } : {}),
-    ...(delegate.model ? { model: delegate.model } : {}),
-    ...(delegate.chainTokensFold !== undefined
-      ? { chainTokensFold: delegate.chainTokensFold }
+    ...(state.model ? { model: state.model } : {}),
+    ...(state.chainTokensFold !== undefined ? { chainTokensFold: state.chainTokensFold } : {}),
+    ...(state.persistedChainState ? { persistedChainState: state.persistedChainState } : {}),
+    ...(state.persistedChainStateKind
+      ? { persistedChainStateKind: state.persistedChainStateKind }
       : {}),
-    ...(delegate.persistedChainState ? { persistedChainState: delegate.persistedChainState } : {}),
-    ...(delegate.persistedChainStateKind
-      ? { persistedChainStateKind: delegate.persistedChainStateKind }
+    ...(state.inheritedSilent ? { inheritedSilent: true } : {}),
+    ...(state.inheritedWake ? { inheritedWake: true } : {}),
+    ...(state.originRunId ? { originRunId: state.originRunId } : {}),
+    flowId: record.recordId,
+    expectedRevision: record.revision,
+    ...(record.spawnAttempts.length > 0
+      ? { recordedChildRunIds: record.spawnAttempts.map((attempt) => attempt.childRunId) }
       : {}),
-    ...(delegate.inheritedSilent ? { inheritedSilent: true } : {}),
-    ...(delegate.inheritedWake ? { inheritedWake: true } : {}),
-    ...(delegate.originRunId ? { originRunId: delegate.originRunId } : {}),
   };
+}
+
+async function decodeDelegateFlowWithOptions(
+  record: ContinuationRecord,
+  options: { requireAttachmentPayload: boolean },
+): Promise<PendingContinuationDelegate | undefined> {
+  const state = decodeDelegateState(record);
+  if (!state) {
+    return undefined;
+  }
+  const payload = record.attachmentId
+    ? await loadContinuationCustodyPayload(record.attachmentId, {
+        recordId: record.recordId,
+        ownerKey: record.ownerSessionKey,
+      })
+    : undefined;
+  const delegate = projectDelegate(record, state, payload ?? {});
+  if (
+    options.requireAttachmentPayload &&
+    state.attachmentCount !== undefined &&
+    delegate.attachments?.length !== state.attachmentCount
+  ) {
+    return undefined;
+  }
+  // Apply the live spawn policy to the durable snapshot. Invalid recovery state
+  // never reaches dispatch (§9.2.1 item 3).
+  const attachmentError = validateSubagentAttachments({
+    config: getRuntimeConfig(),
+    attachments: delegate.attachments,
+    redactContinuationErrorDetails: true,
+  });
+  return attachmentError ? undefined : delegate;
+}
+
+/** Decode a record for dispatch; referenced attachment bytes must be present. */
+export function decodeDelegateFlow(
+  record: ContinuationRecord,
+): Promise<PendingContinuationDelegate | undefined> {
+  return decodeDelegateFlowWithOptions(record, { requireAttachmentPayload: true });
+}
+
+/** Decode a record whose attachment custody may already be released (terminal or handed off). */
+export function decodeDelegateFlowMetadata(
+  record: ContinuationRecord,
+): Promise<PendingContinuationDelegate | undefined> {
+  return decodeDelegateFlowWithOptions(record, { requireAttachmentPayload: false });
+}
+
+export function readAcceptedDelegateChildSessionKey(
+  record: ContinuationRecord,
+): string | undefined {
+  if (record.handoff?.target === "subagent_runs") {
+    return record.handoff.childSessionKey;
+  }
+  return decodeDelegateState(record)?.childSessionKey;
+}
+
+export function isAwaitingNextCompactionDelegateFlow(record: ContinuationRecord): boolean {
+  return decodeDelegateState(record)?.awaitingNextCompaction === true;
+}
+
+export function delegateDueAt(
+  record: ContinuationRecord,
+  delegate: Pick<PendingContinuationDelegate, "delayMs">,
+): number {
+  return record.createdAt + (delegate.delayMs ?? 0);
 }
 
 function applyDelegateStateChanges(
@@ -365,368 +295,348 @@ function applyDelegateStateChanges(
   return next;
 }
 
-function resolveUpdatedDelegateState(params: {
-  flowId: string;
-  fallbackDelegate?: PendingContinuationDelegate;
-  changes?: DelegateStateChanges;
-}): PendingDelegateState | undefined {
-  const current = getTaskFlowById(params.flowId);
-  const state =
-    (current ? decodeDelegateState(current) : undefined) ??
-    (params.fallbackDelegate ? encodeDelegateState(params.fallbackDelegate) : undefined);
-  return state ? applyDelegateStateChanges(state, params.changes) : undefined;
+/** State JSON as stored: attachment bytes live only in the payload file. */
+function encodeStoredDelegateState(state: PendingDelegateState): string {
+  const { attachments: _attachments, attachAs: _attachAs, attachmentId: _id, ...rest } = state;
+  return JSON.stringify(rest);
 }
 
-function decodeDelegateState(flow: TaskFlowRecord): PendingDelegateState | undefined {
-  const parsed = PendingDelegateStateSchema.safeParse(flow.stateJson);
-  if (!parsed.success) {
-    return undefined;
-  }
-  // Legacy rows must satisfy the live policy before recovery returns raw bytes to a spawn;
-  // callers terminalize an undefined decode through the scrubbed fail path.
-  const attachmentError = validateSubagentAttachments({
-    config: getRuntimeConfig(),
-    attachments: parsed.data.attachments,
-    redactContinuationErrorDetails: true,
+/** List delegate records, FIFO by creation. */
+export async function listDelegateRecords(query: {
+  ownerSessionKey?: string;
+  kinds?: readonly DelegateCustodyRecord["kind"][];
+  statuses?: readonly ContinuationRecordStatus[];
+  recordIds?: readonly string[];
+}): Promise<DelegateCustodyRecord[]> {
+  const records = await listContinuationRecords({
+    ...query,
+    kinds: query.kinds ?? DELEGATE_KINDS,
   });
-  return attachmentError ? undefined : parsed.data;
+  return records.filter(isContinuationDelegateRecord);
 }
 
-function decodeDelegateFlowWithOptions(
-  flow: TaskFlowRecord,
-  options: { requireAttachmentPayload: boolean },
-): DecodedDelegateFlow {
-  const state = decodeDelegateState(flow);
-  if (!state) {
-    return undefined;
+export async function listLiveDelegateRecords(
+  query: { ownerSessionKey?: string; kinds?: readonly DelegateCustodyRecord["kind"][] } = {},
+): Promise<DelegateCustodyRecord[]> {
+  return await listDelegateRecords({ ...query, statuses: LIVE_STATUSES });
+}
+
+export async function getDelegateRecord(
+  recordId: string,
+): Promise<DelegateCustodyRecord | undefined> {
+  return (await listDelegateRecords({ recordIds: [recordId] }))[0];
+}
+
+export async function listQueuedPendingFlows(sessionKey: string): Promise<DelegateCustodyRecord[]> {
+  return (
+    await listDelegateRecords({
+      ownerSessionKey: sessionKey,
+      kinds: ["delegate"],
+      statuses: ["queued"],
+    })
+  ).filter((record) => record.cancelRequestedAt === undefined);
+}
+
+export async function listQueuedPostCompactionFlows(
+  sessionKey: string,
+): Promise<DelegateCustodyRecord[]> {
+  return (
+    await listDelegateRecords({
+      ownerSessionKey: sessionKey,
+      kinds: ["post_compaction"],
+      statuses: ["queued"],
+    })
+  ).filter((record) => record.cancelRequestedAt === undefined);
+}
+
+function describeUpdateFailure(result: ContinuationUpdateResult): string {
+  return result.outcome === "applied" ? "applied" : result.outcome;
+}
+
+export type DelegateRecordWriteResult =
+  | { applied: true; record: DelegateCustodyRecord }
+  | { applied: false; reason: string; current?: DelegateCustodyRecord };
+
+async function writeDelegateRecord(
+  record: DelegateCustodyRecord,
+  patch: ContinuationRecordPatch,
+  now: number,
+): Promise<DelegateRecordWriteResult> {
+  const result = await updateContinuationRecords(
+    [
+      {
+        recordId: record.recordId,
+        ownerSessionKey: record.ownerSessionKey,
+        expectedRevision: record.revision,
+        patch,
+      },
+    ],
+    { now },
+  );
+  if (result.outcome === "applied") {
+    const next = result.records[0];
+    if (next && isContinuationDelegateRecord(next)) {
+      return { applied: true, record: next };
+    }
   }
-  return projectDelegateFlow(flow, state, options);
+  return {
+    applied: false,
+    reason: describeUpdateFailure(result),
+    current:
+      result.outcome === "revision_conflict" ? await getDelegateRecord(record.recordId) : undefined,
+  };
 }
 
-export function decodeDelegateFlow(flow: TaskFlowRecord): DecodedDelegateFlow {
-  return decodeDelegateFlowWithOptions(flow, { requireAttachmentPayload: true });
-}
-
-export function decodeDelegateFlowMetadata(flow: TaskFlowRecord): DecodedDelegateFlow {
-  return decodeDelegateFlowWithOptions(flow, { requireAttachmentPayload: false });
-}
-
-export function readAcceptedDelegateChildSessionKey(flow: TaskFlowRecord): string | undefined {
-  return decodeDelegateState(flow)?.childSessionKey;
-}
-
-export function findContinuationDelegateFlowByOriginRun(
-  ownerKey: string,
-  originRunId: string,
-): TaskFlowRecord | undefined {
-  return listTaskFlowsForOwnerKey(ownerKey).find(
-    (flow) =>
-      isContinuationDelegateFlow(flow) && decodeDelegateState(flow)?.originRunId === originRunId,
-  );
-}
-
-export function isPendingDelegateFlow(flow: TaskFlowRecord): boolean {
-  return flow.syncMode === "managed" && flow.controllerId === CONTINUATION_DELEGATE_CONTROLLER_ID;
-}
-
-export function isPostCompactionDelegateFlow(flow: TaskFlowRecord): boolean {
-  return (
-    flow.syncMode === "managed" && flow.controllerId === CONTINUATION_POST_COMPACTION_CONTROLLER_ID
-  );
-}
-
-export function isTerminalDelegateFlow(flow: TaskFlowRecord): boolean {
-  return (
-    isContinuationDelegateFlow(flow) &&
-    (flow.status === "succeeded" ||
-      flow.status === "blocked" ||
-      flow.status === "failed" ||
-      flow.status === "cancelled" ||
-      flow.status === "lost")
-  );
-}
-
-export function isSucceededDelegateFlow(flow: TaskFlowRecord): boolean {
-  return isContinuationDelegateFlow(flow) && flow.status === "succeeded";
+/** The record's stored state JSON with `changes` applied; undefined when it cannot decode. */
+export function delegateStateJsonWithChanges(
+  record: ContinuationRecord,
+  changes: DelegateStateChanges,
+): string | undefined {
+  const state = decodeDelegateState(record);
+  return state ? encodeStoredDelegateState(applyDelegateStateChanges(state, changes)) : undefined;
 }
 
 /**
- * True when a post-compaction row sits in its durable-handoff state: finalized
- * to `succeeded` exactly one revision past the claim a queued delivery carries.
- * `dispatchPostCompactionDelegates` enqueues the delivery and only then calls
- * `finalizeStagedPostCompactionDelegates`, so this — not the claim revision — is
- * what a drain observes. Delivery-time spawn fences and terminal transitions
- * both key off this shape, so it has one spelling and cannot drift apart.
+ * One CAS write on a delegate record: state changes are applied to the
+ * record's current state JSON, never to a caller-held copy.
  */
-export function isDurablyHandedOffPostCompactionFlow(
-  flow: TaskFlowRecord | undefined,
-  claimRevision: number,
-): boolean {
-  return (
-    flow !== undefined &&
-    isPostCompactionDelegateFlow(flow) &&
-    flow.status === "succeeded" &&
-    flow.revision === claimRevision + 1
-  );
-}
-
-export function isRecoverablePendingFlow(flow: TaskFlowRecord): boolean {
-  return (
-    isPendingDelegateFlow(flow) &&
-    flow.cancelRequestedAt == null &&
-    (flow.status === "queued" || flow.status === "running")
-  );
-}
-
-export function isRecoverableContinuationDelegateFlow(flow: TaskFlowRecord): boolean {
-  return (
-    isContinuationDelegateFlow(flow) &&
-    flow.cancelRequestedAt == null &&
-    (flow.status === "queued" || flow.status === "running")
-  );
-}
-
-export function isRecoverablePendingFlowWithinCutoffs(
-  flow: TaskFlowRecord,
-  options: PendingDelegateCutoffOptions = {},
-): boolean {
-  if (!isPendingDelegateFlow(flow) || flow.cancelRequestedAt != null) {
-    return false;
+export async function updateDelegateRecord(params: {
+  record: DelegateCustodyRecord;
+  changes?: DelegateStateChanges;
+  patch?: ContinuationRecordPatch;
+  now?: number;
+}): Promise<DelegateRecordWriteResult> {
+  const stateJson = params.changes
+    ? delegateStateJsonWithChanges(params.record, params.changes)
+    : undefined;
+  if (params.changes && stateJson === undefined) {
+    return { applied: false, reason: "undecodable_state" };
   }
-  if (flow.status === "queued") {
-    return (
-      options.queuedCreatedAtOrBefore === undefined ||
-      flow.createdAt <= options.queuedCreatedAtOrBefore
+  return await writeDelegateRecord(
+    params.record,
+    { ...params.patch, ...(stateJson !== undefined ? { stateJson } : {}) },
+    params.now ?? Date.now(),
+  );
+}
+
+export async function createDelegateRecord(params: {
+  ownerKey: string;
+  controller: "pending" | "post-compaction";
+  delegate: PendingContinuationDelegate;
+  phase: string;
+  /** Tests and non-tool producers can inject their resolved runtime policy. */
+  attachmentConfig?: OpenClawConfig;
+  now?: number;
+}): Promise<DelegateCustodyRecord> {
+  // Phase A installs the import gate; a turn admitted before boot waits for it.
+  await whenContinuationCustodyReady();
+  assertContinuationCustodyOwnerImported(params.ownerKey);
+  const delegate = params.delegate.recipientAuthorityBinding
+    ? params.delegate
+    : {
+        ...params.delegate,
+        recipientAuthorityBinding: createContinuationRecipientAuthorityBinding({
+          requesterSessionKey: params.ownerKey,
+          targetSessionKey: params.delegate.targetSessionKey,
+          targetSessionKeys: params.delegate.targetSessionKeys,
+          fanoutMode: params.delegate.fanoutMode,
+        }),
+      };
+  const state = encodeDelegateState(delegate, params.attachmentConfig);
+  const recordId = newContinuationRecordId();
+  const attachmentId = state.attachments ? crypto.randomUUID() : undefined;
+  const createdAt = params.now ?? Date.now();
+  const kind = params.controller === "post-compaction" ? "post_compaction" : "delegate";
+  const result = await createContinuationRecord(
+    {
+      recordId,
+      kind,
+      ownerSessionKey: params.ownerKey,
+      status: "queued",
+      phase: params.phase,
+      createdAt,
+      // The derived due-time copy for recovery scans; delegates are due at
+      // `created_at + delayMs`. Staged post-compaction work has no due time.
+      ...(kind === "delegate" ? { dueAt: createdAt + (state.delayMs ?? 0) } : {}),
+      stateJson: encodeStoredDelegateState(state),
+      ...(attachmentId ? { attachmentId } : {}),
+    },
+    attachmentId && state.attachments
+      ? {
+          payload: {
+            attachments: state.attachments,
+            ...(state.attachAs ? { attachAs: state.attachAs } : {}),
+          },
+        }
+      : undefined,
+  );
+  if (result.outcome !== "created" || !isContinuationDelegateRecord(result.record)) {
+    throw new Error(
+      `continuation delegate custody was not committed (${result.outcome}) for ${params.ownerKey}`,
     );
   }
-  if (flow.status !== "running" || options.includeRunning !== true) {
-    return false;
-  }
-  return (
-    options.includeRunningUpdatedAtOrBefore === undefined ||
-    flow.updatedAt <= options.includeRunningUpdatedAtOrBefore
-  );
+  return result.record;
 }
 
-export function listRecoverablePendingFlows(
-  sessionKey: string,
-  options: PendingDelegateCutoffOptions = {},
-): TaskFlowRecord[] {
-  return listTaskFlowsForOwnerKey(sessionKey)
-    .filter((flow) => isRecoverablePendingFlowWithinCutoffs(flow, options))
-    .toSorted((a, b) => a.createdAt - b.createdAt);
+export async function deleteDelegateRecord(record: DelegateCustodyRecord): Promise<boolean> {
+  const result = await deleteContinuationRecord({
+    recordId: record.recordId,
+    ownerSessionKey: record.ownerSessionKey,
+    expectedRevision: record.revision,
+  });
+  return result.outcome === "deleted";
 }
 
-export function listQueuedPendingFlows(sessionKey: string): TaskFlowRecord[] {
-  return listTaskFlowsForOwnerKey(sessionKey)
-    .filter(
-      (flow) =>
-        isPendingDelegateFlow(flow) && flow.cancelRequestedAt == null && flow.status === "queued",
-    )
-    .toSorted((a, b) => a.createdAt - b.createdAt);
-}
-
-export function listQueuedPostCompactionFlows(sessionKey: string): TaskFlowRecord[] {
-  return listTaskFlowsForOwnerKey(sessionKey)
-    .filter(
-      (flow) =>
-        isPostCompactionDelegateFlow(flow) &&
-        flow.cancelRequestedAt == null &&
-        flow.status === "queued",
-    )
-    .toSorted((a, b) => a.createdAt - b.createdAt);
-}
-
-export function scrubCancellationRequestedDelegateFlowState(flow: TaskFlowRecord): void {
-  releaseDelegateAttachmentPayload(flow.flowId);
-  let current = flow;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    if (
-      !isContinuationDelegateFlow(current) ||
-      current.cancelRequestedAt == null ||
-      !hasStoredDelegateAttachmentState(current.stateJson)
-    ) {
-      return;
-    }
-    const result = updateFlowRecordByIdExpectedRevision({
-      flowId: current.flowId,
-      expectedRevision: current.revision,
-      patch: {
-        stateJson: scrubStoredDelegateAttachmentState(current.stateJson),
-      },
-    });
-    if (result.applied || result.reason === "not_found" || !result.current) {
-      return;
-    }
-    current = result.current;
-  }
-}
-
-export function delegateDueAt(flow: TaskFlowRecord, delegate: PendingContinuationDelegate): number {
-  return flow.createdAt + (delegate.delayMs ?? 0);
-}
-
-export function isAwaitingNextCompactionDelegateFlow(flow: TaskFlowRecord): boolean {
-  return decodeDelegateState(flow)?.awaitingNextCompaction === true;
-}
-
-type DelegateFlowPatch = {
-  status?: TaskFlowRecord["status"];
-  currentStep?: string;
-  waitJson?: null;
-  blockedTaskId?: null;
-  blockedSummary?: string | null;
-  endedAt?: number | null;
-  updatedAt?: number;
-};
-
-export const delegateFlowRecords = {
-  create(params: {
-    ownerKey: string;
-    controller: "pending" | "post-compaction";
-    delegate: PendingContinuationDelegate;
-    currentStep: string;
-    /** Tests and non-tool producers can inject their resolved runtime policy. */
-    attachmentConfig?: OpenClawConfig;
-  }) {
-    const delegate = params.delegate.recipientAuthorityBinding
-      ? params.delegate
-      : {
-          ...params.delegate,
-          recipientAuthorityBinding: createContinuationRecipientAuthorityBinding({
-            requesterSessionKey: params.ownerKey,
-            targetSessionKey: params.delegate.targetSessionKey,
-            targetSessionKeys: params.delegate.targetSessionKeys,
-            fanoutMode: params.delegate.fanoutMode,
-          }),
-        };
-    const state = encodeDelegateState(delegate, params.attachmentConfig);
-    const flow = createManagedTaskFlow({
-      ownerKey: params.ownerKey,
-      controllerId:
-        params.controller === "post-compaction"
-          ? CONTINUATION_POST_COMPACTION_CONTROLLER_ID
-          : CONTINUATION_DELEGATE_CONTROLLER_ID,
-      notifyPolicy: "silent",
-      goal: delegateGoal(delegate),
-      currentStep: params.currentStep,
-      stateJson: scrubStoredDelegateAttachmentState(state),
-    });
-    if (flow && state.attachments) {
-      storeDelegateAttachmentPayload(flow.flowId, state);
-    }
-    return flow;
-  },
-  update(params: {
-    flowId: string;
-    expectedRevision: number;
-    fallbackDelegate?: PendingContinuationDelegate;
-    changes?: DelegateStateChanges;
-    patch: DelegateFlowPatch;
-  }) {
-    const state = resolveUpdatedDelegateState(params);
-    if (!state) {
-      return {
-        applied: false as const,
-        reason: "not_found" as const,
-        current: undefined,
-      };
-    }
-    return updateFlowRecordByIdExpectedRevision({
-      flowId: params.flowId,
-      expectedRevision: params.expectedRevision,
-      patch: {
-        ...params.patch,
-        stateJson: state,
-      },
-    });
-  },
-  finish(params: {
-    flowId: string;
-    expectedRevision: number;
-    fallbackDelegate?: PendingContinuationDelegate;
-    changes?: DelegateStateChanges;
-    currentStep: string;
-    updatedAt?: number;
-    endedAt?: number;
-  }) {
-    const state = resolveUpdatedDelegateState(params);
-    if (!state) {
-      return {
-        applied: false as const,
-        reason: "not_found" as const,
-        current: undefined,
-      };
-    }
-    const result = finishFlow({
-      flowId: params.flowId,
-      expectedRevision: params.expectedRevision,
-      currentStep: params.currentStep,
-      stateJson: scrubStoredDelegateAttachmentState(state),
-      updatedAt: params.updatedAt,
-      endedAt: params.endedAt,
-    });
-    if (result.applied || result.reason === "not_found") {
-      releaseDelegateAttachmentPayload(params.flowId);
-    }
-    return result;
-  },
-  fail(params: Parameters<typeof failFlow>[0]) {
-    const current = getTaskFlowById(params.flowId);
-    const stateJson = params.stateJson !== undefined ? params.stateJson : current?.stateJson;
-    const result = failFlow({
-      ...params,
-      ...(stateJson !== undefined
-        ? { stateJson: scrubStoredDelegateAttachmentState(stateJson) }
-        : {}),
-    });
-    if (result.applied || result.reason === "not_found") {
-      releaseDelegateAttachmentPayload(params.flowId);
-    }
-    return result;
-  },
-  get: getTaskFlowById,
-  listAll: listTaskFlowRecords,
-  listForOwner: listTaskFlowsForOwnerKey,
-  delete(flowId: string) {
-    const deleted = deleteTaskFlowRecordById(flowId);
-    if (deleted) {
-      releaseDelegateAttachmentPayload(flowId);
-    }
-    return deleted;
-  },
-};
-
-export function rejectCorruptDelegateFlow(
-  flow: TaskFlowRecord,
+export async function rejectCorruptDelegateFlow(
+  record: DelegateCustodyRecord,
   options: { kind: "pending" | "post-compaction"; sessionKey: string },
-): void {
+): Promise<void> {
   const isPostCompaction = options.kind === "post-compaction";
   const tag = isPostCompaction
     ? "continuation:post-compaction-decode-failed"
     : "continuation:delegate-decode-failed";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(record.stateJson);
+  } catch {
+    parsed = undefined;
+  }
   log.warn(
-    `[${tag}] flowId=${flow.flowId} session=${options.sessionKey} ${delegateFlowDiagnostics.describeDelegateState(flow.stateJson)}`,
+    `[${tag}] flowId=${record.recordId} session=${options.sessionKey} ${delegateFlowDiagnostics.describeDelegateState(parsed)}`,
   );
-  delegateFlowRecords.fail({
-    flowId: flow.flowId,
-    expectedRevision: flow.revision,
-    stateJson: {},
-    currentStep: isPostCompaction
-      ? "Rejected invalid post-compaction payload"
-      : "Rejected invalid continuation payload",
-    blockedSummary: isPostCompaction
-      ? "Staged post-compaction delegate payload could not be decoded."
-      : "Pending continuation delegate payload could not be decoded.",
-  });
+  await writeDelegateRecord(
+    record,
+    {
+      status: "failed",
+      stateJson: "{}",
+      phase: isPostCompaction
+        ? "Rejected invalid post-compaction payload"
+        : "Rejected invalid continuation payload",
+      failureReason: isPostCompaction
+        ? "Staged post-compaction delegate payload could not be decoded."
+        : "Pending continuation delegate payload could not be decoded.",
+    },
+    Date.now(),
+  );
+}
+
+/**
+ * Startup payload reconcile: remove payload files that no live record
+ * references (§5.4.4 crash boundary 0).
+ */
+export async function reconcileDelegateAttachmentCustody(
+  orphanedBefore: number,
+): Promise<{ removed: number; failed: number }> {
+  const { reconcileContinuationCustodyPayloads } =
+    await import("./custody/custody-payload-store.js");
+  const retainedAttachmentIds = new Set<string>();
+  for (const record of await listLiveDelegateRecords()) {
+    if (record.attachmentId) {
+      retainedAttachmentIds.add(record.attachmentId);
+    }
+  }
+  return await reconcileContinuationCustodyPayloads({ retainedAttachmentIds, orphanedBefore });
+}
+
+function readOwnerLiveDelegateFacts(sessionKey: string) {
+  const answer = readContinuationLiveWork(
+    resolveContinuationCustodyDatabasePath(),
+    sessionKey,
+    DELEGATE_KINDS,
+  );
+  return answer.state === "known" ? answer.records : undefined;
+}
+
+/** Queued pending delegates for a session, from the hot-path projection (§5.4.6). */
+export function countQueuedPendingDelegates(sessionKey: string): number {
+  return (readOwnerLiveDelegateFacts(sessionKey) ?? []).filter(
+    (fact) => fact.kind === "delegate" && fact.status === "queued" && !fact.cancelRequested,
+  ).length;
+}
+
+/** Staged post-compaction delegates for a session, from the hot-path projection. */
+export function countStagedPostCompactionDelegates(sessionKey: string): number {
+  return (readOwnerLiveDelegateFacts(sessionKey) ?? []).filter(
+    (fact) => fact.kind === "post_compaction" && fact.status === "queued" && !fact.cancelRequested,
+  ).length;
+}
+
+/** Queued delegate counts, and whether they can be complete. */
+export type QueuedDelegateCounts = {
+  pending: number;
+  stagedPostCompaction: number;
+  /**
+   * The owner's legacy import has not committed: its legacy delegates are not
+   * in these counts, so they are a lower bound. A decision must fail closed.
+   */
+  awaitingImport: boolean;
+};
+
+type DelegateFact = { kind: ContinuationRecordKind; status: string; cancelRequested: boolean };
+
+/**
+ * Projection facts and the import gate for one owner, or undefined when the
+ * projection does not know the owner. Phase A installs both and a closing
+ * database clears both, and nothing awaits between the two reads, so the
+ * answer belongs to one database lifetime.
+ */
+function readOwnerDelegateFactsWithImportState(
+  sessionKey: string,
+): { facts: readonly DelegateFact[]; awaitingImport: boolean } | undefined {
+  const facts = readOwnerLiveDelegateFacts(sessionKey);
+  if (facts === undefined) {
+    return undefined;
+  }
+  return {
+    facts,
+    awaitingImport: isOwnerAwaitingContinuationCustodyImport(
+      resolveContinuationCustodyDatabasePath(),
+      sessionKey,
+    ),
+  };
+}
+
+/**
+ * Queued delegate counts for a correctness decision (RFC §5.4.6). Before
+ * hydration this waits for custody phase A, so legacy work the import brings
+ * in is counted. After that it is the projection when it knows the owner, and
+ * otherwise (an unresolved write) the owner's committed rows. A decision never
+ * reads `unknown` as zero, and an owner whose legacy import failed is reported
+ * as `awaitingImport` rather than as exact counts.
+ */
+export async function resolveQueuedDelegateCounts(
+  sessionKey: string,
+): Promise<QueuedDelegateCounts> {
+  if (readOwnerLiveDelegateFacts(sessionKey) === undefined) {
+    await whenContinuationCustodyReady();
+  }
+  let answer = readOwnerDelegateFactsWithImportState(sessionKey);
+  if (!answer) {
+    const inventory = await readContinuationOwnerInventory({
+      ownerSessionKey: sessionKey,
+      kinds: DELEGATE_KINDS,
+      statuses: ["queued"],
+    });
+    answer = {
+      facts: inventory.records.map((record) => ({
+        kind: record.kind,
+        status: record.status,
+        cancelRequested: record.cancelRequestedAt !== undefined,
+      })),
+      awaitingImport: inventory.awaitingImport,
+    };
+  }
+  const queued = answer.facts.filter((fact) => fact.status === "queued" && !fact.cancelRequested);
+  const pending = queued.filter((fact) => fact.kind === "delegate").length;
+  return {
+    pending,
+    stagedPostCompaction: queued.length - pending,
+    awaitingImport: answer.awaitingImport,
+  };
 }
 
 const continuationQueueDiagnostics = delegateFlowDiagnostics.createContinuationQueueDiagnostics({
-  listFlows: listTaskFlowRecords,
-  isContinuationDelegateFlow,
-  isPostCompactionDelegateFlow,
-  decodeDelegateFlow,
-  delegateDueAt,
+  readSnapshot: () => readContinuationCustodySnapshot(resolveContinuationCustodyDatabasePath()),
 });
 
 registerDiagnosticContinuationQueueMetricsProvider(continuationQueueDiagnostics.sample);
@@ -735,25 +645,21 @@ export function getContinuationDelegateQueueDepths(
   sessionKey: string,
   now = Date.now(),
 ): ContinuationDelegateQueueDepths {
-  const pendingFlows = listQueuedPendingFlows(sessionKey);
-  let pendingRunnable = 0;
-  for (const flow of pendingFlows) {
-    const delegate = decodeDelegateFlow(flow);
-    if (delegate && delegateDueAt(flow, delegate) <= now) {
-      pendingRunnable += 1;
-    }
-  }
-  const stagedPostCompaction = listQueuedPostCompactionFlows(sessionKey).length;
+  const facts = (readOwnerLiveDelegateFacts(sessionKey) ?? []).filter(
+    (fact) => fact.status === "queued" && !fact.cancelRequested,
+  );
+  const pending = facts.filter((fact) => fact.kind === "delegate");
+  const pendingRunnable = pending.filter((fact) => (fact.dueAt ?? fact.createdAt) <= now).length;
+  const stagedPostCompaction = facts.length - pending.length;
   return {
-    pendingQueued: pendingFlows.length,
+    pendingQueued: pending.length,
     pendingRunnable,
-    pendingScheduled: pendingFlows.length - pendingRunnable,
+    pendingScheduled: pending.length - pendingRunnable,
     stagedPostCompaction,
-    totalQueued: pendingFlows.length + stagedPostCompaction,
+    totalQueued: facts.length,
   };
 }
 
 export function resetDelegateFlowDiagnosticsForTests(): void {
-  resetDelegateAttachmentPayloadsForTests();
   continuationQueueDiagnostics.reset();
 }

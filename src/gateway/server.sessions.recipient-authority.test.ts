@@ -1,18 +1,13 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 import { enqueueContinuationReturnDeliveries } from "../auto-reply/continuation/targeting.js";
 import {
   captureSessionRecipientAuthority,
   isSessionRecipientAuthorityCurrent,
   loadSessionEntry,
 } from "../config/sessions/session-accessor.js";
-import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
 import { setupGatewaySessionsTestHarness } from "./test/server-sessions.test-helpers.js";
 
 const { seedActiveMainSession } = setupGatewaySessionsTestHarness();
-
-afterEach(() => {
-  closeOpenClawAgentDatabasesForTest();
-});
 
 test.each(["new", "reset"] as const)(
   "gateway /%s preserves accepted recipient authority through return enqueue",

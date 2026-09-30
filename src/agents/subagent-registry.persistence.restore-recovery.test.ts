@@ -5,16 +5,19 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./subagents/registry/subagent-registry.mocks.shared.js";
+import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/config.js";
 import { callGateway } from "../gateway/call.js";
 import { onAgentEvent } from "../infra/agent-events.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
-import { resetDetachedTaskLifecycleRuntimeForTests } from "../tasks/detached-task-runtime.test-support.js";
 import { captureEnv, deleteTestEnvValue, setTestEnvValue, withEnv } from "../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
+import { resetSubagentRegistryRuntimeLoadersForTests } from "./subagents/registry/subagent-registry-deps.js";
+import { createSubagentPersistenceRuntime } from "./subagents/registry/subagent-registry.persistence-fixture.test-support.js";
 import {
   canonicalSubagentRunFixtures,
-  createSubagentRegistryTestDeps,
+  settleSubagentRegistryPersistenceWork,
   writeSubagentSessionEntry,
 } from "./subagents/registry/subagent-registry.persistence.test-support.js";
 import type { SubagentRunFixture } from "./subagents/registry/subagent-registry.persistence.test-support.js";
@@ -23,7 +26,6 @@ import {
   saveSubagentRegistryToSqlite,
 } from "./subagents/registry/subagent-registry.store.sqlite.js";
 import {
-  testing,
   activateSubagentRegistry,
   getLatestSubagentRunByChildSessionKey,
   getSubagentRunByChildSessionKey,
@@ -36,9 +38,26 @@ import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.t
 const { announceSpy } = vi.hoisted(() => ({
   announceSpy: vi.fn(async () => "delivered" as const),
 }));
-vi.mock("./subagents/announce/subagent-announce.js", () => ({
-  runSubagentAnnounceFlow: announceSpy,
-}));
+vi.mock("./subagents/announce/subagent-announce.js", async (importOriginal) => {
+  const { hasUsableSessionEntry } =
+    await importOriginal<typeof import("./subagents/announce/subagent-announce.js")>();
+  return {
+    hasUsableSessionEntry,
+    runSubagentAnnounceFlow: announceSpy,
+    captureSubagentCompletionReply: vi.fn(async () => undefined),
+  };
+});
+
+// persistSubagentRunsToDisk is redirected to the sqlite writer, matching upstream's
+// own idiom in subagent-registry.persistence.test.ts. The registry imports this
+// entry point directly, so the module mock is what reaches the runtime.
+vi.mock("./subagents/registry/subagent-registry-state.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./subagents/registry/subagent-registry-state.js")>();
+  const { saveSubagentRegistryToSqlite: saveRegistryToSqlite } =
+    await import("./subagents/registry/subagent-registry.store.sqlite.js");
+  return { ...actual, persistSubagentRunsToDisk: saveRegistryToSqlite };
+});
 
 function expectFields(value: unknown, expected: Record<string, unknown>): void {
   if (!value || typeof value !== "object") {
@@ -108,7 +127,6 @@ describe("subagent registry persistence", () => {
     // and sqlite registry rows are tested through the same paths production resolves.
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
-    closeOpenClawStateDatabaseForTest();
     const runs = new Map(
       Object.entries((persisted.runs ?? {}) as Record<string, SubagentRunRecord>),
     );
@@ -138,6 +156,7 @@ describe("subagent registry persistence", () => {
           createdAt: now - 2,
           startedAt: now - 1,
           endedAt: now,
+          expectsCompletionMessage: false,
         },
       },
     };
@@ -157,35 +176,19 @@ describe("subagent registry persistence", () => {
 
   const readPersistedRuns = () => loadSubagentRegistryFromSqlite();
 
-  const restartRegistry = () => {
+  const restartRegistry = async () => {
     resetSubagentRegistryForTests({ persist: false });
-    initSubagentRegistry();
-    const recoveryRuntime = {
-      dispatchAgent: (params: Record<string, unknown>, timeoutMs?: number) =>
-        callGateway({ method: "agent", params, timeoutMs }),
-      waitForAgent: (params: Record<string, unknown>, timeoutMs?: number) =>
-        callGateway({ method: "agent.wait", params, timeoutMs }),
-      sendRecoveryNotice: vi.fn(),
-    };
+    await initSubagentRegistry();
+    const recoveryRuntime = createSubagentPersistenceRuntime(callGateway);
     const gateway = { recoveryRuntime, resolveGatewayContext: () => gateway as never };
-    activateSubagentRegistry(() => gateway as never);
-  };
-
-  const fastPersistSubagentRunsToDisk = (runs: Map<string, SubagentRunRecord>) => {
-    // Most tests assert restore semantics, not async writer behavior, so this
-    // synchronous writer keeps sqlite registry state immediately observable.
-    saveSubagentRegistryToSqlite(runs);
+    await activateSubagentRegistry(() => gateway as never);
   };
 
   beforeEach(() => {
-    resetDetachedTaskLifecycleRuntimeForTests();
+    resetSubagentRegistryRuntimeLoadersForTests();
+    setRuntimeConfigSnapshot({});
     announceSpy.mockReset();
     announceSpy.mockResolvedValue("delivered");
-    testing.setDepsForTest({
-      ...createSubagentRegistryTestDeps(),
-      persistSubagentRunsToDisk: fastPersistSubagentRunsToDisk,
-      runSubagentAnnounceFlow: announceSpy,
-    });
     vi.mocked(callGateway).mockReset();
     vi.mocked(callGateway).mockResolvedValue({
       status: "ok",
@@ -197,15 +200,15 @@ describe("subagent registry persistence", () => {
   });
 
   afterEach(async () => {
-    testing.setDepsForTest();
+    await settleSubagentRegistryPersistenceWork();
     resetSubagentRegistryForTests({ persist: false });
-    resetDetachedTaskLifecycleRuntimeForTests();
     await cleanupSessionStateForTest();
     closeOpenClawStateDatabaseForTest();
     if (tempStateDir) {
       await fs.rm(tempStateDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
       tempStateDir = null;
     }
+    clearRuntimeConfigSnapshot();
     envSnapshot.restore();
   });
 
@@ -238,7 +241,7 @@ describe("subagent registry persistence", () => {
       { seedChildSessions: false },
     );
 
-    restartRegistry();
+    await restartRegistry();
     await flushQueuedRegistryWork();
 
     expect(announceSpy).not.toHaveBeenCalled();
@@ -267,14 +270,16 @@ describe("subagent registry persistence", () => {
           cleanup: "keep",
           createdAt: now - 3 * 60 * 60 * 1_000,
           startedAt: now - 3 * 60 * 60 * 1_000,
+          expectsCompletionMessage: false,
         },
       },
     });
 
-    restartRegistry();
+    await restartRegistry();
     await waitForRegistryWork(
       () => readPersistedRuns().get(runId)?.cleanupCompletedAt !== undefined,
     );
+    await settleSubagentRegistryPersistenceWork();
 
     expect(callGateway).not.toHaveBeenCalled();
     expect(readPersistedRuns().get(runId)?.execution).toMatchObject({
@@ -283,7 +288,7 @@ describe("subagent registry persistence", () => {
     });
   });
 
-  it("removes attachments when pruning orphaned restored runs", async () => {
+  it("settles orphaned restored runs without traversing legacy attachment paths", async () => {
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
     const attachmentsRootDir = path.join(tempStateDir, "attachments");
@@ -308,21 +313,15 @@ describe("subagent registry persistence", () => {
       ),
     );
 
-    restartRegistry();
-    await waitForRegistryWork(async () => {
-      try {
-        await fs.access(attachmentsDir);
-        return false;
-      } catch (err) {
-        return (
-          (err as NodeJS.ErrnoException).code === "ENOENT" &&
-          !readPersistedRuns().has("run-orphan-attachments")
-        );
-      }
-    });
+    await restartRegistry();
+    await settleSubagentRegistryPersistenceWork();
+    await waitForRegistryWork(async () => !readPersistedRuns().has("run-orphan-attachments"));
 
-    await expect(fs.access(attachmentsDir)).rejects.toHaveProperty("code", "ENOENT");
     expect(readPersistedRuns().has("run-orphan-attachments")).toBe(false);
+    // Legacy attachment paths are untrusted and retired without traversal (upstream #146600).
+    await expect(fs.readFile(path.join(attachmentsDir, "artifact.txt"), "utf8")).resolves.toBe(
+      "artifact",
+    );
   });
 
   it("prefers active runs and can resolve them from persisted registry snapshots", async () => {

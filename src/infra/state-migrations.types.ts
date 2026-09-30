@@ -1,6 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
+import type { ContinuationTaskFlowImportDetection } from "../auto-reply/continuation/custody/legacy-taskflow-source.js";
 import type { SessionScope } from "../config/sessions/types.js";
-import type { PluginDoctorStateMigration } from "../plugins/doctor-contract-registry.js";
+import type {
+  PluginDoctorStateMigration,
+  PluginDoctorStateMigrationInventory,
+} from "../plugins/doctor-contract-registry.js";
 import type { LegacyAuditLogsDetection } from "./state-migrations.audit-logs.types.js";
 import type { LegacyChannelPairingStateDetection } from "./state-migrations.channel-pairing.js";
 import type { LegacyDeviceIdentityDetection } from "./state-migrations.device-identity.types.js";
@@ -25,6 +29,11 @@ export type SessionStoreAliasPlan = {
   hasDistinctAliases: boolean;
   hasFinalSymlink: boolean;
   hasUnresolvedIdentity: boolean;
+};
+
+type LegacyFileDetection = {
+  sourcePath: string;
+  hasLegacy: boolean;
 };
 
 export type LegacyStateDetection = Pick<MigrationMessages, "warningDisposition" | "outcome"> & {
@@ -55,14 +64,7 @@ export type LegacyStateDetection = Pick<MigrationMessages, "warningDisposition" 
     hasLegacy: boolean;
     plans: DetectedPluginDoctorStateMigrationPlan[];
   };
-  pluginStateSidecar: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
-  pluginInstallIndex: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
+  pluginInstallIndex: LegacyFileDetection;
   debugProxyCaptureSidecar: {
     sourcePath: string;
     blobDir: string;
@@ -78,11 +80,6 @@ export type LegacyStateDetection = Pick<MigrationMessages, "warningDisposition" 
     legacyIds: string[];
     pathRewrites: Array<{ id: string; fromPath: string; toPath: string }>;
   };
-  taskStateSidecars: {
-    taskRunsPath: string;
-    flowRunsPath: string;
-    hasLegacy: boolean;
-  };
   deliveryQueues: {
     outboundPath: string;
     sessionPath: string;
@@ -94,43 +91,19 @@ export type LegacyStateDetection = Pick<MigrationMessages, "warningDisposition" 
     routingPath: string;
     hasLegacy: boolean;
   };
-  updateCheck: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
-  configHealth: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
-  pluginBindingApprovals: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
-  currentConversationBindings: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
-  tuiLastSessions: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
-  commitments?: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
+  updateCheck: LegacyFileDetection;
+  configHealth: LegacyFileDetection;
+  pluginBindingApprovals: LegacyFileDetection;
+  currentConversationBindings: LegacyFileDetection;
+  tuiLastSessions: LegacyFileDetection;
+  commitments?: LegacyFileDetection;
   auditLogs: LegacyAuditLogsDetection;
-  acpReplayLedger: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
+  acpReplayLedger: LegacyFileDetection;
   managedOutgoingImages: {
     sourceDir: string;
     hasLegacy: boolean;
   };
-  apns: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
+  apns: LegacyFileDetection;
   deviceAuth: {
     sourcePath: string;
     sourcePresent: boolean;
@@ -141,20 +114,14 @@ export type LegacyStateDetection = Pick<MigrationMessages, "warningDisposition" 
   mcpOauth: LegacyMcpOAuthDetection;
   meetingTranscripts?: LegacyMeetingTranscriptsDetection;
   restartSentinel?: LegacyRestartSentinelDetection;
+  continuationCustody?: ContinuationTaskFlowImportDetection;
   workspace: LegacyWorkspaceStateDetection;
   webPush: {
     subscriptionsPath: string;
     vapidKeysPath: string;
     hasLegacy: boolean;
   };
-  nodeHost: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
-  subagentRegistry: {
-    sourcePath: string;
-    hasLegacy: boolean;
-  };
+  nodeHost: LegacyFileDetection;
   rescuePending: LegacyRescuePendingDetection;
   channelPairing: LegacyChannelPairingStateDetection;
   warnings: string[];
@@ -257,6 +224,7 @@ export type PlannedPluginDoctorAction = {
 export type PreparedPostSessionPluginMigration = {
   step: Omit<LegacyStateMigrationStepPlan, "outcome">;
   plannedActions: readonly PlannedPluginDoctorAction[];
+  inventory?: PluginDoctorStateMigrationInventory;
 };
 
 type LegacyStateMigrationCandidate = {
@@ -294,7 +262,7 @@ export type LegacyStateMigrationStep = Omit<LegacyStateMigrationStepPlan, "outco
   collectNotices?: boolean;
   deferredExecution?: {
     kind: "post-session-plugin";
-    plannedActions: readonly PlannedPluginDoctorAction[];
+    migration: PreparedPostSessionPluginMigration;
   };
   run: () => MigrationMessages | Promise<MigrationMessages>;
 };

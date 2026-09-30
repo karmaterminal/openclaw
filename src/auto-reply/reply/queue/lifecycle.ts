@@ -143,42 +143,48 @@ export function completeFollowupRunLifecycle(
   run: FollowupLifecycleRun,
   disposition?: "consumed",
 ): void {
-  run.steerPending?.settle(false);
-  const lifecycle = run.turnAdoptionLifecycle;
-  // Claim completion once up front so a late admission settle cannot re-enter.
-  if (!lifecycle || completedTurnAdoptionLifecycleCallbacks.has(lifecycle)) {
-    return;
-  }
-  completedTurnAdoptionLifecycleCallbacks.add(lifecycle);
+  try {
+    run.steerPending?.settle(false);
+  } finally {
+    // A failed steer notification must not strand already-detached lifecycle custody.
+    const lifecycle = run.turnAdoptionLifecycle;
+    // Claim completion once up front so a late admission settle cannot re-enter.
+    // Written as a positive guard rather than an early `return`: a `return`
+    // inside this `finally` would discard a steer-settle throw, which is the
+    // exact failure the surrounding try/finally exists to contain.
+    if (lifecycle && !completedTurnAdoptionLifecycleCallbacks.has(lifecycle)) {
+      completedTurnAdoptionLifecycleCallbacks.add(lifecycle);
 
-  const finish = () => {
-    // Async onAbandoned work must contain its own rejections; core guarantees a
-    // non-rejecting promise. onSettled must still run after a synchronous throw.
-    try {
-      if (disposition !== "consumed" && !admittedTurnAdoptionLifecycles.has(lifecycle)) {
-        // Explicit pre-adoption cancellation releases without consuming retry budget.
-        if (lifecycle.abortSignal?.aborted && lifecycle.onCancelled) {
-          void lifecycle.onCancelled();
-        } else {
-          lifecycle.onAbandoned?.();
+      const finish = () => {
+        // Async onAbandoned work must contain its own rejections; core guarantees a
+        // non-rejecting promise. onSettled must still run after a synchronous throw.
+        try {
+          if (disposition !== "consumed" && !admittedTurnAdoptionLifecycles.has(lifecycle)) {
+            // Explicit pre-adoption cancellation releases without consuming retry budget.
+            if (lifecycle.abortSignal?.aborted && lifecycle.onCancelled) {
+              void lifecycle.onCancelled();
+            } else {
+              lifecycle.onAbandoned?.();
+            }
+          }
+        } finally {
+          lifecycle.onSettled?.();
         }
+      };
+
+      if (!completedTurnAdoptionLifecycles.has(lifecycle)) {
+        deferredHeartbeatStops.get(lifecycle)?.();
+        completedTurnAdoptionLifecycles.add(lifecycle);
       }
-    } finally {
-      lifecycle.onSettled?.();
+
+      const admission = admittingTurnAdoptionLifecycles.get(lifecycle);
+      if (!admission) {
+        finish();
+      } else {
+        // Completion closes future admission immediately, but the callback waits for
+        // the in-flight admission attempt so adoption and abandonment cannot race.
+        void admission.then(finish, finish).catch(() => {});
+      }
     }
-  };
-
-  if (!completedTurnAdoptionLifecycles.has(lifecycle)) {
-    deferredHeartbeatStops.get(lifecycle)?.();
-    completedTurnAdoptionLifecycles.add(lifecycle);
   }
-
-  const admission = admittingTurnAdoptionLifecycles.get(lifecycle);
-  if (!admission) {
-    finish();
-    return;
-  }
-  // Completion closes future admission immediately, but the callback waits for
-  // the in-flight admission attempt so adoption and abandonment cannot race.
-  void admission.then(finish, finish).catch(() => {});
 }

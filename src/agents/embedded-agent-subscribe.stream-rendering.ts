@@ -18,82 +18,28 @@ import {
   trimTextFilter,
   trimTextPreservingCode,
 } from "../shared/text/text-projection.js";
+import type { BlockChunkMetadata } from "./embedded-agent-block-chunker.js";
 import {
   isMessagingToolDuplicateNormalized,
   normalizeTextForComparison,
 } from "./embedded-agent-helpers.js";
 import { runBestEffortCallback } from "./embedded-agent-subscribe.callback.js";
-import { shouldSuppressDeterministicApprovalOutput } from "./embedded-agent-subscribe.handlers.messages.stream.js";
+import {
+  hasMessageToolOnlySourceDelivery,
+  shouldSuppressDeterministicApprovalOutput,
+  stripContinuationSignalFromDisplayText,
+} from "./embedded-agent-subscribe.handlers.messages.stream.js";
 import type {
   EmbeddedAgentSubscribeContext,
   StreamBlockState,
 } from "./embedded-agent-subscribe.handlers.types.js";
+import {
+  splitTrailingBlockTagFragment,
+  splitTrailingFenceFragment,
+  stripFinalTagsOutsideCodeSpans,
+} from "./embedded-agent-subscribe.stream-block-tags.js";
 import type { SubscribeEmbeddedAgentSessionParams } from "./embedded-agent-subscribe.types.js";
 import { createThinkingTagStreamState, THINKING_TAG_SCAN_RE } from "./embedded-agent-utils.js";
-
-const STREAM_STRIPPED_BLOCK_TAG_NAMES = [
-  "final",
-  "think",
-  "thinking",
-  "thought",
-  "antthinking",
-  "antml:think",
-  "antml:thinking",
-  "antml:thought",
-  "mm:think",
-  "mm:thinking",
-  "mm:thought",
-] as const;
-
-function isPotentialTrailingBlockTagFragment(fragment: string): boolean {
-  if (!fragment.startsWith("<") || fragment.includes(">")) {
-    return false;
-  }
-  const body = fragment.toLowerCase().slice(1).trimStart().replace(/^\//, "").trimStart();
-  if (!body) {
-    return true;
-  }
-  const namePart = body.split(/[\s/>]/, 1)[0] ?? "";
-  if (!namePart) {
-    return true;
-  }
-  return STREAM_STRIPPED_BLOCK_TAG_NAMES.some((name) => {
-    return name.startsWith(namePart) || namePart === name;
-  });
-}
-
-function splitTrailingBlockTagFragment(
-  text: string,
-  isInsideCodeSpan: (index: number) => boolean,
-): { text: string; pendingTagFragment?: string } {
-  const fragmentStart = text.lastIndexOf("<");
-  if (fragmentStart === -1 || isInsideCodeSpan(fragmentStart)) {
-    return { text };
-  }
-  const fragment = text.slice(fragmentStart);
-  if (!isPotentialTrailingBlockTagFragment(fragment)) {
-    return { text };
-  }
-  return {
-    text: text.slice(0, fragmentStart),
-    pendingTagFragment: fragment,
-  };
-}
-
-function splitTrailingFenceFragment(
-  text: string,
-  startsAtLineStart: boolean,
-): { text: string; pendingFenceFragment?: string } {
-  const lineStart = text.lastIndexOf("\n") + 1;
-  const line = text.slice(lineStart);
-  if ((!startsAtLineStart && lineStart === 0) || !/^(?: {0,3})(?:`+|~+)$/.test(line)) {
-    return { text };
-  }
-  return {
-    text: text.slice(0, lineStart),
-    pendingFenceFragment: line,
-  };
-}
 
 type StreamRenderingParams = {
   params: SubscribeEmbeddedAgentSessionParams;
@@ -121,12 +67,16 @@ export function createStreamRendering({
   shouldSkipAssistantText,
 }: StreamRenderingParams) {
   const messagingToolSentTextsNormalized = state.messagingToolSentTextsNormalized;
-  const messagingToolSourceReplyPayloads = state.messagingToolSourceReplyPayloads;
   // Final-reconciliation helper only: streamed chunks arrive already prepared, so
   // message_end drains/parses through it without re-consuming live chunks.
   const replyDirectiveAccumulator = createStreamingDirectiveAccumulator();
   const partialReplyDirectiveAccumulator = createStreamingDirectiveAccumulator();
   let reasoningProjection = createTextProjection([trimTextFilter("both")]);
+  const coveredBlockSources = new Map<
+    number,
+    Array<{ range: readonly [number, number]; text: string }>
+  >();
+  const acceptedBlockSourceGenerations = new Map<number, number>();
   // Retain the producer snapshot for eligibility; the projection builds its own
   // source, and comparing a reconstructed growing prefix can restore prefix work.
   let reasoningRaw: string | undefined;
@@ -337,36 +287,11 @@ export function createStreamRendering({
     return stripFinalTagsOutsideCodeSpans(result, resultCodeSpans.isInside);
   };
 
-  const stripFinalTagsOutsideCodeSpans = (text: string, isInside: (index: number) => boolean) => {
-    let output = "";
-    let lastIndex = 0;
-    for (const match of findFinalTagMatches(text)) {
-      const idx = match.index;
-      if (isInside(idx)) {
-        continue;
-      }
-      output += text.slice(lastIndex, idx);
-      lastIndex = idx + match.text.length;
-    }
-    output += text.slice(lastIndex);
-    return output;
-  };
-  const hasMessageToolOnlySourceDelivery = () =>
-    params.sourceReplyDeliveryMode === "message_tool_only" &&
-    (state.messageToolOnlySourceReplyDelivered ||
-      params.hasDeliveredMessageToolOnlySourceReply?.() === true ||
-      messagingToolSourceReplyPayloads.length > 0);
-
-  const emitBlockChunk = (
-    text: string,
-    options?: {
-      assistantMessageIndex?: number;
-      deferPendingToolMedia?: boolean;
-      final?: boolean;
-      finalReply?: ReplyDirectiveParseResult;
-      sourceText?: string;
-    },
-  ) => {
+  // Source coordinates travel with sourceText as a PAIR (upstream 2167eab4cf).
+  // Never set a range without its text or vice versa: the delivery pipeline
+  // treats (text, range) as one occurrence identity and falls back to payload
+  // identity only when BOTH are absent.
+  const emitBlockChunk: EmbeddedAgentSubscribeContext["emitBlockChunk"] = (text, options) => {
     if (
       state.suppressBlockChunks ||
       params.silentExpected ||
@@ -380,10 +305,15 @@ export function createStreamRendering({
       return;
     }
     const markBlockReplyTextHandled = () => {
-      state.lastBlockReplyText = blockReplyText;
+      // Only real text counts as handled, and it is also the delivered prefix the suffix
+      // dedupe below reads (#135751); an empty chunk must not mark the block handled.
+      if (blockReplyText) {
+        state.lastBlockReplyText = blockReplyText;
+        state.lastDeliveredBlockReplyText = blockReplyText;
+      }
       state.toolExecutionSinceLastBlockReply = false;
     };
-    if (hasMessageToolOnlySourceDelivery()) {
+    if (hasMessageToolOnlySourceDelivery({ params, state })) {
       markBlockReplyTextHandled();
       return;
     }
@@ -434,7 +364,55 @@ export function createStreamRendering({
       return;
     }
 
-    if (chunk && shouldSkipAssistantText(chunk, normalizedChunk)) {
+    let sourceRangeAlreadyCovered = false;
+    const assistantMessageIndex = options?.assistantMessageIndex ?? state.assistantMessageIndex;
+    const blockSourceText = options?.sourceText;
+    const sourceStart = options?.sourceStart;
+    const sourceEnd = options?.sourceEnd;
+    const blockSourceRange =
+      blockSourceText !== undefined && sourceStart !== undefined && sourceEnd !== undefined
+        ? ([sourceStart, sourceEnd] as const)
+        : undefined;
+    if (blockSourceRange) {
+      const covered = coveredBlockSources.get(assistantMessageIndex) ?? [];
+      const [start, end] = blockSourceRange;
+      let cursor = start;
+      let coveredText = "";
+      for (const entry of covered.toSorted((a, b) => a.range[0] - b.range[0])) {
+        const [coveredStart, coveredEnd] = entry.range;
+        if (coveredEnd <= cursor) {
+          continue;
+        }
+        if (coveredStart > cursor) {
+          break;
+        }
+        const overlap = cursor - coveredStart;
+        const length = Math.min(end, coveredEnd) - cursor;
+        coveredText += entry.text.slice(overlap, overlap + length);
+        cursor += length;
+        if (cursor >= end) {
+          break;
+        }
+      }
+      if (cursor >= end && coveredText === blockSourceText) {
+        sourceRangeAlreadyCovered = true;
+      }
+    }
+    // Source ranges distinguish adjacent identical chunks without treating a
+    // replayed terminal snapshot as a new occurrence.
+    if (options?.reconciledSourceBreak && options.sourceGeneration !== undefined) {
+      // The preserved boundary is a replay, but later ranges in this generation are new.
+      acceptedBlockSourceGenerations.set(assistantMessageIndex, options.sourceGeneration);
+    }
+    const sameSourceGeneration =
+      options?.sourceGeneration !== undefined &&
+      acceptedBlockSourceGenerations.get(assistantMessageIndex) === options.sourceGeneration;
+    if (
+      chunk &&
+      (sourceRangeAlreadyCovered ||
+        ((!blockSourceRange || !sameSourceGeneration || options?.reconciledSourceBreak) &&
+          shouldSkipAssistantText(chunk, normalizedChunk)))
+    ) {
       if (slicedPrefixReplay) {
         markBlockReplyTextHandled();
       }
@@ -451,6 +429,11 @@ export function createStreamRendering({
     }
     // Prepared chunks already removed real directives with full source context;
     // a chunk boundary can separate a remaining literal from its code opener.
+    // The chunker buffers RAW streamed text, so a turn cut off mid-marker
+    // ("Done.\nCONTINUE_WOR") reaches a reply with the partial control token
+    // still attached when message_end flushes the buffer. Every other display
+    // path already applies this strip; the chunker was the one that did not.
+    chunk = stripContinuationSignalFromDisplayText(chunk);
     let splitResult: ReplyDirectiveParseResult = {
       text: chunk,
       replyToTag: false,
@@ -515,9 +498,27 @@ export function createStreamRendering({
     if (splitResult.isSilent) {
       setReplyPayloadMetadata(payload, { silentReply: true });
     }
+    const emittedBlockSourceRange =
+      chunk === text.trimEnd() &&
+      cleanedText === chunk &&
+      !sourceRangeAlreadyCovered &&
+      !options?.reconciledSourceBreak
+        ? blockSourceRange
+        : undefined;
     emitBlockReply(payload, {
-      assistantMessageIndex: options?.assistantMessageIndex ?? state.assistantMessageIndex,
-      blockSourceText: options?.sourceText ?? blockReplyText,
+      assistantMessageIndex,
+      blockSourceText:
+        chunk === text.trimEnd() &&
+        cleanedText === chunk &&
+        (options?.sourceStart === undefined || emittedBlockSourceRange !== undefined)
+          ? blockSourceText
+          : undefined,
+      blockSourceRange: emittedBlockSourceRange,
+      // Provenance, not identity. The occurrence pair above is withheld unless the
+      // chunk is byte-exactly the block's own source; coverage only needs to know
+      // which source this attempt carried, so it is recorded unconditionally and
+      // survives the presentation-change clear in reply-delivery.
+      blockCoverageSourceText: blockSourceText,
       consumePendingToolMedia:
         (options?.final === true &&
           options.deferPendingToolMedia !== true &&
@@ -527,6 +528,14 @@ export function createStreamRendering({
         Boolean(mediaUrls?.length || audioAsVoice),
       onDelivered: markBlockReplyTextDelivered,
     });
+    if (emittedBlockSourceRange) {
+      const covered = coveredBlockSources.get(assistantMessageIndex) ?? [];
+      covered.push({ range: emittedBlockSourceRange, text: blockSourceText ?? "" });
+      coveredBlockSources.set(assistantMessageIndex, covered);
+      if (options?.sourceGeneration !== undefined) {
+        acceptedBlockSourceGenerations.set(assistantMessageIndex, options.sourceGeneration);
+      }
+    }
     markBlockReplyTextHandled();
   };
 
@@ -545,27 +554,35 @@ export function createStreamRendering({
     if (!params.onBlockReply) {
       return undefined;
     }
+    // Settle in-flight block-reply deliveries BEFORE draining the chunker, so a
+    // retry cannot interleave with the flush. Async settlement re-enters the
+    // flush rather than proceeding on a half-settled queue.
     const settlement = settleBlockReplyDeliveries({
       retryFailures: options?.retryFailures,
     });
     if (isPromiseLike<void>(settlement)) {
       return Promise.resolve(settlement).then(() => flushBlockReplyBuffer(options));
     }
-    let pendingChunk: { sourceText?: string; text: string } | undefined;
+    let pendingChunk: ({ text: string } & Partial<BlockChunkMetadata>) | undefined;
     if (blockChunker.hasBuffered()) {
       blockChunker.drain({
         force: true,
         emit: (text, chunkOptions) => {
           if (pendingChunk !== undefined) {
             emitBlockChunk(pendingChunk.text, {
+              sourceGeneration: pendingChunk.sourceGeneration,
+              reconciledSourceBreak: pendingChunk.reconciledSourceBreak,
+              sourceStart: pendingChunk.sourceStart,
+              sourceEnd: pendingChunk.sourceEnd,
               assistantMessageIndex: options?.assistantMessageIndex,
               sourceText: pendingChunk.sourceText,
             });
           }
-          pendingChunk = { text, sourceText: chunkOptions?.sourceText };
+          // Spread, not just sourceText: the coordinates must travel with the
+          // text or the (text, range) pair is broken at the flush boundary.
+          pendingChunk = { text, ...chunkOptions };
         },
       });
-      blockChunker.reset();
     }
     if (
       pendingChunk !== undefined ||
@@ -578,6 +595,10 @@ export function createStreamRendering({
         ...options,
         final: options?.final === true,
         sourceText: pendingChunk?.sourceText,
+        sourceGeneration: pendingChunk?.sourceGeneration,
+        reconciledSourceBreak: pendingChunk?.reconciledSourceBreak,
+        sourceStart: pendingChunk?.sourceStart,
+        sourceEnd: pendingChunk?.sourceEnd,
       });
     }
     if (currentPendingBlockReplyTasks().length === 0) {
@@ -643,7 +664,11 @@ export function createStreamRendering({
     // only what was explicitly sent, so trailing reasoning must stay out of the
     // render hook — uniformly, whether the thinking block rode in on a tool call
     // or arrived on its own. It still reaches the bus/archive above.
-    if (state.streamReasoning && !hasMessageToolOnlySourceDelivery() && params.onReasoningStream) {
+    if (
+      state.streamReasoning &&
+      !hasMessageToolOnlySourceDelivery({ params, state }) &&
+      params.onReasoningStream
+    ) {
       runBestEffortCallback({
         label: "reasoning stream",
         log,

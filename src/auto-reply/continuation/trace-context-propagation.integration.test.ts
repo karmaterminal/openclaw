@@ -1,24 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-type MockTaskFlowRecord = {
-  flowId: string;
-  syncMode: "managed";
-  ownerKey: string;
-  controllerId: string;
-  status: string;
-  stateJson: unknown;
-  goal: string;
-  currentStep: string;
-  revision: number;
-  createdAt: number;
-  updatedAt: number;
-  endedAt?: number;
-};
-
-const mockFlows = new Map<string, MockTaskFlowRecord>();
-let flowIdCounter = 0;
-
 vi.mock("../../config/config.js", () => ({
   getRuntimeConfig: () => ({
     agents: {
@@ -30,86 +12,6 @@ vi.mock("../../config/config.js", () => ({
         },
       },
     },
-  }),
-}));
-
-vi.mock("../../tasks/task-flow-registry.js", () => ({
-  createManagedTaskFlow: vi.fn(
-    (params: {
-      ownerKey: string;
-      controllerId: string;
-      stateJson: unknown;
-      goal: string;
-      currentStep: string;
-    }) => {
-      const flowId = `flow-${++flowIdCounter}`;
-      mockFlows.set(flowId, {
-        flowId,
-        syncMode: "managed",
-        ownerKey: params.ownerKey,
-        controllerId: params.controllerId,
-        status: "queued",
-        stateJson: params.stateJson,
-        goal: params.goal,
-        currentStep: params.currentStep,
-        revision: 0,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-      return mockFlows.get(flowId);
-    },
-  ),
-  listTaskFlowsForOwnerKey: vi.fn((ownerKey: string) =>
-    [...mockFlows.values()].filter((flow) => flow.ownerKey === ownerKey),
-  ),
-  getTaskFlowById: vi.fn((flowId: string) => mockFlows.get(flowId)),
-  updateFlowRecordByIdExpectedRevision: vi.fn(
-    (params: { flowId: string; expectedRevision: number; patch: Record<string, unknown> }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return {
-          applied: false,
-          reason: flow ? "revision_conflict" : "not_found",
-          current: flow ? { ...flow } : undefined,
-        };
-      }
-      Object.assign(flow, params.patch);
-      flow.revision += 1;
-      return { applied: true, flow: { ...flow } };
-    },
-  ),
-  finishFlow: vi.fn(
-    (params: {
-      flowId: string;
-      expectedRevision: number;
-      updatedAt?: number;
-      endedAt?: number;
-      stateJson?: unknown;
-    }) => {
-      const flow = mockFlows.get(params.flowId);
-      if (!flow || flow.revision !== params.expectedRevision) {
-        return { applied: false, reason: flow ? "revision_conflict" : "not_found" };
-      }
-      flow.status = "succeeded";
-      flow.stateJson = params.stateJson ?? flow.stateJson;
-      flow.endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
-      flow.updatedAt = params.updatedAt ?? flow.endedAt;
-      flow.revision += 1;
-      return { applied: true, flow: { ...flow } };
-    },
-  ),
-  failFlow: vi.fn((params: { flowId: string; updatedAt?: number; endedAt?: number }) => {
-    const flow = mockFlows.get(params.flowId);
-    if (flow) {
-      flow.status = "failed";
-      flow.endedAt = params.endedAt ?? params.updatedAt ?? Date.now();
-      flow.updatedAt = flow.endedAt;
-      flow.revision += 1;
-    }
-    return { applied: Boolean(flow) };
-  }),
-  deleteTaskFlowRecordById: vi.fn((flowId: string) => {
-    mockFlows.delete(flowId);
   }),
 }));
 
@@ -140,8 +42,11 @@ import {
 } from "../../infra/session-delivery-queue-storage.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
+import { useContinuationCustodyTestState } from "./custody/custody.test-support.js";
 import { consumePendingDelegates, resetDelegateStoreForTests } from "./delegate-store.js";
 import { enqueueContinuationReturnDeliveries } from "./targeting.js";
+
+useContinuationCustodyTestState();
 
 const rootTraceId = "0af7651916cd43dd8448eb211c80319c";
 const rootSpanId = "1111111111111111";
@@ -219,13 +124,10 @@ function installRecordingTracer(): { spans: RecordedSpan[] } {
 
 describe("continuation trace-context propagation integration", () => {
   beforeEach(() => {
-    mockFlows.clear();
-    flowIdCounter = 0;
     resetDelegateStoreForTests();
   });
 
   afterEach(() => {
-    mockFlows.clear();
     resetDelegateStoreForTests();
     resetContinuationTracer();
   });
@@ -256,7 +158,7 @@ describe("continuation trace-context propagation integration", () => {
           targetSessionKey: "agent:main:root",
         }),
       );
-      const [delegate] = consumePendingDelegates(sessionKey);
+      const [delegate] = await consumePendingDelegates(sessionKey);
       expect(delegate?.traceparent).toBe(carriedTraceparent);
 
       emitContinuationDelegateSpan({
@@ -298,6 +200,7 @@ describe("continuation trace-context propagation integration", () => {
     const targetedSystemEvents: Array<{ sessionKey: string; traceparent?: string }> = [];
     await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: ["agent:main:root"],
         text: "[continuation:enrichment-return] targeted result",
         idempotencyKeyBase: "trace-integration:targeted",
@@ -332,6 +235,7 @@ describe("continuation trace-context propagation integration", () => {
     const fanoutTargets = ["agent:main:root", "agent:main:sibling", "agent:main:observer"];
     await enqueueContinuationReturnDeliveries(
       {
+        ownerAgentId: "main",
         targetSessionKeys: fanoutTargets,
         text: "[continuation:enrichment-return] broadcast result",
         idempotencyKeyBase: "trace-integration:fanout",

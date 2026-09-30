@@ -6,11 +6,11 @@ import { upsertSessionEntryCore } from "../../../config/sessions/session-accesso
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../../infra/kysely-sync.js";
 import { openNodeSqliteDatabase } from "../../../infra/node-sqlite.js";
 import { resolveSqliteDatabaseFilePaths } from "../../../infra/sqlite-files.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../../state/openclaw-agent-db-lifecycle.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../../state/openclaw-agent-db-readonly.js";
 import { listOpenClawRegisteredAgentDatabases } from "../../../state/openclaw-agent-db-registry-listing.js";
 import type { DB as OpenClawAgentKyselyDatabase } from "../../../state/openclaw-agent-db.generated.js";
 import {
-  closeOpenClawAgentDatabasesForTest,
   disposeOpenClawAgentDatabaseByPath,
   ensureOpenClawAgentDatabaseSchema,
   openOpenClawAgentDatabase,
@@ -366,7 +366,7 @@ export class PreparedReturnCovenantDatabaseProfiles {
     if (!assignment) {
       throw new Error(`return-covenant database assignment is missing: ${key}`);
     }
-    closeOpenClawAgentDatabasesForTest();
+    await closeOpenClawAgentDatabasesForTestAsync();
     await moveSqliteDatabaseBundle(assignment.databasePath, this.#canonicalDatabasePath);
     this.#activeExecutionKey = key;
     try {
@@ -421,7 +421,7 @@ export class PreparedReturnCovenantDatabaseProfiles {
       path: this.#canonicalDatabasePath,
     });
     checkpointAgentDatabase(database.db);
-    closeOpenClawAgentDatabasesForTest();
+    await closeOpenClawAgentDatabasesForTestAsync();
     await moveSqliteDatabaseBundle(this.#canonicalDatabasePath, assignment.databasePath);
     this.#activeExecutionKey = undefined;
   }
@@ -435,7 +435,7 @@ export class PreparedReturnCovenantDatabaseProfiles {
       path: this.#canonicalDatabasePath,
     });
     checkpointAgentDatabase(database.db);
-    closeOpenClawAgentDatabasesForTest();
+    await closeOpenClawAgentDatabasesForTestAsync();
     if (!(await pathExists(this.#canonicalDatabasePath))) {
       throw new Error(`return-covenant canonical database disappeared: ${key}`);
     }
@@ -539,7 +539,7 @@ export class PreparedReturnCovenantDatabaseProfiles {
   }
 
   async close(mode?: "preserve-active" | "retain-canonical"): Promise<void> {
-    closeOpenClawAgentDatabasesForTest();
+    await closeOpenClawAgentDatabasesForTestAsync();
     if (mode === "preserve-active") {
       return;
     }
@@ -561,7 +561,7 @@ export class PreparedReturnCovenantDatabaseProfiles {
       }
       await this.deactivate({ caseId, form });
     }
-    closeOpenClawAgentDatabasesForTest();
+    await closeOpenClawAgentDatabasesForTestAsync();
     await rm(this.#fixtureRoot, { recursive: true, force: true });
   }
 }
@@ -597,7 +597,7 @@ export async function prepareReturnCovenantDatabaseProfiles(params: {
       fixtureRoot,
     });
   } catch (error) {
-    closeOpenClawAgentDatabasesForTest();
+    await closeOpenClawAgentDatabasesForTestAsync();
     await rm(fixtureRoot, { recursive: true, force: true });
     throw error;
   }

@@ -82,17 +82,14 @@ export function parseDiagnosticTraceparent(
   ) {
     return undefined;
   }
-  const normalizedTraceId = normalizeTraceId(traceId);
-  const normalizedSpanId = normalizeSpanId(spanId);
-  const normalizedTraceFlags = normalizeTraceFlags(traceFlags);
-  if (!normalizedTraceId || !normalizedSpanId || !normalizedTraceFlags) {
+  if (
+    !isValidDiagnosticTraceId(traceId) ||
+    !isValidDiagnosticSpanId(spanId) ||
+    !isValidDiagnosticTraceFlags(traceFlags)
+  ) {
     return undefined;
   }
-  return {
-    traceId: normalizedTraceId,
-    spanId: normalizedSpanId,
-    traceFlags: normalizedTraceFlags,
-  };
+  return { traceId, spanId, traceFlags };
 }
 
 export function normalizeDiagnosticTraceparent(

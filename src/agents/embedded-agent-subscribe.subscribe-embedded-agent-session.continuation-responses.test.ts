@@ -172,9 +172,16 @@ describe("continuation Responses reconciliation", () => {
       ([payload]) => (payload as BlockReplyPayload | undefined)?.audioAsVoice === true,
     );
     expect(audioReplies).toHaveLength(1);
+    // "First " keeps its trailing space. The source items are
+    // "First [[audio_as_voice]]" and "Second"; consuming the directive leaves
+    // that space, and a non-final chunk boundary preserves it so the delivered
+    // payloads still concatenate to the source visible text ("First Second").
+    // Trimming here produced "FirstSecond" and lost the word break. The
+    // transcript lane below is trimmed, which is the separate, correct contract
+    // for stored text.
     expect(
       onBlockReply.mock.calls.map(([payload]) => (payload as BlockReplyPayload | undefined)?.text),
-    ).toEqual(["First", "Second"]);
+    ).toEqual(["First ", "Second"]);
     expect(onBlockReply.mock.calls.map((call) => call[1]?.assistantMessageIndex)).toEqual([1, 2]);
     expect(subscription.assistantTexts).toEqual(["First", "Second"]);
   });

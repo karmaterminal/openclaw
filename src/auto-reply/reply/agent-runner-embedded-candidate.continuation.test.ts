@@ -116,7 +116,6 @@ function createTurn(config: AgentTurnParams["followupRun"]["run"]["config"]): Ag
     shouldEmitToolResult: () => true,
     shouldEmitToolOutput: () => true,
     pendingToolTasks: new Set(),
-    resetSessionAfterRoleOrderingConflict: async () => false,
     isHeartbeat: false,
     sessionKey: "agent:main:fallback",
     getActiveSessionEntry: () => ({
@@ -143,8 +142,8 @@ function runCandidate(
       sessionId: "session-fallback",
       sessionKey: "agent:main:fallback",
     }),
-    githubPublicationAvailable: false,
     turn: createTurn(config),
+    directBlockDeliveries: [],
     effectiveRun: createTurn(config).followupRun.run,
     candidateRun: createTurn(config).followupRun.run,
     runtimeConfig: config,
@@ -241,6 +240,14 @@ describe("runEmbeddedFallbackCandidate continuation callbacks", () => {
         model: "gpt-5.6-luna",
         authProfileId: "openai:fallback-auth",
       }),
+      // The requesting turn's own admission is the compaction source (#157977).
+      {
+        assertActive: expect.any(Function),
+        sourceAuthority: {
+          assertActive: expect.any(Function),
+          operatorAuthority: createTurn(config).followupRun.operatorAuthority,
+        },
+      },
     );
     expect(mocks.releaseQueuedCompactionTolerant).toHaveBeenCalledOnce();
     expect(onCompactionCount).toHaveBeenCalledOnce();

@@ -8,6 +8,7 @@ import {
   type DeliveryQueueStateContext,
 } from "../infra/delivery-queue-sqlite.js";
 import { computeBackoffMs } from "../infra/delivery-recovery.shared.js";
+import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { resolveHeartbeatAgents, resolveHeartbeatIntervalMs } from "../infra/heartbeat-config.js";
 import { startHeartbeatRunner, type HeartbeatRunner } from "../infra/heartbeat-runner-scheduler.js";
 import type { runHeartbeatOnce } from "../infra/heartbeat-runner.js";
@@ -89,11 +90,12 @@ export function startGatewayCronWithLogging(params: {
   );
 }
 
-/** Schedules post-ready maintenance and cancels/cleans handles if shutdown wins the race. */
+/** Schedules post-ready maintenance and cleans up if shutdown wins the race. */
 export function scheduleGatewayPostReadyMaintenance(params: {
+  scheduler: GatewayScheduler;
+  signal: AbortSignal;
   delayMs: number;
   isClosing: () => boolean;
-  onStarted?: () => void;
   startMaintenance: () => Promise<GatewayMaintenanceHandles | null>;
   applyMaintenance: (maintenance: GatewayMaintenanceHandles) => Promise<void> | void;
   shouldStartCron: () => boolean;
@@ -104,51 +106,62 @@ export function scheduleGatewayPostReadyMaintenance(params: {
   logCron: { error: (message: string) => void };
   log: GatewayPostReadyLogger;
   recordPostReadyMemory: () => void;
-}): ReturnType<typeof setTimeout> {
-  const timer = setTimeout(() => {
-    params.onStarted?.();
-    if (params.isClosing()) {
-      return;
-    }
-    void runWithGatewayIndependentRootWorkAdmission(async () => {
-      try {
-        if (!params.isClosing()) {
-          const maintenance = await params.startMaintenance();
-          if (params.isClosing()) {
-            // Maintenance can allocate intervals before shutdown is observed; clear them here
-            // instead of handing live timers to a closing gateway.
-            await clearGatewayMaintenanceHandles(maintenance);
-          } else if (maintenance) {
-            await params.applyMaintenance(maintenance);
+}): void {
+  params.scheduler.schedule({
+    id: "startup:maintenance",
+    delayMs: params.delayMs,
+    run: () => {
+      if (params.isClosing()) {
+        return undefined;
+      }
+      return runWithGatewayIndependentRootWorkAdmission(
+        async () => {
+          try {
+            if (!params.isClosing()) {
+              const maintenance = await params.startMaintenance();
+              if (params.isClosing()) {
+                // Startup may publish maintenance after shutdown has already fenced new work.
+                await clearGatewayMaintenanceHandles(maintenance);
+              } else if (maintenance) {
+                await params.applyMaintenance(maintenance);
+              }
+            }
+          } catch (err) {
+            params.log.warn(`gateway post-ready maintenance startup failed: ${String(err)}`);
           }
+          if (!params.isClosing() && params.shouldStartCron()) {
+            params.markCronStartHandled();
+            startGatewayCronWithLogging({
+              cronState: params.cronState,
+              cronReconciliation: params.cronReconciliation,
+              reason: "startup",
+              config: params.cronConfig,
+              logCron: params.logCron,
+            });
+          }
+          if (!params.isClosing()) {
+            params.recordPostReadyMemory();
+          }
+        },
+        "runtime:maintenance",
+        params.signal,
+      ).catch((err: unknown) => {
+        const ownedCancellation =
+          params.signal.aborted &&
+          (err === params.signal.reason ||
+            (err instanceof Error && err.cause === params.signal.reason));
+        if (!ownedCancellation) {
+          params.log.warn(`gateway post-ready maintenance deferred task failed: ${String(err)}`);
         }
-      } catch (err) {
-        params.log.warn(`gateway post-ready maintenance startup failed: ${String(err)}`);
-      }
-      if (!params.isClosing() && params.shouldStartCron()) {
-        params.markCronStartHandled();
-        startGatewayCronWithLogging({
-          cronState: params.cronState,
-          cronReconciliation: params.cronReconciliation,
-          reason: "startup",
-          config: params.cronConfig,
-          logCron: params.logCron,
-        });
-      }
-      if (!params.isClosing()) {
-        params.recordPostReadyMemory();
-      }
-    }, "runtime:maintenance").catch((err: unknown) =>
-      params.log.warn(`gateway post-ready maintenance deferred task failed: ${String(err)}`),
-    );
-  }, params.delayMs);
-  timer.unref?.();
-  return timer;
+      });
+    },
+  });
 }
 
 const RECOVERY_SHUTDOWN_STILL_PENDING_WARN_MS = 5_000;
 
 function startPendingOutboundDeliveryRecovery(params: {
+  scheduler: GatewayScheduler;
   cfg: OpenClawConfig;
   log: GatewayRuntimeServiceLogger;
 }): () => Promise<void> {
@@ -159,9 +172,9 @@ function startPendingOutboundDeliveryRecovery(params: {
   let stopPromise: Promise<void> | null = null;
   let logRecovery: ReturnType<GatewayRuntimeServiceLogger["child"]> | undefined;
 
-  const recover = (): void => {
+  const recover = (): Promise<void> | undefined => {
     if (stopped || inFlight || isGatewayWorkAdmissionClosed()) {
-      return;
+      return undefined;
     }
     const recovery = runWithGatewayIndependentRootWorkAdmission(async () => {
       if (stopped) {
@@ -277,16 +290,21 @@ function startPendingOutboundDeliveryRecovery(params: {
       }
     });
     inFlight = settled;
+    return settled;
   };
 
   // Match the queue's first backoff window without holding admission between
   // ticks; otherwise suspended/restarting gateways retain invisible work.
-  const retryTimer = setInterval(recover, computeBackoffMs(1));
-  retryTimer.unref?.();
-  recover();
+  const retryJob = params.scheduler.schedule({
+    id: "delivery:outbound-recovery",
+    delayMs: computeBackoffMs(1),
+    everyMs: computeBackoffMs(1),
+    run: recover,
+  });
+  void recover();
   return () => {
     stopped = true;
-    clearInterval(retryTimer);
+    retryJob.cancel();
     if (stopPromise) {
       return stopPromise;
     }
@@ -311,6 +329,7 @@ function startPendingOutboundDeliveryRecovery(params: {
 }
 
 function startPendingSessionDeliveryRuntime(params: {
+  scheduler: GatewayScheduler;
   deps: import("../cli/deps.types.js").CliDeps;
   log: GatewayRuntimeServiceLogger;
   maxEnqueuedAt: number;
@@ -324,165 +343,172 @@ function startPendingSessionDeliveryRuntime(params: {
   let stopRuntime: (() => Promise<void>) | undefined;
   // Delay session continuation recovery so the gateway has time to publish ready state and
   // request routing before replaying restart-sentinel deliveries.
-  const timer = setTimeout(() => {
-    recovery = runWithGatewayIndependentRootWorkAdmission(
-      async () => {
-        const {
-          deliverQueuedSessionDelivery,
-          recoverPendingRestartContinuationDeliveries,
-          settleQueuedSessionDelivery,
-        } = await import("./server-restart-sentinel.js");
-        if (signal.aborted) {
-          return;
-        }
-        const logRecovery = params.log.child("session-delivery-recovery");
-        stopRuntime = startSessionDeliveryRuntime({
-          queueContext,
-          deliver: (entry, { queueContext: deliveryContext }) =>
-            deliverQueuedSessionDelivery({
+  const job = params.scheduler.schedule({
+    id: "delivery:session-recovery",
+    delayMs: 1_250,
+    run: () => {
+      recovery = runWithGatewayIndependentRootWorkAdmission(
+        async () => {
+          const {
+            deliverQueuedSessionDelivery,
+            recoverPendingRestartContinuationDeliveries,
+            settleQueuedSessionDelivery,
+          } = await import("./server-restart-sentinel.js");
+          if (signal.aborted) {
+            return;
+          }
+          const logRecovery = params.log.child("session-delivery-recovery");
+          stopRuntime = startSessionDeliveryRuntime({
+            scheduler: params.scheduler,
+            queueContext,
+            deliver: (entry, { queueContext: deliveryContext }) =>
+              deliverQueuedSessionDelivery({
+                deps: params.deps,
+                entry,
+                queueContext: deliveryContext,
+                ...(params.resolveGatewayContext
+                  ? { resolveGatewayContext: params.resolveGatewayContext }
+                  : {}),
+              }),
+            log: logRecovery,
+            onSettled: settleQueuedSessionDelivery,
+          });
+          try {
+            await recoverPendingRestartContinuationDeliveries({
               deps: params.deps,
-              entry,
-              queueContext: deliveryContext,
+              queueContext,
+              log: logRecovery,
+              maxEnqueuedAt: params.maxEnqueuedAt,
               ...(params.resolveGatewayContext
                 ? { resolveGatewayContext: params.resolveGatewayContext }
                 : {}),
-            }),
-          log: logRecovery,
-          onSettled: settleQueuedSessionDelivery,
-        });
-        try {
-          await recoverPendingRestartContinuationDeliveries({
-            deps: params.deps,
-            queueContext,
-            log: logRecovery,
-            maxEnqueuedAt: params.maxEnqueuedAt,
-            ...(params.resolveGatewayContext
-              ? { resolveGatewayContext: params.resolveGatewayContext }
-              : {}),
-          });
-        } finally {
-          // Recovery and scheduling are independent safeguards. A transient
-          // recovery failure must not leave persisted rows without timers.
-          if (!signal.aborted) {
-            await schedulePendingSessionDeliveries();
+            });
+          } finally {
+            // Recovery and scheduling are independent safeguards. A transient
+            // recovery failure must not leave persisted rows without timers.
+            if (!signal.aborted) {
+              await schedulePendingSessionDeliveries();
+            }
           }
+        },
+        "runtime:session-delivery-recovery",
+        signal,
+      ).catch((err: unknown) => {
+        const ownedCancellation =
+          signal.aborted &&
+          (err === signal.reason || (err instanceof Error && err.cause === signal.reason));
+        if (!ownedCancellation) {
+          params.log.error(`Session delivery recovery failed: ${String(err)}`);
         }
-      },
-      "runtime:session-delivery-recovery",
-      signal,
-    ).catch((err: unknown) => {
-      const ownedCancellation =
-        signal.aborted &&
-        (err === signal.reason || (err instanceof Error && err.cause === signal.reason));
-      if (!ownedCancellation) {
-        params.log.error(`Session delivery recovery failed: ${String(err)}`);
-      }
-    });
-  }, 1_250);
-  timer.unref?.();
+      });
+      return recovery;
+    },
+  });
   return () => {
     // Cancel queued admission, but join imports and work already admitted before their runtime closes.
     controller.abort();
-    clearTimeout(timer);
+    job.cancel();
     stopPromise ??= Promise.all([recovery, stopRuntime?.()]).then(() => {});
     return stopPromise;
   };
 }
 
+/** Custody retention runs at boot and then on this interval (RFC §5.4.6). */
+const CONTINUATION_CUSTODY_PRUNE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
 function startPendingContinuationRecovery(params: {
   log: GatewayRuntimeServiceLogger;
 }): () => Promise<void> {
-  // Delegate recovery must run before same-session continue_work recovery to
-  // preserve normal post-turn ordering when a restart happens after both were
-  // queued in the same turn.
-  //
-  // Captured BEFORE the deferred timer as a boot-time cutoff: post-compaction
-  // recovery only resets rows that were already `running` at process start, so a
-  // live release claiming a row during the startup window is not requeued.
+  // Captured BEFORE the deferred timer as the boot-time cutoff: only records
+  // claimed at or before it belonged to the previous process, so a live
+  // dispatch claiming a record during the startup window is never mistaken for
+  // an abandoned claim.
   const recoveryArmedAt = Date.now();
   let stopped = false;
   let recovery: Promise<void> | undefined;
   let stopPromise: Promise<void> | undefined;
+  let pruneTimer: ReturnType<typeof setInterval> | undefined;
+  let releaseStopWait: () => void = () => {};
+  const stopWait = new Promise<void>((resolve) => {
+    releaseStopWait = resolve;
+  });
   const timer = setTimeout(() => {
     if (stopped) {
       return;
     }
-    recovery = runWithGatewayIndependentRootWorkAdmission(async () => {
-      const [delegateRecoveryModule, workModule] = await Promise.all([
-        import("../auto-reply/continuation/delegate-dispatch-recovery.js"),
-        import("../auto-reply/continuation/work-dispatch.js"),
-      ]);
-      const delegateLog = params.log.child("continuation-delegate-recovery");
-      const delegateSummary = await delegateRecoveryModule.recoverPendingContinuationDelegates({
-        queuedCreatedAtOrBefore: recoveryArmedAt,
-        includeRunningUpdatedAtOrBefore: recoveryArmedAt,
+    recovery = (async () => {
+      const [{ runContinuationCustodyBoot, pruneExpiredContinuationCustody }, registry] =
+        await Promise.all([
+          import("../auto-reply/continuation/custody-boot.js"),
+          import("../agents/subagents/registry/subagent-registry.js"),
+        ]);
+      const bootLog = params.log.child("continuation-recovery");
+      // Doctor import fact, then registry activation, then custody recovery.
+      // Only the custody steps run admitted; the activation wait does not.
+      const summary = await runContinuationCustodyBoot({
+        armedAt: recoveryArmedAt,
+        admit: (step) =>
+          runWithGatewayIndependentRootWorkAdmission(step, "runtime:continuation-recovery"),
+        // Stop must not wait on an activation that will never come.
+        whenSubagentRegistryActivated: async () => {
+          await Promise.race([registry.whenSubagentRegistryActivated(), stopWait]);
+          if (stopped) {
+            throw new Error("continuation recovery stopped before registry activation");
+          }
+        },
+        log: bootLog,
       });
+      const { delegates, postCompaction, work } = summary;
       if (
-        delegateSummary.sessions > 0 ||
-        delegateSummary.dispatched > 0 ||
-        delegateSummary.rejected > 0
+        delegates.sessions > 0 ||
+        postCompaction.sessions > 0 ||
+        work.sessions > 0 ||
+        work.terminalNotices > 0 ||
+        summary.awaitingNextCompactionRequeued > 0 ||
+        summary.pruned > 0
       ) {
-        delegateLog.info(
-          `replayed sessions=${delegateSummary.sessions} dispatched=${delegateSummary.dispatched} rejected=${delegateSummary.rejected}`,
+        bootLog.info(
+          `recovered delegates sessions=${delegates.sessions} dispatched=${delegates.dispatched} rejected=${delegates.rejected} postCompaction sessions=${postCompaction.sessions} released=${postCompaction.dispatched} failed=${postCompaction.failed} requeued=${summary.awaitingNextCompactionRequeued} work sessions=${work.sessions} dispatched=${work.dispatched} failed=${work.failed} reaped=${work.reaped} terminalNotices=${work.terminalNotices} pruned=${summary.pruned}`,
         );
       }
-      // Post-compaction delegates left `running` by a crash between
-      // release-claim and durable handoff must be re-dispatched now, not just
-      // requeued — for a session that already compacted there is no subsequent
-      // compaction seam to consume them, so a requeued row would sit forever.
-      // The boot-time cutoff excludes rows a live release claimed after startup,
-      // so recovery cannot double-drive an actively-releasing delegate.
-      const awaitingNextCompactionRequeue =
-        await delegateRecoveryModule.requeueAwaitingNextCompactionDelegates({
-          runningUpdatedAtOrBefore: recoveryArmedAt,
-        });
-      if (awaitingNextCompactionRequeue.requeued > 0) {
-        delegateLog.info(
-          `requeued awaiting-next-compaction delegates requeued=${awaitingNextCompactionRequeue.requeued}`,
-        );
+      if (stopped) {
+        return;
       }
-      const postCompactionRecovery =
-        await delegateRecoveryModule.recoverAndReleaseStagedPostCompactionDelegates({
-          runningUpdatedAtOrBefore: recoveryArmedAt,
-        });
-      if (
-        postCompactionRecovery.sessions > 0 ||
-        postCompactionRecovery.dispatched > 0 ||
-        postCompactionRecovery.failed > 0
-      ) {
-        delegateLog.info(
-          `recovered post-compaction delegates sessions=${postCompactionRecovery.sessions} dispatched=${postCompactionRecovery.dispatched} failed=${postCompactionRecovery.failed}`,
+      pruneTimer = setInterval(() => {
+        void runWithGatewayIndependentRootWorkAdmission(
+          async () => void (await pruneExpiredContinuationCustody()),
+          "runtime:continuation-custody-prune",
+        ).catch((err: unknown) =>
+          bootLog.warn(`Continuation custody retention prune failed: ${String(err)}`),
         );
+      }, CONTINUATION_CUSTODY_PRUNE_INTERVAL_MS);
+      pruneTimer.unref?.();
+    })().catch((err: unknown) => {
+      if (!stopped) {
+        params.log.error(`Continuation recovery failed: ${String(err)}`);
       }
-
-      const workLog = params.log.child("continuation-work-recovery");
-      const workSummary = await workModule.recoverPendingContinuationWork();
-      if (
-        workSummary.sessions > 0 ||
-        workSummary.dispatched > 0 ||
-        workSummary.failed > 0 ||
-        workSummary.reaped > 0 ||
-        workSummary.terminalNotices > 0
-      ) {
-        workLog.info(
-          `replayed sessions=${workSummary.sessions} dispatched=${workSummary.dispatched} failed=${workSummary.failed} reaped=${workSummary.reaped} terminalNotices=${workSummary.terminalNotices}`,
-        );
-      }
-    }, "runtime:continuation-recovery").catch((err: unknown) =>
-      params.log.error(`Continuation recovery failed: ${String(err)}`),
-    );
+    });
   }, 1_400);
   timer.unref?.();
   return () => {
     stopped = true;
+    releaseStopWait();
     clearTimeout(timer);
-    stopPromise ??= recovery ?? Promise.resolve();
+    if (pruneTimer) {
+      clearInterval(pruneTimer);
+    }
+    stopPromise ??= (recovery ?? Promise.resolve()).then(() => {
+      if (pruneTimer) {
+        clearInterval(pruneTimer);
+      }
+    });
     return stopPromise;
   };
 }
 
 /** Activates background gateway services after core runtime startup is ready. */
 export function activateGatewayScheduledServices(params: {
+  scheduler: GatewayScheduler;
   minimalTestGateway: boolean;
   cfgAtStart: OpenClawConfig;
   deps: import("../cli/deps.types.js").CliDeps;
@@ -499,6 +525,7 @@ export function activateGatewayScheduledServices(params: {
       stopDeliveryRecovery: async () => {},
     };
   }
+  const { scheduler } = params;
   if (
     !params.cronEnabled &&
     resolveHeartbeatAgents(params.cfgAtStart).some((agent) =>
@@ -546,8 +573,9 @@ export function activateGatewayScheduledServices(params: {
         }
       : {}),
   });
-  const sessionUpstreamMonitor = startSessionUpstreamMonitor();
+  const sessionUpstreamMonitor = startSessionUpstreamMonitor({ scheduler });
   const stopSessionDeliveryRuntime = startPendingSessionDeliveryRuntime({
+    scheduler,
     deps: params.deps,
     log: params.log,
     maxEnqueuedAt: params.sessionDeliveryRecoveryMaxEnqueuedAt,
@@ -556,6 +584,7 @@ export function activateGatewayScheduledServices(params: {
       : {}),
   });
   const stopOutboundDeliveryRecovery = startPendingOutboundDeliveryRecovery({
+    scheduler,
     cfg: params.cfgAtStart,
     log: params.log,
   });
@@ -577,7 +606,7 @@ export function activateGatewayScheduledServices(params: {
     stop: () => {
       heartbeatStopped = true;
       void stopDeliveryRecovery();
-      sessionUpstreamMonitor.stop();
+      void sessionUpstreamMonitor.stop();
       heartbeatRunner.stop();
     },
   };

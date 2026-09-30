@@ -30,8 +30,12 @@ function createHarness() {
     requesterDisplayKey: "main",
     task: "complete the synthetic task",
     cleanup: "keep",
+    expectsCompletionMessage: false,
     createdAt: 0,
     execution: { status: "terminal", endedAt: 1, outcome: { status: "error", error: "failed" } },
+    endedReason: SUBAGENT_ENDED_REASON_ERROR,
+    completion: { required: false, resultText: null, capturedAt: 1 },
+    delivery: { status: "not_required" },
     cleanupHandled: true,
   };
   const runs = new Map([[entry.runId, entry]]);
@@ -41,7 +45,7 @@ function createHarness() {
   const completeSubagentRun = vi
     .fn<(_: SubagentCompletionRequest) => Promise<void>>()
     .mockRejectedValue(new Error("synthetic completion failure"));
-  const resumeRun = vi.fn(() => {
+  const resumeRun = vi.fn<() => void>(() => {
     throw resumeError;
   });
   const scheduleSweep = vi.fn();
@@ -157,7 +161,7 @@ describe("subagent completion rejection ownership", () => {
         expect(completionSignal).not.toBe(launch.signal);
         expect(completionSignal?.aborted).toBe(false);
         expect(settled).toBe(false);
-        expect(h.entry.completion?.resultText).toBeUndefined();
+        expect(h.entry.completion?.resultText).toBeNull();
         expect(getActiveGatewayRootWorkCount()).toBe(1);
         finishCapture.resolve();
         await expect(completion).resolves.toEqual({ status: "fulfilled" });
@@ -312,17 +316,52 @@ describe("subagent completion rejection ownership", () => {
     },
   );
 
-  it("stops retrying when the failed attempt removes the row", async () => {
-    const h = createHarness();
-    h.completeSubagentRun.mockImplementation(async () => {
-      h.runs.delete(h.entry.runId);
-      throw new Error("row retired during completion");
-    });
-    await h.runtime.completeSubagentRunWithRecovery(h.request, "subagent-wait");
-    expect(h.completeSubagentRun).toHaveBeenCalledOnce();
-    expect(h.resumeRun).not.toHaveBeenCalled();
-    expect(h.scheduleSweep).not.toHaveBeenCalled();
-  });
+  it.each(
+    [1, 2].flatMap((attempt) =>
+      ["removal", "replacement", "generation"].map((change) => ({ attempt, change })),
+    ),
+  )(
+    "retires recovery after $change during failed attempt $attempt",
+    async ({ attempt, change }) => {
+      const h = createHarness();
+      const entered = createDeferredCore();
+      const release = createDeferredCore();
+      h.resumeRun.mockImplementation(() => {});
+      h.completeSubagentRun.mockReset();
+      if (attempt === 2) {
+        h.completeSubagentRun.mockRejectedValueOnce(new Error("retry current owner"));
+      }
+      h.completeSubagentRun.mockImplementation(async () => {
+        entered.resolve();
+        await release.promise;
+        throw new Error("row retired during completion");
+      });
+      const completion = h.runtime.completeSubagentRunWithRecovery(
+        { ...h.request, expectedEntry: undefined },
+        "lifecycle-event",
+      );
+      try {
+        await entered.promise;
+        if (change === "removal") {
+          h.runs.delete(h.entry.runId);
+        } else if (change === "replacement") {
+          h.runs.set(h.entry.runId, { ...h.entry, generation: 2 });
+        } else {
+          h.entry.generation = 2;
+        }
+        release.resolve();
+        await completion;
+        expect(h.completeSubagentRun).toHaveBeenCalledTimes(attempt);
+        expect(h.resumeRun).not.toHaveBeenCalled();
+        expect(h.scheduleSweep).not.toHaveBeenCalled();
+        expect(h.entry.cleanupHandled).toBe(true);
+        expect(h.resumed.has(h.entry.runId)).toBe(true);
+      } finally {
+        release.resolve();
+        await completion;
+      }
+    },
+  );
 
   it.each(["running", "cleaned", "yielded"] as const)(
     "preserves %s recovery after both attempts fail",
@@ -349,4 +388,17 @@ describe("subagent completion rejection ownership", () => {
       }
     },
   );
+
+  it("resumes canonical terminal cleanup after two persistence failures", async () => {
+    const h = createHarness();
+    h.resumeRun.mockImplementation(() => {});
+
+    await h.runtime.completeSubagentRunWithRecovery(h.request, "orphan-resume");
+
+    expect(h.completeSubagentRun).toHaveBeenCalledTimes(2);
+    expect(h.scheduleSweep).not.toHaveBeenCalled();
+    expect(h.resumeRun).toHaveBeenCalledExactlyOnceWith(h.entry.runId);
+    expect(h.entry.cleanupHandled).toBe(false);
+    expect(h.resumed.has(h.entry.runId)).toBe(false);
+  });
 });

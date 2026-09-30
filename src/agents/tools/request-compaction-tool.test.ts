@@ -267,7 +267,7 @@ describe("request_compaction tool", () => {
       expect.stringContaining(
         "Your evacuated state was NOT compacted. Staged post-compaction delegates remain pending.",
       ),
-      { sessionKey: SESSION_KEY },
+      { sessionKey: resolveSystemEventQueueKey(SESSION_KEY, OWNER_AGENT_ID) },
     );
   });
 
@@ -337,11 +337,11 @@ describe("request_compaction tool", () => {
     expect(mockTriggerCompaction).toHaveBeenCalledTimes(2);
     expect(mockEnqueueSystemEvent).toHaveBeenCalledWith(
       expect.stringContaining("Volitional compaction request"),
-      { sessionKey: SESSION_KEY },
+      { sessionKey: resolveSystemEventQueueKey(SESSION_KEY, OWNER_AGENT_ID) },
     );
     expect(mockEnqueueSystemEvent).toHaveBeenCalledWith(
       expect.stringContaining("Lane contention timeout"),
-      { sessionKey: SESSION_KEY },
+      { sessionKey: resolveSystemEventQueueKey(SESSION_KEY, OWNER_AGENT_ID) },
     );
   });
 

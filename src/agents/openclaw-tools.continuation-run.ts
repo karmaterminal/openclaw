@@ -1,0 +1,36 @@
+// Per-run continuation tool parameters for createOpenClawTools (inventory stub opts + forwarding).
+// openclaw-tools.ts calls createOpenClawContinuationTools itself: the Project 84 topology contract
+// requires that edge to stay direct.
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { createOpenClawContinuationTools } from "./openclaw-tools.continuation.js";
+import type { OpenClawToolsOptions } from "./openclaw-tools.types.js";
+import { buildInventoryContinuationToolOpts } from "./tools/continuation-inventory-opts.js";
+
+export function resolveOpenClawContinuationToolParamsForRun(params: {
+  resolvedConfig?: OpenClawConfig;
+  workspaceDir?: string;
+  options?: OpenClawToolsOptions;
+}): Parameters<typeof createOpenClawContinuationTools>[0] {
+  const { resolvedConfig, workspaceDir, options } = params;
+  const inventoryContinuationOpts = options?.beforeToolCallHookContext?.skillCommand
+    ? buildInventoryContinuationToolOpts(
+        resolvedConfig?.agents?.defaults?.continuation?.enabled === true,
+      )
+    : {};
+  return {
+    config: resolvedConfig,
+    agentSessionKey: options?.agentSessionKey,
+    runSessionKey: options?.runSessionKey,
+    sessionId: options?.sessionId,
+    runId: options?.runId,
+    workspaceDir,
+    sandboxRoot: options?.sandboxRoot,
+    sandboxFsBridge: options?.sandboxFsBridge,
+    sandboxWritable: options?.sandboxWritable,
+    drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
+    disableContinuationTools: options?.disableContinuationTools,
+    continueWorkOpts: options?.continueWorkOpts ?? inventoryContinuationOpts.continueWorkOpts,
+    requestCompactionOpts:
+      options?.requestCompactionOpts ?? inventoryContinuationOpts.requestCompactionOpts,
+  };
+}

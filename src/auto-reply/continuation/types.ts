@@ -10,7 +10,7 @@
 
 import type { ContinuationRecipientAuthorityBinding } from "../../config/sessions/session-recipient-authority-types.js";
 import type { InlineAttachment, InlineAttachmentMount } from "../../shared/inline-attachments.js";
-import type { TaskFlowRecord } from "../../tasks/task-flow-registry.types.js";
+import type { ContinuationRecord } from "./custody/custody-store.types.js";
 import type {
   ContinuationCrossSessionTargetingPolicy,
   ContinuationDelegateFanoutMode,
@@ -66,8 +66,8 @@ export type ContinuationSignal =
  * the delegate dispatch module after the response finalizes.
  *
  * `mode` is the single source of truth for silent/silent-wake/post-compaction
- * behaviour. Legacy persisted TaskFlow rows may still carry boolean flags, but
- * runtime objects never do.
+ * behaviour. Stored delegate state may still carry boolean flags, but runtime
+ * objects never do.
  */
 export type PendingContinuationDelegate = {
   task: string;
@@ -103,7 +103,7 @@ export type PendingContinuationDelegate = {
   /**
    * Internal recovery marker: the chain state this claimed row already planned
    * to persist before terminalizing. If the process exits after the session-store
-   * write but before the TaskFlow row is accepted/failed, restart recovery uses
+   * write but before the custody record is accepted/failed, restart recovery uses
    * this marker instead of advancing the same delegate a second time.
    */
   persistedChainState?: ChainState;
@@ -118,12 +118,20 @@ export type PendingContinuationDelegate = {
   /** Immutable producer identity used to deduplicate terminal-token lifecycle replay. */
   originRunId?: string;
   /**
-   * Internal TaskFlow metadata carried from consume → dispatch so downstream
-   * spawn/release failures can flip the row from succeeded → failed without
-   * re-querying or guessing revision state.
+   * Custody record identity carried from consume to dispatch, so spawn and
+   * release outcomes commit against the exact claimed revision. `flowId` is the
+   * record ID (RFC §5.4.5 keeps `record_id = flow_id`).
    */
   flowId?: string;
   expectedRevision?: number;
+  /**
+   * The spawn attempt this dispatch claimed before calling the spawn owner
+   * (RFC §5.4.4). Its `childRunId` is the launch key the Gateway uses verbatim
+   * as the child run ID.
+   */
+  spawnAttempt?: { attemptId: number; childRunId: string };
+  /** Every child run ID recorded on the record, for the registry handoff check. */
+  recordedChildRunIds?: readonly string[];
 };
 
 // ---------------------------------------------------------------------------
@@ -181,8 +189,8 @@ export type ContinuationRuntimeConfig = {
 
 /**
  * A delegate staged for release after compaction completes.
- * Serialized into the TaskFlow state payload by `buildDelegateState`
- * (see `delegate-store.ts`) — no longer lives on `SessionEntry`.
+ * Stored as a `post_compaction` custody record (see
+ * `delegate-store-post-compaction.ts`); it no longer lives on `SessionEntry`.
  * Released in the after-compaction lifecycle path with
  * `silentAnnounce: true` and `wakeOnReturn: true`.
  */
@@ -262,7 +270,7 @@ export type ContinuationWorkScheduleResult =
       scheduled: true;
       capped: false;
       chainState: ChainState;
-      supersededFlows: readonly TaskFlowRecord[];
+      supersededFlows: readonly ContinuationRecord[];
     };
 
 export type ContinuationWorkBatchResult = {
@@ -272,7 +280,7 @@ export type ContinuationWorkBatchResult = {
   chainState: ChainState;
   replacementFailure?: ContinuationWorkReplacementFailure;
   replacementFailureFlowId?: string;
-  supersededFlows?: readonly TaskFlowRecord[];
+  supersededFlows?: readonly ContinuationRecord[];
 };
 
 export type ContinuationWorkScheduleParams = {
@@ -283,7 +291,7 @@ export type ContinuationWorkScheduleParams = {
   parentRunId?: string;
   originRunId?: string;
   originTurnId?: string;
-  priorParkedFlowsToSupersede?: readonly TaskFlowRecord[];
+  priorParkedFlowsToSupersede?: readonly ContinuationRecord[];
   expectedRunningFlowIds?: readonly string[];
   replaceQueuedTurnEndParkedWork?: boolean;
   abortSignal?: AbortSignal;

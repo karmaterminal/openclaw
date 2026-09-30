@@ -7,12 +7,17 @@ import { SESSION_LIFECYCLE_CHANGED_ERROR_REASON } from "../../../config/sessions
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { withPluginRuntimeGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
+import {
+  isGatewayRestartDrainError,
+  runWithGatewayDetachedWorkAdmission,
+} from "../../../process/gateway-work-admission.js";
 import type { SpawnSubagentMode } from "../spawn/subagent-spawn.types.js";
 
 type CallGateway = (options: {
   method: "sessions.delete";
   params: SessionsDeleteParams;
   timeoutMs: number;
+  prepareDispatchCurrent?: () => Promise<void>;
   assertDispatchCurrent?: () => void;
 }) => Promise<unknown>;
 type SubagentSessionCleanupOutcome = "deleted" | "changed" | "failed";
@@ -40,6 +45,7 @@ type DeleteSubagentSessionForCleanupParams = {
   callGateway: CallGateway;
   /** Transferred owner; omission keeps the caller scope, undefined resolver stays unbound. */
   gatewayBinding?: { resolveGatewayContext: GatewayContextResolver | undefined };
+  prepareCurrent?: () => Promise<boolean>;
   isCurrent?: () => boolean;
   childSessionKey: string;
   spawnMode?: SpawnSubagentMode;
@@ -49,7 +55,7 @@ type DeleteSubagentSessionForCleanupParams = {
   expectedLifecycleRevision?: string;
   timeoutMs?: number;
   /** Runs after continuation guards settle, immediately before gateway dispatch. */
-  onBeforeDispatch?: () => void;
+  onBeforeDispatch?: () => void | Promise<void>;
   onError?: (error: unknown) => void;
   deleteFailureRetries?: number;
 };
@@ -69,7 +75,20 @@ function scheduleDeferredCleanupRetry(params: DeleteSubagentSessionForCleanupPar
   }
   const handle = setTimeout(() => {
     cleanupRetryTimers.delete(params.childSessionKey);
-    void deleteSubagentSessionForCleanup(params);
+    // The retry outlives the request that deferred it; the timer still carries
+    // that request's (now drained) work scope, whose cancellation would abort the
+    // prepared descendant read. Run it as its own delayed Gateway work.
+    void runWithGatewayDetachedWorkAdmission(
+      () => deleteSubagentSessionForCleanup(params),
+      "subagents:session-cleanup-retry",
+    ).catch((error: unknown) => {
+      if (isGatewayRestartDrainError(error)) {
+        return;
+      }
+      log.warn(
+        `[subagent-session-cleanup-retry-failed] child=${params.childSessionKey} error=${String(error)}`,
+      );
+    });
   }, DEFERRED_SESSION_CLEANUP_RETRY_MS);
   handle.unref();
   cleanupRetryTimers.set(params.childSessionKey, handle);
@@ -90,41 +109,38 @@ export async function deleteSubagentSessionForCleanup(
     return "failed";
   }
   const [
-    { hasLiveOrRecentlyDispatchedContinuationWork },
-    { hasRecoverablePendingDelegate },
+    { hasLiveContinuationCustody },
     { failStagedPostCompactionDelegatesForCleanup },
     { countActiveDescendantRuns },
   ] = await Promise.all([
     import("../../../auto-reply/continuation/work-store.js"),
-    import("../../../auto-reply/continuation/delegate-store.js"),
     import("../../../auto-reply/continuation/delegate-store-post-compaction.js"),
     import("./subagent-registry-read.js"),
   ]);
   if (params.isCurrent?.() === false) {
     return "changed";
   }
-  // A continuation_work TaskFlow, an in-flight regular continuation delegate, or
-  // an accepted child run that still uses this session as requester owns
-  // same-session re-entry. Keep the child session entry until the remaining work
-  // drains, then retry, so delete-mode child sessions do not leak after cleanup
-  // bookkeeping finishes AND delayed bracket/tool delegates do not lose the
-  // child's chain/requester state to deletion before they finish. The delegate
-  // gate must count queued AND `running` (claimed) flows; the registry gate must
-  // cover the post-accept window after the TaskFlow row has finished but the
-  // spawned continuation still depends on this requester session.
-  // Post-compaction rows are failed below only when cleanup is actually going to
-  // delete the child: if same-session re-entry is pending, the child may still
-  // reach a future compaction seam.
+  // Live continuation work, an in-flight regular continuation delegate, or an
+  // accepted child run that still uses this session as requester owns
+  // same-session re-entry. Keep the child session entry until the remaining
+  // work drains, then retry, so delete-mode child sessions do not leak after
+  // cleanup bookkeeping finishes AND delayed bracket/tool delegates do not lose
+  // the child's chain/requester state to deletion before they finish. The
+  // delegate gate counts queued AND `running` (claimed) records; the registry
+  // gate covers the post-accept window after the custody record handed off but
+  // the spawned continuation still depends on this requester session.
+  // Post-compaction records are failed below only when cleanup is actually
+  // going to delete the child: if same-session re-entry is pending, the child
+  // may still reach a future compaction seam.
 
   if (
-    hasLiveOrRecentlyDispatchedContinuationWork(params.childSessionKey) ||
-    hasRecoverablePendingDelegate(params.childSessionKey) ||
-    countActiveDescendantRuns(params.childSessionKey) > 0
+    (await hasLiveContinuationCustody(params.childSessionKey)) ||
+    (await countActiveDescendantRuns(params.childSessionKey)) > 0
   ) {
     scheduleDeferredCleanupRetry(params);
     return "failed";
   }
-  const failedPostCompactionDelegates = failStagedPostCompactionDelegatesForCleanup(
+  const failedPostCompactionDelegates = await failStagedPostCompactionDelegatesForCleanup(
     params.childSessionKey,
     "Post-compaction delegate was staged by a delete-mode child session during cleanup; the completed child will not receive a future compaction seam.",
   );
@@ -135,8 +151,9 @@ export async function deleteSubagentSessionForCleanup(
   }
 
   clearDeferredCleanupRetry(params.childSessionKey);
+  const prepareCurrent = params.prepareCurrent;
   try {
-    params.onBeforeDispatch?.();
+    await params.onBeforeDispatch?.();
     const run = () =>
       params.callGateway({
         method: "sessions.delete",
@@ -148,6 +165,15 @@ export async function deleteSubagentSessionForCleanup(
           expectedLifecycleRevision: params.expectedLifecycleRevision,
         },
         timeoutMs: params.timeoutMs ?? 10_000,
+        ...(prepareCurrent
+          ? {
+              prepareDispatchCurrent: async () => {
+                if (!(await prepareCurrent())) {
+                  throw new Error("subagent cleanup owner is no longer current");
+                }
+              },
+            }
+          : {}),
         ...(params.isCurrent
           ? {
               assertDispatchCurrent: () => {

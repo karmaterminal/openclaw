@@ -1,6 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createDeferred } from "../../../test/helpers/promise.js";
 import * as acpSessionMeta from "../../acp/runtime/session-meta-readonly.js";
 import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
+import {
+  enqueueSwarmRun,
+  reserveSwarmRun,
+  closeSwarmScheduler,
+} from "../../agents/subagents/swarm/swarm-scheduler.js";
+import { testing as swarmScheduler } from "../../agents/subagents/swarm/swarm-scheduler.test-support.js";
 import * as sessionAccessor from "../../config/sessions/session-accessor.js";
 import * as sessionStoreLookup from "../session-utils-store-lookup.js";
 import { prepareAgentRequestPreflight } from "./agent-request-preflight.js";
@@ -113,10 +120,42 @@ function runPreflight(
 }
 
 describe("agent request Swarm preflight", () => {
+  afterEach(async () => {
+    await closeSwarmScheduler();
+    swarmScheduler.reset();
+  });
   beforeEach(() => {
     subagentRuns.clear();
     vi.spyOn(sessionAccessor, "loadSessionEntry").mockReturnValue(undefined);
     vi.spyOn(acpSessionMeta, "readAcpSessionMetaForEntry").mockReturnValue(undefined);
+  });
+
+  it("carries the admitted scheduler group and its live cap without trusting saved launch settings", async () => {
+    const launched = createDeferred();
+    enqueueSwarmRun({
+      groupId: '["main","agent:main:main","restored-group"]',
+      runId: "collector-run",
+      maxConcurrent: 32,
+      activeRunIds: [],
+      start: async () => {
+        launched.resolve();
+      },
+      onStartFailure: () => true,
+    });
+    await launched.promise;
+    const { result } = runPreflight(undefined, true, { backend: true, register: true });
+    expect(result?.request.lane).toBe("subagent");
+    expect(result?.swarmExecutionLane).toEqual({
+      lane: 'subagent:swarm:["main","agent:main:main","restored-group"]',
+      maxConcurrent: 32,
+    });
+    reserveSwarmRun({
+      groupId: '["main","agent:main:main","restored-group"]',
+      runId: "next-child",
+      maxConcurrent: 8,
+      activeRunIds: [],
+    });
+    expect(result?.swarmExecutionLane?.maxConcurrent).toBe(8);
   });
 
   it.each([
@@ -593,5 +632,57 @@ describe("agent request session ownership preflight", () => {
         message: expect.stringContaining("has no explicit owner"),
       }),
     );
+  });
+});
+
+describe("agent request reserved continuation run ids", () => {
+  const cliClient = {
+    connect: { client: { id: "cli", mode: "cli" }, scopes: ["operator.write"] },
+  };
+  const backendClient = {
+    connect: { client: { id: "gateway-client", mode: "backend" }, scopes: ["operator.write"] },
+  };
+
+  function runReservedKeyPreflight(idempotencyKey: string, client: unknown) {
+    const respond = vi.fn();
+    const result = prepareAgentRequestPreflight({
+      request: { message: "work", sessionKey: "agent:main:main", idempotencyKey },
+      io: createAgentTurnIo(respond),
+      context: { getRuntimeConfig: () => ({}), dedupe: new Map() },
+      client,
+    } as never);
+    return { respond, result };
+  }
+
+  it.each([
+    { caller: "cli", client: cliClient },
+    { caller: "anonymous", client: null },
+  ])("rejects a continuation idempotency key from a $caller caller", ({ client }) => {
+    const { respond, result } = runReservedKeyPreflight("continuation:record-1:1", client);
+
+    expect(result).toBeUndefined();
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "continuation run ids are reserved for backend callers.",
+      }),
+    );
+  });
+
+  it("admits a continuation key from a backend caller as the run id verbatim", () => {
+    const { respond, result } = runReservedKeyPreflight("continuation:record-1:1", backendClient);
+
+    expect(respond).not.toHaveBeenCalled();
+    expect(result?.runId).toBe("continuation:record-1:1");
+    expect(result?.agentDedupeKeys).toEqual(["agent:continuation:record-1:1"]);
+  });
+
+  it("leaves ordinary keys open to non-backend callers", () => {
+    const { respond, result } = runReservedKeyPreflight("client-run-1", cliClient);
+
+    expect(respond).not.toHaveBeenCalled();
+    expect(result?.runId).toBe("client-run-1");
   });
 });

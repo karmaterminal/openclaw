@@ -1,4 +1,3 @@
-/** Clears reset-related queues and system events for session keys. */
 import { clearEmbeddedSessionPromptStates } from "../../agents/embedded-agent-runner/session-prompt-state.js";
 import { killSessionSubagentRuns } from "../../agents/subagents/registry/subagent-control-kill.js";
 import { loadExactSessionEntryReadOnly } from "../../config/sessions/session-accessor.js";
@@ -69,7 +68,6 @@ export async function stopSessionResetSubagents(
 
 type SessionRuntimeCleanupReason = "new" | "reset" | "delete" | "idle" | "daily";
 
-/** Runtime cleanup result for reset-related queues and system events. */
 type ClearSessionResetRuntimeStateResult = ClearSessionQueueResult & {
   systemEventsCleared: number;
 };
@@ -79,14 +77,14 @@ function interruptsContinuationAuthority(reason: SessionRuntimeCleanupReason): b
 }
 
 /** Clears queued follow-ups and pending system events visible to the resetting agent. */
-export function clearSessionResetRuntimeState(
+export async function clearSessionResetRuntimeState(
   keys: Array<string | undefined>,
   opts: {
     agentId: string;
     reason: SessionRuntimeCleanupReason;
     activeReplySessionId?: string;
   },
-): ClearSessionResetRuntimeStateResult {
+): Promise<ClearSessionResetRuntimeStateResult> {
   const normalizedKeys = [
     ...new Set(keys.flatMap((key) => (typeof key === "string" && key.trim() ? [key.trim()] : []))),
   ];
@@ -95,7 +93,7 @@ export function clearSessionResetRuntimeState(
     // Durable authority must close before timers, waiters, or queues are destroyed.
     // A persistence failure leaves every transient claim path intact for retry.
     for (const key of normalizedKeys) {
-      cancelSessionContinuations(key);
+      await cancelSessionContinuations(key);
     }
   }
 
