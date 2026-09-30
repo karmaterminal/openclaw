@@ -3,16 +3,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { callGateway } from "../gateway/call.js";
 import { getAgentRunContext } from "../infra/agent-run-registry.js";
-import { SUBAGENT_KILL_TASK_ERROR } from "../tasks/detached-task-runtime-contract.js";
-import { resetDetachedTaskLifecycleRuntimeForTests } from "../tasks/task-runtime.test-helpers.js";
 
-const taskRuntimeMocks = vi.hoisted(() => ({
-  finalizeTaskRunByRunId: vi.fn<(_params: unknown) => unknown[]>(() => [{}]),
-}));
-const taskStatusMocks = vi.hoisted(() => ({
-  findTaskByRunIdForStatus: vi.fn(),
-  listTasksForSessionKeyForStatus: vi.fn(() => [] as never[]),
-}));
 // Archive deferral reads the custody projection; the sweep's session delete
 // asks authoritative custody (RFC §5.4.6).
 const hasLiveOrRecentlyDispatchedContinuationWorkMock = vi.hoisted(() =>
@@ -49,19 +40,6 @@ vi.mock("../gateway/call.js", () => ({
     }
     return {};
   }),
-}));
-
-vi.mock("../tasks/detached-task-runtime.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../tasks/detached-task-runtime.js")>();
-  return {
-    ...actual,
-    finalizeTaskRunByRunId: taskRuntimeMocks.finalizeTaskRunByRunId,
-  };
-});
-
-vi.mock("../tasks/task-status-access.js", () => ({
-  findTaskByRunIdForStatus: taskStatusMocks.findTaskByRunIdForStatus,
-  listTasksForSessionKeyForStatus: taskStatusMocks.listTasksForSessionKeyForStatus,
 }));
 
 vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
@@ -152,7 +130,6 @@ describe("subagent registry archive behavior (continuation work)", () => {
   };
 
   beforeEach(() => {
-    resetDetachedTaskLifecycleRuntimeForTests();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
     vi.mocked(callGateway).mockReset();
@@ -168,34 +145,13 @@ describe("subagent registry archive behavior (continuation work)", () => {
     hasLiveOrRecentlyDispatchedContinuationWorkMock.mockReset().mockReturnValue(false);
     hasLiveContinuationCustodyMock.mockReset().mockResolvedValue(false);
     vi.mocked(getAgentRunContext).mockReset().mockReturnValue(undefined);
-    taskRuntimeMocks.finalizeTaskRunByRunId.mockClear();
-    taskStatusMocks.findTaskByRunIdForStatus.mockReset();
-    taskStatusMocks.listTasksForSessionKeyForStatus.mockReset();
-    taskStatusMocks.listTasksForSessionKeyForStatus.mockReturnValue([]);
     sessionAccessorMocks.listSessionEntriesReadOnly.mockReset();
     sessionAccessorMocks.listSessionEntriesReadOnly.mockReturnValue([]);
     sessionAccessorMocks.loadSessionEntryReadOnly.mockReset().mockReturnValue(undefined);
-    taskStatusMocks.findTaskByRunIdForStatus.mockImplementation((runId: string) => {
-      const entry = mod
-        .listSubagentRunsForRequester("agent:main:main")
-        .find((candidate) => candidate.runId === runId);
-      return entry
-        ? ({
-            taskId: `task-${runId}`,
-            runId,
-            runtime: "subagent",
-            childSessionKey: entry.childSessionKey,
-            createdAt: entry.createdAt,
-            status: "cancelled",
-            error: SUBAGENT_KILL_TASK_ERROR,
-          } as never)
-        : undefined;
-    });
     mod.resetSubagentRegistryForTests({ persist: false });
   });
 
   afterEach(() => {
-    resetDetachedTaskLifecycleRuntimeForTests();
     mod.resetSubagentRegistryForTests({ persist: false });
     vi.useRealTimers();
   });

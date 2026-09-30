@@ -193,18 +193,22 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       158,
       env,
     ),
+    // #160931 (b4ae783fbfd) added three callable agent-harness-runtime exports
+    // without its ratchet update; these pin exactly that growth.
     publicExports: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_EXPORTS",
       // Fork: upstream surface plus the continuation feature's public contracts
-      // (runtime, task-flow, trace, channel-ingress, system-event, diagnostics).
+      // (runtime, trace, channel-ingress, system-event, diagnostics).
       // Pinned to the measured merged surface. Measure, never derive.
-      4602,
+      // Measured 4606 after the 6d06be1455 absorb (TaskFlow removal).
+      4606,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_FUNCTION_EXPORTS",
       // Fork: upstream plus the continuation feature's callable contracts. Measured.
-      2699,
+      // Measured 2703 after the 6d06be1455 absorb.
+      2703,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

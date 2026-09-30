@@ -70,7 +70,7 @@ export function createPluginApiFactory(
   const { registry, registryParams, getHostCronService, pushDiagnostic } = state;
   const { resolvePluginRuntime, resolveRegisteredChannelRuntime } = runtimeResolver;
 
-  const createApi = (
+  return (
     record: PluginRecord,
     params: {
       config: OpenClawPluginApi["config"];
@@ -296,6 +296,4 @@ export function createPluginApiFactory(
       },
     });
   };
-
-  return createApi;
 }

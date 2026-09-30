@@ -1,5 +1,7 @@
 import { loadRequesterSessionEntry, loadSessionEntryByKey } from "./subagent-announce-delivery.js";
 
+type MaybePromise<T> = T | Promise<T>;
+
 type ContinuationEntry = {
   inputTokens?: number;
   outputTokens?: number;
@@ -10,9 +12,12 @@ export function createOwnerBoundContinuationEntryLoader<T extends ContinuationEn
   childAgentId?: string;
   requesterSessionKey: string;
   requesterAgentId?: string;
-  loadOwned: (sessionKey: string, agentId?: string) => T | undefined;
-  loadFallback: (sessionKey: string, options?: { refresh?: boolean }) => T | undefined;
-}): (sessionKey: string, options?: { refresh?: boolean }) => T | undefined {
+  loadOwned: (sessionKey: string, agentId?: string) => MaybePromise<T | undefined>;
+  loadFallback: (
+    sessionKey: string,
+    options?: { refresh?: boolean },
+  ) => MaybePromise<T | undefined> | undefined;
+}): (sessionKey: string, options?: { refresh?: boolean }) => MaybePromise<T | undefined> {
   return (sessionKey, options) =>
     sessionKey === params.childSessionKey
       ? params.loadOwned(sessionKey, params.childAgentId)

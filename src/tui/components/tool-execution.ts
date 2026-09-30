@@ -1,4 +1,3 @@
-// Tool execution component renders tool call status and output in the TUI.
 import { Box, Container, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { asOptionalObjectRecord } from "@openclaw/normalization-core/record-coerce";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
@@ -11,7 +10,6 @@ import { extractTuiImageSources } from "../tui-images.js";
 import { HyperlinkMarkdown } from "./hyperlink-markdown.js";
 import { MessageImages, type TuiImageRenderer } from "./message-images.js";
 
-// Rendering model for live tool calls in the chat log.
 type ToolResultContent = {
   type?: string;
   text?: string;
@@ -112,7 +110,6 @@ function formatArgs(toolName: string, detail: string | undefined, args: unknown)
   }
 }
 
-// Extracts visible text and compact media placeholders from tool result payloads.
 function extractText(result?: ToolResult): string {
   if (!result?.content) {
     return "";
@@ -175,10 +172,9 @@ export class ToolExecutionComponent extends Container {
     this.images = new MessageImages(imageRenderer);
     this.box.addChild(this.images);
     this.setArgs(args);
-    this.setPartialResult(undefined);
+    this.setResult(undefined, { partial: true });
   }
 
-  /** Re-renders tool arguments when streaming tool call input changes. */
   setArgs(args: unknown) {
     const display = resolveToolDisplay({ name: this.toolName, args });
     this.title = `${display.emoji} ${display.label}`;
@@ -187,7 +183,6 @@ export class ToolExecutionComponent extends Container {
     this.argsLine.setText(argLine ? theme.dim(argLine) : theme.dim(" "));
   }
 
-  /** Toggles preview/full output rendering for long tool results. */
   setExpanded(expanded: boolean) {
     this.expanded = expanded;
     this.output.setExpanded(expanded);
@@ -214,14 +209,13 @@ export class ToolExecutionComponent extends Container {
     return super.render(width);
   }
 
-  /** Marks the tool call complete and renders final output. */
-  setResult(result: ToolResult | undefined, opts?: { isError?: boolean }) {
-    this.updateResult(result, false, Boolean(opts?.isError));
-  }
-
-  /** Renders partial output while the tool call is still running. */
-  setPartialResult(result: ToolResult | undefined) {
-    this.updateResult(result, true);
+  setResult(result: ToolResult | undefined, opts?: { isError?: boolean; partial?: boolean }) {
+    this.isPartial = Boolean(opts?.partial);
+    this.isError = !this.isPartial && Boolean(opts?.isError);
+    this.refreshResult();
+    // Code Mode JSON is literal data; prose normalization can change values and escapes.
+    this.output.setText(extractText(result), isCodeModeResult(this.toolName, result));
+    this.images.setImages(extractTuiImageSources(result));
   }
 
   dispose() {
@@ -235,15 +229,6 @@ export class ToolExecutionComponent extends Container {
         : `${this.title}${this.isPartial ? " (running)" : ""}`,
     );
     this.header.setText(theme.toolTitle(theme.bold(title)));
-  }
-
-  private updateResult(result: ToolResult | undefined, isPartial: boolean, isError = false) {
-    this.isPartial = isPartial;
-    this.isError = isError;
-    this.refreshResult();
-    // Code Mode JSON is literal data; prose normalization can change values and escapes.
-    this.output.setText(extractText(result), isCodeModeResult(this.toolName, result));
-    this.images.setImages(extractTuiImageSources(result));
   }
 
   private refreshResult() {

@@ -252,6 +252,42 @@ describe("session-delivery queue storage validation", () => {
     });
   });
 
+  it("round-trips the agentTurn requester binding and rejects a widened binding", async () => {
+    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+      const requesterBinding = {
+        agentId: "main",
+        sessionKey: "agent:main:main",
+        storePath: "/tmp/openclaw-sessions.json",
+        sessionId: "requester-session",
+        lifecycleRevision: null,
+      };
+      const seed = async (messageId: string) =>
+        await enqueueSessionDelivery(
+          {
+            kind: "agentTurn",
+            sessionKey: "agent:main:main",
+            message: "requester-bound turn",
+            messageId,
+          },
+          tempDir,
+        );
+      const boundId = await seed("requester-bound");
+      rewriteSessionQueueEntry(tempDir, boundId, (entry) => {
+        entry.requesterBinding = requesterBinding;
+      });
+      await expect(loadPendingSessionDelivery(boundId, tempDir)).resolves.toMatchObject({
+        kind: "agentTurn",
+        requesterBinding,
+      });
+
+      const widenedId = await seed("requester-widened");
+      rewriteSessionQueueEntry(tempDir, widenedId, (entry) => {
+        entry.requesterBinding = { ...requesterBinding, extra: "not-admitted" };
+      });
+      await expect(loadPendingSessionDelivery(widenedId, tempDir)).resolves.toBeNull();
+    });
+  });
+
   it("dead-letters empty or widened generic blob descriptors before returning them", async () => {
     await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
       const corruptions = [

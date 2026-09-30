@@ -108,7 +108,6 @@ describe("subagent registry persistence timing", () => {
     announceSpy.mockResolvedValue("delivered");
     timingLifecycleMocks.recordSubagentTerminalState.mockReset();
     timingLifecycleMocks.recordSubagentTerminalState.mockResolvedValue(undefined);
-    timingLifecycleMocks.completeTaskRunByRunIdAsync.mockClear();
     sharedRegistryMocks.callGateway.mockReset();
     sharedRegistryMocks.callGateway.mockResolvedValue({
       status: "ok",
@@ -205,7 +204,6 @@ describe("subagent registry persistence timing", () => {
       return store["agent:main:subagent:timing"]?.endedAt === endedAt;
     });
     expect(timingLifecycleMocks.recordSubagentTerminalState).toHaveBeenCalledOnce();
-    expect(timingLifecycleMocks.completeTaskRunByRunIdAsync).toHaveBeenCalledOnce();
     const store = await readSubagentSessionStore(storePath);
     const persisted = store["agent:main:subagent:timing"];
     expect(persisted?.endedAt).toBe(endedAt);

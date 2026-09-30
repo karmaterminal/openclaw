@@ -14,8 +14,7 @@ const gatewayState = vi.hoisted(() => ({
 }));
 
 // No in-process Gateway context exists here, so every spawn takes the WebSocket
-// fallback. Like the real Gateway, this double accepts the run; it records no
-// task row, which is exactly what the registry must not rely on.
+// fallback. Like the real Gateway, this double accepts the run.
 const callGatewayMock = vi.hoisted(() =>
   vi.fn(async (request: GatewayRequest) => {
     if (request.method === "agent") {
@@ -67,11 +66,6 @@ import { emitAgentEvent, resetAgentEventsForTest } from "../infra/agent-events.j
 import { resetSystemEventsForTest } from "../infra/system-events.js";
 import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
-import { findTaskByRunId } from "../tasks/task-registry-query.js";
-import {
-  resetTaskFlowRegistryForTests,
-  resetTaskRegistryForTests,
-} from "../tasks/task-runtime.test-helpers.js";
 import {
   countPendingDescendantRuns,
   getSubagentRunByChildSessionKey,
@@ -119,8 +113,6 @@ describe("continuation spawn over the WebSocket fallback", () => {
     vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
     resetAgentEventsForTest();
     resetSubagentRegistryForTests();
-    resetTaskFlowRegistryForTests({ persist: false });
-    resetTaskRegistryForTests({ persist: false });
     resetDelegateStoreForTests();
     resetSystemEventsForTest();
     setRuntimeConfigSnapshot(makeConfig());
@@ -138,8 +130,6 @@ describe("continuation spawn over the WebSocket fallback", () => {
     clearRuntimeConfigSnapshot();
     resetSystemEventsForTest();
     resetDelegateStoreForTests();
-    resetTaskFlowRegistryForTests({ persist: false });
-    resetTaskRegistryForTests({ persist: false });
     resetSubagentRegistryForTests();
     resetAgentEventsForTest();
     vi.unstubAllEnvs();
@@ -176,7 +166,7 @@ describe("continuation spawn over the WebSocket fallback", () => {
       { agentSessionKey: childSessionKey, agentChannel: "discord", agentTo: "chan-root" },
     );
     expect(descendant.status).toBe("accepted");
-    expect(countPendingDescendantRuns(childSessionKey)).toBe(1);
+    await expect(countPendingDescendantRuns(childSessionKey, () => {})).resolves.toBe(1);
 
     gatewayState.finalText.set(childSessionKey, "WAITING");
     emitAgentEvent({
@@ -192,8 +182,7 @@ describe("continuation spawn over the WebSocket fallback", () => {
     });
 
     // The run ended before its descendant, so completion is retryable: it must
-    // park until the descendant settles. Without a `subagent` task row,
-    // settlement instead retires it as `task-missing` and the wake is lost.
+    // park until the descendant settles; a `task-missing` retirement would lose the wake.
     await waitFor(() => {
       const entry = getSubagentRunByChildSessionKey(childSessionKey);
       return entry?.wakeOnDescendantSettle === true || entry?.delivery?.status === "discarded";
@@ -203,19 +192,5 @@ describe("continuation spawn over the WebSocket fallback", () => {
     expect(parked?.runId).toBe(runId);
     expect(parked?.wakeOnDescendantSettle).toBe(true);
     expect(parked?.cleanupCompletedAt).toBeUndefined();
-    expect(findTaskByRunId(runId)).toMatchObject({
-      runtime: "subagent",
-      runId,
-      childSessionKey,
-      ownerKey: rootSessionKey,
-    });
-  });
-
-  it("leaves ordinary fallback spawns to Gateway task tracking", async () => {
-    const { runId } = await spawnFromRoot({ task: "ordinary work" });
-
-    // The Gateway records its own row for WebSocket launches; a second
-    // `subagent` row would show one run twice in the tasks rail.
-    expect(findTaskByRunId(runId)).toBeUndefined();
   });
 });

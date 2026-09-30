@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { SqliteWalMaintenance } from "../infra/sqlite-wal.js";
 import type { OpenClawStateDatabaseOptions } from "./openclaw-state-db-contract.js";
 
+// v24 separates keyed cold session snapshots from hot entry facts without rewriting transcripts.
 // v23 compacts payloads and replaces deployed v22 lazy FTS ownership without rewriting FTS content.
 // v22 introduced exact FTS row ownership with nullable completeness and lazy repair.
 // v21 records canonical-session invalidation under node, window and policy mutations.
@@ -27,11 +28,12 @@ import type { OpenClawStateDatabaseOptions } from "./openclaw-state-db-contract.
 // pre-merge v4 flip DBs both converge on this schema.
 export const AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION = 19;
 export const AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION = 18;
-// Ordering, re-checked against upstream 2167eab4cf: the continuation migrations
+// Ordering, re-checked against upstream 6d06be1455: the continuation migrations
 // occupy 18 and 19, upstream's transcript-FTS row-ownership reconciliation is 22,
-// and upstream's agent-storage step is 23. Ours stay strictly below both, so the
-// migration sequence remains monotonic and no step is reordered by this absorb.
-export const OPENCLAW_AGENT_SCHEMA_VERSION = 23;
+// upstream's agent-storage step is 23, and upstream's cold-snapshot split is 24.
+// Ours stay strictly below all three, so the migration sequence remains
+// monotonic and no step is reordered by this absorb.
+export const OPENCLAW_AGENT_SCHEMA_VERSION = 24;
 export const AGENT_STORAGE_SCHEMA_VERSION = 23;
 export const TRANSCRIPT_FTS_ROW_SCHEMA_VERSION = 22;
 export const AGENT_MEDIA_SCHEMA_VERSION = 17;

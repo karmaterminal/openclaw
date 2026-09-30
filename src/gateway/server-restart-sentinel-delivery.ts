@@ -46,6 +46,8 @@ type ResolvedQueuedSessionDelivery = QueuedSessionDelivery & {
 };
 
 function enqueueRestartSentinelWake(params: {
+  /** Durable queue row id; keys the wake so recovered work keeps its turn budget. */
+  entryId: string;
   message: string;
   sessionKey: string;
   agentId: string;
@@ -68,6 +70,8 @@ function enqueueRestartSentinelWake(params: {
 }): boolean {
   const eventOptions = {
     sessionKey: params.sessionKey,
+    // Recovered work keeps its ordinary turn budget when delivered by heartbeat.
+    contextKey: `task:restart-sentinel:${params.entryId}`,
     trusted: true,
     // The durable row owns this contract; a replayed event must carry it too, or
     // the re-created in-memory copy would be acked at prompt preparation.
@@ -341,6 +345,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       deliveryText = replaceManagedDelegateReturnInPrompt(params.entry.text, refreshed.projection);
     }
     const replayed = enqueueRestartSentinelWake({
+      entryId: params.entry.id,
       message: deliveryText,
       sessionKey: canonicalKey,
       agentId: params.entry.agentId ?? agentId,
@@ -389,6 +394,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       actualSessionId: entry?.sessionId ?? null,
     });
     enqueueRestartSentinelWake({
+      entryId: params.entry.id,
       message: params.entry.message,
       sessionKey: canonicalKey,
       agentId,
@@ -402,6 +408,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
 
   if (!params.entry.route) {
     enqueueRestartSentinelWake({
+      entryId: params.entry.id,
       message: params.entry.message,
       sessionKey: canonicalKey,
       agentId,

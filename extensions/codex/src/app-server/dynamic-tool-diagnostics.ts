@@ -1,6 +1,3 @@
-/**
- * Trusted diagnostics emitted around Codex dynamic tool execution lifecycle.
- */
 import {
   createDiagnosticTraceContextFromActiveScope,
   emitTrustedDiagnosticEvent,
@@ -48,7 +45,6 @@ export function startDynamicToolDiagnosticExecution<T>(
   };
 }
 
-/** Emits an error event for one Codex dynamic tool call. */
 export function emitDynamicToolErrorDiagnostic(
   params: DynamicToolDiagnosticContext & {
     durationMs: number;

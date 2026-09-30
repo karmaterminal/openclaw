@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { embeddedAgentLog } from "openclaw/plugin-sdk/agent-harness-runtime";
-import { isIncognitoSessionKey } from "../incognito-session.js";
+import { isIncognitoSessionKey } from "openclaw/plugin-sdk/session-key-runtime";
 import { closeCodexStartupClientBestEffort } from "./attempt-client-cleanup.js";
 import { resolveCodexAppServerClientInstanceId } from "./client.js";
 import { assertCodexInferenceRouteConfig } from "./inference-routing.js";
@@ -37,7 +37,9 @@ import {
 import { CodexThreadBindingConflictError } from "./thread-lifecycle-errors.js";
 import { resumeExistingCodexThread, startFreshCodexThread } from "./thread-lifecycle-io.js";
 import {
+  buildCodexThreadBindingPolicy,
   prepareCodexThreadLifecyclePreflight,
+  prepareCodexThreadFinalConfigPatch,
   prepareCodexThreadRequestContext,
   publishCodexThreadInferenceBinding,
   resolveCodexThreadAgentDir,
@@ -88,7 +90,6 @@ export async function startOrResumeThread(
       contextEngineBinding,
       dynamicToolsContainDeferred,
       dynamicToolsFingerprint,
-      environmentSelectionFingerprint,
       hostSystemAgentActive,
       legacyDynamicToolsFingerprint,
       legacyUserMcpServersFingerprint,
@@ -150,15 +151,10 @@ export async function startOrResumeThread(
             params.pluginThreadConfig?.build(),
           )
         : undefined;
-      const finalConfigPatch = (await params.buildFinalConfigPatch?.({
-        action: "start",
-        ...(requestContext.nativeModelInputTools
-          ? { nativeModelInputTools: requestContext.nativeModelInputTools }
-          : {}),
-      })) ?? {
-        configPatch: params.finalConfigPatch,
-        nativeHookRelayGeneration: params.nativeHookRelayGeneration,
-      };
+      const finalConfigPatch = await prepareCodexThreadFinalConfigPatch(
+        params,
+        requestContext.nativeModelInputTools,
+      );
       const config = lifecycleTiming.measureSync("merge-thread-config", () =>
         applyCodexNativeSkillIsolation(
           mergeCodexThreadConfigs(
@@ -219,18 +215,12 @@ export async function startOrResumeThread(
             authProfileId: undefined,
             agentWorkspaceDeveloperInstructions: params.agentWorkspaceDeveloperInstructions,
             preserveNativeModel: true,
-            dynamicToolsFingerprint,
-            dynamicToolsContainDeferred,
+            ...buildCodexThreadBindingPolicy(params, preflight),
             webSearchThreadConfigFingerprint,
-            nativeSkillIsolationFingerprint,
-            userMcpServersFingerprint,
             mcpServersFingerprint:
               params.mcpServersFingerprintEvaluated === true
                 ? params.mcpServersFingerprint
                 : pendingBinding.mcpServersFingerprint,
-            configuredMcpOwnershipVersion: params.configuredMcpOwnershipVersion,
-            networkProxyProfileName: params.appServer.networkProxy?.profileName,
-            networkProxyConfigFingerprint,
             nativeHookRelayGeneration: finalConfigPatch.nativeHookRelayGeneration,
             appServerRuntimeFingerprint: buildCodexAppServerConnectionFingerprint(
               params.appServer,
@@ -239,8 +229,6 @@ export async function startOrResumeThread(
             pluginAppsFingerprint: pluginThreadConfig?.fingerprint,
             pluginAppsInputFingerprint: pluginThreadConfig?.inputFingerprint,
             pluginAppPolicyContext: pluginThreadConfig?.policyContext,
-            contextEngine: contextEngineBinding,
-            environmentSelectionFingerprint,
             conversationSourceTransferComplete: true,
           },
         }),
@@ -264,6 +252,17 @@ export async function startOrResumeThread(
         throw new CodexThreadBindingConflictError(current.threadId, operation);
       }
       binding = undefined;
+    };
+    const rotateStaleBinding = async (
+      current: CodexAppServerThreadBinding,
+      changed: string,
+      details?: Record<string, unknown>,
+    ) => {
+      embeddedAgentLog.debug(`codex app-server ${changed} changed; starting a new thread`, {
+        threadId: current.threadId,
+        ...details,
+      });
+      await clearCurrentBinding("rotating a stale thread binding");
     };
     const transientDelegationRestriction = params.params.delegationCapability === "report_only";
     const persistentWebSearchRestriction =
@@ -327,11 +326,9 @@ export async function startOrResumeThread(
         binding: binding.appServerRuntimeFingerprint,
       })
     ) {
-      embeddedAgentLog.debug("codex app-server runtime identity changed; starting a new thread", {
-        threadId: binding.threadId,
+      await rotateStaleBinding(binding, "runtime identity", {
         connectionClass: params.appServer.connectionClass,
       });
-      await clearCurrentBinding("rotating a stale thread binding");
     }
     if (
       binding?.threadId &&
@@ -449,10 +446,7 @@ export async function startOrResumeThread(
         );
         preserveExistingBinding = true;
       } else {
-        embeddedAgentLog.debug("codex app-server MCP config changed; starting a new thread", {
-          threadId: binding.threadId,
-        });
-        await clearCurrentBinding("rotating a stale thread binding");
+        await rotateStaleBinding(binding, "MCP config");
       }
       binding = undefined;
     }
@@ -484,13 +478,7 @@ export async function startOrResumeThread(
       } else {
         // Codex can ignore resume overrides for a loaded thread, so persistent
         // search-policy changes and legacy bindings without metadata rotate first.
-        embeddedAgentLog.debug(
-          "codex app-server web search config changed; starting a new thread",
-          {
-            threadId: binding.threadId,
-          },
-        );
-        await clearCurrentBinding("rotating a stale thread binding");
+        await rotateStaleBinding(binding, "web search config");
       }
       binding = undefined;
     }
@@ -528,21 +516,16 @@ export async function startOrResumeThread(
         !contextEngineBinding ||
         !isContextEngineBindingCompatible(binding.contextEngine, contextEngineBinding)
       ) {
-        embeddedAgentLog.debug(
-          "codex app-server context-engine binding changed; starting a new thread",
-          {
-            threadId: binding.threadId,
-            engineId: contextEngineBinding?.engineId,
-            previousEngineId: binding.contextEngine?.engineId,
-            epoch: contextEngineBinding?.projection?.epoch,
-            previousEpoch: binding.contextEngine?.projection?.epoch,
-            fingerprint: contextEngineBinding?.projection?.fingerprint,
-            previousFingerprint: binding.contextEngine?.projection?.fingerprint,
-            policyFingerprint: contextEngineBinding?.policyFingerprint,
-            previousPolicyFingerprint: binding.contextEngine?.policyFingerprint,
-          },
-        );
-        await clearCurrentBinding("rotating a stale thread binding");
+        await rotateStaleBinding(binding, "context-engine binding", {
+          engineId: contextEngineBinding?.engineId,
+          previousEngineId: binding.contextEngine?.engineId,
+          epoch: contextEngineBinding?.projection?.epoch,
+          previousEpoch: binding.contextEngine?.projection?.epoch,
+          fingerprint: contextEngineBinding?.projection?.fingerprint,
+          previousFingerprint: binding.contextEngine?.projection?.fingerprint,
+          policyFingerprint: contextEngineBinding?.policyFingerprint,
+          previousPolicyFingerprint: binding.contextEngine?.policyFingerprint,
+        });
         rotatedContextEngineBinding = true;
       }
     }
@@ -554,23 +537,14 @@ export async function startOrResumeThread(
         nextLegacy: legacyUserMcpServersFingerprint,
       })
     ) {
-      embeddedAgentLog.debug("codex app-server user MCP config changed; starting a new thread", {
-        threadId: binding.threadId,
-      });
-      await clearCurrentBinding("rotating a stale thread binding");
+      await rotateStaleBinding(binding, "user MCP config");
     }
     if (
       binding?.threadId &&
       (binding.networkProxyConfigFingerprint !== networkProxyConfigFingerprint ||
         binding.networkProxyProfileName !== params.appServer.networkProxy?.profileName)
     ) {
-      embeddedAgentLog.debug(
-        "codex app-server network proxy config changed; starting a new thread",
-        {
-          threadId: binding.threadId,
-        },
-      );
-      await clearCurrentBinding("rotating a stale thread binding");
+      await rotateStaleBinding(binding, "network proxy config");
     }
     if (binding?.threadId) {
       const pluginBindingStale = isCodexPluginThreadBindingStale({
@@ -581,13 +555,7 @@ export async function startOrResumeThread(
         hasBindingPolicyContext: Boolean(binding.pluginAppPolicyContext),
       });
       if (pluginBindingStale) {
-        embeddedAgentLog.debug(
-          "codex app-server plugin app config changed; starting a new thread",
-          {
-            threadId: binding.threadId,
-          },
-        );
-        await clearCurrentBinding("rotating a stale thread binding");
+        await rotateStaleBinding(binding, "plugin app config");
       }
     }
     if (binding?.threadId) {
@@ -597,13 +565,7 @@ export async function startOrResumeThread(
         binding.dynamicToolsContainDeferred !== dynamicToolsContainDeferred &&
         (binding.dynamicToolsContainDeferred !== undefined || !dynamicToolsContainDeferred)
       ) {
-        embeddedAgentLog.debug(
-          "codex app-server dynamic tool loading changed; starting a new thread",
-          {
-            threadId: binding.threadId,
-          },
-        );
-        await clearCurrentBinding("rotating a stale thread binding");
+        await rotateStaleBinding(binding, "dynamic tool loading");
       }
     }
     if (binding?.threadId) {
@@ -634,13 +596,7 @@ export async function startOrResumeThread(
             },
           );
         } else {
-          embeddedAgentLog.debug(
-            "codex app-server dynamic tool catalog changed; starting a new thread",
-            {
-              threadId: binding.threadId,
-            },
-          );
-          await clearCurrentBinding("rotating a stale thread binding");
+          await rotateStaleBinding(binding, "dynamic tool catalog");
         }
       } else {
         const requestContext = await prepareRequestContext();

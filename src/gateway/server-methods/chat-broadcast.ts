@@ -51,10 +51,7 @@ export function resolveGlobalAwareNodeChatDeliveryKeys(params: {
   }
   const scopedAgentId = normalizeAgentId(selectedAgentId);
   const keys = [`agent:${scopedAgentId}:${params.sessionKey}`];
-  if (
-    unscopedOwnerAgentId &&
-    normalizeAgentId(unscopedOwnerAgentId) === normalizeAgentId(scopedAgentId)
-  ) {
+  if (unscopedOwnerAgentId && normalizeAgentId(unscopedOwnerAgentId) === scopedAgentId) {
     keys.push(params.sessionKey);
   }
   return keys;

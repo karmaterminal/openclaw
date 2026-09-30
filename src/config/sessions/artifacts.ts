@@ -23,17 +23,23 @@ const COMPACTION_CHECKPOINT_TRANSCRIPT_RE =
 const CHECKPOINT_MARKER_RE =
   /\.checkpoint\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i;
 
-function hasArchiveSuffix(fileName: string, reason: SessionArchiveReason): boolean {
+function readSessionArchiveTimestamp(
+  fileName: string,
+  reason: SessionArchiveReason,
+): string | undefined {
   // Compressed archives carry a trailing .zst; strip it so every classifier
   // sees one canonical `<id>.jsonl.<reason>.<timestamp>[.<generation>]` shape.
   const marker = `.${reason}.`;
   const normalized = stripSessionArchiveCompressionSuffix(fileName);
   const index = normalized.lastIndexOf(marker);
   if (index < 0) {
-    return false;
+    return undefined;
   }
-  const raw = normalized.slice(index + marker.length);
-  return ARCHIVE_SUFFIX_RE.test(raw);
+  return ARCHIVE_SUFFIX_RE.exec(normalized.slice(index + marker.length))?.[1];
+}
+
+function hasArchiveSuffix(fileName: string, reason: SessionArchiveReason): boolean {
+  return readSessionArchiveTimestamp(fileName, reason) !== undefined;
 }
 
 /** Returns true for archived session artifacts and legacy store backup names. */
@@ -99,11 +105,6 @@ function isTrajectoryRuntimeArtifactName(fileName: string): boolean {
   return fileName.endsWith(".trajectory.jsonl");
 }
 
-/** Returns true for trajectory pointer artifacts. */
-function isTrajectoryPointerArtifactName(fileName: string): boolean {
-  return fileName.endsWith(".trajectory-path.json");
-}
-
 export function resolveTrajectoryPath(transcriptPath: string): string | undefined {
   return transcriptPath.endsWith(".jsonl")
     ? `${transcriptPath.slice(0, -".jsonl".length)}.trajectory.jsonl`
@@ -118,24 +119,18 @@ export function resolveTrajectoryPointerPath(transcriptPath: string): string | u
 
 /** Returns true for any trajectory-related session artifact. */
 export function isTrajectorySessionArtifactName(fileName: string): boolean {
-  return isTrajectoryRuntimeArtifactName(fileName) || isTrajectoryPointerArtifactName(fileName);
+  return isTrajectoryRuntimeArtifactName(fileName) || fileName.endsWith(".trajectory-path.json");
 }
 
 /** Returns true for primary session transcript files that represent live session history. */
 export function isPrimarySessionTranscriptFileName(fileName: string): boolean {
-  if (fileName === "sessions.json") {
-    return false;
-  }
-  if (!fileName.endsWith(".jsonl")) {
-    return false;
-  }
-  if (isTrajectoryRuntimeArtifactName(fileName)) {
-    return false;
-  }
-  if (isCheckpointSessionTranscriptFileName(fileName)) {
-    return false;
-  }
-  return !isSessionArchiveArtifactName(fileName);
+  // The checkpoint-twin classifier is a superset of the compaction-checkpoint
+  // shape, so it excludes both from live history.
+  return (
+    fileName.endsWith(".jsonl") &&
+    !isTrajectoryRuntimeArtifactName(fileName) &&
+    !isCheckpointSessionTranscriptFileName(fileName)
+  );
 }
 
 /** Returns true for transcript files counted in usage, including reset/deleted archives. */
@@ -201,17 +196,7 @@ export function parseSessionArchiveTimestamp(
   fileName: string,
   reason: SessionArchiveReason,
 ): number | null {
-  const marker = `.${reason}.`;
-  const normalized = stripSessionArchiveCompressionSuffix(fileName);
-  const index = normalized.lastIndexOf(marker);
-  if (index < 0) {
-    return null;
-  }
-  const raw = normalized.slice(index + marker.length);
-  if (!raw) {
-    return null;
-  }
-  const timestampRaw = ARCHIVE_SUFFIX_RE.exec(raw)?.[1];
+  const timestampRaw = readSessionArchiveTimestamp(fileName, reason);
   if (!timestampRaw) {
     return null;
   }

@@ -5,6 +5,7 @@ import { getRuntimeConfig } from "../../../config/config.js";
 import { tryResolveLegacyCompatibilityAgentId } from "../../../config/legacy.default-agent-owner.js";
 import { resolveSessionStorePathCore } from "../../../config/sessions.js";
 import { loadSessionEntryReadOnly as loadSessionEntry } from "../../../config/sessions/session-accessor.js";
+import { withSessionEntryReadOnlyInWorker } from "../../../config/sessions/session-entry-read-runtime.js";
 import { resolvePersistedSessionStoreOwnerForKey } from "../../../config/sessions/session-store-owner.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import {
@@ -131,19 +132,37 @@ export function resolveSubagentRequesterSessionAbandonment(
   return resolveEmbeddedRunAbandonment({ sessionKey: requesterSessionKey, sessionId });
 }
 
-export function loadSessionEntryByKey(sessionKey: string, explicitAgentId?: string) {
+/**
+ * Synchronous read of a session's current incarnation, for checks that run
+ * inside a synchronous state transaction (delegate-artifact finalization).
+ */
+export function readSessionIdByKeySync(sessionKey: string): string | undefined {
+  const cfg = getRuntimeConfig();
+  const agentId = tryResolveSubagentRequesterAgentId(cfg, sessionKey);
+  if (!agentId) {
+    return undefined;
+  }
+  const storePath = resolveSessionStorePathCore(cfg.session?.store, { agentId });
+  return loadSessionEntry({ storePath, sessionKey, agentId })?.sessionId;
+}
+
+export async function loadSessionEntryByKey(sessionKey: string, explicitAgentId?: string) {
   const cfg = getRuntimeConfig();
   const agentId = tryResolveSubagentRequesterAgentId(cfg, sessionKey, explicitAgentId);
   if (!agentId) {
     return undefined;
   }
   const storePath = resolveSessionStorePathCore(cfg.session?.store, { agentId });
-  return loadSessionEntry({
-    storePath,
-    sessionKey,
-    agentId,
-    clone: false,
-  });
+  return await withSessionEntryReadOnlyInWorker(
+    { storePath, sessionKey, agentId, projection: "list" },
+    () => {},
+    async (read) => {
+      if (!read.ok) {
+        throw read.error;
+      }
+      return read.value;
+    },
+  );
 }
 
 export async function queueSubagentAnnounceMessage(

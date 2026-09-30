@@ -27,6 +27,7 @@ import type {
   ConfigHealthSnapshot,
   ConfigHealthEntryBasis,
 } from "../config/io.health-state.types.js";
+import type { SessionEntryCurrentSource } from "../config/sessions/session-entry-current.types.js";
 import type { CronStateWorkerOperations } from "../cron/store/worker-contract.js";
 import type { FleetRegistryWriteOperations } from "../fleet/registry.types.js";
 import type {
@@ -67,11 +68,14 @@ import type {
 } from "../infra/sqlite-wal-write-admission.js";
 import type { SqliteWorkerPreparedBackend } from "../infra/sqlite-worker-contract.js";
 import type { SqliteWorkerAdmissionFactory } from "../infra/sqlite-worker-operation-admission.js";
+import type { LegacyMcpOAuthWorkerOperations } from "../infra/state-migrations.mcp-oauth.worker-contract.js";
 import type { TelemetryWorkerOperations } from "../infra/telemetry-worker-contract.js";
 import type {
   InterruptedUpdateSettlement,
   InterruptedUpdateSettlementResult,
 } from "../infra/update-run-interruption-contract.js";
+import type { UpdateRunStepWriteOperations } from "../infra/update-run-mutation.types.js";
+import type { UpdateRunReconciliationOperations } from "../infra/update-run-reconciliation.types.js";
 import type { readRemoteModelCatalog } from "../model-catalog/remote-store.js";
 import type { NodeWorkerJournalWorkerOperations } from "../node-host/node-worker-journal.worker-contract.js";
 import type { PluginBlobWorkerOperations } from "../plugin-state/plugin-blob-worker-contract.js";
@@ -84,7 +88,7 @@ import type { ProjectRegistryWorkerOperations } from "../projects/project-regist
 import type { CaptureWorkerOperations } from "../proxy-capture/store.worker-contract.js";
 import type { SecretStoreConfigRefWrite } from "../secrets/store/secret-store-config-ref.kernel.js";
 import type { SecretStoreExpiryCutoffs } from "../secrets/store/secret-store-expiry.kernel.js";
-import type { SessionStateWorkerOperations } from "../sessions/session-state-events.worker.js";
+import type { SessionStateWorkerOperations } from "../sessions/session-state-events.worker-contract.js";
 import type { SessionUpstreamLink } from "../sessions/session-upstream-links.kernel.js";
 import type { DeviceAuthEntry } from "../shared/device-auth.js";
 import type { SkillUploadWorkerOperations } from "../skills/lifecycle/upload-store.worker.js";
@@ -92,7 +96,6 @@ import type * as curator from "../skills/workshop/curator.kernel.js";
 import type { listStoredSkillProposalEventsInDatabase } from "../skills/workshop/store-sqlite-event.js";
 import type { SkillWorkshopExecutionOperations } from "../skills/workshop/store.worker-contract.js";
 import type { SkillProposalEvent, SkillProposalRecord } from "../skills/workshop/types.js";
-import type { TaskRegistryWorkerOperations } from "../tasks/task-registry.worker-contract.js";
 import type {
   TranscriptReadOperations,
   TranscriptWriteOperations,
@@ -100,17 +103,25 @@ import type {
 import type { TuiLastSessionWorkerOperations } from "../tui/tui-last-session.contract.js";
 import type { AgentProvenance } from "./agent-provenance.types.js";
 import type { PreparedBackupRunRecord } from "./backup-run-records.kernel.js";
+import type {
+  GitHubSessionReceiptGeneration,
+  GitHubSessionReceiptIdentities,
+} from "./github-publication-read.types.js";
 import type { OnboardingRecommendationWriteOperations } from "./onboarding-recommendations.contract.js";
 import type { OpenClawAgentDatabaseWorkerLeaseReceipt } from "./openclaw-agent-db-lease.js";
 import type { OpenClawStateLeaseLifecycleOperations } from "./openclaw-state-lease-context.js";
 import type { OpenClawStateLeaseIdentity } from "./openclaw-state-lease-store.js";
+import type { RepositoryWorkspaceWorkerOperations } from "./session-repository-workspaces.types.js";
 import type { UserPreferenceWorkerOperations } from "./user-preferences.types.js";
 import type { UserProfileWorkerOperations } from "./user-profiles.worker.js";
 
 export type OpenClawStateWorkerOpenPreparation = { type: "deviceIdentity"; identityKey: string };
 
 /** Commands share one physical shared-state actor; bindings belong to commands, not open input. */
-export type OpenClawStateWorkerOperations = CaptureWorkerOperations &
+export type OpenClawStateWorkerOperations = UpdateRunReconciliationOperations &
+  UpdateRunStepWriteOperations &
+  RepositoryWorkspaceWorkerOperations &
+  CaptureWorkerOperations &
   TuiLastSessionWorkerOperations &
   AcpSessionWriteOperations &
   WorktreeRetirementOperations &
@@ -120,6 +131,7 @@ export type OpenClawStateWorkerOperations = CaptureWorkerOperations &
   SkillWorkshopExecutionOperations &
   CurrentConversationBindingWorkerOperations &
   McpOAuthWriteOperations &
+  LegacyMcpOAuthWorkerOperations &
   WebPushWorkerOperations &
   ApnsRegistrationWorkerOperations &
   DevicePairingWorkerOperations &
@@ -147,7 +159,6 @@ export type OpenClawStateWorkerOperations = CaptureWorkerOperations &
   TranscriptReadOperations &
   TranscriptWriteOperations &
   NodeWorkerJournalWorkerOperations &
-  TaskRegistryWorkerOperations &
   ContinuationCustodyWorkerOperations &
   SkillUploadWorkerOperations &
   OpenClawStateLeaseLifecycleOperations &
@@ -170,6 +181,20 @@ export type OpenClawStateWorkerOperations = CaptureWorkerOperations &
     "updateRuns.reconcileInterrupted": {
       input: InterruptedUpdateSettlement;
       output: InterruptedUpdateSettlementResult;
+    };
+    "githubPublication.prepareSessionReceiptDeletion": {
+      input: { agentId: string; sessionKeys: readonly string[] };
+      output: GitHubSessionReceiptIdentities;
+    };
+    "githubPublication.deleteSessionReceipts": {
+      input: {
+        agentId: string;
+        sessionKeys: readonly string[];
+        generations: readonly GitHubSessionReceiptGeneration[];
+        receipts: GitHubSessionReceiptIdentities;
+        sessionEntryCurrentSource?: SessionEntryCurrentSource;
+      };
+      output: void;
     };
     "githubRepository.personalPending": {
       input: RepositoryGitHubPublicationPendingQuery;

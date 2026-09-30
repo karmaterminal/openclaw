@@ -52,6 +52,8 @@ import { resolveContinuationRuntimeConfig } from "./subagents/announce/subagent-
 import { getSubagentDepthFromSessionStore } from "./subagents/spawn/subagent-depth.js";
 import { spawnSubagentDirect } from "./subagents/spawn/subagent-spawn.js";
 
+type MaybePromise<T> = T | Promise<T>;
+
 export { routeSubagentContinuationReturn } from "./subagent-announce.continuation-return.js";
 
 type OriginDelegateFlowStatus = NonNullable<
@@ -74,7 +76,7 @@ async function drainChildContinuationQueue(params: {
     return undefined;
   }
   try {
-    const childEntry = loadSessionEntryByKey(params.childSessionKey, params.childAgentId);
+    const childEntry = await loadSessionEntryByKey(params.childSessionKey, params.childAgentId);
     const config = resolveContinuationRuntimeConfig(params.cfg);
     const baseChainState = params.chainStateOverride ?? loadContinuationChainState(childEntry);
     const chainState =
@@ -207,7 +209,9 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
   loadEntry: (
     sessionKey: string,
     options?: { refresh?: boolean },
-  ) => (ContinuationChainSource & { inputTokens?: number; outputTokens?: number }) | undefined;
+  ) => MaybePromise<
+    (ContinuationChainSource & { inputTokens?: number; outputTokens?: number }) | undefined
+  >;
   invalidateSessionEntry: (sessionKey: string) => void;
 }): Promise<{
   findings: string;
@@ -349,7 +353,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
       const config = resolveContinuationRuntimeConfig(params.cfg);
       const childChainHop = parseContinuationChainHop(params.task) ?? 0;
       const nextChainHop = childChainHop + 1;
-      const parentEntry = params.loadEntry(params.targetRequesterSessionKey);
+      const parentEntry = await params.loadEntry(params.targetRequesterSessionKey);
       const parentChainTokens =
         (parentEntry?.continuationChainTokens ?? 0) + accounting.parentChainTokensToFold;
       const guardAllowed =
@@ -411,7 +415,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
           const shouldDrainBracketNow =
             delayMs === 0 || accounting.childChainTokensToFold > 0 || toolDelegates.length === 0;
           if (shouldDrainBracketNow) {
-            const state = accounting.buildChildContinuationSpawnState(childChainHop);
+            const state = await accounting.buildChildContinuationSpawnState(childChainHop);
             const dispatchResult = await drainChildContinuationQueue({
               cfg: params.cfg,
               childSessionKey: params.childSessionKey,
@@ -449,7 +453,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
     for (let index = 0; index < toolDelegates.length; index += 1) {
       const delegate = toolDelegates[index]!;
       const nextHop = toolHopBase + 1;
-      const parentEntry = params.loadEntry(params.targetRequesterSessionKey);
+      const parentEntry = await params.loadEntry(params.targetRequesterSessionKey);
       const parentTokens =
         (parentEntry?.continuationChainTokens ?? 0) + accounting.parentChainTokensToFold;
       if (
@@ -544,7 +548,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
               : {}),
             ...(delegate.fanoutMode ? { continuationFanoutMode: delegate.fanoutMode } : {}),
             drainsContinuationDelegateQueue: true,
-            continuationChainState: accounting.buildChildContinuationSpawnState(nextHop),
+            continuationChainState: await accounting.buildChildContinuationSpawnState(nextHop),
             ...(delegate.flowId ? { continuationDelegateFlowId: delegate.flowId } : {}),
             ...(delegate.spawnAttempt
               ? { continuationChildRunId: delegate.spawnAttempt.childRunId }
@@ -628,7 +632,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
       }
     }
     if (deferInitialDrain && !bracketDrainArmed) {
-      const state = accounting.buildChildContinuationSpawnState(toolHopBase);
+      const state = await accounting.buildChildContinuationSpawnState(toolHopBase);
       postBracketDrainArmed = true;
       void drainChildContinuationQueue({
         cfg: params.cfg,
@@ -647,7 +651,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
     }
   }
   if (deferInitialDrain && !postBracketDrainArmed && !bracketDrainArmed) {
-    const state = accounting.buildChildContinuationSpawnState(
+    const state = await accounting.buildChildContinuationSpawnState(
       (parseContinuationChainHop(params.task) ?? 0) + (bracketReserved ? 1 : 0),
     );
     void drainChildContinuationQueue({

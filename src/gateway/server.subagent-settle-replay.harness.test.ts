@@ -140,9 +140,9 @@ describe("public yielded settle replay with real Gateway admission", () => {
   function wake(settledEntry = child) {
     const completeBatch = vi.fn<
       Parameters<typeof maybeWakeRequesterAfterAllChildrenSettled>[0]["completeBatch"]
-    >((batch, _generation, outcome, onCommitted) => {
+    >(async (batch, _generation, outcome, onCommitted) => {
       expect(outcome).toBeDefined();
-      settleRequesterCompletionBatch({
+      await settleRequesterCompletionBatch({
         entries: batch.map((subagent) => ({ subagent })),
         outcome: outcome!,
         isCurrent: () => subagentRuns.get(child.runId) === child,
@@ -152,6 +152,7 @@ describe("public yielded settle replay with real Gateway admission", () => {
     return {
       completeBatch,
       result: maybeWakeRequesterAfterAllChildrenSettled({
+        isSourceCurrent: () => true,
         requesterSessionKey,
         settledEntry,
         transitionBatch: (batch, state) => {
@@ -314,6 +315,7 @@ describe("public yielded settle replay with real Gateway admission", () => {
         const revoked = vi.fn();
         expect(
           await maybeWakeRequesterAfterAllChildrenSettled({
+            isSourceCurrent: () => true,
             requesterSessionKey,
             settledEntry: child,
             transitionBatch: vi.fn(),
@@ -452,6 +454,7 @@ describe("public yielded settle replay with real Gateway admission", () => {
       });
     const dispatch = (settledEntry: SubagentRunRecord) =>
       maybeWakeRequesterAfterAllChildrenSettled({
+        isSourceCurrent: () => true,
         requesterSessionKey,
         settledEntry,
         transitionBatch: (members, state) => {

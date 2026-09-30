@@ -74,6 +74,15 @@ export type SessionDeliveryRoute = {
 
 export type SessionDeliverySettledOutcome = "recovered" | "moved-to-failed";
 
+/** Original requester facts; admission still validates the current owning session. */
+export type SessionDeliveryRequesterBinding = Readonly<{
+  agentId: string;
+  sessionKey: string;
+  storePath: string;
+  sessionId: string;
+  lifecycleRevision: string | null;
+}>;
+
 type SessionDeliveryOwnerReference = {
   kind: "subagent_completion";
   runId: string;
@@ -125,6 +134,7 @@ type QueuedSessionDeliveryGenericPayload =
       message: string;
       messageId: string;
       expectedSessionId?: string;
+      requesterBinding?: SessionDeliveryRequesterBinding;
       route?: SessionDeliveryRoute;
       deliveryContext?: SessionDeliveryContext;
       inputProvenance?: InputProvenance;
@@ -388,6 +398,16 @@ const QueuedManagedSystemEventSchema = z
     }
   });
 
+const QueuedRequesterBindingSchema = z
+  .object({
+    agentId: z.string(),
+    sessionKey: z.string(),
+    storePath: z.string(),
+    sessionId: z.string(),
+    lifecycleRevision: z.string().nullable(),
+  })
+  .strict();
+
 const QueuedAgentTurnSchema = z
   .object({
     ...QueuedGenericCommonSchema,
@@ -396,6 +416,7 @@ const QueuedAgentTurnSchema = z
     message: z.string(),
     messageId: z.string(),
     expectedSessionId: z.string().optional(),
+    requesterBinding: QueuedRequesterBindingSchema.optional(),
     route: QueuedGenericRouteSchema.optional(),
     deliveryContext: QueuedGenericDeliveryContextSchema.optional(),
     inputProvenance: QueuedInputProvenanceSchema.optional(),

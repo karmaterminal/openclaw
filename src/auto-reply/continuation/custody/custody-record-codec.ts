@@ -28,6 +28,10 @@ const STATUSES: ReadonlySet<string> = new Set<ContinuationRecordStatus>([
   "failed",
   "cancelled",
 ]);
+function isTerminalNotice(value: string | null): value is ContinuationTerminalNotice {
+  return value !== null && NOTICES.has(value);
+}
+
 const NOTICES: ReadonlySet<string> = new Set<ContinuationTerminalNotice>([
   "retry-exhausted",
   "delegate-spawn-interrupted",
@@ -144,6 +148,7 @@ export function decodeContinuationRecordRow(
     ownerSessionKey: row.owner_session_key,
     ...(row.chain_id !== null ? { chainId: row.chain_id } : {}),
     revision: row.revision,
+    // SAFETY: status was checked against its CHECK-constraint set above.
     status: row.status as ContinuationRecordStatus,
     ...(row.phase !== null ? { phase: row.phase } : {}),
     ...(row.failure_reason !== null ? { failureReason: row.failure_reason } : {}),
@@ -157,8 +162,8 @@ export function decodeContinuationRecordRow(
     ...(handoff ? { handoff } : {}),
     ...(row.rollback_of !== null ? { rollbackOf: row.rollback_of } : {}),
     ...(row.attachment_id !== null ? { attachmentId: row.attachment_id } : {}),
-    ...(row.terminal_notice_pending !== null
-      ? { terminalNoticePending: row.terminal_notice_pending as ContinuationTerminalNotice }
+    ...(isTerminalNotice(row.terminal_notice_pending)
+      ? { terminalNoticePending: row.terminal_notice_pending }
       : {}),
   };
 }

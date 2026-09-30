@@ -1,11 +1,7 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-/**
- * Subagent completion announcement coordinator.
- *
- * Captures child output, applies wait outcomes, routes announcements, and performs cleanup decisions.
- */
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../../auto-reply/tokens.js";
+import { hasSqliteWorkerOutcomeUnknown } from "../../../infra/sqlite-worker-contract.js";
 import { withPluginRuntimeGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
 import { defaultRuntime } from "../../../runtime.js";
 import { isCronSessionKey } from "../../../sessions/session-key-utils.js";
@@ -44,6 +40,7 @@ import type { SubagentRunOutcome } from "../subagent-run-outcome.types.js";
 import {
   deliverSubagentAnnouncement,
   loadSessionEntryByKey,
+  readSessionIdByKeySync,
 } from "./subagent-announce-delivery.js";
 import { loadSubagentContinuationRuntime, subagentAnnounceDeps } from "./subagent-announce-deps.js";
 import {
@@ -121,6 +118,10 @@ async function runSubagentAnnounceFlowBound(
     params.isChildSessionEffectsAllowed?.() !== false;
   // Upstream result-currency gating: a result that changed mid-announce must
   // not be delivered. Both closures are replaced by prepared reads below.
+  const prepareChildSessionEffects = async () =>
+    childSessionEffectsAllowed() &&
+    (await params.prepareChildSessionEffects?.()) !== false &&
+    childSessionEffectsAllowed();
   let isOwnResultCurrent = () => true;
   let isChildResultsCurrent = () => true;
   const completionDeliveryAllowed = () =>
@@ -135,9 +136,10 @@ async function runSubagentAnnounceFlowBound(
     let targetRequesterSessionKey = params.requesterSessionKey;
     let targetRequesterAgentId = params.requesterAgentId;
     let targetRequesterOrigin = normalizeDeliveryContext(params.requesterOrigin);
-    const childSessionEntry = !childSessionEffectsAllowed()
-      ? undefined
-      : loadSessionEntryByKey(params.childSessionKey, params.childAgentId);
+    const childSessionEntry =
+      !(await prepareChildSessionEffects()) || !childSessionEffectsAllowed()
+        ? undefined
+        : await loadSessionEntryByKey(params.childSessionKey, params.childAgentId);
     childSessionId =
       typeof childSessionEntry?.sessionId === "string" && childSessionEntry.sessionId.trim()
         ? childSessionEntry.sessionId.trim()
@@ -151,7 +153,12 @@ async function runSubagentAnnounceFlowBound(
           ? SILENT_REPLY_TOKEN
           : params.roundOneReply;
     let outcome: SubagentRunOutcome | undefined = params.outcome;
-    if (childSessionId && isEmbeddedAgentRunActive(childSessionId)) {
+    if (
+      childSessionId &&
+      (await prepareChildSessionEffects()) &&
+      childSessionEffectsAllowed() &&
+      isEmbeddedAgentRunActive(childSessionId)
+    ) {
       const settled = await waitForEmbeddedAgentRunEnd(childSessionId, settleTimeoutMs);
       if (!settled && isEmbeddedAgentRunActive(childSessionId)) {
         shouldDeleteChildSession = false;
@@ -225,7 +232,7 @@ async function runSubagentAnnounceFlowBound(
           ) {
             return "delivered";
           }
-          if (!hasUsableSessionEntry(readSessionEntryByKey(targetRequesterSessionKey))) {
+          if (!hasUsableSessionEntry(await readSessionEntryByKey(targetRequesterSessionKey))) {
             if (params.completionTarget === "parent") {
               shouldDeleteChildSession = false;
               return "retryable";
@@ -247,33 +254,49 @@ async function runSubagentAnnounceFlowBound(
         }
       }
 
-      const pendingChildDescendantRuns = !childSessionEffectsAllowed()
-        ? 0
-        : Math.max(0, countPendingDescendantRuns(params.childSessionKey));
+      const childSessionCurrent = await prepareChildSessionEffects();
+      const pendingChildDescendantRuns =
+        !childSessionCurrent || !childSessionEffectsAllowed()
+          ? 0
+          : Math.max(
+              0,
+              await countPendingDescendantRuns(params.childSessionKey, () => {
+                if (!childSessionEffectsAllowed()) {
+                  throw new Error("Subagent child-session effects are no longer current.");
+                }
+              }),
+            );
       if (pendingChildDescendantRuns > 0 && announceType !== "cron job") {
         shouldDeleteChildSession = false;
         return "retryable";
       }
 
-      if (childSessionEffectsAllowed() && params.wakeOnDescendantSettle === true) {
+      if (
+        childSessionCurrent &&
+        childSessionEffectsAllowed() &&
+        params.wakeOnDescendantSettle === true
+      ) {
         const directChildren = listSubagentRunsForRequester(params.childSessionKey, {
           requesterRunId: params.childRunId,
         });
-        if (Array.isArray(directChildren) && directChildren.length > 0) {
-          const completionRows = dedupeLatestChildCompletionRows(
+        if (directChildren.length > 0) {
+          childCompletionRows = dedupeLatestChildCompletionRows(
             filterCurrentDirectChildCompletionRows(directChildren, {
               requesterSessionKey: params.childSessionKey,
               getLatestSubagentRunByChildSessionKey,
             }),
           );
-          childCompletionRows = completionRows;
         }
       }
     } catch {
       // Best-effort only.
     }
 
-    if (childCompletionRows) {
+    if (
+      childCompletionRows &&
+      (await prepareChildSessionEffects()) &&
+      childSessionEffectsAllowed()
+    ) {
       const prepared = await readChildCompletionFindings(childCompletionRows);
       childCompletionFindings = prepared.text;
       isChildResultsCurrent = prepared.isCurrent;
@@ -304,6 +327,7 @@ async function runSubagentAnnounceFlowBound(
           taskLabel: params.label || params.task || "task",
           findings: childCompletionFindings,
           announceId: wakeAnnounceId,
+          prepareCurrent: prepareChildSessionEffects,
           isChildSessionEffectsAllowed: () =>
             childSessionEffectsAllowed() && completionDeliveryAllowed(),
           resolveGatewayContext: params.resolveGatewayContext,
@@ -333,7 +357,11 @@ async function runSubagentAnnounceFlowBound(
       : undefined;
 
     const childRun = getLatestSubagentRunByChildSessionKey(params.childSessionKey);
-    if (childSessionEffectsAllowed() && childRun?.runId === params.childRunId) {
+    if (
+      childRun?.runId === params.childRunId &&
+      (await prepareChildSessionEffects()) &&
+      childSessionEffectsAllowed()
+    ) {
       const prepared = await readSubagentRunAnnounceResult(childRun);
       reply = prepared.text;
       isOwnResultCurrent = prepared.isCurrent;
@@ -345,7 +373,12 @@ async function runSubagentAnnounceFlowBound(
       }
       reply = cleanedFallbackReply;
     }
-    if (params.terminalReply?.disposition === "empty" && outcome.status === "timeout") {
+    if (
+      params.terminalReply?.disposition === "empty" &&
+      outcome.status === "timeout" &&
+      (await prepareChildSessionEffects()) &&
+      childSessionEffectsAllowed()
+    ) {
       const timeoutProgress = await readSubagentTimeoutProgress(
         params.childSessionKey,
         params.timeoutMs,
@@ -358,11 +391,21 @@ async function runSubagentAnnounceFlowBound(
       }
     }
     if (!params.terminalReply) {
-      if (childSessionEffectsAllowed() && !reply && allowFailedOutputCapture) {
+      if (
+        !reply &&
+        allowFailedOutputCapture &&
+        (await prepareChildSessionEffects()) &&
+        childSessionEffectsAllowed()
+      ) {
         reply = await readSubagentOutput(params.childSessionKey, outcome);
       }
 
-      if (childSessionEffectsAllowed() && !reply?.trim() && allowFailedOutputCapture) {
+      if (
+        !reply?.trim() &&
+        allowFailedOutputCapture &&
+        (await prepareChildSessionEffects()) &&
+        childSessionEffectsAllowed()
+      ) {
         reply = await readLatestSubagentOutputWithRetry({
           sessionKey: params.childSessionKey,
           maxWaitMs: params.timeoutMs,
@@ -435,7 +478,8 @@ async function runSubagentAnnounceFlowBound(
       outcome = { status: "unknown" };
     }
 
-    if (!childSessionEffectsAllowed()) {
+    const childSessionCurrent = await prepareChildSessionEffects();
+    if (!childSessionCurrent || !childSessionEffectsAllowed()) {
       reply = params.roundOneReply ?? params.fallbackReply;
       if (
         expectsCompletionMessage &&
@@ -449,24 +493,25 @@ async function runSubagentAnnounceFlowBound(
 
     const cfg = subagentAnnounceDeps.getRuntimeConfig();
     const artifactConfig = subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg);
-    const announceSessionId = childSessionEffectsAllowed()
-      ? childSessionId || "unknown"
-      : "unknown";
-    const artifactFinalization = childSessionEffectsAllowed()
-      ? finalizeDelegateArtifacts({
-          producerSessionKey: params.childSessionKey,
-          producerSessionId: announceSessionId,
-          producerRunId: params.childRunId,
-          completionId: announceId,
-          finalizationKey: `delegate-artifact-finalization:${announceId}`,
-          completionStatus: outcome.status,
-          completedAt: params.endedAt ?? Date.now(),
-          silent: params.silentAnnounce === true,
-          runtimeEnabled: artifactConfig.enabled,
-          crossSessionEnabled: artifactConfig.crossSessionTargeting === "enabled",
-          resolveSessionId: (sessionKey) => loadSessionEntryByKey(sessionKey)?.sessionId,
-        })
-      : ({ status: "not-configured" } as const);
+    const announceSessionId =
+      childSessionCurrent && childSessionEffectsAllowed() ? childSessionId || "unknown" : "unknown";
+    const artifactFinalization =
+      childSessionCurrent && childSessionEffectsAllowed()
+        ? finalizeDelegateArtifacts({
+            producerSessionKey: params.childSessionKey,
+            producerSessionId: announceSessionId,
+            producerRunId: params.childRunId,
+            completionId: announceId,
+            finalizationKey: `delegate-artifact-finalization:${announceId}`,
+            completionStatus: outcome.status,
+            completedAt: params.endedAt ?? Date.now(),
+            silent: params.silentAnnounce === true,
+            runtimeEnabled: artifactConfig.enabled,
+            crossSessionEnabled: artifactConfig.crossSessionTargeting === "enabled",
+            // Runs inside finalization's synchronous transaction: a synchronous read.
+            resolveSessionId: readSessionIdByKeySync,
+          })
+        : ({ status: "not-configured" } as const);
     if (artifactFinalization.status === "deferred") {
       return "retryable";
     }
@@ -511,7 +556,13 @@ async function runSubagentAnnounceFlowBound(
     if (
       continuation.originDelegateFlowStatus === "queued" ||
       continuation.originDelegateFlowStatus === "running" ||
-      (childSessionEffectsAllowed() && countPendingDescendantRuns(params.childSessionKey) > 0)
+      ((await prepareChildSessionEffects()) &&
+        childSessionEffectsAllowed() &&
+        (await countPendingDescendantRuns(params.childSessionKey, () => {
+          if (!childSessionEffectsAllowed()) {
+            throw new Error("Subagent child-session effects are no longer current.");
+          }
+        })) > 0)
     ) {
       // Coordination can admit a child after the earlier descendant check.
       // Recheck now so cleanup cannot retire the orchestrator before its return.
@@ -532,7 +583,7 @@ async function runSubagentAnnounceFlowBound(
     }
     const candidateCompletionDirectOrigin =
       expectsCompletionMessage && !requesterIsSubagent && params.completionTarget !== "parent"
-        ? !childSessionEffectsAllowed()
+        ? !(await prepareChildSessionEffects()) || !childSessionEffectsAllowed()
           ? targetRequesterOrigin
           : await resolveSubagentCompletionOrigin({
               childSessionKey: params.childSessionKey,
@@ -543,9 +594,10 @@ async function runSubagentAnnounceFlowBound(
               expectsCompletionMessage,
             })
         : targetRequesterOrigin;
-    const completionDirectOrigin = childSessionEffectsAllowed()
-      ? candidateCompletionDirectOrigin
-      : targetRequesterOrigin;
+    const completionDirectOrigin =
+      (await prepareChildSessionEffects()) && childSessionEffectsAllowed()
+        ? candidateCompletionDirectOrigin
+        : targetRequesterOrigin;
     const completionChannel = normalizeMessageChannel(completionDirectOrigin?.channel);
     const modelRouteChange =
       params.terminalReply?.disposition === "visible"
@@ -555,14 +607,19 @@ async function runSubagentAnnounceFlowBound(
       requesterIsSubagent || !completionChannel || !isDeliverableMessageChannel(completionChannel);
 
     const candidateStatsLine =
-      params.completionTarget === "parent" || !childSessionEffectsAllowed()
+      params.completionTarget === "parent" ||
+      !(await prepareChildSessionEffects()) ||
+      !childSessionEffectsAllowed()
         ? undefined
         : await buildCompactAnnounceStatsLine({
             sessionKey: params.childSessionKey,
             startedAt: params.startedAt,
             endedAt: params.endedAt,
           });
-    const statsLine = childSessionEffectsAllowed() ? candidateStatsLine : undefined;
+    const statsLine =
+      (await prepareChildSessionEffects()) && childSessionEffectsAllowed()
+        ? candidateStatsLine
+        : undefined;
     const finalizedArtifactProjections =
       "projections" in artifactFinalization ? artifactFinalization.projections : undefined;
     let artifactProjections: Map<string, DelegateArtifactRecipientProjectionV1> | undefined;
@@ -576,7 +633,7 @@ async function runSubagentAnnounceFlowBound(
           projection,
           runtimeEnabled: deliveryConfig.enabled,
           crossSessionEnabled: deliveryConfig.crossSessionTargeting === "enabled",
-          currentRecipientSessionId: loadSessionEntryByKey(sessionKey)?.sessionId,
+          currentRecipientSessionId: (await loadSessionEntryByKey(sessionKey))?.sessionId,
         });
         if (delivery.status === "deferred") {
           return "retryable";
@@ -692,6 +749,9 @@ async function runSubagentAnnounceFlowBound(
         : (delivery.disposition ?? (delivery.delivered ? "delivered" : "retryable"));
   } catch (err) {
     shouldDeleteChildSession = false;
+    if (hasSqliteWorkerOutcomeUnknown(err)) {
+      throw err;
+    }
     defaultRuntime.error?.(
       formatSubagentAnnounceOwnerFailure({
         childSessionKey: params.childSessionKey,
@@ -703,15 +763,16 @@ async function runSubagentAnnounceFlowBound(
     );
     // Best-effort follow-ups; ignore failures to avoid breaking the caller response.
   } finally {
-    // The spawn label is persisted at run start (agent request `label` →
-    // buildAgentSessionPatch), so no post-run label patch is needed here.
     if (
       shouldDeleteChildSession &&
+      (await prepareChildSessionEffects()) &&
       childSessionEffectsAllowed() &&
-      (params.onBeforeDeleteChildSession?.() ?? true)
+      ((await params.onBeforeDeleteChildSession?.()) ?? true) &&
+      childSessionEffectsAllowed()
     ) {
       await deleteSubagentSessionForCleanup({
         callGateway: subagentAnnounceDeps.callGateway,
+        prepareCurrent: prepareChildSessionEffects,
         isCurrent: childSessionEffectsAllowed,
         childSessionKey: params.childSessionKey,
         spawnMode: params.spawnMode,

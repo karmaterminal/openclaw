@@ -5,12 +5,17 @@
  */
 import { completionRequiresMessageToolDelivery } from "../../../auto-reply/reply/completion-delivery-policy.js";
 import { isContinuationHeartbeatEquivalent } from "../../../auto-reply/reply/run-provenance.js";
+import type { SessionEntry } from "../../../config/sessions/types.js";
 import { normalizeDiagnosticTraceparent } from "../../../infra/diagnostic-trace-context.js";
 import { scheduleSessionDelivery } from "../../../infra/session-delivery-queue-runtime.js";
 import {
   enqueueClaimedSessionDelivery,
   releaseSessionDeliveryClaim,
 } from "../../../infra/session-delivery-queue-storage.js";
+import {
+  SessionDeliveryDeadLetteredError,
+  type SessionDeliveryRequesterBinding,
+} from "../../../infra/session-delivery-queue.records.js";
 import { defaultRuntime } from "../../../runtime.js";
 import {
   INTERNAL_PROVENANCE_SOURCE_CHANNEL,
@@ -41,6 +46,7 @@ import {
   getSubagentAnnounceRuntimeConfig,
   loadRequesterSessionEntry,
   loadSessionEntryByKey,
+  readSessionIdByKeySync,
 } from "./subagent-announce-delivery.runtime.js";
 import {
   sendSubagentAnnounceDirectly,
@@ -60,6 +66,7 @@ import { resolveRequesterStoreKey } from "./subagent-requester-store-key.js";
 export {
   loadRequesterSessionEntry,
   loadSessionEntryByKey,
+  readSessionIdByKeySync,
   resolveSubagentAnnounceTimeoutMs,
   runAnnounceDeliveryWithRetry,
 };
@@ -140,6 +147,7 @@ export async function deliverSubagentAnnouncement(
     steerMessage: string;
     sourceRunId?: string;
     requireDirectDelivery?: boolean;
+    preparedRequester?: { binding: SessionDeliveryRequesterBinding; entry: SessionEntry };
   },
 ): Promise<SubagentAnnounceDeliveryResult> {
   const sourceOwnerChanged = () =>
@@ -164,21 +172,18 @@ export async function deliverSubagentAnnouncement(
         : undefined;
       const traceparent = normalizeDiagnosticTraceparent(params.traceparent);
       const cfg = getSubagentAnnounceRuntimeConfig();
-      const canonicalSessionKey = resolveRequesterStoreKey(
-        cfg,
-        params.targetRequesterSessionKey,
-        params.requesterAgentId,
-      );
+      const canonicalSessionKey =
+        params.preparedRequester?.binding.sessionKey ??
+        resolveRequesterStoreKey(cfg, params.targetRequesterSessionKey, params.requesterAgentId);
       const queuedRoute = resolveGeneratedMediaSessionDeliveryRoute({
         ...params,
         sessionKey: canonicalSessionKey,
       });
       const { requesterSessionOrigin, effectiveDirectOrigin } =
         resolveCompletionDeliveryOrigins(params);
-      const requesterEntry = loadRequesterSessionEntry(
-        params.targetRequesterSessionKey,
-        params.requesterAgentId,
-      ).entry;
+      const requesterEntry =
+        params.preparedRequester?.entry ??
+        loadRequesterSessionEntry(params.targetRequesterSessionKey, params.requesterAgentId).entry;
       // No external route exists for an internal-only handoff. Let the normal
       // agent final enter the owning transcript instead of requiring a message tool target.
       const sourceReplyDeliveryMode =
@@ -213,17 +218,31 @@ export async function deliverSubagentAnnouncement(
         ...(continuationTrigger ? { continuationTrigger } : {}),
         ...(traceparent ? { traceparent, traceparentProvenance: "internal" as const } : {}),
         idempotencyKey: `${params.directIdempotencyKey}:agent-loop`,
+        ...(params.preparedRequester ? { requesterBinding: params.preparedRequester.binding } : {}),
       } as const;
       const queueContext = captureOpenClawStateWorkerContext();
+      const enqueueContext = {
+        ...queueContext,
+        admission: {
+          ...queueContext.admission,
+          assertCurrent: () => {
+            queueContext.admission.assertCurrent();
+            if (sourceOwnerChanged()) {
+              throw new SessionDeliveryDeadLetteredError("media completion source owner changed");
+            }
+          },
+        },
+      };
       const queued = params.sourceRunId
-        ? admitCorrelatedSubagentSessionDelivery({
+        ? await admitCorrelatedSubagentSessionDelivery({
             runId: params.sourceRunId,
             payload: queuePayload,
+            queueContext: enqueueContext,
           })
         : await enqueueClaimedSessionDelivery(
             queuePayload,
             resolveSubagentAnnounceTimeoutMs(cfg),
-            queueContext,
+            enqueueContext,
           );
       if (queued.status === "failed") {
         return {
@@ -239,6 +258,15 @@ export async function deliverSubagentAnnouncement(
       }
       durableQueue = { id: queued.id, claimed: queued.claimed, context: queueContext };
     } catch (error) {
+      if (error instanceof SessionDeliveryDeadLetteredError) {
+        return {
+          delivered: false,
+          path: "queued",
+          reason: "completion_handoff_unavailable",
+          error: error.message,
+          disposition: "permanent_failure",
+        };
+      }
       defaultRuntime.log(
         `[warn] Generated media session handoff could not be persisted; refusing ambiguous fallback: ${summarizeDeliveryError(error)}`,
       );

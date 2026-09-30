@@ -2,7 +2,6 @@ import os from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isLinkLocalIpAddress, isUnspecifiedIpAddress } from "@openclaw/net-policy/ip";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
-import { resolveGatewayPublicOrigin } from "../../config/gateway-public-origin.js";
 import { ensureDevicePairSetupBootstrapToken } from "../../infra/device-bootstrap.js";
 import { removePairedDeviceRole } from "../../infra/device-pairing.js";
 import {
@@ -18,12 +17,15 @@ import { workerBundleArchiveRelativePath } from "../../shared/worker-bundle-hash
 import { WORKER_BOOTSTRAP_ARTIFACT_TRANSFER_PATH } from "../gateway-http-route-contracts.js";
 import { isLoopbackHost } from "../net.js";
 import type { TransferArtifact } from "./artifact-transfer-service.js";
+import {
+  NODE_ENROLLMENT_TIMEOUT_MS,
+  workerBootstrapOperationTimeoutMs,
+} from "./bootstrap-timeouts.js";
 import type { DeviceWorkerAvailability } from "./device-provider.js";
 import type { NodeBootstrapArtifact } from "./node-bootstrap-artifact.js";
 import type { WorkerEnvironmentRecord, WorkerEnvironmentStore } from "./store.js";
 import type { WorkerBootstrapArtifactTransferService } from "./worker-bootstrap-artifact-transfer-service.js";
 
-const NODE_ENROLLMENT_TIMEOUT_MS = 10 * 60_000;
 const NODE_ENROLLMENT_POLL_MS = 250;
 
 type WorkerNodeEnrollmentManagerOptions = {
@@ -70,7 +72,8 @@ export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentM
     const url = await resolvePairingGatewayUrl(config, {
       env: process.env,
       useLocalGateway: config.gateway?.mode === "remote",
-      publicUrl: resolveConfiguredPairingPublicUrl(config) ?? resolveGatewayPublicOrigin(config),
+      publicUrl: resolveConfiguredPairingPublicUrl(config),
+      publicOriginPreference: "prefer",
       networkInterfaces: os.networkInterfaces,
       runCommandWithTimeout: commandRunner,
     });
@@ -139,9 +142,11 @@ export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentM
     artifact: TransferArtifact,
     enrollmentSignal: AbortSignal,
     isAuthorized: () => boolean,
+    transferBytes = artifact.tarballBytes,
   ) => {
     const capability = options.transfer.prepare({
       artifact,
+      transferBytes,
       isAuthorized,
       signal: enrollmentSignal,
     });
@@ -163,9 +168,11 @@ export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentM
     prepared: Awaited<ReturnType<typeof prepare>>,
     enrollmentSignal: AbortSignal,
     isAuthorized: () => boolean,
+    transferBytes = prepared.artifact.tarballBytes,
   ) => ({
+    bootstrapTimeoutMs: workerBootstrapOperationTimeoutMs({ tarballBytes: transferBytes }),
     nodeBootstrap: {
-      ...grantArtifact(prepared, prepared.artifact, enrollmentSignal, isAuthorized),
+      ...grantArtifact(prepared, prepared.artifact, enrollmentSignal, isAuthorized, transferBytes),
       openclawVersion: prepared.artifact.openclawVersion,
       enabledPluginIds: prepared.artifact.enabledPluginIds,
     },
@@ -186,10 +193,11 @@ export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentM
         const live = current();
         return live.nodeSetupId === owner.nodeSetupId && live.nodeDeviceId === owner.nodeDeviceId;
       };
+      const transferBytes = prepared.artifact.tarballBytes + bundle.tarballBytes;
       const runtime: WorkerNodeRuntimePreparation = {
-        ...grantRuntime(prepared, enrollmentSignal, isAuthorized),
+        ...grantRuntime(prepared, enrollmentSignal, isAuthorized, transferBytes),
         workerBundle: {
-          ...grantArtifact(prepared, bundle, enrollmentSignal, isAuthorized),
+          ...grantArtifact(prepared, bundle, enrollmentSignal, isAuthorized, transferBytes),
           packageRelativePath: workerBundleArchiveRelativePath(bundle.tarballSha256),
         },
       };
@@ -243,8 +251,8 @@ export function createWorkerNodeEnrollmentManager(options: WorkerNodeEnrollmentM
           const resolved = await resolvePairingSetupFromConfig(config, {
             env: process.env,
             useLocalGateway: config.gateway?.mode === "remote",
-            publicUrl:
-              resolveConfiguredPairingPublicUrl(config) ?? resolveGatewayPublicOrigin(config),
+            publicUrl: resolveConfiguredPairingPublicUrl(config),
+            publicOriginPreference: "prefer",
             bootstrapProfile: CLOUD_WORKER_PAIRING_SETUP_BOOTSTRAP_PROFILE,
             issuedBootstrap: issued,
             localTlsFingerprint: options.getLocalTlsFingerprint?.(),

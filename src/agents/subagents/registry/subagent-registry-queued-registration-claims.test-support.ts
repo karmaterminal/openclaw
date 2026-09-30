@@ -1,9 +1,6 @@
-import { expect, it, vi, type Mock } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { markGatewayRestartDraining } from "../../../process/gateway-work-admission.js";
-import type { DetachedTaskLifecycleRuntime } from "../../../tasks/detached-task-runtime-contract.js";
-import type { createQueuedTaskRun } from "../../../tasks/detached-task-runtime.js";
-import type { TaskRecord } from "../../../tasks/task-registry.types.js";
 import { runSpawnPipeline, summarizeSpawnError } from "../../spawn-pipeline.js";
 import {
   activateSwarmRun,
@@ -17,11 +14,8 @@ import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
 export function registerQueuedRegistrationClaimCases(params: {
   fixture: () => ReturnType<typeof createQueuedRegistrationFixture>;
-  createTask: Mock<typeof createQueuedTaskRun>;
-  makeTask: () => TaskRecord;
-  finalizer: () => NonNullable<DetachedTaskLifecycleRuntime["finalizeTaskRunByRunId"]>;
 }) {
-  const { fixture, createTask, makeTask } = params;
+  const { fixture } = params;
   it.each(
     (["complete", "incomplete", "rejected"] as const).flatMap((cleanupResult) => [
       { cleanupResult, failure: new Error("original transport failure"), failureKind: "Error" },
@@ -48,7 +42,6 @@ export function registerQueuedRegistrationClaimCases(params: {
       f.writes[1]!.gate.resolve();
       await registration;
       const entry = f.runs.get(f.registration.runId)!;
-      const finalize = vi.mocked(params.finalizer());
       const { completeCollectorLaunchCleanup } = await import("./subagent-registry.js");
       const launch = vi.fn(() => {
         const attempt = createDeferred<never>();
@@ -85,7 +78,6 @@ export function registerQueuedRegistrationClaimCases(params: {
         expect(f.writes[2]!.snapshot.get(entry.runId)?.queuedLaunch).toBeUndefined();
         f.writes[2]!.gate.resolve();
         await vi.waitFor(() => expect(f.writes).toHaveLength(4));
-        expect(finalize).toHaveBeenCalledOnce();
         f.writes[3]!.gate.reject(
           new SubagentRegistryWriteError("not-committed", new Error("terminal write refused")),
         );
@@ -102,7 +94,6 @@ export function registerQueuedRegistrationClaimCases(params: {
           setImmediate(resolve);
         });
         expect(f.options.persistOrThrow).not.toHaveBeenCalled();
-        expect(finalize).toHaveBeenCalledOnce();
         expect(failures.mock.calls).toEqual([[failure], [failure]]);
         expect(launch).toHaveBeenCalledOnce();
         expect(cleanup).toHaveBeenCalledOnce();
@@ -126,7 +117,6 @@ export function registerQueuedRegistrationClaimCases(params: {
     "waits for a reacquired claim before continuing %s",
     async (stage) => {
       const f = fixture();
-      const finalize = vi.mocked(params.finalizer());
       // Required queued registration may settle synchronously or through persistence.
       const registration = Promise.resolve(f.register());
       const registrationJoined = registration.catch(() => {});
@@ -161,7 +151,7 @@ export function registerQueuedRegistrationClaimCases(params: {
       );
       const attemptCount = f.writes.length;
       const writeObservers = [...f.persistenceObservers];
-      const first = f.manager.claimSubagentRunKill({ runId: entry.runId, expected: entry });
+      const first = await f.claimSubagentRunKill({ runId: entry.runId, expected: entry });
       if (!first) {
         throw new Error("missing initial claim");
       }
@@ -170,8 +160,8 @@ export function registerQueuedRegistrationClaimCases(params: {
         throw new Error("missing claim observer");
       }
       let second: SubagentRunRecord["killIntent"];
-      const reacquired = observedWait.then(() => {
-        second = f.manager.claimSubagentRunKill({ runId: entry.runId, expected: entry });
+      const reacquired = observedWait.then(async () => {
+        second = await f.claimSubagentRunKill({ runId: entry.runId, expected: entry });
         expect(second).toBeDefined();
       });
       try {
@@ -183,7 +173,7 @@ export function registerQueuedRegistrationClaimCases(params: {
           expect(f.persistenceObservers.size).toBe(2);
         });
         expect(
-          f.manager.releaseSubagentRunKillClaim({
+          await f.releaseSubagentRunKillClaim({
             runId: entry.runId,
             expected: entry,
             claim: first,
@@ -196,17 +186,15 @@ export function registerQueuedRegistrationClaimCases(params: {
         expect(entry.killIntent).toBe(second);
         expect(completed).toBe(false);
         expect(f.writes).toHaveLength(attemptCount);
-        expect(createTask).toHaveBeenCalledTimes(stage === "initial intent" ? 0 : 1);
-        expect(finalize).toHaveBeenCalledTimes(stage === "terminal" ? 1 : 0);
       } finally {
         const claim = entry.killIntent;
         if (claim) {
-          f.manager.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim });
+          await f.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim });
         }
         await reacquired;
         const remaining = entry.killIntent;
         if (remaining) {
-          f.manager.releaseSubagentRunKillClaim({
+          await f.releaseSubagentRunKillClaim({
             runId: entry.runId,
             expected: entry,
             claim: remaining,
@@ -230,10 +218,6 @@ export function registerQueuedRegistrationClaimCases(params: {
           },
         });
       }
-      expect(createTask).toHaveBeenCalledOnce();
-      expect(finalize).toHaveBeenCalledTimes(
-        stage === "recovery intent" || stage === "terminal" ? 1 : 0,
-      );
     },
   );
   it.each(
@@ -244,7 +228,6 @@ export function registerQueuedRegistrationClaimCases(params: {
     "retains $outcome staged settlement error for $stage after a released claim",
     async ({ stage, outcome }) => {
       const f = fixture();
-      const finalize = vi.mocked(params.finalizer());
       const registered = f.register();
       f.writes[0]!.gate.resolve();
       await vi.waitFor(() => expect(f.writes).toHaveLength(2));
@@ -263,12 +246,12 @@ export function registerQueuedRegistrationClaimCases(params: {
         f.writes[2]!.gate.resolve();
         await vi.waitFor(() => expect(f.writes).toHaveLength(4));
       }
-      const claim = f.manager.claimSubagentRunKill({ runId: entry.runId, expected: entry });
+      const claim = await f.claimSubagentRunKill({ runId: entry.runId, expected: entry });
       if (!claim) {
         throw new Error("missing no-replay claim");
       }
       expect(
-        f.manager.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim }),
+        await f.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim }),
       ).toBe(true);
       const failure = new SubagentRegistryWriteError(
         outcome,
@@ -287,9 +270,7 @@ export function registerQueuedRegistrationClaimCases(params: {
       });
       await expect(f.scope.settleFailedLaunch("repeat callback")).rejects.toBe(retained);
       expect(f.writes).toHaveLength(attemptIndex + 1);
-      expect(finalize).toHaveBeenCalledTimes(stage === "terminal" ? 1 : 0);
       expect(f.scope.canCleanupSession()).toBe(false);
-      expect(createTask).toHaveBeenCalledOnce();
     },
   );
   it.each(
@@ -300,7 +281,6 @@ export function registerQueuedRegistrationClaimCases(params: {
     ),
   )("finishes staged settlement for $stage after $timing", async ({ stage, timing }) => {
     const f = fixture();
-    const finalize = vi.mocked(params.finalizer());
     const registered = f.register();
     f.writes[0]!.gate.resolve();
     await vi.waitFor(() => expect(f.writes).toHaveLength(2));
@@ -328,16 +308,14 @@ export function registerQueuedRegistrationClaimCases(params: {
       f.writes[2]!.gate.resolve();
       await vi.waitFor(() => expect(f.writes).toHaveLength(4));
     }
-    const finalizedBeforeClaim = stage === "terminal" ? 1 : 0;
-    expect(finalize).toHaveBeenCalledTimes(finalizedBeforeClaim);
-    const claim = f.manager.claimSubagentRunKill({ runId: entry.runId, expected: entry });
+    const claim = await f.claimSubagentRunKill({ runId: entry.runId, expected: entry });
     try {
       if (!claim) {
         throw new Error("missing staged-settlement claim");
       }
       if (timing === "released before ACK") {
         expect(
-          f.manager.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim }),
+          await f.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim }),
         ).toBe(true);
       } else if (timing === "confirmed Stop") {
         entry.killIntent = undefined;
@@ -363,15 +341,13 @@ export function registerQueuedRegistrationClaimCases(params: {
         await expect(settlement).resolves.toBeUndefined();
         expect(entry.execution.endedAt).toBe(123);
         expect(f.writes).toHaveLength(attemptIndex + 1);
-        expect(finalize).toHaveBeenCalledTimes(finalizedBeforeClaim);
         return;
       }
       expect(settled).toBe(false);
-      expect(finalize).toHaveBeenCalledTimes(finalizedBeforeClaim);
       if (timing !== "released before ACK") {
         expect(f.writes).toHaveLength(attemptIndex + 1);
         expect(
-          f.manager.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim }),
+          await f.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim }),
         ).toBe(true);
       }
       await vi.waitFor(() => expect(f.writes).toHaveLength(attemptIndex + 2));
@@ -381,18 +357,15 @@ export function registerQueuedRegistrationClaimCases(params: {
       retry.gate.resolve();
       if (stage === "recovery intent") {
         await vi.waitFor(() => expect(f.writes).toHaveLength(5));
-        expect(finalize).toHaveBeenCalledOnce();
         f.writes[4]!.gate.resolve();
       }
       await expect(settlement).resolves.toBeUndefined();
       expect(entry.execution.status).toBe("terminal");
-      expect(finalize).toHaveBeenCalledOnce();
-      expect(createTask).toHaveBeenCalledOnce();
       expect(f.runs.get(successor.runId)).toBe(successor);
       expect(successor.execution.status).toBe("queued");
     } finally {
       if (claim && entry.killIntent === claim) {
-        f.manager.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim });
+        await f.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim });
       }
       f.acknowledgeAllWrites();
       await joined;
@@ -401,7 +374,6 @@ export function registerQueuedRegistrationClaimCases(params: {
   it.each([
     "initial intent acknowledgement",
     "initial intent refusal",
-    "task creation",
     "descriptor acknowledgement",
     "successor during claim",
     "retained failure after registration",
@@ -414,17 +386,11 @@ export function registerQueuedRegistrationClaimCases(params: {
       const hasSuccessor = timing === "successor during claim" || retainedFailure;
       let retainedSettlement: Promise<void> | undefined;
       let claim: SubagentRunRecord["killIntent"];
-      const claimRun = () => {
+      const claimRun = async () => {
         const entry = f.runs.get(f.registration.runId)!;
-        claim = f.manager.claimSubagentRunKill({ runId: entry.runId, expected: entry });
+        claim = await f.claimSubagentRunKill({ runId: entry.runId, expected: entry });
         expect(claim).toBeDefined();
       };
-      if (timing === "task creation") {
-        createTask.mockImplementation(() => {
-          claimRun();
-          return makeTask();
-        });
-      }
       const cleanup = vi.fn(async () => {});
       const release = vi.fn();
       let completed = false;
@@ -444,7 +410,7 @@ export function registerQueuedRegistrationClaimCases(params: {
       try {
         await vi.waitFor(() => expect(f.writes).toHaveLength(1));
         if (initialIntent) {
-          claimRun();
+          await claimRun();
           if (timing === "initial intent refusal") {
             expect(f.writes[0]!.assertCurrent).toThrow("lost its original run owner");
             f.writes[0]!.gate.reject(
@@ -456,14 +422,14 @@ export function registerQueuedRegistrationClaimCases(params: {
         } else {
           f.writes[0]!.gate.resolve();
         }
-        if (!initialIntent && timing !== "task creation") {
+        if (!initialIntent) {
           await vi.waitFor(() => expect(f.writes).toHaveLength(2));
           let registered: Awaited<typeof pipeline> | undefined;
           if (retainedFailure) {
             f.writes[1]!.gate.resolve();
             registered = await pipeline;
           }
-          claimRun();
+          await claimRun();
           if (hasSuccessor) {
             const original = f.runs.get(f.registration.runId)!;
             f.runs.set("successor", {
@@ -487,15 +453,10 @@ export function registerQueuedRegistrationClaimCases(params: {
           } else {
             f.writes[1]!.gate.resolve();
           }
-        } else if (!initialIntent) {
-          await vi.waitFor(() => expect(createTask).toHaveBeenCalledOnce());
         }
         await new Promise<void>((resolve) => {
           setImmediate(resolve);
         });
-        if (initialIntent) {
-          expect(createTask).not.toHaveBeenCalled();
-        }
         expect(completed).toBe(false);
         if (!retainedFailure) {
           expect(release).not.toHaveBeenCalled();
@@ -506,16 +467,14 @@ export function registerQueuedRegistrationClaimCases(params: {
           throw new Error("missing provisional claim");
         }
         expect(
-          f.manager.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim }),
+          await f.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim }),
         ).toBe(true);
         if (timing === "initial intent refusal") {
           await vi.waitFor(() => expect(f.writes).toHaveLength(2));
           expect(f.writes[1]!.snapshot.get(entry.runId)?.queuedLaunch).toBeUndefined();
-          expect(createTask).not.toHaveBeenCalled();
           f.writes[1]!.gate.resolve();
         }
-        const expectedWrites =
-          timing === "task creation" || timing === "initial intent acknowledgement" ? 2 : 3;
+        const expectedWrites = timing === "initial intent acknowledgement" ? 2 : 3;
         await vi.waitFor(() => expect(f.writes).toHaveLength(expectedWrites));
         const publication = f.writes[expectedWrites - 1]!;
         if (hasSuccessor) {
@@ -541,11 +500,10 @@ export function registerQueuedRegistrationClaimCases(params: {
           expect(entry.queuedLaunch).toEqual(f.registration.queuedLaunch);
           expect(cleanup).not.toHaveBeenCalled();
         }
-        expect(createTask).toHaveBeenCalledOnce();
       } finally {
         const entry = f.runs.get(f.registration.runId);
         if (entry && claim && entry.killIntent === claim) {
-          f.manager.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim });
+          await f.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim });
         }
         f.acknowledgeAllWrites();
         markGatewayRestartDraining();
@@ -600,7 +558,7 @@ export function registerQueuedRegistrationClaimCases(params: {
         completed = true;
       });
     await entered.promise;
-    const claim = f.manager.claimSubagentRunKill({ runId: entry.runId, expected: entry });
+    const claim = await f.claimSubagentRunKill({ runId: entry.runId, expected: entry });
     try {
       expect(claim).toBeDefined();
       expect(f.scope.canCleanupSession()).toBe(false);
@@ -612,7 +570,7 @@ export function registerQueuedRegistrationClaimCases(params: {
       expect(completed).toBe(false);
     } finally {
       if (claim) {
-        f.manager.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim });
+        await f.releaseSubagentRunKillClaim({ runId: entry.runId, expected: entry, claim });
       }
       gate.resolve();
       f.acknowledgeAllWrites();

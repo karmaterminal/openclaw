@@ -2,12 +2,12 @@ import type { ContinuationRecipientAuthorityBinding } from "../../../config/sess
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
 import { normalizeSubagentRunState } from "./subagent-delivery-state.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
-import { compareSubagentRunGeneration } from "./subagent-run-generation.js";
 
 export type RegisterSubagentRunParams = {
   runId: string;
   requesterTurnRunId?: string;
   childSessionKey: string;
+  sessionEntry?: SubagentRunRecord["childSessionIdentity"];
   controllerSessionKey?: string;
   requesterSessionKey: string;
   requesterOrigin?: SubagentRunRecord["requesterOrigin"];
@@ -53,33 +53,8 @@ export type RegisterSubagentRunParams = {
   continuationFanoutMode?: "tree" | "all";
   continuationRecipientAuthorityBinding?: ContinuationRecipientAuthorityBinding;
   traceparent?: string;
-  /** Required when direct dispatch suppresses Gateway tracking. Out-of-process launches keep
-      Gateway's existing best-effort CLI policy; other callers create a best-effort row here. */
-  taskRowOwnership?: "required" | "gateway_best_effort";
   gatewayContextResolver?: GatewayContextResolver;
 };
-
-export function resolveSwarmWaitOwnerSessionKeys(
-  getRunsForChildSession: (childSessionKey: string) => Iterable<SubagentRunRecord>,
-  requesterSessionKey: string,
-): string[] {
-  const ownerSessionKeys: string[] = [];
-  const visited = new Set<string>();
-  let currentSessionKey = requesterSessionKey.trim();
-  while (currentSessionKey && !visited.has(currentSessionKey)) {
-    visited.add(currentSessionKey);
-    ownerSessionKeys.push(currentSessionKey);
-    let latestOwner: SubagentRunRecord | undefined;
-    for (const candidate of getRunsForChildSession(currentSessionKey)) {
-      if (!latestOwner || compareSubagentRunGeneration(candidate, latestOwner) > 0) {
-        latestOwner = candidate;
-      }
-    }
-    currentSessionKey =
-      latestOwner?.controllerSessionKey?.trim() || latestOwner?.requesterSessionKey.trim() || "";
-  }
-  return ownerSessionKeys;
-}
 
 export function createSubagentRegistrationRecord(
   registerParams: RegisterSubagentRunParams,
@@ -94,18 +69,21 @@ export function createSubagentRegistrationRecord(
 ): SubagentRunRecord {
   const { now, generation, requesterOrigin } = prepared;
   const runId = registerParams.runId.trim();
-  const childSessionKey = registerParams.childSessionKey.trim();
   const requesterSessionKey = registerParams.requesterSessionKey.trim();
   const requesterTurnRunId = registerParams.requesterTurnRunId?.trim();
   const controllerSessionKey = registerParams.controllerSessionKey?.trim() || requesterSessionKey;
-  const spawnMode = registerParams.spawnMode === "session" ? "session" : "run";
-  const runTimeoutSeconds = registerParams.runTimeoutSeconds ?? 0;
   const queued = registerParams.queued === true;
   return normalizeSubagentRunState({
     runId,
     taskRunId: runId,
     ...(requesterTurnRunId ? { requesterTurnRunId } : {}),
-    childSessionKey,
+    childSessionKey: registerParams.childSessionKey.trim(),
+    childSessionIdentity: registerParams.sessionEntry
+      ? {
+          sessionId: registerParams.sessionEntry.sessionId,
+          lifecycleRevision: registerParams.sessionEntry.lifecycleRevision,
+        }
+      : undefined,
     controllerSessionKey,
     requesterSessionKey,
     requesterOrigin,
@@ -119,12 +97,12 @@ export function createSubagentRegistrationRecord(
     completionTarget: registerParams.completionTarget,
     completionRequesterSessionId: registerParams.completionRequesterSessionId,
     completionRequesterLifecycleRevision: registerParams.completionRequesterLifecycleRevision,
-    spawnMode,
+    spawnMode: registerParams.spawnMode === "session" ? "session" : "run",
     label: registerParams.label,
     model: registerParams.model,
     agentDir: registerParams.agentDir,
     workspaceDir: registerParams.workspaceDir,
-    runTimeoutSeconds,
+    runTimeoutSeconds: registerParams.runTimeoutSeconds ?? 0,
     collect: registerParams.collect,
     swarmRequesterSessionKey: registerParams.swarmRequesterSessionKey,
     swarmWaitOwnerSessionKeys: prepared.swarmWaitOwnerSessionKeys,
@@ -153,8 +131,6 @@ export function createSubagentRegistrationRecord(
     sessionStartedAt: queued ? undefined : now,
     accumulatedRuntimeMs: 0,
     cleanupHandled: false,
-    wakeOnDescendantSettle: undefined,
-    requesterSettleWake: undefined,
     attachmentId: registerParams.attachmentId,
     retainAttachmentsOnKeep: registerParams.retainAttachmentsOnKeep,
     silentAnnounce: registerParams.silentAnnounce,

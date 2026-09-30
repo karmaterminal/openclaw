@@ -34,7 +34,6 @@ import {
   ackSessionDelivery,
   loadPendingSessionDelivery,
 } from "../../infra/session-delivery-queue-storage.js";
-// Records system-level session events for restarts, forks, and resets.
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import {
   consumeSelectedSystemEventEntries,
@@ -203,7 +202,6 @@ export async function prepareFormattedSystemEvents(params: {
   suppressHeartbeatOwnedEvents?: boolean;
   events?: readonly SystemEvent[];
 }): Promise<PreparedFormattedSystemEvents> {
-  const summaryLines: string[] = [];
   const blocks: PreparedSystemEventBlock[] = [];
   const queueKey = resolveSystemEventQueueKey(params.sessionKey, params.agentId);
   // Exec completions have a dedicated heartbeat prompt; leave those entries queued
@@ -603,16 +601,14 @@ export async function prepareFormattedSystemEvents(params: {
       ...(authorityKey ? { authorityKey } : {}),
     });
   }
-  if (params.isMainSession && params.isNewSession) {
-    const summary = await buildChannelSummary(params.cfg);
-    if (summary.length > 0) {
-      for (const line of summary) {
-        for (const subline of line.split("\n")) {
-          summaryLines.push(`System: ${subline}`);
-        }
-      }
-    }
-  }
+  // Each sub-line gets its own prefix so continuation lines can't be mistaken
+  // for regular user content.
+  const summaryLines =
+    params.isMainSession && params.isNewSession
+      ? (await buildChannelSummary(params.cfg)).flatMap((line) =>
+          line.split("\n").map((subline) => `System: ${subline}`),
+        )
+      : [];
   if (summaryLines.length > 0) {
     blocks.unshift({ key: "session-summary", text: summaryLines.join("\n") });
   }

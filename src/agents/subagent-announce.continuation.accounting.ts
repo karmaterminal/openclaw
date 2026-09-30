@@ -55,32 +55,35 @@ export async function prepareSubagentContinuationAccounting(params: {
   requesterSessionKey: string;
   task: string;
   cfg: { session?: { store?: unknown } };
-  loadEntry: (sessionKey: string, options?: { refresh?: boolean }) => ChainTokenEntry | undefined;
+  loadEntry: (
+    sessionKey: string,
+    options?: { refresh?: boolean },
+  ) => ChainTokenEntry | undefined | Promise<ChainTokenEntry | undefined>;
   invalidateSessionEntry: (sessionKey: string) => void;
 }): Promise<{
   isContinuationChainDelegate: boolean;
   childChainTokensToFold: number;
   parentChainTokensToFold: number;
-  buildChildContinuationSpawnState: (count: number) => {
+  buildChildContinuationSpawnState: (count: number) => Promise<{
     count: number;
     startedAt: number;
     tokens: number;
     chainId: string;
-  };
+  }>;
 }> {
   const isContinuationChainDelegate = CONTINUATION_CHAIN_HOP_PATTERN.test(params.task);
   let childChainTokensToFold = 0;
   let parentChainTokensToFold = 0;
 
   if (params.enabled && isContinuationChainDelegate) {
-    let childEntry = params.loadEntry(params.childSessionKey);
+    let childEntry = await params.loadEntry(params.childSessionKey);
     const hasTokenData =
       typeof childEntry?.inputTokens === "number" || typeof childEntry?.outputTokens === "number";
     if (!hasTokenData) {
       await new Promise((resolve) => {
         setTimeout(resolve, 150);
       });
-      childEntry = params.loadEntry(params.childSessionKey, { refresh: true });
+      childEntry = await params.loadEntry(params.childSessionKey, { refresh: true });
       if (
         typeof childEntry?.inputTokens !== "number" &&
         typeof childEntry?.outputTokens !== "number"
@@ -163,8 +166,8 @@ export async function prepareSubagentContinuationAccounting(params: {
   }
 
   let fallbackChildContinuationChainId: string | undefined;
-  const buildChildContinuationSpawnState = (count: number) => {
-    const childEntry = params.loadEntry(params.childSessionKey);
+  const buildChildContinuationSpawnState = async (count: number) => {
+    const childEntry = await params.loadEntry(params.childSessionKey);
     return {
       count,
       startedAt: childEntry?.continuationChainStartedAt ?? Date.now(),

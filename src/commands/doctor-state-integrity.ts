@@ -73,6 +73,7 @@ import {
   noteMainSessionRecoveryIntegrity,
   type MainSessionRecoveryIntegrityCandidate,
 } from "./doctor-main-session-recovery.js";
+import type { DoctorPrompter } from "./doctor-prompter.js";
 import {
   createPluginSessionStateDoctorScanner,
   runPluginSessionStateDoctorRepairs,
@@ -82,12 +83,7 @@ import { collectRetainedUnconfiguredAgentDatabaseWarnings } from "./doctor-uncon
 
 const STATE_INTEGRITY_CHECK_ID = "core/doctor/state-integrity";
 
-type DoctorPrompterLike = {
-  confirmRuntimeRepair: (params: {
-    message: string;
-    initialValue?: boolean;
-    requiresInteractiveConfirmation?: boolean;
-  }) => Promise<boolean>;
+type DoctorPrompterLike = Pick<DoctorPrompter, "confirmRuntimeRepair"> & {
   note?: typeof note;
 };
 
@@ -351,36 +347,13 @@ function resolvePathThroughExistingAncestor(
 }
 
 function escapeControlCharsForTerminal(value: string): string {
-  let escaped = "";
-  for (const char of value) {
-    if (char === "\u001b") {
-      escaped += "\\x1b";
-      continue;
-    }
-    if (char === "\r") {
-      escaped += "\\r";
-      continue;
-    }
-    if (char === "\n") {
-      escaped += "\\n";
-      continue;
-    }
-    if (char === "\t") {
-      escaped += "\\t";
-      continue;
-    }
+  const named: Record<string, string> = { "\r": "\\r", "\n": "\\n", "\t": "\\t" };
+  return Array.from(value, (char) => {
     const code = char.charCodeAt(0);
-    if ((code >= 0 && code <= 8) || code === 11 || code === 12 || (code >= 14 && code <= 31)) {
-      escaped += `\\x${code.toString(16).padStart(2, "0")}`;
-      continue;
-    }
-    if (code === 127) {
-      escaped += "\\x7f";
-      continue;
-    }
-    escaped += char;
-  }
-  return escaped;
+    return code <= 31 || code === 127
+      ? (named[char] ?? `\\x${code.toString(16).padStart(2, "0")}`)
+      : char;
+  }).join("");
 }
 
 type LinuxMountInfoEntry = {
@@ -1409,12 +1382,12 @@ export async function noteStateIntegrity(
         warnings.push(
           [
             `- Found ${wedgedCount} with automatic restart recovery tombstoned.`,
-            "  OpenClaw will not auto-resume these child sessions on restart; reconcile their task records instead.",
+            "  OpenClaw will not auto-resume these child sessions on restart; use Doctor to repair stale native subagent recovery state.",
             `  Examples: ${wedgedSubagentSessions
               .slice(0, 3)
               .map(({ key }) => key)
               .join(", ")}`,
-            `  Fix: ${formatCliCommand("openclaw tasks maintenance --apply")}`,
+            `  Fix: ${formatCliCommand("openclaw doctor --fix")}`,
           ].join("\n"),
         );
         const repairWedged = await prompter.confirmRuntimeRepair({

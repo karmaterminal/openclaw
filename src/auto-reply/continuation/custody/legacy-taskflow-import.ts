@@ -178,13 +178,14 @@ function settleCoveredEntry(
     deriveContinuationDelegateChildSessionKeyFromParent(entry.sessionKey, sourceFlowId ?? entry.id),
   );
   const attachments = Array.isArray(entry.entry.attachments) ? entry.entry.attachments : [];
-  const contents = attachments.flatMap((item: unknown) =>
-    typeof item === "object" &&
-    item !== null &&
-    typeof (item as { content?: unknown }).content === "string"
-      ? [(item as { content: string }).content]
-      : [],
-  );
+  const contents = attachments.flatMap((item: unknown) => {
+    if (typeof item !== "object" || item === null) {
+      return [];
+    }
+    // SAFETY: item is a non-null object; only its `content` property is read.
+    const content = (item as { content?: unknown }).content;
+    return typeof content === "string" ? [content] : [];
+  });
   const structure = {
     kind: "postCompactionDelegate",
     attachmentCount: attachments.length,

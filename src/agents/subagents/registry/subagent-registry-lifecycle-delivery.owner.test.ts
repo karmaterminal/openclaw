@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadPendingFinalDeliveryPayload } from "./subagent-registry-lifecycle-delivery.js";
+import { loadPendingFinalDeliveryPayload } from "./subagent-delivery-state.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
 describe("subagent completion owner payload", () => {

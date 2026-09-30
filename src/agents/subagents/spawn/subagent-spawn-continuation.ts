@@ -162,22 +162,6 @@ export function buildSubagentContinuationRegistrationFields(
 }
 
 /**
- * Completion settlement (#157061) retires a result whose run has no `subagent` task row.
- * Continuation spawns start from detached cleanup with no Gateway request scope, so they
- * dispatch over the WebSocket fallback, where the registry otherwise leaves tracking to
- * Gateway's `cli` row. Keep that fallback's never-reject policy but write the canonical row:
- * an unset ownership is the registry's best-effort row mode.
- */
-export function resolveSubagentContinuationTaskRowOwnership(
-  params: Pick<ContinuationSpawnParams, "continuationChainState">,
-  taskRowOwnership: "required" | "gateway_best_effort",
-): "required" | "gateway_best_effort" | undefined {
-  return taskRowOwnership === "gateway_best_effort" && params.continuationChainState
-    ? undefined
-    : taskRowOwnership;
-}
-
-/**
  * Whether an admission cancel may be returned as `{ status: "cancelled" }`. A launch-keyed
  * caller reads a phaseless cancel as "nothing dispatched"; once the spawn pipeline has
  * started, only a thrown error keeps the outcome unknown (RFC §5.4.4, Q3).

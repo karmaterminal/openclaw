@@ -28,7 +28,7 @@ function readQueueEntryStatus(
 }
 
 function assertSessionQueueEntry(entry: ContinuationNoticeSettlementInput["notice"]): void {
-  if (entry.row.queue_name !== SESSION_DELIVERY_QUEUE_NAME || !entry.insertOnly) {
+  if (entry.row.queue_name !== SESSION_DELIVERY_QUEUE_NAME || entry.mode !== "insert") {
     throw new Error("continuation custody inserts only new session-delivery rows");
   }
 }

@@ -1,3 +1,4 @@
+import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import { lazyCompile as compile } from "./protocol-validator.js";
 import * as S from "./schema-modules.js";
 import type {
@@ -98,6 +99,8 @@ export const validateUsersGitHubDisconnectParams = compile(S.UsersGitHubDisconne
 export const validateUsersSelfResult = compile(S.UsersSelfResultSchema);
 export const validateUsersLinkEmailParams = compile(S.UsersLinkEmailParamsSchema);
 export const validateUsersLinkEmailResult = compile(S.UsersLinkEmailResultSchema);
+export const validateUsersMergeParams = compile(S.UsersMergeParamsSchema);
+export const validateUsersMergeResult = compile(S.UsersMergeResultSchema);
 export const validateUsersLinkChannelIdentityParams = compile(
   S.UsersLinkChannelIdentityParamsSchema,
 );
@@ -250,7 +253,20 @@ export const validateSecretsStoreListResult = compile(S.SecretsStoreListResultSc
 export const validateSecretsStoreSetParams = compile(S.SecretsStoreSetParamsSchema);
 export const validateSecretsStoreDeleteParams = compile(S.SecretsStoreDeleteParamsSchema);
 export const validateSecretsStoreMutationResult = compile(S.SecretsStoreMutationResultSchema);
-export const validateSessionsListParams = compile(S.SessionsListParamsSchema);
+// Runs before the schema: compare only numeric boundaries and leave type errors to the schema.
+function checkPulseBoundaries(data: unknown) {
+  const boundaries = asNullableRecord(data)?.activityPulseBoundaries;
+  return Array.isArray(boundaries) &&
+    boundaries.every((boundary): boundary is number => typeof boundary === "number") &&
+    boundaries.some((boundary, index) => boundary <= (boundaries[index - 1] ?? -Infinity))
+    ? {
+        keyword: "ascending",
+        instancePath: "/activityPulseBoundaries",
+        message: "must be strictly ascending",
+      }
+    : undefined;
+}
+export const validateSessionsListParams = compile(S.SessionsListParamsSchema, checkPulseBoundaries);
 export const validateSessionCatalogShareRoute = compile(S.SessionCatalogShareRouteSchema);
 export const validateSessionsCatalogListParams = compile(S.SessionsCatalogListParamsSchema);
 export const validateSessionsCatalogReadParams = compile(S.SessionsCatalogReadParamsSchema);
@@ -343,11 +359,6 @@ export const validateTaskSuggestionsListParams = compile(S.TaskSuggestionsListPa
 export const validateTaskSuggestionsCreateParams = compile(S.TaskSuggestionsCreateParamsSchema);
 export const validateTaskSuggestionsAcceptParams = compile(S.TaskSuggestionsAcceptParamsSchema);
 export const validateTaskSuggestionsDismissParams = compile(S.TaskSuggestionsDismissParamsSchema);
-export const validateTasksListParams = compile(S.TasksListParamsSchema);
-export const validateTasksGetParams = compile(S.TasksGetParamsSchema);
-export const validateTasksHistoryParams = compile(S.TasksHistoryParamsSchema);
-export const validateTasksCancelParams = compile(S.TasksCancelParamsSchema);
-export const validateTasksRecoveryParams = compile(S.TasksRecoveryParamsSchema);
 export const validateConfigGetParams = compile(S.ConfigGetParamsSchema);
 export const validateConfigSetParams = compile(S.ConfigSetParamsSchema);
 export const validateConfigApplyParams = compile(S.ConfigApplyParamsSchema);

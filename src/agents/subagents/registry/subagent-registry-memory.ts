@@ -129,13 +129,32 @@ type CompletionCustody = {
 class SubagentRunMap extends Map<string, SubagentRunRecord> {
   runIdLookup = new SubagentRunIdLookup();
   private readonly retirementScopes = new Set<SubagentRetirementScope>();
-  private readonly registrationScopes = new Set<{ childSessionKey: string; current: boolean }>();
+  private readonly registrationScopes = new Set<{
+    childSessionKey: string;
+    current: boolean;
+    expectedEntry?: SubagentRunRecord;
+  }>();
   private readonly completionAuthorities = new Map<SubagentRunRecord, CompletionCustody>();
   // A tombstone rejects stale callbacks without retaining closed Gateway/source contexts.
   private readonly operatorCompletionEntries = new WeakSet<SubagentRunRecord>();
+  private readonly retiredCompletionEntries = new WeakSet<SubagentRunRecord>();
+
+  retireCompletionAuthority(entry: SubagentRunRecord): void {
+    this.retiredCompletionEntries.add(entry);
+    this.releaseCompletionAuthority(entry);
+  }
+
+  isCompletionAuthorityRetired(entry: SubagentRunRecord): boolean {
+    return this.retiredCompletionEntries.has(entry);
+  }
 
   bindCompletionAuthority(entry: SubagentRunRecord, authority: CompletionAuthority): void {
+    authority.assertCurrent();
+    if (this.retiredCompletionEntries.has(entry) && this.get(entry.runId) !== entry) {
+      throw new Error("Subagent completion retry no longer owns its source");
+    }
     this.releaseCompletionAuthority(entry);
+    this.retiredCompletionEntries.delete(entry);
     const custody: CompletionCustody = {
       authority,
       entry,
@@ -157,11 +176,18 @@ class SubagentRunMap extends Map<string, SubagentRunRecord> {
     custody?.authority.release();
   }
 
-  runWithCompletionAuthority<T>(entry: SubagentRunRecord, run: () => T): T {
-    const custody = this.completionAuthorities.get(entry);
+  private assertCompletionEntryCurrent(entry: SubagentRunRecord): void {
+    if (this.retiredCompletionEntries.has(entry)) {
+      throw new Error("Subagent completion requester store was retired");
+    }
     if (this.operatorCompletionEntries.has(entry) && this.get(entry.runId) !== entry) {
       throw new Error("Subagent completion authority is no longer active");
     }
+  }
+
+  runWithCompletionAuthority<T>(entry: SubagentRunRecord, run: () => T): T {
+    this.assertCompletionEntryCurrent(entry);
+    const custody = this.completionAuthorities.get(entry);
     // Cancellation notices belong to the admitted cancellation caller, not its revoked target.
     // Keep that caller's existing dispatch restrictions; never turn a successful result into a notice.
     if (
@@ -177,11 +203,7 @@ class SubagentRunMap extends Map<string, SubagentRunRecord> {
   }
 
   runWithCompletionBatchAuthority<T>(batch: readonly SubagentRunRecord[], run: () => T): T {
-    for (const entry of batch) {
-      if (this.operatorCompletionEntries.has(entry) && this.get(entry.runId) !== entry) {
-        throw new Error("Subagent completion authority is no longer active");
-      }
-    }
+    batch.forEach((entry) => this.assertCompletionEntryCurrent(entry));
     const resultEntry = batch.find(
       (entry) =>
         !(
@@ -212,6 +234,10 @@ class SubagentRunMap extends Map<string, SubagentRunRecord> {
   /** Same-task replacement stages custody before publication and can restore it on rollback. */
   transferCompletionAuthority(previous: SubagentRunRecord, next: SubagentRunRecord): () => void {
     const restoreFollowup = transferFollowupCohort(previous, next);
+    // Rejected tentative successors remain fenced, including after registration rollback.
+    if (this.retiredCompletionEntries.has(previous)) {
+      this.retiredCompletionEntries.add(next);
+    }
     if (this.operatorCompletionEntries.has(previous)) {
       this.operatorCompletionEntries.add(next);
     }
@@ -305,8 +331,8 @@ class SubagentRunMap extends Map<string, SubagentRunRecord> {
   }
 
   /** A committed successor remains superseding even if it retires before preparation finishes. */
-  captureRegistrationOwnership(childSessionKey: string) {
-    const scope = { childSessionKey, current: true };
+  captureRegistrationOwnership(childSessionKey: string, expectedEntry?: SubagentRunRecord) {
+    const scope = { childSessionKey, current: true, expectedEntry };
     this.registrationScopes.add(scope);
     return {
       assertCurrent: () => {
@@ -327,7 +353,7 @@ class SubagentRunMap extends Map<string, SubagentRunRecord> {
       return;
     }
     for (const scope of this.registrationScopes) {
-      if (scope.childSessionKey === entry.childSessionKey) {
+      if (scope.childSessionKey === entry.childSessionKey && scope.expectedEntry !== entry) {
         scope.current = false;
       }
     }

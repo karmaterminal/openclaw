@@ -6,22 +6,10 @@ import {
   runWithDiagnosticTraceContext,
   type DiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
-import { resetGeneratedMediaTaskActivityForTests } from "../../tasks/task-runtime.test-helpers.js";
+import { resetGeneratedMediaTaskActivityForTests } from "../media-generation-activity.test-support.js";
 
 const subagentAnnounceDeliveryMocks = vi.hoisted(() => ({
   deliverSubagentAnnouncement: vi.fn(),
-  loadRequesterSessionEntry: vi.fn<() => { entry: Partial<SessionEntry> | undefined }>(() => ({
-    entry: undefined,
-  })),
-}));
-const detachedTaskRuntimeMocks = vi.hoisted(() => ({
-  completeTaskRunByRunId: vi.fn(),
-  createRunningTaskRun: vi.fn(() => ({ taskId: "task-pinned-route" })),
-  failTaskRunByRunId: vi.fn(),
-  recordTaskRunProgressByRunId: vi.fn(),
-}));
-const taskRegistryDeliveryRuntimeMocks = vi.hoisted(() => ({
-  sendMessage: vi.fn(),
 }));
 const cronContinuationCleanupMocks = vi.hoisted(() => ({
   removeCronRunContinuationSessionIfIdle: vi.fn(async () => {}),
@@ -36,46 +24,35 @@ const ACTIVE_TRACE_CONTEXT: DiagnosticTraceContext = {
 };
 const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
 
+// Upstream removed the Tasks runtime (6652f7eac8); media admission now records its
+// own operation and reads the requester through the session worker.
 vi.mock("../subagents/announce/subagent-announce-delivery.js", () => subagentAnnounceDeliveryMocks);
-vi.mock("../../config/sessions/session-accessor.js", async () => ({
-  ...(await vi.importActual<typeof import("../../config/sessions/session-accessor.js")>(
-    "../../config/sessions/session-accessor.js",
-  )),
-  loadSessionEntry: sessionMocks.loadSessionEntry,
-  loadSessionEntryReadOnly: sessionMocks.loadSessionEntry,
+vi.mock("../../config/sessions/session-entry-read-runtime.js", () => ({
+  withSessionEntryReadOnlyInWorker: async (
+    _scope: unknown,
+    assertCurrent: () => void,
+    consume: (read: { ok: true; value: SessionEntry | undefined }) => Promise<unknown>,
+  ) => {
+    assertCurrent();
+    return consume({ ok: true, value: sessionMocks.loadSessionEntry() });
+  },
 }));
-vi.mock("../../tasks/detached-task-runtime.js", () => detachedTaskRuntimeMocks);
-vi.mock("../../tasks/task-registry-delivery-runtime.js", () => taskRegistryDeliveryRuntimeMocks);
-vi.mock("../../tasks/cron-run-continuation-cleanup.js", () => cronContinuationCleanupMocks);
+vi.mock("../../cron/run-continuation-cleanup.js", () => cronContinuationCleanupMocks);
 
 import { createMediaGenerationTaskLifecycle } from "./media-generate-background-shared.js";
 
 beforeEach(() => {
   resetGeneratedMediaTaskActivityForTests();
   subagentAnnounceDeliveryMocks.deliverSubagentAnnouncement.mockReset();
-  subagentAnnounceDeliveryMocks.loadRequesterSessionEntry.mockReset();
-  subagentAnnounceDeliveryMocks.loadRequesterSessionEntry.mockReturnValue({ entry: undefined });
-  detachedTaskRuntimeMocks.createRunningTaskRun.mockClear();
-  detachedTaskRuntimeMocks.completeTaskRunByRunId.mockClear();
-  detachedTaskRuntimeMocks.failTaskRunByRunId.mockClear();
-  detachedTaskRuntimeMocks.recordTaskRunProgressByRunId.mockClear();
-  taskRegistryDeliveryRuntimeMocks.sendMessage.mockReset();
   cronContinuationCleanupMocks.removeCronRunContinuationSessionIfIdle.mockClear();
-  sessionMocks.loadSessionEntry.mockReset().mockReturnValue(undefined);
+  // Completion delivery binds to the requester session admitted with the task.
+  sessionMocks.loadSessionEntry
+    .mockReset()
+    .mockReturnValue({ sessionId: "media-requester", updatedAt: 1 });
 });
 
 function createImageMediaLifecycle() {
-  return createMediaGenerationTaskLifecycle({
-    toolName: "image_generate",
-    taskKind: "image_generation",
-    label: "Image generation",
-    queuedProgressSummary: "Queued image generation",
-    generatedLabel: "image",
-    failureProgressSummary: "Image generation failed",
-    eventSource: "image_generation",
-    announceType: "image generation task",
-    completionLabel: "image",
-  });
+  return createMediaGenerationTaskLifecycle("image");
 }
 
 describe("createMediaGenerationTaskLifecycle", () => {
@@ -84,7 +61,7 @@ describe("createMediaGenerationTaskLifecycle", () => {
       delivered: true,
     });
     const lifecycle = createImageMediaLifecycle();
-    const handle = runWithDiagnosticTraceContext(ACTIVE_TRACE_CONTEXT, () =>
+    const handle = await runWithDiagnosticTraceContext(ACTIVE_TRACE_CONTEXT, () =>
       lifecycle.createTaskRun({
         sessionKey: "agent:main:discord:channel:123",
         prompt: "traced proof image",
@@ -106,10 +83,10 @@ describe("createMediaGenerationTaskLifecycle", () => {
     );
   });
 
-  it("keeps the stable ancestor traceparent when the active scope has a parent span", () => {
+  it("keeps the stable ancestor traceparent when the active scope has a parent span", async () => {
     const lifecycle = createImageMediaLifecycle();
 
-    const handle = runWithDiagnosticTraceContext(
+    const handle = await runWithDiagnosticTraceContext(
       {
         ...ACTIVE_TRACE_CONTEXT,
         spanId: "2222222222222222",

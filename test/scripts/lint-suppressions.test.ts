@@ -238,7 +238,7 @@ describe("production lint suppressions", () => {
         "src/infra/outbound/sanitize-text.ts|eslint/no-control-regex|1",
         "src/infra/outbound/send-deps.ts|typescript/no-unnecessary-type-parameters|1",
         "src/logging/redact.ts|unicorn/no-new-array|1",
-        "src/node-host/invoke.ts|typescript/no-unnecessary-type-parameters|1",
+        "src/node-host/invoke-payload.ts|typescript/no-unnecessary-type-parameters|1",
         "src/node-host/mcp.ts|unicorn/prefer-add-event-listener|1",
         "src/plugin-sdk/channel-config-helpers.ts|typescript/no-unnecessary-type-parameters|1",
         "src/plugin-sdk/channel-entry-contract.ts|typescript/no-unnecessary-type-parameters|1",
@@ -263,10 +263,12 @@ describe("production lint suppressions", () => {
         "src/state/config-machine-state.ts|typescript/no-unnecessary-type-parameters|2",
         "src/state/openclaw-agent-db-admission.ts|typescript/prefer-promise-reject-errors|1",
         "src/system-agent/setup-inference-activate.ts|preserve-caught-error|1",
-        "src/tasks/task-registry.sqlite.shared.ts|typescript/no-unnecessary-type-parameters|1",
         "src/test-utils/vitest-mock-fn.ts|typescript/no-explicit-any|1",
         "src/utils.ts|typescript/no-unnecessary-type-parameters|1",
         "src/utils/run-with-concurrency.ts|typescript/prefer-promise-reject-errors|1",
+        // Native host bridges are not EventTargets or Window.postMessage endpoints.
+        "ui/src/app/native-gateway-auth.ts|unicorn/prefer-add-event-listener|1",
+        "ui/src/app/native-gateway-auth.ts|unicorn/require-post-message-target-origin|2",
         "ui/src/components/mascot-canvas.ts|unicorn/no-array-fill-with-reference-type|1",
       ]),
     );

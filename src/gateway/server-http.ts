@@ -754,5 +754,3 @@ export function createGatewayHttpServer(opts: {
 
   return httpServer;
 }
-
-export { attachGatewayUpgradeHandler } from "./server-http-upgrades.js";

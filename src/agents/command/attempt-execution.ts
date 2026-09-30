@@ -37,10 +37,6 @@ import { resolveSessionPinnedHarnessId } from "../../sessions/agent-harness-sess
 import { annotateInterSessionPromptText } from "../../sessions/input-provenance.js";
 import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import type { SkillSnapshot } from "../../skills/types.js";
-import {
-  getGeneratedMediaTaskIdsForSessionKey,
-  hasNewGeneratedMediaTaskForSessionKey,
-} from "../../tasks/task-status-access.js";
 import { resolveUserPath } from "../../utils.js";
 import { resolveMessageChannel } from "../../utils/message-channel.js";
 import type { PreparedAgentRunAdmission } from "../admitted-run-context.js";
@@ -73,6 +69,10 @@ import type { ContextEngineLogicalTurnLease } from "../harness/context-engine-lo
 import type { ContextEngineTurnAttemptFacts } from "../harness/context-engine-turn-attempt.js";
 import { resolveAvailableAgentHarnessPolicy } from "../harness/selection.js";
 import { AGENT_LANE_SUBAGENT } from "../lanes.js";
+import {
+  getGeneratedMediaTaskIdsForSessionKey,
+  hasNewGeneratedMediaTaskForSessionKey,
+} from "../media-generation-activity.js";
 import type { ModelFallbackResultClassification } from "../model-fallback-attempt.js";
 import type { ModelFallbackAttemptProvenance } from "../model-fallback.types.js";
 import { resolveCliRuntimeExecutionProvider } from "../model-runtime-aliases.js";
@@ -207,19 +207,17 @@ export async function runAgentAttempt(params: {
     inputProvenance: params.opts.inputProvenance,
     internalEvents: params.opts.internalEvents,
   });
-  const exactSubagentAnnounceHandoff =
-    isSubagentAnnounceHandoff &&
-    isTrustedSubagentCompletionHandoffForRun({
-      handoff: params.opts.trustedInternalHandoff,
-      inputProvenance: params.opts.inputProvenance,
-      internalEvents: params.opts.internalEvents,
-      sessionKey: params.sessionKey,
-      sessionId: params.sessionId,
-      provider: params.providerOverride,
-      model: params.modelOverride,
-    });
-  const trustedSubagentAnnounceHandoff =
-    exactSubagentAnnounceHandoff &&
+  const exactSubagentCompletionHandoff = isTrustedSubagentCompletionHandoffForRun({
+    handoff: params.opts.trustedInternalHandoff,
+    inputProvenance: params.opts.inputProvenance,
+    internalEvents: params.opts.internalEvents,
+    sessionKey: params.sessionKey,
+    sessionId: params.sessionId,
+    provider: params.providerOverride,
+    model: params.modelOverride,
+  });
+  const trustedSubagentCompletionHandoff =
+    exactSubagentCompletionHandoff &&
     hasVerifiedRequesterCompletionHandoff({
       config: params.cfg,
       sessionKey: params.sessionKey,
@@ -229,6 +227,8 @@ export async function runAgentAttempt(params: {
       modelProvider: params.providerOverride,
       modelId: params.modelOverride,
     });
+  const trustedSubagentAnnounceHandoff =
+    isSubagentAnnounceHandoff && trustedSubagentCompletionHandoff;
   const completionRequestsMessageDelivery =
     trustedSubagentAnnounceHandoff &&
     !isRawModelRun &&
@@ -638,7 +638,16 @@ export async function runAgentAttempt(params: {
               })) ?? params.sessionEntry;
           }
         };
-        const mediaTaskIdsBefore = getGeneratedMediaTaskIdsForSessionKey(params.sessionKey);
+        const mediaTaskIdsBefore = getGeneratedMediaTaskIdsForSessionKey(
+          params.sessionKey,
+          params.sessionAgentId,
+        );
+        const hasNewMediaTask = () =>
+          hasNewGeneratedMediaTaskForSessionKey(
+            params.sessionKey,
+            mediaTaskIdsBefore,
+            params.sessionAgentId,
+          );
         await prepareCliSessionBinding();
         // Retain the cleared binding as the preparation candidate so missing-transcript
         // recovery can reseed history without resuming the stale CLI session.
@@ -750,13 +759,7 @@ export async function runAgentAttempt(params: {
             ...(forkStoreParams && !forkCliSessionOnResume
               ? {
                   onBeforeForkedCliSessionRetry: async (retry) => {
-                    if (
-                      hasNewGeneratedMediaTaskForSessionKey(
-                        params.sessionKey,
-                        mediaTaskIdsBefore,
-                      ) ||
-                      retry.sessionId !== cliSessionBinding?.sessionId
-                    ) {
+                    if (hasNewMediaTask() || retry.sessionId !== cliSessionBinding?.sessionId) {
                       return false;
                     }
 
@@ -776,10 +779,7 @@ export async function runAgentAttempt(params: {
               ? {
                   onBeforeFreshCliSessionRetry: async (retry) => {
                     if (
-                      hasNewGeneratedMediaTaskForSessionKey(
-                        params.sessionKey,
-                        mediaTaskIdsBefore,
-                      ) ||
+                      hasNewMediaTask() ||
                       getCliSessionBinding(
                         loadSessionEntry({
                           agentId: params.sessionAgentId,
@@ -823,10 +823,7 @@ export async function runAgentAttempt(params: {
               error: err,
               binding: failedCliSessionBinding,
               bindingReplacedDuringRun: failedCliSessionId !== cliSessionBinding?.sessionId,
-              hasNewGeneratedMediaTask: hasNewGeneratedMediaTaskForSessionKey(
-                params.sessionKey,
-                mediaTaskIdsBefore,
-              ),
+              hasNewGeneratedMediaTask: hasNewMediaTask(),
             }) &&
             failedCliSessionId &&
             mutableCliSessionStore
@@ -1053,7 +1050,7 @@ export async function runAgentAttempt(params: {
     bootstrapContextRunKind: params.opts.bootstrapContextRunKind,
     toolsAllow: runtimeToolsAllow,
     runtimePluginToolGrant: params.opts.runtimePluginToolGrant,
-    trustedInternalHandoff: trustedSubagentAnnounceHandoff
+    trustedInternalHandoff: trustedSubagentCompletionHandoff
       ? params.opts.trustedInternalHandoff
       : undefined,
     cronCreatorAuthorityCapability: params.opts.cronCreatorAuthorityCapability,

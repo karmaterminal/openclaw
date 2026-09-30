@@ -50,7 +50,9 @@ export function createEmbeddedAgentSubscribeState(
     deliveredBlockReplyTexts: [],
     attemptedBlockReplyTexts: [],
     deferredBlockReplyTexts: [],
-    deferBlockReplyDelivery: typeof params.onBeforeTerminalDelivery === "function",
+    deferBlockReplyDelivery:
+      typeof params.onBeforeTerminalDelivery === "function" &&
+      params.deferTerminalDelivery !== false,
     deferredBlockReplies: [],
     toolExecutionSinceLastBlockReply: false,
     reasoningStreamOpen: false,

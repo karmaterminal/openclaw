@@ -1,14 +1,10 @@
 import { expect, it, vi } from "vitest";
-import { isPathInside } from "../../../infra/path-guards.js";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
-import { createSubagentPersistenceRuntime } from "./subagent-registry.persistence-fixture.test-support.js";
 import {
   createCanonicalSubagentRunFixture,
   createDeliveredWake,
   removeSubagentSessionEntry,
   settleSubagentRegistryPersistenceWork,
-  withSubagentRegistryPersistenceState,
-  writeChildSession,
   writeSubagentSessionEntry,
 } from "./subagent-registry.persistence.test-support.js";
 import {
@@ -22,75 +18,8 @@ type GatewayCall = typeof import("../../../gateway/call.js").callGateway;
 type WakeRequester =
   typeof import("../announce/subagent-announce.requester-settle-wake.js").maybeWakeRequesterAfterAllChildrenSettled;
 
-export const FORCED_RESTART_WAKE_CASES = [
-  { order: "replacement-first", runCount: 1 },
-  { order: "old-finally-first", runCount: 1 },
-  { order: "before-activation", runCount: 1 },
-  { order: "replacement-first", runCount: 3 },
-] as const;
-
-function listFixtureAgentDatabases(listDatabases: () => Array<{ path: string }>, stateDir: string) {
-  return listDatabases().filter((database) => isPathInside(stateDir, database.path));
-}
-
-export function expectFixtureAgentDatabaseCount(
-  listDatabases: () => Array<{ path: string }>,
-  stateDir: string,
-  message: string,
-  count: number,
-) {
-  expect(listFixtureAgentDatabases(listDatabases, stateDir), message).toHaveLength(count);
-}
-
-async function closePersistenceResumeFixtureDatabases(params: {
-  stateDir: string;
-  cleanupSessionState: (params: { stateDir: string }) => Promise<void>;
-  databaseLists: ReadonlyArray<{ label: string; list: () => Array<{ path: string }> }>;
-  closeStateDatabases: () => void;
-}) {
-  await params.cleanupSessionState({ stateDir: params.stateDir });
-  for (const databaseList of params.databaseLists) {
-    expect(
-      listFixtureAgentDatabases(databaseList.list, params.stateDir),
-      `${databaseList.label} agent handles closed before fixture removal`,
-    ).toEqual([]);
-  }
-  params.closeStateDatabases();
-}
-
-export function withPersistenceResumeRegistryState<T>(params: {
-  stateDir: string;
-  run: () => Promise<T>;
-  mod: RegistryModule;
-  cleanupSessionState: (params: { stateDir: string }) => Promise<void>;
-  databaseLists: ReadonlyArray<{ label: string; list: () => Array<{ path: string }> }>;
-  closeStateDatabases: () => void;
-}): Promise<T> {
-  return withSubagentRegistryPersistenceState(
-    {
-      stateDir: params.stateDir,
-      resetRegistry: () => params.mod.resetSubagentRegistryForTests({ persist: false }),
-      closeDatabases: () =>
-        closePersistenceResumeFixtureDatabases({
-          stateDir: params.stateDir,
-          cleanupSessionState: params.cleanupSessionState,
-          databaseLists: params.databaseLists,
-          closeStateDatabases: params.closeStateDatabases,
-        }),
-    },
-    params.run,
-  );
-}
-
 export function readPersistedRun(runId: string) {
   return loadSubagentRegistryFromSqlite().get(runId);
-}
-
-export function activatePersistenceResumeRegistry(mod: RegistryModule, callGateway: GatewayCall) {
-  // Build the real recovery-runtime shape (incl. dispatchSessionMethod) that production uses.
-  const recoveryRuntime = createSubagentPersistenceRuntime(callGateway);
-  const gateway = { recoveryRuntime, resolveGatewayContext: () => gateway as never };
-  mod.activateSubagentRegistry(() => gateway as never);
 }
 
 export function registerSteerRestartOrphanPersistenceCases(params: {
@@ -98,7 +27,7 @@ export function registerSteerRestartOrphanPersistenceCases(params: {
   getCallGateway: () => GatewayCall;
   getStateDatabase: () => typeof import("../../../state/openclaw-state-db.js");
   withRegistryState: (run: (stateDir: string) => Promise<void>) => Promise<void>;
-  activateRegistry: () => void;
+  activateRegistry: () => Promise<unknown>;
   announceSpy: unknown;
 }) {
   it("settles a steer-restart orphan without entering a retry-resume loop", async () => {
@@ -139,13 +68,13 @@ export function registerSteerRestartOrphanPersistenceCases(params: {
         sessionKey: childSessionKey,
       });
 
-      mod.initSubagentRegistry();
+      await mod.initSubagentRegistry();
       expect(mod.getSubagentRunByRunId(runId)).toMatchObject({
         suppressAnnounceReason: "steer-restart",
         completion: { required: false },
         delivery: { status: "not_required" },
       });
-      params.activateRegistry();
+      await params.activateRegistry();
       expect(mod.clearSubagentRunSteerRestart(runId)).toBe(true);
       await settleSubagentRegistryPersistenceWork();
       await vi.waitFor(() =>
@@ -202,8 +131,8 @@ export function registerSteerRestartOrphanPersistenceCases(params: {
       );
 
       expect(loadSubagentRegistryFromSqlite().has(runId)).toBe(false);
-      mod.initSubagentRegistry();
-      params.activateRegistry();
+      await mod.initSubagentRegistry();
+      await params.activateRegistry();
       await settleSubagentRegistryPersistenceWork();
 
       expect(mod.getSubagentRunByRunId(runId)).toBeUndefined();
@@ -291,37 +220,6 @@ export function createOutstandingWakeRuns(runCount: number) {
   });
 }
 
-export function createRestoredWakeRuns(params: {
-  endedAt: number;
-  activationSettlement: boolean;
-  requesterYielded?: boolean;
-}): SubagentRunRecord[] {
-  return Array.from({ length: 3 }, (_, index): SubagentRunRecord => {
-    const runId = `run-restored-wake-${index}`;
-    return createDeliveredWake(
-      runId,
-      params.requesterYielded ? undefined : { status: "pending", attemptCount: 0 },
-      {
-        childSessionKey: `agent:main:subagent:restored-wake-${index}`,
-        requesterSessionKey: `agent:main:requester-${index}`,
-        requesterDisplayKey: `requester-${index}`,
-        task: "resume a durable requester wake",
-        createdAt: params.endedAt - 1_000,
-        endedReason: "subagent-complete",
-        startedAt: params.endedAt - 500,
-        endedAt: params.endedAt,
-        ...(params.activationSettlement
-          ? {
-              requesterTurnRunId: `requester-turn-${index}`,
-              ...(params.requesterYielded ? { requesterTurnYielded: true as const } : {}),
-              taskRunId: runId,
-            }
-          : {}),
-      },
-    );
-  });
-}
-
 export function createSteeredRestoreRuns(endedAt: number, requesterYielded: boolean) {
   const run = createDeliveredWake("run-steered", undefined, {
     taskRunId: "run-original",
@@ -353,15 +251,6 @@ export function createSteeredRestoreRuns(endedAt: number, requesterYielded: bool
   return { nonannouncing, run };
 }
 
-export async function writeRunChildSessions(
-  stateDir: string,
-  runs: ReadonlyArray<{ runId: string; childSessionKey: string }>,
-) {
-  await Promise.all(
-    runs.map((run) => writeChildSession(stateDir, run.childSessionKey, `session-${run.runId}`)),
-  );
-}
-
 export function createSelectedAllRecipientAuthorityBinding() {
   return {
     version: 1 as const,
@@ -382,7 +271,7 @@ export function createSelectedAllRecipientAuthorityBinding() {
 export function createSettlingRequesterWake() {
   return vi.fn<WakeRequester>(async (params) => {
     const wake = params.settledEntry!.requesterSettleWake!;
-    params.completeBatch([params.settledEntry!], wake.rearmGeneration!, {
+    await params.completeBatch([params.settledEntry!], wake.rearmGeneration!, {
       delivered: true,
       path: "direct",
     });

@@ -46,8 +46,6 @@ export type GatewayServerMutableState = {
   tailscaleCleanup: (() => Promise<void>) | null;
   readonly postReadySidecars: GatewaySidecarStopOwner;
   readonly gatewayLifetimeSidecars: GatewaySidecarStopOwner;
-  skillsRefreshTimer: ReturnType<typeof setTimeout> | null;
-  skillsRefreshDelayMs: number;
   skillsChangeUnsub: () => Promise<void>;
   channelHealthMonitor: ChannelHealthMonitor | null;
   configReloader: GatewayConfigReloaderHandle;
@@ -56,7 +54,6 @@ export type GatewayServerMutableState = {
   heartbeatUnsub: (() => void) | null;
   transcriptUnsub: (() => void) | null;
   lifecycleUnsub: (() => void) | null;
-  taskUnsub: (() => void) | null;
 };
 
 /** Creates gateway mutable state with inert handles that are safe to stop before startup finishes. */
@@ -72,8 +69,6 @@ export function createGatewayServerMutableState(): GatewayServerMutableState {
     tailscaleCleanup: null,
     postReadySidecars: createGatewaySidecarStopOwner(),
     gatewayLifetimeSidecars: createGatewaySidecarStopOwner(),
-    skillsRefreshTimer: null,
-    skillsRefreshDelayMs: 30_000,
     skillsChangeUnsub: async () => {},
     channelHealthMonitor: null,
     configReloader: {
@@ -88,6 +83,5 @@ export function createGatewayServerMutableState(): GatewayServerMutableState {
     heartbeatUnsub: null,
     transcriptUnsub: null,
     lifecycleUnsub: null,
-    taskUnsub: null,
   };
 }

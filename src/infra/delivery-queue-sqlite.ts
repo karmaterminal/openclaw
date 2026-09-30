@@ -15,7 +15,6 @@ import {
 } from "./delivery-queue-sqlite-codec.js";
 import {
   countPendingDeliveryQueueEntriesInDatabase,
-  deleteDeliveryQueueEntryInDatabase,
   getDeliveryQueueEntryOwnersInDatabase,
   prepareDeliveryQueueTerminalEntry,
   terminalizePendingDeliveryQueueEntryInDatabase,
@@ -129,16 +128,6 @@ function loadDeliveryQueueEntryResults(
       .orderBy("id", "asc"),
   ).rows;
   return rows.map(inflateDeliveryQueueEntryResult);
-}
-
-/** Delete a pending delivery queue entry after successful delivery. */
-export function deleteDeliveryQueueEntry(
-  queueName: string,
-  id: string,
-  stateDir?: string,
-  context?: DeliveryQueueStateContext,
-): void {
-  deleteDeliveryQueueEntryInDatabase(openStateDatabase(stateDir, context), queueName, id);
 }
 
 /** Count dead-lettered entries per queue namespace for coarse health reporting. */

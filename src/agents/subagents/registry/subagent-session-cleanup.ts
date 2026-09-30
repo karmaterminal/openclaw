@@ -13,6 +13,7 @@ type CallGateway = (options: {
   method: "sessions.delete";
   params: SessionsDeleteParams;
   timeoutMs: number;
+  prepareDispatchCurrent?: () => Promise<void>;
   assertDispatchCurrent?: () => void;
 }) => Promise<unknown>;
 type SubagentSessionCleanupOutcome = "deleted" | "changed" | "failed";
@@ -40,6 +41,7 @@ type DeleteSubagentSessionForCleanupParams = {
   callGateway: CallGateway;
   /** Transferred owner; omission keeps the caller scope, undefined resolver stays unbound. */
   gatewayBinding?: { resolveGatewayContext: GatewayContextResolver | undefined };
+  prepareCurrent?: () => Promise<boolean>;
   isCurrent?: () => boolean;
   childSessionKey: string;
   spawnMode?: SpawnSubagentMode;
@@ -49,7 +51,7 @@ type DeleteSubagentSessionForCleanupParams = {
   expectedLifecycleRevision?: string;
   timeoutMs?: number;
   /** Runs after continuation guards settle, immediately before gateway dispatch. */
-  onBeforeDispatch?: () => void;
+  onBeforeDispatch?: () => void | Promise<void>;
   onError?: (error: unknown) => void;
   deleteFailureRetries?: number;
 };
@@ -116,7 +118,7 @@ export async function deleteSubagentSessionForCleanup(
 
   if (
     (await hasLiveContinuationCustody(params.childSessionKey)) ||
-    countActiveDescendantRuns(params.childSessionKey) > 0
+    (await countActiveDescendantRuns(params.childSessionKey)) > 0
   ) {
     scheduleDeferredCleanupRetry(params);
     return "failed";
@@ -132,8 +134,9 @@ export async function deleteSubagentSessionForCleanup(
   }
 
   clearDeferredCleanupRetry(params.childSessionKey);
+  const prepareCurrent = params.prepareCurrent;
   try {
-    params.onBeforeDispatch?.();
+    await params.onBeforeDispatch?.();
     const run = () =>
       params.callGateway({
         method: "sessions.delete",
@@ -145,6 +148,15 @@ export async function deleteSubagentSessionForCleanup(
           expectedLifecycleRevision: params.expectedLifecycleRevision,
         },
         timeoutMs: params.timeoutMs ?? 10_000,
+        ...(prepareCurrent
+          ? {
+              prepareDispatchCurrent: async () => {
+                if (!(await prepareCurrent())) {
+                  throw new Error("subagent cleanup owner is no longer current");
+                }
+              },
+            }
+          : {}),
         ...(params.isCurrent
           ? {
               assertDispatchCurrent: () => {

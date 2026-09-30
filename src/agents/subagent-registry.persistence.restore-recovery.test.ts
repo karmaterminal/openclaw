@@ -11,14 +11,6 @@ import { callGateway } from "../gateway/call.js";
 import { onAgentEvent } from "../infra/agent-events.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
-import { resetDetachedTaskLifecycleRuntimeForTests } from "../tasks/detached-task-runtime.test-support.js";
-import { captureTaskDeliveryWork } from "../tasks/task-registry-delivery.test-support.js";
-import { configureTaskRegistryMaintenance } from "../tasks/task-registry.maintenance.js";
-import { configureInMemoryTaskStoresForTests } from "../tasks/task-registry.test-support.js";
-import {
-  resetTaskFlowRegistryForTests,
-  resetTaskRegistryForTests,
-} from "../tasks/task-runtime.test-helpers.js";
 import { captureEnv, deleteTestEnvValue, setTestEnvValue, withEnv } from "../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
 import { resetSubagentRegistryRuntimeLoadersForTests } from "./subagents/registry/subagent-registry-deps.js";
@@ -80,7 +72,6 @@ function expectFields(value: unknown, expected: Record<string, unknown>): void {
 describe("subagent registry persistence", () => {
   const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
   let tempStateDir: string | null = null;
-  let deliveries: ReturnType<typeof captureTaskDeliveryWork> | undefined;
 
   const resolveAgentIdFromSessionKey = (sessionKey: string) => {
     const match = sessionKey.match(/^agent:([^:]+):/i);
@@ -185,23 +176,17 @@ describe("subagent registry persistence", () => {
 
   const readPersistedRuns = () => loadSubagentRegistryFromSqlite();
 
-  const restartRegistry = () => {
+  const restartRegistry = async () => {
     resetSubagentRegistryForTests({ persist: false });
-    initSubagentRegistry();
+    await initSubagentRegistry();
     const recoveryRuntime = createSubagentPersistenceRuntime(callGateway);
     const gateway = { recoveryRuntime, resolveGatewayContext: () => gateway as never };
-    activateSubagentRegistry(() => gateway as never);
+    await activateSubagentRegistry(() => gateway as never);
   };
 
   beforeEach(() => {
     resetSubagentRegistryRuntimeLoadersForTests();
     setRuntimeConfigSnapshot({});
-    configureTaskRegistryMaintenance({ runtimeAuthoritative: false });
-    resetTaskRegistryForTests({ persist: false });
-    resetTaskFlowRegistryForTests({ persist: false });
-    configureInMemoryTaskStoresForTests();
-    resetDetachedTaskLifecycleRuntimeForTests();
-    deliveries = captureTaskDeliveryWork();
     announceSpy.mockReset();
     announceSpy.mockResolvedValue("delivered");
     vi.mocked(callGateway).mockReset();
@@ -215,21 +200,15 @@ describe("subagent registry persistence", () => {
   });
 
   afterEach(async () => {
-    await settleSubagentRegistryPersistenceWork(deliveries);
+    await settleSubagentRegistryPersistenceWork();
     resetSubagentRegistryForTests({ persist: false });
-    resetDetachedTaskLifecycleRuntimeForTests();
-    resetTaskRegistryForTests({ persist: false });
-    resetTaskFlowRegistryForTests({ persist: false });
     await cleanupSessionStateForTest();
     closeOpenClawStateDatabaseForTest();
     if (tempStateDir) {
       await fs.rm(tempStateDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
       tempStateDir = null;
     }
-    configureTaskRegistryMaintenance({ runtimeAuthoritative: false });
     clearRuntimeConfigSnapshot();
-    deliveries?.[Symbol.dispose]();
-    deliveries = undefined;
     envSnapshot.restore();
   });
 
@@ -262,7 +241,7 @@ describe("subagent registry persistence", () => {
       { seedChildSessions: false },
     );
 
-    restartRegistry();
+    await restartRegistry();
     await flushQueuedRegistryWork();
 
     expect(announceSpy).not.toHaveBeenCalled();
@@ -296,11 +275,11 @@ describe("subagent registry persistence", () => {
       },
     });
 
-    restartRegistry();
-    await settleSubagentRegistryPersistenceWork(deliveries);
+    await restartRegistry();
     await waitForRegistryWork(
       () => readPersistedRuns().get(runId)?.cleanupCompletedAt !== undefined,
     );
+    await settleSubagentRegistryPersistenceWork();
 
     expect(callGateway).not.toHaveBeenCalled();
     expect(readPersistedRuns().get(runId)?.execution).toMatchObject({
@@ -334,8 +313,8 @@ describe("subagent registry persistence", () => {
       ),
     );
 
-    restartRegistry();
-    await settleSubagentRegistryPersistenceWork(deliveries);
+    await restartRegistry();
+    await settleSubagentRegistryPersistenceWork();
     await waitForRegistryWork(async () => !readPersistedRuns().has("run-orphan-attachments"));
 
     expect(readPersistedRuns().has("run-orphan-attachments")).toBe(false);

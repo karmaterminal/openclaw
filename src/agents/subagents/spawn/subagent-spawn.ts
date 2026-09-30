@@ -6,7 +6,11 @@ import { parseInlineAttachmentMountPath } from "../../../shared/inline-attachmen
 import { hasDeliveryTargetFields } from "../../../utils/delivery-context.shared.js";
 import { runSpawnPipeline, type SpawnBackendAdapter } from "../../spawn-pipeline.js";
 import { registerSubagentTraceparentHandoff } from "../../subagent-traceparent-handoff.js";
-import { getGatewayToolCallerIdentity } from "../../tools/gateway-caller-context.js";
+import {
+  getGatewayToolCallerIdentity,
+  resolveGatewayToolOperatorSelection,
+  withGatewayToolOperatorContinuation,
+} from "../../tools/gateway-caller-context.js";
 import {
   buildContinuationSessionPatch,
   type ContinuationSpawnParams,
@@ -36,7 +40,6 @@ import {
   returnsPhaselessSubagentSpawnCancel,
   resolveSubagentContinuationChildRunId,
   resolveSubagentContinuationChildSessionKey,
-  resolveSubagentContinuationTaskRowOwnership,
 } from "./subagent-spawn-continuation.js";
 import type {
   SpawnSubagentContext as BaseSpawnSubagentContext,
@@ -92,7 +95,8 @@ export async function spawnSubagentDirect(
     gatewayScope?.resolveGatewayContext ??
     gatewayScope?.context?.resolveGatewayContext;
   const operatorAuthority =
-    gatewayCaller?.operatorAuthority ?? gatewayScope?.client?.internal?.operatorRunAuthority;
+    resolveGatewayToolOperatorSelection().operatorAuthority ??
+    gatewayScope?.client?.internal?.operatorRunAuthority;
   const requestResolution = await resolveSubagentSpawnRequest(params, ctx);
   if (!requestResolution.ok) {
     return requestResolution.result;
@@ -459,7 +463,7 @@ export async function spawnSubagentDirect(
         ...(cleanupOwner ? { callGateway: cleanupOwner.callGateway } : {}),
       });
     type SubagentBackendState = { contextEnginePreparation?: PreparedContextEngineSubagentSpawn };
-    let taskRowOwnership: "required" | "gateway_best_effort" = "required";
+    let registrationRequired = true;
     const adapter: SpawnBackendAdapter<SubagentBackendState> = {
       async initialize() {
         const result =
@@ -484,7 +488,7 @@ export async function spawnSubagentDirect(
           return { runId: childIdem };
         }
         const launch = await launchChildRun(assertActive);
-        taskRowOwnership = launch.taskRowOwnership;
+        registrationRequired = launch.registrationRequired;
         recordRequesterParticipation();
         return { runId: readGatewayRunId(launch.response) ?? childIdem };
       },
@@ -510,7 +514,7 @@ export async function spawnSubagentDirect(
           runId: childIdem,
           childSessionKey,
           acceptedChildRunId,
-          taskRowOwnership,
+          registrationRequired,
           contextEnginePreparation: state?.contextEnginePreparation,
           attachmentId,
           ...provisionalSessionIdentity,
@@ -537,6 +541,7 @@ export async function spawnSubagentDirect(
           requesterTurnRunId: ctx.requesterTurnRunId,
           childSessionKey,
           controllerSessionKey: ownership.controllerSessionKey,
+          sessionEntry: childEntry,
           requesterSessionKey: ownership.completionRequesterSessionKey,
           requesterOrigin,
           progressOrigin,
@@ -567,7 +572,6 @@ export async function spawnSubagentDirect(
           groupId: swarmGroupId,
           queuedLaunch,
           queued: params.collect === true,
-          taskRowOwnership: resolveSubagentContinuationTaskRowOwnership(params, taskRowOwnership),
           ...(gatewayContextResolver ? { gatewayContextResolver } : {}),
           attachmentId,
           retainAttachmentsOnKeep: retainOnSessionKeep,
@@ -605,25 +609,28 @@ export async function spawnSubagentDirect(
           const canLaunch = registrationScope?.canLaunch() !== false;
           if (swarmReservation?.isCurrent() !== false) {
             // The scheduler also settles registrations that have lost launch authority.
-            activateSubagentCollectorSwarmRun(swarmSchedulerGroupKey, {
-              childRunId: runId,
-              childSessionKey,
-              requesterSessionKey: requesterInternalKey,
-              gatewayContextResolver,
-              // Queued launch requires BOTH live operator authority and live
-              // registration/continuation ownership (Ronan's ruling). Authority is
-              // threaded here, not derived from chain state.
-              operatorAuthority,
-              releaseOperatorAuthority,
-              cleanupOwner,
-              registrationScope,
-              preparation: state.contextEnginePreparation,
-              provisionalSessionIdentity,
-              launchChildRun,
-              recordParticipant: recordRequesterParticipation,
-              emitSpawnLifecycleHooks,
-              cleanupFailedSpawn,
-            });
+            // Run activation under the named requester's retained operator authority (d0dcc9dedd).
+            withGatewayToolOperatorContinuation(operatorAuthority, () =>
+              activateSubagentCollectorSwarmRun(swarmSchedulerGroupKey, {
+                childRunId: runId,
+                childSessionKey,
+                requesterSessionKey: requesterInternalKey,
+                gatewayContextResolver,
+                // Queued launch requires BOTH live operator authority and live
+                // registration/continuation ownership (Ronan's ruling). Authority is
+                // threaded here, not derived from chain state.
+                operatorAuthority,
+                releaseOperatorAuthority,
+                cleanupOwner,
+                registrationScope,
+                preparation: state.contextEnginePreparation,
+                provisionalSessionIdentity,
+                launchChildRun,
+                recordParticipant: recordRequesterParticipation,
+                emitSpawnLifecycleHooks,
+                cleanupFailedSpawn,
+              }),
+            );
             // Activation has taken custody of the retained authority.
             releaseOperatorAuthority = undefined;
           } else {

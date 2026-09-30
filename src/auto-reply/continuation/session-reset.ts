@@ -34,6 +34,7 @@ function stateHasAcceptedChild(record: ContinuationRecord): boolean {
     return (
       typeof state === "object" &&
       state !== null &&
+      // SAFETY: state is a non-null object; only its `childSessionKey` property is read.
       typeof (state as { childSessionKey?: unknown }).childSessionKey === "string"
     );
   } catch {

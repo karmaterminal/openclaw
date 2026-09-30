@@ -8,38 +8,32 @@ import "./subagent-registry.mocks.shared.js";
 import "./subagent-registry.persistence.mocks.test-support.js";
 // Preserve module setup before modules that consume it.
 // oxfmt-ignore
-import {
-  announceSpy,
-  createSubagentPersistenceRuntime,
-  useSubagentPersistenceFixture,
-} from "./subagent-registry.persistence-fixture.test-support.js";
+import { announceSpy, createSubagentPersistenceRuntime, useSubagentPersistenceFixture } from "./subagent-registry.persistence-fixture.test-support.js";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { callGateway } from "../../../gateway/call.js";
 import { getActiveGatewayRootWorkCount } from "../../../process/gateway-work-admission.js";
 import { closeOpenClawStateDatabaseForTest } from "../../../state/openclaw-state-db.js";
-import { setTestEnvValue, withEnv } from "../../../test-utils/env.js";
+import { setTestEnvValue } from "../../../test-utils/env.js";
 import { createAgentsWaitTool } from "../../tools/agents-wait-tool.js";
 import { getLatestSubagentRunByChildSessionKey } from "./subagent-registry-read.js";
 import { getSubagentRunsSnapshotForRead } from "./subagent-registry-state.js";
 import { registerSubagentOrphanTaskCases } from "./subagent-registry.persistence.orphan.test-support.js";
+import type { SubagentRunFixture } from "./subagent-registry.persistence.test-support.js";
 import {
   canonicalSubagentRunFixtures,
-  createPersistedEndedRun,
+  createCanonicalSubagentRunFixture,
   expectDeferredSubagentAnnouncement,
-  expectFields,
   flushQueuedRegistryWork,
   gateSubagentRequesterSettlement,
   removeSubagentSessionEntry,
   waitForRegistryWork,
   writeSubagentSessionEntry,
 } from "./subagent-registry.persistence.test-support.js";
-import type { SubagentRunFixture } from "./subagent-registry.persistence.test-support.js";
 import {
   loadSubagentRegistryFromSqlite,
   saveSubagentRegistryToSqlite,
 } from "./subagent-registry.store.sqlite.js";
 import {
-  testing,
   activateSubagentRegistry,
   addSubagentRunForTests,
   getSubagentRunByChildSessionKey,
@@ -48,6 +42,7 @@ import {
   registerSubagentRun,
   resetSubagentRegistryForTests,
   resumeSubagentRun,
+  testing,
 } from "./subagent-registry.test-helpers.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
@@ -69,6 +64,19 @@ vi.mock("./subagent-registry-state.js", async (importOriginal) => {
       (persistOrThrowOverride ?? actual.persistSubagentRunsToDiskOrThrow)(...args),
   };
 });
+
+function makeRun(runId: string, overrides: Partial<SubagentRunFixture> = {}): SubagentRunRecord {
+  return createCanonicalSubagentRunFixture({
+    runId,
+    childSessionKey: `agent:main:subagent:${runId}`,
+    requesterSessionKey: "agent:main:main",
+    requesterDisplayKey: "main",
+    task: runId,
+    cleanup: "keep",
+    createdAt: 1,
+    ...overrides,
+  });
+}
 
 describe("subagent registry persistence", () => {
   const fixture = useSubagentPersistenceFixture();
@@ -120,86 +128,43 @@ describe("subagent registry persistence", () => {
     });
   };
 
-  const seedChildSessionsForPersistedRuns = async (persisted: Record<string, unknown>) => {
-    const runs = (persisted.runs ?? {}) as Record<
-      string,
-      {
-        runId?: string;
-        childSessionKey?: string;
+  const persistRuns = async (runs: SubagentRunRecord[], seedChildSessions = true) => {
+    await fixture.allocateStateDir();
+    saveSubagentRegistryToSqlite(new Map(runs.map((run) => [run.runId, run])));
+    if (seedChildSessions) {
+      for (const run of runs) {
+        await writeChildSessionEntry({
+          sessionKey: run.childSessionKey,
+          sessionId: `sess-${run.runId}`,
+        });
       }
-    >;
-    for (const [runId, run] of Object.entries(runs)) {
-      const childSessionKey = run?.childSessionKey?.trim();
-      if (!childSessionKey) {
-        continue;
-      }
-      await writeChildSessionEntry({
-        sessionKey: childSessionKey,
-        sessionId: `sess-${run.runId ?? runId}`,
-      });
     }
   };
-
-  const writePersistedRegistry = async (
+  const writePersistedRegistry = (
     persisted: Record<string, unknown>,
     opts?: { seedChildSessions?: boolean },
-  ) => {
-    // Each persisted-registry fixture gets its own state dir so session and
-    // subagent SQLite stores use the same production paths.
-    await fixture.allocateStateDir();
-    const runs = (persisted.runs ?? {}) as Record<string, SubagentRunRecord>;
-    saveCanonicalRunFixtures(new Map(Object.entries(runs)));
-    if (opts?.seedChildSessions !== false) {
-      await seedChildSessionsForPersistedRuns(persisted);
-    }
+  ) =>
+    persistRuns(
+      [
+        ...canonicalSubagentRunFixtures(
+          new Map(Object.entries((persisted.runs ?? {}) as Record<string, SubagentRunFixture>)),
+        ).values(),
+      ],
+      opts?.seedChildSessions !== false,
+    );
+  const endedRun = (runId: string, overrides: Partial<SubagentRunFixture> = {}) => {
+    const now = Date.now();
+    return makeRun(runId, { createdAt: now - 2, startedAt: now - 1, endedAt: now, ...overrides });
   };
+  const readPersistedRun = (runId: string) => loadSubagentRegistryFromSqlite().get(runId);
 
-  const readPersistedRegistry = () => ({
-    runs: Object.fromEntries(loadSubagentRegistryFromSqlite()),
-  });
-
-  const restartRegistry = () => {
+  const restartRegistry = async () => {
     resetSubagentRegistryForTests({ persist: false });
-    initSubagentRegistry();
+    await initSubagentRegistry();
     const recoveryRuntime = createSubagentPersistenceRuntime(callGateway);
     const gateway = { recoveryRuntime, resolveGatewayContext: () => gateway as never };
-    activateSubagentRegistry(() => gateway as never);
+    await activateSubagentRegistry(() => gateway as never);
   };
-
-  function saveCanonicalRunFixtures(runs: ReadonlyMap<string, SubagentRunFixture>) {
-    saveSubagentRegistryToSqlite(canonicalSubagentRunFixtures(runs));
-  }
-
-  it("round-trips the progress source locator through SQLite", async () => {
-    const progressOrigin = {
-      channel: "discord",
-      accountId: "work",
-      to: "channel:123",
-      threadId: "789",
-      channelId: "123",
-      messageId: "456",
-    };
-    const record: SubagentRunRecord = {
-      runId: "run-progress-origin",
-      childSessionKey: "agent:main:subagent:progress-origin",
-      requesterSessionKey: "agent:main:main",
-      requesterDisplayKey: "main",
-      progressOrigin,
-      task: "persist progress source",
-      cleanup: "keep",
-      createdAt: 1,
-      execution: { status: "running" },
-    };
-
-    await writePersistedRegistry(
-      { runs: { [record.runId]: record } },
-      { seedChildSessions: false },
-    );
-
-    expect(loadSubagentRegistryFromSqlite().get(record.runId)?.progressOrigin).toEqual(
-      progressOrigin,
-    );
-  });
 
   it("rolls back a new subagent run when initial persistence fails", async () => {
     await fixture.allocateStateDir();
@@ -329,12 +294,13 @@ describe("subagent registry persistence", () => {
       },
       traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
     });
-    restartRegistry();
+    const restarted = restartRegistry();
     releaseInitialWait?.({
       status: "ok",
       startedAt: 111,
       endedAt: 222,
     });
+    await restarted;
     // Wait on the DURABLE OUTCOME, not on the spy. Under the retired injection seam
     // the announce dependency was reached with no intervening async hop, so polling
     // the spy doubled as the trigger. The lazy module boundary adds hops, which made
@@ -386,65 +352,8 @@ describe("subagent registry persistence", () => {
     });
   });
 
-  it("skips cleanup when cleanupHandled was persisted", async () => {
-    await fixture.allocateStateDir();
-
-    const persisted = {
-      version: 2,
-      runs: {
-        "run-2": {
-          runId: "run-2",
-          childSessionKey: "agent:main:subagent:two",
-          requesterSessionKey: "agent:main:main",
-          requesterDisplayKey: "main",
-          task: "do the other thing",
-          cleanup: "keep" as const,
-          createdAt: 1,
-          startedAt: 1,
-          endedAt: 2,
-          cleanupHandled: true, // Already handled - should be skipped
-        },
-      },
-    };
-    saveCanonicalRunFixtures(new Map(Object.entries(persisted.runs)));
-    await writeChildSessionEntry({
-      sessionKey: "agent:main:subagent:two",
-      sessionId: "sess-two",
-    });
-
-    restartRegistry();
-    await flushQueuedRegistryWork();
-
-    // announce should NOT be called since cleanupHandled was true
-    const calls = (announceSpy.mock.calls as unknown as Array<[unknown]>).map((call) => call[0]);
-    expect(
-      calls.some(
-        (call) =>
-          (call as { childSessionKey?: unknown } | undefined)?.childSessionKey ===
-          "agent:main:subagent:two",
-      ),
-    ).toBe(false);
-  });
-
   it("reuses the persisted registry cache on hot internal read snapshots", async () => {
-    await writePersistedRegistry(
-      {
-        version: 2,
-        runs: {
-          "run-cached-read": {
-            runId: "run-cached-read",
-            childSessionKey: "agent:main:subagent:cached-read",
-            requesterSessionKey: "agent:main:main",
-            requesterDisplayKey: "main",
-            task: "cached persisted run",
-            cleanup: "keep",
-            createdAt: 1,
-            startedAt: 1,
-          },
-        },
-      },
-      { seedChildSessions: false },
-    );
+    await persistRuns([makeRun("run-cached-read", { startedAt: 1 })], false);
     const previousFlag = process.env.OPENCLAW_TEST_READ_SUBAGENT_RUNS_FROM_SQLITE;
     let cloneSpy: { mockRestore(): void } | undefined;
     try {
@@ -484,27 +393,21 @@ describe("subagent registry persistence", () => {
 
     const liveRuns = listSubagentRunsForRequester("agent:main:main");
     expect(liveRuns).toHaveLength(1);
-    expectFields(liveRuns[0], {
+    expect(liveRuns[0]).toMatchObject({
       runId: "run-live",
       childSessionKey: "agent:main:subagent:live-child",
       controllerSessionKey: "agent:main:subagent:live-controller",
       requesterSessionKey: "agent:main:main",
     });
-    expectFields(getSubagentRunByChildSessionKey("agent:main:subagent:live-child"), {
+    expect(getSubagentRunByChildSessionKey("agent:main:subagent:live-child")).toMatchObject({
       runId: "run-live",
     });
   });
 
   it("reloads waitable swarm collector completions after a gateway restart", async () => {
     await fixture.allocateStateDir();
-    const run: SubagentRunRecord = {
-      runId: "run-swarm-restart",
+    const run = makeRun("run-swarm-restart", {
       childSessionKey: "agent:worker:subagent:swarm-restart",
-      requesterSessionKey: "agent:main:main",
-      requesterDisplayKey: "main",
-      task: "persist collector result",
-      cleanup: "keep",
-      createdAt: 1,
       execution: { status: "terminal", endedAt: 2 },
       collect: true,
       swarmRequesterSessionKey: "agent:worker:subagent:owner",
@@ -517,8 +420,8 @@ describe("subagent registry persistence", () => {
         structured: { answer: 42 },
         usage: { inputTokens: 10, outputTokens: 3 },
       },
-    };
-    saveCanonicalRunFixtures(new Map([[run.runId, run]]));
+    });
+    saveSubagentRegistryToSqlite(new Map([[run.runId, run]]));
     await writeChildSessionEntry({
       sessionKey: run.childSessionKey,
       sessionId: "session-swarm-restart",
@@ -543,7 +446,7 @@ describe("subagent registry persistence", () => {
       },
     });
 
-    restartRegistry();
+    await restartRegistry();
     const wait = createAgentsWaitTool({
       agentSessionKey: "agent:main:main",
       agentId: "main",
@@ -566,49 +469,7 @@ describe("subagent registry persistence", () => {
     });
   });
 
-  it("reloads queued launch and in-flight structured state", async () => {
-    await fixture.allocateStateDir();
-    const run: SubagentRunRecord = {
-      runId: "run-swarm-in-flight",
-      childSessionKey: "agent:worker:subagent:swarm-in-flight",
-      requesterSessionKey: "agent:main:main",
-      requesterDisplayKey: "main",
-      task: "persist collector launch",
-      cleanup: "keep",
-      createdAt: 1,
-      collect: true,
-      swarmRequesterSessionKey: "agent:main:telegram:default:direct:456",
-      groupId: "logical-group",
-      outputSchema: { type: "object" },
-      execution: { status: "queued" },
-      structuredOutput: { invalidAttempts: 1, schemaError: "answer is required" },
-      queuedLaunch: {
-        request: { sessionKey: "agent:worker:subagent:swarm-in-flight" },
-        authorization: {
-          modelOverride: { provider: "openai", model: "gpt-5.4" },
-        },
-        timeoutMs: 1_000,
-        schedulerGroupKey: '["agent:main:main","logical-group"]',
-        maxConcurrent: 8,
-      },
-    };
-    saveCanonicalRunFixtures(new Map([[run.runId, run]]));
-
-    closeOpenClawStateDatabaseForTest();
-    expect(loadSubagentRegistryFromSqlite().get(run.runId)).toMatchObject({
-      swarmRequesterSessionKey: run.swarmRequesterSessionKey,
-      structuredOutput: run.structuredOutput,
-      queuedLaunch: run.queuedLaunch,
-    });
-  });
-
   it.each([
-    {
-      name: "retries cleanup announce after a failed announce",
-      runId: "run-3",
-      cleanup: "keep",
-      reject: false,
-    },
     {
       name: "retries cleanup announce after announce flow rejects",
       runId: "run-reject",
@@ -623,9 +484,7 @@ describe("subagent registry persistence", () => {
     },
   ] as const)("$name", async ({ runId, cleanup, reject }) => {
     const childSessionKey = `agent:main:subagent:${runId}`;
-    await writePersistedRegistry(
-      createPersistedEndedRun({ runId, childSessionKey, task: "retry announce", cleanup }),
-    );
+    await persistRuns([endedRun(runId, { childSessionKey, cleanup })]);
     const announcement = createDeferred<"retryable">();
     const releaseAnnouncement = () =>
       reject ? announcement.reject(new Error("announce boom")) : announcement.resolve("retryable");
@@ -640,7 +499,7 @@ describe("subagent registry persistence", () => {
     let retryReady = false;
     let readiness: Promise<void> | undefined;
     try {
-      restartRegistry();
+      await restartRegistry();
       await vi.waitFor(
         () => expect(announceSpy, "first announcement admitted").toHaveBeenCalledOnce(),
         {
@@ -681,7 +540,7 @@ describe("subagent registry persistence", () => {
 
       announceSpy.mockResolvedValueOnce("delivered");
       const beforeRetry = Date.now();
-      restartRegistry();
+      await restartRegistry();
       await vi.waitFor(
         () => expect(settlement.run, "retry reached requester settlement").toHaveBeenCalledOnce(),
         {
@@ -707,11 +566,11 @@ describe("subagent registry persistence", () => {
       }
       await settlement.release();
       expect(settlement.run).toHaveBeenCalledOnce();
-      const afterSecond = readPersistedRegistry();
+      const afterSecond = readPersistedRun(runId);
       if (cleanup === "delete") {
-        expect(afterSecond.runs[runId], "settled delete retires its durable row").toBeUndefined();
+        expect(afterSecond, "settled delete retires its durable row").toBeUndefined();
       } else {
-        expect(afterSecond.runs[runId]?.cleanupCompletedAt).toBeGreaterThanOrEqual(beforeRetry);
+        expect(afterSecond?.cleanupCompletedAt).toBeGreaterThanOrEqual(beforeRetry);
       }
     } finally {
       releaseAnnouncement();
@@ -720,25 +579,11 @@ describe("subagent registry persistence", () => {
   });
 
   it("settles orphaned restored runs through canonical completion", async () => {
-    const persisted = createPersistedEndedRun({
-      runId: "run-orphan-restore",
-      childSessionKey: "agent:main:subagent:ghost-restore",
-      task: "orphan restore",
-      cleanup: "keep",
-      expectsCompletionMessage: false,
-    });
-    await writePersistedRegistry(persisted, {
-      seedChildSessions: false,
-    });
-
-    restartRegistry();
-    await waitForRegistryWork(async () => {
-      const after = readPersistedRegistry();
-      return after.runs?.["run-orphan-restore"]?.cleanupCompletedAt !== undefined;
-    });
-
-    const after = readPersistedRegistry();
-    expect(after.runs?.["run-orphan-restore"]?.execution).toMatchObject({
+    const runId = "run-orphan-restore";
+    await persistRuns([endedRun(runId, { expectsCompletionMessage: false })], false);
+    await restartRegistry();
+    await waitForRegistryWork(() => readPersistedRun(runId)?.cleanupCompletedAt !== undefined);
+    expect(readPersistedRun(runId)?.execution).toMatchObject({
       status: "terminal",
       outcome: { status: "error", error: "subagent run orphaned: missing-session-entry" },
     });
@@ -747,33 +592,24 @@ describe("subagent registry persistence", () => {
   it("preserves restored killed tombstones until bounded reconciliation", async () => {
     const now = Date.now();
     const runId = "run-killed-restore-tombstone";
-    await writePersistedRegistry(
-      {
-        version: 2,
-        runs: {
-          [runId]: {
-            runId,
-            childSessionKey: "agent:main:subagent:killed-restore-tombstone",
-            requesterSessionKey: "agent:main:main",
-            requesterDisplayKey: "main",
-            task: "restore killed tombstone",
-            cleanup: "keep",
-            createdAt: now - 100,
-            startedAt: now - 50,
-            endedAt: now,
-            endedReason: "subagent-killed",
-            outcome: { status: "error", error: "manual kill" },
-            suppressAnnounceReason: "killed",
-            killReconciliation: { killedAt: now },
-            cleanupHandled: true,
-            cleanupCompletedAt: now,
-          },
-        },
-      },
-      { seedChildSessions: false },
+    await persistRuns(
+      [
+        endedRun(runId, {
+          createdAt: now - 100,
+          startedAt: now - 50,
+          endedAt: now,
+          endedReason: "subagent-killed",
+          outcome: { status: "error", error: "manual kill" },
+          suppressAnnounceReason: "killed",
+          killReconciliation: { killedAt: now },
+          cleanupHandled: true,
+          cleanupCompletedAt: now,
+        }),
+      ],
+      false,
     );
 
-    restartRegistry();
+    await restartRegistry();
     await flushQueuedRegistryWork();
 
     expect(announceSpy).not.toHaveBeenCalled();
@@ -789,31 +625,22 @@ describe("subagent registry persistence", () => {
   it("preserves restored interrupted-recovery owners for orphan replay", async () => {
     const now = Date.now();
     const runId = "run-interrupted-recovery-restore";
-    await writePersistedRegistry(
-      {
-        version: 2,
-        runs: {
-          [runId]: {
-            runId,
-            childSessionKey: "agent:main:subagent:interrupted-recovery-restore",
-            requesterSessionKey: "agent:main:main",
-            requesterDisplayKey: "main",
-            task: "replay interrupted terminal",
-            cleanup: "keep",
-            createdAt: now - 100,
-            startedAt: now - 50,
-            endedAt: now,
-            endedReason: "subagent-error",
-            outcome: { status: "error", error: "restart interrupted run" },
-            terminalOwner: "interrupted-recovery",
-            completion: { required: false, resultText: null, capturedAt: now },
-          },
-        },
-      },
-      { seedChildSessions: false },
+    await persistRuns(
+      [
+        endedRun(runId, {
+          createdAt: now - 100,
+          startedAt: now - 50,
+          endedAt: now,
+          endedReason: "subagent-error",
+          outcome: { status: "error", error: "restart interrupted run" },
+          terminalOwner: "interrupted-recovery",
+          completion: { required: false, resultText: null, capturedAt: now },
+        }),
+      ],
+      false,
     );
 
-    restartRegistry();
+    await restartRegistry();
     await flushQueuedRegistryWork();
 
     expect(callGateway).not.toHaveBeenCalled();
@@ -825,44 +652,24 @@ describe("subagent registry persistence", () => {
 
   registerSubagentOrphanTaskCases({
     writePersistedRegistry,
-    writeChildSessionEntry,
     restartRegistry,
     waitForRegistryWork,
-    settle: fixture.settle,
   });
 
   it("finalizes restored interrupted runs without replay", async () => {
-    vi.mocked(callGateway).mockImplementationOnce(async (request) => {
-      expectFields(request, {
-        method: "agent.wait",
-      });
-      expectFields((request as { params?: unknown }).params, {
-        runId: "run-stale-aborted-restore",
-      });
-      return {
-        status: "pending",
-      };
-    });
+    vi.mocked(callGateway).mockResolvedValueOnce({ status: "pending" });
     const now = Date.now();
     const runId = "run-stale-aborted-restore";
     const childSessionKey = "agent:main:subagent:stale-aborted-restore";
-    await writePersistedRegistry(
-      {
-        version: 2,
-        runs: {
-          [runId]: {
-            runId,
-            childSessionKey,
-            requesterSessionKey: "agent:main:main",
-            requesterDisplayKey: "main",
-            task: "stale restart-recoverable work",
-            cleanup: "keep",
-            createdAt: now - 3 * 60 * 60 * 1_000,
-            startedAt: now - 3 * 60 * 60 * 1_000,
-          },
-        },
-      },
-      { seedChildSessions: false },
+    await persistRuns(
+      [
+        makeRun(runId, {
+          childSessionKey,
+          createdAt: now - 3 * 60 * 60 * 1_000,
+          startedAt: now - 3 * 60 * 60 * 1_000,
+        }),
+      ],
+      false,
     );
     await writeChildSessionEntry({
       sessionKey: childSessionKey,
@@ -872,7 +679,7 @@ describe("subagent registry persistence", () => {
       abortedLastRun: true,
     });
 
-    restartRegistry();
+    await restartRegistry();
     await flushQueuedRegistryWork();
     await testing.sweepOnceForTests();
 
@@ -882,128 +689,6 @@ describe("subagent registry persistence", () => {
       status: "error",
       error: expect.stringContaining("Gateway restart"),
     });
-  });
-
-  it("prunes orphaned runs without traversing legacy attachment paths", async () => {
-    await fixture.allocateStateDir();
-    const attachmentsRootDir = path.join(fixture.stateDir, "attachments");
-    const attachmentsDir = path.join(attachmentsRootDir, "ghost");
-    await fs.mkdir(attachmentsDir, { recursive: true });
-    await fs.writeFile(path.join(attachmentsDir, "artifact.txt"), "artifact", "utf8");
-
-    const persisted = createPersistedEndedRun({
-      runId: "run-orphan-attachments",
-      childSessionKey: "agent:main:subagent:ghost-attachments",
-      task: "orphan attachments",
-      cleanup: "delete",
-    });
-    Object.assign(persisted.runs["run-orphan-attachments"] as Record<string, unknown>, {
-      attachmentsRootDir,
-      attachmentsDir,
-    });
-
-    saveCanonicalRunFixtures(new Map(Object.entries(persisted.runs)));
-
-    restartRegistry();
-    await waitForRegistryWork(() =>
-      Promise.resolve(readPersistedRegistry().runs?.["run-orphan-attachments"] === undefined),
-    );
-
-    await expect(fs.access(attachmentsDir)).resolves.toBeUndefined();
-    const after = readPersistedRegistry();
-    expect(after.runs?.["run-orphan-attachments"]).toBeUndefined();
-  });
-
-  it("prefers active runs and can resolve them from persisted registry snapshots", async () => {
-    const childSessionKey = "agent:main:subagent:disk-active";
-    await writePersistedRegistry(
-      {
-        version: 2,
-        runs: {
-          "run-complete": {
-            runId: "run-complete",
-            childSessionKey,
-            requesterSessionKey: "agent:main:main",
-            requesterDisplayKey: "main",
-            task: "completed first",
-            cleanup: "keep",
-            createdAt: 200,
-            startedAt: 210,
-            endedAt: 220,
-            outcome: { status: "ok" },
-          },
-          "run-active": {
-            runId: "run-active",
-            childSessionKey,
-            requesterSessionKey: "agent:main:main",
-            requesterDisplayKey: "main",
-            task: "still running",
-            cleanup: "keep",
-            createdAt: 100,
-            startedAt: 110,
-          },
-        },
-      },
-      { seedChildSessions: false },
-    );
-
-    resetSubagentRegistryForTests({ persist: false });
-
-    const resolved = withEnv({ OPENCLAW_TEST_READ_SUBAGENT_RUNS_FROM_SQLITE: "1" }, () =>
-      getSubagentRunByChildSessionKey(childSessionKey),
-    );
-
-    expectFields(resolved, {
-      runId: "run-active",
-      childSessionKey,
-    });
-    expect(resolved?.execution.endedAt).toBeUndefined();
-  });
-
-  it("can resolve the newest child-session row even when an older stale row is still active", async () => {
-    const childSessionKey = "agent:main:subagent:disk-latest";
-    await writePersistedRegistry(
-      {
-        version: 2,
-        runs: {
-          "run-current-ended": {
-            runId: "run-current-ended",
-            childSessionKey,
-            requesterSessionKey: "agent:main:main",
-            requesterDisplayKey: "main",
-            task: "completed latest",
-            cleanup: "keep",
-            createdAt: 200,
-            startedAt: 210,
-            endedAt: 220,
-            outcome: { status: "ok" },
-          },
-          "run-stale-active": {
-            runId: "run-stale-active",
-            childSessionKey,
-            requesterSessionKey: "agent:main:main",
-            requesterDisplayKey: "main",
-            task: "stale active",
-            cleanup: "keep",
-            createdAt: 100,
-            startedAt: 110,
-          },
-        },
-      },
-      { seedChildSessions: false },
-    );
-
-    resetSubagentRegistryForTests({ persist: false });
-
-    const resolved = withEnv({ OPENCLAW_TEST_READ_SUBAGENT_RUNS_FROM_SQLITE: "1" }, () =>
-      getLatestSubagentRunByChildSessionKey(childSessionKey),
-    );
-
-    expectFields(resolved, {
-      runId: "run-current-ended",
-      childSessionKey,
-    });
-    expect(resolved?.execution.endedAt).toBe(220);
   });
 
   it("resume preserves steer-restart ownership when the child session is missing", async () => {

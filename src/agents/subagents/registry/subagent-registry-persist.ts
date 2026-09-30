@@ -1,6 +1,7 @@
 /** Persistence helpers that write the live subagent run registry to disk. */
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
+import type { SubagentRegistryWriteOptions } from "./subagent-registry-persistence.js";
 import {
   persistSubagentRunsToDisk,
   persistSubagentRunsToDiskOrThrow,
@@ -15,7 +16,7 @@ export function persistSubagentRuns(...runIds: string[]) {
 
 export function persistSubagentRunsAsyncOrThrow(
   context: OpenClawStateWorkerContext,
-  callbacks: { assertCurrent: () => void; onCommitted?: () => void },
+  callbacks: Omit<SubagentRegistryWriteOptions, "context"> & { assertCurrent: () => void },
   ...runIds: string[]
 ): Promise<void> {
   return persistSubagentRunsToDiskAsyncOrThrow(subagentRuns, runIds, {

@@ -42,6 +42,8 @@ export type SubagentAnnounceFlowParams = {
   wakeOnDescendantSettle?: boolean;
   /** Deliver only frozen terminal facts; never inspect or mutate the child session. */
   suppressChildSessionEffects?: boolean;
+  /** Re-validates the child session before side effects; false means skip them. */
+  prepareChildSessionEffects?: () => Promise<boolean>;
   /** Live owner check for child-session effects after awaited phases. */
   isChildSessionEffectsAllowed?: () => boolean;
   /** Live owner check for requester delivery after awaited phases. */
@@ -60,6 +62,6 @@ export type SubagentAnnounceFlowParams = {
     binding: import("../../../config/sessions/session-recipient-authority-types.js").ContinuationRecipientAuthorityBinding,
   ) => boolean;
   traceparent?: string;
-  onBeforeDeleteChildSession?: () => boolean;
+  onBeforeDeleteChildSession?: () => boolean | Promise<boolean>;
   resolveGatewayContext?: import("../../../gateway/server-methods/types.js").GatewayContextResolver;
 };

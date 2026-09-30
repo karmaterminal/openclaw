@@ -305,9 +305,7 @@ export function createChannelIngressDrain<
       // Route the timeout through the canonical retry owner. A release/fail write
       // error must not falsely settle (would stop heartbeat and wedge recovery).
       void state
-        .settleOnce(async () => {
-          await applyFailureDisposition(state.claim, timeoutError);
-        })
+        .settleOnce(() => applyFailureDisposition(state.claim, timeoutError))
         .catch((err: unknown) => {
           log(
             `ingress drain: failed to settle stalled event ${displayId}; holding claim: ${formatError(err)}`,
@@ -355,9 +353,7 @@ export function createChannelIngressDrain<
         // Complete at adoption, not settle — frees the lane for later events.
         state.phase = "adopted";
         clearStallTimer(state);
-        await state.settleOnce(async () => {
-          await completeClaimWithRetry(state.claim);
-        });
+        await state.settleOnce(() => completeClaimWithRetry(state.claim));
       },
       onDeferred: () => {
         if (state.phase !== "dispatching") {
@@ -398,9 +394,7 @@ export function createChannelIngressDrain<
           return;
         }
         // Keep recovery armed until disposition commits; removeActive clears it after success.
-        await state.settleOnce(async () => {
-          await applyFailureDisposition(state.claim, error);
-        });
+        await state.settleOnce(() => applyFailureDisposition(state.claim, error));
       },
       onCancelled: async () => {
         // Cancellation means ownership ended before delivery, so preserve every
@@ -501,9 +495,7 @@ export function createChannelIngressDrain<
         }
         if (result?.kind === "failed-retryable") {
           clearStallTimer(state);
-          await state.settleOnce(async () => {
-            await applyFailureDisposition(claim, result.error);
-          });
+          await state.settleOnce(() => applyFailureDisposition(claim, result.error));
           return;
         }
         // Default: dispatch returned without deferral — complete when channel
@@ -530,9 +522,7 @@ export function createChannelIngressDrain<
           return;
         }
         clearStallTimer(state);
-        await state.settleOnce(async () => {
-          await applyFailureDisposition(claim, err);
-        });
+        await state.settleOnce(() => applyFailureDisposition(claim, err));
       } finally {
         releaseRootWork?.();
       }

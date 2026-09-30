@@ -7,10 +7,15 @@ import {
 import { emitSessionLifecycleEvent } from "../../../sessions/session-lifecycle-events.js";
 import { createLazyImportLoader } from "../../../shared/lazy-promise.js";
 import { createSubagentSweepSessionCleanup } from "../../subagent-registry-sweeper-session.js";
-import { reconcileRetiredSubagentCancellation } from "../completion/subagent-completion-admission.store.js";
+import {
+  blockSubagentCompletionDelivery,
+  reconcileRetiredSubagentCancellation,
+} from "../completion/subagent-completion-admission.store.js";
 import { SUBAGENT_ENDED_REASON_ERROR } from "./subagent-lifecycle-events.js";
 import { shouldSuppressSubagentRecoverySessionEffects } from "./subagent-recovery-state.js";
 import { safeRemoveAttachmentsDir } from "./subagent-registry-helpers.js";
+import type { SubagentLifecycleController } from "./subagent-registry-lifecycle.js";
+import { subagentRuns } from "./subagent-registry-memory.js";
 import { createInterruptedRecoveryCoordinator } from "./subagent-registry-restart-recovery-coordinator.js";
 import { isRestoredQueuedFailureSettlementClaimed } from "./subagent-registry-restore.js";
 import {
@@ -44,7 +49,13 @@ const restartRecoveryLoader = createLazyImportLoader(
 );
 const killRuntimeLoader = createLazyImportLoader(() => import("./subagent-control.runtime.js"));
 
-export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperParams) {
+export function createSubagentRegistrySweeper(
+  params: SubagentRegistrySweeperParams &
+    Pick<
+      SubagentLifecycleController,
+      "isEndedHookOwnerCurrent" | "sessionEffectsHostCurrent" | "shouldSuppressSessionEffects"
+    >,
+) {
   const { runs, resumedRuns } = params;
   const { deleteSession, freezeSessionIdentity, isSessionIdentityCurrent } =
     createSubagentSweepSessionCleanup(params.callGateway);
@@ -55,6 +66,15 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
   let sweepInProgress = false;
   let rerunRequested = false;
   let lastWarnedSuspendedCount: number | undefined;
+  const pendingWork = new Set<Promise<unknown>>();
+
+  function trackWork<T>(run: () => Promise<T>): Promise<T> {
+    const pending = run();
+    pendingWork.add(pending);
+    const settled = () => pendingWork.delete(pending);
+    void pending.then(settled, settled);
+    return pending;
+  }
 
   function start() {
     if (intervalStarted) {
@@ -81,7 +101,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
     clearTimeout(scheduled?.timer);
     const timer = setTimeout(() => {
       scheduled = undefined;
-      void runTick();
+      void trackWork(runTick);
     }, delayMs);
     timer.unref?.();
     scheduled = { timer, at: nextAt };
@@ -122,8 +142,10 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
   });
 
   function runCleanupTail(runId: string, label: string, run: () => Promise<unknown>) {
-    void runWithGatewayIndependentRootWorkAdmission(run, "subagents:sweeper-cleanup").catch(
-      (error: unknown) => params.warn(`subagent sweep ${label} failed`, { runId, error }),
+    void trackWork(() =>
+      runWithGatewayIndependentRootWorkAdmission(run, "subagents:sweeper-cleanup").catch(
+        (error: unknown) => params.warn(`subagent sweep ${label} failed`, { runId, error }),
+      ),
     );
   }
 
@@ -218,10 +240,31 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
       for (const [runId, entry] of runEntries) {
         if (
           runs.get(runId) !== entry ||
-          isRestoredQueuedFailureSettlementClaimed(entry) ||
-          // A kill whose cancellation is already retired has nothing left for the sweep.
-          (entry.killReconciliation && reconcileRetiredSubagentCancellation(entry, now) === false)
+          // The restored FIFO callback owns this row until durable settlement.
+          isRestoredQueuedFailureSettlementClaimed(entry)
         ) {
+          continue;
+        }
+        if (
+          subagentRuns.isCompletionAuthorityRetired(entry) &&
+          ["pending", "in_progress"].includes(entry.delivery?.status ?? "")
+        ) {
+          await blockSubagentCompletionDelivery({
+            subagent: entry,
+            reason: "store replaced",
+            suspendedReason: "permanent_failure",
+            storeReplaced: true,
+          });
+          continue;
+        }
+        // A kill whose cancellation is already retired has nothing left for the sweep.
+        if (
+          entry.killReconciliation &&
+          (await reconcileRetiredSubagentCancellation(entry, now)) === false
+        ) {
+          continue;
+        }
+        if (runs.get(runId) !== entry) {
           continue;
         }
         if (entry.acceptedSteerDispatch) {
@@ -257,11 +300,13 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
               clearPendingLifecycleTimeout: params.clearPendingLifecycleTimeout,
               discardTerminalDelivery: params.discardTerminalDelivery,
               completeCleanupBookkeeping: params.completeCleanupBookkeeping,
+              isCurrent: () => params.isEndedHookOwnerCurrent(runId, entry),
+              sessionEffectsHostCurrent: params.sessionEffectsHostCurrent,
+              shouldSuppressSessionEffects: params.shouldSuppressSessionEffects,
               shouldEmitEndedHookForRun: params.shouldEmitEndedHookForRun,
               emitSubagentEndedHookForRun: params.emitSubagentEndedHookForRun,
               warn: params.warn,
             });
-            mutatedRunIds.add(runId);
           }
           continue;
         }
@@ -283,7 +328,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
           continue;
         }
         if (entry.killReconciliation) {
-          const reconciled = await reconcileProvisionalSubagentKill({
+          const needsPersistence = await reconcileProvisionalSubagentKill({
             runId,
             entry,
             now,
@@ -295,7 +340,7 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
             getRunsForChildSession: params.getRunsForChildSession,
             warn: params.warn,
           });
-          if (reconciled) {
+          if (needsPersistence) {
             mutatedRunIds.add(runId);
           }
           continue;
@@ -697,14 +742,17 @@ export function createSubagentRegistrySweeper(params: SubagentRegistrySweeperPar
     start,
     stop,
     schedule,
-    sweepOnce,
-    runTick,
-    reset() {
+    sweepOnce: () => trackWork(sweepOnce),
+    runTick: () => trackWork(runTick),
+    async reset() {
       stop();
       acceptedSteerCursor = undefined;
       acceptedSpawnRollbackCursor = undefined;
-      sweepInProgress = false;
       lastWarnedSuspendedCount = undefined;
+      // Accepted sweeps can start cleanup tails before they settle.
+      while (pendingWork.size > 0) {
+        await Promise.allSettled(pendingWork);
+      }
     },
   };
 }

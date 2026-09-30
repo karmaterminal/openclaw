@@ -91,7 +91,7 @@ describe("spawnSubagentDirect continuation launch key at the Gateway boundary", 
     clearConfigCache();
     vi.mocked(loadAgentRuntimePluginRegistryHandle).mockReturnValue(createTestRegistry([]));
     vi.mocked(persistSubagentRunsToDisk).mockImplementation(() => {});
-    vi.mocked(restoreSubagentRunsFromDisk).mockReturnValue(0);
+    vi.mocked(restoreSubagentRunsFromDisk).mockResolvedValue(0);
 
     stateDir = await mkdtemp(path.join(os.tmpdir(), "openclaw-launch-key-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", stateDir);

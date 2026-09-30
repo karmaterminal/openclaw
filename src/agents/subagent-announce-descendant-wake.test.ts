@@ -1,10 +1,14 @@
 // Descendant-wake ownership tests: an accepted wake run that cannot be proven
 // stopped must never be reported as a clean no-op.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GatewayContextResolver } from "../gateway/server-methods/types.js";
 import { buildAnnounceIdempotencyKey } from "./announce-idempotency.js";
 import { createSubagentRunRecord } from "./subagent-test-fixtures.test-helpers.js";
+import {
+  runAnnounceDeliveryWithRetry,
+  SourceOwnerChangedError,
+} from "./subagents/announce/subagent-announce-delivery-retry.js";
 import type {
   SubagentAcceptedSteerDispatch,
   SubagentRunRecord,
@@ -428,4 +432,116 @@ describe("wakeSubagentRunAfterDescendants", () => {
     );
     expect(harness.sourceEntry.acceptedSteerDispatch).toBeUndefined();
   });
+});
+
+// Ported from upstream 7972c35315 (`registerDescendantWakeCurrencyTests`), which
+// drove upstream's `runDescendantWake`. Our side replaced that entry point with
+// the registry-reserved `wakeSubagentRunAfterDescendants(params, deps)`, so the
+// currency contract is pinned here against our function and our deps.
+describe("wakeSubagentRunAfterDescendants currency", () => {
+  beforeEach(() => {
+    mocks.loadSessionEntryByKey.mockReset();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each(["current", "changed", "unavailable"] as const)(
+    "settles descendant wakes under the restricted system role with %s currency",
+    async (currency) => {
+      mocks.loadSessionEntryByKey.mockReturnValue({ sessionId: "nested-session", updatedAt: 1 });
+      const resolveGatewayContext: GatewayContextResolver = () => undefined;
+      const signal = new AbortController().signal;
+      let accepted = false;
+      const dispatchGatewayMethodInProcess = vi.fn(
+        async (
+          _method: string,
+          request: { idempotencyKey: string },
+          options: { prepareDispatchCurrent?: () => Promise<void> },
+        ) => {
+          // The in-process dispatcher re-checks currency before admitting the run.
+          await options.prepareDispatchCurrent?.();
+          accepted = true;
+          return { runId: request.idempotencyKey };
+        },
+      );
+      const callGateway = vi.fn(async (request: { params?: { runId?: string } }) => ({
+        aborted: true,
+        runIds: [request.params?.runId],
+      }));
+      const harness = createWakeHarness({
+        callGateway,
+        replaced: true,
+        dispatchGatewayMethodInProcess,
+      });
+
+      const outcome = await wakeSubagentRunAfterDescendants(
+        {
+          ...wakeParams,
+          prepareCurrent: async () => {
+            if (accepted && currency === "unavailable") {
+              throw new Error("currency reader closed");
+            }
+            return !accepted || currency === "current";
+          },
+          resolveGatewayContext,
+          signal,
+        },
+        harness.deps,
+      );
+
+      expect(outcome).toBe(currency === "current" ? "woke" : "not-woken");
+      expect(dispatchGatewayMethodInProcess).toHaveBeenCalledWith(
+        "agent",
+        expect.any(Object),
+        expect.objectContaining({
+          cancelOnDeadline: true,
+          operatorRoleActor: { kind: "system" },
+          resolveGatewayContext,
+          signal,
+        }),
+      );
+      if (currency === "current") {
+        expect(callGateway).not.toHaveBeenCalled();
+        expect(harness.replaceSubagentRunAfterSteer).toHaveBeenCalledWith(
+          expect.objectContaining({
+            previousRunId: wakeParams.runId,
+            nextRunId: wakeDispatchId,
+          }),
+        );
+      } else {
+        expect(harness.replaceSubagentRunAfterSteer).not.toHaveBeenCalled();
+        expect(callGateway).toHaveBeenCalledWith(
+          expect.objectContaining({
+            method: "chat.abort",
+            params: { sessionKey: wakeParams.childSessionKey, runId: wakeDispatchId },
+          }),
+        );
+        expect(harness.sourceEntry.acceptedSteerDispatch).toBeUndefined();
+      }
+    },
+  );
+
+  it.each([1, 3])(
+    "refuses a wake retry after %s attempts when currency changes",
+    async (attempts) => {
+      vi.useFakeTimers();
+      let current = true;
+      let dispatched = 0;
+      const pending = runAnnounceDeliveryWithRetry({
+        operation: "descendant wake agent call",
+        prepareAttempt: async () => current,
+        isAttemptAllowed: () => true,
+        run: async () => {
+          dispatched += 1;
+          current = dispatched < attempts;
+          throw new Error("UNAVAILABLE");
+        },
+      });
+      const rejected = expect(pending).rejects.toBeInstanceOf(SourceOwnerChangedError);
+      await vi.runAllTimersAsync();
+      await rejected;
+      expect(dispatched).toBe(attempts);
+    },
+  );
 });

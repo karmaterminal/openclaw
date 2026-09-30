@@ -26,7 +26,7 @@ export async function scheduleSubagentSelfContinuationWork(params: {
       return;
     }
     const config = resolveContinuationRuntimeConfig(params.cfg);
-    const childEntry = loadSessionEntryByKey(params.childSessionKey);
+    const childEntry = await loadSessionEntryByKey(params.childSessionKey);
     const result = await scheduleContinuationWorkBatch({
       sessionKey: params.childSessionKey,
       chainState: loadContinuationChainState(childEntry),
