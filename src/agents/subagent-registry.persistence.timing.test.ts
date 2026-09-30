@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/config.js";
-import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
+import { patchSessionEntryCore, replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
@@ -141,6 +141,9 @@ describe("subagent registry persistence timing", () => {
       sessionId: "sess-timing",
       updatedAt: startedAt - 1,
     });
+    await patchSessionEntryCore({ storePath, sessionKey: "agent:main:subagent:timing" }, () => ({
+      lastRunError: "Previous setup failed",
+    }));
     await persistSubagentSessionTiming(
       createCanonicalSubagentRunFixture({
         runId: "run-session-timing",
@@ -163,6 +166,7 @@ describe("subagent registry persistence timing", () => {
     expect(persisted?.endedAt).toBe(endedAt);
     expect(persisted?.runtimeMs).toBe(500);
     expect(persisted?.status).toBe("done");
+    expect(persisted?.lastRunError).toBeUndefined();
     expect(persisted?.startedAt).toBeGreaterThanOrEqual(startedAt);
     expect(persisted?.startedAt).toBeLessThanOrEqual(endedAt);
   });

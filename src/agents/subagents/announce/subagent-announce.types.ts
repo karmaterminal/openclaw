@@ -42,9 +42,9 @@ export type SubagentAnnounceFlowParams = {
   wakeOnDescendantSettle?: boolean;
   /** Deliver only frozen terminal facts; never inspect or mutate the child session. */
   suppressChildSessionEffects?: boolean;
-  /** Re-validates the child session before side effects; false means skip them. */
+  /** Refresh database currency before child-session reads or effects. */
   prepareChildSessionEffects?: () => Promise<boolean>;
-  /** Live owner check for child-session effects after awaited phases. */
+  /** Synchronous host-owner check immediately before child-session effects. */
   isChildSessionEffectsAllowed?: () => boolean;
   /** Live owner check for requester delivery after awaited phases. */
   isCompletionDeliveryAllowed?: () => boolean;

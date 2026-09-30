@@ -275,10 +275,10 @@ describe("embedded lifecycle", () => {
     );
     await handleAgentEnd(ctx);
     expect(ctx.emitBlockReply).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
+      {
         mediaUrls: ["/tmp/reply.opus"],
         audioAsVoice: true,
-      }),
+      },
       expect.objectContaining({ onDelivered: expect.any(Function) }),
     );
     expect(ctx.state.pendingToolMediaUrls).toStrictEqual([]);

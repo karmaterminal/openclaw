@@ -580,7 +580,7 @@ describe("subagent registry persistence", () => {
 
   it("settles orphaned restored runs through canonical completion", async () => {
     const runId = "run-orphan-restore";
-    await persistRuns([endedRun(runId, { expectsCompletionMessage: false })], false);
+    await persistRuns([endedRun(runId)], false);
     await restartRegistry();
     await waitForRegistryWork(() => readPersistedRun(runId)?.cleanupCompletedAt !== undefined);
     expect(readPersistedRun(runId)?.execution).toMatchObject({
