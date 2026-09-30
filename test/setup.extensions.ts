@@ -8,7 +8,14 @@ let restoreUpstreamLinks: (() => void) | undefined;
 beforeEach(async (context) => {
   vi.useRealTimers();
   const testPath = expect.getState().testPath?.replaceAll("\\", "/");
-  if (/\/extensions\/codex\/src\/app-server\/.*\.test\.ts$/.test(testPath ?? "")) {
+  // Fork: the continuation-origin export test drives the Codex attempt harness
+  // from diagnostics-otel, so it needs the same runtime fixture.
+  if (
+    /\/extensions\/codex\/src\/app-server\/.*\.test\.ts$/.test(testPath ?? "") ||
+    /\/extensions\/diagnostics-otel\/src\/codex-dynamic-tool-origin\.integration\.test\.ts$/.test(
+      testPath ?? "",
+    )
+  ) {
     let stop: (() => Promise<void>) | undefined;
     context.codexAttemptRuntime = {
       start: async () => {

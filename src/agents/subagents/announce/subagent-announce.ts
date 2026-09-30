@@ -40,7 +40,6 @@ import type { SubagentRunOutcome } from "../subagent-run-outcome.types.js";
 import {
   deliverSubagentAnnouncement,
   loadSessionEntryByKey,
-  readSessionIdByKeySync,
 } from "./subagent-announce-delivery.js";
 import { loadSubagentContinuationRuntime, subagentAnnounceDeps } from "./subagent-announce-deps.js";
 import {
@@ -70,6 +69,7 @@ import {
   createSubagentAnnounceEntryReaders,
   formatSubagentAnnounceOwnerFailure,
 } from "./subagent-announce-owner-coordination.js";
+import { readSessionIdByKeySync } from "./subagent-announce-session-id.js";
 import {
   isEmbeddedAgentRunActive,
   waitForEmbeddedAgentRunEnd,

@@ -54,7 +54,7 @@ import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapt
 import { resolveContentCapturePolicy } from "./service-content-normalization.js";
 import { createDiagnosticsEventHandler } from "./service-events.js";
 import { createDiagnosticsMetrics } from "./service-metrics.js";
-import { createDiagnosticsRecorderRuntime } from "./service-recorder-runtime.js";
+import type { DiagnosticsRecorderRuntime } from "./service-recorder-runtime.js";
 import { createHarnessRecorders } from "./service-recorders-harness.js";
 import { createModelRecorders } from "./service-recorders-model.js";
 import { createOperationsRecorders } from "./service-recorders-operations.js";
@@ -228,12 +228,12 @@ const CONTINUATION_RETRY_POLICY = {
 
 function installProductionDiagnostics(provider: BasicTracerProvider) {
   const traces = createDiagnosticsTraceRuntime(provider.getTracer("openclaw"));
-  const recorderRuntime = createDiagnosticsRecorderRuntime({
+  const recorderRuntime: DiagnosticsRecorderRuntime = {
+    ...createDiagnosticsMetrics(metrics.getMeter("openclaw")),
+    ...traces,
     contentCapturePolicy: resolveContentCapturePolicy(undefined),
-    metrics: createDiagnosticsMetrics(metrics.getMeter("openclaw")),
-    traces,
     tracesEnabled: true,
-  });
+  };
   const recorders = {
     ...createUsageRecorders(recorderRuntime),
     ...createOperationsRecorders(recorderRuntime),

@@ -46,7 +46,6 @@ import {
   getSubagentAnnounceRuntimeConfig,
   loadRequesterSessionEntry,
   loadSessionEntryByKey,
-  readSessionIdByKeySync,
 } from "./subagent-announce-delivery.runtime.js";
 import {
   sendSubagentAnnounceDirectly,
@@ -66,7 +65,6 @@ import { resolveRequesterStoreKey } from "./subagent-requester-store-key.js";
 export {
   loadRequesterSessionEntry,
   loadSessionEntryByKey,
-  readSessionIdByKeySync,
   resolveSubagentAnnounceTimeoutMs,
   runAnnounceDeliveryWithRetry,
 };

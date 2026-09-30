@@ -132,20 +132,6 @@ export function resolveSubagentRequesterSessionAbandonment(
   return resolveEmbeddedRunAbandonment({ sessionKey: requesterSessionKey, sessionId });
 }
 
-/**
- * Synchronous read of a session's current incarnation, for checks that run
- * inside a synchronous state transaction (delegate-artifact finalization).
- */
-export function readSessionIdByKeySync(sessionKey: string): string | undefined {
-  const cfg = getRuntimeConfig();
-  const agentId = tryResolveSubagentRequesterAgentId(cfg, sessionKey);
-  if (!agentId) {
-    return undefined;
-  }
-  const storePath = resolveSessionStorePathCore(cfg.session?.store, { agentId });
-  return loadSessionEntry({ storePath, sessionKey, agentId })?.sessionId;
-}
-
 export async function loadSessionEntryByKey(sessionKey: string, explicitAgentId?: string) {
   const cfg = getRuntimeConfig();
   const agentId = tryResolveSubagentRequesterAgentId(cfg, sessionKey, explicitAgentId);
