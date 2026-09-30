@@ -650,10 +650,10 @@ const publicApi = createSubagentRegistryPublicApi({
   runs: subagentRuns,
   persist: persistSubagentRuns,
   persistOrThrow: persistSubagentRunsOrThrow,
-  restoreOnce: (context) => {
-    purgeExpiredDelegateArtifacts();
-    return subagentRestorer.restoreOnce(undefined, true, context);
-  },
+  // Request-path restore stays worker-mediated: no parent SQLite here. Delegate
+  // artifact expiry is enforced at read time and drained by gateway maintenance,
+  // registry init, and the sweeper tick.
+  restoreOnce: (context) => subagentRestorer.restoreOnce(undefined, true, context),
   startAnnounceCleanup: startSubagentAnnounceCleanupFlow,
   settleRequesterTurn: settleRequesterTurnAfterSessionSpawns,
   markRequesterYielded: subagentLifecycleController.markRequesterTurnYielded,
