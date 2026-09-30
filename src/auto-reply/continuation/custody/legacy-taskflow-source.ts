@@ -39,6 +39,10 @@ export type LegacyImportDisposition =
   | "interrupted-pre-cutover-entry"
   | "delivered-pre-cutover-entry";
 
+function isLegacyImportDisposition(value: unknown): value is LegacyImportDisposition {
+  return typeof value === "string" && DISPOSITIONS.has(value);
+}
+
 const DISPOSITIONS: ReadonlySet<string> = new Set<LegacyImportDisposition>([
   "imported",
   "retired-terminal",
@@ -139,10 +143,7 @@ export function readImportDispositions(
       const disposition = safeParseJsonRecord(row.report_json)?.disposition;
       dispositions.set(
         row.source_key,
-        typeof disposition === "string" && DISPOSITIONS.has(disposition)
-          ? // SAFETY: membership in DISPOSITIONS was checked above.
-            (disposition as LegacyImportDisposition)
-          : "unreadable",
+        isLegacyImportDisposition(disposition) ? disposition : "unreadable",
       );
     }
   }

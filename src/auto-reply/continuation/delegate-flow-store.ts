@@ -158,7 +158,9 @@ function projectDelegate(
   payload: { attachments?: PendingContinuationDelegate["attachments"]; attachAs?: unknown },
 ): PendingContinuationDelegate {
   const attachments = payload.attachments ?? state.attachments;
-  const attachAs = (payload.attachAs as PendingDelegateState["attachAs"]) ?? state.attachAs;
+  const attachAs =
+    // SAFETY: loadContinuationCustodyPayload parsed attachAs with the strict mount schema.
+    (payload.attachAs as PendingDelegateState["attachAs"]) ?? state.attachAs;
   const mode =
     state.postCompaction === true || record.kind === "post_compaction"
       ? "post-compaction"
