@@ -39,11 +39,11 @@ import {
   reconcileDelegateAttachmentCustody,
   rejectCorruptDelegateFlow,
   resetDelegateFlowDiagnosticsForTests,
-  resolveQueuedDelegateCounts as resolveQueuedDelegateCountsFromCustody,
-  type QueuedDelegateCounts,
   updateDelegateRecord,
 } from "./delegate-flow-store.js";
 import type { ChainState, PendingContinuationDelegate } from "./types.js";
+
+export { resolveQueuedDelegateCounts } from "./delegate-flow-store.js";
 
 const log = createSubsystemLogger("continuation/delegate-store");
 
@@ -626,12 +626,6 @@ export function pendingDelegateCount(sessionKey: string): number {
 }
 
 /** Exact queued delegate counts for a correctness decision; never a guessed zero. */
-export async function resolveQueuedDelegateCounts(
-  sessionKey: string,
-): Promise<QueuedDelegateCounts> {
-  return await resolveQueuedDelegateCountsFromCustody(sessionKey);
-}
-
 export async function annotateQueuedDelegatesChainTokensFold(
   sessionKey: string,
   chainTokensFold: number,
