@@ -225,6 +225,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/embedded-agent-runner/run-orchestrator.projection.test.ts",
   "src/agents/embedded-agent-runner/run.prepared-harness-source-delivery.integration.test.ts",
   "src/agents/embedded-agent-runner/run.shared-integration.test.ts",
+  // Continuation scenarios share the run.shared-integration harness and real session SQLite.
+  "src/agents/embedded-agent-runner/run.continuation-integration.test.ts",
   "src/auto-reply/dispatch.block-streaming-recovery.test.ts",
   "src/auto-reply/continuation/custody/custody-store.test.ts",
   "src/auto-reply/continuation/custody/custody-readiness.test.ts",

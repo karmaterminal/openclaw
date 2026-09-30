@@ -28,7 +28,6 @@ export const unresolvedMigrationStepLayout = [
   ["exec-approvals", "final", "doctor"],
   ["mcp-oauth", "final", "doctor"],
   ["restart-sentinel", "final", "all"],
-  ["continuation-taskflow-custody-import", "final", "all"],
   ["workspace-state", "final", "all"],
   ["web-push", "final", "doctor"],
   ["node-host", "final", "doctor"],

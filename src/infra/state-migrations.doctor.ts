@@ -8,7 +8,6 @@ import {
   discardLegacyRegistryWorktrees,
   rewriteRegistryWorktreePathsForMigration,
 } from "../agents/worktrees/registry.js";
-import { detectContinuationTaskFlowCustodyImport } from "../auto-reply/continuation/custody/legacy-taskflow-source.js";
 import { resolveChannelDefaultAccountId } from "../channels/plugins/helpers.js";
 import { getChannelPlugin } from "../channels/plugins/registry.js";
 import type { ChannelId } from "../channels/plugins/types.public.js";
@@ -70,6 +69,7 @@ import {
   migrateLegacyCommitments,
 } from "./state-migrations.commitments.js";
 import { migrateLegacyConfigMachineState } from "./state-migrations.config-machine-state.js";
+import { continuationCustodyMigration } from "./state-migrations.continuation-custody.js";
 import {
   detectLegacyDebugProxyCaptureSidecar,
   migrateLegacyDebugProxyCaptureSidecar,
@@ -482,10 +482,7 @@ export async function detectLegacyStateMigrations(params: {
     artifactPreservingReadOnly: params.artifactPreservingReadOnly,
   });
   const restartSentinel = detectLegacyRestartSentinel({ stateDir });
-  const continuationCustody = detectContinuationTaskFlowCustodyImport({
-    env: { ...env, OPENCLAW_STATE_DIR: stateDir },
-    artifactPreservingReadOnly: params.artifactPreservingReadOnly,
-  });
+  const continuationCustody = continuationCustodyMigration.detect(params, stateDir, env);
   const workspace = await detectLegacyWorkspaceState({
     cfg: params.cfg,
     stateDir,
@@ -710,10 +707,7 @@ export async function detectLegacyStateMigrations(params: {
       "- Meeting transcripts: legacy JSON/JSONL files → shared SQLite state",
     ],
     [restartSentinel.hasLegacy, "- Restart sentinel: legacy JSON → shared SQLite state"],
-    [
-      continuationCustody.hasLegacy,
-      `- Continuation custody: ${continuationCustody.pendingSources} legacy TaskFlow ${continuationCustody.pendingSources === 1 ? "source" : "sources"} → continuation custody store`,
-    ],
+    continuationCustodyMigration.preview(continuationCustody),
     [workspace.hasLegacy, "- Workspace setup and attestations: legacy files → shared SQLite state"],
     [
       webPush.hasLegacy,
@@ -1299,13 +1293,6 @@ function buildLegacyStateMigrationSteps(
       pathEndpoints(detected.restartSentinel?.sourcePath),
       detected.restartSentinel?.hasLegacy === true,
     ],
-    // The import reads and writes only the shared state database (flow_runs,
-    // continuation_records, the session queue and receipts) plus payload files.
-    "continuation-taskflow-custody-import": [
-      [stateDatabase],
-      detected.continuationCustody?.hasLegacy === true,
-      [stateDatabase],
-    ],
     "channel-pairing": [
       pathEndpoints(
         ...detected.channelPairing.files.map((file) =>
@@ -1523,26 +1510,7 @@ function buildLegacyStateMigrationSteps(
   let unavailableWorkshopWorkspaces: ReadonlyMap<string, string> | undefined;
   const finalSteps: LegacyStateMigrationStep[] = [
     ownerStep("restart-sentinel", detected.restartSentinel, migrateLegacyRestartSentinel),
-    // Startup runs this too (scope "all"), so a restart that skipped Doctor still
-    // imports before continuation recovery reads the custody store. Like
-    // commitments, the step exists only when its detector found work: a state
-    // with no legacy TaskFlow source has no continuation import to order or block.
-    ...(detected.continuationCustody?.hasLegacy === true
-      ? [
-          ownerStep(
-            "continuation-taskflow-custody-import",
-            detected.continuationCustody,
-            async (options) => {
-              const { migrateContinuationTaskFlowCustody } =
-                await import("../auto-reply/continuation/custody/legacy-taskflow-import.js");
-              return migrateContinuationTaskFlowCustody({
-                env: { ...options.env, OPENCLAW_STATE_DIR: options.stateDir },
-                now,
-              });
-            },
-          ),
-        ]
-      : []),
+    ...continuationCustodyMigration.steps(detected.continuationCustody, { env, stateDir, now }),
     {
       ...ownerStep("workspace-state", detected.workspace, async (options) => {
         // Shared/agent schemas are ready here. Repair alias ownership before
@@ -3370,7 +3338,6 @@ async function executeLegacyStateMigrations(
     !detected.currentConversationBindings.hasLegacy &&
     !detected.deviceAuth.hasLegacy &&
     !detected.restartSentinel?.hasLegacy &&
-    !detected.continuationCustody?.hasLegacy &&
     !detected.workspace.hasLegacy &&
     !detected.channelPairing.hasLegacy;
   // SQLite rows can still need owner repair when legacy file detectors have no work.
