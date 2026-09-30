@@ -40,11 +40,14 @@ import {
   delegateState,
   dumpState,
   newRootPayloadPath,
+  readQueue,
   readReceipts,
   seedFlow,
+  seedPreCutoverEntry,
   writeLegacyPayload,
   type Options,
 } from "./legacy-taskflow-import.test-support.js";
+import { queueEntryReceiptKey } from "./legacy-taskflow-source.js";
 
 const importControl = vi.hoisted(() => ({
   calls: 0,
@@ -479,6 +482,20 @@ describe("continuation custody readiness (phase A)", () => {
     release();
 
     expect(await live).toBe(true);
+  });
+
+  it("imports a queue-only legacy post-compaction entry at startup (no flow_runs row)", async () => {
+    // A covered C-era queue entry is the owner's only legacy source.
+    const entryId = seedPreCutoverEntry(options, { owner: OWNER_A });
+
+    await whenContinuationCustodyReady();
+
+    expect(importControl.calls).toBe(1);
+    expect(readQueue(options).find((row) => row.id === entryId)?.status).not.toBe("pending");
+    expect(
+      readReceipts(options).some((row) => row.source_key === queueEntryReceiptKey(entryId)),
+    ).toBe(true);
+    expect(isContinuationCustodyOwnerAwaitingImport(OWNER_A)).toBe(false);
   });
 
   it("runs phase A again for a database replaced at the same path", async () => {

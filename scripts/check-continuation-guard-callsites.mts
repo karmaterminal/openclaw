@@ -40,15 +40,11 @@ type GuardContract = {
 };
 
 const contracts: GuardContract[] = [
-  {
-    guard: "hasUnfulfilledDurableObligation",
-    protects:
-      "a terminal task-flow still holding pending-obligation state (terminalNoticePending) must never be pruned; upstream's task-flow-maintenance-policy has no durable-obligation concept, so both the action selector and the worker that deletes the row have to consult this",
-    callers: [
-      "src/tasks/task-flow-registry.maintenance.ts",
-      "src/tasks/task-flow-maintenance.worker.ts",
-    ],
-  },
+  // Retired at the L5 absorb: upstream 6652f7eac8 removed the TaskFlow runtime and its
+  // maintenance, so no task-flow row can be pruned any more. The obligation now lives in
+  // continuation custody: pruneContinuationRecordsInDatabase only prunes terminal records
+  // whose terminal_notice_pending IS NULL (custody-store.worker.ts), a query predicate
+  // rather than a callable guard.
   {
     guard: "hasFrozenSessionIdentity",
     protects:
@@ -62,13 +58,18 @@ const contracts: GuardContract[] = [
     callers: ["src/agents/embedded-agent-utils.ts"],
   },
   {
-    guard: "hasLiveContinuationDelegateChildRun",
+    // #1408 L4 replaced the live-registry check (hasLiveContinuationDelegateChildRun)
+    // with admission evidence read under every recorded child run ID (Q3 at-most-once).
+    guard: "readDelegateAdmissionEvidence",
     protects:
-      "post-compaction delegate delivery must not settle while a continuation delegate child run is still live",
-    callers: [
-      "src/auto-reply/continuation/delegate-dispatch-accepted-children.ts",
-      "src/auto-reply/reply/post-compaction-delegate-delivery.ts",
-    ],
+      "a claimed delegate settles, respawns or is interrupted only from registry evidence read under every recorded child run ID; without it dispatch can re-spawn an already admitted child or settle while that child is still live",
+    callers: ["src/auto-reply/continuation/delegate-dispatch-accepted-children.ts"],
+  },
+  {
+    guard: "readAdmissionEvidence",
+    protects:
+      "post-compaction delegate delivery must not settle or re-spawn while the entry's recorded child run may be live or admitted; it consults admission evidence under every recorded attempt run ID",
+    callers: ["src/auto-reply/reply/post-compaction-delegate-delivery.ts"],
   },
   {
     guard: "hasTrustedContinuationHeartbeatWake",
@@ -100,7 +101,8 @@ const contracts: GuardContract[] = [
     callers: [
       "src/agents/subagents/spawn/subagent-spawn-rollback.ts",
       "src/agents/subagents/spawn/subagent-spawn-session-patch.ts",
-      "src/agents/subagents/spawn/subagent-spawn.ts",
+      // The spawn outcome mapping moved here in the max-lines split (L2).
+      "src/agents/subagents/spawn/subagent-spawn-registration.ts",
       "src/auto-reply/continuation/delegate-dispatch.ts",
     ],
   },
