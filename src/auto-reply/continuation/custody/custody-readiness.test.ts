@@ -145,6 +145,49 @@ vi.mock("../../../agents/subagents/subagent-attachment-cleanup.js", async (impor
   };
 });
 
+// Pause point after a custody list has returned, before its caller reads the
+// import gate: the window in which the database can close and be replaced.
+const listControl = vi.hoisted(() => ({
+  pauseAfterList: undefined as Promise<void> | undefined,
+  paused: 0,
+}));
+
+vi.mock("../../../state/openclaw-state-worker-store.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../state/openclaw-state-worker-store.js")>();
+  const run = async (...args: Parameters<typeof actual.runOpenClawStateWorkerOperation>) => {
+    const [context, operation, operationOptions] = args;
+    let type: string | undefined;
+    const output = await actual.runOpenClawStateWorkerOperation(
+      context,
+      (scope) =>
+        operation(
+          new Proxy(scope, {
+            get(target, property, receiver) {
+              const value = Reflect.get(target, property, receiver) as unknown;
+              if (property === "execute" && typeof value === "function") {
+                return (request: { type: string }) => {
+                  type = request.type;
+                  return (value as (request: unknown) => unknown).call(target, request);
+                };
+              }
+              return typeof value === "function" ? value.bind(target) : value;
+            },
+          }),
+        ),
+      operationOptions,
+    );
+    if (type === "continuationCustody.list" && listControl.pauseAfterList) {
+      const pause = listControl.pauseAfterList;
+      listControl.pauseAfterList = undefined;
+      listControl.paused += 1;
+      await pause;
+    }
+    return output;
+  };
+  return { ...actual, runOpenClawStateWorkerOperation: run };
+});
+
 const IMPORT_PENDING = "waiting on legacy import";
 
 let options: Options;
@@ -173,6 +216,8 @@ beforeEach(() => {
   fsControl.storeEntered = 0;
   fsControl.pauseRemove = undefined;
   fsControl.removeEntered = 0;
+  listControl.pauseAfterList = undefined;
+  listControl.paused = 0;
 });
 
 function seedLegacyQueuedDelegate(flowId: string, owner = OWNER_A): void {
@@ -351,6 +396,44 @@ describe("continuation custody readiness (phase A)", () => {
     seedUncopyableLegacyDelegate("legacy-cleanup-blocked", OWNER_A);
 
     expect(await hasLiveContinuationCustody(OWNER_A)).toBe(true);
+  });
+
+  it("does not reset over an inventory read from a database closed before its import state", async () => {
+    await enqueuePendingDelegate(OWNER_B, { task: "first database" });
+    let release: () => void = () => {};
+    listControl.pauseAfterList = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // The first database answers "nothing for OWNER_A". Before reset reads the
+    // import state, the same path is replaced by a database holding OWNER_A
+    // legacy work that cannot be imported.
+    const reset = cancelSessionContinuations(OWNER_A);
+    await vi.waitFor(() => expect(listControl.paused).toBe(1));
+    await closeOpenClawStateDatabaseAsync();
+    removeStateDatabaseFiles();
+    seedUncopyableLegacyDelegate("legacy-behind-reset", OWNER_A);
+    release();
+
+    await expect(reset).rejects.toThrow(IMPORT_PENDING);
+    expect(isContinuationCustodyOwnerAwaitingImport(OWNER_A)).toBe(true);
+  });
+
+  it("does not report idle from an inventory read from a database closed before its import state", async () => {
+    await enqueuePendingDelegate(OWNER_B, { task: "first database" });
+    let release: () => void = () => {};
+    listControl.pauseAfterList = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const live = hasLiveContinuationCustody(OWNER_A);
+    await vi.waitFor(() => expect(listControl.paused).toBe(1));
+    await closeOpenClawStateDatabaseAsync();
+    removeStateDatabaseFiles();
+    seedUncopyableLegacyDelegate("legacy-behind-cleanup", OWNER_A);
+    release();
+
+    expect(await live).toBe(true);
   });
 
   it("runs phase A again for a database replaced at the same path", async () => {

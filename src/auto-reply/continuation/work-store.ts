@@ -9,10 +9,10 @@
  */
 
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { isContinuationCustodyOwnerAwaitingImport } from "./custody-import-gate.js";
 import { readContinuationLiveWork } from "./custody/custody-projection.js";
 import {
   listContinuationRecords,
+  readContinuationOwnerInventory,
   resolveContinuationCustodyDatabasePath,
   updateContinuationRecords,
 } from "./custody/custody-store.js";
@@ -722,14 +722,14 @@ export async function hasPendingIdleRetryWork(
  * cleanup fails them when it deletes the session.
  */
 export async function hasLiveContinuationCustody(sessionKey: string): Promise<boolean> {
-  const live = await listContinuationRecords({
+  const { records: live, awaitingImport } = await readContinuationOwnerInventory({
     ownerSessionKey: sessionKey,
     kinds: ["work", "delegate"],
     statuses: ["queued", "running"],
   });
   // An owner whose legacy import failed has an incomplete inventory: treat it
   // as live (unknown), never as empty, so cleanup defers instead of deleting.
-  if (isContinuationCustodyOwnerAwaitingImport(sessionKey)) {
+  if (awaitingImport) {
     return true;
   }
   return live.some((record) => {

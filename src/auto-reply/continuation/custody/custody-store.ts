@@ -11,7 +11,10 @@ import { registerOpenClawStateDatabaseAsyncResource } from "../../../state/openc
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
 import { runOpenClawStateWorkerOperation } from "../../../state/openclaw-state-worker-store.js";
-import { installContinuationCustodyAwaitingImport } from "./custody-import-gate-state.js";
+import {
+  installContinuationCustodyAwaitingImport,
+  isOwnerAwaitingContinuationCustodyImport,
+} from "./custody-import-gate-state.js";
 import {
   assertContinuationCustodyLifetime,
   continuationCustodyLifetime,
@@ -512,6 +515,50 @@ export function listContinuationRecords(
   options?: ContinuationCustodyStoreOptions,
 ): Promise<ContinuationRecord[]> {
   return execute(capture(options), "continuationCustody.list", { ...query }, []);
+}
+
+/** One owner's inventory, and whether that inventory is incomplete. */
+export type ContinuationOwnerInventory = {
+  records: ContinuationRecord[];
+  /** The owner's legacy rows are not imported, so `records` is not the whole inventory. */
+  awaitingImport: boolean;
+};
+
+const OWNER_INVENTORY_ATTEMPTS = 3;
+
+/**
+ * List-by-owner for session reset and the cleanup guard: the owner's records
+ * and its import state, answered by one database lifetime (§5.4.5). Closing
+ * the database clears the import gate, so a list from the ended lifetime read
+ * next to the replacement's not-yet-installed gate would present unknown
+ * legacy authority as an empty inventory. A lifetime that ends before the gate
+ * is read discards the answer and asks the current database again.
+ */
+export async function readContinuationOwnerInventory(
+  query: ContinuationRecordQuery & { ownerSessionKey: string },
+  options?: ContinuationCustodyStoreOptions,
+): Promise<ContinuationOwnerInventory> {
+  for (let attempt = 1; ; attempt += 1) {
+    // Capture per attempt: a retry must be admitted by the current database.
+    const custody = capture(options);
+    const path = databasePath(custody);
+    await ensureReady(custody);
+    const epoch = watchDatabaseLifetime(custody);
+    const records = await execute(custody, "continuationCustody.list", { ...query }, []);
+    try {
+      assertContinuationCustodyLifetime(path, epoch);
+    } catch (error) {
+      if (attempt < OWNER_INVENTORY_ATTEMPTS) {
+        continue;
+      }
+      throw error;
+    }
+    // No await since the lifetime check: the gate read belongs to that lifetime.
+    return {
+      records,
+      awaitingImport: isOwnerAwaitingContinuationCustodyImport(path, query.ownerSessionKey),
+    };
+  }
 }
 
 /** The Doctor import's boot fact: owners whose legacy rows are not imported yet (§5.4.5). */
