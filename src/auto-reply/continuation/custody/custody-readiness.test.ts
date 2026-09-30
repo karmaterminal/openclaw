@@ -49,6 +49,36 @@ import {
 } from "./legacy-taskflow-import.test-support.js";
 import { queueEntryReceiptKey } from "./legacy-taskflow-source.js";
 
+// Pause-point arrivals as promises: a test awaits the exact event instead of
+// polling a counter against a clock, so a slow runner waits longer rather than
+// failing (vi.waitFor's default 1 s window timed out on slower seats).
+const arrivals = vi.hoisted(() => {
+  const counts = new Map<string, number>();
+  const waiters: { name: string; count: number; resolve: () => void }[] = [];
+  return {
+    note(name: string): void {
+      const count = (counts.get(name) ?? 0) + 1;
+      counts.set(name, count);
+      for (const waiter of waiters.filter((w) => w.name === name && w.count <= count)) {
+        waiters.splice(waiters.indexOf(waiter), 1);
+        waiter.resolve();
+      }
+    },
+    reached(name: string, count = 1): Promise<void> {
+      if ((counts.get(name) ?? 0) >= count) {
+        return Promise.resolve();
+      }
+      return new Promise((resolve) => {
+        waiters.push({ name, count, resolve });
+      });
+    },
+    reset(): void {
+      counts.clear();
+      waiters.length = 0;
+    },
+  };
+});
+
 const importControl = vi.hoisted(() => ({
   calls: 0,
   throwNext: false,
@@ -63,6 +93,7 @@ vi.mock("./legacy-taskflow-import.js", async (importOriginal) => {
       options: Parameters<typeof actual.migrateContinuationTaskFlowCustody>[0],
     ) => {
       importControl.calls += 1;
+      arrivals.note("import");
       if (importControl.pauseNext) {
         const pause = importControl.pauseNext;
         importControl.pauseNext = undefined;
@@ -90,6 +121,7 @@ vi.mock("./legacy-taskflow-payloads.js", async (importOriginal) => {
     ...actual,
     preparePayloads: async (...args: Parameters<typeof actual.preparePayloads>) => {
       payloadControl.entered += 1;
+      arrivals.note("payload");
       if (payloadControl.pauseNext) {
         const pause = payloadControl.pauseNext;
         payloadControl.pauseNext = undefined;
@@ -117,6 +149,7 @@ vi.mock("./custody-payload-store.js", async (importOriginal) => {
       ...args: Parameters<typeof actual.storeContinuationCustodyPayload>
     ) => {
       fsControl.storeEntered += 1;
+      arrivals.note("store");
       if (fsControl.pauseStore) {
         const pause = fsControl.pauseStore;
         fsControl.pauseStore = undefined;
@@ -138,6 +171,7 @@ vi.mock("../../../agents/subagents/subagent-attachment-cleanup.js", async (impor
       ...args: Parameters<typeof actual.removeSubagentAttachmentTree>
     ) => {
       fsControl.removeEntered += 1;
+      arrivals.note("remove");
       if (fsControl.pauseRemove) {
         const pause = fsControl.pauseRemove;
         fsControl.pauseRemove = undefined;
@@ -184,6 +218,7 @@ vi.mock("../../../state/openclaw-state-worker-store.js", async (importOriginal) 
       const pause = listControl.pauseAfterList;
       listControl.pauseAfterList = undefined;
       listControl.paused += 1;
+      arrivals.note("list");
       await pause;
     }
     return output;
@@ -205,6 +240,7 @@ const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
 );
 
 beforeEach(() => {
+  arrivals.reset();
   // Deliberately no hydration: each test starts as a Gateway that has not
   // run custody boot yet.
   const stateDir = tempDirs.make("openclaw-continuation-readiness-");
@@ -457,7 +493,7 @@ describe("continuation custody readiness (phase A)", () => {
     // import state, the same path is replaced by a database holding OWNER_A
     // legacy work that cannot be imported.
     const reset = cancelSessionContinuations(OWNER_A);
-    await vi.waitFor(() => expect(listControl.paused).toBe(1));
+    await arrivals.reached("list");
     await closeOpenClawStateDatabaseAsync();
     removeStateDatabaseFiles();
     seedUncopyableLegacyDelegate("legacy-behind-reset", OWNER_A);
@@ -475,7 +511,7 @@ describe("continuation custody readiness (phase A)", () => {
     });
 
     const live = hasLiveContinuationCustody(OWNER_A);
-    await vi.waitFor(() => expect(listControl.paused).toBe(1));
+    await arrivals.reached("list");
     await closeOpenClawStateDatabaseAsync();
     removeStateDatabaseFiles();
     seedUncopyableLegacyDelegate("legacy-behind-cleanup", OWNER_A);
@@ -522,7 +558,7 @@ describe("continuation custody readiness (phase A)", () => {
     });
 
     const stale = whenContinuationCustodyReady();
-    await vi.waitFor(() => expect(importControl.calls).toBe(1));
+    await arrivals.reached("import");
     await closeOpenClawStateDatabaseAsync();
     release();
 
@@ -573,7 +609,7 @@ describe("continuation custody readiness (phase A)", () => {
 
     const stale = whenContinuationCustodyReady();
     // Paused inside the importer, after its legacy snapshot and before any write.
-    await vi.waitFor(() => expect(payloadControl.entered).toBe(1));
+    await arrivals.reached("payload");
     await closeOpenClawStateDatabaseByPathAsync(resolveContinuationCustodyDatabasePath());
     removeStateDatabaseFiles();
     seedFlow(options, legacyRow);
@@ -614,7 +650,7 @@ describe("continuation custody readiness (phase A)", () => {
 
     const stale = whenContinuationCustodyReady();
     // Past every caller-side check, before the payload store mutates anything.
-    await vi.waitFor(() => expect(fsControl.storeEntered).toBe(1));
+    await arrivals.reached("store");
     await closeOpenClawStateDatabaseByPathAsync(resolveContinuationCustodyDatabasePath());
     removeStateDatabaseFiles();
     seedFlow(options, legacyRow);
@@ -651,7 +687,7 @@ describe("continuation custody readiness (phase A)", () => {
 
     const stale = whenContinuationCustodyReady();
     // The old lifetime committed its import and now wants to delete the legacy file.
-    await vi.waitFor(() => expect(fsControl.removeEntered).toBe(1));
+    await arrivals.reached("remove");
     await closeOpenClawStateDatabaseByPathAsync(resolveContinuationCustodyDatabasePath());
     removeStateDatabaseFiles();
     // The replacement still holds the un-imported row that needs that file.
@@ -678,7 +714,7 @@ describe("continuation custody readiness (phase A)", () => {
     });
 
     const stale = whenContinuationCustodyReady();
-    await vi.waitFor(() => expect(importControl.calls).toBe(1));
+    await arrivals.reached("import");
     // End the lifetime without a close, so the state layer has nothing to
     // refuse and phase A reaches publication holding old-lifetime facts.
     endContinuationCustodyLifetimeForTest();
