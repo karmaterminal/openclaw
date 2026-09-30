@@ -71,7 +71,6 @@ import {
   loadCompactHooksHarness,
   maybeCompactAgentHarnessSessionMock,
   resolveAgentHarnessPolicyMock,
-  resolveSelectedOpenAIRuntimeProviderMock,
   registerProviderStreamForModelMock,
   resolveProviderEntryApiKeyProfileReferenceMock,
   resolveContextWindowInfoMock,
@@ -785,106 +784,6 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
       expect(created.session.setBaseSystemPrompt).toHaveBeenCalledWith(prompt);
     },
   );
-
-  it("disables continuation tools when rebuilding nested compaction tools", async () => {
-    await compactEmbeddedAgentSessionDirect(
-      wrappedCompactionArgs({
-        workspaceDir: "/tmp/workspace",
-        sessionEntry: {
-          sessionId: "session-1",
-        },
-      }),
-    );
-
-    expectRecordFields(mockCallArg(createOpenClawCodingToolsMock), {
-      disableContinuationTools: true,
-    });
-  });
-
-  it("preserves the recorded session permission policy when building compaction tools", async () => {
-    await replaceSessionEntry(
-      { agentId: "main", sessionKey: TEST_SESSION_KEY, storePath: TEST_STORE_PATH },
-      {
-        sessionId: TEST_SESSION_ID,
-        updatedAt: 2,
-        permissionMode: "full",
-        sessionRoot: "/tmp/workspace",
-      },
-    );
-    await compactEmbeddedAgentSessionDirect(
-      wrappedCompactionArgs({
-        workspaceDir: "/tmp/workspace",
-        sessionEntry: {
-          sessionId: "session-1",
-          permissionMode: "full",
-          sessionRoot: "/tmp/workspace",
-        },
-      }),
-    );
-    expectRecordFields(mockCallArg(createOpenClawCodingToolsMock), {
-      sessionPermissionPolicy: { mode: "full", root: "/tmp/workspace" },
-    });
-  });
-
-  it("prefers the latest persisted session permission policy", async () => {
-    await upsertSessionEntryCore(
-      { agentId: "main", sessionKey: TEST_SESSION_KEY, storePath: TEST_STORE_PATH },
-      {
-        sessionId: TEST_SESSION_ID,
-        updatedAt: 2,
-        permissionMode: "guarded",
-        sessionRoot: join(TEST_WORKSPACE_DIR, "persisted-workspace"),
-      },
-    );
-
-    await compactEmbeddedAgentSessionDirect(
-      wrappedCompactionArgs({
-        config: { tools: { exec: { mode: "deny" } } },
-        permissionMode: "full",
-        sessionRoot: join(TEST_WORKSPACE_DIR, "captured-workspace"),
-        sessionEntry: {
-          sessionId: TEST_SESSION_ID,
-          permissionMode: "workspace",
-          sessionRoot: join(TEST_WORKSPACE_DIR, "stale-workspace"),
-        },
-      }),
-    );
-
-    const toolOptions = expectRecordFields(mockCallArg(createOpenClawCodingToolsMock), {
-      sessionPermissionPolicy: {
-        mode: "guarded",
-        root: join(TEST_WORKSPACE_DIR, "persisted-workspace"),
-      },
-    });
-    expect(toolOptions.exec).toEqual(expect.objectContaining({ mode: "ask" }));
-  });
-
-  it("does not resurrect a captured permission policy cleared from durable state", async () => {
-    await replaceSessionEntry(
-      { agentId: "main", sessionKey: TEST_SESSION_KEY, storePath: TEST_STORE_PATH },
-      {
-        sessionId: TEST_SESSION_ID,
-        updatedAt: 2,
-      },
-    );
-
-    await compactEmbeddedAgentSessionDirect(
-      wrappedCompactionArgs({
-        permissionMode: "full",
-        sessionRoot: join(TEST_WORKSPACE_DIR, "captured-workspace"),
-        sessionEntry: {
-          sessionId: TEST_SESSION_ID,
-          permissionMode: "full",
-          sessionRoot: join(TEST_WORKSPACE_DIR, "captured-workspace"),
-        },
-      }),
-    );
-
-    const toolOptions = expectRecordFields(mockCallArg(createOpenClawCodingToolsMock), {
-      sessionPermissionPolicy: undefined,
-    });
-    expect(toolOptions.exec).not.toEqual(expect.objectContaining({ mode: expect.anything() }));
-  });
 
   it.each([
     { execMode: "deny", permissionMode: "read-only", expectedExecMode: "deny" },
@@ -2909,55 +2808,6 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
     });
   });
 
-  it("resolves queued compaction model metadata through the selected runtime provider", async () => {
-    resolveSelectedOpenAIRuntimeProviderMock.mockImplementation((params: { provider: string }) =>
-      params.provider === "openai" ? "openai-runtime" : params.provider,
-    );
-    resolveModelMock.mockImplementation((_provider, modelId) => ({
-      logicalRef: { provider: "openai-runtime", model: modelId ?? "fake" },
-      model: {
-        provider: "openai",
-        api: "openai-responses",
-        baseUrl: "https://api.openai.com/v1",
-        id: modelId ?? "fake",
-        input: [],
-      },
-      error: null,
-      authStorage: createCompactHooksAuthStorage(),
-      modelRegistry: {},
-    }));
-
-    const result = await compactEmbeddedAgentSession(
-      wrappedCompactionArgs({
-        provider: "openai",
-        model: "gpt-5.5",
-        agentHarnessId: "codex",
-        config: {
-          models: {
-            providers: {
-              openai: { models: [{ id: "gpt-5.5", contextWindow: 350_000 }] },
-            },
-          },
-        },
-      }),
-    );
-
-    expect(result.ok).toBe(true);
-    expect(mockCallArg(resolveModelMock)).toBe("openai-runtime");
-    expectRecordFields(mockCallArg(resolveContextWindowInfoMock), {
-      provider: "openai-runtime",
-      modelId: "gpt-5.5",
-    });
-    const compactArg = mockCallArg(contextEngineCompactMock) as {
-      runtimeContext?: Record<string, unknown>;
-    };
-    expectRecordFields(compactArg.runtimeContext, {
-      provider: "openai",
-      runtimeProvider: "openai-runtime",
-      model: "gpt-5.5",
-    });
-  });
-
   it("fails deferred budget compaction when background maintenance is not scheduled", async () => {
     const dispose = vi.fn(async () => {});
     const maintain = vi.fn(async () => ({
@@ -3470,61 +3320,6 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
       expect.objectContaining({ runtimeAuthPlan: undefined }),
       expectedNativeCompactionOptions("after_context_engine"),
     );
-  });
-
-  it("preserves a deprecated SQLite marker successor for legacy maintenance", async () => {
-    const maintain = vi.fn(async (_params?: unknown) => ({
-      changed: false,
-      bytesFreed: 0,
-      rewrittenEntries: 0,
-    }));
-    const delegatedSessionId = "delegated-marker-session";
-    // Legacy marker resolution reads entries from the marker's store, so a
-    // shared fixed path would let another run's entries pick the session key.
-    const dir = await mkdtemp(join(tmpdir(), "openclaw-compaction-marker-legacy-"));
-    const storePath = join(dir, "sessions.json");
-    const marker = `sqlite:main:${delegatedSessionId}:${storePath}`;
-    resolveContextEngineMock.mockResolvedValue({
-      info: { ownsCompaction: false },
-      compact: contextEngineCompactMock,
-      maintain,
-    } as never);
-    contextEngineCompactMock.mockResolvedValue({
-      ok: true,
-      compacted: true,
-      result: {
-        sessionFile: marker,
-        sessionId: delegatedSessionId,
-      },
-    } as never);
-
-    try {
-      await upsertSessionEntryCore(
-        { agentId: "main", sessionKey: TEST_SESSION_KEY, storePath },
-        { sessionId: TEST_SESSION_ID, updatedAt: 1 },
-      );
-      await compactEmbeddedAgentSession(
-        wrappedCompactionArgs({
-          sessionTarget: {
-            agentId: "main",
-            sessionId: TEST_SESSION_ID,
-            sessionKey: TEST_SESSION_KEY,
-            storePath,
-          },
-        }),
-      );
-
-      expectRecordFields(mockCallArg(maintain), {
-        sessionFile: marker,
-        sessionId: delegatedSessionId,
-        sessionTarget: expect.objectContaining({
-          sessionId: delegatedSessionId,
-          storePath,
-        }),
-      });
-    } finally {
-      await compactionFixture.cleanupDirectory(dir);
-    }
   });
 
   it("keeps a partial structured successor in the active transcript store", async () => {

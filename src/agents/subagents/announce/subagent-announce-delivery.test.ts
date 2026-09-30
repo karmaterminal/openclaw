@@ -23,11 +23,6 @@ import {
   PlatformMessageNotDispatchedError,
 } from "../../../infra/outbound/deliver-types.js";
 import { sendMessage as runtimeSendMessage } from "../../../infra/outbound/message.js";
-import {
-  testing as sessionBindingServiceTesting,
-  registerSessionBindingAdapter,
-} from "../../../infra/outbound/session-binding-service.js";
-import { normalizeLegacySessionEntryDelivery } from "../../../infra/state-migrations.legacy-session-store.js";
 import { setActivePluginRegistry } from "../../../plugins/runtime.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import { closeOpenClawAgentDatabasesAsync } from "../../../state/openclaw-agent-db.js";
@@ -60,10 +55,6 @@ import {
   deliverSubagentAnnouncement,
   loadRequesterSessionEntry,
 } from "./subagent-announce-delivery.test-support.js";
-import {
-  resolveAnnounceOrigin,
-  resolveSubagentCompletionOrigin,
-} from "./subagent-announce-origin.js";
 import { privateCompletionCases } from "./subagent-announce-private-completion.test-fixtures.js";
 
 const sessionDeliveryQueueMocks = vi.hoisted(() => ({
@@ -137,7 +128,6 @@ type EmbeddedAgentQueueFailureReason = Extract<
 
 afterEach(() => {
   vi.useRealTimers();
-  sessionBindingServiceTesting.resetSessionBindingAdaptersForTests();
   setActivePluginRegistry(createTestRegistry());
   testing.setDepsForTest();
   sessionDeliveryQueueMocks.enqueueClaimedSessionDelivery.mockClear();
@@ -456,63 +446,6 @@ function registerDirectTargetTestChannel(channelId: string): void {
   );
 }
 
-function registerThreadedTargetTestChannel(channelId: string): void {
-  setActivePluginRegistry(
-    createTestRegistry([
-      {
-        pluginId: channelId,
-        source: "test",
-        plugin: {
-          ...createChannelTestPluginBase({
-            id: channelId,
-            capabilities: { chatTypes: ["group", "channel", "thread"] },
-          }),
-          messaging: {
-            inferTargetChatType: () => "group",
-            resolveSessionConversation: ({ rawId }: { rawId: string }) => {
-              const topic = /^(.*):topic:(.+)$/u.exec(rawId);
-              const id = topic?.[1] ?? rawId;
-              return {
-                id,
-                threadId: topic?.[2],
-                baseConversationId: id,
-                parentConversationCandidates: [],
-              };
-            },
-          },
-        },
-      },
-    ]),
-  );
-}
-
-function registerTestSessionBindings(
-  channel: string,
-  accountId: string,
-  bindings: ReadonlyArray<{
-    targetSessionKey: string;
-    targetKind: "session" | "subagent";
-    conversationId: string;
-  }>,
-): void {
-  registerSessionBindingAdapter({
-    channel,
-    accountId,
-    listBySession: (targetSessionKey) =>
-      bindings
-        .filter((binding) => binding.targetSessionKey === targetSessionKey)
-        .map((binding) => ({
-          bindingId: `${channel}:${accountId}:${binding.conversationId}`,
-          targetSessionKey,
-          targetKind: binding.targetKind,
-          conversation: { channel, accountId, conversationId: binding.conversationId },
-          status: "active" as const,
-          boundAt: 1,
-        })),
-    resolveByConversation: () => null,
-  });
-}
-
 function expectGatewayAgentParams(
   callGateway: typeof runtimeCallGateway,
   expected: Record<string, unknown>,
@@ -629,8 +562,6 @@ async function deliverDiscordDirectMessageCompletion(params: {
   sourceSessionKey?: string;
   sourceTool?: string;
   signal?: AbortSignal;
-  continuationTriggerOverride?: "work-wake" | "delegate-return" | "subagent-return";
-  traceparent?: string;
   onDeliveryResult?: Parameters<typeof deliverSubagentAnnouncement>[0]["onDeliveryResult"];
   isSourceSessionEffectsAllowed?: () => boolean;
 }) {
@@ -680,8 +611,6 @@ async function deliverDiscordDirectMessageCompletion(params: {
     sourceSessionKey: params.sourceSessionKey,
     sourceTool: params.sourceTool,
     signal: params.signal,
-    continuationTriggerOverride: params.continuationTriggerOverride,
-    traceparent: params.traceparent,
     onDeliveryResult: params.onDeliveryResult,
     isSourceSessionEffectsAllowed: params.isSourceSessionEffectsAllowed,
   });
@@ -822,166 +751,6 @@ async function deliverSlackChannelAnnouncement(params: {
     isSourceSessionEffectsAllowed: params.isSourceSessionEffectsAllowed,
   });
 }
-
-describe("resolveAnnounceOrigin threaded route targets", () => {
-  beforeEach(() => {
-    registerThreadedTargetTestChannel("topicchat");
-  });
-
-  it.each([
-    {
-      name: "does not inherit a target or thread from another account on the same channel",
-      stored: {
-        lastChannel: "telegram",
-        lastTo: "peer-b",
-        lastAccountId: "bot-b",
-        lastThreadId: 99,
-      },
-      requester: { channel: "telegram", accountId: "bot-a" },
-      expected: { channel: "telegram", to: undefined, accountId: "bot-a" },
-    },
-    {
-      name: "preserves stored thread ids when requester origin omits one for the same chat",
-      stored: {
-        lastChannel: "topicchat",
-        lastTo: "topicchat:room-a:topic:99",
-        lastThreadId: 99,
-      },
-      requester: { channel: "topicchat", to: "topicchat:room-a" },
-      expected: { channel: "topicchat", to: "topicchat:room-a", threadId: 99 },
-    },
-    {
-      name: "preserves stored thread ids for group-prefixed requester targets",
-      stored: {
-        lastChannel: "topicchat",
-        lastTo: "topicchat:room-a:topic:99",
-        lastThreadId: 99,
-      },
-      requester: { channel: "topicchat", to: "group:room-a" },
-      expected: { channel: "topicchat", to: "group:room-a", threadId: 99 },
-    },
-    {
-      name: "still strips stale thread ids when the stored route points at a different chat",
-      stored: {
-        lastChannel: "topicchat",
-        lastTo: "topicchat:room-b:topic:99",
-        lastThreadId: 99,
-      },
-      requester: { channel: "topicchat", to: "topicchat:room-a" },
-      expected: { channel: "topicchat", to: "topicchat:room-a" },
-    },
-  ])("$name", ({ stored, requester, expected }) => {
-    expect(
-      resolveAnnounceOrigin(
-        normalizeLegacySessionEntryDelivery(stored as unknown as SessionEntry),
-        requester,
-      ),
-    ).toEqual(expected);
-  });
-});
-
-describe("resolveSubagentCompletionOrigin", () => {
-  it.each([
-    {
-      name: "resolves bound completion delivery from the requester session, not the child session",
-      bindings: [
-        {
-          channel: "discord",
-          accountId: "bot-alpha",
-          targetSessionKey: "agent:worker:subagent:child",
-          targetKind: "subagent" as const,
-          conversationId: "child-window",
-        },
-        {
-          channel: "discord",
-          accountId: "acct-1",
-          targetSessionKey: "agent:main:main",
-          targetKind: "session" as const,
-          conversationId: "parent-main",
-        },
-      ],
-      childSessionKey: "agent:worker:subagent:child",
-      requesterOrigin: {
-        channel: "discord",
-        accountId: "acct-1",
-        to: "channel:parent-main",
-      },
-      expected: { channel: "discord", accountId: "acct-1", to: "channel:parent-main" },
-      spawnMode: "session" as const,
-    },
-    {
-      name: "prefers requester binding when child and requester share the same channel and accountId",
-      bindings: [
-        {
-          channel: "telegram",
-          accountId: "bot-1",
-          targetSessionKey: "agent:main:telegram:default:direct:123",
-          targetKind: "subagent" as const,
-          conversationId: "direct:123",
-        },
-        {
-          channel: "telegram",
-          accountId: "bot-1",
-          targetSessionKey: "agent:main:main",
-          targetKind: "session" as const,
-          conversationId: "direct:789",
-        },
-      ],
-      childSessionKey: "agent:main:telegram:default:direct:123",
-      requesterOrigin: {
-        channel: "telegram",
-        accountId: "bot-1",
-        to: "telegram:direct:789",
-      },
-      expected: { channel: "telegram", accountId: "bot-1", to: "telegram:direct:789" },
-      spawnMode: "run" as const,
-    },
-    {
-      name: "falls back to child binding when requester has no binding",
-      bindings: [
-        {
-          channel: "telegram",
-          accountId: "bot-1",
-          targetSessionKey: "agent:main:telegram:default:direct:123",
-          targetKind: "subagent" as const,
-          conversationId: "direct:123",
-        },
-      ],
-      childSessionKey: "agent:main:telegram:default:direct:123",
-      requesterOrigin: {
-        channel: "telegram",
-        accountId: "bot-1",
-        to: "telegram:direct:123",
-      },
-      expected: { channel: "telegram", accountId: "bot-1", to: "telegram:direct:123" },
-      spawnMode: "run" as const,
-    },
-  ])("$name", async ({ bindings, childSessionKey, requesterOrigin, expected, spawnMode }) => {
-    const bindingGroups = new Map<string, (typeof bindings)[number][]>();
-    for (const binding of bindings) {
-      const key = `${binding.channel}\0${binding.accountId}`;
-      const group = bindingGroups.get(key) ?? [];
-      group.push(binding);
-      bindingGroups.set(key, group);
-    }
-    for (const group of bindingGroups.values()) {
-      const binding = group[0];
-      if (binding) {
-        registerTestSessionBindings(binding.channel, binding.accountId, group);
-      }
-    }
-
-    const origin = await resolveSubagentCompletionOrigin({
-      childSessionKey,
-      requesterSessionKey: "agent:main:main",
-      requesterOrigin,
-      spawnMode,
-      expectsCompletionMessage: true,
-    });
-
-    expect(origin).toEqual(expected);
-  });
-});
 
 describe("deliverSubagentAnnouncement active requester steering", () => {
   it("loads a custom main alias through its canonical requester key", () => {
@@ -3056,54 +2825,6 @@ describe("deliverSubagentAnnouncement completion delivery", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("keeps synthetic missing output on the generic retry path", async () => {
-    const callGateway = createPayloadGatewayMock();
-    const sendMessage = createSendMessageMock();
-    const queueEmbeddedAgentMessageWithOutcome = createQueueOutcomeMock(false);
-    const childSessionKey = "agent:worker:subagent:empty-success";
-    const result = await deliverDiscordDirectMessageCompletion({
-      callGateway,
-      sendMessage,
-      isActive: true,
-      queueEmbeddedAgentMessageWithOutcome,
-      sourceSessionKey: childSessionKey,
-      internalEvents: taskCompletionEvents({
-        childSessionKey,
-        childSessionId: "child-session-id",
-        status: "ok",
-        statusLabel: "completed successfully",
-        result: "(no output)",
-        noVisibleResult: true,
-      }),
-    });
-
-    expectRecordFields(result, {
-      delivered: false,
-      path: "direct",
-      error: "completion agent did not produce a visible reply",
-      reason: "visible_reply_missing",
-      phases: [
-        {
-          phase: "direct-primary",
-          delivered: false,
-          path: "direct",
-          reason: "visible_reply_missing",
-          error: "completion agent did not produce a visible reply",
-        },
-        {
-          phase: "steer-fallback",
-          delivered: false,
-          path: "none",
-          reason: "steer_dropped",
-          error: undefined,
-        },
-      ],
-    });
-    expect(result.terminal).toBeUndefined();
-    expect(queueEmbeddedAgentMessageWithOutcome).toHaveBeenCalledTimes(2);
-    expect(sendMessage).not.toHaveBeenCalled();
-  });
-
   it("keeps typed missing output on the generic retry path", async () => {
     const callGateway = createPayloadGatewayMock();
     const sendMessage = createSendMessageMock();
@@ -3735,56 +3456,6 @@ describe("deliverSubagentAnnouncement completion delivery", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("preserves continuation trigger and trace on the direct completion path", async () => {
-    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
-    const callGateway = createGatewayMock({
-      result: { payloads: [{ text: "The track is ready." }] },
-    });
-    const sendMessage = createSendMessageMock();
-
-    await deliverDiscordDirectMessageCompletion({
-      callGateway,
-      sendMessage,
-      continuationTriggerOverride: "delegate-return",
-      traceparent,
-      internalEvents: taskCompletionEvents({
-        childSessionId: "task-continuation",
-        taskLabel: "continuation track",
-      }),
-    });
-
-    expectGatewayAgentParams(callGateway, {
-      continuationTrigger: "delegate-return",
-      traceparent,
-    });
-  });
-
-  it("persists continuation trigger and trusted trace for generated media", async () => {
-    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
-    const callGateway = createGatewayMock();
-
-    const result = await deliverDiscordDirectMessageCompletion({
-      callGateway,
-      sourceTool: "music_generate",
-      continuationTriggerOverride: "delegate-return",
-      traceparent,
-      internalEvents: musicCompletionEvents(),
-    });
-
-    expectDeliveryPath(result, "queued");
-    expect(sessionDeliveryQueueMocks.enqueueClaimedSessionDelivery).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "agentTurn",
-        continuationTrigger: "delegate-return",
-        traceparent,
-        traceparentProvenance: "internal",
-      }),
-      expect.any(Number),
-      expectQueueContext(),
-    );
-    expect(callGateway).not.toHaveBeenCalled();
-  });
-
   it("queues generated media group completions that miss required message-tool delivery", async () => {
     const callGateway = createPayloadGatewayMock({
       text: "The track is ready.",
@@ -4348,58 +4019,6 @@ describe("deliverSubagentAnnouncement completion delivery", () => {
     },
   );
 
-  // These inputs differ only in the typed no-visible-result fact. Keep the
-  // authority boundary on the fact rather than the placeholder wording.
-  it("gates a reworded no-visible-result placeholder for channel completions", async () => {
-    const callGateway = createPayloadGatewayMock({ text: "NO_REPLY" });
-    const childSessionKey = "agent:worker:subagent:reworded-placeholder";
-    const result = await deliverSlackChannelAnnouncement({
-      callGateway,
-      directIdempotencyKey: "announce-channel-subagent-reworded-placeholder",
-      sourceTool: "subagent_announce",
-      sourceSessionKey: childSessionKey,
-      runtimeConfig: { messages: { groupChat: { visibleReplies: "automatic" } } },
-      internalEvents: taskCompletionEvents({
-        childSessionKey,
-        childSessionId: "child-session-id",
-        taskLabel: "reworded placeholder completion smoke",
-        status: "ok",
-        statusLabel: "completed successfully",
-        result: "(no result yet; child still running)",
-        noVisibleResult: true,
-      }),
-    });
-
-    expectRecordFields(result, {
-      delivered: false,
-      path: "direct",
-      reason: "visible_reply_missing",
-      error: "completion agent did not produce a visible reply",
-    });
-  });
-
-  it("does not gate visible output that only resembles the placeholder", async () => {
-    const callGateway = createPayloadGatewayMock({ text: "NO_REPLY" });
-    const childSessionKey = "agent:worker:subagent:placeholder-shaped-output";
-    const result = await deliverSlackChannelAnnouncement({
-      callGateway,
-      directIdempotencyKey: "announce-channel-subagent-placeholder-shaped-output",
-      sourceTool: "subagent_announce",
-      sourceSessionKey: childSessionKey,
-      runtimeConfig: { messages: { groupChat: { visibleReplies: "automatic" } } },
-      internalEvents: taskCompletionEvents({
-        childSessionKey,
-        childSessionId: "child-session-id",
-        taskLabel: "placeholder-shaped output completion smoke",
-        status: "ok",
-        statusLabel: "completed successfully",
-        result: "(no output)",
-      }),
-    });
-
-    expectDeliveryPath(result, "direct");
-  });
-
   it("gates a reworded no-visible-result placeholder for channel subagent completions", async () => {
     const callGateway = createPayloadGatewayMock({ text: "NO_REPLY" });
     const queueEmbeddedAgentMessageWithOutcome = createQueueOutcomeMock(false);
@@ -4485,31 +4104,6 @@ describe("deliverSubagentAnnouncement completion delivery", () => {
       threadId: undefined,
       sourceReplyDeliveryMode: "message_tool_only",
     });
-  });
-
-  it("sends no-output completion params accepted by the Gateway validator", async () => {
-    const callGateway = createPayloadGatewayMock({ text: "NO_REPLY" });
-    const childSessionKey = "agent:worker:subagent:no-output-wire-contract";
-    await deliverSlackChannelAnnouncement({
-      callGateway,
-      directIdempotencyKey: "announce-channel-no-output-wire-contract",
-      sourceTool: "subagent_announce",
-      sourceSessionKey: childSessionKey,
-      internalEvents: taskCompletionEvents({
-        childSessionKey,
-        childSessionId: "child-session-id",
-        taskLabel: "no-output completion wire contract",
-        result: "(no output)",
-        noVisibleResult: true,
-      }),
-    });
-
-    const request = expectRecordFields(mockCallArg(callGateway), { method: "agent" });
-    const sentEvents = (request.params as { internalEvents?: Array<{ noVisibleResult?: boolean }> })
-      .internalEvents;
-    expect(sentEvents?.[0]?.noVisibleResult).toBe(true);
-    const isValid = validateAgentParams(request.params);
-    expect(isValid ? "" : formatValidationErrors(validateAgentParams.errors)).toBe("");
   });
 
   it("sends no-output completion agent params the gateway validator accepts", async () => {

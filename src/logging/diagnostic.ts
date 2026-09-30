@@ -13,7 +13,13 @@ import {
 import type { GatewayScheduler, GatewayScheduledJob } from "../infra/gateway-scheduler.js";
 import { emitChildProcessSpawnSample } from "../process/spawn-diagnostics.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
-import { getDiagnosticContinuationQueueMetrics } from "./diagnostic-continuation-queues.js";
+import {
+  emitDiagnosticContinuationQueueSample,
+  formatContinuationQueueLogSuffix,
+  hasContinuationQueueActivity,
+  hasContinuationQueueMotion,
+  safeGetDiagnosticContinuationQueueMetrics,
+} from "./diagnostic-continuation-queue-log.js";
 import { reconcileDiagnosticGcObserver, stopDiagnosticGcObserver } from "./diagnostic-gc.js";
 import {
   DEFAULT_LIVENESS_EVENT_LOOP_DELAY_WARN_MS,
@@ -88,6 +94,12 @@ import {
   startDiagnosticStabilityRecorder,
   stopDiagnosticStabilityRecorder,
 } from "./diagnostic-stability.js";
+import {
+  getDiagnosticWorkSnapshot,
+  hasOpenDiagnosticWork,
+  resolveDiagnosticQueuedBacklog,
+  type DiagnosticWorkSnapshot,
+} from "./diagnostic-work-snapshot.js";
 
 export { diagnosticLogger } from "./diagnostic-runtime.js";
 
@@ -105,15 +117,6 @@ const DIAGNOSTIC_HEARTBEAT_INTERVAL_MS = 30_000;
 const loadStuckSessionRecoveryRuntime = createLazyRuntimeModule(
   () => import("./diagnostic-stuck-session-recovery.runtime.js"),
 );
-
-type DiagnosticWorkSnapshot = {
-  activeCount: number;
-  waitingCount: number;
-  queuedCount: number;
-  activeLabels: string[];
-  waitingLabels: string[];
-  queuedLabels: string[];
-};
 
 type SampleDiagnosticLiveness = (
   now: number,
@@ -155,61 +158,6 @@ async function recoverStuckSession(
     });
 }
 
-function pushLimitedDiagnosticLabel(labels: string[], state: SessionState, now: number): void {
-  const label = state.sessionKey ?? state.sessionId ?? "unknown";
-  const ageSeconds = Math.round(Math.max(0, now - state.lastActivity) / 1000);
-  const activity = getDiagnosticSessionActivitySnapshot(
-    { sessionId: state.sessionId, sessionKey: state.sessionKey },
-    now,
-  );
-  // Activity lookup reconciles aliases even when the bounded label list is full.
-  if (labels.length >= 5) {
-    return;
-  }
-  const workKind = activity.activeWorkKind ? `/${activity.activeWorkKind}` : "";
-  const lastProgress = activity.lastProgressReason ? ` last=${activity.lastProgressReason}` : "";
-  labels.push(
-    `${label}(${state.state}${workKind},q=${state.queueDepth},age=${ageSeconds}s${lastProgress})`,
-  );
-}
-
-function resolveDiagnosticQueuedBacklog(state: SessionState): number {
-  return Math.max(
-    0,
-    state.queueDepth - (state.state === "processing" && state.activeQueuedTurn ? 1 : 0),
-  );
-}
-
-function getDiagnosticWorkSnapshot(now = Date.now()): DiagnosticWorkSnapshot {
-  let activeCount = 0;
-  let waitingCount = 0;
-  let queuedCount = 0;
-  const activeLabels: string[] = [];
-  const waitingLabels: string[] = [];
-  const queuedLabels: string[] = [];
-
-  for (const state of diagnosticSessionStates.values()) {
-    if (state.state === "processing") {
-      activeCount += 1;
-      pushLimitedDiagnosticLabel(activeLabels, state, now);
-    } else if (state.state === "waiting") {
-      waitingCount += 1;
-      pushLimitedDiagnosticLabel(waitingLabels, state, now);
-    }
-    const queuedBacklog = resolveDiagnosticQueuedBacklog(state);
-    if (queuedBacklog > 0) {
-      pushLimitedDiagnosticLabel(queuedLabels, state, now);
-    }
-    queuedCount += queuedBacklog;
-  }
-
-  return { activeCount, waitingCount, queuedCount, activeLabels, waitingLabels, queuedLabels };
-}
-
-function hasOpenDiagnosticWork(snapshot: DiagnosticWorkSnapshot): boolean {
-  return snapshot.activeCount > 0 || snapshot.waitingCount > 0 || snapshot.queuedCount > 0;
-}
-
 function hasRecentDiagnosticActivity(now: number): boolean {
   const lastActivityAt = getLastDiagnosticActivityAt();
   return lastActivityAt > 0 && now - lastActivityAt <= RECENT_DIAGNOSTIC_ACTIVITY_MS;
@@ -217,100 +165,6 @@ function hasRecentDiagnosticActivity(now: number): boolean {
 
 function formatOptionalDiagnosticMetric(value: number | undefined): string {
   return value === undefined ? "unknown" : String(value);
-}
-
-function formatContinuationQueueNumber(value: number | undefined): string {
-  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "n/a";
-}
-
-function hasContinuationQueueActivity(
-  continuationQueue: DiagnosticContinuationQueueMetrics | undefined,
-): continuationQueue is DiagnosticContinuationQueueMetrics {
-  return (
-    continuationQueue !== undefined &&
-    (continuationQueue.totalQueued > 0 ||
-      continuationQueue.enqueuedSinceLastSample > 0 ||
-      continuationQueue.drainedSinceLastSample > 0 ||
-      continuationQueue.failedSinceLastSample > 0)
-  );
-}
-
-// Liveness-warn predicate: only fires on motion (enqueue/drain/fail since
-// last sample), NOT on persistent queue depth alone. This keeps healthy
-// sessions with steady-state queue depth from re-introducing the same
-// per-heartbeat noise that v2026.5.3's session-attention throttle removed
-// for `recovery=none` long-running warnings (see
-// `lastLongRunningWarnAgeMs` in `logSessionAttention`). Depth is still
-// surfaced via the message suffix and event payload so observers can see
-// it; we just don't escalate to warn on presence alone.
-function hasContinuationQueueMotion(
-  continuationQueue: DiagnosticContinuationQueueMetrics | undefined,
-): continuationQueue is DiagnosticContinuationQueueMetrics {
-  return (
-    continuationQueue !== undefined &&
-    (continuationQueue.enqueuedSinceLastSample > 0 ||
-      continuationQueue.drainedSinceLastSample > 0 ||
-      continuationQueue.failedSinceLastSample > 0)
-  );
-}
-
-function safeGetDiagnosticContinuationQueueMetrics(
-  now: number,
-): DiagnosticContinuationQueueMetrics | undefined {
-  try {
-    return getDiagnosticContinuationQueueMetrics(now);
-  } catch (err) {
-    diag.debug(`continuation queue diagnostics failed: ${String(err)}`);
-    return undefined;
-  }
-}
-
-function formatContinuationQueueTopQueues(
-  continuationQueue: DiagnosticContinuationQueueMetrics,
-): string {
-  return continuationQueue.topQueues
-    .map(
-      (queue) =>
-        `${queue.sessionKey}(total=${queue.totalQueued},runnable=${queue.pendingRunnable},scheduled=${queue.pendingScheduled},staged=${queue.stagedPostCompaction},invalid=${queue.invalidQueued})`,
-    )
-    .join(",");
-}
-
-function formatContinuationQueueHistory(
-  continuationQueue: DiagnosticContinuationQueueMetrics,
-): string {
-  return JSON.stringify(
-    continuationQueue.queueDepthHistory.map((point) => ({
-      sampled_at: point.sampledAt,
-      total_queued: point.totalQueued,
-      runnable: point.pendingRunnable,
-      scheduled: point.pendingScheduled,
-      staged_post_compaction: point.stagedPostCompaction,
-      invalid_queued: point.invalidQueued,
-      enqueued: point.enqueued,
-      drained: point.drained,
-      failed: point.failed,
-    })),
-  );
-}
-
-function formatContinuationQueueLogSuffix(
-  continuationQueue: DiagnosticContinuationQueueMetrics | undefined,
-): string {
-  if (!hasContinuationQueueActivity(continuationQueue)) {
-    return "";
-  }
-  return ` continuationQueueTotal=${continuationQueue.totalQueued} continuationQueueRunnable=${continuationQueue.pendingRunnable} continuationQueueScheduled=${continuationQueue.pendingScheduled} continuationQueueStagedPostCompaction=${continuationQueue.stagedPostCompaction} continuationQueueInvalid=${continuationQueue.invalidQueued} continuationQueueEnqueued=${continuationQueue.enqueuedSinceLastSample} continuationQueueDrained=${continuationQueue.drainedSinceLastSample} continuationQueueFailed=${continuationQueue.failedSinceLastSample} continuationQueueEnqueueRatePerMinute=${formatContinuationQueueNumber(continuationQueue.enqueueRatePerMinute)} continuationQueueDrainRatePerMinute=${formatContinuationQueueNumber(continuationQueue.drainRatePerMinute)} continuationQueueFailedRatePerMinute=${formatContinuationQueueNumber(continuationQueue.failedRatePerMinute)} continuationQueueTop=[${formatContinuationQueueTopQueues(continuationQueue)}] queue_depth_history=${formatContinuationQueueHistory(continuationQueue)}`;
-}
-
-function emitDiagnosticContinuationQueueSample(
-  continuationQueue: DiagnosticContinuationQueueMetrics,
-): void {
-  emitDiagnosticEvent({
-    type: "diagnostic.continuation_queue.sample",
-    continuationQueue,
-  });
-  markActivity();
 }
 
 function emitDiagnosticLivenessWarning(

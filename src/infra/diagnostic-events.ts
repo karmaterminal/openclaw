@@ -14,6 +14,7 @@ import {
   createDiagnosticMetadataForListener,
   deepFreezeDiagnosticValue,
 } from "./diagnostic-event-snapshot.js";
+import type * as Liveness from "./diagnostic-liveness-types.js";
 import {
   consumeCoreModelRequestLifecycleDiagnosticEvent,
   CORE_MODEL_REQUEST_LIFECYCLE_METADATA_KEY,
@@ -50,6 +51,7 @@ import {
 } from "./diagnostic-trace-propagation.js";
 import { isBlockedObjectKey } from "./prototype-keys.js";
 
+export type * from "./diagnostic-liveness-types.js";
 export type { DiagnosticMemoryUsage } from "./diagnostic-process-types.js";
 
 export type DiagnosticSessionState = "idle" | "processing" | "waiting";
@@ -459,74 +461,14 @@ export type DiagnosticHeartbeatEvent = DiagnosticBaseEvent & {
   queued: number;
 };
 
-export type DiagnosticContinuationQueueOwnerSample = {
-  sessionKey: string;
-  pendingQueued: number;
-  pendingRunnable: number;
-  pendingScheduled: number;
-  stagedPostCompaction: number;
-  invalidQueued: number;
-  totalQueued: number;
-  oldestQueuedAgeMs?: number;
-  newestQueuedAgeMs?: number;
-};
-
-export type DiagnosticContinuationQueueHistoryPoint = {
-  sampledAt: number;
-  intervalMs?: number;
-  totalQueued: number;
-  pendingRunnable: number;
-  pendingScheduled: number;
-  stagedPostCompaction: number;
-  invalidQueued: number;
-  enqueued: number;
-  drained: number;
-  failed: number;
-};
-
-export type DiagnosticContinuationQueueMetrics = {
-  sampledAt: number;
-  intervalMs?: number;
-  totalQueued: number;
-  pendingQueued: number;
-  pendingRunnable: number;
-  pendingScheduled: number;
-  stagedPostCompaction: number;
-  invalidQueued: number;
-  enqueuedSinceLastSample: number;
-  drainedSinceLastSample: number;
-  failedSinceLastSample: number;
-  enqueueRatePerMinute?: number;
-  drainRatePerMinute?: number;
-  failedRatePerMinute?: number;
-  topQueues: DiagnosticContinuationQueueOwnerSample[];
-  queueDepthHistory: DiagnosticContinuationQueueHistoryPoint[];
-};
-
 export type DiagnosticContinuationQueueSampleEvent = DiagnosticBaseEvent & {
   type: "diagnostic.continuation_queue.sample";
-  continuationQueue: DiagnosticContinuationQueueMetrics;
-};
-
-export type DiagnosticLivenessWarningReason = "event_loop_delay" | "event_loop_utilization" | "cpu";
-
-export type DiagnosticPhaseDetails = Record<string, string | number | boolean>;
-
-export type DiagnosticPhaseSnapshot = {
-  name: string;
-  startedAt: number;
-  endedAt?: number;
-  durationMs?: number;
-  cpuUserMs?: number;
-  cpuSystemMs?: number;
-  cpuTotalMs?: number;
-  cpuCoreRatio?: number;
-  details?: DiagnosticPhaseDetails;
+  continuationQueue: Liveness.DiagnosticContinuationQueueMetrics;
 };
 
 export type DiagnosticLivenessWarningEvent = DiagnosticBaseEvent & {
   type: "diagnostic.liveness.warning";
-  reasons: DiagnosticLivenessWarningReason[];
+  reasons: Liveness.DiagnosticLivenessWarningReason[];
   intervalMs: number;
   degradedSinceMs?: number;
   eventLoopDelayP99Ms?: number;
@@ -540,15 +482,15 @@ export type DiagnosticLivenessWarningEvent = DiagnosticBaseEvent & {
   waiting: number;
   queued: number;
   phase?: string;
-  recentPhases?: DiagnosticPhaseSnapshot[];
+  recentPhases?: Liveness.DiagnosticPhaseSnapshot[];
   activeWorkLabels?: string[];
   waitingWorkLabels?: string[];
   queuedWorkLabels?: string[];
-  continuationQueue?: DiagnosticContinuationQueueMetrics;
+  continuationQueue?: Liveness.DiagnosticContinuationQueueMetrics;
 };
 
 export type DiagnosticPhaseCompletedEvent = DiagnosticBaseEvent &
-  DiagnosticPhaseSnapshot & {
+  Liveness.DiagnosticPhaseSnapshot & {
     type: "diagnostic.phase.completed";
   };
 
@@ -1512,7 +1454,7 @@ export function createQueuedDiagnosticPhaseEmitter() {
     return undefined;
   }
   const trace = getActiveDiagnosticTraceContext();
-  return (phase: DiagnosticPhaseSnapshot) => {
+  return (phase: Liveness.DiagnosticPhaseSnapshot) => {
     if (!interested()) {
       return;
     }

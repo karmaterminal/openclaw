@@ -211,10 +211,16 @@ const ownerRoutedUnitTestPatterns = [
   // Split from subagent-registry-queries.test.ts for the max-lines cap; keep it
   // in the parent's agents-support lane.
   "src/agents/subagents/registry/subagent-registry-queries.requester-window.test.ts",
+  // Split from transcript-redact.test.ts for the max-lines cap; keep it in the
+  // parent's agents-core lane.
+  "src/agents/transcript-redact.continuation.test.ts",
   "src/auto-reply/reply/dispatch-from-config.test.ts",
   "src/auto-reply/reply/dispatch-from-config.delivery.test.ts",
   "src/auto-reply/reply/dispatch-from-config.lifecycle.test.ts",
   "src/auto-reply/reply/dispatch-from-config.tts-stream.test.ts",
+  // Split from reply-utils.test.ts for the max-lines cap; keep it in the
+  // parent's lane.
+  "src/auto-reply/reply/reply-utils.continuation.test.ts",
 ];
 const broadUnitFastCandidateSkipPatterns = prepareGlobPatterns(
   [

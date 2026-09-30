@@ -30,7 +30,6 @@ import {
 import { MESSAGE_TOOL_ONLY_DELIVERY_HINT } from "../../plugin-sdk/message-tool-delivery-hints.js";
 import { beginSessionWorkAdmission } from "../../sessions/session-lifecycle-admission.js";
 import { prepareSessionParticipantInput } from "../../sessions/session-participant-input.js";
-import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
 import { hasControlCommand } from "../command-detection.js";
 import { runReplyAgent } from "./agent-runner.runtime.js";
@@ -44,6 +43,7 @@ import {
 } from "./get-reply-run-helpers.js";
 import { registerPreparedReplyCwdCases } from "./get-reply-run.cwd.cases.js";
 import { runPreparedReply } from "./get-reply-run.js";
+import { registerMediaOnlyContinuationCases } from "./get-reply-run.media-only.continuation.test-support.js";
 import { registerPendingRequesterAuthorityCases } from "./get-reply-run.requester-authority.test-support.js";
 import {
   baseParams,
@@ -68,7 +68,6 @@ import { REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS, createReplyOperation } from "./reply-
 import { getActiveReplyRunCount } from "./reply-run-registry.registry.js";
 import { testing as replyRunTesting } from "./reply-run-registry.test-support.js";
 import { routeReply } from "./route-reply.runtime.js";
-import type { PreparedFormattedSystemEvents } from "./session-system-event-adoption.js";
 import {
   drainFormattedSystemEvents,
   prepareFormattedSystemEvents,
@@ -248,33 +247,9 @@ vi.mock("../../config/sessions/paths.js", () => ({
   resolveSessionStorePathCore: vi.fn().mockReturnValue("/tmp/sessions.json"),
 }));
 
-const sessionSystemEventsMocks = vi.hoisted(() => {
-  const drainFormattedSystemEventsMock = vi.fn(
-    async (_params: unknown): Promise<string | undefined> => undefined,
-  );
-  const state: {
-    prepared?: PreparedFormattedSystemEvents;
-    preparedQueue: PreparedFormattedSystemEvents[];
-  } = { preparedQueue: [] };
-  return {
-    state,
-    drainFormattedSystemEvents: drainFormattedSystemEventsMock,
-    prepareFormattedSystemEvents: vi.fn(async (params: unknown) => {
-      const queued = state.preparedQueue.shift();
-      if (queued) {
-        return queued;
-      }
-      if (state.prepared) {
-        return state.prepared;
-      }
-      const text = await drainFormattedSystemEventsMock(params);
-      return {
-        blocks: text ? [{ text }] : [],
-        managedDeliveries: [],
-      };
-    }),
-  };
-});
+// Continuation adoption mocks load in the hoisted phase, before any static dependency.
+const { recipientAuthorityCurrentMock, resetContinuationMocks, sessionSystemEventsMocks } =
+  await vi.hoisted(() => import("./get-reply-run.media-only.system-events.test-support.js"));
 const loadSessionEntryMock = vi.hoisted(() => vi.fn());
 vi.mock("../../gateway/session-sharing-preparation.js", async (importOriginal) => {
   const actual =
@@ -308,7 +283,6 @@ vi.mock("../../gateway/session-sharing-preparation.js", async (importOriginal) =
   };
 });
 const updateAmbientTranscriptWatermarkMock = vi.hoisted(() => vi.fn().mockResolvedValue(null));
-const recipientAuthorityCurrentMock = vi.hoisted(() => vi.fn(() => true));
 
 vi.mock("../../config/sessions/session-accessor.js", () => ({
   isSessionRecipientAuthorityCurrent: recipientAuthorityCurrentMock,
@@ -352,10 +326,6 @@ vi.mock("../command-detection.js", () => ({
 vi.mock("./agent-runner.runtime.js", () => ({
   runReplyAgent: vi.fn().mockResolvedValue({ text: "ok" }),
   cancelContinuationTimer: vi.fn(),
-}));
-
-vi.mock("../continuation/context-pressure.js", () => ({
-  checkContextPressure: vi.fn().mockReturnValue({ fired: false, band: 0 }),
 }));
 
 const resolveCurrentTurnImagesMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
@@ -648,24 +618,7 @@ describe("runPreparedReply media-only handling", () => {
     loadSessionEntryMock.mockReset();
     updateAmbientTranscriptWatermarkMock.mockClear();
     vi.clearAllMocks();
-    sessionSystemEventsMocks.state.prepared = undefined;
-    sessionSystemEventsMocks.state.preparedQueue.length = 0;
-    sessionSystemEventsMocks.drainFormattedSystemEvents.mockResolvedValue(undefined);
-    vi.mocked(prepareFormattedSystemEvents).mockImplementation(async (params: unknown) => {
-      const queued = sessionSystemEventsMocks.state.preparedQueue.shift();
-      if (queued) {
-        return queued;
-      }
-      if (sessionSystemEventsMocks.state.prepared) {
-        return sessionSystemEventsMocks.state.prepared;
-      }
-      const text = await sessionSystemEventsMocks.drainFormattedSystemEvents(params);
-      return {
-        blocks: text ? [{ text }] : [],
-        managedDeliveries: [],
-      };
-    });
-    recipientAuthorityCurrentMock.mockReturnValue(true);
+    resetContinuationMocks();
     vi.mocked(buildDirectChatContext).mockReturnValue("");
     vi.mocked(buildGroupIntro).mockReturnValue("");
     vi.mocked(buildGroupChatContext).mockReturnValue("");
@@ -682,210 +635,7 @@ describe("runPreparedReply media-only handling", () => {
     expect(preparedReplyMockState.unexpectedCalls).toEqual([]);
   });
 
-  it("defers managed events when a supplied recorder is already durable", async () => {
-    sessionSystemEventsMocks.state.prepared = {
-      blocks: [
-        {
-          key: "session-delivery:delivery-1",
-          text: "System: managed delegate artifact",
-        },
-      ],
-      managedDeliveries: [{ id: "delivery-1", acknowledge: vi.fn().mockResolvedValue(undefined) }],
-    };
-    const recorder = createUserTurnTranscriptRecorder({
-      input: { text: "retry" },
-      target: {
-        sessionId: "session-id",
-        sessionKey: "session-key",
-        sessionEntry: undefined,
-        agentId: "default",
-      },
-    });
-    recorder.markRuntimePersisted({ role: "user", content: "retry", timestamp: Date.now() });
-
-    await runPreparedReply(
-      baseParams({
-        ctx: {
-          Body: "retry",
-          RawBody: "retry",
-          CommandBody: "retry",
-          OriginatingChannel: "slack",
-          OriginatingTo: "C123",
-          ChatType: "group",
-        },
-        opts: { userTurnTranscriptRecorder: recorder },
-      }),
-    );
-
-    expect(requireRunReplyAgentCall().followupRun.prompt).not.toContain(
-      "managed delegate artifact",
-    );
-    expect(requireRunReplyAgentCall().opts?.turnAdoptionLifecycle).toBeUndefined();
-  });
-
-  it("defers managed events when a supplied recorder cannot replace delivery receipts", async () => {
-    sessionSystemEventsMocks.state.prepared = {
-      blocks: [
-        {
-          key: "session-delivery:delivery-1",
-          text: "System: managed delegate artifact",
-        },
-      ],
-      managedDeliveries: [{ id: "delivery-1", acknowledge: vi.fn().mockResolvedValue(undefined) }],
-    };
-    const recorder = createUserTurnTranscriptRecorder({
-      input: { text: "retry" },
-      target: {
-        sessionId: "session-id",
-        sessionKey: "session-key",
-        sessionEntry: undefined,
-        agentId: "default",
-      },
-    });
-    Reflect.deleteProperty(recorder, "replaceSessionDeliveryAckIds");
-
-    await runPreparedReply(
-      baseParams({
-        ctx: {
-          Body: "retry",
-          RawBody: "retry",
-          CommandBody: "retry",
-          OriginatingChannel: "slack",
-          OriginatingTo: "C123",
-          ChatType: "group",
-        },
-        opts: { userTurnTranscriptRecorder: recorder },
-      }),
-    );
-
-    expect(requireRunReplyAgentCall().followupRun.prompt).not.toContain(
-      "managed delegate artifact",
-    );
-    expect(requireRunReplyAgentCall().opts?.turnAdoptionLifecycle).toBeUndefined();
-  });
-
-  it("removes an authority-bound event revoked during current-turn image resolution", async () => {
-    const recipientAuthority = {
-      state: "bound" as const,
-      epoch: "11111111-1111-4111-8111-111111111111",
-    };
-    const authorityOwner = {
-      scope: {
-        agentId: "default",
-        sessionKey: "session-key",
-        storePath: "/tmp/sessions.json",
-      },
-      pending: new Map([
-        [
-          "event-stale",
-          {
-            authority: recipientAuthority,
-            event: {
-              id: "event-stale",
-              text: "stale delegate result",
-              ts: 1,
-              recipientAuthority,
-            },
-          },
-        ],
-      ]),
-    } satisfies NonNullable<PreparedFormattedSystemEvents["authorityOwner"]>;
-    sessionSystemEventsMocks.state.prepared = {
-      blocks: [
-        {
-          key: "session-delivery:delivery-stale",
-          text: "System: stale delegate result",
-          authorityKey: "event-stale",
-        },
-        { text: "System: unbound sibling event" },
-        {
-          key: "session-delivery:delivery-managed",
-          text: "System: managed artifact event",
-        },
-      ],
-      managedDeliveries: [
-        {
-          id: "delivery-stale",
-          acknowledge: vi.fn().mockResolvedValue(undefined),
-          authorityKey: "event-stale",
-        },
-        {
-          id: "delivery-managed",
-          acknowledge: vi.fn().mockResolvedValue(undefined),
-        },
-      ],
-      authorityOwner,
-    };
-    resolveCurrentTurnImagesMock.mockImplementationOnce(async () => {
-      recipientAuthorityCurrentMock.mockReturnValue(false);
-      return {};
-    });
-
-    await runPrepared();
-
-    const call = requireRunReplyAgentCall();
-    expect(call.followupRun.currentInboundContext?.text).not.toContain("stale delegate result");
-    expect(call.followupRun.currentInboundContext?.text).toContain("unbound sibling event");
-    expect(call.followupRun.currentInboundContext?.text).toContain("managed artifact event");
-    expect(call.followupRun.userTurnTranscriptRecorder?.message).toMatchObject({
-      __openclaw: { sessionDeliveryAckIds: ["delivery-managed"] },
-    });
-    expect(authorityOwner.pending.size).toBe(0);
-  });
-
-  it("preserves an authority-bound event through final prompt adoption while it remains current", async () => {
-    const recipientAuthority = {
-      state: "bound" as const,
-      epoch: "11111111-1111-4111-8111-111111111111",
-    };
-    const authorityOwner = {
-      scope: {
-        agentId: "default",
-        sessionKey: "session-key",
-        storePath: "/tmp/sessions.json",
-      },
-      pending: new Map([
-        [
-          "event-current",
-          {
-            authority: recipientAuthority,
-            event: {
-              id: "event-current",
-              text: "accepted delegate result",
-              ts: 1,
-              recipientAuthority,
-            },
-          },
-        ],
-      ]),
-    } satisfies NonNullable<PreparedFormattedSystemEvents["authorityOwner"]>;
-    sessionSystemEventsMocks.state.prepared = {
-      blocks: [
-        {
-          key: "session-delivery:delivery-current",
-          text: "System: accepted delegate result",
-          authorityKey: "event-current",
-        },
-      ],
-      managedDeliveries: [
-        {
-          id: "delivery-current",
-          acknowledge: vi.fn().mockResolvedValue(undefined),
-          authorityKey: "event-current",
-        },
-      ],
-      authorityOwner,
-    };
-
-    await runPrepared();
-
-    const call = requireRunReplyAgentCall();
-    expect(call.followupRun.currentInboundContext?.text).toContain("accepted delegate result");
-    expect(call.followupRun.userTurnTranscriptRecorder?.message).toMatchObject({
-      __openclaw: { sessionDeliveryAckIds: ["delivery-current"] },
-    });
-    expect(authorityOwner.pending.size).toBe(1);
-  });
+  registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock);
 
   it("passes approved elevated defaults to the runner", async () => {
     await runPrepared({
@@ -4978,74 +4728,6 @@ describe("runPreparedReply media-only handling", () => {
       suppressTyping?: boolean;
     };
     expect(call?.suppressTyping).toBe(true);
-  });
-
-  it("marks delegate-return turns as continuation wakes and clears delegate-pending state", async () => {
-    await runPreparedReply(
-      baseParams({
-        opts: {
-          continuationTrigger: "delegate-return",
-        },
-      }),
-    );
-
-    const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
-    expect(call?.isContinuationWake).toBe(true);
-  });
-
-  it("marks work-wake turns as continuation wakes without clearing delegate-pending state", async () => {
-    await runPreparedReply(
-      baseParams({
-        opts: {
-          continuationTrigger: "work-wake",
-        },
-      }),
-    );
-
-    const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
-    expect(call?.isContinuationWake).toBe(true);
-  });
-
-  it("leaves ordinary turns unmarked as continuation wakes", async () => {
-    await runPreparedReply(baseParams());
-
-    const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
-    expect(call?.isContinuationWake).toBe(false);
-  });
-
-  it("leaves ordinary subagent-return turns unmarked as continuation wakes (chain-budget reset)", async () => {
-    // An ordinary inter-session subagent completion is NOT a mid-chain wake. It
-    // must NOT set isContinuationWake, otherwise the agent-runner chain-budget
-    // reset gate is skipped and a stale chain count rejects every fresh
-    // continuation elected from the subagent return (the doom-lock hole).
-    await runPreparedReply(
-      baseParams({
-        opts: {
-          continuationTrigger: "subagent-return",
-        },
-      }),
-    );
-
-    const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
-    expect(call?.isContinuationWake).toBe(false);
-  });
-
-  it("routes queued system events as conversation data without changing system context", async () => {
-    vi.mocked(drainFormattedSystemEvents).mockResolvedValueOnce("System: [t] Model switched.");
-
-    await runPrepared();
-
-    const call = requireRunReplyAgentCall();
-    const context = call.followupRun.currentInboundContext;
-    expect(context?.text).toContain("System: [t] Model switched.");
-    expect(context?.fragments).toContainEqual({
-      kind: "conversation-data",
-      text: "System: [t] Model switched.",
-    });
-    expect(call.commandBody).toBe("[User sent media without caption]");
-    expect(call.followupRun.prompt).toBe("[User sent media without caption]");
-    expect(call.transcriptCommandBody).not.toContain("System: [t] Model switched.");
-    expect(call.followupRun.run.extraSystemPrompt ?? "").not.toContain("Runtime System Events");
   });
 
   it.each(["live", "replaced", "absent"] as const)(

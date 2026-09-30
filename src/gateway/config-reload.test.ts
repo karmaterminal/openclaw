@@ -497,31 +497,6 @@ describe("buildGatewayReloadPlan", () => {
     expect(isNoopGatewayReloadPlan(plan)).toBe(false);
   });
 
-  it.each([
-    "agents.defaults",
-    "agents.defaults.compaction",
-    "tools",
-    "tools.deny",
-    "agents.defaults.continuation.maxDelegatesPerTurn",
-  ])("refreshes prepared model runtime policy without restarting subsystems: %s", (path) => {
-    const plan = buildGatewayReloadPlan([path]);
-
-    expect(plan).toMatchObject({
-      restartGateway: false,
-      restartReasons: [],
-      hotReasons: [path],
-      noopPaths: [],
-      restartHeartbeat: false,
-      restartCron: false,
-      reloadHooks: false,
-      reloadPlugins: false,
-      disposeMcpRuntimes: false,
-      restartChannels: new Set(),
-      restartChannelAccounts: new Map(),
-    });
-    expect(resolveConfigReloadMetadata(path).kind).toBe("hot");
-  });
-
   it("treats plugin install timestamp-only changes as no-ops", () => {
     const paths = [
       "plugins.installs.lossless-claw.resolvedAt",

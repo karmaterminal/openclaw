@@ -29,13 +29,11 @@ import { resetRegisteredAgentHarnessSessions } from "../agents/harness/registry.
 import { acquireAgentRuntimeCleanupRegistries } from "../agents/prepared-model-runtime.js";
 import { resolveSessionModelRef } from "../agents/session-model-ref.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
-import { SessionContinuationResetError } from "../auto-reply/continuation/session-reset.js";
 import {
   buildSessionEndHookPayload,
   buildSessionStartHookPayload,
 } from "../auto-reply/reply/session-hooks.js";
 import {
-  clearSessionResetRuntimeState,
   createSessionResetCleanupGuard,
   SessionResetCleanupError,
   stopSessionResetSubagents,
@@ -124,6 +122,7 @@ import {
 } from "./session-reset-acp.js";
 import { deleteIncognitoSessionForReset } from "./session-reset-incognito.js";
 import { notifyGatewaySessionReset } from "./session-reset-notifications.js";
+import { clearSessionScopeRuntimeState } from "./session-reset-runtime-state.js";
 import { readGatewayBeforeResetPluginHookMessages } from "./session-reset-transcript.js";
 import {
   resolveStableSessionEndTranscript,
@@ -408,28 +407,12 @@ async function ensureSessionRuntimeCleanup(params: {
   // Parent admissions are already drained. Reject stale or incomplete child cleanup
   // before discarding queues or interrupting a newly accepted reply operation.
   assertCurrent();
-  const queueKeys = new Set<string>(params.target.storeKeys);
-  queueKeys.add(params.target.canonicalKey);
-  if (params.sessionId) {
-    queueKeys.add(params.sessionId);
-  }
-  // Process scopes may use the requested alias, canonical key, or session id.
-  // Clear only completed records so reset/delete cannot erase another scope's
-  // output or hide a background process whose owner has not confirmed exit.
-  const processScopeKeys = new Set(queueKeys);
-  processScopeKeys.add(params.key);
-  clearFinishedSessionsForScopes(processScopeKeys);
-  try {
-    await clearSessionResetRuntimeState([...queueKeys], {
-      activeReplySessionId: params.sessionId,
-      agentId: resolveLifecycleAgentId(params.cfg, params.target.agentId),
-      reason: params.reason,
-    });
-  } catch (error) {
-    if (error instanceof SessionContinuationResetError) {
-      return errorShape(ErrorCodes.UNAVAILABLE, error.message);
-    }
-    throw error;
+  const runtimeStateError = await clearSessionScopeRuntimeState(params, {
+    agentId: resolveLifecycleAgentId(params.cfg, params.target.agentId),
+    clearFinishedSessionsForScopes,
+  });
+  if (runtimeStateError) {
+    return runtimeStateError;
   }
   if (!params.sessionId) {
     assertCurrent();

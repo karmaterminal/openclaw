@@ -32,6 +32,7 @@ import {
   readCodexPluginConfig,
   type CodexPluginConfig,
 } from "./config.js";
+import { resolveCodexScheduledWorkToolOptions } from "./dynamic-tool-build-scheduled-work.js";
 import {
   filterCodexDynamicTools,
   filterCodexDynamicToolsForDisabledNativeSurface,
@@ -338,13 +339,7 @@ export async function buildDynamicTools(
     onToolOutcome: params.onToolOutcome,
     isTurnTainted: params.isTurnTainted,
     allocateToolOutcomeOrdinal: params.allocateToolOutcomeOrdinal,
-    cronCreatorToolAllowlistRef: input.cronCreatorToolAllowlistRef,
-    cronCreatorToolAllowlistCaptureRef: input.cronCreatorToolAllowlistCaptureRef,
-    cronCreatorAuthorityUnavailableReason: input.cronCreatorAuthorityUnavailableReason,
-    drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,
-    continueWorkOpts: params.continueWorkOpts,
-    requestCompactionOpts: params.requestCompactionOpts,
-    disableContinuationTools: input.disableContinuationTools,
+    ...resolveCodexScheduledWorkToolOptions(params, input),
   };
 
   input.onMessageToolTargetResolved?.(options.requireExplicitMessageTarget === true);

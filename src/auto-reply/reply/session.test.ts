@@ -60,14 +60,7 @@ import {
 } from "../../test-utils/channel-plugins.js";
 import { withEnvAsync } from "../../test-utils/env.js";
 import { createSessionConversationTestRegistry } from "../../test-utils/session-conversation-registry.js";
-import {
-  readCustodyRecordForTest,
-  useContinuationCustodyTestState,
-} from "../continuation/custody/custody.test-support.js";
-import { consumePendingDelegates, enqueuePendingDelegate } from "../continuation/delegate-store.js";
-import type { PendingContinuationWork } from "../continuation/work-flow-state.js";
-import { enqueuePendingWorkReplacing } from "../continuation/work-replacement-store.js";
-import { consumePendingWork } from "../continuation/work-store.js";
+import { useContinuationCustodyTestState } from "../continuation/custody/custody.test-support.js";
 import { buildCommandContext } from "./commands-context.js";
 import { maybeHandleResetCommand } from "./commands-reset.js";
 import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
@@ -154,21 +147,6 @@ async function makeStorePath(prefix: string, agentId?: string): Promise<string> 
   const root = await makeCaseDir(prefix);
   const sessionsDir = agentId ? path.join(root, "agents", agentId, "sessions") : root;
   return path.join(sessionsDir, "sessions.json");
-}
-
-// Seed queued work through the real custody election path.
-async function enqueuePendingWork(work: PendingContinuationWork): Promise<PendingContinuationWork> {
-  const result = await enqueuePendingWorkReplacing({
-    work,
-    summary: "seeded session test work",
-    maxPendingWork: Number.MAX_SAFE_INTEGER,
-    replaceParkedWork: false,
-    expectedRunningFlowIds: [],
-  });
-  if (!result.applied) {
-    throw new Error("expected seeded continuation work to be elected");
-  }
-  return result.work;
 }
 
 function telegramTurn(sessionKey: string, body: string, from: string) {
@@ -606,72 +584,6 @@ describe("initSessionState guarded initialization", () => {
       }
     },
   );
-
-  it("retries retained cancellation through a repeated committed reset", async () => {
-    const storePath = await makeStorePath("openclaw-session-init-reset-cancel-failure-");
-    const sessionKey = "agent:main:matrix:channel:cancel-failure";
-    const sessionId = "committed-reset-session";
-    await writeSessionStoreFast(storePath, {
-      [sessionKey]: {
-        sessionId,
-        updatedAt: Date.now(),
-        mainRestartRecovery: {
-          cycleId: "cycle-1",
-          revision: 4,
-          chargedAttempts: 3,
-          tombstone: { reason: "automatic recovery exhausted" },
-        },
-      },
-    });
-    let cancellationAttempts = 0;
-    const cancel = vi.fn(() => {
-      cancellationAttempts += 1;
-      if (cancellationAttempts <= 3) {
-        throw new Error("backend cancellation failed");
-      }
-    });
-    const activeReply = createReplyOperation({
-      sessionKey,
-      sessionId,
-      resetTriggered: false,
-    });
-    activeReply.attachBackend({ kind: "embedded", cancel, isStreaming: () => false });
-    activeReply.setPhase("running");
-    const createResetParams = () => ({
-      ctx: {
-        Body: "/new",
-        RawBody: "/new",
-        CommandBody: "/new",
-        From: "@owner:example.test",
-        To: "!cancel-failure:example.test",
-        ChatType: "channel",
-        SessionKey: sessionKey,
-        Provider: "matrix",
-        Surface: "matrix",
-      },
-      cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
-      commandAuthorized: true,
-    });
-
-    try {
-      await expect(initSessionState(createResetParams())).rejects.toThrow(
-        "Reply backend cancellation failed after 3 attempts",
-      );
-
-      expect(loadSessionEntry({ storePath, sessionKey })?.mainRestartRecovery).toBeUndefined();
-      expect(cancel).toHaveBeenCalledWith("restart");
-      expect(cancel).toHaveBeenCalledTimes(3);
-      expect(replyRunRegistry.isActive(sessionKey)).toBe(true);
-
-      await expect(initSessionState(createResetParams())).rejects.toThrow(
-        "reply session initialization conflicted",
-      );
-      expect(cancel).toHaveBeenCalledTimes(4);
-      expect(replyRunRegistry.isActive(sessionKey)).toBe(false);
-    } finally {
-      activeReply.complete();
-    }
-  });
 });
 
 describe("initSessionState thread forking", () => {
@@ -2125,54 +2037,6 @@ describe("initSessionState reset policy", () => {
     expect(result.isNewSession).toBe(scenario.expectedNew);
     expect(result.sessionId).toBe(existingSessionId);
   });
-
-  it.each([
-    {
-      name: "idle",
-      now: new Date(2026, 0, 18, 5, 30, 0),
-      updatedAt: new Date(2026, 0, 18, 4, 45, 0).getTime(),
-      reset: { mode: "idle" as const, idleMinutes: 30 },
-    },
-    {
-      name: "daily",
-      now: new Date(2026, 0, 18, 5, 0, 0),
-      updatedAt: new Date(2026, 0, 18, 3, 0, 0).getTime(),
-      reset: { mode: "daily" as const, atHour: 4 },
-    },
-  ])("preserves durable continuation claims across implicit $name rollover", async (scenario) => {
-    vi.setSystemTime(scenario.now);
-    const storePath = await makeStorePath(`openclaw-reset-${scenario.name}-continuation-`);
-    const sessionKey = `agent:main:whatsapp:dm:${scenario.name}-continuation`;
-    await writeSessionStoreFast(storePath, {
-      [sessionKey]: {
-        sessionId: `${scenario.name}-continuation-session`,
-        updatedAt: scenario.updatedAt,
-      },
-    });
-    await enqueuePendingWork({
-      sessionKey,
-      hop: 1,
-      delayMs: 0,
-      electedAt: Date.now(),
-      dueAt: Date.now(),
-      maxChainLength: 8,
-    });
-    await enqueuePendingDelegate(sessionKey, {
-      task: `continue after ${scenario.name} rollover`,
-      delayMs: 0,
-    });
-
-    const result = await initSessionState({
-      ctx: { Body: "hello", SessionKey: sessionKey },
-      cfg: { session: { store: storePath, reset: scenario.reset } } as OpenClawConfig,
-    });
-
-    expect(result.isNewSession).toBe(true);
-    expect(result.resetTriggered).toBe(false);
-    expect(await consumePendingWork(sessionKey)).toHaveLength(1);
-    expect(await consumePendingDelegates(sessionKey)).toHaveLength(1);
-  });
-
   it("drains stale system events when idle rollover creates a new session", async () => {
     vi.setSystemTime(new Date(2026, 0, 18, 5, 30, 0));
     const root = await makeCaseDir("openclaw-reset-idle-system-events-");
@@ -2392,47 +2256,6 @@ describe("initSessionState reset policy", () => {
 
 describe("initSessionState browser tab cleanup", () => {
   useContinuationCustodyTestState();
-  it("cancels durable continuation work and delegates on inline reset", async () => {
-    const storePath = await makeStorePath("openclaw-inline-reset-continuation-");
-    const sessionKey = "agent:main:telegram:dm:inline-reset-continuation";
-    const existingSessionId = "inline-reset-continuation-session";
-    await writeSessionStoreFast(storePath, {
-      [sessionKey]: {
-        sessionId: existingSessionId,
-        updatedAt: Date.now(),
-      },
-    });
-    const work = await enqueuePendingWork({
-      sessionKey,
-      hop: 1,
-      delayMs: 60_000,
-      electedAt: Date.now(),
-      dueAt: Date.now() + 60_000,
-      maxChainLength: 8,
-    });
-    const delegate = await enqueuePendingDelegate(sessionKey, {
-      task: "delegate after inline reset",
-      delayMs: 60_000,
-    });
-    if (!work.flowId) {
-      throw new Error("expected durable continuation records");
-    }
-
-    const result = await initSessionState({
-      ctx: {
-        Body: "/new",
-        RawBody: "/new",
-        CommandBody: "/new",
-        SessionKey: sessionKey,
-      },
-      cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
-    });
-
-    expect(result.isNewSession).toBe(true);
-    expect((await readCustodyRecordForTest(work.flowId))?.status).toBe("cancelled");
-    expect((await readCustodyRecordForTest(delegate.recordId))?.status).toBe("cancelled");
-  });
-
   it("includes the peer-scoped runtime key for direct-message cleanup", async () => {
     const storePath = await makeStorePath("openclaw-tab-cleanup-peer-key-");
     const canonicalKey = "agent:main:main";
@@ -2851,46 +2674,6 @@ describe("initSessionState preserves behavior overrides across /new and /reset",
         codex: { threadId: "codex-thread-expiry" },
       },
     });
-  });
-
-  it("preserves behavior overrides across /new and /reset", async () => {
-    const storePath = await makeStorePath("openclaw-reset-overrides-");
-    const sessionKey = "agent:main:telegram:dm:user-overrides";
-    const existingSessionId = "existing-session-overrides";
-    const overrides = {
-      verboseLevel: "on",
-      thinkingLevel: "high",
-      reasoningLevel: "low",
-      label: "telegram-priority",
-      lastContextPressureBand: 95,
-      pendingPostCompactionDelegates: [{ task: "carry notes", createdAt: 1 }],
-    } as const;
-    const cases = await runExplicitResetCases({
-      storePath,
-      sessionKey,
-      sessionId: existingSessionId,
-      entry: overrides,
-    });
-
-    for (const { name, result } of cases) {
-      expect(result.isNewSession, name).toBe(true);
-      expect(result.resetTriggered, name).toBe(true);
-      expect(result.sessionId, name).toBe(existingSessionId);
-      expectEntryFields(
-        result.sessionEntry,
-        {
-          verboseLevel: overrides.verboseLevel,
-          thinkingLevel: overrides.thinkingLevel,
-          reasoningLevel: overrides.reasoningLevel,
-          label: overrides.label,
-        },
-        name,
-      );
-      // Reset keeps durable transcript identity upstream, while continuation
-      // telemetry and queued post-compaction work must not leak into the new turn.
-      expect(result.sessionEntry.lastContextPressureBand, name).toBeUndefined();
-      expect(result.sessionEntry.pendingPostCompactionDelegates, name).toBeUndefined();
-    }
   });
 
   it.each([

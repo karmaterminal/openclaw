@@ -29,7 +29,7 @@ import {
   messageProviderExcludesTool,
 } from "./agent-tools.message-provider-policy.js";
 import { applyModelProviderToolPolicy } from "./agent-tools.model-provider-policy.js";
-import type { OpenClawCodingToolsOptions } from "./agent-tools.options.js";
+import { type OpenClawCodingToolsOptions, withContinuationOpts } from "./agent-tools.options.js";
 import {
   getActiveAgentRingZeroTools,
   mergeAgentRingZeroTools,
@@ -97,7 +97,6 @@ export function createOpenClawCodingToolsInternal(
 ): AnyAgentTool[] {
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
   const isMemoryFlushRun = options?.trigger === "memory";
-  const disableContinuationTools = options?.disableContinuationTools === true || isMemoryFlushRun;
   if (isMemoryFlushRun && !options?.memoryFlushWritePath) {
     throw new Error("memoryFlushWritePath required for memory-triggered tool runs");
   }
@@ -517,7 +516,7 @@ export function createOpenClawCodingToolsInternal(
       ? mergeAgentRingZeroTools(
           ringZeroTools,
           createOpenClawTools({
-            ...pluginToolOptions,
+            ...withContinuationOpts(options, pluginToolOptions),
             sessionPortalTarget,
             ...(options?.systemAgentTool ? { systemAgentTool: options.systemAgentTool } : {}),
             ...(options?.questionPrompt ? { questionPrompt: options.questionPrompt } : {}),
@@ -604,10 +603,6 @@ export function createOpenClawCodingToolsInternal(
             onYield: options?.onYield,
             claimYieldCompletion: options?.claimYieldCompletion,
             processScopeKey: scopeKey,
-            drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
-            disableContinuationTools,
-            continueWorkOpts: options?.continueWorkOpts,
-            requestCompactionOpts: options?.requestCompactionOpts,
             recordToolPrepStage: options?.recordToolPrepStage,
           }),
         )

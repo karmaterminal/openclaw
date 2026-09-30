@@ -38,6 +38,7 @@ import {
   peekSystemEventEntries,
 } from "../infra/system-events.js";
 import type { McpLoopbackRequestContext } from "./mcp-grant-store.js";
+import { LOOPBACK_EXCLUDED_TOOL_NAMES } from "./mcp-http.loopback-exclusions.test-support.js";
 import { buildMcpToolSchema } from "./mcp-http.schema.js";
 import type { resolveGatewayScopedTools } from "./tool-resolution.js";
 
@@ -892,19 +893,7 @@ describe("mcp loopback server", () => {
     expect(call.senderIsOwner).toBe(false);
     expect(call.surface).toBe("loopback");
     expect(call.includeNodeExecTool).toBe(false);
-    expect(new Set(call.excludeToolNames)).toEqual(
-      new Set([
-        "read",
-        "write",
-        "edit",
-        "ls",
-        "apply_patch",
-        "exec",
-        "process",
-        "continue_work",
-        "request_compaction",
-      ]),
-    );
+    expect(new Set(call.excludeToolNames)).toEqual(LOOPBACK_EXCLUDED_TOOL_NAMES);
   });
 
   it("binds an attach grant's session owner and ignores ALL spoofed context headers", async () => {

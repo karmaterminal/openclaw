@@ -5,7 +5,7 @@
 import { matchesContextOverflowMessage } from "@openclaw/ai/internal/runtime";
 import { type Mock, vi } from "vitest";
 import type { ThinkLevel } from "../../auto-reply/thinking.js";
-import type { ContextEngine, ContextEngineSessionTarget } from "../../context-engine/types.js";
+import type { ContextEngine } from "../../context-engine/types.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { makeEmptyPluginMetadataOwners } from "../../plugins/current-plugin-metadata.test-support.js";
 import type {
@@ -30,6 +30,7 @@ import { clearAgentHarnesses, registerAgentHarness } from "../harness/registry.j
 import type { AgentHarnessAttemptParams } from "../harness/types.js";
 import type { ResolvedProviderAuth } from "../model-auth-runtime-shared.js";
 import type { AgentRuntimePlan } from "../runtime-plan/types.js";
+import { mockedContextEngine } from "./run.overflow-compaction.context-engine.test-support.js";
 import { makeAttemptResult } from "./run.overflow-compaction.fixture.js";
 import type { RunEmbeddedAgentInternalParams } from "./run/internal-params.js";
 import type { buildEmbeddedRunPayloads } from "./run/payloads.js";
@@ -42,40 +43,6 @@ export type TestRunEmbeddedAgent = (
 
 // Shared Vitest harness for overflow, compaction, failover, and hook tests.
 // Tests import these mocks directly so each scenario can override one seam.
-type MockCompactionResult =
-  | {
-      ok: true;
-      compacted: true;
-      result: {
-        summary: string;
-        firstKeptEntryId?: string;
-        tokensBefore?: number;
-        tokensAfter?: number;
-        sessionId?: string;
-        sessionFile?: string;
-        sessionTarget?: ContextEngineSessionTarget;
-      };
-      reason?: string;
-    }
-  | {
-      ok: false;
-      compacted: false;
-      reason: string;
-      result?: undefined;
-    }
-  | {
-      ok: true;
-      compacted: false;
-      reason: string;
-      result?: undefined;
-    };
-
-type MockContextEngine = {
-  info: { ownsCompaction: boolean };
-  compact: Mock<(params: unknown) => Promise<MockCompactionResult>>;
-  maintain: ContextEngine["maintain"];
-};
-
 type MockResolvedModel = {
   id: string;
   provider: string;
@@ -161,16 +128,6 @@ export const mockedGlobalHookRunner = {
   runAfterCompaction: vi.fn(async () => undefined),
 };
 
-export const mockedContextEngine: MockContextEngine = {
-  info: { ownsCompaction: false as boolean },
-  compact: vi.fn<(params: unknown) => Promise<MockCompactionResult>>(async () => ({
-    ok: false as const,
-    compacted: false as const,
-    reason: "nothing to compact",
-  })),
-  maintain: undefined,
-};
-
 type MockRuntimePlan = Pick<AgentRuntimePlan, "auth"> & {
   observability: Pick<AgentRuntimePlan["observability"], "harnessId">;
 };
@@ -187,6 +144,7 @@ function makeMockRuntimePlan(): MockRuntimePlan {
   };
 }
 
+export { mockedContextEngine };
 export const mockedCompactDirect = mockedContextEngine.compact;
 const mockedResolveContextEngine = vi.fn(async () => mockedContextEngine);
 const mockedResolveContextEngineOwnerPluginId = vi.fn(() => undefined);

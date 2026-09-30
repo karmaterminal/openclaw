@@ -8,7 +8,6 @@ import { gunzipSync } from "node:zlib";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { observeSqliteReadSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
-import { ensureDelegateArtifactsSchema } from "../agents/delegate-artifact-store.js";
 import { resolveCronDeliveryPlan } from "../cron/delivery-plan.js";
 import { saveCronStore } from "../cron/store.js";
 import { loadedCronStoreFromRows, loadCronRows } from "../cron/store/row-codec.js";
@@ -38,7 +37,6 @@ import {
   readConfigMachineState,
   readConfigMachineStateWithMetadata,
 } from "./config-machine-state.js";
-import { DELEGATE_ARTIFACTS_SCHEMA_SQL } from "./delegate-artifacts-schema.js";
 import { stateNativeProcessEntrypoints } from "./native-process-runtime.test-support.js";
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "./openclaw-agent-db-contract.js";
 import { listOpenClawRegisteredAgentDatabases } from "./openclaw-agent-db-registry.js";
@@ -374,48 +372,6 @@ function seedEarlyCommitmentSchema(database: DatabaseSync): void {
     CREATE INDEX idx_commitments_status_due
       ON commitments(status, due_earliest_ms, due_latest_ms);
   `);
-}
-
-function readDelegateArtifactSchemaNames(): { indexes: string[]; tables: string[] } {
-  const { DatabaseSync } = requireNodeSqlite();
-  const database = new DatabaseSync(":memory:");
-  try {
-    database.exec(DELEGATE_ARTIFACTS_SCHEMA_SQL);
-    const rows = database
-      .prepare(
-        `SELECT type, name
-           FROM sqlite_schema
-          WHERE type IN ('table', 'index')
-            AND name NOT LIKE 'sqlite_%'
-          ORDER BY name`,
-      )
-      .all() as Array<{ name: string; type: "index" | "table" }>;
-    return {
-      indexes: rows.filter((row) => row.type === "index").map((row) => row.name),
-      tables: rows.filter((row) => row.type === "table").map((row) => row.name),
-    };
-  } finally {
-    database.close();
-  }
-}
-
-function findSchemaObjectNames(
-  database: DatabaseSync,
-  type: "index" | "table",
-  names: string[],
-): string[] {
-  const placeholders = names.map(() => "?").join(", ");
-  return (
-    database
-      .prepare(
-        `SELECT name
-           FROM sqlite_schema
-          WHERE type = ?
-            AND name IN (${placeholders})
-          ORDER BY name`,
-      )
-      .all(type, ...names) as Array<{ name: string }>
-  ).map((row) => row.name);
 }
 
 function seedLegacySessionWatchCursorSchema(stateDir: string): {
@@ -3537,48 +3493,6 @@ INSERT INTO device_identities VALUES (
     },
   );
 
-  for (const { label, version } of [
-    { label: "a current v17 database", version: 17 },
-    { label: "a v16 database migrating to v17", version: 16 },
-  ] as const) {
-    it(`keeps delegate artifact schema lazy after opening ${label}`, () => {
-      const stateDir = createTempStateDir();
-      const options = { env: { OPENCLAW_STATE_DIR: stateDir } };
-      const databasePath = openOpenClawStateDatabase(options).path;
-      closeOpenClawStateDatabaseForTest();
-
-      const schemaNames = readDelegateArtifactSchemaNames();
-      const { DatabaseSync } = requireNodeSqlite();
-      const preFeature = new DatabaseSync(databasePath);
-      preFeature.exec("PRAGMA foreign_keys = OFF;");
-      for (const tableName of schemaNames.tables) {
-        preFeature.exec(`DROP TABLE IF EXISTS "${tableName}";`);
-      }
-      if (version === 16) {
-        markStateDatabaseVersion(preFeature, 16);
-      }
-      preFeature.close();
-
-      const reopened = openOpenClawStateDatabase(options);
-      expect(readSqliteNumberPragma(reopened.db, "user_version")).toBe(
-        OPENCLAW_STATE_SCHEMA_VERSION,
-      );
-      expect(findSchemaObjectNames(reopened.db, "table", schemaNames.tables)).toEqual([]);
-      expect(findSchemaObjectNames(reopened.db, "index", schemaNames.indexes)).toEqual([]);
-
-      ensureDelegateArtifactsSchema(options);
-      closeOpenClawStateDatabaseForTest();
-      const postEnsure = openOpenClawStateDatabase(options);
-
-      expect(findSchemaObjectNames(postEnsure.db, "table", schemaNames.tables)).toEqual(
-        schemaNames.tables,
-      );
-      expect(findSchemaObjectNames(postEnsure.db, "index", schemaNames.indexes)).toEqual(
-        schemaNames.indexes,
-      );
-    });
-  }
-
   it("rejects an inline unique constraint hidden behind a SQLite autoindex", () => {
     const stateDir = createTempStateDir();
     const options = { env: { OPENCLAW_STATE_DIR: stateDir } };
@@ -4230,102 +4144,6 @@ INSERT INTO device_identities VALUES (
       },
       { env: { OPENCLAW_STATE_DIR: stateDir } },
     );
-  });
-
-  it("preserves orphan delivery payload before Doctor recovery from 2026.7.1-2", () => {
-    const stateDir = createTempStateDir();
-    const databasePath = materializeV2026_7_1_2StateDatabase(stateDir).databasePath;
-    const options = { env: { OPENCLAW_STATE_DIR: stateDir } };
-    const { DatabaseSync } = requireNodeSqlite();
-    const corrupted = new DatabaseSync(databasePath);
-    const payload = '  {"channel":"synthetic","to":"recover-me"}\n\u0000';
-    const timestamp = 9007199254740993n;
-    try {
-      corrupted.exec(
-        "PRAGMA foreign_keys = OFF; PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0;",
-      );
-      corrupted.exec(`INSERT INTO task_runs
-          (task_id,runtime,owner_key,scope_kind,task,status,delivery_status,notify_policy,created_at)
-          VALUES ('healthy-task','subagent','synthetic-owner','session','keep me','completed','delivered','silent',1);
-          INSERT INTO task_delivery_state(task_id) VALUES ('healthy-task');`);
-      const insert = corrupted.prepare(`INSERT INTO task_delivery_state
-          (task_id,requester_origin_json,last_notified_event_at) VALUES (?,?,?)`);
-      for (let index = 0; index < 18; index += 1) {
-        insert.run(`missing-task-${index}`, payload, timestamp);
-      }
-      expect(corrupted.prepare("PRAGMA integrity_check").get()).toEqual({
-        integrity_check: "ok",
-      });
-      expect(corrupted.prepare("PRAGMA foreign_key_check").all()).toHaveLength(18);
-      expect(fs.statSync(`${databasePath}-wal`).size).toBeGreaterThan(0);
-      const failure = /foreign_key_check failed.*task_delivery_state.*references task_runs/iu;
-      expect(() => openOpenClawStateDatabase(options)).toThrow(failure);
-      const checkpointCallback = vi.fn();
-      expect(() =>
-        withOpenClawStateStartupMigrationCheckpointDatabase(checkpointCallback, options),
-      ).toThrow(failure);
-      expect(checkpointCallback).not.toHaveBeenCalled();
-
-      const result = repairOpenClawStateDatabaseSchema(options);
-      expect(result.warnings).toEqual([]);
-      expect(result.changes).toContainEqual(
-        expect.stringContaining("Preserved and recovered 18 orphan task delivery rows"),
-      );
-      const recoveryDirs = fs
-        .readdirSync(path.dirname(databasePath))
-        .filter((name) => name.startsWith("openclaw-task-delivery-recovery-"));
-      expect(recoveryDirs).toHaveLength(1);
-      const recoveryDir = path.join(path.dirname(databasePath), recoveryDirs[0]!);
-      const backup = new DatabaseSync(path.join(recoveryDir, "database.sqlite"), {
-        readOnly: true,
-      });
-      try {
-        expect(backup.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
-        expect(backup.prepare("PRAGMA foreign_key_check").all()).toHaveLength(18);
-        const row = backup.prepare(
-          "SELECT hex(requester_origin_json) AS requester_origin_hex,last_notified_event_at FROM task_delivery_state WHERE task_id = ?",
-        );
-        row.setReadBigInts(true);
-        expect(row.get("missing-task-0")).toEqual({
-          requester_origin_hex: Buffer.from(payload).toString("hex").toUpperCase(),
-          last_notified_event_at: timestamp,
-        });
-      } finally {
-        backup.close();
-      }
-      const exported = fs
-        .readFileSync(path.join(recoveryDir, "orphan-rows.jsonl"), "utf8")
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line));
-      expect(exported).toHaveLength(18);
-      expect(exported[0]).toMatchObject({
-        requester_origin_json: payload,
-        requester_origin_json_base64: Buffer.from(payload).toString("base64"),
-        last_notified_event_at: timestamp.toString(),
-      });
-      const repaired = openOpenClawStateDatabase(options);
-      expect(repaired.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
-      expect(repaired.db.prepare("PRAGMA integrity_check").get()).toEqual({
-        integrity_check: "ok",
-      });
-      expect(repaired.db.prepare("SELECT task_id FROM task_delivery_state").all()).toContainEqual({
-        task_id: "healthy-task",
-      });
-      expect(
-        repaired.db
-          .prepare("SELECT 1 FROM task_delivery_state WHERE task_id LIKE 'missing-task-%'")
-          .all(),
-      ).toEqual([]);
-      expect(repairOpenClawStateDatabaseSchema(options).warnings).toEqual([]);
-      expect(
-        fs
-          .readdirSync(path.dirname(databasePath))
-          .filter((name) => name.startsWith("openclaw-task-delivery-recovery-")),
-      ).toEqual(recoveryDirs);
-    } finally {
-      corrupted.close();
-    }
   });
 
   it.each(["unrelated foreign key", "trigger", "generated column", "foreign role"])(

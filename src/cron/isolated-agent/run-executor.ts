@@ -42,7 +42,7 @@ import {
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import { resolveCronJobConfigRevision } from "../config-revision.js";
 import { assertCronExecutionRootRuntime } from "../execution-root-runtime.js";
-import { resolveCronScheduledToolPolicy } from "../scheduled-tool-policy.js";
+import { resolveCronScheduledToolPolicy, withoutContinuation } from "../scheduled-tool-policy.js";
 import { resolveCronAuthenticatedChannelRequester } from "../tools-allow-provenance.js";
 import type { CronAgentExecutionPhaseUpdate, CronJob } from "../types.js";
 import {
@@ -624,7 +624,7 @@ function createCronPromptExecutor(
         // Embedded runs receive both the explicit route and the current-channel
         // id so message-tool policy can target the same chat as fallback delivery.
         const result = await runEmbeddedAgent({
-          ...buildCommonRunParams(),
+          ...withoutContinuation(buildCommonRunParams()),
           promptCacheKey,
           cleanupBundleMcpOnRunEnd: params.usesDetachedRunSession,
           allowGatewaySubagentBinding: true,
@@ -659,9 +659,6 @@ function createCronPromptExecutor(
           onAgentEvent: params.lifecycle.note,
           disableMessageTool: !sourceDelivery.messageTool.enabled,
           forceMessageTool: sourceDelivery.messageTool.force,
-          // Cron owns its retry lifecycle; same-session continuation dispatch is
-          // an auto-reply turn contract and would strand work from this lane.
-          disableContinuationTools: true,
           allowTransientCooldownProbe: runOptions.allowTransientCooldownProbe,
           assistantErrorTranscript: runOptions.assistantErrorTranscript,
           abortSignal: params.abortSignal,

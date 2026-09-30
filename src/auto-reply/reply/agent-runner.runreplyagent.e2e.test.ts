@@ -65,6 +65,7 @@ import { createReplyAgentRestartRecoveryController } from "./agent-runner-execut
 import { registerReasoningFallbackTests } from "./agent-runner.reasoning-fallback.test-support.js";
 import { registerReplyAdmissionCases } from "./agent-runner.runreplyagent.admission.cases.js";
 import { registerImmediateFailurePolicyCases } from "./agent-runner.runreplyagent.failure-policy.cases.js";
+import { registerHeartbeatProvenanceCases } from "./agent-runner.runreplyagent.heartbeat-provenance.cases.js";
 import { registerRequiredReplyCompletionCases } from "./agent-runner.runreplyagent.required-reply.cases.js";
 import { registerSteeringReceiptCases } from "./agent-runner.runreplyagent.steering-receipts.cases.js";
 import { registerWaitingStatusCases } from "./agent-runner.runreplyagent.waiting-status.cases.js";
@@ -1588,18 +1589,6 @@ describe("runReplyAgent heartbeat followup guard", () => {
     active.complete();
   });
 
-  it("records the operation owned by an admitted heartbeat run", async () => {
-    const runState: ReplyOperationRunState = {};
-    const { run } = createMinimalRun({
-      opts: { isHeartbeat: true, [REPLY_OPERATION_RUN_STATE]: runState },
-    });
-
-    await run();
-
-    expect(runState.admission).toEqual({ status: "owned" });
-    expect(resolveReplyOperationAgentTurn(runState)).toBe("ok");
-  });
-
   it("records a failed heartbeat turn when a visible reply replaces its synthetic failure", async () => {
     const runState: ReplyOperationRunState = {};
     state.runEmbeddedAgentMock.mockResolvedValueOnce({
@@ -1622,19 +1611,7 @@ describe("runReplyAgent heartbeat followup guard", () => {
     expect(resolveReplyOperationAgentTurn(runState)).toBe("failed");
   });
 
-  it.each(["work-wake", "delegate-return", "subagent-return"] as const)(
-    "reports %s continuation provenance to the runner-owned hook path as heartbeat",
-    async (continuationTrigger) => {
-      const { run } = createMinimalRun({
-        opts: { continuationTrigger },
-      });
-
-      await run();
-
-      const [call] = mockCallArgs(state.runEmbeddedAgentMock, "run embedded agent");
-      expect((call as AgentRunParams).trigger).toBe("heartbeat");
-    },
-  );
+  registerHeartbeatProvenanceCases(createMinimalRun, state.runEmbeddedAgentMock);
 
   registerReplyAdmissionCases({
     createMinimalRun,

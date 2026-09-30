@@ -210,6 +210,10 @@ import { resolveCronDeliveryPlan } from "../delivery-plan.js";
 import { withTempCronHome } from "../isolated-agent.test-harness.js";
 import type { CronDelivery } from "../types.js";
 import {
+  makeResolvedDelivery,
+  messageToolOutcome,
+} from "./delivery-dispatch.double-announce.test-support.js";
+import {
   dispatchCronDelivery,
   queueCronMessageToolDeliveryAwareness,
 } from "./delivery-dispatch.js";
@@ -221,41 +225,9 @@ import {
   waitForDescendantSubagentSummary,
 } from "./subagent-followup.runtime.js";
 
-type SourceOutcome = Parameters<typeof dispatchCronDelivery>[0]["sourceDeliveryOutcome"];
-function messageToolOutcome(
-  targets: SourceOutcome["visibleDeliveries"][number]["target"][],
-  verified = true,
-): SourceOutcome {
-  return {
-    visibleDeliveries: targets.map((target) => ({
-      via: "message_tool",
-      target,
-      verifiedTarget: verified,
-    })),
-    verifiedMessageToolDelivery: verified,
-    satisfiesSourceDelivery: verified,
-    unverifiedMessageToolDelivery: !verified,
-  };
-}
-
-type SuccessfulDeliveryResolution = Extract<DeliveryTargetResolution, { ok: true }>;
 type ResolvedOutboundSessionRoute = NonNullable<
   Awaited<ReturnType<typeof resolveOutboundSessionRoute>>
 >;
-
-function makeResolvedDelivery(
-  overrides: Partial<SuccessfulDeliveryResolution> = {},
-): SuccessfulDeliveryResolution {
-  return {
-    ok: true,
-    channel: "telegram",
-    to: "123456",
-    accountId: undefined,
-    threadId: undefined,
-    mode: "explicit",
-    ...overrides,
-  };
-}
 
 function makeBaseParams(overrides: {
   synthesizedText?: string;

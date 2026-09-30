@@ -1385,7 +1385,7 @@ src/agents/embedded-agent-messaging.ts	1
 src/agents/embedded-agent-runner/cache-ttl.ts	2
 src/agents/embedded-agent-runner/cli-backend-dispatch-transcript.ts	1
 src/agents/embedded-agent-runner/cli-backend-dispatch.ts	1
-src/agents/embedded-agent-runner/compact.hooks.harness.ts	7
+src/agents/embedded-agent-runner/compact.hooks.harness.ts	6
 src/agents/embedded-agent-runner/compaction-diagnostics.ts	5
 src/agents/embedded-agent-runner/context-engine-maintenance.ts	3
 src/agents/embedded-agent-runner/delivery-evidence.ts	1
@@ -1404,7 +1404,7 @@ src/agents/embedded-agent-runner/openrouter-model-capabilities.ts	2
 src/agents/embedded-agent-runner/prompt-cache-observability.ts	2
 src/agents/embedded-agent-runner/replay-history.ts	20
 src/agents/embedded-agent-runner/run-entry.ts	2
-src/agents/embedded-agent-runner/run.overflow-compaction.harness.ts	4
+src/agents/embedded-agent-runner/run.overflow-compaction.harness.ts	3
 src/agents/embedded-agent-runner/run/attempt-before-agent-run.ts	2
 src/agents/embedded-agent-runner/run/attempt-client-tools.ts	2
 src/agents/embedded-agent-runner/run/attempt-context-summary.ts	2

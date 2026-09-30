@@ -109,7 +109,6 @@ import {
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import { resolveCommandTurnTargetSessionKey } from "../command-turn-context.js";
-import { SessionContinuationResetError } from "../continuation/session-reset.js";
 import type {
   FinalizedRuntimeMsgContext,
   FinalizedTemplateContext as TemplateContext,
@@ -141,15 +140,14 @@ import {
   ReplySessionInitConflictError,
   runWithSessionInitConflictRetry,
 } from "./session-init-conflict-retry.js";
+import { clearReplacedSessionRuntimeState } from "./session-init-reset-cleanup.js";
 import type { SessionInitResult } from "./session-init.types.js";
 import {
   canReplaceRestartTombstoneFromParent,
   prepareReplySessionParentFork,
 } from "./session-parent-fork-prepare.js";
 import {
-  clearSessionResetRuntimeState,
   createSessionResetCleanupGuard,
-  SessionResetCleanupError,
   stopSessionResetSubagents,
 } from "./session-reset-cleanup.js";
 import { resolveAuthorizedSessionResetCommand } from "./session-reset-command.js";
@@ -1120,24 +1118,8 @@ async function initSessionStateAttemptLocked(
     throw new ReplySessionInitConflictError(sessionKey);
   }
   if (previousSessionEntry) {
-    try {
-      await clearSessionResetRuntimeState([sessionKey, previousSessionEntry.sessionId], {
-        activeReplySessionId: previousSessionEntry.sessionId,
-        agentId,
-        reason:
-          previousSessionEndReason === "new" ||
-          previousSessionEndReason === "reset" ||
-          previousSessionEndReason === "idle" ||
-          previousSessionEndReason === "daily"
-            ? previousSessionEndReason
-            : "reset",
-      });
-    } catch (error) {
-      if (error instanceof SessionContinuationResetError) {
-        throw new SessionResetCleanupError(error.message, { cause: error });
-      }
-      throw error;
-    }
+    const cleanup = { sessionKey, agentId, previousSessionEntry, previousSessionEndReason };
+    await clearReplacedSessionRuntimeState(cleanup);
   }
   sessionEntry = committed.sessionEntry;
   sessionId = sessionEntry.sessionId;

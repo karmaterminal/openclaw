@@ -835,28 +835,6 @@ describe("createGatewayCloseHandler", () => {
     },
   );
 
-  it("completes a clean shutdown with a ShutdownResult", async () => {
-    const delegateArtifactCleanup = setInterval(() => undefined, 60_000);
-    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
-    const deps = createGatewayCloseTestDeps({ delegateArtifactCleanup });
-    const close = createGatewayCloseHandler(deps);
-
-    try {
-      const result = await close({ reason: "test" });
-
-      expect(result.warnings).toStrictEqual([]);
-      expect(result.durationMs).toBeGreaterThanOrEqual(0);
-      expect(deps.cron.stop).toHaveBeenCalledTimes(1);
-      expect(deps.heartbeatRunner.stop).toHaveBeenCalledTimes(1);
-      expect(deps.stopMediaCleanup).toHaveBeenCalledTimes(1);
-      expect(deps.chatRunState.clear).toHaveBeenCalledTimes(1);
-      expect(clearIntervalSpy).toHaveBeenCalledWith(delegateArtifactCleanup);
-    } finally {
-      clearIntervalSpy.mockRestore();
-      clearInterval(delegateArtifactCleanup);
-    }
-  });
-
   it.each(["media", "stopPeriodicTasks", "skillUsageCleanup"] as const)(
     "waits for in-flight %s cleanup before shared state closes",
     async (owner) => {

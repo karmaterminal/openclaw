@@ -57,7 +57,6 @@ const telemetryState = vi.hoisted(() => {
 });
 
 const traceProviderCtor = vi.hoisted(() => vi.fn());
-const traceProviderGetTracer = vi.hoisted(() => vi.fn(() => telemetryState.tracer));
 const traceProviderShutdown = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const meterProviderCtor = vi.hoisted(() => vi.fn());
 const meterProviderShutdown = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -214,7 +213,7 @@ vi.mock("@opentelemetry/sdk-trace-base", () => ({
       traceProviderCtor(options);
     }
 
-    getTracer = traceProviderGetTracer;
+    getTracer = () => telemetryState.tracer;
     shutdown = traceProviderShutdown;
   },
   BatchSpanProcessor: function BatchSpanProcessor(exporter?: unknown, options?: unknown) {
@@ -261,15 +260,7 @@ import {
   logMessageProcessed,
   runWithDiagnosticTraceContext,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
-import {
-  emitDiagnosticEvent,
-  getContinuationTracer,
-  noopTracer,
-  resetContinuationTracer,
-  type DiagnosticEventPayload,
-} from "../api.js";
-import { CONTINUATION_OTEL_TRACER_NAME } from "./continuation-tracer-adapter.js";
-import { resetContinuationTracerIfOwned } from "./continuation-tracer-ownership.js";
+import { emitDiagnosticEvent, type DiagnosticEventPayload } from "../api.js";
 import { MAX_RETAINED_TRUSTED_SPAN_CONTEXTS } from "./service-constants.js";
 import {
   createExporterHealthEventEmitter,
@@ -806,7 +797,6 @@ describe("diagnostics-otel service", () => {
     telemetryState.meter.createCounter.mockClear();
     telemetryState.meter.createHistogram.mockClear();
     traceProviderCtor.mockClear();
-    traceProviderGetTracer.mockClear();
     traceProviderShutdown.mockClear();
     meterProviderCtor.mockClear();
     meterProviderShutdown.mockClear();
@@ -1731,34 +1721,6 @@ describe("diagnostics-otel service", () => {
       false,
     );
     expect(JSON.stringify(emitCall)).not.toContain("sk-test-secret");
-  });
-
-  // Fork-retained: upstream removed this case in #158714, but it carries the
-  // continuation-tracer invariant (a rejected traces protocol leaves the
-  // continuation tracer a no-op).
-  test("keeps rejected traces disabled when metrics still start owned SDK", async () => {
-    process.env.OTEL_EXPORTER_OTLP_PROTOCOL = "http/protobuf";
-    process.env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = "grpc";
-    process.env.OTEL_EXPORTER_OTLP_METRICS_PROTOCOL = "http/protobuf";
-    const registerBridge = vi.fn(() => vi.fn());
-
-    const { ctx } = await startServiceFixture(["traces", "metrics"], (context) => {
-      delete context.config.diagnostics?.otel?.protocol;
-      context.internalDiagnostics = {
-        ...context.internalDiagnostics!,
-        registerTracePropagationBridge: registerBridge,
-      };
-    });
-
-    expect(traceExporterCtor).not.toHaveBeenCalled();
-    expect(metricExporterCtor).toHaveBeenCalledTimes(1);
-    expect(traceProviderCtor).not.toHaveBeenCalled();
-    expect((mockCallArg(meterProviderCtor, 0) as { readers?: unknown[] }).readers).toHaveLength(1);
-    expect(ctx.logger.warn).toHaveBeenCalledWith(
-      "diagnostics-otel: unsupported traces protocol grpc; OTLP export disabled",
-    );
-    expect(registerBridge).not.toHaveBeenCalled();
-    expect(getContinuationTracer()).toBe(noopTracer);
   });
 
   test("keeps stdout logs active when the OTLP branch of both is unsupported", async () => {
@@ -4260,7 +4222,6 @@ describe("diagnostics-otel service", () => {
       "ghp_abcdefghijklmnopqrstuvwxyz123456", // pragma: allowlist secret
     );
   });
-
   test("exports trusted security events as stdout JSONL logs", async () => {
     await startOtelService({ endpoint: "", logs: true, logsExporter: "stdout" });
     const trace = createDiagnosticTraceContext(createTestTrace(SPAN_ID));
@@ -4322,416 +4283,6 @@ describe("diagnostics-otel service", () => {
     const failoverOptions = startedSpanOptions("openclaw.model.failover");
     expect(failoverOptions?.attributes?.["openclaw.lane"]).toBe("session");
     expect(JSON.stringify(failoverOptions?.attributes)).not.toContain("Agent:qa:otel-trace-smoke");
-  });
-
-  // Production wiring assertion: `start` installs the OTEL adapter and `stop`
-  // resets to the noop default so span emission reaches the configured exporter.
-  describe("continuation-tracer install/uninstall", () => {
-    afterEach(() => {
-      // Defense-in-depth: ensure no test in this describe block leaks a
-      // non-noop tracer into the rest of the suite (or into other test
-      // files in the same vitest worker, since `resetModules:false`).
-      resetContinuationTracer();
-    });
-
-    test("installs the OTEL adapter on start when traces are enabled, resets on stop", async () => {
-      expect(getContinuationTracer()).toBe(noopTracer);
-      const service = createDiagnosticsOtelService();
-      const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-      await service.start(ctx);
-      expect(getContinuationTracer()).not.toBe(noopTracer);
-      expect(traceProviderGetTracer).toHaveBeenCalledWith("openclaw");
-      expect(traceProviderGetTracer).toHaveBeenCalledWith(CONTINUATION_OTEL_TRACER_NAME);
-      await service.stop?.(ctx);
-      expect(getContinuationTracer()).toBe(noopTracer);
-    });
-
-    test("stale service cleanup does not reset a newer continuation tracer", async () => {
-      expect(getContinuationTracer()).toBe(noopTracer);
-      const firstService = createDiagnosticsOtelService();
-      const secondService = createDiagnosticsOtelService();
-      const firstContext = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-      const secondContext = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-
-      await firstService.start(firstContext);
-      const firstTracer = getContinuationTracer();
-      await secondService.start(secondContext);
-      const secondTracer = getContinuationTracer();
-
-      expect(firstTracer).not.toBe(noopTracer);
-      expect(secondTracer).not.toBe(noopTracer);
-      expect(secondTracer).not.toBe(firstTracer);
-
-      await firstService.stop?.(firstContext);
-      expect(getContinuationTracer()).toBe(secondTracer);
-
-      await secondService.stop?.(secondContext);
-      expect(getContinuationTracer()).toBe(noopTracer);
-    });
-
-    test("conditional reset preserves a newer continuation tracer owner", async () => {
-      const firstService = createDiagnosticsOtelService();
-      const secondService = createDiagnosticsOtelService();
-      const firstContext = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-      const secondContext = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-
-      await firstService.start(firstContext);
-      const firstTracer = getContinuationTracer();
-      await secondService.start(secondContext);
-      const secondTracer = getContinuationTracer();
-
-      expect(resetContinuationTracerIfOwned(firstTracer)).toBe(false);
-      expect(getContinuationTracer()).toBe(secondTracer);
-      expect(resetContinuationTracerIfOwned(secondTracer)).toBe(true);
-      expect(getContinuationTracer()).toBe(noopTracer);
-
-      await firstService.stop?.(firstContext);
-      await secondService.stop?.(secondContext);
-    });
-
-    test("parents continuation spans to registered trusted diagnostic spans", async () => {
-      const service = createDiagnosticsOtelService();
-      const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-      await service.start(ctx);
-
-      emitTrustedDiagnosticEvent({
-        type: "run.started",
-        runId: "run-1",
-        provider: "openai",
-        model: "gpt-5.5",
-        trace: {
-          traceId: TRACE_ID,
-          spanId: CHILD_SPAN_ID,
-          traceFlags: "01",
-        },
-      });
-      await flushDiagnosticEvents();
-
-      const runSpanId = telemetryState.spans.find((span) => span.name === "openclaw.run")
-        ?.spanContext.mock.results[0]?.value?.spanId;
-      expect(
-        getContinuationTracer().formatTraceparent?.({
-          traceId: TRACE_ID,
-          spanId: CHILD_SPAN_ID,
-          traceFlags: "01",
-        }),
-      ).toBe(`00-${TRACE_ID}-${runSpanId}-01`);
-      telemetryState.tracer.startSpan.mockClear();
-      telemetryState.tracer.setSpanContext.mockClear();
-
-      getContinuationTracer()
-        .startSpan("openclaw.continue_delegate", {
-          traceparent: `00-${TRACE_ID}-${CHILD_SPAN_ID}-01`,
-        })
-        .end();
-
-      expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledWith(
-        {},
-        expect.objectContaining({
-          traceId: TRACE_ID,
-          spanId: runSpanId,
-        }),
-      );
-      const continuationParent = telemetryState.tracer.startSpan.mock.calls[0]?.[2] as
-        | { spanContext?: { spanId?: string } }
-        | undefined;
-      expect(continuationParent?.spanContext?.spanId).toBe(runSpanId);
-      expect(continuationParent?.spanContext?.spanId).not.toBe(CHILD_SPAN_ID);
-      await service.stop?.(ctx);
-      expect(getContinuationTracer()).toBe(noopTracer);
-    });
-
-    test("formats continuation traceparents from a registered diagnostic parent when the current child span is not registered yet", async () => {
-      const service = createDiagnosticsOtelService();
-      const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-      await service.start(ctx);
-
-      emitTrustedDiagnosticEvent({
-        type: "run.started",
-        runId: "run-parent-for-tool",
-        provider: "openai",
-        model: "gpt-5.5",
-        trace: {
-          traceId: TRACE_ID,
-          spanId: CHILD_SPAN_ID,
-          traceFlags: "01",
-        },
-      });
-      await flushDiagnosticEvents();
-
-      const runSpanId = telemetryState.spans.find((span) => span.name === "openclaw.run")
-        ?.spanContext.mock.results[0]?.value?.spanId;
-      expect(
-        getContinuationTracer().formatTraceparent?.({
-          traceId: TRACE_ID,
-          spanId: TOOL_SPAN_ID,
-          parentSpanId: CHILD_SPAN_ID,
-          traceFlags: "01",
-        }),
-      ).toBe(`00-${TRACE_ID}-${runSpanId}-01`);
-
-      await service.stop?.(ctx);
-    });
-
-    test("formats continuation traceparents from the registered run when only the logical trace id is available", async () => {
-      const service = createDiagnosticsOtelService();
-      const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-      await service.start(ctx);
-
-      emitTrustedDiagnosticEvent({
-        type: "run.started",
-        runId: "run-trace-fallback",
-        provider: "openai",
-        model: "gpt-5.5",
-        trace: {
-          traceId: TRACE_ID,
-          spanId: CHILD_SPAN_ID,
-          traceFlags: "01",
-        },
-      });
-      await flushDiagnosticEvents();
-
-      const runSpanId = telemetryState.spans.find((span) => span.name === "openclaw.run")
-        ?.spanContext.mock.results[0]?.value?.spanId;
-      expect(
-        getContinuationTracer().formatTraceparent?.({
-          traceId: TRACE_ID,
-          spanId: TOOL_SPAN_ID,
-          traceFlags: "01",
-        }),
-      ).toBe(`00-${TRACE_ID}-${runSpanId}-01`);
-
-      await service.stop?.(ctx);
-    });
-
-    test("parents carried logical contexts to the registered run context", async () => {
-      const service = createDiagnosticsOtelService();
-      const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-      await service.start(ctx);
-
-      emitTrustedDiagnosticEvent({
-        type: "run.started",
-        runId: "run-logical-parent",
-        provider: "openai",
-        model: "gpt-5.5",
-        trace: {
-          traceId: TRACE_ID,
-          spanId: CHILD_SPAN_ID,
-          traceFlags: "01",
-        },
-      });
-      await flushDiagnosticEvents();
-
-      const runSpanId = telemetryState.spans.find((span) => span.name === "openclaw.run")
-        ?.spanContext.mock.results[0]?.value?.spanId;
-      telemetryState.tracer.startSpan.mockClear();
-      telemetryState.tracer.setSpanContext.mockClear();
-
-      emitTrustedDiagnosticEvent({
-        type: "run.started",
-        runId: "run-logical-child",
-        provider: "openai",
-        model: "gpt-5.5",
-        trace: {
-          traceId: TRACE_ID,
-          spanId: TOOL_SPAN_ID,
-          parentSpanId: SPAN_ID,
-          traceFlags: "01",
-        },
-      });
-      await flushDiagnosticEvents();
-
-      expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledWith(
-        {},
-        expect.objectContaining({
-          traceId: TRACE_ID,
-          spanId: runSpanId,
-        }),
-      );
-      const runStart = startedSpanCall("openclaw.run");
-      expect(runStart?.[2]).toEqual(
-        expect.objectContaining({
-          spanContext: expect.objectContaining({
-            traceId: TRACE_ID,
-            spanId: runSpanId,
-          }),
-        }),
-      );
-
-      await service.stop?.(ctx);
-    });
-
-    test("keys logical trace fallback by diagnostic trace id when OTEL root trace differs", async () => {
-      const service = createDiagnosticsOtelService();
-      const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-      const originalStartSpan = telemetryState.tracer.startSpan.getMockImplementation();
-      const otelRootTraceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-      if (!originalStartSpan) {
-        throw new Error("expected startSpan mock implementation");
-      }
-      telemetryState.tracer.startSpan.mockImplementationOnce((name, opts, parentCtx) => {
-        const span = originalStartSpan(name, opts, parentCtx);
-        span.spanContext.mockReturnValue({
-          traceId: otelRootTraceId,
-          spanId: CHILD_SPAN_ID,
-          traceFlags: 1,
-        });
-        return span;
-      });
-      await service.start(ctx);
-
-      emitTrustedDiagnosticEvent({
-        type: "run.started",
-        runId: "run-logical-root-otel-trace-mismatch",
-        provider: "openai",
-        model: "gpt-5.5",
-        trace: {
-          traceId: TRACE_ID,
-          spanId: CHILD_SPAN_ID,
-          traceFlags: "01",
-        },
-      });
-      await flushDiagnosticEvents();
-      telemetryState.tracer.startSpan.mockClear();
-      telemetryState.tracer.setSpanContext.mockClear();
-
-      emitTrustedDiagnosticEvent({
-        type: "run.started",
-        runId: "run-logical-child-otel-trace-mismatch",
-        provider: "openai",
-        model: "gpt-5.5",
-        trace: {
-          traceId: TRACE_ID,
-          spanId: TOOL_SPAN_ID,
-          parentSpanId: SPAN_ID,
-          traceFlags: "01",
-        },
-      });
-      await flushDiagnosticEvents();
-
-      expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledWith(
-        {},
-        expect.objectContaining({
-          traceId: otelRootTraceId,
-          spanId: CHILD_SPAN_ID,
-        }),
-      );
-      expect(startedSpanCall("openclaw.run")?.[2]).toEqual(
-        expect.objectContaining({
-          spanContext: expect.objectContaining({
-            traceId: otelRootTraceId,
-            spanId: CHILD_SPAN_ID,
-          }),
-        }),
-      );
-
-      await service.stop?.(ctx);
-    });
-
-    test("prefers carried remote traceparent span ids over logical trace fallback", async () => {
-      const service = createDiagnosticsOtelService();
-      const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-      await service.start(ctx);
-
-      emitTrustedDiagnosticEvent({
-        type: "run.started",
-        runId: "run-logical-parent-before-remote",
-        provider: "openai",
-        model: "gpt-5.5",
-        trace: {
-          traceId: TRACE_ID,
-          spanId: CHILD_SPAN_ID,
-          traceFlags: "01",
-        },
-      });
-      await flushDiagnosticEvents();
-      telemetryState.tracer.startSpan.mockClear();
-      telemetryState.tracer.setSpanContext.mockClear();
-
-      emitTrustedDiagnosticEvent({
-        type: "run.started",
-        runId: "run-remote-child",
-        provider: "openai",
-        model: "gpt-5.5",
-        trace: {
-          traceId: TRACE_ID,
-          spanId: TOOL_SPAN_ID,
-          parentSpanId: SPAN_ID,
-          parentSpanIdSource: "remote",
-          traceFlags: "01",
-        },
-      });
-      await flushDiagnosticEvents();
-
-      expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledWith(
-        {},
-        expect.objectContaining({
-          traceId: TRACE_ID,
-          spanId: SPAN_ID,
-        }),
-      );
-      const runStart = startedSpanCall("openclaw.run");
-      expect(runStart?.[2]).toEqual(
-        expect.objectContaining({
-          spanContext: expect.objectContaining({
-            traceId: TRACE_ID,
-            spanId: SPAN_ID,
-          }),
-        }),
-      );
-
-      await service.stop?.(ctx);
-    });
-
-    test("parents trusted spans to carried traceparent span ids when no logical mapping exists", async () => {
-      const service = createDiagnosticsOtelService();
-      const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
-      await service.start(ctx);
-
-      emitTrustedDiagnosticEvent({
-        type: "run.started",
-        runId: "run-carried-parent",
-        provider: "openai",
-        model: "gpt-5.5",
-        trace: {
-          traceId: TRACE_ID,
-          spanId: CHILD_SPAN_ID,
-          parentSpanId: SPAN_ID,
-          parentSpanIdSource: "remote",
-          traceFlags: "01",
-        },
-      });
-      await flushDiagnosticEvents();
-
-      expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledWith(
-        {},
-        expect.objectContaining({
-          traceId: TRACE_ID,
-          spanId: SPAN_ID,
-        }),
-      );
-      const runStart = startedSpanCall("openclaw.run");
-      expect(runStart?.[2]).toEqual(
-        expect.objectContaining({
-          spanContext: expect.objectContaining({
-            traceId: TRACE_ID,
-            spanId: SPAN_ID,
-          }),
-        }),
-      );
-
-      await service.stop?.(ctx);
-    });
-
-    test("does not install the adapter when traces are disabled (continuation-tracer stays noop)", async () => {
-      expect(getContinuationTracer()).toBe(noopTracer);
-      const service = createDiagnosticsOtelService();
-      const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { metrics: true, logs: true });
-      await service.start(ctx);
-      expect(getContinuationTracer()).toBe(noopTracer);
-      await service.stop?.(ctx);
-      expect(getContinuationTracer()).toBe(noopTracer);
-    });
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
