@@ -606,7 +606,7 @@ Counts use `Q/F/S/A/R` in that order. Source locations are available in `--json`
 | **src/agents/worktrees** · `src/agents/worktrees/registry-retirement.worker.ts`                                     |         2/0/2/0/0 |         36 | Worker implementation; keep SQL in this owner |
 | **src/agents/worktrees** · `src/agents/worktrees/run-lease-store.worker.ts`                                         |         0/0/1/0/0 |         21 | Worker implementation; keep SQL in this owner |
 | **src/auto-reply** · `src/auto-reply/continuation/custody/custody-store.kernel.ts`                                  |         3/1/0/0/0 |         46 | Worker implementation; keep SQL in this owner |
-| **src/auto-reply** · `src/auto-reply/continuation/custody/custody-store.worker.ts`                                  |         2/0/1/0/0 |        350 | Worker implementation; keep SQL in this owner |
+| **src/auto-reply** · `src/auto-reply/continuation/custody/custody-store.worker.ts`                                  |         2/0/1/0/0 |        347 | Worker implementation; keep SQL in this owner |
 | **src/auto-reply** · `src/auto-reply/continuation/custody/legacy-taskflow-import.worker.ts`                         |         1/0/0/0/0 |        113 | Worker implementation; keep SQL in this owner |
 | **src/channels** · `src/channels/message/ingress-queue-health.kernel.ts`                                            |         2/0/0/0/0 |         17 | Worker implementation; keep SQL in this owner |
 | **src/channels** · `src/channels/message/ingress-queue.kernel.ts`                                                   |        22/1/0/0/0 |         40 | Worker implementation; keep SQL in this owner |
@@ -666,7 +666,7 @@ Counts use `Q/F/S/A/R` in that order. Source locations are available in `--json`
 | **src/skills/workshop** · `src/skills/workshop/store.worker.ts`                                                     |         0/0/2/0/0 |         86 | Worker implementation; keep SQL in this owner |
 | **src/state** · `src/state/openclaw-agent-execution-cleanup.worker.ts`                                              |         0/0/1/0/0 |         16 | Worker implementation; keep SQL in this owner |
 | **src/state** · `src/state/openclaw-agent-execution.worker.ts`                                                      |         0/0/0/1/0 |        331 | Worker implementation; keep SQL in this owner |
-| **src/state** · `src/state/openclaw-state-worker-runtime.ts`                                                        |        0/0/11/0/0 |        342 | Worker implementation; keep SQL in this owner |
+| **src/state** · `src/state/openclaw-state-worker-runtime.ts`                                                        |        0/0/11/0/0 |        343 | Worker implementation; keep SQL in this owner |
 | **src/state** · `src/state/session-repository-workspaces.worker.ts`                                                 |         0/0/1/0/0 |         54 | Worker implementation; keep SQL in this owner |
 | **src/state** · `src/state/user-channel-identities.worker.ts`                                                       |         0/0/1/0/0 |         72 | Worker implementation; keep SQL in this owner |
 | **src/state** · `src/state/user-preferences.worker.ts`                                                              |         0/0/1/0/0 |         45 | Worker implementation; keep SQL in this owner |
