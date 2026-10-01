@@ -161,6 +161,10 @@ export function createDiscordIngressMonitor(params: {
     },
     appendRetryDelaysMs: [0],
     drain: {
+      // A deferred row hands its turn to the reply queue. Releasing the lane at
+      // that handoff lets the next row on this channel reach the queue too, so
+      // collect/debounce can batch it (#1415). The reply queue keeps order.
+      deferredLaneOccupancy: "release",
       ...(readPolicy
         ? {
             resolvePendingDisposition: createDiscordStaleAmbientPendingDisposition({

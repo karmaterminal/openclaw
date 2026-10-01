@@ -12,6 +12,7 @@ import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDiscordIngressMonitor, type DiscordIngressLifecycle } from "./ingress.js";
+import type { DiscordMessageEvent } from "./listeners.js";
 
 type DiscordIngressPayload = {
   version: 1;
@@ -249,6 +250,51 @@ describe("Discord durable ingress", () => {
           expect(verdict.kind).toBe("completed");
         });
         expect(dispatch).toHaveBeenCalledTimes(1);
+      } finally {
+        await monitor.stop();
+      }
+    });
+  });
+
+  it("releases the channel lane when a row defers, so the next row is claimed before the first turn starts (#1415)", async () => {
+    await withQueue(async (queue) => {
+      const lifecycles = new Map<string, DiscordIngressLifecycle>();
+      const dispatch = vi.fn(
+        async (event: DiscordMessageEvent, lifecycle: DiscordIngressLifecycle) => {
+          // The reply pipeline defers when it hands the turn to the follow-up queue;
+          // adoption happens only once that follow-up turn actually starts.
+          lifecycles.set(event.message.id, lifecycle);
+          lifecycle.onDeferred();
+          return { kind: "deferred" as const };
+        },
+      );
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        client: {} as never,
+        runtime: runtime(),
+        queue,
+        dispatch,
+      });
+      monitor.start();
+      try {
+        const first = createRawMessage("1101", "channel-shared");
+        const second = createRawMessage("1102", "channel-shared");
+        await monitor.accept(first);
+        await vi.waitFor(() => expect(lifecycles.has("1101")).toBe(true));
+        await monitor.accept(second);
+
+        // Same lane, first turn not yet started: the second row must still be claimed.
+        await vi.waitFor(() => expect(lifecycles.has("1102")).toBe(true), { timeout: 3_000 });
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(await queue.listClaims()).toHaveLength(2);
+
+        await lifecycles.get("1101")?.onAdopted();
+        await lifecycles.get("1102")?.onAdopted();
+        await vi.waitFor(async () => {
+          expect((await queue.enqueue("1101", payloadFor(first))).kind).toBe("completed");
+          expect((await queue.enqueue("1102", payloadFor(second))).kind).toBe("completed");
+        });
+        expect(dispatch).toHaveBeenCalledTimes(2);
       } finally {
         await monitor.stop();
       }
