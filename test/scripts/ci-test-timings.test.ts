@@ -462,10 +462,10 @@ describe("runtime placement observations", () => {
       );
     onTestFinished(() => spy.mockRestore());
   }
-  function mockRuntimePlacementCosts() {
+  function mockRuntimePlacementCosts(overrides: Record<string, number> = {}) {
     // Keep spare capacity independent of growing production prices; observations supply overload.
     const costs = new Proxy<Record<string, number>>(
-      { "agentic-gateway-server-isolated": 30, "agentic-agents-core-subagents": 20 },
+      { "agentic-gateway-server-isolated": 30, "agentic-agents-core-subagents": 20, ...overrides },
       {
         get: (target, key) =>
           typeof key === "string" ? (target[key] ?? 39) : Reflect.get(target, key),
@@ -473,17 +473,66 @@ describe("runtime placement observations", () => {
     );
     return vi.spyOn(testTimings, "readCompactGroupTimings").mockReturnValue(costs);
   }
+  function useRuntimeReaderInventory(spareSeconds: number) {
+    // Plan only the readers' real owner configs plus one explicit serial spare job,
+    // so recipient headroom does not depend on how the whole repository packs.
+    const originalShards = fullSuiteVitestShards.slice();
+    const owners = new Set([
+      "test/vitest/vitest.infra.config.ts",
+      "test/vitest/vitest.runtime-config.config.ts",
+    ]);
+    const spare = "runtime-placement-spare";
+    const spareConfig = `fixture-${spare}.config.ts`;
+    const isExclusiveConfig = localCheckRuntime.isExclusiveCiTestConfig;
+    const gatewayConfigSpy = vi
+      .spyOn(localCheckRuntime, "isExclusiveCiTestConfig")
+      .mockImplementation((config) =>
+        isExclusiveConfig(
+          config === spareConfig ? "test/vitest/vitest.gateway-methods-isolated.config.ts" : config,
+        ),
+      );
+    const compactSpy = mockRuntimePlacementCosts({ [spare]: spareSeconds });
+    fullSuiteVitestShards.splice(
+      0,
+      fullSuiteVitestShards.length,
+      ...originalShards
+        .map((shard) => ({
+          ...shard,
+          projects: shard.projects.filter((config) => owners.has(config)),
+        }))
+        .filter((shard) => shard.projects.length > 0),
+      { name: spare, config: spareConfig, projects: [spareConfig] },
+    );
+    onTestFinished(() => {
+      fullSuiteVitestShards.splice(0, fullSuiteVitestShards.length, ...originalShards);
+      compactSpy.mockRestore();
+      gatewayConfigSpy.mockRestore();
+    });
+    return spareConfig;
+  }
   it("retains recorded runtime work when its current group gains a file", () => {
+    expectRecordedRuntimePlacement({ spareSeconds: 30, headroom: true });
+  });
+
+  it("keeps recorded runtime work together when no job has headroom", () => {
+    // 60s preparation + 250s spare + the 174s scaled corpus reader exceeds 360s.
+    expectRecordedRuntimePlacement({ spareSeconds: 250, headroom: false });
+  });
+
+  function expectRecordedRuntimePlacement({
+    spareSeconds,
+    headroom,
+  }: {
+    spareSeconds: number;
+    headroom: boolean;
+  }) {
     const corpusFile = "src/config/state-startup-corpus.test.ts";
     const handoffFile = "src/infra/update-managed-service-handoff-lifecycle.test.ts";
     selectRuntimeConsumers([corpusFile, handoffFile]);
-    const compactSpy = mockRuntimePlacementCosts();
+    const spareConfig = useRuntimeReaderInventory(spareSeconds);
     const readRuntimeTimings = testTimings.readRuntimePlacementTimings;
     const runtimeSpy = vi.spyOn(testTimings, "readRuntimePlacementTimings").mockReturnValue([]);
-    onTestFinished(() => {
-      compactSpy.mockRestore();
-      runtimeSpy.mockRestore();
-    });
+    onTestFinished(() => runtimeSpy.mockRestore());
     const options = {
       compactMode: "push" as const,
       runnerBackend: "hybrid",
@@ -546,16 +595,32 @@ describe("runtime placement observations", () => {
       const handoffJob = plan.find((job) =>
         job.groups.some((group) => group.includePatterns?.includes(handoffFile)),
       );
+      const spareJob = plan.find((job) =>
+        job.groups.some((group) => group.configs.includes(spareConfig)),
+      );
       expect(corpusJob).toBeDefined();
       expect(handoffJob).toBeDefined();
-      // These recorded workloads exceed the shared 360s budget, including
-      // preparation. Added files must not make the known reader appear cheap.
-      expect(corpusJob).not.toBe(handoffJob);
+      expect(spareJob).toBeDefined();
+      if (headroom) {
+        // These recorded workloads exceed the shared 360s budget, including
+        // preparation. Added files must not make the known reader appear cheap.
+        expect(corpusJob).not.toBe(handoffJob);
+        expect(corpusJob).toBe(spareJob);
+        expect(corpusJob!.predictedSeconds).toBeLessThanOrEqual(360);
+        expect(handoffJob!.predictedSeconds).toBeLessThanOrEqual(360);
+      } else {
+        // Placement never drops work; the unchanged donor keeps its full recorded price.
+        expect(corpusJob).toBe(handoffJob);
+        expect(spareJob!.groups.map((group) => group.shard_name)).toEqual([
+          "runtime-placement-spare",
+        ]);
+        expect(corpusJob!.predictedSeconds).toBeGreaterThan(360);
+      }
     } finally {
       read.mockRestore();
       syncBuiltinESMExports();
     }
-  });
+  }
 
   const reader = {
     configs: ["test/vitest/reader.config.ts"],
