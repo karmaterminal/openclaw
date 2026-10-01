@@ -113,7 +113,7 @@ export type DelegateArtifactWorkerOperations = {
     output: void;
   };
   "delegateArtifacts.purgeExpired": {
-    input: { now?: number };
+    input: { now: number };
     output: number;
   };
   "delegateArtifacts.listForRecipient": {
