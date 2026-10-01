@@ -117,7 +117,7 @@ function makeMockRuntimePlan(): MockRuntimePlan {
   };
 }
 
-export { mockedContextEngine };
+export { mockedContextEngine } from "./run.overflow-compaction.context-engine.test-support.js";
 export const mockedCompactDirect = mockedContextEngine.compact;
 const mockedResolveContextEngine = vi.fn(async () => mockedContextEngine);
 const mockedResolveContextEngineOwnerPluginId = vi.fn(() => undefined);
