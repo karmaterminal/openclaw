@@ -9,11 +9,13 @@ import {
   normalizeNullableString as nonEmptyString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { isDiscordThreadChannelType } from "../channel-type.js";
+import { resolveDiscordCommandOwnerAllowFrom } from "../command-owners.js";
 import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inventory.js";
 import {
   normalizeDiscordSlug,
   resolveDiscordChannelConfigWithFallback,
   resolveDiscordGuildEntry,
+  resolveDiscordOwnerAccess,
   resolveDiscordShouldRequireMention,
 } from "./allow-list.js";
 import type { DiscordLivePolicy, DiscordLivePolicyReader } from "./live-policy.js";
@@ -31,6 +33,7 @@ const DISCORD_AUDIO_ATTACHMENT_EXTENSIONS =
 type DiscordStalePolicyMessage = {
   channelId: string;
   guildId?: string;
+  author?: { id: string; name?: string };
   /** Canonical mention/command documents: content, else embeds, else text displays. */
   documents: string[];
   text: string;
@@ -93,6 +96,18 @@ function readAudioAttachment(attachments: unknown[]): boolean {
   });
 }
 
+function readAuthor(value: unknown): DiscordStalePolicyMessage["author"] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const id = nonEmptyString(value.id);
+  if (!id) {
+    return undefined;
+  }
+  const name = nonEmptyString(value.username);
+  return { id, ...(name ? { name } : {}) };
+}
+
 /**
  * Projects a stored ingress payload into the facts this policy needs.
  * Returns null for anything it cannot fully read, so malformed and
@@ -121,6 +136,7 @@ function readDiscordStalePolicyRow(payload: unknown): DiscordStalePolicyRow | nu
     return null;
   }
   const guildId = nonEmptyString(rawMessage.guild_id);
+  const author = readAuthor(rawMessage.author);
   const referencedAuthor = isRecord(referencedMessage) ? referencedMessage.author : undefined;
   const sentAtMs = Date.parse(rawMessage.timestamp);
   const payloadReceivedAt = payload.receivedAt;
@@ -131,6 +147,7 @@ function readDiscordStalePolicyRow(payload: unknown): DiscordStalePolicyRow | nu
     message: {
       channelId,
       ...(guildId ? { guildId } : {}),
+      ...(author ? { author } : {}),
       documents,
       text: documents.join("\n"),
       sentAtMs: Number.isFinite(sentAtMs) ? sentAtMs : null,
@@ -184,6 +201,23 @@ function isAddressedToBot(message: DiscordStalePolicyMessage, botUserId?: string
     message.referencedAuthorId === botId ||
     message.documents.some((document) => hasRawDiscordUserMention(document, botId))
   );
+}
+
+/**
+ * Principals (command owners from `commands.ownerAllowFrom`, and the account's
+ * owner allowlist that preflight also treats as text-command owners) are never
+ * ambient: their backlog is always kept, however old.
+ */
+function isPrincipalAuthor(message: DiscordStalePolicyMessage, policy: DiscordLivePolicy): boolean {
+  if (!message.author) {
+    return false;
+  }
+  const owners = [...(resolveDiscordCommandOwnerAllowFrom(policy.cfg) ?? []), ...policy.allowFrom];
+  return resolveDiscordOwnerAccess({
+    allowFrom: owners,
+    sender: message.author,
+    allowNameMatching: policy.allowNameMatching,
+  }).ownerAllowed;
 }
 
 function configuredAgentIds(cfg?: OpenClawConfig): Array<string | undefined> {
@@ -303,6 +337,7 @@ export function createDiscordStaleAmbientPendingDisposition(params: {
       return null;
     }
     if (
+      isPrincipalAuthor(message, policy) ||
       hasControlCommand(message.text, policy.cfg) ||
       matchesConfiguredMentionText(message, policy)
     ) {

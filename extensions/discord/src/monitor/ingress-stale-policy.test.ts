@@ -29,6 +29,7 @@ type PolicyOverrides = {
   cfg?: OpenClawConfig;
   guildEntries?: Record<string, DiscordGuildEntryResolved>;
   isCurrent?: () => boolean;
+  allowFrom?: string[];
 };
 
 function livePolicy(overrides: PolicyOverrides = {}): DiscordLivePolicy {
@@ -38,7 +39,7 @@ function livePolicy(overrides: PolicyOverrides = {}): DiscordLivePolicy {
     cfg: overrides.cfg ?? ({} as OpenClawConfig),
     discordConfig: {},
     guildEntries: overrides.guildEntries,
-    allowFrom: [],
+    allowFrom: overrides.allowFrom ?? [],
     dmPolicy: "open",
     groupPolicy: "open",
     dmEnabled: true,
@@ -60,6 +61,7 @@ function rawMessage(overrides: Record<string, unknown> = {}): Record<string, unk
     mentions: [],
     attachments: [],
     type: MessageType.Default,
+    author: { id: "user-1", username: "alice" },
     ...overrides,
   };
 }
@@ -161,6 +163,35 @@ describe("discord stale ambient pending disposition", () => {
         },
       }),
     ).resolves.toBeNull();
+  });
+
+  it("never drops a principal's stale un-mentioned message", async () => {
+    const owners = {
+      commands: { ownerAllowFrom: ["user:100000000000000001"] },
+    } as unknown as OpenClawConfig;
+    const fromOwner = { author: { id: "100000000000000001", username: "figs" } };
+    // Control: the identical stale ambient row from a non-principal is dropped.
+    await expect(resolve({ cfg: owners })).resolves.toMatchObject({
+      reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON,
+    });
+    // commands.ownerAllowFrom names the principal.
+    await expect(resolve({ cfg: owners, message: fromOwner })).resolves.toBeNull();
+    await expect(
+      resolve({
+        cfg: {
+          commands: { ownerAllowFrom: ["discord:100000000000000001"] },
+        } as unknown as OpenClawConfig,
+        message: fromOwner,
+      }),
+    ).resolves.toBeNull();
+    // The account owner allowlist (preflight's text-command owners) does too.
+    await expect(
+      resolve({ allowFrom: ["100000000000000001"], message: fromOwner }),
+    ).resolves.toBeNull();
+    // A wildcard allowlist names nobody in particular.
+    await expect(resolve({ allowFrom: ["*"], message: fromOwner })).resolves.toMatchObject({
+      reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON,
+    });
   });
 
   it("preserves command-like work", async () => {

@@ -49,13 +49,19 @@ function rawMessage(params: {
   content?: string;
   sentAt: number;
   mentions?: Array<{ id: string }>;
+  authorId?: string;
 }): APIMessage {
   return {
     id: params.id,
     channel_id: params.channelId,
     guild_id: "g1",
     content: params.content ?? "just chatting",
-    author: { id: "user-1", username: "alice", discriminator: "0", avatar: null },
+    author: {
+      id: params.authorId ?? "user-1",
+      username: "alice",
+      discriminator: "0",
+      avatar: null,
+    },
     attachments: [],
     embeds: [],
     mentions: params.mentions ?? [],
@@ -80,11 +86,14 @@ async function seed(queue: DiscordQueue, params: Parameters<typeof rawMessage>[0
   );
 }
 
-function livePolicy(guildEntries?: Record<string, DiscordGuildEntryResolved>): DiscordLivePolicy {
+function livePolicy(
+  guildEntries?: Record<string, DiscordGuildEntryResolved>,
+  cfg: OpenClawConfig = {} as OpenClawConfig,
+): DiscordLivePolicy {
   return {
     isCurrent: () => true,
     accountId: "default",
-    cfg: {} as OpenClawConfig,
+    cfg,
     discordConfig: {},
     guildEntries,
     allowFrom: [],
@@ -189,6 +198,57 @@ describe("Discord ingress stale ambient backlog boundary", () => {
         "stale-open",
         "stale-thread",
       ]);
+      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+        { id: "stale-ambient", reason: "stale-ambient-backlog" },
+      ]);
+    });
+  });
+
+  it("never drops a principal's stale un-mentioned backlog", async () => {
+    await withQueue(async (queue) => {
+      // Same mention-gated lane, same age, same plain text: only the author differs.
+      await seed(queue, { id: "stale-ambient", channelId: "chan-gated", sentAt: STALE_AT });
+      await seed(queue, {
+        id: "stale-principal",
+        channelId: "chan-gated",
+        sentAt: STALE_AT + 1,
+        authorId: "100000000000000001",
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        // SAFETY: gateway mapping only reads the raw frame for these fixtures.
+        client: {} as Client,
+        runtime: { error: vi.fn(), log: vi.fn() },
+        botUserId: BOT_ID,
+        readPolicy: async () =>
+          livePolicy(undefined, {
+            commands: { ownerAllowFrom: ["user:100000000000000001"] },
+          } as unknown as OpenClawConfig),
+        resolveChannelInfo: (channelId) => CHANNELS[channelId],
+        isChannelInventoryHydrating: () => false,
+        queue,
+        dispatch: async (event, lifecycle) => {
+          dispatched.push(String(event.id));
+          await lifecycle.onAdopted();
+        },
+      });
+
+      monitor.start();
+      try {
+        await vi.waitFor(
+          async () => {
+            expect(await queue.listPending({ limit: "all" })).toEqual([]);
+            expect(await queue.listClaims()).toEqual([]);
+          },
+          { timeout: 15_000, interval: 50 },
+        );
+      } finally {
+        await monitor.stop();
+      }
+
+      expect(dispatched).toEqual(["stale-principal"]);
       expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
         { id: "stale-ambient", reason: "stale-ambient-backlog" },
       ]);
