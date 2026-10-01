@@ -99,7 +99,7 @@ export async function migrateContinuationTaskFlowCustody(
       const payloads = await preparePayloads(env, owner.rows, assertCurrent);
       result = await run("continuationCustody.importLegacyOwner", {
         snapshot: owner,
-        payloads: Object.fromEntries(payloads),
+        payloads: [...payloads],
         now: now(),
       });
     } catch (error) {

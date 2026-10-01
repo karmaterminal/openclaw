@@ -12,6 +12,7 @@ import {
   formatContinuationChildRunId,
   type ContinuationSpawnAttempt,
 } from "../../../shared/continuation-run-key.js";
+import { createLazyRuntimeModule } from "../../../shared/lazy-runtime.js";
 import type { OpenClawStateDatabase } from "../../../state/openclaw-state-db-contract.js";
 import { tableExists } from "../../../state/openclaw-state-db-schema-helpers.js";
 import {
@@ -55,10 +56,6 @@ import {
   releaseContinuationPostCompactionInDatabase,
   settleContinuationNoticeInDatabase,
 } from "./custody-store.worker-handoffs.js";
-import {
-  importLegacyOwnerInDatabase,
-  readLegacyImportSnapshotInDatabase,
-} from "./legacy-taskflow-import.worker.js";
 import {
   listContinuationOwnersAwaitingImport,
   readOwedLegacyReleases,
@@ -393,6 +390,34 @@ export function isContinuationCustodyCommand(command: {
   return command.type.startsWith("continuationCustody.");
 }
 
+// The legacy import pulls in delivery-queue and TaskFlow decoding modules; it
+// loads only when its own commands are prepared, never at worker start.
+const loadLegacyImport = createLazyRuntimeModule(
+  () => import("./legacy-taskflow-import.worker.js"),
+);
+let legacyImport: typeof import("./legacy-taskflow-import.worker.js") | undefined;
+
+/** Load what a custody command needs before its synchronous execution. */
+export function prepareContinuationCustodyCommand(type: PropertyKey): Promise<void> | undefined {
+  if (
+    (type === "continuationCustody.readLegacySnapshot" ||
+      type === "continuationCustody.importLegacyOwner") &&
+    !legacyImport
+  ) {
+    return loadLegacyImport().then((loaded) => {
+      legacyImport = loaded;
+    });
+  }
+  return undefined;
+}
+
+function preparedLegacyImport(): typeof import("./legacy-taskflow-import.worker.js") {
+  if (!legacyImport) {
+    throw new Error("Continuation legacy import command was not prepared");
+  }
+  return legacyImport;
+}
+
 /** Commands that read or delete only, so they never create the first-use table. */
 const SCHEMALESS_COMMANDS: ReadonlySet<keyof ContinuationCustodyWorkerOperations> = new Set<
   keyof ContinuationCustodyWorkerOperations
@@ -457,9 +482,9 @@ function executeInTransaction(
         awaitingImportOwners: listContinuationOwnersAwaitingImport(db),
       };
     case "continuationCustody.readLegacySnapshot":
-      return readLegacyImportSnapshotInDatabase(db);
+      return preparedLegacyImport().readLegacyImportSnapshotInDatabase(db);
     case "continuationCustody.importLegacyOwner":
-      return importLegacyOwnerInDatabase(database, command.input);
+      return preparedLegacyImport().importLegacyOwnerInDatabase(database, command.input);
     case "continuationCustody.readOwedLegacyReleases":
       return readOwedLegacyReleases(db);
   }

@@ -68,7 +68,10 @@ vi.mock("../../../agents/subagents/subagent-attachment-cleanup.js", async (impor
 
 // Boundary between the owner commit and the host seeing it: the committed
 // command's result is lost on the way back, as when the worker reply fails.
-const resultControl = vi.hoisted(() => ({ loseNext: undefined as string | undefined }));
+const resultControl = vi.hoisted(() => ({
+  loseNext: undefined as string | undefined,
+  beforeOwnerCommand: undefined as (() => void) | undefined,
+}));
 vi.mock("../../../state/openclaw-state-worker-store.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../state/openclaw-state-worker-store.js")>();
@@ -87,6 +90,11 @@ vi.mock("../../../state/openclaw-state-worker-store.js", async (importOriginal) 
               if (property === "execute" && typeof value === "function") {
                 return (request: { type: string }) => {
                   type = request.type;
+                  if (type === "continuationCustody.importLegacyOwner") {
+                    const before = resultControl.beforeOwnerCommand;
+                    resultControl.beforeOwnerCommand = undefined;
+                    before?.();
+                  }
                   return (value as (request: unknown) => unknown).call(target, request);
                 };
               }
@@ -119,6 +127,7 @@ const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
 beforeEach(() => {
   removeControl.failures = 0;
   resultControl.loseNext = undefined;
+  resultControl.beforeOwnerCommand = undefined;
 });
 
 function stateOptions(): Options {
@@ -147,9 +156,8 @@ function record(options: Options, recordId: string) {
  */
 function onImportAdmission(
   hook: (request: SqliteWorkerAdmissionRequest, command: number) => void,
-): { reached: SqliteWorkerAdmissionRequest["stage"][] } {
+): void {
   const create = workerAdmission.createSqliteWorkerOperationAdmission;
-  const reached: SqliteWorkerAdmissionRequest["stage"][] = [];
   let command = 0;
   vi.spyOn(workerAdmission, "createSqliteWorkerOperationAdmission").mockImplementation(
     (admit, attachment) =>
@@ -157,12 +165,10 @@ function onImportAdmission(
         if (request.stage === "transaction") {
           command += 1;
         }
-        reached.push(request.stage);
         hook(request, command);
         return admit(request, grant);
       }, attachment),
   );
-  return { reached };
 }
 
 const FIRST_OWNER_COMMAND = 2;
@@ -795,6 +801,33 @@ describe("continuation TaskFlow custody import", () => {
     expect(fs.existsSync(legacyFile)).toBe(false);
     expect(dumpState(options)).toEqual(committed);
     expect(detectContinuationTaskFlowCustodyImport({ env: options.env }).hasLegacy).toBe(false);
+  });
+
+  it("fails an owner whose source row changed after the snapshot, and imports the current row next run", async () => {
+    const options = stateOptions();
+    seedFlow(options, { flowId: "a-work", status: "queued", state: workState() });
+    // Between the worker's snapshot read and the owner command, a rollback build moves the row.
+    resultControl.beforeOwnerCommand = () =>
+      write(options, (db) =>
+        executeSqliteQuerySync(
+          db,
+          kysely(db)
+            .updateTable("flow_runs")
+            .set({ revision: 4, updated_at: 3_000 })
+            .where("flow_id", "=", "a-work"),
+        ),
+      );
+
+    const changed = await run(options);
+
+    expect(changed.warnings.join("\n")).toContain("legacy continuation rows changed");
+    expect(records(options)).toEqual([]);
+    expect(readReceipts(options)).toEqual([]);
+    expect(write(options, (db) => listContinuationOwnersAwaitingImport(db))).toEqual([OWNER_A]);
+
+    await run(options);
+
+    expect(record(options, "a-work")).toMatchObject({ revision: 4, updatedAt: 3_000 });
   });
 
   describe("ordering across the owner commit (copy, commit, release)", () => {

@@ -280,7 +280,8 @@ export function importLegacyOwnerInDatabase(
   },
 ): LegacyImportOwnerResult {
   const { db } = database;
-  const { snapshot, payloads, now } = input;
+  const { snapshot, now } = input;
+  const payloads = new Map(input.payloads);
   const owner = snapshot.ownerSessionKey;
   // Reread the authoritative rows: anything that moved since planning is retried next run.
   const current = new Map(
@@ -332,7 +333,7 @@ export function importLegacyOwnerInDatabase(
     const queueEntry = pending.find(
       (entry) => entry.entry.sourceFlowId === row.flow_id && entry.sessionKey === owner,
     );
-    const payload = payloads[row.flow_id];
+    const payload = payloads.get(row.flow_id);
     const plan = planLegacyRow(row, {
       ...(queueEntry ? { queueEntryId: queueEntry.id } : {}),
       // C spawned every delegate kind under this derived child key, so a

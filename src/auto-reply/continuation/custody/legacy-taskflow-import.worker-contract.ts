@@ -11,7 +11,7 @@ export type LegacyImportOwnerSnapshot = {
 };
 
 /** Payload outcome per flow ID, copied to the new root before the owner commit. */
-export type LegacyImportPayloadOutcomes = Record<string, "copied" | "missing">;
+export type LegacyImportPayloadOutcomes = [flowId: string, outcome: "copied" | "missing"][];
 
 export type LegacyImportOwnerResult = {
   imported: number;
