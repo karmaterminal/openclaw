@@ -261,7 +261,11 @@ function applyFollowupQueueOverflow(
   }
   if (!shouldEnqueue) {
     run.onQueueDisposition?.(queue.dropPolicy === "new" ? "queue-cap-new" : "queue-cap");
-    completeFollowupRunLifecycle(run);
+    // Protected priority runs fill the cap, so policy rejects this run outright.
+    // Retrying it would replay it behind the same priority run and burn attempts.
+    completeFollowupRunLifecycle(run, {
+      policyDrop: queue.dropPolicy === "new" ? "queue-cap-new" : "queue-cap-protected",
+    });
     return false;
   }
   return true;

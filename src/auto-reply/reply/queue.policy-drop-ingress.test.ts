@@ -16,7 +16,7 @@ import { fanInChannelIngressLifecycles } from "../../plugin-sdk/channel-ingress-
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
 import { createQueueCase } from "./queue.case.test-support.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
-import { completeFollowupRunLifecycle } from "./queue.js";
+import { completeFollowupRunLifecycle, enqueueFollowupRun } from "./queue.js";
 import {
   createQueueTestRun as createRun,
   installQueueRuntimeErrorSilencer,
@@ -31,6 +31,7 @@ async function createHarness(stateDir: string, settings: Partial<QueueSettings>)
   const queue = createTestIngressQueue(stateDir);
   const followups = createQueueCase(settings, 1);
   const runs = new Map<string, FollowupRun>();
+  const added = new Map<string, boolean>();
   const dispatched: string[] = [];
   const drain = createChannelIngressDrain<Payload>({
     queue,
@@ -48,7 +49,7 @@ async function createHarness(stateDir: string, settings: Partial<QueueSettings>)
         ...bindIngressLifecycleToReplyOptions(lifecycle),
       };
       runs.set(event.id, run);
-      expect(followups.add(run)).toBe(true);
+      added.set(event.id, followups.add(run));
       return { kind: "deferred" };
     },
   });
@@ -58,7 +59,7 @@ async function createHarness(stateDir: string, settings: Partial<QueueSettings>)
       await drain.waitForIdle();
     }
   };
-  return { queue, followups, runs, dispatched, drain, drainUntilDispatched };
+  return { queue, followups, runs, added, dispatched, drain, drainUntilDispatched };
 }
 
 async function dispose(harness: Harness | undefined) {
@@ -86,6 +87,7 @@ describe("follow-up queue policy drops settle durable ingress claims", () => {
         // and its enqueue evicts the first at cap 1.
         await harness.drainUntilDispatched(2);
         expect(dispatched).toEqual(["evicted", "survivor"]);
+        expect([...harness.added.values()]).toEqual([true, true]);
 
         await expect(queue.enqueue("evicted", { text: "first" })).resolves.toMatchObject({
           kind: "completed",
@@ -113,6 +115,7 @@ describe("follow-up queue policy drops settle durable ingress claims", () => {
         const { queue, runs, dispatched } = harness;
         await queue.enqueue("abandoned", { text: "only" }, { laneKey: "room", receivedAt: 1 });
         await harness.drainUntilDispatched(1);
+        expect(harness.added.get("abandoned")).toBe(true);
 
         // A queued turn that ends without admission for any other reason.
         const run = runs.get("abandoned");
@@ -128,6 +131,45 @@ describe("follow-up queue policy drops settle durable ingress claims", () => {
         clearFollowupQueue(harness.followups.key);
         await harness.drainUntilDispatched(2);
         expect(dispatched).toEqual(["abandoned", "abandoned"]);
+      } finally {
+        await dispose(harness);
+      }
+    });
+  });
+
+  it("completes a row rejected because protected priority runs fill the cap", async () => {
+    await withTempState(async (stateDir) => {
+      let harness: Harness | undefined;
+      try {
+        harness = await createHarness(stateDir, { mode: "collect", cap: 1, dropPolicy: "old" });
+        const { queue, followups, dispatched } = harness;
+        // A front-positioned (priority) run is protected from overflow eviction.
+        expect(
+          enqueueFollowupRun(
+            followups.key,
+            createRun({ prompt: "priority" }),
+            followups.settings,
+            "message-id",
+            undefined,
+            false,
+            { position: "front" },
+          ),
+        ).toBe(true);
+        await queue.enqueue("rejected", { text: "late" }, { laneKey: "room", receivedAt: 1 });
+
+        await harness.drainUntilDispatched(1);
+        expect(harness.added.get("rejected")).toBe(false);
+        await harness.drain.waitForIdle();
+
+        await expect(queue.enqueue("rejected", { text: "late" })).resolves.toMatchObject({
+          kind: "completed",
+          record: { id: "rejected", metadata: { policyDrop: "queue-cap-protected" } },
+        });
+        expect(await queue.listClaims()).toEqual([]);
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+        await harness.drain.drainOnce();
+        await harness.drain.waitForIdle();
+        expect(dispatched).toEqual(["rejected"]);
       } finally {
         await dispose(harness);
       }
