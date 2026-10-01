@@ -244,6 +244,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/dispatch.block-streaming-recovery.test.ts",
   "src/auto-reply/continuation/custody/custody-store.test.ts",
   "src/auto-reply/continuation/custody/custody-readiness.test.ts",
+  // The legacy TaskFlow import runs its SQL as shared-state worker operations.
+  "src/auto-reply/continuation/custody/legacy-taskflow-import.test.ts",
   // L4-G1: continuation delegate store suites on real continuation custody.
   "src/auto-reply/continuation/delegate-store.test.ts",
   "src/auto-reply/continuation/delegate-store.queue.test.ts",

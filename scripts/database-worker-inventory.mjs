@@ -127,6 +127,10 @@ const workerModules = new Set([
   "src/state/openclaw-state-worker-runtime.ts",
   "src/config/sessions/session-accessor.sqlite-mutation-worker.runtime.ts",
   "src/infra/session-cost-usage-worker.ts",
+  // Imported only by custody-store.worker.ts, custody-store.worker-handoffs.ts and
+  // legacy-taskflow-import.worker.ts; those reach the host only through
+  // custody-store.worker.ts <- openclaw-state-worker-runtime.ts.
+  "src/auto-reply/continuation/custody/custody-store.kernel.ts",
 ]);
 const exceptionModules = new Set([
   "src/state/openclaw-state-db-transaction.ts",

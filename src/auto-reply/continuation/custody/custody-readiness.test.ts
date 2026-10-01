@@ -28,6 +28,7 @@ import {
   resetContinuationCustodyProjection,
 } from "./custody-projection.js";
 import {
+  hydrateContinuationCustody,
   listContinuationRecords,
   resolveContinuationCustodyDatabasePath,
   whenContinuationCustodyReady,
@@ -332,6 +333,29 @@ describe("continuation custody readiness (phase A)", () => {
     const admitted = await enqueuePendingDelegate(OWNER_B, { task: "unaffected owner" });
 
     expect(await recordIds()).toEqual([admitted.recordId]);
+  });
+
+  it("keeps a failed owner awaiting import and refusing writes until a later phase A imports it", async () => {
+    seedUncopyableLegacyDelegate("legacy-retried", OWNER_A);
+    await whenContinuationCustodyReady();
+
+    await expect(enqueuePendingDelegate(OWNER_A, { task: "refused" })).rejects.toThrow(
+      IMPORT_PENDING,
+    );
+    await expect(enqueuePendingDelegate(OWNER_A, { task: "still refused" })).rejects.toThrow(
+      IMPORT_PENDING,
+    );
+    expect(isContinuationCustodyOwnerAwaitingImport(OWNER_A)).toBe(true);
+    expect(importControl.calls).toBe(1);
+
+    // The fault clears; the next phase A (a Gateway restart; here a re-hydration) retries it.
+    fs.rmSync(path.join(options.env.OPENCLAW_STATE_DIR!, "attachments", "continuation-custody"));
+    await hydrateContinuationCustody();
+
+    expect(importControl.calls).toBe(2);
+    expect(isContinuationCustodyOwnerAwaitingImport(OWNER_A)).toBe(false);
+    const admitted = await enqueuePendingDelegate(OWNER_A, { task: "admitted after retry" });
+    expect(await recordIds()).toEqual(["legacy-retried", admitted.recordId].toSorted());
   });
 
   it("shares one phase A between concurrent first writes", async () => {

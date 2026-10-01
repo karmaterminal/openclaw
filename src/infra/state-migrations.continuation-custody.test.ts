@@ -12,7 +12,11 @@ import {
 } from "../auto-reply/continuation/custody/legacy-taskflow-import.test-support.js";
 import { EMPTY_LEGACY_SESSION_SURFACES } from "../plugins/legacy-session-surfaces.types.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
-import { autoMigrateLegacyState, detectLegacyStateMigrations } from "./state-migrations.doctor.js";
+import {
+  autoMigrateLegacyState,
+  detectLegacyStateMigrations,
+  runLegacyStateMigrations,
+} from "./state-migrations.doctor.js";
 
 const temporary = useAutoCleanupTempDirTracker(afterEach);
 let env: NodeJS.ProcessEnv;
@@ -60,5 +64,33 @@ describe("continuation-taskflow-custody-import registration", () => {
     expect(
       write({ env }, (db) => listContinuationRecordsInDatabase(db, {})).map((r) => r.recordId),
     ).toEqual(["legacy-work"]);
+  });
+
+  it("is run by Doctor, which starts the shared-state worker for the import", async () => {
+    seedFlow({ env }, { flowId: "doctor-work", status: "queued", state: workState() });
+
+    const detected = await detectLegacyStateMigrations({
+      cfg: {},
+      mode: "doctor",
+      env,
+      legacySessionSurfaces: EMPTY_LEGACY_SESSION_SURFACES,
+    });
+    expect(detected.continuationCustody).toEqual({ hasLegacy: true, pendingSources: 1 });
+
+    const result = await runLegacyStateMigrations({
+      detected,
+      config: {},
+      env,
+      legacySessionSurfaces: EMPTY_LEGACY_SESSION_SURFACES,
+    });
+
+    expect(result.mode).toBe("doctor");
+    expect(
+      result.stepReceipts.find((receipt) => receipt.id === "continuation-taskflow-custody-import"),
+    ).toMatchObject({ outcome: "completed" });
+    expect(result.changes).toContain("Imported 1 continuation custody record from TaskFlow rows.");
+    expect(
+      write({ env }, (db) => listContinuationRecordsInDatabase(db, {})).map((r) => r.recordId),
+    ).toEqual(["doctor-work"]);
   });
 });
