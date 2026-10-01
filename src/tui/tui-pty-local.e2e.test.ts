@@ -145,6 +145,16 @@ const GATEWAY_SCENARIOS = {
     holdFirstResponse: true,
     followupReplyText: "FOLLOWUP_RUN_COMPLETE",
   },
+  // The mock model holds only the first response per model id for the shared
+  // server's life, so the Gateway-client collect case needs its own model id.
+  collectGatewayClient: {
+    agentId: SHARED_GATEWAY_AGENT_ID,
+    modelId: "tui-pty-gw-collect",
+    toolsProfile: "minimal",
+    replyText: "FIRST_RUN_ACTIVE",
+    holdFirstResponse: true,
+    followupReplyText: "FOLLOWUP_RUN_COMPLETE",
+  },
   reconnect: {
     agentId: SHARED_GATEWAY_AGENT_ID,
     modelId: "tui-pty-reconnect",
@@ -2546,7 +2556,7 @@ export default {
   registerGatewayTest(
     "collects two Gateway-client prompts into one real Gateway followup turn",
     async ({ onTestFinished }) => {
-      const fixture = await startGatewayModeTui("collect", onTestFinished);
+      const fixture = await startGatewayModeTui("collectGatewayClient", onTestFinished);
       const admittedRunIds = new Set<string>();
       // Personal TUI turns carry per-turn skill-authoring authority and must drain
       // individually. External-user provenance exercises collection without merging authority.
