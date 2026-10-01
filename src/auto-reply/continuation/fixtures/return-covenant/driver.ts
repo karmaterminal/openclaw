@@ -3,8 +3,8 @@ import http from "node:http";
 import path from "node:path";
 import { stableStringify } from "@openclaw/normalization-core";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { resetConfigRuntimeState } from "../../../config/runtime-snapshot.js";
-import type { OpenClawConfig } from "../../../config/types.openclaw.js";
+import { resetConfigRuntimeState } from "../../../../config/runtime-snapshot.js";
+import type { OpenClawConfig } from "../../../../config/types.openclaw.js";
 import { readReturnCovenantJsonFile, writeReturnCovenantJsonFile } from "./control-file.js";
 import { ProductReturnCovenantGatewayControl } from "./gateway.js";
 import {

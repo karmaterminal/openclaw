@@ -3,11 +3,11 @@ import {
   appendTranscriptMessage,
   assignSessionOwner,
   upsertSessionEntryCore,
-} from "../../../config/sessions/session-accessor.js";
-import { addSessionMember } from "../../../config/sessions/session-sharing-store.js";
-import { bindGenericCurrentConversation } from "../../../infra/outbound/current-conversation-bindings.js";
-import { buildPersistedUserTurnMessage } from "../../../sessions/user-turn-transcript.message.js";
-import { INTERNAL_MESSAGE_CHANNEL } from "../../../utils/message-channel-constants.js";
+} from "../../../../config/sessions/session-accessor.js";
+import { addSessionMember } from "../../../../config/sessions/session-sharing-store.js";
+import { bindGenericCurrentConversation } from "../../../../infra/outbound/current-conversation-bindings.js";
+import { buildPersistedUserTurnMessage } from "../../../../sessions/user-turn-transcript.message.js";
+import { INTERNAL_MESSAGE_CHANNEL } from "../../../../utils/message-channel-constants.js";
 import {
   returnCovenantExecutionKey,
   returnCovenantOwnerA,

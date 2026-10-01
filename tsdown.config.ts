@@ -450,7 +450,7 @@ function buildCoreDistEntries(): Record<string, string> {
     "crabbox-wrapper": "scripts/crabbox-wrapper.mts",
     "docker-healthcheck": "src/docker-healthcheck.ts",
     "test-runtime/return-covenant-fixture-driver":
-      "src/auto-reply/continuation/return-covenant-fixture/entry.ts",
+      "src/auto-reply/continuation/fixtures/return-covenant/entry.ts",
     // Ensure this module is bundled as an entry so legacy CLI shims can resolve its exports.
     "cli/daemon-cli": "src/cli/daemon-cli.ts",
     // Keep recorded post-swap imports of this binding out of the shared updater graph.

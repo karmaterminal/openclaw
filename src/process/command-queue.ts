@@ -7,11 +7,6 @@ import {
   logLaneEnqueue,
 } from "../logging/diagnostic-runtime.js";
 import {
-  notifyAllCommandLaneIdleWaitersForState,
-  notifyCommandLaneIdleWaitersForState,
-  waitForCommandLaneIdleState,
-} from "./command-queue-waiters.js";
-import {
   applyCommandLaneCapacity,
   canAdmitInGroup,
   type CommandLaneGroupSpec,
@@ -20,6 +15,10 @@ import {
   installCommandLaneGroup,
   validateCommandLaneGroupSpec,
 } from "./command-queue.capacity-groups.js";
+import {
+  notifyAllCommandLaneIdleWaiters,
+  notifyCommandLaneIdleWaiters,
+} from "./command-queue.lane-idle.js";
 import {
   createLaneQueue,
   dequeueLaneQueue,
@@ -50,6 +49,7 @@ export {
   isGatewayWorkAdmissionClosed as isGatewayDraining,
   markGatewayRestartDraining as markGatewayDraining,
 } from "./gateway-work-admission.js";
+export { waitForCommandLaneIdle } from "./command-queue.lane-idle.js";
 export type { CommandLaneTaskMarker } from "./command-queue.state.js";
 export type { CommandLaneSnapshot } from "./command-queue.types.js";
 export class CommandLaneClearedError extends Error {
@@ -175,19 +175,6 @@ function retireIdleScopedCommandLane(state: LaneState): void {
   if (lanes.get(state.lane) === state) {
     lanes.delete(state.lane);
   }
-}
-
-function isCommandLaneIdle(lane: string): boolean {
-  const state = getQueueState().lanes.get(lane);
-  return !state || getLaneDepth(state) === 0;
-}
-
-function notifyCommandLaneIdleWaiters(lane: string): void {
-  notifyCommandLaneIdleWaitersForState(lane, isCommandLaneIdle);
-}
-
-function notifyAllCommandLaneIdleWaiters(): void {
-  notifyAllCommandLaneIdleWaitersForState(isCommandLaneIdle);
 }
 
 function resolveQueuePriority(priority: CommandQueueEnqueueOptions["priority"]): QueuePriority {
@@ -768,22 +755,4 @@ export function resetAllLanes(): void {
     drainReadyCommandLane(lane);
   }
   notifyAllCommandLaneIdleWaiters();
-}
-
-/**
- * Wait for one command lane to become completely idle: no active task and no
- * queued task. Same-session continuation wakes use this event-driven boundary
- * so they cannot cut ahead of already admitted work.
- */
-export function waitForCommandLaneIdle(
-  lane: string = CommandLane.Main,
-  timeoutMs?: number,
-  opts?: { signal?: AbortSignal },
-): Promise<{ idle: boolean }> {
-  return waitForCommandLaneIdleState({
-    lane: normalizeLane(lane),
-    isLaneIdle: isCommandLaneIdle,
-    timeoutMs,
-    signal: opts?.signal,
-  });
 }

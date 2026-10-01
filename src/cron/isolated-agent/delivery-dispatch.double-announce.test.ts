@@ -208,7 +208,11 @@ import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../../p
 import { createOutboundTestPlugin, createTestRegistry } from "../../test-utils/channel-plugins.js";
 import { resolveCronDeliveryPlan } from "../delivery-plan.js";
 import { withTempCronHome } from "../isolated-agent.test-harness.js";
-import { messageToolOutcome } from "./delivery-dispatch.double-announce.test-support.js";
+import {
+  deletingRunParams,
+  emptyParams,
+  messageToolOutcome,
+} from "./delivery-dispatch.double-announce.test-support.js";
 import {
   dispatchCronDelivery,
   queueCronMessageToolDeliveryAwareness,
@@ -278,21 +282,6 @@ function structuredParams(
 function expectDelivered(state: Awaited<ReturnType<typeof dispatchCronDelivery>>) {
   expect(state.deliveryAttempted).toBe(true);
   expect(state.delivered).toBe(true);
-}
-
-function emptyParams(spawnOnlyHandoff = false, deliveryBestEffort = false) {
-  const params = makeBaseParams({ spawnOnlyHandoff, deliveryBestEffort, synthesizedText: "" });
-  params.synthesizedText = undefined;
-  params.deliveryPayloads = [];
-  params.summary = undefined;
-  params.outputText = undefined;
-  return params;
-}
-
-function deletingRunParams(sessionTarget = "isolated") {
-  const params = makeBaseParams({ synthesizedText: "Delivered report", sessionTarget });
-  params.job.deleteAfterRun = true;
-  return params;
 }
 
 function expectSessionDeleted() {

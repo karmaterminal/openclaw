@@ -10,9 +10,14 @@ import {
   pruneDeliveryQueueTombstones,
   terminalizeBoundDeliveryQueueEntry,
   type DeliveryQueueDatabase,
+  type DeliveryQueueReadMode,
   type UpsertDeliveryQueueEntryParams,
   upsertBoundDeliveryQueueEntryInDatabase,
 } from "./delivery-queue-sqlite-bound.js";
+import {
+  inflateDeliveryQueueEntryResult,
+  type DeliveryQueueEntryLoadResult,
+} from "./delivery-queue-sqlite-codec.js";
 import {
   hasLiveDeliveryQueueClaim,
   inferDeliveryQueueFailureRetention,
@@ -189,6 +194,21 @@ export function getDeliveryQueueEntriesOwnersInDatabase(
     },
     { databaseLabel: "openclaw-state", operationLabel: "read delivery queue status" },
   );
+}
+
+/** Load rows in database order while retaining corrupt row identity and bytes. */
+export function loadDeliveryQueueEntryResultsInDatabase(
+  database: OpenClawStateDatabase,
+  queueName: string,
+  mode: DeliveryQueueReadMode = "pending",
+): DeliveryQueueEntryLoadResult[] {
+  const rows = executeSqliteQuerySync(
+    database.db,
+    deliveryQueueEntriesQuery(database, [queueName], mode)
+      .orderBy("enqueued_at", "asc")
+      .orderBy("id", "asc"),
+  ).rows;
+  return rows.map(inflateDeliveryQueueEntryResult);
 }
 
 export function deleteDeliveryQueueEntryInDatabase(

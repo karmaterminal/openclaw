@@ -15,10 +15,6 @@ import {
   deleteSessionMembersForRepair,
 } from "../config/sessions/session-accessor.sqlite-node-artifacts.js";
 import { replaceSessionOwnerInTransaction } from "../config/sessions/session-accessor.sqlite-owner.js";
-import {
-  deleteSessionRecipientAuthoritiesForCanonicalRepair,
-  reconcileSessionRecipientAuthorityForCanonicalRepair,
-} from "../config/sessions/session-accessor.sqlite-recipient-authority.js";
 import { collectSessionStateIdsForEntry } from "../config/sessions/session-accessor.sqlite-references.js";
 import { resolveSqliteTranscriptArchiveDirectory } from "../config/sessions/session-accessor.sqlite-scope.js";
 import { setCanonicalSqliteSessionMainKey } from "../config/sessions/session-canonical-key.js";
@@ -38,6 +34,10 @@ import {
   type CanonicalSessionCandidate,
   type CanonicalSessionCandidateFact,
 } from "./doctor-session-canonical-candidates.js";
+import {
+  deleteSessionRecipientAuthoritiesForCanonicalRepair,
+  reconcileSessionRecipientAuthorityForCanonicalRepair,
+} from "./doctor-session-recipient-authority-repair.js";
 
 function createCanonicalRepairRemoval(
   candidate: CanonicalSessionCandidate,

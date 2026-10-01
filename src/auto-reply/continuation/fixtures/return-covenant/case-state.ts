@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 import { stableStringify } from "@openclaw/normalization-core";
-import type { OpenClawConfig } from "../../../config/types.openclaw.js";
-import type { PendingContinuationDelegate } from "../types.js";
+import type { OpenClawConfig } from "../../../../config/types.openclaw.js";
+import type { PendingContinuationDelegate } from "../../types.js";
 import type {
   PreparedReturnCovenantDatabaseProfiles,
   ReturnCovenantDatabaseReceipt,

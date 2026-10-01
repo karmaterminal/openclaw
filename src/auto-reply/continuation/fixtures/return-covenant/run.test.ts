@@ -4,14 +4,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resetConfigRuntimeState,
   setRuntimeConfigSnapshot,
-} from "../../../config/runtime-snapshot.js";
-import { appendTranscriptMessage } from "../../../config/sessions/session-accessor.js";
-import type { OpenClawConfig } from "../../../config/types.openclaw.js";
-import { openNodeSqliteDatabase } from "../../../infra/node-sqlite.js";
-import { removeSystemEvents } from "../../../infra/system-events.js";
-import { buildPersistedUserTurnMessage } from "../../../sessions/user-turn-transcript.message.js";
-import { openOpenClawAgentDatabase } from "../../../state/openclaw-agent-db.js";
-import { withTestDir } from "../../../test-helpers/temp-dir.js";
+} from "../../../../config/runtime-snapshot.js";
+import { appendTranscriptMessage } from "../../../../config/sessions/session-accessor.js";
+import type { OpenClawConfig } from "../../../../config/types.openclaw.js";
+import { openNodeSqliteDatabase } from "../../../../infra/node-sqlite.js";
+import { removeSystemEvents } from "../../../../infra/system-events.js";
+import { buildPersistedUserTurnMessage } from "../../../../sessions/user-turn-transcript.message.js";
+import { openOpenClawAgentDatabase } from "../../../../state/openclaw-agent-db.js";
+import { withTestDir } from "../../../../test-helpers/temp-dir.js";
 import { returnCovenantCaseScope } from "./case-setup.js";
 import {
   returnCovenantCurrentSessionId,

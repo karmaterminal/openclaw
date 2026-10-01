@@ -1,5 +1,5 @@
-import { resolveAgentWorkspaceDir } from "../../../agents/agent-scope.js";
-import { createDefaultDeps } from "../../../cli/deps.js";
+import { resolveAgentWorkspaceDir } from "../../../../agents/agent-scope.js";
+import { createDefaultDeps } from "../../../../cli/deps.js";
 import {
   appendTranscriptMessage,
   assignSessionOwner,
@@ -11,29 +11,29 @@ import {
   patchSessionEntryCore,
   resetSessionEntryLifecycle,
   upsertSessionEntryCore,
-} from "../../../config/sessions/session-accessor.js";
-import { advanceSessionRecipientAuthorityInTransaction } from "../../../config/sessions/session-accessor.sqlite-recipient-authority.js";
-import type { SessionRecipientAuthority } from "../../../config/sessions/session-recipient-authority-types.js";
-import { removeSessionMember } from "../../../config/sessions/session-sharing-store.js";
-import { deliverQueuedSessionDeliveryCore } from "../../../gateway/server-restart-sentinel-delivery.js";
-import { resolveGenericCurrentConversationBinding } from "../../../infra/outbound/current-conversation-bindings.js";
-import { drainPendingSessionDelivery } from "../../../infra/session-delivery-queue-recovery.js";
+} from "../../../../config/sessions/session-accessor.js";
+import { advanceSessionRecipientAuthorityInTransaction } from "../../../../config/sessions/session-accessor.sqlite-recipient-authority.js";
+import type { SessionRecipientAuthority } from "../../../../config/sessions/session-recipient-authority-types.js";
+import { removeSessionMember } from "../../../../config/sessions/session-sharing-store.js";
+import { deliverQueuedSessionDeliveryCore } from "../../../../gateway/server-restart-sentinel-delivery.js";
+import { resolveGenericCurrentConversationBinding } from "../../../../infra/outbound/current-conversation-bindings.js";
+import { drainPendingSessionDelivery } from "../../../../infra/session-delivery-queue-recovery.js";
 import {
   loadPendingSessionDeliveries,
   loadPendingSessionDelivery,
-} from "../../../infra/session-delivery-queue-storage.js";
-import { peekSystemEventEntries, removeSystemEvents } from "../../../infra/system-events.js";
-import { buildPersistedUserTurnMessage } from "../../../sessions/user-turn-transcript.message.js";
-import { closeOpenClawAgentDatabasesForTestAsync } from "../../../state/openclaw-agent-db-lifecycle.js";
-import { runOpenClawAgentWriteTransaction } from "../../../state/openclaw-agent-db.js";
-import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
+} from "../../../../infra/session-delivery-queue-storage.js";
+import { peekSystemEventEntries, removeSystemEvents } from "../../../../infra/system-events.js";
+import { buildPersistedUserTurnMessage } from "../../../../sessions/user-turn-transcript.message.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../../../state/openclaw-agent-db-lifecycle.js";
+import { runOpenClawAgentWriteTransaction } from "../../../../state/openclaw-agent-db.js";
+import { captureOpenClawStateWorkerContext } from "../../../../state/openclaw-state-worker-context.js";
 import {
   resolveFinalSystemEventAdoption,
   settleManagedSystemEventsAfterTurnAdoption,
-} from "../../reply/session-system-event-adoption.js";
-import { prepareFormattedSystemEvents } from "../../reply/session-system-events.js";
-import { getDelegateRecord, listLiveDelegateRecords } from "../delegate-flow-store.js";
-import { cancelPendingDelegates } from "../delegate-store.js";
+} from "../../../reply/session-system-event-adoption.js";
+import { prepareFormattedSystemEvents } from "../../../reply/session-system-events.js";
+import { getDelegateRecord, listLiveDelegateRecords } from "../../delegate-flow-store.js";
+import { cancelPendingDelegates } from "../../delegate-store.js";
 import {
   acceptPostCompactionReturnCovenantCase,
   enqueueHeldReturnCovenantDelivery,

@@ -6,9 +6,9 @@ import { lstat, open, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type { OpenClawConfig } from "../../../config/types.openclaw.js";
-import { callGateway } from "../../../gateway/call.js";
-import { ADMIN_SCOPE } from "../../../gateway/method-scopes.js";
+import type { OpenClawConfig } from "../../../../config/types.openclaw.js";
+import { callGateway } from "../../../../gateway/call.js";
+import { ADMIN_SCOPE } from "../../../../gateway/method-scopes.js";
 import {
   assertReturnCovenantGatewayBinding,
   parseReturnCovenantGatewayBinding,

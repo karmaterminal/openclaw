@@ -1,11 +1,11 @@
 import { stableStringify } from "@openclaw/normalization-core";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type { OpenClawConfig } from "../../../config/types.openclaw.js";
+import type { OpenClawConfig } from "../../../../config/types.openclaw.js";
 import {
   resetHeartbeatWakeStateForTests,
   setHeartbeatWakeHandler,
-} from "../../../infra/heartbeat-wake.js";
-import { resetSystemEventsForTest } from "../../../infra/system-events.js";
+} from "../../../../infra/heartbeat-wake.js";
+import { resetSystemEventsForTest } from "../../../../infra/system-events.js";
 import { dispatchReturnCovenantCase } from "./case-dispatch.js";
 import {
   cleanupReturnCovenantCase,

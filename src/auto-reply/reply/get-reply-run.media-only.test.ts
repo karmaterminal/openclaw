@@ -42,7 +42,11 @@ import {
   loadSessionUpdatesRuntime,
 } from "./get-reply-run-helpers.js";
 import { runPreparedReply } from "./get-reply-run.js";
-import { registerMediaOnlyContinuationCases } from "./get-reply-run.media-only.continuation.test-support.js";
+import {
+  registerMediaOnlyContinuationCases,
+  requireRunReplyAgentCall,
+  useActualSystemEventDrain,
+} from "./get-reply-run.media-only.continuation.test-support.js";
 import { registerPendingRequesterAuthorityCases } from "./get-reply-run.requester-authority.test-support.js";
 import {
   baseParams,
@@ -66,10 +70,7 @@ import { resolveFollowupAbortSignal } from "./queue/types.js";
 import { REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS, createReplyOperation } from "./reply-run-registry.js";
 import { getActiveReplyRunCount } from "./reply-run-registry.registry.js";
 import { testing as replyRunTesting } from "./reply-run-registry.test-support.js";
-import {
-  drainFormattedSystemEvents,
-  prepareFormattedSystemEvents,
-} from "./session-system-events.js";
+import { drainFormattedSystemEvents } from "./session-system-events.js";
 import {
   createSourceReplyDeliveryRuntime,
   readSourceReplyDeliveryRuntime,
@@ -453,22 +454,6 @@ function turn(
 
 function runPrepared(overrides: Partial<Parameters<typeof runPreparedReply>[0]> = {}) {
   return runPreparedReply(baseParams(overrides));
-}
-
-async function useActualSystemEventDrain() {
-  const actual = await vi.importActual<typeof import("./session-system-events.js")>(
-    "./session-system-events.js",
-  );
-  vi.mocked(drainFormattedSystemEvents).mockImplementation(actual.drainFormattedSystemEvents);
-  vi.mocked(prepareFormattedSystemEvents).mockImplementation(actual.prepareFormattedSystemEvents);
-}
-
-function requireRunReplyAgentCall(index = 0) {
-  const call = vi.mocked(runReplyAgent).mock.calls.at(index)?.[0];
-  if (!call) {
-    throw new Error(`runReplyAgent call ${index} missing`);
-  }
-  return call;
 }
 
 describe("runPreparedReply media-only handling", () => {

@@ -1,9 +1,9 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { ErrorCodes, errorShape } from "../../../../packages/gateway-protocol/src/index.js";
-import type { OpenClawConfig } from "../../../config/types.openclaw.js";
-import { readJsonBodyOrError, sendJson } from "../../../gateway/http-common.js";
-import type { GatewayServerExtraHttpRoute } from "../../../gateway/server-extra-handlers.js";
-import type { GatewayRequestHandlers } from "../../../gateway/server-methods/types.js";
+import { ErrorCodes, errorShape } from "../../../../../packages/gateway-protocol/src/index.js";
+import type { OpenClawConfig } from "../../../../config/types.openclaw.js";
+import { readJsonBodyOrError, sendJson } from "../../../../gateway/http-common.js";
+import type { GatewayServerExtraHttpRoute } from "../../../../gateway/server-extra-handlers.js";
+import type { GatewayRequestHandlers } from "../../../../gateway/server-methods/types.js";
 import type { ReturnCovenantFixtureFaults, ReturnCovenantGatewayInvocation } from "./case-state.js";
 import {
   assertReturnCovenantGatewayBinding,

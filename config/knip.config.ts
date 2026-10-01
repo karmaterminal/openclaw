@@ -382,7 +382,7 @@ const rootEntries = [
   // Built as the official image's Docker HEALTHCHECK entrypoint.
   "src/docker-healthcheck.ts!",
   // Private tsdown entry loaded by the tracked return-covenant fixture script.
-  "src/auto-reply/continuation/return-covenant-fixture/entry.ts!",
+  "src/auto-reply/continuation/fixtures/return-covenant/entry.ts!",
   // Uploaded in the worker bundle and launched by rsync; no static host import exists.
   // Deployed in the worker archive and launched by path, without a static host import.
   "src/worker/worker-deploy-entry.ts!",

@@ -1,21 +1,21 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { asNonArrayRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createReturnCovenantGatewayConfigSnapshot } from "../auto-reply/continuation/return-covenant-fixture/gateway-config.js";
+import { createReturnCovenantGatewayConfigSnapshot } from "../auto-reply/continuation/fixtures/return-covenant/gateway-config.js";
 import {
   readReturnCovenantProcessStartFingerprint,
   type ReturnCovenantGatewayBinding,
-} from "../auto-reply/continuation/return-covenant-fixture/gateway-generation.js";
+} from "../auto-reply/continuation/fixtures/return-covenant/gateway-generation.js";
 import {
   createReturnCovenantGatewayService,
   RETURN_COVENANT_GATEWAY_METHOD,
-} from "../auto-reply/continuation/return-covenant-fixture/gateway-rpc.js";
-import { RETURN_COVENANT_RETENTION_PATH } from "../auto-reply/continuation/return-covenant-fixture/retention.js";
+} from "../auto-reply/continuation/fixtures/return-covenant/gateway-rpc.js";
+import { RETURN_COVENANT_RETENTION_PATH } from "../auto-reply/continuation/fixtures/return-covenant/retention.js";
 import {
   createReturnCovenantTestAttestation,
   createReturnCovenantTestPlan,
   createReturnCovenantTestRequest,
-} from "../auto-reply/continuation/return-covenant-fixture/test-plan.test-support.js";
+} from "../auto-reply/continuation/fixtures/return-covenant/test-plan.test-support.js";
 import { resetConfigRuntimeState } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createOpenClawTestState } from "../test-utils/openclaw-test-state.js";

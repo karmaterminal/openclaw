@@ -1,26 +1,26 @@
 import path from "node:path";
 import { stableStringify } from "@openclaw/normalization-core";
-import { createContinueDelegateTool } from "../../../agents/tools/continue-delegate-tool.js";
-import { loadSessionEntry } from "../../../config/sessions/session-accessor.js";
-import { deferSessionDelivery } from "../../../infra/session-delivery-queue-storage.js";
-import { peekSystemEventEntries, removeSystemEvents } from "../../../infra/system-events.js";
-import { handleContinuationSignal } from "../../reply/agent-runner-continuation-signal.js";
-import { createReplyContinuationController } from "../../reply/agent-runner-continuation.js";
-import type { FollowupRun } from "../../reply/queue.js";
+import { createContinueDelegateTool } from "../../../../agents/tools/continue-delegate-tool.js";
+import { loadSessionEntry } from "../../../../config/sessions/session-accessor.js";
+import { deferSessionDelivery } from "../../../../infra/session-delivery-queue-storage.js";
+import { peekSystemEventEntries, removeSystemEvents } from "../../../../infra/system-events.js";
+import { handleContinuationSignal } from "../../../reply/agent-runner-continuation-signal.js";
+import { createReplyContinuationController } from "../../../reply/agent-runner-continuation.js";
+import type { FollowupRun } from "../../../reply/queue.js";
 import {
   decodeDelegateFlow,
   isPostCompactionDelegateFlow,
   listDelegateRecords,
-} from "../delegate-flow-store.js";
-import { claimStagedPostCompactionDelegates } from "../delegate-store-post-compaction.js";
-import { consumePendingDelegates, markPendingDelegateSpawnAccepted } from "../delegate-store.js";
+} from "../../delegate-flow-store.js";
+import { claimStagedPostCompactionDelegates } from "../../delegate-store-post-compaction.js";
+import { consumePendingDelegates, markPendingDelegateSpawnAccepted } from "../../delegate-store.js";
 import {
   continuationRecipientAuthorityMap,
   parseContinuationRecipientAuthorityBinding,
-} from "../recipient-authority-binding.js";
-import { extractContinuationSignal } from "../signal.js";
-import { enqueueContinuationReturnDeliveries } from "../targeting.js";
-import type { PendingContinuationDelegate } from "../types.js";
+} from "../../recipient-authority-binding.js";
+import { extractContinuationSignal } from "../../signal.js";
+import { enqueueContinuationReturnDeliveries } from "../../targeting.js";
+import type { PendingContinuationDelegate } from "../../types.js";
 import { materializeReturnCovenantChild } from "./case-setup.js";
 import {
   returnCovenantReceiptId,

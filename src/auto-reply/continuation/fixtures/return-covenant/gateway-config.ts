@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { stableStringify } from "@openclaw/normalization-core";
-import { applyLegacyDoctorMigrations } from "../../../commands/doctor/shared/legacy-config-compat.js";
-import { asResolvedSourceConfig, asRuntimeConfig } from "../../../config/materialize.js";
-import type { ConfigFileSnapshot, OpenClawConfig } from "../../../config/types.openclaw.js";
-import { validateConfigObject } from "../../../config/validation.js";
+import { applyLegacyDoctorMigrations } from "../../../../commands/doctor/shared/legacy-config-compat.js";
+import { asResolvedSourceConfig, asRuntimeConfig } from "../../../../config/materialize.js";
+import type { ConfigFileSnapshot, OpenClawConfig } from "../../../../config/types.openclaw.js";
+import { validateConfigObject } from "../../../../config/validation.js";
 import { createReturnCovenantFixtureConfig } from "./runtime-config.js";
 
 /**

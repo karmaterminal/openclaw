@@ -1,9 +1,9 @@
 import { stableStringify } from "@openclaw/normalization-core";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { z } from "zod";
-import { loadSessionEntry } from "../../../config/sessions/session-accessor.js";
-import { loadPendingSessionDelivery } from "../../../infra/session-delivery-queue-storage.js";
-import { decodeDelegateFlow, getDelegateRecord } from "../delegate-flow-store.js";
+import { loadSessionEntry } from "../../../../config/sessions/session-accessor.js";
+import { loadPendingSessionDelivery } from "../../../../infra/session-delivery-queue-storage.js";
+import { decodeDelegateFlow, getDelegateRecord } from "../../delegate-flow-store.js";
 import { returnCovenantAuthorityFromDelegate } from "./case-dispatch.js";
 import type { ReturnCovenantCaseState, ReturnCovenantFixtureContext } from "./case-state.js";
 import type { ReturnCovenantDatabaseProfilesSnapshot } from "./database.js";

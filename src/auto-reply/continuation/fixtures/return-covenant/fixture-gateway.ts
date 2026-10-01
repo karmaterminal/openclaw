@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { resolveGatewayPort } from "../../../config/paths.js";
+import { resolveGatewayPort } from "../../../../config/paths.js";
 import {
   resetConfigRuntimeState,
   setRuntimeConfigSnapshot,
-} from "../../../config/runtime-snapshot.js";
-import { withGatewayServerExtraHandlers } from "../../../gateway/server-extra-handlers.js";
-import { startGatewayServer } from "../../../gateway/server.js";
+} from "../../../../config/runtime-snapshot.js";
+import { withGatewayServerExtraHandlers } from "../../../../gateway/server-extra-handlers.js";
+import { startGatewayServer } from "../../../../gateway/server.js";
 import { readReturnCovenantJsonFile } from "./control-file.js";
 import { createReturnCovenantGatewayConfigSnapshot } from "./gateway-config.js";
 import {

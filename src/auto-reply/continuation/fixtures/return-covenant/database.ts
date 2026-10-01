@@ -2,28 +2,28 @@ import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { stableStringify } from "@openclaw/normalization-core";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { upsertSessionEntryCore } from "../../../config/sessions/session-accessor.js";
-import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../../infra/kysely-sync.js";
-import { openNodeSqliteDatabase } from "../../../infra/node-sqlite.js";
-import { resolveSqliteDatabaseFilePaths } from "../../../infra/sqlite-files.js";
-import { closeOpenClawAgentDatabasesForTestAsync } from "../../../state/openclaw-agent-db-lifecycle.js";
-import { withOpenClawAgentDatabaseReadOnly } from "../../../state/openclaw-agent-db-readonly.js";
-import { listOpenClawRegisteredAgentDatabases } from "../../../state/openclaw-agent-db-registry-listing.js";
-import type { DB as OpenClawAgentKyselyDatabase } from "../../../state/openclaw-agent-db.generated.js";
+import { upsertSessionEntryCore } from "../../../../config/sessions/session-accessor.js";
+import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../../../infra/kysely-sync.js";
+import { openNodeSqliteDatabase } from "../../../../infra/node-sqlite.js";
+import { resolveSqliteDatabaseFilePaths } from "../../../../infra/sqlite-files.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../../../state/openclaw-agent-db-lifecycle.js";
+import { withOpenClawAgentDatabaseReadOnly } from "../../../../state/openclaw-agent-db-readonly.js";
+import { listOpenClawRegisteredAgentDatabases } from "../../../../state/openclaw-agent-db-registry-listing.js";
+import type { DB as OpenClawAgentKyselyDatabase } from "../../../../state/openclaw-agent-db.generated.js";
 import {
   disposeOpenClawAgentDatabaseByPath,
   ensureOpenClawAgentDatabaseSchema,
   openOpenClawAgentDatabase,
   OPENCLAW_AGENT_SCHEMA_VERSION,
   withAgentDatabaseMaintenanceLease,
-} from "../../../state/openclaw-agent-db.js";
-import { resolveOpenClawAgentSqlitePath } from "../../../state/openclaw-agent-db.paths.js";
-import { stageRecipientAuthorityV18Fixture } from "../../../state/openclaw-agent-recipient-authority-fixture.test-support.js";
-import { OPENCLAW_STATE_SCHEMA_VERSION } from "../../../state/openclaw-state-db-contract.js";
+} from "../../../../state/openclaw-agent-db.js";
+import { resolveOpenClawAgentSqlitePath } from "../../../../state/openclaw-agent-db.paths.js";
+import { stageRecipientAuthorityV18Fixture } from "../../../../state/openclaw-agent-recipient-authority-fixture.test-support.js";
+import { OPENCLAW_STATE_SCHEMA_VERSION } from "../../../../state/openclaw-state-db-contract.js";
 import {
   closeOpenClawStateDatabaseForTest,
   openOpenClawStateDatabase,
-} from "../../../state/openclaw-state-db.js";
+} from "../../../../state/openclaw-state-db.js";
 import type { ReturnCovenantGatewayBinding } from "./gateway-generation.js";
 import {
   sha256ReturnCovenant,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { OpenClawConfig } from "../../../config/types.openclaw.js";
+import type { OpenClawConfig } from "../../../../config/types.openclaw.js";
 
 const runtimeConfigSchema = z
   .object({

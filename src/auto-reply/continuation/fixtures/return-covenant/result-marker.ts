@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type { SystemEvent } from "../../../infra/system-events.js";
+import type { SystemEvent } from "../../../../infra/system-events.js";
 
 const RETURN_COVENANT_RESULT_MARKER = /RCV-[0-9a-f]{32}/gu;
 
