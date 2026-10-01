@@ -176,6 +176,7 @@ describe("Discord durable ingress replacement recovery", () => {
         { laneKey: "channel:lane-a", receivedAt: 2 },
       );
       const expectedFacts = await retryFacts(queue, "poison");
+      const expectedFollowerFacts = await retryFacts(queue, "follower");
 
       const dispatchEntered = createDeferred<void>();
       const releaseDispatch = createDeferred<void>();
@@ -203,10 +204,15 @@ describe("Discord durable ingress replacement recovery", () => {
         preflight: bufferedPreflight,
         debounceMs: 60_000,
       });
-      await vi.waitFor(async () => expect(await queue.listClaims()).toHaveLength(1));
+      // Buffering defers each row and releases its lane (#1415), so the debouncer
+      // holds both same-channel rows, in order, before either reaches preflight.
+      await vi.waitFor(async () =>
+        expect((await queue.listClaims()).map((claim) => claim.id)).toEqual(["poison", "follower"]),
+      );
       await bufferedHandler.deactivate();
       expect(bufferedPreflight).not.toHaveBeenCalled();
       expect(await retryFacts(queue, "poison")).toEqual(expectedFacts);
+      expect(await retryFacts(queue, "follower")).toEqual(expectedFollowerFacts);
 
       const preflightEntered = createDeferred<void>();
       const releasePreflight = createDeferred<void>();
