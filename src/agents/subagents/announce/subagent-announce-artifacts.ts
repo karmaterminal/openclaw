@@ -25,22 +25,26 @@ export async function finalizeSubagentAnnounceArtifacts(finalization: {
   const announceSessionId = finalization.isChildSessionEffectsCurrent()
     ? finalization.childSessionId || "unknown"
     : "unknown";
-  const artifactFinalization = finalization.isChildSessionEffectsCurrent()
-    ? await finalizeDelegateArtifacts({
-        producerSessionKey: flow.childSessionKey,
-        producerSessionId: announceSessionId,
-        producerRunId: flow.childRunId,
-        completionId: announceId,
-        finalizationKey: `delegate-artifact-finalization:${announceId}`,
-        completionStatus: finalization.outcomeStatus,
-        completedAt: flow.endedAt ?? Date.now(),
-        silent: flow.silentAnnounce === true,
-        runtimeEnabled: artifactConfig.enabled,
-        crossSessionEnabled: artifactConfig.crossSessionTargeting === "enabled",
-        resolveSessionId: async (sessionKey) =>
-          (await loadSessionEntryByKey(sessionKey))?.sessionId,
-      })
-    : ({ status: "not-configured" } as const);
+  // Policies exist only for continuation-delegate child runs, so any other run
+  // is "not-configured" without a shared-state command.
+  const artifactFinalization =
+    finalization.isChildSessionEffectsCurrent() &&
+    flow.childRunId.startsWith("continuation-delegate-")
+      ? await finalizeDelegateArtifacts({
+          producerSessionKey: flow.childSessionKey,
+          producerSessionId: announceSessionId,
+          producerRunId: flow.childRunId,
+          completionId: announceId,
+          finalizationKey: `delegate-artifact-finalization:${announceId}`,
+          completionStatus: finalization.outcomeStatus,
+          completedAt: flow.endedAt ?? Date.now(),
+          silent: flow.silentAnnounce === true,
+          runtimeEnabled: artifactConfig.enabled,
+          crossSessionEnabled: artifactConfig.crossSessionTargeting === "enabled",
+          resolveSessionId: async (sessionKey) =>
+            (await loadSessionEntryByKey(sessionKey))?.sessionId,
+        })
+      : ({ status: "not-configured" } as const);
   return { announceSessionId, artifactFinalization };
 }
 
