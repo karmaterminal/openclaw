@@ -19,10 +19,7 @@ import {
   type OpenClawStateDatabaseOptions,
 } from "../../../state/openclaw-state-db.js";
 import { createOpenClawStateSchemaEnsurer } from "../../../state/openclaw-state-feature-schema.js";
-import {
-  CONTINUATION_SPAWN_FAILURE_PHASES,
-  isTerminalContinuationStatus,
-} from "./custody-record-codec.js";
+import { CONTINUATION_SPAWN_FAILURE_PHASES } from "./custody-record-codec.js";
 import {
   CONTINUATION_RECORDS_TABLE,
   casCheck,
@@ -58,7 +55,14 @@ import {
   releaseContinuationPostCompactionInDatabase,
   settleContinuationNoticeInDatabase,
 } from "./custody-store.worker-handoffs.js";
-import { listContinuationOwnersAwaitingImport } from "./legacy-taskflow-source.js";
+import {
+  importLegacyOwnerInDatabase,
+  readLegacyImportSnapshotInDatabase,
+} from "./legacy-taskflow-import.worker.js";
+import {
+  listContinuationOwnersAwaitingImport,
+  readOwedLegacyReleases,
+} from "./legacy-taskflow-migration-source.js";
 /**
  * Creates the canonical first-use table and indexes once per database handle,
  * before the first custody write transaction. Reads never create it.
@@ -100,32 +104,6 @@ export function createContinuationRecordInDatabase(
   const record = newRecord(input);
   insertRecord(db, record);
   return { outcome: "created", record, ...commitFacts(db, [record.ownerSessionKey], []) };
-}
-
-/**
- * Insert-if-absent of a complete record carried over from a legacy source
- * (RFC §5.4.5). Unlike a create, the caller supplies status, revision and
- * clocks exactly, so the Doctor import can keep `created_at` (the delegate
- * due-time base) and the source revision. It runs inside the importer's owner
- * transaction; an existing record ID is never overwritten.
- */
-export function importContinuationRecordInDatabase(
-  db: DatabaseSync,
-  record: ContinuationRecord,
-): "inserted" | "exists" {
-  const invalid =
-    validateNewRecord({ ...record, status: "queued" }) ??
-    (isTerminalContinuationStatus(record.status) === (record.endedAt === undefined)
-      ? "terminal records carry ended_at and live records do not"
-      : undefined);
-  if (invalid) {
-    throw new Error(`invalid imported continuation record ${record.recordId}: ${invalid}`);
-  }
-  if (readRecord(db, record.recordId)) {
-    return "exists";
-  }
-  insertRecord(db, record);
-  return "inserted";
 }
 
 /**
@@ -415,17 +393,24 @@ export function isContinuationCustodyCommand(command: {
   return command.type.startsWith("continuationCustody.");
 }
 
+/** Commands that read or delete only, so they never create the first-use table. */
+const SCHEMALESS_COMMANDS: ReadonlySet<keyof ContinuationCustodyWorkerOperations> = new Set<
+  keyof ContinuationCustodyWorkerOperations
+>([
+  "continuationCustody.list",
+  "continuationCustody.prune",
+  "continuationCustody.listAwaitingImportOwners",
+  "continuationCustody.readBootFacts",
+  "continuationCustody.readLegacySnapshot",
+  "continuationCustody.readOwedLegacyReleases",
+]);
+
 /** One custody command is one state write transaction in the shared state worker. */
 export function executeContinuationCustodyCommand(
   command: SqliteWorkerCommand<ContinuationCustodyWorkerOperations>,
   databaseOptions: OpenClawStateDatabaseOptions,
 ): ContinuationCustodyWorkerOperations[keyof ContinuationCustodyWorkerOperations]["output"] {
-  if (
-    command.type !== "continuationCustody.list" &&
-    command.type !== "continuationCustody.prune" &&
-    command.type !== "continuationCustody.listAwaitingImportOwners" &&
-    command.type !== "continuationCustody.readBootFacts"
-  ) {
+  if (!SCHEMALESS_COMMANDS.has(command.type)) {
     ensureContinuationCustodySchema(databaseOptions);
   }
   return runOpenClawStateWriteTransaction((database) => {
@@ -471,6 +456,12 @@ function executeInTransaction(
         live: listContinuationRecordsInDatabase(db, { statuses: ["queued", "running"] }),
         awaitingImportOwners: listContinuationOwnersAwaitingImport(db),
       };
+    case "continuationCustody.readLegacySnapshot":
+      return readLegacyImportSnapshotInDatabase(db);
+    case "continuationCustody.importLegacyOwner":
+      return importLegacyOwnerInDatabase(database, command.input);
+    case "continuationCustody.readOwedLegacyReleases":
+      return readOwedLegacyReleases(db);
   }
   throw new Error("Unknown continuation custody command");
 }

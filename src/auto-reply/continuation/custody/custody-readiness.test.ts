@@ -47,7 +47,7 @@ import {
   writeLegacyPayload,
   type Options,
 } from "./legacy-taskflow-import.test-support.js";
-import { queueEntryReceiptKey } from "./legacy-taskflow-source.js";
+import { queueEntryReceiptKey } from "./legacy-taskflow-migration-source.js";
 
 // Pause-point arrivals as promises: a test awaits the exact event instead of
 // polling a counter against a clock, so a slow runner waits longer rather than

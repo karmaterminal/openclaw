@@ -39,7 +39,7 @@ import {
 import {
   detectContinuationTaskFlowCustodyImport,
   listContinuationOwnersAwaitingImport,
-} from "./legacy-taskflow-source.js";
+} from "./legacy-taskflow-migration-source.js";
 
 const NOW = 50_000;
 const ATTACHMENT_ID = "0b6f5d7e-8c1a-4b2f-9e3d-5a6b7c8d9e0f";
