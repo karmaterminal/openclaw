@@ -189,7 +189,7 @@ async function runSubagentAnnounceFlowBound(
     const managedArtifactReturn =
       childSessionEffectsAllowed() &&
       params.childRunId.startsWith("continuation-delegate-") &&
-      isDelegateArtifactReturnConfigured(params.childRunId);
+      (await isDelegateArtifactReturnConfigured(params.childRunId));
     let requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey, {
       cfg: subagentAnnounceDeps.getRuntimeConfig(),
       agentId: targetRequesterAgentId,
@@ -489,7 +489,7 @@ async function runSubagentAnnounceFlowBound(
     }
 
     const cfg = subagentAnnounceDeps.getRuntimeConfig();
-    const { announceSessionId, artifactFinalization } = finalizeSubagentAnnounceArtifacts({
+    const { announceSessionId, artifactFinalization } = await finalizeSubagentAnnounceArtifacts({
       cfg,
       flow: params,
       childSessionId,

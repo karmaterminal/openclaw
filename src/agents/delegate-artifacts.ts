@@ -19,6 +19,7 @@ export {
   MissingDelegateArtifactPolicyError,
   purgeExpiredDelegateArtifacts,
   removeUnacceptedDelegateArtifactPolicy,
+  startExpiredDelegateArtifactPurge,
   UnavailableDelegateArtifactPolicyError,
 } from "./delegate-artifact-policy-store.js";
 export {
@@ -35,6 +36,5 @@ export {
 export {
   markDelegateArtifactDeliveryUnavailable,
   prepareDelegateArtifactDelivery,
-  recordDelegateArtifactDelivery,
   recordDelegateArtifactDeliveryBinding,
 } from "./delegate-artifact-delivery.js";

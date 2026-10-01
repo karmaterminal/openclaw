@@ -13,7 +13,7 @@ import {
 } from "../../../plugins/runtime/gateway-request-scope.js";
 import { runWithGatewayIndependentRootWorkAdmission } from "../../../process/gateway-work-admission.js";
 import { prependAgentSteeringPrompt } from "../../agent-steering-queue.js";
-import { purgeExpiredDelegateArtifacts } from "../../delegate-artifacts.js";
+import { startExpiredDelegateArtifactPurge } from "../../delegate-artifacts.js";
 import { resolveAgentTimeoutMs } from "../../timeout.js";
 import { reconcileRetiredSubagentCancellation } from "../completion/subagent-completion-admission.store.js";
 import { terminateAcceptedCollectorRun } from "../spawn/subagent-spawn-cleanup.js";
@@ -440,7 +440,7 @@ const subagentSweeper = createSubagentRegistrySweeper({
   clearPendingLifecycleError,
   clearPendingLifecycleTimeout,
   sweepPendingLifecycle: (now) => {
-    purgeExpiredDelegateArtifacts();
+    startExpiredDelegateArtifactPurge();
     pendingLifecycle.sweepExpired(now);
   },
   completeSubagentRunWithRecovery: completionRuntime.completeSubagentRunWithRecovery,
@@ -707,7 +707,7 @@ export function initSubagentRegistry() {
     state.pending = true;
     return undefined;
   }
-  purgeExpiredDelegateArtifacts();
+  startExpiredDelegateArtifactPurge();
   return state.restorer.restoreOnce();
 }
 let resolveRegistryActivation: () => void = () => {};
@@ -779,7 +779,7 @@ bootstrapState.restorer = subagentRestorer;
 bootstrapState.ready = true;
 if (bootstrapState.pending) {
   bootstrapState.pending = false;
-  purgeExpiredDelegateArtifacts();
+  startExpiredDelegateArtifactPurge();
   void subagentRestorer.restoreOnce();
 }
 

@@ -7,10 +7,9 @@ import {
 import type { SubagentRunOutcome } from "../subagent-run-outcome.types.js";
 import { loadSessionEntryByKey } from "./subagent-announce-delivery.js";
 import { subagentAnnounceDeps } from "./subagent-announce-deps.js";
-import { readSessionIdByKeySync } from "./subagent-announce-session-id.js";
 import type { SubagentAnnounceFlowParams } from "./subagent-announce.types.js";
 
-export function finalizeSubagentAnnounceArtifacts(finalization: {
+export async function finalizeSubagentAnnounceArtifacts(finalization: {
   cfg: ReturnType<typeof subagentAnnounceDeps.getRuntimeConfig>;
   flow: Pick<
     SubagentAnnounceFlowParams,
@@ -27,7 +26,7 @@ export function finalizeSubagentAnnounceArtifacts(finalization: {
     ? finalization.childSessionId || "unknown"
     : "unknown";
   const artifactFinalization = finalization.isChildSessionEffectsCurrent()
-    ? finalizeDelegateArtifacts({
+    ? await finalizeDelegateArtifacts({
         producerSessionKey: flow.childSessionKey,
         producerSessionId: announceSessionId,
         producerRunId: flow.childRunId,
@@ -38,8 +37,8 @@ export function finalizeSubagentAnnounceArtifacts(finalization: {
         silent: flow.silentAnnounce === true,
         runtimeEnabled: artifactConfig.enabled,
         crossSessionEnabled: artifactConfig.crossSessionTargeting === "enabled",
-        // Runs inside finalization's synchronous transaction: a synchronous read.
-        resolveSessionId: readSessionIdByKeySync,
+        resolveSessionId: async (sessionKey) =>
+          (await loadSessionEntryByKey(sessionKey))?.sessionId,
       })
     : ({ status: "not-configured" } as const);
   return { announceSessionId, artifactFinalization };
@@ -47,8 +46,8 @@ export function finalizeSubagentAnnounceArtifacts(finalization: {
 
 /** Prepares each finalized recipient projection; "deferred" means the announce must retry. */
 export async function prepareSubagentAnnounceArtifactProjections(
-  artifactFinalization: ReturnType<
-    typeof finalizeSubagentAnnounceArtifacts
+  artifactFinalization: Awaited<
+    ReturnType<typeof finalizeSubagentAnnounceArtifacts>
   >["artifactFinalization"],
 ): Promise<Map<string, DelegateArtifactRecipientProjectionV1> | "deferred" | undefined> {
   const finalizedArtifactProjections =
@@ -60,7 +59,7 @@ export async function prepareSubagentAnnounceArtifactProjections(
     );
     artifactProjections = new Map();
     for (const [sessionKey, projection] of finalizedArtifactProjections) {
-      const delivery = prepareDelegateArtifactDelivery({
+      const delivery = await prepareDelegateArtifactDelivery({
         projection,
         runtimeEnabled: deliveryConfig.enabled,
         crossSessionEnabled: deliveryConfig.crossSessionTargeting === "enabled",

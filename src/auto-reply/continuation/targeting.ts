@@ -242,7 +242,7 @@ export async function enqueueContinuationReturnDeliveries(
       withContinuationOwner(eventOptions, recipientAgentId),
     );
     if (enqueued && delegateArtifactProjection && delegateArtifactReceipt) {
-      deps.recordDelegateArtifactDeliveryBinding?.({
+      await deps.recordDelegateArtifactDeliveryBinding?.({
         dispatchId: delegateArtifactReceipt.dispatchId,
         recipientSessionKey: delegateArtifactReceipt.recipientSessionKey,
         recipientSessionId: delegateArtifactReceipt.recipientSessionId,

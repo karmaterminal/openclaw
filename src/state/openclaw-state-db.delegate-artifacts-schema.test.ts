@@ -2,10 +2,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
-import { ensureDelegateArtifactsSchema } from "../agents/delegate-artifact-store.js";
+import { ensureDelegateArtifactsSchema } from "../agents/delegate-artifact-store.kernel.js";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
 import { readSqliteNumberPragma } from "../infra/sqlite-pragma.test-support.js";
-import { DELEGATE_ARTIFACTS_SCHEMA_SQL } from "./delegate-artifacts-schema.js";
 import { OPENCLAW_STATE_SCHEMA_VERSION } from "./openclaw-state-db-contract.js";
 import {
   closeOpenClawStateDatabaseAsync,
@@ -27,27 +26,24 @@ function markStateDatabaseVersion(database: DatabaseSync, version: number): void
   `);
 }
 
+// The ensurer extracts these from the canonical state schema; names are sorted.
 function readDelegateArtifactSchemaNames(): { indexes: string[]; tables: string[] } {
-  const { DatabaseSync } = requireNodeSqlite();
-  const database = new DatabaseSync(":memory:");
-  try {
-    database.exec(DELEGATE_ARTIFACTS_SCHEMA_SQL);
-    const rows = database
-      .prepare(
-        `SELECT type, name
-           FROM sqlite_schema
-          WHERE type IN ('table', 'index')
-            AND name NOT LIKE 'sqlite_%'
-          ORDER BY name`,
-      )
-      .all() as Array<{ name: string; type: "index" | "table" }>;
-    return {
-      indexes: rows.filter((row) => row.type === "index").map((row) => row.name),
-      tables: rows.filter((row) => row.type === "table").map((row) => row.name),
-    };
-  } finally {
-    database.close();
-  }
+  return {
+    indexes: [
+      "idx_delegate_artifact_audit_recipient",
+      "idx_delegate_artifact_bindings_recipient",
+      "idx_delegate_artifact_claims_flow",
+      "idx_delegate_artifact_policies_producer",
+      "idx_delegate_artifact_policies_retention",
+    ],
+    tables: [
+      "delegate_artifact_audit",
+      "delegate_artifact_bindings",
+      "delegate_artifact_claims",
+      "delegate_artifact_policies",
+      "delegate_artifact_recipient_outcomes",
+    ],
+  };
 }
 
 function findSchemaObjectNames(

@@ -215,7 +215,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
     ) {
       const receipt = params.entry.managedDelegateArtifactDelivery?.receipt;
       if (receipt) {
-        markDelegateArtifactDeliveryUnavailable({
+        await markDelegateArtifactDeliveryUnavailable({
           dispatchId: receipt.dispatchId,
           recipientSessionKey: receipt.recipientSessionKey,
           recipientSessionId: receipt.recipientSessionId,
@@ -244,7 +244,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
         projection.arrivalContext.binding.recipientSessionKey !== receipt.recipientSessionKey ||
         projection.arrivalContext.binding.recipientSessionId !== receipt.recipientSessionId
       ) {
-        markDelegateArtifactDeliveryUnavailable({
+        await markDelegateArtifactDeliveryUnavailable({
           dispatchId: receipt.dispatchId,
           recipientSessionKey: receipt.recipientSessionKey,
           recipientSessionId: receipt.recipientSessionId,
@@ -260,7 +260,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
         return;
       }
       const runtime = resolveContinuationRuntimeConfig(cfg);
-      const prepared = prepareDelegateArtifactDelivery({
+      const prepared = await prepareDelegateArtifactDelivery({
         projection,
         runtimeEnabled: runtime.enabled,
         crossSessionEnabled: runtime.crossSessionTargeting === "enabled",
@@ -280,7 +280,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
         return;
       }
       if (prepared.status === "unavailable") {
-        markDelegateArtifactDeliveryUnavailable({
+        await markDelegateArtifactDeliveryUnavailable({
           dispatchId: receipt.dispatchId,
           recipientSessionKey: receipt.recipientSessionKey,
           recipientSessionId: receipt.recipientSessionId,
@@ -302,7 +302,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
             },
           }
         : {};
-      recordDelegateArtifactDeliveryBinding({
+      await recordDelegateArtifactDeliveryBinding({
         dispatchId: receipt.dispatchId,
         recipientSessionKey: receipt.recipientSessionKey,
         recipientSessionId: receipt.recipientSessionId,
@@ -310,7 +310,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
         availability: prepared.projection.arrivalContext.availability,
         ...artifactOptions,
       });
-      const refreshed = prepareDelegateArtifactDelivery({
+      const refreshed = await prepareDelegateArtifactDelivery({
         projection,
         runtimeEnabled: runtime.enabled,
         crossSessionEnabled: runtime.crossSessionTargeting === "enabled",
