@@ -323,7 +323,9 @@ export function createDiscordStaleAmbientPendingDisposition(params: {
     const ageMs = context.now - resolveSentAtMs(record, row);
     if (
       ageMs <= staleAfterMs ||
-      message.isOrdinaryReply ||
+      // A reply to this bot is addressed work (isAddressedToBot); a reply whose
+      // target author is unknown cannot be proven ambient, so it stays.
+      (message.isOrdinaryReply && message.referencedAuthorId === undefined) ||
       isAddressedToBot(message, params.botUserId)
     ) {
       return null;

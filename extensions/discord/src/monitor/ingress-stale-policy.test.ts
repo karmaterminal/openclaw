@@ -194,6 +194,20 @@ describe("discord stale ambient pending disposition", () => {
     });
   });
 
+  it("drops a stale reply to someone else, but keeps one whose target is unknown", async () => {
+    const reply = {
+      type: MessageType.Reply,
+      message_reference: { message_id: "m0", channel_id: "c1" },
+    };
+    await expect(
+      resolve({ message: { ...reply, referenced_message: { author: { id: "user-2" } } } }),
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
+    await expect(
+      resolve({ message: { ...reply, referenced_message: { author: { id: BOT_ID } } } }),
+    ).resolves.toBeNull();
+    await expect(resolve({ message: reply })).resolves.toBeNull();
+  });
+
   it("preserves command-like work", async () => {
     await expect(resolve({ message: { content: "/status" } })).resolves.toBeNull();
   });
