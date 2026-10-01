@@ -31,8 +31,9 @@ describe("channel ingress drain abandonment", () => {
         const drain = createChannelIngressDrain<Payload>({
           queue,
           now: () => clock,
-          retryPolicy: { baseMs: 0, maxMs: 0, deadLetterMinAgeMs: 0, maxAttempts },
+          retryPolicy: { maxAttempts, deadLetterMinAgeMs: 0, baseMs: 0, maxMs: 0 },
           dispatchClaimedEvent: async (_event, lifecycle) => {
+            // Concurrent abandonment must still spend exactly one attempt.
             await Promise.all([lifecycle.onAbandoned(), lifecycle.onAbandoned()]);
             return { kind: "deferred" };
           },
@@ -52,6 +53,7 @@ describe("channel ingress drain abandonment", () => {
       expect(await queue.listFailed?.()).toEqual([
         expect.objectContaining({
           id: "abandoned",
+          // fail() never increments; the claim-time budget is what is retained.
           attempts: maxAttempts - 1,
           reason: "retry-limit-exceeded",
           message: "turn-abandoned",
