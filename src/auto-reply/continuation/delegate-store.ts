@@ -39,11 +39,12 @@ import {
   reconcileDelegateAttachmentCustody,
   rejectCorruptDelegateFlow,
   resetDelegateFlowDiagnosticsForTests,
+  resolveQueuedDelegateCounts,
   updateDelegateRecord,
 } from "./delegate-flow-store.js";
 import type { ChainState, PendingContinuationDelegate } from "./types.js";
 
-export { resolveQueuedDelegateCounts } from "./delegate-flow-store.js";
+export { resolveQueuedDelegateCounts };
 
 const log = createSubsystemLogger("continuation/delegate-store");
 
