@@ -388,6 +388,26 @@ describe("discord stale ambient pending disposition", () => {
     await expect(resolve({ message: { embeds: "not-an-array" } })).resolves.toBeNull();
   });
 
+  it("keeps rows with an unsupported or missing payload version claimable", async () => {
+    // Control: the same complete stale ambient row at version 1 is failed.
+    await expect(resolve({})).resolves.toMatchObject({ kind: "fail" });
+    for (const version of [2, 0, "1", undefined]) {
+      await expect(
+        resolve({ payload: { version, receivedAt: STALE_AT, rawMessage: rawMessage() } }),
+      ).resolves.toBeNull();
+    }
+    await expect(
+      resolve({ payload: { receivedAt: STALE_AT, rawMessage: rawMessage() } }),
+    ).resolves.toBeNull();
+  });
+
+  it("keeps rows without a usable author claimable", async () => {
+    // An unreadable author cannot prove the sender is not a principal.
+    for (const author of [undefined, null, {}, { id: "" }, { id: 5 }, "user-1"]) {
+      await expect(resolve({ message: { author } })).resolves.toBeNull();
+    }
+  });
+
   it("uses the durable receipt time when it is newer than the stored frame", async () => {
     // A row re-admitted after downtime must not be aged from its origin timestamp.
     await expect(resolve({ durableReceivedAt: FRESH_AT })).resolves.toBeNull();

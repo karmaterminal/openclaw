@@ -114,7 +114,9 @@ function readAuthor(value: unknown): DiscordStalePolicyMessage["author"] | undef
  * unrecognized rows stay eligible for the canonical claim-time codec.
  */
 function readDiscordStalePolicyRow(payload: unknown): DiscordStalePolicyRow | null {
-  if (!isRecord(payload) || !isRecord(payload.rawMessage)) {
+  // Only the payload version the canonical codec reads is policy-readable; an
+  // unsupported or missing version stays claimable for that codec to judge.
+  if (!isRecord(payload) || payload.version !== 1 || !isRecord(payload.rawMessage)) {
     return null;
   }
   const rawMessage = payload.rawMessage;
@@ -136,7 +138,12 @@ function readDiscordStalePolicyRow(payload: unknown): DiscordStalePolicyRow | nu
     return null;
   }
   const guildId = nonEmptyString(rawMessage.guild_id);
+  // An unreadable author cannot prove "not a principal", so the row stays
+  // claimable for the owner check instead of failing as stale ambient.
   const author = readAuthor(rawMessage.author);
+  if (!author) {
+    return null;
+  }
   const referencedAuthor = isRecord(referencedMessage) ? referencedMessage.author : undefined;
   const sentAtMs = Date.parse(rawMessage.timestamp);
   const payloadReceivedAt = payload.receivedAt;
@@ -147,7 +154,7 @@ function readDiscordStalePolicyRow(payload: unknown): DiscordStalePolicyRow | nu
     message: {
       channelId,
       ...(guildId ? { guildId } : {}),
-      ...(author ? { author } : {}),
+      author,
       documents,
       text: documents.join("\n"),
       sentAtMs: Number.isFinite(sentAtMs) ? sentAtMs : null,
