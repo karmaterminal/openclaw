@@ -166,6 +166,7 @@ vi.mock("../../sessions/session-key-utils.js", async (importOriginal) => ({
 
 vi.mock("../reply/reply-run-registry.js", () => ({
   clearReplyRunForResetBySessionId: vi.fn(),
+  resolveActiveReplyOperationForSessionId: vi.fn(() => undefined),
   replyRunRegistry: {
     isActive(sessionKey: string) {
       replyRegistryReceivers.add(this);
@@ -764,6 +765,8 @@ describe("durable continuation_work dispatch", () => {
     await expect(
       clearSessionResetRuntimeState([sessionKey], {
         agentId: "main",
+        sessionKey,
+        assertCurrent: () => {},
         reason: "reset",
         activeReplySessionId: "reset-persist-failure-session",
       }),
@@ -776,6 +779,8 @@ describe("durable continuation_work dispatch", () => {
     delete workDispatchCustodyHooks.refuseUpdatesWith;
     await clearSessionResetRuntimeState([sessionKey], {
       agentId: "main",
+      sessionKey,
+      assertCurrent: () => {},
       reason: "reset",
       activeReplySessionId: "reset-persist-failure-session",
     });
@@ -803,6 +808,8 @@ describe("durable continuation_work dispatch", () => {
 
     await clearSessionResetRuntimeState([sessionKey], {
       agentId: "main",
+      sessionKey,
+      assertCurrent: () => {},
       reason: "reset",
       activeReplySessionId: sessionId,
     });

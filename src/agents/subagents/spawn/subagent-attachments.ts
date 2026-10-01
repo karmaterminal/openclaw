@@ -124,10 +124,6 @@ function resolveSubagentAttachmentRequest(params: {
   return { status: "ok", attachments: requestedAttachments, limits };
 }
 
-function failAttachment(error: string): never {
-  throw new Error(error);
-}
-
 function sanitizeMountPathHint(value?: string): string | undefined {
   const trimmed = normalizeOptionalString(value);
   if (
@@ -151,7 +147,7 @@ function renderStagedAttachmentPathBlock(relDir: string, names: readonly string[
   // wrapper text can grow past a raw-length check. Reject, do not truncate:
   // a partial path list would send the child back to the directory.
   if (rendered.length > SUBAGENT_ATTACHMENT_PATH_BLOCK_MAX_CHARS) {
-    failAttachment(
+    throw new Error(
       `attachments_prompt_paths_exceeded (chars=${rendered.length} maxChars=${SUBAGENT_ATTACHMENT_PATH_BLOCK_MAX_CHARS})`,
     );
   }
@@ -390,7 +386,7 @@ export async function materializeSubagentAttachments(params: {
     });
     for (const [attachmentIndex, attachment] of prepared.attachments.entries()) {
       if (hasPromptUnsafeControlCharacter(attachment.name)) {
-        failAttachment(`attachments_invalid_name (attachmentIndex=${attachmentIndex})`);
+        throw new Error(`attachments_invalid_name (attachmentIndex=${attachmentIndex})`);
       }
     }
     const exposedDir = params.sandboxed

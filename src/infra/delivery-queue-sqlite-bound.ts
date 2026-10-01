@@ -180,7 +180,7 @@ export function inflateDeliveryQueueRow(
   };
 }
 
-export function deliveryQueueMetadata(
+function deliveryQueueMetadata(
   queueName: string,
   entry: DeliveryQueueEntryState | Record<string, unknown>,
 ): DeliveryQueueRowMetadata {

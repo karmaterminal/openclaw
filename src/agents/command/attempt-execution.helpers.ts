@@ -28,6 +28,7 @@ import {
 import { buildAgentRunTerminalReplySnapshot } from "../agent-run-terminal-reply.js";
 import type { AgentRunTerminalReplySnapshot } from "../agent-run-terminal-reply.types.js";
 import type { ExecApprovalContinuationPromptRange } from "../bash-tools.exec-approval-output.js";
+import { isClaudeToolResultBlockType, isClaudeToolUseBlockType } from "../cli-output-records.js";
 import { cliBackendLog } from "../cli-runner/log.js";
 import { getCliSessionBinding } from "../cli-session.js";
 import { resolveClaudeCliProjectDirForWorkspace } from "./claude-cli-project-dir.js";
@@ -178,16 +179,6 @@ function toToolContentBlocks(content: unknown): ToolContentBlock[] | undefined {
   );
 }
 
-function isClaudeTranscriptToolUseBlock(block: ToolContentBlock): boolean {
-  const type = block.type;
-  return type === "tool_use" || type === "server_tool_use" || type === "mcp_tool_use";
-}
-
-function isClaudeTranscriptToolResultBlock(block: ToolContentBlock): boolean {
-  const type = block.type;
-  return type === "tool_result" || (typeof type === "string" && type.endsWith("_tool_result"));
-}
-
 async function jsonlFileHasOrphanedTrailingToolUse(filePath: string): Promise<boolean> {
   return await readCliTranscriptFile(filePath, false, async (fh, size) => {
     const tailBytes = Math.min(size, CLAUDE_CLI_ORPHAN_PROBE_TAIL_BYTES);
@@ -225,9 +216,9 @@ async function jsonlFileHasOrphanedTrailingToolUse(filePath: string): Promise<bo
       }
       for (const block of toToolContentBlocks(message?.content) ?? []) {
         const target =
-          role === "assistant" && isClaudeTranscriptToolUseBlock(block)
+          role === "assistant" && isClaudeToolUseBlockType(block.type)
             ? lastAssistantToolUseIds
-            : isClaudeTranscriptToolResultBlock(block)
+            : isClaudeToolResultBlockType(block.type)
               ? answeredToolResultIds
               : undefined;
         if (target) {
@@ -278,9 +269,7 @@ export function resolveFallbackRetryPrompt(params: {
 const CLAUDE_CLI_FALLBACK_PRELUDE_DEFAULT_CHAR_BUDGET = 8_000;
 const CLAUDE_CLI_FALLBACK_PRELUDE_MIN_TURN_CHARS = 64;
 
-type FallbackTurnLikeMessage = Record<string, unknown>;
-
-function extractFallbackTurnText(message: FallbackTurnLikeMessage): string {
+function extractFallbackTurnText(message: ClaudeCliFallbackSeed["recentTurns"][number]): string {
   const content = message.content;
   if (typeof content === "string") {
     return content;
@@ -322,7 +311,7 @@ function extractFallbackTurnText(message: FallbackTurnLikeMessage): string {
 }
 
 function formatFallbackTurns(
-  turns: ReadonlyArray<FallbackTurnLikeMessage>,
+  turns: Readonly<ClaudeCliFallbackSeed["recentTurns"]>,
   remainingBudget: number,
 ): string {
   if (turns.length === 0 || remainingBudget <= 0) {
@@ -383,10 +372,7 @@ function formatClaudeCliFallbackPrelude(
     }
   }
   if (remaining > CLAUDE_CLI_FALLBACK_PRELUDE_MIN_TURN_CHARS && seed.recentTurns.length > 0) {
-    const text = formatFallbackTurns(
-      seed.recentTurns as ReadonlyArray<FallbackTurnLikeMessage>,
-      remaining - 32,
-    );
+    const text = formatFallbackTurns(seed.recentTurns, remaining - 32);
     if (text) {
       sections.push(`\nRecent turns:\n${text}`);
     }
@@ -445,8 +431,6 @@ export function createAcpVisibleTextAccumulator() {
   let pendingSilentPrefix = "";
   let visibleText = "";
   let rawVisibleText = "";
-  const startsWithWordChar = (chunk: string): boolean => /^[\p{L}\p{N}]/u.test(chunk);
-
   const resolveNextCandidate = (base: string, chunk: string): string => {
     if (!base) {
       return chunk;
@@ -454,7 +438,7 @@ export function createAcpVisibleTextAccumulator() {
     if (
       isSilentReplyText(base, SILENT_REPLY_TOKEN) &&
       !chunk.startsWith(base) &&
-      startsWithWordChar(chunk)
+      /^[\p{L}\p{N}]/u.test(chunk)
     ) {
       return chunk;
     }

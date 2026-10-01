@@ -78,8 +78,7 @@ export function listRunsForRequesterFromRuns(
       ? undefined
       : buildLatestSubagentRunReadIndexFromRuns(runs);
 
-  const results: SubagentRunRecord[] = [];
-  for (const entry of runs.values()) {
+  return [...runs.values()].filter((entry) => {
     const boundRequesterRunId = entry.requesterTurnRunId?.trim();
     const belongsToRequesterRun =
       !requesterRunId ||
@@ -87,7 +86,7 @@ export function listRunsForRequesterFromRuns(
         ? boundRequesterRunId === requesterRunId
         : (typeof lowerBound !== "number" || entry.createdAt >= lowerBound) &&
           (typeof upperBound !== "number" || entry.createdAt <= upperBound));
-    if (
+    return (
       entry.requesterSessionKey === key &&
       (options?.requesterSessionId === undefined ||
         matchesSubagentRequesterSession(entry, {
@@ -99,11 +98,8 @@ export function listRunsForRequesterFromRuns(
       (options?.requesterStorePath === undefined ||
         (entry.requesterStorePath ?? null) === options.requesterStorePath) &&
       belongsToRequesterRun
-    ) {
-      results.push(entry);
-    }
-  }
-  return results;
+    );
+  });
 }
 
 export function selectConnectedSettledSubagentWave(
@@ -171,19 +167,14 @@ export function listRunsForControllerFromRuns<T extends SubagentRunReadRecord>(
   controllerAgentId?: string,
 ): T[] {
   const key = controllerSessionKey.trim();
-  const results: T[] = [];
   if (!key) {
-    return results;
+    return [];
   }
-  for (const entry of runs.values()) {
-    if (
+  return [...runs.values()].filter(
+    (entry) =>
       resolveControllerSessionKey(entry) === key &&
-      (!controllerAgentId || entry.requesterAgentId === controllerAgentId)
-    ) {
-      results.push(entry);
-    }
-  }
-  return results;
+      (!controllerAgentId || entry.requesterAgentId === controllerAgentId),
+  );
 }
 
 export type SubagentRunReadIndex<T extends SubagentRunReadRecord = SubagentRunRecord> = {

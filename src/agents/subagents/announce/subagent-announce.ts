@@ -352,6 +352,18 @@ async function runSubagentAnnounceFlowBound(
       isOwnResultCurrent = prepared.isCurrent;
     }
 
+    if (
+      outcome.status === "ok" &&
+      params.terminalReply?.disposition === "visible" &&
+      isAnnounceSkip(params.terminalReply.text)
+    ) {
+      warnIfCronAnnounceSkipped({
+        reply: params.terminalReply.text,
+        requesterSessionKey: targetRequesterSessionKey,
+        childRunId: params.childRunId,
+      });
+      return "delivered";
+    }
     if (params.terminalReply?.disposition === "silent") {
       if (!hasVisibleFallback && (isAnnounceSkip(fallbackReply) || !expectsCompletionMessage)) {
         return "delivered";

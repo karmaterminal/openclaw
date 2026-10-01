@@ -413,11 +413,20 @@ export function handleAgentEnd(
         .catch((err: unknown) => {
           ctx.log.debug(`before lifecycle terminal failed: ${String(err)}`);
         })
-        .then(() => {
-          emitLifecycleTerminal();
-        });
+        .then(emitLifecycleTerminal);
     }
     emitLifecycleTerminal();
+  };
+
+  const applyBeforeTerminalDecision = (decision: BeforeTerminalDeliveryDecision) => {
+    if (decision?.suppressTerminalDelivery === true) {
+      suppressTerminalDelivery();
+      return undefined;
+    }
+    if (decision?.continueCurrentTurn === true) {
+      return continueCurrentTurn();
+    }
+    return deliverTerminalWithLifecycleErrorFallback();
   };
 
   let beforeTerminalDelivery:
@@ -436,23 +445,7 @@ export function handleAgentEnd(
         ctx.log.warn(`before terminal delivery failed: ${String(error)}`);
         return undefined;
       })
-      .then((decision) => {
-        if (decision?.suppressTerminalDelivery === true) {
-          suppressTerminalDelivery();
-          return undefined;
-        }
-        if (decision?.continueCurrentTurn === true) {
-          return continueCurrentTurn();
-        }
-        return deliverTerminalWithLifecycleErrorFallback();
-      });
+      .then(applyBeforeTerminalDecision);
   }
-  if (beforeTerminalDelivery?.suppressTerminalDelivery === true) {
-    suppressTerminalDelivery();
-    return undefined;
-  }
-  if (beforeTerminalDelivery?.continueCurrentTurn === true) {
-    return continueCurrentTurn();
-  }
-  return deliverTerminalWithLifecycleErrorFallback();
+  return applyBeforeTerminalDecision(beforeTerminalDelivery);
 }

@@ -481,7 +481,6 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
     hasUserBody,
     shouldInjectGroupIntro,
     typingMode,
-    promptEnvelopeBase,
     prefixedBodyBase,
     sessionEntry,
     isMainSession,

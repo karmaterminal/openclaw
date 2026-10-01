@@ -25,6 +25,7 @@ import { createPanelRefreshStatus, type PanelRefreshStatus } from "./panel-refre
 import {
   applySessionCatalogContinuation,
   archiveSessionCatalog as archiveSessionCatalogData,
+  importSessionCatalog as importSessionCatalogData,
   applySessionCatalogHostEvent as applySessionCatalogHostEventToData,
   applySessionCatalogChanged as applySessionCatalogChangedToData,
   invalidateSessionCatalogs as invalidateSessionCatalogData,
@@ -132,14 +133,12 @@ export class SessionDataController implements ReactiveController, SessionCatalog
       },
     });
     this.subscriptions
-      .watch(
+      .watchStore(
         () => this.context?.gateway,
-        (gateway, notify) => gateway.subscribe(notify),
         (gateway) => this.synchronizeGateway(gateway),
       )
-      .watch(
+      .watchStore(
         () => this.context?.sessions,
-        (sessions, notify) => sessions.subscribe(notify),
         (sessions) => this.synchronizeSessions(sessions),
       )
       .effect(
@@ -154,9 +153,8 @@ export class SessionDataController implements ReactiveController, SessionCatalog
         () => this.context?.agents,
         (agents, notify) => subscribeSidebarAgentSessionCaches(agents, this, notify),
       )
-      .watch(
+      .watchStore(
         () => this.context?.agentSelection,
-        (agentSelection, notify) => agentSelection.subscribe(notify),
         () => this.synchronizeSessionScope(),
       );
   }
@@ -333,6 +331,8 @@ export class SessionDataController implements ReactiveController, SessionCatalog
   invalidateSessionCatalogs = () => invalidateSessionCatalogData(this);
 
   archiveSessionCatalog = archiveSessionCatalogData.bind(null, this);
+
+  importSessionCatalog = importSessionCatalogData.bind(null, this);
 
   refreshSessionCatalogs = (): Promise<void> => refreshSessionCatalogData(this);
 

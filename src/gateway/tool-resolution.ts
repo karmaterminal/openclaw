@@ -494,6 +494,7 @@ export function resolveGatewayScopedTools(
           runSessionKey: params.sessionKey,
           sessionId: params.sessionId,
           runId: params.runId,
+          operationalRunInstance: params.admittedRunContext?.operationalRunInstance,
           workspaceDir,
           cwd: params.cwd?.trim() || workspaceDir,
           ...params.rootedExecution,

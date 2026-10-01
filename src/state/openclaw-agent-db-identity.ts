@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { installStatementInvalidation } from "../infra/kysely-sync-cache-state.js";
+import {
+  normalizeDatabasePath,
+  readDatabaseIdentityBirthtime,
+} from "../infra/sqlite-worker-identity.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 
 type AgentDatabaseOwner = { db: DatabaseSync };
@@ -30,12 +34,12 @@ export function registerOpenClawAgentDatabaseIdentity(db: DatabaseSync): void {
   // and read-only retainers reach this open without a Kysely instance to
   // install the wrapper for them.
   installStatementInvalidation(db);
-  const filename = db.location() ?? "";
+  const filename = normalizeDatabasePath(db.location() ?? "");
   const file = filename ? statSync(filename, { bigint: true }) : undefined;
   const identity = file ? `${file.dev}:${file.ino}` : Symbol("incognito-agent-database");
   identities.set(db, {
     identity,
-    birthtime: file?.birthtimeNs.toString(),
+    birthtime: file ? readDatabaseIdentityBirthtime(file) : undefined,
     incarnation: randomUUID(),
     filename,
   });
@@ -66,7 +70,7 @@ export function isOpenClawAgentDatabasePathCurrent(
   if (typeof identity === "symbol") {
     return true;
   }
-  if (database.db.location() !== filename) {
+  if (normalizeDatabasePath(database.db.location() ?? "") !== filename) {
     return false;
   }
   const current = statSync(database.path, { bigint: true, throwIfNoEntry: false });
