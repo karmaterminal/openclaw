@@ -17,6 +17,51 @@ export function isIngressCancelCompat(): boolean {
   return ingressCancelCompat.getStore() === true;
 }
 
+/**
+ * Marks an `onAbandoned` call that is really an intentional queue-policy drop
+ * (for example a follow-up queue cap eviction). The dropped turn will never
+ * run, so the durable owner completes the claim with this disposition instead
+ * of spending a retry attempt and re-delivering it later.
+ */
+const ingressPolicyDrop = new AsyncLocalStorage<string>();
+
+/** Run an abandonment that stands for an intentional policy drop named `disposition`. */
+export function runIngressPolicyDrop<T>(disposition: string, fn: () => T): T {
+  return ingressPolicyDrop.run(disposition, fn);
+}
+
+/** Completed-row metadata recorded when a policy drop settles a claim. */
+export type IngressPolicyDropMetadata = { policyDrop: string };
+
+/**
+ * Settles an unadopted claim whose deferred turn ended without the reply lane:
+ * a policy drop completes it with its disposition, cancellation compat releases
+ * it budget-free, and genuine abandonment goes through the shared retry owner.
+ */
+export async function settleAbandonedIngressClaim<TClaim>(
+  claim: TClaim,
+  writes: {
+    complete: (claim: TClaim, metadata: IngressPolicyDropMetadata) => Promise<void>;
+    release: (claim: TClaim, options: { recordAttempt: false }) => Promise<unknown>;
+    retry: (claim: TClaim, error: Error) => Promise<void>;
+  },
+): Promise<void> {
+  const policyDrop = ingressPolicyDrop.getStore();
+  if (policyDrop !== undefined) {
+    await writes.complete(claim, { policyDrop });
+    return;
+  }
+  if (isIngressCancelCompat()) {
+    // A source-compatible fan-in reaches cancellation through onAbandoned;
+    // that release must not spend the event's retry budget.
+    await writes.release(claim, { recordAttempt: false });
+    return;
+  }
+  // Genuine abandonment is a real attempt, so it settles through the shared
+  // retry owner instead of retrying without bound.
+  await writes.retry(claim, new Error("turn-abandoned"));
+}
+
 /** Full pre-adoption -> adoption ownership lifecycle for one claimed event. */
 export type ChannelIngressDispatchLifecycle = {
   /** Pre-adoption only. After adopt the drain treats this signal as inert. */

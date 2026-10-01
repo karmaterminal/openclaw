@@ -22,7 +22,7 @@ import {
 } from "./ingress-claim-owner.js";
 import { createIngressWriter } from "./ingress-claim-writes.js";
 import {
-  isIngressCancelCompat,
+  settleAbandonedIngressClaim,
   type ChannelIngressDispatchLifecycle,
 } from "./ingress-drain-lifecycle.js";
 import {
@@ -409,17 +409,15 @@ export function createChannelIngressDrain<
         });
       },
       onAbandoned: async () => {
-        await settleUnadopted(state, async (claim) => {
-          // A source-compatible fan-in reaches cancellation through this
-          // callback; that release must not spend the event's retry budget.
-          if (isIngressCancelCompat()) {
-            await releaseClaim(claim, { recordAttempt: false });
-            return;
-          }
-          // Genuine abandonment is a real attempt, so it settles through the
-          // shared retry owner instead of retrying without bound.
-          await applyFailureDisposition(claim, new Error("turn-abandoned"));
-        });
+        await settleUnadopted(state, (claim) =>
+          settleAbandonedIngressClaim(claim, {
+            // SAFETY: policy-drop rows carry only this core-owned tombstone metadata.
+            complete: (dropped, metadata) =>
+              completeClaimWithRetry(dropped, metadata as TCompletedMetadata),
+            release: releaseClaim,
+            retry: applyFailureDisposition,
+          }),
+        );
       },
     };
   };

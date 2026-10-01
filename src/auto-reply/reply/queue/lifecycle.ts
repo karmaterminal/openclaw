@@ -1,3 +1,4 @@
+import { runIngressPolicyDrop } from "../../../channels/message/ingress-drain-lifecycle.js";
 import type { TurnAdoptionLifecycle } from "../../get-reply-options.types.js";
 import type { FollowupRun } from "./types.js";
 
@@ -163,9 +164,16 @@ export async function admitFollowupRunLifecycle(run: FollowupLifecycleRun): Prom
   }
 }
 
+/**
+ * How a queued run's ownership ended without admission. A `policyDrop` is an
+ * intentional queue decision (cap eviction): the run will never execute, so a
+ * durable ingress owner completes its claim instead of retrying it.
+ */
+type FollowupRunCompletion = "consumed" | "cancelled" | { policyDrop: string };
+
 export function completeFollowupRunLifecycle(
   run: FollowupLifecycleRun,
-  disposition?: "consumed" | "cancelled",
+  disposition?: FollowupRunCompletion,
 ): void {
   try {
     run.steerPending?.settle(false);
@@ -193,6 +201,8 @@ export function completeFollowupRunLifecycle(
               lifecycle.onCancelled
             ) {
               void lifecycle.onCancelled();
+            } else if (typeof disposition === "object") {
+              runIngressPolicyDrop(disposition.policyDrop, () => lifecycle.onAbandoned?.());
             } else {
               lifecycle.onAbandoned?.();
             }

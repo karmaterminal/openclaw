@@ -115,7 +115,8 @@ export function trimSummaryElisionsToCap(queue: SummaryElisionCapState): void {
       queue.evictedSummaryCount += 1;
       sourceCount -= 1;
       if (source) {
-        completeFollowupRunLifecycle(source);
+        // Its summary line is gone too: an intentional overflow drop, not a failure.
+        completeFollowupRunLifecycle(source, { policyDrop: "queue-summary-evicted" });
       }
       if (entry.sources.length === 0) {
         queue.summaryElisions.splice(entryIndex, 1);

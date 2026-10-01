@@ -41,6 +41,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/channels/message/ingress-queue.test.ts",
   "src/auto-reply/reply/dispatch-from-config.ingress-cancellation.test.ts",
   "src/auto-reply/reply/dispatch-from-config.ingress-retry.test.ts",
+  "src/auto-reply/reply/queue.policy-drop-ingress.test.ts",
   "src/auto-reply/reply/reply-turn-admission.database-claim.test.ts",
   "src/auto-reply/reply/reply-turn-admission.heartbeat-recovery.test.ts",
   "src/auto-reply/reply/reply-turn-admission.recovery.test.ts",

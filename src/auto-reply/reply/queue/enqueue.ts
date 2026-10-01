@@ -168,7 +168,7 @@ export function enqueueFollowupRun(
     countPendingQueueItems(queue.items, queue.inFlight) >= queue.cap
   ) {
     run.onQueueDisposition?.("queue-cap-new");
-    completeFollowupRunLifecycle(run);
+    completeFollowupRunLifecycle(run, { policyDrop: "queue-cap-new" });
     return false;
   }
   if (!markFollowupRunEnqueued(run)) {
@@ -223,7 +223,7 @@ function applyFollowupQueueOverflow(
       }
       for (const item of dropped) {
         item.onQueueDisposition?.("queue-cap-old");
-        completeFollowupRunLifecycle(item);
+        completeFollowupRunLifecycle(item, { policyDrop: "queue-cap-old" });
       }
     },
     isProtected: (item) => item.protectFromQueueOverflow === true,
