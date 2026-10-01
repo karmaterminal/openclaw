@@ -1,7 +1,9 @@
 // Read side of the continuation TaskFlow custody import (RFC
 // docs/design/continue-work-signal-v2.md §5.4.5). After the TaskFlow removal
-// nothing in the runtime reads `flow_runs`; the Doctor import and, at the
-// downgrade-support horizon, the source-retirement step are its only readers.
+// nothing in the runtime reads `flow_runs`. Its only callers are the import's
+// shared-state worker operations (legacy-taskflow-import.worker.ts, and phase
+// A's boot read in custody-store.worker.ts) and the migration graph's
+// synchronous Doctor/startup detection below.
 // Receipts, not imported records, are the authority for what was examined:
 // retention may prune an imported record, never its receipt.
 import fs from "node:fs";
@@ -54,12 +56,6 @@ const DISPOSITIONS: ReadonlySet<string> = new Set<LegacyImportDisposition>([
 /** A committed receipt whose disposition cannot be read still proves examination, never retirement. */
 export type ReceiptDisposition = LegacyImportDisposition | "unreadable";
 
-/** Dispositions that prove a `flow_runs` row was examined and may be retired. */
-export const RETIREABLE_DISPOSITIONS: ReadonlySet<ReceiptDisposition> = new Set([
-  "imported",
-  "retired-terminal",
-]);
-
 export type LegacyContinuationFlowRow = Selectable<FlowRuns> & { kind: ContinuationRecordKind };
 
 /** A pending `postCompactionDelegate` session-queue entry, as stored. */
@@ -97,7 +93,11 @@ export function isTerminalLegacyStatus(status: string): boolean {
   return status === "succeeded" || status === "failed" || status === "cancelled";
 }
 
-/** Candidate rows, FIFO by creation, optionally for one owner. */
+/**
+ * Candidate rows, FIFO by creation, optionally for one owner. Rows are plain
+ * objects: a snapshot crosses the worker boundary and back, and the owner
+ * transaction compares it deep-equal against its reread.
+ */
 export function readLegacyContinuationFlowRows(
   db: DatabaseSync,
   query: { ownerSessionKey?: string } = {},
@@ -115,7 +115,8 @@ export function readLegacyContinuationFlowRows(
   }
   return executeSqliteQuerySync(db, select.orderBy("created_at").orderBy("flow_id")).rows.map(
     (row) =>
-      Object.assign(row, {
+      // node:sqlite rows have a null prototype, which a structured clone does not keep.
+      Object.assign({}, row, {
         // SAFETY: the query selected only the three continuation controller IDs.
         kind: LEGACY_CONTROLLER_KINDS[row.controller_id as string]!,
       }),
@@ -261,13 +262,12 @@ export function listContinuationOwnersAwaitingImport(db: DatabaseSync): string[]
 }
 
 /**
- * Legacy payload files whose delete the import owed after a committed receipt
- * and that are still on disk (a crash or failure after the commit). Only a
- * file bound to its flow counts, so a foreign file never keeps this non-empty.
+ * Legacy payload deletes the import owed after a committed receipt: each
+ * receipted row whose state names a legacy attachment. The file may already be
+ * gone; the caller checks that a file is still there and bound to its flow.
  */
-export function readPendingLegacyReleases(
+export function readOwedLegacyReleases(
   db: DatabaseSync,
-  env: NodeJS.ProcessEnv,
 ): { attachmentId: string; flowId: string }[] {
   if (!tableExists(db, "migration_sources")) {
     return [];
@@ -286,27 +286,33 @@ export function readPendingLegacyReleases(
   if (owed.size === 0) {
     return [];
   }
-  const root = path.join(resolveStateDir(env), "attachments", "continuation");
-  const releases: { attachmentId: string; flowId: string }[] = [];
-  for (const row of readLegacyContinuationFlowRows(db)) {
+  return readLegacyContinuationFlowRows(db).flatMap((row) => {
     if (!owed.has(flowReceiptKey(row.flow_id)) || row.state_json === null) {
-      continue;
+      return [];
     }
     const attachmentId = safeParseJsonRecord(row.state_json)?.attachmentId;
-    if (typeof attachmentId !== "string" || !isSubagentAttachmentId(attachmentId)) {
-      continue;
-    }
+    return typeof attachmentId === "string" && isSubagentAttachmentId(attachmentId)
+      ? [{ attachmentId, flowId: row.flow_id }]
+      : [];
+  });
+}
+
+/**
+ * Owed deletes whose legacy file is still on disk (a crash or failure after
+ * the commit). Only a file bound to its flow counts, so a foreign file never
+ * keeps detection non-empty.
+ */
+function countPendingLegacyReleases(db: DatabaseSync, env: NodeJS.ProcessEnv): number {
+  const root = path.join(resolveStateDir(env), "attachments", "continuation");
+  return readOwedLegacyReleases(db).filter(({ attachmentId, flowId }) => {
     let text: string;
     try {
       text = fs.readFileSync(path.join(root, attachmentId, "payload.json"), "utf8");
     } catch {
-      continue;
+      return false;
     }
-    if (safeParseJsonRecord(text)?.flowId === row.flow_id) {
-      releases.push({ attachmentId, flowId: row.flow_id });
-    }
-  }
-  return releases;
+    return safeParseJsonRecord(text)?.flowId === flowId;
+  }).length;
 }
 
 export type ContinuationTaskFlowImportDetection = {
@@ -357,7 +363,7 @@ function readPendingSourceCount(
         return (
           unexamined.length +
           readPendingPostCompactionEntries(db).filter((entry) => entry.covered).length +
-          readPendingLegacyReleases(db, env).length
+          countPendingLegacyReleases(db, env)
         );
       },
       { env },

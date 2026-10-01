@@ -9,8 +9,8 @@ import { safeParseJsonRecord } from "@openclaw/normalization-core";
 import { decodeDelegateStateJson } from "../delegate-flow-state.js";
 import { decodeWorkStateJson } from "../work-flow-state.js";
 import type { ContinuationHandoff, ContinuationRecord } from "./custody-store.types.js";
-import type { LegacyContinuationFlowRow } from "./legacy-taskflow-source.js";
-import { isTerminalLegacyStatus } from "./legacy-taskflow-source.js";
+import type { LegacyContinuationFlowRow } from "./legacy-taskflow-migration-source.js";
+import { isTerminalLegacyStatus } from "./legacy-taskflow-migration-source.js";
 
 export type InlineAttachment = {
   name: string;

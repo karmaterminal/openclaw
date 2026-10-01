@@ -1,14 +1,18 @@
 // RFC §9.2.2 item 5 (legacy import) and Q3/Q6/Q7 at the real owner boundary:
-// the Doctor transform runs against a real state database, and faults are
-// injected with SQLite triggers so the production transaction fails between
-// its own writes.
+// the Doctor transform runs against a real state database through the real
+// shared-state worker. Faults are injected at the worker's BEGIN and COMMIT
+// admission, so a refused owner transaction has already run its own writes,
+// and at the filesystem and result-delivery boundaries around the commit.
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import { deriveContinuationDelegateChildSessionKeyFromParent } from "../../../agents/subagent-continuation-ids.js";
 import { executeSqliteQuerySync } from "../../../infra/kysely-sync.js";
+import * as workerAdmission from "../../../infra/sqlite-worker-operation-admission.js";
+import type { SqliteWorkerAdmissionRequest } from "../../../infra/sqlite-worker-operation-admission.js";
 import { closeOpenClawStateDatabaseAsync } from "../../../state/openclaw-state-db.js";
+import { ContinuationCustodyLifetimeEndedError } from "./custody-lifetime.js";
 import { listContinuationRecordsInDatabase } from "./custody-store.worker.js";
 import { inlineImportAttachmentId } from "./legacy-taskflow-import-plan.js";
 import { migrateContinuationTaskFlowCustody } from "./legacy-taskflow-import.js";
@@ -39,17 +43,92 @@ import {
 import {
   detectContinuationTaskFlowCustodyImport,
   listContinuationOwnersAwaitingImport,
-} from "./legacy-taskflow-source.js";
+} from "./legacy-taskflow-migration-source.js";
+
+// Boundary after the owner commit: the legacy payload delete fails once.
+const removeControl = vi.hoisted(() => ({ failures: 0 }));
+vi.mock("../../../agents/subagents/subagent-attachment-cleanup.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../../agents/subagents/subagent-attachment-cleanup.js")
+    >();
+  return {
+    ...actual,
+    removeSubagentAttachmentTree: async (
+      ...args: Parameters<typeof actual.removeSubagentAttachmentTree>
+    ) => {
+      if (removeControl.failures > 0) {
+        removeControl.failures -= 1;
+        throw new Error("injected legacy delete failure");
+      }
+      return await actual.removeSubagentAttachmentTree(...args);
+    },
+  };
+});
+
+// Boundary between the owner commit and the host seeing it: the committed
+// command's result is lost on the way back, as when the worker reply fails.
+const resultControl = vi.hoisted(() => ({
+  loseNext: undefined as string | undefined,
+  beforeOwnerCommand: undefined as (() => void) | undefined,
+}));
+vi.mock("../../../state/openclaw-state-worker-store.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../state/openclaw-state-worker-store.js")>();
+  const runOperation = async (
+    ...args: Parameters<typeof actual.runOpenClawStateWorkerOperation>
+  ) => {
+    const [context, operation, operationOptions] = args;
+    let type: string | undefined;
+    const output = await actual.runOpenClawStateWorkerOperation(
+      context,
+      (scope) =>
+        operation(
+          new Proxy(scope, {
+            get(target, property, receiver) {
+              const value = Reflect.get(target, property, receiver) as unknown;
+              if (property === "execute" && typeof value === "function") {
+                return (request: { type: string }) => {
+                  type = request.type;
+                  if (type === "continuationCustody.importLegacyOwner") {
+                    const before = resultControl.beforeOwnerCommand;
+                    resultControl.beforeOwnerCommand = undefined;
+                    before?.();
+                  }
+                  return (value as (request: unknown) => unknown).call(target, request);
+                };
+              }
+              return typeof value === "function" ? value.bind(target) : value;
+            },
+          }),
+        ),
+      operationOptions,
+    );
+    if (type !== undefined && type === resultControl.loseNext) {
+      resultControl.loseNext = undefined;
+      throw new Error("injected result delivery failure");
+    }
+    return output;
+  };
+  return { ...actual, runOpenClawStateWorkerOperation: runOperation };
+});
 
 const NOW = 50_000;
 const ATTACHMENT_ID = "0b6f5d7e-8c1a-4b2f-9e3d-5a6b7c8d9e0f";
 
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
   afterEach(async () => {
+    vi.restoreAllMocks();
     await closeOpenClawStateDatabaseAsync();
     cleanup();
   }),
 );
+
+beforeEach(() => {
+  removeControl.failures = 0;
+  resultControl.loseNext = undefined;
+  resultControl.beforeOwnerCommand = undefined;
+});
 
 function stateOptions(): Options {
   return { env: { ...process.env, OPENCLAW_STATE_DIR: tempDirs.make("continuation-import-") } };
@@ -69,18 +148,30 @@ function record(options: Options, recordId: string) {
   return records(options).find((entry) => entry.recordId === recordId);
 }
 
-/** Faults the owner transaction on its Nth receipt insert, after earlier writes ran. */
-function failReceiptInsert(options: Options, sourceKeySuffix: string) {
-  write(options, (db) => {
-    db.exec(`CREATE TRIGGER fail_import_receipt BEFORE INSERT ON migration_sources
-      WHEN NEW.source_key LIKE '%${sourceKeySuffix}'
-      BEGIN SELECT RAISE(ABORT, 'injected import fault'); END`);
-  });
+/**
+ * Observe every worker admission request of the next import run. Each worker
+ * command asks once at BEGIN ("transaction") and once before COMMIT, so the
+ * command index counts BEGIN requests: command 1 reads the legacy snapshot and
+ * command 2 is the first owner's transaction. A throwing hook refuses the grant.
+ */
+function onImportAdmission(
+  hook: (request: SqliteWorkerAdmissionRequest, command: number) => void,
+): void {
+  const create = workerAdmission.createSqliteWorkerOperationAdmission;
+  let command = 0;
+  vi.spyOn(workerAdmission, "createSqliteWorkerOperationAdmission").mockImplementation(
+    (admit, attachment) =>
+      create((request, grant) => {
+        if (request.stage === "transaction") {
+          command += 1;
+        }
+        hook(request, command);
+        return admit(request, grant);
+      }, attachment),
+  );
 }
 
-function clearFault(options: Options) {
-  write(options, (db) => db.exec("DROP TRIGGER fail_import_receipt"));
-}
+const FIRST_OWNER_COMMAND = 2;
 
 describe("continuation TaskFlow custody import", () => {
   it("imports each legacy state as the RFC table rules and fences every imported live source", async () => {
@@ -499,13 +590,20 @@ describe("continuation TaskFlow custody import", () => {
       status: "queued",
       state: workState({ sessionKey: OWNER_B }),
     });
-    const entryId = seedPreCutoverEntry(options);
+    seedPreCutoverEntry(options);
     const before = dumpState(options);
-    // Fault on OWNER_A's last receipt: its records, scrub, fence and notices already ran.
-    failReceiptInsert(options, `:queue-entry:${entryId}`);
+    // Refuse OWNER_A's commit: its records, scrub, fence, notices and receipts already ran.
+    let refused = false;
+    onImportAdmission((request, command) => {
+      if (request.stage === "commit" && command === FIRST_OWNER_COMMAND) {
+        refused = true;
+        throw new Error("injected import fault");
+      }
+    });
 
     const failed = await run(options);
 
+    expect(refused).toBe(true);
     expect(failed.warnings.join("\n")).toContain("injected import fault");
     expect(failed.warnings.join("\n")).toContain("waiting on legacy import");
     const afterCrash = dumpState(options);
@@ -519,7 +617,7 @@ describe("continuation TaskFlow custody import", () => {
     expect(record(options, "b-work")).toMatchObject({ status: "queued" });
     expect(write(options, (db) => listContinuationOwnersAwaitingImport(db))).toEqual([OWNER_A]);
 
-    clearFault(options);
+    vi.restoreAllMocks();
     await run(options);
 
     expect(record(options, "a-work")).toMatchObject({ status: "queued" });
@@ -704,4 +802,172 @@ describe("continuation TaskFlow custody import", () => {
     expect(dumpState(options)).toEqual(committed);
     expect(detectContinuationTaskFlowCustodyImport({ env: options.env }).hasLegacy).toBe(false);
   });
+
+  it("fails an owner whose source row changed after the snapshot, and imports the current row next run", async () => {
+    const options = stateOptions();
+    seedFlow(options, { flowId: "a-work", status: "queued", state: workState() });
+    // Between the worker's snapshot read and the owner command, a rollback build moves the row.
+    resultControl.beforeOwnerCommand = () =>
+      write(options, (db) =>
+        executeSqliteQuerySync(
+          db,
+          kysely(db)
+            .updateTable("flow_runs")
+            .set({ revision: 4, updated_at: 3_000 })
+            .where("flow_id", "=", "a-work"),
+        ),
+      );
+
+    const changed = await run(options);
+
+    expect(changed.warnings.join("\n")).toContain("legacy continuation rows changed");
+    expect(records(options)).toEqual([]);
+    expect(readReceipts(options)).toEqual([]);
+    expect(write(options, (db) => listContinuationOwnersAwaitingImport(db))).toEqual([OWNER_A]);
+
+    await run(options);
+
+    expect(record(options, "a-work")).toMatchObject({ revision: 4, updatedAt: 3_000 });
+  });
+
+  describe("ordering across the owner commit (copy, commit, release)", () => {
+    function seedFileDelegate(options: Options) {
+      seedFlow(options, {
+        flowId: "delegate-file",
+        controller: "delegate",
+        status: "queued",
+        state: delegateState({ attachmentId: ATTACHMENT_ID, attachmentCount: 1 }),
+      });
+      return writeLegacyPayload(options, { attachmentId: ATTACHMENT_ID, flowId: "delegate-file" });
+    }
+
+    function awaitingOwners(options: Options) {
+      return write(options, (db) => listContinuationOwnersAwaitingImport(db));
+    }
+
+    it("copies before the commit; a crash between them leaves the source whole and one retry imports it", async () => {
+      const options = stateOptions();
+      const legacyFile = seedFileDelegate(options);
+      const before = dumpState(options);
+      const atCommit: { copied: boolean; legacy: boolean }[] = [];
+      onImportAdmission((request, command) => {
+        if (request.stage === "commit" && command === FIRST_OWNER_COMMAND) {
+          atCommit.push({
+            copied: fs.existsSync(newRootPayloadPath(options, ATTACHMENT_ID)),
+            legacy: fs.existsSync(legacyFile),
+          });
+          throw new Error("injected crash before commit");
+        }
+      });
+
+      const crashed = await run(options);
+
+      // At the commit request the new-root copy exists and the legacy file is untouched.
+      expect(atCommit).toEqual([{ copied: true, legacy: true }]);
+      expect(crashed.warnings.join("\n")).toContain("injected crash before commit");
+      expect(dumpState(options)).toEqual(before);
+      expect(fs.readFileSync(legacyFile, "utf8")).toContain(SECRET_BYTES);
+      expect(awaitingOwners(options)).toEqual([OWNER_A]);
+
+      vi.restoreAllMocks();
+      await run(options);
+
+      expect(records(options).map((entry) => entry.recordId)).toEqual(["delegate-file"]);
+      expect(readReceipts(options).map((row) => row.source_key)).toEqual([
+        "continuation-taskflow-custody-import:flow:delegate-file",
+      ]);
+      expect(fs.readFileSync(newRootPayloadPath(options, ATTACHMENT_ID), "utf8")).toContain(
+        SECRET_BYTES,
+      );
+      expect(fs.existsSync(legacyFile)).toBe(false);
+      expect(awaitingOwners(options)).toEqual([]);
+    });
+
+    it("releases after a commit whose result the host never saw, and never imports twice", async () => {
+      const options = stateOptions();
+      const legacyFile = seedFileDelegate(options);
+      resultControl.loseNext = "continuationCustody.importLegacyOwner";
+
+      const first = await run(options);
+
+      expect(first.warnings.join("\n")).toContain("injected result delivery failure");
+      // The commit landed; its receipt owes the delete, which the same run's owed pass performs.
+      expect(record(options, "delegate-file")).toMatchObject({ status: "queued" });
+      expect(fs.existsSync(legacyFile)).toBe(false);
+      expect(awaitingOwners(options)).toEqual([]);
+      const committed = dumpState(options);
+
+      const again = await run(options);
+
+      expect(again.changes).toEqual([]);
+      expect(dumpState(options)).toEqual(committed);
+      expect(detectContinuationTaskFlowCustodyImport({ env: options.env }).hasLegacy).toBe(false);
+    });
+
+    it("keeps the owed delete when the release after the commit fails, and the next run completes it", async () => {
+      const options = stateOptions();
+      const legacyFile = seedFileDelegate(options);
+      // Both the post-commit release and the same run's owed pass fail, as a crash would leave it.
+      removeControl.failures = 2;
+
+      const first = await run(options);
+
+      expect(first.warnings.join("\n")).toContain("injected legacy delete failure");
+      expect(record(options, "delegate-file")).toMatchObject({ status: "queued" });
+      expect(JSON.parse(readReceipts(options)[0]!.report_json)).toMatchObject({
+        legacyRelease: true,
+      });
+      expect(fs.existsSync(legacyFile)).toBe(true);
+      expect(detectContinuationTaskFlowCustodyImport({ env: options.env }).hasLegacy).toBe(true);
+      const committed = dumpState(options);
+
+      await run(options);
+
+      expect(fs.existsSync(legacyFile)).toBe(false);
+      expect(dumpState(options)).toEqual(committed);
+      expect(detectContinuationTaskFlowCustodyImport({ env: options.env }).hasLegacy).toBe(false);
+    });
+  });
+
+  it.each(["transaction", "commit"] as const)(
+    "writes nothing into a database whose lifetime ends at the owner's %s admission",
+    async (stage) => {
+      const options = stateOptions();
+      seedFlow(options, { flowId: "a-work", status: "queued", state: workState() });
+      seedFlow(options, {
+        flowId: "b-work",
+        owner: OWNER_B,
+        status: "queued",
+        state: workState({ sessionKey: OWNER_B }),
+      });
+      const before = dumpState(options);
+      let ended = false;
+      onImportAdmission((request, command) => {
+        if (request.stage === stage && command === FIRST_OWNER_COMMAND) {
+          ended = true;
+        }
+      });
+
+      await expect(
+        migrateContinuationTaskFlowCustody({
+          env: options.env,
+          now: () => NOW,
+          assertCurrent: () => {
+            if (ended) {
+              throw new ContinuationCustodyLifetimeEndedError();
+            }
+          },
+        }),
+      ).rejects.toBeInstanceOf(ContinuationCustodyLifetimeEndedError);
+
+      expect(ended).toBe(true);
+      // Neither the refused owner nor any later owner received an old-lifetime write.
+      expect(dumpState(options)).toEqual(before);
+
+      vi.restoreAllMocks();
+      await run(options);
+
+      expect(records(options).map((entry) => entry.recordId)).toEqual(["a-work", "b-work"]);
+    },
+  );
 });

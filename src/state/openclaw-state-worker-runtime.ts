@@ -27,6 +27,7 @@ import { executeAuditWriterCommand } from "../audit/audit-event-writer.worker.js
 import {
   executeContinuationCustodyCommand,
   isContinuationCustodyCommand,
+  prepareContinuationCustodyCommand,
 } from "../auto-reply/continuation/custody/custody-store.worker.js";
 import {
   isChannelIngressCommand,
@@ -185,7 +186,7 @@ export function prepareSharedStateCommand(type: PropertyKey): Promise<void> | un
       pluginIndexWriter = loaded;
     });
   }
-  return prepareCronStateWorkerCommand(type);
+  return prepareContinuationCustodyCommand(type) ?? prepareCronStateWorkerCommand(type);
 }
 
 export function executeSharedStateCommand(

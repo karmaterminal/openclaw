@@ -4,7 +4,7 @@
 import {
   detectContinuationTaskFlowCustodyImport,
   type ContinuationTaskFlowImportDetection,
-} from "../auto-reply/continuation/custody/legacy-taskflow-source.js";
+} from "../auto-reply/continuation/custody/legacy-taskflow-migration-source.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import type { LegacyStateMigrationStep } from "./state-migrations.types.js";
 

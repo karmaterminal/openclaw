@@ -16,9 +16,10 @@ import type {
   ContinuationUpdateResult,
   NewContinuationRecord,
 } from "./custody-store.types.js";
+import type { ContinuationLegacyImportWorkerOperations } from "./legacy-taskflow-import.worker-contract.js";
 
 /** Shared-state worker operations owned by continuation custody (RFC §5.4.2). */
-export type ContinuationCustodyWorkerOperations = {
+export type ContinuationCustodyWorkerOperations = ContinuationLegacyImportWorkerOperations & {
   "continuationCustody.create": {
     input: { record: NewContinuationRecord };
     output: ContinuationCreateResult;

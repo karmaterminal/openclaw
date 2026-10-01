@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { ContinuationTaskFlowImportDetection } from "../auto-reply/continuation/custody/legacy-taskflow-source.js";
+import type { ContinuationTaskFlowImportDetection } from "../auto-reply/continuation/custody/legacy-taskflow-migration-source.js";
 import type { SessionScope } from "../config/sessions/types.js";
 import type {
   PluginDoctorStateMigration,
