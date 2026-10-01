@@ -21,7 +21,7 @@ export async function createDelegateArtifactPolicy(
   const route = RouteSchema.parse(policy.route);
   await runDelegateArtifactOperation(
     "delegateArtifacts.createPolicy",
-    { policy: { ...policy, recipients, route } },
+    { policy: { ...policy, recipients, route }, now: Date.now() },
     options,
   );
 }
@@ -57,7 +57,7 @@ export async function assertDelegateArtifactPolicyPrepared(
 ): Promise<void> {
   const state = await runDelegateArtifactOperation(
     "delegateArtifacts.readPolicyState",
-    { flowId },
+    { flowId, now: Date.now() },
     options,
   );
   if (state === "missing") {
@@ -117,7 +117,7 @@ export function purgeExpiredDelegateArtifacts(
   }
   const purge = runDelegateArtifactOperation(
     "delegateArtifacts.purgeExpired",
-    now === undefined ? {} : { now },
+    { now: now ?? Date.now() },
     context,
   ).finally(() => {
     purgesInFlight.delete(databasePath);

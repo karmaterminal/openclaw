@@ -61,7 +61,7 @@ function executeInTransaction(database: OpenClawStateDatabase, command: Command)
     case "delegateArtifacts.finalize":
       return finalizeDelegateArtifactsInDatabase(db, command.input);
     case "delegateArtifacts.createPolicy":
-      return createDelegateArtifactPolicyInDatabase(db, command.input.policy);
+      return createDelegateArtifactPolicyInDatabase(db, command.input);
     case "delegateArtifacts.readPolicyState":
       return readDelegateArtifactPolicyStateInDatabase(db, command.input);
     case "delegateArtifacts.hasRecordedCompletion":
@@ -85,11 +85,7 @@ function executeInTransaction(database: OpenClawStateDatabase, command: Command)
     case "delegateArtifacts.prepareDelivery":
       return prepareDelegateArtifactDeliveryInDatabase(db, command.input);
     case "delegateArtifacts.markDeliveryUnavailable":
-      return markDelegateArtifactDeliveryUnavailableInDatabase({
-        db,
-        ...command.input,
-        now: command.input.now ?? Date.now(),
-      });
+      return markDelegateArtifactDeliveryUnavailableInDatabase({ db, ...command.input });
     case "delegateArtifacts.recordDeliveryBinding":
       return recordDelegateArtifactDeliveryBindingInDatabase(db, command.input);
   }

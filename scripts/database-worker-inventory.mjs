@@ -127,6 +127,8 @@ const workerModules = new Set([
   "src/state/openclaw-state-worker-runtime.ts",
   "src/config/sessions/session-accessor.sqlite-mutation-worker.runtime.ts",
   "src/infra/session-cost-usage-worker.ts",
+  // Imported only by delegate-artifact-*.worker.ts, dispatched solely from delegate-artifacts.worker.ts <- openclaw-state-worker-runtime.ts.
+  "src/agents/delegate-artifact-store.kernel.ts",
 ]);
 const exceptionModules = new Set([
   "src/state/openclaw-state-db-transaction.ts",

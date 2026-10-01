@@ -32,9 +32,7 @@ export function publishDelegateArtifactCandidatesInDatabase(
   db: DatabaseSync,
   input: Operation<"delegateArtifacts.publish">["input"],
 ): Operation<"delegateArtifacts.publish">["output"] {
-  // The clock is read inside the serialized write, so a purge that already
-  // expired this policy always precedes a publication that sees it expired.
-  const now = input.now ?? Date.now();
+  const { now } = input;
   const kdb = artifactDb(db);
   const policy = executeSqliteQueryTakeFirstSync(
     db,
@@ -191,7 +189,7 @@ export function finalizeDelegateArtifactsInDatabase(
     stageCompletion(db, policy, input);
     return { status: "deferred" };
   }
-  const now = input.now ?? Date.now();
+  const { now } = input;
   if (policy.status === "completed" || policy.status === "failed") {
     if (
       policy.completion_id !== input.completionId ||

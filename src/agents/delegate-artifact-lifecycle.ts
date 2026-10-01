@@ -27,7 +27,11 @@ export async function publishDelegateArtifactCandidates(params: {
     return { status: "rejected", reason: "runtime_disabled" };
   }
   const { runtimeEnabled: _runtimeEnabled, options, ...input } = params;
-  return await runDelegateArtifactOperation("delegateArtifacts.publish", input, options);
+  return await runDelegateArtifactOperation(
+    "delegateArtifacts.publish",
+    { ...input, now: input.now ?? Date.now() },
+    options,
+  );
 }
 
 /**
@@ -38,12 +42,14 @@ export async function publishDelegateArtifactCandidates(params: {
  * between is made terminally unavailable before any delivery can bind it.
  */
 export async function finalizeDelegateArtifacts(
-  params: Omit<DelegateArtifactFinalizeInput, "sessionIds"> & {
+  params: Omit<DelegateArtifactFinalizeInput, "sessionIds" | "now"> & {
+    now?: number;
     resolveSessionId: (sessionKey: string) => Promise<string | undefined> | string | undefined;
     options?: DelegateArtifactStateOptions;
   },
 ): Promise<DelegateArtifactFinalizeResult> {
-  const { resolveSessionId, options, ...input } = params;
+  const { resolveSessionId, options, ...rest } = params;
+  const input = { ...rest, now: rest.now ?? Date.now() };
   const resolve = async (sessionKeys: readonly string[]) =>
     Object.fromEntries(
       await Promise.all(

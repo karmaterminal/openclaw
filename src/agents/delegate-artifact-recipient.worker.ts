@@ -24,7 +24,7 @@ export function listDelegateArtifactsForRecipientInDatabase(
   input: Operation<"delegateArtifacts.listForRecipient">["input"],
 ): Operation<"delegateArtifacts.listForRecipient">["output"] {
   const kdb = artifactDb(db);
-  const now = input.now ?? Date.now();
+  const { now } = input;
   const authorized = executeSqliteQueryTakeFirstSync(
     db,
     kdb
@@ -116,7 +116,7 @@ export function inspectDelegateArtifactForRecipientInDatabase(
   db: DatabaseSync,
   input: Operation<"delegateArtifacts.inspectForRecipient">["input"],
 ): Operation<"delegateArtifacts.inspectForRecipient">["output"] {
-  const now = input.now ?? Date.now();
+  const { now } = input;
   const resolved = resolveClaimForRecipient({
     db,
     claimId: input.claimId,
@@ -144,7 +144,7 @@ export function readDelegateArtifactForMaterializationInDatabase(
   db: DatabaseSync,
   input: Operation<"delegateArtifacts.readForMaterialization">["input"],
 ): Operation<"delegateArtifacts.readForMaterialization">["output"] {
-  const now = input.now ?? Date.now();
+  const { now } = input;
   const resolved = resolveClaimForRecipient({
     db,
     claimId: input.claimId,
@@ -176,7 +176,7 @@ export function markDelegateArtifactMaterializedInDatabase(
   db: DatabaseSync,
   input: Operation<"delegateArtifacts.markMaterialized">["input"],
 ): Operation<"delegateArtifacts.markMaterialized">["output"] {
-  const now = input.now ?? Date.now();
+  const { now } = input;
   const resolved = resolveClaimForRecipient({
     db,
     claimId: input.claimId,
@@ -215,7 +215,7 @@ export function discardDelegateArtifactForRecipientInDatabase(
   db: DatabaseSync,
   input: Operation<"delegateArtifacts.discardForRecipient">["input"],
 ): Operation<"delegateArtifacts.discardForRecipient">["output"] {
-  const now = input.now ?? Date.now();
+  const { now } = input;
   const resolved = resolveClaimForRecipient({
     db,
     claimId: input.claimId,

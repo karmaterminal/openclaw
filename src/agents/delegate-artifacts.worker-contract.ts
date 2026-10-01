@@ -9,10 +9,12 @@ type DelegateArtifactRecipientScope = {
   recipientSessionKey: string;
   recipientSessionId: string;
   crossSessionEnabled: boolean;
-  /** Absent means the worker's clock when the command's transaction runs. */
-  now?: number;
+  now: number;
 };
 
+// Every input carries `now`: the host's clock when the caller asked, as before
+// the worker cutover. The worker never reads its own clock, so retention and
+// arrival times do not depend on queueing delay or the worker thread.
 type Refused = { outcome: Exclude<DelegateArtifactOperationOutcome, "available"> };
 
 export type DelegateArtifactPublicationResult =
@@ -58,7 +60,7 @@ export type DelegateArtifactFinalizeInput = {
    * a key missing here commits nothing and names the keys to resolve.
    */
   sessionIds: Record<string, string | null>;
-  now?: number;
+  now: number;
 };
 
 export type DelegateArtifactDeliveryPreparation =
@@ -67,7 +69,7 @@ export type DelegateArtifactDeliveryPreparation =
   | { status: "deferred" }
   | { status: "unavailable" };
 
-export type DelegateArtifactDeliveryUnavailableReason =
+type DelegateArtifactDeliveryUnavailableReason =
   | "recipient-incarnation-changed"
   | "recipient-no-longer-active"
   | "delivery-state-unavailable";
@@ -82,7 +84,7 @@ export type DelegateArtifactWorkerOperations = {
       publicationKey: string;
       candidates: Array<{ bytes: Uint8Array; mimeType: string }>;
       crossSessionEnabled: boolean;
-      now?: number;
+      now: number;
     };
     output: DelegateArtifactPublicationResult;
   };
@@ -91,11 +93,11 @@ export type DelegateArtifactWorkerOperations = {
     output: DelegateArtifactFinalizeResult | { status: "needs-session-ids"; sessionKeys: string[] };
   };
   "delegateArtifacts.createPolicy": {
-    input: { policy: DelegateArtifactPolicyV1 };
+    input: { policy: DelegateArtifactPolicyV1; now: number };
     output: void;
   };
   "delegateArtifacts.readPolicyState": {
-    input: { flowId: string };
+    input: { flowId: string; now: number };
     output: "active" | "missing" | "unavailable";
   };
   "delegateArtifacts.hasRecordedCompletion": {
@@ -139,7 +141,7 @@ export type DelegateArtifactWorkerOperations = {
       projection: DelegateArtifactRecipientProjectionV1;
       crossSessionEnabled: boolean;
       currentRecipientSessionId?: string;
-      now?: number;
+      now: number;
     };
     output: DelegateArtifactDeliveryPreparation;
   };
@@ -149,7 +151,7 @@ export type DelegateArtifactWorkerOperations = {
       recipientSessionKey: string;
       recipientSessionId: string;
       reason: DelegateArtifactDeliveryUnavailableReason;
-      now?: number;
+      now: number;
     };
     output: void;
   };
@@ -160,7 +162,7 @@ export type DelegateArtifactWorkerOperations = {
       recipientSessionId: string;
       phase: "attempt" | "replay" | "acknowledged";
       availability?: "available" | "unavailable";
-      now?: number;
+      now: number;
     };
     output: void;
   };

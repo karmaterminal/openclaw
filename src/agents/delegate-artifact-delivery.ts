@@ -20,23 +20,43 @@ export async function prepareDelegateArtifactDelivery(params: {
   if (!runtimeEnabled) {
     return { status: "deferred" };
   }
-  return await runDelegateArtifactOperation("delegateArtifacts.prepareDelivery", input, options);
+  return await runDelegateArtifactOperation(
+    "delegateArtifacts.prepareDelivery",
+    { ...input, now: input.now ?? Date.now() },
+    options,
+  );
 }
 
 export async function markDelegateArtifactDeliveryUnavailable(
-  params: DelegateArtifactWorkerOperations["delegateArtifacts.markDeliveryUnavailable"]["input"] & {
+  params: Omit<
+    DelegateArtifactWorkerOperations["delegateArtifacts.markDeliveryUnavailable"]["input"],
+    "now"
+  > & {
+    now?: number;
     options?: DelegateArtifactStateOptions;
   },
 ): Promise<void> {
   const { options, ...input } = params;
-  await runDelegateArtifactOperation("delegateArtifacts.markDeliveryUnavailable", input, options);
+  await runDelegateArtifactOperation(
+    "delegateArtifacts.markDeliveryUnavailable",
+    { ...input, now: input.now ?? Date.now() },
+    options,
+  );
 }
 
 export async function recordDelegateArtifactDeliveryBinding(
-  params: DelegateArtifactWorkerOperations["delegateArtifacts.recordDeliveryBinding"]["input"] & {
+  params: Omit<
+    DelegateArtifactWorkerOperations["delegateArtifacts.recordDeliveryBinding"]["input"],
+    "now"
+  > & {
+    now?: number;
     options?: DelegateArtifactStateOptions;
   },
 ): Promise<void> {
   const { options, ...input } = params;
-  await runDelegateArtifactOperation("delegateArtifacts.recordDeliveryBinding", input, options);
+  await runDelegateArtifactOperation(
+    "delegateArtifacts.recordDeliveryBinding",
+    { ...input, now: input.now ?? Date.now() },
+    options,
+  );
 }

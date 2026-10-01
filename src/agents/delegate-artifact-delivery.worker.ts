@@ -23,7 +23,7 @@ export function prepareDelegateArtifactDeliveryInDatabase(
   db: DatabaseSync,
   input: Operation<"delegateArtifacts.prepareDelivery">["input"],
 ): Operation<"delegateArtifacts.prepareDelivery">["output"] {
-  const now = input.now ?? Date.now();
+  const { now } = input;
   const context = input.projection.arrivalContext;
   const markUnavailable = () => {
     markDelegateArtifactDeliveryUnavailableInDatabase({
@@ -193,7 +193,7 @@ export function recordDelegateArtifactDeliveryBindingInDatabase(
   db: DatabaseSync,
   input: Operation<"delegateArtifacts.recordDeliveryBinding">["input"],
 ): void {
-  const now = input.now ?? Date.now();
+  const { now } = input;
   const kdb = artifactDb(db);
   const recipientOutcome = executeSqliteQueryTakeFirstSync(
     db,

@@ -17,7 +17,7 @@ import { artifactDb } from "./delegate-artifact-store.kernel.js";
 /** Insert-if-absent of an accepted dispatch policy; a replay must match it exactly. */
 export function createDelegateArtifactPolicyInDatabase(
   db: DatabaseSync,
-  policy: DelegateArtifactPolicyV1,
+  { policy, now }: { policy: DelegateArtifactPolicyV1; now: number },
 ): void {
   const kdb = artifactDb(db);
   const existing = executeSqliteQueryTakeFirstSync(
@@ -26,8 +26,7 @@ export function createDelegateArtifactPolicyInDatabase(
   );
   const recipientsJson = JSON.stringify(policy.recipients);
   const routeJson = JSON.stringify(policy.route);
-  const dispatchAcceptedAt =
-    existing?.dispatch_accepted_at ?? policy.dispatchAcceptedAt ?? Date.now();
+  const dispatchAcceptedAt = existing?.dispatch_accepted_at ?? policy.dispatchAcceptedAt ?? now;
   if (existing) {
     const immutableMatch =
       existing.producer_session_key === policy.producerSessionKey &&
@@ -88,7 +87,7 @@ export function createDelegateArtifactPolicyInDatabase(
 /** Whether a dispatch may still run against its accepted policy, at the worker's clock. */
 export function readDelegateArtifactPolicyStateInDatabase(
   db: DatabaseSync,
-  input: { flowId: string },
+  input: { flowId: string; now: number },
 ): "active" | "missing" | "unavailable" {
   const policy = executeSqliteQueryTakeFirstSync(
     db,
@@ -100,7 +99,7 @@ export function readDelegateArtifactPolicyStateInDatabase(
   if (!policy) {
     return "missing";
   }
-  return policy.status !== "active" || policy.retention_deadline <= Date.now()
+  return policy.status !== "active" || policy.retention_deadline <= input.now
     ? "unavailable"
     : "active";
 }
@@ -170,9 +169,9 @@ export function removeUnacceptedDelegateArtifactPolicyInDatabase(
 /** Purge one batch of expired claim backing; returns the number of policies touched. */
 export function purgeExpiredDelegateArtifactsInDatabase(
   db: DatabaseSync,
-  input: { now?: number },
+  input: { now: number },
 ): number {
-  const now = input.now ?? Date.now();
+  const { now } = input;
   const kdb = artifactDb(db);
   const expiredPolicies = executeSqliteQuerySync(
     db,

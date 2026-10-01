@@ -4,59 +4,92 @@ import {
 } from "./delegate-artifact-operation.js";
 import type { DelegateArtifactWorkerOperations } from "./delegate-artifacts.worker-contract.js";
 
-type RecipientOperation = Extract<
-  keyof DelegateArtifactWorkerOperations,
-  | "delegateArtifacts.listForRecipient"
-  | "delegateArtifacts.inspectForRecipient"
-  | "delegateArtifacts.readForMaterialization"
-  | "delegateArtifacts.markMaterialized"
-  | "delegateArtifacts.discardForRecipient"
+type RecipientCall = {
+  recipientSessionKey: string;
+  recipientSessionId: string;
+  runtimeEnabled: boolean;
+  crossSessionEnabled: boolean;
+  now?: number;
+  options?: DelegateArtifactStateOptions;
+};
+type ClaimCall = RecipientCall & { claimId: string };
+type Output<Key extends keyof DelegateArtifactWorkerOperations> = Promise<
+  DelegateArtifactWorkerOperations[Key]["output"]
 >;
 
-type RecipientParams<Key extends RecipientOperation> =
-  DelegateArtifactWorkerOperations[Key]["input"] & {
-    runtimeEnabled: boolean;
-    options?: DelegateArtifactStateOptions;
-  };
-
 /** A disabled runtime refuses every recipient action without touching state. */
-async function runRecipientOperation<Key extends RecipientOperation>(
-  type: Key,
-  params: RecipientParams<Key>,
-): Promise<DelegateArtifactWorkerOperations[Key]["output"] | { outcome: "unauthorized" }> {
-  const { runtimeEnabled, options, ...input } = params;
-  if (!runtimeEnabled) {
-    return { outcome: "unauthorized" };
-  }
-  return await runDelegateArtifactOperation(type, input, options);
+function recipientScope(params: RecipientCall) {
+  return params.runtimeEnabled
+    ? {
+        recipientSessionKey: params.recipientSessionKey,
+        recipientSessionId: params.recipientSessionId,
+        crossSessionEnabled: params.crossSessionEnabled,
+        now: params.now ?? Date.now(),
+      }
+    : undefined;
 }
 
-export function listDelegateArtifactsForRecipient(
-  params: RecipientParams<"delegateArtifacts.listForRecipient">,
-) {
-  return runRecipientOperation("delegateArtifacts.listForRecipient", params);
+export async function listDelegateArtifactsForRecipient(
+  params: RecipientCall,
+): Output<"delegateArtifacts.listForRecipient"> {
+  const scope = recipientScope(params);
+  return scope
+    ? await runDelegateArtifactOperation(
+        "delegateArtifacts.listForRecipient",
+        scope,
+        params.options,
+      )
+    : { outcome: "unauthorized" };
 }
 
-export function inspectDelegateArtifactForRecipient(
-  params: RecipientParams<"delegateArtifacts.inspectForRecipient">,
-) {
-  return runRecipientOperation("delegateArtifacts.inspectForRecipient", params);
+export async function inspectDelegateArtifactForRecipient(
+  params: ClaimCall,
+): Output<"delegateArtifacts.inspectForRecipient"> {
+  const scope = recipientScope(params);
+  return scope
+    ? await runDelegateArtifactOperation(
+        "delegateArtifacts.inspectForRecipient",
+        { ...scope, claimId: params.claimId },
+        params.options,
+      )
+    : { outcome: "unauthorized" };
 }
 
-export function readDelegateArtifactForMaterialization(
-  params: RecipientParams<"delegateArtifacts.readForMaterialization">,
-) {
-  return runRecipientOperation("delegateArtifacts.readForMaterialization", params);
+export async function readDelegateArtifactForMaterialization(
+  params: ClaimCall,
+): Output<"delegateArtifacts.readForMaterialization"> {
+  const scope = recipientScope(params);
+  return scope
+    ? await runDelegateArtifactOperation(
+        "delegateArtifacts.readForMaterialization",
+        { ...scope, claimId: params.claimId },
+        params.options,
+      )
+    : { outcome: "unauthorized" };
 }
 
-export function markDelegateArtifactMaterialized(
-  params: RecipientParams<"delegateArtifacts.markMaterialized">,
-) {
-  return runRecipientOperation("delegateArtifacts.markMaterialized", params);
+export async function markDelegateArtifactMaterialized(
+  params: ClaimCall & { destination: string },
+): Output<"delegateArtifacts.markMaterialized"> {
+  const scope = recipientScope(params);
+  return scope
+    ? await runDelegateArtifactOperation(
+        "delegateArtifacts.markMaterialized",
+        { ...scope, claimId: params.claimId, destination: params.destination },
+        params.options,
+      )
+    : { outcome: "unauthorized" };
 }
 
-export function discardDelegateArtifactForRecipient(
-  params: RecipientParams<"delegateArtifacts.discardForRecipient">,
-) {
-  return runRecipientOperation("delegateArtifacts.discardForRecipient", params);
+export async function discardDelegateArtifactForRecipient(
+  params: ClaimCall,
+): Output<"delegateArtifacts.discardForRecipient"> {
+  const scope = recipientScope(params);
+  return scope
+    ? await runDelegateArtifactOperation(
+        "delegateArtifacts.discardForRecipient",
+        { ...scope, claimId: params.claimId },
+        params.options,
+      )
+    : { outcome: "unauthorized" };
 }
