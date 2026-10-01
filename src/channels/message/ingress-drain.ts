@@ -411,8 +411,8 @@ export function createChannelIngressDrain<
       onAbandoned: async () => {
         await settleUnadopted(state, (claim) =>
           settleAbandonedIngressClaim(claim, {
-            // SAFETY: policy-drop rows carry only this core-owned tombstone metadata.
             complete: (dropped, metadata) =>
+              // SAFETY: policy-drop rows carry only this core-owned tombstone metadata.
               completeClaimWithRetry(dropped, metadata as TCompletedMetadata),
             release: releaseClaim,
             retry: applyFailureDisposition,
