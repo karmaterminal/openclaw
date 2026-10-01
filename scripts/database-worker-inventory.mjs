@@ -131,6 +131,8 @@ const workerModules = new Set([
   // legacy-taskflow-import.worker.ts; those reach the host only through
   // custody-store.worker.ts <- openclaw-state-worker-runtime.ts.
   "src/auto-reply/continuation/custody/custody-store.kernel.ts",
+  // Imported only by delegate-artifact-*.worker.ts, dispatched solely from delegate-artifacts.worker.ts <- openclaw-state-worker-runtime.ts.
+  "src/agents/delegate-artifact-store.kernel.ts",
 ]);
 const exceptionModules = new Set([
   "src/state/openclaw-state-db-transaction.ts",

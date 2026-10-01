@@ -168,6 +168,7 @@ describe("gateway telemetry maintenance", () => {
       },
       runDeliveryQueueMediaGc: async () => undefined,
       runManagedOutgoingMediaGc: async () => undefined,
+      runDelegateArtifactGc: async () => 0,
     });
     try {
       await vi.advanceTimersByTimeAsync(
@@ -243,6 +244,7 @@ describe("gateway telemetry maintenance", () => {
         runWorktreeGc,
         runDeliveryQueueMediaGc,
         runManagedOutgoingMediaGc: async () => undefined,
+        runDelegateArtifactGc: async () => 0,
         logHealth,
       });
       try {
@@ -317,6 +319,7 @@ describe("gateway telemetry maintenance", () => {
       runWorktreeGc,
       runDeliveryQueueMediaGc: async () => undefined,
       runManagedOutgoingMediaGc: async () => undefined,
+      runDelegateArtifactGc: async () => 0,
     });
     await vi.advanceTimersByTimeAsync(60 * 60_000);
     let settled = false;
@@ -364,6 +367,7 @@ describe("gateway telemetry maintenance", () => {
       runWorktreeGc: async () => undefined,
       runDeliveryQueueMediaGc: async () => undefined,
       runManagedOutgoingMediaGc: async () => undefined,
+      runDelegateArtifactGc: async () => 0,
     });
 
     expect(generateSecureIntMock).toHaveBeenNthCalledWith(1, 5 * 60_000);
@@ -398,6 +402,7 @@ describe("gateway telemetry maintenance", () => {
       runWorktreeGc: async () => undefined,
       runDeliveryQueueMediaGc: async () => undefined,
       runManagedOutgoingMediaGc: async () => undefined,
+      runDelegateArtifactGc: async () => 0,
     });
 
     try {
@@ -438,6 +443,7 @@ describe("gateway telemetry maintenance", () => {
       runWorktreeGc: async () => undefined,
       runDeliveryQueueMediaGc: async () => undefined,
       runManagedOutgoingMediaGc: async () => undefined,
+      runDelegateArtifactGc: async () => 0,
     });
 
     await vi.advanceTimersByTimeAsync(10 * 60_000);

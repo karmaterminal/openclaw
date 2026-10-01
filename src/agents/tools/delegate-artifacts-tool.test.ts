@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  closeOpenClawStateDatabaseForTest,
+  closeOpenClawStateDatabaseAsync,
   openOpenClawStateDatabase,
 } from "../../state/openclaw-state-db.js";
 import {
@@ -21,8 +21,8 @@ import {
   DELEGATE_ARTIFACT_MAX_BYTES,
   createDelegateArtifactPolicy,
   finalizeDelegateArtifacts,
-  recordDelegateArtifactDelivery,
 } from "../delegate-artifacts.js";
+import { recordDelivery } from "../delegate-artifacts.test-helpers.js";
 import { createHostSandboxFsBridge } from "../test-helpers/host-sandbox-fs-bridge.js";
 import { createDelegateArtifactTools } from "./delegate-artifacts-tool.js";
 
@@ -46,23 +46,23 @@ function parseResult(result: unknown): Record<string, unknown> {
   return JSON.parse(text) as Record<string, unknown>;
 }
 
-function acknowledgeProjection(
-  projection: Parameters<typeof recordDelegateArtifactDelivery>[0]["projection"],
+async function acknowledgeProjection(
+  projection: Parameters<typeof recordDelivery>[0]["projection"],
   statePath: string,
 ) {
-  recordDelegateArtifactDelivery({
+  await recordDelivery({
     projection,
     phase: "attempt",
     options: { path: statePath },
   });
-  recordDelegateArtifactDelivery({
+  await recordDelivery({
     projection,
     phase: "acknowledged",
     options: { path: statePath },
   });
 }
 
-function fixture() {
+async function fixture() {
   const root = mkdtempSync(join(tmpdir(), "openclaw-delegate-artifact-tool-"));
   const workspace = join(root, "workspace");
   const output = join(workspace, DELEGATE_ARTIFACT_OUTPUT_ROOT);
@@ -72,7 +72,7 @@ function fixture() {
   const sessionKey = "agent:main:subagent:continuation-child";
   const sessionId = "child-session-1";
   const runId = "continuation-delegate-run-1";
-  createDelegateArtifactPolicy(
+  await createDelegateArtifactPolicy(
     {
       flowId: "flow-1",
       producerSessionKey: sessionKey,
@@ -116,14 +116,14 @@ function fixture() {
   };
 }
 
-afterEach(() => {
-  closeOpenClawStateDatabaseForTest();
+afterEach(async () => {
+  await closeOpenClawStateDatabaseAsync();
 });
 
 describe("delegate artifact tools", () => {
-  it("uses a flat provider-safe action enum", () => {
+  it("uses a flat provider-safe action enum", async () => {
     const actionSchema = (
-      fixture().operations.parameters as {
+      (await fixture()).operations.parameters as {
         properties?: { action?: Record<string, unknown> };
       }
     ).properties?.action;
@@ -136,7 +136,7 @@ describe("delegate artifact tools", () => {
   });
 
   it("publishes only validated regular files under the approved output root", async () => {
-    const test = fixture();
+    const test = await fixture();
     writeFileSync(join(test.output, "report.pdf"), "%PDF-1.7 managed report");
 
     const published = parseResult(
@@ -156,7 +156,7 @@ describe("delegate artifact tools", () => {
   });
 
   it("rejects symlinks, missing files, raw inputs, and publication without policy", async () => {
-    const test = fixture();
+    const test = await fixture();
     const outside = join(test.workspace, "outside.txt");
     writeFileSync(outside, "private bytes");
     writeFileSync(join(test.output, "plain.txt"), "text");
@@ -194,6 +194,7 @@ describe("delegate artifact tools", () => {
         reason: "invalid_candidate",
       });
     }
+
     await expect(
       test.publish.execute("tool-call-raw", {
         data: Buffer.from("raw").toString("base64"),
@@ -221,11 +222,11 @@ describe("delegate artifact tools", () => {
   });
 
   it("lists, inspects, materializes, and discards through the recipient binding only", async () => {
-    const test = fixture();
+    const test = await fixture();
     writeFileSync(join(test.output, "report.pdf"), "%PDF-1.7 managed report");
     await test.publish.execute("tool-call-1", { paths: ["report.pdf"] });
     rmSync(join(test.output, "report.pdf"));
-    const finalized = finalizeDelegateArtifacts({
+    const finalized = await finalizeDelegateArtifacts({
       producerSessionKey: test.sessionKey,
       producerSessionId: test.sessionId,
       producerRunId: test.runId,
@@ -245,7 +246,7 @@ describe("delegate artifact tools", () => {
       throw new Error("expected finalized claim");
     }
     const projection = finalized.projections.get("agent:main:parent")!;
-    acknowledgeProjection(projection, test.statePath);
+    await acknowledgeProjection(projection, test.statePath);
     const claimId = projection.artifacts[0]!.id;
     const recipientWorkspace = join(test.workspace, "recipient");
     mkdirSync(recipientWorkspace);
@@ -314,7 +315,7 @@ describe("delegate artifact tools", () => {
   });
 
   it("publishes and materializes through the sandbox filesystem bridge", async () => {
-    const test = fixture();
+    const test = await fixture();
     const remoteOnlyBridge = createHostSandboxFsBridge(test.workspace);
     const resolveRemotePath = remoteOnlyBridge.resolvePath.bind(remoteOnlyBridge);
     remoteOnlyBridge.resolvePath = (params) => {
@@ -383,7 +384,7 @@ describe("delegate artifact tools", () => {
     expect(
       parseResult(await publish.execute("sandbox-publication", { paths: ["sandboxed.txt"] })),
     ).toEqual({ status: "published", count: 1 });
-    const finalized = finalizeDelegateArtifacts({
+    const finalized = await finalizeDelegateArtifacts({
       producerSessionKey: test.sessionKey,
       producerSessionId: test.sessionId,
       producerRunId: test.runId,
@@ -403,7 +404,7 @@ describe("delegate artifact tools", () => {
       throw new Error("expected finalized claim");
     }
     const projection = finalized.projections.get("agent:main:parent")!;
-    acknowledgeProjection(projection, test.statePath);
+    await acknowledgeProjection(projection, test.statePath);
     const claimId = projection.artifacts[0]!.id;
     const operations = createDelegateArtifactTools({
       config,

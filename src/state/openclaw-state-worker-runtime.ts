@@ -6,6 +6,10 @@ import {
 import { isMissingDatabasePath } from "../agents/auth-profiles/sqlite-read-pool.js";
 import type { AuthProfileRowRead } from "../agents/auth-profiles/types.js";
 import {
+  executeDelegateArtifactCommand,
+  isDelegateArtifactCommand,
+} from "../agents/delegate-artifacts.worker.js";
+import {
   readNativeHookRelayBridgeSnapshotFromDatabase,
   listNativeHookRelayBridgeSnapshotsInDatabase,
 } from "../agents/harness/native-hook-relay-store.kernel.js";
@@ -207,6 +211,9 @@ export function executeSharedStateCommand(
   }
   if (isContinuationCustodyCommand(command)) {
     return executeContinuationCustodyCommand(command, { database: open(), ...stateOptions() });
+  }
+  if (isDelegateArtifactCommand(command)) {
+    return executeDelegateArtifactCommand(command, { database: open(), ...stateOptions() });
   }
   if (isLegacyMcpOAuthWorkerCommand(command)) {
     return executeLegacyMcpOAuthWorkerCommand(open(), command);

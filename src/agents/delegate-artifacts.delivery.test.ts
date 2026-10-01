@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi, describe } from "vitest";
 import {
-  closeOpenClawStateDatabaseForTest,
+  closeOpenClawStateDatabaseAsync,
   openOpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
 import {
@@ -11,21 +11,26 @@ import {
   listDelegateArtifactsForRecipient,
   prepareDelegateArtifactDelivery,
   purgeExpiredDelegateArtifacts,
-  recordDelegateArtifactDelivery,
 } from "./delegate-artifacts.js";
-import { finalize, policy, publish, stateOptions } from "./delegate-artifacts.test-helpers.js";
+import {
+  finalize,
+  policy,
+  publish,
+  recordDelivery,
+  stateOptions,
+} from "./delegate-artifacts.test-helpers.js";
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  closeOpenClawStateDatabaseForTest();
+  await closeOpenClawStateDatabaseAsync();
 });
 
 describe("managed delegate artifact claims", () => {
-  it("preserves expired claimless policy and terminal provenance records", () => {
+  it("preserves expired claimless policy and terminal provenance records", async () => {
     const options = stateOptions();
     const statuses = ["active", "staged", "completed", "failed"] as const;
     for (const [index, status] of statuses.entries()) {
-      createDelegateArtifactPolicy(
+      await createDelegateArtifactPolicy(
         policy({
           flowId: `flow-${status}`,
           producerRunId: `run-${status}`,
@@ -64,8 +69,12 @@ describe("managed delegate artifact claims", () => {
         9_000,
       );
 
-    expect(purgeExpiredDelegateArtifacts(31_100 + DELEGATE_ARTIFACT_RETENTION_MS, options)).toBe(0);
-    expect(purgeExpiredDelegateArtifacts(31_100 + DELEGATE_ARTIFACT_RETENTION_MS, options)).toBe(0);
+    expect(
+      await purgeExpiredDelegateArtifacts(31_100 + DELEGATE_ARTIFACT_RETENTION_MS, options),
+    ).toBe(0);
+    expect(
+      await purgeExpiredDelegateArtifacts(31_100 + DELEGATE_ARTIFACT_RETENTION_MS, options),
+    ).toBe(0);
     expect(
       openOpenClawStateDatabase(options)
         .db.prepare("SELECT flow_id, status FROM delegate_artifact_policies ORDER BY flow_id")
@@ -85,17 +94,17 @@ describe("managed delegate artifact claims", () => {
     ).toEqual({ outcome: "unavailable", unavailable_reason: "policy-failed" });
   });
 
-  it("terminalizes a finalized binding when its recipient incarnation changes before delivery", () => {
+  it("terminalizes a finalized binding when its recipient incarnation changes before delivery", async () => {
     const options = stateOptions();
-    createDelegateArtifactPolicy(policy(), options);
-    publish(options);
-    const finalized = finalize(options);
+    await createDelegateArtifactPolicy(policy(), options);
+    await publish(options);
+    const finalized = await finalize(options);
     if (finalized.status !== "finalized") {
       throw new Error("expected finalized claims");
     }
     const projection = finalized.projections.get("agent:main:parent")!;
     expect(
-      prepareDelegateArtifactDelivery({
+      await prepareDelegateArtifactDelivery({
         projection,
         runtimeEnabled: true,
         crossSessionEnabled: true,
@@ -116,7 +125,7 @@ describe("managed delegate artifact claims", () => {
       arrived_at: null,
     });
     expect(
-      inspectDelegateArtifactForRecipient({
+      await inspectDelegateArtifactForRecipient({
         claimId: projection.artifacts[0]!.id,
         recipientSessionKey: "agent:main:parent",
         recipientSessionId: "parent-session-1",
@@ -128,18 +137,18 @@ describe("managed delegate artifact claims", () => {
     ).toEqual({ outcome: "unauthorized" });
   });
 
-  it("terminalizes a finalized binding that expires before its initial delivery", () => {
+  it("terminalizes a finalized binding that expires before its initial delivery", async () => {
     const options = stateOptions();
-    createDelegateArtifactPolicy(policy(), options);
-    publish(options);
-    const finalized = finalize(options);
+    await createDelegateArtifactPolicy(policy(), options);
+    await publish(options);
+    const finalized = await finalize(options);
     if (finalized.status !== "finalized") {
       throw new Error("expected finalized claims");
     }
     const projection = finalized.projections.get("agent:main:parent")!;
 
     expect(
-      prepareDelegateArtifactDelivery({
+      await prepareDelegateArtifactDelivery({
         projection,
         runtimeEnabled: true,
         crossSessionEnabled: true,
@@ -160,13 +169,13 @@ describe("managed delegate artifact claims", () => {
     });
   });
 
-  it("persists the first policy creation as dispatch acceptance across crash replay", () => {
+  it("persists the first policy creation as dispatch acceptance across crash replay", async () => {
     const options = stateOptions();
     const { dispatchAcceptedAt: _ignored, ...replayedPolicy } = policy();
     const now = vi.spyOn(Date, "now").mockReturnValue(5_000);
-    createDelegateArtifactPolicy({ ...replayedPolicy, scheduledAt: 1_000 }, options);
+    await createDelegateArtifactPolicy({ ...replayedPolicy, scheduledAt: 1_000 }, options);
     now.mockReturnValue(9_000);
-    createDelegateArtifactPolicy({ ...replayedPolicy, scheduledAt: 1_000 }, options);
+    await createDelegateArtifactPolicy({ ...replayedPolicy, scheduledAt: 1_000 }, options);
 
     expect(
       openOpenClawStateDatabase(options)
@@ -181,28 +190,28 @@ describe("managed delegate artifact claims", () => {
     });
   });
 
-  it("does not let an unrelated malformed policy break an acknowledged recipient list", () => {
+  it("does not let an unrelated malformed policy break an acknowledged recipient list", async () => {
     const options = stateOptions();
-    createDelegateArtifactPolicy(policy(), options);
-    publish(options);
-    const finalized = finalize(options);
+    await createDelegateArtifactPolicy(policy(), options);
+    await publish(options);
+    const finalized = await finalize(options);
     if (finalized.status !== "finalized") {
       throw new Error("expected finalized claims");
     }
     const projection = finalized.projections.get("agent:main:parent")!;
-    recordDelegateArtifactDelivery({
+    await recordDelivery({
       projection,
       phase: "attempt",
       now: 10_100,
       options,
     });
-    recordDelegateArtifactDelivery({
+    await recordDelivery({
       projection,
       phase: "acknowledged",
       now: 10_200,
       options,
     });
-    createDelegateArtifactPolicy(
+    await createDelegateArtifactPolicy(
       {
         ...policy(),
         flowId: "unrelated-flow",
@@ -217,7 +226,7 @@ describe("managed delegate artifact claims", () => {
       .run('{"recipient":"file:///private"}');
 
     expect(
-      listDelegateArtifactsForRecipient({
+      await listDelegateArtifactsForRecipient({
         recipientSessionKey: "agent:main:parent",
         recipientSessionId: "parent-session-1",
         runtimeEnabled: true,
@@ -228,60 +237,62 @@ describe("managed delegate artifact claims", () => {
     ).toMatchObject({ outcome: "available", artifacts: [{ id: projection.artifacts[0]!.id }] });
   });
 
-  it("reports a recorded completion for the producer across every post-completion policy state", () => {
+  it("reports a recorded completion for the producer across every post-completion policy state", async () => {
     const producerSessionKey = "agent:main:subagent:continuation-child";
-    const recorded = (options: ReturnType<typeof stateOptions>) =>
-      hasRecordedDelegateArtifactCompletionForProducer(
+    const recorded = async (options: ReturnType<typeof stateOptions>) =>
+      await hasRecordedDelegateArtifactCompletionForProducer(
         { flowId: "flow-1", producerSessionKey },
         options,
       );
 
     // Accepted but not yet completed: the child may still need driving.
     const activeOptions = stateOptions();
-    createDelegateArtifactPolicy(policy(), activeOptions);
-    publish(activeOptions);
-    expect(recorded(activeOptions)).toBe(false);
+    await createDelegateArtifactPolicy(policy(), activeOptions);
+    await publish(activeOptions);
+    expect(await recorded(activeOptions)).toBe(false);
 
     // Runtime disabled between child completion and finalization leaves the
     // policy `staged`. The child still ran, so a re-drive must not respawn it
     // or report a spawn failure.
     const stagedOptions = stateOptions();
-    createDelegateArtifactPolicy(policy(), stagedOptions);
-    publish(stagedOptions);
-    expect(finalize(stagedOptions, { runtimeEnabled: false })).toEqual({ status: "deferred" });
-    expect(recorded(stagedOptions)).toBe(true);
+    await createDelegateArtifactPolicy(policy(), stagedOptions);
+    await publish(stagedOptions);
+    expect(await finalize(stagedOptions, { runtimeEnabled: false })).toEqual({
+      status: "deferred",
+    });
+    expect(await recorded(stagedOptions)).toBe(true);
 
     // Ordinary finalization.
     const completedOptions = stateOptions();
-    createDelegateArtifactPolicy(policy(), completedOptions);
-    publish(completedOptions);
-    finalize(completedOptions);
-    expect(recorded(completedOptions)).toBe(true);
+    await createDelegateArtifactPolicy(policy(), completedOptions);
+    await publish(completedOptions);
+    await finalize(completedOptions);
+    expect(await recorded(completedOptions)).toBe(true);
 
     // A completion recorded for a different producer is not evidence for this one.
     expect(
-      hasRecordedDelegateArtifactCompletionForProducer(
+      await hasRecordedDelegateArtifactCompletionForProducer(
         { flowId: "flow-1", producerSessionKey: "agent:main:subagent:someone-else" },
         completedOptions,
       ),
     ).toBe(false);
     // An unknown flow has no evidence at all.
     expect(
-      hasRecordedDelegateArtifactCompletionForProducer(
+      await hasRecordedDelegateArtifactCompletionForProducer(
         { flowId: "flow-absent", producerSessionKey },
         completedOptions,
       ),
     ).toBe(false);
   });
 
-  it("stages while disabled and resumes the same completion without exposing claims", () => {
+  it("stages while disabled and resumes the same completion without exposing claims", async () => {
     const options = stateOptions();
-    createDelegateArtifactPolicy(policy(), options);
-    publish(options);
+    await createDelegateArtifactPolicy(policy(), options);
+    await publish(options);
 
-    expect(finalize(options, { runtimeEnabled: false })).toEqual({ status: "deferred" });
+    expect(await finalize(options, { runtimeEnabled: false })).toEqual({ status: "deferred" });
     expect(
-      listDelegateArtifactsForRecipient({
+      await listDelegateArtifactsForRecipient({
         recipientSessionKey: "agent:main:parent",
         recipientSessionId: "parent-session-1",
         runtimeEnabled: true,
@@ -290,27 +301,29 @@ describe("managed delegate artifact claims", () => {
       }),
     ).toEqual({ outcome: "unauthorized" });
 
-    const resumed = finalize(options, { now: 11_000 });
+    const resumed = await finalize(options, { now: 11_000 });
     expect(resumed.status).toBe("finalized");
     if (resumed.status !== "finalized") {
       throw new Error("expected resumed finalization");
     }
     expect(resumed.projections.get("agent:main:parent")?.artifacts).toHaveLength(1);
 
-    closeOpenClawStateDatabaseForTest();
+    await closeOpenClawStateDatabaseAsync();
     const mismatchOptions = stateOptions();
-    createDelegateArtifactPolicy(policy(), mismatchOptions);
-    publish(mismatchOptions);
-    expect(finalize(mismatchOptions, { runtimeEnabled: false })).toEqual({ status: "deferred" });
+    await createDelegateArtifactPolicy(policy(), mismatchOptions);
+    await publish(mismatchOptions);
+    expect(await finalize(mismatchOptions, { runtimeEnabled: false })).toEqual({
+      status: "deferred",
+    });
     expect(
-      finalize(mismatchOptions, {
+      await finalize(mismatchOptions, {
         runtimeEnabled: false,
         completionId: "replacement-completion",
         finalizationKey: "replacement-finalization",
       }),
     ).toEqual({ status: "deferred" });
     expect(
-      finalize(mismatchOptions, {
+      await finalize(mismatchOptions, {
         completionId: "replacement-completion",
         finalizationKey: "replacement-finalization",
       }),
@@ -331,30 +344,32 @@ describe("managed delegate artifact claims", () => {
     });
   });
 
-  it("applies the cross-session gate to explicit and host-wide routes, not tree ancestry", () => {
+  it("applies the cross-session gate to explicit and host-wide routes, not tree ancestry", async () => {
     const treeOptions = stateOptions();
-    createDelegateArtifactPolicy(
+    await createDelegateArtifactPolicy(
       policy({ route: { kind: "fanout", fanoutMode: "tree" } }),
       treeOptions,
     );
-    publish(treeOptions);
-    expect(finalize(treeOptions, { crossSessionEnabled: false }).status).toBe("finalized");
+    await publish(treeOptions);
+    expect((await finalize(treeOptions, { crossSessionEnabled: false })).status).toBe("finalized");
 
-    closeOpenClawStateDatabaseForTest();
+    await closeOpenClawStateDatabaseAsync();
     const allOptions = stateOptions();
-    createDelegateArtifactPolicy(
+    await createDelegateArtifactPolicy(
       policy({ route: { kind: "fanout", fanoutMode: "all" } }),
       allOptions,
     );
-    publish(allOptions);
-    expect(finalize(allOptions, { crossSessionEnabled: false })).toEqual({ status: "deferred" });
+    await publish(allOptions);
+    expect(await finalize(allOptions, { crossSessionEnabled: false })).toEqual({
+      status: "deferred",
+    });
   });
 
-  it("isolates mixed recipient incarnation failures and preserves unavailable tombstones", () => {
+  it("isolates mixed recipient incarnation failures and preserves unavailable tombstones", async () => {
     const options = stateOptions();
-    createDelegateArtifactPolicy(policy(), options);
-    publish(options);
-    const finalized = finalize(options, {
+    await createDelegateArtifactPolicy(policy(), options);
+    await publish(options);
+    const finalized = await finalize(options, {
       resolveSessionId: (sessionKey) =>
         sessionKey === "agent:main:parent" ? "parent-session-1" : "target-session-rebound",
     });
@@ -374,7 +389,7 @@ describe("managed delegate artifact claims", () => {
       unavailable_reason: "recipient-incarnation-changed",
     });
     expect(
-      listDelegateArtifactsForRecipient({
+      await listDelegateArtifactsForRecipient({
         recipientSessionKey: "agent:main:target",
         recipientSessionId: "target-session-1",
         runtimeEnabled: true,
@@ -383,8 +398,12 @@ describe("managed delegate artifact claims", () => {
         options,
       }),
     ).toEqual({ outcome: "unauthorized" });
-    expect(purgeExpiredDelegateArtifacts(31_100 + DELEGATE_ARTIFACT_RETENTION_MS, options)).toBe(1);
-    expect(purgeExpiredDelegateArtifacts(31_100 + DELEGATE_ARTIFACT_RETENTION_MS, options)).toBe(0);
+    expect(
+      await purgeExpiredDelegateArtifacts(31_100 + DELEGATE_ARTIFACT_RETENTION_MS, options),
+    ).toBe(1);
+    expect(
+      await purgeExpiredDelegateArtifacts(31_100 + DELEGATE_ARTIFACT_RETENTION_MS, options),
+    ).toBe(0);
     expect(
       openOpenClawStateDatabase(options)
         .db.prepare(
@@ -394,9 +413,9 @@ describe("managed delegate artifact claims", () => {
     ).toEqual(row);
   });
 
-  it("records one mode-specific terminal outcome when no claim or recipient is eligible", () => {
+  it("records one mode-specific terminal outcome when no claim or recipient is eligible", async () => {
     const optionalOptions = stateOptions();
-    createDelegateArtifactPolicy(
+    await createDelegateArtifactPolicy(
       policy({
         recipients: [
           {
@@ -411,7 +430,7 @@ describe("managed delegate artifact claims", () => {
       }),
       optionalOptions,
     );
-    const optional = finalize(optionalOptions);
+    const optional = await finalize(optionalOptions);
     expect(optional).toMatchObject({
       status: "finalized",
       disposition: "optional-no-artifacts",
@@ -423,7 +442,7 @@ describe("managed delegate artifact claims", () => {
       "unavailable",
     );
     const optionalProjection = optional.projections.get("agent:main:target")!;
-    const optionalDelivery = prepareDelegateArtifactDelivery({
+    const optionalDelivery = await prepareDelegateArtifactDelivery({
       projection: optionalProjection,
       runtimeEnabled: true,
       crossSessionEnabled: true,
@@ -435,19 +454,19 @@ describe("managed delegate artifact claims", () => {
     if (optionalDelivery.status !== "ready") {
       throw new Error("expected optional artifact-free delivery");
     }
-    recordDelegateArtifactDelivery({
+    await recordDelivery({
       projection: optionalDelivery.projection,
       phase: "attempt",
       now: 10_100,
       options: optionalOptions,
     });
-    recordDelegateArtifactDelivery({
+    await recordDelivery({
       projection: optionalDelivery.projection,
       phase: "replay",
       now: 10_150,
       options: optionalOptions,
     });
-    const optionalReplay = prepareDelegateArtifactDelivery({
+    const optionalReplay = await prepareDelegateArtifactDelivery({
       projection: optionalProjection,
       runtimeEnabled: true,
       crossSessionEnabled: true,
@@ -467,14 +486,14 @@ describe("managed delegate artifact claims", () => {
     if (optionalReplay.status !== "ready") {
       throw new Error("expected optional artifact-free replay");
     }
-    recordDelegateArtifactDelivery({
+    await recordDelivery({
       projection: optionalReplay.projection,
       phase: "acknowledged",
       now: 10_200,
       options: optionalOptions,
     });
     expect(
-      prepareDelegateArtifactDelivery({
+      await prepareDelegateArtifactDelivery({
         projection: optionalProjection,
         runtimeEnabled: true,
         crossSessionEnabled: true,
@@ -484,11 +503,11 @@ describe("managed delegate artifact claims", () => {
       }),
     ).toEqual({ status: "acknowledged" });
 
-    closeOpenClawStateDatabaseForTest();
+    await closeOpenClawStateDatabaseAsync();
     const failedOptionalOptions = stateOptions();
-    createDelegateArtifactPolicy(policy(), failedOptionalOptions);
-    publish(failedOptionalOptions);
-    const failedOptional = finalize(failedOptionalOptions, { completionStatus: "error" });
+    await createDelegateArtifactPolicy(policy(), failedOptionalOptions);
+    await publish(failedOptionalOptions);
+    const failedOptional = await finalize(failedOptionalOptions, { completionStatus: "error" });
     expect(failedOptional).toMatchObject({
       status: "finalized",
       disposition: "optional-no-artifacts",
@@ -501,9 +520,9 @@ describe("managed delegate artifact claims", () => {
       arrivalContext: { availability: "unavailable" },
     });
 
-    closeOpenClawStateDatabaseForTest();
+    await closeOpenClawStateDatabaseAsync();
     const requiredOptions = stateOptions();
-    createDelegateArtifactPolicy(
+    await createDelegateArtifactPolicy(
       policy({
         artifactMode: "required",
         recipients: [
@@ -519,7 +538,7 @@ describe("managed delegate artifact claims", () => {
       }),
       requiredOptions,
     );
-    const required = finalize(requiredOptions);
+    const required = await finalize(requiredOptions);
     expect(required).toMatchObject({
       status: "failed",
       disposition: "required-failed",
@@ -536,7 +555,7 @@ describe("managed delegate artifact claims", () => {
       throw new Error("expected required failure projection");
     }
     expect(
-      prepareDelegateArtifactDelivery({
+      await prepareDelegateArtifactDelivery({
         projection: requiredProjection,
         runtimeEnabled: true,
         crossSessionEnabled: true,
@@ -549,9 +568,9 @@ describe("managed delegate artifact claims", () => {
       projection: { arrivalContext: { availability: "unavailable" } },
     });
 
-    closeOpenClawStateDatabaseForTest();
+    await closeOpenClawStateDatabaseAsync();
     const optionalZeroOptions = stateOptions();
-    createDelegateArtifactPolicy(
+    await createDelegateArtifactPolicy(
       policy({
         recipients: [
           {
@@ -566,8 +585,8 @@ describe("managed delegate artifact claims", () => {
       }),
       optionalZeroOptions,
     );
-    publish(optionalZeroOptions);
-    const optionalZero = finalize(optionalZeroOptions, {
+    await publish(optionalZeroOptions);
+    const optionalZero = await finalize(optionalZeroOptions, {
       resolveSessionId: (sessionKey) =>
         sessionKey === "agent:main:parent" ? "parent-session-1" : "replacement-session",
     });
@@ -588,9 +607,9 @@ describe("managed delegate artifact claims", () => {
       unavailable_reason: "recipient-incarnation-changed",
     });
 
-    closeOpenClawStateDatabaseForTest();
+    await closeOpenClawStateDatabaseAsync();
     const requiredZeroOptions = stateOptions();
-    createDelegateArtifactPolicy(
+    await createDelegateArtifactPolicy(
       policy({
         artifactMode: "required",
         recipients: [
@@ -606,8 +625,8 @@ describe("managed delegate artifact claims", () => {
       }),
       requiredZeroOptions,
     );
-    publish(requiredZeroOptions);
-    const requiredZero = finalize(requiredZeroOptions, {
+    await publish(requiredZeroOptions);
+    const requiredZero = await finalize(requiredZeroOptions, {
       resolveSessionId: (sessionKey) =>
         sessionKey === "agent:main:parent" ? "parent-session-1" : "replacement-session",
     });

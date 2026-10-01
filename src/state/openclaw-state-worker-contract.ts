@@ -1,6 +1,7 @@
 import type { ZodIssue } from "zod";
 import type { AcpSessionWriteOperations } from "../acp/runtime/session-meta-write.types.js";
 import type { AuthProfileRowRead, UserModelAuthProfile } from "../agents/auth-profiles/types.js";
+import type { DelegateArtifactWorkerOperations } from "../agents/delegate-artifacts.worker-contract.js";
 import type { NativeHookRelayStoreWorkerOperations } from "../agents/harness/native-hook-relay-store.worker-contract.js";
 import type { McpOAuthReadOperations } from "../agents/mcp-oauth-store.kernel.js";
 import type { McpOAuthWriteOperations } from "../agents/mcp-oauth-store.types.js";
@@ -164,6 +165,7 @@ export type OpenClawStateWorkerOperations = UpdateRunReconciliationOperations &
   TranscriptWriteOperations &
   NodeWorkerJournalWorkerOperations &
   ContinuationCustodyWorkerOperations &
+  DelegateArtifactWorkerOperations &
   SkillUploadWorkerOperations &
   OpenClawStateLeaseLifecycleOperations &
   ManagedImageRecordWorkerOperations & {

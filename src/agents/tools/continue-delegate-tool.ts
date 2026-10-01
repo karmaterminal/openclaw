@@ -349,7 +349,7 @@ async function prepareAcceptedDelegateArtifactPolicy(params: {
     return;
   }
   try {
-    (params.prepareArtifactPolicy ?? prepareDelegateArtifactPolicy)({
+    await (params.prepareArtifactPolicy ?? prepareDelegateArtifactPolicy)({
       cfg: params.cfg,
       config: params.config,
       dispatchingSessionKey: params.dispatchingSessionKey,
@@ -359,7 +359,7 @@ async function prepareAcceptedDelegateArtifactPolicy(params: {
       acceptedAt: params.acceptedAt,
     });
   } catch {
-    removeUnacceptedDelegateArtifactPolicy(params.record.recordId);
+    await removeUnacceptedDelegateArtifactPolicy(params.record.recordId);
     await removeUnacceptedContinuationDelegate(params.record.recordId);
     throw new ToolInputError("artifact-capable continuation dispatch could not be authorized.");
   }

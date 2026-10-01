@@ -1,5 +1,5 @@
 import { afterEach, expect, it, describe, vi } from "vitest";
-import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
+import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
 import {
   createDelegateArtifactPolicy,
   publishDelegateArtifactCandidates,
@@ -7,13 +7,13 @@ import {
 } from "./delegate-artifacts.js";
 import { finalize, policy, stateOptions } from "./delegate-artifacts.test-helpers.js";
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  closeOpenClawStateDatabaseForTest();
+  await closeOpenClawStateDatabaseAsync();
 });
 
 describe("managed delegate artifact claims", () => {
-  it("constructs the exact seven-field projection and rejects unsafe scalars", () => {
+  it("constructs the exact seven-field projection and rejects unsafe scalars", async () => {
     const base = {
       claimId: "6dd7df78-f407-42cb-bef1-6381abe7ebd7",
       flowId: "flow",
@@ -45,11 +45,11 @@ describe("managed delegate artifact claims", () => {
     }
   });
 
-  it("projects every allowed artifact class through the same metadata representation", () => {
+  it("projects every allowed artifact class through the same metadata representation", async () => {
     const options = stateOptions();
-    createDelegateArtifactPolicy(policy(), options);
+    await createDelegateArtifactPolicy(policy(), options);
     expect(
-      publishDelegateArtifactCandidates({
+      await publishDelegateArtifactCandidates({
         producerSessionKey: "agent:main:subagent:continuation-child",
         producerSessionId: "child-session-1",
         producerRunId: "continuation-delegate-run-1",
@@ -67,7 +67,7 @@ describe("managed delegate artifact claims", () => {
         options,
       }),
     ).toEqual({ status: "published", count: 5 });
-    const finalized = finalize(options);
+    const finalized = await finalize(options);
     if (finalized.status !== "finalized") {
       throw new Error("expected finalized claims");
     }

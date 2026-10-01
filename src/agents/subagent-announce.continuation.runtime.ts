@@ -517,7 +517,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
             (delegate.returnOptions?.artifacts === "optional" ||
               delegate.returnOptions?.artifacts === "required")
           ) {
-            removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
+            await removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
           }
           defaultRuntime.log(
             `[continuation:delegate-spawn-fenced] reason=${spawnFence.reason} flowId=${delegate.flowId ?? "unknown"} session=${params.childSessionKey}`,

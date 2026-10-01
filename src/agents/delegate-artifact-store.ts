@@ -1,18 +1,8 @@
-import { createHash } from "node:crypto";
+// Shared delegate-artifact vocabulary: limits, row and projection types, and the
+// pure validators both the host and the shared-state worker use. SQL lives in
+// `delegate-artifact-store.kernel.ts`, which only worker operations import.
 import type { ArtifactSummary } from "@openclaw/gateway-protocol";
 import { z } from "zod";
-import {
-  executeSqliteQuerySync,
-  executeSqliteQueryTakeFirstSync,
-  getNodeSqliteKysely,
-} from "../infra/kysely-sync.js";
-import { DELEGATE_ARTIFACTS_SCHEMA_SQL } from "../state/delegate-artifacts-schema.js";
-import {
-  openOpenClawStateDatabase,
-  runOpenClawStateWriteTransaction,
-  type OpenClawStateDatabase,
-  type OpenClawStateDatabaseOptions,
-} from "../state/openclaw-state-db.js";
 
 export const DELEGATE_ARTIFACT_OUTPUT_ROOT = ".openclaw/delegate-output";
 export const DELEGATE_ARTIFACT_MAX_COUNT = 8;
@@ -114,7 +104,7 @@ export type DelegateArtifactOperationOutcome =
   | "corrupt"
   | "unauthorized";
 
-type DelegateArtifactDatabase = {
+export type DelegateArtifactDatabase = {
   delegate_artifact_policies: {
     flow_id: string;
     producer_session_key: string;
@@ -203,9 +193,8 @@ type DelegateArtifactDatabase = {
   };
 };
 
-type PolicyRow = DelegateArtifactDatabase["delegate_artifact_policies"];
-type ClaimRow = DelegateArtifactDatabase["delegate_artifact_claims"];
-type DelegateArtifactDatabaseHandle = OpenClawStateDatabase["db"];
+export type PolicyRow = DelegateArtifactDatabase["delegate_artifact_policies"];
+export type ClaimRow = DelegateArtifactDatabase["delegate_artifact_claims"];
 
 function hasControlCharacter(value: string): boolean {
   for (const char of value) {
@@ -293,28 +282,6 @@ export const DelegateArtifactRecipientProjectionSchema = z
       .strict(),
   })
   .strict();
-
-const ensuredDatabases = new WeakSet<DelegateArtifactDatabaseHandle>();
-
-export function artifactDb(db: DelegateArtifactDatabaseHandle) {
-  return getNodeSqliteKysely<DelegateArtifactDatabase>(db);
-}
-
-export function ensureDelegateArtifactsSchema(options: OpenClawStateDatabaseOptions): void {
-  const database = openOpenClawStateDatabase(options);
-  if (ensuredDatabases.has(database.db)) {
-    return;
-  }
-  runOpenClawStateWriteTransaction(
-    ({ db }) => {
-      // sqlite-allow-raw -- feature-local additive schema DDL; artifact rows use Kysely.
-      db.exec(DELEGATE_ARTIFACTS_SCHEMA_SQL);
-    },
-    options,
-    { operationLabel: "delegate-artifacts.schema.ensure" },
-  );
-  ensuredDatabases.add(database.db);
-}
 
 export function parseRecipients(
   row: Pick<PolicyRow, "recipients_json">,
@@ -437,104 +404,6 @@ export function toDelegateArtifactSummaryV1(
   }) as DelegateArtifactSummaryV1;
 }
 
-export function claimRowsForFlow(db: DelegateArtifactDatabaseHandle, flowId: string): ClaimRow[] {
-  const kdb = artifactDb(db);
-  return executeSqliteQuerySync(
-    db,
-    kdb
-      .selectFrom("delegate_artifact_claims")
-      .selectAll()
-      .where("flow_id", "=", flowId)
-      .orderBy("ordinal"),
-  ).rows;
-}
-
-export function projectionsForCompletedPolicy(params: {
-  db: DelegateArtifactDatabaseHandle;
-  policy: PolicyRow;
-  deliveredAt: number;
-  replayedAt?: number;
-  availability?: "available" | "unavailable";
-}): Map<string, DelegateArtifactRecipientProjectionV1> {
-  if (!params.policy.completion_id || params.policy.completed_at === null) {
-    return new Map();
-  }
-  const deliveryMode = z
-    .enum(["announced", "silent"])
-    .safeParse(params.policy.completion_delivery_mode);
-  if (!deliveryMode.success) {
-    return new Map();
-  }
-  const kdb = artifactDb(params.db);
-  const claims = claimRowsForFlow(params.db, params.policy.flow_id)
-    .filter((row) => row.status === "available")
-    .map(toClaim);
-  const outcomes = executeSqliteQuerySync(
-    params.db,
-    kdb
-      .selectFrom("delegate_artifact_recipient_outcomes")
-      .selectAll()
-      .where("flow_id", "=", params.policy.flow_id)
-      .where("outcome", "=", "available"),
-  ).rows;
-  const projections = new Map<string, DelegateArtifactRecipientProjectionV1>();
-  for (const outcome of outcomes) {
-    const binding = executeSqliteQueryTakeFirstSync(
-      params.db,
-      kdb
-        .selectFrom("delegate_artifact_bindings")
-        .innerJoin(
-          "delegate_artifact_claims",
-          "delegate_artifact_claims.claim_id",
-          "delegate_artifact_bindings.claim_id",
-        )
-        .select(["arrived_at", "replayed_at"])
-        .where("delegate_artifact_claims.flow_id", "=", params.policy.flow_id)
-        .where("recipient_session_key", "=", outcome.recipient_session_key)
-        .where("recipient_session_id", "=", outcome.recipient_session_id)
-        .limit(1),
-    );
-    const recipientContext =
-      outcome.recipient_relation === "inter_session" && outcome.purpose
-        ? { purpose: outcome.purpose }
-        : undefined;
-    projections.set(outcome.recipient_session_key, {
-      artifacts: claims.map(toDelegateArtifactSummaryV1),
-      arrivalContext: {
-        deliveryClass:
-          outcome.recipient_relation === "parent" ? "delegate result" : "inter-session enrichment",
-        deliveryMode: deliveryMode.data,
-        dispatchId: params.policy.flow_id,
-        producer: {
-          sessionKey: params.policy.producer_session_key,
-          runId: params.policy.producer_run_id,
-        },
-        completionId: params.policy.completion_id,
-        binding: {
-          recipientSessionKey: outcome.recipient_session_key,
-          recipientSessionId: outcome.recipient_session_id,
-        },
-        dispatchAcceptedAt: params.policy.dispatch_accepted_at,
-        ...(params.policy.scheduled_at !== null ? { scheduledAt: params.policy.scheduled_at } : {}),
-        ...(params.policy.not_before !== null ? { notBefore: params.policy.not_before } : {}),
-        completedAt: params.policy.completed_at,
-        deliveredAt: binding?.arrived_at ?? outcome.first_delivery_at ?? params.deliveredAt,
-        ...(params.replayedAt !== undefined
-          ? { replayedAt: params.replayedAt }
-          : binding?.replayed_at !== null && binding?.replayed_at !== undefined
-            ? { replayedAt: binding.replayed_at }
-            : outcome.replayed_at !== null
-              ? { replayedAt: outcome.replayed_at }
-              : {}),
-        policyVersion: 1,
-        availability: params.availability ?? "available",
-        ...(recipientContext ? { recipientContext } : {}),
-      },
-    });
-  }
-  return projections;
-}
-
 export function projectionMatchesDurableFacts(
   supplied: DelegateArtifactRecipientProjectionV1,
   durable: DelegateArtifactRecipientProjectionV1,
@@ -553,96 +422,4 @@ export function projectionMatchesDurableFacts(
     JSON.stringify(supplied.artifacts) === JSON.stringify(durable.artifacts) &&
     JSON.stringify(suppliedContext) === JSON.stringify(durableContext)
   );
-}
-
-export function auditOperation(params: {
-  db: DelegateArtifactDatabaseHandle;
-  action: string;
-  outcome: string;
-  claimId?: string;
-  flowId?: string;
-  recipientSessionKey: string;
-  recipientSessionId: string;
-  destination?: string;
-  now: number;
-}): void {
-  const kdb = artifactDb(params.db);
-  executeSqliteQuerySync(
-    params.db,
-    kdb.insertInto("delegate_artifact_audit").values({
-      action: params.action,
-      outcome: params.outcome,
-      claim_id: params.claimId ?? null,
-      flow_id: params.flowId ?? null,
-      recipient_session_key: params.recipientSessionKey,
-      recipient_session_id: params.recipientSessionId,
-      destination: params.destination ?? null,
-      occurred_at: params.now,
-    }),
-  );
-}
-
-export function resolveClaimForRecipient(params: {
-  db: DelegateArtifactDatabaseHandle;
-  claimId: string;
-  recipientSessionKey: string;
-  recipientSessionId: string;
-  crossSessionEnabled: boolean;
-  now: number;
-}):
-  | { outcome: "available"; claim: ClaimRow; policy: PolicyRow }
-  | { outcome: Exclude<DelegateArtifactOperationOutcome, "available">; flowId?: string } {
-  const kdb = artifactDb(params.db);
-  const claim = executeSqliteQueryTakeFirstSync(
-    params.db,
-    kdb.selectFrom("delegate_artifact_claims").selectAll().where("claim_id", "=", params.claimId),
-  );
-  if (!claim) {
-    return { outcome: "missing" };
-  }
-  const policy = executeSqliteQueryTakeFirstSync(
-    params.db,
-    kdb.selectFrom("delegate_artifact_policies").selectAll().where("flow_id", "=", claim.flow_id),
-  );
-  const binding = executeSqliteQueryTakeFirstSync(
-    params.db,
-    kdb
-      .selectFrom("delegate_artifact_bindings")
-      .selectAll()
-      .where("claim_id", "=", params.claimId)
-      .where("recipient_session_key", "=", params.recipientSessionKey)
-      .where("recipient_session_id", "=", params.recipientSessionId),
-  );
-  if (!policy || !binding) {
-    return { outcome: "unauthorized", flowId: claim.flow_id };
-  }
-  if (policy.retention_deadline <= params.now || claim.status === "expired") {
-    return { outcome: "expired", flowId: claim.flow_id };
-  }
-  if (claim.status === "revoked" || binding.status === "discarded") {
-    return { outcome: "revoked", flowId: claim.flow_id };
-  }
-  if (binding.status === "unavailable") {
-    return { outcome: "unauthorized", flowId: claim.flow_id };
-  }
-  try {
-    if (!params.crossSessionEnabled && policyRequiresCrossSessionGate(policy)) {
-      return { outcome: "unauthorized", flowId: claim.flow_id };
-    }
-  } catch {
-    return { outcome: "corrupt", flowId: claim.flow_id };
-  }
-  if (binding.arrived_at === null || binding.delivery_acknowledged_at === null) {
-    return { outcome: "unauthorized", flowId: claim.flow_id };
-  }
-  if (
-    claim.status !== "available" ||
-    policy.status !== "completed" ||
-    claim.backing === null ||
-    claim.backing.byteLength !== claim.size_bytes ||
-    createHash("sha256").update(claim.backing).digest("hex") !== claim.sha256
-  ) {
-    return { outcome: "corrupt", flowId: claim.flow_id };
-  }
-  return { outcome: "available", claim, policy };
 }

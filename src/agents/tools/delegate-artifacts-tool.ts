@@ -13,7 +13,7 @@ import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { openRootFile, readFileDescriptorBounded } from "../../infra/boundary-file-read.js";
 import { root } from "../../infra/fs-safe.js";
-import type { OpenClawStateDatabaseOptions } from "../../state/openclaw-state-db.js";
+import type { DelegateArtifactStateOptions } from "../delegate-artifact-operation.js";
 import {
   DELEGATE_ARTIFACT_MAX_COUNT,
   DELEGATE_ARTIFACT_MAX_BYTES,
@@ -210,7 +210,7 @@ export function createDelegateArtifactTools(options: {
   sandboxRoot?: string;
   sandboxFsBridge?: SandboxFsBridge;
   sandboxWritable?: boolean;
-  stateOptions?: OpenClawStateDatabaseOptions;
+  stateOptions?: DelegateArtifactStateOptions;
 }): AnyAgentTool[] {
   const resolveCurrentConfig = options.getRuntimeConfig ?? getRuntimeConfig;
   const resolveCurrentSessionId =
@@ -297,7 +297,7 @@ export function createDelegateArtifactTools(options: {
       if (resolveCurrentSessionId(commitConfig, options.agentSessionKey) !== options.sessionId) {
         return jsonResult({ status: "rejected", reason: "forbidden" });
       }
-      const result = publishDelegateArtifactCandidates({
+      const result = await publishDelegateArtifactCandidates({
         producerSessionKey: options.agentSessionKey,
         producerSessionId: options.sessionId,
         producerRunId: options.runId,
@@ -333,7 +333,7 @@ export function createDelegateArtifactTools(options: {
       const crossSessionEnabled = runtime.crossSessionTargeting !== "disabled";
       if (input.action === "list") {
         return jsonResult(
-          listDelegateArtifactsForRecipient({
+          await listDelegateArtifactsForRecipient({
             recipientSessionKey: options.agentSessionKey,
             recipientSessionId: options.sessionId,
             runtimeEnabled: runtime.enabled,
@@ -348,7 +348,7 @@ export function createDelegateArtifactTools(options: {
       const claimId = input.claimId.trim();
       if (input.action === "inspect") {
         return jsonResult(
-          inspectDelegateArtifactForRecipient({
+          await inspectDelegateArtifactForRecipient({
             claimId,
             recipientSessionKey: options.agentSessionKey,
             recipientSessionId: options.sessionId,
@@ -360,7 +360,7 @@ export function createDelegateArtifactTools(options: {
       }
       if (input.action === "discard") {
         return jsonResult(
-          discardDelegateArtifactForRecipient({
+          await discardDelegateArtifactForRecipient({
             claimId,
             recipientSessionKey: options.agentSessionKey,
             recipientSessionId: options.sessionId,
@@ -373,7 +373,7 @@ export function createDelegateArtifactTools(options: {
       if (input.action !== "materialize" || typeof input.destination !== "string") {
         throw new ToolInputError("materialize requires a workspace-relative destination.");
       }
-      const resolved = readDelegateArtifactForMaterialization({
+      const resolved = await readDelegateArtifactForMaterialization({
         claimId,
         recipientSessionKey: options.agentSessionKey,
         recipientSessionId: options.sessionId,
@@ -400,7 +400,7 @@ export function createDelegateArtifactTools(options: {
       const commitRuntime = resolveContinuationRuntimeConfig(commitConfig);
       const currentSessionId = resolveCurrentSessionId(commitConfig, options.agentSessionKey);
       const sessionMatches = currentSessionId === options.sessionId;
-      const committed = markDelegateArtifactMaterialized({
+      const committed = await markDelegateArtifactMaterialized({
         claimId,
         recipientSessionKey: options.agentSessionKey,
         recipientSessionId: options.sessionId,
