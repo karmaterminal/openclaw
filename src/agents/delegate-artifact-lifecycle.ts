@@ -50,15 +50,15 @@ export async function finalizeDelegateArtifacts(
 ): Promise<DelegateArtifactFinalizeResult> {
   const { resolveSessionId, options, ...rest } = params;
   const input = { ...rest, now: rest.now ?? Date.now() };
-  const resolve = async (sessionKeys: readonly string[]) =>
+  const resolve = async (sessionKeys: readonly string[]): Promise<Record<string, string | null>> =>
     Object.fromEntries(
       await Promise.all(
-        sessionKeys.map(async (sessionKey) => [
+        sessionKeys.map(async (sessionKey): Promise<[string, string | null]> => [
           sessionKey,
           (await resolveSessionId(sessionKey)) ?? null,
         ]),
       ),
-    ) as Record<string, string | null>;
+    );
   let sessionIds: Record<string, string | null> = {};
   for (let attempt = 0; attempt < FINALIZE_SESSION_RESOLUTION_ATTEMPTS; attempt += 1) {
     const result = await runDelegateArtifactOperation(
