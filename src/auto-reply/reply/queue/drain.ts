@@ -8,10 +8,7 @@ import { runOutsidePreparedModelRuntimePluginGenerationScope } from "../../../ag
 import { normalizeChatType } from "../../../channels/chat-type.js";
 import { resolveSessionStorePathCore } from "../../../config/sessions.js";
 import { loadSessionEntryReadOnly } from "../../../config/sessions/session-accessor.js";
-import {
-  channelRouteCompactKey,
-  channelRouteDedupeKey,
-} from "../../../plugin-sdk/channel-route.js";
+import { channelRouteDedupeKey } from "../../../plugin-sdk/channel-route.js";
 import {
   getGatewayRestartDrainSignal,
   isGatewayRestartDrainError,
@@ -36,8 +33,8 @@ import {
   previewQueueSummaryPrompt,
   waitForQueueDebounce,
 } from "../../../utils/queue-helpers.js";
-import { isRoutableChannel } from "../route-reply.js";
 import { resolveCollectedRun } from "./collected-run.js";
+import { resolveCrossChannelKey } from "./cross-channel-key.js";
 import {
   collectRuntimeMetadata,
   createOverflowSummaryRetrySource,
@@ -742,51 +739,6 @@ export async function dropAbortedFollowups(
     }),
   );
   return pending.length + summaries.length;
-}
-
-function resolveCrossChannelKey(item: FollowupRun): { cross?: true; key?: string } {
-  const { originatingChannel: channel, originatingTo: to, originatingAccountId: accountId } = item;
-  const threadId = item.originatingThreadId;
-  const replyToId = resolveFollowupReplyAnchor(item);
-  const chatType = normalizeChatType(item.originatingChatType);
-  if (
-    !channel &&
-    !to &&
-    !accountId &&
-    (threadId == null || threadId === "") &&
-    !item.originatingChatId &&
-    !replyToId
-  ) {
-    return chatType ? { key: JSON.stringify(["unresolved", chatType]) } : {};
-  }
-  if (!isRoutableChannel(channel) || !to) {
-    // Internal/local transports (notably webchat) have no external destination.
-    // Keep their full route identity so matching turns can collect safely.
-    return {
-      key: JSON.stringify([
-        "local",
-        channel ?? "",
-        to ?? "",
-        accountId ?? "",
-        threadId ?? "",
-        item.originatingChatId ?? "",
-        replyToId ?? "",
-        item.originatingReplyToMode ?? "",
-        chatType ?? "",
-      ]),
-    };
-  }
-  const key = channelRouteCompactKey({ channel, to, accountId, threadId });
-  return key
-    ? {
-        key: JSON.stringify([
-          key,
-          replyToId ?? "",
-          item.originatingReplyToMode ?? "",
-          chatType ?? "",
-        ]),
-      }
-    : { cross: true };
 }
 
 function resolveOverflowSummarySourceGroup(queue: {
