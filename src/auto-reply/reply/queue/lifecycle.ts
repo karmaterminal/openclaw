@@ -192,17 +192,19 @@ export function completeFollowupRunLifecycle(
         // non-rejecting promise. onSettled must still run after a synchronous throw.
         try {
           if (disposition !== "consumed" && !admittedTurnAdoptionLifecycles.has(lifecycle)) {
-            // Cancellation ended ownership before the reply lane, so it settles
-            // through the cancel callback and leaves the retry budget untouched.
-            // An explicit "cancelled" disposition and an already-aborted signal are
-            // both that same end of ownership, so either one takes the cancel path.
-            if (
+            // A policy drop is final: the queue chose never to run this turn, so
+            // it wins over an abort that raced it (cancel-release would re-deliver).
+            if (typeof disposition === "object") {
+              runIngressPolicyDrop(disposition.policyDrop, () => lifecycle.onAbandoned?.());
+            } else if (
+              // Cancellation ended ownership before the reply lane, so it settles
+              // through the cancel callback and leaves the retry budget untouched.
+              // An explicit "cancelled" disposition and an already-aborted signal
+              // are that same end of ownership, so either one takes the cancel path.
               (disposition === "cancelled" || lifecycle.abortSignal?.aborted) &&
               lifecycle.onCancelled
             ) {
               void lifecycle.onCancelled();
-            } else if (typeof disposition === "object") {
-              runIngressPolicyDrop(disposition.policyDrop, () => lifecycle.onAbandoned?.());
             } else {
               lifecycle.onAbandoned?.();
             }

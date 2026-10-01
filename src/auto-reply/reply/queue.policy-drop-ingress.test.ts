@@ -1,7 +1,10 @@
 // A follow-up queue cap eviction is an intentional policy drop: the evicted
 // ingress row must complete (with its disposition), never re-deliver.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { bindIngressLifecycleToReplyOptions } from "../../channels/message/ingress-drain-lifecycle.js";
+import {
+  bindIngressLifecycleToReplyOptions,
+  settleAbandonedIngressClaim,
+} from "../../channels/message/ingress-drain-lifecycle.js";
 import { createChannelIngressDrain } from "../../channels/message/ingress-drain.js";
 import {
   createTestIngressQueue,
@@ -174,6 +177,53 @@ describe("follow-up queue policy drops settle durable ingress claims", () => {
         await dispose(harness);
       }
     });
+  });
+
+  it("lets a policy drop win over an abort that raced it, deterministically", async () => {
+    const settle = (settled: unknown[]) => () => {
+      // What the durable drain does with this onAbandoned call.
+      void settleAbandonedIngressClaim("claim", {
+        complete: async (_claim, metadata) => {
+          settled.push({ completed: metadata });
+        },
+        release: async () => {
+          settled.push("released");
+        },
+        retry: async () => {
+          settled.push("retried");
+        },
+      });
+    };
+    const abortedRun = (settled: unknown[], onCancelled: () => Promise<void>): FollowupRun => {
+      const controller = new AbortController();
+      controller.abort();
+      return {
+        ...createRun({ prompt: "raced" }),
+        turnAdoptionLifecycle: {
+          onAdopted: async () => {},
+          onCancelled,
+          onAbandoned: settle(settled),
+          abortSignal: controller.signal,
+        },
+      };
+    };
+
+    const dropped: unknown[] = [];
+    const dropCancelled = vi.fn(async () => {});
+    completeFollowupRunLifecycle(abortedRun(dropped, dropCancelled), {
+      policyDrop: "queue-cap-old",
+    });
+    await Promise.resolve();
+    expect(dropCancelled).not.toHaveBeenCalled();
+    expect(dropped).toEqual([{ completed: { policyDrop: "queue-cap-old" } }]);
+
+    // Control: the same aborted turn without a policy drop still cancel-releases.
+    const cancelled: unknown[] = [];
+    const plainCancelled = vi.fn(async () => {});
+    completeFollowupRunLifecycle(abortedRun(cancelled, plainCancelled));
+    await Promise.resolve();
+    expect(plainCancelled).toHaveBeenCalledOnce();
+    expect(cancelled).toEqual([]);
   });
 
   const withMonitorQueue = useIngressMonitorQueueFixture();
