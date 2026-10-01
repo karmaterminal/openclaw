@@ -78,7 +78,36 @@ export function createCollectorLaunchCallbacks(params: {
   };
   let launchTerminationConfirmed = false;
   let pendingLaunchTermination: string | undefined;
+  let deferredRollbackReason: string | undefined;
   let dispatchAttempted = false;
+  const recordRollbackOwner = (gatewayRunId: string, reason: string, error: unknown) => {
+    const rollbackOwner = recordAcceptedSubagentSpawnRollback({
+      runId: childRunId,
+      childSessionKey,
+      gatewayRunId,
+      reason,
+      ...provisionalSessionIdentity,
+      // Ronan's controlling ruling: the recorder stays OWNERSHIP-BLIND. Durable
+      // custody must persist even when live authority is revoked, or the accepted
+      // child is orphaned with nothing for the sweeper to reconcile. The durable
+      // row is fenced by expectedRegistration plus frozen session identity and run
+      // id; the live predicate is consumed only by terminateAcceptedCollectorRun.
+    });
+    if (rollbackOwner.status === "persisted") {
+      return error;
+    }
+    const aggregate = new AggregateError(
+      [
+        error,
+        rollbackOwner.status === "rejected"
+          ? new Error(`Accepted collector rollback owner was rejected: ${childRunId}`)
+          : rollbackOwner.error,
+      ],
+      `Accepted collector rollback incomplete: ${childRunId}`,
+    );
+    aggregate.cause = error;
+    return aggregate;
+  };
   const startOnce = async () => {
     await runWithGatewayIndependentRootWorkContinuation(async () => {
       for (
@@ -121,38 +150,20 @@ export function createCollectorLaunchCallbacks(params: {
           throw new Error("collector registry row could not transition from queued to running");
         }
       } catch (error) {
-        // Record the accepted-spawn rollback owner before termination so the
-        // sweeper can reconcile the accepted child if termination fails or the
-        // process dies mid-cleanup.
-        const rollbackOwner = recordAcceptedSubagentSpawnRollback({
-          runId: childRunId,
-          childSessionKey,
-          gatewayRunId,
-          reason: summarizeSpawnError(error),
-          ...provisionalSessionIdentity,
-          // Ronan's controlling ruling: the recorder stays OWNERSHIP-BLIND. Durable
-          // custody must persist even when live authority is revoked, or the accepted
-          // child is orphaned with nothing for the sweeper to reconcile. The durable
-          // row is fenced by expectedRegistration plus frozen session identity and run
-          // id; the live predicate is consumed only by terminateAcceptedCollectorRun.
-        });
         // Publication temporarily blocks cleanup authority. Settle rollback after
         // that barrier so a paused owner cannot count as confirmed termination.
         pendingLaunchTermination = gatewayRunId;
-        if (rollbackOwner.status === "rejected" || rollbackOwner.status === "pending-persistence") {
-          const aggregate = new AggregateError(
-            [
-              error,
-              rollbackOwner.status === "rejected"
-                ? new Error(`Accepted collector rollback owner was rejected: ${childRunId}`)
-                : rollbackOwner.error,
-            ],
-            `Accepted collector rollback incomplete: ${childRunId}`,
-          );
-          aggregate.cause = error;
-          throw aggregate;
+        // A Stop still publishing on this row owns it, and its kill write is fenced
+        // on the row's preimage. Recording now would cost that Stop its kill, so
+        // record after the publication barrier in settleLaunchFailure instead.
+        if (registrationScope?.waitForRetirementPublication() !== undefined) {
+          deferredRollbackReason = summarizeSpawnError(error);
+          throw error;
         }
-        throw error;
+        // Record the accepted-spawn rollback owner before termination so the
+        // sweeper can reconcile the accepted child if termination fails or the
+        // process dies mid-cleanup.
+        throw recordRollbackOwner(gatewayRunId, summarizeSpawnError(error), error);
       }
       await params.emitSpawnLifecycleHooks(gatewayRunId);
     }, "subagents:spawn");
@@ -221,7 +232,13 @@ export function createCollectorLaunchCallbacks(params: {
       ) {
         await publication;
       }
+      let failure = error;
       if (pendingLaunchTermination && !launchTerminationConfirmed) {
+        if (deferredRollbackReason !== undefined) {
+          const reason = deferredRollbackReason;
+          deferredRollbackReason = undefined;
+          failure = recordRollbackOwner(pendingLaunchTermination, reason, error);
+        }
         let terminated: boolean;
         try {
           terminated = await terminateAcceptedCollectorRun({
@@ -232,14 +249,14 @@ export function createCollectorLaunchCallbacks(params: {
             ...(callCleanupGateway ? { callGateway: callCleanupGateway } : {}),
           });
         } catch (terminationError) {
-          // Rollback custody was recorded before the publication barrier, so the
-          // sweeper owns reconciliation of an accepted child whose termination failed.
+          // Rollback custody was recorded before termination, so the sweeper
+          // owns reconciliation of an accepted child whose termination failed.
           launchTerminationConfirmed = true;
           const aggregate = new AggregateError(
-            [error, terminationError],
+            [failure, terminationError],
             `Accepted collector rollback incomplete: ${childRunId}`,
           );
-          aggregate.cause = error;
+          aggregate.cause = failure;
           throw aggregate;
         }
         launchTerminationConfirmed = true;
@@ -253,7 +270,7 @@ export function createCollectorLaunchCallbacks(params: {
           });
         }
       }
-      const launchError = summarizeSpawnError(error);
+      const launchError = summarizeSpawnError(failure);
       const settleFailure = async () => {
         if (registrationScope) {
           await registrationScope.settleFailedLaunch(launchError);
