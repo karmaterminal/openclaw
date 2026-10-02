@@ -5,13 +5,14 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import "./subagent-registry.mocks.shared.js";
+// Shared mocks must load before the registry modules below.
+// oxfmt-ignore
+import { sharedRegistryMocks } from "./subagent-registry.mocks.shared.js";
 import "./subagent-registry.persistence.mocks.test-support.js";
 import { closeOpenClawStateDatabaseForTest } from "../../../state/openclaw-state-db.js";
 import { captureEnv, setTestEnvValue } from "../../../test-utils/env.js";
 import { createCollectorLaunchCallbacks } from "../spawn/subagent-spawn-collector.js";
 import { subagentRuns, waitForSubagentRetirementPublication } from "./subagent-registry-memory.js";
-import { sharedRegistryMocks } from "./subagent-registry.mocks.shared.js";
 import { loadSubagentRegistryFromSqlite } from "./subagent-registry.store.sqlite.js";
 import { saveSubagentRegistryToSqlite } from "./subagent-registry.store.test-support.js";
 import {
