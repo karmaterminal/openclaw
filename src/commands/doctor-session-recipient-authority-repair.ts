@@ -1,4 +1,7 @@
-import { getSessionRecipientAuthorityKysely } from "../config/sessions/session-accessor.sqlite-recipient-authority.js";
+import {
+  getSessionRecipientAuthorityKysely,
+  markSessionRecipientAuthorityMutation,
+} from "../config/sessions/session-accessor.sqlite-recipient-authority.js";
 import {
   createSessionRecipientAuthorityEpoch,
   readSessionRecipientAuthorityEpoch,
@@ -67,6 +70,7 @@ export function reconcileSessionRecipientAuthorityForCanonicalRepair(params: {
       : undefined;
   const destinationDb = getSessionRecipientAuthorityKysely(params.destination);
   if (epoch) {
+    markSessionRecipientAuthorityMutation(params.destination.db, params.canonicalKey);
     const now = Date.now();
     executeSqliteQuerySync(
       params.destination.db,
@@ -92,6 +96,9 @@ export function reconcileSessionRecipientAuthorityForCanonicalRepair(params: {
     ),
   ];
   if (obsoleteDestinationKeys.length > 0) {
+    for (const sessionKey of obsoleteDestinationKeys) {
+      markSessionRecipientAuthorityMutation(params.destination.db, sessionKey);
+    }
     executeSqliteQuerySync(
       params.destination.db,
       destinationDb
@@ -108,6 +115,9 @@ export function deleteSessionRecipientAuthoritiesForCanonicalRepair(
   const keys = [...new Set(sessionKeys)];
   if (keys.length === 0) {
     return;
+  }
+  for (const sessionKey of keys) {
+    markSessionRecipientAuthorityMutation(database.db, sessionKey);
   }
   executeSqliteQuerySync(
     database.db,

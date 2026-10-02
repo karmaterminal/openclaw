@@ -16,7 +16,7 @@ test.each(["new", "reset"] as const)(
     const sessionKey = "agent:main:main";
     const scope = { agentId: "main", sessionKey, storePath };
     const beforeReset = loadSessionEntry(scope);
-    const recipientAuthority = captureSessionRecipientAuthority(scope);
+    const recipientAuthority = await captureSessionRecipientAuthority(scope);
     const { performGatewaySessionReset } = await import("./session-reset-service.js");
 
     const reset = await performGatewaySessionReset({
@@ -33,7 +33,7 @@ test.each(["new", "reset"] as const)(
     expect(reset.entry.lifecycleRevision).toEqual(expect.any(String));
     expect(reset.entry.lifecycleRevision).not.toBe(beforeReset?.lifecycleRevision);
     expect(loadSessionEntry(scope)?.lifecycleRevision).toBe(reset.entry.lifecycleRevision);
-    expect(isSessionRecipientAuthorityCurrent(scope, recipientAuthority)).toBe(true);
+    expect(await isSessionRecipientAuthorityCurrent(scope, recipientAuthority)).toBe(true);
 
     const enqueueSessionDelivery = vi.fn(async () => `delivery-${reason}`);
     const enqueueSystemEvent = vi.fn(() => true);

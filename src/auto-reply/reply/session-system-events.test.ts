@@ -539,7 +539,7 @@ describe("drainFormattedSystemEvents trace context", () => {
     expect(prepared.managedDeliveries[0]?.authorityKey).toBe("event-authority");
 
     mocks.isSessionRecipientAuthorityCurrent.mockReturnValue(false);
-    const stale = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    const stale = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
     expect(stale.kind).toBe("settle-stale");
     if (stale.kind !== "settle-stale") {
       throw new Error("expected stale recipient settlement");
@@ -549,7 +549,7 @@ describe("drainFormattedSystemEvents trace context", () => {
     // the event; without this the fix is only guarded by the fixture happening
     // to use a bare key that throws.
     expect(mocks.consumeSelectedSystemEventEntries).toHaveBeenCalledWith(MAIN_QUEUE_KEY, [event]);
-    expect(resolveFinalSystemEventAdoption({ prepared: [prepared] })).toMatchObject({
+    expect(await resolveFinalSystemEventAdoption({ prepared: [prepared] })).toMatchObject({
       kind: "adopted",
       blocks: [],
       managedDeliveries: new Map(),

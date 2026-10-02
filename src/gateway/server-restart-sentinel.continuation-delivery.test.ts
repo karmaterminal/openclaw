@@ -9,7 +9,7 @@ import {
   deleteSessionEntryLifecycle,
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
-import { isSessionRecipientAuthorityCurrent as isActualSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.sqlite-recipient-authority.js";
+import { isSessionRecipientAuthorityCurrent as isActualSessionRecipientAuthorityCurrent } from "../config/sessions/session-recipient-authority-current.js";
 import { addSessionMember, removeSessionMember } from "../config/sessions/session-sharing-store.js";
 import type { RestartSentinelPayload } from "../infra/restart-sentinel.js";
 import { resolveSystemEventQueueKey } from "../infra/system-event-ownership.js";
@@ -161,7 +161,7 @@ describe("scheduleRestartSentinelWake", () => {
       storeKeys: [sessionKey],
       legacyKey: undefined,
     }));
-    mocks.isSessionRecipientAuthorityCurrent.mockReset().mockReturnValue(true);
+    mocks.isSessionRecipientAuthorityCurrent.mockReset().mockResolvedValue(true);
     mocks.deliveryContextFromSession.mockReset();
     mocks.deliveryContextFromSession.mockReturnValue(undefined);
     mocks.getChannelPlugin.mockReset();
@@ -515,12 +515,12 @@ describe("scheduleRestartSentinelWake", () => {
   });
 
   it("replays a bound logical recipient after a session id rollover", async () => {
-    const recipientAuthority = captureSessionRecipientAuthority({
+    const recipientAuthority = await captureSessionRecipientAuthority({
       agentId: "main",
       env: testState.env,
       sessionKey: "agent:main:main",
     });
-    mocks.isSessionRecipientAuthorityCurrent.mockReturnValue(true);
+    mocks.isSessionRecipientAuthorityCurrent.mockResolvedValue(true);
     mocks.loadSessionEntry.mockReturnValue({
       cfg: {},
       agentId: "main",
@@ -603,7 +603,7 @@ describe("scheduleRestartSentinelWake", () => {
           ).inserted,
         ).toBe(true);
       }
-      const recipientAuthority = captureSessionRecipientAuthority(authorityScope);
+      const recipientAuthority = await captureSessionRecipientAuthority(authorityScope);
 
       if (invalidation === "owner reassignment") {
         expect(
@@ -625,9 +625,9 @@ describe("scheduleRestartSentinelWake", () => {
         expect(deletion.deleted).toBe(true);
       }
 
-      expect(isActualSessionRecipientAuthorityCurrent(authorityScope, recipientAuthority)).toBe(
-        false,
-      );
+      expect(
+        await isActualSessionRecipientAuthorityCurrent(authorityScope, recipientAuthority),
+      ).toBe(false);
       mocks.isSessionRecipientAuthorityCurrent.mockImplementation((scope, authority) =>
         isActualSessionRecipientAuthorityCurrent(scope, authority),
       );

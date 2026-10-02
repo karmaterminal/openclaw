@@ -230,11 +230,14 @@ export async function prepareFormattedSystemEvents(params: {
   });
   const currentSessionId = currentSessionEntry?.sessionId;
   const removeStaleAuthorityEvents = async () => {
-    const staleAuthorityEvents = selected.filter(
-      (event) =>
-        event.recipientAuthority &&
-        !isSessionRecipientAuthorityCurrent(authorityScope, event.recipientAuthority),
+    const current = await Promise.all(
+      selected.map((event) =>
+        event.recipientAuthority
+          ? isSessionRecipientAuthorityCurrent(authorityScope, event.recipientAuthority)
+          : true,
+      ),
     );
+    const staleAuthorityEvents = selected.filter((_, index) => !current[index]);
     for (const event of staleAuthorityEvents) {
       await settleStaleSystemEventAuthority({
         event,
@@ -630,18 +633,18 @@ export async function drainFormattedSystemEvents(
   params: Parameters<typeof prepareFormattedSystemEvents>[0],
 ): Promise<string | undefined> {
   const prepared = await prepareFormattedSystemEvents(params);
-  let adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+  let adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   while (adoption.kind === "settle-stale") {
     await adoption.settle();
-    adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   }
   for (const delivery of adoption.managedDeliveries.values()) {
     await delivery.acknowledge();
   }
-  let finalAdoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+  let finalAdoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   while (finalAdoption.kind === "settle-stale") {
     await finalAdoption.settle();
-    finalAdoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    finalAdoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   }
   return finalAdoption.blocks.length > 0
     ? finalAdoption.blocks.map((block) => block.text).join("\n")

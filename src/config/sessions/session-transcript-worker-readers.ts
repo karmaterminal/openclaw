@@ -264,6 +264,12 @@ export function createSessionHistoryWorkerReaders(
       (input) => ({ kind: "session-membership-facts", ...input }),
       (value) => value,
     ),
+    readRecipientAuthority: reader(
+      "session-recipient-authority",
+      "recipient authority",
+      (input) => ({ kind: "session-recipient-authority", ...input }),
+      (value) => value.epoch,
+    ),
     readMembers: async (input) =>
       await runRequest(
         () => ({ kind: "session-members", ...input }),

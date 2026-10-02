@@ -1,21 +1,17 @@
+import type { DatabaseSync } from "node:sqlite";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
   getNodeSqliteKysely,
 } from "../../infra/kysely-sync.js";
-import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
+import { markSqliteCommitFenceMutation } from "../../infra/sqlite-commit-fence.js";
 import type { DB as OpenClawAgentKyselyDatabase } from "../../state/openclaw-agent-db.generated.js";
-import {
-  runOpenClawAgentWriteTransaction,
-  type OpenClawAgentDatabase,
-} from "../../state/openclaw-agent-db.js";
-import type { SessionAccessScope } from "./session-accessor.sqlite-contract.js";
-import { resolveSqliteScope, toDatabaseOptions } from "./session-accessor.sqlite-scope.js";
+import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import {
   createSessionRecipientAuthorityEpoch,
   readSessionRecipientAuthorityEpoch,
-  sessionRecipientAuthorityMatches,
   type SessionRecipientAuthority,
+  type SessionRecipientAuthorityEpochState,
 } from "./session-recipient-authority-types.js";
 
 type SessionRecipientAuthorityDatabase = Pick<
@@ -27,10 +23,25 @@ export function getSessionRecipientAuthorityKysely(database: Pick<OpenClawAgentD
   return getNodeSqliteKysely<SessionRecipientAuthorityDatabase>(database.db);
 }
 
+/** Fence key shared by every writer that replaces or removes an existing epoch. */
+export function sessionRecipientAuthorityFenceKey(sessionKey: string): string {
+  return `session-recipient-authority\u0000${sessionKey}`;
+}
+
+/**
+ * Writers that replace or delete a present epoch mark the process-wide fence inside
+ * their transaction. Inserting a missing epoch cannot make any captured authority
+ * current or stale, so capture and the additive migration backfill stay unfenced.
+ */
+export function markSessionRecipientAuthorityMutation(db: DatabaseSync, sessionKey: string): void {
+  markSqliteCommitFenceMutation(db, sessionRecipientAuthorityFenceKey(sessionKey));
+}
+
 export function advanceSessionRecipientAuthorityInTransaction(
   database: OpenClawAgentDatabase,
   sessionKey: string,
 ): void {
+  markSessionRecipientAuthorityMutation(database.db, sessionKey);
   const now = Date.now();
   executeSqliteQuerySync(
     database.db,
@@ -51,58 +62,45 @@ export function advanceSessionRecipientAuthorityInTransaction(
   );
 }
 
-export function captureSessionRecipientAuthority(
-  scope: SessionAccessScope,
-): SessionRecipientAuthority {
-  const resolved = resolveSqliteScope(scope);
-  return runOpenClawAgentWriteTransaction((database) => {
-    const db = getSessionRecipientAuthorityKysely(database);
-    const row = executeSqliteQueryTakeFirstSync(
-      database.db,
-      db
-        .selectFrom("session_recipient_authority")
-        .select("epoch")
-        .where("session_key", "=", resolved.sessionKey),
-    );
-    const current = readSessionRecipientAuthorityEpoch(row?.epoch);
-    if (current.state === "malformed") {
-      throw new Error(`Invalid recipient authority epoch for session ${resolved.sessionKey}`);
-    }
-    if (current.state === "present") {
-      return { state: "bound", epoch: current.epoch };
-    }
-    const epoch = createSessionRecipientAuthorityEpoch();
-    const now = Date.now();
-    executeSqliteQuerySync(
-      database.db,
-      db.insertInto("session_recipient_authority").values({
-        session_key: resolved.sessionKey,
-        epoch,
-        created_at: now,
-        updated_at: now,
-      }),
-    );
-    return { state: "bound", epoch };
-  }, toDatabaseOptions(resolved));
+// The kernels below run in the agent database workers. Process-held incognito
+// databases cannot be reopened by path, so their sole native owner shares them.
+
+export function readSessionRecipientAuthorityEpochInDatabase(
+  database: Pick<OpenClawAgentDatabase, "db">,
+  sessionKey: string,
+): SessionRecipientAuthorityEpochState {
+  const row = executeSqliteQueryTakeFirstSync(
+    database.db,
+    getSessionRecipientAuthorityKysely(database)
+      .selectFrom("session_recipient_authority")
+      .select("epoch")
+      .where("session_key", "=", sessionKey),
+  );
+  return readSessionRecipientAuthorityEpoch(row?.epoch);
 }
 
-export function isSessionRecipientAuthorityCurrent(
-  scope: SessionAccessScope,
-  authority: SessionRecipientAuthority,
-): boolean {
-  const resolved = resolveSqliteScope(scope);
-  const result = withOpenClawAgentDatabaseReadOnly((database) => {
-    const row = executeSqliteQueryTakeFirstSync(
-      database.db,
-      getSessionRecipientAuthorityKysely(database)
-        .selectFrom("session_recipient_authority")
-        .select("epoch")
-        .where("session_key", "=", resolved.sessionKey),
-    );
-    return sessionRecipientAuthorityMatches(
-      authority,
-      readSessionRecipientAuthorityEpoch(row?.epoch),
-    );
-  }, toDatabaseOptions(resolved));
-  return result.found && result.value;
+/** Insert-if-absent; the caller owns the immediate write transaction. */
+export function captureSessionRecipientAuthorityInTransaction(
+  database: Pick<OpenClawAgentDatabase, "db">,
+  sessionKey: string,
+): SessionRecipientAuthority {
+  const current = readSessionRecipientAuthorityEpochInDatabase(database, sessionKey);
+  if (current.state === "malformed") {
+    throw new Error(`Invalid recipient authority epoch for session ${sessionKey}`);
+  }
+  if (current.state === "present") {
+    return { state: "bound", epoch: current.epoch };
+  }
+  const epoch = createSessionRecipientAuthorityEpoch();
+  const now = Date.now();
+  executeSqliteQuerySync(
+    database.db,
+    getSessionRecipientAuthorityKysely(database).insertInto("session_recipient_authority").values({
+      session_key: sessionKey,
+      epoch,
+      created_at: now,
+      updated_at: now,
+    }),
+  );
+  return { state: "bound", epoch };
 }

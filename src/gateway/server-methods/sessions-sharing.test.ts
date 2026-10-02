@@ -127,20 +127,20 @@ describe("session sharing handlers", () => {
         visibility: "shared",
       });
       const requestContext = context(vi.fn());
-      let authority = captureSessionRecipientAuthority(scope);
+      let authority = await captureSessionRecipientAuthority(scope);
 
       for (const visibility of ["suggest", "read-only", "draft"] as const) {
         expect(
           await call("session.visibility.set", { sessionKey, visibility }, requestContext),
         ).toMatchObject([[true, { ok: true, sessionKey, visibility }, undefined]]);
-        expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(false);
-        authority = captureSessionRecipientAuthority(scope);
+        expect(await isSessionRecipientAuthorityCurrent(scope, authority)).toBe(false);
+        authority = await captureSessionRecipientAuthority(scope);
       }
 
       expect(
         await call("session.visibility.set", { sessionKey, visibility: "shared" }, requestContext),
       ).toMatchObject([[true, { ok: true, sessionKey, visibility: "shared" }, undefined]]);
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
     });
   });
 

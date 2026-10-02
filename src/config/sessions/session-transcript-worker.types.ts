@@ -79,6 +79,7 @@ import type {
   SessionHistoryDelta,
 } from "./session-history-types.js";
 import type { SessionMembershipFacts } from "./session-membership-facts.types.js";
+import type { SessionRecipientAuthorityEpochState } from "./session-recipient-authority-types.js";
 import type { SessionMember } from "./session-sharing-store.kernel.js";
 import type { ResolvedSqliteStoreTarget } from "./session-sqlite-target.js";
 import type {
@@ -274,6 +275,13 @@ type SessionProjectionStatusWorkerInput = {
 
 type SessionMembersWorkerInput = {
   kind: "session-members";
+  database: { agentId: string; path: string };
+  sessionKey: string;
+  env: NodeJS.ProcessEnv;
+};
+
+type SessionRecipientAuthorityWorkerInput = {
+  kind: "session-recipient-authority";
   database: { agentId: string; path: string };
   sessionKey: string;
   env: NodeJS.ProcessEnv;
@@ -520,6 +528,7 @@ export type SessionHistoryWorkerInput =
   | SessionRowPresenceWorkerInput
   | SessionProjectionStatusWorkerInput
   | SessionMembersWorkerInput
+  | SessionRecipientAuthorityWorkerInput
   | SessionMembershipFactsWorkerInput
   | SessionProgressCardWorkerInput
   | SessionPendingInputReceiptsWorkerInput
@@ -589,6 +598,10 @@ export type SessionTranscriptWorkerValues = {
   "session-row-presence": boolean;
   "projection-status": boolean;
   "session-members": SessionMember[];
+  "session-recipient-authority": {
+    kind: "session-recipient-authority";
+    epoch: SessionRecipientAuthorityEpochState;
+  };
   "session-membership-facts": SessionMembershipFacts;
   "session-progress-card": { kind: "session-progress-card"; card: ProgressCard | null };
   "goal-operation-receipt": {
@@ -744,6 +757,10 @@ export type SessionHistoryWorkerDatabase = {
   >;
   readDiagnosticText: SessionHistoryReader<SessionDiagnosticTextWorkerInput, string | undefined>;
   readMembers: SessionHistoryReader<SessionMembersWorkerInput>;
+  readRecipientAuthority: SessionHistoryReader<
+    SessionRecipientAuthorityWorkerInput,
+    SessionRecipientAuthorityEpochState
+  >;
   readMembershipFacts: SessionHistoryReader<SessionMembershipFactsWorkerInput>;
   readProgressCard: SessionHistoryReader<SessionProgressCardWorkerInput, ProgressCard | null>;
   readGoalOperationReceipt: SessionHistoryReader<

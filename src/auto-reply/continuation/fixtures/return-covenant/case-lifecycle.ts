@@ -70,11 +70,11 @@ function stateDirectory(context: ReturnCovenantFixtureContext): string {
   return stateDir;
 }
 
-function currentAuthority(
+async function currentAuthority(
   state: ReturnCovenantCaseState,
   context: ReturnCovenantFixtureContext,
-): SessionRecipientAuthority {
-  return captureSessionRecipientAuthority(returnCovenantCaseScope(state, context));
+): Promise<SessionRecipientAuthority> {
+  return await captureSessionRecipientAuthority(returnCovenantCaseScope(state, context));
 }
 
 function restartReceipt(params: {
@@ -253,14 +253,14 @@ export async function transitionReturnCovenantCase(params: {
     state: "bound" as const,
     epoch: request.capturedAuthorityGeneration,
   };
-  const authorityUnchanged = isSessionRecipientAuthorityCurrent(
+  const authorityUnchanged = await isSessionRecipientAuthorityCurrent(
     returnCovenantCaseScope(state, context),
     captured,
   );
   if (authorityUnchanged !== (state.casePlan.kind === "allowed")) {
     throw new Error("recipient authority relation disagrees with the lifecycle transition");
   }
-  const current = currentAuthority(state, context);
+  const current = await currentAuthority(state, context);
   const currentEntry = loadSessionEntry(returnCovenantCaseScope(state, context));
   if (!currentEntry?.sessionId) {
     throw new Error("lifecycle transition did not leave a materialized recipient");
@@ -366,10 +366,10 @@ export async function observeReturnCovenantCase(params: {
     isMainSession: false,
     isNewSession: false,
   });
-  let adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+  let adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   while (adoption.kind === "settle-stale") {
     await adoption.settle();
-    adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   }
   const promptText = adoption.blocks.map((block) => block.text).join("\n");
   const allowed = state.casePlan.kind === "allowed";
@@ -430,7 +430,7 @@ export async function observeReturnCovenantCase(params: {
   const retainedQueueRecord = state.deliveryId
     ? await loadPendingSessionDelivery(state.deliveryId, stateDirectory(context))
     : undefined;
-  const current = currentAuthority(state, context);
+  const current = await currentAuthority(state, context);
   const captured = state.acceptance?.capturedAuthorityGeneration;
   const admission = allowed
     ? "adopted"

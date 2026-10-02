@@ -31,7 +31,7 @@ describe("session recipient authority", () => {
         lifecycleRevision: "lifecycle-before",
       });
 
-      const authority = captureSessionRecipientAuthority(scope);
+      const authority = await captureSessionRecipientAuthority(scope);
       expect(authority.state).toBe("bound");
 
       await upsertSessionEntryCore(scope, {
@@ -39,17 +39,17 @@ describe("session recipient authority", () => {
         updatedAt: 2,
         lifecycleRevision: "lifecycle-new-conversation",
       });
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
 
       await patchSessionEntryCore(scope, () => ({
         modelProvider: "fallback-provider",
         model: "fallback-model",
         compactionCount: 2,
       }));
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
 
       closeOpenClawAgentDatabasesForTest();
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
     });
   });
 
@@ -62,7 +62,7 @@ describe("session recipient authority", () => {
           env: state.env,
           sessionKey: `agent:main:${reason}-continuity`,
         };
-        const authority = captureSessionRecipientAuthority(scope);
+        const authority = await captureSessionRecipientAuthority(scope);
         await upsertSessionEntryCore(scope, { sessionId: "session-before", updatedAt: 1 });
         await resetSessionEntryLifecycle({
           agentId: "main",
@@ -74,7 +74,7 @@ describe("session recipient authority", () => {
           resetBoundary: { context: "clear", reason, cwd: state.workspaceDir },
           buildNextEntry: () => ({ sessionId: "session-after", updatedAt: 2 }),
         });
-        expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+        expect(await isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
       });
     },
   );
@@ -86,13 +86,13 @@ describe("session recipient authority", () => {
         env: state.env,
         sessionKey: "agent:main:replacement",
       };
-      const absentAuthority = captureSessionRecipientAuthority(scope);
+      const absentAuthority = await captureSessionRecipientAuthority(scope);
       expect(absentAuthority).toEqual({
         state: "bound",
         epoch: expect.stringMatching(/^[0-9a-f-]{36}$/u),
       });
       await upsertSessionEntryCore(scope, { sessionId: "session-before", updatedAt: 1 });
-      expect(isSessionRecipientAuthorityCurrent(scope, absentAuthority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrent(scope, absentAuthority)).toBe(true);
 
       await deleteSessionEntryLifecycle({
         agentId: "main",
@@ -105,8 +105,8 @@ describe("session recipient authority", () => {
       });
       await upsertSessionEntryCore(scope, { sessionId: "session-after", updatedAt: 2 });
 
-      expect(isSessionRecipientAuthorityCurrent(scope, absentAuthority)).toBe(false);
-      const replacementAuthority = captureSessionRecipientAuthority(scope);
+      expect(await isSessionRecipientAuthorityCurrent(scope, absentAuthority)).toBe(false);
+      const replacementAuthority = await captureSessionRecipientAuthority(scope);
       expect(replacementAuthority).not.toEqual(absentAuthority);
     });
   });
@@ -119,7 +119,7 @@ describe("session recipient authority", () => {
         sessionKey: "agent:main:present-replacement",
       };
       await upsertSessionEntryCore(scope, { sessionId: "session-before", updatedAt: 1 });
-      const authority = captureSessionRecipientAuthority(scope);
+      const authority = await captureSessionRecipientAuthority(scope);
       await deleteSessionEntryLifecycle({
         agentId: "main",
         archiveTranscript: false,
@@ -130,7 +130,7 @@ describe("session recipient authority", () => {
         target: { canonicalKey: scope.sessionKey, storeKeys: [scope.sessionKey] },
       });
       await upsertSessionEntryCore(scope, { sessionId: "session-after", updatedAt: 2 });
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrent(scope, authority)).toBe(false);
     });
   });
 
@@ -142,29 +142,29 @@ describe("session recipient authority", () => {
         sessionKey: "agent:main:revocation",
       };
       const ownerA = { type: "human" as const, id: "owner-a", source: "unknown" as const };
-      const initialAuthority = captureSessionRecipientAuthority(scope);
+      const initialAuthority = await captureSessionRecipientAuthority(scope);
       await upsertSessionEntryCore(scope, {
         sessionId: "session-revocation",
         updatedAt: 1,
         createdActor: ownerA,
       });
-      expect(isSessionRecipientAuthorityCurrent(scope, initialAuthority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrent(scope, initialAuthority)).toBe(true);
 
       assignSessionOwner(scope, {
         owner: ownerA,
         assignedBy: ownerA,
         assignedAt: 2,
       });
-      expect(isSessionRecipientAuthorityCurrent(scope, initialAuthority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrent(scope, initialAuthority)).toBe(true);
 
       assignSessionOwner(scope, {
         owner: { type: "human", id: "owner-b" },
         assignedBy: ownerA,
         assignedAt: 3,
       });
-      expect(isSessionRecipientAuthorityCurrent(scope, initialAuthority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrent(scope, initialAuthority)).toBe(false);
 
-      const reassignedAuthority = captureSessionRecipientAuthority(scope);
+      const reassignedAuthority = await captureSessionRecipientAuthority(scope);
       expect(
         (
           await addSessionMember(scope, {
@@ -174,14 +174,14 @@ describe("session recipient authority", () => {
           })
         ).inserted,
       ).toBe(true);
-      expect(isSessionRecipientAuthorityCurrent(scope, reassignedAuthority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrent(scope, reassignedAuthority)).toBe(true);
 
       expect(await removeSessionMember(scope, "member-a")).not.toBeNull();
-      expect(isSessionRecipientAuthorityCurrent(scope, reassignedAuthority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrent(scope, reassignedAuthority)).toBe(false);
 
-      const revokedAuthority = captureSessionRecipientAuthority(scope);
+      const revokedAuthority = await captureSessionRecipientAuthority(scope);
       expect(await removeSessionMember(scope, "member-a")).toBeNull();
-      expect(isSessionRecipientAuthorityCurrent(scope, revokedAuthority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrent(scope, revokedAuthority)).toBe(true);
     });
   });
 
@@ -193,14 +193,14 @@ describe("session recipient authority", () => {
         sessionKey: "agent:main:malformed",
       };
       await upsertSessionEntryCore(scope, { sessionId: "session-malformed", updatedAt: 1 });
-      const initialized = captureSessionRecipientAuthority(scope);
+      const initialized = await captureSessionRecipientAuthority(scope);
       expect(initialized.state).toBe("bound");
 
       openOpenClawAgentDatabase({ agentId: "main", env: state.env })
         .db.prepare("UPDATE session_recipient_authority SET epoch = ? WHERE session_key = ?")
         .run("not-an-epoch", scope.sessionKey);
-      expect(isSessionRecipientAuthorityCurrent(scope, initialized)).toBe(false);
-      expect(() => captureSessionRecipientAuthority(scope)).toThrow(
+      expect(await isSessionRecipientAuthorityCurrent(scope, initialized)).toBe(false);
+      await expect(captureSessionRecipientAuthority(scope)).rejects.toThrow(
         /Invalid recipient authority epoch/,
       );
     });
