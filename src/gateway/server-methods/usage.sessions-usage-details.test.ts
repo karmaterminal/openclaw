@@ -131,8 +131,10 @@ describe("sessions.usage details", () => {
       );
 
       expect(getUsageMockArg(respond, 0, 0)).toBe(true);
+      // Usage target reads use the list projection (upstream #152366); owner stays explicit.
       expect(vi.mocked(loadGatewaySessionEntryReadOnly)).toHaveBeenCalledWith("global", {
         agentId: "ops",
+        projection: "list",
       });
       expect(vi.mocked(loadSessionUsageTimeSeries)).toHaveBeenCalledWith(
         expect.objectContaining({ agentId: "ops" }),

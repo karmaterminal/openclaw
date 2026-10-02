@@ -52,15 +52,11 @@ vi.mock("./subagents/registry/subagent-registry-read.js", async (importOriginal)
   resolveRequesterForChildSession: (key: string) => mocked.resolveRequesterForChildSessionMock(key),
   shouldIgnorePostCompletionAnnounceForSession: () => false,
 }));
-vi.mock("./subagents/registry/subagent-registry-runtime.js", () => ({
-  countActiveDescendantRuns: (key: string) => mocked.countActiveDescendantRunsMock(key),
-  countPendingDescendantRuns: (key: string) => mocked.countPendingDescendantRunsMock(key),
-  countPendingDescendantRunsExcludingRun: () => 0,
-  isSubagentSessionRunActive: (key: string) => mocked.isSubagentSessionRunActiveMock(key),
-  listSubagentRunsForRequester: () => [],
-  replaceSubagentRunAfterSteer: () => true,
-  resolveRequesterForChildSession: (key: string) => mocked.resolveRequesterForChildSessionMock(key),
-  shouldIgnorePostCompletionAnnounceForSession: () => false,
+// The descendant wake loads the registry module directly (the runtime barrel is
+// gone); only the steer replacement this suite stubbed there is intercepted.
+vi.mock("./subagents/registry/subagent-registry.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./subagents/registry/subagent-registry.js")>()),
+  replaceSubagentRunAfterSteerCore: () => true,
 }));
 
 vi.mock("../plugins/hook-runner-global.js", () => ({
@@ -244,13 +240,11 @@ describe("subagent announce continuation chaining", () => {
       requesterSessionKey: params.requesterSessionKey ?? "agent:main:main",
       requesterAgentId: params.requesterAgentId,
       childAgentId: params.childAgentId,
-      requesterDisplayKey: "main",
       requesterOrigin: { channel: "discord", to: "channel:123" },
       task: `${params.childTaskPrefix} delegated task`,
       roundOneReply: params.reply,
       timeoutMs: 10,
       cleanup: "keep",
-      waitForCompletion: false,
       startedAt: 10,
       endedAt: 20,
       outcome: { status: "ok" },
@@ -549,13 +543,11 @@ describe("subagent announce continuation chaining", () => {
       childSessionKey: "agent:main:subagent:worker-targeted-next-tick",
       childRunId: "run-targeted-next-tick",
       requesterSessionKey,
-      requesterDisplayKey: "main",
       requesterOrigin: { channel: "discord", to: "channel:dispatcher" },
       task: `[continuation:chain-hop:1] collect sibling context for ${nonce}`,
       roundOneReply: `completion envelope visible on target next tick ${nonce}`,
       timeoutMs: 10,
       cleanup: "keep",
-      waitForCompletion: false,
       startedAt: 10,
       endedAt: 20,
       outcome: { status: "ok" },

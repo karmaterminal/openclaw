@@ -202,9 +202,6 @@ export type EmbeddedAgentSubscribeState = {
   compactionInFlight: boolean;
   lastCompactionTokensAfter?: number;
   pendingCompactionRetry: number;
-  compactionRetryResolve?: () => void;
-  compactionRetryReject?: (reason?: unknown) => void;
-  compactionRetryPromise: Promise<void> | null;
   unsubscribed: boolean;
   replayState: EmbeddedRunReplayState;
   livenessState?: EmbeddedRunLivenessState;
@@ -227,6 +224,10 @@ export type EmbeddedAgentSubscribeState = {
   messageToolOnlySourceReplyDelivered: boolean;
   sourceReplyDelivered?: true;
   sourceReplyDeliveryState?: ReplyDeliveryState;
+  /** Whether the current provider turn's finished tools were only complete source progress. */
+  turnToolsOnlySourceProgress?: boolean;
+  /** The same fact for the latest provider turn that finished any tool. */
+  lastToolTurnOnlySourceProgress?: boolean;
   successfulCronAdds: number;
   pendingToolMediaUrls: string[];
   pendingToolMediaAttachments?: ReplyMediaAttachment[];
@@ -425,6 +426,8 @@ type ToolHandlerState = Pick<
   | "messageToolOnlySourceReplyDelivered"
   | "sourceReplyDelivered"
   | "sourceReplyDeliveryState"
+  | "turnToolsOnlySourceProgress"
+  | "lastToolTurnOnlySourceProgress"
   | "messagingToolSentTargets"
   | "heartbeatToolResponse"
   | "successfulCronAdds"

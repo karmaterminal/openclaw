@@ -87,7 +87,6 @@ export const rollbackPluginOwnedSessionEntryLifecycle: SqliteLifecycleRuntime["r
 export {
   applySessionEntryLifecycleMutation,
   applySessionEntryReplacements,
-  applySessionStoreProjection,
   purgeDeletedAgentSessionEntries,
 } from "./session-accessor.sqlite-projection.js";
 

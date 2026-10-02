@@ -1,6 +1,6 @@
 // Continuation-owned runPreparedReply cases registered by get-reply-run.media-only.test.ts:
 // system-event adoption (managed deliveries, recipient authority, conversation-data routing)
-// and continuation-wake marking.
+// and continuation-wake marking, plus the runner-call and actual-drain helpers both files share.
 import { expect, it, vi, type Mock } from "vitest";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { runReplyAgent } from "./agent-runner.runtime.js";
@@ -11,14 +11,25 @@ import {
 } from "./get-reply-run.media-only.system-events.test-support.js";
 import { baseParams } from "./get-reply-run.test-support.js";
 import type { PreparedFormattedSystemEvents } from "./session-system-event-adoption.js";
-import { drainFormattedSystemEvents } from "./session-system-events.js";
+import {
+  drainFormattedSystemEvents,
+  prepareFormattedSystemEvents,
+} from "./session-system-events.js";
 
-function requireRunReplyAgentCall(index = 0) {
-  const call = vi.mocked(runReplyAgent).mock.calls[index]?.[0];
+export function requireRunReplyAgentCall(index = 0) {
+  const call = vi.mocked(runReplyAgent).mock.calls.at(index)?.[0];
   if (!call) {
     throw new Error(`runReplyAgent call ${index} missing`);
   }
   return call;
+}
+
+export async function useActualSystemEventDrain() {
+  const actual = await vi.importActual<typeof import("./session-system-events.js")>(
+    "./session-system-events.js",
+  );
+  vi.mocked(drainFormattedSystemEvents).mockImplementation(actual.drainFormattedSystemEvents);
+  vi.mocked(prepareFormattedSystemEvents).mockImplementation(actual.prepareFormattedSystemEvents);
 }
 
 export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock: Mock): void {

@@ -274,7 +274,12 @@ async function bootGateway() {
     // asynchronous with the custody store's worker APIs (§5.4.3).
     async resetOwnerSession(): Promise<void> {
       await Promise.resolve(
-        resetCleanup.clearSessionResetRuntimeState([OWNER], { agentId: "main", reason: "reset" }),
+        resetCleanup.clearSessionResetRuntimeState([OWNER], {
+          agentId: "main",
+          sessionKey: OWNER,
+          assertCurrent: () => {},
+          reason: "reset",
+        }),
       );
     },
     /**

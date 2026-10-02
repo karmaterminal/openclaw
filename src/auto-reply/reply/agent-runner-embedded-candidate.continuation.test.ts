@@ -150,6 +150,13 @@ function runCandidate(
     provider: "openai",
     model: "gpt-5.6-luna",
     isFallbackRetry: false,
+    agentHarnessRuntimeOverride: undefined,
+    classifyResult: () => null,
+    modelRoutingProvenance: {
+      requestedProvider: "openai",
+      requestedModel: "gpt-5.6-luna",
+      stage: "initial",
+    },
     candidateFastMode: {},
     runLane: "main",
     runId: "run-fallback",

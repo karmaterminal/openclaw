@@ -357,9 +357,9 @@ export async function deliverQueuedPostCompactionDelegate(
   );
   const storePath = deps.resolveSessionStorePathCore(cfg.session?.store, { agentId });
   const artifactMode = params.entry.returnOptions?.artifacts;
-  const removeRejectedArtifactPolicy = (): void => {
+  const removeRejectedArtifactPolicy = async (): Promise<void> => {
     if (params.entry.sourceFlowId && (artifactMode === "optional" || artifactMode === "required")) {
-      removeUnacceptedDelegateArtifactPolicy(params.entry.sourceFlowId);
+      await removeUnacceptedDelegateArtifactPolicy(params.entry.sourceFlowId);
     }
   };
   const queueContextOption = params.queueContext ? { queueContext: params.queueContext } : {};
@@ -432,7 +432,7 @@ export async function deliverQueuedPostCompactionDelegate(
       params.entry,
       formatPostCompactionStaleRejection(staleness.ageMs),
     );
-    removeRejectedArtifactPolicy();
+    await removeRejectedArtifactPolicy();
     return;
   }
   // An accepted artifact policy that is gone or expired can never become
@@ -440,7 +440,7 @@ export async function deliverQueuedPostCompactionDelegate(
   // retry to its cap while holding the policy row and staying silent.
   if (artifactMode === "optional" || artifactMode === "required") {
     try {
-      assertDelegateArtifactPolicyPrepared(
+      await assertDelegateArtifactPolicyPrepared(
         resolveQueuedPostCompactionContinuationFlowId(params.entry),
       );
     } catch (error) {
@@ -457,7 +457,7 @@ export async function deliverQueuedPostCompactionDelegate(
         withContinuationOwner({ sessionKey: params.entry.sessionKey, trusted: true }, agentId),
       );
       await failSourceBackedPostCompactionDelivery(deps, params.entry, summary);
-      removeRejectedArtifactPolicy();
+      await removeRejectedArtifactPolicy();
       return;
     }
   }
@@ -499,7 +499,7 @@ export async function deliverQueuedPostCompactionDelegate(
       params.entry,
       `Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached.`,
     );
-    removeRejectedArtifactPolicy();
+    await removeRejectedArtifactPolicy();
     return;
   }
 
@@ -519,7 +519,7 @@ export async function deliverQueuedPostCompactionDelegate(
       params.entry,
       `Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}).`,
     );
-    removeRejectedArtifactPolicy();
+    await removeRejectedArtifactPolicy();
     return;
   }
 
@@ -567,7 +567,7 @@ export async function deliverQueuedPostCompactionDelegate(
   const delegateSilentAnnounce = params.entry.silent ?? delegateWakeOnReturn;
 
   if (artifactMode === "optional" || artifactMode === "required") {
-    assertDelegateArtifactPolicyPrepared(
+    await assertDelegateArtifactPolicyPrepared(
       resolveQueuedPostCompactionContinuationFlowId(params.entry),
     );
   }
@@ -596,7 +596,7 @@ export async function deliverQueuedPostCompactionDelegate(
       "post-compaction",
     );
     if (!spawnFence.allowed) {
-      removeRejectedArtifactPolicy();
+      await removeRejectedArtifactPolicy();
       deps.log(
         `[continuation:post-compaction-spawn-fenced] reason=${spawnFence.reason} flowId=${params.entry.sourceFlowId ?? "unknown"} entryId=${params.entry.id}`,
       );
@@ -672,7 +672,7 @@ export async function deliverQueuedPostCompactionDelegate(
         });
       }
       if (spawnResult.status === "cancelled") {
-        removeRejectedArtifactPolicy();
+        await removeRejectedArtifactPolicy();
         throw new SessionDeliveryDeadLetteredError(
           spawnResult.error ?? "Continuation delegate admission cancelled.",
         );
@@ -687,7 +687,7 @@ export async function deliverQueuedPostCompactionDelegate(
           params.entry,
           `Post-compaction delegate spawn forbidden: ${spawnResult.error ?? "delegation was not accepted"}.`,
         );
-        removeRejectedArtifactPolicy();
+        await removeRejectedArtifactPolicy();
         return;
       }
       // Provably never dispatched: release attempt ownership for a retry.

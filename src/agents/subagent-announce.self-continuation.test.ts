@@ -48,15 +48,11 @@ vi.mock("./subagents/registry/subagent-registry-read.js", async (importOriginal)
   resolveRequesterForChildSession: () => null,
   shouldIgnorePostCompletionAnnounceForSession: () => false,
 }));
-vi.mock("./subagents/registry/subagent-registry-runtime.js", () => ({
-  countActiveDescendantRuns: () => 0,
-  countPendingDescendantRuns: () => 0,
-  countPendingDescendantRunsExcludingRun: () => 0,
-  isSubagentSessionRunActive: () => true,
-  listSubagentRunsForRequester: () => [],
-  replaceSubagentRunAfterSteer: () => true,
-  resolveRequesterForChildSession: () => null,
-  shouldIgnorePostCompletionAnnounceForSession: () => false,
+// The descendant wake loads the registry module directly (the runtime barrel is
+// gone); only the steer replacement this suite stubbed there is intercepted.
+vi.mock("./subagents/registry/subagent-registry.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./subagents/registry/subagent-registry.js")>()),
+  replaceSubagentRunAfterSteerCore: () => true,
 }));
 
 vi.mock("../auto-reply/continuation/delegate-store.js", () => ({
@@ -144,7 +140,6 @@ function buildParams(reply: string): AnnounceFlowParams {
     childSessionKey,
     childRunId: "run-952-self-cont",
     requesterSessionKey,
-    requesterDisplayKey: "test-952",
     // A regular subagent (NOT a chain-hop) — self-continuation must work for any
     // tool-less subagent, not only continuation-chain delegates.
     task: "Delegated task: ordinary research",

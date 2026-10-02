@@ -14,7 +14,7 @@ import type {
   SubagentRunRecord,
 } from "./subagents/registry/subagent-registry.types.js";
 
-type SubagentRegistryRuntime = typeof import("./subagents/registry/subagent-registry-runtime.js");
+type SubagentRegistryRuntime = typeof import("./subagents/registry/subagent-registry.js");
 
 const mocks = vi.hoisted(() => ({
   loadSessionEntryByKey: vi.fn(),
@@ -103,7 +103,7 @@ function createWakeHarness(params: {
   // would hand the unawaited caller a truthy Promise and report every failed
   // replacement as a wake.
   const replaceSubagentRunAfterSteer = vi.fn<
-    SubagentRegistryRuntime["replaceSubagentRunAfterSteer"]
+    SubagentRegistryRuntime["replaceSubagentRunAfterSteerCore"]
   >(() => {
     if (params.replaced) {
       sourceEntry.acceptedSteerDispatch = undefined;
@@ -115,10 +115,10 @@ function createWakeHarness(params: {
     dispatchGatewayMethodInProcess,
     getRuntimeConfig: () => ({}) as OpenClawConfig,
     loadSubagentRegistryRuntime: async () => ({
-      clearLazySubagentSteerRestart: clearSubagentRunSteerRestart,
-      getLazySubagentRunByRunId: vi.fn(async () => sourceEntry),
-      recordLazySubagentSteerDispatch: recordAcceptedSubagentSteerDispatch,
-      replaceSubagentRunAfterSteer,
+      clearSubagentRunSteerRestart,
+      getSubagentRunByRunId: vi.fn(async () => sourceEntry),
+      recordAcceptedSubagentSteerDispatch,
+      replaceSubagentRunAfterSteerCore: replaceSubagentRunAfterSteer,
     }),
   } as unknown as Parameters<typeof wakeSubagentRunAfterDescendants>[1];
   return {
@@ -137,6 +137,9 @@ const wakeParams = {
   taskLabel: "task",
   findings: "descendants settled",
   announceId: "announce-1",
+  // Required since the barrel retirement; an always-current source matches the
+  // previous optional-and-absent behavior.
+  prepareCurrent: async () => true,
   isChildSessionEffectsAllowed: () => true,
 };
 const wakeDispatchId = buildAnnounceIdempotencyKey(`${wakeParams.announceId}:wake`);

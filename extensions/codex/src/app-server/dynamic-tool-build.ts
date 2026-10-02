@@ -33,6 +33,7 @@ import {
   type CodexPluginConfig,
 } from "./config.js";
 import { resolveCodexScheduledWorkToolOptions } from "./dynamic-tool-build-scheduled-work.js";
+import { resolveCodexToolConstructionPlan } from "./dynamic-tool-construction-plan.js";
 import {
   filterCodexDynamicTools,
   filterCodexDynamicToolsForDisabledNativeSurface,
@@ -87,34 +88,6 @@ const CODEX_DISABLED_NATIVE_SHELL_DYNAMIC_TOOLS = new Set([
   CODEX_GATEWAY_PROCESS_DYNAMIC_TOOL_NAME,
   CODEX_NODE_EXEC_DYNAMIC_TOOL_NAME,
 ]);
-
-/** Keeps node filesystem and process ownership on its native exec-server. */
-function resolveCodexNodePlacementToolConstructionPlan(
-  sandbox: OpenClawSandboxContext | undefined,
-  nativeToolSurfaceEnabled: boolean | undefined,
-): OpenClawCodingToolsOptions["toolConstructionPlan"] {
-  if (
-    !isCodexRemoteExecPlacementSandbox(sandbox) ||
-    sandbox?.backendId !== "node" ||
-    !("placementNodeId" in sandbox) ||
-    typeof sandbox.placementNodeId !== "string" ||
-    !sandbox.placementNodeId
-  ) {
-    return undefined;
-  }
-  if (!nativeToolSurfaceEnabled) {
-    throw new Error(
-      "Codex node execution requires its native exec-server tool surface; adjust the session tool policy and start a fresh attempt.",
-    );
-  }
-  return {
-    includeBaseCodingTools: false,
-    includeShellTools: false,
-    includeChannelTools: true,
-    includeOpenClawTools: true,
-    includePluginTools: true,
-  };
-}
 
 function preserveRingZeroSystemAgentTool<T extends { name: string; catalogMode?: string }>(
   allTools: T[],
@@ -236,9 +209,10 @@ export async function buildDynamicTools(
   });
   const messageToolProvider = resolveCodexMessageToolProvider(params);
   const webFetchHostnameAllowlistRef: { value?: string[] } = {};
-  const toolConstructionPlan = resolveCodexNodePlacementToolConstructionPlan(
+  const toolConstructionPlan = resolveCodexToolConstructionPlan(
     input.sandbox,
     input.nativeToolSurfaceEnabled,
+    params.requireWorkspaceOnly,
   );
   const options: OpenClawCodingToolsOptions = {
     agentId: input.sessionAgentId,
@@ -255,6 +229,7 @@ export async function buildDynamicTools(
       ? { mode: input.sessionPermissionPolicy.mode, root: input.sessionPermissionPolicy.root }
       : undefined,
     sandbox: input.sandbox,
+    requireWorkspaceOnly: params.requireWorkspaceOnly,
     ...(toolConstructionPlan ? { toolConstructionPlan } : {}),
     messageProvider: messageToolProvider,
     toolPolicyMessageProvider: params.messageProvider ?? params.messageChannel,
@@ -518,6 +493,7 @@ export function shouldEnableCodexAppServerNativeToolSurface(
 ): boolean {
   if (
     isCodexResponsesOAuthRun(params) ||
+    params.requireWorkspaceOnly === true ||
     params.pluginHarnessToolPolicyRestricted === true ||
     isCodexMemoryFlushRun(params) ||
     params.disableTools

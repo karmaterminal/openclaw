@@ -17,7 +17,7 @@ import {
   storeContinuationCustodyPayload,
 } from "./custody-payload-store.js";
 import { payloadIntentFor } from "./legacy-taskflow-import-plan.js";
-import type { LegacyContinuationFlowRow } from "./legacy-taskflow-source.js";
+import type { LegacyContinuationFlowRow } from "./legacy-taskflow-migration-source.js";
 
 const LEGACY_PAYLOAD_MAX_BYTES = 8 * 1024 * 1024;
 

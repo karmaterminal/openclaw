@@ -411,7 +411,7 @@ function collectTypeScriptFiles(relativeDir: string, options: { recursive: boole
       // Proof fixtures own synthetic process state outside the runtime inventory.
       if (
         options.recursive &&
-        relativePath !== "src/auto-reply/continuation/return-covenant-fixture"
+        relativePath !== "src/auto-reply/continuation/fixtures/return-covenant"
       ) {
         files.push(...collectTypeScriptFiles(relativePath, options));
       }

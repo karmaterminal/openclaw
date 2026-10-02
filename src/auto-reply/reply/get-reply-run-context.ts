@@ -396,7 +396,9 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
     : { ...sessionCtx, ThreadStarterBody: undefined };
   let inboundContextSessionEntry = isHeartbeat
     ? undefined
-    : (sessionStore?.[sessionKey] ?? sessionEntryHandle?.getCurrent() ?? sessionEntry);
+    : ((sessionKey !== undefined ? sessionStore?.[sessionKey] : undefined) ??
+      sessionEntryHandle?.getCurrent() ??
+      sessionEntry);
   let activeGoalContext = formatActiveGoalContext(inboundContextSessionEntry);
   // Heartbeats are synthetic system turns: delivery facts still drive routing and
   // formatting, but must not be presented to the model as user-role inbound context.
@@ -414,7 +416,9 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
     inboundContextSessionEntry =
       storePath && sessionKey
         ? loadSessionEntry({ storePath, sessionKey, readConsistency: "latest" })
-        : (sessionEntryHandle?.getCurrent() ?? sessionStore?.[sessionKey] ?? sessionEntry);
+        : (sessionEntryHandle?.getCurrent() ??
+          (sessionKey !== undefined ? sessionStore?.[sessionKey] : undefined) ??
+          sessionEntry);
     activeGoalContext = formatActiveGoalContext(inboundContextSessionEntry);
     inboundUserContext = buildInboundUserContextPrefix(
       inboundUserContextSessionCtx,
@@ -481,7 +485,6 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
     hasUserBody,
     shouldInjectGroupIntro,
     typingMode,
-    promptEnvelopeBase,
     prefixedBodyBase,
     sessionEntry,
     isMainSession,

@@ -271,6 +271,43 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     profiles: ["coding", "messaging"],
     includeInOpenClawGroup: true,
   },
+  // Continuation tools register only when agents.defaults.continuation.enabled;
+  // listing them keeps Disable All and group policies able to deny them.
+  {
+    id: "continue_work",
+    description: "Schedule another turn of this session",
+    sectionId: "sessions",
+    profiles: [],
+    includeInOpenClawGroup: true,
+  },
+  {
+    id: "continue_delegate",
+    description: "Dispatch a continuation delegate",
+    sectionId: "sessions",
+    profiles: [],
+    includeInOpenClawGroup: true,
+  },
+  {
+    id: "request_compaction",
+    description: "Request compaction of this session's context",
+    sectionId: "sessions",
+    profiles: [],
+    includeInOpenClawGroup: true,
+  },
+  {
+    id: "delegate_artifacts",
+    description: "List, inspect, and materialize published delegate artifacts",
+    sectionId: "sessions",
+    profiles: [],
+    includeInOpenClawGroup: true,
+  },
+  {
+    id: "delegate_artifacts_publish",
+    description: "Publish delegate output files as artifacts",
+    sectionId: "sessions",
+    profiles: [],
+    includeInOpenClawGroup: true,
+  },
   {
     id: "subagents",
     description: "Background work: subagents, media gen, automation runs. list/cancel.",
@@ -462,6 +499,20 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
   {
     id: "skill_workshop",
     description: SKILL_WORKSHOP_TOOL_DISPLAY_SUMMARY,
+    sectionId: "agents",
+    profiles: ["coding"],
+    includeInOpenClawGroup: true,
+  },
+  {
+    id: "skills_search",
+    description: "Search installed eligible skills",
+    sectionId: "agents",
+    profiles: ["coding"],
+    includeInOpenClawGroup: true,
+  },
+  {
+    id: "skills_read",
+    description: "Read complete installed skill instructions",
     sectionId: "agents",
     profiles: ["coding"],
     includeInOpenClawGroup: true,

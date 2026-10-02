@@ -4,7 +4,9 @@ import { join } from "node:path";
 import {
   finalizeDelegateArtifacts,
   publishDelegateArtifactCandidates,
+  recordDelegateArtifactDeliveryBinding,
   type DelegateArtifactPolicyV1,
+  type DelegateArtifactRecipientProjectionV1,
 } from "./delegate-artifacts.js";
 
 export function stateOptions() {
@@ -66,7 +68,7 @@ export function publish(
 export function finalize(
   options: ReturnType<typeof stateOptions>,
   overrides: Partial<Parameters<typeof finalizeDelegateArtifacts>[0]> = {},
-) {
+): ReturnType<typeof finalizeDelegateArtifacts> {
   const sessionIds = new Map([
     ["agent:main:parent", "parent-session-1"],
     ["agent:main:target", "target-session-1"],
@@ -86,5 +88,24 @@ export function finalize(
     now: 10_000,
     options,
     ...overrides,
+  });
+}
+
+/** Record one delivery phase for the recipient binding a projection names. */
+export function recordDelivery(params: {
+  projection: DelegateArtifactRecipientProjectionV1;
+  phase: "attempt" | "replay" | "acknowledged";
+  now?: number;
+  options?: ReturnType<typeof stateOptions>;
+}): Promise<void> {
+  const { arrivalContext } = params.projection;
+  return recordDelegateArtifactDeliveryBinding({
+    dispatchId: arrivalContext.dispatchId,
+    recipientSessionKey: arrivalContext.binding.recipientSessionKey,
+    recipientSessionId: arrivalContext.binding.recipientSessionId,
+    phase: params.phase,
+    availability: arrivalContext.availability,
+    ...(params.now !== undefined ? { now: params.now } : {}),
+    ...(params.options ? { options: params.options } : {}),
   });
 }

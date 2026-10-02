@@ -9,7 +9,7 @@ import {
 } from "./subagent-registry.persistence.test-support.js";
 import {
   loadSubagentRegistryFromSqlite,
-  saveSubagentRegistryToSqlite,
+  saveSubagentRegistryChangesToSqlite,
 } from "./subagent-registry.store.sqlite.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
@@ -61,7 +61,7 @@ export function registerSteerRestartOrphanPersistenceCases(params: {
           cleanupHandled: false,
         }),
       );
-      saveSubagentRegistryToSqlite(new Map([[runId, run]]));
+      saveSubagentRegistryChangesToSqlite(new Map([[runId, run]]), [runId]);
       await removeSubagentSessionEntry({
         stateDir,
         agentId: "main",
@@ -116,7 +116,7 @@ export function registerSteerRestartOrphanPersistenceCases(params: {
           suppressAnnounceReason: "steer-restart",
         }),
       );
-      saveSubagentRegistryToSqlite(new Map([[runId, run]]));
+      saveSubagentRegistryChangesToSqlite(new Map([[runId, run]]), [runId]);
 
       const db = params.getStateDatabase().openOpenClawStateDatabase().db;
       const stored = db

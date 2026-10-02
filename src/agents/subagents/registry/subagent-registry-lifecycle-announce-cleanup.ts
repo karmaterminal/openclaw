@@ -47,6 +47,7 @@ import {
   captureSubagentRunMutationSnapshot,
 } from "./subagent-registry-persistence.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
+import { hasRequesterCompletionCohort } from "./subagent-requester-settle-identity.js";
 import { deleteSubagentSessionForCleanup } from "./subagent-session-cleanup.js";
 
 type RunSubagentAnnounceFlow =
@@ -344,6 +345,9 @@ export const startSubagentAnnounceCleanupFlow = (
   const pendingPayload = loadPendingFinalDeliveryPayload(entry);
   const requesterOrigin = normalizeDeliveryContext(pendingPayload.requesterOrigin);
   const requesterSettleGeneration = entry.requesterSettleWake?.rearmGeneration;
+  const requesterOwnsCompletion = () =>
+    entry.requesterTurnYielded === true || hasRequesterCompletionCohort(entry);
+  // Existing cohort ownership blocks competing sends but does not settle this attempt's delivery.
   const requesterTookCompletion = () =>
     entry.requesterTurnYielded === true ||
     (entry.completionTarget === "parent" &&
@@ -399,14 +403,12 @@ export const startSubagentAnnounceCleanupFlow = (
     requesterSessionKey: pendingPayload.requesterSessionKey,
     requesterAgentId: pendingPayload.requesterAgentId,
     requesterOrigin,
-    requesterDisplayKey: pendingPayload.requesterDisplayKey,
     task: pendingPayload.task,
     timeoutMs: params.subagentAnnounceTimeoutMs,
     cleanup: suppressSessionEffects ? "keep" : cleanup,
     roundOneReply: entry.completion?.resultText ?? undefined,
     terminalReply: pendingPayload.terminalReply,
     fallbackReply: entry.completion?.fallbackResultText ?? undefined,
-    waitForCompletion: false,
     startedAt: pendingPayload.startedAt,
     endedAt: pendingPayload.endedAt,
     label: pendingPayload.label,
@@ -415,6 +417,7 @@ export const startSubagentAnnounceCleanupFlow = (
     expectsCompletionMessage: pendingPayload.expectsCompletionMessage,
     completionTarget: pendingPayload.completionTarget,
     completionRequesterSessionId: pendingPayload.completionRequesterSessionId,
+    completionRequesterLifecycleRevision: entry.completionRequesterLifecycleRevision,
     wakeOnDescendantSettle: pendingPayload.wakeOnDescendantSettle === true,
     suppressChildSessionEffects: suppressSessionEffects,
     isChildSessionEffectsAllowed: childSessionEffectsAllowed,
@@ -428,9 +431,7 @@ export const startSubagentAnnounceCleanupFlow = (
         committedDelivery,
       );
     },
-    isCompletionOwnedByRequesterYield: () =>
-      entry.requesterTurnYielded === true ||
-      entry.requesterSettleWake?.requesterYieldBatch === true,
+    isCompletionOwnedByRequesterYield: requesterOwnsCompletion,
     onBeforeDeleteChildSession:
       cleanup === "delete"
         ? async () => {

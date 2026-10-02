@@ -102,7 +102,7 @@ function resolveRoute(
   return { route: { kind: "parent" }, sessionKeys: [] };
 }
 
-export function prepareDelegateArtifactPolicy(params: {
+export async function prepareDelegateArtifactPolicy(params: {
   cfg: OpenClawConfig;
   config: ContinuationRuntimeConfig;
   dispatchingSessionKey: string;
@@ -110,7 +110,7 @@ export function prepareDelegateArtifactPolicy(params: {
   flowId: string;
   dispatchRevision: number;
   acceptedAt?: number;
-}): void {
+}): Promise<void> {
   const artifactMode = params.delegate.returnOptions?.artifacts ?? "forbidden";
   if (artifactMode === "forbidden") {
     return;
@@ -157,7 +157,7 @@ export function prepareDelegateArtifactPolicy(params: {
   ) {
     throw new Error("artifact-capable cross-session continuation dispatch is disabled");
   }
-  createDelegateArtifactPolicy({
+  await createDelegateArtifactPolicy({
     flowId: params.flowId,
     producerSessionKey: deriveContinuationDelegateChildSessionKeyFromParent(
       params.dispatchingSessionKey,

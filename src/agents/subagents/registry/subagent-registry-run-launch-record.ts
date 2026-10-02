@@ -7,6 +7,7 @@ export type RegisterSubagentRunParams = {
   runId: string;
   requesterTurnRunId?: string;
   childSessionKey: string;
+  childAgentId?: string;
   sessionEntry?: SubagentRunRecord["childSessionIdentity"];
   controllerSessionKey?: string;
   requesterSessionKey: string;
@@ -29,8 +30,6 @@ export type RegisterSubagentRunParams = {
   completionRequesterLifecycleRevision?: string;
   spawnMode?: "run" | "session";
   attachmentId?: string;
-  attachmentsDir?: string;
-  attachmentsRootDir?: string;
   retainAttachmentsOnKeep?: boolean;
   collect?: boolean;
   swarmRequesterSessionKey?: string;

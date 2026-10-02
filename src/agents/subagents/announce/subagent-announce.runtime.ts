@@ -1,9 +1,3 @@
-/**
- * Runtime dependency barrel for subagent announcement/output collection.
- *
- * Keeping these imports behind one module lets tests replace gateway/session
- * IO without changing the announce logic itself.
- */
 import { loadSessionEntry } from "../../../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { callGateway as GatewayCaller } from "../../../gateway/call.js";

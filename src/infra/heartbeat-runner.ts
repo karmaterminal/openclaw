@@ -1,4 +1,3 @@
-// Runs heartbeat checks and emits status updates for configured agents.
 import {
   isSubagentSessionKey,
   normalizeAgentId,

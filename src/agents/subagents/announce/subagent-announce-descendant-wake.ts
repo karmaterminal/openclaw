@@ -20,7 +20,15 @@ import type {
   getRuntimeConfig,
 } from "./subagent-announce.runtime.js";
 
-type SubagentRegistryRuntime = typeof import("../registry/subagent-registry-runtime.js");
+// Upstream retired the registry runtime barrel; the announce deps load the registry
+// module lazily instead, so only the steer-ownership operations are required here.
+type SubagentRegistryRuntime = Pick<
+  typeof import("../registry/subagent-registry.js"),
+  | "clearSubagentRunSteerRestart"
+  | "getSubagentRunByRunId"
+  | "recordAcceptedSubagentSteerDispatch"
+  | "replaceSubagentRunAfterSteerCore"
+>;
 
 const log = createSubsystemLogger("agents/subagent-announce-descendant-wake");
 
@@ -89,7 +97,7 @@ export async function wakeSubagentRunAfterDescendants(
     taskLabel: string;
     findings: string;
     announceId: string;
-    prepareCurrent?: () => Promise<boolean>;
+    prepareCurrent: () => Promise<boolean>;
     isChildSessionEffectsAllowed: () => boolean;
     resolveGatewayContext?: GatewayContextResolver;
     signal?: AbortSignal;
@@ -100,7 +108,7 @@ export async function wakeSubagentRunAfterDescendants(
     return "not-woken";
   }
 
-  if (params.prepareCurrent && !(await params.prepareCurrent())) {
+  if (!(await params.prepareCurrent())) {
     return "not-woken";
   }
   if (params.signal?.aborted || !params.isChildSessionEffectsAllowed()) {
@@ -122,11 +130,11 @@ export async function wakeSubagentRunAfterDescendants(
   });
   const wakeDispatchId = buildAnnounceIdempotencyKey(`${params.announceId}:wake`);
   const registryRuntime = await deps.loadSubagentRegistryRuntime();
-  const sourceEntry = await registryRuntime.getLazySubagentRunByRunId(params.runId);
+  const sourceEntry = await registryRuntime.getSubagentRunByRunId(params.runId);
   if (!sourceEntry) {
     return "not-woken";
   }
-  const reservedDispatch = await registryRuntime.recordLazySubagentSteerDispatch({
+  const reservedDispatch = await registryRuntime.recordAcceptedSubagentSteerDispatch({
     runId: params.runId,
     expected: sourceEntry,
     gatewayRunId: wakeDispatchId,
@@ -139,7 +147,7 @@ export async function wakeSubagentRunAfterDescendants(
     if (reservedDispatch.status === "rejected") {
       return "not-woken";
     }
-    const cleared = await registryRuntime.clearLazySubagentSteerRestart(
+    const cleared = await registryRuntime.clearSubagentRunSteerRestart(
       reservedDispatch.ownerRunId,
       reservedDispatch.owner,
       reservedDispatch.dispatch,
@@ -155,7 +163,7 @@ export async function wakeSubagentRunAfterDescendants(
   const recordAcceptedWake = async (
     gatewayRunId: string,
   ): Promise<"persisted" | "pending-persistence" | "rejected"> => {
-    const acceptedDispatch = await registryRuntime.recordLazySubagentSteerDispatch({
+    const acceptedDispatch = await registryRuntime.recordAcceptedSubagentSteerDispatch({
       runId: wakeDispatchOwnership.ownerRunId,
       expected: wakeDispatchOwnership.owner,
       gatewayRunId,
@@ -206,7 +214,7 @@ export async function wakeSubagentRunAfterDescendants(
     const cleared =
       stopped &&
       releaseOwnership &&
-      (await registryRuntime.clearLazySubagentSteerRestart(
+      (await registryRuntime.clearSubagentRunSteerRestart(
         wakeDispatchOwnership.ownerRunId,
         wakeDispatchOwnership.owner,
         wakeDispatchOwnership.dispatch,
@@ -253,10 +261,7 @@ export async function wakeSubagentRunAfterDescendants(
             timeoutMs: announceTimeoutMs,
             resolveGatewayContext: params.resolveGatewayContext,
             prepareDispatchCurrent: async () => {
-              if (
-                (await params.prepareCurrent?.()) === false ||
-                !params.isChildSessionEffectsAllowed()
-              ) {
+              if (!(await params.prepareCurrent()) || !params.isChildSessionEffectsAllowed()) {
                 throw new SourceOwnerChangedError();
               }
             },
@@ -294,7 +299,7 @@ export async function wakeSubagentRunAfterDescendants(
   // can mutate a replacement session owned by another run.
   let prepared: boolean;
   try {
-    prepared = (await params.prepareCurrent?.()) !== false;
+    prepared = await params.prepareCurrent();
   } catch {
     prepared = false;
   }
@@ -306,7 +311,7 @@ export async function wakeSubagentRunAfterDescendants(
   ) {
     return await settleWake(wakeRunId, acceptedState);
   }
-  const replaced = registryRuntime.replaceSubagentRunAfterSteer({
+  const replaced = registryRuntime.replaceSubagentRunAfterSteerCore({
     previousRunId: wakeDispatchOwnership.ownerRunId,
     nextRunId: wakeRunId,
     fallback: wakeDispatchOwnership.owner,

@@ -32,3 +32,17 @@ export async function handleServerExtraHttpRoute(
   });
   return authResult ? await route.handler(req, res) : true;
 }
+
+/** Binds the per-request extra-route stage that runs right after gateway probes. */
+export function serverExtraHttpRouteStage(
+  routes: readonly GatewayServerExtraHttpRoute[] | undefined,
+  request: {
+    req: IncomingMessage;
+    res: ServerResponse;
+    requestPath: string;
+    auth: Parameters<typeof handleServerExtraHttpRoute>[4];
+  },
+): () => Promise<boolean> {
+  return () =>
+    handleServerExtraHttpRoute(routes, request.req, request.res, request.requestPath, request.auth);
+}

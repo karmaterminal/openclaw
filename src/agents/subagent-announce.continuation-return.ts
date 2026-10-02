@@ -189,7 +189,7 @@ export async function routeSubagentContinuationReturn(params: {
         }
         const projection = params.managedArtifactProjections?.get(sessionKey);
         if (projection) {
-          markDelegateArtifactDeliveryUnavailable({
+          await markDelegateArtifactDeliveryUnavailable({
             dispatchId: projection.arrivalContext.dispatchId,
             recipientSessionKey: sessionKey,
             recipientSessionId: projection.arrivalContext.binding.recipientSessionId,

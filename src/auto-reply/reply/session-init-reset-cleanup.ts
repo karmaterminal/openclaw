@@ -15,12 +15,15 @@ export async function clearReplacedSessionRuntimeState(params: {
   agentId: string;
   previousSessionEntry: SessionEntry;
   previousSessionEndReason: string | undefined;
+  signal?: AbortSignal;
 }): Promise<void> {
-  const { sessionKey, agentId, previousSessionEntry, previousSessionEndReason } = params;
+  const { sessionKey, agentId, previousSessionEntry, previousSessionEndReason, signal } = params;
   try {
     await clearSessionResetRuntimeState([sessionKey, previousSessionEntry.sessionId], {
       activeReplySessionId: previousSessionEntry.sessionId,
       agentId,
+      sessionKey,
+      assertCurrent: () => signal?.throwIfAborted(),
       reason:
         previousSessionEndReason === "new" ||
         previousSessionEndReason === "reset" ||

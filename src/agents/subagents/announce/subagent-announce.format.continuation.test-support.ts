@@ -68,25 +68,6 @@ export function endedWakeOwnerRun(runId: string) {
   };
 }
 
-type SteerRegistryMock = {
-  clearSubagentRunSteerRestart: (...args: never[]) => unknown;
-  getSubagentRunByRunId: (runId: string) => unknown;
-  recordAcceptedSubagentSteerDispatch: (...args: never[]) => unknown;
-};
-
-// The continuation line's descendant wake reserves and binds its dispatch through
-// the lazy registry runtime before replacing the run (subagent-registry-runtime.ts).
-export function lazySteerRegistryRuntime<T extends SteerRegistryMock>(mock: T) {
-  return {
-    clearLazySubagentSteerRestart: (...args: Parameters<T["clearSubagentRunSteerRestart"]>) =>
-      mock.clearSubagentRunSteerRestart(...args),
-    getLazySubagentRunByRunId: (...args: [string]) => mock.getSubagentRunByRunId(...args),
-    recordLazySubagentSteerDispatch: (
-      ...args: Parameters<T["recordAcceptedSubagentSteerDispatch"]>
-    ) => mock.recordAcceptedSubagentSteerDispatch(...args),
-  };
-}
-
 export function withContinuationEnabled(config: OpenClawConfig): OpenClawConfig {
   return { ...config, agents: { defaults: { continuation: { enabled: true } } } };
 }

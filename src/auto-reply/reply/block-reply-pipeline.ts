@@ -237,13 +237,13 @@ export function createBlockReplyPipeline(params: {
         }
         if (delivery.source?.complete !== false) {
           sentKeys.add(dedupeKey);
-        }
-        if (isTerminalContent && delivery.source?.complete !== false) {
-          if (attempt.terminal) {
-            attempt.terminalDeliveryConfirmed = true;
+          if (isTerminalContent) {
+            if (attempt.terminal) {
+              attempt.terminalDeliveryConfirmed = true;
+            }
+            sentContentKeys.add(contentKey);
+            sentContentKeys.add(createIndexedBlockReplyContentKey(payload));
           }
-          sentContentKeys.add(contentKey);
-          sentContentKeys.add(createIndexedBlockReplyContentKey(payload));
         }
         for (const mediaUrl of reply.mediaUrls) {
           sentMediaUrls.add(mediaUrl);

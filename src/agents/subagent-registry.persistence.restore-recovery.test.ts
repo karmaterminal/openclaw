@@ -21,10 +21,8 @@ import {
   writeSubagentSessionEntry,
 } from "./subagents/registry/subagent-registry.persistence.test-support.js";
 import type { SubagentRunFixture } from "./subagents/registry/subagent-registry.persistence.test-support.js";
-import {
-  loadSubagentRegistryFromSqlite,
-  saveSubagentRegistryToSqlite,
-} from "./subagents/registry/subagent-registry.store.sqlite.js";
+import { loadSubagentRegistryFromSqlite } from "./subagents/registry/subagent-registry.store.sqlite.js";
+import { saveSubagentRegistryToSqlite } from "./subagents/registry/subagent-registry.store.test-support.js";
 import {
   activateSubagentRegistry,
   getLatestSubagentRunByChildSessionKey,
@@ -54,7 +52,7 @@ vi.mock("./subagents/announce/subagent-announce.js", async (importOriginal) => {
 vi.mock("./subagents/registry/subagent-registry-state.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("./subagents/registry/subagent-registry-state.js")>();
-  const { saveSubagentRegistryToSqlite: saveRegistryToSqlite } =
+  const { saveSubagentRegistryChangesToSqlite: saveRegistryToSqlite } =
     await import("./subagents/registry/subagent-registry.store.sqlite.js");
   return { ...actual, persistSubagentRunsToDisk: saveRegistryToSqlite };
 });

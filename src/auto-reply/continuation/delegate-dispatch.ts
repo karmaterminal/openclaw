@@ -194,9 +194,11 @@ export async function dispatchToolDelegates(
   const hasManagedArtifacts = (delegate: PendingContinuationDelegate): boolean =>
     delegate.returnOptions?.artifacts === "optional" ||
     delegate.returnOptions?.artifacts === "required";
-  const removeRejectedArtifactPolicy = (delegate: PendingContinuationDelegate): void => {
+  const removeRejectedArtifactPolicy = async (
+    delegate: PendingContinuationDelegate,
+  ): Promise<void> => {
     if (hasManagedArtifacts(delegate) && delegate.flowId) {
-      removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
+      await removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
     }
   };
   const terminalizeRejectedDelegate = async (
@@ -205,7 +207,7 @@ export async function dispatchToolDelegates(
   ): Promise<boolean> => {
     const committed = await markPendingDelegateFailed(delegate, summary);
     if (committed) {
-      removeRejectedArtifactPolicy(delegate);
+      await removeRejectedArtifactPolicy(delegate);
     }
     return committed;
   };
@@ -318,7 +320,7 @@ export async function dispatchToolDelegates(
         ownerAgentId: ownerSession.agentId,
       })
     ) {
-      removeRejectedArtifactPolicy(delegate);
+      await removeRejectedArtifactPolicy(delegate);
     }
   }
 
@@ -474,7 +476,7 @@ export async function dispatchToolDelegates(
           ownerAgentId: ownerSession.agentId,
         })
       ) {
-        removeRejectedArtifactPolicy(delegate);
+        await removeRejectedArtifactPolicy(delegate);
       }
       rejected++;
     };
@@ -536,14 +538,14 @@ export async function dispatchToolDelegates(
         (delegate.returnOptions?.artifacts === "optional" ||
           delegate.returnOptions?.artifacts === "required")
       ) {
-        assertDelegateArtifactPolicyPrepared(delegate.flowId);
+        await assertDelegateArtifactPolicyPrepared(delegate.flowId);
       }
       const spawnFence = await revalidatePendingDelegateForSpawn(delegate, "pending");
       if (!spawnFence.allowed) {
         log.info(
           `[continuation:delegate-spawn-fenced] reason=${spawnFence.reason} flowId=${delegate.flowId ?? "unknown"} session=${sessionKey}`,
         );
-        removeRejectedArtifactPolicy(delegate);
+        await removeRejectedArtifactPolicy(delegate);
         dispatchSpan.setStatus("ERROR", spawnFence.summary);
         notifyOwner(
           `[continuation] ${spawnFence.summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
@@ -628,7 +630,7 @@ export async function dispatchToolDelegates(
           { inheritedSilent, inheritedWake },
           { failurePhase: "initialize" },
         );
-        removeRejectedArtifactPolicy(delegate);
+        await removeRejectedArtifactPolicy(delegate);
         dispatchSpan.setStatus("ERROR", result.error ?? "delegate admission cancelled");
         rejected++;
       } else {
@@ -666,7 +668,7 @@ export async function dispatchToolDelegates(
     } catch (err) {
       await rollbackAcceptedSpawn?.();
       if (isSpawnSubagentAdmissionCancelledError(err) && !spawnAttempted) {
-        removeRejectedArtifactPolicy(delegate);
+        await removeRejectedArtifactPolicy(delegate);
         dispatchSpan?.setStatus("ERROR", err.message);
         rejected++;
         continue;

@@ -224,7 +224,6 @@ export function registerNestedCompletionRegressionMatrix(options: {
         childRunId: "run-middle",
         roundOneReply: "middle synthesized output from A and B",
         requesterSessionKey: "agent:main:subagent:parent-nested",
-        requesterDisplayKey: "agent:main:subagent:parent-nested",
         expectsCompletionMessage: true,
       });
       expect(middleDeferred).toBe("retryable");
@@ -236,7 +235,6 @@ export function registerNestedCompletionRegressionMatrix(options: {
         childRunId: "run-middle",
         roundOneReply: "middle synthesized output from A and B",
         requesterSessionKey: "agent:main:subagent:parent-nested",
-        requesterDisplayKey: "agent:main:subagent:parent-nested",
         expectsCompletionMessage: true,
       });
       expect(middleAnnounced).toBe("delivered");

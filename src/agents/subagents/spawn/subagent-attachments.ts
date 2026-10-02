@@ -24,7 +24,6 @@ import {
 } from "../../sanitize-for-prompt.js";
 import { removeSubagentAttachmentTree } from "../subagent-attachment-cleanup.js";
 import {
-  resolveSubagentAttachmentDir,
   resolveSubagentSessionAttachmentRootDir,
   SANDBOX_SUBAGENT_ATTACHMENTS_MOUNT,
 } from "../subagent-attachment-paths.js";
@@ -124,10 +123,6 @@ function resolveSubagentAttachmentRequest(params: {
   return { status: "ok", attachments: requestedAttachments, limits };
 }
 
-function failAttachment(error: string): never {
-  throw new Error(error);
-}
-
 function sanitizeMountPathHint(value?: string): string | undefined {
   const trimmed = normalizeOptionalString(value);
   if (
@@ -151,7 +146,7 @@ function renderStagedAttachmentPathBlock(relDir: string, names: readonly string[
   // wrapper text can grow past a raw-length check. Reject, do not truncate:
   // a partial path list would send the child back to the directory.
   if (rendered.length > SUBAGENT_ATTACHMENT_PATH_BLOCK_MAX_CHARS) {
-    failAttachment(
+    throw new Error(
       `attachments_prompt_paths_exceeded (chars=${rendered.length} maxChars=${SUBAGENT_ATTACHMENT_PATH_BLOCK_MAX_CHARS})`,
     );
   }
@@ -375,11 +370,7 @@ export async function materializeSubagentAttachments(params: {
   // workspace-relative, and the child prompt carries the usable sandbox mount or
   // absolute Gateway path; consumers must not resolve relDir as a location.
   const relDir = path.posix.join(".openclaw", "attachments", attachmentId);
-  const absDir = resolveSubagentAttachmentDir(
-    params.targetAgentId,
-    params.childSessionKey,
-    attachmentId,
-  );
+  const absDir = path.join(absRootDir, attachmentId);
 
   let prepared: ReturnType<typeof prepareSubagentAttachments>;
   let pathBlock: string;
@@ -390,7 +381,7 @@ export async function materializeSubagentAttachments(params: {
     });
     for (const [attachmentIndex, attachment] of prepared.attachments.entries()) {
       if (hasPromptUnsafeControlCharacter(attachment.name)) {
-        failAttachment(`attachments_invalid_name (attachmentIndex=${attachmentIndex})`);
+        throw new Error(`attachments_invalid_name (attachmentIndex=${attachmentIndex})`);
       }
     }
     const exposedDir = params.sandboxed
@@ -432,7 +423,7 @@ export async function materializeSubagentAttachments(params: {
       files.push({ name, bytes, sha256 });
     }
 
-    const manifest = {
+    const receipt = {
       relDir,
       count: files.length,
       totalBytes: prepared.totalBytes,
@@ -440,18 +431,13 @@ export async function materializeSubagentAttachments(params: {
     };
     params.assertActive?.();
     materializationStage = "manifest_write";
-    await attachmentStore.writeJson(path.posix.join(attachmentId, ".manifest.json"), manifest, {
+    await attachmentStore.writeJson(path.posix.join(attachmentId, ".manifest.json"), receipt, {
       trailingNewline: true,
     });
 
     return {
       status: "ok",
-      receipt: {
-        count: files.length,
-        totalBytes: prepared.totalBytes,
-        files,
-        relDir,
-      },
+      receipt,
       attachmentId,
       retainOnSessionKeep: request.limits.retainOnSessionKeep,
       // File-consuming tools reject directories. List each already-validated

@@ -1412,11 +1412,11 @@ describe("createGatewayCloseHandler", () => {
     ];
     const exits = children.map((child) => once(child, "exit"));
     const spawnEvents = children.map((child) => once(child, "spawn"));
-    const disposeSessionMcpRuntimes = vi.fn(async () => {
+    mocks.disposeAllSessionMcpRuntimes.mockImplementation(async () => {
       children[0]?.kill("SIGTERM");
       await exits[0];
     });
-    const disposeBundleLspRuntimes = vi.fn(async () => {
+    mocks.disposeAllBundleLspRuntimes.mockImplementation(async () => {
       children[1]?.kill("SIGTERM");
       await exits[1];
     });
@@ -1428,8 +1428,6 @@ describe("createGatewayCloseHandler", () => {
     const stopChannel = vi.fn(async () => undefined);
     const deps = createGatewayCloseTestDeps({
       channelIds: ["discord"],
-      disposeBundleLspRuntimes,
-      disposeSessionMcpRuntimes,
       pluginServices,
       stopChannel,
     });
@@ -1447,9 +1445,9 @@ describe("createGatewayCloseHandler", () => {
       await vi.advanceTimersByTimeAsync(GATEWAY_SHUTDOWN_HOOK_TIMEOUT_MS);
 
       expect(pluginServices.stop).toHaveBeenCalledOnce();
-      expect(disposeSessionMcpRuntimes).toHaveBeenCalledOnce();
+      expect(mocks.disposeAllSessionMcpRuntimes).toHaveBeenCalledOnce();
 
-      expect(disposeBundleLspRuntimes).toHaveBeenCalledOnce();
+      expect(mocks.disposeAllBundleLspRuntimes).toHaveBeenCalledOnce();
       await expect(Promise.all(exits)).resolves.toHaveLength(2);
       await vi.advanceTimersByTimeAsync(0);
       expect(stopChannel).toHaveBeenCalledWith("discord");

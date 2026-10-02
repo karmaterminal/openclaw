@@ -19,8 +19,9 @@ import {
 import { canonicalSubagentRunFixtures } from "./subagents/registry/subagent-registry.persistence.test-support.js";
 import {
   loadSubagentRegistryFromSqlite,
-  saveSubagentRegistryToSqlite,
+  saveSubagentRegistryChangesToSqlite,
 } from "./subagents/registry/subagent-registry.store.sqlite.js";
+import { saveSubagentRegistryToSqlite } from "./subagents/registry/subagent-registry.store.test-support.js";
 import {
   addSubagentRunForTests,
   getSubagentRunByChildSessionKey,
@@ -350,7 +351,7 @@ describe("subagent registration rollback", () => {
       canonicalSubagentRunFixtures(new Map([[priorSameIdRun.runId, priorSameIdRun]])),
     );
     const persistError = new Error("initial sqlite busy");
-    persistDiskOverride = saveSubagentRegistryToSqlite;
+    persistDiskOverride = saveSubagentRegistryChangesToSqlite;
     persistOrThrowOverride = () => {
       throw persistError;
     };

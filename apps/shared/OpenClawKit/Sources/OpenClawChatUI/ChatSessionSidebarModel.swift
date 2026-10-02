@@ -167,6 +167,7 @@ public enum ChatSessionSidebarModel {
         groups: [OpenClawChatSessionGroup] = [],
         excludesMainSession: Bool = false,
         query: String,
+        rankedSearch: Bool = false,
         sessionRoutingContract: String? = nil,
         viewOptions: ViewOptions? = nil,
         observedOrder: ObservedOrder = .init()) -> [Section]
@@ -179,6 +180,14 @@ public enum ChatSessionSidebarModel {
             excludesMainSession: excludesMainSession,
             sessionRoutingContract: sessionRoutingContract,
             viewOptions: viewOptions)
+        if rankedSearch {
+            // Apply sidebar visibility before the palette's ten-result cap, preserving incoming relevance order.
+            // ui/src/components/command-palette-session-search.ts:63.
+            let visible = Set(entries.map(OpenClawChatSessionSidebarData.identity))
+            let nodes = sessions.filter { visible.contains(OpenClawChatSessionSidebarData.identity($0)) }
+                .prefix(10).flatMap { self.tree(from: [$0]) }
+            return nodes.isEmpty ? [] : [.init(id: "search", title: String(localized: "Search results"), nodes: nodes)]
+        }
         let ordered: [OpenClawChatSessionEntry]
         if viewOptions?.sort == .created {
             var order = observedOrder
@@ -297,25 +306,6 @@ public enum ChatSessionSidebarModel {
                 runningCount: (isRunning ? 1 : 0) + children.reduce(0) { $0 + $1.badges.runningCount },
                 failedCount: (hasFailed ? 1 : 0) + children.reduce(0) { $0 + $1.badges.failedCount },
                 hasUnread: session.unread == true || children.contains { $0.badges.hasUnread }))
-    }
-
-    public static func displayName(for session: OpenClawChatSessionEntry) -> String {
-        ChatPayloadDecoding.trimmedNonEmptyString(session.label) ??
-            ChatPayloadDecoding.trimmedNonEmptyString(session.displayName) ??
-            ChatPayloadDecoding.trimmedNonEmptyString(session.autoLabel) ??
-            self.displayName(forKey: session.key)
-    }
-
-    /// Compact "repo \u{2387} branch" line for worktree/work sessions; mirrors the
-    /// web sidebar row subtitle (ui/src/lib/session-display.ts).
-    public static func workSubtitle(for session: OpenClawChatSessionEntry) -> String? {
-        let repoRoot = session.worktree?.repoRoot?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let branch = session.worktree?.branch?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let repoName = repoRoot?.split(separator: "/").last.map(String.init)
-        let shortBranch = branch.map { $0.hasPrefix("openclaw/") ? String($0.dropFirst("openclaw/".count)) : $0 }
-        guard let repoName, !repoName.isEmpty else { return nil }
-        guard let shortBranch, !shortBranch.isEmpty else { return repoName }
-        return "\(repoName) \u{2387} \(shortBranch)"
     }
 
     /// Resolves the single session-list subtitle slot with the same ownership
@@ -573,12 +563,12 @@ public enum ChatSessionSidebarModel {
         return ChatPayloadDecoding.trimmedNonEmptyString(session.lastRunError)
     }
 
-    private static func isRunning(_ session: OpenClawChatSessionEntry) -> Bool {
+    static func isRunning(_ session: OpenClawChatSessionEntry) -> Bool {
         session.hasActiveRun == true ||
             session.status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "running"
     }
 
-    private static func isNewer(
+    static func isNewer(
         _ candidate: OpenClawChatSessionObserverDigest,
         than previous: OpenClawChatSessionObserverDigest) -> Bool
     {
@@ -656,20 +646,6 @@ public enum ChatSessionSidebarModel {
         })?.key ?? currentSessionKey
     }
 
-    /// Session keys read as routing ids ("agent:main:main"); show the human
-    /// part and keep the owning agent as a suffix only when it disambiguates.
-    public static func displayName(forKey key: String) -> String {
-        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parts = trimmed.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
-        guard parts.count == 3, parts[0] == "agent" else {
-            return trimmed.isEmpty ? key : trimmed
-        }
-        let agent = String(parts[1])
-        let session = String(parts[2])
-        if session.isEmpty { return trimmed }
-        return agent == "main" || agent.isEmpty ? session : "\(session) (\(agent))"
-    }
-
     @MainActor
     private static func visibleSessions(
         sessions: [OpenClawChatSessionEntry],
@@ -712,7 +688,9 @@ public enum ChatSessionSidebarModel {
                 return false
             }
             return entry.key == selectedSessionKey ||
-                (!self.isHiddenInternalSession(entry.key) && entry.archived != true &&
+                (!self
+                    .isHiddenInternalSession(entry.key) &&
+                    (entry.archived != true || viewOptions?.showArchived == true) &&
                     (viewOptions?.includes(entry) ?? true))
         }
         if !(excludesMainSession && selectedIsMain),
@@ -722,7 +700,7 @@ public enum ChatSessionSidebarModel {
         {
             // Sessions can lag behind a fresh switch/new-session; keep the
             // active row selectable instead of showing an empty selection.
-            entries.append(OpenClawChatSessionEntry.placeholder(key: currentSessionKey))
+            entries.append(OpenClawChatSessionEntry(key: currentSessionKey))
         }
         return entries
     }

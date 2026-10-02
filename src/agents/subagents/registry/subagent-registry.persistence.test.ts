@@ -29,10 +29,8 @@ import {
   waitForRegistryWork,
   writeSubagentSessionEntry,
 } from "./subagent-registry.persistence.test-support.js";
-import {
-  loadSubagentRegistryFromSqlite,
-  saveSubagentRegistryToSqlite,
-} from "./subagent-registry.store.sqlite.js";
+import { loadSubagentRegistryFromSqlite } from "./subagent-registry.store.sqlite.js";
+import { saveSubagentRegistryToSqlite } from "./subagent-registry.store.test-support.js";
 import {
   activateSubagentRegistry,
   addSubagentRunForTests,
@@ -55,7 +53,7 @@ type PersistOrThrow =
 let persistOrThrowOverride: PersistOrThrow | undefined;
 vi.mock("./subagent-registry-state.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./subagent-registry-state.js")>();
-  const { saveSubagentRegistryToSqlite: saveRegistryToSqlite } =
+  const { saveSubagentRegistryChangesToSqlite: saveRegistryToSqlite } =
     await import("./subagent-registry.store.sqlite.js");
   return {
     ...actual,

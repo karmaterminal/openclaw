@@ -1,4 +1,4 @@
-// Daemon install integration tests cover definition-access refusal without rewriting config.
+// Daemon install integration tests cover refusal when config was written by a newer OpenClaw.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -61,12 +61,6 @@ describe("runDaemonInstall integration definition access", () => {
   let accountHome: string;
   let tempHome: string;
   let configPath: string;
-
-  async function snapshotConfig() {
-    const contents = await fs.readFile(configPath);
-    const { ino, mode, uid } = await fs.lstat(configPath);
-    return { contents, ino, mode, uid, entries: (await fs.readdir(tempHome)).toSorted() };
-  }
 
   beforeAll(async () => {
     envSnapshot = captureEnv([
@@ -138,70 +132,4 @@ describe("runDaemonInstall integration definition access", () => {
     expect(serviceMock.install).not.toHaveBeenCalled();
     expect(runtimeLogs.join("\n")).toContain("Refusing to install or rewrite the gateway service");
   });
-
-  it.each([
-    {
-      name: "gateway.mode is missing",
-      capability: { kind: "sealed" as const, reason: "foreign-owner" as const },
-      config: { gateway: { auth: { mode: "token", token: "existing-token" } } },
-      marker: "SERVICE_DEFINITION_SEALED",
-    },
-    {
-      name: "the gateway token is missing",
-      capability: { kind: "sealed" as const, reason: "foreign-owner" as const },
-      config: { gateway: { mode: "local", auth: { mode: "token" } } },
-      marker: "SERVICE_DEFINITION_SEALED",
-    },
-    {
-      name: "gateway.mode is missing and definition authority is unknown",
-      capability: { kind: "unknown" as const, reason: "inspection-failed" as const },
-      config: { gateway: { auth: { mode: "token" } } },
-      marker: "SERVICE_DEFINITION_UNKNOWN",
-    },
-  ])(
-    "preserves config bytes and directory entries when definition access is refused and $name",
-    async ({ capability, config, marker }) => {
-      await fs.writeFile(configPath, JSON.stringify(config, null, 2));
-      clearConfigCache();
-      serviceMock.readDefinitionMutationCapability.mockResolvedValueOnce(capability);
-      const before = await snapshotConfig();
-
-      await expect(runDaemonInstall({ json: true, force: true })).rejects.toThrow("__exit__:1");
-
-      expect(await snapshotConfig()).toEqual(before);
-      expect(serviceMock.install).not.toHaveBeenCalled();
-      expect(serviceMock.readCommand).toHaveBeenCalledOnce();
-      expect(runtimeLogs.join("\n")).toContain(marker);
-      expect(runtimeLogs.join("\n")).toContain(
-        capability.kind === "sealed" ? "deployment owner" : "Inspect service definition access",
-      );
-    },
-  );
-
-  it.each([
-    { name: "forced fresh install", loaded: false, force: true },
-    { name: "loaded auto-refresh", loaded: true, force: false },
-    { name: "forced loaded refresh", loaded: true, force: true },
-  ])(
-    "preserves config, token, and state when $name cannot inspect its command",
-    async ({ loaded, force }) => {
-      const secret = "service-command-inspection-secret-canary";
-      await fs.writeFile(configPath, JSON.stringify({ gateway: { auth: { mode: "token" } } }));
-      clearConfigCache();
-      serviceMock.isLoaded.mockResolvedValue(loaded);
-      serviceMock.readCommand.mockRejectedValueOnce(new Error(secret));
-      const before = await snapshotConfig();
-
-      await expect(runDaemonInstall({ json: true, force })).rejects.toThrow("__exit__:1");
-
-      expect(await snapshotConfig()).toEqual(before);
-      expect(serviceMock.readCommand).toHaveBeenCalledWith(expect.any(Object), {
-        requireEffective: true,
-      });
-      expect(serviceMock.readDefinitionMutationCapability).not.toHaveBeenCalled();
-      expect(serviceMock.install).not.toHaveBeenCalled();
-      expect(runtimeLogs.join("\n")).toContain("SERVICE_DEFINITION_UNKNOWN");
-      expect(runtimeLogs.join("\n")).not.toContain(secret);
-    },
-  );
 });

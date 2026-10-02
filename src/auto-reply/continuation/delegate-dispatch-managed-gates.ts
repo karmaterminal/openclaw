@@ -34,7 +34,7 @@ export async function partitionManagedDelegatesForRuntime(params: {
       delegate.returnOptions?.artifacts === "required";
     if (managed && delegate.flowId) {
       try {
-        assertDelegateArtifactPolicyPrepared(delegate.flowId);
+        await assertDelegateArtifactPolicyPrepared(delegate.flowId);
       } catch (error) {
         if (
           error instanceof MissingDelegateArtifactPolicyError ||

@@ -58,7 +58,7 @@ export async function rejectPostCompactionDelegate(
     (delegate.returnOptions?.artifacts === "optional" ||
       delegate.returnOptions?.artifacts === "required")
   ) {
-    removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
+    await removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
   }
   return failed;
 }

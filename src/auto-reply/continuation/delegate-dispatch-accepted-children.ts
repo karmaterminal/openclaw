@@ -77,10 +77,10 @@ async function readClaimedDelegateAdmission(
   );
   if (
     managedArtifacts &&
-    hasRecordedDelegateArtifactCompletionForProducer({
+    (await hasRecordedDelegateArtifactCompletionForProducer({
       flowId: delegate.flowId,
       producerSessionKey: childSessionKey,
-    })
+    }))
   ) {
     return {
       kind: "admitted",

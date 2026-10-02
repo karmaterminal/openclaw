@@ -103,7 +103,13 @@ describe("clearSessionResetRuntimeState", () => {
     const state = getEmbeddedSessionPromptState("old-session");
     state.sentUserTurnIds.add("sent-user-turn");
 
-    await clearSessionResetRuntimeState(["old-session"], { agentId: "main", reason: "reset" });
+    await clearSessionResetRuntimeState(["old-session"], {
+      agentId: "main",
+      reason: "reset",
+      sessionKey: "agent:main:slack:room:1",
+      activeReplySessionId: "old-session",
+      assertCurrent: () => {},
+    });
 
     expect(getEmbeddedSessionPromptState("old-session")).not.toBe(state);
   });
@@ -118,6 +124,8 @@ describe("clearSessionResetRuntimeState", () => {
       {
         agentId: "main",
         reason: "reset",
+        sessionKey: "alpha",
+        assertCurrent: () => {},
       },
     );
 
@@ -136,6 +144,8 @@ describe("clearSessionResetRuntimeState", () => {
     const result = await clearSessionResetRuntimeState(["global", "agent:beta:global"], {
       agentId: " Alpha ",
       reason: "reset",
+      sessionKey: "global",
+      assertCurrent: () => {},
     });
 
     expect(result.systemEventsCleared).toBe(1);
@@ -162,6 +172,8 @@ describe("clearSessionResetRuntimeState", () => {
       agentId: "main",
       activeReplySessionId: "old-session",
       reason: "reset",
+      sessionKey: "agent:main:slack:room:1",
+      assertCurrent: () => {},
     });
 
     expect(cancel).toHaveBeenCalledWith("restart");
@@ -186,6 +198,8 @@ describe("clearSessionResetRuntimeState", () => {
       agentId: "main",
       activeReplySessionId: "old-session",
       reason: "reset",
+      sessionKey: "agent:main:slack:room:1",
+      assertCurrent: () => {},
     });
 
     expect(replyRunRegistry.get("agent:main:slack:room:1")).toBe(operation);
@@ -217,6 +231,8 @@ describe("clearSessionResetRuntimeState", () => {
       agentId: "main",
       activeReplySessionId: "old-session",
       reason: "reset",
+      sessionKey: "agent:main:slack:room:1",
+      assertCurrent: () => {},
     });
 
     expect(replacement).toBeDefined();
@@ -234,6 +250,8 @@ describe("clearSessionResetRuntimeState", () => {
       agentId: "main",
       activeReplySessionId: "old-session",
       reason: "reset",
+      sessionKey: "agent:main:slack:room:1",
+      assertCurrent: () => {},
     });
 
     expect(operation.phase).toBe("queued");
@@ -347,7 +365,12 @@ describe("clearSessionResetRuntimeState", () => {
             registerContinuationTimerHandle(sessionKey, timer);
             expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
 
-            await clearSessionResetRuntimeState([sessionKey], { agentId: "main", reason });
+            await clearSessionResetRuntimeState([sessionKey], {
+              agentId: "main",
+              reason,
+              sessionKey,
+              assertCurrent: () => {},
+            });
             await vi.advanceTimersByTimeAsync(0);
 
             const records = new Map(

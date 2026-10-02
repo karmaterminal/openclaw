@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { installStatementInvalidation } from "../infra/kysely-sync-cache-state.js";
+import {
+  normalizeDatabasePath,
+  readDatabasePathIdentitySync,
+  type DatabaseFileIdentity,
+} from "../infra/sqlite-worker-identity.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 
 type AgentDatabaseOwner = { db: DatabaseSync };
@@ -17,6 +22,7 @@ const identities = resolveGlobalSingleton(
         birthtime: string | undefined;
         incarnation: string;
         filename: string;
+        canonicalPath: string;
       }
     >(),
 );
@@ -30,14 +36,18 @@ export function registerOpenClawAgentDatabaseIdentity(db: DatabaseSync): void {
   // and read-only retainers reach this open without a Kysely instance to
   // install the wrapper for them.
   installStatementInvalidation(db);
-  const filename = db.location() ?? "";
-  const file = filename ? statSync(filename, { bigint: true }) : undefined;
-  const identity = file ? `${file.dev}:${file.ino}` : Symbol("incognito-agent-database");
+  const filename = normalizeDatabasePath(db.location() ?? "");
+  const file = filename ? readDatabasePathIdentitySync(filename) : undefined;
+  if (file && !file.key.startsWith("file:")) {
+    throw new Error("OpenClaw agent database disappeared before identity registration");
+  }
+  const identity = file ? file.key.slice("file:".length) : Symbol("incognito-agent-database");
   identities.set(db, {
     identity,
-    birthtime: file?.birthtimeNs.toString(),
+    birthtime: file?.birthtime,
     incarnation: randomUUID(),
     filename,
+    canonicalPath: file?.canonicalPath ?? filename,
   });
 }
 
@@ -66,11 +76,25 @@ export function isOpenClawAgentDatabasePathCurrent(
   if (typeof identity === "symbol") {
     return true;
   }
-  if (database.db.location() !== filename) {
+  if (normalizeDatabasePath(database.db.location() ?? "") !== filename) {
     return false;
   }
   const current = statSync(database.path, { bigint: true, throwIfNoEntry: false });
   return current !== undefined && identity === `${current.dev}:${current.ino}`;
+}
+
+export function assertOpenClawAgentDatabaseIdentity(
+  database: AgentDatabaseOwner & { path: string },
+  expected: DatabaseFileIdentity,
+): void {
+  const identity = readOpenClawAgentDatabaseIdentity(database);
+  if (
+    `file:${String(identity.identity)}` !== expected.key ||
+    (expected.birthtime !== undefined && identity.birthtime !== expected.birthtime) ||
+    !isOpenClawAgentDatabasePathCurrent(database)
+  ) {
+    throw new Error("Agent database changed during repair admission");
+  }
 }
 
 export type OpenClawAgentDatabaseClaim = {

@@ -5,17 +5,15 @@ import {
   type OpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
 import {
-  deliveryQueueEntriesQuery,
+  loadDeliveryQueueEntryResultInDatabase,
   terminalizeBoundDeliveryQueueEntry,
   type DeliveryQueueReadMode,
 } from "./delivery-queue-sqlite-bound.js";
-import {
-  inflateDeliveryQueueEntryResult,
-  type DeliveryQueueEntryLoadResult,
-} from "./delivery-queue-sqlite-codec.js";
+import type { DeliveryQueueEntryLoadResult } from "./delivery-queue-sqlite-codec.js";
 import {
   countPendingDeliveryQueueEntriesInDatabase,
   getDeliveryQueueEntryOwnersInDatabase,
+  loadDeliveryQueueEntryResultsInDatabase,
   prepareDeliveryQueueTerminalEntry,
   terminalizePendingDeliveryQueueEntryInDatabase,
   type DeliveryQueueStoredStatus,
@@ -32,7 +30,6 @@ import {
   type DeliveryQueueStateContext,
 } from "./delivery-queue-state-context.js";
 import { executeDeliveryQueueOperation } from "./delivery-queue-worker-store.js";
-import { executeSqliteQuerySync, executeSqliteQueryTakeFirstSync } from "./kysely-sync.js";
 
 export type {
   DeliveryQueueCompletionRetention,
@@ -82,12 +79,12 @@ function loadDeliveryQueueEntryResult(
   mode: DeliveryQueueReadMode = "pending",
   context?: DeliveryQueueStateContext,
 ): DeliveryQueueEntryLoadResult | null {
-  const database = openStateDatabase(stateDir, context);
-  const row = executeSqliteQueryTakeFirstSync(
-    database.db,
-    deliveryQueueEntriesQuery(database, [queueName], mode).where("id", "=", id),
+  return loadDeliveryQueueEntryResultInDatabase(
+    openStateDatabase(stateDir, context),
+    queueName,
+    id,
+    mode,
   );
-  return row ? inflateDeliveryQueueEntryResult(row) : null;
 }
 
 /** Read row status without hiding dead-lettered entries. */
@@ -120,14 +117,11 @@ function loadDeliveryQueueEntryResults(
   mode: DeliveryQueueReadMode = "pending",
   context?: DeliveryQueueStateContext,
 ): DeliveryQueueEntryLoadResult[] {
-  const database = openStateDatabase(stateDir, context);
-  const rows = executeSqliteQuerySync(
-    database.db,
-    deliveryQueueEntriesQuery(database, [queueName], mode)
-      .orderBy("enqueued_at", "asc")
-      .orderBy("id", "asc"),
-  ).rows;
-  return rows.map(inflateDeliveryQueueEntryResult);
+  return loadDeliveryQueueEntryResultsInDatabase(
+    openStateDatabase(stateDir, context),
+    queueName,
+    mode,
+  );
 }
 
 /** Count dead-lettered entries per queue namespace for coarse health reporting. */

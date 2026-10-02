@@ -7,10 +7,9 @@ import {
 import type { SubagentRunOutcome } from "../subagent-run-outcome.types.js";
 import { loadSessionEntryByKey } from "./subagent-announce-delivery.js";
 import { subagentAnnounceDeps } from "./subagent-announce-deps.js";
-import { readSessionIdByKeySync } from "./subagent-announce-session-id.js";
 import type { SubagentAnnounceFlowParams } from "./subagent-announce.types.js";
 
-export function finalizeSubagentAnnounceArtifacts(finalization: {
+export async function finalizeSubagentAnnounceArtifacts(finalization: {
   cfg: ReturnType<typeof subagentAnnounceDeps.getRuntimeConfig>;
   flow: Pick<
     SubagentAnnounceFlowParams,
@@ -26,29 +25,33 @@ export function finalizeSubagentAnnounceArtifacts(finalization: {
   const announceSessionId = finalization.isChildSessionEffectsCurrent()
     ? finalization.childSessionId || "unknown"
     : "unknown";
-  const artifactFinalization = finalization.isChildSessionEffectsCurrent()
-    ? finalizeDelegateArtifacts({
-        producerSessionKey: flow.childSessionKey,
-        producerSessionId: announceSessionId,
-        producerRunId: flow.childRunId,
-        completionId: announceId,
-        finalizationKey: `delegate-artifact-finalization:${announceId}`,
-        completionStatus: finalization.outcomeStatus,
-        completedAt: flow.endedAt ?? Date.now(),
-        silent: flow.silentAnnounce === true,
-        runtimeEnabled: artifactConfig.enabled,
-        crossSessionEnabled: artifactConfig.crossSessionTargeting === "enabled",
-        // Runs inside finalization's synchronous transaction: a synchronous read.
-        resolveSessionId: readSessionIdByKeySync,
-      })
-    : ({ status: "not-configured" } as const);
+  // Policies exist only for continuation-delegate child runs, so any other run
+  // is "not-configured" without a shared-state command.
+  const artifactFinalization =
+    finalization.isChildSessionEffectsCurrent() &&
+    flow.childRunId.startsWith("continuation-delegate-")
+      ? await finalizeDelegateArtifacts({
+          producerSessionKey: flow.childSessionKey,
+          producerSessionId: announceSessionId,
+          producerRunId: flow.childRunId,
+          completionId: announceId,
+          finalizationKey: `delegate-artifact-finalization:${announceId}`,
+          completionStatus: finalization.outcomeStatus,
+          completedAt: flow.endedAt ?? Date.now(),
+          silent: flow.silentAnnounce === true,
+          runtimeEnabled: artifactConfig.enabled,
+          crossSessionEnabled: artifactConfig.crossSessionTargeting === "enabled",
+          resolveSessionId: async (sessionKey) =>
+            (await loadSessionEntryByKey(sessionKey))?.sessionId,
+        })
+      : ({ status: "not-configured" } as const);
   return { announceSessionId, artifactFinalization };
 }
 
 /** Prepares each finalized recipient projection; "deferred" means the announce must retry. */
 export async function prepareSubagentAnnounceArtifactProjections(
-  artifactFinalization: ReturnType<
-    typeof finalizeSubagentAnnounceArtifacts
+  artifactFinalization: Awaited<
+    ReturnType<typeof finalizeSubagentAnnounceArtifacts>
   >["artifactFinalization"],
 ): Promise<Map<string, DelegateArtifactRecipientProjectionV1> | "deferred" | undefined> {
   const finalizedArtifactProjections =
@@ -60,7 +63,7 @@ export async function prepareSubagentAnnounceArtifactProjections(
     );
     artifactProjections = new Map();
     for (const [sessionKey, projection] of finalizedArtifactProjections) {
-      const delivery = prepareDelegateArtifactDelivery({
+      const delivery = await prepareDelegateArtifactDelivery({
         projection,
         runtimeEnabled: deliveryConfig.enabled,
         crossSessionEnabled: deliveryConfig.crossSessionTargeting === "enabled",

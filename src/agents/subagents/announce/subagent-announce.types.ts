@@ -1,7 +1,6 @@
 /** Subagent announce flow parameter and outcome types. */
 import type { DeliveryContext } from "../../../utils/delivery-context.shared.js";
 import type { AgentRunTerminalReplySnapshot } from "../../agent-run-terminal-reply.types.js";
-import type { SubagentAnnounceType } from "../../subagent-announce-message.js";
 import type { SpawnSubagentMode } from "../spawn/subagent-spawn.types.js";
 import type { SubagentRunOutcome } from "../subagent-run-outcome.types.js";
 import type { SubagentAnnounceDeliveryResult } from "./subagent-announce-dispatch.js";
@@ -18,7 +17,6 @@ export type SubagentAnnounceFlowParams = {
   requesterSessionKey: string;
   requesterAgentId?: string;
   requesterOrigin?: DeliveryContext;
-  requesterDisplayKey: string;
   task: string;
   timeoutMs: number;
   cleanup: "delete" | "keep";
@@ -29,15 +27,14 @@ export type SubagentAnnounceFlowParams = {
    * completes with NO_REPLY despite an earlier final summary already existing.
    */
   fallbackReply?: string;
-  waitForCompletion?: boolean;
   startedAt?: number;
   endedAt?: number;
   label?: string;
   outcome?: SubagentRunOutcome;
-  announceType?: SubagentAnnounceType;
   expectsCompletionMessage?: boolean;
   completionTarget?: "parent";
   completionRequesterSessionId?: string;
+  completionRequesterLifecycleRevision?: string;
   spawnMode?: SpawnSubagentMode;
   wakeOnDescendantSettle?: boolean;
   /** Deliver only frozen terminal facts; never inspect or mutate the child session. */
@@ -50,7 +47,6 @@ export type SubagentAnnounceFlowParams = {
   isCompletionDeliveryAllowed?: () => boolean;
   isCompletionOwnedByRequesterYield?: () => boolean;
   signal?: AbortSignal;
-  bestEffortDeliver?: boolean;
   onDeliveryResult?: (delivery: SubagentAnnounceDeliveryResult) => void | Promise<void>;
   silentAnnounce?: boolean;
   wakeOnReturn?: boolean;

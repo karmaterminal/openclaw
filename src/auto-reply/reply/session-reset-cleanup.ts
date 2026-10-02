@@ -7,14 +7,22 @@ import {
   consumeSelectedSystemEventEntries,
   peekSystemEventEntries,
 } from "../../infra/system-events.js";
-import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
+import {
+  agentSessionKeysMatchByRequestKey,
+  normalizeAgentId,
+  normalizeOptionalAgentId,
+  parseAgentSessionKey,
+} from "../../routing/session-key.js";
 import { abortContinuationDispatchClaims } from "../continuation/continuation-dispatch-claims.js";
 import { clearDelegateDispatchHedge } from "../continuation/delegate-dispatch-hedge.js";
 import { cancelSessionContinuations } from "../continuation/session-reset.js";
 import { clearTrackedContinuationTimers } from "../continuation/state.js";
 import { clearContinuationWorkDispatch } from "../continuation/work-dispatch.js";
-import { clearSessionQueues, type ClearSessionQueueResult } from "./queue/cleanup.js";
-import { clearReplyRunForResetBySessionId } from "./reply-run-registry.js";
+import { clearSessionLifecycleQueues, type ClearSessionQueueResult } from "./queue/cleanup.js";
+import {
+  clearReplyRunForResetBySessionId,
+  resolveActiveReplyOperationForSessionId,
+} from "./reply-run-registry.js";
 
 export class SessionResetCleanupError extends Error {}
 
@@ -81,10 +89,13 @@ export async function clearSessionResetRuntimeState(
   keys: Array<string | undefined>,
   opts: {
     agentId: string;
+    sessionKey: string;
     reason: SessionRuntimeCleanupReason;
     activeReplySessionId?: string;
+    assertCurrent: () => void;
   },
 ): Promise<ClearSessionResetRuntimeStateResult> {
+  opts.assertCurrent();
   const normalizedKeys = [
     ...new Set(keys.flatMap((key) => (typeof key === "string" && key.trim() ? [key.trim()] : []))),
   ];
@@ -95,13 +106,21 @@ export async function clearSessionResetRuntimeState(
     for (const key of normalizedKeys) {
       await cancelSessionContinuations(key);
     }
+    opts.assertCurrent();
   }
 
-  clearEmbeddedSessionPromptStates(keys);
-  const cleared = clearSessionQueues(keys);
+  clearEmbeddedSessionPromptStates([opts.activeReplySessionId]);
+  const cleared = clearSessionLifecycleQueues({
+    keys,
+    agentId: opts.agentId,
+    sessionKey: opts.sessionKey,
+    sessionId: opts.activeReplySessionId,
+    assertCurrent: opts.assertCurrent,
+  });
   let systemEventsCleared = 0;
 
   for (const key of cleared.keys) {
+    opts.assertCurrent();
     if (interruptContinuations) {
       abortContinuationDispatchClaims(key);
       clearContinuationWorkDispatch(key);
@@ -118,7 +137,22 @@ export async function clearSessionResetRuntimeState(
   }
 
   if (opts.activeReplySessionId) {
-    clearReplyRunForResetBySessionId(opts.activeReplySessionId);
+    opts.assertCurrent();
+    const operation = resolveActiveReplyOperationForSessionId(opts.activeReplySessionId);
+    const ownerAgentId =
+      normalizeOptionalAgentId(operation?.agentId) ?? parseAgentSessionKey(operation?.key)?.agentId;
+    if (
+      operation &&
+      ownerAgentId === normalizeAgentId(opts.agentId) &&
+      operation.sessionId === opts.activeReplySessionId &&
+      cleared.keys.some(
+        (key) =>
+          key !== opts.activeReplySessionId &&
+          agentSessionKeysMatchByRequestKey(operation.key, key),
+      )
+    ) {
+      clearReplyRunForResetBySessionId(opts.activeReplySessionId);
+    }
   }
 
   return {

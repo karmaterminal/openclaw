@@ -43,10 +43,8 @@ import {
   type QueuedSessionDelivery,
   type QueuedSessionDeliveryPayload,
 } from "./session-delivery-queue.records.js";
-import type {
-  SessionDeliveryAgentRunUpdate,
-  SessionDeliveryWorkerOperations,
-} from "./session-delivery-queue.worker-contract.js";
+import type { SessionDeliveryAgentRunUpdate } from "./session-delivery-queue.worker-contract.js";
+import type { SessionDeliveryWorkerOperations } from "./session-delivery-queue.worker.js";
 import { createSqliteWorkerWriteAdmission } from "./sqlite-worker-store.js";
 
 /** Queue publication and continuation deletion share the existing session lifecycle owner. */

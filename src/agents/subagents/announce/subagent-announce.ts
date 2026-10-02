@@ -16,11 +16,7 @@ import {
 } from "../../announce-idempotency.js";
 import { isDelegateArtifactReturnConfigured } from "../../delegate-artifacts.js";
 import { buildSubagentAnnounceMessages } from "../../subagent-announce-message.js";
-import {
-  normalizeSubagentAnnounceReply,
-  warnIfCronAnnounceSkipped,
-} from "../../subagent-announce-reply.js";
-import { isAnnounceSkip } from "../../tools/sessions-send-tokens.js";
+import { normalizeSubagentAnnounceReply } from "../../subagent-announce-reply.js";
 import {
   countPendingDescendantRuns,
   getLatestSubagentRunByChildSessionKey,
@@ -49,7 +45,6 @@ import {
   resolveSubagentCompletionOrigin,
 } from "./subagent-announce-origin.js";
 import {
-  applySubagentWaitOutcome,
   readChildCompletionFindings,
   readSubagentRunAnnounceResult,
   buildCompactAnnounceStatsLine,
@@ -58,7 +53,6 @@ import {
   readLatestSubagentOutputWithRetry,
   readSubagentOutput,
   readSubagentTimeoutProgress,
-  waitForSubagentRunOutcome,
 } from "./subagent-announce-output.js";
 import {
   createOwnerBoundContinuationEntryLoader,
@@ -76,7 +70,6 @@ import type {
 
 export { captureSubagentCompletionReply } from "./subagent-announce-output.js";
 export { testing } from "./subagent-announce-deps.js";
-export type { SubagentAnnounceType } from "../../subagent-announce-message.js";
 export type {
   SubagentAnnounceFlowOutcome,
   SubagentAnnounceFlowParams,
@@ -106,7 +99,6 @@ async function runSubagentAnnounceFlowBound(
   let announceOutcome: SubagentAnnounceFlowOutcome = "retryable";
   let failureStage = "session-owner-resolution";
   const expectsCompletionMessage = params.expectsCompletionMessage === true;
-  const announceType = params.announceType ?? "subagent task";
   let shouldDeleteChildSession = params.cleanup === "delete";
   const childSessionEffectsAllowed = () =>
     params.suppressChildSessionEffects !== true &&
@@ -147,7 +139,7 @@ async function runSubagentAnnounceFlowBound(
         : params.terminalReply?.disposition === "silent"
           ? SILENT_REPLY_TOKEN
           : params.roundOneReply;
-    let outcome: SubagentRunOutcome | undefined = params.outcome;
+    let outcome: SubagentRunOutcome = params.outcome ?? { status: "unknown" };
     if (
       childSessionId &&
       (await prepareChildSessionEffects()) &&
@@ -164,22 +156,6 @@ async function runSubagentAnnounceFlowBound(
       }
     }
 
-    if (!reply && params.waitForCompletion !== false) {
-      const wait = await waitForSubagentRunOutcome(params.childRunId, settleTimeoutMs);
-      const applied = applySubagentWaitOutcome({
-        wait,
-        outcome,
-        startedAt: params.startedAt,
-        endedAt: params.endedAt,
-      });
-      outcome = applied.outcome;
-      params.startedAt = applied.startedAt;
-      params.endedAt = applied.endedAt;
-    }
-
-    if (!outcome) {
-      outcome = { status: "unknown" };
-    }
     const failedTerminalOutcome = outcome.status === "error";
     const allowFailedOutputCapture =
       !failedTerminalOutcome || (!params.roundOneReply && !params.fallbackReply);
@@ -189,7 +165,7 @@ async function runSubagentAnnounceFlowBound(
     const managedArtifactReturn =
       childSessionEffectsAllowed() &&
       params.childRunId.startsWith("continuation-delegate-") &&
-      isDelegateArtifactReturnConfigured(params.childRunId);
+      (await isDelegateArtifactReturnConfigured(params.childRunId));
     let requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey, {
       cfg: subagentAnnounceDeps.getRuntimeConfig(),
       agentId: targetRequesterAgentId,
@@ -261,7 +237,7 @@ async function runSubagentAnnounceFlowBound(
                 }
               }),
             );
-      if (pendingChildDescendantRuns > 0 && announceType !== "cron job") {
+      if (pendingChildDescendantRuns > 0) {
         shouldDeleteChildSession = false;
         return "retryable";
       }
@@ -335,8 +311,7 @@ async function runSubagentAnnounceFlowBound(
       ? undefined
       : normalizeOptionalString(params.fallbackReply);
     const hasVisibleFallback =
-      Boolean(fallbackReply) &&
-      !(isAnnounceSkip(fallbackReply) || isSilentReplyText(fallbackReply, SILENT_REPLY_TOKEN));
+      Boolean(fallbackReply) && !isSilentReplyText(fallbackReply, SILENT_REPLY_TOKEN);
     const cleanedFallbackReply = hasVisibleFallback
       ? (normalizeSubagentAnnounceReply(fallbackReply ?? "") ?? undefined)
       : undefined;
@@ -353,7 +328,7 @@ async function runSubagentAnnounceFlowBound(
     }
 
     if (params.terminalReply?.disposition === "silent") {
-      if (!hasVisibleFallback && (isAnnounceSkip(fallbackReply) || !expectsCompletionMessage)) {
+      if (!hasVisibleFallback && !expectsCompletionMessage) {
         return "delivered";
       }
       reply = cleanedFallbackReply;
@@ -402,43 +377,11 @@ async function runSubagentAnnounceFlowBound(
         reply = fallbackReply;
       }
 
-      // A worker can finish just after the first wait request timed out.
-      // If we already have real completion content, do one cached recheck so
-      // the final completion event prefers the authoritative terminal state.
-      // This is best-effort; if the recheck fails, keep the known timeout
-      // outcome instead of dropping the announcement entirely.
-      if (outcome?.status === "timeout" && reply?.trim() && params.waitForCompletion !== false) {
-        try {
-          const rechecked = await waitForSubagentRunOutcome(params.childRunId, 0);
-          const applied = applySubagentWaitOutcome({
-            wait: rechecked,
-            outcome,
-            startedAt: params.startedAt,
-            endedAt: params.endedAt,
-          });
-          outcome = applied.outcome;
-          params.startedAt = applied.startedAt;
-          params.endedAt = applied.endedAt;
-        } catch {
-          // Best-effort recheck; keep the existing timeout outcome on failure.
-        }
-      }
-
-      const replyIsAnnounceSkip = isAnnounceSkip(reply);
-      if (replyIsAnnounceSkip || isSilentReplyText(reply, SILENT_REPLY_TOKEN)) {
+      if (isSilentReplyText(reply, SILENT_REPLY_TOKEN)) {
         if (hasVisibleFallback && cleanedFallbackReply) {
           reply = cleanedFallbackReply;
         } else {
-          warnIfCronAnnounceSkipped({
-            reply,
-            requesterSessionKey: targetRequesterSessionKey,
-            childRunId: params.childRunId,
-          });
-          const suppressCompletion =
-            replyIsAnnounceSkip ||
-            isAnnounceSkip(fallbackReply) ||
-            !expectsCompletionMessage ||
-            hasVisibleFallback;
+          const suppressCompletion = !expectsCompletionMessage || hasVisibleFallback;
           if (managedArtifactReturn && suppressCompletion) {
             reply = "(no output)";
           } else if (suppressCompletion) {
@@ -459,10 +402,6 @@ async function runSubagentAnnounceFlowBound(
       }
     }
 
-    if (!outcome) {
-      outcome = { status: "unknown" };
-    }
-
     const childSessionCurrent = await prepareChildSessionEffects();
     if (!childSessionCurrent || !childSessionEffectsAllowed()) {
       reply = params.roundOneReply ?? params.fallbackReply;
@@ -473,11 +412,10 @@ async function runSubagentAnnounceFlowBound(
       ) {
         reply = hasVisibleFallback ? cleanedFallbackReply : undefined;
       }
-      outcome = params.outcome ?? { status: "unknown" };
     }
 
     const cfg = subagentAnnounceDeps.getRuntimeConfig();
-    const { announceSessionId, artifactFinalization } = finalizeSubagentAnnounceArtifacts({
+    const { announceSessionId, artifactFinalization } = await finalizeSubagentAnnounceArtifacts({
       cfg,
       flow: params,
       childSessionId,
@@ -602,8 +540,6 @@ async function runSubagentAnnounceFlowBound(
     const { internalEvents, triggerMessage, artifactTriggerMessages } =
       buildSubagentAnnounceMessages({
         requesterIsSubagent,
-        announceType,
-        expectsCompletionMessage,
         completionTarget: params.completionTarget,
         childSessionKey: params.childSessionKey,
         childSessionId: announceSessionId,
@@ -675,7 +611,6 @@ async function runSubagentAnnounceFlowBound(
       requesterSessionKey: targetRequesterSessionKey,
       requesterAgentId: targetRequesterAgentId,
       triggerMessage,
-      steerMessage: triggerMessage,
       internalEvents,
       requesterSessionOrigin: targetRequesterOrigin,
       completionDirectOrigin,
@@ -690,7 +625,7 @@ async function runSubagentAnnounceFlowBound(
       expectsCompletionMessage,
       completionTarget: params.completionTarget,
       completionRequesterSessionId: params.completionRequesterSessionId,
-      bestEffortDeliver: params.bestEffortDeliver,
+      completionRequesterLifecycleRevision: params.completionRequesterLifecycleRevision,
       directIdempotencyKey,
       onDeliveryResult: reportDeliveryResult,
       signal: params.signal,

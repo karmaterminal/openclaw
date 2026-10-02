@@ -1,4 +1,3 @@
-/** Coordinates subagent registration, lifecycle, delivery, steering, recovery, and persistence. */
 import type { AgentWaitParams } from "../../../../packages/gateway-protocol/src/index.js";
 import { getRuntimeConfig } from "../../../config/config.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
@@ -11,18 +10,23 @@ import {
   bindGatewayContextResolver,
   getGatewayContextResolver,
 } from "../../../plugins/runtime/gateway-request-scope.js";
-import { runWithGatewayIndependentRootWorkAdmission } from "../../../process/gateway-work-admission.js";
+import {
+  isGatewayRestartDraining,
+  runWithGatewayDetachedWorkAdmission,
+  runWithGatewayIndependentRootWorkAdmission,
+} from "../../../process/gateway-work-admission.js";
+import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import { prependAgentSteeringPrompt } from "../../agent-steering-queue.js";
-import { purgeExpiredDelegateArtifacts } from "../../delegate-artifacts.js";
+import { startExpiredDelegateArtifactPurge } from "../../delegate-artifacts.js";
 import { resolveAgentTimeoutMs } from "../../timeout.js";
 import { reconcileRetiredSubagentCancellation } from "../completion/subagent-completion-admission.store.js";
 import { terminateAcceptedCollectorRun } from "../spawn/subagent-spawn-cleanup.js";
 import { isDeliverySuspended } from "./subagent-delivery-state.js";
+import { runSubagentRegistryActivation } from "./subagent-registry-activation.js";
 import { runRegistrySubagentAnnounceFlow } from "./subagent-registry-announce-flow.js";
 import { createSubagentRegistryCompletionRuntime } from "./subagent-registry-completion-runtime.js";
 import { emitSubagentProgressEndedHook } from "./subagent-registry-completion.js";
 import { createSubagentRegistryContextCleanup } from "./subagent-registry-context-cleanup.js";
-import { createSubagentDeliveryResumeScheduling } from "./subagent-registry-delivery-resume.js";
 import {
   callSubagentRegistryGateway,
   loadSubagentAnnounceModule,
@@ -43,6 +47,7 @@ import {
   persistSubagentRunsAsyncOrThrow,
   persistSubagentRunsOrThrow,
 } from "./subagent-registry-persist.js";
+import { assertSubagentRegistryWriteSourceCurrent } from "./subagent-registry-persistence.js";
 import { createSubagentRegistryPublicApi } from "./subagent-registry-public-api.js";
 import {
   countPendingDescendantRuns,
@@ -52,6 +57,11 @@ import { createSubagentRegistryRestorer } from "./subagent-registry-restore.js";
 import { handleOrphanedSubagentResume } from "./subagent-registry-resume-orphan.js";
 import type { RegisterSubagentRunParams } from "./subagent-registry-run-launch-record.js";
 import type { SubagentRegistrationOwnership } from "./subagent-registry-run-launch.js";
+import {
+  createSweeperRunManagerOperations,
+  type RecordAcceptedSubagentSteerDispatchParams,
+  recordAcceptedSubagentSteerDispatchIfCurrent,
+} from "./subagent-registry-run-manager-bridge.js";
 import { createSubagentRunManager } from "./subagent-registry-run-manager.js";
 import { clearSubagentRunsReadCacheForTest } from "./subagent-registry-state.js";
 import { callGatewayForSweep } from "./subagent-registry-sweep-gateway.js";
@@ -60,11 +70,8 @@ import {
   createSubagentRegistrySweeper,
   retireSupersededSubagentRun as retireSupersededSubagentRunForSweep,
 } from "./subagent-registry-sweeper.js";
-import type {
-  RegisterSubagentRunOptions,
-  SubagentAcceptedSteerDispatch,
-  SubagentRunRecord,
-} from "./subagent-registry.types.js";
+import type { RegisterSubagentRunOptions, SubagentRunRecord } from "./subagent-registry.types.js";
+import { isRequesterCompletionCohortCurrent } from "./subagent-requester-settle-identity.js";
 import {
   resolveSubagentSessionCompletion,
   resolveSubagentSessionStartedAt,
@@ -72,12 +79,6 @@ import {
 
 export type { SubagentRunRecord } from "./subagent-registry.types.js";
 const log = createSubsystemLogger("agents/subagent-registry");
-
-const subagentRegistryBootstrapState: {
-  pending?: boolean;
-  ready?: boolean;
-  restorer?: ReturnType<typeof createSubagentRegistryRestorer>;
-} = {};
 
 const resumeRetryTimers = new Set<ReturnType<typeof setTimeout>>();
 let activeGatewayContextResolver: GatewayContextResolver | undefined;
@@ -182,16 +183,96 @@ registerSystemEventStoreOwner(
   suspendReplacedNotificationsInBackground,
 );
 
-const { scheduleSubagentDeliveryResumeRetry, finalizeResumedAnnounceGiveUpInBackground } =
-  createSubagentDeliveryResumeScheduling({
-    runs: subagentRuns,
-    resumedRuns,
-    resumeRetryTimers,
-    resumeSubagentRun,
-    finalizeResumedAnnounceGiveUp,
-    warn: (message, meta) => log.warn(message, meta),
-    admissionRetryDelayMs: GATEWAY_ADMISSION_RETRY_DELAY_MS,
+function scheduleSubagentDeliveryResumeRetry(
+  runId: string,
+  scheduledEntry: SubagentRunRecord,
+  waitMs: number,
+  stateContext = captureOpenClawStateWorkerContext(),
+) {
+  const generation = scheduledEntry.generation;
+  const timer = setTimeout(() => {
+    resumeRetryTimers.delete(timer);
+    void runWithGatewayDetachedWorkAdmission(async () => {
+      assertSubagentRegistryWriteSourceCurrent(stateContext);
+      if (
+        subagentRuns.get(runId) !== scheduledEntry ||
+        scheduledEntry.generation !== generation ||
+        scheduledEntry.cleanupHandled
+      ) {
+        return;
+      }
+      resumedRuns.delete(runId);
+      resumeSubagentRun(runId);
+    }, "subagents:resume-retry").catch((error: unknown) => {
+      log.warn("failed to resume subagent delivery retry", { runId, error });
+      if (
+        subagentRuns.get(runId) !== scheduledEntry ||
+        scheduledEntry.generation !== generation ||
+        scheduledEntry.cleanupHandled
+      ) {
+        return;
+      }
+      try {
+        assertSubagentRegistryWriteSourceCurrent(stateContext);
+      } catch {
+        resumedRuns.delete(runId);
+        return;
+      }
+      if (
+        isGatewayRestartDraining() &&
+        subagentRuns.get(runId) === scheduledEntry &&
+        typeof scheduledEntry.cleanupCompletedAt !== "number"
+      ) {
+        scheduleSubagentDeliveryResumeRetry(
+          runId,
+          scheduledEntry,
+          Math.max(waitMs, GATEWAY_ADMISSION_RETRY_DELAY_MS),
+          stateContext,
+        );
+        return;
+      }
+      resumedRuns.delete(runId);
+    });
+  }, waitMs);
+  timer.unref?.();
+  resumeRetryTimers.add(timer);
+}
+
+function finalizeResumedAnnounceGiveUpInBackground(
+  runId: string,
+  entry: SubagentRunRecord,
+  reason: "expiry" | "permanent_failure",
+) {
+  const stateContext = captureOpenClawStateWorkerContext();
+  const generation = entry.generation;
+  void runWithGatewayDetachedWorkAdmission(async () => {
+    assertSubagentRegistryWriteSourceCurrent(stateContext);
+    if (subagentRuns.get(runId) !== entry || entry.generation !== generation) {
+      return;
+    }
+    await finalizeResumedAnnounceGiveUp({ runId, entry, reason, stateContext });
+  }, "subagents:delivery-finalize").catch((error: unknown) => {
+    log.warn("failed to finalize exhausted subagent delivery", { runId, reason, error });
+    try {
+      assertSubagentRegistryWriteSourceCurrent(stateContext);
+    } catch {
+      return;
+    }
+    if (
+      isGatewayRestartDraining() &&
+      subagentRuns.get(runId) === entry &&
+      typeof entry.cleanupCompletedAt !== "number"
+    ) {
+      scheduleSubagentDeliveryResumeRetry(
+        runId,
+        entry,
+        GATEWAY_ADMISSION_RETRY_DELAY_MS,
+        stateContext,
+      );
+      resumedRuns.add(runId);
+    }
   });
+}
 
 export function resumeSubagentRun(runId: string, source: "live" | "restore" = "live") {
   if (!runId || resumedRuns.has(runId)) {
@@ -263,7 +344,8 @@ function resumeFinalizedSubagentRun(
   if (
     entry.requesterSettleWake &&
     typeof entry.execution.endedAt === "number" &&
-    !yieldedWakeWaitingForDelivery
+    (!yieldedWakeWaitingForDelivery ||
+      (entry.pauseReason === "sessions_yield" && entry.requesterSettleWake.pauseNotice))
   ) {
     resumeRequesterSettleWake(runId, entry, source);
     return;
@@ -303,19 +385,14 @@ function resumeFinalizedSubagentRun(
   }
 
   if (typeof entry.execution.endedAt === "number" && entry.execution.endedAt > 0) {
-    if (entry.killReconciliation) {
-      // Without a pending requester wake, the sweeper owns provisional cancellation cleanup.
+    // Without a pending requester wake, the sweeper owns provisional cancellation cleanup.
+    if (
+      entry.killReconciliation ||
+      contextCleanup.suppressAnnounceForSteerRestart(entry) ||
+      startSubagentAnnounceCleanupFlow(runId, entry)
+    ) {
       resumedRuns.add(runId);
-      return;
     }
-    if (contextCleanup.suppressAnnounceForSteerRestart(entry)) {
-      resumedRuns.add(runId);
-      return;
-    }
-    if (!startSubagentAnnounceCleanupFlow(runId, entry)) {
-      return;
-    }
-    resumedRuns.add(runId);
     return;
   }
 
@@ -393,6 +470,38 @@ function resolveSubagentWaitTimeoutMs(cfg: OpenClawConfig, runTimeoutSeconds?: n
 }
 
 function retireSupersededSubagentRun(runId: string, entry: SubagentRunRecord): Promise<void> {
+  const wake = entry.requesterSettleWake;
+  const cohort = [...getSubagentRunsForChildSession(entry.childSessionKey)].filter((candidate) =>
+    entry.requesterTurnRunId
+      ? candidate.requesterTurnRunId === entry.requesterTurnRunId
+      : wake?.batchRunIds?.includes(candidate.runId) &&
+        candidate.requesterSettleWake?.rearmGeneration === wake.rearmGeneration,
+  );
+  const isCurrent = () =>
+    subagentRuns.get(runId) === entry &&
+    isRequesterCompletionCohortCurrent(entry, cohort, getLatestLiveSubagentRunByChildSessionKey);
+  if (
+    isCurrent() &&
+    entry.expectsCompletionMessage === true &&
+    entry.suppressCompletionDelivery !== true &&
+    !entry.killIntent &&
+    !entry.killReconciliation &&
+    cohort.includes(entry)
+  ) {
+    // A newer task owns session effects, but this cohort still owes the older result.
+    if (entry.cleanupCompletedAt !== undefined) {
+      resumeRequesterSettleWake(runId, entry);
+      return Promise.resolve();
+    }
+    return completeCleanupBookkeeping({
+      runId,
+      entry,
+      cleanup: entry.cleanup,
+      completedAt: Date.now(),
+      preserveTranscript: true,
+      isCurrent,
+    });
+  }
   return retireSupersededSubagentRunForSweep({
     runId,
     entry,
@@ -410,23 +519,11 @@ const subagentSweeper = createSubagentRegistrySweeper({
   clearPendingLifecycleError,
   clearPendingLifecycleTimeout,
   sweepPendingLifecycle: (now) => {
-    purgeExpiredDelegateArtifacts();
+    startExpiredDelegateArtifactPurge();
     pendingLifecycle.sweepExpired(now);
   },
   completeSubagentRunWithRecovery: completionRuntime.completeSubagentRunWithRecovery,
-  clearSubagentRunSteerRestart: (runId, expected, acceptedDispatch, requirePersistence) =>
-    subagentRunManager.clearSubagentRunSteerRestart(
-      runId,
-      expected,
-      acceptedDispatch,
-      requirePersistence,
-    ),
-  recordAcceptedSubagentSpawnRollback: (params) =>
-    subagentRunManager.recordAcceptedSubagentSpawnRollback(params),
-  rollbackSubagentRunRegistration: (params) =>
-    subagentRunManager.rollbackSubagentRunRegistration(params),
-  settleFailedQueuedSubagentLaunch: (runId, error) =>
-    subagentRunManager.settleFailedQueuedSubagentLaunch(runId, error),
+  ...createSweeperRunManagerOperations(() => subagentRunManager),
   getGatewayRecoveryRuntime: () => activeGatewayContextResolver?.()?.recoveryRuntime,
   finalizeInterruptedSubagentRun: completionRuntime.finalizeInterruptedSubagentRun,
   resumeRequesterSettleWake,
@@ -456,6 +553,7 @@ const subagentListener = createSubagentRegistryListener({
   pendingLifecycle,
   onAgentEvent,
   persist: persistSubagentRuns,
+  resumeRequesterSettleWake,
   refreshFrozenResultFromSession,
   completeSubagentRunWithRecovery: completionRuntime.completeSubagentRunWithRecovery,
   warn: (message, meta) => log.warn(message, meta),
@@ -529,20 +627,9 @@ export const startQueuedSubagentRun = subagentRunManager.startQueuedSubagentRun;
 export const settleFailedQueuedSubagentLaunch = subagentRunManager.settleFailedQueuedSubagentLaunch;
 export const clearSubagentRunSteerRestart = subagentRunManager.clearSubagentRunSteerRestart;
 export function recordAcceptedSubagentSteerDispatch(
-  params: SubagentAcceptedSteerDispatch & {
-    runId: string;
-    expected: SubagentRunRecord;
-    expectedDispatch?: SubagentAcceptedSteerDispatch;
-  },
+  params: RecordAcceptedSubagentSteerDispatchParams,
 ) {
-  const owner = subagentRuns.get(params.runId.trim());
-  if (
-    params.expectedDispatch &&
-    (owner !== params.expected || owner.acceptedSteerDispatch !== params.expectedDispatch)
-  ) {
-    return { status: "rejected" as const };
-  }
-  return subagentRunManager.recordAcceptedSubagentSteerDispatch(params);
+  return recordAcceptedSubagentSteerDispatchIfCurrent(subagentRunManager, subagentRuns, params);
 }
 
 /**
@@ -593,7 +680,6 @@ export function adoptPausedSubagentRunForFollowUp(params: {
     // Gateway admission has not started provider work yet. If this owner swap
     // is not durable, reject the dispatch instead of registering a sibling or
     // leaving a live successor that restart recovery cannot identify.
-    persistenceFailure: "throw",
     // Persist the follow-up text so restart recovery cannot reissue the task that
     // the child already yielded on.
     task: params.task,
@@ -603,7 +689,7 @@ export function adoptPausedSubagentRunForFollowUp(params: {
   });
 }
 
-function resetSubagentRegistryForTests(opts?: { persist?: boolean }) {
+function resetSubagentRegistryForTests() {
   clearScheduledResumeTimers();
   for (const timer of resumeRetryTimers) {
     clearTimeout(timer);
@@ -619,20 +705,13 @@ function resetSubagentRegistryForTests(opts?: { persist?: boolean }) {
   subagentRestorer.reset();
   activeGatewayContextResolver = undefined;
   subagentListener.reset();
-  if (opts?.persist !== false) {
-    persistSubagentRuns();
-  }
   return sweeperRetirement;
 }
 
 const testing = {
   failQueuedSubagentRun: subagentRunManager.failQueuedSubagentRun,
-  async sweepOnceForTests() {
-    await subagentSweeper.sweepOnce();
-  },
-  async runSweeperTickForTests() {
-    await subagentSweeper.runTick();
-  },
+  sweepOnceForTests: subagentSweeper.sweepOnce,
+  runSweeperTickForTests: subagentSweeper.runTick,
 } as const;
 
 function addSubagentRunForTests(entry: SubagentRunRecord) {
@@ -640,7 +719,6 @@ function addSubagentRunForTests(entry: SubagentRunRecord) {
 }
 
 export const markSubagentRunTerminated = subagentRunManager.markSubagentRunTerminated;
-export const discardSubagentTerminalDelivery = SubagentLifecycleController.discardTerminalDelivery;
 export const cancelSubagentRequesterSettleWake =
   subagentLifecycleController.cancelRequesterSettleWake;
 
@@ -650,6 +728,7 @@ const publicApi = createSubagentRegistryPublicApi({
   runs: subagentRuns,
   persist: persistSubagentRuns,
   persistOrThrow: persistSubagentRunsOrThrow,
+  persistAsyncOrThrow: persistSubagentRunsAsyncOrThrow,
   // Request-path restore stays worker-mediated: no parent SQLite here. Delegate
   // artifact expiry is enforced at read time and drained by gateway maintenance,
   // registry init, and the sweeper tick.
@@ -670,58 +749,26 @@ export const listSwarmRunsForGroup = publicApi.listSwarmRunsForGroup;
 export const getSwarmRunByLaunchReplayKey = publicApi.getSwarmRunByLaunchReplayKey;
 export const countActiveRunsForSession = publicApi.countActiveRunsForSession;
 export function initSubagentRegistry() {
-  const state = subagentRegistryBootstrapState;
-  if (!state.ready || !state.restorer) {
-    state.pending = true;
-    return undefined;
-  }
-  purgeExpiredDelegateArtifacts();
-  return state.restorer.restoreOnce();
+  startExpiredDelegateArtifactPurge();
+  return subagentRestorer.restoreOnce();
 }
-let resolveRegistryActivation: () => void = () => {};
-const registryActivation = new Promise<void>((resolve) => {
-  resolveRegistryActivation = resolve;
-});
-
 export function activateSubagentRegistry(resolveGatewayContext: GatewayContextResolver) {
   // Reuse the instance's own fenced closure so late-restored siblings share one
   // authority across repeated activation; the raw holder can outlive that instance.
-  let activation: Promise<void>;
-  try {
+  return runSubagentRegistryActivation(() => {
     activeGatewayContextResolver = resolveGatewayContext()?.resolveGatewayContext;
-    activation = subagentRestorer.activate();
-  } catch (error) {
-    resolveRegistryActivation();
-    throw error;
-  }
-  // Settle even when activation rejects: waiters then read persisted rows,
-  // which the registry read path merges regardless of activation.
-  return activation.finally(resolveRegistryActivation);
+    return subagentRestorer.activate();
+  });
 }
-
-/**
- * Settles once this process attempted registry activation. Continuation custody
- * recovery waits on it so upstream's restart recovery owns interrupted
- * children before continuation reads their rows (RFC
- * docs/design/continue-work-signal-v2.md §5.4.4, crash-boundary table).
- */
-export function whenSubagentRegistryActivated(): Promise<void> {
-  return registryActivation;
-}
+export { whenSubagentRegistryActivated } from "./subagent-registry-activation.js";
 export const settleRequesterAfterSessionSpawns = publicApi.settleRequesterAfterSessionSpawns;
 export const markRequesterTurnYielded = publicApi.markRequesterTurnYielded;
+export const markSubagentMessageWait = publicApi.markSubagentMessageWait;
 export const listUnsettledRequesterChildren = publicApi.listUnsettledRequesterChildren;
 export type { UnsettledRequesterChild } from "./subagent-registry-requester-yield.js";
-export { attachRequesterProgressPresentation } from "./subagent-registry-progress-presentation.js";
 
-const bootstrapState = subagentRegistryBootstrapState;
-bootstrapState.restorer = subagentRestorer;
-bootstrapState.ready = true;
-if (bootstrapState.pending) {
-  bootstrapState.pending = false;
-  purgeExpiredDelegateArtifacts();
-  void subagentRestorer.restoreOnce();
-}
+export const adoptSubagentRunForRequesterTurn =
+  subagentLifecycleController.adoptSubagentRunForRequesterTurn;
 
 const SUBAGENT_REGISTRY_TEST_HANDLE = Symbol.for("openclaw.subagentRegistryTestApi");
 if (process.env.VITEST || process.env.NODE_ENV === "test") {

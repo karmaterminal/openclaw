@@ -86,14 +86,13 @@ function compactSystemEvent(event: SystemEvent): string | null {
     return trimmed;
   }
   const lower = normalizeLowercaseStringOrEmpty(trimmed);
-  if (lower.includes("reason periodic")) {
-    return null;
-  }
   // Keep retired heartbeat prompts out of replayed legacy system events.
-  if (lower.startsWith("read heartbeat.md")) {
-    return null;
-  }
-  if (lower.includes("heartbeat poll") || lower.includes("heartbeat wake")) {
+  if (
+    lower.includes("reason periodic") ||
+    lower.startsWith("read heartbeat.md") ||
+    lower.includes("heartbeat poll") ||
+    lower.includes("heartbeat wake")
+  ) {
     return null;
   }
   if (trimmed.startsWith("Node:")) {
@@ -160,7 +159,7 @@ async function settleManagedDelivery(
     if (settlement.receipt) {
       const receipt = settlement.receipt;
       if (settlement.deliveryEligible) {
-        recordDelegateArtifactDeliveryBinding({
+        await recordDelegateArtifactDeliveryBinding({
           dispatchId: receipt.dispatchId,
           recipientSessionKey: receipt.recipientSessionKey,
           recipientSessionId: receipt.recipientSessionId,
@@ -168,7 +167,7 @@ async function settleManagedDelivery(
           ...(options ? { options } : {}),
         });
       } else {
-        markDelegateArtifactDeliveryUnavailable({
+        await markDelegateArtifactDeliveryUnavailable({
           dispatchId: receipt.dispatchId,
           recipientSessionKey: receipt.recipientSessionKey,
           recipientSessionId: receipt.recipientSessionId,
@@ -320,7 +319,7 @@ export async function prepareFormattedSystemEvents(params: {
       managed.receipt.recipientSessionKey !== receipt.recipientSessionKey ||
       managed.receipt.recipientSessionId !== receipt.recipientSessionId
     ) {
-      markDelegateArtifactDeliveryUnavailable({
+      await markDelegateArtifactDeliveryUnavailable({
         dispatchId: receipt.dispatchId,
         recipientSessionKey: receipt.recipientSessionKey,
         recipientSessionId: receipt.recipientSessionId,
@@ -339,7 +338,7 @@ export async function prepareFormattedSystemEvents(params: {
       }
       continue;
     }
-    const prepared = prepareDelegateArtifactDelivery({
+    const prepared = await prepareDelegateArtifactDelivery({
       projection: managed.projection,
       runtimeEnabled: runtime.enabled,
       crossSessionEnabled: runtime.crossSessionTargeting === "enabled",
@@ -365,7 +364,7 @@ export async function prepareFormattedSystemEvents(params: {
       continue;
     }
     if (prepared.status === "unavailable") {
-      markDelegateArtifactDeliveryUnavailable({
+      await markDelegateArtifactDeliveryUnavailable({
         dispatchId: receipt.dispatchId,
         recipientSessionKey: receipt.recipientSessionKey,
         recipientSessionId: receipt.recipientSessionId,
@@ -387,7 +386,7 @@ export async function prepareFormattedSystemEvents(params: {
       }
       continue;
     }
-    recordDelegateArtifactDeliveryBinding({
+    await recordDelegateArtifactDeliveryBinding({
       dispatchId: receipt.dispatchId,
       recipientSessionKey: receipt.recipientSessionKey,
       recipientSessionId: receipt.recipientSessionId,
@@ -396,7 +395,7 @@ export async function prepareFormattedSystemEvents(params: {
       availability: prepared.projection.arrivalContext.availability,
       ...artifactOptions,
     });
-    const refreshed = prepareDelegateArtifactDelivery({
+    const refreshed = await prepareDelegateArtifactDelivery({
       projection: managed.projection,
       runtimeEnabled: runtime.enabled,
       crossSessionEnabled: runtime.crossSessionTargeting === "enabled",
@@ -422,7 +421,7 @@ export async function prepareFormattedSystemEvents(params: {
       continue;
     }
     if (refreshed.status === "unavailable") {
-      markDelegateArtifactDeliveryUnavailable({
+      await markDelegateArtifactDeliveryUnavailable({
         dispatchId: receipt.dispatchId,
         recipientSessionKey: receipt.recipientSessionKey,
         recipientSessionId: receipt.recipientSessionId,

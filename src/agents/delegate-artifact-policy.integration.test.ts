@@ -5,7 +5,7 @@ import type {
 } from "../auto-reply/continuation/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
-  closeOpenClawStateDatabaseForTest,
+  closeOpenClawStateDatabaseAsync,
   openOpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
 import { withTestDir } from "../test-helpers/temp-dir.js";
@@ -110,8 +110,8 @@ describe("delegate artifact tree policy integration", () => {
     );
   });
 
-  afterEach(() => {
-    closeOpenClawStateDatabaseForTest();
+  afterEach(async () => {
+    await closeOpenClawStateDatabaseAsync();
     vi.unstubAllEnvs();
   });
 
@@ -121,7 +121,7 @@ describe("delegate artifact tree policy integration", () => {
       const cfg: OpenClawConfig = {
         session: { store: `${stateDir}/sessions.sqlite` },
       };
-      prepareDelegateArtifactPolicy({
+      await prepareDelegateArtifactPolicy({
         cfg,
         config: runtimeConfig,
         dispatchingSessionKey: orchestratorSessionKey,
@@ -167,7 +167,7 @@ describe("delegate artifact tree policy integration", () => {
       sessionIds.set(rootSessionKey, "root-session-v2");
 
       expect(
-        publishDelegateArtifactCandidates({
+        await publishDelegateArtifactCandidates({
           producerSessionKey: accepted.producer_session_key,
           producerSessionId: "producer-session-v1",
           producerRunId: accepted.producer_run_id,
@@ -178,7 +178,7 @@ describe("delegate artifact tree policy integration", () => {
           now: 2_000,
         }),
       ).toEqual({ status: "published", count: 1 });
-      const finalized = finalizeDelegateArtifacts({
+      const finalized = await finalizeDelegateArtifacts({
         producerSessionKey: accepted.producer_session_key,
         producerSessionId: "producer-session-v1",
         producerRunId: accepted.producer_run_id,

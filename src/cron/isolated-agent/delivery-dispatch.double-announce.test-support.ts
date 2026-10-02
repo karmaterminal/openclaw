@@ -1,6 +1,6 @@
 // Pure delivery fixtures for the cron delivery-dispatch double-announce tests.
 import type { dispatchCronDelivery } from "./delivery-dispatch.js";
-import type { DeliveryTargetResolution } from "./delivery-target.js";
+import { makeBaseParams } from "./delivery-dispatch.test-fixtures.js";
 
 type SourceOutcome = Parameters<typeof dispatchCronDelivery>[0]["sourceDeliveryOutcome"];
 export function messageToolOutcome(
@@ -19,18 +19,17 @@ export function messageToolOutcome(
   };
 }
 
-type SuccessfulDeliveryResolution = Extract<DeliveryTargetResolution, { ok: true }>;
+export function emptyParams(spawnOnlyHandoff = false, deliveryBestEffort = false) {
+  const params = makeBaseParams({ spawnOnlyHandoff, deliveryBestEffort, synthesizedText: "" });
+  params.synthesizedText = undefined;
+  params.deliveryPayloads = [];
+  params.summary = undefined;
+  params.outputText = undefined;
+  return params;
+}
 
-export function makeResolvedDelivery(
-  overrides: Partial<SuccessfulDeliveryResolution> = {},
-): SuccessfulDeliveryResolution {
-  return {
-    ok: true,
-    channel: "telegram",
-    to: "123456",
-    accountId: undefined,
-    threadId: undefined,
-    mode: "explicit",
-    ...overrides,
-  };
+export function deletingRunParams(sessionTarget = "isolated") {
+  const params = makeBaseParams({ synthesizedText: "Delivered report", sessionTarget });
+  params.job.deleteAfterRun = true;
+  return params;
 }

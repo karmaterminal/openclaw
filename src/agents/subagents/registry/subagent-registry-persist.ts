@@ -8,10 +8,8 @@ import {
   persistSubagentRunsToDiskAsyncOrThrow,
 } from "./subagent-registry-state.js";
 
-// Hot lifecycle callers name every changed or removed row. Zero ids is reserved
-// for explicit full-registry replacement at restore/reset boundaries.
 export function persistSubagentRuns(...runIds: string[]) {
-  persistSubagentRunsToDisk(subagentRuns, runIds.length > 0 ? runIds : undefined);
+  persistSubagentRunsToDisk(subagentRuns, runIds);
 }
 
 export function persistSubagentRunsAsyncOrThrow(
@@ -26,5 +24,5 @@ export function persistSubagentRunsAsyncOrThrow(
 }
 
 export function persistSubagentRunsOrThrow(...runIds: string[]) {
-  persistSubagentRunsToDiskOrThrow(subagentRuns, runIds.length > 0 ? runIds : undefined);
+  persistSubagentRunsToDiskOrThrow(subagentRuns, runIds);
 }

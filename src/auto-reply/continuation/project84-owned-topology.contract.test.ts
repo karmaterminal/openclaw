@@ -25,6 +25,7 @@ const MONITORED_MODULES = [
   "src/agents/subagent-announce.continuation.accounting.ts",
   "src/agents/subagent-announce.continuation-return.ts",
   "src/process/command-queue.ts",
+  "src/process/command-queue.lane-idle.ts",
   "src/process/command-queue-waiters.ts",
   "src/auto-reply/reply/agent-runner-embedded-candidate.ts",
   "src/auto-reply/reply/agent-runner-post-compaction-release.ts",
@@ -357,8 +358,12 @@ describe("Project 84 owned topology contract", () => {
   it("keeps continuation registration and lane waiters below their assemblers", () => {
     expectEdge("src/agents/openclaw-tools.ts", "src/agents/openclaw-tools.continuation.ts");
     expectNoEdge("src/agents/openclaw-tools.continuation.ts", "src/agents/openclaw-tools.ts");
-    expectEdge("src/process/command-queue.ts", "src/process/command-queue-waiters.ts");
+    // The lane-idle wait lives in its own module; layering is assembler -> lane-idle -> waiters.
+    expectEdge("src/process/command-queue.ts", "src/process/command-queue.lane-idle.ts");
+    expectEdge("src/process/command-queue.lane-idle.ts", "src/process/command-queue-waiters.ts");
     expectNoEdge("src/process/command-queue-waiters.ts", "src/process/command-queue.ts");
+    expectNoEdge("src/process/command-queue-waiters.ts", "src/process/command-queue.lane-idle.ts");
+    expectNoEdge("src/process/command-queue.lane-idle.ts", "src/process/command-queue.ts");
   });
 
   it("keeps subagent continuation behavior behind the runtime coordinator", () => {
