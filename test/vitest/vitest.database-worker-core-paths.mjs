@@ -52,6 +52,7 @@ export const databaseWorkerCoreTestFiles = [
   "test/e2e/qa-lab/runtime/gateway-loopback-lan-access.test.ts",
   "src/channels/message/durable-receive.test.ts",
   "src/channels/message/ingress-drain-lanes.test.ts",
+  "src/channels/message/ingress-drain-pending-disposition.test.ts",
   "src/channels/message/ingress-drain-supersede.test.ts",
   "src/channels/message/ingress-drain.async-work.test.ts",
   "src/channels/message/ingress-drain.cancellation.test.ts",
