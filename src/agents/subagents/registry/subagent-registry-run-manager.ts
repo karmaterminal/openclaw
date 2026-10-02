@@ -39,11 +39,6 @@ import type { SubagentRunRecord } from "./subagent-registry.types.js";
 export { preserveSubagentRunForRestart } from "./subagent-registry-run-wait.js";
 
 const log = createSubsystemLogger("agents/subagent-registry");
-// Rollback records whose custody introduced completion-delivery suppression,
-// so a confirmed release restores the row's own delivery state.
-const rollbackSuppressedDelivery = new WeakSet<
-  NonNullable<SubagentRunRecord["acceptedSpawnRollback"]>
->();
 
 class SubagentRunManager extends SubagentLaunchManager {
   readonly recordAcceptedSubagentSpawnRollback = (params: {
@@ -86,10 +81,11 @@ class SubagentRunManager extends SubagentLaunchManager {
         reason,
         expectedSessionId: params.expectedSessionId?.trim() || undefined,
         expectedLifecycleRevision: params.expectedLifecycleRevision?.trim() || undefined,
+        // Durable, so a release after restart still restores the row's own delivery.
+        ...(entry.suppressCompletionDelivery === true
+          ? {}
+          : { suppressedCompletionDelivery: true as const }),
       };
-      if (entry.suppressCompletionDelivery !== true) {
-        rollbackSuppressedDelivery.add(rollback);
-      }
     }
     annotateSubagentRunRollbackCustody(entry, rollback);
     try {
@@ -123,14 +119,13 @@ class SubagentRunManager extends SubagentLaunchManager {
       return false;
     }
     const restoreDelivery =
-      rollbackSuppressedDelivery.has(rollback) && entry.suppressCompletionDelivery === true;
+      rollback.suppressedCompletionDelivery === true && entry.suppressCompletionDelivery === true;
     delete entry.acceptedSpawnRollback;
     if (restoreDelivery) {
       delete entry.suppressCompletionDelivery;
     }
     try {
       this.options.persistOrThrow(entry.runId);
-      rollbackSuppressedDelivery.delete(rollback);
       return true;
     } catch (error) {
       if (entry.acceptedSpawnRollback === undefined) {

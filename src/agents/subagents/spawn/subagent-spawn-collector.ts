@@ -199,6 +199,18 @@ export function createCollectorLaunchCallbacks(params: {
       completeCollectorLaunchCleanup(childRunId);
     }
   };
+  // A Stop publishing on this row decides its outcome before the launch owner
+  // terminates, releases custody, or settles; publications can begin while any
+  // of those awaits is in flight, so callers re-check after each await.
+  const waitForStopPublications = async () => {
+    for (
+      let publication = registrationScope?.waitForRetirementPublication();
+      publication;
+      publication = registrationScope?.waitForRetirementPublication()
+    ) {
+      await publication;
+    }
+  };
   const settleLaunchFailure = async (error: unknown) => {
     if (error instanceof GatewayDrainingError) {
       return false;
@@ -218,13 +230,7 @@ export function createCollectorLaunchCallbacks(params: {
         }
         await claim;
       }
-      for (
-        let publication = registrationScope?.waitForRetirementPublication();
-        publication;
-        publication = registrationScope?.waitForRetirementPublication()
-      ) {
-        await publication;
-      }
+      await waitForStopPublications();
       const failure = error;
       if (pendingLaunchTermination && !launchTerminationConfirmed) {
         let terminated: boolean;
@@ -248,6 +254,8 @@ export function createCollectorLaunchCallbacks(params: {
           throw aggregate;
         }
         launchTerminationConfirmed = true;
+        // Releasing custody supersedes any staged Stop write on this row.
+        await waitForStopPublications();
         if (terminated) {
           // The accepted child is proven stopped, so the rollback custody recorded
           // for the sweeper is discharged; an unconfirmed stop keeps it.

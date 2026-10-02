@@ -9,10 +9,12 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 // oxfmt-ignore
 import { sharedRegistryMocks } from "./subagent-registry.mocks.shared.js";
 import "./subagent-registry.persistence.mocks.test-support.js";
+import { createDeferred } from "../../../../test/helpers/promise.js";
 import { closeOpenClawStateDatabaseForTest } from "../../../state/openclaw-state-db.js";
 import { captureEnv, setTestEnvValue } from "../../../test-utils/env.js";
 import { createCollectorLaunchCallbacks } from "../spawn/subagent-spawn-collector.js";
 import { subagentRuns, waitForSubagentRetirementPublication } from "./subagent-registry-memory.js";
+import * as registry from "./subagent-registry.js";
 import { loadSubagentRegistryFromSqlite } from "./subagent-registry.store.sqlite.js";
 import { saveSubagentRegistryToSqlite } from "./subagent-registry.store.test-support.js";
 import {
@@ -97,15 +99,23 @@ function seedQueuedCollector(): SubagentRunRecord {
   return subagentRuns.get(runId)!;
 }
 
-/** Real Stop retirement barrier, plus the collector callbacks that lose to it. */
-async function startCollectorBehindStop(entry: SubagentRunRecord) {
-  const retirement = subagentRuns.captureRetirement(
+const captureStopRetirement = (entry: SubagentRunRecord) =>
+  subagentRuns.captureRetirement(
     entry,
     (candidate) => subagentRuns.get(candidate.runId) === candidate,
   );
+
+/** Real Stop retirement barrier, plus the collector callbacks that lose to it. */
+async function startCollectorBehindStop(entry: SubagentRunRecord) {
+  const retirement = captureStopRetirement(entry);
   // The Stop claims the row first, so the accepted start transition must fail.
   const claim = await claimSubagentRunKill({ runId, expected: entry });
   expect(claim).toBeDefined();
+  return { retirement, claim: claim!, ...(await startCollector(entry)) };
+}
+
+/** Real collector callbacks whose accepted start transition has already failed. */
+async function startCollector(entry: SubagentRunRecord) {
   const settled = vi.fn(async (error: string) => {
     settleFailedQueuedSubagentLaunch(runId, error);
   });
@@ -132,7 +142,17 @@ async function startCollectorBehindStop(entry: SubagentRunRecord) {
   const failure: unknown = await callbacks.start().catch((error: unknown) => error);
   expect(failure).toBeInstanceOf(Error);
   const settling = callbacks.onStartFailure(failure);
-  return { retirement, claim: claim!, settling, settled };
+  return { settling, settled };
+}
+
+/** The start transition loses without a Stop, e.g. to a lost registry row race. */
+async function startCollectorWithoutStop(entry: SubagentRunRecord) {
+  const start = vi.spyOn(registry, "startQueuedSubagentRun").mockReturnValueOnce(false);
+  try {
+    return await startCollector(entry);
+  } finally {
+    start.mockRestore();
+  }
 }
 
 const durableRow = () => loadSubagentRegistryFromSqlite().get(runId);
@@ -253,3 +273,59 @@ it.each([true, false])(
     expect(durableRow()?.acceptedSpawnRollback).toBeUndefined();
   },
 );
+
+it("lets a Stop that starts during accepted-child termination keep its kill", async () => {
+  const entry = seedQueuedCollector();
+  const abortEntered = createDeferred();
+  const abortResponse = createDeferred();
+  sharedRegistryMocks.callGateway.mockImplementation((async (request: {
+    method?: string;
+    params?: { runId?: string };
+  }) => {
+    if (request.method !== "chat.abort") {
+      return { status: "ok" };
+    }
+    abortCalls.push(String(request.params?.runId));
+    abortEntered.resolve();
+    await abortResponse.promise;
+    return { aborted: true, runIds: [request.params?.runId] };
+  }) as unknown as typeof sharedRegistryMocks.callGateway);
+  const { settling } = await startCollectorWithoutStop(entry);
+  await abortEntered.promise;
+
+  // The Stop begins while the collector's abort RPC is still in flight.
+  const retirement = captureStopRetirement(entry);
+  const claiming = claimSubagentRunKill({ runId, expected: entry });
+  abortResponse.resolve();
+  // Like the kill runtime, a claim that lost its row is a Stop that did not kill.
+  const claim = await claiming.catch(() => undefined);
+  if (claim) {
+    await markSubagentRunTerminated({ runId, reason: "killed" });
+  }
+  retirement.release();
+
+  await expect(settling).resolves.toBe(true);
+  expect(abortCalls).toEqual([gatewayRunId]);
+  expect(durableRow()?.collectorCompletion?.status).toBe("killed");
+  expect(durableRow()?.acceptedSpawnRollback).toBeUndefined();
+});
+
+it("restores pre-custody delivery when the sweeper releases custody after restart", async () => {
+  const entry = seedQueuedCollector();
+  abortSucceeds = false;
+  const { settling } = await startCollectorWithoutStop(entry);
+  await expect(settling).resolves.toBe(true);
+  // Unconfirmed termination keeps custody, and its delivery suppression, durable.
+  expect(durableRow()).toMatchObject({
+    acceptedSpawnRollback: { gatewayRunId },
+    suppressCompletionDelivery: true,
+  });
+
+  abortCalls.length = 0;
+  abortSucceeds = true;
+  await restartFrom(loadSubagentRegistryFromSqlite());
+  await testing.sweepOnceForTests();
+  expect(abortCalls).toEqual([gatewayRunId]);
+  expect(durableRow()?.acceptedSpawnRollback).toBeUndefined();
+  expect(durableRow()?.suppressCompletionDelivery).toBeUndefined();
+});
