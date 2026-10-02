@@ -185,6 +185,8 @@ type SubagentAcceptedSpawnRollback = {
   reason: string;
   expectedSessionId?: string;
   expectedLifecycleRevision?: string;
+  /** This custody introduced the row's completion-delivery suppression; release restores it. */
+  suppressedCompletionDelivery?: true;
 };
 
 export type SubagentRunRecord = Omit<SubagentRunReadRecord, "execution" | "collectorCompletion"> & {

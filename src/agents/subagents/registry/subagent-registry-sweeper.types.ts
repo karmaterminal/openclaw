@@ -22,12 +22,15 @@ export type SubagentRegistrySweeperParams = {
   clearPendingLifecycleError: (runId: string) => void;
   clearPendingLifecycleTimeout: (runId: string) => void;
   sweepPendingLifecycle: (now: number) => void;
+  /** Drains one batch of expired delegate-artifact backing through the shared-state worker. */
+  purgeExpiredArtifacts: () => Promise<unknown>;
   completeSubagentRunWithRecovery: (
     completion: SubagentCompletionRequest,
     source: string,
   ) => Promise<void>;
   clearSubagentRunSteerRestart: SubagentRunManager["clearSubagentRunSteerRestart"];
   recordAcceptedSubagentSpawnRollback: SubagentRunManager["recordAcceptedSubagentSpawnRollback"];
+  releaseAcceptedSubagentSpawnRollback: SubagentRunManager["releaseAcceptedSubagentSpawnRollback"];
   rollbackSubagentRunRegistration: SubagentRunManager["rollbackSubagentRunRegistration"];
   settleFailedQueuedSubagentLaunch: SubagentRunManager["settleFailedQueuedSubagentLaunch"];
   getGatewayRecoveryRuntime: () => GatewayRecoveryRuntime | undefined;

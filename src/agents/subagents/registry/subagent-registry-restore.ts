@@ -256,6 +256,11 @@ export function createSubagentRegistryRestorer(config: {
         continue;
       }
       if (entry.collect && entry.execution.status === "queued") {
+        // Rollback custody means this launch already failed after the Gateway
+        // accepted its child; the sweeper terminates that child, never relaunches it.
+        if (entry.acceptedSpawnRollback) {
+          continue;
+        }
         const cleanupSessionEntry = loadSubagentSessionEntry({
           childSessionKey: entry.childSessionKey,
         });

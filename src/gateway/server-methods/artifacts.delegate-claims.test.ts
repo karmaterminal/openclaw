@@ -1,21 +1,19 @@
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { artifactsHandlers } from "./artifacts.js";
 import { expectArtifactList, expectErrorDetails, expectFields } from "./artifacts.test-support.js";
 
 const hoisted = vi.hoisted(() => ({
-  loadSessionEntry: vi.fn(),
   visitSessionMessagesAsync: vi.fn(),
 }));
 
-vi.mock("../session-utils.js", async () => {
-  const actual = await vi.importActual<typeof import("../session-utils.js")>("../session-utils.js");
+vi.mock("../session-sharing-preparation.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../session-sharing-preparation.js")>();
+  const { artifactFixtureSessionFacts } = await import("./artifacts.test-support.js");
   return {
     ...actual,
-    loadSessionEntry: hoisted.loadSessionEntry,
-    loadGatewaySessionEntryReadOnly: hoisted.loadSessionEntry,
+    prepareSessionMutationFacts: async (
+      params: Parameters<typeof actual.prepareSessionMutationFacts>[0],
+    ) => artifactFixtureSessionFacts(params),
   };
 });
 
@@ -55,19 +53,8 @@ async function invokeArtifactHandler(
 }
 
 describe("managed delegate artifact claim projections", () => {
-  let tempDir: string;
-
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-artifacts-delegate-claims-"));
-    hoisted.loadSessionEntry.mockReturnValue({
-      storePath: path.join(tempDir, "sessions.json"),
-      entry: { sessionId: "sess-main", sessionFile: path.join(tempDir, "sess-main.jsonl") },
-    });
-  });
-
-  afterEach(async () => {
-    await fs.rm(tempDir, { recursive: true, force: true });
   });
 
   it("does not collect or resolve claim projections", async () => {

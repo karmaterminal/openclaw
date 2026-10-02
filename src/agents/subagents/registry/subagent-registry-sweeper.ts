@@ -15,7 +15,10 @@ import { SUBAGENT_ENDED_REASON_ERROR } from "./subagent-lifecycle-events.js";
 import { shouldSuppressSubagentRecoverySessionEffects } from "./subagent-recovery-state.js";
 import { safeRemoveAttachmentsDir } from "./subagent-registry-helpers.js";
 import type { SubagentLifecycleController } from "./subagent-registry-lifecycle.js";
-import { subagentRuns } from "./subagent-registry-memory.js";
+import {
+  hasPendingSubagentRetirementPublication,
+  subagentRuns,
+} from "./subagent-registry-memory.js";
 import { createInterruptedRecoveryCoordinator } from "./subagent-registry-restart-recovery-coordinator.js";
 import { isRestoredQueuedFailureSettlementClaimed } from "./subagent-registry-restore.js";
 import {
@@ -273,7 +276,11 @@ export function createSubagentRegistrySweeper(
           continue;
         }
         if (entry.acceptedSpawnRollback) {
-          acceptedSpawnRollbackCandidates.push({ runId, entry });
+          // A Stop still publishing on this row decides its outcome first; the
+          // launch owner holding this custody waits on the same barrier.
+          if (!hasPendingSubagentRetirementPublication(entry)) {
+            acceptedSpawnRollbackCandidates.push({ runId, entry });
+          }
           continue;
         }
         // Yield freezes the parent's wake before its children finish. Keep
@@ -576,6 +583,17 @@ export function createSubagentRegistrySweeper(
         params,
       });
       params.sweepPendingLifecycle(now);
+      if (intervalStarted) {
+        // A stopped/reset generation's stray tick must not reopen shared state it
+        // no longer owns; tracking lets reset() join the purge before retirement.
+        void trackWork(() =>
+          params
+            .purgeExpiredArtifacts()
+            .catch((error: unknown) =>
+              params.warn("expired delegate artifact purge failed", { error }),
+            ),
+        );
+      }
 
       if (mutatedRunIds.size > 0) {
         params.persist(...mutatedRunIds);
@@ -607,6 +625,7 @@ export function createSubagentRegistrySweeper(
           runs,
           callGateway: params.callGateway,
           recordAcceptedSubagentSpawnRollback: params.recordAcceptedSubagentSpawnRollback,
+          releaseAcceptedSubagentSpawnRollback: params.releaseAcceptedSubagentSpawnRollback,
           rollbackSubagentRunRegistration: params.rollbackSubagentRunRegistration,
           settleFailedQueuedSubagentLaunch: params.settleFailedQueuedSubagentLaunch,
           warn: params.warn,

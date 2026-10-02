@@ -30,6 +30,7 @@ import {
   captureSubagentRunMutationSnapshot,
   publishSubagentRunPostimages,
 } from "./subagent-registry-persistence.js";
+import { annotateSubagentRunRollbackCustody } from "./subagent-registry-rollback-custody.js";
 import { SubagentLaunchManager } from "./subagent-registry-run-launch.js";
 import type { SubagentRegistrationIdentity } from "./subagent-registry-run-launch.js";
 import type { SubagentManagerOptions } from "./subagent-registry-run-wait.js";
@@ -38,11 +39,6 @@ import type { SubagentRunRecord } from "./subagent-registry.types.js";
 export { preserveSubagentRunForRestart } from "./subagent-registry-run-wait.js";
 
 const log = createSubsystemLogger("agents/subagent-registry");
-// Rollback records whose custody introduced completion-delivery suppression,
-// so a confirmed release restores the row's own delivery state.
-const rollbackSuppressedDelivery = new WeakSet<
-  NonNullable<SubagentRunRecord["acceptedSpawnRollback"]>
->();
 
 class SubagentRunManager extends SubagentLaunchManager {
   readonly recordAcceptedSubagentSpawnRollback = (params: {
@@ -77,23 +73,21 @@ class SubagentRunManager extends SubagentLaunchManager {
     if (existing && existing.gatewayRunId !== gatewayRunId) {
       return { status: "rejected" };
     }
-    if (!existing) {
-      const rollback = {
+    let rollback = existing;
+    if (!rollback) {
+      rollback = {
         gatewayRunId,
         requestedAt: Date.now(),
         reason,
         expectedSessionId: params.expectedSessionId?.trim() || undefined,
         expectedLifecycleRevision: params.expectedLifecycleRevision?.trim() || undefined,
+        // Durable, so a release after restart still restores the row's own delivery.
+        ...(entry.suppressCompletionDelivery === true
+          ? {}
+          : { suppressedCompletionDelivery: true as const }),
       };
-      if (entry.suppressCompletionDelivery !== true) {
-        rollbackSuppressedDelivery.add(rollback);
-      }
-      entry.acceptedSpawnRollback = rollback;
     }
-    entry.suppressCompletionDelivery = true;
-    if (entry.execution.status !== "terminal") {
-      entry.execution = { ...entry.execution, suppressSessionEffects: true };
-    }
+    annotateSubagentRunRollbackCustody(entry, rollback);
     try {
       this.options.persistOrThrow(runId);
       return { status: "persisted" };
@@ -125,14 +119,13 @@ class SubagentRunManager extends SubagentLaunchManager {
       return false;
     }
     const restoreDelivery =
-      rollbackSuppressedDelivery.has(rollback) && entry.suppressCompletionDelivery === true;
+      rollback.suppressedCompletionDelivery === true && entry.suppressCompletionDelivery === true;
     delete entry.acceptedSpawnRollback;
     if (restoreDelivery) {
       delete entry.suppressCompletionDelivery;
     }
     try {
       this.options.persistOrThrow(entry.runId);
-      rollbackSuppressedDelivery.delete(rollback);
       return true;
     } catch (error) {
       if (entry.acceptedSpawnRollback === undefined) {
