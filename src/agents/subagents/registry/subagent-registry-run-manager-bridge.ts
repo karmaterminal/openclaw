@@ -11,6 +11,7 @@ type SweeperRunManagerOperations = Pick<
   SubagentRegistrySweeperParams,
   | "clearSubagentRunSteerRestart"
   | "recordAcceptedSubagentSpawnRollback"
+  | "releaseAcceptedSubagentSpawnRollback"
   | "rollbackSubagentRunRegistration"
   | "settleFailedQueuedSubagentLaunch"
 >;
@@ -27,6 +28,8 @@ export function createSweeperRunManagerOperations(
       getRunManager().clearSubagentRunSteerRestart(...args),
     recordAcceptedSubagentSpawnRollback: (...args) =>
       getRunManager().recordAcceptedSubagentSpawnRollback(...args),
+    releaseAcceptedSubagentSpawnRollback: (...args) =>
+      getRunManager().releaseAcceptedSubagentSpawnRollback(...args),
     rollbackSubagentRunRegistration: (...args) =>
       getRunManager().rollbackSubagentRunRegistration(...args),
     settleFailedQueuedSubagentLaunch: (...args) =>

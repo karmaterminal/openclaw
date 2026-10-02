@@ -96,18 +96,20 @@ it("records accepted-child rollback custody when the start transition fails", as
   expect(order).toEqual(["record", "abort", "release", "settle"]);
 });
 
-it("defers the rollback record until a publishing Stop releases the row", async () => {
+it("records rollback custody before waiting on a publishing Stop", async () => {
   const publication = createDeferred();
   const { callbacks, settle } = launchFixture(publication.promise);
   const failure: unknown = await callbacks.start().catch((error: unknown) => error);
   expect(failure).toBeInstanceOf(Error);
-  // The Stop's kill write is fenced on this row's preimage; recording now would void it.
-  expect(recordRollback).not.toHaveBeenCalled();
+  // Custody is durable before any await, so a crash during the Stop's publication
+  // still leaves the restart sweeper an owner for the accepted child.
+  expectRollbackRecord();
   const settling = callbacks.onStartFailure(failure);
   await new Promise<void>((resolve) => {
     setImmediate(resolve);
   });
-  expect(recordRollback).not.toHaveBeenCalled();
+  // Termination and settlement still wait for the Stop to decide the outcome.
+  expect(order).toEqual(["record"]);
   expect(settle).not.toHaveBeenCalled();
   publication.resolve();
   await expect(settling).resolves.toBe(true);

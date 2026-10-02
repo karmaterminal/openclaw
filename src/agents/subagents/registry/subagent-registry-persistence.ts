@@ -13,6 +13,10 @@ import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-w
 import { runOpenClawStateWorkerOperation } from "../../../state/openclaw-state-worker-store.js";
 import { normalizeSubagentRunState } from "./subagent-delivery-state.js";
 import {
+  readSubagentRunRollbackCustodyRevision,
+  rebaseSubagentRunOntoRollbackCustody,
+} from "./subagent-registry-rollback-custody.js";
+import {
   bindCapturedSubagentRunRecord,
   bindSubagentRunRecord,
   rowToSubagentRunRecord,
@@ -548,8 +552,7 @@ export function captureSubagentRunPostimagePublication(params: {
   };
 }
 
-/** The existing writer captures staged rows synchronously; live preimages remain until ACK. */
-export async function publishSubagentRunPostimages(params: {
+type SubagentRunPostimageParams = {
   runs: Map<string, SubagentRunRecord>;
   /** An undefined preimage registers a new row without exposing it before ACK. */
   previous: ReadonlyMap<SubagentRunRecord, SubagentRunRecord | undefined>;
@@ -566,7 +569,83 @@ export async function publishSubagentRunPostimages(params: {
   assertPublicationCurrent?: () => void;
   withPublication?: SubagentRegistryWriteOptions["withPublication"];
   onPublished?: () => void;
-}): Promise<SubagentRegistryPostimageResult> {
+};
+
+/** The existing writer captures staged rows synchronously; live preimages remain until ACK. */
+export async function publishSubagentRunPostimages(
+  params: SubagentRunPostimageParams,
+): Promise<SubagentRegistryPostimageResult> {
+  for (let attempt = params; ;) {
+    const revisions = new Map(
+      [...attempt.previous.keys()].map(
+        (entry) => [entry, readSubagentRunRollbackCustodyRevision(entry)] as const,
+      ),
+    );
+    const staged = stageSubagentRunPostimages(attempt);
+    let result: SubagentRegistryPostimageResult;
+    try {
+      result = await staged.publication;
+    } catch (error) {
+      if (!(error instanceof SubagentRegistryWriteError) || error.outcome !== "not-committed") {
+        throw error;
+      }
+      const rebased = rebaseOntoRollbackCustody(attempt, staged, revisions);
+      if (!rebased) {
+        throw error;
+      }
+      attempt = rebased;
+      continue;
+    }
+    // A committed write superseded by the custody annotation was overwritten by it.
+    const rebased =
+      result.publication === "superseded"
+        ? rebaseOntoRollbackCustody(attempt, staged, revisions)
+        : undefined;
+    if (!rebased) {
+      return result;
+    }
+    attempt = rebased;
+  }
+}
+
+/**
+ * Rollback custody recorded while this write was staged supersedes it. When the
+ * custody annotation is the only change to every captured row, restage the same
+ * mutation on top of it so the staged owner keeps its write and the custody stays.
+ */
+function rebaseOntoRollbackCustody(
+  params: SubagentRunPostimageParams,
+  staged: ReturnType<typeof stageSubagentRunPostimages>,
+  revisions: ReadonlyMap<SubagentRunRecord, number>,
+): SubagentRunPostimageParams | undefined {
+  if (
+    ![...revisions].some(
+      ([entry, revision]) => readSubagentRunRollbackCustodyRevision(entry) !== revision,
+    )
+  ) {
+    return undefined;
+  }
+  const rebased: Array<{ entry: SubagentRunRecord; next: SubagentRunRecord }> = [];
+  for (const { entry, previous, next, retire } of staged.selected) {
+    const preimage = staged.previousSnapshots.get(entry);
+    const rebasedNext =
+      !retire && previous && preimage && params.runs.get(entry.runId) === entry
+        ? rebaseSubagentRunOntoRollbackCustody({ live: entry, preimage, next })
+        : undefined;
+    if (!rebasedNext) {
+      return undefined;
+    }
+    rebased.push({ entry, next: rebasedNext });
+  }
+  const previous = new Map<SubagentRunRecord, SubagentRunRecord | undefined>();
+  for (const { entry, next } of rebased) {
+    previous.set(entry, captureSubagentRunMutationSnapshot(entry));
+    replaceSubagentRunRecord(entry, next);
+  }
+  return { ...params, previous };
+}
+
+function stageSubagentRunPostimages(params: SubagentRunPostimageParams) {
   const selected = [...params.previous].map(([entry, previous]) => ({
     entry,
     previous,
@@ -639,20 +718,23 @@ export async function publishSubagentRunPostimages(params: {
     }
     capturing = false;
   }
-  try {
-    await publication;
-  } catch (error) {
-    if (error instanceof SubagentRegistryWriteError && error.outcome === "committed") {
-      if (!owner.published && error.publication === "superseded") {
-        return { outcome: "committed", publication: "superseded" };
+  const settle = async (): Promise<SubagentRegistryPostimageResult> => {
+    try {
+      await publication;
+    } catch (error) {
+      if (error instanceof SubagentRegistryWriteError && error.outcome === "committed") {
+        if (!owner.published && error.publication === "superseded") {
+          return { outcome: "committed", publication: "superseded" };
+        }
+        throw new SubagentRegistryWriteError(
+          "committed",
+          error,
+          owner.published ? "published" : error.publication,
+        );
       }
-      throw new SubagentRegistryWriteError(
-        "committed",
-        error,
-        owner.published ? "published" : error.publication,
-      );
+      throw error;
     }
-    throw error;
-  }
-  return { outcome: "committed", publication: owner.published ? "published" : "superseded" };
+    return { outcome: "committed", publication: owner.published ? "published" : "superseded" };
+  };
+  return { selected, previousSnapshots, publication: settle() };
 }
