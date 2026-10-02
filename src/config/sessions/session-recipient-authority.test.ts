@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../state/openclaw-agent-db-lifecycle.js";
 import {
   closeOpenClawAgentDatabasesForTest,
   openOpenClawAgentDatabase,
@@ -48,7 +49,8 @@ describe("session recipient authority", () => {
       }));
       expect(await isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
 
-      closeOpenClawAgentDatabasesForTest();
+      // Worker reads reopen the store; await its close so the reread cannot race it.
+      await closeOpenClawAgentDatabasesForTestAsync();
       expect(await isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
     });
   });
