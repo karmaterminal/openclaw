@@ -28,6 +28,7 @@ export type SubagentRegistrySweeperParams = {
   ) => Promise<void>;
   clearSubagentRunSteerRestart: SubagentRunManager["clearSubagentRunSteerRestart"];
   recordAcceptedSubagentSpawnRollback: SubagentRunManager["recordAcceptedSubagentSpawnRollback"];
+  releaseAcceptedSubagentSpawnRollback: SubagentRunManager["releaseAcceptedSubagentSpawnRollback"];
   rollbackSubagentRunRegistration: SubagentRunManager["rollbackSubagentRunRegistration"];
   settleFailedQueuedSubagentLaunch: SubagentRunManager["settleFailedQueuedSubagentLaunch"];
   getGatewayRecoveryRuntime: () => GatewayRecoveryRuntime | undefined;

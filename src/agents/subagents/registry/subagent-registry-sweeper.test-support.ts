@@ -73,6 +73,7 @@ export function createSubagentSweeperHarness(
     completeSubagentRunWithRecovery,
     clearSubagentRunSteerRestart: vi.fn(() => true),
     recordAcceptedSubagentSpawnRollback: vi.fn(() => ({ status: "persisted" as const })),
+    releaseAcceptedSubagentSpawnRollback: vi.fn(() => true),
     rollbackSubagentRunRegistration: vi.fn(() => true),
     settleFailedQueuedSubagentLaunch: vi.fn(() => true),
     getGatewayRecoveryRuntime: () => runtime.current,

@@ -15,7 +15,10 @@ import { SUBAGENT_ENDED_REASON_ERROR } from "./subagent-lifecycle-events.js";
 import { shouldSuppressSubagentRecoverySessionEffects } from "./subagent-recovery-state.js";
 import { safeRemoveAttachmentsDir } from "./subagent-registry-helpers.js";
 import type { SubagentLifecycleController } from "./subagent-registry-lifecycle.js";
-import { subagentRuns } from "./subagent-registry-memory.js";
+import {
+  hasPendingSubagentRetirementPublication,
+  subagentRuns,
+} from "./subagent-registry-memory.js";
 import { createInterruptedRecoveryCoordinator } from "./subagent-registry-restart-recovery-coordinator.js";
 import { isRestoredQueuedFailureSettlementClaimed } from "./subagent-registry-restore.js";
 import {
@@ -273,7 +276,11 @@ export function createSubagentRegistrySweeper(
           continue;
         }
         if (entry.acceptedSpawnRollback) {
-          acceptedSpawnRollbackCandidates.push({ runId, entry });
+          // A Stop still publishing on this row decides its outcome first; the
+          // launch owner holding this custody waits on the same barrier.
+          if (!hasPendingSubagentRetirementPublication(entry)) {
+            acceptedSpawnRollbackCandidates.push({ runId, entry });
+          }
           continue;
         }
         // Yield freezes the parent's wake before its children finish. Keep
@@ -607,6 +614,7 @@ export function createSubagentRegistrySweeper(
           runs,
           callGateway: params.callGateway,
           recordAcceptedSubagentSpawnRollback: params.recordAcceptedSubagentSpawnRollback,
+          releaseAcceptedSubagentSpawnRollback: params.releaseAcceptedSubagentSpawnRollback,
           rollbackSubagentRunRegistration: params.rollbackSubagentRunRegistration,
           settleFailedQueuedSubagentLaunch: params.settleFailedQueuedSubagentLaunch,
           warn: params.warn,
