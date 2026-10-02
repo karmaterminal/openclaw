@@ -177,7 +177,6 @@ function buildToolDelegateParams(): AnnounceFlowParams {
     childSessionKey: "agent:main:subagent:shard-reject-tool",
     childRunId: "run-reject-tool",
     requesterSessionKey: "agent:main:discord:dm:test-reject-tool",
-    requesterDisplayKey: "test-reject-tool",
     task: "[continuation:chain-hop:1] Tool-delegated from sub-agent (depth 1): do research",
     roundOneReply: "Research complete.",
     timeoutMs: 30_000,

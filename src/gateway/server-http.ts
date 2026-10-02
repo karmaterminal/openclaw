@@ -70,7 +70,7 @@ import type { ControlUiRootState } from "./server-control-ui-root.js";
 import type { GatewayServerExtraHttpRoute } from "./server-extra-handlers.js";
 import {
   authorizeGatewayHttpRouteOrReply,
-  handleServerExtraHttpRoute,
+  serverExtraHttpRouteStage,
 } from "./server-extra-http-routes.js";
 import {
   getControlUiModule,
@@ -402,12 +402,8 @@ export function createGatewayHttpServer(opts: {
             getStartup,
           ),
       ];
-      requestStages.push(() =>
-        handleServerExtraHttpRoute(opts.serverExtraHttpRoutes, req, res, scopedRequestPath, {
-          ...routeAuth,
-          getResolvedAuth,
-        }),
-      );
+      const extraRouteRequest = { req, res, requestPath: scopedRequestPath, auth: routeAuth };
+      requestStages.push(serverExtraHttpRouteStage(opts.serverExtraHttpRoutes, extraRouteRequest));
       const addRequestStage = (
         enabled: boolean,
         stage: GatewayHttpRequestStage,

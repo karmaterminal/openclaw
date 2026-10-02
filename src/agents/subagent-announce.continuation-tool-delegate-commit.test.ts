@@ -153,7 +153,6 @@ function buildToolDelegateParams(): AnnounceFlowParams {
     childSessionKey: "agent:main:subagent:tool-hop-1",
     childRunId: "run-tool-hop-1",
     requesterSessionKey: "agent:main:discord:dm:test-c2",
-    requesterDisplayKey: "test-c2",
     task: "[continuation:chain-hop:1] Tool-delegated from sub-agent (depth 1): do research",
     roundOneReply: "Research complete.",
     timeoutMs: 30_000,

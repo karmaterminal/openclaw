@@ -107,6 +107,8 @@ function createAdmissionFixture() {
     },
     runtimePolicySessionKey: sessionKey,
     isHeartbeat: false,
+    // Fork field: an ordinary inbound Slack message is not a continuation wake.
+    isContinuationWake: false,
     explicitThinkingLevelOverride: undefined,
     effectiveQueueMode: undefined,
     promptSessionCtx: ctx,

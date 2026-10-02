@@ -180,7 +180,6 @@ function buildChainShardParams(hopIndex: number): AnnounceFlowParams {
     childSessionKey: `agent:main:subagent:shard-hop-${hopIndex}`,
     childRunId: `run-hop-${hopIndex}`,
     requesterSessionKey: "agent:main:discord:dm:test-chain",
-    requesterDisplayKey: "test-chain",
     task: `${taskPrefix}Delegated task: do research`,
     roundOneReply: `Research result.\n[[CONTINUE_DELEGATE: continue next step]]`,
     timeoutMs: 30_000,
@@ -330,7 +329,6 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
 
     const params = buildChainShardParams(1);
     params.requesterSessionKey = "agent:main:main";
-    params.requesterDisplayKey = "main";
     await runSubagentAnnounceFlow(params);
     await new Promise((resolve) => {
       setTimeout(resolve, 50);
@@ -350,7 +348,6 @@ describe("announce-side chain guard (maxChainLength enforcement)", () => {
 
     const params = buildChainShardParams(1);
     params.requesterSessionKey = "agent:main:main";
-    params.requesterDisplayKey = "main";
     await runSubagentAnnounceFlow(params);
     await new Promise((resolve) => {
       setTimeout(resolve, 50);
@@ -376,7 +373,6 @@ async function buildToolDelegateParams(hopIndex: number): Promise<AnnounceFlowPa
     childSessionKey: `agent:main:subagent:tool-hop-${hopIndex}`,
     childRunId: `run-tool-hop-${hopIndex}`,
     requesterSessionKey: "agent:main:discord:dm:test-chain",
-    requesterDisplayKey: "test-chain",
     task: "Tool-delegated from sub-agent (depth 1): do research",
     roundOneReply: "Research complete.", // no bracket delegate
     timeoutMs: 30_000,

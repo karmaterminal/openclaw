@@ -132,7 +132,6 @@ function buildLeafParams(bracket: string): AnnounceFlowParams {
     childSessionKey: "agent:main:subagent:postcompaction-route",
     childRunId: "run-postcompaction-route",
     requesterSessionKey: "agent:main:discord:dm:test-route",
-    requesterDisplayKey: "test-route",
     task: "[continuation:chain-hop:1] Delegated task: leaf research",
     roundOneReply: `Research result.\n${bracket}`,
     timeoutMs: 30_000,

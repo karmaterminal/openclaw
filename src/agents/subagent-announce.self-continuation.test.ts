@@ -140,7 +140,6 @@ function buildParams(reply: string): AnnounceFlowParams {
     childSessionKey,
     childRunId: "run-952-self-cont",
     requesterSessionKey,
-    requesterDisplayKey: "test-952",
     // A regular subagent (NOT a chain-hop) — self-continuation must work for any
     // tool-less subagent, not only continuation-chain delegates.
     task: "Delegated task: ordinary research",
