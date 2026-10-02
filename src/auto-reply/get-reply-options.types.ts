@@ -210,6 +210,8 @@ export type GetReplyOptions = {
    *   turn-entry, NOT part of an active continuation chain; resets the chain budget)
    */
   continuationTrigger?: ContinuationTrigger;
+  /** Wording only; heartbeat visibility/suppression semantics stay on isHeartbeat. */
+  useHeartbeatFailureCopy?: boolean;
   /** Policy-level typing control for run classes (user/system/internal/heartbeat). */
   typingPolicy?: TypingPolicy;
   /** Force-disable typing indicators for this run (system/internal/cross-channel routes). */

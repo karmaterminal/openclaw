@@ -7,7 +7,7 @@ import {
 } from "./subagent-announce.runtime.js";
 
 const subagentRegistryRuntimeLoader = createLazyImportLoader(
-  () => import("../registry/subagent-registry-runtime.js"),
+  () => import("../registry/subagent-registry.js"),
 );
 const subagentContinuationRuntimeLoader = createLazyImportLoader(
   () => import("../../subagent-announce.continuation.runtime.js"),

@@ -1,8 +1,3 @@
-/**
- * Subagent run manager.
- *
- * Waits for child runs, records native terminal outcomes, and archives completed sessions.
- */
 import {
   getAgentEventLifecycleGeneration,
   isAgentEventLifecycleGenerationCurrent,
@@ -389,6 +384,8 @@ class SubagentRunManager extends SubagentLaunchManager {
             this.options.getRuntimeConfig(),
             entry.childSessionKey,
             assertCurrent,
+            entry.execution.transcriptTarget,
+            entry.childAgentId,
           );
           sessions.set(entry.runId, session);
         }

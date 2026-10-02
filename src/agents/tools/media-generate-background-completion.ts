@@ -140,7 +140,6 @@ export async function wakeMediaGenerationTaskCompletion(params: {
   result: string;
   attachments?: AgentGeneratedAttachment[];
   mediaUrls?: string[];
-  statsLine?: string;
   eventSource: AgentInternalEvent["source"];
   announceType: string;
   toolName: string;
@@ -224,7 +223,6 @@ export async function wakeMediaGenerationTaskCompletion(params: {
       result: params.result,
       ...(params.attachments?.length ? { attachments: params.attachments } : {}),
       ...(mediaUrls.length ? { mediaUrls } : {}),
-      ...(params.statsLine?.trim() ? { statsLine: params.statsLine } : {}),
       replyInstruction: buildMediaGenerationReplyInstruction({
         status: params.status,
         completionLabel: params.completionLabel,
@@ -240,7 +238,6 @@ export async function wakeMediaGenerationTaskCompletion(params: {
     targetRequesterSessionKey: target.sessionKey,
     preparedRequester: { binding: requesterBinding, entry: requesterEntry },
     triggerMessage,
-    steerMessage: triggerMessage,
     internalEvents,
     requesterSessionOrigin: handle.requesterOrigin,
     completionDirectOrigin: handle.requesterOrigin,

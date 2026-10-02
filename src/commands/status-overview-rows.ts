@@ -191,6 +191,19 @@ export function buildStatusCommandOverviewRows(params: {
           formatTimeAgo,
         }),
       },
+      ...(params.backupFreshness.latestOffsite
+        ? [
+            {
+              Item: "Offsite backup",
+              Value: `${params.backupFreshness.latestOffsite.location?.name ?? params.backupFreshness.latestOffsite.target}: ${buildBackupStatusValue(
+                {
+                  freshness: { latest: params.backupFreshness.latestOffsite },
+                  formatTimeAgo,
+                },
+              )}`,
+            },
+          ]
+        : []),
       { Item: "Heartbeat", Value: heartbeatValue },
       ...(lastHeartbeatValue ? [{ Item: "Last heartbeat", Value: lastHeartbeatValue }] : []),
       ...(params.continuationValue

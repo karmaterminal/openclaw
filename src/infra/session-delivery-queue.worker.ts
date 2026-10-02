@@ -5,11 +5,19 @@ import {
 } from "../agents/subagents/completion/subagent-completion-admission.worker.js";
 import type { OpenClawStateDatabase } from "../state/openclaw-state-db-contract.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
+import type {
+  WorkerOperationHandlers,
+  WorkerOperations,
+} from "../state/worker-operation-registry.js";
 import {
+  type bindDeliveryQueueEntry,
   deliveryQueueEntriesQuery,
   upsertBoundDeliveryQueueEntryInDatabase,
 } from "./delivery-queue-sqlite-bound.js";
-import { inflateDeliveryQueueEntryResult } from "./delivery-queue-sqlite-codec.js";
+import {
+  type DeliveryQueueEntryLoadResult,
+  inflateDeliveryQueueEntryResult,
+} from "./delivery-queue-sqlite-codec.js";
 import { terminalizeInvalidDeliveryQueueEntryInDatabase } from "./delivery-queue-sqlite.js";
 import {
   completeDeliveryQueueEntryInDatabase,
@@ -19,6 +27,7 @@ import {
   terminalizePendingDeliveryQueueEntryInDatabase,
   updateDeliveryQueueEntryInDatabase,
 } from "./delivery-queue-sqlite.kernel.js";
+import type { DeliveryQueueStoredStatus } from "./delivery-queue-sqlite.kernel.js";
 import { executeSqliteQuerySync, executeSqliteQueryTakeFirstSync } from "./kysely-sync.js";
 import {
   hasOnlyGenericAttachmentRefs,
@@ -28,15 +37,14 @@ import {
   SESSION_DELIVERY_QUEUE_NAME,
   type QueuedSessionDelivery,
 } from "./session-delivery-queue.records.js";
-import type { SessionDeliveryWorkerOperations } from "./session-delivery-queue.worker-contract.js";
-import type { SqliteWorkerCommand } from "./sqlite-worker-contract.js";
+import type { SessionDeliveryAgentRunUpdate } from "./session-delivery-queue.worker-contract.js";
 import { requestSqliteWorkerOperationAdmission } from "./sqlite-worker-operation-admission.js";
 import { getSqliteWorkerStateContext } from "./sqlite-worker-state-context.js";
 
 function readSessionDeliveryResult(
   database: OpenClawStateDatabase,
   id: string,
-): SessionDeliveryWorkerOperations["sessionDelivery.load"]["output"] {
+): DeliveryQueueEntryLoadResult | null {
   const query = deliveryQueueEntriesQuery(database, [SESSION_DELIVERY_QUEUE_NAME], "pending").where(
     "id",
     "=",
@@ -46,222 +54,273 @@ function readSessionDeliveryResult(
   return row ? inflateDeliveryQueueEntryResult(row) : null;
 }
 
-export function executeSessionDeliveryCommand(
-  command: SqliteWorkerCommand<SessionDeliveryWorkerOperations>,
-  database: OpenClawStateDatabase,
-): SessionDeliveryWorkerOperations[keyof SessionDeliveryWorkerOperations]["output"] {
-  const readStatus = (id: string) =>
-    getDeliveryQueueEntryOwnersInDatabase(database, [SESSION_DELIVERY_QUEUE_NAME], id).get(
-      SESSION_DELIVERY_QUEUE_NAME,
-    )?.status;
-  const update = (id: string, transform: (entry: QueuedSessionDelivery) => QueuedSessionDelivery) =>
-    updateDeliveryQueueEntryInDatabase(database, SESSION_DELIVERY_QUEUE_NAME, id, (entry) =>
-      // SAFETY: Only the session namespace reaches this payload transform.
-      transform(entry as QueuedSessionDelivery),
-    );
-  const finalize = (id: string, status: "completed" | "failed", transition: () => void) => {
-    try {
-      transition();
-    } catch (error) {
-      try {
-        if (readStatus(id) === status) {
-          return;
-        }
-      } catch {
-        // Preserve the transition failure when durable settlement cannot be established.
-      }
-      throw error;
-    }
-  };
+function readStatus(database: OpenClawStateDatabase, id: string) {
+  return getDeliveryQueueEntryOwnersInDatabase(database, [SESSION_DELIVERY_QUEUE_NAME], id).get(
+    SESSION_DELIVERY_QUEUE_NAME,
+  )?.status;
+}
 
-  switch (command.type) {
-    case "sessionDelivery.mutateSubagentCompletion":
-      return mutateSubagentCompletionInWorker(command.input, database);
-    case "sessionDelivery.admitSubagentCompletion":
-      return admitSubagentCompletionInWorker(command.input, database);
-    case "sessionDelivery.enqueue":
-    case "sessionDelivery.enqueueClaimed": {
-      return runOpenClawStateWriteTransaction(
-        () => {
-          requestSqliteWorkerOperationAdmission({ stage: "transaction", facts: undefined });
-          const id = command.input.row.id;
-          const claimed = upsertBoundDeliveryQueueEntryInDatabase(command.input, database);
-          if (command.type === "sessionDelivery.enqueue") {
-            // Read the settled status here so enqueue callers never touch SQLite on the main thread.
-            let enqueuedStatus: string;
-            try {
-              enqueuedStatus = readStatus(id) ?? "unknown";
-            } catch {
-              enqueuedStatus = "unknown";
-            }
-            requestSqliteWorkerOperationAdmission({ stage: "commit", facts: undefined });
-            return { status: enqueuedStatus };
-          }
-          let status: string;
-          try {
-            status = claimed ? "pending" : (readStatus(id) ?? "completed");
-          } catch {
-            status = "unknown";
-          }
-          requestSqliteWorkerOperationAdmission({ stage: "commit", facts: undefined });
-          return { id, claimed, status };
-        },
-        { database, path: database.path, env: getSqliteWorkerStateContext().environment },
-        { operationLabel: command.type },
-      );
-    }
-    case "sessionDelivery.releaseClaim":
-      update(command.input.id, (entry) => ({ ...entry, availableAt: Date.now() }));
-      return;
-    case "sessionDelivery.defer": {
-      const { id, delayMs } = command.input;
-      update(id, (entry) => ({
-        ...entry,
-        availableAt: Date.now() + Math.max(0, delayMs),
-      }));
-      return;
-    }
-    case "sessionDelivery.advanceAgentRun": {
-      const { id, updates } = command.input;
-      update(id, (entry) =>
-        entry.kind !== "agentTurn"
-          ? entry
-          : {
-              ...entry,
-              agentRunAttempt: (entry.agentRunAttempt ?? 0) + 1,
-              deliveryStartedAt: undefined,
-              ...(updates?.message ? { message: updates.message } : {}),
-              ...(updates?.expectedMediaUrls
-                ? { expectedMediaUrls: updates.expectedMediaUrls }
-                : {}),
-              ...(updates?.suppressTextDelivery === true
-                ? { suppressTextDelivery: true as const }
-                : {}),
-            },
-      );
-      return;
-    }
-    case "sessionDelivery.mergePreparedMedia": {
-      const { id, mediaUrl, blocksJson } = command.input;
-      let result: SessionDeliveryWorkerOperations["sessionDelivery.mergePreparedMedia"]["output"] =
-        {
-          source: "input",
-        };
-      update(id, (entry) => {
-        if (entry.kind !== "agentTurn") {
-          return entry;
-        }
-        const stored = entry.preparedMediaBlocks?.[mediaUrl];
-        // SAFETY: The host serialized the caller's typed block array before worker admission.
-        const blocks = stored ?? (JSON.parse(blocksJson) as Array<Record<string, unknown>>);
-        if (stored != null) {
-          result = { source: "stored", blocks: stored };
-        }
-        return {
-          ...entry,
-          preparedMediaBlocks: { ...entry.preparedMediaBlocks, [mediaUrl]: blocks },
-        };
-      });
-      return result;
-    }
-    case "sessionDelivery.markAttemptStarted": {
-      if (!upsertBoundDeliveryQueueEntryInDatabase(command.input, database)) {
-        throw new Error(`Session delivery ${command.input.row.id} is no longer pending`);
+function update(
+  database: OpenClawStateDatabase,
+  id: string,
+  transform: (entry: QueuedSessionDelivery) => QueuedSessionDelivery,
+) {
+  return updateDeliveryQueueEntryInDatabase(database, SESSION_DELIVERY_QUEUE_NAME, id, (entry) =>
+    // SAFETY: Only the session namespace reaches this payload transform.
+    transform(entry as QueuedSessionDelivery),
+  );
+}
+
+function finalize(
+  database: OpenClawStateDatabase,
+  id: string,
+  status: "completed" | "failed",
+  transition: () => void,
+) {
+  try {
+    transition();
+  } catch (error) {
+    try {
+      if (readStatus(database, id) === status) {
+        return;
       }
-      return;
+    } catch {
+      // Preserve the transition failure when durable settlement cannot be established.
     }
-    case "sessionDelivery.markSettlement": {
-      const id = command.input.row.id;
-      return finalize(id, "completed", () => {
-        if (
-          upsertBoundDeliveryQueueEntryInDatabase(command.input, database) ||
-          readStatus(id) === "completed"
-        ) {
-          return;
-        }
-        throw new Error(`Session delivery ${id} is no longer pending`);
-      });
-    }
-    case "sessionDelivery.complete": {
-      const { id } = command.input;
-      return finalize(id, "completed", () => {
-        completeDeliveryQueueEntryInDatabase(database, SESSION_DELIVERY_QUEUE_NAME, id);
-      });
-    }
-    case "sessionDelivery.fail": {
-      const { id, error, releaseAttemptOwnership } = command.input;
-      update(id, (entry) => {
-        const safeEntry =
-          entry.kind === "postCompactionDelegate" || hasOnlyGenericAttachmentRefs(entry)
-            ? entry
-            : scrubTerminalQueuedAttachments(entry);
-        const retryCount = safeEntry.retryCount + 1;
-        const now = Date.now();
-        return {
-          ...safeEntry,
-          retryCount,
-          ...(safeEntry.kind === "agentTurn"
-            ? { lastChargedAgentRunAttempt: safeEntry.agentRunAttempt ?? 0 }
-            : {}),
-          ...(releaseAttemptOwnership === true ? { deliveryStartedAt: undefined } : {}),
-          lastAttemptAt: now,
-          ...(safeEntry.kind === "agentTurn" && safeEntry.owner?.kind === "subagent_completion"
-            ? {
-                availableAt:
-                  now +
-                  computeBackoff(
-                    { initialMs: 15_000, factor: 2, maxMs: 5 * 60_000, jitter: 0.2 },
-                    retryCount,
-                  ),
-              }
-            : {}),
-          lastError: error,
-        };
-      });
-      return;
-    }
-    case "sessionDelivery.failInvalid": {
-      const { entry, error, entryJson } = command.input;
-      terminalizeInvalidDeliveryQueueEntryInDatabase(database, {
-        queueName: SESSION_DELIVERY_QUEUE_NAME,
-        id: entry.id,
-        lastError: error,
-        entry: {
-          id: entry.id,
-          enqueuedAt: entry.enqueuedAt,
-          retryCount: entry.retryCount,
-          retainOnFailure: true,
-        },
-        expectedEntryJson: entryJson,
-      });
-      return;
-    }
-    case "sessionDelivery.load":
-      return readSessionDeliveryResult(database, command.input.id);
-    case "sessionDelivery.list": {
-      return executeSqliteQuerySync(
-        database.db,
-        deliveryQueueEntriesQuery(database, [SESSION_DELIVERY_QUEUE_NAME], "pending")
-          .orderBy("enqueued_at", "asc")
-          .orderBy("id", "asc"),
-      ).rows.map(inflateDeliveryQueueEntryResult);
-    }
-    case "sessionDelivery.moveToFailed": {
-      const { id } = command.input;
-      return finalize(id, "failed", () => {
-        const result = readSessionDeliveryResult(database, id);
-        if (result?.status !== "loaded") {
-          throw deliveryQueueEntryNotFoundError(SESSION_DELIVERY_QUEUE_NAME, id);
-        }
-        const entry = result.entry;
-        const terminalized = terminalizePendingDeliveryQueueEntryInDatabase(
-          database,
-          prepareDeliveryQueueTerminalEntry({ queueName: SESSION_DELIVERY_QUEUE_NAME, id, entry }),
-        );
-        if (terminalized.status !== "terminalized") {
-          throw deliveryQueueEntryNotFoundError(SESSION_DELIVERY_QUEUE_NAME, id);
-        }
-      });
-    }
+    throw error;
   }
 }
+
+type PreparedEntry = ReturnType<typeof bindDeliveryQueueEntry>;
+type PreparedMediaResult =
+  | { source: "input" }
+  | { source: "stored"; blocks: Array<Record<string, unknown>> };
+
+export const sessionDeliveryOperations = {
+  "sessionDelivery.mutateSubagentCompletion": (
+    input: Parameters<typeof mutateSubagentCompletionInWorker>[0],
+    { open },
+  ) => mutateSubagentCompletionInWorker(input, open()),
+  "sessionDelivery.admitSubagentCompletion": (
+    input: Parameters<typeof admitSubagentCompletionInWorker>[0],
+    { open },
+  ) => admitSubagentCompletionInWorker(input, open()),
+  // Stored status is a string column; "unknown" means the row could not be read back.
+  "sessionDelivery.enqueue": (
+    input: PreparedEntry,
+    { open },
+  ): { status: DeliveryQueueStoredStatus } => {
+    const database = open();
+    return runOpenClawStateWriteTransaction(
+      () => {
+        requestSqliteWorkerOperationAdmission({ stage: "transaction", facts: undefined });
+        const id = input.row.id;
+        upsertBoundDeliveryQueueEntryInDatabase(input, database);
+        // Read the settled status here so enqueue callers never touch SQLite on the main thread.
+        let enqueuedStatus: DeliveryQueueStoredStatus;
+        try {
+          enqueuedStatus = readStatus(database, id) ?? "unknown";
+        } catch {
+          enqueuedStatus = "unknown";
+        }
+        requestSqliteWorkerOperationAdmission({ stage: "commit", facts: undefined });
+        return { status: enqueuedStatus };
+      },
+      { database, path: database.path, env: getSqliteWorkerStateContext().environment },
+      { operationLabel: "sessionDelivery.enqueue" },
+    );
+  },
+  "sessionDelivery.enqueueClaimed": (input: PreparedEntry, { open }) => {
+    const database = open();
+    return runOpenClawStateWriteTransaction(
+      () => {
+        requestSqliteWorkerOperationAdmission({ stage: "transaction", facts: undefined });
+        const id = input.row.id;
+        const claimed = upsertBoundDeliveryQueueEntryInDatabase(input, database);
+        let status: DeliveryQueueStoredStatus;
+        try {
+          status = claimed ? "pending" : (readStatus(database, id) ?? "completed");
+        } catch {
+          status = "unknown";
+        }
+        requestSqliteWorkerOperationAdmission({ stage: "commit", facts: undefined });
+        return { id, claimed, status };
+      },
+      { database, path: database.path, env: getSqliteWorkerStateContext().environment },
+      { operationLabel: "sessionDelivery.enqueueClaimed" },
+    );
+  },
+  "sessionDelivery.releaseClaim": (input: { id: string }, { open }) => {
+    const database = open();
+    update(database, input.id, (entry) => ({ ...entry, availableAt: Date.now() }));
+  },
+  "sessionDelivery.defer": (input: { id: string; delayMs: number }, { open }) => {
+    const database = open();
+    const { id, delayMs } = input;
+    update(database, id, (entry) => ({
+      ...entry,
+      availableAt: Date.now() + Math.max(0, delayMs),
+    }));
+  },
+  "sessionDelivery.advanceAgentRun": (
+    input: { id: string; updates?: SessionDeliveryAgentRunUpdate },
+    { open },
+  ) => {
+    const database = open();
+    const { id, updates } = input;
+    update(database, id, (entry) =>
+      entry.kind !== "agentTurn"
+        ? entry
+        : {
+            ...entry,
+            agentRunAttempt: (entry.agentRunAttempt ?? 0) + 1,
+            deliveryStartedAt: undefined,
+            ...(updates?.message ? { message: updates.message } : {}),
+            ...(updates?.expectedMediaUrls ? { expectedMediaUrls: updates.expectedMediaUrls } : {}),
+            ...(updates?.suppressTextDelivery === true
+              ? { suppressTextDelivery: true as const }
+              : {}),
+          },
+    );
+  },
+  "sessionDelivery.mergePreparedMedia": (
+    input: { id: string; mediaUrl: string; blocksJson: string },
+    { open },
+  ): PreparedMediaResult => {
+    const database = open();
+    const { id, mediaUrl, blocksJson } = input;
+    let result: PreparedMediaResult = {
+      source: "input",
+    };
+    update(database, id, (entry) => {
+      if (entry.kind !== "agentTurn") {
+        return entry;
+      }
+      const stored = entry.preparedMediaBlocks?.[mediaUrl];
+      // SAFETY: The host serialized the caller's typed block array before worker admission.
+      const blocks = stored ?? (JSON.parse(blocksJson) as Array<Record<string, unknown>>);
+      if (stored != null) {
+        result = { source: "stored", blocks: stored };
+      }
+      return {
+        ...entry,
+        preparedMediaBlocks: { ...entry.preparedMediaBlocks, [mediaUrl]: blocks },
+      };
+    });
+    return result;
+  },
+  "sessionDelivery.markAttemptStarted": (input: PreparedEntry, { open }) => {
+    const database = open();
+    if (!upsertBoundDeliveryQueueEntryInDatabase(input, database)) {
+      throw new Error(`Session delivery ${input.row.id} is no longer pending`);
+    }
+  },
+  "sessionDelivery.markSettlement": (input: PreparedEntry, { open }) => {
+    const database = open();
+    const id = input.row.id;
+    return finalize(database, id, "completed", () => {
+      if (
+        upsertBoundDeliveryQueueEntryInDatabase(input, database) ||
+        readStatus(database, id) === "completed"
+      ) {
+        return;
+      }
+      throw new Error(`Session delivery ${id} is no longer pending`);
+    });
+  },
+  "sessionDelivery.complete": (input: { id: string }, { open }) => {
+    const database = open();
+    const { id } = input;
+    return finalize(database, id, "completed", () => {
+      completeDeliveryQueueEntryInDatabase(database, SESSION_DELIVERY_QUEUE_NAME, id);
+    });
+  },
+  "sessionDelivery.fail": (
+    input: { id: string; error: string; releaseAttemptOwnership?: boolean },
+    { open },
+  ) => {
+    const database = open();
+    const { id, error, releaseAttemptOwnership } = input;
+    update(database, id, (entry) => {
+      const safeEntry =
+        entry.kind === "postCompactionDelegate" || hasOnlyGenericAttachmentRefs(entry)
+          ? entry
+          : scrubTerminalQueuedAttachments(entry);
+      const retryCount = safeEntry.retryCount + 1;
+      const now = Date.now();
+      return {
+        ...safeEntry,
+        retryCount,
+        ...(safeEntry.kind === "agentTurn"
+          ? { lastChargedAgentRunAttempt: safeEntry.agentRunAttempt ?? 0 }
+          : {}),
+        ...(releaseAttemptOwnership === true ? { deliveryStartedAt: undefined } : {}),
+        lastAttemptAt: now,
+        ...(safeEntry.kind === "agentTurn" && safeEntry.owner?.kind === "subagent_completion"
+          ? {
+              availableAt:
+                now +
+                computeBackoff(
+                  { initialMs: 15_000, factor: 2, maxMs: 5 * 60_000, jitter: 0.2 },
+                  retryCount,
+                ),
+            }
+          : {}),
+        lastError: error,
+      };
+    });
+  },
+  "sessionDelivery.failInvalid": (
+    input: {
+      entry: { id: string; enqueuedAt: number; retryCount: number };
+      error: string;
+      entryJson: string;
+    },
+    { open },
+  ): void => {
+    const { entry, error, entryJson } = input;
+    terminalizeInvalidDeliveryQueueEntryInDatabase(open(), {
+      queueName: SESSION_DELIVERY_QUEUE_NAME,
+      id: entry.id,
+      lastError: error,
+      entry: {
+        id: entry.id,
+        enqueuedAt: entry.enqueuedAt,
+        retryCount: entry.retryCount,
+        retainOnFailure: true,
+      },
+      expectedEntryJson: entryJson,
+    });
+  },
+  "sessionDelivery.load": (input: { id: string }, { open }) =>
+    readSessionDeliveryResult(open(), input.id),
+  "sessionDelivery.list": (_input: undefined, { open }): DeliveryQueueEntryLoadResult[] => {
+    const database = open();
+    return executeSqliteQuerySync(
+      database.db,
+      deliveryQueueEntriesQuery(database, [SESSION_DELIVERY_QUEUE_NAME], "pending")
+        .orderBy("enqueued_at", "asc")
+        .orderBy("id", "asc"),
+    ).rows.map(inflateDeliveryQueueEntryResult);
+  },
+  "sessionDelivery.moveToFailed": (input: { id: string }, { open }) => {
+    const database = open();
+    const { id } = input;
+    return finalize(database, id, "failed", () => {
+      const result = readSessionDeliveryResult(database, id);
+      if (result?.status !== "loaded") {
+        throw deliveryQueueEntryNotFoundError(SESSION_DELIVERY_QUEUE_NAME, id);
+      }
+      const entry = result.entry;
+      const terminalized = terminalizePendingDeliveryQueueEntryInDatabase(
+        database,
+        prepareDeliveryQueueTerminalEntry({ queueName: SESSION_DELIVERY_QUEUE_NAME, id, entry }),
+      );
+      if (terminalized.status !== "terminalized") {
+        throw deliveryQueueEntryNotFoundError(SESSION_DELIVERY_QUEUE_NAME, id);
+      }
+    });
+  },
+} satisfies WorkerOperationHandlers;
+
+export type SessionDeliveryWorkerOperations = WorkerOperations<typeof sessionDeliveryOperations>;

@@ -6,10 +6,8 @@ import {
   observeSubagentRequesterWake,
   writeRunChildSessions,
 } from "./subagent-registry.persistence.test-support.js";
-import {
-  loadSubagentRegistryFromSqlite,
-  saveSubagentRegistryToSqlite,
-} from "./subagent-registry.store.sqlite.js";
+import { loadSubagentRegistryFromSqlite } from "./subagent-registry.store.sqlite.js";
+import { saveSubagentRegistryToSqlite } from "./subagent-registry.store.test-support.js";
 
 type WakeParams = Parameters<typeof maybeWakeRequesterAfterAllChildrenSettled>[0];
 

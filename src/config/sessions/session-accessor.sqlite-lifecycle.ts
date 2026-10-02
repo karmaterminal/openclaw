@@ -96,7 +96,7 @@ export async function cleanupSessionLifecycleArtifactsCore(
   const resolved = captureLifecycleDatabaseScope(
     resolveSqliteReadScope({
       ...(params.agentId ? { agentId: params.agentId } : {}),
-      ...(params.env ? { env: params.env } : {}),
+      env: params.env,
       storePath: params.storePath,
     }),
   );

@@ -157,7 +157,6 @@ export {
   patchSessionEntryWithKey,
   prepareQualifiedSessionEntryTarget,
   readSessionUpdatedAtCore,
-  readSessionStoreSummaryReadOnly,
   replaceSessionEntry,
   replaceSessionEntrySync,
   resolveSessionEntryAccessTarget,
@@ -211,10 +210,6 @@ export {
   type CanonicalSessionRepairFact,
 } from "./session-accessor.sqlite-canonical-inventory.js";
 export {
-  iterateDoctorSessionKeyBatches,
-  rewriteDoctorSessionEntries,
-} from "./session-accessor.sqlite-doctor-rewrite.js";
-export {
   applySessionEntryLifecycleMutation,
   applySessionEntryReplacements,
   applySessionPatchProjection,
@@ -227,7 +222,7 @@ export {
   rollbackAgentHarnessSessionEntryLifecycle,
   rollbackPluginOwnedSessionEntryLifecycle,
 } from "./session-accessor.lifecycle.js";
-export { listSessionBranches } from "./session-accessor.sqlite-branches.js";
+export { listSessionBranches } from "./session-accessor.sqlite-branch-list.js";
 export {
   forkSessionAtMessage,
   rewindSessionToMessage,
@@ -289,7 +284,6 @@ export {
   isSessionTranscriptProjectionUnavailableError,
   readLatestSessionTranscriptMessageEvent,
   readRecentSessionTranscriptActiveEvents,
-  readSessionTranscriptActiveStats,
   readSessionTranscriptBoundedMessageTailPage,
   readRecentSessionTranscriptMessageEvents,
   readSessionTranscriptActivePathEntryRelation,
@@ -298,7 +292,6 @@ export {
   readSessionTranscriptVisibleMessageDeltaCore,
   SessionTranscriptProjectionUnavailableError,
   waitForSessionTranscriptProjection,
-  withRecentSessionTranscriptActiveEvents,
 } from "./session-accessor.sqlite-active-events.js";
 export type {
   SessionTranscriptBoundedMessageTailPage,

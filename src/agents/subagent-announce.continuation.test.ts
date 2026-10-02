@@ -52,15 +52,11 @@ vi.mock("./subagents/registry/subagent-registry-read.js", async (importOriginal)
   resolveRequesterForChildSession: (key: string) => mocked.resolveRequesterForChildSessionMock(key),
   shouldIgnorePostCompletionAnnounceForSession: () => false,
 }));
-vi.mock("./subagents/registry/subagent-registry-runtime.js", () => ({
-  countActiveDescendantRuns: (key: string) => mocked.countActiveDescendantRunsMock(key),
-  countPendingDescendantRuns: (key: string) => mocked.countPendingDescendantRunsMock(key),
-  countPendingDescendantRunsExcludingRun: () => 0,
-  isSubagentSessionRunActive: (key: string) => mocked.isSubagentSessionRunActiveMock(key),
-  listSubagentRunsForRequester: () => [],
-  replaceSubagentRunAfterSteer: () => true,
-  resolveRequesterForChildSession: (key: string) => mocked.resolveRequesterForChildSessionMock(key),
-  shouldIgnorePostCompletionAnnounceForSession: () => false,
+// The descendant wake loads the registry module directly (the runtime barrel is
+// gone); only the steer replacement this suite stubbed there is intercepted.
+vi.mock("./subagents/registry/subagent-registry.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./subagents/registry/subagent-registry.js")>()),
+  replaceSubagentRunAfterSteerCore: () => true,
 }));
 
 vi.mock("../plugins/hook-runner-global.js", () => ({

@@ -1,8 +1,4 @@
 import type { SessionsDeleteParams } from "../../../../packages/gateway-protocol/src/index.js";
-/**
- * Cleanup helper for subagent sessions. It deletes child session state through
- * the gateway and preserves lifecycle-hook behavior for session-mode spawns.
- */
 import { SESSION_LIFECYCLE_CHANGED_ERROR_REASON } from "../../../config/sessions/lifecycle.js";
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
@@ -101,7 +97,6 @@ export function resetSubagentSessionCleanupForTests(): void {
   cleanupRetryTimers.clear();
 }
 
-/** Deletes a child subagent session and optionally emits session-mode lifecycle hooks. */
 export async function deleteSubagentSessionForCleanup(
   params: DeleteSubagentSessionForCleanupParams,
 ): Promise<SubagentSessionCleanupOutcome> {

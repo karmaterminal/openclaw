@@ -24,7 +24,6 @@ import {
 } from "../../sanitize-for-prompt.js";
 import { removeSubagentAttachmentTree } from "../subagent-attachment-cleanup.js";
 import {
-  resolveSubagentAttachmentDir,
   resolveSubagentSessionAttachmentRootDir,
   SANDBOX_SUBAGENT_ATTACHMENTS_MOUNT,
 } from "../subagent-attachment-paths.js";
@@ -371,11 +370,7 @@ export async function materializeSubagentAttachments(params: {
   // workspace-relative, and the child prompt carries the usable sandbox mount or
   // absolute Gateway path; consumers must not resolve relDir as a location.
   const relDir = path.posix.join(".openclaw", "attachments", attachmentId);
-  const absDir = resolveSubagentAttachmentDir(
-    params.targetAgentId,
-    params.childSessionKey,
-    attachmentId,
-  );
+  const absDir = path.join(absRootDir, attachmentId);
 
   let prepared: ReturnType<typeof prepareSubagentAttachments>;
   let pathBlock: string;
@@ -428,7 +423,7 @@ export async function materializeSubagentAttachments(params: {
       files.push({ name, bytes, sha256 });
     }
 
-    const manifest = {
+    const receipt = {
       relDir,
       count: files.length,
       totalBytes: prepared.totalBytes,
@@ -436,18 +431,13 @@ export async function materializeSubagentAttachments(params: {
     };
     params.assertActive?.();
     materializationStage = "manifest_write";
-    await attachmentStore.writeJson(path.posix.join(attachmentId, ".manifest.json"), manifest, {
+    await attachmentStore.writeJson(path.posix.join(attachmentId, ".manifest.json"), receipt, {
       trailingNewline: true,
     });
 
     return {
       status: "ok",
-      receipt: {
-        count: files.length,
-        totalBytes: prepared.totalBytes,
-        files,
-        relDir,
-      },
+      receipt,
       attachmentId,
       retainOnSessionKeep: request.limits.retainOnSessionKeep,
       // File-consuming tools reject directories. List each already-validated

@@ -40,10 +40,8 @@ import {
   writeSubagentSessionEntry,
 } from "./subagent-registry.persistence.test-support.js";
 import { registerStaleRequesterWakeBatchTests } from "./subagent-registry.persistence.wake.test-support.js";
-import {
-  loadSubagentRegistryFromSqlite,
-  saveSubagentRegistryToSqlite,
-} from "./subagent-registry.store.sqlite.js";
+import { loadSubagentRegistryFromSqlite } from "./subagent-registry.store.sqlite.js";
+import { saveSubagentRegistryToSqlite } from "./subagent-registry.store.test-support.js";
 
 type WakeRequester =
   typeof import("../announce/subagent-announce.requester-settle-wake.js").maybeWakeRequesterAfterAllChildrenSettled;

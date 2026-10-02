@@ -55,10 +55,7 @@ import {
 } from "./agent-restart-recovery-context.js";
 import { createAgentRunDiagnostics } from "./agent-run-diagnostics.js";
 import { withAgentRunDispatchExecutionIdentity } from "./agent-run-dispatch-execution-identity.js";
-import {
-  resolveAbortedAgentStopReason,
-  dispatchAgentRunFromGateway,
-} from "./agent-run-dispatch.js";
+import { dispatchAgentRunFromGateway } from "./agent-run-dispatch.js";
 import { resolveExecutionIdentitySpawnFacts } from "./agent-run-execution-lineage.js";
 import { resolveAgentRunContinuationHandoff } from "./agent-run-execution-phase.continuation.js";
 import type { StartAgentRunExecutionParams } from "./agent-run-execution-types.js";
@@ -220,7 +217,7 @@ export async function startAgentRunExecution(
         });
       };
       const finishUndispatchedAbort = async () => {
-        const stopReason = resolveAbortedAgentStopReason(prepared.activeRunAbort.entry);
+        const stopReason = prepared.activeRunAbort.entry?.abortStopReason?.trim() || "rpc";
         const outcome = buildAgentRunTerminalOutcome({
           status: "timeout",
           stopReason,
@@ -502,6 +499,7 @@ export async function startAgentRunExecution(
                 internalEvents: params.request.internalEvents,
                 runtimeContextFragments: params.client?.internal?.runtimeContextFragments,
                 inputProvenance: params.inputProvenance,
+                privateCompletion: prepared.userTurn.privateCompletion,
                 senderIsOwner,
                 sessionEffects: params.sessionEffects,
                 skipInitialSessionTouch: params.skipAgentInitialSessionTouch,
@@ -536,6 +534,8 @@ export async function startAgentRunExecution(
                 },
                 internalDeliveryMediaUrls: params.client?.internal?.internalDeliveryMediaUrls,
                 internalDeliverySuppressText: params.client?.internal?.internalDeliverySuppressText,
+                internalDeliverySuppressErrors:
+                  params.client?.internal?.internalDeliverySuppressErrors,
                 suppressPromptPersistence: prepared.userTurn.suppressPromptPersistence,
                 userTurnTranscriptRecorder,
                 cleanupBundleMcpOnRunEnd: params.request.cleanupBundleMcpOnRunEnd,

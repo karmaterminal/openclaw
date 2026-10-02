@@ -256,7 +256,12 @@ vi.mock("./subagents/registry/subagent-registry-read.js", async (importOriginal)
   ...(await importOriginal<Record<string, unknown>>()),
   ...subagentRegistryRuntimeMock,
 }));
-vi.mock("./subagents/registry/subagent-registry-runtime.js", () => subagentRegistryRuntimeMock);
+// The descendant wake loads the registry module directly (the runtime barrel is
+// gone); only the steer replacement this suite stubbed there is intercepted.
+vi.mock("./subagents/registry/subagent-registry.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./subagents/registry/subagent-registry.js")>()),
+  replaceSubagentRunAfterSteerCore: subagentRegistryRuntimeMock.replaceSubagentRunAfterSteer,
+}));
 
 vi.mock("../auto-reply/continuation/delegate-dispatch.js", () => ({
   dispatchToolDelegates: (params: unknown) => dispatchToolDelegatesMock(params),

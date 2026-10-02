@@ -7,6 +7,7 @@ import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../../../infra/k
 import { openNodeSqliteDatabase } from "../../../../infra/node-sqlite.js";
 import { resolveSqliteDatabaseFilePaths } from "../../../../infra/sqlite-files.js";
 import { closeOpenClawAgentDatabasesForTestAsync } from "../../../../state/openclaw-agent-db-lifecycle.js";
+import { withAgentDatabaseMaintenanceLease } from "../../../../state/openclaw-agent-db-maintenance-lease.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../../../state/openclaw-agent-db-readonly.js";
 import { listOpenClawRegisteredAgentDatabases } from "../../../../state/openclaw-agent-db-registry-listing.js";
 import type { DB as OpenClawAgentKyselyDatabase } from "../../../../state/openclaw-agent-db.generated.js";
@@ -15,7 +16,6 @@ import {
   ensureOpenClawAgentDatabaseSchema,
   openOpenClawAgentDatabase,
   OPENCLAW_AGENT_SCHEMA_VERSION,
-  withAgentDatabaseMaintenanceLease,
 } from "../../../../state/openclaw-agent-db.js";
 import { resolveOpenClawAgentSqlitePath } from "../../../../state/openclaw-agent-db.paths.js";
 import { stageRecipientAuthorityV18Fixture } from "../../../../state/openclaw-agent-recipient-authority-fixture.test-support.js";

@@ -1,8 +1,3 @@
-/**
- * Subagent session-store reconciliation.
- *
- * Infers child completion from persisted session entries when registry updates arrive late.
- */
 import { asFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import { getRuntimeConfig } from "../../../config/config.js";
 import {
@@ -17,6 +12,7 @@ import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { getAgentRunContext, listAgentRunsForSession } from "../../../infra/agent-run-registry.js";
 import { withExistingOpenClawStateDatabaseCurrentReadOnly } from "../../../state/openclaw-state-db-readonly.js";
 import type { SubagentRunOutcome } from "../subagent-run-outcome.types.js";
+import { resolveSubagentChildSessionOwner } from "./subagent-child-session-owner.js";
 import { hasRetainedRequiredCompletionDelivery } from "./subagent-delivery-state.js";
 import {
   SUBAGENT_ENDED_REASON_COMPLETE,
@@ -35,7 +31,6 @@ export type SubagentRunOrphanReason =
   | "missing-session-id"
   | "stale-unended-run";
 
-/** Completion inferred from the child session store. */
 export type SubagentSessionCompletion = {
   startedAt?: number;
   endedAt: number;
@@ -123,7 +118,6 @@ function loadSubagentSessionEntryForAccessor(params: {
   });
 }
 
-/** Resolves whether a registry row is orphaned from its child session entry. */
 export function resolveSubagentRunOrphanReason(params: {
   entry: SubagentRunRecord;
   includeStaleUnended?: boolean;
@@ -179,7 +173,6 @@ export function resolveSubagentRunOrphanReason(params: {
   }
 }
 
-/** Convert persisted session status into a subagent completion outcome. */
 export function resolveCompletionFromSessionEntry(
   sessionEntry: SessionEntry | undefined,
   fallbackEndedAt: number,
@@ -222,9 +215,9 @@ export function resolveCompletionFromSessionEntry(
   };
 }
 
-/** Resolve child completion by reading its persisted session entry. */
 export async function resolveSubagentSessionCompletion(params: {
   childSessionKey: string;
+  childAgentId?: string;
   fallbackEndedAt: number;
   notBeforeMs?: number;
   storeCache?: SubagentSessionStoreCache;
@@ -241,15 +234,15 @@ export async function resolveSubagentSessionCompletion(params: {
 async function withSubagentSessionEntry<T>(
   params: {
     childSessionKey: string;
+    childAgentId?: string;
     storeCache?: SubagentSessionStoreCache;
     cfg?: OpenClawConfig;
     assertCurrent?: () => void;
   },
   consume: (entry: SessionEntry | undefined) => T,
 ): Promise<T> {
-  const agentId = resolveAgentIdFromSessionKey(params.childSessionKey);
   const cfg = params.cfg ?? getRuntimeConfig();
-  const storePath = resolveSessionStorePathCore(cfg.session?.store, { agentId });
+  const { agentId, storePath } = resolveSubagentChildSessionOwner(params, cfg);
   // A sweep-scoped cache already holds this pass's entry; reuse it instead of a second read.
   const cachedStore = params.storeCache?.get(storePath);
   const cacheKey = params.childSessionKey.trim();
@@ -270,7 +263,6 @@ async function withSubagentSessionEntry<T>(
   );
 }
 
-/** Resolve a fresh child session start time for lifecycle reconciliation. */
 export async function resolveSubagentSessionStartedAt(params: {
   childSessionKey: string;
   notBeforeMs?: number;
