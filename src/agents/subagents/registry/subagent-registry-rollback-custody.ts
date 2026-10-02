@@ -39,22 +39,26 @@ function withoutRollbackCustody(entry: SubagentRunRecord): SubagentRunRecord {
   return { ...rest, execution };
 }
 
-/** True when the live row equals the staged preimage apart from rollback custody. */
-export function matchesSubagentRunModuloRollbackCustody(
-  live: SubagentRunRecord,
-  preimage: SubagentRunRecord,
-): live is SubagentRunRecord & { acceptedSpawnRollback: SubagentAcceptedSpawnRollback } {
-  return (
-    live.acceptedSpawnRollback !== undefined &&
-    isDeepStrictEqual(withoutRollbackCustody(live), withoutRollbackCustody(preimage))
-  );
-}
-
-/** Replays the live row's custody annotation on top of a staged postimage. */
-export function rebaseSubagentRunOntoRollbackCustody(
-  next: SubagentRunRecord,
-  live: SubagentRunRecord & { acceptedSpawnRollback: SubagentAcceptedSpawnRollback },
-): SubagentRunRecord {
+/**
+ * Re-stages a superseded postimage when the live row differs from its staged
+ * preimage only by a custody annotation (or not at all, for sibling rows of a
+ * multi-row write). Any other change keeps the supersession.
+ */
+export function rebaseSubagentRunOntoRollbackCustody(params: {
+  live: SubagentRunRecord;
+  preimage: SubagentRunRecord;
+  next: SubagentRunRecord;
+}): SubagentRunRecord | undefined {
+  const { live, preimage, next } = params;
+  if (isDeepStrictEqual(live, preimage)) {
+    return next;
+  }
+  if (
+    !live.acceptedSpawnRollback ||
+    !isDeepStrictEqual(withoutRollbackCustody(live), withoutRollbackCustody(preimage))
+  ) {
+    return undefined;
+  }
   return {
     ...next,
     acceptedSpawnRollback: live.acceptedSpawnRollback,

@@ -2,6 +2,7 @@
 import type { callGateway } from "../../../gateway/call.js";
 import { isAgentEventLifecycleGenerationCurrent } from "../../../infra/agent-events.js";
 import { terminateAcceptedCollectorRun } from "../spawn/subagent-spawn-cleanup.js";
+import { hasPendingSubagentRetirementPublication } from "./subagent-registry-memory.js";
 import type {
   SubagentAcceptedSteerDispatch,
   SubagentRunRecord,
@@ -125,7 +126,10 @@ export async function reconcileAcceptedSpawnRollback(params: {
   if (
     !terminated ||
     params.runs.get(params.runId) !== params.entry ||
-    params.entry.acceptedSpawnRollback !== rollback
+    params.entry.acceptedSpawnRollback !== rollback ||
+    // A Stop that began publishing during termination decides the outcome first;
+    // settlement and release are idempotent and wait for a later sweep.
+    hasPendingSubagentRetirementPublication(params.entry)
   ) {
     return true;
   }

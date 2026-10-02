@@ -13,7 +13,6 @@ import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-w
 import { runOpenClawStateWorkerOperation } from "../../../state/openclaw-state-worker-store.js";
 import { normalizeSubagentRunState } from "./subagent-delivery-state.js";
 import {
-  matchesSubagentRunModuloRollbackCustody,
   readSubagentRunRollbackCustodyRevision,
   rebaseSubagentRunOntoRollbackCustody,
 } from "./subagent-registry-rollback-custody.js";
@@ -629,16 +628,14 @@ function rebaseOntoRollbackCustody(
   const rebased: Array<{ entry: SubagentRunRecord; next: SubagentRunRecord }> = [];
   for (const { entry, previous, next, retire } of staged.selected) {
     const preimage = staged.previousSnapshots.get(entry);
-    if (
-      retire ||
-      !previous ||
-      !preimage ||
-      params.runs.get(entry.runId) !== entry ||
-      !matchesSubagentRunModuloRollbackCustody(entry, preimage)
-    ) {
+    const rebasedNext =
+      !retire && previous && preimage && params.runs.get(entry.runId) === entry
+        ? rebaseSubagentRunOntoRollbackCustody({ live: entry, preimage, next })
+        : undefined;
+    if (!rebasedNext) {
       return undefined;
     }
-    rebased.push({ entry, next: rebaseSubagentRunOntoRollbackCustody(next, entry) });
+    rebased.push({ entry, next: rebasedNext });
   }
   const previous = new Map<SubagentRunRecord, SubagentRunRecord | undefined>();
   for (const { entry, next } of rebased) {

@@ -13,9 +13,9 @@ const runId = "run-staged-kill";
 const rollback = { gatewayRunId: "gateway-run", requestedAt: 2, reason: "start lost to Stop" };
 const claim = { requestedAt: 3, reason: "killed" };
 
-function createRow(): SubagentRunRecord {
+function createRow(id = runId): SubagentRunRecord {
   return {
-    runId,
+    runId: id,
     childSessionKey: "agent:main:subagent:staged-kill",
     requesterSessionKey: "agent:main:main",
     requesterDisplayKey: "main",
@@ -35,14 +35,23 @@ function createRow(): SubagentRunRecord {
  * the preimage fence runs again before commit. `commitFirst` models a write
  * whose commit was granted before the custody annotation superseded it.
  */
-function stageKillClaim(options: { commitFirst?: boolean } = {}) {
+function stageKillClaim(options: { commitFirst?: boolean; sibling?: boolean } = {}) {
   const entry = createRow();
   const runs = new Map([[runId, entry]]);
+  const rows = [entry];
+  if (options.sibling) {
+    // A multi-row Stop also stages the same session's other row.
+    const sibling = createRow("run-staged-sibling");
+    runs.set(sibling.runId, sibling);
+    rows.push(sibling);
+  }
   const durable = new Map<string, SubagentRunRecord>();
   const firstWrite = createDeferred();
   let writes = 0;
-  const previous = new Map([[entry, captureSubagentRunMutationSnapshot(entry)]]);
-  entry.killIntent = claim;
+  const previous = new Map(rows.map((row) => [row, captureSubagentRunMutationSnapshot(row)]));
+  for (const row of rows) {
+    row.killIntent = claim;
+  }
   const publication = publishSubagentRunPostimages({
     runs,
     previous,
@@ -73,7 +82,14 @@ function stageKillClaim(options: { commitFirst?: boolean } = {}) {
       }
     },
   });
-  return { entry, durable, publication, release: firstWrite.resolve, writes: () => writes };
+  return {
+    entry,
+    runs,
+    durable,
+    publication,
+    release: firstWrite.resolve,
+    writes: () => writes,
+  };
 }
 
 describe("staged registry writes and rollback custody", () => {
@@ -101,6 +117,23 @@ describe("staged registry writes and rollback custody", () => {
       });
     },
   );
+
+  it("rebases a multi-row write whose sibling row is unchanged", async () => {
+    const staged = stageKillClaim({ sibling: true });
+    annotateSubagentRunRollbackCustody(staged.entry, rollback);
+    staged.release();
+
+    await expect(staged.publication).resolves.toMatchObject({ publication: "published" });
+    expect(staged.writes()).toBe(2);
+    expect(staged.durable.get(runId)).toMatchObject({
+      killIntent: claim,
+      acceptedSpawnRollback: rollback,
+    });
+    const sibling = staged.durable.get("run-staged-sibling");
+    expect(sibling).toMatchObject({ killIntent: claim });
+    expect(sibling?.acceptedSpawnRollback).toBeUndefined();
+    expect(staged.runs.get("run-staged-sibling")?.killIntent).toBe(claim);
+  });
 
   it("keeps the supersession when the row changed beyond the custody annotation", async () => {
     const staged = stageKillClaim();
