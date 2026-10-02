@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
+import { resetContinuationCustodyProjection } from "../../../auto-reply/continuation/custody/custody-projection.js";
+import { hydrateContinuationCustody } from "../../../auto-reply/continuation/custody/custody-store.js";
 import { getRuntimeConfig } from "../../../config/config.js";
 import { replaceSessionEntry } from "../../../config/sessions/session-accessor.js";
 import { readDescendantSubagentFallbackReply } from "../../../cron/isolated-agent/subagent-followup.js";
@@ -214,6 +216,9 @@ describe("requester settle wake product flow", () => {
   beforeEach(async () => {
     testState = await createOpenClawTestState({ scenario: "minimal", applyEnv: true });
     sessionStorePath = testState.statePath("agents", "main", "sessions", "sessions.json");
+    // Gateway boot hydrates the continuation custody projection before the
+    // registry activates; archive deferral reads it and defers while unknown.
+    await hydrateContinuationCustody();
     previousFastTestEnv = process.env.OPENCLAW_TEST_FAST;
     process.env.OPENCLAW_TEST_FAST = "1";
     loadConfigMock.mockReset().mockReturnValue({
@@ -316,6 +321,7 @@ describe("requester settle wake product flow", () => {
       subagentAnnounceOutputTesting.setDepsForTest();
       subagentAnnounceTesting.setDepsForTest();
       registry.resetSubagentRegistryForTests({ persist: false });
+      resetContinuationCustodyProjection();
       vi.useRealTimers();
       vi.restoreAllMocks();
       if (previousFastTestEnv === undefined) {
