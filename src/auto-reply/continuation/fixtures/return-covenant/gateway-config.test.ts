@@ -3,12 +3,14 @@ import { createReturnCovenantGatewayConfigSnapshot } from "./gateway-config.js";
 
 describe("return-covenant gateway config", () => {
   it("migrates the accepted legacy runtime field in memory without changing source bytes", () => {
+    // Codex runtime intent is provider/model-scoped; the legacy default model
+    // map that carries it is still a supported Doctor migration input.
     const raw = {
       gateway: { mode: "local" },
       agents: {
         defaults: {
           model: "openai/gpt-5.6-luna",
-          agentRuntime: { id: "codex" },
+          models: { "openai/gpt-5.6-luna": { agentRuntime: { id: "codex" } } },
         },
       },
       plugins: { entries: { codex: { enabled: true } } },
@@ -22,7 +24,11 @@ describe("return-covenant gateway config", () => {
     ).toMatchObject({
       gateway: { mode: "local" },
       agents: {
-        defaults: { model: "openai/gpt-5.6-luna" },
+        defaults: {
+          model: "openai/gpt-5.6-luna",
+          models: { "openai/gpt-5.6-luna": { agentRuntime: { id: "codex" } } },
+          modelPolicy: { allow: ["openai/gpt-5.6-luna"] },
+        },
         entries: { main: {} },
       },
       plugins: { entries: { codex: { enabled: true } } },
@@ -55,5 +61,17 @@ describe("return-covenant gateway config", () => {
         raw: { gateway: { mode: "invalid" } },
       }),
     ).toThrow(/gateway config is invalid/u);
+  });
+
+  it("rejects the retired whole-agent runtime field instead of silently migrating it", () => {
+    expect(() =>
+      createReturnCovenantGatewayConfigSnapshot({
+        path: "/isolated/openclaw.json",
+        raw: {
+          gateway: { mode: "local" },
+          agents: { defaults: { model: "openai/gpt-5.6-luna", agentRuntime: { id: "codex" } } },
+        },
+      }),
+    ).toThrow(/agents\.defaults: Unrecognized key: "agentRuntime"/u);
   });
 });

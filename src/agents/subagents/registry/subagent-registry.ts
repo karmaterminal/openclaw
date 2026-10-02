@@ -17,7 +17,10 @@ import {
 } from "../../../process/gateway-work-admission.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import { prependAgentSteeringPrompt } from "../../agent-steering-queue.js";
-import { startExpiredDelegateArtifactPurge } from "../../delegate-artifacts.js";
+import {
+  purgeExpiredDelegateArtifacts,
+  startExpiredDelegateArtifactPurge,
+} from "../../delegate-artifacts.js";
 import { resolveAgentTimeoutMs } from "../../timeout.js";
 import { reconcileRetiredSubagentCancellation } from "../completion/subagent-completion-admission.store.js";
 import { terminateAcceptedCollectorRun } from "../spawn/subagent-spawn-cleanup.js";
@@ -518,10 +521,8 @@ const subagentSweeper = createSubagentRegistrySweeper({
   persistOrThrow: persistSubagentRunsOrThrow,
   clearPendingLifecycleError,
   clearPendingLifecycleTimeout,
-  sweepPendingLifecycle: (now) => {
-    startExpiredDelegateArtifactPurge();
-    pendingLifecycle.sweepExpired(now);
-  },
+  sweepPendingLifecycle: (now) => pendingLifecycle.sweepExpired(now),
+  purgeExpiredArtifacts: () => purgeExpiredDelegateArtifacts(),
   completeSubagentRunWithRecovery: completionRuntime.completeSubagentRunWithRecovery,
   ...createSweeperRunManagerOperations(() => subagentRunManager),
   getGatewayRecoveryRuntime: () => activeGatewayContextResolver?.()?.recoveryRuntime,

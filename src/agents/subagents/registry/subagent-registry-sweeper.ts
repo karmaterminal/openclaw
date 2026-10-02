@@ -576,6 +576,17 @@ export function createSubagentRegistrySweeper(
         params,
       });
       params.sweepPendingLifecycle(now);
+      if (intervalStarted) {
+        // A stopped/reset generation's stray tick must not reopen shared state it
+        // no longer owns; tracking lets reset() join the purge before retirement.
+        void trackWork(() =>
+          params
+            .purgeExpiredArtifacts()
+            .catch((error: unknown) =>
+              params.warn("expired delegate artifact purge failed", { error }),
+            ),
+        );
+      }
 
       if (mutatedRunIds.size > 0) {
         params.persist(...mutatedRunIds);
