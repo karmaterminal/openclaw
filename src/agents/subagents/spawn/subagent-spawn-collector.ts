@@ -78,7 +78,6 @@ export function createCollectorLaunchCallbacks(params: {
   };
   let launchTerminationConfirmed = false;
   let pendingLaunchTermination: string | undefined;
-  let deferredRollbackReason: string | undefined;
   let dispatchAttempted = false;
   const recordRollbackOwner = (gatewayRunId: string, reason: string, error: unknown) => {
     const rollbackOwner = recordAcceptedSubagentSpawnRollback({
@@ -153,16 +152,10 @@ export function createCollectorLaunchCallbacks(params: {
         // Publication temporarily blocks cleanup authority. Settle rollback after
         // that barrier so a paused owner cannot count as confirmed termination.
         pendingLaunchTermination = gatewayRunId;
-        // A Stop still publishing on this row owns it, and its kill write is fenced
-        // on the row's preimage. Recording now would cost that Stop its kill, so
-        // record after the publication barrier in settleLaunchFailure instead.
-        if (registrationScope?.waitForRetirementPublication() !== undefined) {
-          deferredRollbackReason = summarizeSpawnError(error);
-          throw error;
-        }
-        // Record the accepted-spawn rollback owner before termination so the
-        // sweeper can reconcile the accepted child if termination fails or the
-        // process dies mid-cleanup.
+        // Record the accepted-spawn rollback owner before any await so the sweeper
+        // can reconcile the accepted child if termination fails or the process dies
+        // mid-cleanup, including while an overlapping Stop is still publishing. That
+        // Stop's staged kill write rebases onto this custody instead of losing it.
         throw recordRollbackOwner(gatewayRunId, summarizeSpawnError(error), error);
       }
       await params.emitSpawnLifecycleHooks(gatewayRunId);
@@ -232,13 +225,8 @@ export function createCollectorLaunchCallbacks(params: {
       ) {
         await publication;
       }
-      let failure = error;
+      const failure = error;
       if (pendingLaunchTermination && !launchTerminationConfirmed) {
-        if (deferredRollbackReason !== undefined) {
-          const reason = deferredRollbackReason;
-          deferredRollbackReason = undefined;
-          failure = recordRollbackOwner(pendingLaunchTermination, reason, error);
-        }
         let terminated: boolean;
         try {
           terminated = await terminateAcceptedCollectorRun({

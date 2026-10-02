@@ -30,6 +30,7 @@ import {
   captureSubagentRunMutationSnapshot,
   publishSubagentRunPostimages,
 } from "./subagent-registry-persistence.js";
+import { annotateSubagentRunRollbackCustody } from "./subagent-registry-rollback-custody.js";
 import { SubagentLaunchManager } from "./subagent-registry-run-launch.js";
 import type { SubagentRegistrationIdentity } from "./subagent-registry-run-launch.js";
 import type { SubagentManagerOptions } from "./subagent-registry-run-wait.js";
@@ -77,8 +78,9 @@ class SubagentRunManager extends SubagentLaunchManager {
     if (existing && existing.gatewayRunId !== gatewayRunId) {
       return { status: "rejected" };
     }
-    if (!existing) {
-      const rollback = {
+    let rollback = existing;
+    if (!rollback) {
+      rollback = {
         gatewayRunId,
         requestedAt: Date.now(),
         reason,
@@ -88,12 +90,8 @@ class SubagentRunManager extends SubagentLaunchManager {
       if (entry.suppressCompletionDelivery !== true) {
         rollbackSuppressedDelivery.add(rollback);
       }
-      entry.acceptedSpawnRollback = rollback;
     }
-    entry.suppressCompletionDelivery = true;
-    if (entry.execution.status !== "terminal") {
-      entry.execution = { ...entry.execution, suppressSessionEffects: true };
-    }
+    annotateSubagentRunRollbackCustody(entry, rollback);
     try {
       this.options.persistOrThrow(runId);
       return { status: "persisted" };
