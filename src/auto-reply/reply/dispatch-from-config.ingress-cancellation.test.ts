@@ -26,13 +26,12 @@ import {
 } from "./dispatch-processed-outcome.js";
 import { resetInboundDedupe } from "./inbound-dedupe.js";
 import {
-  clearSessionQueues,
   completeFollowupRunLifecycle,
   enqueueFollowupRun,
   scheduleFollowupDrain,
   type FollowupRun,
 } from "./queue.js";
-import { createQueueTestRun } from "./queue.test-helpers.js";
+import { clearFollowupQueueForTest, createQueueTestRun } from "./queue.test-helpers.js";
 import { resetRecentQueuedMessageIdDedupe } from "./queue/enqueue.test-support.js";
 import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
 import { testing as replyRunTesting } from "./reply-run-registry.test-support.js";
@@ -212,7 +211,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
             false,
           ),
         ).toBe(true);
-        clearSessionQueues([key]);
+        clearFollowupQueueForTest(key);
 
         // The recovered claim still delivers; inbound dedupe was released too.
         clock += 1_000;
@@ -241,7 +240,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         expect(await queue.listClaims()).toEqual([]);
       } finally {
         drain.dispose();
-        clearSessionQueues([key]);
+        clearFollowupQueueForTest(key);
       }
     });
   });
@@ -297,7 +296,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         expect(await queue.listFailed?.()).toEqual([]);
       } finally {
         drain.dispose();
-        clearSessionQueues([key]);
+        clearFollowupQueueForTest(key);
       }
     });
   });
@@ -374,7 +373,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         ]);
       } finally {
         drain.dispose();
-        clearSessionQueues([key]);
+        clearFollowupQueueForTest(key);
       }
     });
   });
