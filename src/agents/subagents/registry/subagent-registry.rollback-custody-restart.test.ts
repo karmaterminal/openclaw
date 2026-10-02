@@ -15,6 +15,7 @@ import { sharedRegistryMocks } from "./subagent-registry.mocks.shared.js";
 import { loadSubagentRegistryFromSqlite } from "./subagent-registry.store.sqlite.js";
 import { saveSubagentRegistryToSqlite } from "./subagent-registry.store.test-support.js";
 import {
+  activateSubagentRegistry,
   addSubagentRunForTests,
   claimSubagentRunKill,
   getSubagentRunByRunId,
@@ -82,6 +83,13 @@ function seedQueuedCollector(): SubagentRunRecord {
     execution: { status: "queued" },
     completion: { required: false, resultText: null },
     delivery: { status: "not_required" },
+    // Restart can replay this descriptor, so a rolled-back launch must never reach it.
+    queuedLaunch: {
+      request: { sessionKey: childSessionKey, idempotencyKey: runId },
+      timeoutMs: 1_000,
+      schedulerGroupKey: JSON.stringify(["agent:main:main", ""]),
+      maxConcurrent: 1,
+    },
   };
   addSubagentRunForTests(entry);
   saveSubagentRegistryToSqlite(new Map([[runId, structuredClone(entry)]]));
@@ -128,11 +136,19 @@ async function startCollectorBehindStop(entry: SubagentRunRecord) {
 
 const durableRow = () => loadSubagentRegistryFromSqlite().get(runId);
 
+/** Restarts from a durable image; returns the restored Gateway's agent dispatch. */
 async function restartFrom(image: Map<string, SubagentRunRecord>) {
   closeOpenClawStateDatabaseForTest();
   resetSubagentRegistryForTests({ persist: false });
   saveSubagentRegistryToSqlite(image);
   await initSubagentRegistry();
+  const dispatchAgent = vi.fn(async () => ({ runId: "relaunched", status: "accepted" }));
+  const gatewayContext = {
+    recoveryRuntime: { dispatchAgent },
+    resolveGatewayContext: () => gatewayContext as never,
+  };
+  await activateSubagentRegistry(gatewayContext.resolveGatewayContext);
+  return dispatchAgent;
 }
 
 it("keeps durable custody through a crash during the Stop publication wait", async () => {
@@ -158,16 +174,15 @@ it("keeps durable custody through a crash during the Stop publication wait", asy
 
   // The process died at the captured point instead; restart from that image.
   abortCalls.length = 0;
-  await restartFrom(crashImage);
+  const dispatchAgent = await restartFrom(crashImage);
   expect(getSubagentRunByRunId(runId)?.acceptedSpawnRollback).toMatchObject({ gatewayRunId });
   await testing.sweepOnceForTests();
   expect(abortCalls).toEqual([gatewayRunId]);
   expect(durableRow()?.acceptedSpawnRollback).toBeUndefined();
-  // Restart never relaunches the rolled-back collector; the next sweep has no
-  // custody left, so the accepted child is not terminated again.
+  // The next sweep has no custody left, so the accepted child is not terminated again.
   await testing.sweepOnceForTests();
   expect(abortCalls).toEqual([gatewayRunId]);
-  expect(getSubagentRunByRunId(runId)?.execution.status).not.toBe("running");
+  expect(dispatchAgent).not.toHaveBeenCalled();
 });
 
 it("reconciles once after a restart that follows the Stop's committed kill", async () => {
@@ -187,10 +202,11 @@ it("reconciles once after a restart that follows the Stop's committed kill", asy
   expect(getSubagentRunByRunId(runId)?.collectorCompletion?.status).toBe("killed");
 
   abortCalls.length = 0;
-  await restartFrom(crashImage);
+  const dispatchAgent = await restartFrom(crashImage);
   await testing.sweepOnceForTests();
   await testing.sweepOnceForTests();
   expect(abortCalls).toEqual([gatewayRunId]);
+  expect(dispatchAgent).not.toHaveBeenCalled();
   expect(durableRow()).toMatchObject({ collectorCompletion: { status: "killed" } });
   expect(durableRow()?.acceptedSpawnRollback).toBeUndefined();
 });
@@ -207,6 +223,7 @@ it.each([true, false])(
     );
     expect(durableRow()).toMatchObject({ acceptedSpawnRollback: { gatewayRunId } });
     expect(durableRow()?.killIntent).toBeUndefined();
+    const crashImage = loadSubagentRegistryFromSqlite();
 
     retirement.release();
     await expect(settling).resolves.toBe(true);
@@ -214,13 +231,24 @@ it.each([true, false])(
     expect(abortCalls).toEqual([gatewayRunId]);
     if (terminated) {
       expect(durableRow()?.acceptedSpawnRollback).toBeUndefined();
-      return;
+    } else {
+      // Unconfirmed termination leaves custody with the sweeper.
+      expect(durableRow()).toMatchObject({ acceptedSpawnRollback: { gatewayRunId } });
+      abortSucceeds = true;
+      await testing.sweepOnceForTests();
+      expect(abortCalls).toEqual([gatewayRunId, gatewayRunId]);
+      expect(durableRow()?.acceptedSpawnRollback).toBeUndefined();
     }
-    // Unconfirmed termination leaves custody with the sweeper.
-    expect(durableRow()).toMatchObject({ acceptedSpawnRollback: { gatewayRunId } });
-    abortSucceeds = true;
+
+    // A crash after the Stop withdrew leaves a queued row whose only owner is the
+    // custody: restart must terminate the accepted child, never relaunch it.
+    abortCalls.length = 0;
+    const dispatchAgent = await restartFrom(crashImage);
     await testing.sweepOnceForTests();
-    expect(abortCalls).toEqual([gatewayRunId, gatewayRunId]);
+    await testing.sweepOnceForTests();
+    expect(dispatchAgent).not.toHaveBeenCalled();
+    expect(abortCalls).toEqual([gatewayRunId]);
+    expect(durableRow()).toMatchObject({ collectorCompletion: { status: "failed" } });
     expect(durableRow()?.acceptedSpawnRollback).toBeUndefined();
   },
 );
