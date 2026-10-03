@@ -23,7 +23,7 @@ import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
 import { loadSessionEntry } from "../config/sessions/session-accessor.js";
 import type { ModelProviderConfig } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { connectGatewayClient, getGatewayE2ePortBlock } from "../gateway/test-helpers.e2e.js";
+import { connectGatewayClient } from "../gateway/test-helpers.e2e.js";
 import {
   isSessionCostUsageRefreshRunning,
   prepareSessionCostUsageRefreshLock,
@@ -322,10 +322,6 @@ async function startLocalModeTui(
     OPENCLAW_STATE_DIR: stateDir,
     OPENCLAW_TUI_LOCAL_RUN_SHUTDOWN_GRACE_MS: "500",
     OPENCLAW_AGENT_DIR: undefined,
-    OPENCLAW_GATEWAY_PASSWORD: undefined,
-    OPENCLAW_GATEWAY_PORT: undefined,
-    OPENCLAW_GATEWAY_TOKEN: undefined,
-    OPENCLAW_GATEWAY_URL: undefined,
     OPENCLAW_SKIP_PROVIDERS: undefined,
     XDG_CONFIG_HOME: xdgConfigHome,
     XDG_DATA_HOME: xdgDataHome,
@@ -1381,13 +1377,7 @@ describe("TUI PTY real backends", () => {
           })(),
           signal,
         ).catch((cause: unknown) => {
-          const alive = [...pidEntries].filter(([, pid]) => isProcessAlive(pid));
-          throw new Error(
-            `local shell control-pipe failure left its group alive: ${alive
-              .map(([role, pid]) => `${role}=${pid}`)
-              .join(", ")}`,
-            { cause },
-          );
+          throw new Error("local shell control-pipe failure left its group alive", { cause });
         });
 
         await fixture.run.write("/exit\r", { delay: false });
@@ -1462,7 +1452,6 @@ describe("TUI PTY real backends", () => {
       const profileId = `${providerId}:default`;
       const sentinel = `t05-${randomUUID()}`;
       const expectedDigest = createHash("sha256").update(sentinel).digest("hex");
-      const isolatedGatewayPort = await getGatewayE2ePortBlock();
       const fixture = await startLocalModeTui(onTestFinished, {
         replyText: "LOCAL_AUTH_RESPONSE",
         prepareConfig: async ({ config, tempDir }) => {
@@ -1555,10 +1544,6 @@ export default {
           ]);
           return {
             ...config,
-            gateway: {
-              ...config.gateway,
-              port: isolatedGatewayPort,
-            },
             plugins: {
               enabled: true,
               slots: { memory: "none" },
@@ -1568,12 +1553,6 @@ export default {
             },
           };
         },
-        prepareEnv: ({ env, tempDir }) => ({
-          ...env,
-          OPENCLAW_LAUNCHD_LABEL: `ai.openclaw.test.${path.basename(tempDir)}`,
-          OPENCLAW_SYSTEMD_UNIT: `openclaw-test-${path.basename(tempDir)}.service`,
-          OPENCLAW_WINDOWS_TASK_NAME: `OpenClaw Test ${path.basename(tempDir)}`,
-        }),
       });
       try {
         await fixture.run.waitForOutput("local ready", LOCAL_STARTUP_TIMEOUT_MS);
