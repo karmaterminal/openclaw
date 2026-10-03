@@ -18,12 +18,12 @@ import {
   type DeliveryQueueEntryLoadResult,
   inflateDeliveryQueueEntryResult,
 } from "./delivery-queue-sqlite-codec.js";
-import { terminalizeInvalidDeliveryQueueEntryInDatabase } from "./delivery-queue-sqlite.js";
 import {
   completeDeliveryQueueEntryInDatabase,
   deliveryQueueEntryNotFoundError,
   getDeliveryQueueEntryOwnersInDatabase,
   prepareDeliveryQueueTerminalEntry,
+  terminalizeInvalidDeliveryQueueEntryInDatabase,
   terminalizePendingDeliveryQueueEntryInDatabase,
   updateDeliveryQueueEntryInDatabase,
 } from "./delivery-queue-sqlite.kernel.js";

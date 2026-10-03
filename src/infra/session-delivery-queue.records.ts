@@ -5,6 +5,10 @@ import type {
   QueuedSessionDeliveryPayload as CoreQueuedSessionDeliveryPayload,
 } from "./session-delivery-queue-codec.js";
 
+// Session delivery queue persists session-scoped messages until channel
+// delivery acknowledges them or recovery exhausts retry policy.
+export const SESSION_DELIVERY_QUEUE_NAME = "session";
+
 export type {
   SessionDeliveryContext,
   SessionDeliveryRequesterBinding,
@@ -14,7 +18,7 @@ export type {
 
 export type QueuedSessionDeliveryPayload =
   | (Extract<CoreQueuedSessionDeliveryPayload, { kind: "systemEvent" }> & {
-      /** Recipient agent that exclusively owns this durable system event. */
+      /** Preserves ownership when a durable event targets the literal global session. */
       agentId?: string;
     })
   | Exclude<CoreQueuedSessionDeliveryPayload, { kind: "systemEvent" }>;
@@ -25,10 +29,6 @@ export type QueuedSessionDelivery =
   | (Extract<CoreQueuedSessionDelivery, { kind: "systemEvent" }> &
       SessionDeliveryStorageFields & { agentId?: string })
   | (Exclude<CoreQueuedSessionDelivery, { kind: "systemEvent" }> & SessionDeliveryStorageFields);
-
-// Session delivery queue persists session-scoped messages until channel
-// delivery acknowledges them or recovery exhausts retry policy.
-export const SESSION_DELIVERY_QUEUE_NAME = "session";
 
 export function prepareClaimedSessionDelivery(
   params: QueuedSessionDeliveryPayload,

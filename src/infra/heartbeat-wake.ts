@@ -11,7 +11,6 @@ import {
 import {
   requestSessionEventWake,
   requestSessionEventWakeAndWait,
-  resetSessionEventWakeStateForTests,
   setSessionEventWakeHandler,
 } from "./session-event-wake.js";
 
@@ -86,10 +85,6 @@ export function requestHeartbeatNow(options?: {
     markTrustedContinuationHeartbeatWake(request);
   }
   requestHeartbeatRaw(request);
-}
-
-export function resetHeartbeatWakeStateForTests(): void {
-  resetSessionEventWakeStateForTests();
 }
 
 // Shipped SDK callers retain their one-argument handler.
