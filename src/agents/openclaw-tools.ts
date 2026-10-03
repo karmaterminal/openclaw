@@ -536,7 +536,7 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
     imageTool,
     pdfTool,
     ...createOpenClawContinuationTools(
-      resolveOpenClawContinuationToolParamsForRun({ resolvedConfig, workspaceDir, options }),
+      resolveOpenClawContinuationToolParamsForRun({ resolvedConfig, options }),
     ),
   ].filter((tool): tool is AnyAgentTool => tool !== null && tool !== undefined);
   options?.recordToolPrepStage?.("openclaw-tools:core-tool-list");

@@ -137,7 +137,6 @@ export type OpenClawToolsOptions = {
   sandboxRoot?: string;
   sandboxContainerWorkdir?: string;
   sandboxFsBridge?: SandboxFsBridge;
-  sandboxWritable?: boolean;
   sandboxReadOnlyResourceMounts?: readonly { hostPath: string; containerPath: string }[];
   /** Prepared effective read authorization for exporting sandbox workspace media. */
   sandboxWorkspaceMediaReadAllowed?: boolean;

@@ -62,7 +62,6 @@ export function createSubagentSweeperHarness(
   const callGateway = vi.fn();
   const resumeRequesterSettleWake = vi.fn();
   const warn = vi.fn();
-  const purgeExpiredArtifacts = vi.fn(async () => 0);
   const sweeper = createSubagentRegistrySweeper({
     runs,
     resumedRuns: new Set(),
@@ -71,7 +70,6 @@ export function createSubagentSweeperHarness(
     clearPendingLifecycleError: vi.fn(),
     clearPendingLifecycleTimeout: vi.fn(),
     sweepPendingLifecycle: vi.fn(),
-    purgeExpiredArtifacts,
     completeSubagentRunWithRecovery,
     clearSubagentRunSteerRestart: vi.fn(() => true),
     recordAcceptedSubagentSpawnRollback: vi.fn(() => ({ status: "persisted" as const })),
@@ -118,7 +116,6 @@ export function createSubagentSweeperHarness(
     emitSubagentEndedHookForRun,
     finalizeInterruptedSubagentRun,
     notifyContextEngineSubagentEnded,
-    purgeExpiredArtifacts,
     resumeRequesterSettleWake,
     sweeper,
     warn,

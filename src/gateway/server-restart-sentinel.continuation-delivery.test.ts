@@ -1,5 +1,5 @@
-// Restart recovery of queued continuation deliveries: managed delegate returns,
-// recipient authority, and continuation return ownership.
+// Restart recovery of queued continuation deliveries: recipient authority and
+// continuation return ownership.
 // Register the shared module mocks before any module they replace is imported.
 import "./server-restart-sentinel.mocks.test-harness.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -120,9 +120,6 @@ describe("scheduleRestartSentinelWake", () => {
     resetGatewayWorkAdmission();
     vi.useRealTimers();
     mocks.queuedSessionDelivery = null;
-    mocks.prepareDelegateArtifactDelivery.mockReset();
-    mocks.recordDelegateArtifactDeliveryBinding.mockReset();
-    mocks.replaceManagedDelegateReturnInPrompt.mockReset();
     mocks.setInitialOutboundDelivery(null);
     mocks.dispatchGatewayMethodInProcess.mockReset();
     mocks.dispatchGatewayMethodInProcess.mockResolvedValue({
@@ -214,7 +211,6 @@ describe("scheduleRestartSentinelWake", () => {
     mocks.mergeSessionDeliveryPreparedMediaBlocks.mockClear();
     mocks.markSessionDeliveryAttemptStarted.mockClear();
     mocks.markSessionDeliverySettlement.mockClear();
-    mocks.markDelegateArtifactDeliveryUnavailable.mockClear();
     mocks.appendAssistantMessageToSessionTranscript.mockReset();
     mocks.createManagedOutgoingMediaBlocks.mockReset();
     mocks.attachManagedOutgoingMediaToMessage.mockReset();
@@ -240,211 +236,6 @@ describe("scheduleRestartSentinelWake", () => {
     mocks.logInfo.mockClear();
     mocks.logWarn.mockClear();
     mocks.logError.mockClear();
-  });
-
-  it("terminalizes a managed system-event receipt when recovery finds a replacement session", async () => {
-    mocks.loadSessionEntry.mockReturnValue({
-      cfg: {},
-      entry: { sessionId: "replacement-session", updatedAt: 0 },
-      store: {},
-      storePath: "/tmp/sessions.json",
-      canonicalKey: "agent:main:main",
-      storeKeys: ["agent:main:main"],
-      legacyKey: undefined,
-    });
-
-    await deliverQueuedSessionDelivery({
-      deps: {} as never,
-      stateDir: "/tmp/custom-session-delivery-state",
-      entry: {
-        id: "session-delivery-managed",
-        kind: "systemEvent",
-        sessionKey: "agent:main:main",
-        text: "managed return",
-        enqueuedAt: 1,
-        retryCount: 0,
-        expectedSessionId: "original-session",
-        managedDelegateArtifactDelivery: {
-          receipt: {
-            kind: "delegate-artifact",
-            dispatchId: "dispatch-1",
-            recipientSessionKey: "agent:main:main",
-            recipientSessionId: "original-session",
-          },
-          projection: {
-            artifacts: [],
-            arrivalContext: {
-              deliveryClass: "delegate result",
-              deliveryMode: "announced",
-              dispatchId: "dispatch-1",
-              producer: { sessionKey: "agent:main:child", runId: "run-1" },
-              completionId: "completion-1",
-              binding: {
-                recipientSessionKey: "agent:main:main",
-                recipientSessionId: "original-session",
-              },
-              dispatchAcceptedAt: 1,
-              completedAt: 2,
-              deliveredAt: 3,
-              policyVersion: 1,
-              availability: "available",
-            },
-          },
-        },
-      },
-    });
-
-    expect(mocks.markDelegateArtifactDeliveryUnavailable).toHaveBeenCalledWith({
-      dispatchId: "dispatch-1",
-      recipientSessionKey: "agent:main:main",
-      recipientSessionId: "original-session",
-      reason: "recipient-incarnation-changed",
-      options: {
-        env: expect.objectContaining({
-          OPENCLAW_STATE_DIR: "/tmp/custom-session-delivery-state",
-        }),
-      },
-    });
-    expect(mocks.enqueueSystemEvent).not.toHaveBeenCalled();
-  });
-
-  it("revalidates and refreshes managed arrival context before replay", async () => {
-    const projection = {
-      artifacts: [],
-      arrivalContext: {
-        deliveryClass: "delegate result" as const,
-        deliveryMode: "announced" as const,
-        dispatchId: "dispatch-1",
-        producer: { sessionKey: "agent:main:child", runId: "run-1" },
-        completionId: "completion-1",
-        binding: {
-          recipientSessionKey: "agent:main:main",
-          recipientSessionId: "session-1",
-        },
-        dispatchAcceptedAt: 1,
-        completedAt: 2,
-        deliveredAt: 3,
-        policyVersion: 1 as const,
-        availability: "available" as const,
-      },
-    };
-    mocks.loadSessionEntry.mockReturnValue({
-      cfg: {},
-      entry: { sessionId: "session-1", updatedAt: 0 },
-      store: {},
-      storePath: "/tmp/sessions.json",
-      canonicalKey: "agent:main:main",
-      storeKeys: ["agent:main:main"],
-      legacyKey: undefined,
-    });
-    mocks.prepareDelegateArtifactDelivery.mockReturnValue({
-      status: "ready",
-      projection: {
-        ...projection,
-        arrivalContext: { ...projection.arrivalContext, replayedAt: 10 },
-      },
-    });
-    mocks.replaceManagedDelegateReturnInPrompt.mockReturnValue("refreshed managed return");
-
-    await expect(
-      deliverQueuedSessionDelivery({
-        deps: {} as never,
-        entry: {
-          id: "session-delivery-managed",
-          kind: "systemEvent",
-          sessionKey: "agent:main:main",
-          text: "stored managed return",
-          enqueuedAt: 1,
-          retryCount: 0,
-          expectedSessionId: "session-1",
-          managedDelegateArtifactDelivery: {
-            receipt: {
-              kind: "delegate-artifact",
-              dispatchId: "dispatch-1",
-              recipientSessionKey: "agent:main:main",
-              recipientSessionId: "session-1",
-            },
-            projection,
-          },
-        },
-      }),
-    ).rejects.toThrow("managed delegate return is awaiting durable recipient adoption");
-
-    expect(mocks.prepareDelegateArtifactDelivery).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projection,
-        currentRecipientSessionId: "session-1",
-      }),
-    );
-    expect(mocks.enqueueSystemEvent).toHaveBeenCalledWith(
-      "refreshed managed return",
-      expect.objectContaining({
-        sessionKey: "agent:main:main",
-      }),
-    );
-  });
-
-  it("rejects a managed replay whose persisted projection does not match its receipt", async () => {
-    mocks.loadSessionEntry.mockReturnValue({
-      cfg: {},
-      entry: { sessionId: "session-1", updatedAt: 0 },
-      store: {},
-      storePath: "/tmp/sessions.json",
-      canonicalKey: "agent:main:main",
-      storeKeys: ["agent:main:main"],
-      legacyKey: undefined,
-    });
-
-    await deliverQueuedSessionDelivery({
-      deps: {} as never,
-      entry: {
-        id: "session-delivery-managed-mismatch",
-        kind: "systemEvent",
-        sessionKey: "agent:main:main",
-        text: "stored managed return",
-        enqueuedAt: 1,
-        retryCount: 0,
-        expectedSessionId: "session-1",
-        managedDelegateArtifactDelivery: {
-          receipt: {
-            kind: "delegate-artifact",
-            dispatchId: "dispatch-1",
-            recipientSessionKey: "agent:main:main",
-            recipientSessionId: "session-1",
-          },
-          projection: {
-            artifacts: [],
-            arrivalContext: {
-              deliveryClass: "delegate result",
-              deliveryMode: "announced",
-              dispatchId: "dispatch-other",
-              producer: { sessionKey: "agent:main:child", runId: "run-other" },
-              completionId: "completion-other",
-              binding: {
-                recipientSessionKey: "agent:main:main",
-                recipientSessionId: "session-1",
-              },
-              dispatchAcceptedAt: 1,
-              completedAt: 2,
-              deliveredAt: 3,
-              policyVersion: 1,
-              availability: "available",
-            },
-          },
-        },
-      },
-    });
-
-    expect(mocks.prepareDelegateArtifactDelivery).not.toHaveBeenCalled();
-    expect(mocks.markDelegateArtifactDeliveryUnavailable).toHaveBeenCalledWith(
-      expect.objectContaining({
-        dispatchId: "dispatch-1",
-        recipientSessionKey: "agent:main:main",
-        recipientSessionId: "session-1",
-        reason: "delivery-state-unavailable",
-      }),
-    );
-    expect(mocks.enqueueSystemEvent).not.toHaveBeenCalled();
   });
 
   it("routes post-compaction queue recovery before generic writable session loading", async () => {

@@ -1,7 +1,3 @@
-import {
-  recordDelegateArtifactDeliveryBinding,
-  type DelegateArtifactRecipientProjectionV1,
-} from "../../agents/delegate-artifacts.js";
 import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/session-accessor.js";
 import type { SessionRecipientAuthority } from "../../config/sessions/session-recipient-authority-types.js";
 import { emitContinuationFanoutSpan } from "../../infra/continuation-tracer.js";
@@ -14,7 +10,6 @@ import {
   enqueueSessionDelivery,
 } from "../../infra/session-delivery-queue-storage.js";
 import type {
-  DelegateArtifactDeliveryReceipt,
   QueuedSessionDeliveryPayload,
   SessionDeliveryContext,
 } from "../../infra/session-delivery-queue-storage.js";
@@ -83,14 +78,12 @@ type ContinuationReturnDeliveryDeps = {
     authority: SessionRecipientAuthority,
   ) => boolean;
   removeSystemEvents?: typeof removeSystemEvents;
-  recordDelegateArtifactDeliveryBinding?: typeof recordDelegateArtifactDeliveryBinding;
 };
 
 const defaultContinuationReturnDeliveryDeps: ContinuationReturnDeliveryDeps = {
   enqueueSessionDelivery,
   enqueueSystemEvent,
   requestHeartbeatNow,
-  recordDelegateArtifactDeliveryBinding,
 };
 
 function resolveContinuationReturnDeliveryTarget(params: {
@@ -127,12 +120,8 @@ export async function enqueueContinuationReturnDeliveries(
   params: {
     targetSessionKeys: readonly string[];
     text: string;
-    textBySessionKey?: ReadonlyMap<string, string>;
     idempotencyKeyBase: string;
-    expectedSessionIds?: ReadonlyMap<string, string>;
     recipientAuthorities?: ReadonlyMap<string, SessionRecipientAuthority>;
-    delegateArtifactReceipts?: ReadonlyMap<string, DelegateArtifactDeliveryReceipt>;
-    delegateArtifactProjections?: ReadonlyMap<string, DelegateArtifactRecipientProjectionV1>;
     deliveryContext?: SessionDeliveryContext;
     wakeRecipients?: boolean;
     childRunId?: string;
@@ -159,25 +148,8 @@ export async function enqueueContinuationReturnDeliveries(
   let delivered = 0;
 
   for (const { sessionKey, recipientAgentId } of targets) {
-    const text = params.textBySessionKey?.get(sessionKey) ?? params.text;
-    const expectedSessionId = params.expectedSessionIds?.get(sessionKey);
-    const delegateArtifactReceipt = params.delegateArtifactReceipts?.get(sessionKey);
-    const delegateArtifactProjection = params.delegateArtifactProjections?.get(sessionKey);
+    const text = params.text;
     const recipientAuthority = params.recipientAuthorities?.get(sessionKey);
-    const hasManagedArtifactDelivery =
-      delegateArtifactReceipt !== undefined || delegateArtifactProjection !== undefined;
-    if (
-      hasManagedArtifactDelivery &&
-      (!delegateArtifactReceipt ||
-        !delegateArtifactProjection ||
-        expectedSessionId !== delegateArtifactReceipt.recipientSessionId ||
-        sessionKey !== delegateArtifactReceipt.recipientSessionKey)
-    ) {
-      throw new Error("managed delegate artifact delivery binding mismatch");
-    }
-    if (recipientAuthority && hasManagedArtifactDelivery) {
-      throw new Error("managed delegate artifact delivery cannot use logical recipient authority");
-    }
     const recipientAuthorityCurrent = () =>
       !recipientAuthority ||
       (
@@ -199,21 +171,10 @@ export async function enqueueContinuationReturnDeliveries(
       // recipient identity instead.
       idempotencyKey: `${params.idempotencyKeyBase}:${sessionKey}`,
     };
-    const payload: QueuedSessionDeliveryPayload =
-      delegateArtifactReceipt && delegateArtifactProjection
-        ? {
-            ...commonPayload,
-            expectedSessionId: delegateArtifactReceipt.recipientSessionId,
-            managedDelegateArtifactDelivery: {
-              receipt: delegateArtifactReceipt,
-              projection: delegateArtifactProjection,
-            },
-          }
-        : {
-            ...commonPayload,
-            ...(expectedSessionId ? { expectedSessionId } : {}),
-            ...(recipientAuthority ? { recipientAuthority, awaitPromptAdoption: true } : {}),
-          };
+    const payload: QueuedSessionDeliveryPayload = {
+      ...commonPayload,
+      ...(recipientAuthority ? { recipientAuthority, awaitPromptAdoption: true } : {}),
+    };
     const deliveryId = await deps.enqueueSessionDelivery(payload, params.stateDir);
     if (!recipientAuthorityCurrent()) {
       // Stale authority can never adopt this row; retire it now rather than leave it until replay.
@@ -228,32 +189,17 @@ export async function enqueueContinuationReturnDeliveries(
       ...(params.traceparent ? { traceparent: params.traceparent } : {}),
       sessionDeliveryAckId: deliveryId,
       ...(params.stateDir ? { sessionDeliveryAckStateDir: params.stateDir } : {}),
-      ...(expectedSessionId ? { expectedSessionId } : {}),
       ...(recipientAuthority
         ? {
             recipientAuthority,
             sessionDeliveryAwaitsTurnAdoption: true,
           }
         : {}),
-      ...(delegateArtifactReceipt ? { delegateArtifactReceipt } : {}),
     };
     const enqueued = deps.enqueueSystemEvent(
       text,
       withContinuationOwner(eventOptions, recipientAgentId),
     );
-    if (enqueued && delegateArtifactProjection && delegateArtifactReceipt) {
-      await deps.recordDelegateArtifactDeliveryBinding?.({
-        dispatchId: delegateArtifactReceipt.dispatchId,
-        recipientSessionKey: delegateArtifactReceipt.recipientSessionKey,
-        recipientSessionId: delegateArtifactReceipt.recipientSessionId,
-        phase: "attempt",
-        now: Date.now(),
-        availability: delegateArtifactProjection.arrivalContext.availability,
-        ...(params.stateDir
-          ? { options: { env: { ...process.env, OPENCLAW_STATE_DIR: params.stateDir } } }
-          : {}),
-      });
-    }
     if (!enqueued) {
       // Idempotent delivery enqueue can return the existing durable row id for
       // the already-queued in-memory event. Do not ack here: that would delete

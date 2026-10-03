@@ -39,15 +39,8 @@ const runtimeConfig: ContinuationRuntimeConfig = {
 
 useContinuationCustodyTestState();
 
-function delegate(
-  task: string,
-  returnOptions?: SessionPostCompactionDelegate["returnOptions"],
-): SessionPostCompactionDelegate {
-  return {
-    task,
-    createdAt: 1,
-    ...(returnOptions ? { returnOptions } : {}),
-  };
+function delegate(task: string): SessionPostCompactionDelegate {
+  return { task, createdAt: 1 };
 }
 
 function followupRun(abortSignal?: AbortSignal): FollowupRun {
@@ -124,83 +117,77 @@ function createOwnerDeps(params?: {
 }
 
 describe("post-compaction delegate cancellation ownership", () => {
-  it.each([
-    { name: "non-artifact", returnOptions: undefined },
-    { name: "artifact", returnOptions: { artifacts: "required" as const } },
-  ])(
-    "keeps a $name delegate exclusively custody-owned after a revision advance",
-    async ({ returnOptions }) => {
-      const sessionKey = "agent:main:revision-advance";
-      const recordId = (
-        await stagePostCompactionDelegate(
+  it("keeps a delegate exclusively custody-owned after a revision advance", async () => {
+    const sessionKey = "agent:main:revision-advance";
+    const recordId = (
+      await stagePostCompactionDelegate(
+        sessionKey,
+        delegate("keep the advanced custody record authoritative"),
+      )
+    ).recordId;
+    const abort = new AbortController();
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const deps = createOwnerDeps({ abortDuringContext: abort });
+    let advancedRevision: number | undefined;
+    deps.requeueReleasedPostCompactionDelegate = async (claimed) => {
+      advancedRevision = await advanceClaimedRecord(
+        claimed,
+        sessionKey,
+        "Concurrent owner advanced the record",
+      );
+      return await requeueReleasedPostCompactionDelegate(claimed);
+    };
+
+    await expect(
+      dispatchPostCompactionDelegates(
+        {
+          cfg,
+          compactionCount: 1,
+          followupRun: followupRun(abort.signal),
+          postCompactionDelegatesToPreserve: [],
+          sessionEntry,
           sessionKey,
-          delegate("keep the advanced custody record authoritative", returnOptions),
-        )
-      ).recordId;
-      const abort = new AbortController();
-      const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
-      const deps = createOwnerDeps({ abortDuringContext: abort });
-      let advancedRevision: number | undefined;
-      deps.requeueReleasedPostCompactionDelegate = async (claimed) => {
-        advancedRevision = await advanceClaimedRecord(
-          claimed,
-          sessionKey,
-          "Concurrent owner advanced the record",
-        );
-        return await requeueReleasedPostCompactionDelegate(claimed);
-      };
+        },
+        deps,
+      ),
+    ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
 
-      await expect(
-        dispatchPostCompactionDelegates(
-          {
-            cfg,
-            compactionCount: 1,
-            followupRun: followupRun(abort.signal),
-            postCompactionDelegatesToPreserve: [],
-            sessionEntry,
-            sessionKey,
-          },
-          deps,
-        ),
-      ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
-
-      expect(sessionEntry.pendingPostCompactionDelegates).toBeUndefined();
-      // A cancelled release hands nothing off.
-      expect(deps["releasePostCompactionDelegateToQueue"]).not.toHaveBeenCalled();
-      expect(await listCustodyRecordsForTest({ ownerSessionKey: sessionKey })).toEqual([
-        expect.objectContaining({
-          recordId,
-          status: "running",
-          revision: expectDefined(advancedRevision, "advanced revision"),
-          phase: "Concurrent owner advanced the record",
-        }),
-      ]);
-
-      const retryDeps = createOwnerDeps();
-      const retryEnqueue = vi.fn(async () => "queue");
-      retryDeps.enqueuePostCompactionDelegateDelivery = retryEnqueue;
-      await expect(
-        dispatchPostCompactionDelegates(
-          {
-            cfg,
-            compactionCount: 2,
-            followupRun: followupRun(),
-            postCompactionDelegatesToPreserve: [],
-            sessionEntry,
-            sessionKey,
-          },
-          retryDeps,
-        ),
-      ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
-      expect(retryEnqueue).not.toHaveBeenCalled();
-      expect(retryDeps["releasePostCompactionDelegateToQueue"]).not.toHaveBeenCalled();
-      expect(await readCustodyRecordForTest(recordId)).toMatchObject({
+    expect(sessionEntry.pendingPostCompactionDelegates).toBeUndefined();
+    // A cancelled release hands nothing off.
+    expect(deps["releasePostCompactionDelegateToQueue"]).not.toHaveBeenCalled();
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: sessionKey })).toEqual([
+      expect.objectContaining({
+        recordId,
         status: "running",
-        revision: advancedRevision,
+        revision: expectDefined(advancedRevision, "advanced revision"),
         phase: "Concurrent owner advanced the record",
-      });
-    },
-  );
+      }),
+    ]);
+
+    const retryDeps = createOwnerDeps();
+    const retryEnqueue = vi.fn(async () => "queue");
+    retryDeps.enqueuePostCompactionDelegateDelivery = retryEnqueue;
+    await expect(
+      dispatchPostCompactionDelegates(
+        {
+          cfg,
+          compactionCount: 2,
+          followupRun: followupRun(),
+          postCompactionDelegatesToPreserve: [],
+          sessionEntry,
+          sessionKey,
+        },
+        retryDeps,
+      ),
+    ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
+    expect(retryEnqueue).not.toHaveBeenCalled();
+    expect(retryDeps["releasePostCompactionDelegateToQueue"]).not.toHaveBeenCalled();
+    expect(await readCustodyRecordForTest(recordId)).toMatchObject({
+      status: "running",
+      revision: advancedRevision,
+      phase: "Concurrent owner advanced the record",
+    });
+  });
 
   // Contract change (RFC §4.4): the release is one commit (queue insert plus
   // handoff), so the separate finalization step, and its failure point, no
@@ -250,61 +237,52 @@ describe("post-compaction delegate cancellation ownership", () => {
     });
   });
 
-  it.each([
-    { name: "non-artifact", returnOptions: undefined },
-    { name: "artifact", returnOptions: { artifacts: "required" as const } },
-  ])(
-    "preserves a $name delegate when its custody record is truly missing",
-    async ({ returnOptions }) => {
-      const sessionKey = "agent:main:missing-source";
-      const source = delegate("preserve work after source loss", returnOptions);
-      const recordId = (await stagePostCompactionDelegate(sessionKey, source)).recordId;
-      const abort = new AbortController();
-      const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
-      const deps = createOwnerDeps({ abortDuringContext: abort });
-      deps.requeueReleasedPostCompactionDelegate = async (claimed) => {
-        const deleted = await deleteContinuationRecord({
-          recordId: expectDefined(claimed.flowId, "claimed flow id"),
-          ownerSessionKey: sessionKey,
-          expectedRevision: expectDefined(claimed.expectedRevision, "claimed revision"),
-        });
-        expect(deleted.outcome).toBe("deleted");
-        return await requeueReleasedPostCompactionDelegate(claimed);
-      };
+  it("preserves a delegate when its custody record is truly missing", async () => {
+    const sessionKey = "agent:main:missing-source";
+    const source = delegate("preserve work after source loss");
+    const recordId = (await stagePostCompactionDelegate(sessionKey, source)).recordId;
+    const abort = new AbortController();
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };
+    const deps = createOwnerDeps({ abortDuringContext: abort });
+    deps.requeueReleasedPostCompactionDelegate = async (claimed) => {
+      const deleted = await deleteContinuationRecord({
+        recordId: expectDefined(claimed.flowId, "claimed flow id"),
+        ownerSessionKey: sessionKey,
+        expectedRevision: expectDefined(claimed.expectedRevision, "claimed revision"),
+      });
+      expect(deleted.outcome).toBe("deleted");
+      return await requeueReleasedPostCompactionDelegate(claimed);
+    };
 
-      await expect(
-        dispatchPostCompactionDelegates(
-          {
-            cfg,
-            compactionCount: 1,
-            followupRun: followupRun(abort.signal),
-            postCompactionDelegatesToPreserve: [],
-            sessionEntry,
-            sessionKey,
-          },
-          deps,
-        ),
-      ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
+    await expect(
+      dispatchPostCompactionDelegates(
+        {
+          cfg,
+          compactionCount: 1,
+          followupRun: followupRun(abort.signal),
+          postCompactionDelegatesToPreserve: [],
+          sessionEntry,
+          sessionKey,
+        },
+        deps,
+      ),
+    ).resolves.toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
 
-      expect(await readCustodyRecordForTest(recordId)).toBeUndefined();
-      expect(sessionEntry.pendingPostCompactionDelegates).toEqual([
-        expect.objectContaining({
-          task: source.task,
-          ...(returnOptions ? { returnOptions } : {}),
-          recipientAuthorityBinding: expect.objectContaining({
-            recipients: [
-              expect.objectContaining({
-                sessionKey,
-                authority: expect.objectContaining({ state: "bound" }),
-              }),
-            ],
-          }),
+    expect(await readCustodyRecordForTest(recordId)).toBeUndefined();
+    expect(sessionEntry.pendingPostCompactionDelegates).toEqual([
+      expect.objectContaining({
+        task: source.task,
+        recipientAuthorityBinding: expect.objectContaining({
+          recipients: [
+            expect.objectContaining({
+              sessionKey,
+              authority: expect.objectContaining({ state: "bound" }),
+            }),
+          ],
         }),
-      ]);
-      expect(sessionEntry.pendingPostCompactionDelegates?.[0]).not.toHaveProperty("flowId");
-      expect(sessionEntry.pendingPostCompactionDelegates?.[0]).not.toHaveProperty(
-        "expectedRevision",
-      );
-    },
-  );
+      }),
+    ]);
+    expect(sessionEntry.pendingPostCompactionDelegates?.[0]).not.toHaveProperty("flowId");
+    expect(sessionEntry.pendingPostCompactionDelegates?.[0]).not.toHaveProperty("expectedRevision");
+  });
 });

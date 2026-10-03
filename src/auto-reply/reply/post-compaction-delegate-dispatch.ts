@@ -29,7 +29,6 @@ import {
   POST_COMPACTION_DELEGATE_TTL_MS,
 } from "../continuation/post-compaction-staleness.js";
 import type { ContinuationSignal } from "../continuation/signal.js";
-import { hasCrossSessionDelegateTargeting } from "../continuation/targeting-pure.js";
 import type { ContinuationRuntimeConfig } from "../continuation/types.js";
 import { readPostCompactionContext } from "./post-compaction-context.js";
 import {
@@ -57,7 +56,7 @@ export type PostCompactionDelegateDispatchDeps = {
   consumeStagedPostCompactionDelegates(
     sessionKey: string,
   ): Promise<SessionPostCompactionDelegate[]>;
-  /** Fail a claimed record the release refused (stale, over budget, managed drop). */
+  /** Fail a claimed record the release refused (stale or over budget). */
   rejectPostCompactionDelegate?: (
     delegate: Pick<SessionPostCompactionDelegate, "flowId" | "expectedRevision" | "task">,
     failureReason: string,
@@ -145,39 +144,17 @@ function formatErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function hasManagedArtifactReturn(delegate: SessionPostCompactionDelegate): boolean {
-  return (
-    delegate.returnOptions?.artifacts === "optional" ||
-    delegate.returnOptions?.artifacts === "required"
-  );
-}
-
-/**
- * Terminalize a claimed delegate the release dropped. Every claimed record
- * ends in a visible outcome; a managed delegate also must, or its artifact
- * policy would leak, so its failure to commit is an error.
- */
+/** Terminalize a claimed delegate the release dropped; every claimed record ends in a visible outcome. */
 async function terminalizeDroppedDelegate(params: {
   delegate: SessionPostCompactionDelegate;
   deps: Partial<Pick<PostCompactionDelegateDispatchDeps, "rejectPostCompactionDelegate">>;
   summary: string;
 }): Promise<string | undefined> {
-  const managed = hasManagedArtifactReturn(params.delegate);
   if (!params.delegate.flowId || params.delegate.expectedRevision === undefined) {
-    if (managed) {
-      throw new Error(
-        "[continuation:post-compaction-managed-drop-missing-flow] managed delegate cannot be terminalized without custody claim metadata",
-      );
-    }
     return undefined;
   }
   const reject = params.deps.rejectPostCompactionDelegate ?? rejectPostCompactionDelegate;
-  const failed = await reject(params.delegate, params.summary);
-  if (!failed && managed) {
-    throw new Error(
-      `[continuation:post-compaction-managed-drop-not-committed] flowId=${params.delegate.flowId}`,
-    );
-  }
+  await reject(params.delegate, params.summary);
   return params.delegate.flowId;
 }
 
@@ -482,24 +459,10 @@ export async function dispatchPostCompactionDelegates(
   }
 
   const runtimeConfig = deps.resolveContinuationRuntimeConfig(params.cfg);
-  const gateEligibleCompactionDelegates: SessionPostCompactionDelegate[] = [];
-  for (const delegate of allCompactionDelegates) {
-    const managedArtifacts =
-      delegate.returnOptions?.artifacts === "optional" ||
-      delegate.returnOptions?.artifacts === "required";
-    const crossSessionDisabled =
-      runtimeConfig.crossSessionTargeting === "disabled" &&
-      hasCrossSessionDelegateTargeting(delegate, params.sessionKey);
-    if (managedArtifacts && (!runtimeConfig.enabled || crossSessionDisabled)) {
-      params.postCompactionDelegatesToPreserve.push(delegate);
-      continue;
-    }
-    gateEligibleCompactionDelegates.push(delegate);
-  }
   const now = deps.now();
   const freshCompactionDelegates: SessionPostCompactionDelegate[] = [];
   let staleDroppedDelegates = 0;
-  for (const delegate of gateEligibleCompactionDelegates) {
+  for (const delegate of allCompactionDelegates) {
     const { ageMs, stale } = classifyPostCompactionDelegateAge(delegate, now);
     if (stale) {
       staleDroppedDelegates += 1;

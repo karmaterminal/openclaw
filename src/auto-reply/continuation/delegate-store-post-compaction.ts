@@ -56,8 +56,6 @@ export async function stagePostCompactionCustodyDelegate(
     ...(delegate.recipientAuthorityBinding
       ? { recipientAuthorityBinding: delegate.recipientAuthorityBinding }
       : {}),
-    ...(delegate.returnOptions ? { returnOptions: delegate.returnOptions } : {}),
-    ...(delegate.recipientContext ? { recipientContext: delegate.recipientContext } : {}),
     ...(delegate.traceparent ? { traceparent: delegate.traceparent } : {}),
     ...(delegate.model ? { model: delegate.model } : {}),
   };
@@ -310,8 +308,6 @@ export async function stagePostCompactionDelegate(
     ...(delegate.recipientAuthorityBinding
       ? { recipientAuthorityBinding: delegate.recipientAuthorityBinding }
       : {}),
-    ...(delegate.returnOptions ? { returnOptions: delegate.returnOptions } : {}),
-    ...(delegate.recipientContext ? { recipientContext: delegate.recipientContext } : {}),
     ...(delegate.traceparent && delegate.traceparentProvenance === "internal"
       ? { traceparent: delegate.traceparent }
       : {}),
@@ -339,8 +335,6 @@ export function toSessionPostCompactionDelegate(
     ...(claimed.recipientAuthorityBinding
       ? { recipientAuthorityBinding: claimed.recipientAuthorityBinding }
       : {}),
-    ...(claimed.returnOptions ? { returnOptions: claimed.returnOptions } : {}),
-    ...(claimed.recipientContext ? { recipientContext: claimed.recipientContext } : {}),
     ...(claimed.traceparent
       ? { traceparent: claimed.traceparent, traceparentProvenance: "internal" as const }
       : {}),

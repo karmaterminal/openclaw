@@ -734,8 +734,6 @@ const config = {
     // all-exports companion config still audits each named consumer.
     "extensions/codex/src/app-server/dynamic-tools.ts": ["exports"],
     "extensions/diagnostics-otel/src/continuation-tracer-adapter.ts": ["exports"],
-    "src/agents/delegate-artifact-delivery.ts": ["exports"],
-    "src/agents/delegate-artifacts.ts": ["exports", "types"],
     "src/agents/embedded-agent-runner/compact-reasons.ts": ["exports", "types"],
     "src/agents/subagents/registry/subagent-run-liveness.ts": ["exports"],
     "src/agents/subagents/registry/subagent-session-cleanup.ts": ["exports"],

@@ -149,7 +149,6 @@ export async function withSessionDeliveryEnqueueAdmission<T>(
 }
 
 export type {
-  DelegateArtifactDeliveryReceipt,
   SessionDeliveryContext,
   SessionDeliveryRoute,
   SessionDeliverySettledOutcome,
@@ -350,10 +349,6 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
     ...(params.delegate.fanoutMode ? { fanoutMode: params.delegate.fanoutMode } : {}),
     ...(params.delegate.recipientAuthorityBinding
       ? { recipientAuthorityBinding: params.delegate.recipientAuthorityBinding }
-      : {}),
-    ...(params.delegate.returnOptions ? { returnOptions: params.delegate.returnOptions } : {}),
-    ...(params.delegate.recipientContext
-      ? { recipientContext: params.delegate.recipientContext }
       : {}),
     ...(params.delegate.model ? { model: params.delegate.model } : {}),
     ...(params.delegate.attachments && params.delegate.attachments.length > 0

@@ -16,23 +16,13 @@ const loggerRecords: Array<{ level: string; message: string }> = [];
 // Observable persisted session entries for recovery persist assertions.
 const recoveryStoreByPath = new Map<string, Record<string, unknown>>();
 const spawnSubagentDirectMock = vi.fn();
-const {
-  admittedRuns,
-  assertDelegateArtifactPolicyPreparedMock,
-  beforeAdmissionReadHook,
-  hasRecordedDelegateArtifactCompletionForProducerMock,
-  markSpawnAcceptedFailure,
-  removeUnacceptedDelegateArtifactPolicyMock,
-} = vi.hoisted(() => ({
+const { admittedRuns, beforeAdmissionReadHook, markSpawnAcceptedFailure } = vi.hoisted(() => ({
   // subagent_runs rows by run ID: the registry evidence the drain reads.
   admittedRuns: new Map<string, { requesterSessionKey: string; childSessionKey: string }>(),
-  assertDelegateArtifactPolicyPreparedMock: vi.fn(),
   // Runs inside the drain's registry read, before its spawn fence: the point
   // where a concurrent writer (session reset) can race the release.
   beforeAdmissionReadHook: { current: undefined as (() => Promise<void>) | undefined },
-  hasRecordedDelegateArtifactCompletionForProducerMock: vi.fn(() => false),
   markSpawnAcceptedFailure: { enabled: false },
-  removeUnacceptedDelegateArtifactPolicyMock: vi.fn(),
 }));
 let patchSessionEntryShouldThrow = false;
 // Recovery derives the release source lifecycle and the drain its chain cost
@@ -66,14 +56,6 @@ function loadRecoverySessionEntry(
 
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
-}));
-
-vi.mock("../../agents/delegate-artifacts.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../agents/delegate-artifacts.js")>()),
-  assertDelegateArtifactPolicyPrepared: assertDelegateArtifactPolicyPreparedMock,
-  hasRecordedDelegateArtifactCompletionForProducer:
-    hasRecordedDelegateArtifactCompletionForProducerMock,
-  removeUnacceptedDelegateArtifactPolicy: removeUnacceptedDelegateArtifactPolicyMock,
 }));
 
 // Admission evidence (RFC §5.4.4) is a subagent_runs row under a recorded
@@ -179,10 +161,6 @@ vi.mock("../../logging/subsystem.js", () => {
 });
 
 import { expectDefined } from "@openclaw/normalization-core";
-import {
-  MissingDelegateArtifactPolicyError,
-  UnavailableDelegateArtifactPolicyError,
-} from "../../agents/delegate-artifacts.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import { resetContinuationTracer } from "../../infra/continuation-tracer.js";
 import { loadPendingSessionDeliveries } from "../../infra/session-delivery-queue-storage.js";
@@ -272,9 +250,6 @@ beforeEach(() => {
   enqueueSystemEventMock.mockClear();
   loggerRecords.length = 0;
   spawnSubagentDirectMock.mockReset().mockResolvedValue({ status: "accepted" });
-  assertDelegateArtifactPolicyPreparedMock.mockReset();
-  hasRecordedDelegateArtifactCompletionForProducerMock.mockReset().mockReturnValue(false);
-  removeUnacceptedDelegateArtifactPolicyMock.mockReset();
   loadSessionStoreForRecoveryMock.mockReset().mockReturnValue(ownerSessionStore);
   admittedRuns.clear();
   beforeAdmissionReadHook.current = undefined;
@@ -351,9 +326,7 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
     const flowIds: Record<string, string> = {};
     for (const task of ["accepted", "forbidden", "error", "thrown"]) {
-      flowIds[task] = await stageAndClaimRunning(sessionKey, `outcome ${task}`, {
-        returnOptions: { artifacts: "optional" },
-      });
+      flowIds[task] = await stageAndClaimRunning(sessionKey, `outcome ${task}`);
     }
     spawnOutcomesByTask({
       "outcome accepted": async () => ({ status: "accepted" }),
@@ -375,14 +348,13 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
       (params as { task: string }).task.includes("outcome accepted"),
     );
     expect(acceptedCall?.[0]).toMatchObject({
-      task: expect.stringContaining("[Managed delegate return]"),
       continuationChildRunId: formatContinuationChildRunId(flowIds.accepted!, 1),
     });
     // Only the accepted child is charged a hop.
     expect(findPersistedRecoveryEntry(sessionKey)).toMatchObject({ continuationChainCount: 1 });
     expect(await acceptedChildOf(flowIds.accepted!)).toEqual(expect.any(String));
     // Every released record keeps its permanent handoff; the forbidden one
-    // records the rejection on the record and loses its artifact policy.
+    // records the rejection on the record.
     for (const task of ["forbidden", "error", "thrown"]) {
       const record = await custodyRecord(flowIds[task]!);
       expect(record).toMatchObject({
@@ -394,8 +366,6 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     expect((await custodyRecord(flowIds.forbidden!)).phase).toContain(
       "Post-compaction delegate spawn forbidden: blocked.",
     );
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledTimes(1);
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(flowIds.forbidden);
     // The never-dispatched error keeps its entry for a retry with attempt
     // ownership released; the thrown spawn may have been admitted, so it ends
     // in exactly one interrupted notice instead of a retry (RFC §5.4.4).
@@ -596,7 +566,6 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
     const secret = "RECOVERY_CANCELLED_SECRET";
     const flowId = await stageAndClaimRunning(sessionKey, "must not rehydrate after cancellation", {
-      returnOptions: { artifacts: "required" },
       attachments: [{ name: "private.md", content: secret, encoding: "utf8" }],
       attachAs: { mountPath: "handoff" },
     });
@@ -622,87 +591,8 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     expect(state).not.toHaveProperty("attachAs");
     expect(state.childSessionKey).toBeUndefined();
     expect(record.stateJson).not.toContain(secret);
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(flowId);
     expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
     expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
-  });
-
-  // Suspected product gap (reported to the lead): recovery used to terminalize
-  // a claimed managed row whose accepted policy is missing or expired. Routed
-  // through the queue drain (RFC §4.4), the policy error is charged as an
-  // ordinary retry instead, so the policy is never removed and the entry is
-  // redriven. These keep the old invariant: no spawn, policy removed, no retry.
-  it("terminalizes a crash-orphaned artifact row whose accepted policy is missing", async () => {
-    const sessionKey = "agent:main:subagent:pc-recover-policy-missing";
-    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
-    const flowId = await stageAndClaimRunning(sessionKey, "rehydrate artifact return after crash", {
-      returnOptions: { artifacts: "optional" },
-    });
-    assertDelegateArtifactPolicyPreparedMock.mockImplementationOnce(() => {
-      throw new MissingDelegateArtifactPolicyError();
-    });
-
-    await recoverAndReleaseStagedPostCompactionDelegates({
-      runningUpdatedAtOrBefore: Date.now(),
-    });
-
-    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(await acceptedChildOf(flowId)).toBeUndefined();
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(flowId);
-    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
-    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
-  });
-
-  it("terminalizes a crash-orphaned artifact row whose accepted policy expired", async () => {
-    const sessionKey = "agent:main:subagent:pc-recover-policy-expired";
-    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
-    const flowId = await stageAndClaimRunning(
-      sessionKey,
-      "reject expired artifact return after crash",
-      { returnOptions: { artifacts: "required" } },
-    );
-    assertDelegateArtifactPolicyPreparedMock.mockImplementationOnce(() => {
-      throw new UnavailableDelegateArtifactPolicyError();
-    });
-
-    await recoverAndReleaseStagedPostCompactionDelegates({
-      runningUpdatedAtOrBefore: Date.now(),
-    });
-
-    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(await acceptedChildOf(flowId)).toBeUndefined();
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(flowId);
-    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
-    expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
-  });
-
-  // Contract change (RFC §4.4): a claim whose release never committed has no
-  // queue entry, so no spawn can have begun and no child can have produced an
-  // artifact; the producer-completion shortcut is not consulted. The registry
-  // row under the entry's attempt key is the only admission proof.
-  it("releases a crash-orphaned artifact row without consulting producer artifact completion", async () => {
-    const sessionKey = "agent:main:subagent:pc-recover-policy-terminal";
-    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
-    const flowId = await stageAndClaimRunning(
-      sessionKey,
-      "already produced artifact return before the crash",
-      { returnOptions: { artifacts: "required" } },
-    );
-    hasRecordedDelegateArtifactCompletionForProducerMock.mockReturnValue(true);
-
-    const result = await recoverAndReleaseStagedPostCompactionDelegates({
-      runningUpdatedAtOrBefore: Date.now(),
-    });
-
-    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
-    expect(hasRecordedDelegateArtifactCompletionForProducerMock).not.toHaveBeenCalled();
-    expect(assertDelegateArtifactPolicyPreparedMock).toHaveBeenCalledWith(flowId);
-    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
-    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
-      continuationChildRunId: formatContinuationChildRunId(flowId, 1),
-    });
-    expect(removeUnacceptedDelegateArtifactPolicyMock).not.toHaveBeenCalled();
-    expect(await acceptedChildOf(flowId)).toEqual(expect.any(String));
   });
 
   // Contract change (RFC §4.4): recovery no longer defers on a queue entry
@@ -851,68 +741,6 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     expect(await acceptedChildOf(flowId)).toBe(childSessionKey);
     expect(findPersistedRecoveryEntry(sessionKey)).toMatchObject({ continuationChainCount: 1 });
     expect(await listRecoverableStagedPostCompactionDelegates()).toHaveLength(0);
-    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
-  });
-
-  it("reconciles an accepted managed child before disabled runtime and policy gates", async () => {
-    setRuntimeConfigSnapshot({
-      agents: { defaults: { continuation: { enabled: false } } },
-    });
-    const sessionKey = "agent:main:subagent:pc-recover-accepted-managed-disabled";
-    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
-    const flowId = await stageAndClaimRunning(
-      sessionKey,
-      "finalize accepted managed child while disabled",
-      { returnOptions: { artifacts: "required" } },
-    );
-    const childSessionKey = "agent:main:subagent:pc-recover-accepted-managed-child";
-    admittedRuns.set(formatContinuationChildRunId(flowId, 1), {
-      requesterSessionKey: sessionKey,
-      childSessionKey,
-    });
-    assertDelegateArtifactPolicyPreparedMock.mockImplementation(() => {
-      throw new UnavailableDelegateArtifactPolicyError();
-    });
-
-    const result = await recoverAndReleaseStagedPostCompactionDelegates({
-      runningUpdatedAtOrBefore: Date.now(),
-    });
-
-    expect(result).toEqual({ sessions: 1, dispatched: 1, failed: 0 });
-    expect(assertDelegateArtifactPolicyPreparedMock).not.toHaveBeenCalled();
-    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(await acceptedChildOf(flowId)).toBe(childSessionKey);
-    expect(findPersistedRecoveryEntry(sessionKey)).toMatchObject({
-      continuationChainCount: 1,
-    });
-    expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
-  });
-
-  // Suspected product gap (reported to the lead), same family as the policy
-  // tests above: the drain defers while continuation is disabled before its
-  // policy gate, so an expired policy is kept until re-enable.
-  it("terminalizes an expired managed policy before disabled-runtime deferral", async () => {
-    setRuntimeConfigSnapshot({
-      agents: { defaults: { continuation: { enabled: false } } },
-    });
-    const sessionKey = "agent:main:subagent:pc-recover-expired-disabled";
-    seedOwnerSession(sessionKey, { sessionId: "session-child", continuationChainCount: 0 });
-    const flowId = await stageAndClaimRunning(
-      sessionKey,
-      "reject expired managed policy while disabled",
-      { returnOptions: { artifacts: "optional" } },
-    );
-    assertDelegateArtifactPolicyPreparedMock.mockImplementation(() => {
-      throw new UnavailableDelegateArtifactPolicyError();
-    });
-
-    await recoverAndReleaseStagedPostCompactionDelegates({
-      runningUpdatedAtOrBefore: Date.now(),
-    });
-
-    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(await acceptedChildOf(flowId)).toBeUndefined();
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(flowId);
     expect(await pendingPostCompactionEntries(sessionKey)).toEqual([]);
   });
 

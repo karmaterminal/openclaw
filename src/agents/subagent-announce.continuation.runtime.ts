@@ -33,7 +33,6 @@ import { enqueueSystemEventRaw as enqueueSystemEvent } from "../infra/system-eve
 import { runWithGatewayDetachedWorkContinuation } from "../process/gateway-work-admission.js";
 import { defaultRuntime } from "../runtime.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
-import { removeUnacceptedDelegateArtifactPolicy } from "./delegate-artifacts.js";
 import {
   rejectOwnedCrossSessionTargeting,
   reportOwnedDelegateAdmissionFailure,
@@ -512,13 +511,6 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
         const childDepth = getSubagentDepthFromSessionStore(params.childSessionKey);
         const spawnFence = await revalidatePendingDelegateForSpawn(delegate, "pending");
         if (!spawnFence.allowed) {
-          if (
-            delegate.flowId &&
-            (delegate.returnOptions?.artifacts === "optional" ||
-              delegate.returnOptions?.artifacts === "required")
-          ) {
-            await removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
-          }
           defaultRuntime.log(
             `[continuation:delegate-spawn-fenced] reason=${spawnFence.reason} flowId=${delegate.flowId ?? "unknown"} session=${params.childSessionKey}`,
           );

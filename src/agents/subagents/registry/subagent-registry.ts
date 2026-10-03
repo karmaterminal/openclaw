@@ -17,10 +17,6 @@ import {
 } from "../../../process/gateway-work-admission.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import { prependAgentSteeringPrompt } from "../../agent-steering-queue.js";
-import {
-  purgeExpiredDelegateArtifacts,
-  startExpiredDelegateArtifactPurge,
-} from "../../delegate-artifacts.js";
 import { resolveAgentTimeoutMs } from "../../timeout.js";
 import { reconcileRetiredSubagentCancellation } from "../completion/subagent-completion-admission.store.js";
 import { terminateAcceptedCollectorRun } from "../spawn/subagent-spawn-cleanup.js";
@@ -522,7 +518,6 @@ const subagentSweeper = createSubagentRegistrySweeper({
   clearPendingLifecycleError,
   clearPendingLifecycleTimeout,
   sweepPendingLifecycle: (now) => pendingLifecycle.sweepExpired(now),
-  purgeExpiredArtifacts: () => purgeExpiredDelegateArtifacts(),
   completeSubagentRunWithRecovery: completionRuntime.completeSubagentRunWithRecovery,
   ...createSweeperRunManagerOperations(() => subagentRunManager),
   getGatewayRecoveryRuntime: () => activeGatewayContextResolver?.()?.recoveryRuntime,
@@ -730,9 +725,6 @@ const publicApi = createSubagentRegistryPublicApi({
   persist: persistSubagentRuns,
   persistOrThrow: persistSubagentRunsOrThrow,
   persistAsyncOrThrow: persistSubagentRunsAsyncOrThrow,
-  // Request-path restore stays worker-mediated: no parent SQLite here. Delegate
-  // artifact expiry is enforced at read time and drained by gateway maintenance,
-  // registry init, and the sweeper tick.
   restoreOnce: (context) => subagentRestorer.restoreOnce(undefined, true, context),
   startAnnounceCleanup: startSubagentAnnounceCleanupFlow,
   settleRequesterTurn: settleRequesterTurnAfterSessionSpawns,
@@ -750,7 +742,6 @@ export const listSwarmRunsForGroup = publicApi.listSwarmRunsForGroup;
 export const getSwarmRunByLaunchReplayKey = publicApi.getSwarmRunByLaunchReplayKey;
 export const countActiveRunsForSession = publicApi.countActiveRunsForSession;
 export function initSubagentRegistry() {
-  startExpiredDelegateArtifactPurge();
   return subagentRestorer.restoreOnce();
 }
 export function activateSubagentRegistry(resolveGatewayContext: GatewayContextResolver) {

@@ -14,7 +14,6 @@ import {
   buildAnnounceIdFromChildRun,
   buildAnnounceIdempotencyKey,
 } from "../../announce-idempotency.js";
-import { isDelegateArtifactReturnConfigured } from "../../delegate-artifacts.js";
 import { buildSubagentAnnounceMessages } from "../../subagent-announce-message.js";
 import { normalizeSubagentAnnounceReply } from "../../subagent-announce-reply.js";
 import {
@@ -28,10 +27,6 @@ import {
 import { deleteSubagentSessionForCleanup } from "../registry/subagent-session-cleanup.js";
 import { getSubagentDepthFromSessionStore } from "../spawn/subagent-depth.js";
 import type { SubagentRunOutcome } from "../subagent-run-outcome.types.js";
-import {
-  finalizeSubagentAnnounceArtifacts,
-  prepareSubagentAnnounceArtifactProjections,
-} from "./subagent-announce-artifacts.js";
 import {
   deliverSubagentAnnouncement,
   loadSessionEntryByKey,
@@ -139,7 +134,7 @@ async function runSubagentAnnounceFlowBound(
         : params.terminalReply?.disposition === "silent"
           ? SILENT_REPLY_TOKEN
           : params.roundOneReply;
-    let outcome: SubagentRunOutcome = params.outcome ?? { status: "unknown" };
+    const outcome: SubagentRunOutcome = params.outcome ?? { status: "unknown" };
     if (
       childSessionId &&
       (await prepareChildSessionEffects()) &&
@@ -162,10 +157,6 @@ async function runSubagentAnnounceFlowBound(
     if (failedTerminalOutcome && !params.terminalReply) {
       reply = undefined;
     }
-    const managedArtifactReturn =
-      childSessionEffectsAllowed() &&
-      params.childRunId.startsWith("continuation-delegate-") &&
-      (await isDelegateArtifactReturnConfigured(params.childRunId));
     let requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey, {
       cfg: subagentAnnounceDeps.getRuntimeConfig(),
       agentId: targetRequesterAgentId,
@@ -198,7 +189,6 @@ async function runSubagentAnnounceFlowBound(
           if (
             params.completionTarget !== "parent" &&
             !hasTargeting &&
-            !managedArtifactReturn &&
             shouldIgnorePostCompletionAnnounceForSession(targetRequesterSessionKey)
           ) {
             return "delivered";
@@ -382,9 +372,7 @@ async function runSubagentAnnounceFlowBound(
           reply = cleanedFallbackReply;
         } else {
           const suppressCompletion = !expectsCompletionMessage || hasVisibleFallback;
-          if (managedArtifactReturn && suppressCompletion) {
-            reply = "(no output)";
-          } else if (suppressCompletion) {
+          if (suppressCompletion) {
             skipAnnounceDelivery = true;
           } else {
             reply = undefined;
@@ -393,11 +381,7 @@ async function runSubagentAnnounceFlowBound(
       } else if (reply) {
         reply = normalizeSubagentAnnounceReply(reply) ?? cleanedFallbackReply;
         if (!reply) {
-          if (managedArtifactReturn) {
-            reply = "(no output)";
-          } else {
-            skipAnnounceDelivery = true;
-          }
+          skipAnnounceDelivery = true;
         }
       }
     }
@@ -415,23 +399,8 @@ async function runSubagentAnnounceFlowBound(
     }
 
     const cfg = subagentAnnounceDeps.getRuntimeConfig();
-    const { announceSessionId, artifactFinalization } = await finalizeSubagentAnnounceArtifacts({
-      cfg,
-      flow: params,
-      childSessionId,
-      isChildSessionEffectsCurrent: () => childSessionCurrent && childSessionEffectsAllowed(),
-      announceId,
-      outcomeStatus: outcome.status,
-    });
-    if (artifactFinalization.status === "deferred") {
-      return "retryable";
-    }
-    if (artifactFinalization.status === "failed") {
-      outcome = {
-        status: "error",
-        error: `managed artifact return failed (${artifactFinalization.disposition})`,
-      };
-    }
+    const announceSessionId =
+      childSessionCurrent && childSessionEffectsAllowed() ? childSessionId || "unknown" : "unknown";
 
     const taskLabel = params.label || params.task || "task";
     // Descendant findings are wake input; only this child's own answer travels
@@ -480,7 +449,7 @@ async function runSubagentAnnounceFlowBound(
       shouldDeleteChildSession = false;
       return "retryable";
     }
-    if (continuation.skipAnnounceDelivery && !managedArtifactReturn) {
+    if (continuation.skipAnnounceDelivery) {
       return "delivered";
     }
     const requesterIsSubagent = requesterIsInternalSession();
@@ -531,28 +500,19 @@ async function runSubagentAnnounceFlowBound(
       (await prepareChildSessionEffects()) && childSessionEffectsAllowed()
         ? candidateStatsLine
         : undefined;
-    const preparedArtifactProjections =
-      await prepareSubagentAnnounceArtifactProjections(artifactFinalization);
-    if (preparedArtifactProjections === "deferred") {
-      return "retryable";
-    }
-    const artifactProjections = preparedArtifactProjections;
-    const { internalEvents, triggerMessage, artifactTriggerMessages } =
-      buildSubagentAnnounceMessages({
-        requesterIsSubagent,
-        completionTarget: params.completionTarget,
-        childSessionKey: params.childSessionKey,
-        childSessionId: announceSessionId,
-        requesterSessionKey: targetRequesterSessionKey,
-        taskLabel,
-        outcome,
-        findings,
-        noVisibleResult: !childResultText && findings === "(no output)",
-        statsLine,
-        modelRouteChange,
-        preserveModelRouteNotice,
-        artifactProjections,
-      });
+    const { internalEvents, triggerMessage } = buildSubagentAnnounceMessages({
+      requesterIsSubagent,
+      completionTarget: params.completionTarget,
+      childSessionKey: params.childSessionKey,
+      childSessionId: announceSessionId,
+      taskLabel,
+      outcome,
+      findings,
+      noVisibleResult: !childResultText && findings === "(no output)",
+      statsLine,
+      modelRouteChange,
+      preserveModelRouteNotice,
+    });
     failureStage = "return-routing";
     const returnRoute = await continuationRuntime.routeSubagentContinuationReturn({
       cfg,
@@ -562,9 +522,6 @@ async function runSubagentAnnounceFlowBound(
       task: params.task ?? "",
       taskLabel,
       triggerMessage,
-      ...(artifactFinalization.status !== "not-configured" ? { managedArtifactReturn: true } : {}),
-      ...(artifactTriggerMessages ? { triggerMessagesBySessionKey: artifactTriggerMessages } : {}),
-      ...(artifactProjections ? { managedArtifactProjections: artifactProjections } : {}),
       announceId,
       childSessionKey: params.childSessionKey,
       childAgentId: continuation.ownerAgentId,
@@ -588,9 +545,6 @@ async function runSubagentAnnounceFlowBound(
           shouldIgnorePostCompletionAnnounceForSession(sessionKey),
       },
     });
-    if (returnRoute.deferred) {
-      return "retryable";
-    }
     if (returnRoute.handled) {
       return "delivered";
     }

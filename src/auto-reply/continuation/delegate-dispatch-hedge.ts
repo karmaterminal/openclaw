@@ -13,7 +13,7 @@ import {
 } from "./state.js";
 
 const log = createSubsystemLogger("continuation/delegate-dispatch");
-export const DELEGATE_DISPATCH_RETRY_MS = 30_000;
+const DELEGATE_DISPATCH_RETRY_MS = 30_000;
 
 type DispatchToolDelegates = (params: DelegateDispatchParams) => Promise<DelegateDispatchResult>;
 

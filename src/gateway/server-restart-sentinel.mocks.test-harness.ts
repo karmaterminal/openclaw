@@ -55,10 +55,6 @@ const mocks = vi.hoisted(() => {
     isSessionRecipientAuthorityCurrent: vi.fn<typeof isActualSessionRecipientAuthorityCurrent>(
       () => true,
     ),
-    markDelegateArtifactDeliveryUnavailable: vi.fn(),
-    prepareDelegateArtifactDelivery: vi.fn(),
-    recordDelegateArtifactDeliveryBinding: vi.fn(),
-    replaceManagedDelegateReturnInPrompt: vi.fn(),
     get queuedSessionDelivery() {
       return state.queuedSessionDeliveries.values().next().value ?? null;
     },
@@ -202,24 +198,6 @@ vi.mock("../agents/agent-scope.js", async (importOriginal) => ({
   resolveDefaultAgentId: mocks.resolveDefaultAgentId,
   resolveSessionAgentId: mocks.resolveSessionAgentId,
 }));
-
-vi.mock("../agents/delegate-artifacts.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../agents/delegate-artifacts.js")>();
-  return {
-    ...actual,
-    markDelegateArtifactDeliveryUnavailable: mocks.markDelegateArtifactDeliveryUnavailable,
-    prepareDelegateArtifactDelivery: mocks.prepareDelegateArtifactDelivery,
-    recordDelegateArtifactDeliveryBinding: mocks.recordDelegateArtifactDeliveryBinding,
-  };
-});
-
-vi.mock("../agents/internal-events.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../agents/internal-events.js")>();
-  return {
-    ...actual,
-    replaceManagedDelegateReturnInPrompt: mocks.replaceManagedDelegateReturnInPrompt,
-  };
-});
 
 vi.mock("../infra/restart-sentinel.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../infra/restart-sentinel.js")>()),

@@ -179,8 +179,6 @@ function projectDelegate(
     ...(state.recipientAuthorityBinding
       ? { recipientAuthorityBinding: state.recipientAuthorityBinding }
       : {}),
-    ...(state.returnOptions ? { returnOptions: state.returnOptions } : {}),
-    ...(state.recipientContext ? { recipientContext: state.recipientContext } : {}),
     ...(state.traceparent && state.traceparentProvenance === "internal"
       ? { traceparent: state.traceparent }
       : {}),

@@ -83,8 +83,6 @@ function delegate(
         }
       : {}),
     ...(overrides?.model ? { model: overrides.model } : {}),
-    ...(overrides?.returnOptions ? { returnOptions: overrides.returnOptions } : {}),
-    ...(overrides?.recipientContext ? { recipientContext: overrides.recipientContext } : {}),
     ...(overrides?.attachments ? { attachments: overrides.attachments } : {}),
     ...(overrides?.attachAs ? { attachAs: overrides.attachAs } : {}),
   };
@@ -418,20 +416,6 @@ describe("post-compaction delegate dispatch extraction", () => {
       firstArmedAt: 10_000,
       silent: true,
       silentWake: true,
-    });
-  });
-
-  it("preserves managed artifact return policy through normalization", () => {
-    expect(
-      normalizePostCompactionDelegate(
-        delegate("managed", {
-          returnOptions: { artifacts: "required" },
-          recipientContext: { purpose: "Use the delayed report." },
-        }),
-      ),
-    ).toMatchObject({
-      returnOptions: { artifacts: "required" },
-      recipientContext: { purpose: "Use the delayed report." },
     });
   });
 

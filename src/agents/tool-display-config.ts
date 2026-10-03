@@ -272,17 +272,6 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       "runTimeoutSeconds",
       "cleanup",
     ]),
-    delegate_artifacts_publish: displayTool("📦", "Publish Delegate Artifacts", []),
-    delegate_artifacts: {
-      emoji: "📦",
-      title: "Delegate Artifacts",
-      actions: {
-        list: displayAction("list"),
-        inspect: displayAction("inspect", ["claimId"]),
-        materialize: displayAction("materialize", ["claimId", "destination"]),
-        discard: displayAction("discard", ["claimId"]),
-      },
-    },
     agents_wait: displayTool("⏳", "Wait for Agents", ["ids", "timeoutSeconds"]),
     structured_output: displayTool("🧾", "Structured Output", ["result"]),
     subagents: {

@@ -1,4 +1,3 @@
-import type { DelegateArtifactWorkerOperations } from "../agents/delegate-artifacts.worker-contract.js";
 import type {
   SandboxRegistryInsert,
   SandboxRegistryWrite,
@@ -79,7 +78,6 @@ export type OpenClawStateWorkerOperations = RegisteredStateWorkerOperations &
   CronStateWorkerOperations &
   TranscriptReadOperations &
   ContinuationCustodyWorkerOperations &
-  DelegateArtifactWorkerOperations &
   OpenClawStateLeaseLifecycleOperations & {
     "database.walMaintenance": { input: SqliteWalPeriodicRequest; output: SqliteWalPeriodicResult };
     "deviceIdentity.read": { input: { identityKey: string }; output: DeviceIdentity | null };

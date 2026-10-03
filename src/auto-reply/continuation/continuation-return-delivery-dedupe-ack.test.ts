@@ -69,39 +69,4 @@ describe("enqueueContinuationReturnDeliveries :: de-duplicated ack reconciliatio
     // Queued event carries the ack id; the prompt-drain path acks it later.
     expect(deps.ackSessionDelivery).not.toHaveBeenCalled();
   });
-
-  it("keeps one fanout operation while selecting recipient-specific text", async () => {
-    const deps = makeDeps({ enqueueSystemEvent: () => true });
-
-    await enqueueContinuationReturnDeliveries(
-      {
-        targetSessionKeys: ["agent:main:alpha", "agent:main:beta"],
-        text: "shared fallback",
-        textBySessionKey: new Map([
-          ["agent:main:alpha", "alpha envelope"],
-          ["agent:main:beta", "beta envelope"],
-        ]),
-        idempotencyKeyBase: "idem-base",
-        ownerAgentId: "main",
-      },
-      deps,
-    );
-
-    expect(deps.enqueueSessionDelivery.mock.calls.map(([entry]) => entry)).toEqual([
-      expect.objectContaining({
-        sessionKey: "agent:main:alpha",
-        text: "alpha envelope",
-        idempotencyKey: "idem-base:agent:main:alpha",
-      }),
-      expect.objectContaining({
-        sessionKey: "agent:main:beta",
-        text: "beta envelope",
-        idempotencyKey: "idem-base:agent:main:beta",
-      }),
-    ]);
-    expect(deps.enqueueSystemEvent.mock.calls.map(([text]) => text)).toEqual([
-      "alpha envelope",
-      "beta envelope",
-    ]);
-  });
 });

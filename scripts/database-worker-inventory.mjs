@@ -135,8 +135,6 @@ const workerModules = new Set([
 
   "packages/memory-host-sdk/src/memory-entry-origins.ts", // Private memory SDK origin queries serve search and origin workers only.
 
-  // Imported only by delegate-artifact-*.worker.ts, dispatched solely from delegate-artifacts.worker.ts <- openclaw-state-worker-runtime.ts.
-  "src/agents/delegate-artifact-store.kernel.ts",
   "src/agents/mcp-oauth-store.kernel.ts", // MCP OAuth write dispatcher and shared-state read worker only.
   "src/agents/harness/native-hook-relay-store.kernel.ts", // native-hook-relay-store.worker.ts owns runtime SQL; clear is test-only.
 

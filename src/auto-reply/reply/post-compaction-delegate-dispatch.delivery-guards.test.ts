@@ -4,10 +4,8 @@
  * Covers:
  * - finalize an already-accepted source-backed retry before charging another hop
  * - dead-letter / deferred queue outcomes stay isolated from chain budget
- * - artifact policy prepare/remove stays behind the accepted-child gate
  *
  * Stubs:
- * - `delegate-artifacts` prepare/remove helpers (assert policy only)
  * - `subagents/registry/subagent-registry-read` accepted-child lookup
  * Real session-store + delivery-queue paths stay live under temp dirs.
  */
@@ -76,17 +74,6 @@ const mockRegistryState = vi.hoisted(() => ({
   acceptedChildSessionKeys: new Set<string>(),
   /** Registry rows keyed by attempt run ID: runId -> child session key. */
   admittedRunIds: new Map<string, string>(),
-}));
-const { assertDelegateArtifactPolicyPreparedMock, removeUnacceptedDelegateArtifactPolicyMock } =
-  vi.hoisted(() => ({
-    assertDelegateArtifactPolicyPreparedMock: vi.fn(),
-    removeUnacceptedDelegateArtifactPolicyMock: vi.fn(),
-  }));
-
-vi.mock("../../agents/delegate-artifacts.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../agents/delegate-artifacts.js")>()),
-  assertDelegateArtifactPolicyPrepared: assertDelegateArtifactPolicyPreparedMock,
-  removeUnacceptedDelegateArtifactPolicy: removeUnacceptedDelegateArtifactPolicyMock,
 }));
 
 vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
@@ -411,8 +398,6 @@ function readSessionStore(storePath: string): Record<string, SessionEntry> {
 
 afterEach(() => {
   vi.useRealTimers();
-  assertDelegateArtifactPolicyPreparedMock.mockClear();
-  removeUnacceptedDelegateArtifactPolicyMock.mockClear();
   mockRegistryState.acceptedChildSessionKeys.clear();
   mockRegistryState.admittedRunIds.clear();
   sessionStoreModule.clearSessionStoreCacheForTest();
@@ -459,7 +444,6 @@ describe("post-compaction delegate dispatch extraction", () => {
         sourceFlowId: "pc-flow-source",
         sourceExpectedRevision: 7,
         attachments: [{ name: "private.txt", content: "cancelled secret" }],
-        returnOptions: { artifacts: "required" },
       });
 
       await expect(deliverQueuedPostCompactionDelegate({ entry }, deps)).rejects.toBeInstanceOf(
@@ -478,7 +462,6 @@ describe("post-compaction delegate dispatch extraction", () => {
       // A fenced delivery never claims the attempt: nothing was started.
       expect(markAttemptStarted).not.toHaveBeenCalled();
       expect(markPendingDelegateSpawnAccepted).not.toHaveBeenCalled();
-      expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith("pc-flow-source");
     });
   });
 
@@ -544,7 +527,6 @@ describe("post-compaction delegate dispatch extraction", () => {
             entry: createQueuedEntry({
               sourceFlowId: "pc-flow-source",
               sourceExpectedRevision: 7,
-              returnOptions: { artifacts: "required" },
             }),
           },
           deps,
@@ -597,7 +579,6 @@ describe("post-compaction delegate dispatch extraction", () => {
           entry: createQueuedEntry({
             sourceFlowId: "pc-flow-source",
             sourceExpectedRevision: 7,
-            returnOptions: { artifacts: "required" },
           }),
         },
         deps,
@@ -666,7 +647,6 @@ describe("post-compaction delegate dispatch extraction", () => {
           entry: createQueuedEntry({
             sourceFlowId: "pc-flow-source",
             sourceExpectedRevision: 7,
-            returnOptions: { artifacts: "required" },
           }),
         },
         forbidden.deps,
@@ -682,11 +662,6 @@ describe("post-compaction delegate dispatch extraction", () => {
         "Post-compaction delegate rejected",
       );
       expect(forbidden.markPendingDelegateSpawnAccepted).not.toHaveBeenCalled();
-      expect(forbidden.failReleasedPostCompactionDelegate.mock.invocationCallOrder[0]).toBeLessThan(
-        removeUnacceptedDelegateArtifactPolicyMock.mock.invocationCallOrder[0]!,
-      );
-      expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith("pc-flow-source");
-      removeUnacceptedDelegateArtifactPolicyMock.mockClear();
 
       const transient = createDeliveryDeps({
         storePath,
@@ -699,7 +674,6 @@ describe("post-compaction delegate dispatch extraction", () => {
             entry: createQueuedEntry({
               sourceFlowId: "pc-flow-source",
               sourceExpectedRevision: 7,
-              returnOptions: { artifacts: "required" },
             }),
           },
           transient.deps,
@@ -708,7 +682,6 @@ describe("post-compaction delegate dispatch extraction", () => {
 
       expect(transient.failReleasedPostCompactionDelegate).not.toHaveBeenCalled();
       expect(transient.markPendingDelegateSpawnAccepted).not.toHaveBeenCalled();
-      expect(removeUnacceptedDelegateArtifactPolicyMock).not.toHaveBeenCalled();
 
       const nonSourceForbidden = createDeliveryDeps({
         storePath,

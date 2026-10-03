@@ -3,14 +3,9 @@
  * Every outcome stays visible at info level; timer-only logging hides immediate work.
  */
 
-import {
-  assertDelegateArtifactPolicyPrepared,
-  removeUnacceptedDelegateArtifactPolicy,
-} from "../../agents/delegate-artifacts.js";
 import { deriveContinuationDelegateChildSessionKeyFromParent } from "../../agents/subagent-continuation-ids.js";
 import { isSpawnSubagentAdmissionCancelledError } from "../../agents/subagents/spawn/subagent-spawn-contract.js";
 import { spawnSubagentDirect } from "../../agents/subagents/spawn/subagent-spawn.js";
-import { getRuntimeConfig } from "../../config/config.js";
 import {
   emitContinuationDelegateFireSpan,
   emitContinuationDisabledSpan,
@@ -34,12 +29,7 @@ import type {
   DelegateDispatchParams,
   DelegateDispatchResult,
 } from "./delegate-dispatch-contract.js";
-import {
-  armDelegateDispatchHedge,
-  clearDelegateDispatchHedge,
-  DELEGATE_DISPATCH_RETRY_MS,
-} from "./delegate-dispatch-hedge.js";
-import { partitionManagedDelegatesForRuntime } from "./delegate-dispatch-managed-gates.js";
+import { armDelegateDispatchHedge, clearDelegateDispatchHedge } from "./delegate-dispatch-hedge.js";
 import {
   buildDelegateSpawnRequest,
   delegateBudgetChainState,
@@ -98,32 +88,6 @@ export async function dispatchToolDelegates(
   // A hedge may consume only rows this dispatch could have annotated with its
   // inherited policy. Rows queued later belong to their own turn's dispatch.
   const hedgeQueuedCreatedAtOrBefore = params.queuedCreatedAtOrBefore ?? Date.now();
-  const armManagedSpawnRetry = () => {
-    armDelegateDispatchHedge(
-      sessionKey,
-      Date.now() + DELEGATE_DISPATCH_RETRY_MS,
-      // Deferred delegates go back to `queued`; the retry never resolves
-      // `running` claims, which belong to live dispatches in this process.
-      { ...hedgeParamsFor(params), queuedCreatedAtOrBefore: hedgeQueuedCreatedAtOrBefore },
-      dispatchToolDelegates,
-    );
-  };
-  const deferManagedDelegate = async (
-    delegate: PendingContinuationDelegate,
-    phase?: string,
-  ): Promise<boolean> => {
-    // Deferral happens before any spawn call for this claim.
-    const requeued = await requeuePendingDelegate(
-      delegate,
-      phase,
-      { inheritedSilent: params.inheritedSilent, inheritedWake: params.inheritedWake },
-      { failurePhase: "initialize" },
-    );
-    if (requeued) {
-      armManagedSpawnRetry();
-    }
-    return requeued;
-  };
   // Fail closed: applying a delegate chain-cost fold requires a persist path so
   // a hedge armed for a still-unmatured delegate can durably advance the folded
   // chain state when it fires. Without `persistChainState` the hedge would fold
@@ -191,26 +155,6 @@ export async function dispatchToolDelegates(
   );
 
   const { maxDelegatesPerTurn, maxChainLength, crossSessionTargeting } = config;
-  const hasManagedArtifacts = (delegate: PendingContinuationDelegate): boolean =>
-    delegate.returnOptions?.artifacts === "optional" ||
-    delegate.returnOptions?.artifacts === "required";
-  const removeRejectedArtifactPolicy = async (
-    delegate: PendingContinuationDelegate,
-  ): Promise<void> => {
-    if (hasManagedArtifacts(delegate) && delegate.flowId) {
-      await removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
-    }
-  };
-  const terminalizeRejectedDelegate = async (
-    delegate: PendingContinuationDelegate,
-    summary: string,
-  ): Promise<boolean> => {
-    const committed = await markPendingDelegateFailed(delegate, summary);
-    if (committed) {
-      await removeRejectedArtifactPolicy(delegate);
-    }
-    return committed;
-  };
   const {
     accepted: acceptedDelegates,
     interrupted: interruptedDelegates,
@@ -224,28 +168,19 @@ export async function dispatchToolDelegates(
         `[continuation:delegate-admission-evidence-unavailable] flowId=${delegate.flowId ?? "unknown"} session=${sessionKey} error=${formatErrorMessage(err)}`,
       ),
   });
-  const { dispatchableDelegates, unavailablePolicyDelegates } =
-    await partitionManagedDelegatesForRuntime({
-      delegates: pendingDelegates,
-      sessionKey,
-      runtime: resolveContinuationRuntimeConfig(getRuntimeConfig()),
-      defer: deferManagedDelegate,
-    });
   const delegateSlotsAvailable = Math.max(0, maxDelegatesPerTurn - acceptedDelegates.length);
   const delegatesWithinLimit: ClaimedDelegate[] = acceptedDelegates.concat(
-    dispatchableDelegates.slice(0, delegateSlotsAvailable).map((delegate) => ({ delegate })),
+    pendingDelegates.slice(0, delegateSlotsAvailable).map((delegate) => ({ delegate })),
   );
-  const delegatesOverLimit = dispatchableDelegates.slice(delegateSlotsAvailable);
+  const delegatesOverLimit = pendingDelegates.slice(delegateSlotsAvailable);
   let dispatched = 0,
-    rejected =
-      delegatesOverLimit.length + unavailablePolicyDelegates.length + interruptedDelegates.length;
+    rejected = delegatesOverLimit.length + interruptedDelegates.length;
   let currentChainCount = chainState.currentChainCount;
   const foldBearingDelegates = acceptedDelegates
     .map(({ delegate }) => delegate)
     .concat(
       interruptedDelegates.map(({ delegate }) => delegate),
-      dispatchableDelegates,
-      unavailablePolicyDelegates.map(({ delegate }) => delegate),
+      pendingDelegates,
     );
   const appliedChainTokensFold = params.applyDelegateChainTokensFold
     ? Math.max(0, ...foldBearingDelegates.map((delegate) => delegate.chainTokensFold ?? 0))
@@ -296,17 +231,6 @@ export async function dispatchToolDelegates(
     enqueueSystemEvent(text, ownerEventOptions({ sessionKey, trusted: true }));
   };
 
-  for (const { delegate, reason, error } of unavailablePolicyDelegates) {
-    const summary = `DELEGATE spawn failed: accepted artifact policy is ${reason}`;
-    const failedDelegate = await persistTerminalFailure(delegate);
-    if (!(await terminalizeRejectedDelegate(failedDelegate, summary))) {
-      throw error;
-    }
-    notifyOwner(
-      `[continuation] ${summary}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-    );
-  }
-
   // Q3 (RFC §5.4.4): a claim whose admission cannot be proven ends in one
   // durable interrupted notice and is never spawned again.
   for (const { delegate, evidence } of interruptedDelegates) {
@@ -314,14 +238,10 @@ export async function dispatchToolDelegates(
       `[continuation:delegate-spawn-interrupted] flowId=${delegate.flowId ?? "unknown"} session=${sessionKey} evidence=${evidence?.kind ?? "none"}`,
     );
     const failedDelegate = await persistTerminalFailure(delegate);
-    if (
-      await terminalizeInterruptedDelegateClaim(failedDelegate, {
-        collision: evidence?.kind === "collision",
-        ownerAgentId: ownerSession.agentId,
-      })
-    ) {
-      await removeRejectedArtifactPolicy(delegate);
-    }
+    await terminalizeInterruptedDelegateClaim(failedDelegate, {
+      collision: evidence?.kind === "collision",
+      ownerAgentId: ownerSession.agentId,
+    });
   }
 
   for (const dropped of delegatesOverLimit) {
@@ -330,7 +250,7 @@ export async function dispatchToolDelegates(
       `[continuation:delegate-rejected] maxDelegatesPerTurn=${maxDelegatesPerTurn} task=${dropped.task.slice(0, 80)} session=${sessionKey}`,
     );
     const failedDelegate = await persistTerminalFailure(dropped);
-    await terminalizeRejectedDelegate(failedDelegate, summary);
+    await markPendingDelegateFailed(failedDelegate, summary);
     notifyOwner(
       `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(dropped.task)}`,
     );
@@ -344,28 +264,11 @@ export async function dispatchToolDelegates(
         ? deriveContinuationDelegateChildSessionKeyFromParent(sessionKey, delegate.flowId)
         : undefined);
     const acceptedChildAlreadyKnown = admitted !== undefined;
-    const managedArtifacts = hasManagedArtifacts(delegate);
-    const currentArtifactRuntime = managedArtifacts
-      ? resolveContinuationRuntimeConfig(getRuntimeConfig())
-      : undefined;
-    if (!acceptedChildAlreadyKnown && managedArtifacts && !currentArtifactRuntime?.enabled) {
-      await deferManagedDelegate(delegate);
-      continue;
-    }
-    const effectiveTargeting =
-      currentArtifactRuntime?.crossSessionTargeting ?? crossSessionTargeting;
     if (
       !acceptedChildAlreadyKnown &&
-      effectiveTargeting === "disabled" &&
+      crossSessionTargeting === "disabled" &&
       hasCrossSessionDelegateTargeting(delegate, sessionKey)
     ) {
-      if (managedArtifacts) {
-        await deferManagedDelegate(
-          delegate,
-          "Deferred until cross-session continuation targeting is re-enabled",
-        );
-        continue;
-      }
       const delegateMode = delegate.mode ?? "normal";
       const delegateDelivery = delegate.delayMs && delegate.delayMs > 0 ? "timer" : "immediate";
       const summary = "Tool delegate rejected: cross-session targeting is disabled by policy.";
@@ -412,7 +315,7 @@ export async function dispatchToolDelegates(
         `[continuation:delegate-rejected] ${budgetCheck} task=${delegate.task.slice(0, 80)} session=${sessionKey}`,
       );
       const failedDelegate = await persistTerminalFailure(delegate);
-      await terminalizeRejectedDelegate(failedDelegate, summary);
+      await markPendingDelegateFailed(failedDelegate, summary);
       notifyOwner(
         `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
       );
@@ -471,13 +374,9 @@ export async function dispatchToolDelegates(
         `[continuation:delegate-spawn-uncertain] flowId=${delegate.flowId ?? "unknown"} session=${sessionKey} reason=${reasonText}`,
       );
       const failedDelegate = await persistTerminalFailure(delegate);
-      if (
-        await terminalizeInterruptedDelegateClaim(failedDelegate, {
-          ownerAgentId: ownerSession.agentId,
-        })
-      ) {
-        await removeRejectedArtifactPolicy(delegate);
-      }
+      await terminalizeInterruptedDelegateClaim(failedDelegate, {
+        ownerAgentId: ownerSession.agentId,
+      });
       rejected++;
     };
     try {
@@ -533,19 +432,11 @@ export async function dispatchToolDelegates(
         commitPlannedChainState(dispatchChainId);
         continue;
       }
-      if (
-        delegate.flowId &&
-        (delegate.returnOptions?.artifacts === "optional" ||
-          delegate.returnOptions?.artifacts === "required")
-      ) {
-        await assertDelegateArtifactPolicyPrepared(delegate.flowId);
-      }
       const spawnFence = await revalidatePendingDelegateForSpawn(delegate, "pending");
       if (!spawnFence.allowed) {
         log.info(
           `[continuation:delegate-spawn-fenced] reason=${spawnFence.reason} flowId=${delegate.flowId ?? "unknown"} session=${sessionKey}`,
         );
-        await removeRejectedArtifactPolicy(delegate);
         dispatchSpan.setStatus("ERROR", spawnFence.summary);
         notifyOwner(
           `[continuation] ${spawnFence.summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
@@ -630,7 +521,6 @@ export async function dispatchToolDelegates(
           { inheritedSilent, inheritedWake },
           { failurePhase: "initialize" },
         );
-        await removeRejectedArtifactPolicy(delegate);
         dispatchSpan.setStatus("ERROR", result.error ?? "delegate admission cancelled");
         rejected++;
       } else {
@@ -639,26 +529,8 @@ export async function dispatchToolDelegates(
         log.info(
           `[continuation:delegate-spawn-rejected] status=${result.status} session=${sessionKey} reason=${reasonText} task=${delegate.task.slice(0, 80)}`,
         );
-        if (managedArtifacts && result.status === "error") {
-          if (
-            !(await requeuePendingDelegate(
-              delegate,
-              "Deferred after transient delegate spawn failure",
-              { inheritedSilent, inheritedWake },
-              { failurePhase: "initialize" },
-            ))
-          ) {
-            throw new Error("transient managed delegate spawn failure could not be requeued");
-          }
-          armManagedSpawnRetry();
-          dispatchSpan.setStatus("ERROR", reasonText);
-          notifyOwner(
-            `[continuation] ${summary}; managed work was deferred for retry. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
-          );
-          continue;
-        }
         const failedDelegate = await persistTerminalFailure(delegate);
-        await terminalizeRejectedDelegate(failedDelegate, summary);
+        await markPendingDelegateFailed(failedDelegate, summary);
         dispatchSpan.setStatus("ERROR", reasonText);
         notifyOwner(
           `[continuation] ${summary} Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
@@ -668,7 +540,6 @@ export async function dispatchToolDelegates(
     } catch (err) {
       await rollbackAcceptedSpawn?.();
       if (isSpawnSubagentAdmissionCancelledError(err) && !spawnAttempted) {
-        await removeRejectedArtifactPolicy(delegate);
         dispatchSpan?.setStatus("ERROR", err.message);
         rejected++;
         continue;
@@ -693,7 +564,7 @@ export async function dispatchToolDelegates(
         continue;
       }
       const failedDelegate = await persistTerminalFailure(delegate);
-      await terminalizeRejectedDelegate(failedDelegate, summary);
+      await markPendingDelegateFailed(failedDelegate, summary);
       notifyOwner(
         `[continuation] ${summary}. Task: ${formatDelegateTaskForSystemEvent(delegate.task)}`,
       );

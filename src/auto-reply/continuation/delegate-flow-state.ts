@@ -111,14 +111,6 @@ const PendingDelegateStateSchema = z
     targetSessionKeys: z.array(z.string().min(1)).optional(),
     fanoutMode: z.enum(CONTINUATION_DELEGATE_FANOUT_MODES).optional(),
     recipientAuthorityBinding: ContinuationRecipientAuthorityBindingSchema.optional(),
-    returnOptions: z
-      .object({ artifacts: z.enum(["forbidden", "optional", "required"]).optional() })
-      .strict()
-      .optional(),
-    recipientContext: z
-      .object({ purpose: z.string().trim().min(1).max(1024) })
-      .strict()
-      .optional(),
     traceparent: TraceparentStateSchema,
     traceparentProvenance: z.literal("internal").optional(),
     model: z.string().min(1).optional(),
@@ -254,8 +246,6 @@ export function encodeDelegateState(
     ...(delegate.recipientAuthorityBinding
       ? { recipientAuthorityBinding: delegate.recipientAuthorityBinding }
       : {}),
-    ...(delegate.returnOptions ? { returnOptions: delegate.returnOptions } : {}),
-    ...(delegate.recipientContext ? { recipientContext: delegate.recipientContext } : {}),
     ...(traceparent ? { traceparent, traceparentProvenance: "internal" as const } : {}),
     ...(delegate.model ? { model: delegate.model } : {}),
     ...(delegate.chainTokensFold !== undefined

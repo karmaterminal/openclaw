@@ -1,22 +1,15 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expectDefined } from "@openclaw/normalization-core";
 import * as ts from "typescript/unstable/ast";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createNativeTypeScriptParser } from "../../../scripts/lib/native-typescript.mts";
-import { UnavailableDelegateArtifactPolicyError } from "../../agents/delegate-artifacts.js";
 
 const enqueueSystemEventMock = vi.fn();
 const loggerRecords: Array<{ level: string; message: string }> = [];
 // Observable persisted session entries for recovery persist assertions.
 const recoveryStoreByPath = new Map<string, Record<string, unknown>>();
 const spawnSubagentDirectMock = vi.fn();
-const { assertDelegateArtifactPolicyPreparedMock, removeUnacceptedDelegateArtifactPolicyMock } =
-  vi.hoisted(() => ({
-    assertDelegateArtifactPolicyPreparedMock: vi.fn(),
-    removeUnacceptedDelegateArtifactPolicyMock: vi.fn(),
-  }));
 // recovery derives the chain cost basis from the PERSISTED session entry
 // (no explicit chainState survives a restart), so tests inject the persisted
 // store here to prove the cost cap is enforced against the post-run child total.
@@ -38,29 +31,6 @@ const ownerSessionStore = new Proxy<Record<string, unknown>>({}, { get: loadOwne
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
-
-vi.mock("../../agents/delegate-artifacts.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../agents/delegate-artifacts.js")>()),
-  assertDelegateArtifactPolicyPrepared: assertDelegateArtifactPolicyPreparedMock,
-  removeUnacceptedDelegateArtifactPolicy: removeUnacceptedDelegateArtifactPolicyMock,
-}));
-
-// Runs after a dispatch claimed its delegates and partitioned managed work,
-// before the spawn fence rereads custody: the point a concurrent reset lands.
-let afterManagedPartition: (() => Promise<void>) | undefined;
-vi.mock("./delegate-dispatch-managed-gates.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./delegate-dispatch-managed-gates.js")>();
-  return {
-    ...actual,
-    partitionManagedDelegatesForRuntime: async (
-      params: Parameters<typeof actual.partitionManagedDelegatesForRuntime>[0],
-    ) => {
-      const partitioned = await actual.partitionManagedDelegatesForRuntime(params);
-      await afterManagedPartition?.();
-      return partitioned;
-    },
-  };
-});
 
 vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEventRaw: (text: string, options: unknown) => enqueueSystemEventMock(text, options),
@@ -137,72 +107,16 @@ vi.mock("../../logging/subsystem.js", () => {
 });
 
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
-import {
-  noopTracer,
-  resetContinuationTracer,
-  setContinuationTracer,
-} from "../../infra/continuation-tracer.js";
+import { resetContinuationTracer } from "../../infra/continuation-tracer.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
-import { updateContinuationRecords } from "./custody/custody-store.js";
-import type { ContinuationRecordPatch } from "./custody/custody-store.types.js";
-import {
-  custodyStateForTest,
-  listCustodyRecordsForTest,
-  readCustodyRecordForTest,
-  useContinuationCustodyTestState,
-} from "./custody/custody.test-support.js";
+import { useContinuationCustodyTestState } from "./custody/custody.test-support.js";
 import { dispatchToolDelegates, resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import { continuationConfig, ROLE_MARKED_DELEGATE_TASK } from "./delegate-dispatch.test-support.js";
 import { enqueuePendingDelegate } from "./delegate-store.js";
-import { hasLiveContinuationTimerRefs, resetContinuationStateForTests } from "./state.js";
+import { resetContinuationStateForTests } from "./state.js";
 
 useContinuationCustodyTestState();
-
-/**
- * Resolves when the next delegate dispatch span ends: the last step of one
- * delegate's dispatch, after its custody outcome committed. A hedge fire runs
- * detached, so this is how a test observes that its dispatch finished.
- */
-function nextDelegateDispatchSettled(): Promise<void> {
-  return new Promise((resolve) => {
-    setContinuationTracer({
-      startSpan(name, options) {
-        const span = noopTracer.startSpan(name, options);
-        if (name !== "continuation.delegate.dispatch") {
-          return span;
-        }
-        return {
-          ...span,
-          end: () => {
-            span.end();
-            resolve();
-          },
-        };
-      },
-    });
-  });
-}
-
-/** Bump a record's revision the way a concurrent custody writer would. */
-async function commitConcurrentWrite(
-  recordId: string,
-  patch: ContinuationRecordPatch,
-): Promise<void> {
-  const current = expectDefined(await readCustodyRecordForTest(recordId), "custody record");
-  const result = await updateContinuationRecords(
-    [
-      {
-        recordId,
-        ownerSessionKey: current.ownerSessionKey,
-        expectedRevision: current.revision,
-        patch,
-      },
-    ],
-    { now: Date.now() },
-  );
-  expect(result).toMatchObject({ outcome: "applied" });
-}
 
 function findQueuedSystemEvent(fragment: string): [string, unknown] {
   const call = enqueueSystemEventMock.mock.calls.find(
@@ -250,10 +164,7 @@ function expectTrustedRawTaskEcho(
 beforeEach(() => {
   enqueueSystemEventMock.mockClear();
   loggerRecords.length = 0;
-  afterManagedPartition = undefined;
   spawnSubagentDirectMock.mockReset().mockResolvedValue({ status: "accepted" });
-  assertDelegateArtifactPolicyPreparedMock.mockClear();
-  removeUnacceptedDelegateArtifactPolicyMock.mockClear();
   loadSessionStoreForRecoveryMock.mockReset().mockReturnValue(ownerSessionStore);
   recoveryStoreByPath.clear();
   pendingSessionDeliveriesForRecovery.length = 0;
@@ -288,385 +199,6 @@ function isStringLiteralLike(
 ): node is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral {
   return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
 }
-
-describe("managed artifact pre-spawn lifecycle", () => {
-  it("fails and scrubs a delegate cancelled after claim without spawning", async () => {
-    const sessionKey = "agent:main:managed-cancelled-after-claim";
-    setRuntimeConfigSnapshot({
-      agents: { defaults: { continuation: { enabled: true } } },
-      tools: { sessions_spawn: { attachments: { enabled: true } } },
-    });
-    const delegate = await enqueuePendingDelegate(
-      sessionKey,
-      {
-        task: "produce a cancelled report",
-        attachments: [{ name: "private.txt", content: "cancelled secret" }],
-        returnOptions: { artifacts: "required" },
-      },
-      {
-        attachmentConfig: {
-          tools: { sessions_spawn: { attachments: { enabled: true } } },
-        },
-      },
-    );
-    // The cancel commits after the claim and before the spawn fence reads the
-    // record, as a concurrent reset would.
-    let cancelledRevision: number | undefined;
-    afterManagedPartition = async () => {
-      afterManagedPartition = undefined;
-      const claimed = expectDefined(
-        await readCustodyRecordForTest(delegate.recordId),
-        "claimed delegate record",
-      );
-      expect(claimed.status).toBe("running");
-      await commitConcurrentWrite(delegate.recordId, { cancelRequestedAt: Date.now() });
-      cancelledRevision = claimed.revision + 1;
-    };
-
-    const result = await dispatchToolDelegates({
-      sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
-      ctx: { sessionKey },
-      maxChainLength: 8,
-      config: continuationConfig({ enabled: true, crossSessionTargeting: "enabled" }),
-    });
-
-    expect(cancelledRevision).toBeDefined();
-    expect(result).toMatchObject({ dispatched: 0, rejected: 1 });
-    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    const terminalRecord = expectDefined(
-      await readCustodyRecordForTest(delegate.recordId),
-      "terminal delegate record",
-    );
-    expect(terminalRecord.status).toBe("failed");
-    expect(terminalRecord.attachmentId).toBeUndefined();
-    expect(custodyStateForTest(terminalRecord)).not.toHaveProperty("attachments");
-    expect(custodyStateForTest(terminalRecord)).not.toHaveProperty("attachAs");
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(delegate.recordId);
-  });
-
-  it("requeues accepted managed work when continuation is disabled before spawn", async () => {
-    const sessionKey = "agent:main:managed-disabled";
-    await enqueuePendingDelegate(sessionKey, {
-      task: "produce report",
-      returnOptions: { artifacts: "required" },
-    });
-    setRuntimeConfigSnapshot({
-      agents: { defaults: { continuation: { enabled: false } } },
-    });
-
-    const result = await dispatchToolDelegates({
-      sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
-      ctx: { sessionKey },
-      maxChainLength: 8,
-      config: continuationConfig({ enabled: true, crossSessionTargeting: "enabled" }),
-    });
-
-    expect(result).toMatchObject({ dispatched: 0, rejected: 0 });
-    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(assertDelegateArtifactPolicyPreparedMock).toHaveBeenCalledTimes(1);
-    expect(await listCustodyRecordsForTest()).toContainEqual(
-      expect.objectContaining({ status: "queued" }),
-    );
-  });
-
-  it("terminalizes managed work whose accepted artifact policy expired before spawn", async () => {
-    const sessionKey = "agent:main:managed-policy-expired";
-    const delegate = await enqueuePendingDelegate(sessionKey, {
-      task: "produce expired report",
-      returnOptions: { artifacts: "required" },
-    });
-    assertDelegateArtifactPolicyPreparedMock.mockImplementationOnce(() => {
-      throw new UnavailableDelegateArtifactPolicyError();
-    });
-    setRuntimeConfigSnapshot({
-      agents: { defaults: { continuation: { enabled: false } } },
-    });
-
-    const result = await dispatchToolDelegates({
-      sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
-      ctx: { sessionKey },
-      maxChainLength: 8,
-      config: continuationConfig({ enabled: true, crossSessionTargeting: "enabled" }),
-    });
-
-    expect(result).toMatchObject({ dispatched: 0, rejected: 1 });
-    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(await readCustodyRecordForTest(delegate.recordId)).toMatchObject({ status: "failed" });
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(delegate.recordId);
-  });
-
-  it("terminalizes expired managed work before cross-session targeting deferral", async () => {
-    const sessionKey = "agent:main:managed-policy-expired-cross-session";
-    const delegate = await enqueuePendingDelegate(sessionKey, {
-      task: "produce expired cross-session report",
-      targetSessionKey: "agent:other:root",
-      returnOptions: { artifacts: "required" },
-    });
-    assertDelegateArtifactPolicyPreparedMock.mockImplementationOnce(() => {
-      throw new UnavailableDelegateArtifactPolicyError();
-    });
-    setRuntimeConfigSnapshot({
-      agents: {
-        defaults: {
-          continuation: { enabled: true, crossSessionTargeting: "disabled" },
-        },
-      },
-    });
-
-    const result = await dispatchToolDelegates({
-      sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
-      ctx: { sessionKey },
-      maxChainLength: 8,
-      config: continuationConfig({ enabled: true, crossSessionTargeting: "enabled" }),
-    });
-
-    expect(result).toMatchObject({ dispatched: 0, rejected: 1 });
-    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
-    expect(await readCustodyRecordForTest(delegate.recordId)).toMatchObject({ status: "failed" });
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(delegate.recordId);
-  });
-
-  it("removes claimless policies when admission rejects before spawn", async () => {
-    const sessionKey = "agent:main:managed-limit";
-    await enqueuePendingDelegate(sessionKey, {
-      task: "first report",
-      returnOptions: { artifacts: "optional" },
-    });
-    const dropped = await enqueuePendingDelegate(sessionKey, {
-      task: "second report",
-      returnOptions: { artifacts: "optional" },
-    });
-    setRuntimeConfigSnapshot({
-      agents: { defaults: { continuation: { enabled: true } } },
-    });
-    // Read at removal time: the worker serializes the read after every commit
-    // made before the policy was removed.
-    const recordsAtPolicyRemoval: Array<ReturnType<typeof readCustodyRecordForTest>> = [];
-    removeUnacceptedDelegateArtifactPolicyMock.mockImplementation((flowId: string) => {
-      recordsAtPolicyRemoval.push(readCustodyRecordForTest(flowId));
-    });
-
-    await dispatchToolDelegates({
-      sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
-      ctx: { sessionKey },
-      maxChainLength: 8,
-      config: continuationConfig({
-        enabled: true,
-        maxDelegatesPerTurn: 1,
-        crossSessionTargeting: "enabled",
-      }),
-    });
-
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(dropped.recordId);
-    const removedRecords = await Promise.all(recordsAtPolicyRemoval);
-    expect(removedRecords).not.toHaveLength(0);
-    for (const record of removedRecords) {
-      expect(record).toMatchObject({ status: "failed" });
-    }
-  });
-
-  it("preserves the policy when terminal rejection cannot be persisted", async () => {
-    const sessionKey = "agent:main:managed-terminal-persist-failure";
-    const delegate = await enqueuePendingDelegate(sessionKey, {
-      task: "report that cannot be terminalized",
-      returnOptions: { artifacts: "required" },
-    });
-    // A concurrent custody write lands after the claim and before the
-    // over-limit terminal commit, so the terminal write loses its revision fence.
-    let concurrentWrites = 0;
-    afterManagedPartition = async () => {
-      concurrentWrites += 1;
-      await commitConcurrentWrite(delegate.recordId, { phase: "Concurrent writer" });
-    };
-    setRuntimeConfigSnapshot({
-      agents: { defaults: { continuation: { enabled: true } } },
-    });
-
-    await dispatchToolDelegates({
-      sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
-      ctx: { sessionKey },
-      maxChainLength: 8,
-      config: continuationConfig({
-        enabled: true,
-        maxDelegatesPerTurn: 0,
-        crossSessionTargeting: "enabled",
-      }),
-    });
-
-    expect(concurrentWrites).toBe(1);
-    expect(await readCustodyRecordForTest(delegate.recordId)).toMatchObject({
-      status: "running",
-      phase: "Concurrent writer",
-    });
-    expect(removeUnacceptedDelegateArtifactPolicyMock).not.toHaveBeenCalled();
-  });
-
-  it("requeues managed work after a transient spawn error result", async () => {
-    const sessionKey = "agent:main:managed-transient";
-    const delegate = await enqueuePendingDelegate(sessionKey, {
-      task: "retry managed report",
-      mode: "normal",
-      returnOptions: { artifacts: "required" },
-    });
-    spawnSubagentDirectMock.mockResolvedValueOnce({
-      status: "error",
-      error: "gateway temporarily unavailable",
-    });
-    setRuntimeConfigSnapshot({
-      agents: { defaults: { continuation: { enabled: true } } },
-    });
-
-    const result = await dispatchToolDelegates({
-      sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
-      ctx: { sessionKey },
-      maxChainLength: 8,
-      inheritedSilent: true,
-      inheritedWake: true,
-      config: continuationConfig({
-        enabled: true,
-        crossSessionTargeting: "enabled",
-      }),
-    });
-
-    expect(result).toMatchObject({ dispatched: 0, rejected: 0 });
-    const requeued = expectDefined(
-      await readCustodyRecordForTest(delegate.recordId),
-      "requeued delegate record",
-    );
-    expect(requeued.status).toBe("queued");
-    expect(custodyStateForTest(requeued)).toMatchObject({
-      inheritedSilent: true,
-      inheritedWake: true,
-    });
-    expect(removeUnacceptedDelegateArtifactPolicyMock).not.toHaveBeenCalled();
-    // The managed retry hedge is the session's one continuation timer; the
-    // process-wide fake-timer count also holds custody worker-client timers.
-    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
-
-    const retrySettled = nextDelegateDispatchSettled();
-    await vi.advanceTimersByTimeAsync(30_000);
-    await retrySettled;
-
-    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(2);
-    expect(spawnSubagentDirectMock.mock.calls[1]?.[0]).toMatchObject({
-      silentAnnounce: true,
-      wakeOnReturn: true,
-    });
-    // Each claim records a new attempt; the retry never reuses a child run ID.
-    const childRunIds = spawnSubagentDirectMock.mock.calls.map(
-      ([params]) => (params as { continuationChildRunId?: string }).continuationChildRunId,
-    );
-    expect(childRunIds).toEqual([
-      expect.stringMatching(new RegExp(`^continuation:${delegate.recordId}:`)),
-      expect.stringMatching(new RegExp(`^continuation:${delegate.recordId}:`)),
-    ]);
-    expect(new Set(childRunIds).size).toBe(2);
-    expect(await readCustodyRecordForTest(delegate.recordId)).toMatchObject({
-      status: "succeeded",
-    });
-  });
-
-  // RFC §5.4.4 (Q3): a thrown spawn may already have dispatched the child, so
-  // the claim ends in one interrupted notice and is never requeued or retried.
-  it("ends managed work in one interrupted notice after a thrown spawn", async () => {
-    const sessionKey = "agent:main:managed-transient-thrown";
-    const delegate = await enqueuePendingDelegate(sessionKey, {
-      task: "retry managed report",
-      mode: "normal",
-      returnOptions: { artifacts: "required" },
-    });
-    spawnSubagentDirectMock.mockRejectedValueOnce(new Error("gateway temporarily unavailable"));
-    setRuntimeConfigSnapshot({
-      agents: { defaults: { continuation: { enabled: true } } },
-    });
-
-    const result = await dispatchToolDelegates({
-      sessionKey,
-      chainState: {
-        currentChainCount: 0,
-        chainStartedAt: Date.now(),
-        accumulatedChainTokens: 0,
-      },
-      ctx: { sessionKey },
-      maxChainLength: 8,
-      inheritedSilent: true,
-      inheritedWake: true,
-      config: continuationConfig({
-        enabled: true,
-        crossSessionTargeting: "enabled",
-      }),
-    });
-
-    expect(result).toMatchObject({ dispatched: 0, rejected: 1 });
-    expect(spawnSubagentDirectMock).toHaveBeenCalledOnce();
-    const interrupted = expectDefined(
-      await readCustodyRecordForTest(delegate.recordId),
-      "interrupted delegate record",
-    );
-    expect(interrupted).toMatchObject({
-      status: "failed",
-      failureReason: "spawn-interrupted",
-    });
-    expect(interrupted.terminalNoticePending).toBeUndefined();
-    const [spawnRequest] = expectDefined(spawnSubagentDirectMock.mock.calls[0], "spawn call") as [
-      { continuationChildRunId?: string },
-    ];
-    expect(interrupted.spawnAttempts.map((attempt) => attempt.childRunId)).toEqual([
-      spawnRequest.continuationChildRunId,
-    ]);
-    expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith(delegate.recordId);
-    const notices = enqueueSystemEventMock.mock.calls.filter(
-      ([text]) =>
-        typeof text === "string" && text.includes("[continuation:delegate-spawn-interrupted]"),
-    );
-    expect(notices).toHaveLength(1);
-    expect(notices[0]?.[0]).toContain("retry managed report");
-    // No retry hedge is armed for an interrupted claim.
-    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
-
-    await vi.advanceTimersByTimeAsync(30_000);
-
-    expect(spawnSubagentDirectMock).toHaveBeenCalledOnce();
-    expect(await readCustodyRecordForTest(delegate.recordId)).toMatchObject({
-      status: "failed",
-    });
-  });
-});
 
 describe("raw trusted delegate task echoes", () => {
   const trustedEchoCases = [
@@ -937,7 +469,7 @@ describe("raw trusted delegate task echoes", () => {
       }
     }
 
-    expect(taskReferences).toHaveLength(9);
+    expect(taskReferences).toHaveLength(7);
     expect(
       taskReferences.every((taskReference) => {
         const parent = taskReference.parent;
