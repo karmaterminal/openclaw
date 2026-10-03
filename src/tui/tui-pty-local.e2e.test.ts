@@ -1609,7 +1609,7 @@ export default {
 
   function registerValidationLoopTest(mode: "gateway" | "local") {
     it(
-      `renders safe validation-loop termination diagnostics through the real ${mode} backend`,
+      `renders safe validation-loop abort diagnostics through the real ${mode} backend`,
       async ({ onTestFinished }) => {
         const fixture =
           mode === "gateway"
@@ -1679,17 +1679,19 @@ export default {
                 ),
             });
           }
-          const terminalMessage = "Stopped after 2 identical failed edit tool calls.";
+          await fixture.run.write("\u001b", { delay: false });
           if (fixture.kind === "gateway") {
-            await fixture.waitForOutput(terminalMessage);
+            await fixture.waitForOutput("run aborted: edit tool validation failed:");
           } else {
-            await fixture.run.waitForOutput(terminalMessage, LOCAL_OUTPUT_TIMEOUT_MS);
+            await fixture.run.waitForOutput(
+              "run aborted: edit tool validation failed:",
+              LOCAL_OUTPUT_TIMEOUT_MS,
+            );
           }
 
           expect(fixture.mockModel.requests().length).toBeGreaterThanOrEqual(2);
           const caseOutput =
             fixture.kind === "gateway" ? fixture.visibleOutput() : fixture.run.visibleOutput();
-          expect(caseOutput).toContain("Validation failed for tool");
           expect(caseOutput).not.toContain("Received arguments");
 
           if (fixture.kind === "local") {
