@@ -408,11 +408,7 @@ function collectTypeScriptFiles(relativeDir: string, options: { recursive: boole
   for (const entry of readdirSync(absoluteDir, { withFileTypes: true })) {
     const relativePath = posix.join(relativeDir, entry.name);
     if (entry.isDirectory()) {
-      // Proof fixtures own synthetic process state outside the runtime inventory.
-      if (
-        options.recursive &&
-        relativePath !== "src/auto-reply/continuation/fixtures/return-covenant"
-      ) {
+      if (options.recursive) {
         files.push(...collectTypeScriptFiles(relativePath, options));
       }
       continue;

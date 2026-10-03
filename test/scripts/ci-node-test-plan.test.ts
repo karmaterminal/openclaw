@@ -3836,21 +3836,6 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
     },
   );
 
-  it("keeps the return-covenant Gateway fixture in a dedicated shard", () => {
-    const target = "src/gateway/return-covenant-fixture.gateway.test.ts";
-    const shards = createNodeTestShards({ includeReleaseOnlyPluginShards: false });
-    const owner = shards.find((shard) => shard.shardName === "agentic-gateway-return-covenant");
-
-    expect(owner?.includePatterns).toEqual([target]);
-    expect(owner?.configs).toEqual(["test/vitest/vitest.gateway-server.config.ts"]);
-    expect(isGatewayServerTestFile(target)).toBe(true);
-    expect(
-      shards
-        .filter((shard) => shard.includePatterns?.includes(target))
-        .map((shard) => shard.shardName),
-    ).toEqual(["agentic-gateway-return-covenant"]);
-  });
-
   it.each(
     (["hybrid"] as const).flatMap((runnerBackend) =>
       [{ file: "test/plugins/codex-model-catalog.gateway.test.ts", buildMode: "runtime" }].map(

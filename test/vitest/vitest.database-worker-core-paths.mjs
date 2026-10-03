@@ -278,7 +278,6 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/continuation/work-terminal-notice.durability.test.ts",
   "src/auto-reply/continuation/custody-conjecture.scenario.test.ts",
   "src/auto-reply/continuation/post-compaction-chain-charge.test.ts",
-  "src/auto-reply/continuation/fixtures/return-covenant/run.test.ts",
   // Continuation delegate dispatch suites on real continuation custody.
   "src/auto-reply/continuation/delegate-dispatch.test.ts",
   "src/auto-reply/continuation/delegate-dispatch.contract.test.ts",

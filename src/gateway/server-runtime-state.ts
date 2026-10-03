@@ -30,7 +30,6 @@ import { isLoopbackHost, resolveGatewayListenHosts } from "./net.js";
 import { createGatewayPortalService, type GatewayPortalService } from "./portals/portal-service.js";
 import { MAX_PREAUTH_PAYLOAD_BYTES } from "./server-constants.js";
 import type { ControlUiRootState } from "./server-control-ui-root.js";
-import type { GatewayServerExtraHttpRoute } from "./server-extra-handlers.js";
 import { attachGatewayUpgradeHandler } from "./server-http-upgrades.js";
 import { createGatewayHttpServer } from "./server-http.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
@@ -110,7 +109,6 @@ export async function createGatewayHttpTransport(params: {
   handleNodeWorkerBundleTransferRequest?: ArtifactTransferHttpCallback;
   handleWorkerBootstrapArtifactTransferRequest?: ArtifactTransferHttpCallback;
   handleNodeWorkspaceTransferRequest?: NodeWorkspaceTransferHttpCallback;
-  serverExtraHttpRoutes?: readonly GatewayServerExtraHttpRoute[];
   workerIngressEnabled?: boolean;
   desktopSessionRegistry?: DesktopSessionRegistry;
   nodeDesktopStreamBroker?: NodeDesktopStreamBroker;
@@ -352,7 +350,6 @@ export async function createGatewayHttpTransport(params: {
       handleWorkerBootstrapArtifactTransferRequest:
         params.handleWorkerBootstrapArtifactTransferRequest,
       handleNodeWorkspaceTransferRequest: params.handleNodeWorkspaceTransferRequest,
-      serverExtraHttpRoutes: params.serverExtraHttpRoutes,
       getReadiness: params.getReadiness,
       getStartup: params.getStartup,
       getRuntimeConfig: loadRuntimeConfig,

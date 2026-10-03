@@ -67,11 +67,6 @@ import {
   PROVIDER_OAUTH_CALLBACK_PATH,
 } from "./provider-browser-auth.js";
 import type { ControlUiRootState } from "./server-control-ui-root.js";
-import type { GatewayServerExtraHttpRoute } from "./server-extra-handlers.js";
-import {
-  authorizeGatewayHttpRouteOrReply,
-  serverExtraHttpRouteStage,
-} from "./server-extra-http-routes.js";
 import {
   getControlUiModule,
   getControlUiPluginAssetsModule,
@@ -90,6 +85,7 @@ import {
   getUserProfilesHttpModule,
   getDevicePairingJoinHttpModule,
   getPluginNodeCapabilityAuthModule,
+  getHttpAuthUtilsModule,
   getPluginRouteRuntimeScopesModule,
 } from "./server-http-modules.js";
 import {
@@ -150,7 +146,6 @@ export function createGatewayHttpServer(opts: {
   handleWorkerBootstrapArtifactTransferRequest?: ArtifactTransferHttpCallback;
   /** Authenticator/dispatcher for the reserved node workspace transfer namespace. */
   handleNodeWorkspaceTransferRequest?: NodeWorkspaceTransferHttpCallback;
-  serverExtraHttpRoutes?: readonly GatewayServerExtraHttpRoute[];
   getReadiness?: ReadinessChecker;
   getStartup?: StartupChecker;
   getRuntimeConfig?: () => OpenClawConfig;
@@ -402,8 +397,6 @@ export function createGatewayHttpServer(opts: {
             getStartup,
           ),
       ];
-      const extraRouteRequest = { req, res, requestPath: scopedRequestPath, auth: routeAuth };
-      requestStages.push(serverExtraHttpRouteStage(opts.serverExtraHttpRoutes, extraRouteRequest));
       const addRequestStage = (
         enabled: boolean,
         stage: GatewayHttpRequestStage,
@@ -649,9 +642,10 @@ export function createGatewayHttpServer(opts: {
             }
             // Bypass paths come only from activated channel plugins; every other protected
             // route must authorize before runtime scopes are derived.
+            const { authorizePluginGatewayHttpRequestOrReply } = await getHttpAuthUtilsModule();
             const { resolvePluginRouteRuntimeOperatorScopes } =
               await getPluginRouteRuntimeScopesModule();
-            const authResult = await authorizeGatewayHttpRouteOrReply({
+            const authResult = await authorizePluginGatewayHttpRequestOrReply({
               req,
               res,
               ...routeAuth,

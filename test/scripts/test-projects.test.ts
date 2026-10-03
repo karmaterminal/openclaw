@@ -173,17 +173,6 @@ describe("test runtime prerequisites", () => {
     ["tui-pty", ["tui/tui-session-identity-pty.e2e.test.ts"], undefined],
     ["tui-pty", ["tui/tui-text-wrap-pty.e2e.test.ts"], "runtime"],
     ["gateway-core", ["gateway-*.test.ts"], undefined],
-    ["gateway-server", ["return-covenant-fixture.gateway.test.ts"], "runtime"],
-    [
-      "gateway-server",
-      [
-        "return-covenant-fixture.gateway.test.ts",
-        "server-sidecar-retention.test.ts",
-        "server.acp-native-model.product.test.ts",
-        "server.config-patch.test.ts",
-      ],
-      undefined,
-    ],
     ["gateway", ["gateway-*.test.ts"], "runtime"],
     ["tooling", ["**/gateway-codex-delivery-cache.test.ts"], "runtime"],
     [
