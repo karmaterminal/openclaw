@@ -99,11 +99,6 @@ type SystemEventOptions = {
   recipientAuthority?: SessionRecipientAuthority;
   delegateArtifactReceipt?: DelegateArtifactDeliveryReceipt;
   /**
-   * @deprecated Legacy no-op retained for plugin compatibility. System event
-   * text is stored unchanged; provenance is controlled by `trusted`.
-   */
-  forceSenderIsOwnerFalse?: boolean;
-  /**
    * Trusted-internal enrichment marker. Only core producers may attach managed
    * delivery provenance such as expectedSessionId and delegateArtifactReceipt.
    */
