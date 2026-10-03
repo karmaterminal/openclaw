@@ -45,7 +45,6 @@ import { hydrateDiscordMessageIfNeeded } from "./message-handler.hydration.js";
 import { resolveDiscordPreflightChannelAccess } from "./message-handler.preflight-channel-access.js";
 import { resolveDiscordPreflightChannelContext } from "./message-handler.preflight-channel-context.js";
 import {
-  hasRawDiscordUserMention,
   isBoundThreadBotSystemMessage,
   isDiscordThreadChannelMessage,
   matchesActiveDiscordMentionPatterns,
@@ -68,6 +67,7 @@ import type {
   DiscordMessagePreflightContext,
   DiscordMessagePreflightParams,
 } from "./message-handler.preflight.types.js";
+import { hasRawDiscordUserMention } from "./message-handler.raw-mention.js";
 import { resolveDiscordPreflightRoute } from "./message-handler.routing-preflight.js";
 import { resolveForwardedMediaList, resolveMediaList } from "./message-media.js";
 import {
