@@ -491,6 +491,7 @@ async function runSweepSample(childCount: number): Promise<Sample> {
     sweepPendingLifecycle: () => {},
     clearSubagentRunSteerRestart: () => true,
     recordAcceptedSubagentSpawnRollback: () => ({ status: "persisted" }),
+    releaseAcceptedSubagentSpawnRollback: () => true,
     rollbackSubagentRunRegistration: () => true,
     settleFailedQueuedSubagentLaunch: () => true,
     completeSubagentRunWithRecovery: async () => {
