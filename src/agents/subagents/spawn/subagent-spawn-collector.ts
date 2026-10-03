@@ -86,9 +86,9 @@ export function createCollectorLaunchCallbacks(params: {
       gatewayRunId,
       reason,
       ...provisionalSessionIdentity,
-      // Ronan's controlling ruling: the recorder stays OWNERSHIP-BLIND. Durable
-      // custody must persist even when live authority is revoked, or the accepted
-      // child is orphaned with nothing for the sweeper to reconcile. The durable
+      // The recorder stays OWNERSHIP-BLIND. Durable custody must persist even when
+      // live authority is revoked, or the accepted child is orphaned with nothing
+      // for the sweeper to reconcile. The durable
       // row is fenced by expectedRegistration plus frozen session identity and run
       // id; the live predicate is consumed only by terminateAcceptedCollectorRun.
     });
@@ -184,7 +184,7 @@ export function createCollectorLaunchCallbacks(params: {
       sessionCleanup.status === "fulfilled" &&
       sessionCleanup.value.attachmentsRemoved &&
       sessionCleanup.value.sessionDeleted;
-    // Ronan's ruling: `cleanupComplete` is a FACT about a finished exact-session
+    // `cleanupComplete` is a FACT about a finished exact-session
     // operation -- it already requires attachmentsRemoved AND sessionDeleted, and that
     // delete could only have happened through the identity-fenced frozen owner.
     // Re-checking live currentness here was a TOCTOU trap: authority expiring after an
@@ -307,7 +307,7 @@ export function createCollectorLaunchCallbacks(params: {
     onRemoved: async (reason) => {
       try {
         if (reason === "cancelled" && params.operatorAuthority?.signal?.aborted) {
-          // Ronan's ruling: the scheduler has already removed the queued launch, so
+          // The scheduler has already removed the queued launch, so
           // custody has transferred. Release the operator-source lease HERE, before
           // awaiting settlement -- releasing only in the `finally` sequenced it after
           // a settlement that cannot complete while the lease is held, which is the

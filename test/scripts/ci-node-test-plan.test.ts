@@ -4156,7 +4156,7 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
 });
 
 describe("auto-reply reply config shard ownership", () => {
-  it("schedules every tracked file the reply subtree include collects (#1402)", () => {
+  it("schedules every tracked file the reply subtree include collects", () => {
     // The reply config is only run as include-pattern splits, never whole, so any
     // subtree file missing from every split would silently never run in CI.
     const scheduled = new Set(

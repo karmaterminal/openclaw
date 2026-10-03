@@ -188,8 +188,8 @@ function githubRun(planned: ReturnType<typeof child>, overrides: Record<string, 
     head_sha: planned.workflowSha,
     id: 101,
     path: ".github/workflows/ci.yml",
-    // Fork: the reader checks provenance against GITHUB_REPOSITORY, which is the
-    // fork on fork CI; follow it so the fixture matches the running repository.
+    // The reader checks provenance against GITHUB_REPOSITORY, which differs on
+    // fork CI; follow it so the fixture matches the running repository.
     repository: { full_name: process.env.GITHUB_REPOSITORY ?? "openclaw/openclaw" },
     run_attempt: 1,
     status: "completed",

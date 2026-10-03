@@ -32,7 +32,7 @@ type SubagentAnnounceDeps = {
 
 // Continuation config is resolved through the runtime barrel at call time, not
 // bound at import. Upstream's announce tests replace that barrel with a mock that
-// lists only upstream's exports; binding a fork-only export at import would make
+// lists only the core exports; binding a continuation-only export at import would make
 // every such suite fail to load, while call-time access keeps our mocks of it
 // effective for the continuation paths that actually use it.
 const resolveContinuationRuntimeConfig: SubagentAnnounceDeps["resolveContinuationRuntimeConfig"] = (

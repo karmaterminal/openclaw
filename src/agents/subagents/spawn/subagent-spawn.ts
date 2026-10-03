@@ -589,7 +589,7 @@ export async function spawnSubagentDirect(
                 requesterSessionKey: requesterInternalKey,
                 gatewayContextResolver,
                 // Queued launch requires BOTH live operator authority and live
-                // registration/continuation ownership (Ronan's ruling). Authority is
+                // registration/continuation ownership. Authority is
                 // threaded here, not derived from chain state.
                 operatorAuthority,
                 releaseOperatorAuthority,

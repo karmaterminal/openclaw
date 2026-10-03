@@ -381,7 +381,7 @@ function assertSafeArtifactScalar(value: string, field: "type" | "title" | "mime
   }
 }
 
-/** Construct the only recipient-visible #666 projection from host-validated claim metadata. */
+/** Construct the only recipient-visible artifact projection from host-validated claim metadata. */
 export function toDelegateArtifactSummaryV1(
   claim: DelegateArtifactClaim,
 ): DelegateArtifactSummaryV1 {

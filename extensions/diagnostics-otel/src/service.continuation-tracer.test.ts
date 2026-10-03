@@ -428,7 +428,7 @@ describe("diagnostics-otel service", () => {
     }
   });
 
-  // Fork-retained: upstream removed this case in #158714, but it carries the
+  // Retained after #158714 removed this case: it carries the
   // continuation-tracer invariant (a rejected traces protocol leaves the
   // continuation tracer a no-op).
   test("keeps rejected traces disabled when metrics still start owned SDK", async () => {

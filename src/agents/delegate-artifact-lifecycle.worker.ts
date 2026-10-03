@@ -230,7 +230,7 @@ export function finalizeDelegateArtifactsInDatabase(
     } as const;
   }
   // Session incarnations live in agent databases this transaction cannot read;
-  // the host resolved them before the command (RFC risk R-B). Recipients are
+  // the host resolved them before the command. Recipients are
   // immutable once accepted, so the keys asked for are the keys used here.
   const neededSessionKeys = [
     ...new Set([

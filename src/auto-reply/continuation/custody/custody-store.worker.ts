@@ -238,7 +238,7 @@ export function electContinuationWorkInDatabase(
 /**
  * Claim a queued delegate for a spawn attempt. The attempt ID is the next
  * integer after every recorded attempt, so IDs are strictly increasing and
- * never reused, and the child run ID comes only from the L0 formatter.
+ * never reused, and the child run ID comes only from the shared run-key formatter.
  */
 export function claimContinuationSpawnAttemptInDatabase(
   db: DatabaseSync,

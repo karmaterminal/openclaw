@@ -4,10 +4,9 @@ import { generateChainId } from "../../infra/secure-random.js";
 // Imported through the Raw alias, as every other continuation module does.
 // enqueueSystemEventRaw IS enqueueSystemEvent (system-events.ts:328), so the
 // two imports behave identically -- but a suite that stubs the alias cannot
-// observe a caller holding the original binding. The absorb switched this one
-// import to the direct symbol, which silently made
-// agent-runner.continuation-postcompaction-staging.test.ts blind to the
-// [continuation:delegate-staged-post-compaction] event it asserts. openclaw#1380.
+// observe a caller holding the original binding. Importing the direct symbol
+// here silently makes agent-runner.continuation-postcompaction-staging.test.ts
+// blind to the [continuation:delegate-staged-post-compaction] event it asserts.
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";

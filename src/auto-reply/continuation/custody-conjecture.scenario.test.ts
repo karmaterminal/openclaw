@@ -18,7 +18,7 @@
  * returns) stays suspended forever, exactly like a killed process.
  *
  * Where the RFC changed the TaskFlow-era behavior, the test name says which
- * section changed it; these were `it.fails` until the §5.4 re-home (L4). Each
+ * section changed it; these were `it.fails` until the §5.4 custody store landed. Each
  * is paired with a test that pins the invariant both designs share, so a
  * changed-behavior test cannot pass because its scenario stopped reaching the
  * boundary.

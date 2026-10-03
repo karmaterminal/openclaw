@@ -1,5 +1,3 @@
-// Belled rope for karmaterminal/openclaw#1361.
-//
 // `vi.mock` factories are an EXHAUSTIVE declaration of a module's surface for the
 // test that declares them. Upstream-shared tests mock
 // `infra/session-delivery-queue-runtime.js` with only the exports upstream's own
@@ -10,7 +8,7 @@
 //   [vitest] No "<name>" export is defined on the "...session-delivery-queue-runtime.js" mock
 //
 // and the error names the mock rather than the importer, so it reads like a test
-// bug rather than a fork divergence. It is invisible to typecheck, because the
+// bug rather than a module-surface divergence. It is invisible to typecheck, because the
 // real module does export the symbol, and invisible in isolation, because the
 // failing test never mentions continuation.
 //

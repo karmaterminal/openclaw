@@ -63,10 +63,9 @@ import type { FollowupRun } from "./queue/types.js";
 // stays "main" (see the inputs below, deliberately unchanged); only the
 // enqueued event's queue identity is qualified.
 //
-// These expectations previously asserted the bare "main", which was our
-// pre-absorb behaviour and is what the oracle 3821eaef72 carried. Derived from
+// These expectations previously asserted the bare "main". They are derived from
 // the resolver rather than re-hardcoded, so the assertion tracks the contract
-// instead of a second literal that can rot the same way. See openclaw#1380.
+// instead of a second literal that can rot the same way.
 const OWNED_MAIN_QUEUE_KEY = resolveSystemEventQueueKey("main", "main");
 
 const mockRegistryState = vi.hoisted(() => ({

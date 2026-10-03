@@ -52,7 +52,7 @@ import { queueEntryReceiptKey } from "./legacy-taskflow-migration-source.js";
 
 // Pause-point arrivals as promises: a test awaits the exact event instead of
 // polling a counter against a clock, so a slow runner waits longer rather than
-// failing (vi.waitFor's default 1 s window timed out on slower seats).
+// failing (vi.waitFor's default 1 s window timed out on slower hosts).
 const arrivals = vi.hoisted(() => {
   const counts = new Map<string, number>();
   const waiters: { name: string; count: number; resolve: () => void }[] = [];
@@ -277,7 +277,7 @@ const FILE_ATTACHMENT_ID = "3d1e8a4c-2b6f-4c1d-9a7e-5f0b2c8d4e6a";
 
 /**
  * Seeds a legacy delegate whose payload file cannot be copied into the new
- * root (a file sits where the directory goes): the L3 per-owner import fault.
+ * root (a file sits where the directory goes): a per-owner import fault.
  * That owner's import fails and it stays awaiting import; others import.
  */
 function seedUncopyableLegacyDelegate(flowId: string, owner: string): void {

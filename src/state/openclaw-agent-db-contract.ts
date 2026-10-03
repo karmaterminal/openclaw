@@ -33,7 +33,7 @@ export const AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION = 18;
 // occupy 18 and 19, upstream's transcript-FTS row-ownership reconciliation is 22,
 // upstream's agent-storage step is 23, and upstream's cold-snapshot split is 24.
 // Ours stay strictly below all three, so the migration sequence remains
-// monotonic and no step is reordered by this absorb.
+// monotonic and no step is reordered.
 export const OPENCLAW_AGENT_SCHEMA_VERSION = 24;
 export const AGENT_STORAGE_SCHEMA_VERSION = 23;
 export const TRANSCRIPT_FTS_ROW_SCHEMA_VERSION = 22;

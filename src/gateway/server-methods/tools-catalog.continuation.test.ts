@@ -1,5 +1,5 @@
 /**
- * Fork coverage: the tools.catalog "Disable All" deny list must remove every
+ * Continuation coverage: the tools.catalog "Disable All" deny list must remove every
  * continuation tool from a real continuation-enabled agent tool set.
  */
 

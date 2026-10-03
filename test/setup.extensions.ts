@@ -8,7 +8,7 @@ let restoreUpstreamLinks: (() => void) | undefined;
 beforeEach(async (context) => {
   vi.useRealTimers();
   const testPath = expect.getState().testPath?.replaceAll("\\", "/");
-  // Fork: the continuation-origin export test drives the Codex attempt harness
+  // The continuation-origin export test drives the Codex attempt harness
   // from diagnostics-otel, so it needs the same runtime fixture.
   if (
     /\/extensions\/codex\/src\/app-server\/.*\.test\.ts$/.test(testPath ?? "") ||

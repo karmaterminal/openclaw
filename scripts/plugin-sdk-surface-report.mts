@@ -186,10 +186,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
     publicExports: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_EXPORTS",
       // +1: createChannelSecretContract consolidates seven channel secret contracts (approved by Peter, 2026-10-01).
-      // Fork: upstream surface plus the continuation feature's public contracts
+      // Core surface plus the continuation feature's public contracts
       // (runtime, trace, channel-ingress, system-event, diagnostics).
       // Pinned to the measured merged surface. Measure, never derive.
-      // Measured 3769 after the b51feb98eb absorb (upstream 3758; #162333 retired
+      // Measured 3769 on b51feb98eb plus this feature (base 3758; #162333 retired
       // the deprecated compatibility facades).
       3769,
       env,
@@ -197,8 +197,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_FUNCTION_EXPORTS",
       // +1: createChannelSecretContract consolidates seven channel secret contracts (approved by Peter, 2026-10-01).
-      // Fork: upstream plus the continuation feature's callable contracts. Measured.
-      // Measured 2191 after the b51feb98eb absorb (upstream 2187).
+      // Core plus the continuation feature's callable contracts.
+      // Measured 2191 on b51feb98eb plus this feature (base 2187).
       2191,
       env,
     ),

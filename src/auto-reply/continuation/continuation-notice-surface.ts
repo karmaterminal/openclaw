@@ -26,7 +26,7 @@ export type ContinuationNoticeSurfaceDeps = {
 export const defaultContinuationNoticeSurfaceDeps: ContinuationNoticeSurfaceDeps = {
   // Resolved on first call, not at module evaluation: an eager binding forces
   // every test that mocks the runtime module to declare this export
-  // (karmaterminal/openclaw#1361).
+  // (see work-terminal-notice.mock-surface.test.ts).
   scheduleSessionDelivery: async (...args) =>
     await (
       await import("../../infra/session-delivery-queue-runtime.js")

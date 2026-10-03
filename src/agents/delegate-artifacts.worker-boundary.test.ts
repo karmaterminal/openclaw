@@ -1,7 +1,6 @@
-// Contracts the shared-state worker boundary adds to delegate artifacts
-// (#1417 step 5): a lost finalization receipt replays, host-resolved session
-// incarnations are rechecked after the receipt (risk R-B), and overlapping
-// purges join one in-flight command.
+// Contracts the shared-state worker boundary adds to delegate artifacts: a lost
+// finalization receipt replays, host-resolved session incarnations are rechecked
+// after the receipt, and overlapping purges join one in-flight command.
 import { afterEach, describe, expect, it } from "vitest";
 import {
   closeOpenClawStateDatabaseAsync,
