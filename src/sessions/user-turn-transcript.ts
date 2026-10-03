@@ -4,11 +4,11 @@ import type { Result } from "@openclaw/normalization-core/result";
 import type { AgentRunTerminalOutcome } from "../agents/agent-run-terminal-outcome.types.js";
 import {
   bindSessionPendingInputSources,
-  publishTranscriptUpdate,
-  rewriteTranscriptMessageAtAnchor,
   stageSessionPendingInput,
   withSessionPendingInputPersistence,
+  publishTranscriptUpdate,
   resolveSessionTranscriptRuntimeTarget,
+  rewriteTranscriptMessageAtAnchor,
   type TranscriptEntryAnchor,
   type SessionTranscriptTurnPersistOptions,
 } from "../config/sessions/session-accessor.js";
@@ -71,10 +71,12 @@ export {
   restorePreparedUserTurnOperationalMetaForRuntime,
 };
 
-// The transcript read fence imports `user-turn-transcript-admission.ts` for its
-// admission registry, and runtime workers bundle every import of that graph,
-// dynamic ones included. This write-path rewrite stays beside its only caller so
-// the session accessor never enters the state-read worker.
+async function resolveUserTurnTranscriptTarget(
+  target: UserTurnTranscriptTargetResolver,
+): Promise<UserTurnTranscriptTarget | undefined> {
+  return typeof target === "function" ? await target() : target;
+}
+
 async function confirmPersistedSteerTargetRunId(params: {
   admission: UserTurnTranscriptAdmissionReceipt;
   targetRunId: string;
@@ -106,12 +108,6 @@ async function confirmPersistedSteerTargetRunId(params: {
     messageSeq: admission.activeMessagePosition + 1,
   });
   return { admission, message: rewritten.message };
-}
-
-async function resolveUserTurnTranscriptTarget(
-  target: UserTurnTranscriptTargetResolver,
-): Promise<UserTurnTranscriptTarget | undefined> {
-  return typeof target === "function" ? await target() : target;
 }
 
 export function createUserTurnTranscriptRecorder(
