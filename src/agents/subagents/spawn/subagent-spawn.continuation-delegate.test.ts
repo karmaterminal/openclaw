@@ -77,7 +77,9 @@ function expectNoChildSpawnSideEffects(): void {
   expect(hoisted.emitSessionLifecycleEventMock).not.toHaveBeenCalled();
 }
 
-function createDelegateAdmissionAuthority(): {
+function createDelegateAdmissionAuthority(
+  options: { resetAfter?: SpawnSubagentAdmissionBoundary } = {},
+): {
   authority: SpawnSubagentAdmissionAuthority;
   boundaries: SpawnSubagentAdmissionBoundary[];
   controller: AbortController;
@@ -98,6 +100,9 @@ function createDelegateAdmissionAuthority(): {
         boundaries.push(boundary);
         if (controller.signal.aborted) {
           throw new SpawnSubagentAdmissionCancelledError("delegate reset");
+        }
+        if (boundary === options.resetAfter) {
+          controller.abort("session-reset");
         }
       },
     },
@@ -250,10 +255,7 @@ describe("spawnSubagentDirect continuation delegate seam flow", () => {
   });
 
   it("rolls back an accepted child when reset lands after lifecycle publication", async () => {
-    const admission = createDelegateAdmissionAuthority();
-    hoisted.emitSessionLifecycleEventMock.mockImplementationOnce(() => {
-      admission.controller.abort("session-reset");
-    });
+    const admission = createDelegateAdmissionAuthority({ resetAfter: "lifecycle-publication" });
 
     const result = await spawnSubagentDirect(
       { task: "cancel after publication" },
@@ -291,13 +293,11 @@ describe("spawnSubagentDirect continuation delegate seam flow", () => {
       "lifecycle-publication",
       "final-acceptance",
     ]);
+    expect(hoisted.emitSessionLifecycleEventMock).not.toHaveBeenCalled();
   });
 
   it("terminates after rollback-owner persistence fails and preserves cancellation", async () => {
-    const admission = createDelegateAdmissionAuthority();
-    hoisted.emitSessionLifecycleEventMock.mockImplementationOnce(() => {
-      admission.controller.abort("session-reset");
-    });
+    const admission = createDelegateAdmissionAuthority({ resetAfter: "lifecycle-publication" });
     hoisted.recordAcceptedSubagentSpawnRollbackMock.mockReturnValueOnce({
       status: "pending-persistence",
       error: new Error("rollback owner disk full"),
@@ -328,11 +328,8 @@ describe("spawnSubagentDirect continuation delegate seam flow", () => {
   });
 
   it("keeps exact rollback ownership when persistence and termination both fail", async () => {
-    const admission = createDelegateAdmissionAuthority();
+    const admission = createDelegateAdmissionAuthority({ resetAfter: "lifecycle-publication" });
     hoisted.updateSessionStoreMock.mockImplementation(async () => ({}));
-    hoisted.emitSessionLifecycleEventMock.mockImplementationOnce(() => {
-      admission.controller.abort("session-reset");
-    });
     hoisted.recordAcceptedSubagentSpawnRollbackMock.mockReturnValueOnce({
       status: "pending-persistence",
       error: new Error("rollback owner disk full"),
@@ -482,6 +479,7 @@ describe("spawnSubagentDirect continuation delegate seam flow", () => {
     expect(registerInput.workspaceDir).toBe("/tmp/requester-workspace");
     expect(registerInput.expectsCompletionMessage).toBe(true);
     expect(registerInput.spawnMode).toBe("run");
+    expect(hoisted.emitSessionLifecycleEventMock).toHaveBeenCalledOnce();
     expect(hoisted.emitSessionLifecycleEventMock).toHaveBeenCalledWith({
       sessionKey: childSessionKey,
       reason: "create",

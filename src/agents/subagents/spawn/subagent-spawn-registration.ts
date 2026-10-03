@@ -2,7 +2,6 @@
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { recordSessionCreated } from "../../../sessions/session-created.js";
-import { recordSubagentSpawned } from "../../../sessions/session-state-events.js";
 import { summarizeSpawnError } from "../../spawn-pipeline.js";
 import {
   isSpawnSubagentAdmissionCancelledError,
@@ -31,11 +30,9 @@ export function publishSubagentSpawnRegistration(params: {
   cfg: OpenClawConfig;
   childEntry: SessionEntry | undefined;
   childSessionKey: string;
-  childRunId: string;
-  requesterSessionKey: string;
   agentId: string;
 }): void {
-  const { cfg, childEntry, childSessionKey, childRunId, requesterSessionKey, agentId } = params;
+  const { cfg, childEntry, childSessionKey, agentId } = params;
   if (childEntry) {
     recordSessionCreated(cfg, {
       sessionKey: childSessionKey,
@@ -43,12 +40,6 @@ export function publishSubagentSpawnRegistration(params: {
       entry: childEntry,
     });
   }
-  recordSubagentSpawned({
-    childSessionKey,
-    childRunId,
-    requesterSessionKey,
-    agentId,
-  });
 }
 
 export function buildSubagentSpawnPipelineFailureResult(
