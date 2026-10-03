@@ -66,7 +66,7 @@ function enqueueRestartSentinelWake(params: {
     Extract<QueuedSessionDelivery, { kind: "systemEvent" }>["managedDelegateArtifactDelivery"]
   >["receipt"];
   awaitsTurnAdoption?: boolean;
-  recipientAuthorityCurrent?: boolean;
+  isRecipientAuthorityCurrent?: () => boolean;
 }): boolean {
   const eventOptions = {
     sessionKey: params.sessionKey,
@@ -89,7 +89,7 @@ function enqueueRestartSentinelWake(params: {
       : {}),
   };
   enqueueSystemEvent(params.message, withSystemEventOwner(eventOptions, params.agentId));
-  if (params.recipientAuthority && params.recipientAuthorityCurrent !== true) {
+  if (params.recipientAuthority && params.isRecipientAuthorityCurrent?.() !== true) {
     removeSystemEvents(
       params.sessionKey,
       (event) =>
@@ -196,13 +196,13 @@ async function deliverResolvedQueuedSessionDelivery(params: {
 
   if (params.entry.kind === "systemEvent") {
     const recipientAuthority = params.entry.recipientAuthority;
-    const recipientAuthorityCurrent = async () =>
+    const recipientAuthorityCurrent = () =>
       !recipientAuthority ||
-      (await isSessionRecipientAuthorityCurrent(
+      isSessionRecipientAuthorityCurrent(
         { agentId, sessionKey: canonicalKey, storePath },
         recipientAuthority,
-      ));
-    if (!(await recipientAuthorityCurrent())) {
+      );
+    if (!recipientAuthorityCurrent()) {
       log.warn("session event delivery skipped: recipient authority changed", {
         sessionKey: canonicalKey,
         queueId: params.entry.id,
@@ -327,8 +327,6 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       }
       deliveryText = replaceManagedDelegateReturnInPrompt(params.entry.text, refreshed.projection);
     }
-    // The wake enqueues synchronously after this read, with no intervening await.
-    const authorityCurrent = await recipientAuthorityCurrent();
     const replayed = enqueueRestartSentinelWake({
       entryId: params.entry.id,
       message: deliveryText,
@@ -342,7 +340,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       recipientAuthority,
       delegateArtifactReceipt: params.entry.managedDelegateArtifactDelivery?.receipt,
       awaitsTurnAdoption: params.entry.awaitPromptAdoption,
-      recipientAuthorityCurrent: authorityCurrent,
+      isRecipientAuthorityCurrent: recipientAuthorityCurrent,
     });
     if (!replayed) {
       log.warn("session event delivery wake skipped: recipient authority changed", {

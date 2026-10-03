@@ -193,7 +193,7 @@ export {
 export { assignSessionOwner } from "./session-accessor.sqlite-owner.js";
 export { updateSessionProfileInvolvement } from "./session-accessor.sqlite-involvement.js";
 export { captureSessionRecipientAuthority } from "./session-sharing-store.async.js";
-export { isSessionRecipientAuthorityCurrent } from "./session-recipient-authority-current.js";
+export { isSessionRecipientAuthorityCurrent } from "./session-accessor.sqlite-recipient-authority.js";
 export {
   MAX_SESSION_PARTICIPANTS,
   recordSessionParticipant,

@@ -9,7 +9,7 @@ import {
   deleteSessionEntryLifecycle,
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
-import { isSessionRecipientAuthorityCurrent as isActualSessionRecipientAuthorityCurrent } from "../config/sessions/session-recipient-authority-current.js";
+import { isSessionRecipientAuthorityCurrent as isActualSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.sqlite-recipient-authority.js";
 import { addSessionMember, removeSessionMember } from "../config/sessions/session-sharing-store.js";
 import type { RestartSentinelPayload } from "../infra/restart-sentinel.js";
 import { resolveSystemEventQueueKey } from "../infra/system-event-ownership.js";
@@ -161,7 +161,7 @@ describe("scheduleRestartSentinelWake", () => {
       storeKeys: [sessionKey],
       legacyKey: undefined,
     }));
-    mocks.isSessionRecipientAuthorityCurrent.mockReset().mockResolvedValue(true);
+    mocks.isSessionRecipientAuthorityCurrent.mockReset().mockReturnValue(true);
     mocks.deliveryContextFromSession.mockReset();
     mocks.deliveryContextFromSession.mockReturnValue(undefined);
     mocks.getChannelPlugin.mockReset();
@@ -520,7 +520,7 @@ describe("scheduleRestartSentinelWake", () => {
       env: testState.env,
       sessionKey: "agent:main:main",
     });
-    mocks.isSessionRecipientAuthorityCurrent.mockResolvedValue(true);
+    mocks.isSessionRecipientAuthorityCurrent.mockReturnValue(true);
     mocks.loadSessionEntry.mockReturnValue({
       cfg: {},
       agentId: "main",
@@ -625,9 +625,9 @@ describe("scheduleRestartSentinelWake", () => {
         expect(deletion.deleted).toBe(true);
       }
 
-      expect(
-        await isActualSessionRecipientAuthorityCurrent(authorityScope, recipientAuthority),
-      ).toBe(false);
+      expect(isActualSessionRecipientAuthorityCurrent(authorityScope, recipientAuthority)).toBe(
+        false,
+      );
       mocks.isSessionRecipientAuthorityCurrent.mockImplementation((scope, authority) =>
         isActualSessionRecipientAuthorityCurrent(scope, authority),
       );

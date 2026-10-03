@@ -31,12 +31,6 @@ import type {
   SessionGoalOperationLookupResult,
 } from "./goals-operations.types.js";
 import type { SessionLifecycleTimestamps } from "./lifecycle.types.js";
-import type {
-  SessionMembersWorkerInput,
-  SessionMembershipFactsWorkerInput,
-  SessionRecipientAuthorityWorkerInput,
-  SessionRecipientAuthorityWorkerResult,
-} from "./session-access-read-worker.types.js";
 import type { SessionTranscriptBoundedActiveContext } from "./session-accessor.sqlite-active-context.js";
 import type { TranscriptArchivePresenceRead } from "./session-accessor.sqlite-archive-types.js";
 import type {
@@ -85,7 +79,6 @@ import type {
   SessionHistoryDelta,
 } from "./session-history-types.js";
 import type { SessionMembershipFacts } from "./session-membership-facts.types.js";
-import type { SessionRecipientAuthorityEpochState } from "./session-recipient-authority-types.js";
 import type { SessionMember } from "./session-sharing-store.kernel.js";
 import type { ResolvedSqliteStoreTarget } from "./session-sqlite-target.js";
 import type {
@@ -277,6 +270,21 @@ type SessionProjectionStatusWorkerInput = {
   database: { agentId: string; path: string };
   env: NodeJS.ProcessEnv;
   sessionId?: string;
+};
+
+type SessionMembersWorkerInput = {
+  kind: "session-members";
+  database: { agentId: string; path: string };
+  sessionKey: string;
+  env: NodeJS.ProcessEnv;
+};
+
+type SessionMembershipFactsWorkerInput = {
+  kind: "session-membership-facts";
+  database: { agentId: string; path: string };
+  sessionKeys?: readonly string[];
+  env: NodeJS.ProcessEnv;
+  continuation?: CanonicalSessionReaderContinuation;
 };
 
 type SessionProgressCardWorkerInput = {
@@ -512,7 +520,6 @@ export type SessionHistoryWorkerInput =
   | SessionRowPresenceWorkerInput
   | SessionProjectionStatusWorkerInput
   | SessionMembersWorkerInput
-  | SessionRecipientAuthorityWorkerInput
   | SessionMembershipFactsWorkerInput
   | SessionProgressCardWorkerInput
   | SessionPendingInputReceiptsWorkerInput
@@ -582,7 +589,6 @@ export type SessionTranscriptWorkerValues = {
   "session-row-presence": boolean;
   "projection-status": boolean;
   "session-members": SessionMember[];
-  "session-recipient-authority": SessionRecipientAuthorityWorkerResult;
   "session-membership-facts": SessionMembershipFacts;
   "session-progress-card": { kind: "session-progress-card"; card: ProgressCard | null };
   "goal-operation-receipt": {
@@ -738,10 +744,6 @@ export type SessionHistoryWorkerDatabase = {
   >;
   readDiagnosticText: SessionHistoryReader<SessionDiagnosticTextWorkerInput, string | undefined>;
   readMembers: SessionHistoryReader<SessionMembersWorkerInput>;
-  readRecipientAuthority: SessionHistoryReader<
-    SessionRecipientAuthorityWorkerInput,
-    SessionRecipientAuthorityEpochState
-  >;
   readMembershipFacts: SessionHistoryReader<SessionMembershipFactsWorkerInput>;
   readProgressCard: SessionHistoryReader<SessionProgressCardWorkerInput, ProgressCard | null>;
   readGoalOperationReceipt: SessionHistoryReader<

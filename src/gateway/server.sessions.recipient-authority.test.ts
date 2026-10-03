@@ -33,7 +33,7 @@ test.each(["new", "reset"] as const)(
     expect(reset.entry.lifecycleRevision).toEqual(expect.any(String));
     expect(reset.entry.lifecycleRevision).not.toBe(beforeReset?.lifecycleRevision);
     expect(loadSessionEntry(scope)?.lifecycleRevision).toBe(reset.entry.lifecycleRevision);
-    expect(await isSessionRecipientAuthorityCurrent(scope, recipientAuthority)).toBe(true);
+    expect(isSessionRecipientAuthorityCurrent(scope, recipientAuthority)).toBe(true);
 
     const enqueueSessionDelivery = vi.fn(async () => `delivery-${reason}`);
     const enqueueSystemEvent = vi.fn(() => true);

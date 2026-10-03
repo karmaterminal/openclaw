@@ -133,14 +133,14 @@ describe("session sharing handlers", () => {
         expect(
           await call("session.visibility.set", { sessionKey, visibility }, requestContext),
         ).toMatchObject([[true, { ok: true, sessionKey, visibility }, undefined]]);
-        expect(await isSessionRecipientAuthorityCurrent(scope, authority)).toBe(false);
+        expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(false);
         authority = await captureSessionRecipientAuthority(scope);
       }
 
       expect(
         await call("session.visibility.set", { sessionKey, visibility: "shared" }, requestContext),
       ).toMatchObject([[true, { ok: true, sessionKey, visibility: "shared" }, undefined]]);
-      expect(await isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
     });
   });
 

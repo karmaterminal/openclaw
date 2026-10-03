@@ -5,7 +5,6 @@ import { asNonNegativeFiniteNumber } from "@openclaw/normalization-core/number-c
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type { DiagnosticMemoryUsage } from "./diagnostic-process-types.js";
-import { publishSqliteCommitFence } from "./sqlite-commit-fence.js";
 import { normalizeDiagnosticWorkerScript } from "./worker-diagnostic-script.js";
 
 type WorkerCpuHandle = {
@@ -69,8 +68,6 @@ const trackedWorkers = resolveGlobalSingleton(Symbol.for("openclaw.workerCpuSour
 });
 
 export function createCpuTrackedWorker(...args: ConstructorParameters<typeof Worker>): Worker {
-  // Environment data is copied at construction; workers that write fenced facts must share it.
-  publishSqliteCommitFence();
   const worker = new Worker(...args);
   trackWorker(worker); // Bun need not emit Node's process-level Worker event.
   // Node's process event can register the Worker before its constructor returns.

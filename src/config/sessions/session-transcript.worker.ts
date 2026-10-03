@@ -401,21 +401,6 @@ serveOwnedWorkerTasks(
           ? result.value
           : request.sessionId === undefined && result.reason === "schema-missing";
       }
-      if (request.kind === "session-recipient-authority") {
-        const { withOpenClawAgentDatabaseReadOnly } =
-          await import("../../state/openclaw-agent-db-readonly.js");
-        const { readSessionRecipientAuthorityEpochInDatabase } =
-          await import("./session-accessor.sqlite-recipient-authority.js");
-        const result = withOpenClawAgentDatabaseReadOnly(
-          (database) => readSessionRecipientAuthorityEpochInDatabase(database, request.sessionKey),
-          { ...request.database, env: request.env },
-        );
-        // An unreadable store has no current authority, as the native check reported.
-        return {
-          kind: "session-recipient-authority" as const,
-          epoch: result.found ? result.value : { state: "missing" as const },
-        };
-      }
       if (request.kind === "session-members") {
         const { withOpenClawAgentDatabaseReadOnly } =
           await import("../../state/openclaw-agent-db-readonly.js");

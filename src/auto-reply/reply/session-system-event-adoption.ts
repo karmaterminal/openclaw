@@ -145,23 +145,26 @@ export function createPreparedSystemEventAuthorityOwner(params: {
   return pending.size > 0 ? { scope: params.scope, pending } : undefined;
 }
 
-export async function resolveFinalSystemEventAdoption(params: {
+export function resolveFinalSystemEventAdoption(params: {
   prepared: readonly PreparedFormattedSystemEvents[];
   replaceDeliveryIds?: (deliveryIds: readonly string[]) => boolean;
 }) {
-  const pending = params.prepared.flatMap((prepared) => {
+  const stale: Array<{
+    authorityKey: string;
+    binding: PreparedAuthorityBinding;
+    owner: PreparedSystemEventAuthorityOwner;
+  }> = [];
+  for (const prepared of params.prepared) {
     const owner = prepared.authorityOwner;
-    return owner
-      ? [...owner.pending].map(([authorityKey, binding]) => ({ authorityKey, binding, owner }))
-      : [];
-  });
-  const current = await Promise.all(
-    pending.map(({ binding, owner }) =>
-      isSessionRecipientAuthorityCurrent(owner.scope, binding.authority),
-    ),
-  );
-  // Adoption below is synchronous, so it acts on these reads with no interleaved await.
-  const stale = pending.filter((_, index) => !current[index]);
+    if (!owner) {
+      continue;
+    }
+    for (const [authorityKey, binding] of owner.pending) {
+      if (!isSessionRecipientAuthorityCurrent(owner.scope, binding.authority)) {
+        stale.push({ authorityKey, binding, owner });
+      }
+    }
+  }
   if (stale.length > 0) {
     return {
       kind: "settle-stale" as const,

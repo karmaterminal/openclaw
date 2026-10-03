@@ -1,15 +1,17 @@
-import type { DatabaseSync } from "node:sqlite";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
   getNodeSqliteKysely,
 } from "../../infra/kysely-sync.js";
-import { markSqliteCommitFenceMutation } from "../../infra/sqlite-commit-fence.js";
+import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
 import type { DB as OpenClawAgentKyselyDatabase } from "../../state/openclaw-agent-db.generated.js";
 import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
+import type { SessionAccessScope } from "./session-accessor.sqlite-contract.js";
+import { resolveSqliteScope, toDatabaseOptions } from "./session-accessor.sqlite-scope.js";
 import {
   createSessionRecipientAuthorityEpoch,
   readSessionRecipientAuthorityEpoch,
+  sessionRecipientAuthorityMatches,
   type SessionRecipientAuthority,
   type SessionRecipientAuthorityEpochState,
 } from "./session-recipient-authority-types.js";
@@ -23,48 +25,26 @@ export function getSessionRecipientAuthorityKysely(database: Pick<OpenClawAgentD
   return getNodeSqliteKysely<SessionRecipientAuthorityDatabase>(database.db);
 }
 
-/** Fence key shared by every writer that replaces or removes an existing epoch. */
-export function sessionRecipientAuthorityFenceKey(sessionKey: string): string {
-  return `session-recipient-authority\u0000${sessionKey}`;
-}
-
-/**
- * Writers that replace or delete a present epoch mark the process-wide fence inside
- * their transaction. Inserting a missing epoch cannot make any captured authority
- * current or stale, so capture and the additive migration backfill stay unfenced.
- */
-export function markSessionRecipientAuthorityMutation(db: DatabaseSync, sessionKey: string): void {
-  markSqliteCommitFenceMutation(db, sessionRecipientAuthorityFenceKey(sessionKey));
-}
-
+/** Replace (or create) the epoch inside the caller's write transaction. */
 export function advanceSessionRecipientAuthorityInTransaction(
-  database: OpenClawAgentDatabase,
+  database: Pick<OpenClawAgentDatabase, "db">,
   sessionKey: string,
-): void {
-  markSessionRecipientAuthorityMutation(database.db, sessionKey);
+): string {
+  const epoch = createSessionRecipientAuthorityEpoch();
   const now = Date.now();
   executeSqliteQuerySync(
     database.db,
     getSessionRecipientAuthorityKysely(database)
       .insertInto("session_recipient_authority")
-      .values({
-        session_key: sessionKey,
-        epoch: createSessionRecipientAuthorityEpoch(),
-        created_at: now,
-        updated_at: now,
-      })
+      .values({ session_key: sessionKey, epoch, created_at: now, updated_at: now })
       .onConflict((conflict) =>
-        conflict.column("session_key").doUpdateSet({
-          epoch: createSessionRecipientAuthorityEpoch(),
-          updated_at: now,
-        }),
+        conflict.column("session_key").doUpdateSet({ epoch, updated_at: now }),
       ),
   );
+  return epoch;
 }
 
-// The kernels below run in the agent database workers. Process-held incognito
-// databases cannot be reopened by path, so their sole native owner shares them.
-
+/** Shared by the synchronous currency check, the capture worker, and incognito capture. */
 export function readSessionRecipientAuthorityEpochInDatabase(
   database: Pick<OpenClawAgentDatabase, "db">,
   sessionKey: string,
@@ -79,7 +59,11 @@ export function readSessionRecipientAuthorityEpochInDatabase(
   return readSessionRecipientAuthorityEpoch(row?.epoch);
 }
 
-/** Insert-if-absent; the caller owns the immediate write transaction. */
+/**
+ * Insert-if-absent inside the caller's immediate write transaction. A missing row
+ * cannot appear between the read and the upsert, so initializing through the
+ * advance upsert writes exactly what an insert would.
+ */
 export function captureSessionRecipientAuthorityInTransaction(
   database: Pick<OpenClawAgentDatabase, "db">,
   sessionKey: string,
@@ -91,16 +75,29 @@ export function captureSessionRecipientAuthorityInTransaction(
   if (current.state === "present") {
     return { state: "bound", epoch: current.epoch };
   }
-  const epoch = createSessionRecipientAuthorityEpoch();
-  const now = Date.now();
-  executeSqliteQuerySync(
-    database.db,
-    getSessionRecipientAuthorityKysely(database).insertInto("session_recipient_authority").values({
-      session_key: sessionKey,
-      epoch,
-      created_at: now,
-      updated_at: now,
-    }),
+  return {
+    state: "bound",
+    epoch: advanceSessionRecipientAuthorityInTransaction(database, sessionKey),
+  };
+}
+
+/**
+ * The adopt/deliver decision is this durable comparison itself. Callers act on it
+ * in the same synchronous frame, so no cached or projected epoch stands in for
+ * the store after another process may have committed.
+ */
+export function isSessionRecipientAuthorityCurrent(
+  scope: SessionAccessScope,
+  authority: SessionRecipientAuthority,
+): boolean {
+  const resolved = resolveSqliteScope(scope);
+  const result = withOpenClawAgentDatabaseReadOnly(
+    (database) =>
+      sessionRecipientAuthorityMatches(
+        authority,
+        readSessionRecipientAuthorityEpochInDatabase(database, resolved.sessionKey),
+      ),
+    toDatabaseOptions(resolved),
   );
-  return { state: "bound", epoch };
+  return result.found && result.value;
 }

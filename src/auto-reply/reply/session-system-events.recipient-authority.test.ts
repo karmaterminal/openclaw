@@ -85,10 +85,10 @@ async function applyInvalidation(params: {
 }
 
 async function resolveFinalAdoption(...prepared: PreparedFormattedSystemEvents[]) {
-  let adoption = await resolveFinalSystemEventAdoption({ prepared });
+  let adoption = resolveFinalSystemEventAdoption({ prepared });
   while (adoption.kind === "settle-stale") {
     await adoption.settle();
-    adoption = await resolveFinalSystemEventAdoption({ prepared });
+    adoption = resolveFinalSystemEventAdoption({ prepared });
   }
   return adoption;
 }
@@ -163,9 +163,9 @@ describe("recipient authority prompt-adoption fence", () => {
         resumeTranscriptRead.resolve();
         const prepared = await preparing;
 
-        expect(
-          await sessionAccessor.isSessionRecipientAuthorityCurrent(scope, recipientAuthority),
-        ).toBe(false);
+        expect(sessionAccessor.isSessionRecipientAuthorityCurrent(scope, recipientAuthority)).toBe(
+          false,
+        );
         const prompt = prepared.blocks.map((block) => block.text).join("\n");
         expect(prompt).not.toContain("stale delegate result");
         expect(prompt).toContain("unbound sibling event");
@@ -222,9 +222,9 @@ describe("recipient authority prompt-adoption fence", () => {
           isNewSession: false,
         });
 
-        expect(
-          await sessionAccessor.isSessionRecipientAuthorityCurrent(scope, recipientAuthority),
-        ).toBe(false);
+        expect(sessionAccessor.isSessionRecipientAuthorityCurrent(scope, recipientAuthority)).toBe(
+          false,
+        );
         expect(prepared).toEqual({ blocks: [], managedDeliveries: [] });
         expect(peekSystemEventEntries(sessionKey)).toEqual([]);
       });
@@ -282,9 +282,9 @@ describe("recipient authority prompt-adoption fence", () => {
         await applyInvalidation({ invalidation, scope, storePath });
         const adoption = await resolveFinalAdoption(prepared);
 
-        expect(
-          await sessionAccessor.isSessionRecipientAuthorityCurrent(scope, recipientAuthority),
-        ).toBe(false);
+        expect(sessionAccessor.isSessionRecipientAuthorityCurrent(scope, recipientAuthority)).toBe(
+          false,
+        );
         const prompt = adoption.blocks.map((block) => block.text).join("\n");
         expect(prompt).not.toContain("stale delegate result");
         expect(prompt).toContain("unbound sibling event");
@@ -339,11 +339,11 @@ describe("recipient authority prompt-adoption fence", () => {
       ).not.toBeNull();
       const adoption = await resolveFinalAdoption(route.prepared, current.prepared);
 
+      expect(sessionAccessor.isSessionRecipientAuthorityCurrent(route.scope, route.authority)).toBe(
+        false,
+      );
       expect(
-        await sessionAccessor.isSessionRecipientAuthorityCurrent(route.scope, route.authority),
-      ).toBe(false);
-      expect(
-        await sessionAccessor.isSessionRecipientAuthorityCurrent(current.scope, current.authority),
+        sessionAccessor.isSessionRecipientAuthorityCurrent(current.scope, current.authority),
       ).toBe(true);
       const prompt = adoption.blocks.map((block) => block.text).join("\n");
       expect(prompt).not.toContain("ops delegate result");

@@ -400,7 +400,7 @@ describe("clearSessionResetRuntimeState", () => {
             ).toEqual([]);
             expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
             expect(
-              await isSessionRecipientAuthorityCurrent(
+              isSessionRecipientAuthorityCurrent(
                 { agentId: "main", sessionKey },
                 recipientAuthority,
               ),

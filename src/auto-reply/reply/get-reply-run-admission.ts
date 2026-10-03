@@ -177,10 +177,10 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
         // dedicated reminders or arrivals that were not part of this turn.
         events: context.isHeartbeat ? (eventContext?.events ?? []) : undefined,
       });
-      let adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
+      let adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
       while (adoption.kind === "settle-stale") {
         await adoption.settle();
-        adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
+        adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
       }
       const managedDeliveryIds = [...adoption.managedDeliveries.keys()];
       const recorderAccepted =

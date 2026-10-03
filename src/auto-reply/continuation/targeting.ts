@@ -81,7 +81,7 @@ type ContinuationReturnDeliveryDeps = {
   isRecipientAuthorityCurrent?: (
     sessionKey: string,
     authority: SessionRecipientAuthority,
-  ) => boolean | Promise<boolean>;
+  ) => boolean;
   removeSystemEvents?: typeof removeSystemEvents;
   recordDelegateArtifactDeliveryBinding?: typeof recordDelegateArtifactDeliveryBinding;
 };
@@ -178,13 +178,13 @@ export async function enqueueContinuationReturnDeliveries(
     if (recipientAuthority && hasManagedArtifactDelivery) {
       throw new Error("managed delegate artifact delivery cannot use logical recipient authority");
     }
-    const recipientAuthorityCurrent = async () =>
+    const recipientAuthorityCurrent = () =>
       !recipientAuthority ||
-      (await (
+      (
         deps.isRecipientAuthorityCurrent ??
         ((key, authority) => isSessionRecipientAuthorityCurrent({ sessionKey: key }, authority))
-      )(sessionKey, recipientAuthority));
-    if (!(await recipientAuthorityCurrent())) {
+      )(sessionKey, recipientAuthority);
+    if (!recipientAuthorityCurrent()) {
       continue;
     }
     const commonPayload = {
@@ -215,8 +215,7 @@ export async function enqueueContinuationReturnDeliveries(
             ...(recipientAuthority ? { recipientAuthority, awaitPromptAdoption: true } : {}),
           };
     const deliveryId = await deps.enqueueSessionDelivery(payload, params.stateDir);
-    // The in-memory enqueue below follows this read with no intervening await.
-    if (!(await recipientAuthorityCurrent())) {
+    if (!recipientAuthorityCurrent()) {
       // Stale authority can never adopt this row; retire it now rather than leave it until replay.
       await (deps.ackSessionDelivery ?? ackSessionDelivery)(deliveryId, params.stateDir);
       continue;
@@ -261,7 +260,7 @@ export async function enqueueContinuationReturnDeliveries(
       // the durable backing row for the surviving queued event before the
       // prompt-drain path consumes it. The surviving event carries the ack id.
     }
-    if (!(await recipientAuthorityCurrent())) {
+    if (!recipientAuthorityCurrent()) {
       (deps.removeSystemEvents ?? removeSystemEvents)(
         sessionKey,
         (event) =>

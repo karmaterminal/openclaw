@@ -2,7 +2,7 @@
 // module first so its registrations precede the modules they replace.
 import { vi } from "vitest";
 import type { ChannelPlugin } from "../channels/plugins/types.plugin.js";
-import type { isSessionRecipientAuthorityCurrent as isActualSessionRecipientAuthorityCurrent } from "../config/sessions/session-recipient-authority-current.js";
+import type { isSessionRecipientAuthorityCurrent as isActualSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.sqlite-recipient-authority.js";
 
 type RestartSentinel = NonNullable<
   Awaited<ReturnType<typeof import("../infra/restart-sentinel.js").readRestartSentinel>>
@@ -53,7 +53,7 @@ const mocks = vi.hoisted(() => {
   return {
     resolveSessionAgentId: vi.fn(() => "agent-from-key"),
     isSessionRecipientAuthorityCurrent: vi.fn<typeof isActualSessionRecipientAuthorityCurrent>(
-      async () => true,
+      () => true,
     ),
     markDelegateArtifactDeliveryUnavailable: vi.fn(),
     prepareDelegateArtifactDelivery: vi.fn(),
