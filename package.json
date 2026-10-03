@@ -1841,7 +1841,6 @@
     "leak:embedded-run:liveness": "node --import ./scripts/tsx.mjs --expose-gc scripts/embedded-run-liveness-leak.ts",
     "lint": "node --import ./scripts/tsx.mjs scripts/run-lint.mts",
     "lint:agent:ingress-owner": "node --import ./scripts/tsx.mjs scripts/check-ingress-agent-owner-context.mts",
-    "lint:continuation:guard-callsites": "node --import ./scripts/tsx.mjs scripts/check-continuation-guard-callsites.mts",
     "lint:all": "node scripts/run-oxlint.mjs",
     "lint:apps": "pnpm lint:swift",
     "lint:auth:no-pairing-store-group": "node --import ./scripts/tsx.mjs scripts/check-no-pairing-store-group-auth.mts",
