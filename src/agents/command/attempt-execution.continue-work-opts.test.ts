@@ -72,7 +72,9 @@ const runEmbeddedAgentMock = vi.hoisted(() => vi.fn());
 const runCliAgentMock = vi.hoisted(() => vi.fn());
 const continuationRuntimeState = vi.hoisted(() => ({
   enqueueConcurrentAfterScheduling: false,
+  failChainStateLoad: false,
   failScheduling: false,
+  failSignalExtraction: false,
   abortBeforeScheduling: undefined as AbortController | undefined,
 }));
 const sessionAccessorState = vi.hoisted(() => ({
@@ -120,6 +122,36 @@ vi.mock("../../auto-reply/continuation/lazy.runtime.js", async (importOriginal) 
         });
       }
       return result;
+    },
+  };
+});
+
+vi.mock("../../auto-reply/continuation/signal.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../auto-reply/continuation/signal.js")>();
+  return {
+    ...actual,
+    extractContinuationSignal: (
+      ...args: Parameters<typeof actual.extractContinuationSignal>
+    ): ReturnType<typeof actual.extractContinuationSignal> => {
+      if (continuationRuntimeState.failSignalExtraction) {
+        throw new Error("synthetic continuation signal extraction failure");
+      }
+      return actual.extractContinuationSignal(...args);
+    },
+  };
+});
+
+vi.mock("../../auto-reply/continuation/state.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../auto-reply/continuation/state.js")>();
+  return {
+    ...actual,
+    loadContinuationChainState: (
+      ...args: Parameters<typeof actual.loadContinuationChainState>
+    ): ReturnType<typeof actual.loadContinuationChainState> => {
+      if (continuationRuntimeState.failChainStateLoad) {
+        throw new Error("synthetic unexpected spawn-init scheduling failure");
+      }
+      return actual.loadContinuationChainState(...args);
     },
   };
 });
@@ -308,7 +340,9 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     runEmbeddedAgentMock.mockReset();
     runCliAgentMock.mockReset();
     continuationRuntimeState.enqueueConcurrentAfterScheduling = false;
+    continuationRuntimeState.failChainStateLoad = false;
     continuationRuntimeState.failScheduling = false;
+    continuationRuntimeState.failSignalExtraction = false;
     continuationRuntimeState.abortBeforeScheduling = undefined;
     sessionAccessorState.failPatch = false;
     sessionAccessorState.failPatchCall = undefined;
@@ -444,6 +478,9 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
     expect(sessionStore[sessionKey]?.continuationChainCount).toBeUndefined();
+    expect(peekSystemEvents(sessionKey)).toContainEqual(
+      expect.stringContaining("not scheduled because continuation was disabled"),
+    );
   });
 
   it("rolls back spawn-init reservation when continuation is disabled during persistence", async () => {
@@ -463,6 +500,9 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
       continuationChainCount: 0,
       continuationChainTokens: 0,
     });
+    expect(peekSystemEvents(sessionKey)).toContainEqual(
+      expect.stringContaining("not scheduled because continuation was disabled"),
+    );
   });
 
   it("rolls back spawn-init reservation when cancellation wins during scheduling", async () => {
@@ -576,7 +616,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     expect(flows[0]).toMatchObject({ status: "failed" });
     expect(
       peekSystemEvents(sessionKey).some((event) =>
-        event.includes("wake was scheduled, but chain-state finalization failed"),
+        event.includes("wake was not scheduled because chain-state finalization failed"),
       ),
     ).toBe(true);
   });
@@ -605,7 +645,7 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     expect(sessionStore[sessionKey]?.continuationChainId).toBe(replacementChainId);
     expect(
       peekSystemEvents(sessionKey).some((event) =>
-        event.includes("wake was scheduled, but chain-state finalization failed"),
+        event.includes("wake was not scheduled because chain-state finalization failed"),
       ),
     ).toBe(true);
   });
@@ -927,10 +967,10 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
   });
 
-  // Single-election guard: keep single-work behavior intact. A lone capped
-  // election stays silent on the spawn-init lane, matching the `requests > 1`
-  // guard shared by the main-reply and followup lanes.
-  it("stays silent for a single capped continue_work election on spawn-init", async () => {
+  // continue_work already told the model "scheduled", so a lone capped election
+  // must be surfaced too; silence leaves the model waiting for a turn that
+  // never comes.
+  it("surfaces a single capped continue_work election on spawn-init", async () => {
     sessionEntry.continuationChainCount = 1;
     sessionStore[sessionKey] = sessionEntry;
     persistSessionEntry();
@@ -951,9 +991,28 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
 
     await runEmbeddedAttempt(makeAtCapContinuationConfig());
 
-    const events = peekSystemEvents(sessionKey);
-    expect(events.some((text) => text.includes("continue_work elections were not scheduled"))).toBe(
-      false,
+    expect(peekSystemEvents(sessionKey)).toContainEqual(
+      expect.stringContaining("continue_work election was not scheduled (chain/cost/pending cap)"),
+    );
+    expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
+    expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
+  });
+
+  it.each([
+    ["inside the wake scheduler", "failChainStateLoad"],
+    ["before the wake scheduler", "failSignalExtraction"],
+  ] as const)("surfaces an unexpected post-run failure %s to the session", async (_label, flag) => {
+    runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
+      requestContinueWork(callArgs, { reason: "unexpected failure", delaySeconds: 30 });
+      continuationRuntimeState[flag] = true;
+      return makeEmbeddedResult();
+    });
+
+    await runEmbeddedAttempt(makeContinuationEnabledConfig());
+
+    expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
+    expect(peekSystemEvents(sessionKey)).toContainEqual(
+      expect.stringContaining("do not assume another turn is coming"),
     );
   });
 
