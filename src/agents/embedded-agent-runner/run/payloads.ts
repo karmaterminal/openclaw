@@ -25,13 +25,9 @@ import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { hasReplyPayloadContent } from "../../../interactive/payload.js";
 import type { AssistantMessage } from "../../../llm/types.js";
 import {
-  extractAssistantTextForPhase,
-  parseAssistantTextSignature,
-} from "../../../shared/chat-message-content.js";
-import {
-  sanitizeAssistantFinalAnswerText,
-  sanitizeAssistantVisibleText,
-} from "../../../shared/text/assistant-visible-text.js";
+  resolveRawAssistantAnswerParts,
+  resolveRawAssistantAnswerText,
+} from "../../../shared/assistant-answer-text.js";
 import { trimTextPreservingCode } from "../../../shared/text/text-projection.js";
 import { classifyOAuthRefreshFailure } from "../../auth-profiles/oauth-refresh-failure.js";
 import {
@@ -60,124 +56,6 @@ import {
 } from "../delivery-evidence.js";
 import { buildSourceReplyPayloadState } from "./source-reply-payloads.js";
 import { buildFailureWarning } from "./tool-error-warning.js";
-
-function isAssistantTextContentBlockType(value: unknown): boolean {
-  return value === "text" || value === "input_text" || value === "output_text";
-}
-
-type AssistantTextContentBlock = {
-  type?: unknown;
-  text?: unknown;
-  textSignature?: unknown;
-};
-
-function readAssistantTextContentBlock(value: unknown): AssistantTextContentBlock | null {
-  // Every field of AssistantTextContentBlock is optional `unknown`, so the
-  // assertion only names a shape for property reads; callers still narrow.
-  // SAFETY: the typeof check in this expression proves `value` is a non-null object.
-  return value && typeof value === "object" ? (value as AssistantTextContentBlock) : null;
-}
-
-function sanitizeCanonicalAssistantItemText(
-  text: string,
-  sanitize: (value: string) => string,
-): string {
-  const sanitized = sanitize(text);
-  if (!sanitized) {
-    return "";
-  }
-  const sanitizedIndex = text.indexOf(sanitized);
-  if (
-    sanitizedIndex >= 0 &&
-    text.slice(0, sanitizedIndex).trim().length === 0 &&
-    text.slice(sanitizedIndex + sanitized.length).trim().length === 0
-  ) {
-    return text;
-  }
-  return sanitized;
-}
-
-function resolveRawAssistantAnswerParts(lastAssistant: AssistantMessage | undefined): string[] {
-  if (!lastAssistant) {
-    return [];
-  }
-  const finalAnswerText = extractAssistantTextForPhase(lastAssistant, {
-    phase: "final_answer",
-    sanitizeText: (text) =>
-      sanitizeCanonicalAssistantItemText(text, sanitizeAssistantFinalAnswerText),
-  });
-  if (finalAnswerText) {
-    if (Array.isArray(lastAssistant.content)) {
-      const finalAnswerParts = lastAssistant.content
-        .map((block) => {
-          const record = readAssistantTextContentBlock(block);
-          if (!record) {
-            return null;
-          }
-          if (
-            !isAssistantTextContentBlockType(record.type) ||
-            typeof record.text !== "string" ||
-            parseAssistantTextSignature(record)?.phase !== "final_answer"
-          ) {
-            return null;
-          }
-          const text = sanitizeCanonicalAssistantItemText(
-            record.text,
-            sanitizeAssistantFinalAnswerText,
-          );
-          return text.trim() ? text : null;
-        })
-        .filter((value): value is string => typeof value === "string");
-      if (finalAnswerParts.length) {
-        return finalAnswerParts;
-      }
-    }
-    return [finalAnswerText];
-  }
-  if (Array.isArray(lastAssistant.content)) {
-    const hasExplicitPhasedTextBlock = lastAssistant.content.some((block) => {
-      const record = readAssistantTextContentBlock(block);
-      if (!record) {
-        return false;
-      }
-      return (
-        isAssistantTextContentBlockType(record.type) &&
-        Boolean(parseAssistantTextSignature(record)?.phase)
-      );
-    });
-    if (!hasExplicitPhasedTextBlock) {
-      const signedUnphasedParts = lastAssistant.content
-        .map((block) => {
-          const record = readAssistantTextContentBlock(block);
-          if (!record) {
-            return null;
-          }
-          const signature = parseAssistantTextSignature(record);
-          if (
-            !isAssistantTextContentBlockType(record.type) ||
-            typeof record.text !== "string" ||
-            !signature?.id ||
-            signature.phase
-          ) {
-            return null;
-          }
-          const text = sanitizeCanonicalAssistantItemText(
-            record.text,
-            sanitizeAssistantFinalAnswerText,
-          );
-          return text.trim() ? text : null;
-        })
-        .filter((value): value is string => typeof value === "string");
-      if (signedUnphasedParts.length) {
-        return signedUnphasedParts;
-      }
-    }
-  }
-  const visibleText = extractAssistantTextForPhase(lastAssistant, {
-    sanitizeText: (text) => sanitizeCanonicalAssistantItemText(text, sanitizeAssistantVisibleText),
-  });
-  return visibleText ? [visibleText] : [];
-}
 
 /**
  * Converts a completed embedded attempt into reply payloads for channels. This
@@ -342,9 +220,10 @@ export function buildEmbeddedRunPayloads(params: {
       const fallbackAnswerText = assistantForPayload
         ? extractAssistantVisibleText(assistantForPayload)
         : "";
-      const fallbackRawAnswerParts = resolveRawAssistantAnswerParts(assistantForPayload);
-      const fallbackRawAnswerText =
-        normalizeOptionalString(fallbackRawAnswerParts.join("\n")) ?? "";
+      const fallbackRawAnswerText = resolveRawAssistantAnswerText(assistantForPayload);
+      const fallbackRawAnswerParts = resolveRawAssistantAnswerParts(assistantForPayload, {
+        preserveItemWhitespace: true,
+      });
       const rawAnswerDirectiveState = fallbackRawAnswerText
         ? parseReplyDirectives(fallbackRawAnswerText)
         : null;
@@ -357,27 +236,26 @@ export function buildEmbeddedRunPayloads(params: {
       const rawAnswerHasEarlierContinuation = fallbackRawAnswerParts
         .slice(0, -1)
         .some((part) => stripContinuationSignal(part).signal !== null);
-      const assistantTextsHaveMedia = assistantTexts.some((text) => {
-        const parsed = parseReplyDirectives(text);
-        return (parsed.mediaUrls?.length ?? 0) > 0 || parsed.audioAsVoice;
-      });
       const normalizedAssistantTexts =
-        rawAnswerHasMedia && nonEmptyAssistantTexts.length > 0 && !assistantTextsHaveMedia
+        rawAnswerHasMedia &&
+        nonEmptyAssistantTexts.length > 0 &&
+        !assistantTexts.some((text) => {
+          const parsed = parseReplyDirectives(text);
+          return (parsed.mediaUrls?.length ?? 0) > 0 || parsed.audioAsVoice;
+        })
           ? normalizeTextForComparison(nonEmptyAssistantTexts.join("\n\n"))
           : "";
-      const normalizedRawAnswerText = normalizeTextForComparison(
-        rawAnswerDirectiveState?.text ?? "",
-      );
       const shouldPreferRawAnswerText =
         rawAnswerHasContinuation ||
         rawAnswerDirectiveState?.isSilent ||
         (rawAnswerHasMedia &&
           (!nonEmptyAssistantTexts.length ||
-            (!assistantTextsHaveMedia &&
-              normalizedAssistantTexts.length > 0 &&
-              normalizedAssistantTexts === normalizedRawAnswerText)));
-      // Keep raw canonical text when streamed delivery lost media directives or
-      // continuation markers that must remain available to the post-run extractor.
+            (normalizedAssistantTexts.length > 0 &&
+              normalizedAssistantTexts ===
+                normalizeTextForComparison(rawAnswerDirectiveState?.text ?? ""))));
+      // When streamed text lost media directives but the canonical assistant answer
+      // still contains them, keep the raw answer so attachments are not dropped.
+      // Continuation markers likewise must reach the post-run extractor.
       const fallbackAnswerSourceText =
         shouldPreferRawAnswerText && fallbackRawAnswerText
           ? fallbackRawAnswerText
