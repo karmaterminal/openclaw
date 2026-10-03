@@ -15,7 +15,20 @@
  * the correct post-restart state.
  */
 
-const delegatesScheduledThisTurn = new Map<string, number>();
+type DelegateTurnBudget = { scheduled: number };
+
+const delegatesScheduledThisTurn = new Map<string, DelegateTurnBudget>();
+
+/** A held per-turn slot. Release it if the delegate is not durably accepted. */
+export type ContinueDelegateTurnSlot = {
+  /** 1-based position of this delegate among the turn's admitted delegates. */
+  index: number;
+  release: () => void;
+};
+
+export type ContinueDelegateTurnReservation =
+  | { admitted: true; slot: ContinueDelegateTurnSlot }
+  | { admitted: false; scheduled: number };
 
 /**
  * Reset a session's per-turn delegate budget. Called at the provider-turn
@@ -25,19 +38,40 @@ export function resetContinueDelegateTurnBudget(sessionKey: string): void {
   delegatesScheduledThisTurn.delete(sessionKey);
 }
 
-/** Current count of delegates scheduled by `continue_delegate` this turn. */
-export function peekContinueDelegatesScheduledThisTurn(sessionKey: string): number {
-  return delegatesScheduledThisTurn.get(sessionKey) ?? 0;
-}
-
 /**
- * Record one delegate scheduled this turn and return the new count. Call only
- * after the delegate has been staged/enqueued so the count matches durable work.
+ * Check the cap and claim a slot in one synchronous step. Agent-loop tool
+ * batches run in parallel, so the slot is held across the durable enqueue
+ * rather than counted after it settles. A release that lands after the
+ * provider-turn reset is dropped so it cannot free the next turn's budget.
  */
-export function recordContinueDelegateScheduledThisTurn(sessionKey: string): number {
-  const next = (delegatesScheduledThisTurn.get(sessionKey) ?? 0) + 1;
-  delegatesScheduledThisTurn.set(sessionKey, next);
-  return next;
+export function reserveContinueDelegateTurnSlot(
+  sessionKey: string,
+  maxPerTurn: number,
+): ContinueDelegateTurnReservation {
+  let budget = delegatesScheduledThisTurn.get(sessionKey);
+  if (!budget) {
+    budget = { scheduled: 0 };
+    delegatesScheduledThisTurn.set(sessionKey, budget);
+  }
+  if (budget.scheduled >= maxPerTurn) {
+    return { admitted: false, scheduled: budget.scheduled };
+  }
+  budget.scheduled += 1;
+  const turnBudget = budget;
+  let released = false;
+  return {
+    admitted: true,
+    slot: {
+      index: turnBudget.scheduled,
+      release: () => {
+        if (released || delegatesScheduledThisTurn.get(sessionKey) !== turnBudget) {
+          return;
+        }
+        released = true;
+        turnBudget.scheduled -= 1;
+      },
+    },
+  };
 }
 
 /** Clears all per-turn budgets. Test-only. */
