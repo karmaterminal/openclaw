@@ -1008,7 +1008,6 @@ export const databaseWorkerCoreTestFiles = [
   // sessions.delete, and upstream's timing writer commits through the worker
   // session reader, so both suites need the host broker.
   "src/agents/sessions-spawn-hooks.test.ts",
-  "src/agents/subagent-registry.persistence.timing.test.ts",
   // Explicit /new and /reset rollovers cancel continuation custody for the
   // retiring session, so the session-hook wiring suite needs the host broker.
   "src/auto-reply/reply/session-hooks-context.test.ts",
