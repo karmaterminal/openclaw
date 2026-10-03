@@ -140,223 +140,199 @@ type SpawnPipelineParams<TState> = {
 export async function runSpawnPipeline<TState>(
   params: SpawnPipelineParams<TState>,
 ): Promise<SpawnPipelineResult<TState>> {
-  try {
-    return await executeSpawnPipeline(params);
-  } finally {
-    params.admissionReservation?.release();
-  }
-}
-
-async function executeSpawnPipeline<TState>(
-  params: SpawnPipelineParams<TState>,
-): Promise<SpawnPipelineResult<TState>> {
-  let state: TState;
-  try {
-    params.assertActive?.();
-    state = await params.adapter.initialize();
-  } catch (error) {
-    await params.adapter.cleanupOnFailure({ phase: "initialize", error });
-    return { ok: false, phase: "initialize", error };
-  }
-
-  let runId: string;
-  try {
-    // Retain initialization's rollback handle before checking a parent that
-    // may have closed while the backend was preparing its child.
-    params.assertActive?.();
-    ({ runId } = await params.adapter.dispatchTurn(state));
-  } catch (error) {
-    await params.adapter.cleanupOnFailure({ phase: "dispatch", state, error });
-    return { ok: false, phase: "dispatch", state, error };
-  }
-
-  let registration!: RegisterSubagentRunInput;
-  let registrationOwnership: SubagentRegistrationIdentity | undefined;
+  let phase: SpawnPipelinePhase = "initialize";
+  let state: TState | undefined;
+  let runId: string | undefined;
   let registrationScope: SubagentRegistrationScope | undefined;
-  let rollbackPromise: Promise<void> | undefined;
-  const rollbackAccepted = (
-    error: unknown = new Error("Accepted subagent registration rolled back."),
-  ): Promise<void> => {
-    if (!registrationOwnership) {
-      return rollbackPromise ?? Promise.resolve();
-    }
-    if (rollbackPromise) {
-      return rollbackPromise;
-    }
-    rollbackPromise = (async () => {
-      const failures: unknown[] = [];
-      const ownership = registrationOwnership;
-      const ownedRegistration = { ...registration, expectedRegistration: ownership };
-      const rollbackOwner = params.recordAcceptedRollback?.(ownedRegistration, error);
-      if (rollbackOwner?.status === "rejected") {
-        failures.push(new Error(`Accepted subagent rollback owner was rejected: ${runId}`));
-      } else if (rollbackOwner?.status === "pending-persistence") {
-        failures.push(rollbackOwner.error);
-      }
-      let cleanupComplete = false;
-      try {
-        await params.adapter.cleanupOnFailure({
-          phase: "register",
-          state,
-          error,
-          ...(registrationScope ? { registrationScope } : {}),
-        });
-        cleanupComplete = true;
-      } catch (cleanupError) {
-        failures.push(cleanupError);
-      }
-      if (cleanupComplete) {
-        try {
-          if (params.rollbackRegistration?.(ownedRegistration) === false) {
-            throw new Error(`Accepted subagent registration rollback lost ownership: ${runId}`);
-          }
-          registrationOwnership = undefined;
-        } catch (rollbackError) {
-          failures.push(rollbackError);
-        }
-      }
-      if (failures.length > 0) {
-        const aggregate = new AggregateError(
-          failures,
-          `Accepted subagent rollback incomplete: ${runId}`,
-        );
-        aggregate.cause = failures[0];
-        throw aggregate;
-      }
-    })().finally(() => {
-      rollbackPromise = undefined;
-    });
-    return rollbackPromise;
-  };
   try {
-    // Keep construction and registration in one synchronous section so callers
-    // can revalidate shared admission state without an interleaving await.
-    params.assertActive?.();
-    registration = params.buildRegistration(state, runId);
-    params.assertRegistrationAdmission?.();
-    // Registration may await durable persistence or completion-authority
-    // preparation; the registry re-checks this caller's authority afterwards.
-    const registrationOutcome = registration.queued
-      ? registerSubagentRun(registration, {
-          assertCurrent: params.assertActive,
-          retainOwnership: (scope) => {
-            registrationScope = scope;
-          },
-        })
-      : registerSubagentRun(registration, { assertCurrent: params.assertActive });
-    const registrationResult =
-      registrationOutcome instanceof Promise ? await registrationOutcome : registrationOutcome;
-    if (registrationResult.status !== "new-row-committed") {
-      throw new SpawnRegistrationOwnershipError(registrationResult);
-    }
-    registrationOwnership = registrationResult.attempted;
-    params.publishRegistration?.(registration);
-    // Registry insertion takes ownership; keeping the slot would double-count it.
-    params.admissionReservation?.release();
-  } catch (error) {
-    const failedOwnership = readRegistrationOwnership(error);
-    if (failedOwnership?.status === "new-row-survived") {
-      registrationOwnership = failedOwnership.attempted;
-    }
-    if (registrationOwnership) {
-      try {
-        await rollbackAccepted(error);
-      } catch (rollbackError) {
-        throw combineSpawnRollbackError(
-          error,
-          rollbackError,
-          `Subagent registration and accepted-run rollback both failed: ${runId}`,
-        );
+    let registration: RegisterSubagentRunInput;
+    let registrationOwnership: SubagentRegistrationIdentity | undefined;
+    let rollbackPromise: Promise<void> | undefined;
+    const rollbackAccepted = (
+      error: unknown = new Error("Accepted subagent registration rolled back."),
+    ): Promise<void> => {
+      if (!registrationOwnership) {
+        return rollbackPromise ?? Promise.resolve();
       }
-      return { ok: false, phase: "register", state, runId, error };
-    }
+      if (rollbackPromise) {
+        return rollbackPromise;
+      }
+      rollbackPromise = (async () => {
+        const failures: unknown[] = [];
+        const ownership = registrationOwnership;
+        const ownedRegistration = { ...registration, expectedRegistration: ownership };
+        const rollbackOwner = params.recordAcceptedRollback?.(ownedRegistration, error);
+        if (rollbackOwner?.status === "rejected") {
+          failures.push(
+            new Error(`Accepted subagent rollback owner was rejected: ${ownership.runId}`),
+          );
+        } else if (rollbackOwner?.status === "pending-persistence") {
+          failures.push(rollbackOwner.error);
+        }
+        let cleanupComplete = false;
+        try {
+          await params.adapter.cleanupOnFailure({
+            phase: "register",
+            state,
+            error,
+            ...(registrationScope ? { registrationScope } : {}),
+          });
+          cleanupComplete = true;
+        } catch (cleanupError) {
+          failures.push(cleanupError);
+        }
+        if (cleanupComplete) {
+          try {
+            if (params.rollbackRegistration?.(ownedRegistration) === false) {
+              throw new Error(
+                `Accepted subagent registration rollback lost ownership: ${ownership.runId}`,
+              );
+            }
+            registrationOwnership = undefined;
+          } catch (rollbackError) {
+            failures.push(rollbackError);
+          }
+        }
+        if (failures.length > 0) {
+          const aggregate = new AggregateError(
+            failures,
+            `Accepted subagent rollback incomplete: ${ownership.runId}`,
+          );
+          aggregate.cause = failures[0];
+          throw aggregate;
+        }
+      })().finally(() => {
+        rollbackPromise = undefined;
+      });
+      return rollbackPromise;
+    };
     try {
+      params.assertActive?.();
+      state = await params.adapter.initialize();
+      // Retain initialization's rollback handle before checking a parent that
+      // may have closed while the backend was preparing its child.
+      phase = "dispatch";
+      params.assertActive?.();
+      ({ runId } = await params.adapter.dispatchTurn(state));
+      phase = "register";
+      params.assertActive?.();
+      registration = params.buildRegistration(state, runId);
+      params.assertRegistrationAdmission?.();
+      const registrationOutcome = registration.queued
+        ? registerSubagentRun(registration, {
+            assertCurrent: params.assertActive,
+            retainOwnership: (scope) => {
+              registrationScope = scope;
+            },
+          })
+        : registerSubagentRun(registration, { assertCurrent: params.assertActive });
+      const registrationResult =
+        registrationOutcome instanceof Promise ? await registrationOutcome : registrationOutcome;
+      if (registrationResult.status !== "new-row-committed") {
+        throw new SpawnRegistrationOwnershipError(registrationResult);
+      }
+      registrationOwnership = registrationResult.attempted;
+      params.publishRegistration?.(registration);
+      // Release launch admission only after any authority preparation and registry acknowledgement.
+      params.admissionReservation?.release();
+    } catch (error) {
+      const failedOwnership = readRegistrationOwnership(error);
+      if (failedOwnership?.status === "new-row-survived") {
+        registrationOwnership = failedOwnership.attempted;
+      }
+      if (registrationOwnership) {
+        const ownedRunId = registrationOwnership.runId;
+        try {
+          await rollbackAccepted(error);
+        } catch (rollbackError) {
+          throw combineSpawnRollbackError(
+            error,
+            rollbackError,
+            `Subagent registration and accepted-run rollback both failed: ${ownedRunId}`,
+          );
+        }
+        return { ok: false, phase, state, runId, error };
+      }
       await params.adapter.cleanupOnFailure({
-        phase: "register",
+        phase,
         state,
         error,
         ...(registrationScope ? { registrationScope } : {}),
       });
-    } catch (cleanupError) {
-      const aggregate = new AggregateError(
-        [error, cleanupError],
-        `Subagent registration and cleanup both failed: ${runId}`,
-      );
-      aggregate.cause = error;
-      throw aggregate;
+      return { ok: false, phase, state, runId, error };
     }
-    return { ok: false, phase: "register", state, runId, error };
-  }
 
-  if (params.hookRunner?.hasHooks("subagent_progress")) {
-    try {
-      await params.hookRunner.runSubagentProgress(
-        {
-          phase: "started",
-          runId,
-          childSessionKey: registration.childSessionKey,
-          requester: params.progressOrigin,
-        },
-        {
-          runId,
-          childSessionKey: registration.childSessionKey,
-          requesterSessionKey: params.progressSessionKey,
-        },
-      );
-    } catch {
-      // Presentation hooks are best-effort after the run is durably registered.
-    }
-    try {
-      params.assertPostPublicationAdmission?.();
-    } catch (error) {
+    if (params.hookRunner?.hasHooks("subagent_progress")) {
       try {
-        await rollbackAccepted(error);
-        return { ok: false, phase: "register", state, runId, error };
-      } catch (rollbackError) {
-        return {
-          ok: false,
-          phase: "register",
-          state,
-          runId,
-          error: combineSpawnRollbackError(
-            error,
-            rollbackError,
-            `Subagent post-publication rollback incomplete: ${runId}`,
-          ),
-        };
+        await params.hookRunner.runSubagentProgress(
+          {
+            phase: "started",
+            runId,
+            childSessionKey: registration.childSessionKey,
+            requester: params.progressOrigin,
+          },
+          {
+            runId,
+            childSessionKey: registration.childSessionKey,
+            requesterSessionKey: params.progressSessionKey,
+          },
+        );
+      } catch {
+        // Presentation hooks are best-effort after the run is durably registered.
+      }
+      try {
+        params.assertPostPublicationAdmission?.();
+      } catch (error) {
+        try {
+          await rollbackAccepted(error);
+          return { ok: false, phase, state, runId, error };
+        } catch (rollbackError) {
+          return {
+            ok: false,
+            phase,
+            state,
+            runId,
+            error: combineSpawnRollbackError(
+              error,
+              rollbackError,
+              `Subagent post-publication rollback incomplete: ${runId}`,
+            ),
+          };
+        }
       }
     }
-  }
 
-  if (params.afterRegistration) {
-    try {
-      await params.afterRegistration(state, runId, registrationScope);
-      params.assertPostPublicationAdmission?.();
-    } catch (error) {
+    if (params.afterRegistration) {
       try {
-        await rollbackAccepted(error);
-        return { ok: false, phase: "register", state, runId, error };
-      } catch (rollbackError) {
-        return {
-          ok: false,
-          phase: "register",
-          state,
-          runId,
-          error: combineSpawnRollbackError(
-            error,
-            rollbackError,
-            `Subagent post-registration rollback incomplete: ${runId}`,
-          ),
-        };
+        await params.afterRegistration(state, runId, registrationScope);
+        params.assertPostPublicationAdmission?.();
+      } catch (error) {
+        try {
+          await rollbackAccepted(error);
+          return { ok: false, phase, state, runId, error };
+        } catch (rollbackError) {
+          return {
+            ok: false,
+            phase,
+            state,
+            runId,
+            error: combineSpawnRollbackError(
+              error,
+              rollbackError,
+              `Subagent post-registration rollback incomplete: ${runId}`,
+            ),
+          };
+        }
       }
     }
+    return {
+      ok: true,
+      state,
+      runId,
+      rollbackAccepted: () => rollbackAccepted(),
+      ...(registrationScope ? { registrationScope } : {}),
+    };
+  } finally {
+    params.admissionReservation?.release();
   }
-
-  return {
-    ok: true,
-    state,
-    runId,
-    rollbackAccepted: () => rollbackAccepted(),
-    ...(registrationScope ? { registrationScope } : {}),
-  };
 }
