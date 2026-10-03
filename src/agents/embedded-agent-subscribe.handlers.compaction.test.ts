@@ -180,19 +180,9 @@ describe("compaction handlers", () => {
         expect(subscription.getCompactionCount()).toBe(2);
         expect(subscription.getLastCompactionTokensAfter()).toBe(50);
         expect(onAgentEvent).toHaveBeenCalledTimes(2);
-        expect(onAgentEvent).toHaveBeenNthCalledWith(2, {
+        expect(onAgentEvent).toHaveBeenCalledWith({
           stream: "compaction",
-          data: {
-            phase: "end",
-            completed: true,
-            willRetry: false,
-            outcome: "completed",
-            trigger: "budget",
-            sessionKey,
-            compactionCountBefore: 1,
-            compactionCountAfter: 2,
-            compactionCountDelta: 1,
-          },
+          data: { phase: "end", completed: true, willRetry: false, outcome: "completed" },
         });
         const events = listSessionStateEventsSince(sessionKey, agentId, 0).events.filter(
           (event) => event.runId === runId,

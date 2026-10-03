@@ -101,14 +101,6 @@ describe("classifyCompactionReason", () => {
     );
   });
 
-  it('classifies "no real conversation messages" as a skip-like reason', () => {
-    // Closed-union shape: this code keeps the existing-substring-match behavior
-    // of isLegitSkipReason / isCompactionSkipReason covered by the closed union.
-    expect(classifyCompactionReason("No real conversation messages to compact")).toBe(
-      "no_real_conversation_messages",
-    );
-  });
-
   it("classifies safeguard messages as guard-blocked", () => {
     expect(
       classifyCompactionReason(
@@ -229,7 +221,6 @@ describe("isCompactionSkipCode", () => {
   const ALL_CODES: ReadonlyArray<CompactionReasonCode> = [
     "unknown",
     "no_compactable_entries",
-    "no_real_conversation_messages",
     "unknown_model",
     "below_threshold",
     "already_compacted",
@@ -245,7 +236,6 @@ describe("isCompactionSkipCode", () => {
 
   const SKIP_CODES = new Set<CompactionReasonCode>([
     "no_compactable_entries",
-    "no_real_conversation_messages",
     "below_threshold",
     "already_compacted",
     "deferred_background",

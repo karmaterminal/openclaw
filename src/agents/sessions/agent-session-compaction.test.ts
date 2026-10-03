@@ -548,11 +548,6 @@ describe("AgentSession compaction", () => {
         outcome: "aborted",
         completed: false,
         willRetry: false,
-        trigger: "budget",
-        sessionKey: undefined,
-        compactionCountBefore: 0,
-        compactionCountAfter: 0,
-        compactionCountDelta: 0,
       },
     });
     expect(subscription.getCompactionCount()).toBe(0);
@@ -604,11 +599,6 @@ describe("AgentSession compaction", () => {
         outcome: "aborted",
         completed: false,
         willRetry: false,
-        trigger: "manual",
-        sessionKey: undefined,
-        compactionCountBefore: 0,
-        compactionCountAfter: 0,
-        compactionCountDelta: 0,
       },
     });
     expect(subscription.getCompactionCount()).toBe(0);
