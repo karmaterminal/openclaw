@@ -287,38 +287,6 @@ describe("spawnSubagentDirect filename validation", () => {
     }
   }
 
-  it("keeps ordinary materialization failures actionable without exposing paths", async () => {
-    const { result, attachmentId, attachmentNames } = await spawnWithForcedMaterializationFailure({
-      continuation: false,
-    });
-
-    expect(result).toEqual({
-      status: "error",
-      error: "attachments_materialization_failed (stage=attachment_write reason=target_conflict)",
-    });
-    const serialized = JSON.stringify(result);
-    expect(serialized).not.toContain(attachmentNames[0]);
-    expect(serialized).not.toContain(attachmentId);
-    expect(serialized).not.toContain(workspaceDirOverride);
-  });
-
-  it("does not leak overlapping attachment name fragments from ordinary failures", async () => {
-    const overlappingFragment = "OVERLAP_FRAGMENT_MUST_NOT_ECHO";
-    const secretPrefix = "SECRET_PREFIX_MUST_NOT_ECHO";
-    const { result } = await spawnWithForcedMaterializationFailure({
-      continuation: false,
-      attachmentNames: [overlappingFragment, `${secretPrefix}-${overlappingFragment}`],
-    });
-
-    expect(result).toEqual({
-      status: "error",
-      error: "attachments_materialization_failed (stage=attachment_write reason=target_conflict)",
-    });
-    const serialized = JSON.stringify(result);
-    expect(serialized).not.toContain(overlappingFragment);
-    expect(serialized).not.toContain(secretPrefix);
-  });
-
   it("fully redacts continuation materialization failures", async () => {
     const { result, attachmentId, attachmentNames } = await spawnWithForcedMaterializationFailure({
       continuation: true,

@@ -1,10 +1,8 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { resolveIntegerOption } from "@openclaw/normalization-core/number-coercion";
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
-import { FsSafeError, type FsSafeErrorCode } from "../../../infra/fs-safe.js";
 import { privateFileStore } from "../../../infra/private-file-store.js";
 import {
   DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS,
@@ -227,44 +225,6 @@ function redactContinuationAttachmentValidationError(params: {
   return fields.length > 0 ? `${code} (${fields.join(" ")})` : code;
 }
 
-type AttachmentMaterializationStage = "prepare_directory" | "attachment_write" | "manifest_write";
-type AttachmentMaterializationFailureReason =
-  | `fs_safe_${FsSafeErrorCode}`
-  | "permission_denied"
-  | "storage_unavailable"
-  | "target_conflict"
-  | "unknown";
-
-function classifyAttachmentMaterializationFailure(
-  error: unknown,
-): AttachmentMaterializationFailureReason {
-  if (error instanceof FsSafeError) {
-    return `fs_safe_${error.code}`;
-  }
-  const code = asOptionalRecord(error)?.code;
-  if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
-    return "permission_denied";
-  }
-  if (code === "EEXIST" || code === "EISDIR" || code === "ENOTDIR" || code === "ENOTEMPTY") {
-    return "target_conflict";
-  }
-  if (code === "EDQUOT" || code === "EMFILE" || code === "ENFILE" || code === "ENOSPC") {
-    return "storage_unavailable";
-  }
-  // fs-safe currently reports an existing non-file target as an untyped error.
-  return error instanceof Error && error.message.endsWith("must be a regular file.")
-    ? "target_conflict"
-    : "unknown";
-}
-
-function formatAttachmentMaterializationError(params: {
-  error: unknown;
-  stage: AttachmentMaterializationStage;
-}): string {
-  const reason = classifyAttachmentMaterializationFailure(params.error);
-  return `attachments_materialization_failed (stage=${params.stage} reason=${reason})`;
-}
-
 export function validateSubagentAttachments(params: {
   config: OpenClawConfig;
   attachments?: SubagentInlineAttachment[];
@@ -406,7 +366,6 @@ export async function materializeSubagentAttachments(params: {
     };
   }
 
-  let materializationStage: AttachmentMaterializationStage = "prepare_directory";
   try {
     const mountPathHint = sanitizeMountPathHint(params.mountPathHint);
     // Keep cancellation inside staging so an awaited operation cannot start
@@ -415,7 +374,6 @@ export async function materializeSubagentAttachments(params: {
     const attachmentStore = privateFileStore(absRootDir);
 
     const files: SubagentAttachmentReceipt["files"] = [];
-    materializationStage = "attachment_write";
     for (const { name, buf, bytes } of prepared.attachments) {
       const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
       params.assertActive?.();
@@ -430,7 +388,6 @@ export async function materializeSubagentAttachments(params: {
       files,
     };
     params.assertActive?.();
-    materializationStage = "manifest_write";
     await attachmentStore.writeJson(path.posix.join(attachmentId, ".manifest.json"), receipt, {
       trailingNewline: true,
     });
@@ -447,7 +404,7 @@ export async function materializeSubagentAttachments(params: {
         pathBlock +
         (mountPathHint ? `\nRequested mountPath hint: ${mountPathHint}.\n` : ""),
     };
-  } catch (error) {
+  } catch (err) {
     try {
       await removeSubagentAttachmentTree(absRootDir, attachmentId);
     } catch {
@@ -457,10 +414,9 @@ export async function materializeSubagentAttachments(params: {
       status: "error",
       error: params.redactContinuationErrorDetails
         ? "attachments_materialization_failed"
-        : formatAttachmentMaterializationError({
-            error,
-            stage: materializationStage,
-          }),
+        : err instanceof Error
+          ? err.message
+          : "attachments_materialization_failed",
     };
   }
 }
