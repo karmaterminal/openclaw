@@ -5,7 +5,7 @@
 import { matchesContextOverflowMessage } from "@openclaw/ai/internal/runtime";
 import { type Mock, vi } from "vitest";
 import type { ThinkLevel } from "../../auto-reply/thinking.js";
-import type { ContextEngine } from "../../context-engine/types.js";
+import type { ContextEngine, ContextEngineSessionTarget } from "../../context-engine/types.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import type { ClaimingHookAdmission } from "../../plugins/hook-claim-admission.js";
 import type {
@@ -34,7 +34,6 @@ import type {
   PreparedModelRuntimeLeaseOptions,
 } from "../prepared-model-runtime.types.js";
 import type { AgentRuntimePlan } from "../runtime-plan/types.js";
-import { mockedContextEngine } from "./run.overflow-compaction.context-engine.test-support.js";
 import { makeAttemptResult } from "./run.overflow-compaction.fixture.js";
 import type { RunEmbeddedAgentInternalParams } from "./run/internal-params.js";
 import type { buildEmbeddedRunPayloads } from "./run/payloads.js";
@@ -47,6 +46,34 @@ export type TestRunEmbeddedAgent = (
 
 // Shared Vitest harness for overflow, compaction, failover, and hook tests.
 // Tests import these mocks directly so each scenario can override one seam.
+type MockCompactionResult =
+  | {
+      ok: true;
+      compacted: true;
+      result: {
+        summary: string;
+        firstKeptEntryId?: string;
+        tokensBefore?: number;
+        tokensAfter?: number;
+        sessionId?: string;
+        sessionFile?: string;
+        sessionTarget?: ContextEngineSessionTarget;
+      };
+      reason?: string;
+    }
+  | {
+      ok: false;
+      compacted: false;
+      reason: string;
+      result?: undefined;
+    }
+  | {
+      ok: true;
+      compacted: false;
+      reason: string;
+      result?: undefined;
+    };
+
 type MockResolvedModel = {
   id: string;
   provider: string;
@@ -67,7 +94,7 @@ type MockAgentDiscoveryStores = {
 
 type MockResolveModelResult = MockAgentDiscoveryStores & {
   model: MockResolvedModel;
-  logicalRef?: { provider: string; model: string };
+  logicalRef: { provider: string; model: string };
   error: null;
 };
 
@@ -101,6 +128,15 @@ export const mockedGlobalHookRunner = {
   runAfterCompaction: vi.fn(async () => undefined),
 };
 
+const mockedContextEngine = {
+  info: { ownsCompaction: false as boolean },
+  compact: vi.fn<(params: unknown) => Promise<MockCompactionResult>>(async () => ({
+    ok: false as const,
+    compacted: false as const,
+    reason: "nothing to compact",
+  })),
+};
+
 type MockRuntimePlan = Pick<AgentRuntimePlan, "auth"> & {
   observability: Pick<AgentRuntimePlan["observability"], "harnessId">;
 };
@@ -117,7 +153,6 @@ function makeMockRuntimePlan(): MockRuntimePlan {
   };
 }
 
-export { mockedContextEngine } from "./run.overflow-compaction.context-engine.test-support.js";
 export const mockedCompactDirect = mockedContextEngine.compact;
 const mockedResolveContextEngine = vi.fn(async () => mockedContextEngine);
 const mockedResolveContextEngineOwnerPluginId = vi.fn(() => undefined);
@@ -208,18 +243,18 @@ export const mockedBuildEmbeddedRunPayloads = vi.fn<
     ...args: Parameters<typeof buildEmbeddedRunPayloads>
   ) => ReturnType<typeof buildEmbeddedRunPayloads>
 >(() => []);
-export const mockedRunContextEngineMaintenance = vi.fn(async () => undefined);
-export const mockedWaitForDeferredTurnMaintenanceForSession = vi.fn(
+const mockedRunContextEngineMaintenance = vi.fn(async () => undefined);
+const mockedWaitForDeferredTurnMaintenanceForSession = vi.fn(
   async (_sessionKey?: string) => undefined,
 );
-export const mockedSessionLikelyHasOversizedToolResults = vi.fn(() => false);
+const mockedSessionLikelyHasOversizedToolResults = vi.fn(() => false);
 const mockedResolveLiveToolResultMaxChars = vi.fn(() => 32_000);
 type MockTruncateOversizedToolResultsResult = {
   truncated: boolean;
   truncatedCount: number;
   reason?: string;
 };
-export const mockedTruncateOversizedToolResultsInSession = vi.fn<
+const mockedTruncateOversizedToolResultsInSession = vi.fn<
   () => MockTruncateOversizedToolResultsResult
 >(() => ({
   truncated: false,
@@ -248,8 +283,8 @@ export class MockedFailoverError extends Error {
   }
 }
 
-export const mockedCoerceToFailoverError = vi.fn<MockCoerceToFailoverError>();
-export const mockedDescribeFailoverError = vi.fn<MockDescribeFailoverError>(
+const mockedCoerceToFailoverError = vi.fn<MockCoerceToFailoverError>();
+const mockedDescribeFailoverError = vi.fn<MockDescribeFailoverError>(
   (err: unknown): MockFailoverErrorDescription => ({
     message: formatErrorMessage(err),
     reason: undefined,
@@ -257,7 +292,7 @@ export const mockedDescribeFailoverError = vi.fn<MockDescribeFailoverError>(
     code: undefined,
   }),
 );
-export const mockedResolveFailoverStatus = vi.fn<MockResolveFailoverStatus>();
+const mockedResolveFailoverStatus = vi.fn<MockResolveFailoverStatus>();
 
 export const mockedLog: {
   debug: Mock<(...args: unknown[]) => void>;
@@ -300,10 +335,8 @@ const mockedParseImageSizeError = vi.fn(() => null);
 const mockedParseImageDimensionError = vi.fn(() => null);
 export const mockedIsRateLimitAssistantError = vi.fn<MockAssistantErrorProbe>(() => false);
 const mockedIsTimeoutErrorMessage = vi.fn(() => false);
-export const mockedPickFallbackThinkingLevel = vi.fn<(params?: unknown) => ThinkLevel | null>(
-  () => null,
-);
-export const mockedEvaluateContextWindowGuard = vi.fn(() => ({
+const mockedPickFallbackThinkingLevel = vi.fn<(params?: unknown) => ThinkLevel | null>(() => null);
+const mockedEvaluateContextWindowGuard = vi.fn(() => ({
   shouldWarn: false,
   shouldBlock: false,
   tokens: 200000,
@@ -311,7 +344,7 @@ export const mockedEvaluateContextWindowGuard = vi.fn(() => ({
   hardMinTokens: 1000,
   warnBelowTokens: 5000,
 }));
-export const mockedResolveContextWindowInfo = vi.fn(() => ({
+const mockedResolveContextWindowInfo = vi.fn(() => ({
   tokens: 200000,
   source: "model",
 }));
@@ -446,7 +479,6 @@ export function resetRunOverflowCompactionHarnessMocks(): void {
   mockedGlobalHookRunner.runAfterCompaction.mockResolvedValue(undefined);
 
   mockedContextEngine.info.ownsCompaction = false;
-  mockedContextEngine.maintain = undefined;
   mockedResolveContextEngine.mockReset();
   mockedResolveContextEngine.mockResolvedValue(mockedContextEngine);
   mockedBuildAgentRuntimePlan.mockReset();
@@ -872,16 +904,7 @@ export async function loadRunOverflowCompactionHarness(): Promise<{
 
   vi.doMock("./model.js", () => ({
     createEmptyAgentDiscoveryStores: mockedCreateEmptyAgentDiscoveryStores,
-    resolveModelAsync: async (...args: Parameters<typeof mockedResolveModelAsync>) => {
-      const result = await mockedResolveModelAsync(...args);
-      return {
-        ...result,
-        logicalRef: result.logicalRef ?? {
-          provider: result.model.provider,
-          model: result.model.id,
-        },
-      };
-    },
+    resolveModelAsync: mockedResolveModelAsync,
   }));
 
   vi.doMock("../model-auth.js", () => ({
