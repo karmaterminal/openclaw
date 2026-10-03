@@ -21,16 +21,16 @@ parentPort.on("message", (step) => {
 });`;
 
 describe("SQLite commit fence", () => {
-  // Runs first in an isolated fork: this thread has not used the fence before the spawn.
+  // First in an isolated file (database-worker lane): no fence use precedes this spawn.
   it("shares mutation cells with a Worker constructed before the fence was first used", async () => {
     const worker = createCpuTrackedWorker(writerSource, { eval: true });
     try {
       const keys = ["fenced-fact"];
-      worker.postMessage("start");
+      worker.postMessage("start", []);
       expect((await once(worker, "message"))[0]).toBe("start");
       expect(snapshotSqliteCommitFence(keys)).toBeUndefined();
 
-      worker.postMessage("finish");
+      worker.postMessage("finish", []);
       expect((await once(worker, "message"))[0]).toBe("finish");
       expect(snapshotSqliteCommitFence(keys)).toBeDefined();
     } finally {

@@ -234,7 +234,7 @@ export async function prepareFormattedSystemEvents(params: {
       selected.map((event) =>
         event.recipientAuthority
           ? isSessionRecipientAuthorityCurrent(authorityScope, event.recipientAuthority)
-          : true,
+          : Promise.resolve(true),
       ),
     );
     const staleAuthorityEvents = selected.filter((_, index) => !current[index]);

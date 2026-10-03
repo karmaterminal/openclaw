@@ -697,6 +697,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/session-system-events.recipient-authority.test.ts",
   "src/config/sessions/session-recipient-authority.test.ts",
   "src/config/sessions/session-recipient-authority-current.test.ts",
+  "src/infra/sqlite-commit-fence.test.ts",
   "src/system-agent/setup-inference-credentials.lifecycle.test.ts",
   "src/system-agent/setup-inference.provider-install-owner.test.ts",
   "src/system-agent/setup-inference.groq-external.integration.test.ts",

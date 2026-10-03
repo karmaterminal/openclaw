@@ -31,6 +31,12 @@ import type {
   SessionGoalOperationLookupResult,
 } from "./goals-operations.types.js";
 import type { SessionLifecycleTimestamps } from "./lifecycle.types.js";
+import type {
+  SessionMembersWorkerInput,
+  SessionMembershipFactsWorkerInput,
+  SessionRecipientAuthorityWorkerInput,
+  SessionRecipientAuthorityWorkerResult,
+} from "./session-access-read-worker.types.js";
 import type { SessionTranscriptBoundedActiveContext } from "./session-accessor.sqlite-active-context.js";
 import type { TranscriptArchivePresenceRead } from "./session-accessor.sqlite-archive-types.js";
 import type {
@@ -271,28 +277,6 @@ type SessionProjectionStatusWorkerInput = {
   database: { agentId: string; path: string };
   env: NodeJS.ProcessEnv;
   sessionId?: string;
-};
-
-type SessionMembersWorkerInput = {
-  kind: "session-members";
-  database: { agentId: string; path: string };
-  sessionKey: string;
-  env: NodeJS.ProcessEnv;
-};
-
-type SessionRecipientAuthorityWorkerInput = {
-  kind: "session-recipient-authority";
-  database: { agentId: string; path: string };
-  sessionKey: string;
-  env: NodeJS.ProcessEnv;
-};
-
-type SessionMembershipFactsWorkerInput = {
-  kind: "session-membership-facts";
-  database: { agentId: string; path: string };
-  sessionKeys?: readonly string[];
-  env: NodeJS.ProcessEnv;
-  continuation?: CanonicalSessionReaderContinuation;
 };
 
 type SessionProgressCardWorkerInput = {
@@ -598,10 +582,7 @@ export type SessionTranscriptWorkerValues = {
   "session-row-presence": boolean;
   "projection-status": boolean;
   "session-members": SessionMember[];
-  "session-recipient-authority": {
-    kind: "session-recipient-authority";
-    epoch: SessionRecipientAuthorityEpochState;
-  };
+  "session-recipient-authority": SessionRecipientAuthorityWorkerResult;
   "session-membership-facts": SessionMembershipFacts;
   "session-progress-card": { kind: "session-progress-card"; card: ProgressCard | null };
   "goal-operation-receipt": {
