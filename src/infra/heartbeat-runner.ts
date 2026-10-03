@@ -4,17 +4,12 @@ import {
   parseAgentSessionKey,
 } from "../routing/session-key.js";
 import type { HeartbeatRunOptions } from "./heartbeat-runner-execution.js";
-import { truncateHeartbeatPreview } from "./heartbeat-runner-prompt.js";
 import { runHeartbeatOnceCore as runSplitHeartbeatOnce } from "./heartbeat-runner-run.js";
 import {
   startHeartbeatRunnerScheduled as startSplitHeartbeatRunner,
   type HeartbeatRunner,
 } from "./heartbeat-runner-scheduler.js";
-import {
-  inferHeartbeatWakeSourceFromReason,
-  resolveHeartbeatContinuationTrigger,
-  resolveHeartbeatWakePayloadFlags,
-} from "./heartbeat-wake-policy.js";
+import { resolveHeartbeatContinuationTrigger } from "./heartbeat-wake-policy.js";
 import { hasTrustedContinuationHeartbeatWake } from "./heartbeat-wake.js";
 
 export type { HeartbeatDeps } from "./heartbeat-runner-execution.js";
@@ -85,9 +80,3 @@ export function startHeartbeatRunner(opts: StartHeartbeatRunnerOptions): Heartbe
     runOnce: (runOpts) => runOnce(runOpts),
   });
 }
-
-export const testing = {
-  inferHeartbeatWakeSourceFromReason,
-  resolveHeartbeatWakePayloadFlags,
-  truncateHeartbeatPreview,
-};

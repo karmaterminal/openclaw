@@ -7,8 +7,6 @@ import type {
 import { registerSubagentRun } from "./subagents/registry/subagent-registry.js";
 import type { SubagentRegistrationScope } from "./subagents/registry/subagent-registry.types.js";
 
-export { summarizeSpawnError } from "./spawn-error.js";
-
 type SpawnPipelinePhase = "initialize" | "dispatch" | "register";
 
 export type SpawnBackendAdapter<TState> = {
@@ -104,6 +102,10 @@ class SpawnRegistrationOwnershipError extends Error {
       `Subagent registration did not commit a new row: ${registrationOwnership.attempted.runId}`,
     );
   }
+}
+
+export function summarizeSpawnError(error: unknown): string {
+  return error instanceof Error ? error.message : typeof error === "string" ? error : "error";
 }
 
 type SpawnPipelineParams<TState> = {

@@ -56,15 +56,6 @@ export function isCompactionSkipCode(code: CompactionReasonCode): boolean {
   return SKIP_CODES.has(code);
 }
 
-/**
- * Convenience wrapper: classify a free-form reason string, then check whether
- * the resulting code is a skip-class outcome. Replaces the duplicated
- * `isLegitSkipReason` / `isCompactionSkipReason` substring helpers.
- */
-export function isCompactionSkipReason(reason?: string): boolean {
-  return isCompactionSkipCode(classifyCompactionReason(reason));
-}
-
 function isGenericCompactionCancelledReason(reason: string): boolean {
   const normalized = normalizeLowercaseStringOrEmpty(reason);
   return normalized === "compaction cancelled" || normalized === "error: compaction cancelled";

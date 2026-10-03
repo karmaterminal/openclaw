@@ -764,7 +764,6 @@ const config = {
     "src/commands/status.command-report-data.ts": ["exports"],
     "src/infra/continuation-tracer.ts": ["exports", "types"],
     "src/infra/diagnostic-trace-context.ts": ["exports"],
-    "src/infra/heartbeat-reason.ts": ["exports"],
     "src/infra/session-delivery-queue-storage.ts": ["exports"],
     "src/process/command-queue-waiters.ts": ["exports"],
     "src/status/status-text.ts": ["exports"],
