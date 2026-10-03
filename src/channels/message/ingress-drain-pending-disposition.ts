@@ -80,10 +80,18 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
       reason,
       message: disposition.message.trim() || reason,
       failedAt: params.now,
+      // The policy judged this generation of the row. If another owner claimed
+      // it, failed it and an operator resubmitted it while the policy ran, the
+      // fresh generation is not the one judged and must stay pending.
+      generation: {
+        receivedAt: record.receivedAt,
+        updatedAt: record.updatedAt,
+        attempts: record.attempts,
+      },
     });
     if (!committed) {
-      // A concurrent claim won the compare-and-set. Keep its lane out of this
-      // snapshot so later same-lane work cannot overtake the real claimant.
+      // A concurrent transition won the compare-and-set. Keep its lane out of
+      // this snapshot so later same-lane work cannot overtake the real owner.
       params.log(`ingress drain: pending disposition lost race for event ${record.id}`);
       retained.push(record);
       blockedLaneKeys.add(laneKey);

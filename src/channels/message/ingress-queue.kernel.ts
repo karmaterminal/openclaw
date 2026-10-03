@@ -21,6 +21,7 @@ import type {
   ChannelIngressClaimSnapshot,
   ChannelIngressListInput,
   ChannelIngressQueuePruneOptions,
+  ChannelIngressQueueRecordGeneration,
   ChannelIngressRow,
   ChannelIngressScope,
 } from "./ingress-queue.types.js";
@@ -401,13 +402,26 @@ export function releaseChannelIngressInDatabase(
 
 export function failChannelIngressInDatabase(
   db: DatabaseSync,
-  input: ChannelIngressMutation & { reason: string; message?: string },
+  input: ChannelIngressMutation & {
+    reason: string;
+    message?: string;
+    generation?: ChannelIngressQueueRecordGeneration;
+  },
 ): boolean {
+  const generation = input.generation;
+  // The fence commits only against the generation the caller inspected: any
+  // transition since (claim, release, fail, resubmit) rewrote these columns.
+  const selected = generation
+    ? selectedMutation(db, input)
+        .where("received_at", "=", generation.receivedAt)
+        .where("updated_at", "=", generation.updatedAt)
+        .where("attempts", "=", generation.attempts)
+    : selectedMutation(db, input);
   return (
     affectedRows(
       executeSqliteQuerySync(
         db,
-        selectedMutation(db, input).set((eb) => ({
+        selected.set((eb) => ({
           status: "failed",
           failed_at: input.now,
           failed_reason: input.reason,

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createDeferredCore } from "../../shared/deferred.js";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
 import { createChannelIngressDrain } from "./ingress-drain.js";
 import { createTestIngressQueue, withTempState } from "./ingress-drain.test-helpers.js";
@@ -143,6 +144,74 @@ describe("channel ingress pending disposition", () => {
         "same-lane",
       ]);
       expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      drain.dispose();
+    });
+  });
+
+  it("never fails a generation resubmitted while the policy was still deciding", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 10;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue("raced", { text: "old ambient" }, { laneKey: "lane:a", receivedAt: 0 });
+      await queue.enqueue(
+        "same-lane",
+        { text: "later ambient" },
+        { laneKey: "lane:a", receivedAt: 1 },
+      );
+      await queue.enqueue(
+        "other-lane",
+        { text: "independent" },
+        { laneKey: "lane:b", receivedAt: 2 },
+      );
+      const policyEntered = createDeferredCore<void>();
+      const policyRelease = createDeferredCore<void>();
+      const logs: string[] = [];
+      const adopted: string[] = [];
+      const drain = createChannelIngressDrain({
+        queue,
+        now: () => 50,
+        onLog: (message) => logs.push(message),
+        resolvePendingDisposition: async (record) => {
+          if (record.id !== "raced") {
+            return null;
+          }
+          policyEntered.resolve();
+          await policyRelease.promise;
+          return { kind: "fail", reason: "stale-ambient-backlog", message: "stale ambient row" };
+        },
+        dispatchClaimedEvent: async (claim, lifecycle) => {
+          adopted.push(claim.id);
+          await lifecycle.onAdopted();
+        },
+      });
+
+      const pass = drain.drainOnce();
+      await policyEntered.promise;
+      // While the policy is still deciding, another owner claims and fails the
+      // very row it inspected, and an operator resubmits it as fresh work.
+      clock = 20;
+      const claim = await queue.claim("raced", { ownerId: "other-owner" });
+      expect(claim).not.toBeNull();
+      if (!claim) {
+        return;
+      }
+      expect(await queue.fail(claim, { reason: "poison" })).toBe(true);
+      clock = 30;
+      await expect(queue.resubmit?.("raced")).resolves.toMatchObject({ kind: "resubmitted" });
+
+      policyRelease.resolve();
+      expect(await pass).toEqual({ started: 1 });
+      await drain.waitForIdle();
+
+      // The stale decision loses to the resubmitted generation: the row is
+      // still pending, its lane is fenced for the pass, other lanes proceed.
+      expect(adopted).toEqual(["other-lane"]);
+      expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual([
+        "same-lane",
+        "raced",
+      ]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      expect(logs).toContain("ingress drain: pending disposition lost race for event raced");
       drain.dispose();
     });
   });

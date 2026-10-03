@@ -122,7 +122,10 @@ still hydrating. The hook receives unvalidated stored payload bytes, so
 unreadable rows must stay claimable for the canonical claim-time codec. A
 deferred row, and a row whose fail lost its compare-and-set to a real claimant,
 both fence their lane for the rest of that drain pass: no later row on that lane
-is dispositioned, claimed, or started ahead of its head.
+is dispositioned, claimed, or started ahead of its head. The drain commits a
+fail only against the exact pending generation the policy inspected
+(`receivedAt`, `updatedAt`, `attempts`), so a row that was claimed, failed and
+resubmitted while the policy ran keeps its fresh generation.
 The returned monitor exposes `admit`, `ensureQueueAvailable`, `start`, `pause`,
 `stop`, `waitForIdle`, `isRunning`, and `isStopped`. Use the idempotent
 `ensureQueueAvailable()` check when plugin-owned migration or preparation must

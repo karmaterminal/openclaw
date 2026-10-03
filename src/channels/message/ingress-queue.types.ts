@@ -14,6 +14,12 @@ export type ChannelIngressQueueRecord<TPayload, TMetadata = unknown> = ChannelIn
   lastError?: string;
 };
 
+/** Facts every row transition rewrites; together they identify one generation of a row. */
+export type ChannelIngressQueueRecordGeneration = Pick<
+  ChannelIngressQueueRecord<unknown>,
+  "receivedAt" | "updatedAt" | "attempts"
+>;
+
 /** Pending ingress event currently claimed by a worker. */
 export type ChannelIngressQueueClaim<TPayload, TMetadata = unknown> = ChannelIngressQueueRecord<
   TPayload,
@@ -192,7 +198,17 @@ export type ChannelIngressQueue<TPayload, TMetadata = unknown, TCompletedMetadat
   ): Promise<boolean>;
   fail(
     idOrClaim: string | ChannelIngressQueueClaimRef,
-    options: { reason: string; message?: string; failedAt?: number },
+    options: {
+      reason: string;
+      message?: string;
+      failedAt?: number;
+      /**
+       * Fail only the row generation that still carries these inspected facts.
+       * A claim, release, fail or resubmit rewrites them, so a decision taken
+       * against an older generation cannot settle the row that replaced it.
+       */
+      generation?: ChannelIngressQueueRecordGeneration;
+    },
   ): Promise<boolean>;
   /** Additive SDK seam; actual runtime queues support operator resubmission. */
   resubmit?(

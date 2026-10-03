@@ -1115,4 +1115,47 @@ describe("channel ingress queue", () => {
       });
     });
   });
+
+  it("fails only the pending generation the caller inspected", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 10;
+      const queue = createTestIngressQueue<{ text: string }>(stateDir, { now: () => clock });
+      await queue.enqueue("row", { text: "first" }, { receivedAt: 0 });
+      const inspected = expectDefined(
+        (await queue.listPending({ limit: "all" }))[0],
+        "inspected pending row",
+      );
+      const generation = {
+        receivedAt: inspected.receivedAt,
+        updatedAt: inspected.updatedAt,
+        attempts: inspected.attempts,
+      };
+
+      // Another owner claims and fails the inspected generation; an operator
+      // resubmits the same id as fresh pending work.
+      clock = 20;
+      const claim = await queue.claim("row", { ownerId: "other-owner" });
+      expect(claim).not.toBeNull();
+      if (!claim) {
+        return;
+      }
+      expect(await queue.fail(claim, { reason: "poison" })).toBe(true);
+      clock = 30;
+      await expect(queue.resubmit?.("row")).resolves.toMatchObject({ kind: "resubmitted" });
+
+      // A fail fenced to the inspected generation is a no-op on its successor.
+      expect(await queue.fail("row", { reason: "stale", generation })).toBe(false);
+      expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual(["row"]);
+
+      // The successor still fails under its own facts.
+      const fresh = expectDefined(
+        (await queue.listPending({ limit: "all" }))[0],
+        "resubmitted pending row",
+      );
+      expect(await queue.fail("row", { reason: "stale", generation: fresh })).toBe(true);
+      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+        { id: "row", reason: "stale" },
+      ]);
+    });
+  });
 });
