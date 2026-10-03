@@ -3,6 +3,7 @@ import type { ChannelIngressQueueRecord } from "openclaw/plugin-sdk/channel-outb
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { describe, expect, it } from "vitest";
 import { MessageType } from "../internal/discord.js";
+import { createInternalTestClient } from "../internal/test-builders.test-support.js";
 // Discord tests prove the stale ambient policy expires only what preflight would skip.
 import { installDiscordIngressTestRuntime } from "../test-support/ingress-runtime.js";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
@@ -45,7 +46,8 @@ type Row = {
   cfg?: OpenClawConfig;
   discordConfig?: Record<string, unknown>;
   guildEntries?: Record<string, DiscordGuildEntryResolved>;
-  mentionedUsers?: Array<{ id: string }>;
+  mentionedUsers?: Array<{ id: string; username?: string }>;
+  embeds?: Array<{ title: string }>;
   mentionedEveryone?: boolean;
   replyToBot?: boolean;
 };
@@ -77,6 +79,30 @@ const ROWS: Row[] = [
     discordConfig: DENY_HERE,
   },
   { name: "direct-open channel", content: "just chatting", guildEntries: gated(false) },
+  // Preflight rewrites native <@id> mentions to usernames before matching, so a
+  // mention of another user whose username matches an agent pattern is a request.
+  // 🩸's frame (openclaw/openclaw#121204, comment 5966482733), verbatim.
+  {
+    name: "other user mention whose username matches an agent pattern",
+    content: "<@other-user> please look",
+    cfg: NAMED_AGENT_CFG,
+    mentionedUsers: [{ id: "other-user", username: "claw" }],
+  },
+  // Preflight runs mention patterns on typed content only (hasTypedText), so the
+  // same rewrite inside an embed title is not a mention for either side.
+  {
+    name: "same rewrite inside an embed title, no typed content",
+    content: "",
+    embeds: [{ title: "<@user-2> please look" }],
+    cfg: NAMED_AGENT_CFG,
+    mentionedUsers: [{ id: "user-2", username: "claw" }],
+  },
+  {
+    name: "other user mention whose username matches nothing",
+    content: "<@user-2> please look",
+    cfg: NAMED_AGENT_CFG,
+    mentionedUsers: [{ id: "user-2", username: "bob" }],
+  },
 ];
 
 function buildMessage(row: Row) {
@@ -96,6 +122,7 @@ function buildMessage(row: Row) {
     timestamp: STALE_TIMESTAMP,
     mentionedUsers: row.mentionedUsers,
     mentionedEveryone: row.mentionedEveryone,
+    embeds: row.embeds,
     ...(referencedMessage
       ? {
           type: MessageType.Reply,
@@ -145,6 +172,7 @@ async function policyKeeps(row: Row): Promise<boolean> {
   } as unknown as DiscordLivePolicy;
   const disposition = createDiscordStaleAmbientPendingDisposition({
     botUserId: BOT_ID,
+    client: createInternalTestClient(),
     readPolicy: async () => policy,
     resolveChannelInfo: () => ({ guildId: GUILD_ID, name: "general", type: ChannelType.GuildText }),
     isChannelInventoryHydrating: () => false,

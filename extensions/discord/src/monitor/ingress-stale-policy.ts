@@ -14,7 +14,9 @@ import {
   isRecord,
   normalizeNullableString as nonEmptyString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { Message, type APIMessage } from "../internal/discord.js";
 import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inventory.js";
+import type { StructureClient } from "../internal/structures.js";
 import {
   normalizeDiscordSlug,
   resolveDiscordChannelConfigWithFallback,
@@ -22,7 +24,7 @@ import {
   resolveDiscordMentionPolicy,
 } from "./allow-list.js";
 import type { DiscordLivePolicy, DiscordLivePolicyReader } from "./live-policy.js";
-import { resolveDiscordRawMessageMentionDocuments } from "./message-text.js";
+import { resolveDiscordMessageText } from "./message-text.js";
 
 /** Ambient guild chatter older than this can no longer be the user's live turn. */
 const DISCORD_STALE_AMBIENT_BACKLOG_MS = 15 * 60 * 1_000;
@@ -35,9 +37,10 @@ const DISCORD_AUDIO_ATTACHMENT_EXTENSIONS =
 type DiscordStalePolicyMessage = {
   channelId: string;
   guildId?: string;
-  /** Preflight's mention/command documents: content, else embeds, else text displays. */
-  documents: string[];
+  /** Preflight's `baseText`: documents, then native mentions rewritten to usernames. */
   text: string;
+  /** Preflight matches mention patterns only when the message has typed content. */
+  hasTypedText: boolean;
   sentAtMs: number | null;
   payloadReceivedAt: number | null;
   mentionEveryone: boolean;
@@ -91,7 +94,10 @@ function readAudioAttachment(attachments: unknown[]): boolean {
 }
 
 /** Null for anything not fully readable, so such rows stay with the claim-time codec. */
-function readDiscordStalePolicyRow(payload: unknown): DiscordStalePolicyMessage | null {
+function readDiscordStalePolicyRow(
+  payload: unknown,
+  client: StructureClient,
+): DiscordStalePolicyMessage | null {
   // Only the payload version the canonical codec reads is policy-readable.
   if (!isRecord(payload) || payload.version !== 1 || !isRecord(payload.rawMessage)) {
     return null;
@@ -103,6 +109,7 @@ function readDiscordStalePolicyRow(payload: unknown): DiscordStalePolicyMessage 
   if (
     !channelId ||
     !nonEmptyString(rawMessage.id) ||
+    !isRecord(rawMessage.author) ||
     !mentionedUserIds ||
     typeof rawMessage.content !== "string" ||
     typeof rawMessage.timestamp !== "string" ||
@@ -119,13 +126,15 @@ function readDiscordStalePolicyRow(payload: unknown): DiscordStalePolicyMessage 
   const referencedAuthor = isRecord(referencedMessage) ? referencedMessage.author : undefined;
   const sentAtMs = Date.parse(rawMessage.timestamp);
   const payloadReceivedAt = payload.receivedAt;
-  // Preflight's own text projection, so preclaim never reads less than it does.
-  const documents = resolveDiscordRawMessageMentionDocuments(rawMessage);
+  // SAFETY: the structural checks above prove the stored frame is a MESSAGE_CREATE payload.
+  const message = new Message(client, rawMessage as unknown as APIMessage);
   return {
     channelId,
     ...(guildId ? { guildId } : {}),
-    documents,
-    text: documents.join("\n"),
+    // Preflight's own projection (documents, then native mentions rewritten to
+    // usernames), so pre-claim matches exactly the text preflight matches.
+    text: resolveDiscordMessageText(message, { includeForwarded: false }),
+    hasTypedText: Boolean(rawMessage.content.trim()),
     sentAtMs: Number.isFinite(sentAtMs) ? sentAtMs : null,
     payloadReceivedAt:
       typeof payloadReceivedAt === "number" && Number.isFinite(payloadReceivedAt)
@@ -176,8 +185,10 @@ function isMentionedForPreflight(
   botId: string,
   policy: DiscordLivePolicy,
 ): boolean {
-  const text = message.text.trim();
-  const audioOnly = !text && message.hasAudioAttachment;
+  // Preflight's mentionText: patterns run on typed content only, never on an
+  // embed- or component-only message (its transcript stands in for a voice note).
+  const text = message.hasTypedText ? message.text.trim() : "";
+  const audioOnly = !message.hasTypedText && message.hasAudioAttachment;
   const hasAnyMention =
     message.mentionedUserIds.length > 0 || message.hasRoleMention || message.mentionEveryone;
   const explicit = {
@@ -271,6 +282,8 @@ function isMentionGatedChannel(
  */
 export function createDiscordStaleAmbientPendingDisposition(params: {
   botUserId?: string;
+  /** Only used to project the stored frame the way preflight does; no network. */
+  client: StructureClient;
   readPolicy: DiscordLivePolicyReader;
   resolveChannelInfo: (channelId: string) => DiscordGatewayChannelInfo | undefined;
   isChannelInventoryHydrating: (guildId: string) => boolean;
@@ -279,7 +292,7 @@ export function createDiscordStaleAmbientPendingDisposition(params: {
     record: ChannelIngressQueueRecord<unknown>,
     context: { laneKey: string; now: number },
   ) => {
-    const row = readDiscordStalePolicyRow(record.payload);
+    const row = readDiscordStalePolicyRow(record.payload, params.client);
     const guildId = row?.guildId;
     const botId = nonEmptyString(params.botUserId);
     // Without the bot identity this policy cannot prove the message is ambient.
