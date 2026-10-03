@@ -103,7 +103,6 @@ export async function deliverQueuedSessionDelivery(params: {
   queueContext.admission.assertCurrent();
   const queuedEntry = resolveCorrelatedSubagentDelivery(params.entry);
   if (queuedEntry.kind === "agentTurn" && queuedEntry.requesterBinding) {
-    // Bound media completions stay with their original requester session (upstream #159943).
     await deliverQueuedGeneratedMediaAgentTurn({
       ...queuedEntry.requesterBinding,
       entry: queuedEntry,
