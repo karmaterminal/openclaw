@@ -149,6 +149,7 @@ import { CONTINUATION_SPAWN_INTERRUPTED_NOTICE_TAG } from "./custody/spawn-inter
 import { recoverPendingContinuationDelegates } from "./delegate-dispatch-recovery.js";
 import { dispatchToolDelegates, resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import { consumePendingDelegates, enqueuePendingDelegate } from "./delegate-store.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import { resetContinuationStateForTests } from "./state.js";
 
 useContinuationCustodyTestState();
@@ -875,7 +876,9 @@ describe("tool delegate dispatch contract", () => {
     const { loadPendingSessionDeliveries } = await vi.importActual<
       typeof import("../../infra/session-delivery-queue-storage.js")
     >("../../infra/session-delivery-queue-storage.js");
-    const noticeRows = (await loadPendingSessionDeliveries()).filter(
+    const noticeRows = (
+      await loadPendingSessionDeliveries(captureContinuationQueueContext())
+    ).filter(
       (entry) =>
         entry.kind === "systemEvent" &&
         entry.text.includes(CONTINUATION_SPAWN_INTERRUPTED_NOTICE_TAG),

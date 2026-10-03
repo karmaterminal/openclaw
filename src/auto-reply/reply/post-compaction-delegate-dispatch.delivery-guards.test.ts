@@ -38,6 +38,7 @@ import {
   stagePostCompactionCustodyDelegate,
   toSessionPostCompactionDelegate,
 } from "../continuation/delegate-store-post-compaction.js";
+import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 import type {
   ChainState,
   ContinuationRuntimeConfig,
@@ -1013,7 +1014,7 @@ describe("post-compaction delivery of custody-released queue entries", () => {
         attachAs: { mountPath: "handoff" },
       });
       const queued = expectDefined(
-        await loadPendingSessionDelivery(deliveryId, stateDir),
+        await loadPendingSessionDelivery(deliveryId, captureContinuationQueueContext(stateDir)),
         "queued delivery",
       );
       expect(queued).toMatchObject({
@@ -1051,7 +1052,7 @@ describe("post-compaction delivery of custody-released queue entries", () => {
         attachments: [{ name: "state.md", content: "must not materialize while disabled" }],
       });
       const entry = expectDefined(
-        await loadPendingSessionDelivery(deliveryId, stateDir),
+        await loadPendingSessionDelivery(deliveryId, captureContinuationQueueContext(stateDir)),
         "queued disabled delivery",
       ) as QueuedPostCompactionDelegateDelivery;
       const disabled = createDeliveryDeps({ storePath, runtimeConfig: { enabled: false } });
@@ -1064,7 +1065,9 @@ describe("post-compaction delivery of custody-released queue entries", () => {
       expect(disabled.markAttemptStarted).not.toHaveBeenCalled();
       expect(disabled.markPendingDelegateSpawnAccepted).not.toHaveBeenCalled();
       expect(disabled.failReleasedPostCompactionDelegate).not.toHaveBeenCalled();
-      expect(await loadPendingSessionDelivery(deliveryId, stateDir)).toBeTruthy();
+      expect(
+        await loadPendingSessionDelivery(deliveryId, captureContinuationQueueContext(stateDir)),
+      ).toBeTruthy();
 
       await drainPostCompactionDelegateDeliveriesDispatch({
         sessionKey: "main",
@@ -1072,7 +1075,9 @@ describe("post-compaction delivery of custody-released queue entries", () => {
         deliveryDeps: disabled.deps,
       });
       expect(disabled.spawnSubagentDirect).not.toHaveBeenCalled();
-      expect(await loadPendingSessionDelivery(deliveryId, stateDir)).toBeTruthy();
+      expect(
+        await loadPendingSessionDelivery(deliveryId, captureContinuationQueueContext(stateDir)),
+      ).toBeTruthy();
 
       const enabled = createDeliveryDeps({ storePath, runtimeConfig: { enabled: true } });
       // The drain persists attempt ownership on the real queue row.
@@ -1084,7 +1089,9 @@ describe("post-compaction delivery of custody-released queue entries", () => {
       });
       expect(enabled.spawnSubagentDirect).toHaveBeenCalledTimes(1);
       expect(enabled.markAttemptStarted).toHaveBeenCalledTimes(1);
-      expect(await loadPendingSessionDelivery(deliveryId, stateDir)).toBeNull();
+      expect(
+        await loadPendingSessionDelivery(deliveryId, captureContinuationQueueContext(stateDir)),
+      ).toBeNull();
 
       await drainPostCompactionDelegateDeliveriesDispatch({
         sessionKey: "main",

@@ -1,4 +1,6 @@
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
+import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
+import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import {
   completeSessionDelivery,
   loadPendingSessionDelivery,
@@ -16,13 +18,20 @@ type SessionQueueRow = {
   account_id: string | null;
 };
 
+export function captureSessionDeliveryQueueContext(stateDir: string): OpenClawStateWorkerContext {
+  return captureOpenClawStateWorkerContext({
+    env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
+  });
+}
+
 export async function settleSessionDelivery(id: string, stateDir: string): Promise<void> {
-  const entry = await loadPendingSessionDelivery(id, stateDir);
+  const context = captureSessionDeliveryQueueContext(stateDir);
+  const entry = await loadPendingSessionDelivery(id, context);
   if (!entry) {
     throw new Error(`Expected pending session delivery ${id}`);
   }
-  await markSessionDeliverySettlement(entry, "recovered", stateDir);
-  await completeSessionDelivery(id, stateDir);
+  await markSessionDeliverySettlement(entry, "recovered", context);
+  await completeSessionDelivery(id, context);
 }
 
 export function readSessionQueueStatus(tempDir: string, id: string): string | undefined {

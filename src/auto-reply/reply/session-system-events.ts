@@ -45,6 +45,7 @@ import { SESSION_CREATED_NOTICE_CONTEXT_PREFIX } from "../../sessions/session-st
 import { acknowledgeSessionStateNotices } from "../../sessions/session-state-events.js";
 import { decodeSessionStateNoticeContextKey } from "../../sessions/session-state-notices.js";
 import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
+import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 import {
   createPreparedSystemEventAuthorityOwner,
   readAdoptedSystemEventDeliveryIds,
@@ -176,7 +177,7 @@ async function settleManagedDelivery(
         });
       }
     }
-    await ackSessionDelivery(settlement.id, settlement.stateDir);
+    await ackSessionDelivery(settlement.id, captureContinuationQueueContext(settlement.stateDir));
     consumeSelectedSystemEventEntries(sessionKey, [settlement.event]);
   } catch (error) {
     defaultRuntime.log(
@@ -308,7 +309,7 @@ export async function prepareFormattedSystemEvents(params: {
     const durable = event.sessionDeliveryAckId
       ? await loadPendingSessionDelivery(
           event.sessionDeliveryAckId,
-          event.sessionDeliveryAckStateDir,
+          captureContinuationQueueContext(event.sessionDeliveryAckStateDir),
         )
       : null;
     const managed =
@@ -496,14 +497,14 @@ export async function prepareFormattedSystemEvents(params: {
     adoptionScopedDeliveries.push({
       id,
       acknowledge: async () => {
-        await ackSessionDelivery(id, stateDir);
+        await ackSessionDelivery(id, captureContinuationQueueContext(stateDir));
       },
       ...(authorityKey ? { authorityKey } : {}),
     });
   }
   for (const ack of alreadyAdoptedAckIds) {
     try {
-      await ackSessionDelivery(ack.id, ack.stateDir);
+      await ackSessionDelivery(ack.id, captureContinuationQueueContext(ack.stateDir));
     } catch (error) {
       defaultRuntime.log(
         `[session-system-events] failed to settle already-adopted session delivery ${ack.id}: ${
@@ -552,7 +553,7 @@ export async function prepareFormattedSystemEvents(params: {
   }
   for (const ack of sessionDeliveryAcks.values()) {
     try {
-      await ackSessionDelivery(ack.id, ack.stateDir);
+      await ackSessionDelivery(ack.id, captureContinuationQueueContext(ack.stateDir));
     } catch (error) {
       defaultRuntime.log(
         `[session-system-events] failed to ack consumed session delivery ${ack.id}: ${

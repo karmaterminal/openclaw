@@ -54,6 +54,7 @@ import {
 } from "./custody/custody.test-support.js";
 import { dispatchToolDelegates, resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import { enqueuePendingDelegate } from "./delegate-store.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import { resetContinuationStateForTests } from "./state.js";
 
 const INTERRUPTED_NOTICE = "[continuation:delegate-spawn-interrupted]";
@@ -67,7 +68,7 @@ async function queuedDelegateRecordId(sessionKey: string, task: string): Promise
 }
 
 async function interruptedNoticesFor(sessionKey: string): Promise<string[]> {
-  return (await loadPendingSessionDeliveries()).flatMap((entry) =>
+  return (await loadPendingSessionDeliveries(captureContinuationQueueContext())).flatMap((entry) =>
     entry.sessionKey === sessionKey &&
     entry.kind === "systemEvent" &&
     entry.text.includes(INTERRUPTED_NOTICE)

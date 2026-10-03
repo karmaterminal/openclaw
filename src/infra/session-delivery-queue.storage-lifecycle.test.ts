@@ -13,15 +13,17 @@ import {
   markSessionDeliverySettlement,
   enqueueSessionDelivery,
 } from "./session-delivery-queue-storage.js";
+import { captureSessionDeliveryQueueContext } from "./session-delivery-queue.storage.test-support.js";
 
 describe("session-delivery queue storage", () => {
   async function settleSessionDelivery(id: string, stateDir: string): Promise<void> {
-    const entry = await loadPendingSessionDelivery(id, stateDir);
+    const queueContext = captureSessionDeliveryQueueContext(stateDir);
+    const entry = await loadPendingSessionDelivery(id, queueContext);
     if (!entry) {
       throw new Error(`Expected pending session delivery ${id}`);
     }
-    await markSessionDeliverySettlement(entry, "recovered", stateDir);
-    await completeSessionDelivery(id, stateDir);
+    await markSessionDeliverySettlement(entry, "recovered", queueContext);
+    await completeSessionDelivery(id, queueContext);
   }
 
   function readSessionQueueStatus(tempDir: string, id: string): string | undefined {
@@ -36,28 +38,30 @@ describe("session-delivery queue storage", () => {
 
   it("persists retry metadata and retains acked idempotency tombstones", async () => {
     await withTestDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const queueContext = captureSessionDeliveryQueueContext(tempDir);
       const id = await enqueueSessionDelivery(
         {
           kind: "systemEvent",
           sessionKey: "agent:main:main",
           text: "restart complete",
         },
-        tempDir,
+        queueContext,
       );
 
-      await failSessionDelivery(id, "dispatch failed", tempDir);
-      const [failedEntry] = await loadPendingSessionDeliveries(tempDir);
+      await failSessionDelivery(id, "dispatch failed", queueContext);
+      const [failedEntry] = await loadPendingSessionDeliveries(queueContext);
       expect(failedEntry?.retryCount).toBe(1);
       expect(failedEntry?.lastError).toBe("dispatch failed");
 
       await settleSessionDelivery(id, tempDir);
-      expect(await loadPendingSessionDeliveries(tempDir)).toStrictEqual([]);
+      expect(await loadPendingSessionDeliveries(queueContext)).toStrictEqual([]);
       expect(readSessionQueueStatus(tempDir, id)).toBe("completed");
     });
   });
 
   it("retains ambiguous attempt ownership and clears it only for a safe retry", async () => {
     await withTestDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const queueContext = captureSessionDeliveryQueueContext(tempDir);
       const id = await enqueueSessionDelivery(
         {
           kind: "agentTurn",
@@ -65,32 +69,35 @@ describe("session-delivery queue storage", () => {
           message: "generated image ready",
           messageId: "image:task-attempt-owner:agent-loop",
         },
-        tempDir,
+        queueContext,
       );
-      const entry = await loadPendingSessionDelivery(id, tempDir);
+      const entry = await loadPendingSessionDelivery(id, queueContext);
       if (!entry) {
         throw new Error("Expected pending session delivery");
       }
 
-      await markSessionDeliveryAttemptStarted(entry, tempDir);
-      expect(await loadPendingSessionDelivery(id, tempDir)).toMatchObject({
+      await markSessionDeliveryAttemptStarted(entry, queueContext);
+      expect(await loadPendingSessionDelivery(id, queueContext)).toMatchObject({
         deliveryStartedAt: expect.any(Number),
       });
 
-      await failSessionDelivery(id, "ambiguous failure after send", tempDir);
-      expect(await loadPendingSessionDelivery(id, tempDir)).toMatchObject({
+      await failSessionDelivery(id, "ambiguous failure after send", queueContext);
+      expect(await loadPendingSessionDelivery(id, queueContext)).toMatchObject({
         deliveryStartedAt: expect.any(Number),
       });
 
-      await failSessionDelivery(id, "safe failure before commit", tempDir, {
+      await failSessionDelivery(id, "safe failure before commit", queueContext, {
         releaseAttemptOwnership: true,
       });
-      expect(await loadPendingSessionDelivery(id, tempDir)).not.toHaveProperty("deliveryStartedAt");
+      expect(await loadPendingSessionDelivery(id, queueContext)).not.toHaveProperty(
+        "deliveryStartedAt",
+      );
     });
   });
 
   it("records which agent run attempt consumed retry budget", async () => {
     await withTestDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const queueContext = captureSessionDeliveryQueueContext(tempDir);
       const id = await enqueueSessionDelivery(
         {
           kind: "agentTurn",
@@ -98,18 +105,18 @@ describe("session-delivery queue storage", () => {
           message: "generated image ready",
           messageId: "image:task-charge:agent-loop",
         },
-        tempDir,
+        queueContext,
       );
 
-      await failSessionDelivery(id, "delivery failed", tempDir);
-      expect(await loadPendingSessionDelivery(id, tempDir)).toMatchObject({
+      await failSessionDelivery(id, "delivery failed", queueContext);
+      expect(await loadPendingSessionDelivery(id, queueContext)).toMatchObject({
         retryCount: 1,
         lastChargedAgentRunAttempt: 0,
       });
 
-      await advanceSessionDeliveryAgentRun(id, undefined, tempDir);
-      await failSessionDelivery(id, "fresh delivery failed", tempDir);
-      expect(await loadPendingSessionDelivery(id, tempDir)).toMatchObject({
+      await advanceSessionDeliveryAgentRun(id, undefined, queueContext);
+      await failSessionDelivery(id, "fresh delivery failed", queueContext);
+      expect(await loadPendingSessionDelivery(id, queueContext)).toMatchObject({
         retryCount: 2,
         agentRunAttempt: 1,
         lastChargedAgentRunAttempt: 1,
@@ -119,6 +126,7 @@ describe("session-delivery queue storage", () => {
 
   it("persists agent-loop routing and provenance for restart replay", async () => {
     await withTestDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const queueContext = captureSessionDeliveryQueueContext(tempDir);
       await enqueueSessionDelivery(
         {
           kind: "agentTurn",
@@ -140,10 +148,10 @@ describe("session-delivery queue storage", () => {
           sourceReplyDeliveryMode: "message_tool_only",
           expectedMediaUrls: ["/tmp/proof.png"],
         },
-        tempDir,
+        queueContext,
       );
 
-      expect(await loadPendingSessionDeliveries(tempDir)).toEqual([
+      expect(await loadPendingSessionDeliveries(queueContext)).toEqual([
         expect.objectContaining({
           route: expect.objectContaining({ channel: "discord", to: "channel:123" }),
           inputProvenance: expect.objectContaining({ sourceTool: "image_generate" }),
@@ -156,6 +164,7 @@ describe("session-delivery queue storage", () => {
 
   it("advances only the agent run attempt and can focus its retry media", async () => {
     await withTestDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const queueContext = captureSessionDeliveryQueueContext(tempDir);
       const id = await enqueueSessionDelivery(
         {
           kind: "agentTurn",
@@ -164,12 +173,12 @@ describe("session-delivery queue storage", () => {
           messageId: "image:task-retry:agent-loop",
           expectedMediaUrls: ["/tmp/one.png", "/tmp/two.png"],
         },
-        tempDir,
+        queueContext,
       );
 
-      await failSessionDelivery(id, "ambiguous timeout", tempDir);
-      await deferSessionDelivery(id, 1_000, tempDir);
-      let [entry] = await loadPendingSessionDeliveries(tempDir);
+      await failSessionDelivery(id, "ambiguous timeout", queueContext);
+      await deferSessionDelivery(id, 1_000, queueContext);
+      let [entry] = await loadPendingSessionDeliveries(queueContext);
       expect(entry).toMatchObject({ retryCount: 1 });
       expect(entry?.agentRunAttempt).toBeUndefined();
       expect(entry?.availableAt).toBeGreaterThan(Date.now());
@@ -181,9 +190,9 @@ describe("session-delivery queue storage", () => {
           expectedMediaUrls: ["/tmp/two.png"],
           suppressTextDelivery: true,
         },
-        tempDir,
+        queueContext,
       );
-      [entry] = await loadPendingSessionDeliveries(tempDir);
+      [entry] = await loadPendingSessionDeliveries(queueContext);
       expect(entry).toMatchObject({
         agentRunAttempt: 1,
         retryCount: 1,
@@ -196,13 +205,14 @@ describe("session-delivery queue storage", () => {
 
   it("moves entries into completed idempotency state", async () => {
     await withTestDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const queueContext = captureSessionDeliveryQueueContext(tempDir);
       const id = await enqueueSessionDelivery(
         {
           kind: "systemEvent",
           sessionKey: "agent:main:main",
           text: "restart complete",
         },
-        tempDir,
+        queueContext,
       );
 
       await settleSessionDelivery(id, tempDir);
@@ -213,6 +223,7 @@ describe("session-delivery queue storage", () => {
 
   it("retains a permanent completion receipt", async () => {
     await withTestDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
+      const queueContext = captureSessionDeliveryQueueContext(tempDir);
       const payload = {
         kind: "systemEvent" as const,
         sessionKey: "agent:main:main",
@@ -220,12 +231,12 @@ describe("session-delivery queue storage", () => {
         idempotencyKey: "restart:permanent-completed",
         completionRetention: "permanent" as const,
       };
-      const id = await enqueueSessionDelivery(payload, tempDir);
+      const id = await enqueueSessionDelivery(payload, queueContext);
       await settleSessionDelivery(id, tempDir);
 
-      expect(await enqueueSessionDelivery(payload, tempDir)).toBe(id);
+      expect(await enqueueSessionDelivery(payload, queueContext)).toBe(id);
       expect(readSessionQueueStatus(tempDir, id)).toBe("completed");
-      expect(await loadPendingSessionDeliveries(tempDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
     });
   });
 });

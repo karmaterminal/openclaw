@@ -6,12 +6,13 @@ import { normalizeChatType, type ChatType } from "../channels/chat-type.js";
 import { parseSqliteSessionEntryRecord } from "../config/sessions/session-entry-json.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { SqliteSchemaMismatchError } from "../infra/sqlite-schema-issues.js";
-import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
 import { normalizeAccountId } from "../routing/account-id.js";
 import { buildConversationRef, normalizeConversationPeerId } from "../routing/conversation-ref.js";
 import { deriveSessionChatTypeFromKey } from "../sessions/session-chat-type-shared.js";
 import { migrateLegacySessionCreator } from "./creator-namespace-migration.js";
 import { ensurePendingInputConsumptionColumn } from "./openclaw-agent-pending-inputs-schema.js";
+import { sessionRecipientAuthoritySchemaSql } from "./openclaw-agent-recipient-authority-schema.js";
+import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import { tableExists } from "./openclaw-state-db-schema-helpers.js";
 
 type MigratedConversationEntry = Record<string, unknown>;
@@ -387,44 +388,26 @@ export function hasPendingSessionConversationRouteContextColumn(db: DatabaseSync
   return Boolean(columns && !columns.has("route_context_json"));
 }
 
-const SESSION_RECIPIENT_AUTHORITY_SCHEMA_START =
-  "CREATE TABLE IF NOT EXISTS session_recipient_authority (";
-const SESSION_RECIPIENT_AUTHORITY_SCHEMA_END =
-  "CREATE TRIGGER IF NOT EXISTS session_nodes_entry_valid_after_insert";
-
-export function withoutSessionRecipientAuthoritySchema(sql: string): string {
-  const start = sql.indexOf(SESSION_RECIPIENT_AUTHORITY_SCHEMA_START);
-  const end = sql.indexOf(SESSION_RECIPIENT_AUTHORITY_SCHEMA_END, start);
-  if (start === -1 || end === -1) {
-    throw new Error("OpenClaw session recipient authority schema markers are missing.");
-  }
-  return `${sql.slice(0, start)}${sql.slice(end)}`;
-}
-
-function hasSessionRecipientAuthoritySchema(db: DatabaseSync): boolean {
-  return readSqliteTableColumns(db, "session_recipient_authority") !== null;
-}
-
 /**
- * Upstream-lineage databases share schema versions 19+ without this additive
- * table. Create it before exact-shape checks; such databases carry no entry-local
- * return epochs, so there is nothing to move.
+ * Schema 25 step. Databases written by earlier builds may already carry the
+ * table, so creation is idempotent; valid entry-local epochs move to it.
  */
-export function ensureSessionRecipientAuthoritySchemaInTransaction(
-  db: DatabaseSync,
-  schemaSql: string,
-): void {
-  if (!hasSessionRecipientAuthoritySchema(db)) {
-    db.exec(extractSqliteTableSchema(schemaSql, "session_recipient_authority")); // sqlite-allow-raw -- Idempotent additive lazy ensure.
+export function migrateSessionRecipientAuthorityInTransaction(db: DatabaseSync): void {
+  // sqlite-allow-raw -- Versioned schema DDL precedes the epoch data migration.
+  db.exec(sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL));
+  if (migrateSessionRecipientAuthority(db)) {
+    // Removing a legacy field fires the canonical entry-update trigger.
+    // Settle valid rows again while malformed Doctor-owned rows remain rejected.
+    ensureSessionEntryValidityProjection(db);
   }
 }
 
 /** Moves the unshipped entry-local return epoch to its logical session-key owner. */
-export function migrateSessionRecipientAuthority(db: DatabaseSync): void {
-  if (!hasSessionRecipientAuthoritySchema(db) || !readSqliteTableColumns(db, "session_nodes")) {
-    return;
+export function migrateSessionRecipientAuthority(db: DatabaseSync): boolean {
+  if (!readSqliteTableColumns(db, "session_nodes")) {
+    return false;
   }
-  db.prepare(
+  const importEpochs = db.prepare(
     `INSERT OR IGNORE INTO session_recipient_authority (
        session_key, epoch, created_at, updated_at
      )
@@ -451,8 +434,11 @@ export function migrateSessionRecipientAuthority(db: DatabaseSync): void {
            NOT GLOB '*[^0-9a-f]*'
        ELSE 0
      END`,
-  ).run(Date.now(), Date.now());
-  db.exec(
+  );
+  // Run results carry the connection's last rowid, which can exceed 2^53.
+  importEpochs.setReadBigInts(true);
+  importEpochs.run(Date.now(), Date.now());
+  const removeEpochs = db.prepare(
     `UPDATE session_nodes
      SET entry_json = json_remove(entry_json, '$.recipientAuthorityEpoch')
      WHERE CASE
@@ -461,6 +447,8 @@ export function migrateSessionRecipientAuthority(db: DatabaseSync): void {
        ELSE 0
      END`,
   );
+  removeEpochs.setReadBigInts(true);
+  return Number(removeEpochs.run().changes) > 0;
 }
 
 export function hasPendingSessionProjectColumn(db: DatabaseSync): boolean {

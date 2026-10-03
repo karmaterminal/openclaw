@@ -13,7 +13,6 @@ import {
 import { withSystemEventOwner } from "../../infra/system-event-ownership.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
-import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
 import {
   consumeStagedPostCompactionDelegates,
@@ -28,6 +27,7 @@ import {
   formatPostCompactionStaleRejection,
   POST_COMPACTION_DELEGATE_TTL_MS,
 } from "../continuation/post-compaction-staleness.js";
+import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 import type { ContinuationSignal } from "../continuation/signal.js";
 import { hasCrossSessionDelegateTargeting } from "../continuation/targeting-pure.js";
 import type { ContinuationRuntimeConfig } from "../continuation/types.js";
@@ -131,7 +131,8 @@ const defaultPostCompactionDelegateDispatchDeps: PostCompactionDelegateDispatchD
   stagePostCompactionDelegate,
   releasePostCompactionDelegateToQueue: releaseStagedPostCompactionDelegateToQueue,
   drainPostCompactionDelegateDeliveries,
-  enqueuePostCompactionDelegateDelivery,
+  enqueuePostCompactionDelegateDelivery: (params) =>
+    enqueuePostCompactionDelegateDelivery(params, captureContinuationQueueContext()),
   enqueueSystemEvent,
   log: (message) => defaultRuntime.log(message),
   now: () => Date.now(),
@@ -342,9 +343,7 @@ export async function drainPostCompactionDelegateDeliveries(params: {
   deliveryDeps?: PostCompactionDelegateDeliveryDeps;
 }): Promise<void> {
   const entryIds = new Set(params.entryIds ?? []);
-  const queueContext = captureOpenClawStateWorkerContext({
-    env: params.stateDir ? { ...process.env, OPENCLAW_STATE_DIR: params.stateDir } : process.env,
-  });
+  const queueContext = captureContinuationQueueContext(params.stateDir);
   await drainPendingSessionDeliveries({
     drainKey: `post-compaction-delegate:${params.sessionKey ?? "all"}`,
     logLabel: "post-compaction delegate",
