@@ -18,6 +18,7 @@ import {
   removeSystemEvents,
 } from "../../infra/system-events.js";
 import { normalizeAgentId, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import { withContinuationOwner } from "./system-event-ownership.js";
 import {
   CONTINUATION_DELEGATE_FANOUT_MODES,
@@ -175,10 +176,16 @@ export async function enqueueContinuationReturnDeliveries(
       ...commonPayload,
       ...(recipientAuthority ? { recipientAuthority, awaitPromptAdoption: true } : {}),
     };
-    const deliveryId = await deps.enqueueSessionDelivery(payload, params.stateDir);
+    const deliveryId = await deps.enqueueSessionDelivery(
+      payload,
+      captureContinuationQueueContext(params.stateDir),
+    );
     if (!recipientAuthorityCurrent()) {
       // Stale authority can never adopt this row; retire it now rather than leave it until replay.
-      await (deps.ackSessionDelivery ?? ackSessionDelivery)(deliveryId, params.stateDir);
+      await (deps.ackSessionDelivery ?? ackSessionDelivery)(
+        deliveryId,
+        captureContinuationQueueContext(params.stateDir),
+      );
       continue;
     }
 
@@ -213,7 +220,10 @@ export async function enqueueContinuationReturnDeliveries(
           event.sessionDeliveryAckId === deliveryId &&
           event.sessionDeliveryAckStateDir === params.stateDir,
       );
-      await (deps.ackSessionDelivery ?? ackSessionDelivery)(deliveryId, params.stateDir);
+      await (deps.ackSessionDelivery ?? ackSessionDelivery)(
+        deliveryId,
+        captureContinuationQueueContext(params.stateDir),
+      );
       continue;
     }
     if (params.wakeRecipients) {

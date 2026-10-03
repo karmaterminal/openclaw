@@ -35,6 +35,7 @@ import {
   toSessionPostCompactionDelegate,
 } from "../continuation/delegate-store-post-compaction.js";
 import { POST_COMPACTION_DELEGATE_TTL_MS } from "../continuation/post-compaction-staleness.js";
+import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
   deliverQueuedPostCompactionDelegate,
@@ -713,7 +714,9 @@ describe("post-compaction delivery: stale custody-released entries in a queue dr
         `Post-compaction delegate rejected as stale after ${POST_COMPACTION_DELEGATE_TTL_MS + 1}ms.`,
         "Post-compaction delegate rejected",
       );
-      expect(await loadPendingSessionDelivery(deliveryId, stateDir)).toBeNull();
+      expect(
+        await loadPendingSessionDelivery(deliveryId, captureContinuationQueueContext(stateDir)),
+      ).toBeNull();
       expect(collectEmittedText(harness)).not.toContain(SECRET_ATTACHMENT);
     });
   });

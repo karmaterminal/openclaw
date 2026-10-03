@@ -145,9 +145,9 @@ it("migrates a copied large v23 store without losing snapshots or rewriting tran
           env: state.env,
         });
       });
-      expect(database.prepare("PRAGMA user_version").get()).toEqual({ user_version: 24 });
+      expect(database.prepare("PRAGMA user_version").get()).toEqual({ user_version: 25 });
       expect(database.prepare("SELECT schema_version FROM schema_meta").get()).toEqual({
-        schema_version: 24,
+        schema_version: 25,
       });
       expect(transcriptRows(database)).toEqual(beforeTranscript);
       const reader = { agentId: "main", db: database };
@@ -250,7 +250,7 @@ it("rolls back extracted snapshots and version markers when schema publication i
       };
       let reachedPublication = false;
       database.setAuthorizer((action, name, value) => {
-        if (action === constants.SQLITE_PRAGMA && name === "user_version" && value === "24") {
+        if (action === constants.SQLITE_PRAGMA && name === "user_version" && value === "25") {
           reachedPublication = true;
           return constants.SQLITE_DENY;
         }

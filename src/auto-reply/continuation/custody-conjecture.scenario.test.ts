@@ -41,6 +41,7 @@ vi.mock("../reply/get-reply.js", async (importOriginal) => ({
 }));
 
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 
 const OWNER = "agent:main:discord:channel:custody-conjecture";
 const OWNER_SESSION_ID = "custody-conjecture-owner-session";
@@ -146,9 +147,9 @@ async function bootGateway() {
   }
 
   async function pendingOwnerDeliveries() {
-    return (await deliveryStorage.loadPendingSessionDeliveries()).filter(
-      (entry) => entry.sessionKey === OWNER,
-    );
+    return (
+      await deliveryStorage.loadPendingSessionDeliveries(captureContinuationQueueContext())
+    ).filter((entry) => entry.sessionKey === OWNER);
   }
 
   function followupRun(runId: string) {

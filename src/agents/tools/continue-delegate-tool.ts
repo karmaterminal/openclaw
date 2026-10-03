@@ -7,10 +7,7 @@ import {
 import { getContinuationDelegateQueueDepths } from "../../auto-reply/continuation/delegate-flow-store.js";
 import { stagePostCompactionCustodyDelegate } from "../../auto-reply/continuation/delegate-store-post-compaction.js";
 import { enqueuePendingDelegate } from "../../auto-reply/continuation/delegate-store.js";
-import {
-  peekContinueDelegatesScheduledThisTurn,
-  recordContinueDelegateScheduledThisTurn,
-} from "../../auto-reply/continuation/delegate-turn-admission.js";
+import { reserveContinueDelegateTurnSlot } from "../../auto-reply/continuation/delegate-turn-admission.js";
 import {
   CONTINUATION_DELEGATE_FANOUT_MODES,
   hasCrossSessionDelegateTargeting,
@@ -365,14 +362,15 @@ export function createContinueDelegateTool(opts: {
         );
       }
 
-      // Check per-turn delegate limit. The budget is keyed by session and reset
-      // at each assistant-turn boundary (delegate-turn-admission), so a later
-      // turn in the same run gets a fresh cap instead of inheriting this turn's
-      // count. Durable queued depth is reported for visibility but does not
-      // consume this turn's admission budget.
+      // Reserve a per-turn delegate slot before any await so parallel calls in
+      // one tool batch cannot all pass the cap. The budget is keyed by session
+      // and reset at each provider-turn boundary (delegate-turn-admission), so
+      // a later turn in the same run gets a fresh cap. Durable queued depth is
+      // reported for visibility but does not consume this turn's budget.
       const maxPerTurn = continuationConfig.maxDelegatesPerTurn;
-      const delegatesThisTurn = peekContinueDelegatesScheduledThisTurn(sessionKey);
-      if (delegatesThisTurn >= maxPerTurn) {
+      const reservation = reserveContinueDelegateTurnSlot(sessionKey, maxPerTurn);
+      if (!reservation.admitted) {
+        const delegatesThisTurn = reservation.scheduled;
         const queueDepths = getContinuationDelegateQueueDepths(sessionKey);
         return jsonResult({
           status: "rejected",
@@ -387,72 +385,74 @@ export function createContinueDelegateTool(opts: {
           stagedPostCompactionDelegates: queueDepths.stagedPostCompaction,
         });
       }
+      const { slot } = reservation;
+      try {
+        if (isPostCompaction) {
+          const acceptedAt = Date.now();
+          const delegate: PendingContinuationDelegate = {
+            task,
+            mode: "post-compaction",
+            firstArmedAt: acceptedAt,
+            ...(opts.runId ? { originRunId: opts.runId } : {}),
+            ...attachmentFields,
+            ...targetingFields,
+            ...traceContextFields,
+            ...modelField,
+          };
+          await stagePostCompactionCustodyDelegate(sessionKey, {
+            ...delegate,
+            stagedAt: acceptedAt,
+          });
+          return jsonResult({
+            status: "queued-for-compaction",
+            mode: "post-compaction",
+            delegateIndex: slot.index,
+            delegatesThisTurn: slot.index,
+            ...(attachments ? { attachmentCount: attachments.length } : {}),
+            ...(attachAs ? { attachAs } : {}),
+            ...targetingFields,
+            ...modelField,
+            note:
+              "Delegate will fire when compaction occurs, not on a timer. " +
+              "The shard starts at the moment of compaction and returns to the post-compaction session. " +
+              "Chain tracking applies at dispatch time.",
+          });
+        }
 
-      if (isPostCompaction) {
-        const acceptedAt = Date.now();
+        log.debug(
+          `[continue_delegate:enqueue] session=${sessionKey} mode=${mode} delayMs=${delayMs} fanoutMode=${fanoutMode ?? "none"} targets=${targetSessionKeys?.length ?? (targetSessionKey ? 1 : 0)} task=${task.slice(0, 80)}`,
+        );
         const delegate: PendingContinuationDelegate = {
           task,
-          mode: "post-compaction",
-          firstArmedAt: acceptedAt,
+          delayMs,
           ...(opts.runId ? { originRunId: opts.runId } : {}),
+          ...(mode !== "normal" ? { mode } : {}),
           ...attachmentFields,
           ...targetingFields,
           ...traceContextFields,
           ...modelField,
         };
-        await stagePostCompactionCustodyDelegate(sessionKey, {
-          ...delegate,
-          stagedAt: acceptedAt,
-        });
-        const scheduledThisTurn = recordContinueDelegateScheduledThisTurn(sessionKey);
+        await enqueuePendingDelegate(sessionKey, delegate);
 
         return jsonResult({
-          status: "queued-for-compaction",
-          mode: "post-compaction",
-          delegateIndex: scheduledThisTurn,
-          delegatesThisTurn: scheduledThisTurn,
+          status: "scheduled",
+          mode: modeRaw || "normal",
+          delaySeconds: delayMs ? delayMs / 1000 : 0,
+          delegateIndex: slot.index,
+          delegatesThisTurn: slot.index,
           ...(attachments ? { attachmentCount: attachments.length } : {}),
           ...(attachAs ? { attachAs } : {}),
           ...targetingFields,
           ...modelField,
           note:
-            "Delegate will fire when compaction occurs, not on a timer. " +
-            "The shard starts at the moment of compaction and returns to the post-compaction session. " +
-            "Chain tracking applies at dispatch time.",
+            "Delegate will be dispatched after your response completes. " +
+            "Chain tracking (cost cap, depth limit) applies.",
         });
+      } catch (error) {
+        // Not durably accepted: give the slot back so a sibling call can use it.
+        slot.release();
+        throw error;
       }
-
-      log.debug(
-        `[continue_delegate:enqueue] session=${sessionKey} mode=${mode} delayMs=${delayMs} fanoutMode=${fanoutMode ?? "none"} targets=${targetSessionKeys?.length ?? (targetSessionKey ? 1 : 0)} task=${task.slice(0, 80)}`,
-      );
-      const delegate: PendingContinuationDelegate = {
-        task,
-        delayMs,
-        ...(opts.runId ? { originRunId: opts.runId } : {}),
-        ...(mode !== "normal" ? { mode } : {}),
-        ...attachmentFields,
-        ...targetingFields,
-        ...traceContextFields,
-        ...modelField,
-      };
-      await enqueuePendingDelegate(sessionKey, delegate);
-
-      const dispatchIndex = recordContinueDelegateScheduledThisTurn(sessionKey);
-
-      return jsonResult({
-        status: "scheduled",
-        mode: modeRaw || "normal",
-        delaySeconds: delayMs ? delayMs / 1000 : 0,
-        delegateIndex: dispatchIndex,
-        delegatesThisTurn: dispatchIndex,
-        ...(attachments ? { attachmentCount: attachments.length } : {}),
-        ...(attachAs ? { attachAs } : {}),
-        ...targetingFields,
-        ...modelField,
-        note:
-          "Delegate will be dispatched after your response completes. " +
-          "Chain tracking (cost cap, depth limit) applies.",
-      });
     },
   };
 }

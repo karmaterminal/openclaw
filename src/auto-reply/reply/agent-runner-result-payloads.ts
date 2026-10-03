@@ -50,7 +50,6 @@ import type { AccountedAgentTurn } from "./agent-runner-result-accounting.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
 import { emitReplyAgentUsageDiagnostic } from "./agent-runner-usage-diagnostic.js";
 import { resolveResponseUsageLine } from "./agent-runner-usage-line.js";
-import { hasBlockReplyDeliveryCustody } from "./block-reply-delivery.js";
 import type { PendingContinuationSettlement } from "./get-reply.types.js";
 import { attachMcpAppChannelAction, attachMcpConnectChannelAction } from "./mcp-channel-actions.js";
 import { normalizeReplyPayload } from "./normalize-reply.js";
@@ -217,16 +216,9 @@ export async function prepareReplyAgentPayloads(state: {
           committedMessagingToolSourceReplyDelivery ||
           runResult.didSendDeterministicApprovalPrompt === true,
       });
-  const retryBlockedSourceReply =
-    blockReplyPipeline?.hasRetryBlockedTerminalDelivery?.() === true ||
-    directBlockDeliveries?.some(
-      (delivery) =>
-        isReplyPayloadTerminalContent(delivery.payload) && hasBlockReplyDeliveryCustody(delivery),
-    ) === true;
-  const emptyInteractiveReplyPayload =
-    terminalFailurePayload || retryBlockedSourceReply
-      ? undefined
-      : buildEmptyInteractiveReplyPayload({ completion });
+  const emptyInteractiveReplyPayload = terminalFailurePayload
+    ? undefined
+    : buildEmptyInteractiveReplyPayload({ completion });
   const buildStrandedRetryMissingDeliveryDiagnostic = (): ReplyPayload | undefined => {
     if (!sessionKey || !storePath || followupRun.strandedReplyRetry !== true) {
       return undefined;

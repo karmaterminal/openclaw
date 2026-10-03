@@ -164,6 +164,7 @@ import { CONTINUATION_SPAWN_INTERRUPTED_NOTICE_TAG } from "./custody/spawn-inter
 import { recoverPendingContinuationDelegates } from "./delegate-dispatch-recovery.js";
 import { resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import { enqueuePendingDelegate, resetDelegateStoreForTests } from "./delegate-store.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import { hasLiveContinuationTimerRefs, resetContinuationStateForTests } from "./state.js";
 
 useContinuationCustodyTestState();
@@ -226,7 +227,7 @@ function admitChildRun(params: { childRunId: string; ownerSessionKey: string; re
 }
 
 async function interruptedNoticeRows(sessionKey: string) {
-  return (await loadPendingSessionDeliveries()).filter(
+  return (await loadPendingSessionDeliveries(captureContinuationQueueContext())).filter(
     (entry) =>
       entry.sessionKey === sessionKey &&
       entry.kind === "systemEvent" &&

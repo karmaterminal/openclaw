@@ -19,6 +19,7 @@ import {
 import { loadPendingSessionDeliveries } from "../infra/session-delivery-queue-storage.js";
 import { peekSystemEvents } from "../infra/system-events.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
+import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
 import { rpcReq, writeSessionStore } from "./test-helpers.js";
 import {
@@ -239,7 +240,7 @@ test("sessions.compact preserves canonical route fields when releasing post-comp
 
   expectMainCompactionResult(compacted, true);
   expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(0);
-  const queued = await loadPendingSessionDeliveries(process.env.OPENCLAW_STATE_DIR);
+  const queued = await loadPendingSessionDeliveries(captureOpenClawStateWorkerContext());
   const postCompaction = queued.find(
     (entry) =>
       entry.kind === "postCompactionDelegate" &&

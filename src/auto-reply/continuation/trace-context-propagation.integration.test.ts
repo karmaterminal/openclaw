@@ -44,6 +44,7 @@ import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-wo
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import { useContinuationCustodyTestState } from "./custody/custody.test-support.js";
 import { consumePendingDelegates, resetDelegateStoreForTests } from "./delegate-store.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import { enqueueContinuationReturnDeliveries } from "./targeting.js";
 
 useContinuationCustodyTestState();
@@ -270,7 +271,7 @@ describe("continuation trace-context propagation integration", () => {
           text: "[continuation:enrichment-return] replayed after restart",
           traceparent: carriedTraceparent,
         },
-        tempDir,
+        captureContinuationQueueContext(tempDir),
       );
       const replayed: QueuedSessionDelivery[] = [];
       const summary = await recoverPendingSessionDeliveries({
