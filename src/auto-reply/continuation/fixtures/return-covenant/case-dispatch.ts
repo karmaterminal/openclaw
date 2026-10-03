@@ -14,6 +14,7 @@ import {
 } from "../../delegate-flow-store.js";
 import { claimStagedPostCompactionDelegates } from "../../delegate-store-post-compaction.js";
 import { consumePendingDelegates, markPendingDelegateSpawnAccepted } from "../../delegate-store.js";
+import { captureContinuationQueueContext } from "../../queue-context.js";
 import {
   continuationRecipientAuthorityMap,
   parseContinuationRecipientAuthorityBinding,
@@ -182,7 +183,11 @@ export async function enqueueHeldReturnCovenantDelivery(params: {
     throw new Error("held result delivery id is missing");
   }
   state.deliveryId = deliveryId;
-  await deferSessionDelivery(deliveryId, HOLD_WINDOW_MS, stateDirectory(context));
+  await deferSessionDelivery(
+    deliveryId,
+    HOLD_WINDOW_MS,
+    captureContinuationQueueContext(stateDirectory(context)),
+  );
   const keepSilentEvent =
     state.casePlan.kind === "allowed" && state.casePlan.returnMode === "silent";
   const removed = removeSystemEvents(

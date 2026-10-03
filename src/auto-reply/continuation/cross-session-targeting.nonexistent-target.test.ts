@@ -13,6 +13,7 @@ import {
 } from "../../infra/system-events.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import { drainFormattedSystemEvents } from "../reply/session-system-events.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import {
   hasCrossSessionDelegateTargeting,
   normalizeContinuationTargetKey,
@@ -295,7 +296,9 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
 
       expect(result).toMatchObject({ enqueued: 1, delivered: 1 });
 
-      const persistedEntries = await loadPendingSessionDeliveries(stateDir);
+      const persistedEntries = await loadPendingSessionDeliveries(
+        captureContinuationQueueContext(stateDir),
+      );
       expect(persistedEntries).toHaveLength(1);
 
       const persisted = expectDefined(persistedEntries.at(0), "persisted delivery");

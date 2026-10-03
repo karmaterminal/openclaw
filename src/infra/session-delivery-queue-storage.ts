@@ -12,7 +12,6 @@ import { resolveAgentIdFromSessionKey } from "../routing/session-key.js";
 import { parseCronRunScopeSuffix } from "../sessions/session-key-utils.js";
 import { beginSessionWorkAdmission } from "../sessions/session-lifecycle-admission.js";
 import { formatContinuationChildRunId } from "../shared/continuation-run-key.js";
-import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { runOpenClawStateWorkerOperation } from "../state/openclaw-state-worker-store.js";
 import { sha256Hex } from "./crypto-digest.js";
@@ -166,31 +165,6 @@ export {
 };
 
 export type { QueuedSessionDelivery, QueuedSessionDeliveryPayload };
-
-type SessionDeliveryQueueHandle = OpenClawStateWorkerContext | string | undefined;
-
-function isWorkerContext(value: SessionDeliveryQueueHandle): value is OpenClawStateWorkerContext {
-  return typeof value === "object" && value !== null && "admission" in value;
-}
-
-function resolveQueueContext(handle: SessionDeliveryQueueHandle): OpenClawStateWorkerContext {
-  if (isWorkerContext(handle)) {
-    return handle;
-  }
-  return captureOpenClawStateWorkerContext({
-    env: handle ? { ...process.env, OPENCLAW_STATE_DIR: handle } : process.env,
-  });
-}
-
-function resolveStateDir(handle: SessionDeliveryQueueHandle): string | undefined {
-  if (typeof handle === "string") {
-    return handle;
-  }
-  if (isWorkerContext(handle)) {
-    return handle.environment.OPENCLAW_STATE_DIR;
-  }
-  return undefined;
-}
 
 function executeSessionDelivery<Key extends keyof SessionDeliveryWorkerOperations>(
   context: OpenClawStateWorkerContext,
@@ -386,9 +360,9 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
 /** Enqueue a session delivery and return its durable id. */
 export async function enqueueSessionDelivery(
   params: QueuedSessionDeliveryPayload,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<string> {
-  return (await enqueueSessionDeliveryWithStatus(params, handle)).id;
+  return (await enqueueSessionDeliveryWithStatus(params, context)).id;
 }
 
 /**
@@ -429,10 +403,9 @@ export function prepareSessionDeliveryEnqueue(
 
 export async function enqueueSessionDeliveryWithStatus(
   params: QueuedSessionDeliveryPayload,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<SessionDeliveryEnqueueResult> {
   const { id, bound } = prepareSessionDeliveryEnqueue(params);
-  const context = resolveQueueContext(handle);
   const { status: current } = await withSessionDeliveryEnqueueAdmission(
     params,
     context,
@@ -469,14 +442,14 @@ export async function enqueuePostCompactionDelegateDelivery(
     deliveryContext?: SessionDeliveryContext;
     idempotencyKey?: string;
   },
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<string> {
   return await enqueueSessionDelivery(
     buildPostCompactionDelegateDeliveryPayload({
       ...params,
       childRunId: formatContinuationChildRunId(generateSecureUuid(), 1),
     }),
-    handle,
+    context,
   );
 }
 
@@ -484,9 +457,8 @@ export async function enqueuePostCompactionDelegateDelivery(
 export async function enqueueClaimedSessionDelivery(
   params: QueuedSessionDeliveryPayload,
   initialAttemptLeaseMs: number,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<SessionDeliveryWorkerOperations["sessionDelivery.enqueueClaimed"]["output"]> {
-  const context = resolveQueueContext(handle);
   const entry = prepareClaimedSessionDelivery(params, initialAttemptLeaseMs);
   const input = prepareEntry(entry, "insert");
   return withSessionDeliveryEnqueueAdmission(entry, context, (assertCurrent) =>
@@ -506,9 +478,9 @@ export async function enqueueClaimedSessionDelivery(
 /** Release the initial-attempt lease so runtime recovery can retry immediately. */
 export async function releaseSessionDeliveryClaim(
   id: string,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<void> {
-  return executeSessionDelivery(resolveQueueContext(handle), {
+  return executeSessionDelivery(context, {
     type: "sessionDelivery.releaseClaim",
     input: { id },
   });
@@ -518,9 +490,9 @@ export async function releaseSessionDeliveryClaim(
 export async function deferSessionDelivery(
   id: string,
   delayMs: number,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<void> {
-  return executeSessionDelivery(resolveQueueContext(handle), {
+  return executeSessionDelivery(context, {
     type: "sessionDelivery.defer",
     input: { id, delayMs },
   });
@@ -529,10 +501,10 @@ export async function deferSessionDelivery(
 /** Advance only after a completed agent turn proves a fresh run is safe. */
 export async function advanceSessionDeliveryAgentRun(
   id: string,
-  updates?: SessionDeliveryAgentRunUpdate,
-  handle?: SessionDeliveryQueueHandle,
+  updates: SessionDeliveryAgentRunUpdate | undefined,
+  context: OpenClawStateWorkerContext,
 ): Promise<void> {
-  return executeSessionDelivery(resolveQueueContext(handle), {
+  return executeSessionDelivery(context, {
     type: "sessionDelivery.advanceAgentRun",
     input: { id, updates },
   });
@@ -543,9 +515,9 @@ export async function mergeSessionDeliveryPreparedMediaBlocks(
   id: string,
   mediaUrl: string,
   blocks: Array<Record<string, unknown>>,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<Array<Record<string, unknown>>> {
-  const result = await executeSessionDelivery(resolveQueueContext(handle), {
+  const result = await executeSessionDelivery(context, {
     type: "sessionDelivery.mergePreparedMedia",
     input: { id, mediaUrl, blocksJson: JSON.stringify(blocks) },
   });
@@ -555,10 +527,10 @@ export async function mergeSessionDeliveryPreparedMediaBlocks(
 /** Mark an agent turn before it can commit transcript or channel side effects. */
 export async function markSessionDeliveryAttemptStarted(
   entry: QueuedSessionDelivery,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<void> {
   try {
-    await executeSessionDelivery(resolveQueueContext(handle), {
+    await executeSessionDelivery(context, {
       type: "sessionDelivery.markAttemptStarted",
       input: prepareEntry(
         { ...entry, deliveryStartedAt: entry.deliveryStartedAt ?? Date.now() },
@@ -577,11 +549,11 @@ export async function markSessionDeliveryAttemptStarted(
 export async function markSessionDeliverySettlement(
   entry: QueuedSessionDelivery,
   outcome: SessionDeliverySettledOutcome,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<void> {
   const settledEntry = scrubTerminalQueuedAttachments(entry);
   try {
-    await executeSessionDelivery(resolveQueueContext(handle), {
+    await executeSessionDelivery(context, {
       type: "sessionDelivery.markSettlement",
       input: prepareEntry(
         {
@@ -602,10 +574,10 @@ export async function markSessionDeliverySettlement(
 /** Replace a settled pending row with its completed idempotency tombstone. */
 export async function completeSessionDelivery(
   id: string,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<void> {
   try {
-    await executeSessionDelivery(resolveQueueContext(handle), {
+    await executeSessionDelivery(context, {
       type: "sessionDelivery.complete",
       input: { id },
     });
@@ -617,28 +589,28 @@ export async function completeSessionDelivery(
 /** Acknowledge a delivered row and retain its completed idempotency tombstone. */
 export async function ackSessionDelivery(
   id: string,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<void> {
-  const entry = await loadPendingSessionDelivery(id, handle);
-  const stateDir = resolveStateDir(handle);
+  const entry = await loadPendingSessionDelivery(id, context);
+  const stateDir = context.environment.OPENCLAW_STATE_DIR;
   if (!entry) {
     if (getDeliveryQueueEntryStatus(SESSION_DELIVERY_QUEUE_NAME, id, stateDir) === "completed") {
       return;
     }
     throw new SessionDeliveryAcknowledgementFinalizeError(id);
   }
-  await markSessionDeliverySettlement(entry, "recovered", handle);
-  await completeSessionDelivery(id, handle);
+  await markSessionDeliverySettlement(entry, "recovered", context);
+  await completeSessionDelivery(id, context);
 }
 
 /** Record a failed delivery attempt and increment retry metadata. */
 export async function failSessionDelivery(
   id: string,
   error: string,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
   options?: { releaseAttemptOwnership?: boolean },
 ): Promise<void> {
-  await executeSessionDelivery(resolveQueueContext(handle), {
+  await executeSessionDelivery(context, {
     type: "sessionDelivery.fail",
     input: { id, error, ...options },
   });
@@ -647,9 +619,8 @@ export async function failSessionDelivery(
 /** Load one pending session delivery by durable id. */
 export async function loadPendingSessionDelivery(
   id: string,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<QueuedSessionDelivery | null> {
-  const context = resolveQueueContext(handle);
   const result = await executeSessionDelivery(context, {
     type: "sessionDelivery.load",
     input: { id },
@@ -669,9 +640,8 @@ export async function loadPendingSessionDelivery(
 
 /** Load all pending session deliveries in retry order. */
 export async function loadPendingSessionDeliveries(
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<QueuedSessionDelivery[]> {
-  const context = resolveQueueContext(handle);
   const results = await executeSessionDelivery(context, {
     type: "sessionDelivery.list",
     input: undefined,
@@ -693,25 +663,7 @@ export async function loadPendingSessionDeliveries(
 /** Move an exhausted session delivery out of the pending queue. */
 export async function moveSessionDeliveryToFailed(
   id: string,
-  handle?: SessionDeliveryQueueHandle,
+  context: OpenClawStateWorkerContext,
 ): Promise<void> {
-  const context = resolveQueueContext(handle);
-  try {
-    await executeSessionDelivery(context, {
-      type: "sessionDelivery.moveToFailed",
-      input: { id },
-    });
-  } catch (error) {
-    try {
-      if (
-        getDeliveryQueueEntryStatus(SESSION_DELIVERY_QUEUE_NAME, id, resolveStateDir(handle)) ===
-        "failed"
-      ) {
-        return;
-      }
-    } catch {
-      // Preserve the original transition failure when durable state is unreadable.
-    }
-    throw error;
-  }
+  return executeSessionDelivery(context, { type: "sessionDelivery.moveToFailed", input: { id } });
 }

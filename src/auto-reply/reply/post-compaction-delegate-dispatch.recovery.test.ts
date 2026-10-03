@@ -38,6 +38,7 @@ import {
   stagePostCompactionCustodyDelegate,
   toSessionPostCompactionDelegate,
 } from "../continuation/delegate-store-post-compaction.js";
+import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
   deliverQueuedPostCompactionDelegate,
@@ -1127,7 +1128,10 @@ describe("post-compaction queue drain over custody-released entries", () => {
       });
 
       expect(spawnSubagentDirect).toHaveBeenCalledTimes(1);
-      const mainEntry = await loadPendingSessionDelivery(mainId, stateDir);
+      const mainEntry = await loadPendingSessionDelivery(
+        mainId,
+        captureContinuationQueueContext(stateDir),
+      );
       expect(mainEntry).toMatchObject({
         sessionKey: "main",
         retryCount: 1,
@@ -1135,7 +1139,9 @@ describe("post-compaction queue drain over custody-released entries", () => {
       });
       // The never-dispatched failure released attempt ownership for the retry.
       expect(mainEntry).not.toHaveProperty("deliveryStartedAt");
-      expect(await loadPendingSessionDelivery(otherId, stateDir)).toMatchObject({
+      expect(
+        await loadPendingSessionDelivery(otherId, captureContinuationQueueContext(stateDir)),
+      ).toMatchObject({
         sessionKey: "other",
         retryCount: 0,
       });

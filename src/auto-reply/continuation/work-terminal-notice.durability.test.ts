@@ -37,6 +37,7 @@ import {
   readCustodyRecordForTest,
   useContinuationCustodyTestState,
 } from "./custody/custody.test-support.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import { listPendingTerminalNoticeWork, markPendingWorkFailed } from "./work-store.js";
 import { enqueuePendingWork } from "./work-store.test-support.js";
 import {
@@ -242,7 +243,7 @@ async function runProductionDeliveryRecovery(stateDir: string): Promise<void> {
 }
 
 async function pendingDeliveryTexts(stateDir: string): Promise<string[]> {
-  const pending = await loadPendingSessionDeliveries(stateDir);
+  const pending = await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir));
   return pending.map((entry) => (entry.kind === "systemEvent" ? entry.text : entry.kind));
 }
 
@@ -299,7 +300,7 @@ describe("continuation_work terminal notice durability", () => {
         prepared.blocks.some((block) => block.text.includes("continue_work permanently failed")),
       ).toBe(true);
       expect(prepared.managedDeliveries.map((delivery) => delivery.id)).toEqual([
-        (await loadPendingSessionDeliveries(stateDir))[0]?.id,
+        (await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir)))[0]?.id,
       ]);
       // Preparation must NOT have completed the durable row.
       expect(await pendingDeliveryTexts(stateDir)).toEqual([
@@ -328,7 +329,9 @@ describe("continuation_work terminal notice durability", () => {
       await adoptPreparedTurn(prepared);
 
       // Adoption is what settles the row.
-      expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir))).toEqual(
+        [],
+      );
 
       // After adoption, restart + recovery must produce NO further outcome, and
       // the completed tombstone must reject a re-enqueue of the same notice.
@@ -337,7 +340,9 @@ describe("continuation_work terminal notice durability", () => {
       expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
 
       expect(await drainPendingTerminalNotices(realDeps(stateDir))).toBe(0);
-      expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir))).toEqual(
+        [],
+      );
     });
   });
 
@@ -348,7 +353,9 @@ describe("continuation_work terminal notice durability", () => {
       await simulateGatewayRestart();
       await runProductionDeliveryRecovery(stateDir);
       await adoptPreparedTurn(await preparePrompt(stateDir));
-      expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir))).toEqual(
+        [],
+      );
 
       // A stale obligation is observed after the row was already settled.
       await restorePendingNoticeFlag();
@@ -374,7 +381,9 @@ describe("continuation_work terminal notice durability", () => {
       expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
       expect(scheduled).toEqual([]);
       expect(wakes).toEqual([]);
-      expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir))).toEqual(
+        [],
+      );
     });
   });
 
@@ -403,12 +412,16 @@ describe("continuation_work terminal notice durability", () => {
         // First handoff fails; the obligation must survive and a live retry arm.
         expect(await deliverPendingTerminalNoticeWithRetry(owed, deps)).toBe(false);
         expect(await listPendingTerminalNoticeWork()).toHaveLength(1);
-        expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
+        expect(
+          await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir)),
+        ).toEqual([]);
 
         // No gateway restart: the armed retry completes the handoff.
         await vi.advanceTimersByTimeAsync(TERMINAL_NOTICE_RETRY_DELAYS_MS[0]);
         await vi.waitFor(async () => {
-          expect(await loadPendingSessionDeliveries(stateDir)).toHaveLength(1);
+          expect(
+            await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir)),
+          ).toHaveLength(1);
         });
         expect(attempts).toBe(2);
         expect(await listPendingTerminalNoticeWork()).toEqual([]);
@@ -433,7 +446,9 @@ describe("continuation_work terminal notice durability", () => {
         status: "failed",
         terminalNoticePending: "retry-exhausted",
       });
-      expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir))).toEqual(
+        [],
+      );
 
       expect(await deliverPendingTerminalNotice(owed, realDeps(stateDir))).toBe(true);
 
@@ -441,7 +456,7 @@ describe("continuation_work terminal notice durability", () => {
       const settled = await readCustodyRecordForTest(recordId);
       expect(settled?.status).toBe("failed");
       expect(settled?.terminalNoticePending).toBeUndefined();
-      const rows = await loadPendingSessionDeliveries(stateDir);
+      const rows = await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir));
       expect(rows).toEqual([
         expect.objectContaining({
           kind: "systemEvent",
@@ -454,7 +469,9 @@ describe("continuation_work terminal notice durability", () => {
       // A second deliver of the same obligation and a full drain add nothing.
       expect(await deliverPendingTerminalNotice(owed, realDeps(stateDir))).toBe(false);
       expect(await drainPendingTerminalNotices(realDeps(stateDir))).toBe(0);
-      expect(await loadPendingSessionDeliveries(stateDir)).toEqual(rows);
+      expect(await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir))).toEqual(
+        rows,
+      );
       expect((await readCustodyRecordForTest(recordId))?.revision).toBe(settled?.revision);
     });
   });
@@ -495,7 +512,9 @@ describe("continuation_work terminal notice durability", () => {
 
       // Startup scans the delivery queue BEFORE continuation recovery runs, so
       // at scan time this notice is flag-only with no queue row to arm.
-      expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir))).toEqual(
+        [],
+      );
       expect(await listPendingTerminalNoticeWork()).toHaveLength(1);
 
       const scheduled: string[] = [];
@@ -512,7 +531,9 @@ describe("continuation_work terminal notice durability", () => {
       });
 
       expect(handed).toBe(1);
-      const [queued] = await loadPendingSessionDeliveries(stateDir);
+      const [queued] = await loadPendingSessionDeliveries(
+        captureContinuationQueueContext(stateDir),
+      );
       // The row created after the scan is actively armed and its target woken.
       expect(scheduled).toEqual([queued?.id]);
       expect(wakes).toHaveLength(1);
@@ -533,7 +554,9 @@ describe("continuation_work terminal notice durability", () => {
       expect(await drainPendingTerminalNotices(deps)).toBe(0);
 
       expect(await listPendingTerminalNoticeWork()).toEqual([]);
-      expect(await loadPendingSessionDeliveries(stateDir)).toHaveLength(1);
+      expect(
+        await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir)),
+      ).toHaveLength(1);
     });
   });
 
@@ -553,7 +576,9 @@ describe("continuation_work terminal notice durability", () => {
       await persistAdoptedTurnWithoutQueueAck(stateDir, deliveryIds);
       await simulateGatewayRestart();
       await runProductionDeliveryRecovery(stateDir);
-      expect(await loadPendingSessionDeliveries(stateDir)).toHaveLength(1);
+      expect(
+        await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir)),
+      ).toHaveLength(1);
 
       // Preparation must recognise the already-adopted id: settle it, and keep
       // it out of the prompt rather than injecting the outcome a second time.
@@ -562,7 +587,9 @@ describe("continuation_work terminal notice durability", () => {
         replay.blocks.some((block) => block.text.includes("continue_work permanently failed")),
       ).toBe(false);
       expect(replay.managedDeliveries).toEqual([]);
-      expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir))).toEqual(
+        [],
+      );
     });
   });
 
@@ -618,7 +645,9 @@ describe("continuation_work terminal notice durability", () => {
 
         // The bounded retry finds nothing owed and never adds a second row,
         // but arms delivery for the row the lost-reply settle committed.
-        const [committedRow] = await loadPendingSessionDeliveries(stateDir);
+        const [committedRow] = await loadPendingSessionDeliveries(
+          captureContinuationQueueContext(stateDir),
+        );
         await vi.advanceTimersByTimeAsync(TERMINAL_NOTICE_RETRY_DELAYS_MS[0]);
         await vi.waitFor(() => {
           expect(scheduled).toEqual([committedRow?.id]);

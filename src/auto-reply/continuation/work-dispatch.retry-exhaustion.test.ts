@@ -353,6 +353,7 @@ import {
   enqueuePendingDelegate,
   pendingDelegateCount,
 } from "./delegate-store.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
 import {
   describeWorkTransition,
@@ -589,7 +590,7 @@ describe("continuation_work transient-error retry exhaustion", () => {
 
   /** Terminal-notice rows in the real durable session-delivery queue. */
   async function terminalNoticeRows() {
-    return (await loadPendingSessionDeliveries()).filter((entry) =>
+    return (await loadPendingSessionDeliveries(captureContinuationQueueContext())).filter((entry) =>
       entry.idempotencyKey?.startsWith("continuation-work-terminal-notice:"),
     );
   }

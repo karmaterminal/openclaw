@@ -6,6 +6,7 @@ import { toErrorObject } from "../../infra/errors.js";
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { consumeSelectedSystemEventEntries, type SystemEvent } from "../../infra/system-events.js";
+import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 
 type PreparedAuthorityScope = { agentId: string; sessionKey: string; storePath: string };
 type PreparedAuthorityBinding = {
@@ -108,7 +109,7 @@ export async function settleStaleSystemEventAuthority(params: {
   if (params.event.sessionDeliveryAckId) {
     await ackSessionDelivery(
       params.event.sessionDeliveryAckId,
-      params.event.sessionDeliveryAckStateDir,
+      captureContinuationQueueContext(params.event.sessionDeliveryAckStateDir),
     );
   }
   // Resolved here rather than at each call site so a third caller cannot forget:

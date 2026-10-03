@@ -209,6 +209,7 @@ import {
   stagedPostCompactionDelegateCount,
   toSessionPostCompactionDelegate,
 } from "./delegate-store-post-compaction.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import { cancelSessionContinuations } from "./session-reset.js";
 import { resetContinuationStateForTests } from "./state.js";
 
@@ -237,13 +238,13 @@ async function acceptedChildOf(flowId: string): Promise<unknown> {
 }
 
 async function pendingPostCompactionEntries(sessionKey: string) {
-  return (await loadPendingSessionDeliveries()).flatMap((entry) =>
+  return (await loadPendingSessionDeliveries(captureContinuationQueueContext())).flatMap((entry) =>
     entry.kind === "postCompactionDelegate" && entry.sessionKey === sessionKey ? [entry] : [],
   );
 }
 
 async function interruptedNoticeRows(sessionKey: string): Promise<string[]> {
-  return (await loadPendingSessionDeliveries()).flatMap((entry) =>
+  return (await loadPendingSessionDeliveries(captureContinuationQueueContext())).flatMap((entry) =>
     entry.kind === "systemEvent" &&
     entry.sessionKey === sessionKey &&
     entry.text.includes(INTERRUPTED_NOTICE)

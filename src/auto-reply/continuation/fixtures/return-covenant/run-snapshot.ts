@@ -4,6 +4,7 @@ import { z } from "zod";
 import { loadSessionEntry } from "../../../../config/sessions/session-accessor.js";
 import { loadPendingSessionDelivery } from "../../../../infra/session-delivery-queue-storage.js";
 import { decodeDelegateFlow, getDelegateRecord } from "../../delegate-flow-store.js";
+import { captureContinuationQueueContext } from "../../queue-context.js";
 import { returnCovenantAuthorityFromDelegate } from "./case-dispatch.js";
 import type { ReturnCovenantCaseState, ReturnCovenantFixtureContext } from "./case-state.js";
 import type { ReturnCovenantDatabaseProfilesSnapshot } from "./database.js";
@@ -113,7 +114,10 @@ export async function restoreReturnCovenantActiveState(params: {
   }
   if (
     !snapshot.deliveryId ||
-    !(await loadPendingSessionDelivery(snapshot.deliveryId, stateDirectory(context)))
+    !(await loadPendingSessionDelivery(
+      snapshot.deliveryId,
+      captureContinuationQueueContext(stateDirectory(context)),
+    ))
   ) {
     throw new Error("return-covenant restart did not recover its held queue delivery");
   }

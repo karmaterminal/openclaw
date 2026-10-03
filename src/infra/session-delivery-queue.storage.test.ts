@@ -32,7 +32,7 @@ import { withSessionDeliveryQueue } from "./session-delivery-queue.test-helpers.
 
 describe("session-delivery queue storage", () => {
   it("dedupes entries when an idempotency key is reused", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const firstId = await enqueueSessionDelivery(
         {
           kind: "agentTurn",
@@ -41,7 +41,7 @@ describe("session-delivery queue storage", () => {
           messageId: "restart-sentinel:agent:main:main:agentTurn:123",
           idempotencyKey: "restart-sentinel:agent:main:main:agentTurn:123",
         },
-        tempDir,
+        queueContext,
       );
       const secondId = await enqueueSessionDelivery(
         {
@@ -51,16 +51,16 @@ describe("session-delivery queue storage", () => {
           messageId: "restart-sentinel:agent:main:main:agentTurn:123",
           idempotencyKey: "restart-sentinel:agent:main:main:agentTurn:123",
         },
-        tempDir,
+        queueContext,
       );
 
       expect(secondId).toBe(firstId);
-      expect(await loadPendingSessionDeliveries(tempDir)).toHaveLength(1);
+      expect(await loadPendingSessionDeliveries(queueContext)).toHaveLength(1);
     });
   });
 
   it("projects generic queue attachments to descriptor-only metadata before persistence", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const secret = "GENERIC_QUEUE_INLINE_SECRET";
       const widenedRef = {
         kind: "blob-sha256" as const,
@@ -84,7 +84,7 @@ describe("session-delivery queue storage", () => {
         },
       ];
       for (const payload of payloads) {
-        const id = await enqueueSessionDelivery(payload, tempDir);
+        const id = await enqueueSessionDelivery(payload, queueContext);
         const row = readSessionQueueRow(tempDir, id);
         expect(row?.entry_json).not.toContain(secret);
         expect(JSON.parse(row?.entry_json ?? "{}")).toMatchObject({
@@ -101,7 +101,7 @@ describe("session-delivery queue storage", () => {
   });
 
   it("scrubs widened generic attachment metadata during pending recovery", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const secret = "RECOVERED_GENERIC_QUEUE_SECRET";
       const id = await enqueueSessionDelivery(
         {
@@ -109,7 +109,7 @@ describe("session-delivery queue storage", () => {
           sessionKey: "agent:main:main",
           text: "recover descriptor metadata",
         },
-        tempDir,
+        queueContext,
       );
       rewriteSessionQueueEntry(tempDir, id, (entry) => {
         entry.attachments = [
@@ -133,7 +133,7 @@ describe("session-delivery queue storage", () => {
           WHERE queue_name = 'session' AND id = ?`,
       ).run(id);
 
-      await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toBeNull();
+      await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toBeNull();
       const row = readSessionQueueRow(tempDir, id);
       expect(row).toMatchObject({
         status: "failed",
@@ -149,7 +149,7 @@ describe("session-delivery queue storage", () => {
   });
 
   it("requires exact generic metadata kinds and strict generic payload shapes during recovery", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const corruptions = [
         {
           payload: {
@@ -185,10 +185,10 @@ describe("session-delivery queue storage", () => {
       ];
 
       for (const corruption of corruptions) {
-        const id = await enqueueSessionDelivery(corruption.payload, tempDir);
+        const id = await enqueueSessionDelivery(corruption.payload, queueContext);
         corruption.mutate(id);
 
-        await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toBeNull();
+        await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toBeNull();
         const row = readSessionQueueRow(tempDir, id);
         expect(row).toMatchObject({
           status: "failed",
@@ -200,7 +200,7 @@ describe("session-delivery queue storage", () => {
   });
 
   it("fails closed for untrusted trace context and malformed continuation triggers", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const id = await enqueueSessionDelivery(
         {
           kind: "agentTurn",
@@ -208,18 +208,18 @@ describe("session-delivery queue storage", () => {
           message: "untrusted metadata",
           messageId: "untrusted-metadata",
         },
-        tempDir,
+        queueContext,
       );
       rewriteSessionQueueEntry(tempDir, id, (entry) => {
         entry.traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
       });
-      await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toEqual(
+      await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toEqual(
         expect.not.objectContaining({ traceparent: expect.anything() }),
       );
       rewriteSessionQueueEntry(tempDir, id, (entry) => {
         entry.continuationTrigger = "operator-controlled";
       });
-      await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toBeNull();
+      await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toBeNull();
       expect(readSessionQueueRow(tempDir, id)).toMatchObject({
         status: "failed",
         last_error: "invalid generic session delivery payload: invalid shape",
@@ -228,7 +228,7 @@ describe("session-delivery queue storage", () => {
   });
 
   it("fails a managed delegate return whose durable receipt and projection disagree", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       await expect(
         enqueueSessionDelivery(
           {
@@ -264,14 +264,14 @@ describe("session-delivery queue storage", () => {
               },
             },
           },
-          tempDir,
+          queueContext,
         ),
       ).rejects.toThrow("invalid generic session delivery payload: invalid shape");
     });
   });
 
   it("grants one initial-attempt lease and releases it for recovery", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const payload = {
         kind: "agentTurn" as const,
         sessionKey: "agent:main:main",
@@ -279,24 +279,24 @@ describe("session-delivery queue storage", () => {
         messageId: "image:task-lease:agent-loop",
         idempotencyKey: "image:task-lease:agent-loop",
       };
-      const first = await enqueueClaimedSessionDelivery(payload, 60_000, tempDir);
-      const duplicate = await enqueueClaimedSessionDelivery(payload, 60_000, tempDir);
+      const first = await enqueueClaimedSessionDelivery(payload, 60_000, queueContext);
+      const duplicate = await enqueueClaimedSessionDelivery(payload, 60_000, queueContext);
 
       expect(first.claimed).toBe(true);
       expect(duplicate).toEqual({ id: first.id, claimed: false, status: "pending" });
-      expect((await loadPendingSessionDeliveries(tempDir))[0]?.availableAt).toBeGreaterThan(
+      expect((await loadPendingSessionDeliveries(queueContext))[0]?.availableAt).toBeGreaterThan(
         Date.now(),
       );
 
-      await releaseSessionDeliveryClaim(first.id, tempDir);
-      expect((await loadPendingSessionDeliveries(tempDir))[0]?.availableAt).toBeLessThanOrEqual(
-        Date.now(),
-      );
+      await releaseSessionDeliveryClaim(first.id, queueContext);
+      expect(
+        (await loadPendingSessionDeliveries(queueContext))[0]?.availableAt,
+      ).toBeLessThanOrEqual(Date.now());
     });
   });
 
   it("reports a dead-letter conflict instead of claiming it as pending", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const payload = {
         kind: "agentTurn" as const,
         sessionKey: "agent:main:main",
@@ -304,10 +304,10 @@ describe("session-delivery queue storage", () => {
         messageId: "image:task-dead-letter:agent-loop",
         idempotencyKey: "image:task-dead-letter:agent-loop",
       };
-      const first = await enqueueClaimedSessionDelivery(payload, 60_000, tempDir);
-      await moveSessionDeliveryToFailed(first.id, tempDir);
+      const first = await enqueueClaimedSessionDelivery(payload, 60_000, queueContext);
+      await moveSessionDeliveryToFailed(first.id, queueContext);
 
-      await expect(enqueueClaimedSessionDelivery(payload, 60_000, tempDir)).resolves.toEqual({
+      await expect(enqueueClaimedSessionDelivery(payload, 60_000, queueContext)).resolves.toEqual({
         id: first.id,
         claimed: false,
         status: "failed",
@@ -316,24 +316,24 @@ describe("session-delivery queue storage", () => {
   });
 
   it("lets an explicit enqueue replace a deleted ordinary failure", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const payload = {
         kind: "systemEvent" as const,
         sessionKey: "agent:main:main",
         text: "restart complete",
         idempotencyKey: "restart:revive-failed",
       };
-      const id = await enqueueSessionDelivery(payload, tempDir);
-      await moveSessionDeliveryToFailed(id, tempDir);
+      const id = await enqueueSessionDelivery(payload, queueContext);
+      await moveSessionDeliveryToFailed(id, queueContext);
 
-      expect(await enqueueSessionDelivery(payload, tempDir)).toBe(id);
+      expect(await enqueueSessionDelivery(payload, queueContext)).toBe(id);
       expect(readSessionQueueStatus(tempDir, id)).toBe("pending");
-      expect(await loadPendingSessionDeliveries(tempDir)).toHaveLength(1);
+      expect(await loadPendingSessionDeliveries(queueContext)).toHaveLength(1);
     });
   });
 
   it("never revives a failed permanent producer intent", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const payload = {
         kind: "systemEvent" as const,
         sessionKey: "agent:main:main",
@@ -341,17 +341,17 @@ describe("session-delivery queue storage", () => {
         idempotencyKey: "restart:permanent-failed",
         completionRetention: "permanent" as const,
       };
-      const id = await enqueueSessionDelivery(payload, tempDir);
-      await moveSessionDeliveryToFailed(id, tempDir);
+      const id = await enqueueSessionDelivery(payload, queueContext);
+      await moveSessionDeliveryToFailed(id, queueContext);
 
-      expect(await enqueueSessionDelivery(payload, tempDir)).toBe(id);
+      expect(await enqueueSessionDelivery(payload, queueContext)).toBe(id);
       expect(readSessionQueueStatus(tempDir, id)).toBe("failed");
-      expect(await loadPendingSessionDeliveries(tempDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
     });
   });
 
   it("reports a completed conflict after acknowledgement", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const payload = {
         kind: "agentTurn" as const,
         sessionKey: "agent:main:main",
@@ -359,40 +359,40 @@ describe("session-delivery queue storage", () => {
         messageId: "image:task-completed:agent-loop",
         idempotencyKey: "image:task-completed:agent-loop",
       };
-      const first = await enqueueClaimedSessionDelivery(payload, 60_000, tempDir);
+      const first = await enqueueClaimedSessionDelivery(payload, 60_000, queueContext);
       await settleSessionDelivery(first.id, tempDir);
 
-      expect(await enqueueSessionDelivery(payload, tempDir)).toBe(first.id);
+      expect(await enqueueSessionDelivery(payload, queueContext)).toBe(first.id);
       expect(readSessionQueueStatus(tempDir, first.id)).toBe("completed");
 
-      await expect(enqueueClaimedSessionDelivery(payload, 60_000, tempDir)).resolves.toEqual({
+      await expect(enqueueClaimedSessionDelivery(payload, 60_000, queueContext)).resolves.toEqual({
         id: first.id,
         claimed: false,
         status: "completed",
       });
-      expect(await loadPendingSessionDeliveries(tempDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
       expect(readSessionQueueStatus(tempDir, first.id)).toBe("completed");
     });
   });
 
   it("persists retry metadata and retains acked idempotency tombstones", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const id = await enqueueSessionDelivery(
         {
           kind: "systemEvent",
           sessionKey: "agent:main:main",
           text: "restart complete",
         },
-        tempDir,
+        queueContext,
       );
 
-      await failSessionDelivery(id, "dispatch failed", tempDir);
-      const [failedEntry] = await loadPendingSessionDeliveries(tempDir);
+      await failSessionDelivery(id, "dispatch failed", queueContext);
+      const [failedEntry] = await loadPendingSessionDeliveries(queueContext);
       expect(failedEntry?.retryCount).toBe(1);
       expect(failedEntry?.lastError).toBe("dispatch failed");
 
       await settleSessionDelivery(id, tempDir);
-      expect(await loadPendingSessionDeliveries(tempDir)).toStrictEqual([]);
+      expect(await loadPendingSessionDeliveries(queueContext)).toStrictEqual([]);
       expect(readSessionQueueStatus(tempDir, id)).toBe("completed");
     });
   });
@@ -429,7 +429,7 @@ describe("session-delivery queue storage", () => {
   });
 
   it("persists only canonical relative post-compaction mount hints", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const id = await enqueuePostCompactionDelegateDelivery(
         {
           sessionKey: "agent:main:main",
@@ -441,10 +441,10 @@ describe("session-delivery queue storage", () => {
           },
           sequence: 0,
         },
-        tempDir,
+        queueContext,
       );
 
-      await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toMatchObject({
+      await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toMatchObject({
         kind: "postCompactionDelegate",
         attachAs: { mountPath: "handoff/path" },
       });
@@ -471,17 +471,17 @@ describe("session-delivery queue storage", () => {
               },
               sequence: index + 1,
             },
-            tempDir,
+            queueContext,
           ),
           mountPath,
         ).rejects.toThrow("invalid postCompactionDelegate delivery payload: invalid shape");
       }
-      await expect(loadPendingSessionDeliveries(tempDir)).resolves.toHaveLength(1);
+      await expect(loadPendingSessionDeliveries(queueContext)).resolves.toHaveLength(1);
     });
   });
 
   it("rejects one-sided post-compaction source metadata before persistence", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const mismatchedMetadata = [
         { sourceFlowId: "flow-without-revision" },
         { sourceExpectedRevision: 7 },
@@ -497,17 +497,17 @@ describe("session-delivery queue storage", () => {
               createdAt: 900 + sequence,
               ...metadata,
             },
-            tempDir,
+            queueContext,
           ),
         ).rejects.toThrow("invalid postCompactionDelegate delivery payload: invalid shape");
       }
 
-      await expect(loadPendingSessionDeliveries(tempDir)).resolves.toEqual([]);
+      await expect(loadPendingSessionDeliveries(queueContext)).resolves.toEqual([]);
     });
   });
 
   it("dead-letters noncanonical recovered post-compaction mount hints and scrubs them", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const invalidMountPaths = [
         "/absolute",
         "handoff/../outside",
@@ -531,13 +531,13 @@ describe("session-delivery queue storage", () => {
             },
             sequence,
           },
-          tempDir,
+          queueContext,
         );
         rewriteSessionQueueEntry(tempDir, id, (entry) => {
           entry.attachAs = { mountPath };
         });
 
-        await expect(loadPendingSessionDelivery(id, tempDir), mountPath).resolves.toBeNull();
+        await expect(loadPendingSessionDelivery(id, queueContext), mountPath).resolves.toBeNull();
         const row = readSessionQueueRow(tempDir, id);
         expect(row).toMatchObject({
           status: "failed",
@@ -551,7 +551,7 @@ describe("session-delivery queue storage", () => {
   });
 
   it("normalizes empty post-compaction attachments to absence", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const id = await enqueuePostCompactionDelegateDelivery(
         {
           sessionKey: "agent:main:main",
@@ -563,10 +563,10 @@ describe("session-delivery queue storage", () => {
           },
           sequence: 0,
         },
-        tempDir,
+        queueContext,
       );
 
-      const entry = await loadPendingSessionDelivery(id, tempDir);
+      const entry = await loadPendingSessionDelivery(id, queueContext);
       expect(entry).not.toHaveProperty("attachments");
       expect(entry).not.toHaveProperty("attachAs");
     });

@@ -34,7 +34,7 @@ describe("session-delivery queue storage validation", () => {
       },
     ];
 
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       for (const [sequence, corruption] of corruptions.entries()) {
         await expect(
           enqueuePostCompactionDelegateDelivery(
@@ -47,11 +47,11 @@ describe("session-delivery queue storage validation", () => {
               },
               sequence,
             },
-            tempDir,
+            queueContext,
           ),
         ).rejects.toThrow("invalid postCompactionDelegate delivery payload: invalid shape");
       }
-      await expect(loadPendingSessionDeliveries(tempDir)).resolves.toEqual([]);
+      await expect(loadPendingSessionDeliveries(queueContext)).resolves.toEqual([]);
     });
   });
 
@@ -69,7 +69,7 @@ describe("session-delivery queue storage validation", () => {
       },
     ];
 
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       for (const [sequence, invalid] of invalidDelegates.entries()) {
         await expect(
           enqueuePostCompactionDelegateDelivery(
@@ -82,23 +82,23 @@ describe("session-delivery queue storage validation", () => {
               },
               sequence,
             },
-            tempDir,
+            queueContext,
           ),
         ).rejects.toThrow("invalid postCompactionDelegate delivery payload: invalid shape");
       }
-      await expect(loadPendingSessionDeliveries(tempDir)).resolves.toEqual([]);
+      await expect(loadPendingSessionDeliveries(queueContext)).resolves.toEqual([]);
     });
   });
 
   it("dead-letters invalid post-compaction JSON without retaining raw bytes", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const id = await enqueuePostCompactionDelegateDelivery(
         {
           sessionKey: "agent:main:main",
           delegate: { task: "recover valid snapshot", createdAt: 123 },
           sequence: 0,
         },
-        tempDir,
+        queueContext,
       );
       const secret = "CORRUPT_QUEUE_JSON_SECRET";
       const { db } = openOpenClawStateDatabase({
@@ -110,7 +110,7 @@ describe("session-delivery queue storage validation", () => {
           WHERE queue_name = 'session' AND id = ?`,
       ).run(`{"secret":"${secret}"`, id);
 
-      await expect(loadPendingSessionDeliveries(tempDir)).resolves.toEqual([]);
+      await expect(loadPendingSessionDeliveries(queueContext)).resolves.toEqual([]);
       const row = readSessionQueueRow(tempDir, id);
       expect(row).toMatchObject({
         status: "failed",
@@ -121,14 +121,14 @@ describe("session-delivery queue storage validation", () => {
   });
 
   it("dead-letters invalid generic JSON without retaining raw bytes", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const id = await enqueueSessionDelivery(
         {
           kind: "systemEvent",
           sessionKey: "agent:main:main",
           text: "recover a generic event",
         },
-        tempDir,
+        queueContext,
       );
       const secret = "CORRUPT_GENERIC_QUEUE_JSON_SECRET";
       const { db } = openOpenClawStateDatabase({
@@ -140,7 +140,7 @@ describe("session-delivery queue storage validation", () => {
           WHERE queue_name = 'session' AND id = ?`,
       ).run(`{"attachments":[{"content":"${secret}"}]`, id);
 
-      await expect(loadPendingSessionDeliveries(tempDir)).resolves.toEqual([]);
+      await expect(loadPendingSessionDeliveries(queueContext)).resolves.toEqual([]);
       const row = readSessionQueueRow(tempDir, id);
       expect(row).toMatchObject({
         status: "failed",
@@ -169,7 +169,7 @@ describe("session-delivery queue storage validation", () => {
       },
     ];
 
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       for (const [sequence, corruption] of corruptions.entries()) {
         const secret = `QUEUE_ATTACHMENT_VALIDATION_SECRET_${sequence}`;
         const id = await enqueuePostCompactionDelegateDelivery(
@@ -182,13 +182,13 @@ describe("session-delivery queue storage validation", () => {
             },
             sequence,
           },
-          tempDir,
+          queueContext,
         );
         rewriteSessionQueueEntry(tempDir, id, (entry) => {
           entry.attachments = corruption.attachments;
         });
 
-        await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toBeNull();
+        await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toBeNull();
         const row = readSessionQueueRow(tempDir, id);
         expect(row).toMatchObject({
           status: "failed",
@@ -201,7 +201,7 @@ describe("session-delivery queue storage validation", () => {
   });
 
   it("dead-letters raw post-compaction snapshots when entry_kind is missing or stale", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       for (const [sequence, entryKind] of [null, "agentTurn"].entries()) {
         const secret = `STALE_ENTRY_KIND_SECRET_${sequence}`;
         const id = await enqueuePostCompactionDelegateDelivery(
@@ -214,11 +214,11 @@ describe("session-delivery queue storage validation", () => {
             },
             sequence,
           },
-          tempDir,
+          queueContext,
         );
         rewriteSessionQueueEntryKind(tempDir, id, entryKind);
 
-        await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toBeNull();
+        await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toBeNull();
         const row = readSessionQueueRow(tempDir, id);
         expect(row).toMatchObject({
           status: "failed",
@@ -227,13 +227,13 @@ describe("session-delivery queue storage validation", () => {
         expect(row?.entry_json).not.toContain(secret);
         expect(row?.entry_json).not.toContain("attachments");
         expect(row?.entry_json).not.toContain("task");
-        await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toBeNull();
+        await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toBeNull();
       }
     });
   });
 
   it("accepts generic descriptor attachment refs without widening them to inline input", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const legacySha256 = "legacy-nonhex-descriptor";
       const id = await enqueueSessionDelivery(
         {
@@ -242,10 +242,10 @@ describe("session-delivery queue storage validation", () => {
           text: "descriptor-only event",
           attachments: [{ kind: "blob-sha256", sha256: legacySha256, mediaType: "text/plain" }],
         },
-        tempDir,
+        queueContext,
       );
 
-      await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toMatchObject({
+      await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toMatchObject({
         kind: "systemEvent",
         attachments: [{ kind: "blob-sha256", sha256: legacySha256 }],
       });
@@ -253,7 +253,7 @@ describe("session-delivery queue storage validation", () => {
   });
 
   it("round-trips the agentTurn requester binding and rejects a widened binding", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const requesterBinding = {
         agentId: "main",
         sessionKey: "agent:main:main",
@@ -269,13 +269,13 @@ describe("session-delivery queue storage validation", () => {
             message: "requester-bound turn",
             messageId,
           },
-          tempDir,
+          queueContext,
         );
       const boundId = await seed("requester-bound");
       rewriteSessionQueueEntry(tempDir, boundId, (entry) => {
         entry.requesterBinding = requesterBinding;
       });
-      await expect(loadPendingSessionDelivery(boundId, tempDir)).resolves.toMatchObject({
+      await expect(loadPendingSessionDelivery(boundId, queueContext)).resolves.toMatchObject({
         kind: "agentTurn",
         requesterBinding,
       });
@@ -284,12 +284,12 @@ describe("session-delivery queue storage validation", () => {
       rewriteSessionQueueEntry(tempDir, widenedId, (entry) => {
         entry.requesterBinding = { ...requesterBinding, extra: "not-admitted" };
       });
-      await expect(loadPendingSessionDelivery(widenedId, tempDir)).resolves.toBeNull();
+      await expect(loadPendingSessionDelivery(widenedId, queueContext)).resolves.toBeNull();
     });
   });
 
   it("dead-letters empty or widened generic blob descriptors before returning them", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const corruptions = [
         { kind: "blob-sha256", sha256: "", mediaType: "text/plain" },
         {
@@ -306,7 +306,7 @@ describe("session-delivery queue storage validation", () => {
             sessionKey: "agent:main:main",
             text: `malformed descriptor seed ${index}`,
           },
-          tempDir,
+          queueContext,
         );
         const current = readSessionQueueRow(tempDir, id);
         const corrupted = JSON.parse(current?.entry_json ?? "{}") as Record<string, unknown>;
@@ -320,7 +320,7 @@ describe("session-delivery queue storage validation", () => {
           WHERE queue_name = 'session' AND id = ?`,
         ).run(JSON.stringify(corrupted), id);
 
-        await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toBeNull();
+        await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toBeNull();
         const row = readSessionQueueRow(tempDir, id);
         expect(row).toMatchObject({
           status: "failed",
@@ -333,7 +333,7 @@ describe("session-delivery queue storage validation", () => {
   });
 
   it("dead-letters seeded generic inline attachments before they can be returned", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       for (const kind of ["systemEvent", "agentTurn"] as const) {
         const id =
           kind === "systemEvent"
@@ -343,7 +343,7 @@ describe("session-delivery queue storage validation", () => {
                   sessionKey: "agent:main:main",
                   text: "generic inline attachment seed",
                 },
-                tempDir,
+                queueContext,
               )
             : await enqueueSessionDelivery(
                 {
@@ -352,7 +352,7 @@ describe("session-delivery queue storage validation", () => {
                   message: "generic inline attachment seed",
                   messageId: `generic-inline-${kind}`,
                 },
-                tempDir,
+                queueContext,
               );
         const secret = `GENERIC_${kind.toUpperCase()}_INLINE_ATTACHMENT_SECRET`;
         const current = readSessionQueueRow(tempDir, id);
@@ -367,8 +367,8 @@ describe("session-delivery queue storage validation", () => {
             WHERE queue_name = 'session' AND id = ?`,
         ).run(JSON.stringify(corrupted), id);
 
-        await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toBeNull();
-        await expect(loadPendingSessionDeliveries(tempDir)).resolves.not.toContainEqual(
+        await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toBeNull();
+        await expect(loadPendingSessionDeliveries(queueContext)).resolves.not.toContainEqual(
           expect.objectContaining({ id }),
         );
         const row = readSessionQueueRow(tempDir, id);
@@ -383,7 +383,7 @@ describe("session-delivery queue storage validation", () => {
   });
 
   it("dead-letters malformed post-compaction attachment members without retaining content", async () => {
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const secret = "MALFORMED_QUEUE_ATTACHMENT_SECRET";
       const id = await enqueuePostCompactionDelegateDelivery(
         {
@@ -395,7 +395,7 @@ describe("session-delivery queue storage validation", () => {
           },
           sequence: 0,
         },
-        tempDir,
+        queueContext,
       );
       const current = readSessionQueueRow(tempDir, id);
       const malformed = JSON.parse(current?.entry_json ?? "{}") as Record<string, unknown>;
@@ -409,7 +409,7 @@ describe("session-delivery queue storage validation", () => {
           WHERE queue_name = 'session' AND id = ?`,
       ).run(JSON.stringify(malformed), id);
 
-      await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toBeNull();
+      await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toBeNull();
       const row = readSessionQueueRow(tempDir, id);
       expect(row).toMatchObject({
         status: "failed",
@@ -451,7 +451,7 @@ describe("session-delivery queue storage validation", () => {
       },
     ];
 
-    await withSessionDeliveryQueue(async (tempDir, _queueContext) => {
+    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       for (const [sequence, corruption] of corruptions.entries()) {
         const secret = `CORRUPT_QUEUE_SECRET_${sequence}`;
         const id = await enqueuePostCompactionDelegateDelivery(
@@ -464,11 +464,11 @@ describe("session-delivery queue storage validation", () => {
             },
             sequence,
           },
-          tempDir,
+          queueContext,
         );
         rewriteSessionQueueEntry(tempDir, id, (entry) => corruption.mutate(entry, secret));
 
-        await expect(loadPendingSessionDelivery(id, tempDir)).resolves.toBeNull();
+        await expect(loadPendingSessionDelivery(id, queueContext)).resolves.toBeNull();
         const row = readSessionQueueRow(tempDir, id);
         expect(row).toMatchObject({
           status: "failed",

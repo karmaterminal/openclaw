@@ -73,6 +73,7 @@ import {
 import { CONTINUATION_SPAWN_INTERRUPTED_NOTICE_TAG } from "./custody/spawn-interrupted-notice.js";
 import { dispatchToolDelegates, resetDelegateDispatchHedgesForTests } from "./delegate-dispatch.js";
 import { enqueuePendingDelegate } from "./delegate-store.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import { resetContinuationStateForTests } from "./state.js";
 
 useContinuationCustodyTestState();
@@ -212,7 +213,9 @@ describe("fanout error isolation", () => {
         (call) => typeof call[0] === "string" && call[0].includes("DELEGATE spawn failed"),
       ),
     ).toHaveLength(0);
-    const noticeRows = (await loadPendingSessionDeliveries()).filter(
+    const noticeRows = (
+      await loadPendingSessionDeliveries(captureContinuationQueueContext())
+    ).filter(
       (entry) =>
         entry.kind === "systemEvent" &&
         entry.text.includes(CONTINUATION_SPAWN_INTERRUPTED_NOTICE_TAG),
