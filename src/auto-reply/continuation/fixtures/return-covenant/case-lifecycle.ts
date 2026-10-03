@@ -253,7 +253,7 @@ export async function transitionReturnCovenantCase(params: {
     state: "bound" as const,
     epoch: request.capturedAuthorityGeneration,
   };
-  const authorityUnchanged = await isSessionRecipientAuthorityCurrent(
+  const authorityUnchanged = isSessionRecipientAuthorityCurrent(
     returnCovenantCaseScope(state, context),
     captured,
   );
@@ -366,10 +366,10 @@ export async function observeReturnCovenantCase(params: {
     isMainSession: false,
     isNewSession: false,
   });
-  let adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
+  let adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
   while (adoption.kind === "settle-stale") {
     await adoption.settle();
-    adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
   }
   const promptText = adoption.blocks.map((block) => block.text).join("\n");
   const allowed = state.casePlan.kind === "allowed";

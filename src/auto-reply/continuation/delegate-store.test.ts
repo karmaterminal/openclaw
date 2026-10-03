@@ -872,9 +872,9 @@ describe("delegate store — continuation custody", () => {
       "agent:main:sibling",
     ]);
     for (const { sessionKey, authority } of recipients) {
-      expect(
-        await isSessionRecipientAuthorityCurrent({ agentId: "main", sessionKey }, authority),
-      ).toBe(true);
+      expect(isSessionRecipientAuthorityCurrent({ agentId: "main", sessionKey }, authority)).toBe(
+        true,
+      );
     }
     expect(record.recordId).toEqual(expect.any(String));
   });
