@@ -275,7 +275,7 @@ describe("clearSessionResetRuntimeState", () => {
               { agentId: "main", sessionKey },
               { sessionId: "accepted-mailbox", updatedAt: 1 },
             );
-            const recipientAuthority = captureSessionRecipientAuthority({
+            const recipientAuthority = await captureSessionRecipientAuthority({
               agentId: "main",
               sessionKey,
             });

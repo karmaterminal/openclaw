@@ -515,7 +515,7 @@ describe("scheduleRestartSentinelWake", () => {
   });
 
   it("replays a bound logical recipient after a session id rollover", async () => {
-    const recipientAuthority = captureSessionRecipientAuthority({
+    const recipientAuthority = await captureSessionRecipientAuthority({
       agentId: "main",
       env: testState.env,
       sessionKey: "agent:main:main",
@@ -603,7 +603,7 @@ describe("scheduleRestartSentinelWake", () => {
           ).inserted,
         ).toBe(true);
       }
-      const recipientAuthority = captureSessionRecipientAuthority(authorityScope);
+      const recipientAuthority = await captureSessionRecipientAuthority(authorityScope);
 
       if (invalidation === "owner reassignment") {
         expect(

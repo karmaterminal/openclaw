@@ -71,11 +71,11 @@ function stateDirectory(context: ReturnCovenantFixtureContext): string {
   return stateDir;
 }
 
-function currentAuthority(
+async function currentAuthority(
   state: ReturnCovenantCaseState,
   context: ReturnCovenantFixtureContext,
-): SessionRecipientAuthority {
-  return captureSessionRecipientAuthority(returnCovenantCaseScope(state, context));
+): Promise<SessionRecipientAuthority> {
+  return await captureSessionRecipientAuthority(returnCovenantCaseScope(state, context));
 }
 
 function restartReceipt(params: {
@@ -264,7 +264,7 @@ export async function transitionReturnCovenantCase(params: {
   if (authorityUnchanged !== (state.casePlan.kind === "allowed")) {
     throw new Error("recipient authority relation disagrees with the lifecycle transition");
   }
-  const current = currentAuthority(state, context);
+  const current = await currentAuthority(state, context);
   const currentEntry = loadSessionEntry(returnCovenantCaseScope(state, context));
   if (!currentEntry?.sessionId) {
     throw new Error("lifecycle transition did not leave a materialized recipient");
@@ -437,7 +437,7 @@ export async function observeReturnCovenantCase(params: {
         captureContinuationQueueContext(stateDirectory(context)),
       )
     : undefined;
-  const current = currentAuthority(state, context);
+  const current = await currentAuthority(state, context);
   const captured = state.acceptance?.capturedAuthorityGeneration;
   const admission = allowed
     ? "adopted"

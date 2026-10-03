@@ -16,12 +16,14 @@ import { OPENCLAW_SQLITE_BUSY_TIMEOUT_MS } from "../../state/openclaw-state-db-c
 import type { SessionAccessScope } from "./session-accessor.sqlite-contract.js";
 import { readSqliteSessionParticipantProjection } from "./session-accessor.sqlite-participant-projection.js";
 import { recordSessionParticipant } from "./session-accessor.sqlite-participants.native.js";
+import { captureSessionRecipientAuthorityInTransaction } from "./session-accessor.sqlite-recipient-authority.js";
 import { resolveSqliteScope, toDatabaseOptions } from "./session-accessor.sqlite-scope.js";
 import {
   applySessionGroupCategoryMutation,
   assertSessionGroupCategoryDestination,
   prepareSessionGroupCategoryMutation,
 } from "./session-group-categories.kernel.js";
+import type { SessionRecipientAuthority } from "./session-recipient-authority-types.js";
 import { addSessionMember, removeSessionMember } from "./session-sharing-store.native.js";
 
 type MembershipPublication = { facts?: Extract<SessionRowFacts, { kind: "member" }> };
@@ -54,6 +56,7 @@ export type SessionSharingWorkerOperations = {
     input: { scope: SessionAccessScope; params: Parameters<typeof recordSessionParticipant>[1] };
     output: { value: ReturnType<typeof recordSessionParticipant> } & ParticipantPublication;
   };
+  "authority.capture": { input: { scope: SessionAccessScope }; output: SessionRecipientAuthority };
 };
 
 /** The canonical agent executor retains the connection and both live admission checks. */
@@ -73,10 +76,10 @@ export function bindSqliteWorkerBackend(
         rows: ReturnType<typeof prepareSessionGroupCategoryMutation>;
       }
     | undefined;
-  const categoryDatabase = (scope: SessionAccessScope) => {
+  const ownedDatabase = (scope: SessionAccessScope) => {
     const database = getOpenClawAgentDatabaseIfOpen(toDatabaseOptions(resolveSqliteScope(scope)));
     if (!database || database.db !== db || database.path !== context.databasePath) {
-      throw new Error("Session group category write lost its physical store owner");
+      throw new Error("Session collaboration write lost its physical store owner");
     }
     return database;
   };
@@ -89,7 +92,7 @@ export function bindSqliteWorkerBackend(
       }
       scope.storePath = context.databasePath;
       if (command.type === "category.prepare") {
-        const database = categoryDatabase(scope);
+        const database = ownedDatabase(scope);
         return withSqlitePostCommitPublications(db, () =>
           runSqliteDeferredTransactionSync(db, () => {
             categoryPlan = {
@@ -104,7 +107,7 @@ export function bindSqliteWorkerBackend(
       let participantResult: SessionSharingWorkerOperations["participant"]["output"] | undefined;
       let membershipResult: MembershipPublication | undefined;
       const unsubscribe =
-        command.type !== "category.apply"
+        command.type !== "category.apply" && command.type !== "authority.capture"
           ? sessionChanges.subscribeFacts((change) => {
               if (
                 "sessionKey" in change &&
@@ -126,8 +129,14 @@ export function bindSqliteWorkerBackend(
             db,
             () => {
               context.admit("transaction");
+              if (command.type === "authority.capture") {
+                return captureSessionRecipientAuthorityInTransaction(
+                  ownedDatabase(scope),
+                  scope.sessionKey,
+                );
+              }
               if (command.type === "category.apply") {
-                const database = categoryDatabase(scope);
+                const database = ownedDatabase(scope);
                 if (
                   !categoryPlan ||
                   categoryPlan.from !== command.input.from ||

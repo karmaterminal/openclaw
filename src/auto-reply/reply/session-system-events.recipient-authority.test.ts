@@ -130,7 +130,7 @@ describe("recipient authority prompt-adoption fence", () => {
             ).inserted,
           ).toBe(true);
         }
-        const recipientAuthority = sessionAccessor.captureSessionRecipientAuthority(scope);
+        const recipientAuthority = await sessionAccessor.captureSessionRecipientAuthority(scope);
         const delivery = await enqueueContinuationReturnDeliveries({
           targetSessionKeys: [sessionKey],
           text: "stale delegate result",
@@ -210,7 +210,7 @@ describe("recipient authority prompt-adoption fence", () => {
             ).inserted,
           ).toBe(true);
         }
-        const recipientAuthority = sessionAccessor.captureSessionRecipientAuthority(scope);
+        const recipientAuthority = await sessionAccessor.captureSessionRecipientAuthority(scope);
         enqueueSystemEventRaw("stale delegate result", {
           sessionKey,
           trusted: true,
@@ -263,7 +263,7 @@ describe("recipient authority prompt-adoption fence", () => {
             ).inserted,
           ).toBe(true);
         }
-        const recipientAuthority = sessionAccessor.captureSessionRecipientAuthority(scope);
+        const recipientAuthority = await sessionAccessor.captureSessionRecipientAuthority(scope);
         const delivery = await enqueueContinuationReturnDeliveries({
           targetSessionKeys: [sessionKey],
           text: "stale delegate result",
@@ -314,7 +314,7 @@ describe("recipient authority prompt-adoption fence", () => {
           updatedAt: 1,
           createdActor: ownerA,
         });
-        const authority = sessionAccessor.captureSessionRecipientAuthority(scope);
+        const authority = await sessionAccessor.captureSessionRecipientAuthority(scope);
         const delivery = await enqueueContinuationReturnDeliveries({
           targetSessionKeys: [sessionKey],
           text: `${agentId} delegate result`,
