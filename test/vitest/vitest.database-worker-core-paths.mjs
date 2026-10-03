@@ -226,6 +226,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/tools/continuation-tools.current-span-traceparent.test.ts",
   "src/agents/tools/continue-delegate-tool.crosssession-gate.test.ts",
   "src/agents/tools/continue-delegate-tool.test.ts",
+  "src/agents/tools/continue-delegate-tool.turn-admission.test.ts",
   "src/agents/command/attempt-execution.continue-work-races.test.ts",
   "src/agents/command/attempt-execution.continue-work-opts.test.ts",
   "src/agents/command/attempt-execution.continue-work-token.test.ts",
