@@ -15,10 +15,6 @@ import {
   upsertBoundDeliveryQueueEntryInDatabase,
 } from "./delivery-queue-sqlite-bound.js";
 import {
-  inflateDeliveryQueueEntryResult,
-  type DeliveryQueueEntryLoadResult,
-} from "./delivery-queue-sqlite-codec.js";
-import {
   hasLiveDeliveryQueueClaim,
   inferDeliveryQueueFailureRetention,
   parseDeliveryQueueCompletionRetention,
@@ -196,19 +192,20 @@ export function getDeliveryQueueEntriesOwnersInDatabase(
   );
 }
 
-/** Load rows in database order while retaining corrupt row identity and bytes. */
-export function loadDeliveryQueueEntryResultsInDatabase(
+export function loadDeliveryQueueEntriesInDatabase(
   database: OpenClawStateDatabase,
   queueName: string,
   mode: DeliveryQueueReadMode = "pending",
-): DeliveryQueueEntryLoadResult[] {
+): DeliveryQueueEntryState[] {
   const rows = executeSqliteQuerySync(
     database.db,
     deliveryQueueEntriesQuery(database, [queueName], mode)
       .orderBy("enqueued_at", "asc")
       .orderBy("id", "asc"),
   ).rows;
-  return rows.map(inflateDeliveryQueueEntryResult);
+  return rows
+    .map(inflateDeliveryQueueRow)
+    .filter((entry): entry is DeliveryQueueEntryState => entry != null);
 }
 
 export function deleteDeliveryQueueEntryInDatabase(
@@ -432,9 +429,10 @@ export function prepareDeliveryQueueTerminalEntry(
 
 export function terminalizePendingDeliveryQueueEntryInDatabase(
   database: OpenClawStateDatabase,
-  prepared: ReturnType<typeof prepareDeliveryQueueTerminalEntry>,
+  prepared: ReturnType<typeof prepareDeliveryQueueTerminalEntry> & { lastError?: string },
 ): TerminalizePendingDeliveryQueueEntryResult {
-  const { queueName, id, expectedJson, failedEntry, now, expectedStatus, retention } = prepared;
+  const { queueName, id, expectedJson, failedEntry, now, expectedStatus, retention, lastError } =
+    prepared;
   if (
     !terminalizeBoundDeliveryQueueEntry(
       database.db,
@@ -444,6 +442,7 @@ export function terminalizePendingDeliveryQueueEntryInDatabase(
       failedEntry,
       now,
       expectedStatus,
+      lastError,
     )
   ) {
     return { status: "not_pending" };
@@ -452,4 +451,19 @@ export function terminalizePendingDeliveryQueueEntryInDatabase(
     getDeliveryQueueEntryOwnersInDatabase(database, [queueName], id);
   }
   return { status: "terminalized", retained: retention !== undefined };
+}
+
+/** Dead-letter an undecodable row, matching its exact persisted text instead of a re-encoding. */
+export function terminalizeInvalidDeliveryQueueEntryInDatabase(
+  database: OpenClawStateDatabase,
+  params: TerminalizePendingDeliveryQueueEntryParams & {
+    expectedEntryJson: string;
+    lastError: string;
+  },
+): TerminalizePendingDeliveryQueueEntryResult {
+  return terminalizePendingDeliveryQueueEntryInDatabase(database, {
+    ...prepareDeliveryQueueTerminalEntry(params),
+    expectedJson: params.expectedEntryJson,
+    lastError: params.lastError,
+  });
 }

@@ -3,11 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { RawBuilder, Selectable } from "kysely";
 import type { OpenClawStateDatabase } from "../state/openclaw-state-db-contract.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-db.generated.js";
-import {
-  inflateDeliveryQueueEntryResult,
-  type DeliveryQueueEntryLoadResult,
-  type DeliveryQueueSqliteRow,
-} from "./delivery-queue-sqlite-codec.js";
+import type { DeliveryQueueSqliteRow } from "./delivery-queue-sqlite-codec.js";
 import type { DeliveryQueueEntryState } from "./delivery-queue-sqlite.types.js";
 import {
   executeSqliteQuerySync,
@@ -365,22 +361,4 @@ export function loadDeliveryQueueEntryInDatabase(
   const query = (queries[readMode] ??= createDeliveryQueueRead(database, readMode));
   const row = query({ queueName, id });
   return row ? inflateDeliveryQueueRow(row) : null;
-}
-
-/** Reads one row from the exact supplied handle, retaining corrupt JSON and its persisted text. */
-export function loadDeliveryQueueEntryResultInDatabase(
-  database: OpenClawStateDatabase,
-  queueName: string,
-  id: string,
-  mode: DeliveryQueueReadMode = "all",
-): DeliveryQueueEntryLoadResult | null {
-  let queries = deliveryQueueReads.get(database.db);
-  if (!queries) {
-    queries = {};
-    deliveryQueueReads.set(database.db, queries);
-  }
-  const readMode = mode === "all" || mode === "pending" ? mode : "unfinished";
-  const query = (queries[readMode] ??= createDeliveryQueueRead(database, readMode));
-  const row = query({ queueName, id });
-  return row ? inflateDeliveryQueueEntryResult(row) : null;
 }
