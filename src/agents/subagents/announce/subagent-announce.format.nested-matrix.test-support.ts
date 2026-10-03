@@ -42,10 +42,8 @@ export function registerNestedCompletionRegressionMatrix(options: {
   };
   agentSpy: Mock<(req: AgentCallRequest) => Promise<ReturnType<typeof visibleAgentResponse>>>;
   getAgentCall: (index?: number) => AgentCallRequest;
-  mockAcceptedWakeDispatch: (runId?: string) => void;
 }): void {
   const { defaultOutcomeAnnounce, subagentRegistryMock, agentSpy, getAgentCall } = options;
-  const { mockAcceptedWakeDispatch } = options;
   const runSubagentAnnounceFlow = (params: AnnounceFlowParams) =>
     options.getRunSubagentAnnounceFlow()(params);
 
@@ -98,7 +96,6 @@ export function registerNestedCompletionRegressionMatrix(options: {
           : [],
       );
 
-      mockAcceptedWakeDispatch();
       const didAnnounce = await runSubagentAnnounceFlow({
         ...defaultOutcomeAnnounce,
         childSessionKey: "agent:main:subagent:parent-2-level",
@@ -156,7 +153,6 @@ export function registerNestedCompletionRegressionMatrix(options: {
       expect(agentSpy).not.toHaveBeenCalled();
 
       pending = 0;
-      mockAcceptedWakeDispatch();
       const announced = await runSubagentAnnounceFlow({
         ...defaultOutcomeAnnounce,
         childSessionKey: "agent:main:subagent:parent-fanout",
@@ -292,7 +288,6 @@ export function registerNestedCompletionRegressionMatrix(options: {
           : [],
       );
 
-      mockAcceptedWakeDispatch();
       const didAnnounce = await runSubagentAnnounceFlow({
         ...defaultOutcomeAnnounce,
         childSessionKey: "agent:main:subagent:parent-sequential",
@@ -331,7 +326,6 @@ export function registerNestedCompletionRegressionMatrix(options: {
           : [],
       );
 
-      mockAcceptedWakeDispatch();
       const didAnnounce = await runSubagentAnnounceFlow({
         ...defaultOutcomeAnnounce,
         childSessionKey: "agent:main:subagent:parent-error",
