@@ -1,31 +1,32 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
-import {
-  DIAGNOSTIC_TRACEPARENT_PATTERN,
-  isValidDiagnosticSpanId,
-  isValidDiagnosticTraceFlags,
-  isValidDiagnosticTraceId,
-  normalizeDiagnosticTraceparent,
-  normalizeSpanId,
-  normalizeTraceFlags,
-  normalizeTraceId,
-  parseDiagnosticTraceparent,
-  TRACEPARENT_VERSION,
-} from "./diagnostic-trace-context-pure.js";
-import type { DiagnosticTraceContext } from "./diagnostic-trace-context-pure.js";
+import { expectDefined } from "@openclaw/normalization-core";
 
+const TRACEPARENT_VERSION = "00";
 const DEFAULT_TRACE_FLAGS = "01";
+const MAX_TRACEPARENT_LENGTH = 128;
+const TRACE_ID_RE = /^[0-9a-f]{32}$/;
+const SPAN_ID_RE = /^[0-9a-f]{16}$/;
+const TRACE_FLAGS_RE = /^[0-9a-f]{2}$/;
+const TRACEPARENT_VERSION_RE = /^[0-9a-f]{2}$/;
+export const DIAGNOSTIC_TRACEPARENT_PATTERN = "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$";
+const DIAGNOSTIC_TRACEPARENT_RE = new RegExp(DIAGNOSTIC_TRACEPARENT_PATTERN);
 const DIAGNOSTIC_TRACE_SCOPE_STATE_KEY = Symbol.for("openclaw.diagnosticTraceScope.state.v1");
 
-export {
-  DIAGNOSTIC_TRACEPARENT_PATTERN,
-  isValidDiagnosticSpanId,
-  isValidDiagnosticTraceFlags,
-  isValidDiagnosticTraceId,
-  normalizeDiagnosticTraceparent,
-  parseDiagnosticTraceparent,
+export type DiagnosticTraceContext = {
+  /** W3C trace id, 32 lowercase hex chars. */
+  readonly traceId: string;
+  /** Current span id, 16 lowercase hex chars. */
+  readonly spanId?: string;
+  /** Parent span id, 16 lowercase hex chars. */
+  readonly parentSpanId?: string;
+  /** W3C trace flags, 2 lowercase hex chars. Defaults to sampled. */
+  readonly traceFlags?: string;
+  /** Marks a current span id parsed from a remote W3C traceparent. */
+  readonly spanIdSource?: "remote";
+  /** Marks a parent span id inherited from a remote W3C traceparent. */
+  readonly parentSpanIdSource?: "remote";
 };
-export type { DiagnosticTraceContext };
 
 type DiagnosticTraceContextInput = Partial<DiagnosticTraceContext> & {
   traceparent?: string;
@@ -86,6 +87,74 @@ function getDiagnosticTraceScopeState(): DiagnosticTraceScopeState {
   return state;
 }
 
+/** Returns whether a value is a non-zero W3C trace id. */
+export function isValidDiagnosticTraceId(value: unknown): value is string {
+  return typeof value === "string" && TRACE_ID_RE.test(value) && isNonZeroHex(value);
+}
+
+/** Returns whether a value is a non-zero W3C span id. */
+export function isValidDiagnosticSpanId(value: unknown): value is string {
+  return typeof value === "string" && SPAN_ID_RE.test(value) && isNonZeroHex(value);
+}
+
+/** Returns whether a value is a valid W3C trace-flags byte. */
+export function isValidDiagnosticTraceFlags(value: unknown): value is string {
+  return typeof value === "string" && TRACE_FLAGS_RE.test(value);
+}
+
+function normalizeTraceField(
+  value: unknown,
+  isValid: (value: unknown) => boolean,
+): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.toLowerCase();
+  return isValid(normalized) ? normalized : undefined;
+}
+
+/** Parses a W3C `traceparent` header into a normalized diagnostic trace context. */
+export function parseDiagnosticTraceparent(
+  traceparent: string | undefined,
+): DiagnosticTraceContext | undefined {
+  if (typeof traceparent !== "string" || traceparent.length > MAX_TRACEPARENT_LENGTH) {
+    return undefined;
+  }
+  const parts = traceparent.trim().toLowerCase().split("-");
+  if (parts.length < 4) {
+    return undefined;
+  }
+  const [version, traceId, spanId, traceFlags] = parts;
+  if (
+    !TRACEPARENT_VERSION_RE.test(expectDefined(version, "diagnostic trace context version")) ||
+    version === "ff" ||
+    (version === TRACEPARENT_VERSION && parts.length !== 4)
+  ) {
+    return undefined;
+  }
+  if (
+    !isValidDiagnosticTraceId(traceId) ||
+    !isValidDiagnosticSpanId(spanId) ||
+    !isValidDiagnosticTraceFlags(traceFlags)
+  ) {
+    return undefined;
+  }
+  return { traceId, spanId, traceFlags };
+}
+
+export function normalizeDiagnosticTraceparent(
+  traceparent: string | undefined,
+): string | undefined {
+  if (typeof traceparent !== "string") {
+    return undefined;
+  }
+  const normalized = traceparent.trim().toLowerCase();
+  if (!DIAGNOSTIC_TRACEPARENT_RE.test(normalized)) {
+    return undefined;
+  }
+  return parseDiagnosticTraceparent(normalized) ? normalized : undefined;
+}
+
 /** Formats a diagnostic trace context as a W3C `traceparent` header. */
 export function formatDiagnosticTraceparent(
   context: DiagnosticTraceContext | undefined,
@@ -93,9 +162,10 @@ export function formatDiagnosticTraceparent(
   if (!context?.spanId) {
     return undefined;
   }
-  const traceId = normalizeTraceId(context.traceId);
-  const spanId = normalizeSpanId(context.spanId);
-  const traceFlags = normalizeTraceFlags(context.traceFlags) ?? DEFAULT_TRACE_FLAGS;
+  const traceId = normalizeTraceField(context.traceId, isValidDiagnosticTraceId);
+  const spanId = normalizeTraceField(context.spanId, isValidDiagnosticSpanId);
+  const traceFlags =
+    normalizeTraceField(context.traceFlags, isValidDiagnosticTraceFlags) ?? DEFAULT_TRACE_FLAGS;
   if (!traceId || !spanId) {
     return undefined;
   }
@@ -107,10 +177,13 @@ export function createDiagnosticTraceContext(
   input: DiagnosticTraceContextInput = {},
 ): DiagnosticTraceContext {
   const parsed = parseDiagnosticTraceparent(input.traceparent);
-  const traceId = normalizeTraceId(input.traceId) ?? parsed?.traceId ?? randomNonZeroHex(16);
-  const explicitSpanId = normalizeSpanId(input.spanId);
+  const traceId =
+    normalizeTraceField(input.traceId, isValidDiagnosticTraceId) ??
+    parsed?.traceId ??
+    randomNonZeroHex(16);
+  const explicitSpanId = normalizeTraceField(input.spanId, isValidDiagnosticSpanId);
   const spanId = explicitSpanId ?? parsed?.spanId ?? randomNonZeroHex(8);
-  const parentSpanId = normalizeSpanId(input.parentSpanId);
+  const parentSpanId = normalizeTraceField(input.parentSpanId, isValidDiagnosticSpanId);
   const spanIdSource =
     input.spanIdSource === "remote" || (!explicitSpanId && parsed?.spanId) ? "remote" : undefined;
   const parentSpanIdSource = input.parentSpanIdSource === "remote" ? "remote" : undefined;
@@ -118,7 +191,10 @@ export function createDiagnosticTraceContext(
     traceId,
     spanId,
     ...(parentSpanId && parentSpanId !== spanId ? { parentSpanId } : {}),
-    traceFlags: normalizeTraceFlags(input.traceFlags) ?? parsed?.traceFlags ?? DEFAULT_TRACE_FLAGS,
+    traceFlags:
+      normalizeTraceField(input.traceFlags, isValidDiagnosticTraceFlags) ??
+      parsed?.traceFlags ??
+      DEFAULT_TRACE_FLAGS,
     ...(spanIdSource ? { spanIdSource } : {}),
     ...(parentSpanIdSource && parentSpanId && parentSpanId !== spanId
       ? { parentSpanIdSource }
@@ -131,7 +207,9 @@ export function createChildDiagnosticTraceContext(
   parent: DiagnosticTraceContext,
   input: Omit<DiagnosticTraceContextInput, "traceId" | "traceparent"> = {},
 ): DiagnosticTraceContext {
-  const parentSpanId = normalizeSpanId(input.parentSpanId) ?? normalizeSpanId(parent.spanId);
+  const parentSpanId =
+    normalizeTraceField(input.parentSpanId, isValidDiagnosticSpanId) ??
+    normalizeTraceField(parent.spanId, isValidDiagnosticSpanId);
   return createDiagnosticTraceContext({
     traceId: parent.traceId,
     spanId: input.spanId,

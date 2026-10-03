@@ -1,5 +1,5 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { normalizeDiagnosticTraceparent } from "../infra/diagnostic-trace-context-pure.js";
+import { normalizeDiagnosticTraceparent } from "../infra/diagnostic-trace-context.js";
 
 const SUBAGENT_TRACEPARENT_HANDOFF_TTL_MS = 5 * 60 * 1000;
 

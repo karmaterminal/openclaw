@@ -151,13 +151,7 @@ export async function completeReplyAgentRun(input: {
       accounting,
       cfg,
       storePath,
-      userText:
-        sessionCtx.commandText ||
-        sessionCtx.agentText ||
-        sessionCtx.CommandBody ||
-        sessionCtx.RawBody ||
-        sessionCtx.BodyForAgent ||
-        sessionCtx.Body,
+      userText: sessionCtx.commandText || sessionCtx.agentText,
       resolvedVerboseLevel,
       resolvedBlockStreamingBreak,
       preflightCompactionApplied,

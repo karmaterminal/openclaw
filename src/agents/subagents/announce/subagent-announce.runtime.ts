@@ -2,7 +2,7 @@ import { loadSessionEntry } from "../../../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { callGateway as GatewayCaller } from "../../../gateway/call.js";
 import { bindGatewayLifecycleRequest } from "../../../gateway/server-recovery-runtime-context.js";
-import { normalizeDiagnosticTraceparent } from "../../../infra/diagnostic-trace-context-pure.js";
+import { normalizeDiagnosticTraceparent } from "../../../infra/diagnostic-trace-context.js";
 import type { SubagentRunRecord } from "../registry/subagent-registry.types.js";
 
 export { resolveContinuationRuntimeConfig } from "../../../auto-reply/continuation/config.js";

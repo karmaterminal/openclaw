@@ -105,8 +105,10 @@ import {
   setContinuationTracer,
   type SpanAttributes,
 } from "../infra/continuation-tracer.js";
-import { parseDiagnosticTraceparent } from "../infra/diagnostic-trace-context-pure.js";
-import { resetDiagnosticTraceContextForTest } from "../infra/diagnostic-trace-context.js";
+import {
+  parseDiagnosticTraceparent,
+  resetDiagnosticTraceContextForTest,
+} from "../infra/diagnostic-trace-context.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
 import {
   getActiveGatewayRootWorkCount,
