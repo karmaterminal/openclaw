@@ -142,6 +142,19 @@ export async function dispatchSmsInboundEvent(params: {
         })
       : { body: params.msg.body, media: [], cleanup: async () => undefined };
   let adoptionState: "pending" | "deferred" | "adopted" | "abandoned" = "pending";
+  // A deferred turn that never adopts owns its saved attachments. Clean them up
+  // before the durable claim reopens, whichever terminal release ends the turn.
+  const releaseDeferredMedia = (verb: "abandon" | "cancel", release: () => unknown) => {
+    adoptionState = "abandoned";
+    void materialized
+      .cleanup()
+      .then(release)
+      .catch((error: unknown) => {
+        params.log?.warn?.(
+          `Failed to ${verb} Twilio MMS ingress ${params.msg.messageSid}: ${String(error)}`,
+        );
+      });
+  };
   try {
     const turnAdoptionLifecycle =
       materialized.media.length > 0 && params.turnAdoptionLifecycle
@@ -163,18 +176,16 @@ export async function dispatchSmsInboundEvent(params: {
               }
               return deferred;
             },
+            onCancelled: () => {
+              releaseDeferredMedia("cancel", () => {
+                const source = params.turnAdoptionLifecycle;
+                return source?.onCancelled ? source.onCancelled() : source?.onAbandoned?.();
+              });
+            },
             onAbandoned: () => {
-              adoptionState = "abandoned";
               // Queue abandonment can be fire-and-forget. Start cleanup before
               // releasing the durable claim and contain asynchronous failures.
-              void materialized
-                .cleanup()
-                .then(() => params.turnAdoptionLifecycle?.onAbandoned?.())
-                .catch((error: unknown) => {
-                  params.log?.warn?.(
-                    `Failed to abandon Twilio MMS ingress ${params.msg.messageSid}: ${String(error)}`,
-                  );
-                });
+              releaseDeferredMedia("abandon", () => params.turnAdoptionLifecycle?.onAbandoned?.());
             },
           }
         : params.turnAdoptionLifecycle;
