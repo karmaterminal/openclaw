@@ -11,13 +11,10 @@ import type {
   ContinuationRecordPatch,
 } from "../../auto-reply/continuation/custody/custody-store.types.js";
 import {
-  custodyStateForTest,
-  listCustodyRecordsForTest,
   readCustodyRecordForTest,
   useContinuationCustodyTestState,
 } from "../../auto-reply/continuation/custody/custody.test-support.js";
 import {
-  decodeWorkState,
   encodeWorkState,
   workRecordDueAt,
   type PendingContinuationWork,
@@ -32,6 +29,11 @@ import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-d
 import { closeOpenClawStateDatabaseAsync } from "../../state/openclaw-state-db.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 import { scheduleSpawnInitContinueWorkWake } from "./attempt-execution.continue-work.js";
+import {
+  findFlowByReason,
+  listOwnerRecords,
+  type OwnerRecord,
+} from "./attempt-execution.continue-work.test-support.js";
 
 type CustodyStoreModule = typeof import("../../auto-reply/continuation/custody/custody-store.js");
 type StateWorkerStoreModule = typeof import("../../state/openclaw-state-worker-store.js");
@@ -197,21 +199,6 @@ function makeRunResult(): EmbeddedAgentRunResult {
       },
     },
   };
-}
-
-type OwnerRecord = ContinuationRecord & { state: Record<string, unknown> };
-
-function findFlowByReason(
-  records: readonly OwnerRecord[],
-  reason: string,
-): OwnerRecord | undefined {
-  return records.find((record) => decodeWorkState(record)?.reason === reason);
-}
-
-async function listOwnerRecords(ownerKey: string): Promise<OwnerRecord[]> {
-  return (await listCustodyRecordsForTest({ ownerSessionKey: ownerKey })).map((record) =>
-    Object.assign(record, { state: custodyStateForTest(record) }),
-  );
 }
 
 /** Read the owner's records from a freshly reopened database and projection. */
