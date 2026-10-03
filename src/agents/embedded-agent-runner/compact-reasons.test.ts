@@ -8,7 +8,6 @@ import {
   isBenignCompactionSkipReason,
   type CompactionReasonCode,
   isCompactionSkipCode,
-  isCompactionSkipReason,
   resolveCompactionFailure,
 } from "./compact-reasons.js";
 
@@ -102,8 +101,6 @@ describe("classifyCompactionReason", () => {
   });
 
   it('classifies "no real conversation messages" as a skip-like reason', () => {
-    // Closed-union shape: this code keeps the existing-substring-match behavior
-    // of isLegitSkipReason / isCompactionSkipReason covered by the closed union.
     expect(classifyCompactionReason("No real conversation messages to compact")).toBe(
       "no_real_conversation_messages",
     );
@@ -253,18 +250,5 @@ describe("isCompactionSkipCode", () => {
 
   it.each(ALL_CODES)("classifies %s correctly as skip vs non-skip", (code) => {
     expect(isCompactionSkipCode(code)).toBe(SKIP_CODES.has(code));
-  });
-
-  it("isCompactionSkipReason wraps classifier + isCompactionSkipCode", () => {
-    expect(isCompactionSkipReason("Nothing to compact")).toBe(true);
-    expect(isCompactionSkipReason("Below threshold")).toBe(true);
-    expect(isCompactionSkipReason("Already compacted recently")).toBe(true);
-    expect(isCompactionSkipReason("No real conversation messages to compact")).toBe(true);
-
-    expect(isCompactionSkipReason("Compaction timed out")).toBe(false);
-    expect(isCompactionSkipReason("Unknown model: openai/foo")).toBe(false);
-    expect(isCompactionSkipReason("guard_blocked")).toBe(false);
-    expect(isCompactionSkipReason()).toBe(false);
-    expect(isCompactionSkipReason("")).toBe(false);
   });
 });

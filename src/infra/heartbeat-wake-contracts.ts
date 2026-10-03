@@ -46,8 +46,6 @@ export type HeartbeatWakeRequest = {
   heartbeat?: HeartbeatWakeOverride;
   /** Persisted cron monitor cadence carried with a scheduled heartbeat tick. */
   scheduledEveryMs?: number;
-  /** Original persisted monitor anchor retained across direct retry handoff. */
-  scheduledAnchorMs?: number;
   tasks?: readonly HeartbeatScheduledTask[];
   /** Internal marker for work retained after a spacing/cooldown deferral. */
   retainedWork?: boolean;
