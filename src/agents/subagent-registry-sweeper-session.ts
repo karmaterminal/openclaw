@@ -2,10 +2,7 @@ import type { callGateway } from "../gateway/call.js";
 import { getGatewayContextResolver } from "../plugins/runtime/gateway-request-scope.js";
 import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.types.js";
 import { deleteSubagentSessionForCleanup } from "./subagents/registry/subagent-session-cleanup.js";
-import {
-  loadSubagentSessionEntry,
-  type SubagentSessionStoreCache,
-} from "./subagents/registry/subagent-session-reconciliation.js";
+import { loadSubagentSessionEntry } from "./subagents/registry/subagent-session-reconciliation.js";
 
 type FrozenSessionIdentity = {
   sessionId: string;
@@ -13,11 +10,8 @@ type FrozenSessionIdentity = {
 };
 
 export function createSubagentSweepSessionCleanup(call: typeof callGateway) {
-  const freezeSessionIdentity = (
-    childSessionKey: string,
-    storeCache?: SubagentSessionStoreCache,
-  ): FrozenSessionIdentity | undefined => {
-    const sessionEntry = loadSubagentSessionEntry({ childSessionKey, storeCache });
+  const freezeSessionIdentity = (childSessionKey: string): FrozenSessionIdentity | undefined => {
+    const sessionEntry = loadSubagentSessionEntry({ childSessionKey });
     const sessionId = sessionEntry?.sessionId?.trim();
     const lifecycleRevision = sessionEntry?.lifecycleRevision?.trim();
     return sessionId && lifecycleRevision ? { sessionId, lifecycleRevision } : undefined;

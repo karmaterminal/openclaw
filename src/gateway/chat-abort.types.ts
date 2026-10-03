@@ -48,8 +48,6 @@ export type ChatAbortControllerEntry = {
   projectSessionTerminalPersisted?: boolean;
   /** A terminal lifecycle event was observed and is awaiting persistence. */
   projectSessionTerminalPending?: boolean;
-  /** True after this run has published a terminal chat frame. */
-  chatTerminalBroadcasted?: boolean;
   /** Store timestamp expected from the observed terminal lifecycle event. */
   projectSessionTerminalObservedAt?: number;
   /** In-flight terminal session-store update used by restart shutdown. */

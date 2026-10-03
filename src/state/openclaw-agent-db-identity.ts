@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { installStatementInvalidation } from "../infra/kysely-sync-cache-state.js";
 import {
   normalizeDatabasePath,
   readDatabasePathIdentitySync,
@@ -29,13 +28,6 @@ const identities = resolveGlobalSingleton(
 
 /** Prepare physical and connection identity once at open; cached aliases are not resolved again. */
 export function registerOpenClawAgentDatabaseIdentity(db: DatabaseSync): void {
-  // Admitting a physical identity also binds this connection's destructive
-  // replacement invariant: `deserialize` must not swap the image out from under
-  // the identity recorded here. The per-instance wrapper owns that refusal
-  // because SQLite only rejects an in-transaction replacement from 3.53.3 on,
-  // and read-only retainers reach this open without a Kysely instance to
-  // install the wrapper for them.
-  installStatementInvalidation(db);
   const filename = normalizeDatabasePath(db.location() ?? "");
   const file = filename ? readDatabasePathIdentitySync(filename) : undefined;
   if (file && !file.key.startsWith("file:")) {

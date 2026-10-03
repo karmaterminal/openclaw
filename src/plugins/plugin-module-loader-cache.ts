@@ -413,11 +413,8 @@ export function loadPluginPublicSurfaceModuleSync(
 ): object {
   const instance = resolvePublicSurfaceInstance(params);
   if (instance) {
-    const loaded = instance.loadModule(params.modulePath);
-    if (!loaded || typeof loaded !== "object") {
-      throw new Error(`Plugin public surface is not an object: ${params.modulePath}`);
-    }
-    return loaded;
+    // SAFETY: Public-surface entrypoints have object exports; the instance owns this exact source.
+    return instance.loadModule(params.modulePath) as object;
   }
   const { source, modulePath } = preparePluginModule(params);
   const cached = source.publicSurface?.exports;
@@ -429,11 +426,7 @@ export function loadPluginPublicSurfaceModuleSync(
   source.disposeModule ??= () => clearPluginModuleRequireCache(modulePath, boundaryRoot);
   source.publicSurface = { exports: sentinel };
   try {
-    const loaded = params.loadModule(modulePath);
-    if (!loaded || typeof loaded !== "object") {
-      throw new Error(`Plugin public surface is not an object: ${params.modulePath}`);
-    }
-    Object.assign(sentinel, loaded);
+    Object.assign(sentinel, params.loadModule(modulePath));
     return sentinel;
   } catch (error) {
     delete source.publicSurface;

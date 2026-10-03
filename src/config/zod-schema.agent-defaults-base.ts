@@ -260,10 +260,10 @@ export const AgentDefaultsBaseSchema = z.strictObject({
         .number()
         .int()
         .min(1)
-        .max(10000)
+        .max(20)
         .optional()
         .describe(
-          "Maximum number of active children a single agent session can spawn (default: 5). Raise via config for wide-fanout patterns (parallel delegate fan-out, batch processing). Token-budget (costCapTokens) + chain-length (maxChainLength) remain primary runaway-safety guards.",
+          "Maximum number of active children a single agent session can spawn (default: 5).",
         ),
       archiveAfterMinutes: z.number().int().min(0).optional(),
       model: AgentModelSchema.optional(),

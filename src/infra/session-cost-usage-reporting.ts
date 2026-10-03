@@ -44,7 +44,7 @@ const USAGE_COST_DIRECT_REFRESH_RETRY_MS = 25;
  * Scan all transcript files to discover sessions not in the session store.
  * Returns basic metadata for each discovered session.
  */
-export async function discoverAllSessionsFromTranscripts(params: {
+export async function discoverAllSessions(params: {
   agentId: string;
   startMs?: number;
   endMs?: number;

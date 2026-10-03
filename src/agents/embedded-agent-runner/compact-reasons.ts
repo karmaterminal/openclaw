@@ -22,7 +22,6 @@ export const DEFERRED_CONTEXT_ENGINE_COMPACTION_REASON =
 export type CompactionReasonCode =
   | "unknown"
   | "no_compactable_entries"
-  | "no_real_conversation_messages"
   | "unknown_model"
   | "below_threshold"
   | "already_compacted"
@@ -41,12 +40,10 @@ export type CompactionReasonCode =
  * non-error cause" — caller should treat the request as gracefully skipped
  * rather than as a failure.
  *
- * Single source of truth shared by the request-compaction tool and the
- * /compact command.
+ * The request-compaction tool reports these as a graceful skip.
  */
 const SKIP_CODES: ReadonlySet<CompactionReasonCode> = new Set([
   "no_compactable_entries",
-  "no_real_conversation_messages",
   "below_threshold",
   "already_compacted",
   "deferred_background",
@@ -94,11 +91,8 @@ export function classifyCompactionReason(reason?: string): CompactionReasonCode 
   ) {
     return "auth_failed";
   }
-  if (text.includes("nothing to compact")) {
+  if (text.includes("nothing to compact") || text.includes("no real conversation messages")) {
     return "no_compactable_entries";
-  }
-  if (text.includes("no real conversation messages")) {
-    return "no_real_conversation_messages";
   }
   if (text.includes("unknown model")) {
     // Surfaced when DEFAULT_PROVIDER/DEFAULT_MODEL fallback hits an unsupported
@@ -154,12 +148,9 @@ export function isBenignCompactionSkipResult(result: {
   if (result.compacted) {
     return false;
   }
-  const classification = classifyCompactionReason(result.reason);
   return (
     isBenignCompactionSkipReason(result.reason) ||
-    (result.ok &&
-      (classification === "no_compactable_entries" ||
-        classification === "no_real_conversation_messages"))
+    (result.ok && classifyCompactionReason(result.reason) === "no_compactable_entries")
   );
 }
 

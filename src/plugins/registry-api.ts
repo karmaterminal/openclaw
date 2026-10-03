@@ -15,7 +15,6 @@ import {
   schedulePluginSessionTurn,
   unschedulePluginSessionTurnsByTag,
 } from "./host-hook-scheduled-turns.js";
-import { getPluginInstance } from "./plugin-instance-scope.js";
 import { getPluginRuntimeEntrySource } from "./plugin-runtime-artifact-binding.js";
 import {
   capturePluginLifecycleAuthority,
@@ -72,13 +71,6 @@ export function createPluginApiFactory(
   ): OpenClawPluginApi => {
     const registrationMode = params.registrationMode ?? "full";
     const registrationCapabilities = resolvePluginRegistrationCapabilities(registrationMode);
-    const resolveBaseCapabilityCatalogContext = registryParams.resolveCapabilityCatalogContext;
-    const resolveCapabilityCatalogContext = resolveBaseCapabilityCatalogContext
-      ? () => {
-          const context = resolveBaseCapabilityCatalogContext();
-          return getPluginInstance(record)?.wrap(context) ?? context;
-        }
-      : undefined;
     const shouldCommitWorkflowSideEffect = () =>
       capturePluginLifecycleAuthority(getPluginRecordRegistry(registry, record), record, {
         registration: true,
@@ -94,9 +86,12 @@ export function createPluginApiFactory(
     const bindCapabilityRegistrar =
       <T extends { id: string }>(register: (provider: T) => unknown) =>
       (entry: Parameters<typeof resolveCapabilityProviderRegistration<T>>[0]): void => {
-        // Wrapped, not registryParams.resolveCapabilityCatalogContext: capability
-        // providers must see the plugin-scoped context (see the wrapper above).
-        register(resolveCapabilityProviderRegistration(entry, resolveCapabilityCatalogContext));
+        register(
+          resolveCapabilityProviderRegistration(
+            entry,
+            registryParams.resolveCapabilityCatalogContext,
+          ),
+        );
       };
     return buildPluginApi({
       id: record.id,

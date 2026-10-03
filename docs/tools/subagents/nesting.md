@@ -85,10 +85,6 @@ A full in-place conversation reset cancels unfinished native subagents associate
 
 **Interaction with continuation knobs:** when `agents.defaults.continuation.enabled === true`, the per-agent children cap acts as a complementary guard alongside the continuation runaway-safety guards (`maxDelegatesPerTurn`, `maxChainLength`, `costCapTokens`). Token budget (`costCapTokens`) and chain length (`maxChainLength`) remain the primary runaway-safety guards; `maxChildrenPerAgent` provides per-session pressure relief for wide-fanout patterns like large-scale distribution, code-agent fan-out, or batch deployment chains.
 
-**Override-headroom:** the zod schema permits values up to `10000` via config-override. The default stays at `5` for interactive single-agent safety; operators running wide-fanout patterns should raise via `agents.defaults.subagents.maxChildrenPerAgent` in `~/.openclaw/openclaw.json`.
-
-**Hot-reload:** the cap is read at spawn time. Config edits to `openclaw.json` take effect at the next subagent spawn; no gateway restart is needed.
-
 ### Cascade stop
 
 Explicit cancellation of an orchestrator cascades through its descendant
