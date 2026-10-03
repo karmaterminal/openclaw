@@ -14,10 +14,7 @@ export type ContinuationRecordStatus = "queued" | "running" | "succeeded" | "fai
 
 export type ContinuationLiveStatus = Extract<ContinuationRecordStatus, "queued" | "running">;
 
-export type ContinuationTerminalNotice =
-  | "retry-exhausted"
-  | "delegate-spawn-interrupted"
-  | "rollback-election-conflict";
+export type ContinuationTerminalNotice = "retry-exhausted" | "delegate-spawn-interrupted";
 
 /** Where custody went when a record left the store for another owner. */
 export type ContinuationHandoff =

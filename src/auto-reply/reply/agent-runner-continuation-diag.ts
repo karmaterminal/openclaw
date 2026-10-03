@@ -15,7 +15,7 @@ export function emitBracketContinuationRejected(params: {
   defaultDelayMs: number;
   chainId: string | undefined;
   chainStepRemaining: number;
-  disabledReason: "cap.chain" | "cap.cost" | "custody.import_pending";
+  disabledReason: "cap.chain" | "cap.cost";
   logMessage: string;
   systemEventMessage: string;
 }): void {

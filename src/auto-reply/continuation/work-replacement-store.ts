@@ -1,7 +1,6 @@
 // Same-session `continue_work` election and its rollback over the continuation
 // custody store (RFC docs/design/continue-work-signal-v2.md §5.4.3).
 import { abortContinuationDispatchClaim } from "./continuation-dispatch-claims.js";
-import { assertContinuationCustodyOwnerImported } from "./custody-import-gate.js";
 import {
   type ContinuationElectionPlan,
   electContinuationWork,
@@ -9,7 +8,6 @@ import {
   newContinuationRecordId,
   requestContinuationRecordCancel,
   updateContinuationRecords,
-  whenContinuationCustodyReady,
 } from "./custody/custody-store.js";
 import type {
   ContinuationRecord,
@@ -107,9 +105,6 @@ export async function enqueuePendingWorkReplacing(params: {
   expectedRunningFlowIds: readonly string[];
 }): Promise<PendingWorkReplacementResult> {
   const sessionKey = params.work.sessionKey;
-  // Phase A installs the import gate; a turn admitted before boot waits for it.
-  await whenContinuationCustodyReady();
-  assertContinuationCustodyOwnerImported(sessionKey);
   const state = encodeWorkState(params.work);
   const recordId = newContinuationRecordId();
   let priorRecords: readonly ContinuationRecord[] = [];

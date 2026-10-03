@@ -349,7 +349,6 @@ export function ensureAdditiveStateColumns(db: DatabaseSync, scope: "runtime" | 
     backfillLegacyManagedImageRoots(db);
   }
   ensureColumns(db, columns.beforeTaskAttribution);
-  ensureColumns(db, columns.flowRunChain);
   // Keep the released physical layout without repairing retired Task attribution or bindings.
   ensureColumns(db, columns.taskRequester);
   ensureColumns(db, columns.taskRunDetails);

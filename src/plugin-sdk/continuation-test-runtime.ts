@@ -15,7 +15,6 @@ export {
   cancelPendingDelegates,
   consumePendingDelegates,
 } from "../auto-reply/continuation/delegate-store.js";
-export { resetContinuationCustodyImportGateForTests } from "../auto-reply/continuation/custody-import-gate.js";
 export { resetContinueDelegateTurnAdmissionForTests } from "../auto-reply/continuation/delegate-turn-admission.js";
 export type { ContinuationRuntimeConfig } from "../auto-reply/continuation/types.js";
 export { executePendingContinuationWork } from "../auto-reply/continuation/work-dispatch-execution.js";

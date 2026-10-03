@@ -6,8 +6,6 @@
 import { afterEach, beforeEach, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import { closeOpenClawStateDatabaseAsync } from "../../../state/openclaw-state-db.js";
-import { resetContinuationCustodyImportGateForTests } from "../custody-import-gate.js";
-import { installContinuationCustodyAwaitingImport } from "./custody-import-gate-state.js";
 import { invalidateContinuationCustodyLifetime } from "./custody-lifetime.js";
 import { resetContinuationCustodyProjection } from "./custody-projection.js";
 import {
@@ -26,7 +24,6 @@ export function useContinuationCustodyTestState(): { stateDir: () => string } {
   const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
     afterEach(async () => {
       resetContinuationCustodyProjection();
-      resetContinuationCustodyImportGateForTests();
       await closeOpenClawStateDatabaseAsync();
       vi.unstubAllEnvs();
       stateDir = undefined;
@@ -70,11 +67,6 @@ export function custodyStateForTest(record: ContinuationRecord): Record<string, 
   }
   // SAFETY: narrowed to a non-array object above.
   return parsed as Record<string, unknown>;
-}
-
-/** Install the legacy-import gate for these owners, as phase A would (§5.4.5). */
-export function installContinuationCustodyImportGateForTest(owners: readonly string[]): void {
-  installContinuationCustodyAwaitingImport(resolveContinuationCustodyDatabasePath(), owners);
 }
 
 /** End the current database's custody lifetime without closing it (epoch-backstop tests). */

@@ -8,7 +8,6 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { parseAgentSessionKey } from "../../sessions/session-key-utils.js";
 import { deliveryContextFromSession } from "../../utils/delivery-context.read.js";
 import { resolveContinuationRuntimeConfig } from "./config.js";
-import { isContinuationCustodyOwnerAwaitingImport } from "./custody-import-gate.js";
 import { DelegateTerminalChainStatePersistError } from "./delegate-dispatch-chain-state.js";
 import type { DelegateDispatchContext } from "./delegate-dispatch-contract.js";
 import { dispatchToolDelegates } from "./delegate-dispatch.js";
@@ -111,11 +110,6 @@ export async function recoverPendingContinuationDelegates(
   let rejected = 0;
   let recoveredSessions = 0;
   for (const sessionKey of sessionKeys) {
-    // Owners still waiting on the legacy import keep their custody untouched
-    // until an import commits (RFC §5.4.5, "Update behavior").
-    if (isContinuationCustodyOwnerAwaitingImport(sessionKey)) {
-      continue;
-    }
     const agentId = parseAgentSessionKey(sessionKey)?.agentId;
     const storePath =
       params.storePath ??
@@ -278,11 +272,6 @@ export async function recoverAndReleaseStagedPostCompactionDelegates(options: {
   let failed = 0;
   let recoveredSessions = 0;
   for (const [sessionKey, delegates] of delegatesBySession) {
-    // Owners still waiting on the legacy import keep their custody untouched
-    // until an import commits (RFC §5.4.5, "Update behavior").
-    if (isContinuationCustodyOwnerAwaitingImport(sessionKey)) {
-      continue;
-    }
     const agentId = parseAgentSessionKey(sessionKey)?.agentId;
     const storePath = resolveSessionStorePathCore(runtimeConfigSnapshot.session?.store, {
       agentId,

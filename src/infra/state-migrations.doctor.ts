@@ -75,7 +75,6 @@ import {
   migrateLegacyCommitments,
 } from "./state-migrations.commitments.js";
 import { migrateLegacyConfigMachineState } from "./state-migrations.config-machine-state.js";
-import { continuationCustodyMigration } from "./state-migrations.continuation-custody.js";
 import {
   detectLegacyDebugProxyCaptureSidecar,
   migrateLegacyDebugProxyCaptureSidecar,
@@ -89,7 +88,6 @@ import {
   detectManagedWorktreeStateMigration,
   prepareDoctorAgentDatabaseDiscovery,
 } from "./state-migrations.doctor-discovery.js";
-import { unresolvedMigrationStepLayout } from "./state-migrations.doctor-step-layout.js";
 import {
   detectLegacyExecApprovals,
   migrateLegacyExecApprovals,
@@ -483,7 +481,6 @@ export async function detectLegacyStateMigrations(params: {
     artifactPreservingReadOnly: params.artifactPreservingReadOnly,
   });
   const restartSentinel = detectLegacyRestartSentinel({ stateDir });
-  const continuationCustody = continuationCustodyMigration.detect(params, stateDir, env);
   const workspace = await detectLegacyWorkspaceState({
     cfg: params.cfg,
     stateDir,
@@ -702,7 +699,6 @@ export async function detectLegacyStateMigrations(params: {
       "- Meeting transcripts: legacy JSON/JSONL files → shared SQLite state",
     ],
     [restartSentinel.hasLegacy, "- Restart sentinel: legacy JSON → shared SQLite state"],
-    continuationCustodyMigration.preview(continuationCustody),
     [workspace.hasLegacy, "- Workspace setup and attestations: legacy files → shared SQLite state"],
     [
       webPush.hasLegacy,
@@ -801,7 +797,6 @@ export async function detectLegacyStateMigrations(params: {
     mcpOauth,
     meetingTranscripts,
     restartSentinel,
-    continuationCustody,
     workspace,
     webPush,
     nodeHost,
@@ -812,6 +807,49 @@ export async function detectLegacyStateMigrations(params: {
     preview,
   };
 }
+
+const unresolvedMigrationStepLayout = [
+  ["device-auth", "shared", "all"],
+  ["device-identity", "shared", "all"],
+  ["meeting-transcripts", "shared", "all"],
+  ["managed-worktrees", "shared", "all"],
+  ["shared-auth-store", "shared", "all"],
+  ["debug-proxy-capture", "shared", "all"],
+  ["voice-wake", "shared", "all"],
+  ["update-check", "shared", "all"],
+  ["config-health", "shared", "all"],
+  ["plugin-binding-approvals", "shared", "all"],
+  ["current-conversation-bindings", "shared", "all"],
+  ["delivery-queues", "shared", "doctor"],
+  ["pairing-stores", "shared", "doctor"],
+  ["tui-last-session", "final", "doctor"],
+  ["commitments", "final", "doctor"],
+  ["audit-logs", "final", "doctor"],
+  ["acp-replay-ledger", "final", "doctor"],
+  ["managed-outgoing-images", "final", "doctor"],
+  ["apns-registrations", "final", "doctor"],
+  ["exec-approvals", "final", "doctor"],
+  ["mcp-oauth", "final", "doctor"],
+  ["restart-sentinel", "final", "all"],
+  ["workspace-state", "final", "all"],
+  ["web-push", "final", "doctor"],
+  ["node-host", "final", "doctor"],
+  ["rescue-pending", "final", "doctor"],
+  ["skill-workshop", "final", "doctor"],
+  ["channel-pairing", "final", "doctor"],
+  ["plugin-doctor-state", "final", "all"],
+  ["sessions", "final", "doctor-agent"],
+  ["legacy-main-session-keys", "final", "automatic"],
+  ["acp-session-metadata", "final", "doctor-agent"],
+  ["agent-dir", "final", "agent"],
+  ["plugin-doctor-post-session-state", "final", "doctor"],
+] as const satisfies ReadonlyArray<
+  readonly [
+    id: string,
+    phase: LegacyStateMigrationStep["phase"],
+    scope: "all" | "doctor" | "automatic" | "doctor-agent" | "agent",
+  ]
+>;
 
 function buildUnresolvedBlockedMigrationSteps(params: {
   mode: LegacyStateMigrationMode;
@@ -1495,7 +1533,6 @@ function buildLegacyStateMigrationSteps(
   let unavailableWorkshopWorkspaces: ReadonlyMap<string, string> | undefined;
   const finalSteps: LegacyStateMigrationStep[] = [
     ownerStep("restart-sentinel", detected.restartSentinel, migrateLegacyRestartSentinel),
-    ...continuationCustodyMigration.steps(detected.continuationCustody, { env, stateDir, now }),
     {
       ...ownerStep("workspace-state", detected.workspace, async (options) => {
         // Shared/agent schemas are ready here. Repair alias ownership before

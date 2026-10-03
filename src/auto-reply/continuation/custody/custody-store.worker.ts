@@ -12,7 +12,6 @@ import {
   formatContinuationChildRunId,
   type ContinuationSpawnAttempt,
 } from "../../../shared/continuation-run-key.js";
-import { createLazyRuntimeModule } from "../../../shared/lazy-runtime.js";
 import type { OpenClawStateDatabase } from "../../../state/openclaw-state-db-contract.js";
 import { tableExists } from "../../../state/openclaw-state-db-schema-helpers.js";
 import {
@@ -56,10 +55,6 @@ import {
   releaseContinuationPostCompactionInDatabase,
   settleContinuationNoticeInDatabase,
 } from "./custody-store.worker-handoffs.js";
-import {
-  listContinuationOwnersAwaitingImport,
-  readOwedLegacyReleases,
-} from "./legacy-taskflow-migration-source.js";
 /**
  * Creates the canonical first-use table and indexes once per database handle,
  * before the first custody write transaction. Reads never create it.
@@ -390,45 +385,10 @@ export function isContinuationCustodyCommand(command: {
   return command.type.startsWith("continuationCustody.");
 }
 
-// The legacy import pulls in delivery-queue and TaskFlow decoding modules; it
-// loads only when its own commands are prepared, never at worker start.
-const loadLegacyImport = createLazyRuntimeModule(
-  () => import("./legacy-taskflow-import.worker.js"),
-);
-let legacyImport: typeof import("./legacy-taskflow-import.worker.js") | undefined;
-
-/** Load what a custody command needs before its synchronous execution. */
-export function prepareContinuationCustodyCommand(type: PropertyKey): Promise<void> | undefined {
-  if (
-    (type === "continuationCustody.readLegacySnapshot" ||
-      type === "continuationCustody.importLegacyOwner") &&
-    !legacyImport
-  ) {
-    return loadLegacyImport().then((loaded) => {
-      legacyImport = loaded;
-    });
-  }
-  return undefined;
-}
-
-function preparedLegacyImport(): typeof import("./legacy-taskflow-import.worker.js") {
-  if (!legacyImport) {
-    throw new Error("Continuation legacy import command was not prepared");
-  }
-  return legacyImport;
-}
-
 /** Commands that read or delete only, so they never create the first-use table. */
 const SCHEMALESS_COMMANDS: ReadonlySet<keyof ContinuationCustodyWorkerOperations> = new Set<
   keyof ContinuationCustodyWorkerOperations
->([
-  "continuationCustody.list",
-  "continuationCustody.prune",
-  "continuationCustody.listAwaitingImportOwners",
-  "continuationCustody.readBootFacts",
-  "continuationCustody.readLegacySnapshot",
-  "continuationCustody.readOwedLegacyReleases",
-]);
+>(["continuationCustody.list", "continuationCustody.prune", "continuationCustody.readBootFacts"]);
 
 /** One custody command is one state write transaction in the shared state worker. */
 export function executeContinuationCustodyCommand(
@@ -474,19 +434,8 @@ function executeInTransaction(
       // Recovery and projection hydration read inside the write FIFO so they
       // observe every earlier committed custody write.
       return listContinuationRecordsInDatabase(db, command.input);
-    case "continuationCustody.listAwaitingImportOwners":
-      return listContinuationOwnersAwaitingImport(db);
     case "continuationCustody.readBootFacts":
-      return {
-        live: listContinuationRecordsInDatabase(db, { statuses: ["queued", "running"] }),
-        awaitingImportOwners: listContinuationOwnersAwaitingImport(db),
-      };
-    case "continuationCustody.readLegacySnapshot":
-      return preparedLegacyImport().readLegacyImportSnapshotInDatabase(db);
-    case "continuationCustody.importLegacyOwner":
-      return preparedLegacyImport().importLegacyOwnerInDatabase(database, command.input);
-    case "continuationCustody.readOwedLegacyReleases":
-      return readOwedLegacyReleases(db);
+      return { live: listContinuationRecordsInDatabase(db, { statuses: ["queued", "running"] }) };
   }
   throw new Error("Unknown continuation custody command");
 }

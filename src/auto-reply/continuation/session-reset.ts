@@ -1,11 +1,6 @@
 // Explicit reset is an interruption boundary for continuation custody (RFC
 // docs/design/continue-work-signal-v2.md §5.4.4, "Reset at any boundary").
-import { refuseContinuationCustodyImportPending } from "./custody-import-gate.js";
-import {
-  listContinuationRecords,
-  readContinuationOwnerInventory,
-  updateContinuationRecords,
-} from "./custody/custody-store.js";
+import { listContinuationRecords, updateContinuationRecords } from "./custody/custody-store.js";
 import type { ContinuationRecord, ContinuationRecordPatch } from "./custody/custody-store.types.js";
 
 const MAX_SESSION_RESET_CANCELLATION_ATTEMPTS = 8;
@@ -58,15 +53,7 @@ function resetPatch(record: ContinuationRecord, now: number): ContinuationRecord
 /** Terminalize durable continuation work owned by one reset session. */
 export async function cancelSessionContinuations(sessionKey: string): Promise<void> {
   const now = Date.now();
-  const { records, awaitingImport } = await readContinuationOwnerInventory({
-    ownerSessionKey: sessionKey,
-  });
-  // An owner whose legacy import failed still has live rows this inventory
-  // cannot show; resetting now would report success and let a later import
-  // resurrect them. Fail as retryable until the import commits.
-  if (awaitingImport) {
-    refuseContinuationCustodyImportPending();
-  }
+  const records = await listContinuationRecords({ ownerSessionKey: sessionKey });
   for (const initial of records) {
     let current: ContinuationRecord | undefined = initial;
     for (let attempt = 0; current; attempt += 1) {

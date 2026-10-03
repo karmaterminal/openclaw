@@ -9,7 +9,6 @@ import { replaceWorkspaceAttestationInDatabase } from "../agents/workspace-state
 import {
   executeContinuationCustodyCommand,
   isContinuationCustodyCommand,
-  prepareContinuationCustodyCommand,
 } from "../auto-reply/continuation/custody/custody-store.worker.js";
 import { readClawInstallSchemaVersionRows } from "../claws/provenance-runtime-read.kernel.js";
 import { upsertConfigSnapshotAuditRecordInDatabase } from "../config/config-journal-snapshot.kernel.js";
@@ -75,11 +74,7 @@ const log = createSubsystemLogger("state/worker");
 export { openUpdateRunWriter } from "../infra/update-run-mutation.worker.js";
 
 export function prepareSharedStateCommand(type: PropertyKey): Promise<void> | undefined {
-  return (
-    stateWorkerRegistry.prepare(type) ??
-    prepareContinuationCustodyCommand(type) ??
-    prepareCronStateWorkerCommand(type)
-  );
+  return stateWorkerRegistry.prepare(type) ?? prepareCronStateWorkerCommand(type);
 }
 
 export function executeSharedStateCommand(

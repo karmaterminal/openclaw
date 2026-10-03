@@ -1841,7 +1841,6 @@ CREATE TABLE IF NOT EXISTS flow_runs (
   shape TEXT,
   sync_mode TEXT NOT NULL DEFAULT 'managed',
   owner_key TEXT NOT NULL,
-  chain_id TEXT,
   requester_origin_json TEXT,
   controller_id TEXT,
   revision INTEGER NOT NULL DEFAULT 0,
@@ -1890,7 +1889,7 @@ CREATE TABLE IF NOT EXISTS continuation_records (
   attachment_id TEXT,
   terminal_notice_pending TEXT CHECK (
     terminal_notice_pending IS NULL OR terminal_notice_pending IN (
-      'retry-exhausted', 'delegate-spawn-interrupted', 'rollback-election-conflict'
+      'retry-exhausted', 'delegate-spawn-interrupted'
     )
   ),
   CHECK ((status IN ('succeeded', 'failed', 'cancelled')) = (ended_at IS NOT NULL)),

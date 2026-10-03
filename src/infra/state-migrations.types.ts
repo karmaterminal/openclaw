@@ -1,5 +1,4 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { ContinuationTaskFlowImportDetection } from "../auto-reply/continuation/custody/legacy-taskflow-migration-source.js";
 import type { SessionScope } from "../config/sessions/types.js";
 import type {
   PluginDoctorStateMigration,
@@ -114,7 +113,6 @@ export type LegacyStateDetection = Pick<MigrationMessages, "warningDisposition" 
   mcpOauth: LegacyMcpOAuthDetection;
   meetingTranscripts?: LegacyMeetingTranscriptsDetection;
   restartSentinel?: LegacyRestartSentinelDetection;
-  continuationCustody?: ContinuationTaskFlowImportDetection;
   workspace: LegacyWorkspaceStateDetection;
   webPush: {
     subscriptionsPath: string;

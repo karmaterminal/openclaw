@@ -35,7 +35,6 @@ function isTerminalNotice(value: string | null): value is ContinuationTerminalNo
 const NOTICES: ReadonlySet<string> = new Set<ContinuationTerminalNotice>([
   "retry-exhausted",
   "delegate-spawn-interrupted",
-  "rollback-election-conflict",
 ]);
 export const CONTINUATION_SPAWN_FAILURE_PHASES: ReadonlySet<string> =
   new Set<ContinuationSpawnFailurePhase>(["initialize", "dispatch", "register"]);

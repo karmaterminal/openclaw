@@ -374,11 +374,7 @@ describe("empty-reply decision with queued delegate counts", () => {
   }
 
   it("finishes a turn with no payloads and exact zero counts as an empty reply", async () => {
-    resolveQueuedCounts.mockResolvedValue({
-      pending: 0,
-      stagedPostCompaction: 0,
-      awaitingImport: false,
-    });
+    resolveQueuedCounts.mockResolvedValue({ pending: 0, stagedPostCompaction: 0 });
     const context = createEmptyContinuationContext();
 
     const prepared = await prepareReplyAgentPayloads({
@@ -388,23 +384,5 @@ describe("empty-reply decision with queued delegate counts", () => {
 
     expect(resolveQueuedCounts).toHaveBeenCalledWith(context.sessionKey);
     expect(prepared.kind).toBe("return");
-  });
-
-  it("does not finish as an empty reply while the owner's legacy import is pending, even with zero counts", async () => {
-    resolveQueuedCounts.mockResolvedValue({
-      pending: 0,
-      stagedPostCompaction: 0,
-      awaitingImport: true,
-    });
-    const context = createEmptyContinuationContext();
-
-    const prepared = await prepareReplyAgentPayloads({
-      context,
-      accounting: await accountAgentTurn(context),
-    });
-
-    expect(resolveQueuedCounts).toHaveBeenCalledWith(context.sessionKey);
-    // The legacy delegates the counts miss still need the continuation handling.
-    expect(prepared.kind).toBe("continue");
   });
 });

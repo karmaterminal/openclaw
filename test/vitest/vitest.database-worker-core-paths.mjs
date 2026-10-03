@@ -215,7 +215,6 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/subagent-registry.persistence.restore-recovery.test.ts",
   // Agents, gateway and tool suites on real continuation custody.
   "src/agents/tools/continue-delegate-attachment-validation.test.ts",
-  "src/agents/tools/continue-delegate-tool.import-gate.test.ts",
   "src/agents/subagent-announce.continuation-drain.bracket-hedge.test.ts",
   "src/agents/subagent-announce.continuation-tool-delegate-commit.test.ts",
   "src/agents/subagent-announce.crosssession-gate.test.ts",
@@ -249,8 +248,6 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/dispatch.block-streaming-recovery.test.ts",
   "src/auto-reply/continuation/custody/custody-store.test.ts",
   "src/auto-reply/continuation/custody/custody-readiness.test.ts",
-  // The legacy TaskFlow import runs its SQL as shared-state worker operations.
-  "src/auto-reply/continuation/custody/legacy-taskflow-import.test.ts",
   // Continuation delegate store suites on real continuation custody.
   "src/auto-reply/continuation/delegate-store.test.ts",
   "src/auto-reply/continuation/delegate-store.queue.test.ts",

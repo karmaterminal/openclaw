@@ -440,7 +440,7 @@ function startPendingContinuationRecovery(params: {
           import("../agents/subagents/registry/subagent-registry.js"),
         ]);
       const bootLog = params.log.child("continuation-recovery");
-      // Doctor import fact, then registry activation, then custody recovery.
+      // Custody readiness, then registry activation, then custody recovery.
       // Only the custody steps run admitted; the activation wait does not.
       const summary = await runContinuationCustodyBoot({
         armedAt: recoveryArmedAt,
@@ -453,7 +453,6 @@ function startPendingContinuationRecovery(params: {
             throw new Error("continuation recovery stopped before registry activation");
           }
         },
-        log: bootLog,
       });
       const { delegates, postCompaction, work } = summary;
       if (

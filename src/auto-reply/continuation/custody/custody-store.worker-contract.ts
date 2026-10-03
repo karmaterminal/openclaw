@@ -16,10 +16,9 @@ import type {
   ContinuationUpdateResult,
   NewContinuationRecord,
 } from "./custody-store.types.js";
-import type { ContinuationLegacyImportWorkerOperations } from "./legacy-taskflow-import.worker-contract.js";
 
 /** Shared-state worker operations owned by continuation custody (RFC §5.4.2). */
-export type ContinuationCustodyWorkerOperations = ContinuationLegacyImportWorkerOperations & {
+export type ContinuationCustodyWorkerOperations = {
   "continuationCustody.create": {
     input: { record: NewContinuationRecord };
     output: ContinuationCreateResult;
@@ -56,22 +55,13 @@ export type ContinuationCustodyWorkerOperations = ContinuationLegacyImportWorker
     input: ContinuationPostCompactionReleaseInput;
     output: ContinuationPostCompactionReleaseResult;
   };
-  /** Owners whose legacy TaskFlow rows the Doctor import has not committed (§5.4.5). */
-  "continuationCustody.listAwaitingImportOwners": {
-    input: Record<string, never>;
-    output: string[];
-  };
   "continuationCustody.list": {
     input: ContinuationRecordQuery;
     output: ContinuationRecord[];
   };
-  /**
-   * Phase A of custody readiness (§5.4.5): the live set and the owners still
-   * awaiting the legacy import, read in one transaction so the projection and
-   * the import gate describe the same committed state.
-   */
+  /** Phase A of custody readiness (§5.4.5): the live set, read in one transaction. */
   "continuationCustody.readBootFacts": {
     input: Record<string, never>;
-    output: { live: ContinuationRecord[]; awaitingImportOwners: string[] };
+    output: { live: ContinuationRecord[] };
   };
 };

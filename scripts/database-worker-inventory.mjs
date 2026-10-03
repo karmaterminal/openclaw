@@ -153,8 +153,8 @@ const workerModules = new Set([
   "src/audit/message-delivery-progress-store.ts", // Audit writer owns progress writes; audit read worker owns progress queries.
   "src/audit/message-execution-binding.ts", // Audit writer alone ensures and confirms outbound execution bindings.
 
-  // Imported only by custody-store.worker.ts, custody-store.worker-handoffs.ts and
-  // legacy-taskflow-import.worker.ts; those reach the host only through
+  // Imported only by custody-store.worker.ts and custody-store.worker-handoffs.ts;
+  // those reach the host only through
   // custody-store.worker.ts <- openclaw-state-worker-runtime.ts.
   "src/auto-reply/continuation/custody/custody-store.kernel.ts",
 

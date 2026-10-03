@@ -27,27 +27,11 @@ import {
   directSessionReq,
 } from "./test/server-sessions.test-helpers.js";
 
-// Post-compaction release decision seams. The count override is set only by the
-// import-pending cases; everything else reads real custody and releases for real.
+// Post-compaction release seam: records which sessions the release ran for;
+// the decision itself reads real custody and releases for real.
 const postCompactionReleaseSeams = vi.hoisted(() => ({
-  countsOverride: undefined as
-    | { pending: number; stagedPostCompaction: number; awaitingImport: boolean }
-    | undefined,
   releaseCalls: [] as string[],
 }));
-
-vi.mock("../auto-reply/continuation/delegate-store.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../auto-reply/continuation/delegate-store.js")>();
-  return {
-    ...actual,
-    resolveQueuedDelegateCounts: async (
-      ...args: Parameters<typeof actual.resolveQueuedDelegateCounts>
-    ) =>
-      postCompactionReleaseSeams.countsOverride ??
-      (await actual.resolveQueuedDelegateCounts(...args)),
-  };
-});
 
 vi.mock("../auto-reply/reply/agent-runner-post-compaction-release.js", async (importOriginal) => {
   const actual =
@@ -384,56 +368,22 @@ async function seedMaxLinesCompactionSession(sessionId: string): Promise<void> {
   });
 }
 
-test("sessions.compact does not release post-compaction delegates while the legacy import is pending", async () => {
+test("sessions.compact releases staged post-compaction delegates", async () => {
   await rehydrateContinuationCustodyAfterStateSettles();
-  await seedMaxLinesCompactionSession("sess-post-compaction-import-pending");
-  postCompactionReleaseSeams.releaseCalls.length = 0;
-  // Staged work is reported, but the owner's legacy import has not committed.
-  postCompactionReleaseSeams.countsOverride = {
-    pending: 0,
-    stagedPostCompaction: 1,
-    awaitingImport: true,
-  };
-  try {
-    const compacted = await directSessionReq<{ ok: true; compacted: boolean; kept?: number }>(
-      "sessions.compact",
-      { key: "main", maxLines: 50 },
-    );
-
-    expect(compacted.ok).toBe(true);
-    expect(compacted.payload?.compacted).toBe(true);
-    expect(postCompactionReleaseSeams.releaseCalls).toEqual([]);
-  } finally {
-    postCompactionReleaseSeams.countsOverride = undefined;
-  }
-  await rehydrateContinuationCustodyAfterStateSettles();
-});
-
-test("sessions.compact releases staged post-compaction delegates when no legacy import is pending", async () => {
-  await rehydrateContinuationCustodyAfterStateSettles();
-  await seedMaxLinesCompactionSession("sess-post-compaction-imported");
+  await seedMaxLinesCompactionSession("sess-post-compaction-released");
   await stagePostCompactionDelegate("agent:main:main", {
-    task: "release when imported",
+    task: "release after compaction",
     createdAt: Date.now(),
   });
   postCompactionReleaseSeams.releaseCalls.length = 0;
-  postCompactionReleaseSeams.countsOverride = {
-    pending: 0,
-    stagedPostCompaction: 1,
-    awaitingImport: false,
-  };
-  try {
-    const compacted = await directSessionReq<{ ok: true; compacted: boolean; kept?: number }>(
-      "sessions.compact",
-      { key: "main", maxLines: 50 },
-    );
+  const compacted = await directSessionReq<{ ok: true; compacted: boolean; kept?: number }>(
+    "sessions.compact",
+    { key: "main", maxLines: 50 },
+  );
 
-    expect(compacted.ok).toBe(true);
-    expect(compacted.payload?.compacted).toBe(true);
-    expect(postCompactionReleaseSeams.releaseCalls).toEqual(["agent:main:main"]);
-    expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(0);
-  } finally {
-    postCompactionReleaseSeams.countsOverride = undefined;
-  }
+  expect(compacted.ok).toBe(true);
+  expect(compacted.payload?.compacted).toBe(true);
+  expect(postCompactionReleaseSeams.releaseCalls).toEqual(["agent:main:main"]);
+  expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(0);
   await rehydrateContinuationCustodyAfterStateSettles();
 });

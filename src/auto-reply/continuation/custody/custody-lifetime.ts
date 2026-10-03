@@ -1,12 +1,11 @@
 // Custody readiness belongs to one database lifetime, not to a path (RFC
-// §5.4.5): a database closed and replaced at the same path may hold legacy
-// rows that were never imported. Each path keeps an epoch and phase A's
-// in-flight promise. Ending a lifetime advances the epoch and drops the
-// projection, the import gate and any in-flight readiness together, so the next
-// custody command runs phase A against the current database, and a phase A
-// that began in the ended lifetime cannot publish.
+// §5.4.5): a database closed and replaced at the same path may hold different
+// rows. Each path keeps an epoch and phase A's in-flight promise. Ending a
+// lifetime advances the epoch and drops the projection and any in-flight
+// readiness together, so the next custody command runs phase A against the
+// current database, and a phase A that began in the ended lifetime cannot
+// publish.
 import { resolveGlobalSingleton } from "../../../shared/global-singleton.js";
-import { clearContinuationCustodyAwaitingImport } from "./custody-import-gate-state.js";
 import { resetContinuationCustodyProjection } from "./custody-projection.js";
 
 type DatabaseLifetime = {
@@ -45,7 +44,6 @@ export function invalidateContinuationCustodyLifetime(databasePath: string): voi
     lifetime.readiness = undefined;
   }
   resetContinuationCustodyProjection(databasePath);
-  clearContinuationCustodyAwaitingImport(databasePath);
 }
 
 /** Thrown when work started in a custody database lifetime that has since ended. */

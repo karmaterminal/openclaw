@@ -6,15 +6,10 @@
 // scrubbed. Nothing else reads or writes `continuation_records`.
 import { uuidv7 } from "../../../../packages/agent-core/src/harness/session/uuid.js";
 import { createSqliteWorkerWriteAdmission } from "../../../infra/sqlite-worker-store.js";
-import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { registerOpenClawStateDatabaseAsyncResource } from "../../../state/openclaw-state-db-cache.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
 import { runOpenClawStateWorkerOperation } from "../../../state/openclaw-state-worker-store.js";
-import {
-  installContinuationCustodyAwaitingImport,
-  isOwnerAwaitingContinuationCustodyImport,
-} from "./custody-import-gate-state.js";
 import {
   assertContinuationCustodyLifetime,
   continuationCustodyLifetime,
@@ -88,17 +83,13 @@ function hasCommitFacts(value: unknown): value is ContinuationCommitFacts {
 }
 
 /**
- * Raw boot reads, the only commands that do not wait for phase A. Phase A
- * issues them itself, so fencing them would recurse. Every other command,
- * public list reads included, waits: a correctness read before the legacy
- * import (reset's list, the cleanup guard) would miss un-imported work.
+ * The raw boot read, the only command that does not wait for phase A. Phase A
+ * issues it itself, so fencing it would recurse. Every other command, public
+ * list reads included, waits for the projection to be hydrated.
  */
 const BOOT_READ_COMMANDS: ReadonlySet<keyof Operations> = new Set<keyof Operations>([
-  "continuationCustody.listAwaitingImportOwners",
   "continuationCustody.readBootFacts",
 ]);
-
-const log = createSubsystemLogger("continuation/custody-store");
 
 /** Watch the database this custody context admits; returns the lifetime's epoch. */
 function watchDatabaseLifetime(custody: Custody): number {
@@ -126,43 +117,23 @@ function watchDatabaseLifetime(custody: Custody): number {
 }
 
 /**
- * Phase A of custody readiness (§5.4.5). Read the live set and the owners
- * awaiting the legacy import in one transaction. When owners await import, run
- * the approved Doctor transform first ("Gateway startup invokes the same
- * approved transform before continuation recovery"), then re-read, so the gate
- * and the projection describe post-import state. An owner whose import fails
- * stays awaiting import and keeps refusing writes; a thrown read or import
- * installs nothing, so no write passes.
+ * Phase A of custody readiness (§5.4.5): read the live set in one transaction
+ * and hydrate the projection from it. A thrown read installs nothing, so no
+ * write passes.
  */
 async function readBootFactsAndInstall(custody: Custody): Promise<ContinuationRecord[]> {
   const epoch = watchDatabaseLifetime(custody);
-  const assertCurrent = () => assertContinuationCustodyLifetime(databasePath(custody), epoch);
-  let facts = await execute(custody, "continuationCustody.readBootFacts", {}, []);
-  if (facts.awaitingImportOwners.length > 0) {
-    const { migrateContinuationTaskFlowCustody } = await import("./legacy-taskflow-import.js");
-    // The import is bound to this lifetime, so it never writes old-lifetime
-    // facts into a database that replaced this one mid-import.
-    const result = await migrateContinuationTaskFlowCustody({ env: custody.env, assertCurrent });
-    for (const change of result.changes) {
-      log.info(change);
-    }
-    for (const warning of result.warnings) {
-      log.warn(warning);
-    }
-    facts = await execute(custody, "continuationCustody.readBootFacts", {}, []);
-  }
+  const facts = await execute(custody, "continuationCustody.readBootFacts", {}, []);
   // A database closed or replaced while this ran must not receive these facts.
-  assertCurrent();
-  installContinuationCustodyAwaitingImport(databasePath(custody), facts.awaitingImportOwners);
+  assertContinuationCustodyLifetime(databasePath(custody), epoch);
   hydrateContinuationCustodyProjection(databasePath(custody), facts.live);
   return facts.live;
 }
 
 /**
- * Every custody command except the raw boot reads waits for phase A, so no
- * write can land, and no list can answer, before the import gate is installed
- * and the legacy import has run. The
- * shared promise is only the in-flight read: it is dropped once it settles, so
+ * Every custody command except the raw boot read waits for phase A, so no
+ * write can land, and no list can answer, before the projection is hydrated.
+ * The shared promise is only the in-flight read: it is dropped once it settles, so
  * a failed read lets no write through and the next write retries it, and a
  * reset projection is re-read rather than trusted.
  */
@@ -188,7 +159,7 @@ async function ensureReady(custody: Custody): Promise<void> {
   await pending;
 }
 
-/** Wait for custody phase A; callers that check the import gate await this first. */
+/** Wait for custody phase A, so the projection describes committed custody. */
 export async function whenContinuationCustodyReady(
   options?: ContinuationCustodyStoreOptions,
 ): Promise<void> {
@@ -517,60 +488,9 @@ export function listContinuationRecords(
   return execute(capture(options), "continuationCustody.list", { ...query }, []);
 }
 
-/** One owner's inventory, and whether that inventory is incomplete. */
-export type ContinuationOwnerInventory = {
-  records: ContinuationRecord[];
-  /** The owner's legacy rows are not imported, so `records` is not the whole inventory. */
-  awaitingImport: boolean;
-};
-
-const OWNER_INVENTORY_ATTEMPTS = 3;
-
 /**
- * List-by-owner for session reset and the cleanup guard: the owner's records
- * and its import state, answered by one database lifetime (§5.4.5). Closing
- * the database clears the import gate, so a list from the ended lifetime read
- * next to the replacement's not-yet-installed gate would present unknown
- * legacy authority as an empty inventory. A lifetime that ends before the gate
- * is read discards the answer and asks the current database again.
- */
-export async function readContinuationOwnerInventory(
-  query: ContinuationRecordQuery & { ownerSessionKey: string },
-  options?: ContinuationCustodyStoreOptions,
-): Promise<ContinuationOwnerInventory> {
-  for (let attempt = 1; ; attempt += 1) {
-    // Capture per attempt: a retry must be admitted by the current database.
-    const custody = capture(options);
-    const path = databasePath(custody);
-    await ensureReady(custody);
-    const epoch = watchDatabaseLifetime(custody);
-    const records = await execute(custody, "continuationCustody.list", { ...query }, []);
-    try {
-      assertContinuationCustodyLifetime(path, epoch);
-    } catch (error) {
-      if (attempt < OWNER_INVENTORY_ATTEMPTS) {
-        continue;
-      }
-      throw error;
-    }
-    // No await since the lifetime check: the gate read belongs to that lifetime.
-    return {
-      records,
-      awaitingImport: isOwnerAwaitingContinuationCustodyImport(path, query.ownerSessionKey),
-    };
-  }
-}
-
-/** The Doctor import's boot fact: owners whose legacy rows are not imported yet (§5.4.5). */
-export function listContinuationOwnersAwaitingLegacyImport(
-  options?: ContinuationCustodyStoreOptions,
-): Promise<string[]> {
-  return execute(capture(options), "continuationCustody.listAwaitingImportOwners", {}, []);
-}
-
-/**
- * Hydrate the hot-path projection and the import gate from one committed read
- * (phase A), even when already hydrated. Mutations run it on demand.
+ * Hydrate the hot-path projection from one committed read (phase A), even when
+ * already hydrated. Mutations run it on demand.
  */
 export async function hydrateContinuationCustody(
   options?: ContinuationCustodyStoreOptions,

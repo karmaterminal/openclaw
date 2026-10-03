@@ -12,7 +12,6 @@ import {
   registerContinuationDispatchClaim,
   resetContinuationDispatchClaimsForTests,
 } from "./continuation-dispatch-claims.js";
-import { isContinuationCustodyOwnerAwaitingImport } from "./custody-import-gate.js";
 import { checkContinuationBudget } from "./scheduler.js";
 import type {
   ChainState,
@@ -762,11 +761,6 @@ export async function recoverPendingContinuationWork(): Promise<{
   let failed = 0;
   let reaped = 0;
   for (const sessionKey of sessionKeys) {
-    // Owners still waiting on the legacy import keep their custody untouched
-    // until an import commits (RFC §5.4.5, "Update behavior").
-    if (isContinuationCustodyOwnerAwaitingImport(sessionKey)) {
-      continue;
-    }
     const result = await dispatchPendingContinuationWork({
       sessionKey,
       recoverRunning: true,

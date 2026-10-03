@@ -92,7 +92,6 @@ async function bootGateway() {
     workTool,
     compactionTool,
     custodyBoot,
-    legacyImport,
     signal,
     schedule,
     controller,
@@ -111,7 +110,6 @@ async function bootGateway() {
     import("../../agents/tools/continue-work-tool.js"),
     import("../../agents/tools/request-compaction-tool.js"),
     import("./custody-boot.js"),
-    import("./custody/legacy-taskflow-import.js"),
     import("./signal.js"),
     import("../reply/agent-runner-continuation-schedule.js"),
     import("../reply/agent-runner-continuation.js"),
@@ -136,13 +134,11 @@ async function bootGateway() {
   /**
    * The continuation half of Gateway startup, in the order
    * `startPendingContinuationRecovery` (`server-runtime-services.ts`) runs it
-   * with its boot-time cutoff: the Doctor custody import (which the startup
-   * preflight runs before the Gateway boots), subagent registry activation
+   * with its boot-time cutoff: custody readiness, subagent registry activation
    * (this harness has no Gateway registry to activate), then custody recovery.
    */
   async function runContinuationRecovery(): Promise<void> {
     const armedAt = Date.now();
-    await legacyImport.migrateContinuationTaskFlowCustody({ env: process.env });
     await custodyBoot.runContinuationCustodyBoot({
       armedAt,
       whenSubagentRegistryActivated: async () => {},
@@ -882,7 +878,7 @@ describe("RFC §5.4.4 reset at any boundary", () => {
   });
 });
 
-describe("RFC §2.2/§2.6 tool and token forms converge on one custody record (§9.2.2 item 6)", () => {
+describe("RFC §2.2/§2.6 tool and token forms converge on one custody record (§9.2.2 item 5)", () => {
   it("a delayed delegate reaches the spawn owner identically from the tool and the token form", async () => {
     await withGateway(async (gateway) => {
       for (const form of ["tool", "token"] as const) {
