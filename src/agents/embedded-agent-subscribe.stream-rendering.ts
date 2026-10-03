@@ -1,5 +1,4 @@
 import { readAssistantThinkingAppend } from "@openclaw/ai/internal/shared";
-import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import type { InlineCodeState } from "../../packages/markdown-core/src/code-spans.js";
 import {
@@ -33,13 +32,70 @@ import type {
   EmbeddedAgentSubscribeContext,
   StreamBlockState,
 } from "./embedded-agent-subscribe.handlers.types.js";
-import {
-  splitTrailingBlockTagFragment,
-  splitTrailingFenceFragment,
-  stripFinalTagsOutsideCodeSpans,
-} from "./embedded-agent-subscribe.stream-block-tags.js";
 import type { SubscribeEmbeddedAgentSessionParams } from "./embedded-agent-subscribe.types.js";
 import { createThinkingTagStreamState, THINKING_TAG_SCAN_RE } from "./embedded-agent-utils.js";
+
+const STREAM_STRIPPED_BLOCK_TAG_NAMES = [
+  "final",
+  "think",
+  "thinking",
+  "thought",
+  "antthinking",
+  "antml:think",
+  "antml:thinking",
+  "antml:thought",
+  "mm:think",
+  "mm:thinking",
+  "mm:thought",
+] as const;
+
+function isPotentialTrailingBlockTagFragment(fragment: string): boolean {
+  if (!fragment.startsWith("<") || fragment.includes(">")) {
+    return false;
+  }
+  const body = fragment.toLowerCase().slice(1).trimStart().replace(/^\//, "").trimStart();
+  if (!body) {
+    return true;
+  }
+  const namePart = body.split(/[\s/>]/, 1)[0] ?? "";
+  if (!namePart) {
+    return true;
+  }
+  return STREAM_STRIPPED_BLOCK_TAG_NAMES.some((name) => name.startsWith(namePart));
+}
+
+function splitTrailingBlockTagFragment(
+  text: string,
+  isInsideCodeSpan: (index: number) => boolean,
+): { text: string; pendingTagFragment?: string } {
+  const fragmentStart = text.lastIndexOf("<");
+  if (fragmentStart === -1 || isInsideCodeSpan(fragmentStart)) {
+    return { text };
+  }
+  const fragment = text.slice(fragmentStart);
+  if (!isPotentialTrailingBlockTagFragment(fragment)) {
+    return { text };
+  }
+  return {
+    text: text.slice(0, fragmentStart),
+    pendingTagFragment: fragment,
+  };
+}
+
+function splitTrailingFenceFragment(
+  text: string,
+  startsAtLineStart: boolean,
+): { text: string; pendingFenceFragment?: string } {
+  const lineStart = text.lastIndexOf("\n") + 1;
+  const line = text.slice(lineStart);
+  if ((!startsAtLineStart && lineStart === 0) || !/^(?: {0,3})(?:`+|~+)$/.test(line)) {
+    return { text };
+  }
+  return {
+    text: text.slice(0, lineStart),
+    pendingFenceFragment: line,
+  };
+}
 
 type StreamRenderingParams = {
   params: SubscribeEmbeddedAgentSessionParams;
@@ -48,8 +104,7 @@ type StreamRenderingParams = {
   blockChunker: EmbeddedAgentSubscribeContext["blockChunker"];
   emitBlockReply: EmbeddedAgentSubscribeContext["emitBlockReply"];
   flushAssistantStream: EmbeddedAgentSubscribeContext["flushAssistantStream"];
-  settleBlockReplyDeliveries: (options?: { retryFailures?: boolean }) => void | Promise<void>;
-  currentPendingBlockReplyTasks: () => Promise<void>[];
+  pendingBlockReplyTasks: Set<Promise<void>>;
   pushAssistantText: (text: string, normalizedText?: string) => void;
   shouldSkipAssistantText: (text: string, normalizedText?: string) => boolean;
 };
@@ -61,15 +116,11 @@ export function createStreamRendering({
   blockChunker,
   emitBlockReply,
   flushAssistantStream,
-  settleBlockReplyDeliveries,
-  currentPendingBlockReplyTasks,
+  pendingBlockReplyTasks,
   pushAssistantText,
   shouldSkipAssistantText,
 }: StreamRenderingParams) {
   const messagingToolSentTextsNormalized = state.messagingToolSentTextsNormalized;
-  // Final-reconciliation helper only: streamed chunks arrive already prepared, so
-  // message_end drains/parses through it without re-consuming live chunks.
-  const replyDirectiveAccumulator = createStreamingDirectiveAccumulator();
   const partialReplyDirectiveAccumulator = createStreamingDirectiveAccumulator();
   let reasoningProjection = createTextProjection([trimTextFilter("both")]);
   const coveredBlockSources = new Map<
@@ -279,10 +330,20 @@ export function createStreamRendering({
     return stripFinalTagsOutsideCodeSpans(result, resultCodeSpans.isInside);
   };
 
-  // Source coordinates travel with sourceText as a PAIR (upstream 2167eab4cf).
-  // Never set a range without its text or vice versa: the delivery pipeline
-  // treats (text, range) as one occurrence identity and falls back to payload
-  // identity only when BOTH are absent.
+  const stripFinalTagsOutsideCodeSpans = (text: string, isInside: (index: number) => boolean) => {
+    let output = "";
+    let lastIndex = 0;
+    for (const match of findFinalTagMatches(text)) {
+      const idx = match.index;
+      if (isInside(idx)) {
+        continue;
+      }
+      output += text.slice(lastIndex, idx);
+      lastIndex = idx + match.text.length;
+    }
+    output += text.slice(lastIndex);
+    return output;
+  };
   const emitBlockChunk: EmbeddedAgentSubscribeContext["emitBlockChunk"] = (text, options) => {
     if (
       state.suppressBlockChunks ||
@@ -297,8 +358,6 @@ export function createStreamRendering({
       return;
     }
     const markBlockReplyTextHandled = () => {
-      // Only real text counts as handled, and it is also the delivered prefix the suffix
-      // dedupe below reads (#135751); an empty chunk must not mark the block handled.
       if (blockReplyText) {
         state.lastBlockReplyText = blockReplyText;
         state.lastDeliveredBlockReplyText = blockReplyText;
@@ -437,12 +496,7 @@ export function createStreamRendering({
         pendingText = options.finalReply.text;
         chunk = pendingText;
       }
-      splitResult = {
-        ...splitResult,
-        ...options.finalReply,
-        text: pendingText,
-        audioAsVoice: options.finalReply.audioAsVoice ?? splitResult.audioAsVoice,
-      };
+      splitResult = { ...splitResult, ...options.finalReply, text: pendingText };
     }
     const {
       text: cleanedText,
@@ -467,17 +521,6 @@ export function createStreamRendering({
       }
       return;
     }
-    const deliveredTextSlot =
-      cleanedText.length > 0 ? state.deliveredBlockReplyTexts.push("") - 1 : undefined;
-    if (cleanedText && deliveredTextSlot !== undefined) {
-      state.attemptedBlockReplyTexts?.splice(deliveredTextSlot, 0, cleanedText);
-    }
-    const markBlockReplyTextDelivered = () => {
-      state.lastDeliveredBlockReplyText = blockReplyText;
-      if (cleanedText && deliveredTextSlot !== undefined) {
-        state.deliveredBlockReplyTexts[deliveredTextSlot] = cleanedText;
-      }
-    };
     pushAssistantText(chunk, normalizedChunk);
     const payload = {
       text: cleanedText,
@@ -512,13 +555,9 @@ export function createStreamRendering({
       // survives the presentation-change clear in reply-delivery.
       blockCoverageSourceText: blockSourceText,
       consumePendingToolMedia:
-        (options?.final === true &&
-          options.deferPendingToolMedia !== true &&
-          !/(?:^|\n)\s*MEDIA:/iu.test(blockReplyText)) ||
         options?.finalReply !== undefined ||
         hasPendingAudioDirective ||
         Boolean(mediaUrls?.length || audioAsVoice),
-      onDelivered: markBlockReplyTextDelivered,
     });
     if (emittedBlockSourceRange) {
       const covered = coveredBlockSources.get(assistantMessageIndex) ?? [];
@@ -546,33 +585,22 @@ export function createStreamRendering({
     if (!params.onBlockReply) {
       return undefined;
     }
-    // Settle in-flight block-reply deliveries BEFORE draining the chunker, so a
-    // retry cannot interleave with the flush. Async settlement re-enters the
-    // flush rather than proceeding on a half-settled queue.
-    const settlement = settleBlockReplyDeliveries({
-      retryFailures: options?.retryFailures,
-    });
-    if (isPromiseLike<void>(settlement)) {
-      return Promise.resolve(settlement).then(() => flushBlockReplyBuffer(options));
-    }
     let pendingChunk: ({ text: string } & Partial<BlockChunkMetadata>) | undefined;
     if (blockChunker.hasBuffered()) {
       blockChunker.drain({
         force: true,
-        emit: (text, chunkOptions) => {
+        emit: (text, metadata) => {
           if (pendingChunk !== undefined) {
             emitBlockChunk(pendingChunk.text, {
+              sourceText: pendingChunk.sourceText,
               sourceGeneration: pendingChunk.sourceGeneration,
               reconciledSourceBreak: pendingChunk.reconciledSourceBreak,
               sourceStart: pendingChunk.sourceStart,
               sourceEnd: pendingChunk.sourceEnd,
               assistantMessageIndex: options?.assistantMessageIndex,
-              sourceText: pendingChunk.sourceText,
             });
           }
-          // Spread, not just sourceText: the coordinates must travel with the
-          // text or the (text, range) pair is broken at the flush boundary.
-          pendingChunk = { text, ...chunkOptions };
+          pendingChunk = { text, ...metadata };
         },
       });
     }
@@ -593,12 +621,14 @@ export function createStreamRendering({
         sourceEnd: pendingChunk?.sourceEnd,
       });
     }
-    if (currentPendingBlockReplyTasks().length === 0) {
-      return;
+    if (pendingBlockReplyTasks.size === 0) {
+      return undefined;
     }
-    return settleBlockReplyDeliveries({
-      retryFailures: options?.retryFailures,
-    });
+    return (async () => {
+      while (pendingBlockReplyTasks.size > 0) {
+        await Promise.allSettled(pendingBlockReplyTasks);
+      }
+    })();
   };
 
   const emitReasoningStream: EmbeddedAgentSubscribeContext["emitReasoningStream"] = (
@@ -667,13 +697,7 @@ export function createStreamRendering({
     }
   };
 
-  const resetAssistantMessageState = (
-    nextAssistantTextBaseline: number,
-    options?: {
-      preserveMessageTextBaseline?: boolean;
-      preserveReplyDirectiveState?: boolean;
-    },
-  ) => {
+  const resetAssistantMessageState = (nextAssistantTextBaseline: number) => {
     flushAssistantStream();
     state.deltaBuffer = "";
     state.streamBlockText = "";
@@ -683,7 +707,6 @@ export function createStreamRendering({
     state.deltaBufferIsCommentary = false;
     state.hasFlushedPartialText = false;
     blockChunker.reset();
-    replyDirectiveAccumulator.reset();
     resetPartialReplyDirectives();
     state.partialBlockState = {
       thinking: false,
@@ -702,29 +725,11 @@ export function createStreamRendering({
     state.assistantMessageIndex += 1;
     state.lastAssistantStreamContentIndex = undefined;
     state.lastAssistantStreamItemId = undefined;
-    state.lastAssistantTextMessageIndex = -1;
-    state.lastAssistantTextNormalized = undefined;
-    state.lastAssistantTextTrimmed = undefined;
-    if (!options?.preserveReplyDirectiveState) {
-      state.assistantTextBaseline = nextAssistantTextBaseline;
-      if (!options?.preserveMessageTextBaseline) {
-        state.assistantMessageTextBaseline = nextAssistantTextBaseline;
-      }
-      state.deliveredBlockReplyTexts = [];
-      state.attemptedBlockReplyTexts = [];
-      state.deferredBlockReplyTexts = [];
-    }
-    state.pendingAssistantReplyDirectives = undefined;
-    if (!options?.preserveReplyDirectiveState) {
-      state.deferredAssistantReplyDirectives = undefined;
-      state.lastDeliveredAssistantReplyDirectives = undefined;
-    }
+    state.assistantTextBaseline = nextAssistantTextBaseline;
   };
 
   return {
     consumePartialReplyDirectives,
-    consumeReplyDirectives: replyDirectiveAccumulator.consume,
-    resetBlockReplyDirectives: replyDirectiveAccumulator.reset,
     resetPartialReplyDirectives,
     emitBlockChunk,
     emitReasoningStream,

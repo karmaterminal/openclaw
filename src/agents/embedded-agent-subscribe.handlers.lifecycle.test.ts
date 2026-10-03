@@ -274,14 +274,11 @@ describe("embedded lifecycle", () => {
       createReplyDelivery({ params: ctx.params, state: ctx.state, log: ctx.log }).emitBlockReply,
     );
     await handleAgentEnd(ctx);
-    expect(ctx.emitBlockReply).toHaveBeenCalledExactlyOnceWith(
-      {
-        mediaUrls: ["/tmp/reply.opus"],
-        audioAsVoice: true,
-      },
-      expect.objectContaining({ onDelivered: expect.any(Function) }),
-    );
-    expect(ctx.state.pendingToolMediaUrls).toStrictEqual([]);
+    expect(ctx.emitBlockReply).toHaveBeenCalledExactlyOnceWith({
+      mediaUrls: ["/tmp/reply.opus"],
+      audioAsVoice: true,
+    });
+    expect(ctx.state.pendingToolMediaUrls).toEqual([]);
     expect(ctx.state.pendingToolAudioAsVoice).toBe(false);
     expect(onAgentEvent.mock.invocationCallOrder[0]).toBeGreaterThan(
       vi.mocked(ctx.emitBlockReply).mock.invocationCallOrder[0] ?? Infinity,

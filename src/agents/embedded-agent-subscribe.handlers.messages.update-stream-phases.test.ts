@@ -292,12 +292,7 @@ describe("handleMessageUpdate text signatures", () => {
     });
 
     expect(flushBlockReplyBuffer).toHaveBeenCalledExactlyOnceWith({ assistantMessageIndex: 7 });
-    // Item boundaries keep the message text baseline and reply-directive state
-    // (Responses item ownership, df86a1c674).
-    expect(resetAssistantMessageState).toHaveBeenCalledExactlyOnceWith(0, {
-      preserveMessageTextBaseline: true,
-      preserveReplyDirectiveState: true,
-    });
+    expect(resetAssistantMessageState).toHaveBeenCalledExactlyOnceWith(0);
     expect(onAssistantMessageStart).toHaveBeenCalledTimes(1);
     expect(onPartialReply).toHaveBeenCalledTimes(1);
     expect(onPartialReply).toHaveBeenCalledWith(

@@ -28,14 +28,6 @@ type CompactionStartEvent =
       itemId?: string;
     };
 
-// Compaction-retry fence facts ride alongside the session event: a delivery
-// callback from the discarded attempt must not double-count the retry, and the
-// replacement attempt needs the invalidated generation token to reset cleanly.
-type CompactionEndEvent = SessionCompactionEndEvent & {
-  invalidatedDeliveryGeneration?: number;
-  retryAlreadyNoted?: boolean;
-};
-
 // Unknown reasons come from external runtimes or older sessions. Treat them as
 // threshold compaction so logs and event payloads stay on the closed reason set.
 function normalizeCompactionReason(reason: unknown): CompactionReason {
@@ -135,7 +127,10 @@ export function handleCompactionStart(
 }
 
 /** Handles compaction completion, retry, and incomplete events. */
-export function handleCompactionEnd(ctx: EmbeddedAgentSubscribeContext, evt: CompactionEndEvent) {
+export function handleCompactionEnd(
+  ctx: EmbeddedAgentSubscribeContext,
+  evt: SessionCompactionEndEvent,
+) {
   const reason = evt.reason;
   const kind = reason === "manual" ? "manual compaction" : "auto-compaction";
   const outcome = evt.outcome;
@@ -208,10 +203,8 @@ export function handleCompactionEnd(ctx: EmbeddedAgentSubscribeContext, evt: Com
       `compactionCount.delta=${compactionCountDelta}`,
   );
   if (willRetry) {
-    if (evt.retryAlreadyNoted !== true) {
-      ctx.noteCompactionRetry();
-    }
-    ctx.resetForCompactionRetry(evt.invalidatedDeliveryGeneration);
+    ctx.noteCompactionRetry();
+    ctx.resetForCompactionRetry();
     ctx.log.debug(`embedded run compaction retry: runId=${ctx.params.runId}`);
   } else {
     if (outcome.status !== "aborted") {
