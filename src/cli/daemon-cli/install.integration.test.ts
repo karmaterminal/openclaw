@@ -82,7 +82,6 @@ const { clearConfigCache, clearRuntimeConfigSnapshot, readConfigFileSnapshot } =
 const { readSystemdDefinitionMutationCapability } =
   await import("../../daemon/systemd-definition-mutation.js");
 const { readSystemdServiceExecStart } = await import("../../daemon/systemd-service-files.js");
-const systemdUserTransport = await import("../../daemon/systemd-user-transport.js");
 const { assertServiceDefinitionWritable } = await import("../../daemon/service-types.js");
 
 async function readJson(filePath: string): Promise<Record<string, unknown>> {
@@ -126,14 +125,6 @@ describe("runDaemonInstall integration", () => {
     return { contents, ino, mode, uid, entries: (await fs.readdir(tempHome)).toSorted() };
   }
 
-  function mockSystemdUserSessionBus() {
-    vi.spyOn(systemdUserTransport, "resolveSystemdUserTransport").mockResolvedValue({
-      kind: "session-bus",
-      address: "unix:path=/run/user/1000/bus",
-      runtimeDir: "/run/user/1000",
-    });
-  }
-
   beforeAll(async () => {
     envSnapshot = captureEnv([
       "HOME",
@@ -164,7 +155,6 @@ describe("runDaemonInstall integration", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockSystemdUserSessionBus();
     mockSystemAccountHome();
     vi.spyOn(daemonExec, "execFileUtf8").mockImplementation(systemdManagerVersionProbe);
     resetRuntimeCapture();
@@ -524,6 +514,27 @@ describe("runDaemonInstall integration", () => {
     }
   });
 
+  it("refuses service install when config was written by a newer OpenClaw", async () => {
+    await writeConfig(
+      {
+        meta: {
+          lastTouchedVersion: "9999.1.1",
+        },
+        gateway: {
+          auth: {
+            mode: "token",
+          },
+        },
+      },
+      2,
+    );
+
+    await expect(runDaemonInstall({ json: true, force: true })).rejects.toThrow("__exit__:1");
+
+    expect(serviceMock.install).not.toHaveBeenCalled();
+    expect(runtimeLogs.join("\n")).toContain("Refusing to install or rewrite the gateway service");
+  });
+
   it.each(["24.15.0"])(
     "keeps an already-installed service read-only with Node %s",
     async (nodeVersion) => {
@@ -579,7 +590,7 @@ describe("runDaemonInstall integration", () => {
       programArguments: ["openclaw", "gateway", "run"],
       environment: { OPENCLAW_GATEWAY_TOKEN: "outdated-token" },
     } as never);
-    serviceMock.readDefinitionMutationCapability.mockResolvedValue({
+    serviceMock.readDefinitionMutationCapability.mockResolvedValueOnce({
       kind: "sealed",
       reason: "foreign-owner",
     });
