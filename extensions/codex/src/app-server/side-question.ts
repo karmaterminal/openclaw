@@ -55,14 +55,8 @@ import {
   shouldRequireCodexSandboxExecServerEnvironment,
 } from "./dynamic-tool-build.js";
 import {
-  emitDynamicToolErrorDiagnostic,
-  emitDynamicToolStartedDiagnostic,
-  emitDynamicToolTerminalDiagnostic,
-} from "./dynamic-tool-diagnostics.js";
-import {
   handleDynamicToolCallWithTimeout,
   resolveDynamicToolCallTimeoutMs,
-  toCodexDynamicToolProtocolResponse,
 } from "./dynamic-tool-execution.js";
 import { resolveCodexDynamicToolsLoading } from "./dynamic-tool-profile.js";
 import { createCodexDynamicToolBridge, type CodexDynamicToolBridge } from "./dynamic-tools.js";
@@ -122,6 +116,7 @@ import {
   type CodexAppServerClientOptions,
 } from "./shared-client.js";
 import { cleanupCodexSideQuestion } from "./side-question-cleanup.js";
+import { runCodexSideQuestionDynamicToolCall } from "./side-question-dynamic-tool-call.js";
 import { SIDE_DEVELOPER_INSTRUCTIONS } from "./side-question-instructions.js";
 import {
   buildCodexRuntimeThreadConfig,
@@ -133,7 +128,6 @@ import {
   CodexThreadPolicyHandoffError,
   refreshCodexThreadPolicy,
 } from "./thread-policy.js";
-import { resolveCodexToolAbortTerminalReason } from "./tool-abort-terminal-reason.js";
 import { buildCodexTemporalAdditionalContext } from "./turn-params.js";
 import type { CodexAppServerServerRequest, CodexThreadRouteScope } from "./turn-router.js";
 import { buildCodexUserInput } from "./user-input.js";
@@ -544,33 +538,20 @@ export async function runCodexAppServerSideQuestion(
         sessionId: params.sessionId,
         sessionKey: params.sessionKey,
       };
-      emitDynamicToolStartedDiagnostic(diagnosticContext);
-      const toolCall = handleDynamicToolCallWithTimeout({
-        call,
-        toolBridge,
+      return (await runCodexSideQuestionDynamicToolCall({
+        diagnosticContext,
+        toolStartedAt,
+        activeDynamicToolCalls,
         signal,
-        timeoutMs,
-        observeToolTerminal: sideRunParams.observeToolTerminal,
-      });
-      activeDynamicToolCalls.add(toolCall);
-      try {
-        const response = await toolCall;
-        emitDynamicToolTerminalDiagnostic({
-          ...diagnosticContext,
-          response,
-          durationMs: Math.max(0, Date.now() - toolStartedAt),
-        });
-        return toCodexDynamicToolProtocolResponse(response) as JsonValue;
-      } catch (error) {
-        emitDynamicToolErrorDiagnostic({
-          ...diagnosticContext,
-          durationMs: Math.max(0, Date.now() - toolStartedAt),
-          terminalReason: signal.aborted ? resolveCodexToolAbortTerminalReason(signal) : "failed",
-        });
-        throw error;
-      } finally {
-        activeDynamicToolCalls.delete(toolCall);
-      }
+        execute: () =>
+          handleDynamicToolCallWithTimeout({
+            call,
+            toolBridge,
+            signal,
+            timeoutMs,
+            observeToolTerminal: sideRunParams.observeToolTerminal,
+          }),
+      })) as JsonValue;
     };
 
     const serviceTier = binding.serviceTier ?? appServer.serviceTier;
