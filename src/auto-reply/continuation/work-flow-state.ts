@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { normalizeDiagnosticTraceparent } from "../../infra/diagnostic-trace-context-pure.js";
+import { normalizeDiagnosticTraceparent } from "../../infra/diagnostic-trace-context.js";
 import type { ContinuationRecord } from "./custody/custody-store.types.js";
 
 const PendingWorkStateSchema = z.object({
