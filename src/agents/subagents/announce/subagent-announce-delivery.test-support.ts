@@ -57,7 +57,7 @@ export function registerDescendantWakeCurrencyTests({
       >(() => true);
       const recordAcceptedSubagentSteerDispatch = vi.fn<
         DescendantWakeRegistryRuntime["recordAcceptedSubagentSteerDispatch"]
-      >(async (params) => {
+      >((params) => {
         const dispatch: SubagentAcceptedSteerDispatch = {
           gatewayRunId: params.gatewayRunId,
           phase: params.phase,
@@ -66,11 +66,16 @@ export function registerDescendantWakeCurrencyTests({
           expectedLifecycleRevision: params.expectedLifecycleRevision,
         };
         sourceEntry.acceptedSteerDispatch = dispatch;
-        return { status: "persisted", ownerRunId: sourceEntry.runId, owner: sourceEntry, dispatch };
+        return {
+          status: "persisted" as const,
+          ownerRunId: sourceEntry.runId,
+          owner: sourceEntry,
+          dispatch,
+        };
       });
       const clearSubagentRunSteerRestart = vi.fn<
         DescendantWakeRegistryRuntime["clearSubagentRunSteerRestart"]
-      >(async () => true);
+      >(() => true);
       let accepted = false;
       const dispatch = vi.mocked(dispatchGatewayMethodInProcess);
       const dispatchWithRoleCheck = dispatch.getMockImplementation()!;
@@ -111,7 +116,7 @@ export function registerDescendantWakeCurrencyTests({
           getRuntimeConfig: () => cfg,
           loadSubagentRegistryRuntime: async () => ({
             clearSubagentRunSteerRestart,
-            getSubagentRunByRunId: async () => sourceEntry,
+            getSubagentRunByRunId: () => sourceEntry,
             recordAcceptedSubagentSteerDispatch,
             replaceSubagentRunAfterSteerCore: replaceSubagentRunAfterSteer,
           }),

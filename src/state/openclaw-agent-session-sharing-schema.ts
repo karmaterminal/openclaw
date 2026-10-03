@@ -24,11 +24,6 @@ export const AGENT_V14_SESSION_SHARING_SCHEMA_SQL = sessionSharingSchema.slice(
   sessionSuggestionsStart,
 );
 export const AGENT_V14_ADDITIVE_SCHEMA_SQL = sessionSharingSchema.slice(sessionSuggestionsStart);
-// V14 is a historical fixture: every schema block introduced after v14 must be
-// stripped. Three transforms now, not two -- upstream added the agent-storage
-// strip while the continuation lane added the recipient-authority strip, and
-// each removes a distinct block, so both are required and neither subsumes the
-// other.
 export const AGENT_V14_CORE_SCHEMA_SQL = withoutSessionRecipientAuthoritySchema(
   withLegacySessionParticipantsSchema(
     withLegacyAgentStorageSchema(

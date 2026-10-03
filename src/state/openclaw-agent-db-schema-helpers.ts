@@ -24,15 +24,15 @@ import {
 } from "./openclaw-agent-board-schema.js";
 import { withoutCanonicalSessionValidationSchema } from "./openclaw-agent-canonical-validation-schema.js";
 import {
-  AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION,
+  AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
   CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION,
   OPENCLAW_AGENT_SCHEMA_VERSION,
   AGENT_STORAGE_SCHEMA_VERSION,
 } from "./openclaw-agent-db-contract.js";
 import { AGENT_SCHEMA_COMPATIBILITY } from "./openclaw-agent-db-schema-compatibility.js";
 import {
-  assertExistingAgentSchemaOwner,
   readExistingAgentSchemaMeta,
+  assertExistingAgentSchemaOwner,
 } from "./openclaw-agent-db-schema-read.js";
 import {
   ensureSessionAdditiveColumns,
@@ -41,6 +41,7 @@ import {
   hasPendingSessionProjectColumn,
   hasPendingSessionTranscriptContextEligibilityColumn,
   ensureSessionEntryValidityProjection,
+  withoutSessionRecipientAuthoritySchema,
 } from "./openclaw-agent-db-session-migrations.js";
 import {
   LEGACY_PARTICIPANT_OPTIONAL_COLUMNS,
@@ -73,10 +74,14 @@ export {
 
 /** Compare historical migration targets against only the representation they support. */
 export function getOpenClawAgentMigrationSchema(targetVersion: number): string {
+  const recipientAuthoritySchemaSql =
+    targetVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
+      ? withoutSessionRecipientAuthoritySchema(OPENCLAW_AGENT_SCHEMA_SQL)
+      : OPENCLAW_AGENT_SCHEMA_SQL;
   const sessionSchemaSql =
     targetVersion < SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION
-      ? withoutSessionEntrySnapshotsSchema(OPENCLAW_AGENT_SCHEMA_SQL)
-      : OPENCLAW_AGENT_SCHEMA_SQL;
+      ? withoutSessionEntrySnapshotsSchema(recipientAuthoritySchemaSql)
+      : recipientAuthoritySchemaSql;
   const targetSchemaSql =
     targetVersion < AGENT_STORAGE_SCHEMA_VERSION
       ? withLegacyAgentStorageSchema(sessionSchemaSql, targetVersion)
@@ -300,10 +305,6 @@ export function assertAgentSchemaVersion(
   db: DatabaseSync,
   options: { agentId: string; pathname: string; version: number },
   schemaSql: string,
-  participantSchema: "current" | "legacy" = options.version <
-  AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION
-    ? "legacy"
-    : "current",
 ): void {
   const metadata = readExistingAgentSchemaMeta(db);
   assertExistingAgentSchemaOwner(metadata, options.agentId, options.pathname);
@@ -313,7 +314,12 @@ export function assertAgentSchemaVersion(
       `OpenClaw agent database ${options.pathname} did not converge on schema version ${options.version}.`,
     );
   }
-  assertOpenClawAgentSchemaContains(db, options.pathname, schemaSql, participantSchema);
+  assertOpenClawAgentSchemaContains(
+    db,
+    options.pathname,
+    schemaSql,
+    options.version < 18 ? "legacy" : "current",
+  );
 }
 
 function hasLegacyMemoryChunkProvenanceTrigger(db: DatabaseSync): boolean {

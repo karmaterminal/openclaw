@@ -12,6 +12,7 @@ import { buildConversationRef, normalizeConversationPeerId } from "../routing/co
 import { deriveSessionChatTypeFromKey } from "../sessions/session-chat-type-shared.js";
 import { migrateLegacySessionCreator } from "./creator-namespace-migration.js";
 import { ensurePendingInputConsumptionColumn } from "./openclaw-agent-pending-inputs-schema.js";
+import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import { tableExists } from "./openclaw-state-db-schema-helpers.js";
 
 type MigratedConversationEntry = Record<string, unknown>;
@@ -389,40 +390,33 @@ export function hasPendingSessionConversationRouteContextColumn(db: DatabaseSync
 
 const SESSION_RECIPIENT_AUTHORITY_SCHEMA_START =
   "CREATE TABLE IF NOT EXISTS session_recipient_authority (";
-const SESSION_RECIPIENT_AUTHORITY_SCHEMA_END =
-  "CREATE TRIGGER IF NOT EXISTS session_nodes_entry_valid_after_insert";
 
+/** Historical admission validates only the tables its schema version supported. */
 export function withoutSessionRecipientAuthoritySchema(sql: string): string {
-  const start = sql.indexOf(SESSION_RECIPIENT_AUTHORITY_SCHEMA_START);
-  const end = sql.indexOf(SESSION_RECIPIENT_AUTHORITY_SCHEMA_END, start);
-  if (start === -1 || end === -1) {
-    throw new Error("OpenClaw session recipient authority schema markers are missing.");
+  if (!sql.includes(SESSION_RECIPIENT_AUTHORITY_SCHEMA_START)) {
+    return sql;
   }
-  return `${sql.slice(0, start)}${sql.slice(end)}`;
-}
-
-function hasSessionRecipientAuthoritySchema(db: DatabaseSync): boolean {
-  return readSqliteTableColumns(db, "session_recipient_authority") !== null;
+  return sql.replace(extractSqliteTableSchema(sql, "session_recipient_authority"), "");
 }
 
 /**
- * Upstream-lineage databases share schema versions 19+ without this additive
- * table. Create it before exact-shape checks; such databases carry no entry-local
- * return epochs, so there is nothing to move.
+ * Schema 25 step. Databases written by earlier builds may already carry the
+ * table, so creation is idempotent; valid entry-local epochs move to it.
  */
-export function ensureSessionRecipientAuthoritySchemaInTransaction(
-  db: DatabaseSync,
-  schemaSql: string,
-): void {
-  if (!hasSessionRecipientAuthoritySchema(db)) {
-    db.exec(extractSqliteTableSchema(schemaSql, "session_recipient_authority")); // sqlite-allow-raw -- Idempotent additive lazy ensure.
+export function migrateSessionRecipientAuthorityInTransaction(db: DatabaseSync): void {
+  // sqlite-allow-raw -- Versioned schema DDL precedes the epoch data migration.
+  db.exec(extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_SQL, "session_recipient_authority"));
+  if (migrateSessionRecipientAuthority(db)) {
+    // Removing a legacy field fires the canonical entry-update trigger.
+    // Settle valid rows again while malformed Doctor-owned rows remain rejected.
+    ensureSessionEntryValidityProjection(db);
   }
 }
 
 /** Moves the unshipped entry-local return epoch to its logical session-key owner. */
-export function migrateSessionRecipientAuthority(db: DatabaseSync): void {
-  if (!hasSessionRecipientAuthoritySchema(db) || !readSqliteTableColumns(db, "session_nodes")) {
-    return;
+export function migrateSessionRecipientAuthority(db: DatabaseSync): boolean {
+  if (!readSqliteTableColumns(db, "session_nodes")) {
+    return false;
   }
   db.prepare(
     `INSERT OR IGNORE INTO session_recipient_authority (
@@ -452,15 +446,18 @@ export function migrateSessionRecipientAuthority(db: DatabaseSync): void {
        ELSE 0
      END`,
   ).run(Date.now(), Date.now());
-  db.exec(
-    `UPDATE session_nodes
-     SET entry_json = json_remove(entry_json, '$.recipientAuthorityEpoch')
-     WHERE CASE
-       WHEN json_valid(entry_json)
-       THEN json_type(entry_json, '$.recipientAuthorityEpoch') IS NOT NULL
-       ELSE 0
-     END`,
-  );
+  const removed = db
+    .prepare(
+      `UPDATE session_nodes
+       SET entry_json = json_remove(entry_json, '$.recipientAuthorityEpoch')
+       WHERE CASE
+         WHEN json_valid(entry_json)
+         THEN json_type(entry_json, '$.recipientAuthorityEpoch') IS NOT NULL
+         ELSE 0
+       END`,
+    )
+    .run();
+  return Number(removed.changes) > 0;
 }
 
 export function hasPendingSessionProjectColumn(db: DatabaseSync): boolean {

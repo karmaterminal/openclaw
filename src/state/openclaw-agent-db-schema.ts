@@ -36,7 +36,6 @@ import {
 } from "./openclaw-agent-canonical-validation-schema.js";
 import {
   AGENT_MEDIA_SCHEMA_VERSION,
-  AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION,
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
   AGENT_STORAGE_SCHEMA_VERSION,
   CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION,
@@ -73,9 +72,8 @@ import {
   ensureSessionAdditiveColumns,
   ensureSessionEntryValidityProjection,
   migrateConversationDeliveryTargetColumn,
-  ensureSessionRecipientAuthoritySchemaInTransaction,
   migrateSessionCreatorNamespaces,
-  migrateSessionRecipientAuthority,
+  migrateSessionRecipientAuthorityInTransaction,
   migrateSessionTranscriptActiveProjection,
   migrateSessionTranscriptGenerations,
   withoutSessionRecipientAuthoritySchema,
@@ -356,16 +354,23 @@ function ensureAgentSchema(
         !isEmptyDatabase &&
         previousVersion < SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION &&
         targetVersion >= SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION;
-      const storageSchemaSql = requiresSnapshotMigration
-        ? withoutSessionEntrySnapshotsSchema(schemaSql)
+      const requiresRecipientAuthorityMigration =
+        !isEmptyDatabase &&
+        previousVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION &&
+        targetVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION;
+      const recipientAuthoritySchemaSql = requiresRecipientAuthorityMigration
+        ? withoutSessionRecipientAuthoritySchema(schemaSql)
         : schemaSql;
+      const storageSchemaSql = requiresSnapshotMigration
+        ? withoutSessionEntrySnapshotsSchema(recipientAuthoritySchemaSql)
+        : recipientAuthoritySchemaSql;
       const migrationSchemaSql = requiresStorageMigration
         ? withLegacyAgentStorageSchema(storageSchemaSql, previousVersion)
         : storageSchemaSql;
       if (
         previousVersion < targetVersion &&
         previousVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION - 1 &&
-        previousVersion < SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION &&
+        previousVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION &&
         targetVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION
       ) {
         if (previousVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION) {
@@ -379,7 +384,6 @@ function ensureAgentSchema(
             migrateMemoryChunkMetadataSchema(db);
           }
         }
-        ensureSessionRecipientAuthoritySchemaInTransaction(db, schemaSql);
         const previousSchema =
           previousVersion < CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION
             ? withoutCanonicalSessionValidationSchema(migrationSchemaSql)
@@ -402,6 +406,9 @@ function ensureAgentSchema(
         if (requiresSnapshotMigration) {
           migrateSessionEntrySnapshotsInTransaction(db);
         }
+        if (requiresRecipientAuthorityMigration) {
+          migrateSessionRecipientAuthorityInTransaction(db);
+        }
         finishAgentSchemaMigration(
           db,
           agentId,
@@ -414,8 +421,7 @@ function ensureAgentSchema(
         return;
       }
       if (previousVersion === AGENT_MEDIA_SCHEMA_VERSION) {
-        // Schema 17 predates the continuation recipient-authority table (schema
-        // 19); the migration below creates it, so its preflight must not require it.
+        // Schema 17 predates the schema-25 recipient-authority table.
         const legacySql = withoutSessionRecipientAuthoritySchema(
           withLegacySessionParticipantsSchema(
             withLegacyAgentStorageSchema(OPENCLAW_AGENT_SCHEMA_SQL),
@@ -437,7 +443,6 @@ function ensureAgentSchema(
         ensureSessionAdditiveColumns(db);
         ensureSessionEntryValidityProjection(db);
         ensureSessionKeyContractSchemaInTransaction(db);
-        ensureSessionRecipientAuthoritySchemaInTransaction(db, schemaSql);
         ensureSessionReactionsSchemaInTransaction(db);
         if (hasPendingMemoryChunkMetadataMigration(db)) {
           migrateMemoryChunkMetadataSchema(db);
@@ -471,11 +476,10 @@ function ensureAgentSchema(
       maintenanceAuthority.renewAgentDatabaseMaintenanceAuthorityIfPresent();
       ensureSessionAdditiveColumns(db);
       ensureSessionEntryValidityProjection(db);
-      // Deliberately not gated on `previousVersion < 18` (upstream's form): the
-      // covenant lineage shipped v18 with the legacy actor_type participants
-      // table, so it must still convert. The migration is idempotent; it returns
-      // early once identity_namespace exists (see 2de99fbe69).
-      if (targetVersion >= AGENT_PARTICIPANT_IDENTITY_SCHEMA_VERSION) {
+      // Structure-gated rather than version-gated: some databases already marked
+      // 18 retain the legacy actor_type key. The rebuild returns once
+      // identity_namespace exists.
+      if (targetVersion >= 18) {
         migrateSessionParticipantsSchema(db, pathname);
       }
       if (targetVersion >= 19) {
@@ -483,15 +487,6 @@ function ensureAgentSchema(
       }
       maintenanceAuthority.renewAgentDatabaseMaintenanceAuthorityIfPresent();
       db.exec(migrationSchemaSql);
-      if (targetVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION) {
-        migrateSessionRecipientAuthority(db);
-        // Removing a legacy field fires the canonical entry-update trigger.
-        // Settle valid rows again while malformed Doctor-owned rows remain rejected.
-        ensureSessionEntryValidityProjection(db);
-      }
-      // migrateTranscriptFtsRowSchema is NOT called here any more: upstream
-      // c65911334f deleted the function outright (0 definitions, 0 call sites
-      // at 2167eab4cf) when it reworked full-text index maintenance.
       migrateMemoryChunkMetadataSchema(db);
       if (previousVersion < targetVersion) {
         ensureOpenClawAgentBoardSchemaInTransaction(db);
@@ -514,6 +509,9 @@ function ensureAgentSchema(
       }
       if (requiresSnapshotMigration) {
         migrateSessionEntrySnapshotsInTransaction(db);
+      }
+      if (requiresRecipientAuthorityMigration) {
+        migrateSessionRecipientAuthorityInTransaction(db);
       }
       finishAgentSchemaMigration(
         db,
