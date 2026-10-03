@@ -1,5 +1,5 @@
 import { ComponentType } from "discord-api-types/v10";
-import { isRecord, normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { Message } from "../internal/discord.js";
 import {
   formatDiscordSnapshotAuthor,
@@ -44,36 +44,20 @@ export function resolveDiscordMessageText(
 }
 
 export function resolveDiscordMessageMentionDocuments(message: Message): string[] {
-  return resolveDiscordRawMessageMentionDocuments({
-    content: message.content,
-    embeds: message.embeds,
-    components: resolveDiscordMessageComponents(message),
-  });
-}
-
-/** The same document rules for a raw gateway frame, which ingress sees before any Message exists. */
-export function resolveDiscordRawMessageMentionDocuments(message: {
-  content?: unknown;
-  embeds?: unknown;
-  components?: unknown;
-}): string[] {
   const content = typeof message.content === "string" ? message.content : "";
   if (content.trim()) {
     return [content];
   }
-  const embedDocuments = (Array.isArray(message.embeds) ? message.embeds : []).flatMap(
-    (embed): string[] =>
-      isRecord(embed)
-        ? [embed.title, embed.description].filter(
-            (value): value is string => typeof value === "string" && Boolean(value.trim()),
-          )
-        : [],
+  const embedDocuments = (message.embeds ?? []).flatMap(({ title, description }) =>
+    [title, description].filter(
+      (value): value is string => typeof value === "string" && Boolean(value.trim()),
+    ),
   );
   if (embedDocuments.length > 0) {
     return embedDocuments;
   }
   const componentDocuments: string[] = [];
-  collectDiscordTextDisplayDocuments(message.components, componentDocuments);
+  collectDiscordTextDisplayDocuments(resolveDiscordMessageComponents(message), componentDocuments);
   return componentDocuments;
 }
 

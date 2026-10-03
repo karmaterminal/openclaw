@@ -3,6 +3,7 @@ import type { ChannelIngressQueueRecord } from "openclaw/plugin-sdk/channel-outb
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { describe, expect, it } from "vitest";
 import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inventory.js";
+import { createInternalTestClient } from "../internal/test-builders.test-support.js";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
 import { createDiscordStaleAmbientPendingDisposition } from "./ingress-stale-policy.js";
 import type { DiscordLivePolicy } from "./live-policy.js";
@@ -102,6 +103,7 @@ async function resolve(
   const policy = livePolicy(params);
   const disposition = createDiscordStaleAmbientPendingDisposition({
     botUserId: "botUserId" in params ? params.botUserId : BOT_ID,
+    client: createInternalTestClient(),
     readPolicy: params.readPolicy ?? (async () => policy),
     resolveChannelInfo: () => ("channelInfo" in params ? params.channelInfo : GENERAL),
     isChannelInventoryHydrating: () => params.hydrating === true,
@@ -191,13 +193,14 @@ describe("discord stale ambient pending disposition", () => {
   });
 
   it("reads the canonical text of an empty-content embed message", async () => {
-    // Preflight falls back to embed title/description, so preclaim must too.
+    // Preflight reads commands from embed title/description, but runs mention
+    // patterns on typed content only, so a name in an embed is not a mention.
     await expect(
       resolve({
         cfg: NAMED_AGENT_CFG,
         message: { content: "", embeds: [{ title: "claw please look" }] },
       }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
     await expect(
       resolve({ message: { content: "", embeds: [{ description: "/status" }] } }),
     ).resolves.toBeNull();
@@ -213,12 +216,13 @@ describe("discord stale ambient pending disposition", () => {
     const components = (content: string) => [
       { type: ComponentType.Container, components: [{ type: ComponentType.TextDisplay, content }] },
     ];
+    // Same rule as embeds: commands yes, mention patterns no.
     await expect(
       resolve({
         cfg: NAMED_AGENT_CFG,
         message: { content: "", components: components("claw have a look") },
       }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
     await expect(
       resolve({ message: { content: "", components: components("/status") } }),
     ).resolves.toBeNull();

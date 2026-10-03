@@ -164,6 +164,7 @@ export function createDiscordIngressMonitor(params: {
         ? {
             resolvePendingDisposition: createDiscordStaleAmbientPendingDisposition({
               botUserId: params.botUserId,
+              client: params.client,
               readPolicy,
               resolveChannelInfo:
                 params.resolveChannelInfo ??
