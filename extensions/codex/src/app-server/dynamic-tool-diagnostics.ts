@@ -17,7 +17,7 @@ type DynamicToolDiagnosticContext = {
   trace?: DiagnosticTraceContext | undefined;
 };
 
-function dynamicToolDiagnosticEventBase(params: DynamicToolDiagnosticContext) {
+function diagnosticToolIdentity(params: DynamicToolDiagnosticContext) {
   return {
     agentId: params.agentId,
     runId: params.runId,
@@ -29,16 +29,20 @@ function dynamicToolDiagnosticEventBase(params: DynamicToolDiagnosticContext) {
   };
 }
 
+export function emitDynamicToolStartedDiagnostic(params: DynamicToolDiagnosticContext): void {
+  emitTrustedDiagnosticEvent({
+    type: "tool.execution.started",
+    ...diagnosticToolIdentity(params),
+  });
+}
+
 /** Starts one diagnostic child and installs it around the dynamic handler. */
 export function startDynamicToolDiagnosticExecution<T>(
   params: DynamicToolDiagnosticContext,
   execute: () => T,
 ) {
   const trace = freezeDiagnosticTraceContext(createDiagnosticTraceContextFromActiveScope());
-  emitTrustedDiagnosticEvent({
-    type: "tool.execution.started",
-    ...dynamicToolDiagnosticEventBase({ ...params, trace }),
-  });
+  emitDynamicToolStartedDiagnostic({ ...params, trace });
   return {
     trace,
     execution: runWithDiagnosticTraceContext(trace, execute),
@@ -53,7 +57,7 @@ export function emitDynamicToolErrorDiagnostic(
 ): void {
   emitTrustedDiagnosticEvent({
     type: "tool.execution.error",
-    ...dynamicToolDiagnosticEventBase(params),
+    ...diagnosticToolIdentity(params),
     durationMs: params.durationMs,
     errorCategory: "codex_dynamic_tool_error",
     terminalReason: params.terminalReason ?? "failed",
@@ -72,7 +76,7 @@ export function emitDynamicToolTerminalDiagnostic(
   if (terminalType === "completed") {
     emitTrustedDiagnosticEvent({
       type: "tool.execution.completed",
-      ...dynamicToolDiagnosticEventBase(params),
+      ...diagnosticToolIdentity(params),
       durationMs: params.durationMs,
     });
     return;
@@ -80,7 +84,7 @@ export function emitDynamicToolTerminalDiagnostic(
   if (terminalType === "blocked") {
     emitTrustedDiagnosticEvent({
       type: "tool.execution.blocked",
-      ...dynamicToolDiagnosticEventBase(params),
+      ...diagnosticToolIdentity(params),
       deniedReason: "plugin-before-tool-call",
       reason: "Tool call blocked",
     });

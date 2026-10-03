@@ -404,7 +404,6 @@ export const PR_PROTECTED_RUNTIME_TEST_FILES: readonly string[] = [
   "extensions/codex/src/app-server/shared-client.test.ts",
   "extensions/codex/src/app-server/side-question.continuation.test.ts",
   "extensions/codex/src/app-server/side-question.test.ts",
-  "extensions/codex/src/app-server/side-question.tool-diagnostics.test.ts",
   "extensions/codex/src/app-server/thread-lifecycle.adoption.test.ts",
   "extensions/codex/src/app-server/thread-lifecycle.app-inventory.test.ts",
   "extensions/codex/src/app-server/thread-lifecycle.binding.test.ts",
