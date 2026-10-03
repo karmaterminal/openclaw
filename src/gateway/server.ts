@@ -6,7 +6,6 @@
  */
 import { measureGatewayBootstrapStep } from "../cli/startup-trace.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
-import { copyGatewayServerExtras } from "./server-extra-handlers.js";
 import type { GatewayServerOptions } from "./server-public.js";
 import { GatewayStartupCleanupError, rethrowGatewayStartupError } from "./server-shutdown.js";
 
@@ -34,11 +33,7 @@ export async function startGatewayServer(
   const gatewayStateOwner = opts.gatewayStateOwner ?? ownedLock ?? undefined;
   try {
     gatewayStateOwner?.assertDatabaseAccess(resolveOpenClawStateSqlitePath());
-    // Process-local extras are keyed by options identity; carry them onto the copy.
-    const server = await startGatewayServerWithRuntime(
-      port,
-      copyGatewayServerExtras(opts, { ...opts, gatewayStateOwner }),
-    );
+    const server = await startGatewayServerWithRuntime(port, { ...opts, gatewayStateOwner });
     return {
       ...server,
       close: async (closeOptions) => {
@@ -72,8 +67,7 @@ async function startGatewayServerWithRuntime(
           stopDatabaseAdmission = () => admission.stop();
           const mod = await loadServerStart();
           opts.gatewayStateOwner?.assertDatabaseAccess(resolveOpenClawStateSqlitePath());
-          const startOptions = copyGatewayServerExtras(opts, { ...opts, startupStartedAt });
-          return mod.startGatewayServerCore(port, startOptions);
+          return mod.startGatewayServerCore(port, { ...opts, startupStartedAt });
         }),
       );
       return {

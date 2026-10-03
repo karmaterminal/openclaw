@@ -399,7 +399,6 @@ const COMPACT_NODE_TEST_OWNER_RUNNERS = new Map([
 const AUTO_REPLY_COMMANDS_STRIPES = 3;
 const AGENTS_CORE_RUNNER_CLI_STRIPES = 3;
 const AGENTIC_GATEWAY_CORE_STRIPES = 3;
-const RETURN_COVENANT_GATEWAY_TEST_FILE = "src/gateway/return-covenant-fixture.gateway.test.ts";
 const CORE_RUNTIME_MEDIA_UI_STRIPES = 3;
 const CORE_UNIT_SRC_SECURITY_STRIPES = 3;
 const UNIT_FAST_NODE_TEST_STRIPES = 2;
@@ -2107,10 +2106,7 @@ function resolveGatewayServerShardName(file: string): string {
 
 function createGatewayServerSplitShards(): NodeTestSplitShard[] {
   const groups = new Map<string, string[]>();
-  for (const file of listTrackedTestFiles("src/gateway").filter(
-    (candidate) =>
-      candidate !== RETURN_COVENANT_GATEWAY_TEST_FILE && isGatewayServerTestFile(candidate),
-  )) {
+  for (const file of listTrackedTestFiles("src/gateway").filter(isGatewayServerTestFile)) {
     const shardName = resolveGatewayServerShardName(file);
     groups.set(shardName, [...(groups.get(shardName) ?? []), file]);
   }
@@ -2512,7 +2508,6 @@ function createAgenticGatewayCoreSplitShards(): NodeTestSplitShard[] {
     ...gatewayDatabaseWorkerTestFiles,
     ...gatewayServerExcludedTestFiles,
     ...gatewayServerIsolatedTestFiles,
-    RETURN_COVENANT_GATEWAY_TEST_FILE,
   ]);
   const gatewayFiles = listTrackedTestFiles("src/gateway").filter(
     (file) =>
@@ -2555,20 +2550,6 @@ function createAgenticGatewayCoreSplitShards(): NodeTestSplitShard[] {
             includePatterns: runtimeFiles,
             requiresDist: false,
             shardName: "agentic-gateway-core-runtime",
-          },
-        ]
-      : []),
-    // Only when the file is actually tracked. Emitting this stripe
-    // unconditionally invented a shard for a file that need not exist, which
-    // changed the Gateway stripe count for every caller and broke three
-    // upstream measurement tests that assert on it.
-    ...(listTrackedTestFiles("src/gateway").includes(RETURN_COVENANT_GATEWAY_TEST_FILE)
-      ? [
-          {
-            configs: ["test/vitest/vitest.gateway-server.config.ts"],
-            includePatterns: [RETURN_COVENANT_GATEWAY_TEST_FILE],
-            requiresDist: false,
-            shardName: "agentic-gateway-return-covenant",
           },
         ]
       : []),

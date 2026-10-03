@@ -418,7 +418,6 @@ export const gatewayServerBackedHttpTestFiles = [
   "src/gateway/openai-http.test.ts",
   "src/gateway/openresponses-http.test.ts",
   "src/gateway/probe.auth.integration.test.ts",
-  "src/gateway/return-covenant-fixture.gateway.test.ts",
   "src/gateway/sessions-history-http.test.ts",
 ];
 
@@ -507,9 +506,6 @@ export const gatewayCoreTestExclude = [
   "src/gateway/probe.auth.integration.test.ts",
   "src/gateway/server.startup-matrix-migration.integration.test.ts",
   "src/gateway/sessions-history-http.test.ts",
-  // Owned by the dedicated return-covenant shard
-  // (gatewayServerBackedHttpTestFiles), not gateway-core.
-  "src/gateway/return-covenant-fixture.gateway.test.ts",
 ];
 
 export const gatewayServerExcludedTestFiles = [

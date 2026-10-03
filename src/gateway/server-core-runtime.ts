@@ -50,7 +50,6 @@ function approvalRequestTargetsSession(
 
 export async function startGatewayCoreRuntime(input: {
   lifecycleRuntime: GatewayLifecycle;
-  serverExtraHandlers: GatewayRequestHandlers;
   port: number;
   log: GatewayLogger;
   logDiscovery: GatewayLogger;
@@ -65,7 +64,6 @@ export async function startGatewayCoreRuntime(input: {
 }) {
   const {
     lifecycleRuntime: runtime,
-    serverExtraHandlers,
     port,
     log,
     logDiscovery,
@@ -383,13 +381,9 @@ export async function startGatewayCoreRuntime(input: {
       }
     }
   };
-  const localExtraHandlers: GatewayRequestHandlers = {
-    ...extraHandlers,
-    ...serverExtraHandlers,
-  };
   const attachedGatewayExtraHandlers: GatewayRequestHandlers = {
     ...pluginRuntime.registry.gatewayHandlers,
-    ...localExtraHandlers,
+    ...extraHandlers,
   };
   let attachedPluginGatewayHandlerKeys = new Set(
     Object.keys(pluginRuntime.registry.gatewayHandlers),
@@ -399,7 +393,7 @@ export async function startGatewayCoreRuntime(input: {
   ): GatewayMethodRegistry => {
     const coreDescriptorHandlers: GatewayRequestHandlers = { ...coreGatewayHandlers };
     const auxHandlers: GatewayRequestHandlers = {};
-    for (const [method, handler] of Object.entries(localExtraHandlers)) {
+    for (const [method, handler] of Object.entries(extraHandlers)) {
       if (isCoreGatewayMethodClassified(method)) {
         coreDescriptorHandlers[method] = handler;
       } else {
