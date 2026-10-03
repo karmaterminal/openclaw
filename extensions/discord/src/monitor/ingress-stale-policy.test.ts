@@ -26,6 +26,7 @@ const NAMED_AGENT_CFG = {
 
 type PolicyOverrides = {
   cfg?: OpenClawConfig;
+  discordConfig?: Record<string, unknown>;
   guildEntries?: Record<string, DiscordGuildEntryResolved>;
   isCurrent?: () => boolean;
 };
@@ -35,7 +36,7 @@ function livePolicy(overrides: PolicyOverrides = {}): DiscordLivePolicy {
     isCurrent: overrides.isCurrent ?? (() => true),
     accountId: "default",
     cfg: overrides.cfg ?? ({} as OpenClawConfig),
-    discordConfig: {},
+    discordConfig: overrides.discordConfig ?? {},
     guildEntries: overrides.guildEntries,
     allowFrom: [],
     dmPolicy: "open",
@@ -146,7 +147,15 @@ describe("discord stale ambient pending disposition", () => {
   it("preserves mentioned work", async () => {
     await expect(resolve({ message: { mentions: [{ id: BOT_ID }] } })).resolves.toBeNull();
     await expect(resolve({ message: { mention_everyone: true } })).resolves.toBeNull();
-    await expect(resolve({ message: { content: `hey <@${BOT_ID}> look` } })).resolves.toBeNull();
+    await expect(
+      resolve({ message: { content: `hey <@${BOT_ID}> look`, mentions: [{ id: BOT_ID }] } }),
+    ).resolves.toBeNull();
+    // Preflight reads the native mentions array; a bare <@id> in text alone is not a mention.
+    await expect(resolve({ message: { content: `hey <@${BOT_ID}> look` } })).resolves.toMatchObject(
+      {
+        reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON,
+      },
+    );
     await expect(
       resolve({ message: { referenced_message: { author: { id: BOT_ID } } } }),
     ).resolves.toBeNull();
@@ -194,7 +203,7 @@ describe("discord stale ambient pending disposition", () => {
     ).resolves.toBeNull();
     await expect(
       resolve({ message: { content: "", embeds: [{ title: `ping <@${BOT_ID}>` }] } }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
     await expect(
       resolve({ message: { content: "", embeds: [{ title: "release notes" }] } }),
     ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
@@ -215,7 +224,7 @@ describe("discord stale ambient pending disposition", () => {
     ).resolves.toBeNull();
     await expect(
       resolve({ message: { content: "", components: components(`<@${BOT_ID}> hi`) } }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
     await expect(
       resolve({ message: { content: "", components: components("deploy finished") } }),
     ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
@@ -349,6 +358,39 @@ describe("discord stale ambient pending disposition", () => {
         },
       }),
     ).resolves.toBeNull();
+  });
+
+  it("preserves an explicit broadcast-participant mention the provider policy would filter", async () => {
+    // ClawSweeper rev 17: preflight's participant matcher uses unfiltered agent
+    // patterns, so denyIn on the provider policy does not make "@helper" ambient.
+    const cfg = {
+      agents: { entries: { helper: { groupChat: { mentionPatterns: ["\\bhelper\\b"] } } } },
+      broadcast: { "discord:c1": ["helper"] },
+    } as unknown as OpenClawConfig;
+    const denyHere = { mentionPatterns: { denyIn: ["c1"] } };
+    await expect(
+      resolve({
+        cfg,
+        discordConfig: denyHere,
+        message: { content: "@helper can you look at this" },
+      }),
+    ).resolves.toBeNull();
+    // Controls, each the way preflight decides them: no explicit address is no
+    // participant mention, and without a broadcast entry the filtered patterns rule.
+    await expect(
+      resolve({
+        cfg,
+        discordConfig: denyHere,
+        message: { content: "helper can you look at this" },
+      }),
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
+    await expect(
+      resolve({
+        cfg: { agents: cfg.agents } as unknown as OpenClawConfig,
+        discordConfig: denyHere,
+        message: { content: "@helper can you look at this" },
+      }),
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
   });
 
   it("preserves work when the bot identity is unknown", async () => {
