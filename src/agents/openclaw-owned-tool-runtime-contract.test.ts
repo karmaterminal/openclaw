@@ -50,7 +50,6 @@ function createToolHandlerCtx(): ToolHandlerContext {
     },
     log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn() },
     flushBlockReplyBuffer: vi.fn(),
-    getBlockReplyDeliveryGeneration: () => 0,
     shouldEmitToolResult: () => false,
     shouldEmitToolOutput: () => false,
     emitToolSummary: vi.fn(),
