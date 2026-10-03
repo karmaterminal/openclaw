@@ -418,7 +418,7 @@ export function migrateSessionRecipientAuthority(db: DatabaseSync): boolean {
   if (!readSqliteTableColumns(db, "session_nodes")) {
     return false;
   }
-  db.prepare(
+  const importEpochs = db.prepare(
     `INSERT OR IGNORE INTO session_recipient_authority (
        session_key, epoch, created_at, updated_at
      )
@@ -445,19 +445,21 @@ export function migrateSessionRecipientAuthority(db: DatabaseSync): boolean {
            NOT GLOB '*[^0-9a-f]*'
        ELSE 0
      END`,
-  ).run(Date.now(), Date.now());
-  const removed = db
-    .prepare(
-      `UPDATE session_nodes
-       SET entry_json = json_remove(entry_json, '$.recipientAuthorityEpoch')
-       WHERE CASE
-         WHEN json_valid(entry_json)
-         THEN json_type(entry_json, '$.recipientAuthorityEpoch') IS NOT NULL
-         ELSE 0
-       END`,
-    )
-    .run();
-  return Number(removed.changes) > 0;
+  );
+  // Run results carry the connection's last rowid, which can exceed 2^53.
+  importEpochs.setReadBigInts(true);
+  importEpochs.run(Date.now(), Date.now());
+  const removeEpochs = db.prepare(
+    `UPDATE session_nodes
+     SET entry_json = json_remove(entry_json, '$.recipientAuthorityEpoch')
+     WHERE CASE
+       WHEN json_valid(entry_json)
+       THEN json_type(entry_json, '$.recipientAuthorityEpoch') IS NOT NULL
+       ELSE 0
+     END`,
+  );
+  removeEpochs.setReadBigInts(true);
+  return Number(removeEpochs.run().changes) > 0;
 }
 
 export function hasPendingSessionProjectColumn(db: DatabaseSync): boolean {
