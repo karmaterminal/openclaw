@@ -1,8 +1,6 @@
 import type { AssistantMessage, ToolResultMessage } from "@openclaw/llm-core";
 import { coerceErrorMessage } from "@openclaw/normalization-core/error-coercion";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { createRepeatedToolErrorGuard } from "./agent-loop-repeated-tool-error.js";
-import { getSteeringAtCheckpoint } from "./agent-loop-steering.js";
 import {
   streamAgentResponse,
   type AgentEventSink,
@@ -14,6 +12,7 @@ import {
   appendToolLoopWarning,
   copyInternalToolResultState,
   getInternalToolExecutionPreparer,
+  getInternalSyncSteeringGetter,
   type InternalToolExecutionPreparation,
   takeInternalToolBatchLifecycle,
   type InternalToolBatchLifecycle,
@@ -60,6 +59,16 @@ const TOOL_ADMISSION_FAILURE_DETAILS = {
   status: "blocked",
   deniedReason: "tool-admission",
 } as const;
+
+function getSteeringAtCheckpoint(
+  config: AgentLoopConfig,
+): AgentMessage[] | Promise<AgentMessage[]> {
+  const callback = config.getSteeringMessages;
+  if (!callback) {
+    return [];
+  }
+  return getInternalSyncSteeringGetter(callback)?.() ?? callback.call(config);
+}
 
 /** Run a prompt-started loop and emit events through a caller-owned sink. */
 export async function runAgentLoop(
@@ -135,7 +144,6 @@ async function runLoop(
   let config = initialConfig;
   let firstTurn = true;
   let turnOpen = true;
-  const repeatedToolErrors = createRepeatedToolErrorGuard();
   let turnTainted = isActiveTurnTainted(state.context.messages);
   const toolLoopRecoveryState = initialConfig.toolLoopRecoveryState ?? {
     criticalToolLoopSeen: false,
@@ -353,10 +361,6 @@ async function runLoop(
 
       if (providerFailed) {
         await emit({ type: "agent_end", messages: newMessages });
-        return newMessages;
-      }
-
-      if (await repeatedToolErrors.terminate({ config, message, toolResults, newMessages, emit })) {
         return newMessages;
       }
 
