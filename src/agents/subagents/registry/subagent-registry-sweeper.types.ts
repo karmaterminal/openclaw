@@ -8,39 +8,36 @@ import type {
 import type { createSubagentRunManager } from "./subagent-registry-run-manager.js";
 import type {
   ContextEngineSubagentEndedParams,
-  SubagentCompletionRequest,
   SubagentRunRecord,
 } from "./subagent-registry.types.js";
 
+type CompletionRuntime = ReturnType<typeof createSubagentRegistryCompletionRuntime>;
 type SubagentRunManager = ReturnType<typeof createSubagentRunManager>;
 
 export type SubagentRegistrySweeperParams = {
   runs: Map<string, SubagentRunRecord>;
   resumedRuns: Set<string>;
   persist: (...runIds: string[]) => void;
-  persistOrThrow: (...runIds: string[]) => void;
   clearPendingLifecycleError: (runId: string) => void;
   clearPendingLifecycleTimeout: (runId: string) => void;
   sweepPendingLifecycle: (now: number) => void;
-  completeSubagentRunWithRecovery: (
-    completion: SubagentCompletionRequest,
-    source: string,
-  ) => Promise<void>;
-  clearSubagentRunSteerRestart: SubagentRunManager["clearSubagentRunSteerRestart"];
+  completeSubagentRunWithRecovery: CompletionRuntime["completeSubagentRunWithRecovery"];
   recordAcceptedSubagentSpawnRollback: SubagentRunManager["recordAcceptedSubagentSpawnRollback"];
   releaseAcceptedSubagentSpawnRollback: SubagentRunManager["releaseAcceptedSubagentSpawnRollback"];
   rollbackSubagentRunRegistration: SubagentRunManager["rollbackSubagentRunRegistration"];
   settleFailedQueuedSubagentLaunch: SubagentRunManager["settleFailedQueuedSubagentLaunch"];
   getGatewayRecoveryRuntime: () => GatewayRecoveryRuntime | undefined;
-  finalizeInterruptedSubagentRun: ReturnType<
-    typeof createSubagentRegistryCompletionRuntime
-  >["finalizeInterruptedSubagentRun"];
+  finalizeInterruptedSubagentRun: CompletionRuntime["finalizeInterruptedSubagentRun"];
   resumeRequesterSettleWake: SubagentLifecycleController["resumeRequesterSettleWake"];
   startSubagentAnnounceCleanupFlow: SubagentLifecycleController["startSubagentAnnounceCleanupFlow"];
   completeCleanupBookkeeping: SubagentLifecycleController["completeCleanupBookkeeping"];
+  isEndedHookOwnerCurrent: SubagentLifecycleController["isEndedHookOwnerCurrent"];
+  sessionEffectsHostCurrent: SubagentLifecycleController["sessionEffectsHostCurrent"];
+  shouldSuppressSessionEffects: SubagentLifecycleController["shouldSuppressSessionEffects"];
   discardTerminalDelivery: typeof SubagentLifecycleController.discardTerminalDelivery;
   shouldEmitEndedHookForRun: SubagentLifecycleOptions["shouldEmitEndedHookForRun"];
   emitSubagentEndedHookForRun: SubagentLifecycleOptions["emitSubagentEndedHookForRun"];
+  /** Continuation: live continuation work on the child session holds its archive. */
   shouldDeferArchive: (entry: SubagentRunRecord) => boolean;
   callGateway: typeof callGateway;
   cleanupCollectorLaunchResources: (entry: SubagentRunRecord) => Promise<boolean>;
@@ -49,8 +46,8 @@ export type SubagentRegistrySweeperParams = {
   retireSupersededRun: (runId: string, entry: SubagentRunRecord) => Promise<void>;
   getRunsForChildSession: (childSessionKey: string) => Iterable<SubagentRunRecord>;
   getRunsForCollectorGroup: (
-    requester: string,
-    group: string,
+    requesterSessionKey: string,
+    groupId: string,
     requesterAgentId?: string,
   ) => Iterable<[string, SubagentRunRecord]>;
   warn: (message: string, meta?: Record<string, unknown>) => void;

@@ -141,6 +141,7 @@ export async function reconcileDurableSubagentKillIntent(params: {
     return await completeKill(true);
   }
   const identities = [params.entry.childSessionKey, killIntent.sessionId];
+  // A live mutation owns this cancellation; reconcile other rows without waiting behind it.
   if (isSessionLifecycleMutationActive(storePath, identities)) {
     return false;
   }
@@ -320,7 +321,6 @@ export async function reconcileProvisionalSubagentKill(params: {
       await params.retireSupersededRun(runId, entry);
       return true;
     }
-
     if (!isCurrentKill()) {
       return false;
     }
@@ -349,9 +349,3 @@ export async function reconcileProvisionalSubagentKill(params: {
   entry.cleanupCompletedAt = undefined;
   return !params.startSubagentAnnounceCleanupFlow(runId, entry);
 }
-
-export {
-  reconcileAcceptedSpawnRollback,
-  reconcileAcceptedSteerDispatch,
-  selectNextAcceptedSteerCandidate,
-} from "./subagent-registry-sweep-accepted.js";

@@ -15,17 +15,16 @@ import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../../config/config.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import { closeOpenClawStateDatabaseForTest as closeSeedStateDatabase } from "../../../state/openclaw-state-db.js";
-import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
 import "./subagent-registry.mocks.shared.js";
+import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
+import type { maybeWakeRequesterAfterAllChildrenSettled } from "../announce/subagent-announce.requester-settle-wake.js";
 import {
   createHydratedRegistryRuns,
   createOutstandingWakeRuns,
   createRejectedRequesterWake,
-  registerSteerRestartOrphanPersistenceCases,
   createSelectedAllRecipientAuthorityBinding,
   createSettlingRequesterWake,
   createSteeredRestoreRuns,
-  readPersistedRun,
 } from "./subagent-registry.persistence.resume.test-support.js";
 import { registerSubagentDismissedRetentionCases } from "./subagent-registry.persistence.retention.test-support.js";
 import {
@@ -43,17 +42,10 @@ import { registerStaleRequesterWakeBatchTests } from "./subagent-registry.persis
 import { loadSubagentRegistryFromSqlite } from "./subagent-registry.store.sqlite.js";
 import { saveSubagentRegistryToSqlite } from "./subagent-registry.store.test-support.js";
 
-type WakeRequester =
-  typeof import("../announce/subagent-announce.requester-settle-wake.js").maybeWakeRequesterAfterAllChildrenSettled;
+type WakeRequester = typeof maybeWakeRequesterAfterAllChildrenSettled;
 type WakeParams = Parameters<WakeRequester>[0];
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
-// Late-bound in beforeAll after vi.resetModules(); a static import would capture
-// the pre-reset module instance.
-let bindGatewayContextResolver: typeof import("../../../plugins/runtime/gateway-request-scope.js").bindGatewayContextResolver;
-let getGatewayContextResolver: typeof import("../../../plugins/runtime/gateway-request-scope.js").getGatewayContextResolver;
-let getGatewayToolCallerIdentity: typeof import("../../tools/gateway-caller-context.js").getGatewayToolCallerIdentity;
-let withGatewayToolCallerIdentity: typeof import("../../tools/gateway-caller-context.js").withGatewayToolCallerIdentity;
 let mod: typeof import("./subagent-registry.test-helpers.js");
 let callGatewayModule: typeof import("../../../gateway/call.js");
 let agentEventsModule: typeof import("../../../infra/agent-events.js");
@@ -62,11 +54,14 @@ let registryConfigModule: typeof import("../../../config/config.js");
 let registrySessionCleanupModule: typeof import("../../../test-utils/session-state-cleanup.js");
 let registryAgentDbTestModule: typeof import("../../../state/openclaw-agent-db.test-support.js");
 let registryStateDbModule: typeof import("../../../state/openclaw-state-db.js");
+let bindGatewayContextResolver: typeof import("../../../plugins/runtime/gateway-request-scope.js").bindGatewayContextResolver;
+let getGatewayContextResolver: typeof import("../../../plugins/runtime/gateway-request-scope.js").getGatewayContextResolver;
+let getGatewayToolCallerIdentity: typeof import("../../tools/gateway-caller-context.js").getGatewayToolCallerIdentity;
+let withGatewayToolCallerIdentity: typeof import("../../tools/gateway-caller-context.js").withGatewayToolCallerIdentity;
 let observeRootWork: typeof import("./subagent-registry.browser-cleanup.test-support.js").observeRootWork;
 let settleOwnedWork: ReturnType<typeof observeRootWork> | undefined;
 
-const activateRegistry = () =>
-  activateSubagentPersistenceRegistry(mod, callGatewayModule.callGateway);
+const readPersistedRun = (runId: string) => loadSubagentRegistryFromSqlite().get(runId);
 
 describe("subagent registry persistence resume", () => {
   beforeAll(async () => {
@@ -98,11 +93,6 @@ describe("subagent registry persistence resume", () => {
       .mockReturnValue(() => undefined);
   });
 
-  // Restored from upstream. Both snapshots are cleared deliberately: after
-  // vi.resetModules() the statically imported config module and the late-bound
-  // registryConfigModule are separate instances holding separate snapshot
-  // state, so clearing only one leaks a runtime config snapshot into later
-  // tests.
   afterEach(async () => {
     try {
       await settleOwnedWork?.();
@@ -201,15 +191,6 @@ describe("subagent registry persistence resume", () => {
           ?.continuationRecipientAuthorityBinding,
       ).toEqual(selectedBinding);
     });
-  });
-
-  registerSteerRestartOrphanPersistenceCases({
-    getRegistry: () => mod,
-    getCallGateway: () => callGatewayModule.callGateway,
-    getStateDatabase: () => registryStateDbModule,
-    withRegistryState: (run) => withRegistryState(run),
-    activateRegistry,
-    announceSpy,
   });
 
   it.each([{ label: "timed-out", status: "timeout" as const }])(
