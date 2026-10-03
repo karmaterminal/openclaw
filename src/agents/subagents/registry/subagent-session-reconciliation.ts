@@ -7,7 +7,6 @@ import {
 } from "../../../config/sessions.js";
 import { loadSessionEntryReadOnly } from "../../../config/sessions/session-accessor.js";
 import { withSessionEntryReadOnlyInWorker } from "../../../config/sessions/session-entry-read-runtime.js";
-import { normalizeStoreSessionKey } from "../../../config/sessions/store-entry.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { getAgentRunContext, listAgentRunsForSession } from "../../../infra/agent-run-registry.js";
 import { withExistingOpenClawStateDatabaseCurrentReadOnly } from "../../../state/openclaw-state-db-readonly.js";
@@ -25,7 +24,6 @@ import { hasSubagentSessionOwnerInDatabase } from "./subagent-registry.store.sql
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { isStaleUnendedSubagentRun } from "./subagent-run-liveness.js";
 
-export type SubagentSessionStoreCache = Map<string, Record<string, SessionEntry>>;
 export type SubagentRunOrphanReason =
   | "missing-session-entry"
   | "missing-session-id"
@@ -64,42 +62,8 @@ function freshSessionStartedAt(
   return notBeforeMs === undefined || startedAt >= notBeforeMs ? startedAt : undefined;
 }
 
-/** Load a child session entry using the agent-specific session store path. */
+/** Read the current child entry; session-key scope also selects incognito storage. */
 export function loadSubagentSessionEntry(params: {
-  childSessionKey: string;
-  storeCache?: SubagentSessionStoreCache;
-  cfg?: OpenClawConfig;
-}): SessionEntry | undefined {
-  const key = params.childSessionKey.trim();
-  if (!key) {
-    return undefined;
-  }
-  const agentId = resolveAgentIdFromSessionKey(key);
-  const cfg = params.cfg ?? getRuntimeConfig();
-  const storePath = resolveSessionStorePathCore(cfg.session?.store, { agentId });
-  const normalizedKey = normalizeStoreSessionKey(key);
-  const store = params.storeCache?.get(storePath);
-  const cached = store?.[key] ?? store?.[normalizedKey];
-  if (cached) {
-    return cached;
-  }
-  const entry = loadSessionEntryReadOnly({
-    agentId,
-    storePath,
-    sessionKey: key,
-    clone: false,
-  });
-  if (entry && params.storeCache) {
-    const nextStore = store ?? {};
-    nextStore[key] = entry;
-    nextStore[normalizedKey] = entry;
-    params.storeCache.set(storePath, nextStore);
-  }
-  return entry;
-}
-
-/** Resolve a child session entry without depending on the file-backed store shape. */
-function loadSubagentSessionEntryForAccessor(params: {
   childSessionKey: string;
   cfg?: OpenClawConfig;
 }): SessionEntry | undefined {
@@ -143,12 +107,12 @@ export function resolveSubagentRunOrphanReason(params: {
   ) {
     return null;
   }
-  const childSessionKey = entry.childSessionKey?.trim();
+  const childSessionKey = params.entry.childSessionKey?.trim();
   if (!childSessionKey) {
     return "missing-session-entry";
   }
   try {
-    const sessionEntry = loadSubagentSessionEntryForAccessor({
+    const sessionEntry = loadSubagentSessionEntry({
       childSessionKey,
       cfg: params.cfg,
     });
@@ -161,8 +125,8 @@ export function resolveSubagentRunOrphanReason(params: {
     if (
       params.includeStaleUnended === true &&
       sessionEntry.abortedLastRun !== true &&
-      entry.execution.status !== "interrupted" &&
-      isStaleUnendedSubagentRun(entry, params.now)
+      params.entry.execution.status !== "interrupted" &&
+      isStaleUnendedSubagentRun(params.entry, params.now)
     ) {
       return "stale-unended-run";
     }
@@ -220,7 +184,6 @@ export async function resolveSubagentSessionCompletion(params: {
   childAgentId?: string;
   fallbackEndedAt: number;
   notBeforeMs?: number;
-  storeCache?: SubagentSessionStoreCache;
   cfg?: OpenClawConfig;
   assertCurrent?: () => void;
 }): Promise<SubagentSessionCompletion | null> {
@@ -235,7 +198,6 @@ async function withSubagentSessionEntry<T>(
   params: {
     childSessionKey: string;
     childAgentId?: string;
-    storeCache?: SubagentSessionStoreCache;
     cfg?: OpenClawConfig;
     assertCurrent?: () => void;
   },
@@ -243,14 +205,6 @@ async function withSubagentSessionEntry<T>(
 ): Promise<T> {
   const cfg = params.cfg ?? getRuntimeConfig();
   const { agentId, storePath } = resolveSubagentChildSessionOwner(params, cfg);
-  // A sweep-scoped cache already holds this pass's entry; reuse it instead of a second read.
-  const cachedStore = params.storeCache?.get(storePath);
-  const cacheKey = params.childSessionKey.trim();
-  const cached = cachedStore?.[cacheKey] ?? cachedStore?.[normalizeStoreSessionKey(cacheKey)];
-  if (cached) {
-    params.assertCurrent?.();
-    return consume(cached);
-  }
   return withSessionEntryReadOnlyInWorker(
     { agentId, storePath, sessionKey: params.childSessionKey },
     () => params.assertCurrent?.(),
@@ -266,7 +220,6 @@ async function withSubagentSessionEntry<T>(
 export async function resolveSubagentSessionStartedAt(params: {
   childSessionKey: string;
   notBeforeMs?: number;
-  storeCache?: SubagentSessionStoreCache;
   cfg?: OpenClawConfig;
   assertCurrent?: () => void;
 }): Promise<number | undefined> {

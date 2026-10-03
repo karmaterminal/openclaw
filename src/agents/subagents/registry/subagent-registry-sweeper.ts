@@ -45,7 +45,6 @@ import {
   loadSubagentSessionEntry,
   resolveCompletionFromSessionEntry,
   resolveSubagentRunOrphanReason,
-  type SubagentSessionStoreCache,
 } from "./subagent-session-reconciliation.js";
 export { retireSupersededSubagentRun } from "./subagent-registry-sweeper-retire.js";
 
@@ -170,7 +169,6 @@ export function createSubagentRegistrySweeper(
     sweepInProgress = true;
     try {
       const now = Date.now();
-      const storeCache: SubagentSessionStoreCache = new Map();
       const mutatedRunIds = new Set<string>();
       const collectorArchiveCandidates = new Map<string, CollectorArchiveCandidate>();
       const acceptedSteerCandidates: Array<{ runId: string; entry: SubagentRunRecord }> = [];
@@ -237,7 +235,7 @@ export function createSubagentRegistrySweeper(
             entry,
             shouldSuppressSubagentRecoverySessionEffects(entry)
               ? undefined
-              : freezeSessionIdentity(entry.childSessionKey, storeCache),
+              : freezeSessionIdentity(entry.childSessionKey),
           );
         }
       }
@@ -341,7 +339,6 @@ export function createSubagentRegistrySweeper(
             entry,
             now,
             runs,
-            storeCache,
             completeSubagentRunWithRecovery: params.completeSubagentRunWithRecovery,
             retireSupersededRun: params.retireSupersededRun,
             startSubagentAnnounceCleanupFlow: params.startSubagentAnnounceCleanupFlow,
@@ -369,7 +366,6 @@ export function createSubagentRegistrySweeper(
             const orphanReason = resolveSubagentRunOrphanReason({ entry });
             const sessionEntry = loadSubagentSessionEntry({
               childSessionKey: entry.childSessionKey,
-              storeCache,
             });
             const completion = resolveCompletionFromSessionEntry(sessionEntry, now, {
               notBeforeMs: entry.execution.startedAt ?? entry.createdAt,

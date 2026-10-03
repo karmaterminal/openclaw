@@ -23,10 +23,7 @@ import {
   resolveSubagentRunDeadlineMs,
   resolveSubagentRunEffectiveEndedAt,
 } from "./subagent-run-timeout.js";
-import {
-  resolveSubagentSessionCompletion,
-  type SubagentSessionStoreCache,
-} from "./subagent-session-reconciliation.js";
+import { resolveSubagentSessionCompletion } from "./subagent-session-reconciliation.js";
 
 function hasSameRecordedChildOwner(left: SubagentRunRecord, right: SubagentRunRecord): boolean {
   const selected = left.childAgentId;
@@ -230,7 +227,6 @@ export async function reconcileProvisionalSubagentKill(params: {
   entry: SubagentRunRecord;
   now: number;
   runs: Map<string, SubagentRunRecord>;
-  storeCache: SubagentSessionStoreCache;
   completeSubagentRunWithRecovery: (
     completion: SubagentCompletionRequest,
     source: string,
@@ -262,7 +258,6 @@ export async function reconcileProvisionalSubagentKill(params: {
     childSessionKey: entry.childSessionKey,
     childAgentId: entry.childAgentId,
     fallbackEndedAt: now,
-    storeCache: params.storeCache,
     notBeforeMs: entry.execution.startedAt ?? entry.createdAt,
     assertCurrent: () => {
       if (!isCurrentKill()) {
