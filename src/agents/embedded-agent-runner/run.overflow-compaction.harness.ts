@@ -22,7 +22,6 @@ import type {
 } from "../../plugins/types.js";
 import { resetCommandQueueStateForTest } from "../../process/command-queue.test-support.js";
 import type { OpenClawTestState } from "../../test-utils/openclaw-test-state.js";
-import type { markAuthProfileSuccess } from "../auth-profiles.js";
 import type { AuthProfileStore } from "../auth-profiles/types.js";
 import { extractObservedOverflowTokenCount } from "../embedded-agent-helpers/context-overflow-observation.js";
 import type { FailoverReason } from "../failover/signal.js";
@@ -199,7 +198,7 @@ export const mockedResolveModelAsync = vi.fn(
   async (provider?: string, modelId?: string, _agentDir?: string, cfg?: unknown) =>
     createMockResolvedModel(provider, modelId, cfg),
 );
-export const mockedPrepareProviderRuntimeAuth = vi.fn<
+const mockedPrepareProviderRuntimeAuth = vi.fn<
   (params?: { context?: { apiKey?: string } }) => Promise<{ apiKey: string } | undefined>
 >(async () => undefined);
 export const mockedRunEmbeddedAttempt =
@@ -336,7 +335,7 @@ export const mockedGetApiKeyForModel = vi.fn<
   source: "test",
   mode: "api-key",
 }));
-export const mockedIsProfileInCooldown = vi.fn(
+const mockedIsProfileInCooldown = vi.fn(
   (_store: unknown, _profileId: string, _now?: number, _modelId?: string) => false,
 );
 export const mockedMarkAuthProfileFailure = vi.fn(async () => {});
@@ -378,11 +377,11 @@ const mockedResolveAuthProfileOrderWithMetadata = vi.fn<
   profileIds: mockedResolveAuthProfileOrder(params),
   hasExplicitOrder: false,
 }));
-export const mockedResolveProviderEntryApiKeyProfileReference = vi.fn<
-  (_params?: unknown) => unknown
->(() => ({ kind: "none" }));
+const mockedResolveProviderEntryApiKeyProfileReference = vi.fn<(_params?: unknown) => unknown>(
+  () => ({ kind: "none" }),
+);
 const mockedHasUsableCustomProviderApiKey = vi.fn(() => false);
-export const mockedMarkAuthProfileSuccess = vi.fn<typeof markAuthProfileSuccess>(async () => {});
+const mockedMarkAuthProfileSuccess = vi.fn(async () => {});
 const mockedShouldPreferExplicitConfigApiKeyAuth = vi.fn(() => false);
 
 // No provider here means model resolution defaults to anthropic/test-model, which

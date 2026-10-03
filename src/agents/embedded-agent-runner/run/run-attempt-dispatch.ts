@@ -128,6 +128,11 @@ export async function prepareAndDispatchEmbeddedRunAttempt(input: {
   const prompt =
     sessionPromptState.activePrompt.override ??
     resolveEmbeddedAttemptBasePrompt({ provider, prompt: params.prompt });
+  const resolvedAttemptApiKey = resolveAttemptDispatchApiKey({
+    apiKeyInfo: runtime.apiKeyInfo,
+    runtimeAuthState: runtime.runtimeAuthState,
+    pluginHarnessOwnsTransport: runtime.pluginHarnessOwnsTransport,
+  });
   const attemptFastMode = resolveAttemptFastModeParam();
   const { resolvedSessionTarget, trajectorySessionFile } =
     await resolveEmbeddedAttemptSessionTarget({
@@ -156,16 +161,6 @@ export async function prepareAndDispatchEmbeddedRunAttempt(input: {
     agentId: workspaceResolution.agentId,
     thinkingLevel: mapThinkingLevelForProvider(runtime.thinkLevel, effectiveModel),
     extraParamsOverride: { ...params.streamParams, fastMode: attemptFastMode },
-  });
-  const authProfileStore = resolveRunAttemptAuthProfileStore();
-  const resolvedAttemptApiKey = resolveAttemptDispatchApiKey({
-    apiKeyInfo: runtime.apiKeyInfo,
-    runtimeAuthState: runtime.runtimeAuthState,
-    pluginHarnessOwnsTransport: runtime.pluginHarnessOwnsTransport,
-    authProfileId: runtime.lastProfileId,
-    authRequirement: runtimePlan.auth.modelRoute?.authRequirement,
-    modelApi: effectiveModel.api,
-    authProfileStore,
   });
   const trajectoryAttribution = resolveAttemptTrajectoryAttribution({
     model: effectiveModel,
@@ -231,6 +226,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(input: {
   const skipPreparedUserTurnMessage = sessionPromptState.activePrompt.internal;
   const { sessionManager } = params;
   const { nativeSessionRuntime } = preparedRuntime;
+  const authProfileStore = resolveRunAttemptAuthProfileStore();
   const toolAuthProfileStore = agentHarnessBuildsOpenClawTools(runtime.agentHarness.id)
     ? attemptAuthProfileStore
     : undefined;

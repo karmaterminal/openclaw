@@ -1,7 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { resetAgentEventsForTest } from "../../infra/agent-events.js";
-import { waitForRunEvent } from "./run.continuation-fixture.test-support.js";
 import { makeAttemptResult } from "./run.overflow-compaction.fixture.js";
 import {
   mockedBuildEmbeddedRunPayloads,
@@ -52,11 +51,20 @@ describe("runEmbeddedAgent deferred maintenance composition", () => {
   it("does not hold the global run lane while waiting for another session's deferred maintenance", async () => {
     const events: string[] = [];
     let releaseSessionA: (() => void) | undefined;
+    let markSessionAWaiting: (() => void) | undefined;
+    let failSessionAWaiting: ((reason: unknown) => void) | undefined;
+    // Signal-driven: session A's first run cold-loads lazy runtime modules, so a
+    // bounded event-loop poll depends on which suites warmed the graph first.
+    const sessionAWaiting = new Promise<void>((resolve, reject) => {
+      markSessionAWaiting = resolve;
+      failSessionAWaiting = reject;
+    });
     mockedWaitForDeferredTurnMaintenanceForSession.mockImplementation(async (sessionKey) => {
       events.push(`wait:${sessionKey}`);
       if (sessionKey !== "agent:main:session-a") {
         return;
       }
+      markSessionAWaiting?.();
       await new Promise<void>((resolve) => {
         releaseSessionA = resolve;
       });
@@ -71,7 +79,11 @@ describe("runEmbeddedAgent deferred maintenance composition", () => {
       runId: "run-deferred-maintenance-session-a",
       sessionKey: "agent:main:session-a",
     });
-    await waitForRunEvent(events, "wait:agent:main:session-a");
+    void sessionARun.then(
+      () => failSessionAWaiting?.(new Error("Session A finished before deferred maintenance")),
+      (error: unknown) => failSessionAWaiting?.(error),
+    );
+    await sessionAWaiting;
 
     await runEmbeddedAgent({
       ...overflowBaseRunParams,

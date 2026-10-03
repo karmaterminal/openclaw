@@ -6,7 +6,6 @@ import type {
   AgentRuntimeAuthPlan,
   AgentRuntimePlan,
 } from "../runtime-plan/types.js";
-import { mockedResolveModelAsync } from "./run.overflow-compaction.harness.js";
 import type { RunEmbeddedAgentParams } from "./run/params.js";
 
 type RuntimePlanAuthOverrides = Partial<Omit<AgentRuntimeAuthPlan, "modelRoute">> & {
@@ -195,25 +194,6 @@ export function expectLogExcludes(mock: { mock: { calls: unknown[][] } }, fragme
   expect(mock.mock.calls.map((call) => String(call[0])).join("\n")).not.toContain(fragment);
 }
 
-export function queueOpenAIResolvedModel(params: {
-  api: "openai-responses" | "openai-chatgpt-responses";
-  baseUrl: string;
-  authStorage: { setRuntimeApiKey: ReturnType<typeof vi.fn> };
-}): void {
-  mockedResolveModelAsync.mockResolvedValueOnce({
-    model: {
-      id: "gpt-5.5",
-      provider: "openai",
-      contextWindow: 200_000,
-      api: params.api,
-      baseUrl: params.baseUrl,
-    },
-    error: null,
-    authStorage: params.authStorage,
-    modelRegistry: {},
-  });
-}
-
 export function expectRuntimePlanFields(
   runtimePlan: unknown,
   expected: {
@@ -228,16 +208,4 @@ export function expectRuntimePlanFields(
   if (expected.auth) {
     expectRecordFields(plan.auth, expected.auth);
   }
-}
-
-export async function waitForRunEvent(events: string[], expected: string): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (events.includes(expected)) {
-      return;
-    }
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
-  }
-  throw new Error(`Expected run event ${expected}; saw ${events.join(", ")}`);
 }
