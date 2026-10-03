@@ -214,4 +214,54 @@ describe("Slack duplicate wait admission", () => {
       vi.useRealTimers();
     }
   });
+
+  it("releases replay claims and settles both owners when the prepared turn is cancelled", async () => {
+    const release = vi.fn();
+    const commit = vi.fn(async () => true);
+    const claim = vi
+      .fn()
+      .mockResolvedValue({ kind: "claimed", handle: { keys: ["cancelled"], commit, release } });
+    prepareSlackMessageMock.mockResolvedValueOnce({
+      ctxPayload: {},
+      route: { sessionKey: "agent:main:slack:channel:C_TEST" },
+    } as Awaited<ReturnType<typeof prepareSlackMessageMock>>);
+    type PreparedLifecycle = { onDeferred: () => unknown; onCancelled?: () => unknown };
+    let prepared: { turnAdoptionLifecycle?: PreparedLifecycle } | undefined;
+    dispatchPreparedSlackMessageMock.mockImplementationOnce((async (value: unknown) => {
+      prepared = value as typeof prepared;
+      // Hand the turn to the reply lane with the logical claim still held.
+      prepared?.turnAdoptionLifecycle?.onDeferred();
+    }) as () => Promise<void>);
+    const source = {
+      admission: "exclusive" as const,
+      abortSignal: new AbortController().signal,
+      onAdopted: vi.fn(),
+      onDeferred: vi.fn(),
+      onCancelled: vi.fn(),
+      onAbandoned: vi.fn(),
+      onSessionRouted: vi.fn(async () => {}),
+    };
+    const handler = createSlackMessageHandler({
+      ctx: createContext(),
+      dispatchReplayGuard: { claim } as unknown as NonNullable<
+        Parameters<typeof createSlackMessageHandler>[0]["dispatchReplayGuard"]
+      >,
+    });
+    const handled = handler(
+      { type: "message", channel: "C_TEST", user: "U_TEST", ts: "1709000000.010001", text: "x" },
+      { source: "message", awaitDispatch: true, turnAdoptionLifecycle: source },
+    );
+    await vi.waitFor(() => expect(enqueueMock).toHaveBeenCalledOnce());
+    await runOnFlush(enqueueMock.mock.calls.map(([entry]) => entry).filter(isRecord));
+    await handled;
+    expect(release).not.toHaveBeenCalled();
+    expect(prepared?.turnAdoptionLifecycle?.onCancelled).toBeTypeOf("function");
+
+    prepared?.turnAdoptionLifecycle?.onCancelled?.();
+
+    expect(release).toHaveBeenCalledOnce();
+    expect(commit).not.toHaveBeenCalled();
+    expect(source.onCancelled).toHaveBeenCalledOnce();
+    expect(source.onAbandoned).not.toHaveBeenCalled();
+  });
 });

@@ -365,6 +365,16 @@ export function createSlackDurableIngress(
           settleSession();
           monitor.requestDrain();
         },
+        // Cancellation ends this event's turn exactly like abandonment for the
+        // session order and the migration fence; only the durable disposition
+        // differs (budget-free release).
+        onCancelled: async () => {
+          try {
+            await (lifecycle.onCancelled ? lifecycle.onCancelled() : lifecycle.onAbandoned());
+          } finally {
+            settleTurn();
+          }
+        },
         onAbandoned: async () => {
           try {
             await lifecycle.onAbandoned();
