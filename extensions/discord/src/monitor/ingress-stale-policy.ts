@@ -1,7 +1,13 @@
 // Discord plugin module owns pre-claim disposition of stale ambient ingress rows.
 import { ChannelType, MessageReferenceType, MessageType } from "discord-api-types/v10";
 import { listAgentIds } from "openclaw/plugin-sdk/agent-runtime";
-import { buildMentionRegexes, matchesMentionPatterns } from "openclaw/plugin-sdk/channel-inbound";
+import {
+  buildMentionRegexes,
+  implicitMentionKindWhen,
+  matchesMentionWithExplicit,
+  resolveGroupThreadMentionFacts,
+  resolveInboundMentionDecision,
+} from "openclaw/plugin-sdk/channel-inbound";
 import type { ChannelIngressQueueRecord } from "openclaw/plugin-sdk/channel-outbound";
 import { hasControlCommand } from "openclaw/plugin-sdk/command-detection";
 import {
@@ -13,10 +19,9 @@ import {
   normalizeDiscordSlug,
   resolveDiscordChannelConfigWithFallback,
   resolveDiscordGuildEntry,
-  resolveDiscordShouldRequireMention,
+  resolveDiscordMentionPolicy,
 } from "./allow-list.js";
 import type { DiscordLivePolicy, DiscordLivePolicyReader } from "./live-policy.js";
-import { hasRawDiscordUserMention } from "./message-handler.raw-mention.js";
 import { resolveDiscordRawMessageMentionDocuments } from "./message-text.js";
 
 /** Ambient guild chatter older than this can no longer be the user's live turn. */
@@ -37,6 +42,7 @@ type DiscordStalePolicyMessage = {
   payloadReceivedAt: number | null;
   mentionEveryone: boolean;
   mentionedUserIds: string[];
+  hasRoleMention: boolean;
   referencedAuthorId?: string;
   isOrdinaryReply: boolean;
   hasAudioAttachment: boolean;
@@ -103,6 +109,7 @@ function readDiscordStalePolicyRow(payload: unknown): DiscordStalePolicyMessage 
     typeof rawMessage.mention_everyone !== "boolean" ||
     !Array.isArray(rawMessage.attachments) ||
     (rawMessage.embeds != null && !Array.isArray(rawMessage.embeds)) ||
+    (rawMessage.mention_roles != null && !Array.isArray(rawMessage.mention_roles)) ||
     (referencedMessage != null && !isRecord(referencedMessage)) ||
     (rawMessage.message_reference != null && !isRecord(rawMessage.message_reference))
   ) {
@@ -126,6 +133,7 @@ function readDiscordStalePolicyRow(payload: unknown): DiscordStalePolicyMessage 
         : null,
     mentionEveryone: rawMessage.mention_everyone,
     mentionedUserIds,
+    hasRoleMention: Array.isArray(rawMessage.mention_roles) && rawMessage.mention_roles.length > 0,
     ...(isRecord(referencedAuthor) && typeof referencedAuthor.id === "string"
       ? { referencedAuthorId: referencedAuthor.id }
       : {}),
@@ -155,60 +163,80 @@ function resolveSentAtMs(
   return message.sentAtMs ?? record.receivedAt;
 }
 
-function isAddressedToBot(message: DiscordStalePolicyMessage, botUserId?: string): boolean {
-  if (message.mentionEveryone) {
-    return true;
-  }
-  const botId = nonEmptyString(botUserId);
-  if (!botId) {
-    // Without the bot identity this policy cannot prove the message is ambient.
-    return true;
-  }
-  return (
-    message.mentionedUserIds.includes(botId) ||
-    message.referencedAuthorId === botId ||
-    message.documents.some((document) => hasRawDiscordUserMention(document, botId))
-  );
-}
-
-/** Configured name mentions ("hey claw") and voice notes that resolve to one. */
-function matchesConfiguredMentionText(
+/**
+ * Preflight's mention facts replayed on the stored frame: the explicit native
+ * mention, @everyone, provider-filtered mention patterns for every roster
+ * agent, broadcast participants matched with unfiltered patterns, reply to the
+ * bot as an implicit mention, and the canonical decision under a mention-gated
+ * channel (non-thread channels never restrict implicit kinds). True when
+ * preflight would treat the message as mentioned.
+ */
+function isMentionedForPreflight(
   message: DiscordStalePolicyMessage,
+  botId: string,
   policy: DiscordLivePolicy,
 ): boolean {
   const text = message.text.trim();
   const audioOnly = !text && message.hasAudioAttachment;
-  if (!text && !audioOnly) {
-    return false;
-  }
-  try {
-    // The canonical roster: agents.list, keyed agents.entries, legacy default.
-    for (const agentId of listAgentIds(policy.cfg)) {
-      const mentionRegexes = buildMentionRegexes(policy.cfg, agentId, {
-        provider: "discord",
-        conversationId: message.channelId,
-        providerPolicy: policy.discordConfig?.mentionPatterns,
-      });
-      if (audioOnly ? mentionRegexes.length > 0 : matchesMentionPatterns(text, mentionRegexes)) {
-        return true;
-      }
+  const hasAnyMention =
+    message.mentionedUserIds.length > 0 || message.hasRoleMention || message.mentionEveryone;
+  const explicit = {
+    hasAnyMention,
+    isExplicitlyMentioned: message.mentionedUserIds.includes(botId),
+    canResolveExplicit: true,
+  };
+  const groupThread = resolveGroupThreadMentionFacts({
+    cfg: policy.cfg,
+    channel: "discord",
+    peerId: message.channelId,
+    text,
+  });
+  const implicitMentionKinds = implicitMentionKindWhen(
+    "reply_to_bot",
+    message.referencedAuthorId === botId,
+  );
+  return listAgentIds(policy.cfg).some((agentId) => {
+    const mentionRegexes = buildMentionRegexes(policy.cfg, agentId, {
+      provider: "discord",
+      conversationId: message.channelId,
+      providerPolicy: policy.discordConfig?.mentionPatterns,
+    });
+    if (audioOnly && mentionRegexes.length > 0) {
+      // Preflight would transcribe the note first; pre-claim cannot.
+      return true;
     }
-  } catch {
-    // Unreadable mention policy is ambiguous; keep the row claimable.
-    return true;
-  }
-  return false;
+    return !resolveInboundMentionDecision({
+      facts: {
+        canDetectMention: true,
+        wasMentioned:
+          message.mentionEveryone ||
+          matchesMentionWithExplicit({ text, mentionRegexes, explicit }) ||
+          Boolean(groupThread?.mentionedAgentIds.length),
+        hasAnyMention,
+        implicitMentionKinds,
+      },
+      policy: {
+        isGroup: true,
+        requireMention: true,
+        allowTextCommands: false,
+        hasControlCommand: false,
+        commandAuthorized: false,
+      },
+    }).shouldSkip;
+  });
 }
 
 /**
- * Mention gating resolved as preflight resolves it: channel entry (id, name,
- * slug or parent category) over guild entry, default gated. Direct-open
- * (`requireMention: false`) channels keep their ambient work, however old.
+ * True only when the channel is provably mention-gated under the published
+ * policy, resolved as preflight resolves it: channel entry (id, name, slug or
+ * parent category) over guild entry, default gated. Direct-open channels
+ * (`requireMention: false`) keep their ambient work, however old.
  */
 function isMentionGatedChannel(
   message: DiscordStalePolicyMessage & { guildId: string },
   channelInfo: DiscordGatewayChannelInfo,
   policy: DiscordLivePolicy,
+  botId: string,
 ): boolean {
   const guildEntries = policy.guildEntries;
   const guildInfo = resolveDiscordGuildEntry({ guildId: message.guildId, guildEntries });
@@ -225,19 +253,21 @@ function isMentionGatedChannel(
     ...(channelInfo.parentId ? { parentId: channelInfo.parentId } : {}),
     scope: "channel",
   });
-  return resolveDiscordShouldRequireMention({
+  return resolveDiscordMentionPolicy({
     isGuildMessage: true,
     isThread: false,
+    botId,
     channelConfig,
     guildInfo,
     isAutoThreadOwnedByBot: false,
-  });
+  }).requireMention;
 }
 
 /**
  * The drain's pre-claim policy for Discord. Every unknown keeps the row
- * claimable, a hydrating guild defers it, and only backlog the live policy
- * proves ambient and mention-gated is failed before it costs a claim and a turn.
+ * claimable, a hydrating guild defers it, and only backlog that preflight
+ * itself would skip as unmentioned in a mention-gated channel under the live
+ * policy is failed before it costs a claim and a turn.
  */
 export function createDiscordStaleAmbientPendingDisposition(params: {
   botUserId?: string;
@@ -251,7 +281,9 @@ export function createDiscordStaleAmbientPendingDisposition(params: {
   ) => {
     const row = readDiscordStalePolicyRow(record.payload);
     const guildId = row?.guildId;
-    if (!row || !guildId) {
+    const botId = nonEmptyString(params.botUserId);
+    // Without the bot identity this policy cannot prove the message is ambient.
+    if (!row || !guildId || !botId) {
       return null;
     }
     const message = { ...row, guildId };
@@ -259,8 +291,7 @@ export function createDiscordStaleAmbientPendingDisposition(params: {
     if (
       ageMs <= DISCORD_STALE_AMBIENT_BACKLOG_MS ||
       // A reply whose target author is unknown cannot be proven ambient.
-      (message.isOrdinaryReply && message.referencedAuthorId === undefined) ||
-      isAddressedToBot(message, params.botUserId)
+      (message.isOrdinaryReply && message.referencedAuthorId === undefined)
     ) {
       return null;
     }
@@ -274,7 +305,7 @@ export function createDiscordStaleAmbientPendingDisposition(params: {
     }
     if (
       hasControlCommand(message.text, policy.cfg) ||
-      matchesConfiguredMentionText(message, policy)
+      isMentionedForPreflight(message, botId, policy)
     ) {
       return null;
     }
@@ -286,7 +317,7 @@ export function createDiscordStaleAmbientPendingDisposition(params: {
     if (
       !channelInfo ||
       !isNonThreadGuildChannel(channelInfo) ||
-      !isMentionGatedChannel(message, channelInfo, policy) ||
+      !isMentionGatedChannel(message, channelInfo, policy, botId) ||
       // A newer published policy may already accept this row as work.
       !policy.isCurrent()
     ) {

@@ -89,12 +89,13 @@ async function seed(queue: DiscordQueue, params: Parameters<typeof rawMessage>[0
 function livePolicy(
   guildEntries?: Record<string, DiscordGuildEntryResolved>,
   cfg: OpenClawConfig = {} as OpenClawConfig,
+  discordConfig: Record<string, unknown> = {},
 ): DiscordLivePolicy {
   return {
     isCurrent: () => true,
     accountId: "default",
     cfg,
-    discordConfig: {},
+    discordConfig,
     guildEntries,
     allowFrom: [],
     dmPolicy: "open",
@@ -250,6 +251,64 @@ describe("Discord ingress stale ambient backlog boundary", () => {
       }
 
       expect(dispatched).toEqual(["stale-entries-request"]);
+      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+        { id: "stale-ambient", reason: "stale-ambient-backlog" },
+      ]);
+    });
+  });
+
+  it("preserves a stale broadcast-participant mention the provider policy filters out", async () => {
+    await withQueue(async (queue) => {
+      // Mention-gated lane, provider mentionPatterns.denyIn for this channel, and
+      // a broadcast entry naming an entries-only agent: "@helper" is still a
+      // request for preflight's participant matcher, so it must not expire.
+      await seed(queue, { id: "stale-ambient", channelId: "chan-gated", sentAt: STALE_AT });
+      await seed(queue, {
+        id: "stale-broadcast-request",
+        channelId: "chan-gated",
+        sentAt: STALE_AT + 1,
+        content: "@helper can you look at this when you are back?",
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        // SAFETY: gateway mapping only reads the raw frame for these fixtures.
+        client: {} as Client,
+        runtime: { error: vi.fn(), log: vi.fn() },
+        botUserId: BOT_ID,
+        readPolicy: async () =>
+          livePolicy(
+            undefined,
+            {
+              agents: { entries: { helper: { groupChat: { mentionPatterns: ["\\bhelper\\b"] } } } },
+              broadcast: { "discord:chan-gated": ["helper"] },
+            } as unknown as OpenClawConfig,
+            { mentionPatterns: { denyIn: ["chan-gated"] } },
+          ),
+        resolveChannelInfo: (channelId) => CHANNELS[channelId],
+        isChannelInventoryHydrating: () => false,
+        queue,
+        dispatch: async (event, lifecycle) => {
+          dispatched.push(String(event.id));
+          await lifecycle.onAdopted();
+        },
+      });
+
+      monitor.start();
+      try {
+        await vi.waitFor(
+          async () => {
+            expect(await queue.listPending({ limit: "all" })).toEqual([]);
+            expect(await queue.listClaims()).toEqual([]);
+          },
+          { timeout: 15_000, interval: 50 },
+        );
+      } finally {
+        await monitor.stop();
+      }
+
+      expect(dispatched).toEqual(["stale-broadcast-request"]);
       expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
         { id: "stale-ambient", reason: "stale-ambient-backlog" },
       ]);
