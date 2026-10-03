@@ -163,8 +163,8 @@ describe("channel ingress pending disposition", () => {
         { text: "independent" },
         { laneKey: "lane:b", receivedAt: 2 },
       );
-      const policyEntered = createDeferredCore<void>();
-      const policyRelease = createDeferredCore<void>();
+      const policyEntered = createDeferredCore();
+      const policyRelease = createDeferredCore();
       const logs: string[] = [];
       const adopted: string[] = [];
       const drain = createChannelIngressDrain({
@@ -222,8 +222,8 @@ describe("channel ingress pending disposition", () => {
       // monotonic generation can tell the resubmitted row from the inspected one.
       const queue = createTestIngressQueue(stateDir, { now: () => 10 });
       await queue.enqueue("raced", { text: "old ambient" }, { laneKey: "lane:a", receivedAt: 10 });
-      const policyEntered = createDeferredCore<void>();
-      const policyRelease = createDeferredCore<void>();
+      const policyEntered = createDeferredCore();
+      const policyRelease = createDeferredCore();
       const drain = createChannelIngressDrain({
         queue,
         now: () => 10,
