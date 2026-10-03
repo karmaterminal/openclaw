@@ -24,7 +24,6 @@ import {
 } from "./openclaw-agent-board-schema.js";
 import { withoutCanonicalSessionValidationSchema } from "./openclaw-agent-canonical-validation-schema.js";
 import {
-  AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
   CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION,
   OPENCLAW_AGENT_SCHEMA_VERSION,
   AGENT_STORAGE_SCHEMA_VERSION,
@@ -41,7 +40,6 @@ import {
   hasPendingSessionProjectColumn,
   hasPendingSessionTranscriptContextEligibilityColumn,
   ensureSessionEntryValidityProjection,
-  withoutSessionRecipientAuthoritySchema,
 } from "./openclaw-agent-db-session-migrations.js";
 import {
   LEGACY_PARTICIPANT_OPTIONAL_COLUMNS,
@@ -52,6 +50,10 @@ import {
   ensureOpenClawAgentProgressCardSchemaInTransaction,
   AGENT_PROGRESS_CARD_SCHEMA_SQL,
 } from "./openclaw-agent-progress-card-schema.js";
+import {
+  AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+  withoutSessionRecipientAuthoritySchema,
+} from "./openclaw-agent-recipient-authority-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import {
   AGENT_V14_ADDITIVE_SCHEMA_SQL,

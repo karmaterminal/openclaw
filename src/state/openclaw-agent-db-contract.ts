@@ -29,7 +29,6 @@ import type { OpenClawStateDatabaseOptions } from "./openclaw-state-db-contract.
 // change is folded in structure-gated migrations, so v2 main DBs and
 // pre-merge v4 flip DBs both converge on this schema.
 export const OPENCLAW_AGENT_SCHEMA_VERSION = 25;
-export const AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION = 25;
 export const AGENT_STORAGE_SCHEMA_VERSION = 23;
 export const TRANSCRIPT_FTS_ROW_SCHEMA_VERSION = 22;
 export const AGENT_MEDIA_SCHEMA_VERSION = 17;

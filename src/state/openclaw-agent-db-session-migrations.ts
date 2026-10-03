@@ -6,12 +6,12 @@ import { normalizeChatType, type ChatType } from "../channels/chat-type.js";
 import { parseSqliteSessionEntryRecord } from "../config/sessions/session-entry-json.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { SqliteSchemaMismatchError } from "../infra/sqlite-schema-issues.js";
-import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
 import { normalizeAccountId } from "../routing/account-id.js";
 import { buildConversationRef, normalizeConversationPeerId } from "../routing/conversation-ref.js";
 import { deriveSessionChatTypeFromKey } from "../sessions/session-chat-type-shared.js";
 import { migrateLegacySessionCreator } from "./creator-namespace-migration.js";
 import { ensurePendingInputConsumptionColumn } from "./openclaw-agent-pending-inputs-schema.js";
+import { sessionRecipientAuthoritySchemaSql } from "./openclaw-agent-recipient-authority-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import { tableExists } from "./openclaw-state-db-schema-helpers.js";
 
@@ -388,24 +388,13 @@ export function hasPendingSessionConversationRouteContextColumn(db: DatabaseSync
   return Boolean(columns && !columns.has("route_context_json"));
 }
 
-const SESSION_RECIPIENT_AUTHORITY_SCHEMA_START =
-  "CREATE TABLE IF NOT EXISTS session_recipient_authority (";
-
-/** Historical admission validates only the tables its schema version supported. */
-export function withoutSessionRecipientAuthoritySchema(sql: string): string {
-  if (!sql.includes(SESSION_RECIPIENT_AUTHORITY_SCHEMA_START)) {
-    return sql;
-  }
-  return sql.replace(extractSqliteTableSchema(sql, "session_recipient_authority"), "");
-}
-
 /**
  * Schema 25 step. Databases written by earlier builds may already carry the
  * table, so creation is idempotent; valid entry-local epochs move to it.
  */
 export function migrateSessionRecipientAuthorityInTransaction(db: DatabaseSync): void {
   // sqlite-allow-raw -- Versioned schema DDL precedes the epoch data migration.
-  db.exec(extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_SQL, "session_recipient_authority"));
+  db.exec(sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL));
   if (migrateSessionRecipientAuthority(db)) {
     // Removing a legacy field fires the canonical entry-update trigger.
     // Settle valid rows again while malformed Doctor-owned rows remain rejected.
