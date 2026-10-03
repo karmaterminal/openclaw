@@ -1015,11 +1015,12 @@ describe("post-compaction queue drain admission (RFC §5.4.4)", () => {
     await withSeededStore(async (storePath) => {
       const harness = createDeliveryDeps({ storePath });
       const entry = createQueuedEntry({ sourceFlowId: "pc-flow-order", sourceExpectedRevision: 1 });
+      const queueContext = captureContinuationQueueContext(path.dirname(storePath));
 
-      await deliverQueuedPostCompactionDelegate({ entry }, harness.deps);
+      await deliverQueuedPostCompactionDelegate({ entry, queueContext }, harness.deps);
 
       expect(harness.markAttemptStarted).toHaveBeenCalledTimes(1);
-      expect(harness.markAttemptStarted).toHaveBeenCalledWith(entry, undefined);
+      expect(harness.markAttemptStarted).toHaveBeenCalledWith(entry, queueContext);
       expect(harness.spawnSubagentDirect).toHaveBeenCalledTimes(1);
       expect(harness.markAttemptStarted.mock.invocationCallOrder[0]).toBeLessThan(
         harness.spawnSubagentDirect.mock.invocationCallOrder[0]!,
