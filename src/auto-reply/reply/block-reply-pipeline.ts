@@ -17,10 +17,7 @@ import { createBlockReplyCoalescer } from "./block-reply-coalescer.js";
 import { deliverBlockReply, hasBlockReplyDeliveryCustody } from "./block-reply-delivery.js";
 import type { BlockReplySource } from "./block-reply-source.types.js";
 import type { BlockStreamingCoalescing } from "./block-streaming.js";
-import {
-  resolveReplyDispatchErrorOutcome,
-  type ReplyDispatchDeliveryOutcome,
-} from "./reply-dispatch-outcome.js";
+import { resolveReplyDispatchErrorOutcome } from "./reply-dispatch-outcome.js";
 
 /** Streaming block reply pipeline that tracks sent content and media. */
 export type BlockReplyPipeline = {
@@ -186,13 +183,7 @@ export function createBlockReplyPipeline(params: {
     const reply = resolveSendableOutboundReplyParts(payload);
     const attempt: BlockAttempt = {
       outcome: "cancelled",
-      // Coverage provenance first: after a presentation change the occurrence
-      // text is cleared by design, and falling straight through to trimmedText
-      // joins against the mutated presentation instead of the delivered source.
-      sourceText:
-        getReplyPayloadMetadata(payload)?.blockCoverageSourceText ??
-        blockSourceText ??
-        reply.trimmedText,
+      sourceText: blockSourceText ?? reply.trimmedText,
       contentKey,
       mediaUrls: reply.mediaUrls,
       terminal: isTerminalContent && hasOutboundReplyContent(payload, { trimText: true }),
@@ -381,16 +372,22 @@ export function createBlockReplyPipeline(params: {
     await sendChain;
   };
 
-  const matchingAttempts = (payload: ReplyPayload) =>
-    getBlockReplyAttemptGroups(blockAttemptsByMessage, payload);
+  const matchingAttempts = (payload: ReplyPayload) => {
+    const index = getReplyPayloadMetadata(payload)?.assistantMessageIndex;
+    return index === undefined
+      ? blockAttemptsByMessage.values()
+      : [blockAttemptsByMessage.get(index) ?? []];
+  };
+  const normalizeSource = (text: string) => text.replace(/\s+/g, "");
+  const combinedSource = (attempts: BlockAttempt[]) =>
+    normalizeSource(attempts.map((attempt) => attempt.sourceText).join(""));
   const matchesSource = (payload: ReplyPayload, attempts: BlockAttempt[]) => {
     const reply = resolveSendableOutboundReplyParts(payload);
     return (
       !reply.hasMedia &&
-      blockReplyAttemptSourcesCoverPayload(
-        payload,
-        attempts.map((attempt) => attempt.sourceText),
-      )
+      Boolean(reply.trimmedText) &&
+      attempts.length > 0 &&
+      combinedSource(attempts) === normalizeSource(reply.trimmedText)
     );
   };
   const hasAttemptSince = (
@@ -420,13 +417,12 @@ export function createBlockReplyPipeline(params: {
     hasSentExactPayload: (payload) =>
       sentContentKeys.has(createIndexedBlockReplyContentKey(payload)),
     getSourceRecovery: (payload) => {
+      const text = normalizeSource(resolveSendableOutboundReplyParts(payload).trimmedText);
       for (const group of matchingAttempts(payload)) {
         const attempts = group.filter((attempt) => attempt.terminal);
         if (
-          blockReplyAttemptSourcesCoverPayload(
-            payload,
-            attempts.map((attempt) => attempt.sourceText),
-          ) &&
+          text &&
+          combinedSource(attempts) === text &&
           attempts.some((attempt) => attempt.source?.complete === false)
         ) {
           return Array.from(new Set(attempts.flatMap((attempt) => attempt.source ?? [])));
@@ -437,14 +433,12 @@ export function createBlockReplyPipeline(params: {
     isFinalPayloadRetryBlocked: (payload) => {
       const contentKey = createBlockReplyContentKey(payload);
       const reply = resolveSendableOutboundReplyParts(payload);
-      const text = normalizeBlockReplySource(reply.trimmedText);
+      const text = normalizeSource(reply.trimmedText);
       const textOnly = !hasOutboundReplyContent({ ...payload, text: undefined });
       for (const group of matchingAttempts(payload)) {
         const attempts = group.filter((attempt) => attempt.terminal);
         const blocked = attempts.filter(hasBlockReplyDeliveryCustody);
-        const sourcePrefix = normalizeBlockReplySource(
-          attempts.map((attempt) => attempt.sourceText).join(""),
-        );
+        const sourcePrefix = combinedSource(attempts);
         if (
           blocked.some((attempt) => attempt.contentKey === contentKey) ||
           (textOnly &&
@@ -502,39 +496,4 @@ export function createBlockReplyPipeline(params: {
         ),
       ),
   };
-}
-
-export type RoutedBlockReplyDelivery = {
-  outcome: ReplyDispatchDeliveryOutcome;
-  pending?: boolean;
-};
-export type RoutedBlockReplyDeliveryAttempt = {
-  contentKey: string;
-  source: string;
-  delivery: Promise<RoutedBlockReplyDelivery>;
-};
-
-export function getBlockReplyAttemptGroups<T>(
-  attemptsByMessage: ReadonlyMap<number | undefined, readonly T[]>,
-  payload: ReplyPayload,
-): Iterable<readonly T[]> {
-  const assistantMessageIndex = getReplyPayloadMetadata(payload)?.assistantMessageIndex;
-  return assistantMessageIndex === undefined
-    ? attemptsByMessage.values()
-    : [attemptsByMessage.get(assistantMessageIndex) ?? []];
-}
-
-function normalizeBlockReplySource(text: string): string {
-  return text.replace(/\s+/g, "");
-}
-
-export function blockReplyAttemptSourcesCoverPayload(
-  payload: ReplyPayload,
-  sources: readonly string[],
-): boolean {
-  const text = resolveSendableOutboundReplyParts(payload).trimmedText;
-  if (!text || sources.length === 0) {
-    return false;
-  }
-  return normalizeBlockReplySource(sources.join("")) === normalizeBlockReplySource(text);
 }

@@ -24,15 +24,11 @@ import {
 } from "../reply-payload.js";
 import { renderPostCompactionModelFailurePayload } from "./agent-runner-failure-reply.js";
 import { recoverBlockReplySources, setBlockReplyDelivery } from "./block-reply-delivery.js";
-import {
-  createBlockReplyContentKey,
-  type RoutedBlockReplyDelivery as BlockDelivery,
-} from "./block-reply-pipeline.js";
+import { createBlockReplyContentKey } from "./block-reply-pipeline.js";
 import {
   DispatchReplyOperationAbortedError,
   runWithDispatchAbortSignal,
 } from "./dispatch-from-config.abort.js";
-import { createBlockDeliveryAttemptTracker } from "./dispatch-from-config.block-delivery-attempts.js";
 import { admittedSessionSettingsRestrictRuntime } from "./dispatch-from-config.events.js";
 import {
   hasExecApprovalPayload,
@@ -196,14 +192,17 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
   };
   const deferFinalTtsText = shouldDeferFinalTtsText(captionedFinalTtsContext);
   const cleanDeferredFinalDirectives = shouldCleanTtsDirectiveText(captionedFinalTtsContext);
-  const blockDeliveryAttempts = createBlockDeliveryAttemptTracker();
-  const { getBlockReplyOutcome } = blockDeliveryAttempts;
+  type BlockDelivery = { outcome: ReplyDispatchDeliveryOutcome; pending?: boolean };
+  const blockDeliveryOutcomes = new Map<string, Array<Promise<BlockDelivery>>>();
   const recordBlockOutcome = (payload: ReplyPayload, outcome: Promise<BlockDelivery>) => {
     setBlockReplyDelivery(outcome, payload);
     if (getReplyPayloadMetadata(payload)?.independentDeliveryIntentId !== undefined) {
       return;
     }
-    blockDeliveryAttempts.recordBlockDeliveryAttempt(payload, outcome);
+    const key = createBlockReplyContentKey(payload);
+    const outcomes = blockDeliveryOutcomes.get(key) ?? [];
+    outcomes.push(outcome);
+    blockDeliveryOutcomes.set(key, outcomes);
   };
   const sendTrackedBlockReply = (operation: ReplyDispatchOperation) => {
     const payload = operation.kind === "prepared" ? operation.plan.payload : operation.payload;
@@ -241,6 +240,21 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
       }),
     );
     return outcome;
+  };
+  const getBlockReplyOutcome = async (
+    payload: ReplyPayload,
+    abortSignal?: AbortSignal,
+  ): Promise<BlockDelivery | undefined> => {
+    const outcomes = blockDeliveryOutcomes.get(createBlockReplyContentKey(payload));
+    if (!outcomes || abortSignal?.aborted) {
+      return undefined;
+    }
+    const settled = await runWithDispatchAbortSignal(abortSignal, () => Promise.all(outcomes));
+    return (
+      settled.find(({ outcome }) => outcome === "delivered") ??
+      settled.find(({ outcome, pending }) => pending || !shouldRetryReplyDispatch(outcome)) ??
+      settled[0]
+    );
   };
   const sendFinalPayload = async (
     inputPayload: ReplyPayload,

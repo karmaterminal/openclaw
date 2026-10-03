@@ -383,11 +383,6 @@ export function createReplyDelivery({ params, state, log }: ReplyDeliveryParams)
         blockSourceRange: options.blockSourceRange,
       });
     }
-    if (blockPayload.text && options?.blockCoverageSourceText !== undefined) {
-      setReplyPayloadMetadata(taggedPayload, {
-        blockCoverageSourceText: options.blockCoverageSourceText,
-      });
-    }
     if (state.deferBlockReplyDelivery) {
       if (pendingToolMedia) {
         deferredToolMediaReplies.set(taggedPayload, {

@@ -316,8 +316,6 @@ export type EmbeddedAgentSubscribeContext = {
       consumePendingToolMedia?: boolean;
       blockSourceText?: string;
       blockSourceRange?: readonly [start: number, end: number];
-      /** Completion provenance; survives the presentation-change clear. */
-      blockCoverageSourceText?: string;
     },
   ) => void;
   flushAssistantStream: () => void;
