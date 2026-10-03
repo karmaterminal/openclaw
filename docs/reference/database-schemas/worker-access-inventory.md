@@ -458,7 +458,7 @@ Counts use `Q/F/S/A/R` in that order. Source locations are available in `--json`
 | **src/infra** · `src/infra/state-migrations.workspace-setup-store.ts`                       |         7/6/1/0/0 |        160 | Schema/startup/migration candidate; verify no runtime caller |
 | **src/skills/workshop** · `src/skills/workshop/store-sqlite-schema.ts`                      |         0/0/1/0/0 |        125 | Schema/startup/migration candidate; verify no runtime caller |
 | **src/state** · `src/state/openclaw-agent-db-lease.ts`                                      |         8/4/7/0/0 |        166 | Boot or lock/lease primitive; exception is operation-scoped  |
-| **src/state** · `src/state/openclaw-agent-db-schema.ts`                                     |         0/0/1/0/0 |        569 | Schema/startup/migration candidate; verify no runtime caller |
+| **src/state** · `src/state/openclaw-agent-db-schema.ts`                                     |         0/0/1/0/0 |        566 | Schema/startup/migration candidate; verify no runtime caller |
 | **src/state** · `src/state/openclaw-agent-session-snapshots-migration.ts`                   |         1/0/0/0/0 |         75 | Schema/startup/migration candidate; verify no runtime caller |
 | **src/state** · `src/state/openclaw-state-db-existing-schema.ts`                            |         0/1/0/0/0 |         42 | Schema/startup/migration candidate; verify no runtime caller |
 | **src/state** · `src/state/openclaw-state-db-session-watch-migration.ts`                    |         3/2/0/0/0 |         35 | Schema/startup/migration candidate; verify no runtime caller |
