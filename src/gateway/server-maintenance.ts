@@ -2,7 +2,6 @@
 // Starts periodic health, dedupe, abort, and media cleanup loops.
 import { isFutureDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
 import { AGENT_RUN_TERMINAL_RETRY_GRACE_MS } from "../agents/agent-run-terminal-outcome.js";
-import { purgeExpiredDelegateArtifacts } from "../agents/delegate-artifacts.js";
 import { isActiveEmbeddedRunId } from "../agents/embedded-agent-runner/runs.js";
 import { formatWorktreeGcResult } from "../agents/worktrees/gc-result.js";
 import { createManagedWorktreeOwnerPolicy } from "../agents/worktrees/owner-protection.js";
@@ -81,9 +80,6 @@ import { checkGatewayInstallationReplacement } from "./stale-install.js";
 // Hourly sweep plus a one-day grace bounds orphan storage without racing the
 // stage-before-row-commit window.
 const DELIVERY_QUEUE_MEDIA_GC_INTERVAL_MS = 60 * 60_000;
-const DELEGATE_ARTIFACT_GC_INTERVAL_MS = 60 * 60_000;
-const DELEGATE_ARTIFACT_GC_BATCH_SIZE = 100;
-const DELEGATE_ARTIFACT_GC_YIELD_BATCHES = 10;
 const TELEMETRY_MAINTENANCE_INTERVAL_MS = 5 * 60_000;
 
 export function startGatewayMaintenanceTimers(params: {
@@ -128,7 +124,6 @@ export function startGatewayMaintenanceTimers(params: {
   getRuntimeConfig: () => OpenClawConfig;
   runWorktreeGc?: () => Promise<ManagedWorktreeGcResult | void>;
   runDeliveryQueueMediaGc?: () => Promise<unknown>;
-  runDelegateArtifactGc?: () => number | Promise<number>;
   runManagedOutgoingMediaGc?: () => Promise<unknown>;
 }): {
   stopPeriodicTasks: () => Promise<void>;
@@ -310,51 +305,6 @@ export function startGatewayMaintenanceTimers(params: {
       run,
     });
   };
-  const runDelegateArtifactGc =
-    params.runDelegateArtifactGc ?? (() => purgeExpiredDelegateArtifacts());
-  let delegateArtifactGcInFlight: Promise<void> | null = null;
-  let delegateArtifactGcCancelled = false;
-  const performDelegateArtifactGc = () => {
-    if (delegateArtifactGcInFlight || delegateArtifactGcCancelled) {
-      return delegateArtifactGcInFlight ?? undefined;
-    }
-    delegateArtifactGcInFlight = Promise.resolve()
-      .then(async () => {
-        let fullBatchesSinceYield = 0;
-        while (true) {
-          if (delegateArtifactGcCancelled) {
-            break;
-          }
-          const purged = await runDelegateArtifactGc();
-          if (delegateArtifactGcCancelled || purged < DELEGATE_ARTIFACT_GC_BATCH_SIZE) {
-            break;
-          }
-          fullBatchesSinceYield += 1;
-          if (fullBatchesSinceYield >= DELEGATE_ARTIFACT_GC_YIELD_BATCHES) {
-            fullBatchesSinceYield = 0;
-            await new Promise<void>((resolve) => {
-              setTimeout(resolve, 0);
-            });
-            if (delegateArtifactGcCancelled) {
-              break;
-            }
-          }
-        }
-      })
-      .catch((err: unknown) => {
-        params.logHealth.error(`delegate artifact cleanup failed: ${formatError(err)}`);
-      })
-      .finally(() => {
-        delegateArtifactGcInFlight = null;
-      });
-    return delegateArtifactGcInFlight;
-  };
-  // Delegate artifact expiry drains once at startup, then every interval on the
-  // shared maintenance scheduler; the in-flight guard keeps runs from overlapping.
-  schedulePeriodic("delegate-artifacts", DELEGATE_ARTIFACT_GC_INTERVAL_MS, () =>
-    performDelegateArtifactGc(),
-  );
-  void performDelegateArtifactGc();
   void waitForMediaCleanupDrainsToSettle().then(() => {
     if (!mediaScheduler.signal.aborted) {
       scheduleMedia("delivery-queue-media", () =>
@@ -394,14 +344,7 @@ export function startGatewayMaintenanceTimers(params: {
     true,
   );
 
-  const stopSkillUsageTracking = registerSkillUsageTracking();
-  const skillUsageCleanup = async () => {
-    delegateArtifactGcCancelled = true;
-    // registerSkillUsageTracking returns () => Promise<void>; awaiting it is the
-    // reason this cleanup is async, so a caller that awaits it gets a settled
-    // teardown rather than a detached one.
-    await stopSkillUsageTracking();
-  };
+  const skillUsageCleanup = registerSkillUsageTracking();
 
   schedulePeriodic("dedupe", 60_000, () => {
     const AGENT_RUN_SEQ_MAX = 10_000;
@@ -630,8 +573,6 @@ export function startGatewayMaintenanceTimers(params: {
 
   const stopPeriodicTasks = () => {
     if (!periodicTasksStopPromise) {
-      // Let an in-flight delegate artifact batch loop exit before its job stop is awaited.
-      delegateArtifactGcCancelled = true;
       restartDrainSignal.removeEventListener("abort", onRestartDrain);
       periodicTasksStopPromise = Promise.allSettled([
         scheduler.stop(),

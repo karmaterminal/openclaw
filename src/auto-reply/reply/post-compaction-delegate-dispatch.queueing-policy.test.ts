@@ -506,7 +506,6 @@ describe("post-compaction delegate dispatch extraction", () => {
       ...delegate("staged while context loads"),
       flowId: "flow-context-cancelled",
       expectedRevision: 4,
-      returnOptions: { artifacts: "required" },
     };
     const {
       deps,
@@ -746,15 +745,13 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining(`firstArmedAt=${staleFirstArmedAt}`));
   });
 
-  // RFC §4.4: a dropped claim fails visibly whether or not it is managed.
-  it.each(
-    [true, false].flatMap((managed) => [
-      { name: "stale", managed, maxDelegatesPerTurn: 5, firstArmedAtOffsetMs: 8 * 86_400_000 },
-      { name: "over budget", managed, maxDelegatesPerTurn: 0, firstArmedAtOffsetMs: 60_000 },
-    ]),
-  )(
-    "terminalizes custody claims (managed=$managed) dropped as $name",
-    async ({ firstArmedAtOffsetMs, managed, maxDelegatesPerTurn }) => {
+  // RFC §4.4: a dropped claim fails visibly.
+  it.each([
+    { name: "stale", maxDelegatesPerTurn: 5, firstArmedAtOffsetMs: 8 * 86_400_000 },
+    { name: "over budget", maxDelegatesPerTurn: 0, firstArmedAtOffsetMs: 60_000 },
+  ])(
+    "terminalizes custody claims dropped as $name",
+    async ({ firstArmedAtOffsetMs, maxDelegatesPerTurn }) => {
       const now = 1_700_000_000_000;
       const managedDelegate: SessionPostCompactionDelegate = {
         task: "managed drop",
@@ -762,7 +759,6 @@ describe("post-compaction delegate dispatch extraction", () => {
         firstArmedAt: now - firstArmedAtOffsetMs,
         flowId: "flow-managed-drop",
         expectedRevision: 7,
-        ...(managed ? { returnOptions: { artifacts: "required" as const } } : {}),
       };
       const { deps, releasePostCompactionDelegateToQueue, rejectPostCompactionDelegate } =
         createDispatchDeps({
@@ -791,124 +787,6 @@ describe("post-compaction delegate dispatch extraction", () => {
       expect(releasePostCompactionDelegateToQueue).not.toHaveBeenCalled();
     },
   );
-
-  it.each([
-    {
-      name: "continuation",
-      runtimeConfig: {
-        ...defaultRuntimeConfig,
-        enabled: false,
-        maxDelegatesPerTurn: 0,
-        crossSessionTargeting: "enabled" as const,
-      },
-      targetSessionKey: undefined,
-    },
-    {
-      name: "cross-session targeting",
-      runtimeConfig: {
-        ...defaultRuntimeConfig,
-        enabled: true,
-        maxDelegatesPerTurn: 0,
-        crossSessionTargeting: "disabled" as const,
-      },
-      targetSessionKey: "agent:main:other",
-    },
-  ])(
-    "requeues managed custody records before stale and cap handling when $name is disabled",
-    async ({ runtimeConfig, targetSessionKey }) => {
-      const now = 1_700_000_000_000;
-      const managedDelegate: SessionPostCompactionDelegate = {
-        task: "defer managed post-compaction work",
-        createdAt: 1,
-        firstArmedAt: 1,
-        flowId: "flow-managed-disabled",
-        expectedRevision: 4,
-        returnOptions: { artifacts: "required" },
-        ...(targetSessionKey ? { targetSessionKey } : {}),
-      };
-      const preserve: SessionPostCompactionDelegate[] = [];
-      const {
-        deps,
-        enqueuePostCompactionDelegateDelivery,
-        releasePostCompactionDelegateToQueue,
-        requeueReleasedPostCompactionDelegate,
-      } = createDispatchDeps({
-        staged: [managedDelegate],
-        runtimeConfig,
-        now,
-      });
-      requeueReleasedPostCompactionDelegate.mockResolvedValue("requeued");
-
-      const result = await dispatchPostCompactionDelegates(
-        {
-          cfg,
-          compactionCount: 1,
-          followupRun: createFollowupRun(),
-          postCompactionDelegatesToPreserve: preserve,
-          sessionEntry: { sessionId: "session", updatedAt: 1 },
-          sessionKey: "main",
-        },
-        deps,
-      );
-
-      expect(result).toEqual({ queuedDelegates: 0, droppedDelegates: 0 });
-      expect(requeueReleasedPostCompactionDelegate).toHaveBeenCalledWith(
-        expect.objectContaining(managedDelegate),
-      );
-      expect(enqueuePostCompactionDelegateDelivery).not.toHaveBeenCalled();
-      expect(releasePostCompactionDelegateToQueue).not.toHaveBeenCalled();
-      expect(preserve).toEqual([]);
-    },
-  );
-
-  it("does not restage a managed return when its authoritative custody requeue is not applied", async () => {
-    const managedDelegate: SessionPostCompactionDelegate = {
-      task: "defer managed post-compaction work",
-      createdAt: 1,
-      firstArmedAt: 1,
-      flowId: "flow-managed-disabled",
-      expectedRevision: 4,
-      returnOptions: { artifacts: "required" },
-    };
-    const preserve: SessionPostCompactionDelegate[] = [];
-    const {
-      deps,
-      releasePostCompactionDelegateToQueue,
-      log,
-      requeueReleasedPostCompactionDelegate,
-      stagePostCompactionDelegate,
-    } = createDispatchDeps({
-      staged: [managedDelegate],
-      runtimeConfig: {
-        ...defaultRuntimeConfig,
-        enabled: false,
-        maxDelegatesPerTurn: 0,
-      },
-    });
-    requeueReleasedPostCompactionDelegate.mockResolvedValue("authoritative");
-
-    await dispatchPostCompactionDelegates(
-      {
-        cfg,
-        compactionCount: 1,
-        followupRun: createFollowupRun(),
-        postCompactionDelegatesToPreserve: preserve,
-        sessionEntry: { sessionId: "session", updatedAt: 1 },
-        sessionKey: "main",
-      },
-      deps,
-    );
-
-    expect(requeueReleasedPostCompactionDelegate).toHaveBeenCalledWith(
-      expect.objectContaining(managedDelegate),
-    );
-    expect(stagePostCompactionDelegate).not.toHaveBeenCalled();
-    expect(releasePostCompactionDelegateToQueue).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith(
-      expect.stringContaining("preserving authoritative custody state"),
-    );
-    expect(preserve).toEqual([]);
-  });
 
   it("reduces compaction budget by one when a bracket delegate was already spawned this turn", async () => {
     const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: 1 };

@@ -295,20 +295,6 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     includeInOpenClawGroup: true,
   },
   {
-    id: "delegate_artifacts",
-    description: "List, inspect, and materialize published delegate artifacts",
-    sectionId: "sessions",
-    profiles: [],
-    includeInOpenClawGroup: true,
-  },
-  {
-    id: "delegate_artifacts_publish",
-    description: "Publish delegate output files as artifacts",
-    sectionId: "sessions",
-    profiles: [],
-    includeInOpenClawGroup: true,
-  },
-  {
     id: "subagents",
     description: "Background work: subagents, media gen, automation runs. list/cancel.",
     sectionId: "sessions",

@@ -277,12 +277,6 @@ export type SessionPostCompactionDelegate = {
   fanoutMode?: "tree" | "all";
   /** Durable logical-mailbox authority captured before this delegate was accepted. */
   recipientAuthorityBinding?: ContinuationRecipientAuthorityBinding;
-  returnOptions?: {
-    artifacts?: "forbidden" | "optional" | "required";
-  };
-  recipientContext?: {
-    purpose: string;
-  };
   traceparent?: string;
   /** Persisted proof that traceparent came from a runtime-owned capture boundary. */
   traceparentProvenance?: "internal";

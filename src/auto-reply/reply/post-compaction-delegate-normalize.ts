@@ -27,8 +27,6 @@ export function normalizePostCompactionDelegate(
     ...(delegate.recipientAuthorityBinding
       ? { recipientAuthorityBinding: delegate.recipientAuthorityBinding }
       : {}),
-    ...(delegate.returnOptions ? { returnOptions: delegate.returnOptions } : {}),
-    ...(delegate.recipientContext ? { recipientContext: delegate.recipientContext } : {}),
     ...(delegate.attachments ? { attachments: delegate.attachments } : {}),
     ...(delegate.attachAs ? { attachAs: delegate.attachAs } : {}),
     ...(internalTraceparent

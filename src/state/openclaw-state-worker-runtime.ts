@@ -1,7 +1,3 @@
-import {
-  executeDelegateArtifactCommand,
-  isDelegateArtifactCommand,
-} from "../agents/delegate-artifacts.worker.js";
 import { importSandboxRegistryRow } from "../agents/sandbox/registry-import.worker.js";
 import { writeSandboxRegistry } from "../agents/sandbox/registry-write.worker.js";
 import { writeSubagentRunValuesInDatabase } from "../agents/subagents/registry/subagent-registry.store.kernel.js";
@@ -101,9 +97,6 @@ export function executeSharedStateCommand(
   }
   if (isContinuationCustodyCommand(command)) {
     return executeContinuationCustodyCommand(command, { database: open(), ...stateOptions() });
-  }
-  if (isDelegateArtifactCommand(command)) {
-    return executeDelegateArtifactCommand(command, { database: open(), ...stateOptions() });
   }
   if (command.type === "updateRuns.recordStep" || command.type === "updateRuns.recordPhase") {
     return recordUpdateRunMutationInWorker(

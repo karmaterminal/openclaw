@@ -835,6 +835,20 @@ describe("createGatewayCloseHandler", () => {
     },
   );
 
+  it("completes a clean shutdown with a ShutdownResult", async () => {
+    const deps = createGatewayCloseTestDeps();
+    const close = createGatewayCloseHandler(deps);
+
+    const result = await close({ reason: "test" });
+
+    expect(result.warnings).toStrictEqual([]);
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    expect(deps.cron.stop).toHaveBeenCalledTimes(1);
+    expect(deps.heartbeatRunner.stop).toHaveBeenCalledTimes(1);
+    expect(deps.stopMediaCleanup).toHaveBeenCalledTimes(1);
+    expect(deps.chatRunState.clear).toHaveBeenCalledTimes(1);
+  });
+
   it.each(["media", "stopPeriodicTasks", "skillUsageCleanup"] as const)(
     "waits for in-flight %s cleanup before shared state closes",
     async (owner) => {

@@ -1,12 +1,5 @@
-import {
-  markDelegateArtifactDeliveryUnavailable,
-  prepareDelegateArtifactDelivery,
-  recordDelegateArtifactDeliveryBinding,
-} from "../agents/delegate-artifacts.js";
-import { replaceManagedDelegateReturnInPrompt } from "../agents/internal-events.js";
 import type { RuntimeContextFragment } from "../agents/internal-runtime-context.js";
 import { resolveCorrelatedSubagentDelivery } from "../agents/subagents/completion/subagent-completion-delivery.js";
-import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 import { finalizeInboundContext } from "../auto-reply/reply/inbound-context.js";
 import { deliverQueuedPostCompactionDelegate } from "../auto-reply/reply/post-compaction-delegate-delivery.js";
 import { dispatchReplyWithBufferedBlockDispatcherCore } from "../auto-reply/reply/provider-dispatcher.js";
@@ -60,11 +53,7 @@ function enqueueRestartSentinelWake(params: {
   traceparent?: string;
   sessionDeliveryAckId?: string;
   sessionDeliveryAckStateDir?: string;
-  expectedSessionId?: string;
   recipientAuthority?: SessionRecipientAuthority;
-  delegateArtifactReceipt?: NonNullable<
-    Extract<QueuedSessionDelivery, { kind: "systemEvent" }>["managedDelegateArtifactDelivery"]
-  >["receipt"];
   awaitsTurnAdoption?: boolean;
   isRecipientAuthorityCurrent?: () => boolean;
 }): boolean {
@@ -82,11 +71,7 @@ function enqueueRestartSentinelWake(params: {
     ...(params.sessionDeliveryAckStateDir
       ? { sessionDeliveryAckStateDir: params.sessionDeliveryAckStateDir }
       : {}),
-    ...(params.expectedSessionId ? { expectedSessionId: params.expectedSessionId } : {}),
     ...(params.recipientAuthority ? { recipientAuthority: params.recipientAuthority } : {}),
-    ...(params.delegateArtifactReceipt
-      ? { delegateArtifactReceipt: params.delegateArtifactReceipt }
-      : {}),
   };
   enqueueSystemEvent(params.message, withSystemEventOwner(eventOptions, params.agentId));
   if (params.recipientAuthority && params.isRecipientAuthorityCurrent?.() !== true) {
@@ -209,136 +194,16 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       });
       return;
     }
-    if (
-      params.entry.expectedSessionId &&
-      (!entry?.sessionId || entry.sessionId !== params.entry.expectedSessionId)
-    ) {
-      const receipt = params.entry.managedDelegateArtifactDelivery?.receipt;
-      if (receipt) {
-        await markDelegateArtifactDeliveryUnavailable({
-          dispatchId: receipt.dispatchId,
-          recipientSessionKey: receipt.recipientSessionKey,
-          recipientSessionId: receipt.recipientSessionId,
-          reason: "recipient-incarnation-changed",
-          ...(stateDir
-            ? {
-                options: {
-                  env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
-                },
-              }
-            : {}),
-        });
-      }
-      log.warn("session event delivery skipped: session changed", {
-        sessionKey: canonicalKey,
-        queueId: params.entry.id,
-      });
-      return;
-    }
-    let deliveryText = params.entry.text;
-    const managedDelivery = params.entry.managedDelegateArtifactDelivery;
-    if (managedDelivery) {
-      const { projection, receipt } = managedDelivery;
-      if (
-        projection.arrivalContext.dispatchId !== receipt.dispatchId ||
-        projection.arrivalContext.binding.recipientSessionKey !== receipt.recipientSessionKey ||
-        projection.arrivalContext.binding.recipientSessionId !== receipt.recipientSessionId
-      ) {
-        await markDelegateArtifactDeliveryUnavailable({
-          dispatchId: receipt.dispatchId,
-          recipientSessionKey: receipt.recipientSessionKey,
-          recipientSessionId: receipt.recipientSessionId,
-          reason: "delivery-state-unavailable",
-          ...(stateDir
-            ? {
-                options: {
-                  env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
-                },
-              }
-            : {}),
-        });
-        return;
-      }
-      const runtime = resolveContinuationRuntimeConfig(cfg);
-      const prepared = await prepareDelegateArtifactDelivery({
-        projection,
-        runtimeEnabled: runtime.enabled,
-        crossSessionEnabled: runtime.crossSessionTargeting === "enabled",
-        currentRecipientSessionId: entry?.sessionId,
-        ...(stateDir
-          ? {
-              options: {
-                env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
-              },
-            }
-          : {}),
-      });
-      if (prepared.status === "deferred") {
-        throw new SessionDeliveryDeferredError("managed delegate return delivery is disabled");
-      }
-      if (prepared.status === "acknowledged") {
-        return;
-      }
-      if (prepared.status === "unavailable") {
-        await markDelegateArtifactDeliveryUnavailable({
-          dispatchId: receipt.dispatchId,
-          recipientSessionKey: receipt.recipientSessionKey,
-          recipientSessionId: receipt.recipientSessionId,
-          reason: "delivery-state-unavailable",
-          ...(stateDir
-            ? {
-                options: {
-                  env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
-                },
-              }
-            : {}),
-        });
-        return;
-      }
-      const artifactOptions = stateDir
-        ? {
-            options: {
-              env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
-            },
-          }
-        : {};
-      await recordDelegateArtifactDeliveryBinding({
-        dispatchId: receipt.dispatchId,
-        recipientSessionKey: receipt.recipientSessionKey,
-        recipientSessionId: receipt.recipientSessionId,
-        phase: "replay",
-        availability: prepared.projection.arrivalContext.availability,
-        ...artifactOptions,
-      });
-      const refreshed = await prepareDelegateArtifactDelivery({
-        projection,
-        runtimeEnabled: runtime.enabled,
-        crossSessionEnabled: runtime.crossSessionTargeting === "enabled",
-        currentRecipientSessionId: entry?.sessionId,
-        ...artifactOptions,
-      });
-      if (refreshed.status === "acknowledged") {
-        return;
-      }
-      if (refreshed.status !== "ready") {
-        throw new SessionDeliverySafeRetryError(
-          "managed delegate return changed during replay preparation",
-        );
-      }
-      deliveryText = replaceManagedDelegateReturnInPrompt(params.entry.text, refreshed.projection);
-    }
     const replayed = enqueueRestartSentinelWake({
       entryId: params.entry.id,
-      message: deliveryText,
+      message: params.entry.text,
       sessionKey: canonicalKey,
       agentId: params.entry.agentId ?? agentId,
       deliveryContext: queuedDeliveryContext,
       traceparent: params.entry.traceparent,
       sessionDeliveryAckId: params.entry.id,
       sessionDeliveryAckStateDir: stateDir,
-      expectedSessionId: params.entry.expectedSessionId,
       recipientAuthority,
-      delegateArtifactReceipt: params.entry.managedDelegateArtifactDelivery?.receipt,
       awaitsTurnAdoption: params.entry.awaitPromptAdoption,
       isRecipientAuthorityCurrent: recipientAuthorityCurrent,
     });
@@ -349,16 +214,9 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       });
       return;
     }
-    if (managedDelivery) {
-      // In-memory enqueue only makes the prompt eligible. The durable queue row
-      // remains pending until transcript admission adopts and acknowledges it.
-      throw new SessionDeliveryDeferredError(
-        "managed delegate return is awaiting durable recipient adoption",
-      );
-    }
     if (params.entry.awaitPromptAdoption) {
-      // Same contract for opt-in plain events: the in-memory queue is not
-      // durable, so completing the row here would drop the notice if the process
+      // The in-memory queue is not durable, so completing the row here would
+      // drop the notice if the process
       // died before the prompt consumed it. The prompt-drain path acks the row
       // via the event's sessionDeliveryAckId once it is actually adopted.
       throw new SessionDeliveryDeferredError("system event is awaiting durable prompt adoption");

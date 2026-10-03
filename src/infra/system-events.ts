@@ -18,7 +18,6 @@ import {
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
 import { generateSecureUuid } from "./secure-random.js";
-import type { DelegateArtifactDeliveryReceipt } from "./session-delivery-queue-storage.js";
 import {
   getSystemEventStorePath,
   isSystemEventStoreCurrent,
@@ -41,14 +40,12 @@ export type SystemEvent = {
   sessionDeliveryAckStateDir?: string;
   /**
    * Acknowledge the durable row only once the prepared turn is durably adopted,
-   * instead of during prompt preparation. Mirrors the managed delegate-return
-   * contract for events whose producer cannot reconstruct the notice after the
-   * durable row is gone.
+   * instead of during prompt preparation, for events whose producer cannot
+   * reconstruct the notice after the durable row is gone.
    */
   sessionDeliveryAwaitsTurnAdoption?: boolean;
   expectedSessionId?: string;
   recipientAuthority?: SessionRecipientAuthority;
-  delegateArtifactReceipt?: DelegateArtifactDeliveryReceipt;
   /**
    * W3C `traceparent` captured at enqueue-time so the substrate-queue drain can
    * reconstruct the producer trace at announce/deliver time. Per RFC §6.7 the
@@ -97,7 +94,6 @@ type SystemEventOptions = {
   sessionDeliveryAwaitsTurnAdoption?: boolean;
   expectedSessionId?: string;
   recipientAuthority?: SessionRecipientAuthority;
-  delegateArtifactReceipt?: DelegateArtifactDeliveryReceipt;
   /**
    * @deprecated Legacy no-op retained for plugin compatibility. System event
    * text is stored unchanged; provenance is controlled by `trusted`.
@@ -105,7 +101,7 @@ type SystemEventOptions = {
   forceSenderIsOwnerFalse?: boolean;
   /**
    * Trusted-internal enrichment marker. Only core producers may attach managed
-   * delivery provenance such as expectedSessionId and delegateArtifactReceipt.
+   * delivery provenance such as expectedSessionId and recipientAuthority.
    */
   trusted?: boolean;
   /**
@@ -167,9 +163,6 @@ function cloneSystemEvent(event: SystemEvent): SystemEvent {
   return {
     ...event,
     ...(event.deliveryContext ? { deliveryContext: { ...event.deliveryContext } } : {}),
-    ...(event.delegateArtifactReceipt
-      ? { delegateArtifactReceipt: { ...event.delegateArtifactReceipt } }
-      : {}),
     ...(event.recipientAuthority ? { recipientAuthority: { ...event.recipientAuthority } } : {}),
   };
 }
@@ -192,7 +185,6 @@ function findDuplicateInQueue(
   sessionDeliveryAckStateDir: string | undefined,
   expectedSessionId: string | undefined,
   recipientAuthority: SessionRecipientAuthority | undefined,
-  delegateArtifactReceipt: DelegateArtifactDeliveryReceipt | undefined,
 ): boolean {
   const incoming = {
     text,
@@ -202,7 +194,6 @@ function findDuplicateInQueue(
     sessionDeliveryAckStateDir,
     expectedSessionId,
     recipientAuthority,
-    delegateArtifactReceipt,
   };
   if (contextKey === null) {
     const last = queue[queue.length - 1];
@@ -270,9 +261,6 @@ function enqueueOwnedSystemEventEntry(
     ...(options.trusted === true && options.recipientAuthority
       ? { recipientAuthority: { ...options.recipientAuthority } }
       : {}),
-    ...(options.trusted === true && options.delegateArtifactReceipt
-      ? { delegateArtifactReceipt: { ...options.delegateArtifactReceipt } }
-      : {}),
     ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
   };
   if (event.sessionDeliveryAckId) {
@@ -294,7 +282,7 @@ function enqueueOwnedSystemEventEntry(
     }
   }
   // Dedupe runs after the event is built so it can compare ack ids, expected
-  // session and the delegate-artifact receipt, not only text, context and route.
+  // session and recipient authority, not only text, context and route.
   if (
     receiptOptions?.allowDuplicate !== true &&
     findDuplicateInQueue(
@@ -306,7 +294,6 @@ function enqueueOwnedSystemEventEntry(
       event.sessionDeliveryAckStateDir,
       event.expectedSessionId,
       event.recipientAuthority,
-      event.delegateArtifactReceipt,
     )
   ) {
     return null;
@@ -366,18 +353,6 @@ function areDeliveryContextsEqual(left?: DeliveryContext, right?: DeliveryContex
   return channelRouteDedupeKey(left) === channelRouteDedupeKey(right);
 }
 
-function areDelegateArtifactReceiptsEqual(
-  left?: DelegateArtifactDeliveryReceipt,
-  right?: DelegateArtifactDeliveryReceipt,
-): boolean {
-  return (
-    left?.kind === right?.kind &&
-    left?.dispatchId === right?.dispatchId &&
-    left?.recipientSessionKey === right?.recipientSessionKey &&
-    left?.recipientSessionId === right?.recipientSessionId
-  );
-}
-
 function areRecipientAuthoritiesEqual(
   left?: SessionRecipientAuthority,
   right?: SessionRecipientAuthority,
@@ -420,9 +395,6 @@ function replaceSystemEventEntry(
     ...(options.trusted === true && options.recipientAuthority
       ? { recipientAuthority: { ...options.recipientAuthority } }
       : {}),
-    ...(options.trusted === true && options.delegateArtifactReceipt
-      ? { delegateArtifactReceipt: { ...options.delegateArtifactReceipt } }
-      : {}),
     ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
   };
   const matches = (event: SystemEvent) =>
@@ -436,10 +408,6 @@ function replaceSystemEventEntry(
     matching[0]?.sessionDeliveryAckStateDir === replacement.sessionDeliveryAckStateDir &&
     matching[0]?.expectedSessionId === replacement.expectedSessionId &&
     areRecipientAuthoritiesEqual(matching[0]?.recipientAuthority, replacement.recipientAuthority) &&
-    areDelegateArtifactReceiptsEqual(
-      matching[0]?.delegateArtifactReceipt,
-      replacement.delegateArtifactReceipt,
-    ) &&
     matching[0]?.traceparent === replacement.traceparent
   ) {
     return null;
@@ -467,7 +435,6 @@ function isDuplicateSystemEvent(
     | "sessionDeliveryAckStateDir"
     | "expectedSessionId"
     | "recipientAuthority"
-    | "delegateArtifactReceipt"
   >,
 ): boolean {
   return (
@@ -477,10 +444,6 @@ function isDuplicateSystemEvent(
     existing.sessionDeliveryAckStateDir === incoming.sessionDeliveryAckStateDir &&
     existing.expectedSessionId === incoming.expectedSessionId &&
     areRecipientAuthoritiesEqual(existing.recipientAuthority, incoming.recipientAuthority) &&
-    areDelegateArtifactReceiptsEqual(
-      existing.delegateArtifactReceipt,
-      incoming.delegateArtifactReceipt,
-    ) &&
     areDeliveryContextsEqual(existing.deliveryContext, incoming.deliveryContext)
   );
 }
@@ -498,10 +461,6 @@ function matchesConsumedSystemEvent(queued: SystemEvent, consumed: SystemEvent):
     queued.sessionDeliveryAckStateDir === consumed.sessionDeliveryAckStateDir &&
     queued.expectedSessionId === consumed.expectedSessionId &&
     areRecipientAuthoritiesEqual(queued.recipientAuthority, consumed.recipientAuthority) &&
-    areDelegateArtifactReceiptsEqual(
-      queued.delegateArtifactReceipt,
-      consumed.delegateArtifactReceipt,
-    ) &&
     (queued.traceparent ?? undefined) === (consumed.traceparent ?? undefined) &&
     areDeliveryContextsEqual(queued.deliveryContext, consumed.deliveryContext)
   );

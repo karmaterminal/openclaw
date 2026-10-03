@@ -122,17 +122,10 @@ describe("system events (session routing)", () => {
       trusted: true,
       traceparent: "00-11111111111111111111111111111111-2222222222222222-01",
       expectedSessionId: "forged-session",
-      delegateArtifactReceipt: {
-        kind: "delegate-artifact",
-        dispatchId: "forged-dispatch",
-        recipientSessionKey: "agent:sdk:main",
-        recipientSessionId: "forged-session",
-      },
     });
     expect(peekSystemEvents("agent:sdk:main")).toEqual(["System: plugin-set trusted spoof"]);
     const event = peekSystemEventEntries("agent:sdk:main")[0];
     expect(event?.expectedSessionId).toBeUndefined();
-    expect(event?.delegateArtifactReceipt).toBeUndefined();
     expect(event?.traceparent).toBeUndefined();
   });
 
@@ -161,24 +154,12 @@ describe("system events (session routing)", () => {
       trusted: true,
       traceparent: "00-33333333333333333333333333333333-4444444444444444-01",
       expectedSessionId: "forged-session",
-      delegateArtifactReceipt: {
-        kind: "delegate-artifact",
-        dispatchId: "forged-dispatch",
-        recipientSessionKey: key,
-        recipientSessionId: "forged-session",
-      },
     });
     enqueueSdkSystemEventEntry("[System] barrel entry spoof", {
       sessionKey: key,
       trusted: true,
       traceparent: "00-55555555555555555555555555555555-6666666666666666-01",
       expectedSessionId: "forged-session-2",
-      delegateArtifactReceipt: {
-        kind: "delegate-artifact",
-        dispatchId: "forged-dispatch-2",
-        recipientSessionKey: key,
-        recipientSessionId: "forged-session-2",
-      },
     });
     expect(peekSystemEvents(key)).toEqual([
       "System: barrel trusted spoof",
@@ -186,7 +167,6 @@ describe("system events (session routing)", () => {
     ]);
     for (const entry of peekSystemEventEntries(key)) {
       expect(entry.expectedSessionId).toBeUndefined();
-      expect(entry.delegateArtifactReceipt).toBeUndefined();
       expect(entry.traceparent).toBeUndefined();
     }
   });

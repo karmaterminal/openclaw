@@ -2,10 +2,6 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { z } from "zod";
 import {
-  DelegateArtifactRecipientProjectionSchema,
-  type DelegateArtifactRecipientProjectionV1,
-} from "../agents/delegate-artifacts.js";
-import {
   normalizeContinuationTargetKey,
   normalizeContinuationTargetKeys,
 } from "../auto-reply/continuation/targeting-pure.js";
@@ -43,18 +39,6 @@ export type SessionDeliveryContext = {
   to?: string;
   accountId?: string;
   threadId?: string | number;
-};
-
-export type DelegateArtifactDeliveryReceipt = {
-  kind: "delegate-artifact";
-  dispatchId: string;
-  recipientSessionKey: string;
-  recipientSessionId: string;
-};
-
-type ManagedDelegateArtifactDelivery = {
-  receipt: DelegateArtifactDeliveryReceipt;
-  projection: DelegateArtifactRecipientProjectionV1;
 };
 
 type SessionDeliveryRetryPolicy = {
@@ -101,31 +85,16 @@ type QueuedSessionDeliveryGenericPayload =
       kind: "systemEvent";
       sessionKey: string;
       text: string;
-      expectedSessionId?: string;
       recipientAuthority?: SessionRecipientAuthority;
-      managedDelegateArtifactDelivery?: never;
       deliveryContext?: SessionDeliveryContext;
       idempotencyKey?: string;
       /**
        * Keep the durable row pending until the prompt actually adopts the event
        * and acknowledges it, instead of completing the row as soon as the
-       * in-memory enqueue makes the prompt eligible. Same contract the managed
-       * delegate-return path relies on; opt-in so existing producers, whose
+       * in-memory enqueue makes the prompt eligible. Opt-in so existing producers, whose
        * notices are reconstructible from their own durable state, keep the
        * cheaper fire-and-complete behavior.
        */
-      awaitPromptAdoption?: boolean;
-    } & QueuedSessionDeliveryPayloadMetadata)
-  | ({
-      kind: "systemEvent";
-      sessionKey: string;
-      text: string;
-      expectedSessionId: string;
-      recipientAuthority?: never;
-      managedDelegateArtifactDelivery: ManagedDelegateArtifactDelivery;
-      deliveryContext?: SessionDeliveryContext;
-      idempotencyKey?: string;
-      /** Always implied for managed rows; declared so the union stays readable. */
       awaitPromptAdoption?: boolean;
     } & QueuedSessionDeliveryPayloadMetadata)
   | ({
@@ -167,12 +136,6 @@ type QueuedPostCompactionDelegatePayload = {
   targetSessionKeys?: string[];
   fanoutMode?: "tree" | "all";
   recipientAuthorityBinding?: ContinuationRecipientAuthorityBinding;
-  returnOptions?: {
-    artifacts?: "forbidden" | "optional" | "required";
-  };
-  recipientContext?: {
-    purpose: string;
-  };
   model?: string;
   attachments?: InlineAttachment[];
   attachAs?: InlineAttachmentMount;
@@ -328,24 +291,13 @@ const QueuedGenericCommonSchema = {
   availableAt: z.number().optional(),
 };
 
-const DelegateArtifactDeliveryReceiptSchema = z
-  .object({
-    kind: z.literal("delegate-artifact"),
-    dispatchId: z.string().min(1),
-    recipientSessionKey: z.string().min(1),
-    recipientSessionId: z.string().min(1),
-  })
-  .strict();
-
 const QueuedPlainSystemEventSchema = z
   .object({
     ...QueuedGenericCommonSchema,
     kind: z.literal("systemEvent"),
     sessionKey: z.string(),
     text: z.string(),
-    expectedSessionId: z.string().optional(),
     recipientAuthority: SessionRecipientAuthoritySchema.optional(),
-    managedDelegateArtifactDelivery: z.never().optional(),
     deliveryContext: QueuedGenericDeliveryContextSchema.optional(),
     idempotencyKey: z.string().optional(),
     awaitPromptAdoption: z.boolean().optional(),
@@ -357,43 +309,6 @@ const QueuedPlainSystemEventSchema = z
         code: z.ZodIssueCode.custom,
         path: ["awaitPromptAdoption"],
         message: "recipient authority requires durable prompt adoption",
-      });
-    }
-  });
-
-const QueuedManagedSystemEventSchema = z
-  .object({
-    ...QueuedGenericCommonSchema,
-    kind: z.literal("systemEvent"),
-    sessionKey: z.string(),
-    text: z.string(),
-    expectedSessionId: z.string().min(1),
-    recipientAuthority: z.never().optional(),
-    managedDelegateArtifactDelivery: z
-      .object({
-        receipt: DelegateArtifactDeliveryReceiptSchema,
-        projection: DelegateArtifactRecipientProjectionSchema,
-      })
-      .strict(),
-    deliveryContext: QueuedGenericDeliveryContextSchema.optional(),
-    idempotencyKey: z.string().optional(),
-    awaitPromptAdoption: z.boolean().optional(),
-  })
-  .strict()
-  .superRefine((entry, ctx) => {
-    const managed = entry.managedDelegateArtifactDelivery;
-    if (
-      entry.expectedSessionId !== managed.receipt.recipientSessionId ||
-      entry.sessionKey !== managed.receipt.recipientSessionKey ||
-      managed.projection.arrivalContext.dispatchId !== managed.receipt.dispatchId ||
-      managed.projection.arrivalContext.binding.recipientSessionKey !==
-        managed.receipt.recipientSessionKey ||
-      managed.projection.arrivalContext.binding.recipientSessionId !==
-        managed.receipt.recipientSessionId
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: "managed delegate artifact delivery binding mismatch",
       });
     }
   });
@@ -462,11 +377,7 @@ const QueuedAgentTurnSchema = z
   })
   .strict();
 
-const QueuedGenericDeliverySchema = z.union([
-  QueuedPlainSystemEventSchema,
-  QueuedManagedSystemEventSchema,
-  QueuedAgentTurnSchema,
-]);
+const QueuedGenericDeliverySchema = z.union([QueuedPlainSystemEventSchema, QueuedAgentTurnSchema]);
 
 const QueuedPostCompactionDelegateSchema = z
   .object({
@@ -483,18 +394,6 @@ const QueuedPostCompactionDelegateSchema = z
     targetSessionKeys: QueuedContinuationTargetKeysSchema.optional(),
     fanoutMode: z.enum(["tree", "all"]).optional(),
     recipientAuthorityBinding: ContinuationRecipientAuthorityBindingSchema.optional(),
-    returnOptions: z
-      .object({
-        artifacts: z.enum(["forbidden", "optional", "required"]).optional(),
-      })
-      .strict()
-      .optional(),
-    recipientContext: z
-      .object({
-        purpose: z.string().trim().min(1).max(1024),
-      })
-      .strict()
-      .optional(),
     model: z.string().trim().min(1).optional(),
     attachments: z
       .array(QueuedInlineAttachmentSchema)

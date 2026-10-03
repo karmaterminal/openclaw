@@ -1,12 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  createDelegateArtifactTools: vi.fn(() => []),
   createContinueDelegateTool: vi.fn(() => ({ name: "continue_delegate" })),
-}));
-
-vi.mock("./tools/delegate-artifacts-tool.js", () => ({
-  createDelegateArtifactTools: mocks.createDelegateArtifactTools,
 }));
 
 vi.mock("./tools/continue-delegate-tool.js", () => ({
@@ -20,7 +15,7 @@ describe("createOpenClawContinuationTools live session identity", () => {
     vi.clearAllMocks();
   });
 
-  it("uses the live run session for artifact authorization and delegate dispatch", () => {
+  it("uses the live run session for delegate dispatch", () => {
     createOpenClawContinuationTools({
       config: { agents: { defaults: { continuation: { enabled: true } } } },
       agentSessionKey: "agent:main:sandbox-policy",
@@ -29,13 +24,6 @@ describe("createOpenClawContinuationTools live session identity", () => {
       runId: "run-1",
     });
 
-    expect(mocks.createDelegateArtifactTools).toHaveBeenCalledWith(
-      expect.objectContaining({
-        agentSessionKey: "agent:main:live-session",
-        sessionId: "session-1",
-        runId: "run-1",
-      }),
-    );
     expect(mocks.createContinueDelegateTool).toHaveBeenCalledWith({
       agentSessionKey: "agent:main:live-session",
       runId: "run-1",
@@ -48,9 +36,6 @@ describe("createOpenClawContinuationTools live session identity", () => {
       agentSessionKey: "agent:main:session",
     });
 
-    expect(mocks.createDelegateArtifactTools).toHaveBeenCalledWith(
-      expect.objectContaining({ agentSessionKey: "agent:main:session" }),
-    );
     expect(mocks.createContinueDelegateTool).toHaveBeenCalledWith({
       agentSessionKey: "agent:main:session",
     });

@@ -1,4 +1,3 @@
-import { removeUnacceptedDelegateArtifactPolicy } from "../../agents/delegate-artifacts.js";
 import {
   getDelegateRecord,
   isDurablyHandedOffPostCompactionFlow,
@@ -10,7 +9,6 @@ type RejectablePostCompactionDelegate = {
   flowId?: string;
   expectedRevision?: number;
   task: string;
-  returnOptions?: { artifacts?: "forbidden" | "optional" | "required" };
 };
 
 /**
@@ -47,18 +45,5 @@ export async function rejectPostCompactionDelegate(
   delegate: RejectablePostCompactionDelegate,
   summary: string,
 ): Promise<boolean> {
-  const failed = await markPendingDelegateFailed(
-    delegate,
-    summary,
-    "Post-compaction delegate rejected",
-  );
-  if (
-    failed &&
-    delegate.flowId &&
-    (delegate.returnOptions?.artifacts === "optional" ||
-      delegate.returnOptions?.artifacts === "required")
-  ) {
-    await removeUnacceptedDelegateArtifactPolicy(delegate.flowId);
-  }
-  return failed;
+  return await markPendingDelegateFailed(delegate, summary, "Post-compaction delegate rejected");
 }

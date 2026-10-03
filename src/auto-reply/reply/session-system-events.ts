@@ -4,12 +4,6 @@ import {
 } from "@openclaw/normalization-core/string-coerce";
 import { resolveUserTimezone } from "../../agents/date-time.js";
 import {
-  markDelegateArtifactDeliveryUnavailable,
-  prepareDelegateArtifactDelivery,
-  recordDelegateArtifactDeliveryBinding,
-} from "../../agents/delegate-artifacts.js";
-import { replaceManagedDelegateReturnInPrompt } from "../../agents/internal-events.js";
-import {
   resolveAgentIdFromSessionKey,
   resolveSessionStorePathCore,
 } from "../../config/sessions.js";
@@ -30,10 +24,7 @@ import {
   isExecCompletionEvent,
   isHeartbeatDeliveryAwarenessEvent,
 } from "../../infra/heartbeat-events-filter.js";
-import {
-  ackSessionDelivery,
-  loadPendingSessionDelivery,
-} from "../../infra/session-delivery-queue-storage.js";
+import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import {
   consumeSelectedSystemEventEntries,
@@ -44,7 +35,6 @@ import { defaultRuntime } from "../../runtime.js";
 import { SESSION_CREATED_NOTICE_CONTEXT_PREFIX } from "../../sessions/session-state-event-kinds.js";
 import { acknowledgeSessionStateNotices } from "../../sessions/session-state-events.js";
 import { decodeSessionStateNoticeContextKey } from "../../sessions/session-state-notices.js";
-import { resolveContinuationRuntimeConfig } from "../continuation/config.js";
 import {
   createPreparedSystemEventAuthorityOwner,
   readAdoptedSystemEventDeliveryIds,
@@ -140,54 +130,6 @@ function formatSystemEventTimestamp(ts: number, cfg: OpenClawConfig) {
   );
 }
 
-type ManagedDeliverySettlement = {
-  event: SystemEvent;
-  id: string;
-  stateDir?: string;
-  receipt?: NonNullable<SystemEvent["delegateArtifactReceipt"]>;
-  deliveryEligible: boolean;
-};
-
-async function settleManagedDelivery(
-  sessionKey: string,
-  settlement: ManagedDeliverySettlement,
-): Promise<void> {
-  const options = settlement.stateDir
-    ? { env: { ...process.env, OPENCLAW_STATE_DIR: settlement.stateDir } }
-    : undefined;
-  try {
-    if (settlement.receipt) {
-      const receipt = settlement.receipt;
-      if (settlement.deliveryEligible) {
-        await recordDelegateArtifactDeliveryBinding({
-          dispatchId: receipt.dispatchId,
-          recipientSessionKey: receipt.recipientSessionKey,
-          recipientSessionId: receipt.recipientSessionId,
-          phase: "acknowledged",
-          ...(options ? { options } : {}),
-        });
-      } else {
-        await markDelegateArtifactDeliveryUnavailable({
-          dispatchId: receipt.dispatchId,
-          recipientSessionKey: receipt.recipientSessionKey,
-          recipientSessionId: receipt.recipientSessionId,
-          reason: "recipient-incarnation-changed",
-          ...(options ? { options } : {}),
-        });
-      }
-    }
-    await ackSessionDelivery(settlement.id, settlement.stateDir);
-    consumeSelectedSystemEventEntries(sessionKey, [settlement.event]);
-  } catch (error) {
-    defaultRuntime.log(
-      `[session-system-events] failed to settle adopted session delivery ${settlement.id}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    throw error;
-  }
-}
-
 /**
  * Prepare queued system events for one prompt. Managed deliveries remain
  * pending until the caller durably adopts the resulting user turn.
@@ -248,15 +190,13 @@ export async function prepareFormattedSystemEvents(params: {
   };
   // Adoption-scoped events settle only after the turn is durably adopted, so a
   // crash between the transcript write and the queue ack leaves an ack id that
-  // IS already adopted but whose row is still pending. Both kinds must consult
-  // the transcript, or a plain adoption-scoped notice would be re-injected.
-  const hasManagedDelivery = selected.some(
-    (event) =>
-      event.sessionDeliveryAckId &&
-      (event.delegateArtifactReceipt || event.sessionDeliveryAwaitsTurnAdoption),
+  // IS already adopted but whose row is still pending. Consult the transcript,
+  // or an adoption-scoped notice would be re-injected.
+  const hasAdoptionScopedDelivery = selected.some(
+    (event) => event.sessionDeliveryAckId && event.sessionDeliveryAwaitsTurnAdoption,
   );
   const adoptedDeliveryIds =
-    currentSessionId && hasManagedDelivery
+    currentSessionId && hasAdoptionScopedDelivery
       ? readAdoptedSystemEventDeliveryIds(
           await loadTranscriptEvents({
             agentId,
@@ -271,200 +211,6 @@ export async function prepareFormattedSystemEvents(params: {
     scope: authorityScope,
     events: selected,
   });
-  const runtime = resolveContinuationRuntimeConfig(params.cfg);
-  const deferredManagedEvents = new Set<SystemEvent>();
-  const pendingManagedKeys = new Set<string>();
-  const terminalManagedSettlements: ManagedDeliverySettlement[] = [];
-  const pendingManagedSettlements: ManagedDeliverySettlement[] = [];
-  const refreshedManagedText = new Map<string, string>();
-  const managedKey = (event: SystemEvent): string | undefined => {
-    const receipt = event.delegateArtifactReceipt;
-    if (!receipt) {
-      return undefined;
-    }
-    return `${event.sessionDeliveryAckId ?? ""}\u0000${event.sessionDeliveryAckStateDir ?? ""}\u0000${receipt.dispatchId}\u0000${receipt.recipientSessionKey}\u0000${receipt.recipientSessionId}`;
-  };
-  const refreshManagedEvent = (event: SystemEvent): SystemEvent => {
-    const key = managedKey(event);
-    const text = key ? refreshedManagedText.get(key) : undefined;
-    return text ? { ...event, text } : event;
-  };
-  for (const event of selected) {
-    const receipt = event.delegateArtifactReceipt;
-    const key = managedKey(event);
-    if (!receipt || !key) {
-      continue;
-    }
-    const artifactOptions = event.sessionDeliveryAckStateDir
-      ? {
-          options: {
-            env: {
-              ...process.env,
-              OPENCLAW_STATE_DIR: event.sessionDeliveryAckStateDir,
-            },
-          },
-        }
-      : {};
-    const durable = event.sessionDeliveryAckId
-      ? await loadPendingSessionDelivery(
-          event.sessionDeliveryAckId,
-          event.sessionDeliveryAckStateDir,
-        )
-      : null;
-    const managed =
-      durable?.kind === "systemEvent" ? durable.managedDelegateArtifactDelivery : undefined;
-    if (
-      !managed ||
-      managed.receipt.dispatchId !== receipt.dispatchId ||
-      managed.receipt.recipientSessionKey !== receipt.recipientSessionKey ||
-      managed.receipt.recipientSessionId !== receipt.recipientSessionId
-    ) {
-      await markDelegateArtifactDeliveryUnavailable({
-        dispatchId: receipt.dispatchId,
-        recipientSessionKey: receipt.recipientSessionKey,
-        recipientSessionId: receipt.recipientSessionId,
-        reason: "delivery-state-unavailable",
-        ...artifactOptions,
-      });
-      if (event.sessionDeliveryAckId) {
-        terminalManagedSettlements.push({
-          event,
-          id: event.sessionDeliveryAckId,
-          ...(event.sessionDeliveryAckStateDir
-            ? { stateDir: event.sessionDeliveryAckStateDir }
-            : {}),
-          deliveryEligible: false,
-        });
-      }
-      continue;
-    }
-    const prepared = await prepareDelegateArtifactDelivery({
-      projection: managed.projection,
-      runtimeEnabled: runtime.enabled,
-      crossSessionEnabled: runtime.crossSessionTargeting === "enabled",
-      currentRecipientSessionId: currentSessionId,
-      ...artifactOptions,
-    });
-    if (prepared.status === "deferred") {
-      deferredManagedEvents.add(event);
-      continue;
-    }
-    if (prepared.status === "acknowledged") {
-      if (event.sessionDeliveryAckId) {
-        terminalManagedSettlements.push({
-          event,
-          id: event.sessionDeliveryAckId,
-          ...(event.sessionDeliveryAckStateDir
-            ? { stateDir: event.sessionDeliveryAckStateDir }
-            : {}),
-          receipt,
-          deliveryEligible: true,
-        });
-      }
-      continue;
-    }
-    if (prepared.status === "unavailable") {
-      await markDelegateArtifactDeliveryUnavailable({
-        dispatchId: receipt.dispatchId,
-        recipientSessionKey: receipt.recipientSessionKey,
-        recipientSessionId: receipt.recipientSessionId,
-        reason:
-          currentSessionId === receipt.recipientSessionId
-            ? "delivery-state-unavailable"
-            : "recipient-incarnation-changed",
-        ...artifactOptions,
-      });
-      if (event.sessionDeliveryAckId) {
-        terminalManagedSettlements.push({
-          event,
-          id: event.sessionDeliveryAckId,
-          ...(event.sessionDeliveryAckStateDir
-            ? { stateDir: event.sessionDeliveryAckStateDir }
-            : {}),
-          deliveryEligible: false,
-        });
-      }
-      continue;
-    }
-    await recordDelegateArtifactDeliveryBinding({
-      dispatchId: receipt.dispatchId,
-      recipientSessionKey: receipt.recipientSessionKey,
-      recipientSessionId: receipt.recipientSessionId,
-      phase: "attempt",
-      now: prepared.projection.arrivalContext.deliveredAt,
-      availability: prepared.projection.arrivalContext.availability,
-      ...artifactOptions,
-    });
-    const refreshed = await prepareDelegateArtifactDelivery({
-      projection: managed.projection,
-      runtimeEnabled: runtime.enabled,
-      crossSessionEnabled: runtime.crossSessionTargeting === "enabled",
-      currentRecipientSessionId: currentSessionId,
-      ...artifactOptions,
-    });
-    if (refreshed.status === "deferred") {
-      deferredManagedEvents.add(event);
-      continue;
-    }
-    if (refreshed.status === "acknowledged") {
-      if (event.sessionDeliveryAckId) {
-        terminalManagedSettlements.push({
-          event,
-          id: event.sessionDeliveryAckId,
-          ...(event.sessionDeliveryAckStateDir
-            ? { stateDir: event.sessionDeliveryAckStateDir }
-            : {}),
-          receipt,
-          deliveryEligible: true,
-        });
-      }
-      continue;
-    }
-    if (refreshed.status === "unavailable") {
-      await markDelegateArtifactDeliveryUnavailable({
-        dispatchId: receipt.dispatchId,
-        recipientSessionKey: receipt.recipientSessionKey,
-        recipientSessionId: receipt.recipientSessionId,
-        reason: "delivery-state-unavailable",
-        ...artifactOptions,
-      });
-      if (event.sessionDeliveryAckId) {
-        terminalManagedSettlements.push({
-          event,
-          id: event.sessionDeliveryAckId,
-          ...(event.sessionDeliveryAckStateDir
-            ? { stateDir: event.sessionDeliveryAckStateDir }
-            : {}),
-          deliveryEligible: false,
-        });
-      }
-      continue;
-    }
-    refreshedManagedText.set(
-      key,
-      replaceManagedDelegateReturnInPrompt(event.text, refreshed.projection),
-    );
-    const deliveryId = normalizeOptionalString(event.sessionDeliveryAckId);
-    if (!deliveryId) {
-      continue;
-    }
-    const settlement: ManagedDeliverySettlement = {
-      event,
-      id: deliveryId,
-      ...(event.sessionDeliveryAckStateDir ? { stateDir: event.sessionDeliveryAckStateDir } : {}),
-      receipt,
-      deliveryEligible: currentSessionId === receipt.recipientSessionId,
-    };
-    if (adoptedDeliveryIds.has(deliveryId) || !settlement.deliveryEligible) {
-      terminalManagedSettlements.push(settlement);
-    } else {
-      pendingManagedKeys.add(key);
-      pendingManagedSettlements.push(settlement);
-    }
-  }
-  for (const settlement of terminalManagedSettlements) {
-    await settleManagedDelivery(queueKey, settlement);
-  }
   // Classify adoption-scoped deliveries BEFORE the prompt is assembled: an id
   // the persisted turn already adopted must be settled and excluded, not
   // re-injected.
@@ -475,7 +221,7 @@ export async function prepareFormattedSystemEvents(params: {
   // returns different instances than the peeked entries classified here.
   const excludedAdoptedAckIds = new Set<string>();
   for (const event of selected) {
-    if (event.delegateArtifactReceipt || !event.sessionDeliveryAwaitsTurnAdoption) {
+    if (!event.sessionDeliveryAwaitsTurnAdoption) {
       continue;
     }
     const id = normalizeOptionalString(event.sessionDeliveryAckId);
@@ -512,19 +258,12 @@ export async function prepareFormattedSystemEvents(params: {
       );
     }
   }
-  const queued = consumeSelectedSystemEventEntries(
-    queueKey,
-    selected.filter((event) => !event.delegateArtifactReceipt && !deferredManagedEvents.has(event)),
-  ).map(refreshManagedEvent);
-  const deliverable = queued.filter(
+  const queued = consumeSelectedSystemEventEntries(queueKey, selected);
+  const promptEvents = queued.filter(
     (event) =>
       !(event.sessionDeliveryAckId && excludedAdoptedAckIds.has(event.sessionDeliveryAckId)) &&
       (!event.expectedSessionId || event.expectedSessionId === currentSessionId),
   );
-  const pendingManagedEvents = selected
-    .filter((event) => pendingManagedKeys.has(managedKey(event) ?? ""))
-    .map(refreshManagedEvent);
-  const promptEvents = [...deliverable, ...pendingManagedEvents];
   const sessionDeliveryAcks = new Map<
     string,
     {
@@ -536,9 +275,7 @@ export async function prepareFormattedSystemEvents(params: {
   // adoption, and a crash or admission failure after this point would otherwise
   // complete the durable row with nothing delivered. They were classified above
   // and settle via settleManagedSystemEventsAfterTurnAdoption.
-  for (const event of selected.filter(
-    (entry) => !entry.delegateArtifactReceipt && !entry.sessionDeliveryAwaitsTurnAdoption,
-  )) {
+  for (const event of selected.filter((entry) => !entry.sessionDeliveryAwaitsTurnAdoption)) {
     const id = normalizeOptionalString(event.sessionDeliveryAckId);
     if (!id) {
       continue;
@@ -611,16 +348,9 @@ export async function prepareFormattedSystemEvents(params: {
   if (summaryLines.length > 0) {
     blocks.unshift({ key: "session-summary", text: summaryLines.join("\n") });
   }
-  const pendingManagedDeliveries = pendingManagedSettlements.map((settlement) => {
-    const authorityKey = readPreparedSystemEventAuthorityKey(settlement.event);
-    const acknowledge = () => settleManagedDelivery(queueKey, settlement);
-    return authorityKey
-      ? { id: settlement.id, acknowledge, authorityKey }
-      : { id: settlement.id, acknowledge };
-  });
   return {
     blocks,
-    managedDeliveries: [...pendingManagedDeliveries, ...adoptionScopedDeliveries],
+    managedDeliveries: adoptionScopedDeliveries,
     ...(authorityOwner ? { authorityOwner } : {}),
   };
 }

@@ -5,8 +5,6 @@
 // that attempt. Only a row whose requester is the delegate's owner is custody;
 // a matching run ID under another requester is a collision and never adopted.
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
-import { hasRecordedDelegateArtifactCompletionForProducer } from "../../agents/delegate-artifacts.js";
-import { deriveContinuationDelegateChildSessionKeyFromParent } from "../../agents/subagent-continuation-ids.js";
 import { prepareSubagentRunsByRunIds } from "../../agents/subagents/registry/subagent-registry.js";
 import type { PendingContinuationDelegate } from "./types.js";
 
@@ -52,45 +50,6 @@ export async function readDelegateAdmissionEvidence(params: {
   throw new Error("subagent registry read for continuation admission evidence did not settle");
 }
 
-/**
- * Admission evidence for one claimed delegate: its recorded child run IDs, or,
- * for a managed delegate whose registry row was already archived, a recorded
- * artifact completion bound to this exact producer.
- */
-async function readClaimedDelegateAdmission(
-  delegate: Pick<PendingContinuationDelegate, "flowId" | "recordedChildRunIds" | "returnOptions">,
-  ownerSessionKey: string,
-): Promise<DelegateAdmissionEvidence> {
-  const evidence = await readDelegateAdmissionEvidence({
-    runIds: delegate.recordedChildRunIds ?? [],
-    requesterSessionKey: ownerSessionKey,
-  });
-  if (evidence.kind !== "none" || !delegate.flowId) {
-    return evidence;
-  }
-  const managedArtifacts =
-    delegate.returnOptions?.artifacts === "optional" ||
-    delegate.returnOptions?.artifacts === "required";
-  const childSessionKey = deriveContinuationDelegateChildSessionKeyFromParent(
-    ownerSessionKey,
-    delegate.flowId,
-  );
-  if (
-    managedArtifacts &&
-    (await hasRecordedDelegateArtifactCompletionForProducer({
-      flowId: delegate.flowId,
-      producerSessionKey: childSessionKey,
-    }))
-  ) {
-    return {
-      kind: "admitted",
-      runId: delegate.recordedChildRunIds?.at(-1) ?? delegate.flowId,
-      childSessionKey,
-    };
-  }
-  return evidence;
-}
-
 /** A delegate the dispatch must settle, with the admission evidence found for it. */
 export type ClaimedDelegate = {
   delegate: PendingContinuationDelegate;
@@ -132,10 +91,10 @@ export async function partitionDelegateClaimsByAdmission(params: {
         );
     let evidence: DelegateAdmissionEvidence;
     try {
-      evidence = await readClaimedDelegateAdmission(
-        { ...claim.delegate, recordedChildRunIds: earlierRunIds ?? [] },
-        params.ownerSessionKey,
-      );
+      evidence = await readDelegateAdmissionEvidence({
+        runIds: earlierRunIds ?? [],
+        requesterSessionKey: params.ownerSessionKey,
+      });
     } catch (error) {
       params.onUnavailable(claim.delegate, error);
       continue;

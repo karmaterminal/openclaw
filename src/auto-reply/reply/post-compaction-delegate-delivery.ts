@@ -1,11 +1,4 @@
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
-import { formatDelegateArtifactTaskInstruction } from "../../agents/delegate-artifact-policy.js";
-import {
-  assertDelegateArtifactPolicyPrepared,
-  MissingDelegateArtifactPolicyError,
-  removeUnacceptedDelegateArtifactPolicy,
-  UnavailableDelegateArtifactPolicyError,
-} from "../../agents/delegate-artifacts.js";
 import { deriveContinuationDelegateChildSessionKey } from "../../agents/subagent-continuation-ids.js";
 import { getSubagentRunByChildSessionKey } from "../../agents/subagents/registry/subagent-registry-read.js";
 import {
@@ -356,12 +349,6 @@ export async function deliverQueuedPostCompactionDelegate(
     resolveQueuedPostCompactionContinuationFlowId(params.entry),
   );
   const storePath = deps.resolveSessionStorePathCore(cfg.session?.store, { agentId });
-  const artifactMode = params.entry.returnOptions?.artifacts;
-  const removeRejectedArtifactPolicy = async (): Promise<void> => {
-    if (params.entry.sourceFlowId && (artifactMode === "optional" || artifactMode === "required")) {
-      await removeUnacceptedDelegateArtifactPolicy(params.entry.sourceFlowId);
-    }
-  };
   const queueContextOption = params.queueContext ? { queueContext: params.queueContext } : {};
   const attemptRunIds = queuedAttemptRunIds(params.entry);
   if (attemptRunIds.length === 0) {
@@ -418,8 +405,8 @@ export async function deliverQueuedPostCompactionDelegate(
   // RFC §4.4 stale work dies before every other gate, including the disabled
   // deferral, so a released row cannot outlive the staged row it came from and
   // cannot be revived by a later retry, restart, or config flip. This must stay
-  // ahead of the artifact-policy assert and the spawn so no attachment snapshot
-  // is ever materialized for expired work.
+  // ahead of the spawn so no attachment snapshot is ever materialized for
+  // expired work.
   const staleness = classifyPostCompactionDelegateAge(params.entry, deps.now());
   if (staleness.stale) {
     // Diagnostics carry only the age: a stale drop must not spill task prose or
@@ -432,34 +419,7 @@ export async function deliverQueuedPostCompactionDelegate(
       params.entry,
       formatPostCompactionStaleRejection(staleness.ageMs),
     );
-    await removeRejectedArtifactPolicy();
     return;
-  }
-  // An accepted artifact policy that is gone or expired can never become
-  // valid again: reject before the disabled deferral so the entry does not
-  // retry to its cap while holding the policy row and staying silent.
-  if (artifactMode === "optional" || artifactMode === "required") {
-    try {
-      await assertDelegateArtifactPolicyPrepared(
-        resolveQueuedPostCompactionContinuationFlowId(params.entry),
-      );
-    } catch (error) {
-      const unavailable = error instanceof UnavailableDelegateArtifactPolicyError;
-      if (!unavailable && !(error instanceof MissingDelegateArtifactPolicyError)) {
-        throw error;
-      }
-      const summary = `Post-compaction delegate rejected: accepted artifact policy is ${unavailable ? "inactive or expired" : "missing"}.`;
-      deps.log(
-        `[continuation:post-compaction-policy-${unavailable ? "unavailable" : "missing"}] entryId=${params.entry.id} flowId=${params.entry.sourceFlowId ?? "none"}`,
-      );
-      deps.enqueueSystemEvent(
-        `[continuation] ${summary} Task: ${params.entry.task}`,
-        withContinuationOwner({ sessionKey: params.entry.sessionKey, trusted: true }, agentId),
-      );
-      await failSourceBackedPostCompactionDelivery(deps, params.entry, summary);
-      await removeRejectedArtifactPolicy();
-      return;
-    }
   }
   const runtimeConfig = deps.resolveContinuationRuntimeConfig(cfg);
   if (!runtimeConfig.enabled) {
@@ -499,7 +459,6 @@ export async function deliverQueuedPostCompactionDelegate(
       params.entry,
       `Post-compaction delegate rejected: chain length ${maxCompactionChainLength} reached.`,
     );
-    await removeRejectedArtifactPolicy();
     return;
   }
 
@@ -519,7 +478,6 @@ export async function deliverQueuedPostCompactionDelegate(
       params.entry,
       `Post-compaction delegate rejected: cost cap exceeded (${compactionChainTokens} > ${compactionCostCapTokens}).`,
     );
-    await removeRejectedArtifactPolicy();
     return;
   }
 
@@ -527,11 +485,6 @@ export async function deliverQueuedPostCompactionDelegate(
     crossSessionTargeting === "disabled" &&
     hasCrossSessionDelegateTargeting(params.entry, params.entry.sessionKey)
   ) {
-    if (artifactMode === "optional" || artifactMode === "required") {
-      throw new SessionDeliveryDeferredError(
-        "post-compaction delegate delivery deferred while cross-session targeting is disabled",
-      );
-    }
     deps.log(
       `Post-compaction delegate rejected: crossSessionTargeting=disabled at delivery time for session ${params.entry.sessionKey}`,
     );
@@ -566,12 +519,6 @@ export async function deliverQueuedPostCompactionDelegate(
   const delegateWakeOnReturn = params.entry.silentWake ?? true;
   const delegateSilentAnnounce = params.entry.silent ?? delegateWakeOnReturn;
 
-  if (artifactMode === "optional" || artifactMode === "required") {
-    await assertDelegateArtifactPolicyPrepared(
-      resolveQueuedPostCompactionContinuationFlowId(params.entry),
-    );
-  }
-
   const activeDispatch = registerContinuationDelegateDispatchClaim({
     controller: "post-compaction",
     delegate: {
@@ -596,7 +543,6 @@ export async function deliverQueuedPostCompactionDelegate(
       "post-compaction",
     );
     if (!spawnFence.allowed) {
-      await removeRejectedArtifactPolicy();
       deps.log(
         `[continuation:post-compaction-spawn-fenced] reason=${spawnFence.reason} flowId=${params.entry.sourceFlowId ?? "unknown"} entryId=${params.entry.id}`,
       );
@@ -613,8 +559,7 @@ export async function deliverQueuedPostCompactionDelegate(
           task:
             `[continuation:post-compaction] ` +
             `[continuation:chain-hop:${nextCompactionChainCount}] ` +
-            `Compaction just completed. Carry this working state to the post-compaction session: ${params.entry.task}` +
-            formatDelegateArtifactTaskInstruction(params.entry),
+            `Compaction just completed. Carry this working state to the post-compaction session: ${params.entry.task}`,
           ...(delegateSilentAnnounce ? { silentAnnounce: true } : {}),
           ...(delegateWakeOnReturn ? { silentAnnounce: true, wakeOnReturn: true } : {}),
           ...(params.entry.targetSessionKey
@@ -672,7 +617,6 @@ export async function deliverQueuedPostCompactionDelegate(
         });
       }
       if (spawnResult.status === "cancelled") {
-        await removeRejectedArtifactPolicy();
         throw new SessionDeliveryDeadLetteredError(
           spawnResult.error ?? "Continuation delegate admission cancelled.",
         );
@@ -687,7 +631,6 @@ export async function deliverQueuedPostCompactionDelegate(
           params.entry,
           `Post-compaction delegate spawn forbidden: ${spawnResult.error ?? "delegation was not accepted"}.`,
         );
-        await removeRejectedArtifactPolicy();
         return;
       }
       // Provably never dispatched: release attempt ownership for a retry.
@@ -697,7 +640,7 @@ export async function deliverQueuedPostCompactionDelegate(
     }
     rollbackAcceptedSpawn = spawnResult.rollbackAccepted;
     // Charge the chain only now that a child is actually accepted. Everything
-    // above this line — artifact policy, spawn fence, attachment materialization,
+    // above this line — spawn fence, attachment materialization,
     // spawn rejection — leaves the persisted depth untouched, so a retry after any
     // of those failures still has its full budget.
     const { expectedRevision: acceptedRevision } = await commitAcceptedPostCompactionChainCharge({

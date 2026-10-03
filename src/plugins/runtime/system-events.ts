@@ -27,7 +27,7 @@ type SdkSystemEventOptions = Parameters<typeof events.enqueueSystemEvent>[1];
 
 /**
  * SDK consumers are untrusted by construction: force `trusted: false` so a plugin
- * cannot attach trusted-only session or delegate-artifact provenance, and strip
+ * cannot attach trusted-only session or recipient-authority provenance, and strip
  * caller-supplied trace ancestry plus the session-delivery ack fields
  * (`sessionDeliveryAckId` / `sessionDeliveryAckStateDir`), which on drain trigger a
  * blind `deleteDeliveryQueueEntry` at the caller-supplied state dir. Trusted internal

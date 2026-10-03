@@ -8,10 +8,9 @@ import { buildInventoryContinuationToolOpts } from "./tools/continuation-invento
 
 export function resolveOpenClawContinuationToolParamsForRun(params: {
   resolvedConfig?: OpenClawConfig;
-  workspaceDir?: string;
   options?: OpenClawToolsOptions;
 }): Parameters<typeof createOpenClawContinuationTools>[0] {
-  const { resolvedConfig, workspaceDir, options } = params;
+  const { resolvedConfig, options } = params;
   const inventoryContinuationOpts = options?.beforeToolCallHookContext?.skillCommand
     ? buildInventoryContinuationToolOpts(
         resolvedConfig?.agents?.defaults?.continuation?.enabled === true,
@@ -23,10 +22,6 @@ export function resolveOpenClawContinuationToolParamsForRun(params: {
     runSessionKey: options?.runSessionKey,
     sessionId: options?.sessionId,
     runId: options?.runId,
-    workspaceDir,
-    sandboxRoot: options?.sandboxRoot,
-    sandboxFsBridge: options?.sandboxFsBridge,
-    sandboxWritable: options?.sandboxWritable,
     drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,
     disableContinuationTools: options?.disableContinuationTools,
     continueWorkOpts: options?.continueWorkOpts ?? inventoryContinuationOpts.continueWorkOpts,

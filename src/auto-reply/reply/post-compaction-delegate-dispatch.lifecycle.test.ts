@@ -48,17 +48,6 @@ const mockRegistryState = vi.hoisted(() => ({
   /** Registry rows keyed by attempt run ID: runId -> child session key. */
   admittedRunIds: new Map<string, string>(),
 }));
-const { assertDelegateArtifactPolicyPreparedMock, removeUnacceptedDelegateArtifactPolicyMock } =
-  vi.hoisted(() => ({
-    assertDelegateArtifactPolicyPreparedMock: vi.fn(),
-    removeUnacceptedDelegateArtifactPolicyMock: vi.fn(),
-  }));
-
-vi.mock("../../agents/delegate-artifacts.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../agents/delegate-artifacts.js")>()),
-  assertDelegateArtifactPolicyPrepared: assertDelegateArtifactPolicyPreparedMock,
-  removeUnacceptedDelegateArtifactPolicy: removeUnacceptedDelegateArtifactPolicyMock,
-}));
 
 vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -261,8 +250,6 @@ function collectEmittedText(harness: ReturnType<typeof createDeliveryDeps>): str
 }
 
 afterEach(() => {
-  assertDelegateArtifactPolicyPreparedMock.mockClear();
-  removeUnacceptedDelegateArtifactPolicyMock.mockClear();
   mockRegistryState.acceptedChildSessionKeys.clear();
   mockRegistryState.admittedRunIds.clear();
   sessionStoreModule.clearSessionStoreCacheForTest();
@@ -282,7 +269,6 @@ describe("post-compaction delivery: continuation depth follows accepted children
       const entry = createQueuedEntry({
         sourceFlowId: "pc-flow-source",
         sourceExpectedRevision: 7,
-        returnOptions: { artifacts: "optional" },
       });
 
       // Repeated transient spawn failures before the Gateway dispatch — the
@@ -294,7 +280,6 @@ describe("post-compaction delivery: continuation depth follows accepted children
           SessionDeliverySafeRetryError,
         );
       }
-      expect(removeUnacceptedDelegateArtifactPolicyMock).not.toHaveBeenCalled();
       expect(enqueueInterruptedNotice).not.toHaveBeenCalled();
 
       // Contract change (RFC §5.4.4, Q3): a THROWN spawn has no phase, so the
@@ -306,7 +291,6 @@ describe("post-compaction delivery: continuation depth follows accepted children
       ).rejects.toBeInstanceOf(SessionDeliveryDeadLetteredError);
       expect(thrown.enqueueInterruptedNotice).toHaveBeenCalledTimes(1);
       expect(thrown.enqueueInterruptedNotice).toHaveBeenCalledWith({ entry });
-      expect(removeUnacceptedDelegateArtifactPolicyMock).not.toHaveBeenCalled();
 
       // A retry that never reached an accepted child must consume ZERO chain
       // budget: nothing is charged, so the entry stays retryable instead of
@@ -527,25 +511,22 @@ describe("post-compaction delivery: RFC §4.4 stale work dies before materializa
             attachAs: { mountPath: "handoff" },
             sourceFlowId: "pc-flow-source",
             sourceExpectedRevision: 7,
-            returnOptions: { artifacts: "required" },
           }),
         },
         harness.deps,
       );
 
-      // Nothing downstream of the gate may run: no artifact-policy assert, no
-      // spawn, therefore no attachment snapshot is ever materialized.
-      expect(assertDelegateArtifactPolicyPreparedMock).not.toHaveBeenCalled();
+      // Nothing downstream of the gate may run: no spawn, therefore no
+      // attachment snapshot is ever materialized.
       expect(harness.spawnSubagentDirect).not.toHaveBeenCalled();
       expect(harness.reserveAcceptedPostCompactionChainHop).not.toHaveBeenCalled();
 
-      // The row is terminal, not retryable, and its accepted-artifact policy is released.
+      // The row is terminal, not retryable.
       expect(harness.failReleasedPostCompactionDelegate).toHaveBeenCalledWith(
         { flowId: "pc-flow-source", expectedRevision: 7, task: SECRET_TASK },
         `Post-compaction delegate rejected as stale after ${POST_COMPACTION_DELEGATE_TTL_MS + 1}ms.`,
         "Post-compaction delegate rejected",
       );
-      expect(removeUnacceptedDelegateArtifactPolicyMock).toHaveBeenCalledWith("pc-flow-source");
 
       // Durable scrub: neither the task prose nor any attachment byte reaches a
       // log, system event, transcript, or terminal row.

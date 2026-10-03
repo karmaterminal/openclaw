@@ -18,12 +18,9 @@ import {
   markTrustedContinuationHeartbeatWake,
   requestHeartbeatNow,
 } from "../infra/heartbeat-wake.js";
-import type { DelegateArtifactDeliveryReceipt } from "../infra/session-delivery-queue-storage.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { defaultRuntime } from "../runtime.js";
-import { markDelegateArtifactDeliveryUnavailable } from "./delegate-artifacts.js";
-import type { DelegateArtifactRecipientProjectionV1 } from "./delegate-artifacts.js";
 import { parseContinuationChainHop } from "./subagent-announce.continuation.accounting.js";
 
 const continuationLog = createSubsystemLogger("continuation/announce");
@@ -74,9 +71,6 @@ export async function routeSubagentContinuationReturn(params: {
   task: string;
   taskLabel: string;
   triggerMessage: string;
-  triggerMessagesBySessionKey?: ReadonlyMap<string, string>;
-  managedArtifactProjections?: ReadonlyMap<string, DelegateArtifactRecipientProjectionV1>;
-  managedArtifactReturn?: boolean;
   announceId: string;
   childSessionKey: string;
   childAgentId?: string;
@@ -96,7 +90,6 @@ export async function routeSubagentContinuationReturn(params: {
   registryRuntime?: RegistryReturnRuntime;
 }): Promise<{
   handled: boolean;
-  deferred?: boolean;
   continuationTriggerOverride?: ContinuationTrigger;
   traceparent?: string;
 }> {
@@ -105,11 +98,7 @@ export async function routeSubagentContinuationReturn(params: {
     task: params.task,
     maxChainLength: params.maxChainLength,
   });
-  if (params.managedArtifactReturn && !params.continuationEnabled) {
-    return { handled: true, deferred: true };
-  }
   const hasTargeting = Boolean(
-    params.managedArtifactReturn ||
     params.continuationTargetSessionKey ||
     (params.continuationTargetSessionKeys && params.continuationTargetSessionKeys.length > 0) ||
     params.continuationFanoutMode ||
@@ -127,35 +116,28 @@ export async function routeSubagentContinuationReturn(params: {
     // Tree recipients were frozen by spawn admission while ancestry was live.
     // Never re-derive them after parent cleanup or registry retirement.
     const treeSessionKeys =
-      !params.managedArtifactReturn && params.continuationFanoutMode === "tree"
-        ? params.continuationTargetSessionKeys
-        : undefined;
+      params.continuationFanoutMode === "tree" ? params.continuationTargetSessionKeys : undefined;
     const selectAllRecipients =
-      !params.managedArtifactReturn &&
       params.continuationFanoutMode === "all" &&
       recipientAuthorityBinding?.selection !== "selected";
     const allSessionKeys = selectAllRecipients
       ? await listKnownSessionKeysOnHost(params.cfg)
       : undefined;
     const frozenRecipientSessionKeys =
-      !params.managedArtifactReturn &&
-      params.continuationFanoutMode === "all" &&
-      recipientAuthorityBinding?.selection === "selected"
+      params.continuationFanoutMode === "all" && recipientAuthorityBinding?.selection === "selected"
         ? recipientAuthorityBinding.recipients.map((recipient) => recipient.sessionKey)
         : undefined;
     const resolvedTargetSessionKeys = frozenRecipientSessionKeys
       ? frozenRecipientSessionKeys
-      : params.managedArtifactReturn
-        ? [...(params.triggerMessagesBySessionKey?.keys() ?? [])]
-        : resolveContinuationReturnTargetSessionKeys({
-            defaultSessionKey: params.targetRequesterSessionKey,
-            targetSessionKey: params.continuationTargetSessionKey,
-            targetSessionKeys: params.continuationTargetSessionKeys,
-            fanoutMode: params.continuationFanoutMode,
-            treeSessionKeys,
-            allSessionKeys,
-            childSessionKey: params.childSessionKey,
-          });
+      : resolveContinuationReturnTargetSessionKeys({
+          defaultSessionKey: params.targetRequesterSessionKey,
+          targetSessionKey: params.continuationTargetSessionKey,
+          targetSessionKeys: params.continuationTargetSessionKeys,
+          fanoutMode: params.continuationFanoutMode,
+          treeSessionKeys,
+          allSessionKeys,
+          childSessionKey: params.childSessionKey,
+        });
     const targetSessionKeys = resolvedTargetSessionKeys.filter(
       (sessionKey) =>
         !params.registryRuntime?.shouldIgnorePostCompletionAnnounceForSession(sessionKey),
@@ -177,61 +159,19 @@ export async function routeSubagentContinuationReturn(params: {
       }
       recipientAuthorityBinding = selected;
     }
-    const recipientAuthorities =
-      !params.managedArtifactReturn && recipientAuthorityBinding
-        ? continuationRecipientAuthorityMap(recipientAuthorityBinding, targetSessionKeys)
-        : undefined;
-    if (params.managedArtifactReturn) {
-      const deliverable = new Set(targetSessionKeys);
-      for (const sessionKey of resolvedTargetSessionKeys) {
-        if (deliverable.has(sessionKey)) {
-          continue;
-        }
-        const projection = params.managedArtifactProjections?.get(sessionKey);
-        if (projection) {
-          await markDelegateArtifactDeliveryUnavailable({
-            dispatchId: projection.arrivalContext.dispatchId,
-            recipientSessionKey: sessionKey,
-            recipientSessionId: projection.arrivalContext.binding.recipientSessionId,
-            reason: "recipient-no-longer-active",
-          });
-        }
-      }
-    }
-    const expectedSessionIds = new Map<string, string>();
-    const delegateArtifactReceipts = new Map<string, DelegateArtifactDeliveryReceipt>();
-    const delegateArtifactProjections = new Map<string, DelegateArtifactRecipientProjectionV1>();
-    for (const targetSessionKey of targetSessionKeys) {
-      const projection = params.managedArtifactProjections?.get(targetSessionKey);
-      if (!projection) {
-        continue;
-      }
-      const recipientSessionId = projection.arrivalContext.binding.recipientSessionId;
-      expectedSessionIds.set(targetSessionKey, recipientSessionId);
-      delegateArtifactReceipts.set(targetSessionKey, {
-        kind: "delegate-artifact",
-        dispatchId: projection.arrivalContext.dispatchId,
-        recipientSessionKey: targetSessionKey,
-        recipientSessionId,
-      });
-      delegateArtifactProjections.set(targetSessionKey, projection);
-    }
+    const recipientAuthorities = recipientAuthorityBinding
+      ? continuationRecipientAuthorityMap(recipientAuthorityBinding, targetSessionKeys)
+      : undefined;
     if (targetSessionKeys.length > 0) {
       await enqueueContinuationReturnDeliveries({
         targetSessionKeys,
         text:
           params.triggerMessage ||
           `[continuation:enrichment-return] Delegate completed: ${params.taskLabel}`,
-        ...(params.triggerMessagesBySessionKey
-          ? { textBySessionKey: params.triggerMessagesBySessionKey }
-          : {}),
         idempotencyKeyBase: `continuation-return:${params.announceId}`,
         wakeRecipients: params.wakeOnReturn === true || params.silentAnnounce !== true,
         childRunId: params.childRunId,
-        ...(expectedSessionIds.size > 0 ? { expectedSessionIds } : {}),
         ...(recipientAuthorities ? { recipientAuthorities } : {}),
-        ...(delegateArtifactReceipts.size > 0 ? { delegateArtifactReceipts } : {}),
-        ...(delegateArtifactProjections.size > 0 ? { delegateArtifactProjections } : {}),
         ...(params.continuationFanoutMode ? { fanoutMode: params.continuationFanoutMode } : {}),
         ...(completionTrace.chainStepRemaining !== undefined
           ? { chainStepRemaining: completionTrace.chainStepRemaining }
@@ -244,13 +184,6 @@ export async function routeSubagentContinuationReturn(params: {
     defaultRuntime.log(
       `[continuation:targeted-return] Delivered to ${targetSessionKeys.join(",")} from ${params.childSessionKey}`,
     );
-    return { handled: true };
-  }
-
-  if (
-    params.managedArtifactReturn &&
-    !params.triggerMessagesBySessionKey?.has(params.targetRequesterSessionKey)
-  ) {
     return { handled: true };
   }
 
@@ -280,8 +213,7 @@ export async function routeSubagentContinuationReturn(params: {
       ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
     };
     enqueueSystemEvent(
-      params.triggerMessagesBySessionKey?.get(params.targetRequesterSessionKey) ||
-        params.triggerMessage ||
+      params.triggerMessage ||
         `[continuation:enrichment-return] Delegate completed: ${params.taskLabel}`,
       withContinuationOwner(eventOptions, params.childAgentId),
     );

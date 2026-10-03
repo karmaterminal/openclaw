@@ -14,8 +14,6 @@ const CONTINUATION_TOOL_NAMES = [
   "continue_work",
   "continue_delegate",
   "request_compaction",
-  "delegate_artifacts",
-  "delegate_artifacts_publish",
 ] as const;
 
 const OPENCLAW_ONLY_PLAN = {

@@ -1,4 +1,3 @@
-import type { DelegateArtifactRecipientProjectionV1 } from "./delegate-artifacts.js";
 import { formatAgentInternalEventsForPrompt, type AgentInternalEvent } from "./internal-events.js";
 import type { SubagentRunOutcome } from "./subagents/announce/subagent-run-outcome.js";
 import {
@@ -38,7 +37,6 @@ export function buildSubagentAnnounceMessages(params: {
   completionTarget?: "parent";
   childSessionKey: string;
   childSessionId: string;
-  requesterSessionKey: string;
   taskLabel: string;
   outcome: SubagentRunOutcome;
   findings: string;
@@ -46,11 +44,9 @@ export function buildSubagentAnnounceMessages(params: {
   statsLine?: string;
   modelRouteChange?: string;
   preserveModelRouteNotice?: boolean;
-  artifactProjections?: Map<string, DelegateArtifactRecipientProjectionV1>;
 }): {
   internalEvents: AgentInternalEvent[];
   triggerMessage: string;
-  artifactTriggerMessages?: Map<string, string>;
 } {
   const statusLabel =
     params.outcome.status === "ok"
@@ -63,35 +59,22 @@ export function buildSubagentAnnounceMessages(params: {
           ? `failed: ${params.outcome.error || "unknown error"}`
           : "finished with unknown status";
   const replyInstruction = buildAnnounceReplyInstruction(params);
-  const baseInternalEvent: AgentInternalEvent = {
-    type: "task_completion",
-    source: "subagent",
-    announceType: "subagent task",
-    childSessionKey: params.childSessionKey,
-    childSessionId: params.childSessionId,
-    taskLabel: params.taskLabel,
-    status: params.outcome.status,
-    statusLabel,
-    result: params.findings,
-    ...(params.noVisibleResult ? { noVisibleResult: true } : {}),
-    modelRouteChange: params.modelRouteChange,
-    statsLine: params.statsLine,
-    replyInstruction,
-  };
-  const requesterProjection = params.artifactProjections?.get(params.requesterSessionKey);
   const internalEvents: AgentInternalEvent[] = [
-    requesterProjection
-      ? { ...baseInternalEvent, delegateArtifacts: requesterProjection }
-      : baseInternalEvent,
+    {
+      type: "task_completion",
+      source: "subagent",
+      announceType: "subagent task",
+      childSessionKey: params.childSessionKey,
+      childSessionId: params.childSessionId,
+      taskLabel: params.taskLabel,
+      status: params.outcome.status,
+      statusLabel,
+      result: params.findings,
+      ...(params.noVisibleResult ? { noVisibleResult: true } : {}),
+      modelRouteChange: params.modelRouteChange,
+      statsLine: params.statsLine,
+      replyInstruction,
+    },
   ];
-  const triggerMessage = buildAnnounceSteerMessage(internalEvents);
-  const artifactTriggerMessages = params.artifactProjections
-    ? new Map(
-        [...params.artifactProjections].map(([sessionKey, projection]) => [
-          sessionKey,
-          buildAnnounceSteerMessage([{ ...baseInternalEvent, delegateArtifacts: projection }]),
-        ]),
-      )
-    : undefined;
-  return { internalEvents, triggerMessage, artifactTriggerMessages };
+  return { internalEvents, triggerMessage: buildAnnounceSteerMessage(internalEvents) };
 }

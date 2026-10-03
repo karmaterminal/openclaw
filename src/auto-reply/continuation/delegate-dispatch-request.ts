@@ -1,7 +1,6 @@
 // Pure builders for one pending-delegate dispatch: the chain basis its budget
 // check uses, and the spawn-owner request carrying its claimed launch key
 // (RFC docs/design/continue-work-signal-v2.md §5.4.4).
-import { formatDelegateArtifactTaskInstruction } from "../../agents/delegate-artifact-policy.js";
 import type { SpawnSubagentParams } from "../../agents/subagents/spawn/subagent-spawn.js";
 import type { ChainState } from "./scheduler.js";
 import type { PendingContinuationDelegate } from "./types.js";
@@ -41,9 +40,7 @@ export function buildDelegateSpawnRequest(params: {
 }): SpawnSubagentParams {
   const { delegate, nextHop } = params;
   return {
-    task:
-      `[continuation:chain-hop:${nextHop}] Delegated task (turn ${nextHop}/${params.maxChainLength}): ${delegate.task}` +
-      formatDelegateArtifactTaskInstruction(delegate),
+    task: `[continuation:chain-hop:${nextHop}] Delegated task (turn ${nextHop}/${params.maxChainLength}): ${delegate.task}`,
     drainsContinuationDelegateQueue: true,
     continuationChainState: {
       count: nextHop,
