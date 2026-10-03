@@ -28,7 +28,8 @@ export type ChannelIngressDispatchLifecycle = {
   onCancelled?: () => void | Promise<void>;
   /**
    * Deferred turn finished without ever owning the reply lane.
-   * Drain releases the claim for retry.
+   * Drain settles the claim through the retry disposition: a real attempt,
+   * bounded by maxAttempts. Intentional cancellation uses onCancelled.
    */
   onAbandoned: () => void | Promise<void>;
 };
