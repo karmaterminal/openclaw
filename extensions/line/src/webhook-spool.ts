@@ -289,6 +289,12 @@ export function createLineWebhookSpool(options: LineWebhookSpoolOptions): LineWe
             }
             boundLifecycle.onDeferred();
           },
+          onCancelled: async () => {
+            handedOff = true;
+            await (boundLifecycle.onCancelled
+              ? boundLifecycle.onCancelled()
+              : boundLifecycle.onAbandoned());
+          },
           onAbandoned: async () => {
             handedOff = true;
             await boundLifecycle.onAbandoned();

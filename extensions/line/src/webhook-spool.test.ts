@@ -439,6 +439,39 @@ describe("LINE webhook spool", () => {
     });
   });
 
+  it("reopens a cancelled deferred claim without charging retry budget", async () => {
+    await withQueue(async (queue) => {
+      let deferredLifecycle: LineWebhookTurnAdoptionLifecycle | undefined;
+      const deliver = vi.fn(async (_event, _destination, control) => {
+        deferredLifecycle = control.turnAdoptionLifecycle;
+        control.turnAdoptionLifecycle.onDeferred();
+      });
+      const spool = createSpool(queue, deliver);
+      const event = createEvent({ webhookEventId: "event-stop-cancelled" });
+
+      spool.start();
+      await spool.accept(callback(event));
+      await vi.waitFor(() => expect(deliver).toHaveBeenCalledTimes(1));
+
+      const stopping = spool.stop();
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 50);
+      });
+      expect(await queue.listClaims()).toHaveLength(1);
+
+      if (!deferredLifecycle) {
+        throw new Error("LINE delivery did not expose its deferred lifecycle");
+      }
+      expect(deferredLifecycle.onCancelled).toBeTypeOf("function");
+      await deferredLifecycle.onCancelled?.();
+      await stopping;
+      expect(await queue.listClaims()).toEqual([]);
+      const [pending] = await queue.listPending();
+      expect(pending).toMatchObject({ attempts: 0 });
+      expect(pending?.lastError).toBeUndefined();
+    });
+  });
+
   it("recovers an uncompleted event with a fresh drain and dispatches once", async () => {
     await withQueue(async (queue) => {
       const event = createEvent({ webhookEventId: "event-restart" });

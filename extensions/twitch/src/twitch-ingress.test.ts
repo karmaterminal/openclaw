@@ -428,6 +428,47 @@ describe("Twitch durable ingress", () => {
       }
     });
   });
+
+  it("releases a cancelled deferred delivery without charging retry budget", async () => {
+    await withTwitchIngressTestQueue(async (queue, createIngress) => {
+      type Deliver = Parameters<typeof createIngress>[0]["deliver"];
+      const claimsAtRedelivery: Array<{ attempts: number; lastError?: string }> = [];
+      let deliveries = 0;
+      const deliver = vi.fn<Deliver>(async (_message, lifecycle) => {
+        deliveries += 1;
+        if (deliveries === 1) {
+          // Hand the turn to the reply lane, then clear it on purpose.
+          lifecycle.onDeferred();
+          expect(lifecycle.onCancelled).toBeTypeOf("function");
+          await lifecycle.onCancelled?.();
+          return;
+        }
+        claimsAtRedelivery.push(
+          ...(await queue.listClaims()).map(({ attempts, lastError }) => ({
+            attempts,
+            lastError,
+          })),
+        );
+        await lifecycle.onAdopted();
+      });
+      const ingress = createIngress({
+        accountId: "default",
+        runtime: runtime(),
+        queue,
+        deliver,
+        pollIntervalMs: 5,
+      });
+      try {
+        ingress.start();
+        await ingress.accept(createTwitchIngressTestMessage({ id: "cancel-retry" }));
+        await vi.waitFor(() => expect(deliver).toHaveBeenCalledTimes(2));
+        await expectSettledIngressVerdict(queue, "cancel-retry", "completed");
+        expect(claimsAtRedelivery).toEqual([{ attempts: 0, lastError: undefined }]);
+      } finally {
+        await ingress.stop();
+      }
+    });
+  });
 });
 
 describe("Twitch ingress fixture isolation", () => {

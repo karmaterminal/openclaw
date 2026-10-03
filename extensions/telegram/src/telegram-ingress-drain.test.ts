@@ -8,6 +8,8 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { closeOpenClawStateDatabaseAsync } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { describe, expect, it, vi } from "vitest";
+import type { TelegramBotDeps } from "./bot-deps.js";
+import { createTelegramMessageProcessor } from "./bot-message.js";
 import {
   createTelegramSpooledReplayDeferredParticipant,
   recordTelegramMessageProcessingResult,
@@ -24,6 +26,43 @@ import {
   type TelegramSpooledUpdatePayload,
 } from "./telegram-ingress-spool.payload.js";
 import { telegramSpooledUpdateLaneKey } from "./telegram-ingress-spool.test-support.js";
+
+const buildTelegramMessageContext = vi.hoisted(() => vi.fn());
+const dispatchTelegramMessage = vi.hoisted(() => vi.fn());
+
+vi.mock("./bot-message-context.js", () => ({ buildTelegramMessageContext }));
+vi.mock("./bot-message-dispatch.js", () => ({ dispatchTelegramMessage }));
+
+/** The real spooled-replay message processor over mocked context + dispatch. */
+function createSpooledMessageProcessor() {
+  buildTelegramMessageContext.mockResolvedValue({
+    cfg: {},
+    chatId: 111,
+    ctxPayload: { From: "telegram:111", To: "telegram:111", ChatType: "direct", RawBody: "hello" },
+    primaryCtx: { me: { username: "openclaw_bot" } },
+    route: { sessionKey: "agent:main:main" },
+    sendTyping: vi.fn().mockResolvedValue(undefined),
+  });
+  return createTelegramMessageProcessor({
+    bot: {},
+    account: {},
+    historyLimit: 0,
+    dmPolicy: {},
+    allowFrom: [],
+    groupAllowFrom: [],
+    ackReactionScope: "none",
+    logger: {},
+    resolveGroupActivation: () => true,
+    resolveGroupRequireMention: () => false,
+    resolveTelegramGroupConfig: () => ({}),
+    runtime: {},
+    replyToMode: "auto",
+    streamMode: "partial",
+    textLimit: 4096,
+    telegramDeps: {} as TelegramBotDeps,
+    opts: {},
+  } as unknown as Parameters<typeof createTelegramMessageProcessor>[0]);
+}
 
 async function withTempState<T>(fn: (stateDir: string) => Promise<T>): Promise<T> {
   return await withOpenClawTestState(
@@ -456,6 +495,89 @@ describe("createTelegramIngressMonitor", () => {
         ]),
       );
       await monitor.stop();
+    });
+  });
+
+  it("keeps an aged spool row at the retry ceiling pending when its queued turn is cleared", async () => {
+    await withTempState(async (stateDir) => {
+      const dayMs = 24 * 60 * 60 * 1000;
+      const receivedAt = Date.now() - 2 * dayMs;
+      const queue = createChannelIngressQueueForTests<TelegramSpooledUpdatePayload>({
+        channelId: "telegram",
+        accountId: "default",
+        stateDir,
+      });
+      const eventId = "9".padStart(16, "0");
+      const payload = { ...updatePayload(9), receivedAt };
+      await queue.enqueue(eventId, payload, {
+        laneKey: telegramSpooledUpdateLaneKey(payload.update),
+        receivedAt,
+      });
+      // Seven genuine failures on a two-day-old row: under the default policy
+      // (8 attempts, 24h floor) the next charged attempt dead-letters it.
+      for (let attempt = 0; attempt < 7; attempt += 1) {
+        const claim = await queue.claim(eventId, { ownerId: `prior-${attempt}` });
+        if (!claim) {
+          throw new Error("expected to claim the aged spool row");
+        }
+        await queue.release(claim, { lastError: "prior failure", releasedAt: receivedAt });
+      }
+      expect(await queue.listPending({ limit: "all" })).toMatchObject([
+        { id: eventId, attempts: 7 },
+      ]);
+
+      dispatchTelegramMessage
+        .mockImplementationOnce(async ({ turnAdoptionLifecycle }) => {
+          turnAdoptionLifecycle?.onDeferred?.();
+          // The reply queue clearing a queued followup takes this terminal.
+          await turnAdoptionLifecycle?.onCancelled?.();
+          return { kind: "completed" };
+        })
+        .mockImplementationOnce(async ({ turnAdoptionLifecycle }) => {
+          await turnAdoptionLifecycle?.onAdopted();
+          return { kind: "completed" };
+        });
+      const processMessage = createSpooledMessageProcessor();
+      const claimsAtDispatch: Array<{ attempts: number; lastError?: string }> = [];
+      const monitor = createTelegramIngressMonitor({
+        queue,
+        getConfig: () => cfg,
+        accountId: "default",
+        pollIntervalMs: 20,
+        dispatch: async (update) => {
+          claimsAtDispatch.push(
+            ...(await queue.listClaims()).map(({ attempts, lastError }) => ({
+              attempts,
+              lastError,
+            })),
+          );
+          return await processMessage({
+            ctx: {
+              message: (update as { message: unknown }).message,
+              update,
+            } as unknown as Parameters<typeof processMessage>[0]["ctx"],
+            allMedia: [],
+            storeAllowFrom: [],
+            turnContext: { cfg, telegramCfg: {} },
+            options: {},
+          });
+        },
+      });
+
+      try {
+        monitor.start();
+        // The cancelled row is redelivered with its retry facts intact, then adopted.
+        await vi.waitFor(() => expect(dispatchTelegramMessage).toHaveBeenCalledTimes(2));
+        await vi.waitFor(async () => expect(await queue.listPending({ limit: "all" })).toEqual([]));
+        expect(claimsAtDispatch).toEqual([
+          { attempts: 7, lastError: "prior failure" },
+          { attempts: 7, lastError: "prior failure" },
+        ]);
+        expect(await queue.listFailed?.()).toEqual([]);
+        expect(await queue.listClaims()).toEqual([]);
+      } finally {
+        await monitor.stop();
+      }
     });
   });
 
