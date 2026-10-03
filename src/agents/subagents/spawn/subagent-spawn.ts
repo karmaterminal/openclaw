@@ -71,8 +71,8 @@ export async function spawnSubagentDirect(
 ): Promise<SpawnSubagentResult> {
   const assertActive = ctx.assertActive;
   const promptedAt = Date.now();
-  const label = params.label?.trim() || "";
   const task = params.task;
+  const label = params.label?.trim() || "";
   const requestThreadBinding = params.thread === true;
   const sandboxMode = params.sandbox === "require" ? "require" : "inherit";
   const requesterSessionKey = ctx.agentSessionKey;
@@ -562,8 +562,6 @@ export async function spawnSubagentDirect(
           cfg,
           childEntry,
           childSessionKey,
-          childRunId,
-          requesterSessionKey: requesterInternalKey,
           agentId: targetAgentId,
         }),
       afterRegistration: async (state, runId, registrationScope) => {
@@ -619,12 +617,6 @@ export async function spawnSubagentDirect(
         } else {
           await emitSpawnLifecycleHooks(runId);
         }
-        emitSessionLifecycleEvent({
-          sessionKey: childSessionKey,
-          reason: "create",
-          parentSessionKey: requesterInternalKey,
-          label: label || undefined,
-        });
       },
       rollbackRegistration: rollbackSubagentRunRegistration,
       recordAcceptedRollback: (registration, error) =>
