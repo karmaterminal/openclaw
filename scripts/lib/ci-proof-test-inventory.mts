@@ -2717,7 +2717,6 @@ export const PR_PROTECTED_RUNTIME_TEST_FILES: readonly string[] = [
   "src/gateway/server-methods/chat.abort-live-proof.test.ts",
   "src/gateway/server-methods/chat.abort-persistence.test.ts",
   "src/gateway/server-methods/chat.abort-save-warning.test.ts",
-  "src/gateway/server-methods/chat.directive-tags.status-notice.test.ts",
   "src/gateway/server-methods/chat.directive-tags.test.ts",
   "src/gateway/server-methods/chat.inject.parentid.test.ts",
   "src/gateway/server-methods/chat.native-runtime-consent.test.ts",
