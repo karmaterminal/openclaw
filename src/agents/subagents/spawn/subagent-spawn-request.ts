@@ -266,7 +266,7 @@ export async function resolveSubagentSpawnRequest(
     params.continuationFanoutMode === "tree"
       ? listAncestorSessionKeys(ownership.completionRequesterSessionKey)
       : params.continuationTargetSessionKeys;
-  const continuationRecipientAuthorityBinding = resolveSpawnRecipientAuthorityBinding({
+  const continuationRecipientAuthorityBinding = await resolveSpawnRecipientAuthorityBinding({
     binding: params.continuationRecipientAuthorityBinding,
     requesterSessionKey: ownership.completionRequesterSessionKey,
     targetSessionKey: params.continuationTargetSessionKey,

@@ -427,7 +427,8 @@ export async function createDelegateRecord(params: {
     ? params.delegate
     : {
         ...params.delegate,
-        recipientAuthorityBinding: createContinuationRecipientAuthorityBinding({
+        // Bound before the record exists: a failed capture commits no record, never an unbound one.
+        recipientAuthorityBinding: await createContinuationRecipientAuthorityBinding({
           requesterSessionKey: params.ownerKey,
           targetSessionKey: params.delegate.targetSessionKey,
           targetSessionKeys: params.delegate.targetSessionKeys,

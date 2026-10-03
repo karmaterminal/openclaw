@@ -153,7 +153,7 @@ export async function routeSubagentContinuationReturn(params: {
       recipientAuthorityBinding?.selection === "pending" &&
       recipientAuthorityBinding.fanoutMode === "all"
     ) {
-      const selected = captureContinuationRecipientAuthorities(targetSessionKeys);
+      const selected = await captureContinuationRecipientAuthorities(targetSessionKeys);
       if (!params.persistContinuationRecipientAuthorityBinding?.(selected)) {
         throw new Error("Continuation all-recipient authority selection was not durably committed");
       }

@@ -32,30 +32,34 @@ export function parseContinuationRecipientAuthorityBinding(
   return parsed.success ? { state: "valid", binding: parsed.data } : { state: "invalid" };
 }
 
-export function captureContinuationRecipientAuthorities(
+export async function captureContinuationRecipientAuthorities(
   sessionKeys: readonly string[],
   fallbackAgentId?: string,
-): ContinuationRecipientAuthorityBinding {
+): Promise<ContinuationRecipientAuthorityBinding> {
   const needsFallback = sessionKeys.some((sessionKey) => !sessionKey.startsWith("agent:"));
   const defaultAgentId =
     fallbackAgentId ?? (needsFallback ? resolveDefaultAgentId(getRuntimeConfig()) : undefined);
-  const recipients = normalizeContinuationTargetKeys(sessionKeys).map((sessionKey) => ({
-    sessionKey,
-    authority: captureSessionRecipientAuthority({
-      agentId: resolveAgentIdFromSessionKey(sessionKey, defaultAgentId),
+  const recipients: Array<{ sessionKey: string; authority: SessionRecipientAuthority }> = [];
+  // Every recipient is bound before the binding exists; a failed capture leaves none.
+  for (const sessionKey of normalizeContinuationTargetKeys(sessionKeys)) {
+    recipients.push({
       sessionKey,
-    }),
-  }));
+      authority: await captureSessionRecipientAuthority({
+        agentId: resolveAgentIdFromSessionKey(sessionKey, defaultAgentId),
+        sessionKey,
+      }),
+    });
+  }
   return { version: 1, selection: "selected", recipients };
 }
 
-export function createContinuationRecipientAuthorityBinding(params: {
+export async function createContinuationRecipientAuthorityBinding(params: {
   requesterSessionKey: string;
   targetSessionKey?: string;
   targetSessionKeys?: readonly string[];
   fanoutMode?: "tree" | "all";
   requesterAgentId?: string;
-}): ContinuationRecipientAuthorityBinding {
+}): Promise<ContinuationRecipientAuthorityBinding> {
   if (params.fanoutMode) {
     return { version: 1, selection: "pending", fanoutMode: params.fanoutMode };
   }
@@ -63,27 +67,27 @@ export function createContinuationRecipientAuthorityBinding(params: {
     ...(params.targetSessionKey ? [params.targetSessionKey] : []),
     ...(params.targetSessionKeys ?? []),
   ]);
-  return captureContinuationRecipientAuthorities(
+  return await captureContinuationRecipientAuthorities(
     explicitTargets.length > 0 ? explicitTargets : [params.requesterSessionKey],
     params.requesterAgentId,
   );
 }
 
-export function resolveSpawnRecipientAuthorityBinding(params: {
+export async function resolveSpawnRecipientAuthorityBinding(params: {
   binding?: ContinuationRecipientAuthorityBinding;
   requesterSessionKey: string;
   targetSessionKey?: string;
   targetSessionKeys?: readonly string[];
   fanoutMode?: "tree" | "all";
   treeSessionKeys?: readonly string[];
-}): ContinuationRecipientAuthorityBinding | undefined {
+}): Promise<ContinuationRecipientAuthorityBinding | undefined> {
   const parsed = parseContinuationRecipientAuthorityBinding(params.binding);
   if (parsed.state === "invalid") {
     throw new Error("Invalid continuation recipient authority binding before spawn");
   }
   if (parsed.state === "valid") {
     if (parsed.binding.selection === "pending" && parsed.binding.fanoutMode === "tree") {
-      return captureContinuationRecipientAuthorities(params.treeSessionKeys ?? []);
+      return await captureContinuationRecipientAuthorities(params.treeSessionKeys ?? []);
     }
     return parsed.binding;
   }
@@ -91,14 +95,14 @@ export function resolveSpawnRecipientAuthorityBinding(params: {
     return { version: 1, selection: "pending", fanoutMode: "all" };
   }
   if (params.fanoutMode === "tree") {
-    return captureContinuationRecipientAuthorities(params.treeSessionKeys ?? []);
+    return await captureContinuationRecipientAuthorities(params.treeSessionKeys ?? []);
   }
   const targetSessionKey = normalizeContinuationTargetKey(params.targetSessionKey);
   const targetSessionKeys = normalizeContinuationTargetKeys(params.targetSessionKeys);
   if (!targetSessionKey && targetSessionKeys.length === 0) {
     return undefined;
   }
-  return captureContinuationRecipientAuthorities([
+  return await captureContinuationRecipientAuthorities([
     ...(targetSessionKey ? [targetSessionKey] : []),
     ...targetSessionKeys,
   ]);

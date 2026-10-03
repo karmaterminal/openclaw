@@ -690,6 +690,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/post-compaction-delegate-dispatch.recovery.test.ts",
   "src/auto-reply/reply/session-reset-cleanup.test.ts",
   "src/auto-reply/reply/session-system-events.recipient-authority.test.ts",
+  "src/config/sessions/session-recipient-authority.test.ts",
+  "src/config/sessions/session-recipient-authority.decision.test.ts",
   "src/system-agent/setup-inference-credentials.lifecycle.test.ts",
   "src/system-agent/setup-inference.provider-install-owner.test.ts",
   "src/system-agent/setup-inference.groq-external.integration.test.ts",

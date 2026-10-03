@@ -16,7 +16,7 @@ test.each(["new", "reset"] as const)(
     const sessionKey = "agent:main:main";
     const scope = { agentId: "main", sessionKey, storePath };
     const beforeReset = loadSessionEntry(scope);
-    const recipientAuthority = captureSessionRecipientAuthority(scope);
+    const recipientAuthority = await captureSessionRecipientAuthority(scope);
     const { performGatewaySessionReset } = await import("./session-reset-service.js");
 
     const reset = await performGatewaySessionReset({

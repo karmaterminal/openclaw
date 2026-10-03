@@ -115,8 +115,8 @@ import {
   getActiveGatewayRootWorkHolders,
 } from "../process/gateway-work-admission.js";
 import { defaultRuntime } from "../runtime.js";
-import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
-import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../state/openclaw-agent-db-lifecycle.js";
+import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
 import { createOpenClawContinuationTools } from "./openclaw-tools.continuation.js";
 import { loadSessionEntryByKey } from "./subagents/announce/subagent-announce-delivery.js";
 import {
@@ -318,9 +318,10 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     vi.unstubAllEnvs();
     // Both session access and shared state cache SQLite handles. Close them
     // before deleting this test's state directory so no handle/cache crosses
-    // test boundaries (notably on Windows).
-    closeOpenClawAgentDatabasesForTest();
-    closeOpenClawStateDatabaseForTest();
+    // test boundaries (notably on Windows). Recipient authority capture uses the
+    // agent database writer worker, so its retirement must settle first.
+    await closeOpenClawAgentDatabasesForTestAsync();
+    await closeOpenClawStateDatabaseAsync();
     rmSync(stateDir, { recursive: true, force: true });
     expect(existsSync(stateDir)).toBe(false);
     stateDir = "";
@@ -698,7 +699,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
         spans.some((span) => span.name === "continuation.delegate.dispatch") &&
         spans.some((span) => span.name === "continuation.delegate.fire")
       );
-    }, 4_000);
+    }, 12_000);
 
     const flows = await continuationDelegateFlows(originChildSessionKey);
     const flow = flows[0];

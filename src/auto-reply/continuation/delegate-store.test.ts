@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setRuntimeConfigSnapshot } from "../../config/config.js";
+import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/session-accessor.js";
 
 // Logger mock for corrupt-payload breadcrumb assertions.
 // Mirrors the shape used in sibling delegate-dispatch.test.ts so log.warn
@@ -32,6 +34,7 @@ vi.mock("../../logging/subsystem.js", () => {
   };
 });
 
+import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { closeOpenClawStateDatabaseAsync } from "../../state/openclaw-state-db.js";
 import { resetContinuationCustodyProjection } from "./custody/custody-projection.js";
 import {
@@ -849,6 +852,54 @@ describe("delegate store — continuation custody", () => {
         ],
       },
     });
+  });
+
+  it("binds every explicit recipient to its current durable authority before commit", async () => {
+    // The root already holds an epoch; the sibling is captured for the first time.
+    await enqueuePendingDelegate("session-0", {
+      task: "earlier capture",
+      targetSessionKey: "agent:main:root",
+    });
+    const record = await enqueuePendingDelegate("session-1", {
+      task: "bound task",
+      targetSessionKeys: ["agent:main:root", "agent:main:sibling"],
+    });
+    const binding = (await consumePendingDelegates("session-1"))[0]?.recipientAuthorityBinding;
+    expect(binding?.selection).toBe("selected");
+    const recipients = binding?.selection === "selected" ? binding.recipients : [];
+    expect(recipients.map((recipient) => recipient.sessionKey)).toEqual([
+      "agent:main:root",
+      "agent:main:sibling",
+    ]);
+    for (const { sessionKey, authority } of recipients) {
+      expect(isSessionRecipientAuthorityCurrent({ agentId: "main", sessionKey }, authority)).toBe(
+        true,
+      );
+    }
+    expect(record.recordId).toEqual(expect.any(String));
+  });
+
+  it("commits no delegate record when a recipient authority cannot be captured", async () => {
+    await enqueuePendingDelegate("session-1", {
+      task: "first capture",
+      targetSessionKey: "agent:main:root",
+    });
+    const database = new DatabaseSync(resolveOpenClawAgentSqlitePath({ agentId: "main" }));
+    try {
+      database
+        .prepare("UPDATE session_recipient_authority SET epoch = ? WHERE session_key = ?")
+        .run("not-a-uuid", "agent:main:root");
+    } finally {
+      database.close();
+    }
+
+    await expect(
+      enqueuePendingDelegate("session-2", {
+        task: "unbound capture",
+        targetSessionKey: "agent:main:root",
+      }),
+    ).rejects.toThrow("Invalid recipient authority epoch for session agent:main:root");
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: "session-2" })).toEqual([]);
   });
 
   it("preserves fanoutMode through the custody round-trip", async () => {
