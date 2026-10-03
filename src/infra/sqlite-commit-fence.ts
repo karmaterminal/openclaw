@@ -10,7 +10,7 @@ const FENCE_ENVIRONMENT_KEY = "openclaw.sqliteCommitFence.v1";
 const FENCE_BUCKETS = 4096;
 const FENCE_BYTES = FENCE_BUCKETS * 2 * Int32Array.BYTES_PER_ELEMENT;
 
-export type SqliteCommitFenceSnapshot = {
+type SqliteCommitFenceSnapshot = {
   readonly buckets: readonly number[];
   readonly started: readonly number[];
 };

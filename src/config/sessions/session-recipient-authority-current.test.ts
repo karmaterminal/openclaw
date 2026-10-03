@@ -34,7 +34,7 @@ const actualRead = (
     "./session-transcript-worker-runtime.js",
   )
 ).withSessionHistoryWorkerDatabase;
-const owner = { type: "human" as const, id: "owner-a" };
+const owner = { type: "human" as const, id: "owner-a", source: "unknown" as const };
 
 afterEach(async () => {
   readThroughWorker.mockReset();
