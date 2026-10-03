@@ -56,11 +56,7 @@ import { createSubagentRegistryRestorer } from "./subagent-registry-restore.js";
 import { handleOrphanedSubagentResume } from "./subagent-registry-resume-orphan.js";
 import type { RegisterSubagentRunParams } from "./subagent-registry-run-launch-record.js";
 import type { SubagentRegistrationOwnership } from "./subagent-registry-run-launch.js";
-import {
-  createSweeperRunManagerOperations,
-  type RecordAcceptedSubagentSteerDispatchParams,
-  recordAcceptedSubagentSteerDispatchIfCurrent,
-} from "./subagent-registry-run-manager-bridge.js";
+import { createSweeperRunManagerOperations } from "./subagent-registry-run-manager-bridge.js";
 import { createSubagentRunManager } from "./subagent-registry-run-manager.js";
 import { clearSubagentRunsReadCacheForTest } from "./subagent-registry-state.js";
 import { callGatewayForSweep } from "./subagent-registry-sweep-gateway.js";
@@ -514,7 +510,6 @@ const subagentSweeper = createSubagentRegistrySweeper({
   runs: subagentRuns,
   resumedRuns,
   persist: persistSubagentRuns,
-  persistOrThrow: persistSubagentRunsOrThrow,
   clearPendingLifecycleError,
   clearPendingLifecycleTimeout,
   sweepPendingLifecycle: (now) => pendingLifecycle.sweepExpired(now),
@@ -621,12 +616,6 @@ export function registerSubagentRun(
 }
 export const startQueuedSubagentRun = subagentRunManager.startQueuedSubagentRun;
 export const settleFailedQueuedSubagentLaunch = subagentRunManager.settleFailedQueuedSubagentLaunch;
-export const clearSubagentRunSteerRestart = subagentRunManager.clearSubagentRunSteerRestart;
-export function recordAcceptedSubagentSteerDispatch(
-  params: RecordAcceptedSubagentSteerDispatchParams,
-) {
-  return recordAcceptedSubagentSteerDispatchIfCurrent(subagentRunManager, subagentRuns, params);
-}
 
 /**
  * Continues a `sessions_yield`-paused run under a new gateway runId.

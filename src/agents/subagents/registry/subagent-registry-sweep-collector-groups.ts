@@ -1,6 +1,5 @@
 // Sweeper archival for completed collector groups: a group archives only as a whole,
 // after every member's session, attachments, and context-engine cleanup succeed.
-import type { createSubagentSweepSessionCleanup } from "../../subagent-registry-sweeper-session.js";
 import { shouldSuppressSubagentRecoverySessionEffects } from "./subagent-recovery-state.js";
 import { safeRemoveAttachmentsDir } from "./subagent-registry-helpers.js";
 import type { SubagentRegistrySweeperParams } from "./subagent-registry-sweeper.types.js";
@@ -9,7 +8,7 @@ import type {
   SubagentRunRecord,
 } from "./subagent-registry.types.js";
 
-type SweepSessionCleanup = ReturnType<typeof createSubagentSweepSessionCleanup>;
+type FrozenSessionIdentity = { sessionId: string; lifecycleRevision: string };
 
 export type CollectorArchiveCandidate = {
   requesterSessionKey: string;
@@ -17,16 +16,21 @@ export type CollectorArchiveCandidate = {
   requesterAgentId?: string;
 };
 
+export const isCollectorArchiveReady = (entry: SubagentRunRecord, now: number) =>
+  entry.collectorCompletion &&
+  entry.collectorLaunchCleanupPending !== true &&
+  entry.archiveAtMs !== undefined &&
+  entry.archiveAtMs <= now;
+
 export async function sweepCollectorArchiveGroups(sweep: {
   candidates: Map<string, CollectorArchiveCandidate>;
   now: number;
-  cleanupIdentities: Map<
-    SubagentRunRecord,
-    ReturnType<SweepSessionCleanup["freezeSessionIdentity"]>
-  >;
+  cleanupIdentities: Map<SubagentRunRecord, FrozenSessionIdentity | undefined>;
   mutatedRunIds: Set<string>;
-  deleteSession: SweepSessionCleanup["deleteSession"];
-  isSessionIdentityCurrent: SweepSessionCleanup["isSessionIdentityCurrent"];
+  deleteSession: (
+    entry: SubagentRunRecord,
+    identity: FrozenSessionIdentity,
+  ) => Promise<"deleted" | "changed">;
   sweptContext: (entry: SubagentRunRecord) => ContextEngineSubagentEndedParams;
   params: Pick<
     SubagentRegistrySweeperParams,
@@ -39,16 +43,8 @@ export async function sweepCollectorArchiveGroups(sweep: {
     | "warn"
   >;
 }): Promise<void> {
-  const {
-    candidates,
-    now,
-    cleanupIdentities,
-    mutatedRunIds,
-    deleteSession,
-    isSessionIdentityCurrent,
-    sweptContext,
-    params,
-  } = sweep;
+  const { candidates, now, cleanupIdentities, mutatedRunIds, deleteSession, sweptContext, params } =
+    sweep;
   const { runs } = params;
   collectorGroups: for (const {
     requesterSessionKey,
@@ -62,10 +58,7 @@ export async function sweepCollectorArchiveGroups(sweep: {
     if (
       groupEntries.some(
         ([, candidate]) =>
-          !candidate.collectorCompletion ||
-          candidate.collectorLaunchCleanupPending === true ||
-          candidate.archiveAtMs === undefined ||
-          candidate.archiveAtMs > now ||
+          !isCollectorArchiveReady(candidate, now) ||
           params.shouldDeferArchive(candidate) ||
           !cleanupIdentities.has(candidate),
       )
@@ -88,14 +81,7 @@ export async function sweepCollectorArchiveGroups(sweep: {
         continue;
       }
       try {
-        const deletion = await deleteSession(
-          candidate.childSessionKey,
-          sessionIdentity,
-          () =>
-            runs.get(candidateRunId) === candidate &&
-            isSessionIdentityCurrent(candidate.childSessionKey, sessionIdentity),
-          candidate,
-        );
+        const deletion = await deleteSession(candidate, sessionIdentity);
         if (runs.get(candidateRunId) !== candidate) {
           continue collectorGroups;
         }
@@ -155,10 +141,7 @@ export async function sweepCollectorArchiveGroups(sweep: {
       liveGroupEntries.some(
         ([candidateRunId, candidate]) =>
           expectedGroupEntries.get(candidateRunId) !== candidate ||
-          !candidate.collectorCompletion ||
-          candidate.collectorLaunchCleanupPending === true ||
-          candidate.archiveAtMs === undefined ||
-          candidate.archiveAtMs > now,
+          !isCollectorArchiveReady(candidate, now),
       )
     ) {
       continue;

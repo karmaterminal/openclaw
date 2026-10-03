@@ -44,14 +44,9 @@ import { runSubagentAnnounceDispatch } from "./subagent-announce-dispatch.js";
 import { testing as subagentAnnounceOutputTesting } from "./subagent-announce-output.test-support.js";
 import { announceTesting as subagentAnnounceTesting } from "./subagent-announce-overrides.test-support.js";
 import {
-  createAcceptedWakeDispatchMock,
-  acceptedWakeResponse,
-  endedWakeOwnerRun,
-  persistedSteerDispatch,
   registerContinuationTriggerOmittedCase,
   registerDirectFirstSteerFallbackCase,
   withContinuationEnabled,
-  type SteerDispatchParams,
 } from "./subagent-announce.format.continuation.test-support.js";
 import { registerNestedCompletionRegressionMatrix } from "./subagent-announce.format.nested-matrix.test-support.js";
 import {
@@ -114,7 +109,6 @@ function getAgentCall(index = 0): AgentCallRequest {
 }
 
 const agentSpy = vi.fn(async (_req: AgentCallRequest) => visibleAgentResponse());
-const mockAcceptedWakeDispatch = createAcceptedWakeDispatchMock(agentSpy);
 const sendSpy = vi.fn(async (_req: AgentCallRequest) => ({ runId: "send-main", status: "ok" }));
 const sessionsDeleteSpy = vi.fn((_req: AgentCallRequest) => undefined);
 const resolveAgentIdFromSessionKeySpy = vi.spyOn(configSessions, "resolveAgentIdFromSessionKey");
@@ -163,14 +157,9 @@ const { subagentRegistryMock } = vi.hoisted(() => ({
     getLatestSubagentRunByChildSessionKey: vi.fn(
       (_childSessionKey: string): MockSubagentRun | undefined => undefined,
     ),
-    getSubagentRunByRunId: vi.fn((_runId: string): MockSubagentRun | undefined => undefined),
     listSubagentRunsForRequester: vi.fn(
       (_sessionKey: string, _scope?: { requesterRunId?: string }): MockSubagentRun[] => [],
     ),
-    recordAcceptedSubagentSteerDispatch: vi.fn(
-      async (params: SteerDispatchParams<MockSubagentRun>) => persistedSteerDispatch(params),
-    ),
-    clearSubagentRunSteerRestart: vi.fn(async () => true),
     replaceSubagentRunAfterSteerCore: vi.fn(
       (_params: { previousRunId: string; nextRunId: string; lifecycleGeneration?: string }) => true,
     ),
@@ -388,7 +377,6 @@ vi.mock("../registry/subagent-registry-read.js", () => subagentRegistryMock);
 describe("subagent announce formatting", () => {
   let previousFastTestEnv: string | undefined;
   let runSubagentAnnounceFlow: (typeof import("./subagent-announce.js"))["runSubagentAnnounceFlow"];
-  let subagentAnnounceDepsTesting: (typeof import("./subagent-announce.js"))["testing"];
 
   beforeAll(async () => {
     // Set FAST_TEST_MODE before importing the module to ensure the module-level
@@ -397,12 +385,10 @@ describe("subagent announce formatting", () => {
     // See: https://github.com/openclaw/openclaw/issues/31298
     previousFastTestEnv = process.env.OPENCLAW_TEST_FAST;
     process.env.OPENCLAW_TEST_FAST = "1";
-    ({ runSubagentAnnounceFlow, testing: subagentAnnounceDepsTesting } =
-      await import("./subagent-announce.js"));
+    ({ runSubagentAnnounceFlow } = await import("./subagent-announce.js"));
   });
 
   afterAll(() => {
-    subagentAnnounceDepsTesting.setDepsForTest();
     subagentAnnounceTesting.setDepsForTest();
     subagentAnnounceOutputTesting.setDepsForTest();
     subagentAnnounceDeliveryTesting.setDepsForTest();
@@ -473,14 +459,6 @@ describe("subagent announce formatting", () => {
       ) => (await callGatewaySpy(req)) as T,
       getRuntimeConfig: () => configOverride,
     });
-    // The continuation line routes descendant-wake dispatch and termination through
-    // subagent-announce-deps, whose defaults bind at module load and so bypass the
-    // runtime spies above; give that seam the same Gateway fake.
-    subagentAnnounceDepsTesting.setDepsForTest({
-      callGateway: async <T = Record<string, unknown>>(
-        req: Parameters<typeof gatewayCall.callGateway>[0],
-      ) => (await callGatewaySpy(req)) as T,
-    });
     transcriptEvents = [];
     subagentAnnounceOutputTesting.setDepsForTest({
       findTranscriptEvent: async (_scope, match) => {
@@ -541,12 +519,7 @@ describe("subagent announce formatting", () => {
     subagentRegistryMock.getLatestSubagentRunByChildSessionKey
       .mockClear()
       .mockReturnValue(undefined);
-    subagentRegistryMock.getSubagentRunByRunId.mockClear().mockImplementation(endedWakeOwnerRun);
     subagentRegistryMock.listSubagentRunsForRequester.mockClear().mockReturnValue([]);
-    subagentRegistryMock.recordAcceptedSubagentSteerDispatch
-      .mockClear()
-      .mockImplementation(async (params) => persistedSteerDispatch(params));
-    subagentRegistryMock.clearSubagentRunSteerRestart.mockClear().mockResolvedValue(true);
     subagentRegistryMock.replaceSubagentRunAfterSteerCore.mockClear().mockReturnValue(true);
     subagentRegistryMock.resolveRequesterForChildSession.mockClear().mockReturnValue(null);
     hasSubagentDeliveryTargetHook = false;
@@ -2603,7 +2576,6 @@ describe("subagent announce formatting", () => {
       },
     );
 
-    mockAcceptedWakeDispatch();
     const didAnnounce = await runSubagentAnnounceFlow({
       ...defaultOutcomeAnnounce,
       childSessionKey: "agent:main:subagent:parent",
@@ -2686,7 +2658,6 @@ describe("subagent announce formatting", () => {
       },
     );
 
-    mockAcceptedWakeDispatch();
     const didAnnounce = await runSubagentAnnounceFlow({
       ...defaultOutcomeAnnounce,
       childSessionKey: "agent:main:subagent:parent",
@@ -2820,7 +2791,7 @@ describe("subagent announce formatting", () => {
         },
       );
 
-      mockAcceptedWakeDispatch("run-parent-phase-2");
+      agentSpy.mockResolvedValueOnce(visibleAgentResponse("run-parent-phase-2"));
       const lifecycleGeneration = getAgentEventLifecycleGeneration();
 
       const didAnnounce = await runSubagentAnnounceFlow({
@@ -2844,16 +2815,9 @@ describe("subagent announce formatting", () => {
       expect(message).toContain("All pending descendants for that run have now settled");
       expect(message).toContain("result from child a");
       expect(message).toContain("result from child b");
-      // The wake replaces the reserved owner run; the continuation line's replacement
-      // compares against that owner and admits the ended source it just woke.
-      const wakeOwner = subagentRegistryMock.getSubagentRunByRunId.mock.results[0]?.value;
-      expect(wakeOwner).toMatchObject({ runId: "run-parent-phase-1" });
       expect(subagentRegistryMock.replaceSubagentRunAfterSteerCore).toHaveBeenCalledWith({
         previousRunId: "run-parent-phase-1",
         nextRunId: "run-parent-phase-2",
-        fallback: wakeOwner,
-        expected: wakeOwner,
-        allowEndedSource: true,
         lifecycleGeneration,
         preserveFrozenResultFallback: true,
         task: expect.stringContaining("All pending descendants for that run have now settled"),
@@ -2883,7 +2847,7 @@ describe("subagent announce formatting", () => {
     ]);
     let releaseWake!: () => void;
     const wakeResponse = new Promise<ReturnType<typeof visibleAgentResponse>>((resolve) => {
-      releaseWake = () => resolve(acceptedWakeResponse("run-parent-phase-2"));
+      releaseWake = () => resolve(visibleAgentResponse("run-parent-phase-2"));
     });
     agentSpy.mockImplementationOnce(() => wakeResponse);
     callGatewaySpy.mockImplementation(async (req: unknown) => {
@@ -3312,7 +3276,6 @@ describe("subagent announce formatting", () => {
     subagentRegistryMock,
     agentSpy,
     getAgentCall,
-    mockAcceptedWakeDispatch,
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

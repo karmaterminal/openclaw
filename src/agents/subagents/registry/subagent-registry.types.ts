@@ -171,14 +171,6 @@ type SubagentKillIntent = {
   suppressTaskDelivery?: boolean;
 };
 
-export type SubagentAcceptedSteerDispatch = {
-  gatewayRunId: string;
-  phase?: "dispatching" | "accepted";
-  lifecycleGeneration?: string;
-  expectedSessionId?: string;
-  expectedLifecycleRevision?: string;
-};
-
 type SubagentAcceptedSpawnRollback = {
   gatewayRunId: string;
   requestedAt: number;
@@ -214,8 +206,6 @@ export type SubagentRunRecord = Omit<SubagentRunReadRecord, "execution" | "colle
   archiveAtMs?: number;
   cleanupHandled?: boolean;
   suppressAnnounceReason?: "steer-restart" | "killed";
-  /** Accepted steer run awaiting remap or exact termination confirmation. */
-  acceptedSteerDispatch?: SubagentAcceptedSteerDispatch;
   /** Accepted child awaiting exact termination before failed spawn ownership can retire. */
   acceptedSpawnRollback?: SubagentAcceptedSpawnRollback;
   /** Sticky owner while restart recovery replays this exact terminal run. */

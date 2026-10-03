@@ -5,6 +5,7 @@ import { hasSqliteWorkerOutcomeUnknown } from "../../../infra/sqlite-worker-cont
 import { withPluginRuntimeGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
 import { defaultRuntime } from "../../../runtime.js";
 import { isCronSessionKey } from "../../../sessions/session-key-utils.js";
+import { createLazyPromise } from "../../../shared/lazy-promise.js";
 import { normalizeDeliveryContext } from "../../../utils/delivery-context.shared.js";
 import {
   isDeliverableMessageChannel,
@@ -31,9 +32,7 @@ import {
   deliverSubagentAnnouncement,
   loadSessionEntryByKey,
 } from "./subagent-announce-delivery.js";
-import { loadSubagentContinuationRuntime, subagentAnnounceDeps } from "./subagent-announce-deps.js";
-import { wakeSubagentRunWithDescendantFindings } from "./subagent-announce-descendant-findings-wake.js";
-import { isWakeContinuationRun } from "./subagent-announce-descendant-wake.js";
+import { runDescendantWake } from "./subagent-announce-descendant-wake.js";
 import type { SubagentAnnounceDeliveryResult } from "./subagent-announce-dispatch.js";
 import {
   resolveAnnounceOrigin,
@@ -55,7 +54,11 @@ import {
   formatSubagentAnnounceOwnerFailure,
 } from "./subagent-announce-owner-coordination.js";
 import {
+  callSubagentLifecycleGateway,
+  dispatchGatewayMethodInProcess,
   isEmbeddedAgentRunActive,
+  getRuntimeConfig,
+  resolveContinuationRuntimeConfig,
   waitForEmbeddedAgentRunEnd,
 } from "./subagent-announce.runtime.js";
 import type {
@@ -63,8 +66,14 @@ import type {
   SubagentAnnounceFlowParams,
 } from "./subagent-announce.types.js";
 
+const loadSubagentRegistryRuntime = createLazyPromise(
+  () => import("../registry/subagent-registry.js"),
+);
+const loadSubagentContinuationRuntime = createLazyPromise(
+  () => import("../../subagent-announce.continuation.runtime.js"),
+);
+
 export { captureSubagentCompletionReply } from "./subagent-announce-output.js";
-export { testing } from "./subagent-announce-deps.js";
 export type {
   SubagentAnnounceFlowOutcome,
   SubagentAnnounceFlowParams,
@@ -158,7 +167,7 @@ async function runSubagentAnnounceFlowBound(
       reply = undefined;
     }
     let requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey, {
-      cfg: subagentAnnounceDeps.getRuntimeConfig(),
+      cfg: getRuntimeConfig(),
       agentId: targetRequesterAgentId,
     });
     const requesterIsInternalSession = () =>
@@ -175,10 +184,10 @@ async function runSubagentAnnounceFlowBound(
     let childCompletionFindings: string | undefined;
     let childCompletionRows: Parameters<typeof readChildCompletionFindings>[0] | undefined;
     let subagentRegistryRuntime:
-      | Awaited<ReturnType<typeof subagentAnnounceDeps.loadSubagentRegistryRuntime>>
+      | Awaited<ReturnType<typeof loadSubagentRegistryRuntime>>
       | undefined;
     try {
-      subagentRegistryRuntime = await subagentAnnounceDeps.loadSubagentRegistryRuntime();
+      subagentRegistryRuntime = await loadSubagentRegistryRuntime();
       if (requesterIsInternalSession()) {
         if (!isSubagentSessionRunActive(targetRequesterSessionKey)) {
           // A cleaned-up intermediate child normally must not receive a late
@@ -208,7 +217,7 @@ async function runSubagentAnnounceFlowBound(
             targetRequesterOrigin =
               normalizeDeliveryContext(fallback.requesterOrigin) ?? targetRequesterOrigin;
             requesterDepth = getSubagentDepthFromSessionStore(targetRequesterSessionKey, {
-              cfg: subagentAnnounceDeps.getRuntimeConfig(),
+              cfg: getRuntimeConfig(),
               agentId: targetRequesterAgentId,
             });
           }
@@ -268,31 +277,34 @@ async function runSubagentAnnounceFlowBound(
       childRunId: params.childRunId,
     });
 
-    const childRunAlreadyWoken = isWakeContinuationRun(params.childRunId);
     if (
       params.wakeOnDescendantSettle === true &&
-      childSessionEffectsAllowed() &&
       childCompletionFindings?.trim() &&
-      subagentRegistryRuntime &&
-      !childRunAlreadyWoken
+      subagentRegistryRuntime
     ) {
-      const wake = await wakeSubagentRunWithDescendantFindings(
-        params,
-        {
-          findings: childCompletionFindings,
-          prepareCurrent: prepareChildSessionEffects,
-          isChildSessionEffectsAllowed: () =>
-            childSessionEffectsAllowed() && completionDeliveryAllowed(),
+      const woke = await runDescendantWake({
+        runId: params.childRunId,
+        childSessionKey: params.childSessionKey,
+        runTimeoutSeconds: params.runTimeoutSeconds,
+        taskLabel: params.label || params.task || "task",
+        findings: childCompletionFindings,
+        announceId,
+        prepareCurrent: prepareChildSessionEffects,
+        isChildSessionEffectsAllowed: () =>
+          childSessionEffectsAllowed() && completionDeliveryAllowed(),
+        hasUsableSessionEntry,
+        resolveGatewayContext: params.resolveGatewayContext,
+        deps: {
+          callGateway: callSubagentLifecycleGateway,
+          dispatchGatewayMethodInProcess,
+          getRuntimeConfig,
+          replaceSubagentRunAfterSteer: subagentRegistryRuntime.replaceSubagentRunAfterSteerCore,
         },
-        subagentAnnounceDeps,
-      );
-      if (wake === "woke") {
+        signal: params.signal,
+      });
+      if (woke) {
         shouldDeleteChildSession = false;
         return "delivered";
-      }
-      if (wake === "termination-unconfirmed") {
-        shouldDeleteChildSession = false;
-        return "retryable";
       }
     }
 
@@ -398,7 +410,7 @@ async function runSubagentAnnounceFlowBound(
       }
     }
 
-    const cfg = subagentAnnounceDeps.getRuntimeConfig();
+    const cfg = getRuntimeConfig();
     const announceSessionId =
       childSessionCurrent && childSessionEffectsAllowed() ? childSessionId || "unknown" : "unknown";
 
@@ -518,7 +530,7 @@ async function runSubagentAnnounceFlowBound(
       cfg,
       continuationEnabled: continuation.continuationEnabled,
       isContinuationChainDelegate: continuation.isContinuationChainDelegate,
-      maxChainLength: subagentAnnounceDeps.resolveContinuationRuntimeConfig(cfg).maxChainLength,
+      maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
       task: params.task ?? "",
       taskLabel,
       triggerMessage,
@@ -616,7 +628,7 @@ async function runSubagentAnnounceFlowBound(
       childSessionEffectsAllowed()
     ) {
       await deleteSubagentSessionForCleanup({
-        callGateway: subagentAnnounceDeps.callGateway,
+        callGateway: callSubagentLifecycleGateway,
         prepareCurrent: prepareChildSessionEffects,
         isCurrent: childSessionEffectsAllowed,
         childSessionKey: params.childSessionKey,

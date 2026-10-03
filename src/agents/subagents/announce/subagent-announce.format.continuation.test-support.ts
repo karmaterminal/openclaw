@@ -1,72 +1,10 @@
-// Continuation-line harness pieces for subagent-announce.format.e2e.test.ts:
-// descendant-wake dispatch acks, the registry's reserved steer-dispatch seam, and
-// the continuation-trigger cases registered into that suite's describe block.
+// Continuation-line harness pieces for subagent-announce.format.e2e.test.ts: the
+// continuation-trigger cases registered into that suite's describe block.
 import { expect, it, vi, type Mock } from "vitest";
 import type { OpenClawConfig } from "../../../config/config.js";
 import type { runSubagentAnnounceDispatch } from "./subagent-announce-dispatch.js";
 import type { runSubagentAnnounceFlow } from "./subagent-announce.js";
-import { visibleAgentResponse, type AgentCallRequest } from "./subagent-announce.test-support.js";
-
-// The Gateway `agent` method acks a dispatch with status "accepted" and the request's
-// idempotency key as runId (agent-request-preflight.ts, agent-run-admission-phase.ts).
-// The descendant wake binds its reserved dispatch only to such an ack; a final-shaped
-// response under a foreign run id is treated as unbound and stopped.
-export function acceptedWakeResponse(runId: string) {
-  return { ...visibleAgentResponse(runId), status: "accepted" };
-}
-
-export function createAcceptedWakeDispatchMock(
-  agentSpy: Mock<(req: AgentCallRequest) => Promise<ReturnType<typeof visibleAgentResponse>>>,
-): (runId?: string) => void {
-  return (runId) => {
-    agentSpy.mockImplementationOnce(async (req: AgentCallRequest) =>
-      acceptedWakeResponse(runId ?? String(req.params?.idempotencyKey)),
-    );
-  };
-}
-
-export type SteerDispatchParams<Owner> = {
-  runId: string;
-  expected: Owner;
-  gatewayRunId: string;
-  phase: "dispatching" | "accepted";
-  lifecycleGeneration?: string;
-  expectedSessionId?: string;
-  expectedLifecycleRevision?: string;
-};
-
-/** The registry's persisted outcome for a reserved descendant-wake steer dispatch. */
-export function persistedSteerDispatch<Owner>(params: SteerDispatchParams<Owner>) {
-  return {
-    status: "persisted" as const,
-    ownerRunId: params.runId,
-    owner: params.expected,
-    dispatch: {
-      gatewayRunId: params.gatewayRunId,
-      phase: params.phase,
-      lifecycleGeneration: params.lifecycleGeneration,
-      expectedSessionId: params.expectedSessionId,
-      expectedLifecycleRevision: params.expectedLifecycleRevision,
-    },
-  };
-}
-
-/** The ended parent run a descendant wake reserves as its owner. */
-export function endedWakeOwnerRun(runId: string) {
-  return {
-    runId,
-    childSessionKey: "agent:main:subagent:parent",
-    requesterSessionKey: "agent:main:main",
-    requesterDisplayKey: "main",
-    task: "parent task",
-    cleanup: "delete" as const,
-    createdAt: 1,
-    execution: {
-      endedAt: 2,
-      outcome: { status: "ok" as const },
-    },
-  };
-}
+import type { AgentCallRequest } from "./subagent-announce.test-support.js";
 
 export function withContinuationEnabled(config: OpenClawConfig): OpenClawConfig {
   return { ...config, agents: { defaults: { continuation: { enabled: true } } } };

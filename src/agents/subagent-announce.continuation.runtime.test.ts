@@ -9,8 +9,7 @@
  * Stubs: none. This is source/export inspection only. After the
  * `src/agents/*` → `src/agents/subagents/announce/*` move, the host lives at
  * `subagents/announce/subagent-announce.ts` and calls the coordinator through
- * `loadSubagentContinuationRuntime`. The lazy import itself lives on
- * `subagent-announce-deps.ts`.
+ * `loadSubagentContinuationRuntime`, its own lazy import.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -19,7 +18,6 @@ import * as continuationRuntime from "./subagent-announce.continuation.runtime.j
 
 const TSDOWN_CONFIG_PATH = "tsdown.config.ts";
 const ANNOUNCE_HOST_PATH = "src/agents/subagents/announce/subagent-announce.ts";
-const ANNOUNCE_LAZY_LOADER_PATH = "src/agents/subagents/announce/subagent-announce-deps.ts";
 const CONTINUATION_RUNTIME_PATH = "src/agents/subagent-announce.continuation.runtime.ts";
 const CONTINUATION_RUNTIME_LAZY_IMPORT =
   'import("../../subagent-announce.continuation.runtime.js")';
@@ -38,9 +36,8 @@ describe("subagent-announce continuation runtime entry", () => {
   });
 
   it("keeps the upstream announce host bounded to coordinator calls", () => {
-    const loader = readFileSync(resolve(process.cwd(), ANNOUNCE_LAZY_LOADER_PATH), "utf8");
     const source = readFileSync(resolve(process.cwd(), ANNOUNCE_HOST_PATH), "utf8");
-    expect(loader).toContain(CONTINUATION_RUNTIME_LAZY_IMPORT);
+    expect(source).toContain(CONTINUATION_RUNTIME_LAZY_IMPORT);
     expect(source).toContain("coordinateSubagentContinuation");
     expect(source).toContain("routeSubagentContinuationReturn");
     expect(source).not.toContain("../auto-reply/continuation/delegate-dispatch.js");

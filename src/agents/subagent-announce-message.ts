@@ -1,9 +1,9 @@
 import { formatAgentInternalEventsForPrompt, type AgentInternalEvent } from "./internal-events.js";
-import type { SubagentRunOutcome } from "./subagents/announce/subagent-run-outcome.js";
 import {
   SUBAGENT_COMPLETION_OUTCOME_INSTRUCTION,
   SUBAGENT_PRIVATE_COMPLETION_INSTRUCTION,
 } from "./subagents/completion/subagent-completion-instructions.js";
+import type { SubagentRunOutcome } from "./subagents/subagent-run-outcome.types.js";
 
 function buildAnnounceReplyInstruction(params: {
   requesterIsSubagent: boolean;
