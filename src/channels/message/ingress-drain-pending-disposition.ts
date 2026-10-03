@@ -72,6 +72,9 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
       reason,
       message: disposition.message.trim() || reason,
       failedAt: params.now,
+      // Only the generation the policy judged; a row claimed, failed and
+      // resubmitted while the policy ran is fresh work and stays pending.
+      generation: { updatedAt: record.updatedAt },
     });
     if (!committed) {
       // A concurrent transition won; hold the lane so later same-lane work
