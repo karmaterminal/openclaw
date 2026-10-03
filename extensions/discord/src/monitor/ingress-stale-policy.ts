@@ -1,9 +1,9 @@
 // Discord plugin module owns pre-claim disposition of stale ambient ingress rows.
 import { ChannelType, MessageReferenceType, MessageType } from "discord-api-types/v10";
+import { listAgentIds } from "openclaw/plugin-sdk/agent-runtime";
 import { buildMentionRegexes, matchesMentionPatterns } from "openclaw/plugin-sdk/channel-inbound";
 import type { ChannelIngressQueueRecord } from "openclaw/plugin-sdk/channel-outbound";
 import { hasControlCommand } from "openclaw/plugin-sdk/command-detection";
-import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import {
   isRecord,
   normalizeNullableString as nonEmptyString,
@@ -20,8 +20,8 @@ import { hasRawDiscordUserMention } from "./message-handler.raw-mention.js";
 import { resolveDiscordRawMessageMentionDocuments } from "./message-text.js";
 
 /** Ambient guild chatter older than this can no longer be the user's live turn. */
-export const DISCORD_STALE_AMBIENT_BACKLOG_MS = 15 * 60 * 1_000;
-export const DISCORD_STALE_AMBIENT_BACKLOG_REASON = "stale-ambient-backlog";
+const DISCORD_STALE_AMBIENT_BACKLOG_MS = 15 * 60 * 1_000;
+const DISCORD_STALE_AMBIENT_BACKLOG_REASON = "stale-ambient-backlog";
 
 const DISCORD_AUDIO_ATTACHMENT_EXTENSIONS =
   /\.(?:aac|caf|flac|m4a|mp3|oga|ogg|opus|wav)(?:[?#]|$)/i;
@@ -171,11 +171,6 @@ function isAddressedToBot(message: DiscordStalePolicyMessage, botUserId?: string
   );
 }
 
-function configuredAgentIds(cfg?: OpenClawConfig): Array<string | undefined> {
-  const ids = (cfg?.agents?.list ?? []).flatMap((entry) => nonEmptyString(entry?.id) ?? []);
-  return [undefined, ...new Set(ids)];
-}
-
 /** Configured name mentions ("hey claw") and voice notes that resolve to one. */
 function matchesConfiguredMentionText(
   message: DiscordStalePolicyMessage,
@@ -187,7 +182,8 @@ function matchesConfiguredMentionText(
     return false;
   }
   try {
-    for (const agentId of configuredAgentIds(policy.cfg)) {
+    // The canonical roster: agents.list, keyed agents.entries, legacy default.
+    for (const agentId of listAgentIds(policy.cfg)) {
       const mentionRegexes = buildMentionRegexes(policy.cfg, agentId, {
         provider: "discord",
         conversationId: message.channelId,

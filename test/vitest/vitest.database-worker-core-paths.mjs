@@ -146,6 +146,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/channels/message/ingress-queue-health.test.ts",
   "src/channels/message/ingress-queue.claim-ownership.test.ts",
   "src/channels/message/ingress-queue.dead-letters.test.ts",
+  "src/channels/message/ingress-queue.generation.test.ts",
   "src/channels/message/ingress-queue.pruning.test.ts",
   "src/channels/message/ingress-queue.read-only-access.test.ts",
   "src/channels/message/ingress-queue.test.ts",

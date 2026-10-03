@@ -4,13 +4,12 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { describe, expect, it } from "vitest";
 import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inventory.js";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
-import {
-  createDiscordStaleAmbientPendingDisposition,
-  DISCORD_STALE_AMBIENT_BACKLOG_MS,
-  DISCORD_STALE_AMBIENT_BACKLOG_REASON,
-} from "./ingress-stale-policy.js";
+import { createDiscordStaleAmbientPendingDisposition } from "./ingress-stale-policy.js";
 import type { DiscordLivePolicy } from "./live-policy.js";
 
+// The policy's contract values, pinned here rather than exported for tests only.
+const DISCORD_STALE_AMBIENT_BACKLOG_MS = 15 * 60 * 1_000;
+const DISCORD_STALE_AMBIENT_BACKLOG_REASON = "stale-ambient-backlog";
 const BOT_ID = "bot-1";
 const NOW = 10 * DISCORD_STALE_AMBIENT_BACKLOG_MS;
 const STALE_AT = NOW - DISCORD_STALE_AMBIENT_BACKLOG_MS - 1;
@@ -331,6 +330,15 @@ describe("discord stale ambient pending disposition", () => {
   it("preserves configured mention-pattern text and audio-only notes", async () => {
     await expect(
       resolve({ cfg: NAMED_AGENT_CFG, message: { content: "claw can you look at this" } }),
+    ).resolves.toBeNull();
+    // An agent configured only under keyed agents.entries is part of the roster too.
+    await expect(
+      resolve({
+        cfg: {
+          agents: { entries: { helper: { groupChat: { mentionPatterns: ["\\bhelper\\b"] } } } },
+        } as unknown as OpenClawConfig,
+        message: { content: "helper, can you look at this" },
+      }),
     ).resolves.toBeNull();
     await expect(
       resolve({

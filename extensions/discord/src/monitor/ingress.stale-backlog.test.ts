@@ -15,7 +15,6 @@ import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inve
 import { GatewayPlugin } from "../internal/gateway.js";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
 import { clearGateways, registerGateway } from "./gateway-registry.js";
-import { DISCORD_STALE_AMBIENT_BACKLOG_MS } from "./ingress-stale-policy.js";
 import { createDiscordIngressMonitor } from "./ingress.js";
 import type { DiscordLivePolicy } from "./live-policy.js";
 
@@ -27,6 +26,8 @@ type DiscordIngressPayload = {
 
 type DiscordQueue = ChannelIngressQueue<DiscordIngressPayload>;
 
+/** The policy's 15-minute cutoff, pinned here rather than exported for tests only. */
+const DISCORD_STALE_AMBIENT_BACKLOG_MS = 15 * 60 * 1_000;
 const BOT_ID = "bot-1";
 const NOW = Date.now();
 const STALE_AT = NOW - DISCORD_STALE_AMBIENT_BACKLOG_MS - 60_000;
@@ -197,6 +198,58 @@ describe("Discord ingress stale ambient backlog boundary", () => {
         "stale-open",
         "stale-thread",
       ]);
+      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+        { id: "stale-ambient", reason: "stale-ambient-backlog" },
+      ]);
+    });
+  });
+
+  it("preserves a stale mention request for an agent configured only under agents.entries", async () => {
+    await withQueue(async (queue) => {
+      // Same mention-gated lane and age; only the text differs. The agent has no
+      // agents.list entry, so a list-only roster would miss its mention pattern.
+      await seed(queue, { id: "stale-ambient", channelId: "chan-gated", sentAt: STALE_AT });
+      await seed(queue, {
+        id: "stale-entries-request",
+        channelId: "chan-gated",
+        sentAt: STALE_AT + 1,
+        content: "helper, can you look at this when you are back?",
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        // SAFETY: gateway mapping only reads the raw frame for these fixtures.
+        client: {} as Client,
+        runtime: { error: vi.fn(), log: vi.fn() },
+        botUserId: BOT_ID,
+        readPolicy: async () =>
+          livePolicy(undefined, {
+            agents: { entries: { helper: { groupChat: { mentionPatterns: ["\\bhelper\\b"] } } } },
+          } as unknown as OpenClawConfig),
+        resolveChannelInfo: (channelId) => CHANNELS[channelId],
+        isChannelInventoryHydrating: () => false,
+        queue,
+        dispatch: async (event, lifecycle) => {
+          dispatched.push(String(event.id));
+          await lifecycle.onAdopted();
+        },
+      });
+
+      monitor.start();
+      try {
+        await vi.waitFor(
+          async () => {
+            expect(await queue.listPending({ limit: "all" })).toEqual([]);
+            expect(await queue.listClaims()).toEqual([]);
+          },
+          { timeout: 15_000, interval: 50 },
+        );
+      } finally {
+        await monitor.stop();
+      }
+
+      expect(dispatched).toEqual(["stale-entries-request"]);
       expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
         { id: "stale-ambient", reason: "stale-ambient-backlog" },
       ]);
