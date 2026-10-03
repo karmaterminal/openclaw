@@ -21,10 +21,7 @@ import {
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
 import { createIngressWriter } from "./ingress-claim-writes.js";
-import {
-  isIngressCancelCompat,
-  type ChannelIngressDispatchLifecycle,
-} from "./ingress-drain-lifecycle.js";
+import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
 import {
   activeClaimKey,
   createIngressSettleOwner,
@@ -311,9 +308,9 @@ export function createChannelIngressDrain<
     state.stallTimer.unref?.();
   };
 
-  const settleUnadopted = async (
+  const releaseUnadopted = async (
     state: ActiveHandlerState<TPayload, TMetadata>,
-    settle: (claim: ChannelIngressQueueClaim<TPayload, TMetadata>) => Promise<void>,
+    releaseOptions: { lastError?: string; recordAttempt?: boolean },
   ) => {
     if (!isPreAdoptionState(state)) {
       return;
@@ -321,7 +318,7 @@ export function createChannelIngressDrain<
     clearStallTimer(state);
     await state
       .settleOnce(async () => {
-        await settle(state.claim);
+        await releaseClaim(state.claim, releaseOptions);
       })
       .catch(() => undefined);
   };
@@ -386,18 +383,10 @@ export function createChannelIngressDrain<
       onCancelled: async () => {
         // Cancellation means ownership ended before delivery, so preserve every
         // prior retry fact while reopening the canonical row for replacement.
-        await settleUnadopted(state, async (claim) => {
-          await releaseClaim(claim, { recordAttempt: false });
-        });
+        await releaseUnadopted(state, { recordAttempt: false });
       },
       onAbandoned: async () => {
-        await settleUnadopted(state, async (claim) => {
-          if (isIngressCancelCompat()) {
-            await releaseClaim(claim, { recordAttempt: false });
-          } else {
-            await applyFailureDisposition(claim, new Error("turn-abandoned"));
-          }
-        });
+        await releaseUnadopted(state, { lastError: "turn-abandoned" });
       },
     };
   };

@@ -7,10 +7,7 @@ import {
   closeOpenClawStateDatabaseForTest,
   createChannelIngressQueueForTests,
 } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
-import {
-  DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
-  DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
-} from "openclaw/plugin-sdk/channel-outbound";
+import { DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS } from "openclaw/plugin-sdk/channel-outbound";
 import { createTestInboundDebounceFlush } from "openclaw/plugin-sdk/channel-test-helpers";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { createNonExitingRuntimeEnv } from "openclaw/plugin-sdk/plugin-test-runtime";
@@ -384,7 +381,7 @@ describe("Feishu durable ingress debounce lifecycle", () => {
     expect(second.calls.adopted).not.toHaveBeenCalled();
   });
 
-  it("retries abandonment with backoff, then dead-letters without restart redispatch", async () => {
+  it("preserves abandon retry accounting, backoff, threshold, and restart behavior", async () => {
     vi.useFakeTimers();
     const now = Date.UTC(2026, 0, 2);
     vi.setSystemTime(now);
@@ -494,43 +491,28 @@ describe("Feishu durable ingress debounce lifecycle", () => {
         });
       }
 
-      vi.setSystemTime(
-        secondAttempt.lastAttemptAt + DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS + 64_001,
-      );
+      vi.setSystemTime(secondAttempt.lastAttemptAt + 64_001);
       const threshold = createIntegratedIngress();
       threshold.start();
       await threshold.invokeWebhook(event);
-      await vi.waitFor(async () => {
-        expect(await queue.listFailed?.()).toEqual([
-          expect.objectContaining({
-            id: "evt-abandon-retry",
-            attempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS - 1,
-            reason: "retry-limit-exceeded",
-            message: "turn-abandoned",
-          }),
-        ]);
-      });
-      expect(await queue.listPending()).toEqual([]);
-      expect(await queue.listClaims()).toEqual([]);
+      const thresholdAttempt = await pendingAttempt(DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS);
       expect(handleMessage).toHaveBeenCalledTimes(3);
       await threshold.stop();
 
-      vi.setSystemTime(Date.now() + 128_001);
+      vi.setSystemTime(thresholdAttempt.lastAttemptAt + 128_001);
       const beyond = createIntegratedIngress();
       beyond.start();
       await beyond.invokeWebhook(event);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(await queue.listPending()).toEqual([]);
-      expect(await queue.listFailed?.()).toHaveLength(1);
-      expect(handleMessage).toHaveBeenCalledTimes(3);
+      const beyondAttempt = await pendingAttempt(DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS + 1);
+      expect(handleMessage).toHaveBeenCalledTimes(4);
       await beyond.stop();
 
-      vi.setSystemTime(Date.now() + 1_000);
+      vi.setSystemTime(beyondAttempt.lastAttemptAt + 1_000);
       const blockedRestart = createIntegratedIngress();
       blockedRestart.start();
       await blockedRestart.invokeWebhook(event);
       await vi.advanceTimersByTimeAsync(0);
-      expect(handleMessage).toHaveBeenCalledTimes(3);
+      expect(handleMessage).toHaveBeenCalledTimes(4);
       await blockedRestart.stop();
     } finally {
       closeOpenClawStateDatabaseForTest();

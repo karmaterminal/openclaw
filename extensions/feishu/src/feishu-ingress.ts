@@ -216,13 +216,12 @@ export function buildFeishuFlushIngressLifecycle(
   const replayClaims = durableSources
     .map((source) => source.replayClaim)
     .filter((claim) => claim !== undefined);
-  const transport = fanInChannelIngressLifecycles(lifecycles);
-  const transportLifecycle = transport.lifecycle;
+  const transportLifecycle = fanInChannelIngressLifecycles(lifecycles).lifecycle;
   if (!transportLifecycle) {
     return { lifecycle: undefined, settle: async () => {} };
   }
   let handedOff = false;
-  let terminal: "adopted" | "abandoned" | "cancelled" | undefined;
+  let terminal: "adopted" | "abandoned" | undefined;
   let adopting: Promise<void> | undefined;
   let abandoning: Promise<void> | undefined;
   const releaseReplayClaims = () => {
@@ -263,14 +262,6 @@ export function buildFeishuFlushIngressLifecycle(
       }
     }
     await ensureAbandoned();
-  };
-  const cancelAll = async () => {
-    if (terminal) {
-      return;
-    }
-    releaseReplayClaims();
-    await transport.cancel();
-    terminal = "cancelled";
   };
   const adoptAll = async () => {
     if (terminal) {
@@ -333,10 +324,6 @@ export function buildFeishuFlushIngressLifecycle(
       deferredHeartbeatIntervalMs: transportLifecycle.deferredHeartbeatIntervalMs,
       onAdoptionFinalizing: () => {
         transportLifecycle.onAdoptionFinalizing();
-      },
-      onCancelled: async () => {
-        handedOff = true;
-        await cancelAll();
       },
       onAbandoned: async () => {
         handedOff = true;

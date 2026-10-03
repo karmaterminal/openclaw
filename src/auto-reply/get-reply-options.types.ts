@@ -100,8 +100,6 @@ export type TurnAdoptionLifecycle = {
   onDeferred?: () => boolean | void;
   /** Pre-adoption liveness while waiting for reply-lane admission or preflight compaction. */
   onDeferredHeartbeat?: () => void;
-  /** Explicit cancellation before adoption; releases without consuming retry budget. */
-  onCancelled?: () => void | Promise<void>;
   /** Requested cadence for pre-adoption heartbeats. */
   deferredHeartbeatIntervalMs?: number;
   /** Deferred turn finished without owning the reply lane. */
