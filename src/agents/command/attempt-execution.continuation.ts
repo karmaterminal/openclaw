@@ -22,6 +22,7 @@ import type { RequestCompactionInvocation } from "../compaction-attribution.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 import type { ContinueWorkRequest } from "../tools/continue-work-tool.js";
 import {
+  notifyContinueWorkElectionsDropped,
   notifyContinueWorkWakeUnconfirmed,
   scheduleSpawnInitContinueWorkWake,
 } from "./attempt-execution.continue-work.js";
@@ -246,6 +247,10 @@ export function startAttemptContinuation(params: AttemptContinuationParams) {
               log.info(
                 `[continuation] Ignoring ${attemptContinueWorkRequests.length} continue_work election(s) because the spawn-init turn was incomplete and replay-unsafe for session ${sanitizeForLog(params.sessionKey)}`,
               );
+              notifyContinueWorkElectionsDropped(
+                params.sessionKey,
+                "the turn ended incomplete and cannot be safely replayed",
+              );
             }
             const failedDelegateRows = await failQueuedDelegatesOwnedByRun(
               params.sessionKey,
@@ -273,6 +278,14 @@ export function startAttemptContinuation(params: AttemptContinuationParams) {
             enabled: true,
             sessionKey: params.sessionKey,
           });
+          if (unsignaledWorkElection && extraction.signal?.kind !== "work") {
+            // A bracket signal outranks the tool request (extractContinuationSignal).
+            unsignaledWorkElection = false;
+            notifyContinueWorkElectionsDropped(
+              params.sessionKey,
+              "a bracket continuation signal in the reply took precedence",
+            );
+          }
           if (extraction.signal?.kind === "work") {
             const internalBracketTraceparent = extraction.fromBracket
               ? (resolveContinuationTraceparent(params.opts.traceparent) ??

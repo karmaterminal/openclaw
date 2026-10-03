@@ -986,29 +986,53 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
           fallbackSafe: false,
         },
       },
+      true,
     ],
-    ["an aborted", { aborted: true, stopReason: "stop" }],
-  ] as const)("does not schedule spawn-init continuations after %s turn", async (_label, meta) => {
+    // Cancelling the electing turn is the one intentionally silent outcome.
+    ["an aborted", { aborted: true, stopReason: "stop" }, false],
+  ] as const)(
+    "does not schedule spawn-init continuations after %s turn",
+    async (_label, meta, notified) => {
+      runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
+        const opts = (
+          callArgs as {
+            continueWorkOpts?: {
+              requestContinuation: (req: { reason: string; delaySeconds: number }) => void;
+            };
+          }
+        ).continueWorkOpts;
+        opts?.requestContinuation({ reason: "unsafe spawn-init request", delaySeconds: 30 });
+        const result = makeEmbeddedResult();
+        return {
+          ...result,
+          meta: { ...result.meta, ...meta },
+        } satisfies EmbeddedAgentRunResult;
+      });
+
+      await runEmbeddedAttempt(makeContinuationEnabledConfig());
+
+      expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
+      expect(sessionStore[sessionKey]?.continuationChainCount).toBeUndefined();
+      expect(
+        peekSystemEvents(sessionKey).some((event) =>
+          event.includes("not scheduled because the turn ended incomplete"),
+        ),
+      ).toBe(notified);
+    },
+  );
+
+  it("surfaces a continue_work tool election displaced by a bracket delegate signal", async () => {
     runEmbeddedAgentMock.mockImplementationOnce(async (callArgs: unknown) => {
-      const opts = (
-        callArgs as {
-          continueWorkOpts?: {
-            requestContinuation: (req: { reason: string; delaySeconds: number }) => void;
-          };
-        }
-      ).continueWorkOpts;
-      opts?.requestContinuation({ reason: "unsafe spawn-init request", delaySeconds: 30 });
-      const result = makeEmbeddedResult();
-      return {
-        ...result,
-        meta: { ...result.meta, ...meta },
-      } satisfies EmbeddedAgentRunResult;
+      requestContinueWork(callArgs, { reason: "tool election", delaySeconds: 30 });
+      return { ...makeEmbeddedResult(), payloads: [{ text: "done\n[[CONTINUE_DELEGATE: hop]]" }] };
     });
 
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
     expect(await listOwnerRecords(sessionKey)).toHaveLength(0);
-    expect(sessionStore[sessionKey]?.continuationChainCount).toBeUndefined();
+    expect(peekSystemEvents(sessionKey)).toContainEqual(
+      expect.stringContaining("bracket continuation signal in the reply took precedence"),
+    );
   });
 
   it("lets bracket continue_work use the configured default delay when a tool delay also exists", async () => {

@@ -77,6 +77,14 @@ export function notifyContinueWorkWakeUnconfirmed(sessionKey: string): void {
   );
 }
 
+/** Tell the session that its continue_work tool election(s) were deliberately not scheduled. */
+export function notifyContinueWorkElectionsDropped(sessionKey: string, because: string): void {
+  enqueueSystemEvent(
+    `[continuation] continue_work election(s) were not scheduled because ${because}.`,
+    { sessionKey, trusted: true },
+  );
+}
+
 /**
  * Durably schedules spawn-init continue_work elections after the run settles.
  *
