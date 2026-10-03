@@ -52,7 +52,9 @@ import {
   testing,
   deliverSubagentAnnouncement,
   loadRequesterSessionEntry,
+  registerDescendantWakeCurrencyTests,
 } from "./subagent-announce-delivery.test-support.js";
+import { wakeSubagentRunAfterDescendants } from "./subagent-announce-descendant-wake.js";
 import { privateCompletionCases } from "./subagent-announce-private-completion.test-fixtures.js";
 
 const sessionDeliveryQueueMocks = vi.hoisted(() => ({
@@ -1488,6 +1490,12 @@ describe("deliverSubagentAnnouncement completion delivery", () => {
       resolveGatewayContext,
       signal: expect.any(AbortSignal),
     });
+  });
+
+  registerDescendantWakeCurrencyTests({
+    createRoleRestrictedInProcessGatewayMock,
+    createGatewayMock,
+    wakeSubagentRunAfterDescendants,
   });
 
   it("does not dispatch child-derived completion after source lifecycle ownership changes", async () => {
