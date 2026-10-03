@@ -6,6 +6,7 @@ import {
   resolveSessionAgentId,
   resolveAgentModelFallbacksOverride,
 } from "../agents/agent-scope.js";
+import { ensureAuthProfileStore } from "../agents/auth-profiles/store-runtime.js";
 import { waitForContextWindowCacheLoad } from "../agents/context.js";
 import { resolveFastModeState } from "../agents/fast-mode.js";
 import { resolveAgentHarnessAutoSelectionHint } from "../agents/harness/auto-selection.js";
@@ -56,7 +57,6 @@ import {
 } from "./codex-synthetic-usage.js";
 import { resolveActiveFallbackState } from "./fallback-notice-state.js";
 import { readSessionFallbackModel } from "./session-fallback-model.js";
-import { resolveCodexSyntheticUsageAuthProfileId } from "./status-codex-auth-profile.js";
 import { formatStatusTextContinuationLine } from "./status-continuation-line.js";
 import type { StatusMessageParts } from "./status-message.js";
 import { createStatusModelResolver } from "./status-model-auth.js";
@@ -141,6 +141,34 @@ function shouldLoadUsageSummary(params: {
     auth?.startsWith("oauth") ||
     auth?.startsWith("token"),
   );
+}
+
+function resolveCodexSyntheticUsageAuthProfileId(params: {
+  profileId: string | undefined;
+  cfg: OpenClawConfig;
+  agentDir?: string;
+}): string | undefined {
+  const normalizedProfileId = params.profileId?.trim();
+  if (!normalizedProfileId) {
+    return undefined;
+  }
+  try {
+    const store = ensureAuthProfileStore(params.agentDir, {
+      allowKeychainPrompt: false,
+      config: params.cfg,
+      readOnly: true,
+      syncExternalCli: false,
+    });
+    const credential = store.profiles[normalizedProfileId];
+    if (!credential) {
+      return undefined;
+    }
+    return normalizeOptionalLowercaseString(credential.provider) === "openai"
+      ? normalizedProfileId
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function resolveStatusHarnessId(params: {
