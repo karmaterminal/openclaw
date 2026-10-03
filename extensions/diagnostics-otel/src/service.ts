@@ -16,7 +16,6 @@ import {
   setContinuationTracer,
   type DiagnosticTraceContext,
   type Tracer,
-  waitForDiagnosticEventsDrained,
 } from "openclaw/plugin-sdk/diagnostic-runtime";
 import { asFiniteNumberInRange } from "openclaw/plugin-sdk/number-runtime";
 import type { OpenClawPluginService } from "openclaw/plugin-sdk/plugin-entry";
@@ -214,25 +213,20 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       (
         await Promise.allSettled(stops.map((stop) => Promise.resolve().then(() => stop?.())))
       ).flatMap((result) => (result.status === "rejected" ? [result.reason] : []));
-    // Stop new propagation, drain queued events, then retire listeners/spans before providers.
-    const failures = await settle(current.unregisterTracePropagationBridge);
-    if (current.unsubscribe) {
-      failures.push(...(await settle(() => waitForDiagnosticEventsDrained())));
-    }
-    failures.push(
-      ...(await settle(current.unsubscribe)),
-      ...(await settle(current.stopActiveTrustedSpans)),
-      ...(await settle(current.unregisterOwnedSdkRuntime)),
-      ...(await settle(
-        current.installedContinuationTracer
-          ? () => {
-              const continuationTracer = current.installedContinuationTracer;
-              if (continuationTracer) {
-                resetContinuationTracerIfOwned(continuationTracer);
-              }
+    // Preserve cleanup -> provider flush -> handler removal while attempting every step per phase.
+    const failures = await settle(
+      current.unregisterTracePropagationBridge,
+      current.unsubscribe,
+      current.stopActiveTrustedSpans,
+      current.unregisterOwnedSdkRuntime,
+      current.installedContinuationTracer
+        ? () => {
+            const continuationTracer = current.installedContinuationTracer;
+            if (continuationTracer) {
+              resetContinuationTracerIfOwned(continuationTracer);
             }
-          : null,
-      )),
+          }
+        : null,
     );
     const providerFailures = await settle(
       () => current.logProvider?.shutdown(),
