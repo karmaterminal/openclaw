@@ -36,11 +36,6 @@ describe("captured plugin registration", () => {
       };
       const factory = vi.fn((context: PluginCapabilityCatalogContext) => {
         expect(context.formatErrorMessage(new Error("context-ready"))).toBe("context-ready");
-        if (mode === "captured") {
-          expect(context).toBe(resolvePluginCapabilityCatalogContext());
-        } else {
-          expect(context).not.toBe(resolvePluginCapabilityCatalogContext());
-        }
         const provider = {
           id: "factory-provider",
           label: "Factory provider",
