@@ -50,7 +50,6 @@ export const databaseWorkerCoreTestFiles = [
   "src/channels/message/ingress-monitor.admission.test.ts",
   "src/channels/message/ingress-monitor.capacity.test.ts",
   "src/channels/message/ingress-monitor.inspection.test.ts",
-  "src/channels/message/ingress-monitor.pending-disposition.test.ts",
   "src/channels/message/ingress-monitor.restart-drain.test.ts",
   "src/channels/message/ingress-monitor.shutdown.test.ts",
   "src/channels/message/ingress-monitor.test.ts",
