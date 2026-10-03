@@ -1,13 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { resolveLiveManagedGatewayDistFence } from "../../scripts/lib/live-gateway-dist-fence.mts";
 import * as inventory from "../../src/daemon/inspect.js";
 import * as launchdExec from "../../src/daemon/launchd-exec.js";
-import { ServiceInspectionError } from "../../src/daemon/service-inspection-error.js";
-import type { GatewayServiceState } from "../../src/daemon/service-types.ts";
-import * as gatewayService from "../../src/daemon/service.js";
-import * as systemdFiles from "../../src/daemon/systemd-service-files.js";
 import { withMockedPlatform } from "../../src/test-utils/vitest-spies.js";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
 
@@ -77,103 +73,3 @@ it.each([
     expect(native.mock.calls.every(([args]) => args[0] === "print")).toBe(true);
   },
 );
-
-describe("service manager proven absent (Linux containers and CI pods without systemd)", () => {
-  function simulateNoServiceManager(params: {
-    services?: Awaited<ReturnType<typeof inventory.listManagedOpenClawGatewayServices>>["services"];
-    errors?: Awaited<ReturnType<typeof inventory.listManagedOpenClawGatewayServices>>["errors"];
-    failure?: () => unknown;
-    state?: GatewayServiceState;
-  }) {
-    vi.spyOn(inventory, "listManagedOpenClawGatewayServices").mockResolvedValue({
-      services: params.services ?? [],
-      errors: params.errors ?? [],
-    });
-    const failure =
-      params.failure ?? (() => new ServiceInspectionError("service-manager-unavailable"));
-    vi.spyOn(systemdFiles, "readSystemdServiceCommandLocation").mockImplementation(async () => {
-      throw failure();
-    });
-    return vi.spyOn(gatewayService, "readGatewayServiceState").mockImplementation(async () => {
-      if (params.state) {
-        return params.state;
-      }
-      throw failure();
-    });
-  }
-
-  async function runFence() {
-    const checkout = tempDirs.make("openclaw-fence-no-manager-");
-    await fs.mkdir(path.join(checkout, "dist"), { recursive: true });
-    return withMockedPlatform("linux", () =>
-      resolveLiveManagedGatewayDistFence(checkout, { env: {}, requireVerified: true }),
-    );
-  }
-
-  it("allows preparation when the invoking binding proves no service manager exists", async () => {
-    const read = simulateNoServiceManager({});
-    expect(await runFence()).toEqual({ refuse: false });
-    expect(read).toHaveBeenCalledTimes(1);
-  });
-
-  it("allows preparation when the state reader reports the manager-absent state", async () => {
-    simulateNoServiceManager({
-      state: {
-        inspectionReason: "service-manager-unavailable",
-        installed: false,
-        loadState: { status: "not-loaded" },
-        running: false,
-        env: {},
-        command: null,
-        runtime: {
-          status: "stopped",
-          missingUnit: true,
-          inspectionReason: "service-manager-unavailable",
-        },
-      },
-    });
-    expect(await runFence()).toEqual({ refuse: false });
-  });
-
-  it("still refuses when discovery is incomplete on a host with no service manager", async () => {
-    simulateNoServiceManager({
-      errors: [{ source: "/etc/systemd/system", message: "Unit directory could not be read." }],
-    });
-    const result = await runFence();
-    expect(result.refuse).toBe(true);
-    if (result.refuse) {
-      expect(result.message).toContain("Cannot verify");
-    }
-  });
-
-  it("still refuses when a discovered service cannot be inspected without a service manager", async () => {
-    simulateNoServiceManager({
-      services: [
-        {
-          platform: "linux",
-          scope: "user",
-          label: "openclaw-gateway.service",
-          detail: "unit: /home/test/.config/systemd/user/openclaw-gateway.service",
-        },
-      ],
-    });
-    expect((await runFence()).refuse).toBe(true);
-  });
-
-  it.each([
-    "systemd-inspection-deadline-exceeded",
-    "systemd-user-bus-unavailable",
-    "systemd-busctl-unavailable",
-    "service-manager-access-denied",
-  ] as const)("still refuses an unproven manager (%s)", async (reason) => {
-    simulateNoServiceManager({ failure: () => new ServiceInspectionError(reason) });
-    expect((await runFence()).refuse).toBe(true);
-  });
-
-  it("still refuses an untyped failure that only mentions the manager", async () => {
-    simulateNoServiceManager({
-      failure: () => new Error("No supported service manager detected."),
-    });
-    expect((await runFence()).refuse).toBe(true);
-  });
-});

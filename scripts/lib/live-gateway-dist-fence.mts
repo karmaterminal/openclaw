@@ -51,12 +51,11 @@ async function tryRealpath(value: string): Promise<string> {
 
 async function loadFenceRuntime() {
   try {
-    const [layout, bindings, pathGuards, serviceRuntime, inspectionErrors] = await Promise.all([
+    const [layout, bindings, pathGuards, serviceRuntime] = await Promise.all([
       import("../../src/daemon/service-layout.ts"),
       import("../../src/daemon/managed-gateway-bindings.ts"),
       import("../../src/infra/path-guards.ts"),
       import("../../src/daemon/service-runtime.ts"),
-      import("../../src/daemon/service-inspection-error.ts"),
     ]);
     return {
       summarizeGatewayServiceLayout: layout.summarizeGatewayServiceLayout,
@@ -65,9 +64,6 @@ async function loadFenceRuntime() {
       describeManagedGatewayBinding: bindings.describeManagedGatewayBinding,
       isPathInside: pathGuards.isPathInside,
       isGatewayServiceStateLive: serviceRuntime.isGatewayServiceStateLive,
-      isServiceManagerUnavailable: (error: unknown) =>
-        error instanceof inspectionErrors.ServiceInspectionError &&
-        error.reason === "service-manager-unavailable",
     };
   } catch {
     return null;
@@ -273,15 +269,6 @@ export async function resolveLiveManagedGatewayDistFence(
     } catch (error) {
       if (hasCommandProcessCleanupError(error)) {
         throw error;
-      }
-      // Containers and CI pods on Linux without systemd have no managed service to protect:
-      // the native reader positively proved the service manager absent
-      // ("service-manager-unavailable"), so the invoking selector cannot name a managed
-      // Gateway holding this checkout. Only the invoking binding (the caller's own env) is
-      // exempt; a discovered service definition and every other inspection failure
-      // (deadline, spawn, access, bus, invalid response) stay unverified.
-      if (binding.env === env && (await loadFenceRuntime())?.isServiceManagerUnavailable(error)) {
-        continue;
       }
       unverified = true;
     }
