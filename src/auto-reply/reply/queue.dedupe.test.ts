@@ -101,33 +101,21 @@ describe("followup queue deduplication", () => {
     ).toBe(true);
   });
 
-  it.each(
-    [
-      { storage: "pending", cap: 2, siblings: 1 },
-      { storage: "retained-summary", cap: 1, siblings: 1 },
-      { storage: "elided-summary", cap: 1, siblings: 2 },
-    ].flatMap((testCase) => [
-      { ...testCase, supportsCancellation: false },
-      { ...testCase, supportsCancellation: true },
-    ]),
-  )(
-    "releases an aborted $storage source while dormant (cancellation: $supportsCancellation)",
-    async ({ storage, cap, siblings, supportsCancellation }) => {
+  it.each([
+    { storage: "pending", cap: 2, siblings: 1 },
+    { storage: "retained-summary", cap: 1, siblings: 1 },
+    { storage: "elided-summary", cap: 1, siblings: 2 },
+  ])(
+    "releases an aborted $storage source while the reply queue stays dormant",
+    async ({ storage, cap, siblings }) => {
       const controller = new AbortController();
-      const onCancelled = vi.fn();
       const onAbandoned = vi.fn();
       const onSettled = vi.fn();
       const runFollowup = vi.fn(async (_run: FollowupRun) => {});
       const capped: QueueSettings = { ...settings, cap };
       const first = source("retry me");
       first.abortSignal = controller.signal;
-      first.turnAdoptionLifecycle = {
-        onAdopted: () => {},
-        onAbandoned,
-        onSettled,
-        abortSignal: controller.signal,
-        ...(supportsCancellation ? { onCancelled } : {}),
-      };
+      first.turnAdoptionLifecycle = { onAdopted: () => {}, onAbandoned, onSettled };
       expect(enqueueFollowupRun(key, first, capped, "message-id", runFollowup, false)).toBe(true);
       for (let index = 0; index < siblings; index += 1) {
         expect(
@@ -160,8 +148,7 @@ describe("followup queue deduplication", () => {
       retry.turnAdoptionLifecycle = { onAdopted: () => {} };
       // Retrying ingress must not need a drain or an owner-clear event.
       expect(enqueueFollowupRun(key, retry, settings, "message-id", runFollowup, false)).toBe(true);
-      expect(onCancelled).toHaveBeenCalledTimes(supportsCancellation ? 1 : 0);
-      expect(onAbandoned).toHaveBeenCalledTimes(supportsCancellation ? 0 : 1);
+      expect(onAbandoned).toHaveBeenCalledOnce();
       expect(onSettled).toHaveBeenCalledOnce();
       await Promise.resolve();
       expect(runFollowup.mock.calls.map(([run]) => run.messageId)).toEqual(

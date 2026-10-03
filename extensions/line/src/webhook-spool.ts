@@ -276,21 +276,15 @@ export function createLineWebhookSpool(options: LineWebhookSpoolOptions): LineWe
           onDeferred: () => {
             handedOff = true;
             if (!acceptsDeferredClaims) {
-              void (async () => {
-                try {
-                  if (boundLifecycle.onCancelled) {
-                    await boundLifecycle.onCancelled();
-                  } else {
-                    await boundLifecycle.onAbandoned();
-                  }
-                } catch (error) {
+              void Promise.resolve()
+                .then(() => boundLifecycle.onAbandoned())
+                .catch((error: unknown) => {
                   options.runtime.error?.(
                     danger(
-                      `line: failed to cancel a late webhook delivery: ${formatErrorMessage(error)}`,
+                      `line: failed to abandon a late webhook delivery: ${formatErrorMessage(error)}`,
                     ),
                   );
-                }
-              })();
+                });
               return;
             }
             boundLifecycle.onDeferred();

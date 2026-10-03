@@ -1,11 +1,18 @@
 // Mattermost tests cover monitor.inbound system event plugin behavior.
 import { EventEmitter, once } from "node:events";
+import fs from "node:fs/promises";
 import { createServer } from "node:http";
+import os from "node:os";
+import path from "node:path";
 import type { ChannelInboundTurnPlan } from "openclaw/plugin-sdk/channel-inbound";
 import {
   createInboundDebouncer,
   resolveInboundDebounceMs,
 } from "openclaw/plugin-sdk/channel-inbound-debounce";
+import {
+  closeOpenClawStateDatabaseForTest,
+  createChannelIngressQueueForTests,
+} from "openclaw/plugin-sdk/channel-ingress-test-runtime";
 import {
   createPluginRuntimeMock,
   createTestInboundDebounceFlush,
@@ -20,7 +27,6 @@ import { WebSocketServer } from "openclaw/plugin-sdk/websocket-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MattermostPost } from "./client.js";
 import type { MattermostEventPayload } from "./monitor-websocket.js";
-import { registerMattermostAbandonRetryTests } from "./monitor.abandon-retry.test-support.js";
 import { registerMattermostBlockProgressTests } from "./monitor.block-progress.test-support.js";
 import { monitorMattermostProvider } from "./monitor.js";
 import { registerMattermostPreviewDeliveryTests } from "./monitor.preview-delivery.test-support.js";
@@ -629,13 +635,107 @@ describe("mattermost inbound user posts", () => {
     }
   });
 
-  registerMattermostAbandonRetryTests({
-    FakeWebSocket,
-    testConfig,
-    createRuntimeCore,
-    startTestMonitor,
-    emitMattermostChannelPost,
-    mockState,
+  it("accounts for abandoned dispatches and honors retry backoff after restart", async () => {
+    vi.useFakeTimers();
+    const now = Date.UTC(2026, 0, 2);
+    vi.setSystemTime(now);
+    const created = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-mattermost-abandon-"));
+    const stateDir = await fs.realpath(created);
+    type Payload = { version: 1; receivedAt: number; rawEvent: string };
+    const queue = createChannelIngressQueueForTests<Payload>({
+      channelId: "mattermost",
+      accountId: "default",
+      stateDir,
+    });
+    mockState.ingressQueue = queue;
+    mockState.runtimeCore = createRuntimeCore(testConfig, undefined, {
+      inboundDebounceMs: 0,
+      createInboundDebouncer,
+    });
+    mockState.dispatchInboundMessage.mockRejectedValue(
+      new Error("Mattermost dispatch failed before adoption"),
+    );
+
+    const activeProviders: Array<{ stop: () => Promise<void> }> = [];
+    const startProvider = async () => {
+      const socket = new FakeWebSocket();
+      const abortController = new AbortController();
+      const monitor = startTestMonitor(testConfig, abortController, socket);
+      for (let tick = 0; tick < 20 && socket.openListenerCount === 0; tick += 1) {
+        await Promise.resolve();
+      }
+      expect(socket.openListenerCount).toBeGreaterThan(0);
+      socket.emitOpen();
+      let stopped = false;
+      const provider = {
+        socket,
+        stop: async () => {
+          if (stopped) {
+            return;
+          }
+          stopped = true;
+          abortController.abort();
+          socket.emitClose(1000);
+          await monitor;
+        },
+      };
+      activeProviders.push(provider);
+      return provider;
+    };
+    const send = async (provider: Awaited<ReturnType<typeof startProvider>>) => {
+      await emitMattermostChannelPost(provider.socket, {
+        id: "post-abandon-retry",
+        message: "retry me",
+      });
+    };
+    const pendingAttempt = async (attempts: number) => {
+      let observed: Awaited<ReturnType<typeof queue.listPending>>[number] | undefined;
+      await vi.waitFor(async () => {
+        const pending = await queue.listPending({ limit: "all" });
+        expect(pending).toEqual([
+          expect.objectContaining({
+            id: "post-abandon-retry",
+            attempts,
+            lastAttemptAt: expect.any(Number),
+            lastError: "turn-abandoned",
+          }),
+        ]);
+        observed = pending[0];
+      });
+      const lastAttemptAt = observed?.lastAttemptAt;
+      if (lastAttemptAt === undefined) {
+        throw new Error(`Missing Mattermost retry timestamp for attempt ${attempts}`);
+      }
+      return { ...observed, lastAttemptAt };
+    };
+
+    const attemptAfterRestart = async (dispatches: number, attempts?: number) => {
+      const provider = await startProvider();
+      await send(provider);
+      const pending = attempts === undefined ? undefined : await pendingAttempt(attempts);
+      if (attempts === undefined) {
+        await vi.advanceTimersByTimeAsync(0);
+      }
+      expect(mockState.dispatchInboundMessage).toHaveBeenCalledTimes(dispatches);
+      await provider.stop();
+      return pending?.lastAttemptAt;
+    };
+    try {
+      const firstAttempt = await attemptAfterRestart(1, 1);
+      if (firstAttempt === undefined) {
+        throw new Error("Expected first attempt timestamp");
+      }
+      vi.setSystemTime(firstAttempt + 999);
+      await attemptAfterRestart(1);
+      vi.setSystemTime(firstAttempt + 1_001);
+      await attemptAfterRestart(2, 2);
+    } finally {
+      await Promise.allSettled(activeProviders.map(async (provider) => await provider.stop()));
+      mockState.ingressQueue = undefined;
+      closeOpenClawStateDatabaseForTest();
+      await fs.rm(stateDir, { recursive: true, force: true });
+      vi.useRealTimers();
+    }
   });
 
   it("publishes recovering while API authentication retries, including 401", async () => {

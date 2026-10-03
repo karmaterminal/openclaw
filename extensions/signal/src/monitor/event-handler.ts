@@ -97,7 +97,6 @@ import {
   resolveSignalInboundDebounceKey,
   type SignalInboundEntry,
 } from "./event-handler.control-lane.js";
-import { handleSignalDebouncedFlushError } from "./event-handler.debounced-flush-error.js";
 import type {
   SignalEnvelope,
   SignalEventHandlerDeps,
@@ -752,13 +751,22 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
         try {
           await flushSignalInboundEntries(entries, admissionLifecycle, settle);
         } catch (err) {
-          await handleSignalDebouncedFlushError({
-            error: err,
-            lifecycle,
-            abortSignal: deps.abortSignal,
-            isRetryableError: isSignalReplySessionInitConflictError,
-            retry: () => retrySignalInboundFlush(entries, admissionLifecycle, settle, err),
-          });
+          if (!isSignalReplySessionInitConflictError(err)) {
+            throw err;
+          }
+          if (deps.abortSignal?.aborted) {
+            return;
+          }
+          // Retry only pre-admission session conflicts; admitted turns have already
+          // released the debounce lane and own their normal completion lifecycle.
+          await retrySignalInboundFlush(entries, admissionLifecycle, settle, err).catch(
+            async (terminalError: unknown) => {
+              // Exhausted retries: release the drain claims so queue retry policy
+              // owns redelivery instead of the stall watchdog dead-lettering them.
+              await lifecycle?.onAbandoned();
+              throw terminalError;
+            },
+          );
         }
       },
     });
