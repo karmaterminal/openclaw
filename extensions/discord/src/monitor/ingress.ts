@@ -12,9 +12,13 @@ import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { danger, type RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
 import { normalizeNullableString as nonEmptyString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { Client } from "../internal/discord.js";
+import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inventory.js";
 import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
 import { getDiscordRuntime } from "../runtime.js";
+import { getGateway } from "./gateway-registry.js";
+import { createDiscordStaleAmbientPendingDisposition } from "./ingress-stale-policy.js";
 import type { DiscordMessageEvent } from "./listeners.js";
+import type { DiscordLivePolicyReader } from "./live-policy.js";
 
 const DISCORD_INGRESS_PAYLOAD_VERSION = 1;
 const DISCORD_INGRESS_DRAIN_INTERVAL_MS = 1_000;
@@ -103,8 +107,18 @@ export function createDiscordIngressMonitor(params: {
   client: Client;
   runtime: Pick<RuntimeEnv, "error" | "log">;
   dispatch: DiscordIngressDispatch;
+  botUserId?: string;
+  /**
+   * Current published policy. Preclaim disposition must never run against
+   * startup config, so omitting this disables the policy entirely.
+   */
+  readPolicy?: DiscordLivePolicyReader;
+  /** Defaults to the live gateway inventory registered for this account. */
+  resolveChannelInfo?: (channelId: string) => DiscordGatewayChannelInfo | undefined;
+  isChannelInventoryHydrating?: (guildId: string) => boolean;
   queue?: ChannelIngressQueue<DiscordIngressPayload>;
 }): DiscordIngressMonitor {
+  const readPolicy = params.readPolicy;
   const queue =
     params.queue ??
     getDiscordRuntime().state.openChannelIngressQueue<DiscordIngressPayload>({
@@ -148,6 +162,25 @@ export function createDiscordIngressMonitor(params: {
     },
     appendRetryDelaysMs: [0],
     drain: {
+      ...(readPolicy
+        ? {
+            resolvePendingDisposition: createDiscordStaleAmbientPendingDisposition({
+              botUserId: params.botUserId,
+              readPolicy,
+              resolveChannelInfo:
+                params.resolveChannelInfo ??
+                ((channelId) => getGateway(params.accountId)?.getGatewayChannelInfo(channelId)),
+              // The handler starts its drain before the provider registers this
+              // account's gateway, so a missing gateway means "cannot answer
+              // yet", not "resolved". Tests inject their own probe.
+              isChannelInventoryHydrating:
+                params.isChannelInventoryHydrating ??
+                ((guildId) =>
+                  getGateway(params.accountId)?.isGatewayChannelInventoryHydrating(guildId) ??
+                  true),
+            }),
+          }
+        : {}),
       retryPolicy: {
         maxAttempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
         deadLetterMinAgeMs: 0,
