@@ -1,12 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { hasOutboundReplyContent } from "openclaw/plugin-sdk/reply-payload";
 import {
-  buildCodeSpanIndex,
-  createInlineCodeState,
-  type InlineCodeState,
-} from "../../../packages/markdown-core/src/code-spans.js";
-import type { FenceScanState } from "../../../packages/markdown-core/src/fences.js";
-import {
   parseInlineDirectives,
   stripInlineDirectiveTagsForDelivery,
 } from "../../utils/directive-tags.js";
@@ -121,8 +115,6 @@ export function createStreamingDirectiveAccumulator() {
   let replyToCurrent = false;
   let replyToTag = false;
   let hasReturnedText = false;
-  let inlineCodeState: InlineCodeState = createInlineCodeState();
-  let fenceState: FenceScanState | undefined;
 
   const reset = () => {
     pendingTail = "";
@@ -131,8 +123,6 @@ export function createStreamingDirectiveAccumulator() {
     replyToCurrent = false;
     replyToTag = false;
     hasReturnedText = false;
-    inlineCodeState = createInlineCodeState();
-    fenceState = undefined;
   };
 
   const consume = (raw: string, options?: ConsumeOptions): ReplyDirectiveParseResult | null => {
@@ -160,12 +150,7 @@ export function createStreamingDirectiveAccumulator() {
       return null;
     }
 
-    const codeSpans = buildCodeSpanIndex(combined, inlineCodeState, fenceState);
-    inlineCodeState = codeSpans.inlineState;
-    fenceState = codeSpans.fenceState;
-    const parsed = combined.includes("[[")
-      ? parseInlineDirectives(combined, { isInsideCodeSpan: codeSpans.isInside })
-      : undefined;
+    const parsed = combined.includes("[[") ? parseInlineDirectives(combined) : undefined;
     let text = parsed && (parsed.hasReplyTag || parsed.hasAudioTag) ? parsed.text : combined;
     const silentToken = options?.silentToken ?? SILENT_REPLY_TOKEN;
     const isSilent =
