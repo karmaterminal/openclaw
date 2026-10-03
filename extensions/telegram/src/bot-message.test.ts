@@ -625,6 +625,49 @@ describe("telegram bot message processor", () => {
     );
   });
 
+  it("settles a cancelled deferred turn through the drain's budget-free release", async () => {
+    buildTelegramMessageContext.mockResolvedValue(createMessageContext());
+    const finalizeSpooledReplayResult = vi.fn(
+      async (result: TelegramMessageProcessingResult): Promise<TelegramMessageProcessingResult> =>
+        result,
+    );
+    dispatchTelegramMessage.mockImplementationOnce(async ({ turnAdoptionLifecycle }) => {
+      turnAdoptionLifecycle?.onDeferred?.();
+      // The reply queue clearing a queued followup takes this terminal.
+      await turnAdoptionLifecycle?.onCancelled?.();
+      return { kind: "completed" };
+    });
+    const drainLifecycle = {
+      abortSignal: new AbortController().signal,
+      onAdopted: vi.fn(async () => {}),
+      onDeferred: vi.fn(),
+      onCancelled: vi.fn(async () => {}),
+      onAbandoned: vi.fn(async () => {}),
+    };
+    const processMessage = createTelegramMessageProcessor(baseDeps);
+    const update = { update_id: 123470 };
+
+    const replay = await runWithTelegramSpooledReplayUpdate(
+      update,
+      async () =>
+        await processSampleMessage(processMessage, { finalizeSpooledReplayResult }, { update }),
+      drainLifecycle,
+    );
+
+    expect(drainLifecycle.onDeferred).toHaveBeenCalledOnce();
+    expect(drainLifecycle.onCancelled).toHaveBeenCalledOnce();
+    expect(drainLifecycle.onAbandoned).not.toHaveBeenCalled();
+    expect(replay.value).toEqual({ kind: "failed-retryable", error: "turn-cancelled" });
+    await expect(replay.deferredWork?.task).resolves.toEqual({
+      kind: "failed-retryable",
+      error: "turn-cancelled",
+    });
+    expect(finalizeSpooledReplayResult).toHaveBeenCalledExactlyOnceWith(
+      { kind: "failed-retryable", error: "turn-cancelled" },
+      "terminal",
+    );
+  });
+
   it("keeps isolated retry settlement separate from the outer spool participant", async () => {
     buildTelegramMessageContext.mockResolvedValue(createMessageContext());
     const retryError = new Error("retry this attempt");

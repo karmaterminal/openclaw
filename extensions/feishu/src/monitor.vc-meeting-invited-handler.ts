@@ -181,6 +181,9 @@ function createVcInviteAdoption(params: {
       onAdoptionFinalizing: () => {
         handedOff = true;
       },
+      // The logical claim is the only durable state here, so cancellation and
+      // abandonment both just reopen it.
+      onCancelled: abandon,
       onAbandoned: abandon,
     },
     finish: async () => {

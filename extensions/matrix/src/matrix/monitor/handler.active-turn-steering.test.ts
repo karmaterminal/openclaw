@@ -251,4 +251,52 @@ describe("Matrix active-turn steering admission", () => {
     expect(claim.commit).not.toHaveBeenCalled();
     expect(claim.release).toHaveBeenCalledOnce();
   });
+
+  it("reopens a deferred replay claim when the queued turn is cancelled", async () => {
+    const eventId = "$cancelled-followup";
+    installMatrixMonitorTestRuntime();
+    const claim = createClaimSpies();
+    let deferredLifecycle: TurnAdoptionLifecycle | undefined;
+    const inboundDeduper: NonNullable<MatrixMonitorHandlerParams["inboundDeduper"]> = {
+      claim: vi.fn(async () => ({
+        kind: "claimed" as const,
+        handle: {
+          keys: [eventId] as const,
+          commit: claim.commit,
+          release: claim.release,
+        },
+      })),
+    };
+    const runWithDeferredOwnership = (async (params: MatrixInboundRunParams) => {
+      deferredLifecycle = params.turnAdoptionLifecycle;
+      expect(deferredLifecycle?.onDeferred?.()).not.toBe(false);
+      return {
+        admission: { kind: "dispatch" as const },
+        dispatched: true as const,
+        ctxPayload: {} as FinalizedMsgContext,
+        routeSessionKey: "agent:ops:main",
+        dispatchResult: {
+          queuedFinal: false,
+          counts: { final: 0, block: 0, tool: 0 },
+        },
+      };
+    }) as MatrixInboundRun;
+    const { handler } = createMatrixHandlerTestHarness({
+      inboundDeduper,
+      runChannelInboundEvent: runWithDeferredOwnership,
+    });
+
+    await handler(
+      "!room:example.org",
+      createMatrixTextMessageEvent({ eventId, body: "cleared before the active turn ends" }),
+    );
+
+    expect(deferredLifecycle?.onCancelled).toBeTypeOf("function");
+    expect(claim.release).not.toHaveBeenCalled();
+
+    await deferredLifecycle?.onCancelled?.();
+
+    expect(claim.commit).not.toHaveBeenCalled();
+    expect(claim.release).toHaveBeenCalledOnce();
+  });
 });

@@ -229,19 +229,25 @@ export function buildFeishuFlushIngressLifecycle(
       claim.release({ error: new Error("feishu-ingress-not-adopted") });
     }
   };
-  const runAbandon = async () => {
+  // Cancellation and abandonment release the same logical claims; only the
+  // transport disposition differs (budget-free vs. one charged attempt).
+  const runRelease = async (mode: "abandoned" | "cancelled") => {
     if (terminal) {
       return;
     }
     releaseReplayClaims();
-    await transportLifecycle.onAbandoned();
+    if (mode === "cancelled" && transportLifecycle.onCancelled) {
+      await transportLifecycle.onCancelled();
+    } else {
+      await transportLifecycle.onAbandoned();
+    }
     terminal = "abandoned";
   };
-  const ensureAbandoned = async () => {
+  const ensureReleased = async (mode: "abandoned" | "cancelled") => {
     if (terminal) {
       return;
     }
-    const activeAbandonment = abandoning ?? runAbandon();
+    const activeAbandonment = abandoning ?? runRelease(mode);
     abandoning = activeAbandonment;
     try {
       await activeAbandonment;
@@ -251,7 +257,8 @@ export function buildFeishuFlushIngressLifecycle(
       }
     }
   };
-  const abandonAll = async () => {
+  const ensureAbandoned = () => ensureReleased("abandoned");
+  const releaseAll = async (mode: "abandoned" | "cancelled") => {
     if (terminal) {
       return;
     }
@@ -261,7 +268,7 @@ export function buildFeishuFlushIngressLifecycle(
         return;
       }
     }
-    await ensureAbandoned();
+    await ensureReleased(mode);
   };
   const adoptAll = async () => {
     if (terminal) {
@@ -325,9 +332,13 @@ export function buildFeishuFlushIngressLifecycle(
       onAdoptionFinalizing: () => {
         transportLifecycle.onAdoptionFinalizing();
       },
+      onCancelled: async () => {
+        handedOff = true;
+        await releaseAll("cancelled");
+      },
       onAbandoned: async () => {
         handedOff = true;
-        await abandonAll();
+        await releaseAll("abandoned");
       },
     },
     // A gated/no-turn envelope is terminal for transport replay, but its
@@ -394,10 +405,19 @@ export function createFeishuDurableIngress(options: FeishuIngressOptions): Feish
       const abandonHandlers = new Set<() => void | Promise<void>>();
       // Feishu handlers can defer transport settlement across broadcast lanes.
       // Keep their lifecycle registry local while the monitor owns the durable claim.
+      const runAbandonHandlers = async () => {
+        await Promise.allSettled([...abandonHandlers].map(async (handler) => await handler()));
+      };
       const wrappedLifecycle: FeishuIngressLifecycle = {
         ...lifecycle,
+        // Both terminal releases run the channel-local handlers (debounce entry,
+        // logical claim) before the durable claim reopens for redelivery.
+        onCancelled: async () => {
+          await runAbandonHandlers();
+          await (lifecycle.onCancelled ? lifecycle.onCancelled() : lifecycle.onAbandoned());
+        },
         onAbandoned: async () => {
-          await Promise.allSettled([...abandonHandlers].map(async (handler) => await handler()));
+          await runAbandonHandlers();
           await lifecycle.onAbandoned();
         },
         registerAbandonHandler: (handler) => {

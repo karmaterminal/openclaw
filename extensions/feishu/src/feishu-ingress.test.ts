@@ -68,12 +68,14 @@ function createLifecycle() {
     deferred: vi.fn(),
     finalizing: vi.fn(),
     abandoned: vi.fn(async () => {}),
+    cancelled: vi.fn(async () => {}),
   };
   const lifecycle: FeishuIngressLifecycle = {
     abortSignal: new AbortController().signal,
     onAdopted: calls.adopted,
     onDeferred: calls.deferred,
     onAdoptionFinalizing: calls.finalizing,
+    onCancelled: calls.cancelled,
     onAbandoned: calls.abandoned,
   };
   return { calls, lifecycle };
@@ -533,6 +535,68 @@ describe("Feishu durable ingress", () => {
     expect(transport.calls.adopted).not.toHaveBeenCalled();
     expect(replayClaim.commit).not.toHaveBeenCalled();
     expect(replayClaim.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels a merged turn budget-free and reopens its logical claims", async () => {
+    const transport = createLifecycle();
+    const replayClaim = {
+      keys: ["cancelled-merge"] as const,
+      commit: vi.fn(async () => true),
+      release: vi.fn(),
+    };
+    const { lifecycle } = buildFeishuFlushIngressLifecycle([
+      { lifecycle: transport.lifecycle, replayClaim },
+    ]);
+
+    expect(lifecycle?.onCancelled).toBeTypeOf("function");
+    await lifecycle?.onCancelled?.();
+
+    expect(replayClaim.release).toHaveBeenCalledTimes(1);
+    expect(transport.calls.cancelled).toHaveBeenCalledTimes(1);
+    expect(transport.calls.abandoned).not.toHaveBeenCalled();
+    // Cancellation is terminal: a late adoption must not commit anything.
+    await lifecycle?.onAdopted();
+    expect(transport.calls.adopted).not.toHaveBeenCalled();
+    expect(replayClaim.commit).not.toHaveBeenCalled();
+  });
+
+  it("runs registered abandon handlers before forwarding a budget-free cancellation", async () => {
+    await withQueue(async (queue, startIngress) => {
+      const abandonHandler = vi.fn();
+      const claimsAtRedelivery: Array<{ attempts: number; lastError?: string }> = [];
+      const dispatch = vi.fn(async (data: ReturnType<typeof messageEnvelope>) => {
+        const lifecycle = ingress.resolveLifecycle(flattenEnvelope(data));
+        if (!lifecycle) {
+          throw new Error("expected an active Feishu ingress lifecycle");
+        }
+        if (dispatch.mock.calls.length === 1) {
+          lifecycle.registerAbandonHandler?.(abandonHandler);
+          await lifecycle.onCancelled?.();
+          return { kind: "deferred" };
+        }
+        claimsAtRedelivery.push(
+          ...(await queue.listClaims()).map(({ attempts, lastError }) => ({
+            attempts,
+            lastError,
+          })),
+        );
+        await lifecycle.onAdopted();
+        return undefined;
+      });
+      const ingress = startIngress({ queue, dispatcher: createDispatcher(dispatch) });
+      ingress.start();
+      await ingress.invoke(messageEnvelope({ eventId: "evt-cancelled" }), { needCheck: false });
+
+      // The cancelled row is redelivered with no attempt charged, then adopted.
+      await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(2));
+      await ingress.waitForIdle();
+      expect(abandonHandler).toHaveBeenCalledTimes(1);
+      expect(claimsAtRedelivery).toEqual([{ attempts: 0, lastError: undefined }]);
+      expect((await queue.enqueue("evt-cancelled", {} as FeishuIngressPayload)).kind).toBe(
+        "completed",
+      );
+      await ingress.stop();
+    });
   });
 
   it("abandons a gated claim when terminal completion persistence fails", async () => {
