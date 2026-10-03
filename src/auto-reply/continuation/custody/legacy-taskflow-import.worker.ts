@@ -1,9 +1,8 @@
 // Shared-state worker side of the continuation TaskFlow custody import (RFC
-// docs/design/continue-work-signal-v2.md §5.4.5; decision record Decisions 3
-// and 4). The custody dispatcher (custody-store.worker.ts) runs each operation
-// here as one state write transaction under the host's BEGIN and COMMIT
-// admission; legacy-taskflow-import.ts orchestrates them and owns the payload
-// files.
+// docs/design/continue-work-signal-v2.md §5.4.5). The custody dispatcher
+// (custody-store.worker.ts) runs each operation here as one state write
+// transaction under the host's BEGIN and COMMIT admission;
+// legacy-taskflow-import.ts orchestrates them and owns the payload files.
 //
 // Each owner session commits in one state transaction: its imported records,
 // their source receipts, the Q6 scrub of inline bytes, the Q7 fence on every

@@ -1,6 +1,6 @@
 /**
  * Conjecture tests for the post-TaskFlow continuation custody contract
- * (docs/design/continue-work-signal-v2.md §5.4 and §9.2.2 at RFC 5201b2df47).
+ * (docs/design/continue-work-signal-v2.md §5.4 and §9.2.2).
  *
  * Every scenario drives public continuation boundaries: the continue_delegate,
  * continue_work and request_compaction tools, the response-token grammar, the

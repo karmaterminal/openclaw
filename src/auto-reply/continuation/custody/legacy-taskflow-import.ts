@@ -1,6 +1,6 @@
 // Doctor state migrations that move continuation custody off the retired
 // TaskFlow `flow_runs` rows (RFC docs/design/continue-work-signal-v2.md
-// §5.4.5; decision record Decisions 3 and 4). Continuation owns them; the
+// §5.4.5). Continuation owns them; the
 // Doctor state-migration owner runs them, in Doctor and at startup, and
 // custody phase A runs them in the Gateway for owners still awaiting import.
 //
