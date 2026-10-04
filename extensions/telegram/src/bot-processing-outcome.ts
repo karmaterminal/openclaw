@@ -88,7 +88,10 @@ export function createTelegramSpooledReplayParticipant(
   key: string,
 ): TelegramSpooledReplayDeferredParticipant {
   const abortController = new AbortController();
-  const ownerAbortSignal = telegramSpooledReplayFrames.getStore()?.lifecycle?.abortSignal;
+  // Capture the claim owner's lifecycle once, at creation: buffered media-group and debounce
+  // participants are held later, together, from whatever ALS frame is current then.
+  const ownerLifecycle = telegramSpooledReplayFrames.getStore()?.lifecycle;
+  const ownerAbortSignal = ownerLifecycle?.abortSignal;
   const abortSignal = ownerAbortSignal
     ? AbortSignal.any([abortController.signal, ownerAbortSignal])
     : abortController.signal;
@@ -141,8 +144,8 @@ export function createTelegramSpooledReplayParticipant(
       }
       settlementHeld = true;
       // Timeout settlement must wait for durable adoption finalization: pause
-      // the drain stall watchdog while the hold is active.
-      telegramSpooledReplayFrames.getStore()?.lifecycle?.onAdoptionFinalizing?.();
+      // this participant's own claim watchdog, not the finalizing frame's claim.
+      ownerLifecycle?.onAdoptionFinalizing?.();
       let released = false;
       return {
         release: (mode) => {
