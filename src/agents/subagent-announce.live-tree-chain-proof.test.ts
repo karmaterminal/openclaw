@@ -699,7 +699,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
         spans.some((span) => span.name === "continuation.delegate.dispatch") &&
         spans.some((span) => span.name === "continuation.delegate.fire")
       );
-    }, 12_000);
+    }, 4_000);
 
     const flows = await continuationDelegateFlows(originChildSessionKey);
     const flow = flows[0];
