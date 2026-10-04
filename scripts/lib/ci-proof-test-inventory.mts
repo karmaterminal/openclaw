@@ -1069,7 +1069,7 @@ export const PR_PROTECTED_RUNTIME_TEST_FILES: readonly string[] = [
   "src/agents/embedded-agent-runner/compact.auth-preparation.test.ts",
   "src/agents/embedded-agent-runner/compact.delegate.test.ts",
   "src/agents/embedded-agent-runner/compact.foreground-resources.test.ts",
-  "src/agents/embedded-agent-runner/compact.hooks.session-state.test.ts",
+  "src/agents/embedded-agent-runner/compact.hooks.continuation.test.ts",
   "src/agents/embedded-agent-runner/compact.hooks.test.ts",
   "src/agents/embedded-agent-runner/compact.queued-resources.test.ts",
   "src/agents/embedded-agent-runner/compact.queued-successor.test.ts",
