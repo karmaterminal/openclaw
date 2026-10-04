@@ -23,6 +23,7 @@ import {
   clearOpenClawStateDatabaseOpenFailure,
   openClawStateDatabaseCache,
 } from "./openclaw-state-db-cache.js";
+import { repairContinuationRecordsV20Shape } from "./openclaw-state-db-continuation-shape-repair.js";
 import {
   LAZY_ADDITIVE_STATE_TABLES,
   DOCTOR_OWNED_STATE_TABLES,
@@ -216,6 +217,16 @@ export function repairStateSchema(
         } else {
           openClawStateMigrationAssertions.get(previousVersion)?.(db, { pathname });
           assertSqliteIntegrity(db, pathname);
+        }
+        // Fork-only #1423: after the presence/index gates, before every
+        // column-definition (canonical-shape) check below.
+        const continuationShapeRepair = repairContinuationRecordsV20Shape(
+          db,
+          pathname,
+          previousVersion,
+        );
+        if (continuationShapeRepair) {
+          applied.push(continuationShapeRepair);
         }
         dropLegacyStateTables(db);
         applied.push(...retirements.runRetiredStateTableMigrations(db, previousVersion));

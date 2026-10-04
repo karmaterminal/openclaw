@@ -69,6 +69,7 @@ const rawSqliteAllowPathGroups = {
     "src/state/openclaw-agent-transcript-payload-migration.ts",
     "src/state/openclaw-agent-transcript-fts-schema.ts",
     "src/state/openclaw-state-db-audit-migration.ts",
+    "src/state/openclaw-state-db-continuation-shape-repair.ts",
     "src/state/openclaw-state-db-delivery-queue-backfill.ts",
     "src/state/openclaw-state-db-legacy-backfills.ts",
     "src/state/openclaw-state-db-maintenance.ts",
