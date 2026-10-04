@@ -13,6 +13,10 @@ test.each(["new", "reset"] as const)(
   "gateway /%s preserves accepted recipient authority through return enqueue",
   async (reason) => {
     const { storePath } = await seedActiveMainSession();
+    const gatewayStateDir = process.env.OPENCLAW_STATE_DIR;
+    if (!gatewayStateDir) {
+      throw new Error("gateway sessions harness did not isolate OPENCLAW_STATE_DIR");
+    }
     const sessionKey = "agent:main:main";
     const scope = { agentId: "main", sessionKey, storePath };
     const beforeReset = loadSessionEntry(scope);
@@ -70,7 +74,10 @@ test.each(["new", "reset"] as const)(
         awaitPromptAdoption: true,
         sessionKey,
       }),
-      undefined,
+      // No explicit queue state dir: the delivery binds to the gateway's own state dir.
+      expect.objectContaining({
+        environment: expect.objectContaining({ OPENCLAW_STATE_DIR: gatewayStateDir }),
+      }),
     );
     expect(enqueueSystemEvent).toHaveBeenCalledOnce();
     expect(requestHeartbeatNow).toHaveBeenCalledOnce();
