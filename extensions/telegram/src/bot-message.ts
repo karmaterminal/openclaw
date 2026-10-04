@@ -412,6 +412,18 @@ export const createTelegramMessageProcessor = (
             },
             onDeferredHeartbeat: () => drainLifecycle?.onDeferredHeartbeat?.(),
             deferredHeartbeatIntervalMs: drainLifecycle?.deferredHeartbeatIntervalMs,
+            onCancelled: () => {
+              if (!adopted) {
+                void settle({ kind: "failed-retryable", error: "turn-cancelled" }, "terminal");
+              }
+              // An intentional relinquish (queue clear, shutdown) reopens the
+              // spool row without spending its retry budget. The drain settles
+              // first, so the participant's later failed-retryable terminal
+              // finds the claim already released and does not charge an attempt.
+              void (drainLifecycle?.onCancelled
+                ? drainLifecycle.onCancelled()
+                : drainLifecycle?.onAbandoned());
+            },
             onAbandoned: () => {
               if (!adopted) {
                 void settle({ kind: "failed-retryable", error: "turn-abandoned" }, "terminal");

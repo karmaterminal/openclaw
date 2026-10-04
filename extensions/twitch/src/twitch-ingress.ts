@@ -138,6 +138,10 @@ export function createTwitchIngress(options: {
           },
           onDeferredHeartbeat: () => lifecycle.onDeferredHeartbeat?.(),
           deferredHeartbeatIntervalMs: lifecycle.deferredHeartbeatIntervalMs,
+          onCancelled: async () => {
+            handedOff = true;
+            await (lifecycle.onCancelled ? lifecycle.onCancelled() : lifecycle.onAbandoned());
+          },
           onAbandoned: async () => {
             handedOff = true;
             await lifecycle.onAbandoned();

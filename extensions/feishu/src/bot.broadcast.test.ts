@@ -24,6 +24,7 @@ function createIngressLifecycle() {
     deferredHeartbeat: vi.fn(),
     finalizing: vi.fn(),
     abandoned: vi.fn(async () => {}),
+    cancelled: vi.fn(async () => {}),
   };
   const lifecycle: FeishuIngressLifecycle = {
     abortSignal: new AbortController().signal,
@@ -31,6 +32,7 @@ function createIngressLifecycle() {
     onDeferred: calls.deferred,
     onDeferredHeartbeat: calls.deferredHeartbeat,
     onAdoptionFinalizing: calls.finalizing,
+    onCancelled: calls.cancelled,
     onAbandoned: calls.abandoned,
   };
   return { calls, lifecycle };
@@ -415,5 +417,37 @@ describe("broadcast dispatch", () => {
     expect(susanClaim.commit).toHaveBeenCalledTimes(1);
     expect(transport.calls.adopted).toHaveBeenCalledTimes(1);
     expect(broadcastClaim.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels the shared transport claim budget-free when a deferred lane is cancelled", async () => {
+    const { broadcastClaim, susanClaim, mainClaim } = mockBroadcastClaims("broadcast-cancelled");
+    let deferredLifecycle: Pick<FeishuIngressLifecycle, "onDeferred" | "onCancelled"> | undefined;
+    mockDispatchReply.mockImplementation(async ({ ctx, replyOptions }) => {
+      if (String(ctx.SessionKey).startsWith("agent:susan:")) {
+        deferredLifecycle = replyOptions?.turnAdoptionLifecycle;
+        deferredLifecycle?.onDeferred();
+        return { queuedFinal: false, counts: { final: 1 }, deferAdoption: true };
+      }
+      return { queuedFinal: false, counts: { final: 1 } };
+    });
+    const transport = createIngressLifecycle();
+
+    await dispatchBroadcast("msg-broadcast-cancelled", {
+      turnAdoptionLifecycle: transport.lifecycle,
+    });
+
+    expect(transport.calls.deferred).toHaveBeenCalledTimes(1);
+    expect(mainClaim.commit).toHaveBeenCalledTimes(1);
+    expect(deferredLifecycle?.onCancelled).toBeTypeOf("function");
+
+    await deferredLifecycle?.onCancelled?.();
+
+    expect(transport.calls.cancelled).toHaveBeenCalledTimes(1);
+    expect(transport.calls.abandoned).not.toHaveBeenCalled();
+    expect(transport.calls.adopted).not.toHaveBeenCalled();
+    expect(susanClaim.release).toHaveBeenCalledTimes(1);
+    expect(susanClaim.commit).not.toHaveBeenCalled();
+    expect(broadcastClaim.release).toHaveBeenCalledTimes(1);
+    expect(broadcastClaim.commit).not.toHaveBeenCalled();
   });
 });

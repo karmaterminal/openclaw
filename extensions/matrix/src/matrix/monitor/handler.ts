@@ -384,6 +384,13 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         sessionKey: _route.sessionKey,
       });
       const replayClaimAtDispatch = inboundReplayClaim;
+      // Cancellation and abandonment both reopen the claim for Matrix replay.
+      const releaseReplayClaim = () => {
+        if (replayClaimAtDispatch && inboundReplayClaim === replayClaimAtDispatch) {
+          inboundReplayClaim = undefined;
+        }
+        replayClaimAtDispatch?.release();
+      };
       // Active-run deferral outlives this handler. Transfer the exact replay claim to the
       // reply lane so adoption commits it and abandonment reopens it for Matrix replay.
       const turnAdoptionLifecycle = replayClaimAtDispatch
@@ -402,12 +409,8 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
               }
               await replayClaimAtDispatch.commit();
             },
-            onAbandoned: () => {
-              if (inboundReplayClaim === replayClaimAtDispatch) {
-                inboundReplayClaim = undefined;
-              }
-              replayClaimAtDispatch.release();
-            },
+            onCancelled: releaseReplayClaim,
+            onAbandoned: releaseReplayClaim,
           }
         : undefined;
 

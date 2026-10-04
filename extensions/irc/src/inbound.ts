@@ -403,6 +403,12 @@ export async function handleIrcInbound(params: {
           ingressState.handoff = "deferred";
           turnAdoptionLifecycle.onDeferred();
         },
+        onCancelled: async () => {
+          ingressState.handoff = "abandoned";
+          await (turnAdoptionLifecycle.onCancelled
+            ? turnAdoptionLifecycle.onCancelled()
+            : turnAdoptionLifecycle.onAbandoned());
+        },
         onAbandoned: async () => {
           ingressState.handoff = "abandoned";
           await turnAdoptionLifecycle.onAbandoned();

@@ -1,7 +1,12 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  completeFollowupRunLifecycle,
+  markFollowupRunEnqueued,
+} from "../../auto-reply/reply/queue/lifecycle.js";
 import { fanInChannelIngressLifecycles } from "../../plugin-sdk/channel-ingress-runtime.js";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
+import { bindIngressLifecycleToReplyOptions } from "./ingress-drain-lifecycle.js";
 import { createChannelIngressDrain } from "./ingress-drain.js";
 import {
   createTestIngressQueue,
@@ -131,6 +136,77 @@ describe("channel ingress drain cancellation", () => {
       );
       expect(await queue.listFailed?.()).toEqual([]);
       drain.dispose();
+    });
+  });
+
+  it("keeps an aged retry-ceiling row pending when its queued turn is intentionally cleared", async () => {
+    await withTempState(async (stateDir) => {
+      let clock = 1_000_000;
+      const maxAttempts = 3;
+      const queue = createTestIngressQueue(stateDir, { now: () => clock });
+      await queue.enqueue("aged", { text: "x" }, { laneKey: "l", receivedAt: 1 });
+      // Two prior genuine failures: one more charged attempt dead-letters this row.
+      for (let attempt = 0; attempt < maxAttempts - 1; attempt += 1) {
+        const claim = expectDefined(
+          await queue.claim("aged", { ownerId: `prior-${attempt}` }),
+          "prior claim",
+        );
+        await queue.release(claim, { lastError: "previous failure", releasedAt: clock });
+      }
+      const before = expectDefined((await queue.listPending())[0], "aged row");
+      expect(before.attempts).toBe(maxAttempts - 1);
+
+      // The path every bundled channel takes: durable claim -> fan-in -> reply
+      // binding -> queued followup, then the reply queue settles the turn.
+      const settleQueuedTurn = async (disposition: "cancelled" | undefined) => {
+        clock += 1;
+        const runs: Parameters<typeof markFollowupRunEnqueued>[0][] = [];
+        const drain = createChannelIngressDrain<Payload>({
+          queue,
+          now: () => clock,
+          retryPolicy: { maxAttempts, deadLetterMinAgeMs: 0, baseMs: 0, maxMs: 0 },
+          dispatchClaimedEvent: async (_event, lifecycle) => {
+            const fannedIn = expectDefined(
+              fanInChannelIngressLifecycles([lifecycle]).lifecycle,
+              "fan-in lifecycle",
+            );
+            const run = {
+              turnAdoptionLifecycle:
+                bindIngressLifecycleToReplyOptions(fannedIn).turnAdoptionLifecycle,
+            };
+            expect(markFollowupRunEnqueued(run)).toBe(true);
+            runs.push(run);
+            return { kind: "deferred" };
+          },
+        });
+        await drain.drainOnce();
+        await vi.waitFor(() => expect(runs).toHaveLength(1));
+        completeFollowupRunLifecycle(expectDefined(runs[0], "queued run"), disposition);
+        await vi.waitFor(async () => expect(await queue.listClaims()).toEqual([]));
+        drain.dispose();
+      };
+
+      await settleQueuedTurn("cancelled");
+      expect(await queue.listPending()).toEqual([
+        expect.objectContaining({
+          id: "aged",
+          attempts: before.attempts,
+          lastAttemptAt: before.lastAttemptAt,
+          lastError: "previous failure",
+        }),
+      ]);
+      expect(await queue.listFailed?.()).toEqual([]);
+
+      // Positive control: the same turn genuinely abandoned is the ceiling attempt.
+      await settleQueuedTurn(undefined);
+      expect(await queue.listPending()).toEqual([]);
+      expect(await queue.listFailed?.()).toEqual([
+        expect.objectContaining({
+          id: "aged",
+          reason: "retry-limit-exceeded",
+          message: "turn-abandoned",
+        }),
+      ]);
     });
   });
 });

@@ -100,10 +100,13 @@ export type TurnAdoptionLifecycle = {
   onDeferred?: () => boolean | void;
   /** Pre-adoption liveness while waiting for reply-lane admission or preflight compaction. */
   onDeferredHeartbeat?: () => void;
-  /** Explicit cancellation before adoption; releases without consuming retry budget. */
-  onCancelled?: () => void | Promise<void>;
   /** Requested cadence for pre-adoption heartbeats. */
   deferredHeartbeatIntervalMs?: number;
+  /**
+   * Ownership ended before the reply lane by intent (queue clear/drop,
+   * shutdown relinquish, abort). Settles without spending retry budget.
+   */
+  onCancelled?: () => void | Promise<void>;
   /** Deferred turn finished without owning the reply lane. */
   onAbandoned?: () => void;
   /** Always fires when the followup ownership cycle ends (admitted or not). Gateway cleanup. */

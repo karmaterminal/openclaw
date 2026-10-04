@@ -52,6 +52,10 @@ describe("channel ingress drain lifecycle", () => {
     expect(calls).toEqual(["deferred", "cancelled"]);
     calls.length = 0;
     bound.turnAdoptionLifecycle.onDeferred();
+    await bound.turnAdoptionLifecycle.onCancelled?.();
+    expect(calls).toEqual(["deferred", "cancelled"]);
+    calls.length = 0;
+    bound.turnAdoptionLifecycle.onDeferred();
     await bound.turnAdoptionLifecycle.onAdopted();
     expect(calls).toEqual(["deferred", "adopted"]);
   });

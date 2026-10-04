@@ -33,6 +33,7 @@ import {
 } from "./queue.js";
 import { clearFollowupQueueForTest, createQueueTestRun } from "./queue.test-helpers.js";
 import { resetRecentQueuedMessageIdDedupe } from "./queue/enqueue.test-support.js";
+import { clearFollowupQueue } from "./queue/state.js";
 import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
 import { testing as replyRunTesting } from "./reply-run-registry.test-support.js";
 import { buildTestCtx } from "./test-ctx.js";
@@ -57,6 +58,10 @@ const QUEUE_SETTINGS = {
   cap: 10,
   dropPolicy: "summarize",
 } as const;
+
+// One attempt and no age floor: any abandonment dead-letters immediately, so a
+// cancellation that leaked into the retry budget would be visible at once.
+const ONE_ATTEMPT = { maxAttempts: 1, deadLetterMinAgeMs: 0, baseMs: 0, maxMs: 0 } as const;
 
 describe("queued ingress cancellation through the reply terminal path", () => {
   it("settles the durable claim once through cancellation and keeps its retry budget", async () => {
@@ -157,7 +162,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         queue,
         now: () => clock,
         abortSignal: stop.signal,
-        retryPolicy: { baseMs: 1, maxMs: 1 },
+        retryPolicy: ONE_ATTEMPT,
         dispatchClaimedEvent: async (_event, lifecycle) => {
           const instrumented: ChannelIngressDispatchLifecycle = {
             ...lifecycle,
@@ -219,7 +224,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         const recovery = createChannelIngressDrain({
           queue,
           now: () => clock,
-          retryPolicy: { baseMs: 1, maxMs: 1 },
+          retryPolicy: ONE_ATTEMPT,
           dispatchClaimedEvent: async (_event, lifecycle) => {
             await debouncer.enqueue({ key, lifecycle });
           },
@@ -238,6 +243,105 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         expect(outcomes.at(-1)).toMatchObject({ outcome: "completed" });
         expect(await queue.listPending()).toEqual([]);
         expect(await queue.listClaims()).toEqual([]);
+      } finally {
+        drain.dispose();
+        clearFollowupQueueForTest(key);
+      }
+    });
+  });
+
+  it("clears a queue of unadmitted work without charging any claim an attempt", async () => {
+    await withTempState(async (stateDir) => {
+      const key = "agent:main:discord:direct:ingress-clear";
+      const queue = createTestIngressQueue(stateDir);
+      await queue.enqueue("first", { text: "a" }, { laneKey: "lane-a" });
+      await queue.enqueue("second", { text: "b" }, { laneKey: "lane-b" });
+      const drain = createChannelIngressDrain({
+        queue,
+        retryPolicy: ONE_ATTEMPT,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          const run: FollowupRun = {
+            ...createQueueTestRun({ prompt: event.id, messageId: event.id }),
+            turnAdoptionLifecycle:
+              bindIngressLifecycleToReplyOptions(lifecycle).turnAdoptionLifecycle,
+          };
+          expect(enqueueFollowupRun(key, run, QUEUE_SETTINGS, "message-id", undefined, false)).toBe(
+            true,
+          );
+          return { kind: "deferred" };
+        },
+      });
+
+      try {
+        await drain.drainOnce();
+        await drain.waitForIdle();
+        expect(await queue.listClaims()).toHaveLength(2);
+
+        // The queue is cleared while both turns wait for admission.
+        expect(clearFollowupQueue(key)).toBe(2);
+        await vi.waitFor(async () => {
+          expect(await queue.listClaims()).toEqual([]);
+        });
+
+        expect(await queue.listPending()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ id: "first", attempts: 0 }),
+            expect.objectContaining({ id: "second", attempts: 0 }),
+          ]),
+        );
+        expect(await queue.listFailed?.()).toEqual([]);
+      } finally {
+        drain.dispose();
+        clearFollowupQueueForTest(key);
+      }
+    });
+  });
+
+  it("cancels every durable claim of a fan-in through the bound reply lifecycle", async () => {
+    await withTempState(async (stateDir) => {
+      const key = "agent:main:discord:direct:ingress-fan-in-cancel";
+      const queue = createTestIngressQueue(stateDir);
+      await queue.enqueue("one", { text: "x" }, { laneKey: "lane-one" });
+      await queue.enqueue("two", { text: "x" }, { laneKey: "lane-two" });
+      const claimed = new Map<string, ChannelIngressDispatchLifecycle>();
+      const drain = createChannelIngressDrain({
+        queue,
+        retryPolicy: ONE_ATTEMPT,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          claimed.set(event.id, lifecycle);
+          lifecycle.onDeferred();
+          return { kind: "deferred" };
+        },
+      });
+
+      try {
+        await drain.drainOnce();
+        await drain.waitForIdle();
+        const one = claimed.get("one");
+        const two = claimed.get("two");
+        if (!one || !two) {
+          throw new Error("drain did not claim both events");
+        }
+        const fanned = fanInChannelIngressLifecycles([one, two]);
+        const run: FollowupRun = {
+          ...createQueueTestRun({ prompt: "fanned", messageId: "fanned" }),
+          turnAdoptionLifecycle: fanned.lifecycle
+            ? bindIngressLifecycleToReplyOptions(fanned.lifecycle).turnAdoptionLifecycle
+            : undefined,
+        };
+
+        completeFollowupRunLifecycle(run, "cancelled");
+
+        await vi.waitFor(async () => {
+          expect(await queue.listClaims()).toEqual([]);
+        });
+        expect(await queue.listPending()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ id: "one", attempts: 0 }),
+            expect.objectContaining({ id: "two", attempts: 0 }),
+          ]),
+        );
+        expect(await queue.listFailed?.()).toEqual([]);
       } finally {
         drain.dispose();
         clearFollowupQueueForTest(key);
@@ -312,8 +416,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
       const aborts = new Map<string, AbortController>();
       const drain = createChannelIngressDrain({
         queue,
-        // One attempt: abandonment would dead-letter the aborted row.
-        retryPolicy: { maxAttempts: 1, deadLetterMinAgeMs: 0, baseMs: 0, maxMs: 0 },
+        retryPolicy: ONE_ATTEMPT,
         dispatchClaimedEvent: async (event, lifecycle) => {
           const abort = new AbortController();
           aborts.set(event.id, abort);

@@ -324,6 +324,18 @@ export function createSlackMessageHandler(params: {
                     ...(deferredHeartbeatIntervals.length > 0
                       ? { deferredHeartbeatIntervalMs: Math.min(...deferredHeartbeatIntervals) }
                       : {}),
+                    onCancelled: () => {
+                      settlementHandedOff = true;
+                      // Logical replay claims reopen on either terminal release;
+                      // the owners below decide whether an attempt is charged.
+                      releaseClaims();
+                      void (turnAdoptionLifecycle?.onCancelled
+                        ? turnAdoptionLifecycle.onCancelled()
+                        : turnAdoptionLifecycle?.onAbandoned());
+                      void (admissionLifecycle.onCancelled
+                        ? admissionLifecycle.onCancelled()
+                        : admissionLifecycle.onAbandoned());
+                    },
                     onAbandoned: () => {
                       settlementHandedOff = true;
                       releaseClaims();

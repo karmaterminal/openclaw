@@ -231,6 +231,38 @@ describe("irc inbound behavior", () => {
     expect(result).toEqual({ kind: "completed" });
   });
 
+  it("forwards a budget-free cancellation and does not adopt the cancelled turn", async () => {
+    const coreRuntime = createPluginRuntimeMock();
+    setIrcRuntime(coreRuntime as never);
+    const turnAdoptionLifecycle: IrcIngressLifecycle = {
+      abortSignal: new AbortController().signal,
+      onAdopted: vi.fn(async () => undefined),
+      onDeferred: vi.fn(),
+      onAdoptionFinalizing: vi.fn(),
+      onCancelled: vi.fn(async () => undefined),
+      onAbandoned: vi.fn(async () => undefined),
+    };
+    type DispatchParams = { replyOptions?: { turnAdoptionLifecycle?: IrcIngressLifecycle } };
+    const dispatch = coreRuntime.channel.inbound.dispatch as unknown as ReturnType<
+      typeof vi.fn<(params: DispatchParams) => Promise<void>>
+    >;
+    dispatch.mockImplementationOnce(async (params) => {
+      await params.replyOptions?.turnAdoptionLifecycle?.onCancelled?.();
+    });
+
+    const result = await receive({
+      account: createAccount({ config: openConfig }),
+      turnAdoptionLifecycle,
+      sendReply: vi.fn(async () => {}),
+    });
+
+    expect(turnAdoptionLifecycle.onCancelled).toHaveBeenCalledOnce();
+    expect(turnAdoptionLifecycle.onAbandoned).not.toHaveBeenCalled();
+    // A cancelled turn ended ownership; the no-dispatch fallback must not tombstone it.
+    expect(turnAdoptionLifecycle.onAdopted).not.toHaveBeenCalled();
+    expect(result).toEqual({ kind: "deferred" });
+  });
+
   it.each([
     {
       name: "mixed assistant text",
