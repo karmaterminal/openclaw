@@ -3,14 +3,14 @@ import type { ChannelIngressQueueRecord } from "openclaw/plugin-sdk/channel-outb
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { describe, expect, it } from "vitest";
 import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inventory.js";
+import { createInternalTestClient } from "../internal/test-builders.test-support.js";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
-import {
-  createDiscordStaleAmbientPendingDisposition,
-  DISCORD_STALE_AMBIENT_BACKLOG_MS,
-  DISCORD_STALE_AMBIENT_BACKLOG_REASON,
-} from "./ingress-stale-policy.js";
+import { createDiscordStaleAmbientPendingDisposition } from "./ingress-stale-policy.js";
 import type { DiscordLivePolicy } from "./live-policy.js";
 
+// The policy's contract values, pinned here rather than exported for tests only.
+const DISCORD_STALE_AMBIENT_BACKLOG_MS = 15 * 60 * 1_000;
+const DISCORD_STALE_AMBIENT_BACKLOG_REASON = "stale-ambient-backlog";
 const BOT_ID = "bot-1";
 const NOW = 10 * DISCORD_STALE_AMBIENT_BACKLOG_MS;
 const STALE_AT = NOW - DISCORD_STALE_AMBIENT_BACKLOG_MS - 1;
@@ -27,6 +27,7 @@ const NAMED_AGENT_CFG = {
 
 type PolicyOverrides = {
   cfg?: OpenClawConfig;
+  discordConfig?: Record<string, unknown>;
   guildEntries?: Record<string, DiscordGuildEntryResolved>;
   isCurrent?: () => boolean;
   allowFrom?: string[];
@@ -37,7 +38,7 @@ function livePolicy(overrides: PolicyOverrides = {}): DiscordLivePolicy {
     isCurrent: overrides.isCurrent ?? (() => true),
     accountId: "default",
     cfg: overrides.cfg ?? ({} as OpenClawConfig),
-    discordConfig: {},
+    discordConfig: overrides.discordConfig ?? {},
     guildEntries: overrides.guildEntries,
     allowFrom: overrides.allowFrom ?? [],
     dmPolicy: "open",
@@ -103,6 +104,7 @@ async function resolve(
   const policy = livePolicy(params);
   const disposition = createDiscordStaleAmbientPendingDisposition({
     botUserId: "botUserId" in params ? params.botUserId : BOT_ID,
+    client: createInternalTestClient(),
     readPolicy: params.readPolicy ?? (async () => policy),
     resolveChannelInfo: () => ("channelInfo" in params ? params.channelInfo : GENERAL),
     isChannelInventoryHydrating: () => params.hydrating === true,
@@ -148,7 +150,15 @@ describe("discord stale ambient pending disposition", () => {
   it("preserves mentioned work", async () => {
     await expect(resolve({ message: { mentions: [{ id: BOT_ID }] } })).resolves.toBeNull();
     await expect(resolve({ message: { mention_everyone: true } })).resolves.toBeNull();
-    await expect(resolve({ message: { content: `hey <@${BOT_ID}> look` } })).resolves.toBeNull();
+    await expect(
+      resolve({ message: { content: `hey <@${BOT_ID}> look`, mentions: [{ id: BOT_ID }] } }),
+    ).resolves.toBeNull();
+    // Preflight reads the native mentions array; a bare <@id> in text alone is not a mention.
+    await expect(resolve({ message: { content: `hey <@${BOT_ID}> look` } })).resolves.toMatchObject(
+      {
+        reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON,
+      },
+    );
     await expect(
       resolve({ message: { referenced_message: { author: { id: BOT_ID } } } }),
     ).resolves.toBeNull();
@@ -165,6 +175,7 @@ describe("discord stale ambient pending disposition", () => {
     ).resolves.toBeNull();
   });
 
+  // Fleet overlay (#1415): principals are never ambient.
   it("never drops a principal's stale un-mentioned message", async () => {
     const owners = {
       commands: { ownerAllowFrom: ["user:100000000000000001"] },
@@ -213,19 +224,20 @@ describe("discord stale ambient pending disposition", () => {
   });
 
   it("reads the canonical text of an empty-content embed message", async () => {
-    // Preflight falls back to embed title/description, so preclaim must too.
+    // Preflight reads commands from embed title/description, but runs mention
+    // patterns on typed content only, so a name in an embed is not a mention.
     await expect(
       resolve({
         cfg: NAMED_AGENT_CFG,
         message: { content: "", embeds: [{ title: "claw please look" }] },
       }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
     await expect(
       resolve({ message: { content: "", embeds: [{ description: "/status" }] } }),
     ).resolves.toBeNull();
     await expect(
       resolve({ message: { content: "", embeds: [{ title: `ping <@${BOT_ID}>` }] } }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
     await expect(
       resolve({ message: { content: "", embeds: [{ title: "release notes" }] } }),
     ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
@@ -235,18 +247,19 @@ describe("discord stale ambient pending disposition", () => {
     const components = (content: string) => [
       { type: ComponentType.Container, components: [{ type: ComponentType.TextDisplay, content }] },
     ];
+    // Same rule as embeds: commands yes, mention patterns no.
     await expect(
       resolve({
         cfg: NAMED_AGENT_CFG,
         message: { content: "", components: components("claw have a look") },
       }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
     await expect(
       resolve({ message: { content: "", components: components("/status") } }),
     ).resolves.toBeNull();
     await expect(
       resolve({ message: { content: "", components: components(`<@${BOT_ID}> hi`) } }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
     await expect(
       resolve({ message: { content: "", components: components("deploy finished") } }),
     ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
@@ -362,6 +375,15 @@ describe("discord stale ambient pending disposition", () => {
     await expect(
       resolve({ cfg: NAMED_AGENT_CFG, message: { content: "claw can you look at this" } }),
     ).resolves.toBeNull();
+    // An agent configured only under keyed agents.entries is part of the roster too.
+    await expect(
+      resolve({
+        cfg: {
+          agents: { entries: { helper: { groupChat: { mentionPatterns: ["\\bhelper\\b"] } } } },
+        } as unknown as OpenClawConfig,
+        message: { content: "helper, can you look at this" },
+      }),
+    ).resolves.toBeNull();
     await expect(
       resolve({
         cfg: NAMED_AGENT_CFG,
@@ -371,6 +393,39 @@ describe("discord stale ambient pending disposition", () => {
         },
       }),
     ).resolves.toBeNull();
+  });
+
+  it("preserves an explicit broadcast-participant mention the provider policy would filter", async () => {
+    // ClawSweeper rev 17: preflight's participant matcher uses unfiltered agent
+    // patterns, so denyIn on the provider policy does not make "@helper" ambient.
+    const cfg = {
+      agents: { entries: { helper: { groupChat: { mentionPatterns: ["\\bhelper\\b"] } } } },
+      broadcast: { "discord:c1": ["helper"] },
+    } as unknown as OpenClawConfig;
+    const denyHere = { mentionPatterns: { denyIn: ["c1"] } };
+    await expect(
+      resolve({
+        cfg,
+        discordConfig: denyHere,
+        message: { content: "@helper can you look at this" },
+      }),
+    ).resolves.toBeNull();
+    // Controls, each the way preflight decides them: no explicit address is no
+    // participant mention, and without a broadcast entry the filtered patterns rule.
+    await expect(
+      resolve({
+        cfg,
+        discordConfig: denyHere,
+        message: { content: "helper can you look at this" },
+      }),
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
+    await expect(
+      resolve({
+        cfg: { agents: cfg.agents } as unknown as OpenClawConfig,
+        discordConfig: denyHere,
+        message: { content: "@helper can you look at this" },
+      }),
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
   });
 
   it("preserves work when the bot identity is unknown", async () => {
@@ -401,6 +456,7 @@ describe("discord stale ambient pending disposition", () => {
     ).resolves.toBeNull();
   });
 
+  // Fleet overlay (#1415): fail open on an unreadable author.
   it("keeps rows without a usable author claimable", async () => {
     // An unreadable author cannot prove the sender is not a principal.
     for (const author of [undefined, null, {}, { id: "" }, { id: 5 }, "user-1"]) {

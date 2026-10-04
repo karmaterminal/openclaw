@@ -92,8 +92,8 @@ export type CreateChannelIngressDrainOptions<
     derivedLaneKey: string,
   ) => boolean;
   /**
-   * Optional channel policy that may terminally fail a stored pending row
-   * before it is claimed. Return null/undefined to keep the row claimable.
+   * Optional channel policy that may terminally fail or hold a stored pending
+   * row before it is claimed. Return null/undefined to keep the row claimable.
    */
   resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
   ownerId?: string;

@@ -14,11 +14,7 @@ export type DiscordGatewayChannelInfo = {
   guildId?: string;
   name?: string;
   parentId?: string;
-  /**
-   * Declared as the enum rather than a bare number: the inventory only accepts
-   * an APIChannel `type`, so widening it here makes every comparison against a
-   * ChannelType member an unsafe cross-type comparison at each call site.
-   */
+  /** The enum, not a bare number, so ChannelType comparisons stay type-checked. */
   type: ChannelType;
 };
 
@@ -42,10 +38,7 @@ function readChannel(
   };
 }
 
-/**
- * Session-scoped guild channel/thread inventory rebuilt from gateway dispatches.
- * Callers treat a miss as "unknown", never as "not a guild channel".
- */
+/** Session-scoped channel/thread inventory from gateway dispatches. A miss means "unknown". */
 export class DiscordGatewayChannelInventory {
   private readonly channels = new Map<string, DiscordGatewayChannelInfo>();
   // Guilds READY announced whose GUILD_CREATE snapshot has not arrived yet.
@@ -60,19 +53,14 @@ export class DiscordGatewayChannelInventory {
     return this.channels.get(channelId);
   }
 
-  /**
-   * True while this session has announced the guild but not yet delivered its
-   * channels. Callers must not classify the guild's channels until it is false.
-   */
+  /** True between READY naming the guild and the guild's GUILD_CREATE. */
   isGuildHydrating(guildId: string): boolean {
     return this.hydratingGuildIds.has(guildId);
   }
 
   apply(payload: GatewayDispatchPayload): void {
     if (payload.t === GatewayDispatchEvents.Ready) {
-      // READY starts a new authoritative guild snapshot and names every guild
-      // whose channels are still to come. RESUMED intentionally retains the
-      // prior inventory until Discord sends incremental updates.
+      // A new authoritative snapshot; RESUMED keeps the old one and replays deltas.
       this.clear();
       for (const guild of payload.d.guilds ?? []) {
         if (typeof guild?.id === "string") {
@@ -88,8 +76,7 @@ export class DiscordGatewayChannelInventory {
       if ("unavailable" in guild && guild.unavailable) {
         return;
       }
-      // A partial snapshot leaves its channels unknown instead of throwing
-      // inside the shared dispatch path.
+      // A partial snapshot leaves its channels unknown rather than throwing.
       for (const entry of [
         ...(Array.isArray(guild.channels) ? guild.channels : []),
         ...(Array.isArray(guild.threads) ? guild.threads : []),

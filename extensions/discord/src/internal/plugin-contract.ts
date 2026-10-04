@@ -46,9 +46,9 @@ export interface GatewayPluginContract {
   fetchGuildEmojis<T>(guildId: string, fetcher: () => Promise<T>): Promise<T>;
   listVoiceChannelStates(guildId: string, channelId: string): APIVoiceState[] | null;
   takeVoiceStateTransition(state: APIVoiceState): DiscordGatewayVoiceStateTransition | null;
-  /** Authoritative gateway channel facts; undefined means "not known here". */
+  // Required: an optional hydration probe would let a caller's "cannot answer
+  // yet" fallback hold a gateway's backlog forever.
   getGatewayChannelInfo(channelId: string): DiscordGatewayChannelInfo | undefined;
-  /** True while this session cannot yet answer for the guild's channels. */
   isGatewayChannelInventoryHydrating(guildId: string): boolean;
 }
 

@@ -1,12 +1,10 @@
 /**
- * Core-owned pre-claim disposition pass for stored pending ingress rows.
- *
- * Channels opt in through the drain seam to settle rows that can never become
- * work, or to hold a row while the channel cannot yet classify it, before the
- * drain builds its candidate window. The hook never sees a claim, so it cannot
- * take part in adoption, retry, or supersede semantics.
+ * Core-owned pre-claim disposition pass. A channel may settle a stored pending
+ * row that can never become work, or hold one it cannot classify yet, before
+ * the drain builds its candidate window. The hook never sees a claim.
  */
-import type { ChannelIngressQueue, ChannelIngressQueueRecord } from "./ingress-queue.js";
+// Leaf types only: ingress-queue.ts sits inside the state-worker import graph.
+import type { ChannelIngressQueue, ChannelIngressQueueRecord } from "./ingress-queue.types.js";
 
 type ChannelIngressPendingDisposition =
   /** Terminally fail the stored row; it can never become work. */
@@ -19,10 +17,7 @@ type ChannelIngressPendingDispositionContext = {
   now: number;
 };
 
-/**
- * Optional channel policy evaluated before a pending row can be claimed.
- * Unreadable rows must remain eligible for the canonical claim-time codec.
- */
+/** Unreadable rows must remain eligible for the canonical claim-time codec. */
 export type ResolveChannelIngressPendingDisposition<TPayload, TMetadata> = (
   record: ChannelIngressQueueRecord<TPayload, TMetadata>,
   context: ChannelIngressPendingDispositionContext,
@@ -57,8 +52,7 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
   for (const record of params.pending) {
     const laneKey = params.resolveLaneKey(record);
     if (blockedLaneKeys.has(laneKey)) {
-      // This lane is already fenced for the snapshot. Its head keeps ordering,
-      // so no later row on it may be settled or started ahead of that head.
+      // The lane head keeps ordering: nothing behind it is settled or started.
       retained.push(record);
       continue;
     }
@@ -68,8 +62,6 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
       continue;
     }
     if (disposition.kind === "defer") {
-      // The channel cannot classify this row yet. Hold the lane so the row is
-      // neither settled nor claimed before the channel can decide.
       retained.push(record);
       blockedLaneKeys.add(laneKey);
       continue;
@@ -80,10 +72,13 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
       reason,
       message: disposition.message.trim() || reason,
       failedAt: params.now,
+      // Only the generation the policy judged; a row claimed, failed and
+      // resubmitted while the policy ran is fresh work and stays pending.
+      generation: { updatedAt: record.updatedAt },
     });
     if (!committed) {
-      // A concurrent claim won the compare-and-set. Keep its lane out of this
-      // snapshot so later same-lane work cannot overtake the real claimant.
+      // A concurrent transition won; hold the lane so later same-lane work
+      // cannot overtake the real owner.
       params.log(`ingress drain: pending disposition lost race for event ${record.id}`);
       retained.push(record);
       blockedLaneKeys.add(laneKey);

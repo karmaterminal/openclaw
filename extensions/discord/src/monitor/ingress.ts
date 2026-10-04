@@ -108,10 +108,7 @@ export function createDiscordIngressMonitor(params: {
   runtime: Pick<RuntimeEnv, "error" | "log">;
   dispatch: DiscordIngressDispatch;
   botUserId?: string;
-  /**
-   * Current published policy. Preclaim disposition must never run against
-   * startup config, so omitting this disables the policy entirely.
-   */
+  /** Live published policy; without it the pre-claim stale policy is off. */
   readPolicy?: DiscordLivePolicyReader;
   /** Defaults to the live gateway inventory registered for this account. */
   resolveChannelInfo?: (channelId: string) => DiscordGatewayChannelInfo | undefined;
@@ -169,13 +166,13 @@ export function createDiscordIngressMonitor(params: {
         ? {
             resolvePendingDisposition: createDiscordStaleAmbientPendingDisposition({
               botUserId: params.botUserId,
+              client: params.client,
               readPolicy,
               resolveChannelInfo:
                 params.resolveChannelInfo ??
                 ((channelId) => getGateway(params.accountId)?.getGatewayChannelInfo(channelId)),
-              // The handler starts its drain before the provider registers this
-              // account's gateway, so a missing gateway means "cannot answer
-              // yet", not "resolved". Tests inject their own probe.
+              // The drain starts before the provider registers the gateway: no
+              // gateway means "cannot answer yet", not "resolved".
               isChannelInventoryHydrating:
                 params.isChannelInventoryHydrating ??
                 ((guildId) =>

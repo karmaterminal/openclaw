@@ -117,11 +117,7 @@ export class GatewayPlugin extends Plugin implements GatewayPluginContract {
     return this.channelInventory.get(channelId);
   }
 
-  /**
-   * True while this session cannot yet answer for the guild's channels: before
-   * READY on a new or reconnecting session, and between READY and the guild's
-   * GUILD_CREATE snapshot.
-   */
+  /** True before READY, and between READY and the guild's GUILD_CREATE snapshot. */
   isGatewayChannelInventoryHydrating(guildId: string): boolean {
     return !this.isConnected || this.channelInventory.isGuildHydrating(guildId);
   }
