@@ -13,7 +13,6 @@ import {
   loadSessionEntryReadOnly,
   loadTranscriptEvents,
   patchSessionEntryCore,
-  replaceSessionEntry,
   upsertSessionEntryCore,
 } from "../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -795,6 +794,7 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
       await compactEmbeddedAgentSessionDirect(
         wrappedCompactionArgs({
           workspaceDir: join(TEST_WORKSPACE_DIR, "workspace"),
+          permissionMode: "full",
           sessionRoot: join(TEST_WORKSPACE_DIR, "workspace"),
           execOverrides: { mode: execMode },
           sessionEntry: {
@@ -818,14 +818,6 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
   it("defaults rootless compaction permissions to the canonical agent workspace", async () => {
     const workspaceDir = compactionFixture.makeTempDir("openclaw-rootless-compaction-permission-");
     const canonicalWorkspace = await realpath(workspaceDir);
-    await replaceSessionEntry(
-      { agentId: "main", sessionKey: TEST_SESSION_KEY, storePath: TEST_STORE_PATH },
-      {
-        sessionId: TEST_SESSION_ID,
-        updatedAt: 2,
-        permissionMode: "workspace",
-      },
-    );
 
     await compactEmbeddedAgentSessionDirect(
       wrappedCompactionArgs({
@@ -3320,6 +3312,41 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
       expect.objectContaining({ runtimeAuthPlan: undefined }),
       expectedNativeCompactionOptions("after_context_engine"),
     );
+  });
+
+  it("preserves a deprecated SQLite marker successor for legacy maintenance", async () => {
+    const maintain = vi.fn(async (_params?: unknown) => ({
+      changed: false,
+      bytesFreed: 0,
+      rewrittenEntries: 0,
+    }));
+    const delegatedSessionId = "delegated-marker-session";
+    const storePath = TEST_STORE_PATH;
+    const marker = `sqlite:main:${delegatedSessionId}:${storePath}`;
+    resolveContextEngineMock.mockResolvedValue({
+      info: { ownsCompaction: false },
+      compact: contextEngineCompactMock,
+      maintain,
+    } as never);
+    contextEngineCompactMock.mockResolvedValue({
+      ok: true,
+      compacted: true,
+      result: {
+        sessionFile: marker,
+        sessionId: delegatedSessionId,
+      },
+    } as never);
+
+    await compactEmbeddedAgentSession(wrappedCompactionArgs());
+
+    expectRecordFields(mockCallArg(maintain), {
+      sessionFile: marker,
+      sessionId: delegatedSessionId,
+      sessionTarget: expect.objectContaining({
+        sessionId: delegatedSessionId,
+        storePath,
+      }),
+    });
   });
 
   it("keeps a partial structured successor in the active transcript store", async () => {

@@ -4,20 +4,13 @@ import type { ContextEngine } from "../../context-engine/types.js";
 import type { createOpenClawCodingToolsInternal } from "../agent-tools.js";
 import type { AuthProfileStore } from "../auth-profiles/types.js";
 import { clearAgentHarnesses } from "../harness/registry.js";
+import type { AgentHarness } from "../harness/types.js";
 import type { ModelAuthMode } from "../model-auth.js";
 import type { AgentRuntimePlan, BuildAgentRuntimePlanParams } from "../runtime-plan/types.js";
 import {
   agentSessionAutomaticCompaction,
   agentSessionSetContextReplacementHook,
 } from "../sessions/agent-session-compaction.js";
-import {
-  createSelectedAgentHarnessMock,
-  mockCompactHooksHarnessSelection,
-  resolveAgentHarnessPolicyMock,
-  resolveSelectedOpenAIRuntimeProviderMock,
-  selectAgentHarnessForPreparedModelProvidersMock,
-  selectAgentHarnessMock,
-} from "./compact.hooks.harness-selection.test-support.js";
 import {
   acquireCompactHooksPreparedModelRuntime,
   createCompactHooksResolvedModel,
@@ -36,12 +29,6 @@ import { createCompactionSessionManagerMock } from "./compact.session-manager.te
 import type { resolveModelAsync } from "./model.js";
 import type { attemptServerEndpointCompaction } from "./server-endpoint-compaction.js";
 import type { buildEmbeddedSystemPrompt } from "./system-prompt.js";
-
-export {
-  resolveAgentHarnessPolicyMock,
-  selectAgentHarnessForPreparedModelProvidersMock,
-  selectAgentHarnessMock,
-} from "./compact.hooks.harness-selection.test-support.js";
 
 type MockMemorySearchManager = {
   manager: {
@@ -140,6 +127,26 @@ const resolveAgentConfigMock = vi.fn((_config?: unknown, _agentId?: string): unk
 let fixture: { workspaceDir: string; sessionId: string };
 const resolveDefaultAgentDirMock = vi.fn<() => string>();
 export const estimateTokensMock = vi.fn((_message?: unknown) => 10);
+export const resolveAgentHarnessPolicyMock = vi.fn(() => ({ runtime: "openclaw" }));
+function createSelectedAgentHarnessMock(params: {
+  agentHarnessId?: string;
+  agentHarnessRuntimeOverride?: string;
+}): AgentHarness {
+  const configured = resolveAgentHarnessPolicyMock() as { runtime?: string };
+  const id =
+    params.agentHarnessId ?? params.agentHarnessRuntimeOverride ?? configured.runtime ?? "openclaw";
+  return {
+    id,
+    label: `${id} test harness`,
+    ...(id === "codex" ? { authBootstrap: "harness" as const } : {}),
+    supports: () => ({ supported: true }),
+    runAttempt: vi.fn(),
+  };
+}
+export const selectAgentHarnessMock = vi.fn(createSelectedAgentHarnessMock);
+export const selectAgentHarnessForPreparedModelProvidersMock = vi.fn(
+  createSelectedAgentHarnessMock,
+);
 export const resolveContextWindowInfoMock = vi.fn(() => ({ tokens: 128_000 }));
 function createDefaultSessionMessages(): unknown[] {
   return [
@@ -552,10 +559,6 @@ export function resetCompactHooksHarnessMocks(workspaceDir: string, sessionId = 
   );
   resolveAgentHarnessPolicyMock.mockReset();
   resolveAgentHarnessPolicyMock.mockReturnValue({ runtime: "openclaw" });
-  resolveSelectedOpenAIRuntimeProviderMock.mockReset();
-  resolveSelectedOpenAIRuntimeProviderMock.mockImplementation(
-    (params: { provider: string }) => params.provider,
-  );
   resolveContextWindowInfoMock.mockReset();
   resolveContextWindowInfoMock.mockReturnValue({ tokens: 128_000 });
 
@@ -633,7 +636,22 @@ export async function loadCompactHooksHarness(options: { durableSession?: boolea
     return { ...actual, resolveCliBackendConfig: resolveCliBackendConfigMock };
   });
 
-  mockCompactHooksHarnessSelection();
+  vi.doMock("../harness/policy.js", () => ({
+    resolveAgentHarnessPolicy: resolveAgentHarnessPolicyMock,
+  }));
+  vi.doMock("../harness/runtime-plugin.js", () => ({
+    ensureSelectedAgentHarnessPlugin: vi.fn(async () => undefined),
+  }));
+
+  vi.doMock("../harness/selection.js", async () => {
+    const actual =
+      await vi.importActual<typeof import("../harness/selection.js")>("../harness/selection.js");
+    return {
+      ...actual,
+      selectAgentHarness: selectAgentHarnessMock,
+      selectAgentHarnessForPreparedModelProviders: selectAgentHarnessForPreparedModelProvidersMock,
+    };
+  });
 
   vi.doMock("../../plugins/provider-runtime.js", () => ({
     prepareProviderRuntimeAuth: vi.fn(async () => ({ resolvedApiKey: undefined })),
