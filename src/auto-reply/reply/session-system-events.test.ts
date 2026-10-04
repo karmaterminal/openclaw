@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import type { SystemEvent } from "../../infra/system-events.js";
+import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 
 const MAIN_QUEUE_KEY = resolveSystemEventQueueKey("main", "main");
 
@@ -181,7 +182,18 @@ describe("drainFormattedSystemEvents trace context", () => {
     });
 
     expect(prepared).toEqual({ blocks: [], managedDeliveries: [] });
-    expect(mocks.ackSessionDelivery).toHaveBeenCalledWith("delivery-stale-authority", undefined);
+    // No explicit queue state dir on the event: the ack binds to the process's
+    // own default queue context (89be566948 made the context mandatory).
+    const processQueue = captureContinuationQueueContext();
+    expect(mocks.ackSessionDelivery).toHaveBeenCalledWith(
+      "delivery-stale-authority",
+      expect.objectContaining({
+        admission: expect.objectContaining({ databasePath: processQueue.admission.databasePath }),
+        environment: expect.objectContaining({
+          OPENCLAW_STATE_DIR: processQueue.environment.OPENCLAW_STATE_DIR,
+        }),
+      }),
+    );
     expect(mocks.consumeSelectedSystemEventEntries).toHaveBeenCalledWith(MAIN_QUEUE_KEY, [event]);
   });
 
