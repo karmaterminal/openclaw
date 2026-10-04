@@ -31,7 +31,19 @@ import {
 } from "../../infra/continuation-tracer.js";
 import type { QueuedSessionDeliveryPayload } from "../../infra/session-delivery-queue-storage.js";
 import { resetSystemEventsForTest, type SystemEvent } from "../../infra/system-events.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import { enqueueContinuationReturnDeliveries } from "./targeting.js";
+
+/** With no explicit queue state dir, acks bind to the process's own default queue context. */
+function expectProcessQueueContext() {
+  const processQueue = captureContinuationQueueContext();
+  return expect.objectContaining({
+    admission: expect.objectContaining({ databasePath: processQueue.admission.databasePath }),
+    environment: expect.objectContaining({
+      OPENCLAW_STATE_DIR: processQueue.environment.OPENCLAW_STATE_DIR,
+    }),
+  });
+}
 
 type EnqueueSystemEvent = typeof import("../../infra/system-events.js").enqueueSystemEventRaw;
 
@@ -223,7 +235,10 @@ describe("branch 3 — target deleted during dispatch race", () => {
     );
 
     expect(result).toEqual({ enqueued: 0, delivered: 0, deliveryIds: [] });
-    expect(ackSessionDelivery).toHaveBeenCalledWith("delivery-stale-authority", undefined);
+    expect(ackSessionDelivery).toHaveBeenCalledWith(
+      "delivery-stale-authority",
+      expectProcessQueueContext(),
+    );
     expect(enqueueSystemEvent).not.toHaveBeenCalled();
     expect(requestHeartbeatNow).not.toHaveBeenCalled();
   });
@@ -282,7 +297,10 @@ describe("branch 3 — target deleted during dispatch race", () => {
     expect(result).toEqual({ enqueued: 0, delivered: 0, deliveryIds: [] });
     expect(enqueueSystemEvent).toHaveBeenCalledTimes(1);
     expect(removeSystemEvents).toHaveBeenCalledWith(EXISTING_TARGET, expect.any(Function));
-    expect(ackSessionDelivery).toHaveBeenCalledWith("delivery-stale-before-wake", undefined);
+    expect(ackSessionDelivery).toHaveBeenCalledWith(
+      "delivery-stale-before-wake",
+      expectProcessQueueContext(),
+    );
     expect(systemEvents).toEqual([{ text: "unrelated", ts: 1 }]);
     expect(requestHeartbeatNow).not.toHaveBeenCalled();
   });
