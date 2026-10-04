@@ -7,6 +7,7 @@ import { resolveRuntimeWorkerUrl } from "../../infra/runtime-worker-url.js";
 import type { SqliteWorkerStore } from "../../infra/sqlite-worker-store.js";
 import { emitSessionLifecycleEvent } from "../../sessions/session-lifecycle-events.js";
 import { sessionChanges } from "../../sessions/session-row-changes.js";
+import { runOpenClawAgentWriteWithYieldingAdmission } from "../../state/openclaw-agent-db-transaction.js";
 import {
   withOpenClawAgentDatabaseAsync,
   type OpenClawAgentDatabase,
@@ -26,7 +27,9 @@ import {
   publishSessionSharingMemberChange,
 } from "./session-accessor.sqlite-entry-cache.js";
 import { recordSessionParticipant } from "./session-accessor.sqlite-participants.native.js";
+import { captureSessionRecipientAuthorityInTransaction } from "./session-accessor.sqlite-recipient-authority.js";
 import { resolveSqliteScope, toDatabaseOptions } from "./session-accessor.sqlite-scope.js";
+import type { SessionRecipientAuthority } from "./session-recipient-authority-types.js";
 import { addSessionMember, removeSessionMember } from "./session-sharing-store.native.js";
 import type { SessionSharingWorkerOperations } from "./session-sharing-store.worker.js";
 
@@ -36,7 +39,7 @@ export async function runSessionCollaborationWrite<
 >(
   scope: SessionAccessScope,
   command: { type: Key; input: SessionSharingWorkerOperations[Key]["input"] },
-  native: (scope: SessionAccessScope) => T,
+  native: (scope: SessionAccessScope) => T | Promise<T>,
   publish: (
     result: SessionSharingWorkerOperations[Key]["output"],
     location: { agentId: string; storePath: string; sessionKey: string },
@@ -116,7 +119,10 @@ export async function runSessionCollaborationWrite<
                   await prepare(operation, commandScope);
                 }
                 assertQueuedCurrent();
-                mutationDispatched = capturedCommand.type !== "category.prepare";
+                // Preparation and authority capture publish no session facts to fence.
+                mutationDispatched =
+                  capturedCommand.type !== "category.prepare" &&
+                  capturedCommand.type !== "authority.capture";
                 const result = await operation.execute(capturedCommand);
                 resultReceived = true;
                 // Publish while retaining the FIFO section, before later mutations can replace it.
@@ -289,5 +295,28 @@ export function recordSessionParticipantInWorker(
       }
       return result.value;
     },
+  );
+}
+
+/** Insert-if-absent recipient authority through the canonical agent database writer. */
+export function captureSessionRecipientAuthority(
+  scope: SessionAccessScope,
+): Promise<SessionRecipientAuthority> {
+  return runSessionCollaborationWrite(
+    scope,
+    { type: "authority.capture", input: { scope } },
+    async (capturedScope) => {
+      const resolved = resolveSqliteScope(capturedScope);
+      const authority = await runOpenClawAgentWriteWithYieldingAdmission(
+        (database) => captureSessionRecipientAuthorityInTransaction(database, resolved.sessionKey),
+        toDatabaseOptions(resolved),
+        { operationLabel: "sessions.authority.capture" },
+      );
+      if (!authority) {
+        throw new Error(`Recipient authority capture did not commit for ${resolved.sessionKey}`);
+      }
+      return authority;
+    },
+    (authority) => authority,
   );
 }

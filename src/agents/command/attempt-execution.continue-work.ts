@@ -8,6 +8,9 @@ import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 
 const log = createSubsystemLogger("agents/attempt-execution");
 
+const CONTINUATION_DISABLED_NOTICE =
+  "[continuation] continue_work election(s) were not scheduled because continuation was disabled before the wake was committed.";
+
 type SpawnInitContinueWorkRequest = {
   reason: string;
   delaySeconds?: number;
@@ -49,7 +52,7 @@ function normalizeCleanupError(error: unknown, fallback: string): Error {
   return new Error(typeof error === "string" ? error : fallback);
 }
 
-export async function scheduleSpawnInitContinueWorkWake(params: {
+type SpawnInitContinueWorkWakeParams = {
   sessionKey: string;
   sessionEntry: SessionEntry | undefined;
   sessionStore?: Record<string, SessionEntry>;
@@ -60,7 +63,57 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   originRunId: string;
   originTurnId: string;
   abortSignal?: AbortSignal;
-}): Promise<void> {
+};
+
+/**
+ * Tell the session that a continue_work election it was told is "scheduled"
+ * has no confirmed wake. Used when post-run scheduling throws before a more
+ * specific notice was enqueued.
+ */
+export function notifyContinueWorkWakeUnconfirmed(sessionKey: string): void {
+  enqueueSystemEvent(
+    "[continuation] continue_work wake could not be confirmed because post-run scheduling failed; do not assume another turn is coming.",
+    { sessionKey, trusted: true },
+  );
+}
+
+/** Tell the session that its continue_work tool election(s) were deliberately not scheduled. */
+export function notifyContinueWorkElectionsDropped(sessionKey: string, because: string): void {
+  enqueueSystemEvent(
+    `[continuation] continue_work election(s) were not scheduled because ${because}.`,
+    { sessionKey, trusted: true },
+  );
+}
+
+/**
+ * Durably schedules spawn-init continue_work elections after the run settles.
+ *
+ * The tool already answered "scheduled" in-turn, so every outcome that ends
+ * without a durable wake (other than cancellation of the electing turn) must
+ * reach the session as a system event, never only a log line.
+ */
+export async function scheduleSpawnInitContinueWorkWake(
+  params: SpawnInitContinueWorkWakeParams,
+): Promise<void> {
+  let sessionNotified = false;
+  const notifyNotScheduled = (text: string): void => {
+    sessionNotified = true;
+    enqueueSystemEvent(text, { sessionKey: params.sessionKey, trusted: true });
+  };
+  try {
+    await scheduleSpawnInitContinueWorkWakeOnce(params, notifyNotScheduled);
+  } catch (error) {
+    if (!sessionNotified) {
+      notifyContinueWorkWakeUnconfirmed(params.sessionKey);
+    }
+    throw error;
+  }
+}
+
+async function scheduleSpawnInitContinueWorkWakeOnce(
+  params: SpawnInitContinueWorkWakeParams,
+  notifyNotScheduled: (text: string) => void,
+): Promise<void> {
   const [
     { resolveLiveContinuationRuntimeConfig },
     { loadContinuationChainState },
@@ -81,15 +134,15 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     log.info(
       `[continuation] Ignoring spawn-init continue_work election(s) disabled before scheduling for session ${sanitizeForLog(params.sessionKey)}`,
     );
+    notifyNotScheduled(CONTINUATION_DISABLED_NOTICE);
     return;
   }
   if (!params.storePath) {
     log.info(
       `[continuation] Ignoring spawn-init continue_work election(s) without a durable session store for session ${sanitizeForLog(params.sessionKey)}`,
     );
-    enqueueSystemEvent(
+    notifyNotScheduled(
       "[continuation] continue_work election(s) were not scheduled because durable session state is unavailable.",
-      { sessionKey: params.sessionKey, trusted: true },
     );
     return;
   }
@@ -168,9 +221,8 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
       },
     });
   } catch (error) {
-    enqueueSystemEvent(
+    notifyNotScheduled(
       "[continuation] continue_work election(s) were not scheduled because chain state could not be persisted.",
-      { sessionKey: params.sessionKey, trusted: true },
     );
     throw error;
   }
@@ -223,9 +275,8 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
         throw new Error("session chain advanced after spawn-init reservation");
       }
     } catch (error) {
-      enqueueSystemEvent(
+      notifyNotScheduled(
         "[continuation] continue_work chain-state rollback failed; the reserved budget remains fail-closed.",
-        { sessionKey: params.sessionKey, trusted: true },
       );
       throw error;
     }
@@ -241,6 +292,7 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     log.info(
       `[continuation] Ignoring spawn-init continue_work election(s) disabled during chain-state reservation for session ${sanitizeForLog(params.sessionKey)}`,
     );
+    notifyNotScheduled(CONTINUATION_DISABLED_NOTICE);
     return;
   }
 
@@ -461,9 +513,8 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
       result.capped ||= unreservedRequestCount > 0;
     } catch (error) {
       await failCreatedWork?.("continue_work scheduling failed after durable chain reservation.");
-      enqueueSystemEvent(
+      notifyNotScheduled(
         "[continuation] continue_work scheduling failed; the reserved chain budget remains fail-closed.",
-        { sessionKey: params.sessionKey, trusted: true },
       );
       throw error;
     }
@@ -483,9 +534,8 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
   };
 
   if (result.replacementFailure) {
-    enqueueSystemEvent(
+    notifyNotScheduled(
       "[continuation] A newer continue_work wake was not scheduled because prior parked-wake supersession did not commit.",
-      { sessionKey: params.sessionKey, trusted: true },
     );
     await failCreatedWorkAndRestoreReservation(
       "continue_work replacement cancelled because parked-wake supersession did not commit.",
@@ -501,9 +551,11 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     );
     return;
   }
-  if (result.cappedCount > 0 && params.requests.length > 1) {
+  if (result.cappedCount > 0) {
     enqueueSystemEvent(
-      `[continuation] ${result.cappedCount} of ${params.requests.length} continue_work elections were not scheduled (chain/cost/pending cap).`,
+      params.requests.length > 1
+        ? `[continuation] ${result.cappedCount} of ${params.requests.length} continue_work elections were not scheduled (chain/cost/pending cap).`
+        : "[continuation] continue_work election was not scheduled (chain/cost/pending cap).",
       { sessionKey: params.sessionKey, trusted: true },
     );
   }
@@ -548,9 +600,11 @@ export async function scheduleSpawnInitContinueWorkWake(params: {
     } catch (caught) {
       cleanupError = caught;
     }
-    enqueueSystemEvent(
-      "[continuation] continue_work wake was scheduled, but chain-state finalization failed; the reserved budget remains fail-closed.",
-      { sessionKey: params.sessionKey, trusted: true },
+    // failCreatedWork terminalized the created wake unless its cleanup failed.
+    notifyNotScheduled(
+      cleanupError
+        ? "[continuation] continue_work chain-state finalization failed and the wake could not be cancelled; it may still fire. The reserved budget remains fail-closed."
+        : "[continuation] continue_work wake was not scheduled because chain-state finalization failed; the reserved budget remains fail-closed.",
     );
     if (cleanupError) {
       const combinedError = new Error(

@@ -5,14 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 // Pins continuation-specific guards to the call sites that must consult them.
 //
-// WHY THIS EXISTS. Four upstream absorbs in one day each centralised a decision that
-// one of our continuation guards lived inside, and the mechanically-clean resolution
+// WHY THIS EXISTS. Several upstream refactors each centralised a decision that
+// one of the continuation guards lived inside, and the mechanically-clean resolution
 // silently deleted the guard every time:
 //
 //   1. upstream moved assistant-text extraction to a lazy thunk; taking its
 //      `sanitizeAssistantText` would have dropped continuation-signal stripping.
 //   2. upstream added `params.isCurrent?.() !== false` to a cleanup retry guard while
-//      our side had removed the argument that guard reads, making it vacuous.
+//      the continuation side had removed the argument that guard reads, making it vacuous.
 //   3. upstream extracted prune/cancel/repair into `task-flow-maintenance-policy.ts`,
 //      which has no durable-obligation concept, so a terminal flow still owing
 //      `terminalNoticePending` would have been pruned and the notice lost.
@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 // unit tests do not miss it. This script does.
 //
 // Each entry names a guard and the modules that MUST call it. Losing a call site is a
-// hard failure with the protection spelled out, so the next absorb has to make a
+// hard failure with the protection spelled out, so the next upstream merge has to make a
 // deliberate decision instead of an accidental one.
 import * as ts from "typescript/unstable/ast";
 import { createNativeTypeScriptParser } from "./lib/native-typescript.mts";
@@ -40,7 +40,7 @@ type GuardContract = {
 };
 
 const contracts: GuardContract[] = [
-  // Retired at the L5 absorb: upstream 6652f7eac8 removed the TaskFlow runtime and its
+  // Retired: upstream 6652f7eac8 removed the TaskFlow runtime and its
   // maintenance, so no task-flow row can be pruned any more. The obligation now lives in
   // continuation custody: pruneContinuationRecordsInDatabase only prunes terminal records
   // whose terminal_notice_pending IS NULL (custody-store.worker.ts), a query predicate
@@ -58,8 +58,8 @@ const contracts: GuardContract[] = [
     callers: ["src/agents/embedded-agent-utils.ts"],
   },
   {
-    // #1408 L4 replaced the live-registry check (hasLiveContinuationDelegateChildRun)
-    // with admission evidence read under every recorded child run ID (Q3 at-most-once).
+    // Admission evidence replaced the live-registry check (hasLiveContinuationDelegateChildRun)
+    // with evidence read under every recorded child run ID (Q3 at-most-once).
     guard: "readDelegateAdmissionEvidence",
     protects:
       "a claimed delegate settles, respawns or is interrupted only from registry evidence read under every recorded child run ID; without it dispatch can re-spawn an already admitted child or settle while that child is still live",
@@ -101,7 +101,7 @@ const contracts: GuardContract[] = [
     callers: [
       "src/agents/subagents/spawn/subagent-spawn-rollback.ts",
       "src/agents/subagents/spawn/subagent-spawn-session-patch.ts",
-      // The spawn outcome mapping moved here in the max-lines split (L2).
+      // The spawn outcome mapping moved here in the max-lines split.
       "src/agents/subagents/spawn/subagent-spawn-registration.ts",
       "src/auto-reply/continuation/delegate-dispatch.ts",
     ],

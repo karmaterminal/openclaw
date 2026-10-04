@@ -1816,7 +1816,7 @@ function createAutoReplyReplySplitShards(): NodeTestSplitShard[] {
     "auto-reply-reply-session": [] as string[],
     "auto-reply-reply-state-routing": [] as string[],
     // The reply config also collects the continuation subtree; without its own
-    // group those files would be collected by no shard at all (#1402). The group
+    // group those files would be collected by no shard at all. The group
     // claims only files inside that subtree, whatever the inventory returns.
     "auto-reply-continuation": listTrackedTestFiles("src/auto-reply/continuation").filter((file) =>
       file.startsWith("src/auto-reply/continuation/"),

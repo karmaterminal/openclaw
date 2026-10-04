@@ -34,6 +34,7 @@ import {
 import { prepareFormattedSystemEvents } from "../../../reply/session-system-events.js";
 import { getDelegateRecord, listLiveDelegateRecords } from "../../delegate-flow-store.js";
 import { cancelPendingDelegates } from "../../delegate-store.js";
+import { captureContinuationQueueContext } from "../../queue-context.js";
 import {
   acceptPostCompactionReturnCovenantCase,
   enqueueHeldReturnCovenantDelivery,
@@ -70,11 +71,11 @@ function stateDirectory(context: ReturnCovenantFixtureContext): string {
   return stateDir;
 }
 
-function currentAuthority(
+async function currentAuthority(
   state: ReturnCovenantCaseState,
   context: ReturnCovenantFixtureContext,
-): SessionRecipientAuthority {
-  return captureSessionRecipientAuthority(returnCovenantCaseScope(state, context));
+): Promise<SessionRecipientAuthority> {
+  return await captureSessionRecipientAuthority(returnCovenantCaseScope(state, context));
 }
 
 function restartReceipt(params: {
@@ -148,7 +149,10 @@ export async function transitionReturnCovenantCase(params: {
       }
       const queueStillHeld =
         state.deliveryId &&
-        (await loadPendingSessionDelivery(state.deliveryId, stateDirectory(context)));
+        (await loadPendingSessionDelivery(
+          state.deliveryId,
+          captureContinuationQueueContext(stateDirectory(context)),
+        ));
       if (!queueStillHeld || !(await getDelegateRecord(state.delegate?.flowId ?? ""))) {
         throw new Error("gateway restart did not preserve accepted delegate state");
       }
@@ -260,7 +264,7 @@ export async function transitionReturnCovenantCase(params: {
   if (authorityUnchanged !== (state.casePlan.kind === "allowed")) {
     throw new Error("recipient authority relation disagrees with the lifecycle transition");
   }
-  const current = currentAuthority(state, context);
+  const current = await currentAuthority(state, context);
   const currentEntry = loadSessionEntry(returnCovenantCaseScope(state, context));
   if (!currentEntry?.sessionId) {
     throw new Error("lifecycle transition did not leave a materialized recipient");
@@ -428,9 +432,12 @@ export async function observeReturnCovenantCase(params: {
   });
   // Report the durable queue record's real state rather than asserting it.
   const retainedQueueRecord = state.deliveryId
-    ? await loadPendingSessionDelivery(state.deliveryId, stateDirectory(context))
+    ? await loadPendingSessionDelivery(
+        state.deliveryId,
+        captureContinuationQueueContext(stateDirectory(context)),
+      )
     : undefined;
-  const current = currentAuthority(state, context);
+  const current = await currentAuthority(state, context);
   const captured = state.acceptance?.capturedAuthorityGeneration;
   const admission = allowed
     ? "adopted"
@@ -593,7 +600,9 @@ export async function retainedReturnCovenantResources(params: {
   const delegates = (await listLiveDelegateRecords()).filter((record) =>
     record.ownerSessionKey.startsWith(runSessionPrefix),
   ).length;
-  const queueItems = (await loadPendingSessionDeliveries(stateDirectory(context))).length;
+  const queueItems = (
+    await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDirectory(context)))
+  ).length;
   const temporarySessions = context.profiles.countTemporarySessions(runSessionPrefix);
   return { delegates, queueItems, temporarySessions };
 }

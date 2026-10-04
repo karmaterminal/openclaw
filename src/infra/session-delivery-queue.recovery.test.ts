@@ -77,7 +77,7 @@ describe("session-delivery queue recovery", () => {
           traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
           traceparentProvenance: "internal",
         },
-        tempDir,
+        queueContext,
       );
       const deliver = vi.fn(async () => undefined);
 
@@ -107,7 +107,7 @@ describe("session-delivery queue recovery", () => {
           kind === "systemEvent"
             ? await enqueueSessionDelivery(
                 { kind, sessionKey: "agent:main:main", text: "unsafe generic seed" },
-                tempDir,
+                queueContext,
               )
             : await enqueueSessionDelivery(
                 {
@@ -116,7 +116,7 @@ describe("session-delivery queue recovery", () => {
                   message: "unsafe generic seed",
                   messageId: `unsafe-generic-${kind}`,
                 },
-                tempDir,
+                queueContext,
               );
         const secret = `GENERIC_RECOVERY_${kind.toUpperCase()}_SECRET`;
         const row = readSessionQueueRow(tempDir, id);
@@ -162,7 +162,7 @@ describe("session-delivery queue recovery", () => {
             },
             sequence,
           }),
-          tempDir,
+          queueContext,
         );
         const row = readSessionQueueRow(tempDir, id);
         const corrupted = JSON.parse(row?.entry_json ?? "{}") as Record<string, unknown>;
@@ -186,7 +186,7 @@ describe("session-delivery queue recovery", () => {
       }
 
       expect(deliver).not.toHaveBeenCalled();
-      await expect(loadPendingSessionDeliveries(tempDir)).resolves.toEqual([]);
+      await expect(loadPendingSessionDeliveries(queueContext)).resolves.toEqual([]);
     });
   });
 
@@ -216,7 +216,7 @@ describe("session-delivery queue recovery", () => {
             },
             sequence,
           }),
-          tempDir,
+          queueContext,
         );
         const row = readSessionQueueRow(tempDir, id);
         const corrupted = JSON.parse(row?.entry_json ?? "{}") as Record<string, unknown>;
@@ -260,7 +260,7 @@ describe("session-delivery queue recovery", () => {
           },
           sequence: 0,
         }),
-        tempDir,
+        queueContext,
       );
       const deliver = vi.fn(async () => undefined);
       let failCleanup = true;
@@ -274,7 +274,7 @@ describe("session-delivery queue recovery", () => {
 
       await recoverPendingSessionDeliveries({ deliver, onSettled, queueContext, log });
 
-      const [pending] = await loadPendingSessionDeliveries(tempDir);
+      const [pending] = await loadPendingSessionDeliveries(queueContext);
       expect(pending).toMatchObject({
         id,
         settlementOutcome: "recovered",
@@ -286,7 +286,7 @@ describe("session-delivery queue recovery", () => {
 
       await recoverPendingSessionDeliveries({ deliver, onSettled, queueContext, log });
       expect(deliver).toHaveBeenCalledTimes(1);
-      expect(await loadPendingSessionDeliveries(tempDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
     });
   });
 

@@ -216,7 +216,7 @@ export const databaseWorkerCoreTestFiles = [
   // Kill-state rollback now awaits the async registry write, which needs the host broker.
   "src/agents/subagent-registry-registration-rollback.test.ts",
   "src/agents/subagent-registry.persistence.restore-recovery.test.ts",
-  // L4-G5: agents, gateway and tool suites on real continuation custody.
+  // Agents, gateway and tool suites on real continuation custody.
   "src/agents/tools/continue-delegate-attachment-validation.test.ts",
   "src/agents/tools/continue-delegate-tool.import-gate.test.ts",
   "src/agents/subagent-announce.continuation-drain.bracket-hedge.test.ts",
@@ -229,6 +229,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/tools/continuation-tools.current-span-traceparent.test.ts",
   "src/agents/tools/continue-delegate-tool.crosssession-gate.test.ts",
   "src/agents/tools/continue-delegate-tool.test.ts",
+  "src/agents/tools/continue-delegate-tool.turn-admission.test.ts",
   "src/agents/command/attempt-execution.continue-work-races.test.ts",
   "src/agents/command/attempt-execution.continue-work-opts.test.ts",
   "src/agents/command/attempt-execution.continue-work-token.test.ts",
@@ -254,7 +255,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/continuation/custody/custody-readiness.test.ts",
   // The legacy TaskFlow import runs its SQL as shared-state worker operations.
   "src/auto-reply/continuation/custody/legacy-taskflow-import.test.ts",
-  // L4-G1: continuation delegate store suites on real continuation custody.
+  // Continuation delegate store suites on real continuation custody.
   "src/auto-reply/continuation/delegate-store.test.ts",
   "src/auto-reply/continuation/delegate-store.queue.test.ts",
   "src/auto-reply/continuation/delegate-store-post-compaction.test.ts",
@@ -287,7 +288,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/continuation/custody-conjecture.scenario.test.ts",
   "src/auto-reply/continuation/post-compaction-chain-charge.test.ts",
   "src/auto-reply/continuation/fixtures/return-covenant/run.test.ts",
-  // L4-G2: continuation delegate dispatch suites on real continuation custody.
+  // Continuation delegate dispatch suites on real continuation custody.
   "src/auto-reply/continuation/delegate-dispatch.test.ts",
   "src/auto-reply/continuation/delegate-dispatch.contract.test.ts",
   "src/auto-reply/continuation/delegate-dispatch.recovery-1.test.ts",
@@ -438,7 +439,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/agent-runner.misc.runreplyagent.continuation.test.ts",
   "src/auto-reply/reply/agent-runner.continuation-work-span.test.ts",
   "src/auto-reply/reply/agent-runner.continuation-work-span.reservation.test.ts",
-  // L4-G3: continuation work suites on real continuation custody.
+  // Continuation work suites on real continuation custody.
   "src/auto-reply/continuation/work-dispatch.test.ts",
   "src/auto-reply/continuation/work-dispatch.classification-and-cap.test.ts",
   "src/auto-reply/continuation/work-dispatch.durable-2.test.ts",
@@ -698,6 +699,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/post-compaction-delegate-dispatch.recovery.test.ts",
   "src/auto-reply/reply/session-reset-cleanup.test.ts",
   "src/auto-reply/reply/session-system-events.recipient-authority.test.ts",
+  "src/config/sessions/session-recipient-authority.test.ts",
+  "src/config/sessions/session-recipient-authority.decision.test.ts",
   "src/system-agent/setup-inference-credentials.lifecycle.test.ts",
   "src/system-agent/setup-inference.provider-install-owner.test.ts",
   "src/system-agent/setup-inference.groq-external.integration.test.ts",
@@ -863,7 +866,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/subagents/completion/subagent-completion-admission.store.test.ts",
   "src/agents/subagent-announce.continuation.test.ts",
   "src/agents/subagent-announce.targeted-return.integration.test.ts",
-  // L4-G4: reply-side continuation suites on real continuation custody.
+  // Reply-side continuation suites on real continuation custody.
   "src/auto-reply/reply/post-compaction-delegate-dispatch.ownership.test.ts",
   "src/auto-reply/reply/agent-runner.continuation-chain-break-reset.test.ts",
   "src/auto-reply/reply/agent-runner.continuation-delegate-fire-span.test.ts",
@@ -1018,7 +1021,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/continuation/trace-context-propagation.integration.test.ts",
   "src/auto-reply/continuation/delegate-claim-boundaries.test.ts",
   // Continuation custody and counts reach shared state from these suites' spawn,
-  // result-accounting and cleanup paths (L5 absorb), so they need the host broker.
+  // result-accounting and cleanup paths, so they need the host broker.
   "src/agents/tools/sessions-spawn-tool.test.ts",
   "src/agents/tools/sessions-spawn-tool.launch-key.test.ts",
   "src/auto-reply/reply/agent-runner-result-accounting.persistence.test.ts",

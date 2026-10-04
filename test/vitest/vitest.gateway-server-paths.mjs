@@ -507,7 +507,7 @@ export const gatewayCoreTestExclude = [
   "src/gateway/probe.auth.integration.test.ts",
   "src/gateway/server.startup-matrix-migration.integration.test.ts",
   "src/gateway/sessions-history-http.test.ts",
-  // Fork: owned by the dedicated return-covenant shard
+  // Owned by the dedicated return-covenant shard
   // (gatewayServerBackedHttpTestFiles), not gateway-core.
   "src/gateway/return-covenant-fixture.gateway.test.ts",
 ];

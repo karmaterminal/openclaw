@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { captureContinuationQueueContext } from "../auto-reply/continuation/queue-context.js";
 import { drainFormattedSystemEvents } from "../auto-reply/reply/session-system-events.js";
 import type { ContinuationRecipientAuthorityBinding } from "../config/sessions/session-recipient-authority-types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -127,7 +128,7 @@ vi.mock("./subagents/spawn/subagent-depth.js", () => ({
 const { runSubagentAnnounceFlow } = await import("./subagents/announce/subagent-announce.js");
 
 async function readQueuedSystemEventDeliveries(stateDir: string): Promise<QueuedSessionDelivery[]> {
-  return loadPendingSessionDeliveries(stateDir);
+  return loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir));
 }
 
 describe("subagent announce targeted continuation return integration", () => {
@@ -183,7 +184,9 @@ describe("subagent announce targeted continuation return integration", () => {
       expect(runtimeErrorMock.mock.calls).toEqual([]);
       expect(didAnnounce).toBe("delivered");
 
-      const queuedDeliveries = await loadPendingSessionDeliveries(stateDir);
+      const queuedDeliveries = await loadPendingSessionDeliveries(
+        captureContinuationQueueContext(stateDir),
+      );
       expect(queuedDeliveries).toHaveLength(1);
 
       const persisted = expectDefined(queuedDeliveries.at(0), "queued delivery");
@@ -259,7 +262,9 @@ describe("subagent announce targeted continuation return integration", () => {
         });
 
         expect(didAnnounce).toBe("delivered");
-        const queued = await loadPendingSessionDeliveries(stateDir);
+        const queued = await loadPendingSessionDeliveries(
+          captureContinuationQueueContext(stateDir),
+        );
         expect(queued).toHaveLength(1);
         expect(queued.at(0)).toEqual(expect.objectContaining({ sessionKey: targetSessionKey }));
         expect(peekSystemEventEntries(requesterSessionKey)).toHaveLength(0);

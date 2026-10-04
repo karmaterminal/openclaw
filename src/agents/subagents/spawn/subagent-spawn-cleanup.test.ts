@@ -64,10 +64,9 @@ describe("subagent spawn cleanup identity", () => {
     expect(callGateway).not.toHaveBeenCalled();
   });
 
-  // Ronan's ruling on the fourth absorb: termination is the ONLY place the live
-  // ownership predicate is consumed. When ownership flips after acceptance but before
-  // cleanup, termination makes one bounded attempt and must not delete a
-  // successor-owned session or retry.
+  // Termination is the ONLY place the live ownership predicate is consumed. When
+  // ownership flips after acceptance but before cleanup, termination makes one
+  // bounded attempt and must not delete a successor-owned session or retry.
   it("makes one bounded attempt and deletes nothing once cleanup ownership has flipped", async () => {
     const callGateway = vi.fn(async (_request: GatewayRequest) => ({
       ok: true,
@@ -211,10 +210,9 @@ describe("subagent spawn cleanup identity", () => {
       .mockResolvedValueOnce({ ok: true, aborted: true, runIds: ["different-run"] })
       .mockRejectedValueOnce(sessionChangedError());
 
-    // BELLED ROPE for an absorb that reverts our return contract. Upstream declares
-    // terminateAcceptedCollectorRun as Promise<void> and this shared case asserted
-    // toBeUndefined(). Our fork returns Promise<boolean> per Ronan's ruling on the
-    // operator-authority merge, and that verdict is load-bearing: it is consumed by
+    // Guards the boolean return contract. terminateAcceptedCollectorRun was
+    // previously declared Promise<void> and this case asserted toBeUndefined().
+    // It now returns Promise<boolean>, and that verdict is load-bearing: it is consumed by
     // subagent-spawn-rollback, subagent-registry-sweep-kill (both call sites), and
     // returned by subagent-registry. If this assertion has to go back to
     // toBeUndefined(), the boolean contract was dropped and those consumers are

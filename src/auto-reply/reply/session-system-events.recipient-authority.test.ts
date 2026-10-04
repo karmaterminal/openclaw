@@ -17,6 +17,7 @@ import {
   openOpenClawAgentDatabase,
 } from "../../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 import { enqueueContinuationReturnDeliveries } from "../continuation/targeting.js";
 import {
   resolveFinalSystemEventAdoption,
@@ -129,7 +130,7 @@ describe("recipient authority prompt-adoption fence", () => {
             ).inserted,
           ).toBe(true);
         }
-        const recipientAuthority = sessionAccessor.captureSessionRecipientAuthority(scope);
+        const recipientAuthority = await sessionAccessor.captureSessionRecipientAuthority(scope);
         const delivery = await enqueueContinuationReturnDeliveries({
           targetSessionKeys: [sessionKey],
           text: "stale delegate result",
@@ -171,7 +172,10 @@ describe("recipient authority prompt-adoption fence", () => {
         expect(prompt).toContain("unbound sibling event");
         expect(prepared.managedDeliveries.map((entry) => entry.id)).not.toContain(deliveryId);
         expect(
-          await loadPendingSessionDelivery(deliveryId!, state.env.OPENCLAW_STATE_DIR),
+          await loadPendingSessionDelivery(
+            deliveryId!,
+            captureContinuationQueueContext(state.env.OPENCLAW_STATE_DIR),
+          ),
         ).toBeNull();
         expect(peekSystemEventEntries(sessionKey)).toEqual([]);
       });
@@ -206,7 +210,7 @@ describe("recipient authority prompt-adoption fence", () => {
             ).inserted,
           ).toBe(true);
         }
-        const recipientAuthority = sessionAccessor.captureSessionRecipientAuthority(scope);
+        const recipientAuthority = await sessionAccessor.captureSessionRecipientAuthority(scope);
         enqueueSystemEventRaw("stale delegate result", {
           sessionKey,
           trusted: true,
@@ -259,7 +263,7 @@ describe("recipient authority prompt-adoption fence", () => {
             ).inserted,
           ).toBe(true);
         }
-        const recipientAuthority = sessionAccessor.captureSessionRecipientAuthority(scope);
+        const recipientAuthority = await sessionAccessor.captureSessionRecipientAuthority(scope);
         const delivery = await enqueueContinuationReturnDeliveries({
           targetSessionKeys: [sessionKey],
           text: "stale delegate result",
@@ -290,7 +294,10 @@ describe("recipient authority prompt-adoption fence", () => {
         expect(prompt).toContain("unbound sibling event");
         expect([...adoption.managedDeliveries.keys()]).not.toContain(deliveryId);
         expect(
-          await loadPendingSessionDelivery(deliveryId!, state.env.OPENCLAW_STATE_DIR),
+          await loadPendingSessionDelivery(
+            deliveryId!,
+            captureContinuationQueueContext(state.env.OPENCLAW_STATE_DIR),
+          ),
         ).toBeNull();
         expect(peekSystemEventEntries(sessionKey)).toEqual([]);
       });
@@ -307,7 +314,7 @@ describe("recipient authority prompt-adoption fence", () => {
           updatedAt: 1,
           createdActor: ownerA,
         });
-        const authority = sessionAccessor.captureSessionRecipientAuthority(scope);
+        const authority = await sessionAccessor.captureSessionRecipientAuthority(scope);
         const delivery = await enqueueContinuationReturnDeliveries({
           targetSessionKeys: [sessionKey],
           text: `${agentId} delegate result`,
@@ -350,15 +357,24 @@ describe("recipient authority prompt-adoption fence", () => {
       expect(prompt).toContain("main delegate result");
       expect([...adoption.managedDeliveries.keys()]).toEqual([current.deliveryId]);
       expect(
-        await loadPendingSessionDelivery(route.deliveryId, state.env.OPENCLAW_STATE_DIR),
+        await loadPendingSessionDelivery(
+          route.deliveryId,
+          captureContinuationQueueContext(state.env.OPENCLAW_STATE_DIR),
+        ),
       ).toBeNull();
       expect(
-        await loadPendingSessionDelivery(current.deliveryId, state.env.OPENCLAW_STATE_DIR),
+        await loadPendingSessionDelivery(
+          current.deliveryId,
+          captureContinuationQueueContext(state.env.OPENCLAW_STATE_DIR),
+        ),
       ).not.toBeNull();
 
       await adoption.managedDeliveries.get(current.deliveryId)?.acknowledge();
       expect(
-        await loadPendingSessionDelivery(current.deliveryId, state.env.OPENCLAW_STATE_DIR),
+        await loadPendingSessionDelivery(
+          current.deliveryId,
+          captureContinuationQueueContext(state.env.OPENCLAW_STATE_DIR),
+        ),
       ).toBeNull();
     });
   });

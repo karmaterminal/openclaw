@@ -21,7 +21,11 @@ import type { resolveMessageChannel } from "../../utils/message-channel.js";
 import type { RequestCompactionInvocation } from "../compaction-attribution.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 import type { ContinueWorkRequest } from "../tools/continue-work-tool.js";
-import { scheduleSpawnInitContinueWorkWake } from "./attempt-execution.continue-work.js";
+import {
+  notifyContinueWorkElectionsDropped,
+  notifyContinueWorkWakeUnconfirmed,
+  scheduleSpawnInitContinueWorkWake,
+} from "./attempt-execution.continue-work.js";
 import type { AgentCommandOpts, AgentRunContext } from "./types.js";
 
 const log = createSubsystemLogger("agents/agent-command");
@@ -207,6 +211,9 @@ export function startAttemptContinuation(params: AttemptContinuationParams) {
       );
 
       if (continuationEnabled && params.sessionKey) {
+        // True while a tool election that was answered "scheduled" has no
+        // owner for its session notice; the wake scheduler takes it over.
+        let unsignaledWorkElection = false;
         try {
           if (
             embeddedRunResult.meta?.aborted === true ||
@@ -240,6 +247,10 @@ export function startAttemptContinuation(params: AttemptContinuationParams) {
               log.info(
                 `[continuation] Ignoring ${attemptContinueWorkRequests.length} continue_work election(s) because the spawn-init turn was incomplete and replay-unsafe for session ${sanitizeForLog(params.sessionKey)}`,
               );
+              notifyContinueWorkElectionsDropped(
+                params.sessionKey,
+                "the turn ended incomplete and cannot be safely replayed",
+              );
             }
             const failedDelegateRows = await failQueuedDelegatesOwnedByRun(
               params.sessionKey,
@@ -256,6 +267,7 @@ export function startAttemptContinuation(params: AttemptContinuationParams) {
             }
             return embeddedRunResult;
           }
+          unsignaledWorkElection = attemptContinueWorkRequests.length > 0;
           const { extractContinuationSignal, stripContinuationSignal } =
             await import("../../auto-reply/continuation/signal.js");
           const continuationPayloads = embeddedRunResult.payloads ?? [];
@@ -266,6 +278,14 @@ export function startAttemptContinuation(params: AttemptContinuationParams) {
             enabled: true,
             sessionKey: params.sessionKey,
           });
+          if (unsignaledWorkElection && extraction.signal?.kind !== "work") {
+            // A bracket signal outranks the tool request (extractContinuationSignal).
+            unsignaledWorkElection = false;
+            notifyContinueWorkElectionsDropped(
+              params.sessionKey,
+              "a bracket continuation signal in the reply took precedence",
+            );
+          }
           if (extraction.signal?.kind === "work") {
             const internalBracketTraceparent = extraction.fromBracket
               ? (resolveContinuationTraceparent(params.opts.traceparent) ??
@@ -299,6 +319,7 @@ export function startAttemptContinuation(params: AttemptContinuationParams) {
                 break;
               }
             }
+            unsignaledWorkElection = false;
             await scheduleSpawnInitContinueWorkWake({
               sessionKey: params.sessionKey,
               sessionEntry: params.sessionStore?.[params.sessionKey] ?? params.sessionEntry,
@@ -316,6 +337,9 @@ export function startAttemptContinuation(params: AttemptContinuationParams) {
           log.warn(
             `[attempt-execution] failed to schedule continue_work wake for ${sanitizeForLog(params.sessionKey)}: ${sanitizeForLog(String(err))}`,
           );
+          if (unsignaledWorkElection) {
+            notifyContinueWorkWakeUnconfirmed(params.sessionKey);
+          }
         }
       }
 

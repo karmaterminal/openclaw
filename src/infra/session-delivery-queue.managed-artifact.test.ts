@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { withTestDir } from "../test-helpers/temp-dir.js";
 import { enqueueSessionDelivery } from "./session-delivery-queue-storage.js";
+import { captureSessionDeliveryQueueContext } from "./session-delivery-queue.storage.test-support.js";
 
 function managedArtifactDelivery() {
   return {
@@ -35,6 +36,7 @@ function managedArtifactDelivery() {
 describe("managed artifact session deliveries", () => {
   it("requires an expected session id for managed returns", async () => {
     await withTestDir({ prefix: "openclaw-session-delivery-managed-" }, async (tempDir) => {
+      const queueContext = captureSessionDeliveryQueueContext(tempDir);
       await expect(
         enqueueSessionDelivery(
           {
@@ -43,7 +45,7 @@ describe("managed artifact session deliveries", () => {
             text: "managed return",
             managedDelegateArtifactDelivery: managedArtifactDelivery(),
           } as unknown as Parameters<typeof enqueueSessionDelivery>[0],
-          tempDir,
+          queueContext,
         ),
       ).rejects.toThrow("invalid generic session delivery payload: invalid shape");
     });
@@ -51,6 +53,7 @@ describe("managed artifact session deliveries", () => {
 
   it("accepts a managed return bound to the expected session id", async () => {
     await withTestDir({ prefix: "openclaw-session-delivery-managed-" }, async (tempDir) => {
+      const queueContext = captureSessionDeliveryQueueContext(tempDir);
       await expect(
         enqueueSessionDelivery(
           {
@@ -60,7 +63,7 @@ describe("managed artifact session deliveries", () => {
             expectedSessionId: "session-1",
             managedDelegateArtifactDelivery: managedArtifactDelivery(),
           },
-          tempDir,
+          queueContext,
         ),
       ).resolves.toEqual(expect.any(String));
     });

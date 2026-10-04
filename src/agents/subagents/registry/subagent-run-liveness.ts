@@ -103,7 +103,7 @@ function isUnendedRunStalePastCutoff(
  * Collapses a child-session run record into the only distinction the reaper may
  * act on: are we CONFIDENT the parent run is terminal (reap-eligible), is it
  * plausibly still live (quiesce), or do we simply not know (quiesce)? The
- * asymmetric error cost is load-bearing : wrongly culling a busy seat is
+ * asymmetric error cost is load-bearing : wrongly culling a busy session is
  * unrecoverable, while parking a zombie is harmless — so anything short of
  * `confident-terminal` MUST resolve to a non-reap state.
  *

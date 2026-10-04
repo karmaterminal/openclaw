@@ -671,7 +671,7 @@ describe("durable continuation_work dispatch", () => {
     const deferredState = (await custodyRecords())[0]?.stateJson as { busySkipCount?: number };
     expect(deferredState.busySkipCount).toBe(3);
 
-    // Once the seat quiets, the deferred flow delivers without being dropped, and the
+    // Once the session quiets, the deferred flow delivers without being dropped, and the
     // granted record clears the backoff counter (rate-cap, never permanent).
     activeSessions.clear();
     const result = await dispatchPendingContinuationWork({ sessionKey });

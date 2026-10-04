@@ -195,9 +195,9 @@ export async function resolveSubagentContinuationLaunchError(
 
 /**
  * Resolves the spawn's Gateway binding and operator authority from the ambient caller.
- * Upstream's chain subsumes our single-source lookup; operatorAuthority is a
+ * The caller chain subsumes a single-source lookup; operatorAuthority is a
  * SEPARATE gate from continuationChainState -- chain state is accounting, never
- * authorization (Ronan's ruling on this absorb).
+ * authorization.
  */
 export function resolveSubagentSpawnOperatorBinding() {
   const gatewayCaller = getGatewayToolCallerIdentity();

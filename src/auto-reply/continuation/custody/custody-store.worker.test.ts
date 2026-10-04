@@ -494,7 +494,7 @@ describe("revision CAS", () => {
 });
 
 describe("spawn attempts", () => {
-  it("allocates strictly increasing, never reused attempt IDs formatted only by L0", () => {
+  it("allocates strictly increasing, never reused attempt IDs formatted only by the shared run-key formatter", () => {
     const options = stateOptions();
     write(options, (db) => createContinuationRecordInDatabase(db, delegate("delegate-a")));
 
@@ -588,7 +588,7 @@ describe("spawn attempts", () => {
   it("keeps stored child run IDs as opaque evidence and continues after the highest attempt", () => {
     const options = stateOptions();
     write(options, (db) => createContinuationRecordInDatabase(db, delegate("delegate-a")));
-    // Imported evidence may carry a run ID the L0 formatter would never produce.
+    // Imported evidence may carry a run ID the shared run-key formatter would never produce.
     openOpenClawStateDatabase(options)
       .db.prepare("UPDATE continuation_records SET spawn_attempts_json = ? WHERE record_id = ?")
       .run(

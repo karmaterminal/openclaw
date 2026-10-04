@@ -7,7 +7,7 @@
 // in between, and the test double for runEmbeddedAgent ignores the abort
 // signal. So a timed-out test can leave an orphaned recall mid-flight; when it
 // later resolves it calls runEmbeddedAgent inside a SUBSEQUENT test and steals
-// that test's one-shot mock, surfacing as a stale recall leak (openclaw#1028).
+// that test's one-shot mock, surfacing as a stale recall leak.
 //
 // Flushing a few real-timer macrotasks after each test forces any orphaned
 // recall to finish (consuming its own test's reset mock) before the next test

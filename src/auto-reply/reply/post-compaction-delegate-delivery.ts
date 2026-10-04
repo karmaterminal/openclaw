@@ -53,6 +53,7 @@ import {
   formatPostCompactionStaleRejection,
   POST_COMPACTION_DELEGATE_TTL_MS,
 } from "../continuation/post-compaction-staleness.js";
+import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 import { withContinuationOwner } from "../continuation/system-event-ownership.js";
 import { hasCrossSessionDelegateTargeting } from "../continuation/targeting-pure.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
@@ -122,7 +123,7 @@ export type PostCompactionDelegateDeliveryDeps = {
   /** Persist attempt ownership on the entry before any spawn begins. */
   markAttemptStarted(
     entry: QueuedPostCompactionDelegateDelivery,
-    queueContext?: OpenClawStateWorkerContext,
+    queueContext: OpenClawStateWorkerContext,
   ): Promise<void>;
   /** Enqueue the entry's interrupted notice and surface it (idempotent per entry). */
   enqueueInterruptedNotice(params: {
@@ -605,7 +606,10 @@ export async function deliverQueuedPostCompactionDelegate(
 
     // Attempt ownership is durable before any spawn side effect: from here
     // on, a restart finds `deliveryStartedAt` and never spawns again.
-    await deps.markAttemptStarted(params.entry, params.queueContext);
+    await deps.markAttemptStarted(
+      params.entry,
+      params.queueContext ?? captureContinuationQueueContext(),
+    );
     let spawnResult: Awaited<ReturnType<PostCompactionDelegateSpawn>>;
     try {
       spawnResult = await deps.spawnSubagentDirect(

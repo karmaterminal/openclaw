@@ -1,5 +1,5 @@
 // Behavior equivalence for the shared-state worker cutover of delegate
-// artifacts (#1417 step 5). Every case uses only the public facade, so the
+// artifacts. Every case uses only the public facade, so the
 // same assertions also hold against the synchronous main-thread store.
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";

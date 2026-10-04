@@ -23,6 +23,7 @@ import {
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import { drainFormattedSystemEvents } from "../reply/session-system-events.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import { resolveContinuationRecipientAgentIds } from "./recipient-authority-binding.js";
 import {
   enqueueContinuationReturnDeliveries,
@@ -547,7 +548,9 @@ describe("continuation cross-session targeting", () => {
       // The durable queue entry must persist in the SQLite
       // substrate (NOT acked/removed). The recovery loop on next gateway
       // restart picks it up via `recoverPendingRestartContinuationDeliveries`.
-      const persistedEntries = await loadPendingSessionDeliveries(stateDir);
+      const persistedEntries = await loadPendingSessionDeliveries(
+        captureContinuationQueueContext(stateDir),
+      );
       expect(persistedEntries).toHaveLength(1);
 
       const persisted = expectDefined(persistedEntries.at(0), "persisted delivery");
@@ -576,7 +579,9 @@ describe("continuation cross-session targeting", () => {
         },
       );
 
-      expect(await loadPendingSessionDeliveries(stateDir)).toHaveLength(1);
+      expect(
+        await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir)),
+      ).toHaveLength(1);
 
       const drained = await drainFormattedSystemEvents({
         cfg: {},
@@ -586,7 +591,9 @@ describe("continuation cross-session targeting", () => {
         isNewSession: false,
       });
       expect(drained).toContain("live attached recipient");
-      expect(await loadPendingSessionDeliveries(stateDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir))).toEqual(
+        [],
+      );
     });
   });
 
@@ -609,7 +616,9 @@ describe("continuation cross-session targeting", () => {
         },
       );
 
-      const persisted = await loadPendingSessionDeliveries(stateDir);
+      const persisted = await loadPendingSessionDeliveries(
+        captureContinuationQueueContext(stateDir),
+      );
       expect(persisted).toHaveLength(2);
       expect(persisted.map((entry) => entry.sessionKey).toSorted()).toEqual([
         "agent:main:root",

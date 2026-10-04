@@ -6,7 +6,7 @@
  * `spawnAttempts` before it calls the spawn owner. The spawn owner uses that ID
  * verbatim as the Gateway run ID, so after admission the `subagent_runs` row's
  * `run_id` equals it. This module is the single formatter and parser for that
- * ID; custody (L1), the spawn owner (L2) and the Gateway reservation all import
+ * ID; custody, the spawn owner and the Gateway reservation all import
  * it rather than deriving their own.
  */
 

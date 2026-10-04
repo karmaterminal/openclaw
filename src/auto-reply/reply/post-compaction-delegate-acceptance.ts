@@ -17,6 +17,7 @@ import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-work
 import { surfaceDurableContinuationNotice } from "../continuation/continuation-notice-surface.js";
 import { buildContinuationSpawnInterruptedNotice } from "../continuation/custody/spawn-interrupted-notice.js";
 import type { DelegateAdmissionEvidence } from "../continuation/delegate-dispatch-accepted-children.js";
+import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 import { withContinuationOwner } from "../continuation/system-event-ownership.js";
 import type { ChainState } from "../continuation/types.js";
 import type {
@@ -36,7 +37,10 @@ export async function enqueueQueueEntryInterruptedNotice(params: {
   });
   // Insert-if-absent under the entry-derived key: a redelivery after a crash
   // between this insert and the entry's settlement resolves to the same row.
-  const enqueued = await enqueueSessionDeliveryWithStatus(notice, params.queueContext);
+  const enqueued = await enqueueSessionDeliveryWithStatus(
+    notice,
+    params.queueContext ?? captureContinuationQueueContext(),
+  );
   if (notice.kind === "systemEvent" && enqueued.status !== "unknown") {
     await surfaceDurableContinuationNotice({
       entryId: enqueued.id,

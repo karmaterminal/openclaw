@@ -80,7 +80,7 @@ async function startFixtureGatewayGeneration(params: {
     // Use the case's own isolated state env verbatim. It is already a complete
     // environment (process.env plus this case's overrides, minus the keys the
     // helper deliberately unsets), so spreading it over ambient `process.env`
-    // would resurrect exactly those unset keys - on an operator-owned seat that
+    // would resurrect exactly those unset keys - on an operator-owned host that
     // repoints the fixture at real agent state. Taking it directly also keeps a
     // timed-out case's deferred `state.cleanup()` from deciding this owner.
     env: params.stateEnv,

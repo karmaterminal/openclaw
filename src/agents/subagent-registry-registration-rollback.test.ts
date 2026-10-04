@@ -189,11 +189,9 @@ describe("subagent registration rollback", () => {
     delivery: { status: "not_required" },
   });
 
-  // Ronan's controlling ruling on the fourth absorb (Silas retracted the earlier
-  // recorder-widening advice): durable custody is recorded ownership-BLIND. If the
-  // recorder refused to write the marker whenever live cleanup authority had been
-  // revoked, an accepted child would be orphaned with nothing for the sweeper to
-  // reconcile. The durable row is fenced by expectedRegistration plus frozen session
+  // Durable custody is recorded ownership-BLIND. If the recorder refused to write
+  // the marker whenever live cleanup authority had been revoked, an accepted child
+  // would be orphaned with nothing for the sweeper to reconcile. The durable row is fenced by expectedRegistration plus frozen session
   // identity and run id; the live predicate belongs only on termination.
   it("persists exact-registration rollback custody even after cleanup ownership flips", () => {
     const childSessionKey = "agent:main:subagent:rollback-custody-survives-revocation";

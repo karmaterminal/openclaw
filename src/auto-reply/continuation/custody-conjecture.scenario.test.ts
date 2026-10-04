@@ -1,6 +1,6 @@
 /**
  * Conjecture tests for the post-TaskFlow continuation custody contract
- * (docs/design/continue-work-signal-v2.md §5.4 and §9.2.2 at RFC 5201b2df47).
+ * (docs/design/continue-work-signal-v2.md §5.4 and §9.2.2).
  *
  * Every scenario drives public continuation boundaries: the continue_delegate,
  * continue_work and request_compaction tools, the response-token grammar, the
@@ -18,7 +18,7 @@
  * returns) stays suspended forever, exactly like a killed process.
  *
  * Where the RFC changed the TaskFlow-era behavior, the test name says which
- * section changed it; these were `it.fails` until the §5.4 re-home (L4). Each
+ * section changed it; these were `it.fails` until the §5.4 custody store landed. Each
  * is paired with a test that pins the invariant both designs share, so a
  * changed-behavior test cannot pass because its scenario stopped reaching the
  * boundary.
@@ -41,6 +41,7 @@ vi.mock("../reply/get-reply.js", async (importOriginal) => ({
 }));
 
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 
 const OWNER = "agent:main:discord:channel:custody-conjecture";
 const OWNER_SESSION_ID = "custody-conjecture-owner-session";
@@ -150,9 +151,9 @@ async function bootGateway() {
   }
 
   async function pendingOwnerDeliveries() {
-    return (await deliveryStorage.loadPendingSessionDeliveries()).filter(
-      (entry) => entry.sessionKey === OWNER,
-    );
+    return (
+      await deliveryStorage.loadPendingSessionDeliveries(captureContinuationQueueContext())
+    ).filter((entry) => entry.sessionKey === OWNER);
   }
 
   function followupRun(runId: string) {

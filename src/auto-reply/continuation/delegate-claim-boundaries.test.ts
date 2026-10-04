@@ -29,6 +29,7 @@ import {
   enqueuePendingDelegate,
   requeuePendingDelegate,
 } from "./delegate-store.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 
 const OWNER = "agent:main:discord:channel:claim-boundaries";
 const OTHER_OWNER = "agent:main:discord:channel:someone-else";
@@ -74,7 +75,7 @@ function dispatch(options: { recover?: boolean } = {}) {
 }
 
 async function interruptedNoticeRows() {
-  return (await loadPendingSessionDeliveries()).filter(
+  return (await loadPendingSessionDeliveries(captureContinuationQueueContext())).filter(
     (entry) =>
       entry.kind === "systemEvent" &&
       entry.sessionKey === OWNER &&

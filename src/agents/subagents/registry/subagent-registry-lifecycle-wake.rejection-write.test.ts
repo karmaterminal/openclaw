@@ -120,12 +120,12 @@ function warnedMessages(warn: ReturnType<typeof vi.fn>): string[] {
   return warn.mock.calls.map((call) => String(call[0]));
 }
 
-// karmaterminal/openclaw#1363. A requester settle wake that fails must be able to
-// record its own rejection through completeRequesterSettleWakeBatch with an
-// outcome. The seat defect (the rejection write resolving the owning detached task
-// first and throwing "subagent completion owner unavailable before settlement"
-// forever once that task was gone) was a Tasks-runtime owner lookup; upstream's
-// Tasks/TaskFlow removal (6652f7eac8) deleted that lookup, so only the surviving
+// A requester settle wake that fails must be able to record its own rejection
+// through completeRequesterSettleWakeBatch with an outcome. The original defect
+// (the rejection write resolving the owning detached task first and throwing
+// "subagent completion owner unavailable before settlement" forever once that
+// task was gone) was a Tasks-runtime owner lookup; the Tasks/TaskFlow removal
+// (6652f7eac8) deleted that lookup, so only the surviving
 // contract is pinned here.
 describe("requester settle wake rejection write", () => {
   it("records the rejection through settlement when the completion owner is available", async () => {

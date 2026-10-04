@@ -264,7 +264,7 @@ describe("scoped vitest configs", () => {
   });
 
   it("routes the continuation subtree into the auto-reply reply bucket", () => {
-    // Fork: the continuation feature's tests live under src/auto-reply/continuation
+    // The continuation feature's tests live under src/auto-reply/continuation
     // and share the reply bucket rather than a dedicated shard.
     expect(requireTestConfig(createAutoReplyReplyVitestConfig({})).include).toEqual([
       "reply/**/*.test.ts",

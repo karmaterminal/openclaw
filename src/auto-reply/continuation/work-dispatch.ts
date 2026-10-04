@@ -220,7 +220,7 @@ export function computeBusySkipBackoffMs(
  * bucket-1 — orphan-reap verdict for a busy-deferred continuation flow.
  *
  * Pure decision over the delegate-flow-gate + a read-time parent-liveness join.
- * Asymmetric error cost is load-bearing : wrongly culling a busy seat is
+ * Asymmetric error cost is load-bearing : wrongly culling a busy session is
  * unrecoverable; parking a zombie is harmless. So ONLY a confident-terminal
  * parent authorizes the cull — `alive`, `uncertain`, and the no-lineage gate all
  * quiesce (rate-cap-forever, the Pillar-0 trickle).

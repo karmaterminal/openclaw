@@ -1,15 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { OPENCLAW_SQLITE_BUSY_TIMEOUT_MS } from "./openclaw-state-db-contract.js";
 
-// Regression guard for karmaterminal/openclaw#1365.
-//
 // The agent-database maintenance admission write used to pass `busyTimeoutMs: 0`,
 // overriding the contract default. `runExistingOpenClawStateWriteTransaction`
 // resolves `contract.busyTimeoutMs ?? OPENCLAW_SQLITE_BUSY_TIMEOUT_MS`, so that
 // override gave this BEGIN one attempt and zero wait. It then lost
 // deterministically to a concurrent `state.write` that the same gateway startup
 // creates — reproduced twice, the second time on a deliberately quiet host — and
-// because the agent-database schema had already advanced by then, the seat was
+// because the agent-database schema had already advanced by then, the host was
 // left with no startable build in either direction.
 //
 // This asserts the EFFECTIVE timeout the callee will compute, not merely that a
@@ -32,7 +30,7 @@ vi.mock("./openclaw-state-db-existing-write.js", () => ({
 
 const { withExistingAgentLeaseWrite } = await import("./openclaw-agent-db-existing-write.js");
 
-describe("agent database maintenance admission busy timeout (#1365)", () => {
+describe("agent database maintenance admission busy timeout", () => {
   it("inherits the shared existing-state default instead of overriding it to zero", () => {
     captured.length = 0;
     const maintenance = { assertCurrent: vi.fn(), assertOwnedInTransaction: vi.fn() };

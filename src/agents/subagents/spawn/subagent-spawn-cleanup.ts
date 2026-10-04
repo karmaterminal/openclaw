@@ -312,10 +312,9 @@ export async function terminateAcceptedCollectorRun(params: {
       return cleanup !== "failed" || params.isCurrent?.() === false;
     },
     {
-      // Conjunctive by Ronan's ruling on the operator-authority merge: retry
-      // only while the request owner can still dispatch AND the cleanup owner is
-      // still current AND identity is safe to delete against. A retired scope can
-      // never dispatch again; `isCurrent` is upstream's live-ownership bound and
+      // Conjunctive: retry only while the request owner can still dispatch AND the
+      // cleanup owner is still current AND identity is safe to delete against. A
+      // retired scope can never dispatch again; `isCurrent` is upstream's live-ownership bound and
       // must be threaded by every caller or the guard reads undefined and passes.
       shouldRetry: () =>
         params.retry !== false &&

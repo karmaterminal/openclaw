@@ -73,6 +73,7 @@ import {
   stagePostCompactionCustodyDelegate,
 } from "./delegate-store-post-compaction.js";
 import { POST_COMPACTION_DELEGATE_TTL_MS } from "./post-compaction-staleness.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import type { StagedPostCompactionDelegate } from "./types.js";
 
 useContinuationCustodyTestState();
@@ -150,7 +151,7 @@ async function custodyRecord(recordId: string) {
 }
 
 async function interruptedNoticeRows(sessionKey: string): Promise<string[]> {
-  return (await loadPendingSessionDeliveries()).flatMap((entry) =>
+  return (await loadPendingSessionDeliveries(captureContinuationQueueContext())).flatMap((entry) =>
     entry.kind === "systemEvent" &&
     entry.sessionKey === sessionKey &&
     entry.text.includes(INTERRUPTED_NOTICE)
@@ -783,7 +784,9 @@ describe("recoverAndReleaseStagedPostCompactionDelegates stale TTL", () => {
     expect(record.status).toBe("failed");
     expect(record.handoff).toBeUndefined();
     expect(
-      (await loadPendingSessionDeliveries()).filter((entry) => entry.sessionKey === sessionKey),
+      (await loadPendingSessionDeliveries(captureContinuationQueueContext())).filter(
+        (entry) => entry.sessionKey === sessionKey,
+      ),
     ).toEqual([]);
     // Diagnostics carry only the age, never task prose or attachment bytes.
     const emitted = emittedText();

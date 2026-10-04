@@ -59,6 +59,10 @@ function isFinalizedOpenAIResponsesToolCall(
 }
 
 function sanitizeToolCallBlock(block: RawToolCallBlock): RawToolCallBlock {
+  // This repair path normalizes replay shape only. Tool payloads are local
+  // trusted-operator transcript state per SECURITY.md, so do not redact or
+  // rewrite sessions_spawn arguments here. The shared sanitizer's only payload
+  // rewrite is continue_delegate attachment content.
   return sanitizeTranscriptToolCallBlock(block);
 }
 

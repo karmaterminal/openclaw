@@ -37,8 +37,8 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
   >();
   // Keyed by OpenClaw's diagnostic trace id, which can differ from the OTEL
   // trace id allocated for an otherwise unparented root span.
-  // Upstream's capacity-evicted `retainedTrustedSpanContexts` replaced the
-  // fork's timer-drained retention, so only this trace-id alias survives.
+  // The capacity-evicted `retainedTrustedSpanContexts` replaced the earlier
+  // timer-drained retention, so only this trace-id alias survives.
   const trustedSpanContextsByTraceId = new Map<string, SpanContext>();
   const stopActiveTrustedSpans = () => {
     const stopAt = Date.now();

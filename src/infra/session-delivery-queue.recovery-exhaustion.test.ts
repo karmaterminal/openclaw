@@ -55,9 +55,9 @@ describe("session-delivery queue recovery", () => {
           messageId: "restart-sentinel:agent:main:main:agentTurn:startup-exhausted",
           maxRetries: 1,
         },
-        tempDir,
+        queueContext,
       );
-      await failSessionDelivery(id, "busy", tempDir);
+      await failSessionDelivery(id, "busy", queueContext);
 
       const deliver = vi.fn(async () => undefined);
       const onSettled = vi.fn(async () => undefined);
@@ -75,7 +75,7 @@ describe("session-delivery queue recovery", () => {
         "moved-to-failed",
         queueContext,
       );
-      expect(await loadPendingSessionDeliveries(tempDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
     });
   });
 
@@ -97,8 +97,8 @@ describe("session-delivery queue recovery", () => {
           },
           sequence: 0,
         });
-        const id = await enqueueSessionDelivery({ ...payload, maxRetries: 1 }, tempDir);
-        await failSessionDelivery(id, "busy", tempDir);
+        const id = await enqueueSessionDelivery({ ...payload, maxRetries: 1 }, queueContext);
+        await failSessionDelivery(id, "busy", queueContext);
 
         const deliver = vi.fn(async () => undefined);
         if (mode === "runtime") {
@@ -143,14 +143,16 @@ describe("session-delivery queue recovery", () => {
               messageId: `image:task-exhausted-${mode}:agent-loop`,
               maxRetries: 1,
             },
-            tempDir,
+            queueContext,
           );
-          const entry = await loadPendingSessionDeliveries(tempDir).then((entries) => entries[0]);
+          const entry = await loadPendingSessionDeliveries(queueContext).then(
+            (entries) => entries[0],
+          );
           if (!entry) {
             throw new Error("Expected pending session delivery");
           }
-          await markSessionDeliveryAttemptStarted(entry, tempDir);
-          await failSessionDelivery(id, "final response lost", tempDir);
+          await markSessionDeliveryAttemptStarted(entry, queueContext);
+          await failSessionDelivery(id, "final response lost", queueContext);
 
           const deliver = vi.fn(async () => undefined);
           if (mode === "startup") {
@@ -178,7 +180,7 @@ describe("session-delivery queue recovery", () => {
             expect.objectContaining({ id, deliveryStartedAt: expect.any(Number) }),
             { queueContext },
           );
-          expect(await loadPendingSessionDeliveries(tempDir)).toEqual([]);
+          expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
         });
       } finally {
         if (mode === "startup") {
@@ -201,14 +203,14 @@ describe("session-delivery queue recovery", () => {
           messageId: "image:task-reconciliation-failed:agent-loop",
           maxRetries: 1,
         },
-        tempDir,
+        queueContext,
       );
-      const [entry] = await loadPendingSessionDeliveries(tempDir);
+      const [entry] = await loadPendingSessionDeliveries(queueContext);
       if (!entry) {
         throw new Error("Expected pending session delivery");
       }
-      await markSessionDeliveryAttemptStarted(entry, tempDir);
-      await failSessionDelivery(id, "final response lost", tempDir);
+      await markSessionDeliveryAttemptStarted(entry, queueContext);
+      await failSessionDelivery(id, "final response lost", queueContext);
 
       const deliver = vi.fn(async () => {
         throw new Error("terminal evidence unavailable");
@@ -225,13 +227,13 @@ describe("session-delivery queue recovery", () => {
 
       await drain();
       expect(deliver).toHaveBeenCalledOnce();
-      expect(await loadPendingSessionDeliveries(tempDir)).toEqual([
+      expect(await loadPendingSessionDeliveries(queueContext)).toEqual([
         expect.objectContaining({ id, retryCount: 2, deliveryStartedAt: expect.any(Number) }),
       ]);
 
       await drain();
       expect(deliver).toHaveBeenCalledOnce();
-      expect(await loadPendingSessionDeliveries(tempDir)).toEqual([]);
+      expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
     });
   });
 
@@ -249,7 +251,7 @@ describe("session-delivery queue recovery", () => {
           sessionKey: "agent:main:main",
           text: "recover old entry",
         },
-        tempDir,
+        queueContext,
       );
       const maxEnqueuedAt = Date.now();
 
@@ -260,7 +262,7 @@ describe("session-delivery queue recovery", () => {
           sessionKey: "agent:main:main",
           text: "leave fresh entry queued",
         },
-        tempDir,
+        queueContext,
       );
 
       const deliver = vi.fn(async () => undefined);
@@ -277,7 +279,7 @@ describe("session-delivery queue recovery", () => {
 
       expect(deliver).toHaveBeenCalledTimes(1);
       expect(summary.recovered).toBe(1);
-      const pending = await loadPendingSessionDeliveries(tempDir);
+      const pending = await loadPendingSessionDeliveries(queueContext);
       expect(pending).toHaveLength(1);
       expect(pending[0]?.kind).toBe("systemEvent");
       if (pending[0]?.kind === "systemEvent") {
