@@ -121,17 +121,10 @@ function readContentFacts(
 }
 
 function readColumns(db: DatabaseSync, table: string): string[] {
-  return (
-    // SAFETY: PRAGMA table_xinfo rows always carry string name and integer hidden
-    (
-      db.prepare(`PRAGMA table_xinfo(${quoteSqliteIdentifier(table)})`).all() as Array<{
-        name: string;
-        hidden: number;
-      }>
-    )
-      .filter((column) => column.hidden === 0)
-      .map((column) => column.name)
-  );
+  const statement = db.prepare(`PRAGMA table_xinfo(${quoteSqliteIdentifier(table)})`);
+  // SAFETY: PRAGMA table_xinfo rows always carry string name and integer hidden
+  const columns = statement.all() as Array<{ name: string; hidden: number }>;
+  return columns.filter((column) => column.hidden === 0).map((column) => column.name);
 }
 
 function refuse(pathname: string, detail: string): never {
