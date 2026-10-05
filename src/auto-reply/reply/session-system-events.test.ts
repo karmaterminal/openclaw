@@ -5,6 +5,22 @@ import { captureContinuationQueueContext } from "../continuation/queue-context.j
 
 const MAIN_QUEUE_KEY = resolveSystemEventQueueKey("main", "main");
 
+// No explicit queue state dir on these events: the ack binds to the process's
+// own default queue context (89be566948 made the context mandatory). Same
+// contract the cut pins in 706fd7e135c for the stale-recipient case (#1427).
+function expectProcessQueueAck(deliveryId: string): void {
+  const processQueue = captureContinuationQueueContext();
+  expect(mocks.ackSessionDelivery).toHaveBeenCalledWith(
+    deliveryId,
+    expect.objectContaining({
+      admission: expect.objectContaining({ databasePath: processQueue.admission.databasePath }),
+      environment: expect.objectContaining({
+        OPENCLAW_STATE_DIR: processQueue.environment.OPENCLAW_STATE_DIR,
+      }),
+    }),
+  );
+}
+
 const RECIPIENT_AUTHORITY_EPOCH = "11111111-1111-4111-8111-111111111111";
 
 const mocks = vi.hoisted(() => ({
@@ -285,7 +301,7 @@ describe("drainFormattedSystemEvents trace context", () => {
       reason: "recipient-incarnation-changed",
     });
     expect(mocks.recordDelegateArtifactDeliveryBinding).not.toHaveBeenCalled();
-    expect(mocks.ackSessionDelivery).toHaveBeenCalledWith("delivery-1", undefined);
+    expectProcessQueueAck("delivery-1");
   });
 
   it("leaves a managed return queued while its runtime gate is disabled", async () => {
@@ -407,7 +423,7 @@ describe("drainFormattedSystemEvents trace context", () => {
       recipientSessionId: "current-session",
       phase: "acknowledged",
     });
-    expect(mocks.ackSessionDelivery).toHaveBeenCalledWith("delivery-1", undefined);
+    expectProcessQueueAck("delivery-1");
   });
 
   it("replays the same managed completion until the recipient turn adopts it", async () => {
@@ -486,7 +502,7 @@ describe("drainFormattedSystemEvents trace context", () => {
       recipientSessionId: "current-session",
       phase: "acknowledged",
     });
-    expect(mocks.ackSessionDelivery).toHaveBeenCalledWith("delivery-1", undefined);
+    expectProcessQueueAck("delivery-1");
     expect(mocks.consumeSelectedSystemEventEntries).toHaveBeenCalledWith(MAIN_QUEUE_KEY, [event]);
   });
 
@@ -566,7 +582,7 @@ describe("drainFormattedSystemEvents trace context", () => {
       blocks: [],
       managedDeliveries: new Map(),
     });
-    expect(mocks.ackSessionDelivery).toHaveBeenCalledWith("delivery-authority", undefined);
+    expectProcessQueueAck("delivery-authority");
   });
 
   it("acknowledges only deliveries evidenced by the persisted recipient turn", async () => {
@@ -701,7 +717,7 @@ describe("drainFormattedSystemEvents trace context", () => {
       recipientSessionId: "current-session",
       phase: "acknowledged",
     });
-    expect(mocks.ackSessionDelivery).toHaveBeenCalledWith("delivery-1", undefined);
+    expectProcessQueueAck("delivery-1");
     expect(mocks.consumeSelectedSystemEventEntries).toHaveBeenCalledWith(MAIN_QUEUE_KEY, [event]);
   });
 
@@ -765,6 +781,6 @@ describe("drainFormattedSystemEvents trace context", () => {
       recipientSessionId: "current-session",
       reason: "delivery-state-unavailable",
     });
-    expect(mocks.ackSessionDelivery).toHaveBeenCalledWith("delivery-1", undefined);
+    expectProcessQueueAck("delivery-1");
   });
 });
