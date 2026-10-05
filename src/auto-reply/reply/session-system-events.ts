@@ -37,6 +37,7 @@ import {
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import {
   consumeSelectedSystemEventEntries,
+  restoreConsumedSystemEventEntries,
   peekSystemEventEntries,
   type SystemEvent,
 } from "../../infra/system-events.js";
@@ -513,10 +514,17 @@ export async function prepareFormattedSystemEvents(params: {
       );
     }
   }
-  const queued = consumeSelectedSystemEventEntries(
+  const consumed = consumeSelectedSystemEventEntries(
     queueKey,
     selected.filter((event) => !event.delegateArtifactReceipt && !deferredManagedEvents.has(event)),
-  ).map(refreshManagedEvent);
+  );
+  // A turn that ends without adopting returns the original consumed entries
+  // (not the refreshed copies) to the head of the queue.
+  for (const delivery of adoptionScopedDeliveries) {
+    const own = consumed.filter((event) => event.sessionDeliveryAckId === delivery.id);
+    delivery.restore = () => restoreConsumedSystemEventEntries(queueKey, own);
+  }
+  const queued = consumed.map(refreshManagedEvent);
   const deliverable = queued.filter(
     (event) =>
       !(event.sessionDeliveryAckId && excludedAdoptedAckIds.has(event.sessionDeliveryAckId)) &&

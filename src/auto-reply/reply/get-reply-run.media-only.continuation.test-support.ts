@@ -34,7 +34,9 @@ export async function useActualSystemEventDrain() {
 
 export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock: Mock): void {
   const preparedState = sessionSystemEventsMocks.state;
-  it("defers managed events when a supplied recorder is already durable", async () => {
+  it("adopts managed events without a receipt when a supplied recorder is already durable", async () => {
+    const acknowledge = vi.fn().mockResolvedValue(undefined);
+    const restore = vi.fn();
     preparedState.prepared = {
       blocks: [
         {
@@ -42,7 +44,7 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
           text: "System: managed delegate artifact",
         },
       ],
-      managedDeliveries: [{ id: "delivery-1", acknowledge: vi.fn().mockResolvedValue(undefined) }],
+      managedDeliveries: [{ id: "delivery-1", acknowledge, restore }],
     };
     const recorder = createUserTurnTranscriptRecorder({
       input: { text: "retry" },
@@ -69,13 +71,19 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
       }),
     );
 
-    expect(requireRunReplyAgentCall().followupRun.prompt).not.toContain(
-      "managed delegate artifact",
-    );
-    expect(requireRunReplyAgentCall().opts?.turnAdoptionLifecycle).toBeUndefined();
+    // A staged user message cannot carry the ack id. The return is still
+    // delivered in this turn and settled on adoption, never left for restart.
+    const call = requireRunReplyAgentCall();
+    expect(call.followupRun.currentInboundContext?.text).toContain("managed delegate artifact");
+    await call.opts?.turnAdoptionLifecycle?.onAdopted();
+    call.opts?.turnAdoptionLifecycle?.onSettled?.();
+    expect(acknowledge).toHaveBeenCalledOnce();
+    expect(restore).not.toHaveBeenCalled();
   });
 
-  it("defers managed events when a supplied recorder cannot replace delivery receipts", async () => {
+  it("adopts managed events without a receipt when a supplied recorder cannot replace delivery receipts", async () => {
+    const acknowledge = vi.fn().mockResolvedValue(undefined);
+    const restore = vi.fn();
     preparedState.prepared = {
       blocks: [
         {
@@ -83,7 +91,7 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
           text: "System: managed delegate artifact",
         },
       ],
-      managedDeliveries: [{ id: "delivery-1", acknowledge: vi.fn().mockResolvedValue(undefined) }],
+      managedDeliveries: [{ id: "delivery-1", acknowledge, restore }],
     };
     const recorder = createUserTurnTranscriptRecorder({
       input: { text: "retry" },
@@ -110,10 +118,14 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
       }),
     );
 
-    expect(requireRunReplyAgentCall().followupRun.prompt).not.toContain(
-      "managed delegate artifact",
-    );
-    expect(requireRunReplyAgentCall().opts?.turnAdoptionLifecycle).toBeUndefined();
+    // A staged user message cannot carry the ack id. The return is still
+    // delivered in this turn and settled on adoption, never left for restart.
+    const call = requireRunReplyAgentCall();
+    expect(call.followupRun.currentInboundContext?.text).toContain("managed delegate artifact");
+    await call.opts?.turnAdoptionLifecycle?.onAdopted();
+    call.opts?.turnAdoptionLifecycle?.onSettled?.();
+    expect(acknowledge).toHaveBeenCalledOnce();
+    expect(restore).not.toHaveBeenCalled();
   });
 
   it("removes an authority-bound event revoked during current-turn image resolution", async () => {
@@ -237,6 +249,23 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
       __openclaw: { sessionDeliveryAckIds: ["delivery-current"] },
     });
     expect(authorityOwner.pending.size).toBe(1);
+  });
+
+  it("returns managed events to the queue when the turn is abandoned before adoption", async () => {
+    const acknowledge = vi.fn().mockResolvedValue(undefined);
+    const restore = vi.fn();
+    preparedState.prepared = {
+      blocks: [{ key: "session-delivery:delivery-abandoned", text: "System: delegate return" }],
+      managedDeliveries: [{ id: "delivery-abandoned", acknowledge, restore }],
+    };
+
+    await runPreparedReply(baseParams());
+
+    const lifecycle = requireRunReplyAgentCall().followupRun.turnAdoptionLifecycle;
+    lifecycle?.onAbandoned?.();
+    lifecycle?.onSettled?.();
+    expect(acknowledge).not.toHaveBeenCalled();
+    expect(restore).toHaveBeenCalled();
   });
 
   it("acknowledges adopted managed deliveries when the runner adopts an immediate turn", async () => {

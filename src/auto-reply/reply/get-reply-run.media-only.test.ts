@@ -31,6 +31,7 @@ import {
 import { MESSAGE_TOOL_ONLY_DELIVERY_HINT } from "../../plugin-sdk/message-tool-delivery-hints.js";
 import { beginSessionWorkAdmission } from "../../sessions/session-lifecycle-admission.js";
 import { prepareSessionParticipantInput } from "../../sessions/session-participant-input.js";
+import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
 import { hasControlCommand } from "../command-detection.js";
 import { runReplyAgent } from "./agent-runner.runtime.js";
@@ -1971,6 +1972,46 @@ describe("runPreparedReply media-only handling", () => {
         .mockReset()
         .mockReturnValue(undefined);
     }
+  });
+
+  it("delivers a managed return in a staged-recorder turn and requeues it if that turn is abandoned", async () => {
+    await useActualSystemEventDrain();
+    const sessionKey = "agent:main:deferred-return";
+    enqueueSystemEvent("System: silent delegate return SILENTCHILD-1", {
+      sessionKey,
+      sessionDeliveryAckId: "delivery-deferred",
+      sessionDeliveryAwaitsTurnAdoption: true,
+      trusted: true,
+    });
+    expect(peekSystemEventEntries(sessionKey)).toMatchObject([
+      { sessionDeliveryAckId: "delivery-deferred", sessionDeliveryAwaitsTurnAdoption: true },
+    ]);
+    const recorder = createUserTurnTranscriptRecorder({
+      input: { text: "follow-up" },
+      target: { sessionId: "session-id", sessionKey, sessionEntry: undefined, agentId: "main" },
+    });
+    recorder.markRuntimePersisted({ role: "user", content: "follow-up", timestamp: Date.now() });
+
+    await runPreparedReply(
+      baseParams({
+        agentId: "main",
+        sessionKey,
+        ctx: { Body: "follow-up", RawBody: "follow-up", CommandBody: "follow-up" },
+        opts: { userTurnTranscriptRecorder: recorder },
+      }),
+    );
+
+    // The staged message cannot carry the ack id, but the return still reaches
+    // this turn (silent's next-turn contract) instead of waiting for restart.
+    const call = requireRunReplyAgentCall();
+    expect(call.followupRun.currentInboundContext?.text).toContain("SILENTCHILD-1");
+    expect(peekSystemEventEntries(sessionKey)).toEqual([]);
+
+    // A turn that ends without adoption hands the return back to the queue.
+    call.followupRun.turnAdoptionLifecycle?.onAbandoned?.();
+    expect(peekSystemEventEntries(sessionKey).map((event) => event.sessionDeliveryAckId)).toEqual([
+      "delivery-deferred",
+    ]);
   });
 
   it("keeps route and dispatch system events queued when busy admission returns", async () => {

@@ -392,16 +392,35 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     InputProvenance: inputProvenance,
   });
   const originalTurnAdoptionLifecycle = opts?.turnAdoptionLifecycle;
+  let managedTurnAdopted = false;
+  // A turn that ends without adoption returns its consumed managed events to
+  // the queue; the durable rows are otherwise re-read only at gateway restart.
+  const restoreUnadoptedManagedEvents = () => {
+    if (!managedTurnAdopted) {
+      for (const delivery of managedSystemEventDeliveries.values()) {
+        delivery.restore?.();
+      }
+    }
+  };
   const effectiveTurnAdoptionLifecycle =
     managedSystemEventDeliveries.size > 0
       ? {
           ...originalTurnAdoptionLifecycle,
           onAdopted: async () => {
+            managedTurnAdopted = true;
             await settleManagedSystemEventsAfterTurnAdoption({
               deliveries: managedSystemEventDeliveries.values(),
               persistedMessage: userTurnTranscriptRecorder?.getPersistedMessage?.(),
               onTurnAdopted: originalTurnAdoptionLifecycle?.onAdopted,
             });
+          },
+          onAbandoned: () => {
+            restoreUnadoptedManagedEvents();
+            originalTurnAdoptionLifecycle?.onAbandoned?.();
+          },
+          onSettled: () => {
+            restoreUnadoptedManagedEvents();
+            originalTurnAdoptionLifecycle?.onSettled?.();
           },
         }
       : originalTurnAdoptionLifecycle;

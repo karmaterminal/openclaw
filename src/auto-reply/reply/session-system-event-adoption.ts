@@ -27,6 +27,10 @@ export type PreparedSystemEventBlock = {
 export type PreparedManagedSystemEventDelivery = {
   id: string;
   acknowledge: () => Promise<void>;
+  /** Re-queue the consumed event when its turn ends without adoption. */
+  restore?: () => void;
+  /** Adopted by a turn whose staged user message cannot carry the ack id. */
+  adoptedWithoutReceipt?: boolean;
   authorityKey?: string;
 };
 
@@ -75,7 +79,7 @@ async function acknowledgePersistedManagedSystemEvents(params: {
   const adoptedIds = readSessionDeliveryAckIds(params.persistedMessage);
   let firstError: Error | undefined;
   for (const delivery of params.deliveries) {
-    if (!adoptedIds.has(delivery.id)) {
+    if (!delivery.adoptedWithoutReceipt && !adoptedIds.has(delivery.id)) {
       continue;
     }
     try {

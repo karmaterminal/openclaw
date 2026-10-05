@@ -186,18 +186,16 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
       const recorderAccepted =
         !opts?.userTurnTranscriptRecorder ||
         opts.userTurnTranscriptRecorder.replaceSessionDeliveryAckIds?.(managedDeliveryIds) === true;
-      const deferredManagedBlockKeys = recorderAccepted
-        ? undefined
-        : new Set(managedDeliveryIds.map((id) => `session-delivery:${id}`));
-      if (recorderAccepted) {
-        for (const [id, delivery] of adoption.managedDeliveries) {
-          managedSystemEventDeliveries.set(id, delivery);
-        }
+      // A staged recorder cannot carry the ack ids. Deferring would drop the
+      // return until gateway restart, so adopt it in this turn without a
+      // transcript receipt; settlement acks it on adoption (at-least-once).
+      for (const [id, delivery] of adoption.managedDeliveries) {
+        managedSystemEventDeliveries.set(
+          id,
+          recorderAccepted ? delivery : { ...delivery, adoptedWithoutReceipt: true },
+        );
       }
       for (const block of adoption.blocks) {
-        if (block.key && deferredManagedBlockKeys?.has(block.key)) {
-          continue;
-        }
         if (block.key) {
           if (seenSystemEventBlockKeys.has(block.key)) {
             continue;

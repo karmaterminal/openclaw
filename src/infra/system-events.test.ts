@@ -32,6 +32,7 @@ import {
   peekSystemEvents,
   resetSystemEventsForTest,
   resolveSystemEventDeliveryContext,
+  restoreConsumedSystemEventEntries,
   type SystemEvent,
 } from "./system-events.js";
 
@@ -67,6 +68,23 @@ describe("system events (session routing)", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("restores consumed entries ahead of newer ones, in order, without duplicating", () => {
+    const key = "agent:main:restore";
+    enqueueSystemEvent("first", { sessionKey: key, sessionDeliveryAckId: "d1" });
+    enqueueSystemEvent("second", { sessionKey: key, sessionDeliveryAckId: "d2" });
+    const consumed = consumeSelectedSystemEventEntries(key, peekSystemEventEntries(key));
+    enqueueSystemEvent("newer", { sessionKey: key });
+
+    restoreConsumedSystemEventEntries(key, consumed);
+    restoreConsumedSystemEventEntries(key, consumed);
+
+    expect(peekSystemEventEntries(key).map((event) => event.text)).toEqual([
+      "first",
+      "second",
+      "newer",
+    ]);
   });
 
   it("does not leak session-scoped events into main", async () => {
