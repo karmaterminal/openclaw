@@ -28,6 +28,7 @@ import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.j
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import {
   consumeSelectedSystemEventEntries,
+  restoreConsumedSystemEventEntries,
   peekSystemEventEntries,
   type SystemEvent,
 } from "../../infra/system-events.js";
@@ -260,6 +261,10 @@ export async function prepareFormattedSystemEvents(params: {
     }
   }
   const queued = consumeSelectedSystemEventEntries(queueKey, selected);
+  for (const delivery of adoptionScopedDeliveries) {
+    const consumed = queued.filter((event) => event.sessionDeliveryAckId === delivery.id);
+    delivery.restore = () => restoreConsumedSystemEventEntries(queueKey, consumed);
+  }
   const promptEvents = queued.filter(
     (event) =>
       !(event.sessionDeliveryAckId && excludedAdoptedAckIds.has(event.sessionDeliveryAckId)) &&

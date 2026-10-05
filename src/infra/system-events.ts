@@ -495,6 +495,35 @@ export function consumeSelectedSystemEventEntries(
   return removed;
 }
 
+/**
+ * Put consumed entries back at the head of the queue, in their original order,
+ * when the consumer could not adopt them. An entry already queued again (same
+ * id or durable delivery identity) is skipped; a replaced store drops it.
+ */
+export function restoreConsumedSystemEventEntries(
+  sessionKey: string,
+  events: readonly SystemEvent[],
+): void {
+  const key = requireSessionKey(sessionKey);
+  const entry = getOrCreateSessionQueue(key);
+  const restored = events.filter(
+    (event) =>
+      isSystemEventStoreCurrent(key, event.sessionStorePath ?? getSystemEventStorePath(key)) &&
+      !entry.queue.some(
+        (queued) =>
+          (event.id !== undefined && queued.id === event.id) ||
+          (event.sessionDeliveryAckId !== undefined &&
+            queued.sessionDeliveryAckId === event.sessionDeliveryAckId &&
+            queued.sessionDeliveryAckStateDir === event.sessionDeliveryAckStateDir),
+      ),
+  );
+  entry.queue.unshift(...restored.map(cloneSystemEvent));
+  if (entry.queue.length > MAX_EVENTS) {
+    entry.queue.splice(0, entry.queue.length - MAX_EVENTS);
+  }
+  resetQueueState(key, entry);
+}
+
 export function drainSystemEvents(sessionKey: string): string[] {
   return drainSystemEventsWith(sessionKey, (event) => event.text);
 }
