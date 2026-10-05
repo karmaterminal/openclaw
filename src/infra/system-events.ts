@@ -517,9 +517,22 @@ export function restoreConsumedSystemEventEntries(
             queued.sessionDeliveryAckStateDir === event.sessionDeliveryAckStateDir),
       ),
   );
-  entry.queue.unshift(...restored.map(cloneSystemEvent));
-  if (entry.queue.length > MAX_EVENTS) {
-    entry.queue.splice(0, entry.queue.length - MAX_EVENTS);
+  const restoredEntries = restored.map(cloneSystemEvent);
+  entry.queue.unshift(...restoredEntries);
+  // Over the cap, never evict what was just restored (that is the return the
+  // turn failed to adopt). Evict the oldest entries without a durable row first;
+  // durable-backed managed entries may exceed the cap rather than vanish from
+  // memory while their row stays pending.
+  let overflow = entry.queue.length - MAX_EVENTS;
+  if (overflow > 0) {
+    const keep = new Set<SystemEvent>(restoredEntries);
+    entry.queue = entry.queue.filter((event) => {
+      if (overflow > 0 && !keep.has(event) && !event.sessionDeliveryAckId) {
+        overflow -= 1;
+        return false;
+      }
+      return true;
+    });
   }
   resetQueueState(key, entry);
 }
