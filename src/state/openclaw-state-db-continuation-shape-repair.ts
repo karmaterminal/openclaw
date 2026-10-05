@@ -55,6 +55,7 @@ export function classifyContinuationRecordsV20Shape(
   const digest = continuationRecordsShapeDigest(sql);
   for (const [shape, pinned] of Object.entries(KNOWN_CONTINUATION_RECORDS_V20_SHAPES)) {
     if (pinned === digest) {
+      // SAFETY: shape is a key of KNOWN_CONTINUATION_RECORDS_V20_SHAPES, iterated from that object
       return shape as ContinuationRecordsV20Shape;
     }
   }
@@ -111,6 +112,7 @@ function readContentFacts(
   let rows = 0;
   for (const row of db
     .prepare(`SELECT ${projection} FROM ${quoteSqliteIdentifier(table)} ORDER BY record_id`)
+    // SAFETY: the SELECT projects only quote()d columns: plain string-keyed rows
     .iterate() as Iterable<Record<string, unknown>>) {
     hash.update(`${JSON.stringify(Object.values(row))}\n`);
     rows += 1;
@@ -120,13 +122,16 @@ function readContentFacts(
 
 function readColumns(db: DatabaseSync, table: string): string[] {
   return (
-    db.prepare(`PRAGMA table_xinfo(${quoteSqliteIdentifier(table)})`).all() as Array<{
-      name: string;
-      hidden: number;
-    }>
-  )
-    .filter((column) => column.hidden === 0)
-    .map((column) => column.name);
+    // SAFETY: PRAGMA table_xinfo rows always carry string name and integer hidden
+    (
+      db.prepare(`PRAGMA table_xinfo(${quoteSqliteIdentifier(table)})`).all() as Array<{
+        name: string;
+        hidden: number;
+      }>
+    )
+      .filter((column) => column.hidden === 0)
+      .map((column) => column.name)
+  );
 }
 
 function refuse(pathname: string, detail: string): never {
@@ -152,6 +157,7 @@ export function repairContinuationRecordsV20Shape(
   }
   const current = db
     .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?")
+    // SAFETY: sqlite_schema.sql is TEXT or NULL; callers check typeof
     .get(TABLE) as { sql?: unknown } | undefined;
   if (typeof current?.sql !== "string") {
     return undefined;
@@ -168,6 +174,7 @@ export function repairContinuationRecordsV20Shape(
     .prepare(
       "SELECT type, name, sql FROM sqlite_schema WHERE tbl_name = ? AND type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY type, name",
     )
+    // SAFETY: SELECT names exactly type, name, sql (sql IS NOT NULL)
     .all(TABLE) as Array<{ type: string; name: string; sql: string }>;
   for (const object of attached) {
     const expected = object.type === "index" ? canonical.indexes.get(object.name) : undefined;
@@ -179,6 +186,7 @@ export function repairContinuationRecordsV20Shape(
     .prepare(
       "SELECT m.name AS name FROM sqlite_schema AS m, pragma_foreign_key_list(m.name) AS f WHERE m.type = 'table' AND f.\"table\" = ?",
     )
+    // SAFETY: SELECT names exactly m.name from sqlite_schema (TEXT)
     .all(TABLE) as Array<{ name: string }>;
   if (referencing.length > 0) {
     refuse(
@@ -192,6 +200,7 @@ export function repairContinuationRecordsV20Shape(
         .prepare(
           "SELECT record_id FROM continuation_records WHERE terminal_notice_pending = ? ORDER BY record_id",
         )
+        // SAFETY: SELECT names exactly record_id, the TEXT primary key
         .all(ROLLBACK_ELECTION_CONFLICT) as Array<{ record_id: string }>
     ).map((row) => row.record_id);
     if (conflicts.length > 0) {
@@ -242,6 +251,7 @@ export function repairContinuationRecordsV20Shape(
     }
     const rebuilt = db
       .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?")
+      // SAFETY: sqlite_schema.sql is TEXT or NULL; callers check typeof
       .get(TABLE) as { sql?: unknown } | undefined;
     if (
       typeof rebuilt?.sql !== "string" ||
