@@ -294,9 +294,7 @@ function enqueueOwnedSystemEventEntry(
     return null;
   }
   entry.queue.push(event);
-  if (entry.queue.length > MAX_EVENTS) {
-    entry.queue.shift();
-  }
+  evictOverflow(entry);
   return event;
 }
 
@@ -412,9 +410,7 @@ function replaceSystemEventEntry(
   // event ordering current without allowing repeated updates to evict other sources.
   entry.queue = entry.queue.filter((event) => !matches(event));
   entry.queue.push(replacement);
-  if (entry.queue.length > MAX_EVENTS) {
-    entry.queue.shift();
-  }
+  evictOverflow(entry);
   entry.lastContextKey = normalizedContextKey;
   return replacement;
 }
@@ -459,6 +455,24 @@ function matchesConsumedSystemEvent(queued: SystemEvent, consumed: SystemEvent):
     (queued.traceparent ?? undefined) === (consumed.traceparent ?? undefined) &&
     areDeliveryContextsEqual(queued.deliveryContext, consumed.deliveryContext)
   );
+}
+
+// Bring a queue back to MAX_EVENTS by evicting the oldest entries that have no
+// durable row. Durable-backed entries (a managed return whose delivery row is
+// still pending) are never evicted: dropping one from memory loses the return
+// until gateway restart. The queue may exceed the cap only by such entries.
+function evictOverflow(entry: SessionQueue): void {
+  let overflow = entry.queue.length - MAX_EVENTS;
+  if (overflow <= 0) {
+    return;
+  }
+  entry.queue = entry.queue.filter((event) => {
+    if (overflow > 0 && !event.sessionDeliveryAckId) {
+      overflow -= 1;
+      return false;
+    }
+    return true;
+  });
 }
 
 function resetQueueState(key: string, entry: SessionQueue) {
@@ -517,23 +531,10 @@ export function restoreConsumedSystemEventEntries(
             queued.sessionDeliveryAckStateDir === event.sessionDeliveryAckStateDir),
       ),
   );
-  const restoredEntries = restored.map(cloneSystemEvent);
-  entry.queue.unshift(...restoredEntries);
-  // Over the cap, never evict what was just restored (that is the return the
-  // turn failed to adopt). Evict the oldest entries without a durable row first;
-  // durable-backed managed entries may exceed the cap rather than vanish from
-  // memory while their row stays pending.
-  let overflow = entry.queue.length - MAX_EVENTS;
-  if (overflow > 0) {
-    const keep = new Set<SystemEvent>(restoredEntries);
-    entry.queue = entry.queue.filter((event) => {
-      if (overflow > 0 && !keep.has(event) && !event.sessionDeliveryAckId) {
-        overflow -= 1;
-        return false;
-      }
-      return true;
-    });
-  }
+  // Restored entries carry their durable row id, so evictOverflow never drops
+  // them; it evicts the oldest durable-less entries instead.
+  entry.queue.unshift(...restored.map(cloneSystemEvent));
+  evictOverflow(entry);
   resetQueueState(key, entry);
 }
 

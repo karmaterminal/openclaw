@@ -90,6 +90,27 @@ describe("system events (session routing)", () => {
     expect(texts).not.toContain("ambient-0");
   });
 
+  it("keeps a restored return queued when an ordinary event arrives at the cap", () => {
+    // Review 🍃 on #1429: enqueue's own overflow still shifted the head, so the
+    // next heartbeat/cron/exec notice after a restore evicted the restored return
+    // while its durable row stayed pending.
+    const key = "agent:main:restore-then-enqueue";
+    enqueueSystemEvent("return-1", { sessionKey: key, sessionDeliveryAckId: "r1" });
+    const consumed = consumeSelectedSystemEventEntries(key, peekSystemEventEntries(key));
+    for (let i = 0; i < 20; i += 1) {
+      enqueueSystemEvent(`ambient-${i}`, { sessionKey: key });
+    }
+    restoreConsumedSystemEventEntries(key, consumed);
+
+    enqueueSystemEvent("heartbeat notice", { sessionKey: key });
+    enqueueSystemEventEntry("cron notice", { sessionKey: key });
+
+    const queued = peekSystemEventEntries(key);
+    expect(queued.map((event) => event.sessionDeliveryAckId).filter(Boolean)).toEqual(["r1"]);
+    expect(queued.map((event) => event.text)).toContain("cron notice");
+    expect(queued).toHaveLength(20);
+  });
+
   it("restores consumed entries ahead of newer ones, in order, without duplicating", () => {
     const key = "agent:main:restore";
     enqueueSystemEvent("first", { sessionKey: key, sessionDeliveryAckId: "d1" });
