@@ -49,11 +49,11 @@ import {
   updateRoomEventAmbientTranscriptWatermark,
 } from "./get-reply-run-helpers.js";
 import { hasInboundAudio } from "./inbound-media.js";
+import { composeManagedDeliveryTurnLifecycle } from "./managed-delivery-turn-lifecycle.js";
 import { normalizeMessageTimestampMs } from "./message-timestamp.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
 import { resolveReplyToMode } from "./reply-threading.js";
 import { resolveRoutedDeliveryThreadId } from "./routed-delivery-thread.js";
-import { settleManagedSystemEventsAfterTurnAdoption } from "./session-system-event-adoption.js";
 import {
   bindSourceReplyDeliveryRuntime,
   createSourceReplyDeliveryRuntime,
@@ -392,38 +392,12 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     InputProvenance: inputProvenance,
   });
   const originalTurnAdoptionLifecycle = opts?.turnAdoptionLifecycle;
-  let managedTurnAdopted = false;
-  // A turn that ends without adoption returns its consumed managed events to
-  // the queue; the durable rows are otherwise re-read only at gateway restart.
-  const restoreUnadoptedManagedEvents = () => {
-    if (!managedTurnAdopted) {
-      for (const delivery of managedSystemEventDeliveries.values()) {
-        delivery.restore?.();
-      }
-    }
-  };
-  const effectiveTurnAdoptionLifecycle =
-    managedSystemEventDeliveries.size > 0
-      ? {
-          ...originalTurnAdoptionLifecycle,
-          onAdopted: async () => {
-            managedTurnAdopted = true;
-            await settleManagedSystemEventsAfterTurnAdoption({
-              deliveries: managedSystemEventDeliveries.values(),
-              persistedMessage: userTurnTranscriptRecorder?.getPersistedMessage?.(),
-              onTurnAdopted: originalTurnAdoptionLifecycle?.onAdopted,
-            });
-          },
-          onAbandoned: () => {
-            restoreUnadoptedManagedEvents();
-            originalTurnAdoptionLifecycle?.onAbandoned?.();
-          },
-          onSettled: () => {
-            restoreUnadoptedManagedEvents();
-            originalTurnAdoptionLifecycle?.onSettled?.();
-          },
-        }
-      : originalTurnAdoptionLifecycle;
+  const managedTurn = composeManagedDeliveryTurnLifecycle({
+    deliveries: managedSystemEventDeliveries,
+    original: originalTurnAdoptionLifecycle,
+    getPersistedMessage: () => userTurnTranscriptRecorder?.getPersistedMessage?.(),
+  });
+  const effectiveTurnAdoptionLifecycle = managedTurn.lifecycle;
   const followupRun = {
     prompt: queuedBody,
     sourceTurnId: resolveReplySourceTurnId({
@@ -726,11 +700,18 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     });
   // The scope surrounds the whole immediate turn, including provider fallbacks.
   // If runReplyAgent queues this input, the scope settles before later drain/replay.
+  const executeWithManagedRestore = async () => {
+    try {
+      return await execute();
+    } finally {
+      managedTurn.restoreIfNotHandedOff();
+    }
+  };
   return createdCronCreatorAuthorityCapability
     ? runWithCronCreatorAuthorityCapability(
         createdCronCreatorAuthorityCapability,
-        execute,
+        executeWithManagedRestore,
         opts?.abortSignal,
       )
-    : execute();
+    : executeWithManagedRestore();
 }

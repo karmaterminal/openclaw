@@ -2,6 +2,7 @@
 // system-event adoption (managed deliveries, recipient authority, conversation-data routing)
 // and continuation-wake marking, plus the runner-call and actual-drain helpers both files share.
 import { expect, it, vi, type Mock } from "vitest";
+import { enqueueSystemEvent, peekSystemEventEntries } from "../../infra/system-events.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { runReplyAgent } from "./agent-runner.runtime.js";
 import { runPreparedReply } from "./get-reply-run.js";
@@ -57,6 +58,12 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
     });
     recorder.markRuntimePersisted({ role: "user", content: "retry", timestamp: Date.now() });
 
+    // The runner adopts during the run (before returning), as the real runner does.
+    vi.mocked(runReplyAgent).mockImplementationOnce(async (runParams) => {
+      await runParams.opts?.turnAdoptionLifecycle?.onAdopted();
+      runParams.opts?.turnAdoptionLifecycle?.onSettled?.();
+      return undefined;
+    });
     await runPreparedReply(
       baseParams({
         ctx: {
@@ -75,8 +82,6 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
     // delivered in this turn and settled on adoption, never left for restart.
     const call = requireRunReplyAgentCall();
     expect(call.followupRun.currentInboundContext?.text).toContain("managed delegate artifact");
-    await call.opts?.turnAdoptionLifecycle?.onAdopted();
-    call.opts?.turnAdoptionLifecycle?.onSettled?.();
     expect(acknowledge).toHaveBeenCalledOnce();
     expect(restore).not.toHaveBeenCalled();
   });
@@ -104,6 +109,12 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
     });
     Reflect.deleteProperty(recorder, "replaceSessionDeliveryAckIds");
 
+    // The runner adopts during the run (before returning), as the real runner does.
+    vi.mocked(runReplyAgent).mockImplementationOnce(async (runParams) => {
+      await runParams.opts?.turnAdoptionLifecycle?.onAdopted();
+      runParams.opts?.turnAdoptionLifecycle?.onSettled?.();
+      return undefined;
+    });
     await runPreparedReply(
       baseParams({
         ctx: {
@@ -122,8 +133,6 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
     // delivered in this turn and settled on adoption, never left for restart.
     const call = requireRunReplyAgentCall();
     expect(call.followupRun.currentInboundContext?.text).toContain("managed delegate artifact");
-    await call.opts?.turnAdoptionLifecycle?.onAdopted();
-    call.opts?.turnAdoptionLifecycle?.onSettled?.();
     expect(acknowledge).toHaveBeenCalledOnce();
     expect(restore).not.toHaveBeenCalled();
   });
@@ -294,6 +303,97 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
     await call.opts?.turnAdoptionLifecycle?.onAdopted();
 
     expect(acknowledge).toHaveBeenCalledOnce();
+  });
+
+  it("returns unadopted managed returns to the queue, in original order, when the turn ends without adoption or hand-off", async () => {
+    // Codex review on the composite carry: (P1) an immediate run that returns
+    // before onAdopted, without onAbandoned/onSettled (duplicate-source admission,
+    // rearm no-op guard), lost the consumed return until restart; (P2) restoring
+    // two or more deliveries reversed their order.
+    await useActualSystemEventDrain();
+    const sessionKey = "agent:main:unadopted-return";
+    for (const id of ["delivery-a", "delivery-b"]) {
+      enqueueSystemEvent(`System: delegate return ${id}`, {
+        sessionKey,
+        sessionDeliveryAckId: id,
+        sessionDeliveryAwaitsTurnAdoption: true,
+        trusted: true,
+      });
+    }
+
+    // The mocked runner returns without adopting and without handing off.
+    await runPreparedReply(baseParams({ agentId: "main", sessionKey }));
+
+    expect(peekSystemEventEntries(sessionKey).map((event) => event.sessionDeliveryAckId)).toEqual([
+      "delivery-a",
+      "delivery-b",
+    ]);
+  });
+
+  it("does not return managed returns to the queue once the turn adopted them or handed them to the followup queue", async () => {
+    await useActualSystemEventDrain();
+    const sessionKey = "agent:main:handed-off-return";
+    enqueueSystemEvent("System: delegate return handed-off", {
+      sessionKey,
+      sessionDeliveryAckId: "delivery-handed-off",
+      sessionDeliveryAwaitsTurnAdoption: true,
+      trusted: true,
+    });
+    vi.mocked(runReplyAgent).mockImplementationOnce(async (params) => {
+      // The followup queue accepts the turn: its lifecycle owns adoption now.
+      params.followupRun.turnAdoptionLifecycle?.onDeferred?.();
+      return undefined;
+    });
+
+    await runPreparedReply(baseParams({ agentId: "main", sessionKey }));
+
+    expect(peekSystemEventEntries(sessionKey)).toEqual([]);
+  });
+
+  it("delivers a managed return in a staged-recorder turn and requeues it if that turn is abandoned", async () => {
+    await useActualSystemEventDrain();
+    const sessionKey = "agent:main:deferred-return";
+    enqueueSystemEvent("System: silent delegate return SILENTCHILD-1", {
+      sessionKey,
+      sessionDeliveryAckId: "delivery-deferred",
+      sessionDeliveryAwaitsTurnAdoption: true,
+      trusted: true,
+    });
+    expect(peekSystemEventEntries(sessionKey)).toMatchObject([
+      { sessionDeliveryAckId: "delivery-deferred", sessionDeliveryAwaitsTurnAdoption: true },
+    ]);
+    const recorder = createUserTurnTranscriptRecorder({
+      input: { text: "follow-up" },
+      target: { sessionId: "session-id", sessionKey, sessionEntry: undefined, agentId: "main" },
+    });
+    recorder.markRuntimePersisted({ role: "user", content: "follow-up", timestamp: Date.now() });
+    // The followup queue takes the turn (hand-off); its lifecycle owns adoption.
+    vi.mocked(runReplyAgent).mockImplementationOnce(async (runParams) => {
+      runParams.followupRun.turnAdoptionLifecycle?.onDeferred?.();
+      return undefined;
+    });
+
+    await runPreparedReply(
+      baseParams({
+        agentId: "main",
+        sessionKey,
+        ctx: { Body: "follow-up", RawBody: "follow-up", CommandBody: "follow-up" },
+        opts: { userTurnTranscriptRecorder: recorder },
+      }),
+    );
+
+    // The staged message cannot carry the ack id, but the return still reaches
+    // this turn (silent's next-turn contract) instead of waiting for restart.
+    const call = requireRunReplyAgentCall();
+    expect(call.followupRun.currentInboundContext?.text).toContain("SILENTCHILD-1");
+    expect(peekSystemEventEntries(sessionKey)).toEqual([]);
+
+    // The handed-off turn is abandoned: the return goes back to the queue, once.
+    call.followupRun.turnAdoptionLifecycle?.onAbandoned?.();
+    call.followupRun.turnAdoptionLifecycle?.onSettled?.();
+    expect(peekSystemEventEntries(sessionKey).map((event) => event.sessionDeliveryAckId)).toEqual([
+      "delivery-deferred",
+    ]);
   });
 
   it("marks delegate-return turns as continuation wakes and clears delegate-pending state", async () => {

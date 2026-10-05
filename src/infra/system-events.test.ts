@@ -70,6 +70,26 @@ describe("system events (session routing)", () => {
     vi.useRealTimers();
   });
 
+  it("never evicts the entries it restores when the queue is at its cap", () => {
+    // Codex review on the composite carry (P1): restore unshifted then trimmed the
+    // head, i.e. exactly the restored returns, so a near-full queue plus an
+    // abandoned turn lost the return until gateway restart.
+    const key = "agent:main:restore-overflow";
+    enqueueSystemEvent("return-1", { sessionKey: key, sessionDeliveryAckId: "r1" });
+    enqueueSystemEvent("return-2", { sessionKey: key, sessionDeliveryAckId: "r2" });
+    const consumed = consumeSelectedSystemEventEntries(key, peekSystemEventEntries(key));
+    for (let i = 0; i < 20; i += 1) {
+      enqueueSystemEvent(`ambient-${i}`, { sessionKey: key });
+    }
+
+    restoreConsumedSystemEventEntries(key, consumed);
+
+    const texts = peekSystemEventEntries(key).map((event) => event.text);
+    expect(texts.slice(0, 2)).toEqual(["return-1", "return-2"]);
+    expect(texts).toHaveLength(20);
+    expect(texts).not.toContain("ambient-0");
+  });
+
   it("restores consumed entries ahead of newer ones, in order, without duplicating", () => {
     const key = "agent:main:restore";
     enqueueSystemEvent("first", { sessionKey: key, sessionDeliveryAckId: "d1" });
