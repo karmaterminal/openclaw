@@ -239,6 +239,34 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
     expect(authorityOwner.pending.size).toBe(1);
   });
 
+  it("acknowledges adopted managed deliveries when the runner adopts an immediate turn", async () => {
+    const acknowledge = vi.fn().mockResolvedValue(undefined);
+    preparedState.prepared = {
+      blocks: [
+        {
+          key: "session-delivery:delivery-immediate",
+          text: "System: delegate return ready",
+        },
+      ],
+      managedDeliveries: [{ id: "delivery-immediate", acknowledge }],
+    };
+
+    await runPreparedReply(baseParams());
+
+    // The runner owns adoption for a turn it runs immediately, and it reads the
+    // lifecycle from opts (agent-runner-run). Persist the stamped turn as the
+    // runner would, then adopt through that same lifecycle.
+    const call = requireRunReplyAgentCall();
+    const recorder = call.followupRun.userTurnTranscriptRecorder;
+    expect(recorder?.message).toMatchObject({
+      __openclaw: { sessionDeliveryAckIds: ["delivery-immediate"] },
+    });
+    recorder?.markRuntimePersisted(recorder.message, undefined);
+    await call.opts?.turnAdoptionLifecycle?.onAdopted();
+
+    expect(acknowledge).toHaveBeenCalledOnce();
+  });
+
   it("marks delegate-return turns as continuation wakes and clears delegate-pending state", async () => {
     await runPreparedReply(
       baseParams({

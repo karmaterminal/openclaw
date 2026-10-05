@@ -680,12 +680,17 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
           latestSessionState.sessionId;
         return embeddedAgentRuntime?.isEmbeddedAgentRunActive(latestActiveSessionId) ?? false;
       },
+      // The runner adopts an immediate turn through opts; it must carry the same
+      // settle-on-adoption lifecycle the queued followupRun carries.
       opts:
-        authorityRunId || cronCreatorAuthorityCapability
+        authorityRunId ||
+        cronCreatorAuthorityCapability ||
+        effectiveTurnAdoptionLifecycle !== originalTurnAdoptionLifecycle
           ? {
               ...opts,
               ...(authorityRunId ? { runId: authorityRunId } : {}),
               ...(cronCreatorAuthorityCapability ? { cronCreatorAuthorityCapability } : {}),
+              turnAdoptionLifecycle: effectiveTurnAdoptionLifecycle,
             }
           : opts,
       sessionEntry: preparedSessionState.sessionEntry,
