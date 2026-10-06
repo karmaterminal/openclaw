@@ -4,7 +4,7 @@ import { getChannelMessage, Message, type Client } from "../internal/discord.js"
 import { resolveDiscordMessageStickers } from "./message-forwarded.js";
 import { resolveDiscordMessageText } from "./message-text.js";
 
-function shouldHydrateDiscordMessagePayload(message: Message) {
+export function shouldHydrateDiscordMessagePayload(message: Message) {
   let currentText;
   try {
     currentText = resolveDiscordMessageText(message, {

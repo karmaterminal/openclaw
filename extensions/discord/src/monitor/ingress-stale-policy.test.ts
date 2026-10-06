@@ -163,6 +163,38 @@ describe("discord stale ambient pending disposition", () => {
     ).resolves.toBeNull();
   });
 
+  it("preserves a raw bot mention preflight would accept after failed hydration", async () => {
+    // ClawSweeper rev 18: no mention metadata on a numeric raw mention sends
+    // preflight to REST hydration; when REST is unavailable it falls back to the
+    // exact raw bot mention, so this row is addressed work, not ambient backlog.
+    const botUserId = "123456789012345678";
+    await expect(
+      resolve({ botUserId, message: { content: `hi <@${botUserId}>`, mentions: [] } }),
+    ).resolves.toBeNull();
+    await expect(
+      resolve({ botUserId, message: { content: `hi <@!${botUserId}>`, mentions: [] } }),
+    ).resolves.toBeNull();
+    await expect(
+      resolve({
+        botUserId,
+        message: { content: "", embeds: [{ title: `ping <@${botUserId}>` }], mentions: [] },
+      }),
+    ).resolves.toBeNull();
+    // Controls, as preflight's fallback decides them: another user's raw mention,
+    // an escaped or code-quoted bot mention, and a frame whose mention metadata
+    // is present (no hydration, so no fallback) all stay ambient.
+    for (const message of [
+      { content: "hi <@987654321098765432>", mentions: [] },
+      { content: `hi \\<@${botUserId}>`, mentions: [] },
+      { content: `hi \`<@${botUserId}>\``, mentions: [] },
+      { content: `hi <@${botUserId}>`, mentions: [{ id: "987654321098765432" }] },
+    ]) {
+      await expect(resolve({ botUserId, message })).resolves.toMatchObject({
+        reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON,
+      });
+    }
+  });
+
   it("preserves replied work", async () => {
     await expect(
       resolve({

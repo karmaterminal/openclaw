@@ -25,6 +25,8 @@ const GUILD_ID = "g1";
 const CHANNEL_ID = "c1";
 const STALE_TIMESTAMP = new Date(Date.now() - 60 * 60 * 1_000).toISOString();
 const HUMAN = { id: "user-1", bot: false, username: "alice" };
+/** Discord snowflakes are numeric; only those reach preflight's hydration path. */
+const NUMERIC_BOT_ID = "123456789012345678";
 
 const gated = (requireMention: boolean): Record<string, DiscordGuildEntryResolved> => ({
   [GUILD_ID]: { channels: { [CHANNEL_ID]: { enabled: true, requireMention } } },
@@ -50,6 +52,7 @@ type Row = {
   embeds?: Array<{ title: string }>;
   mentionedEveryone?: boolean;
   replyToBot?: boolean;
+  botId?: string;
 };
 
 const ROWS: Row[] = [
@@ -103,6 +106,30 @@ const ROWS: Row[] = [
     cfg: NAMED_AGENT_CFG,
     mentionedUsers: [{ id: "user-2", username: "bob" }],
   },
+  // ClawSweeper rev 18: no mention metadata on a numeric raw mention sends
+  // preflight to REST hydration; the fixture client has no REST, so preflight
+  // falls back to the exact raw bot mention.
+  {
+    name: "numeric <@id> bot mention awaiting hydration, REST unavailable",
+    content: `hi <@${NUMERIC_BOT_ID}>`,
+    botId: NUMERIC_BOT_ID,
+  },
+  {
+    name: "numeric <@!id> bot mention awaiting hydration, REST unavailable",
+    content: `hi <@!${NUMERIC_BOT_ID}>`,
+    botId: NUMERIC_BOT_ID,
+  },
+  {
+    name: "numeric bot mention in an embed title awaiting hydration, REST unavailable",
+    content: "",
+    embeds: [{ title: `ping <@${NUMERIC_BOT_ID}>` }],
+    botId: NUMERIC_BOT_ID,
+  },
+  {
+    name: "numeric mention of another user awaiting hydration, REST unavailable",
+    content: "hi <@987654321098765432>",
+    botId: NUMERIC_BOT_ID,
+  },
 ];
 
 function buildMessage(row: Row) {
@@ -111,7 +138,7 @@ function buildMessage(row: Row) {
         id: "m0",
         channelId: CHANNEL_ID,
         content: "earlier answer",
-        author: { id: BOT_ID, bot: true },
+        author: { id: row.botId ?? BOT_ID, bot: true },
       })
     : undefined;
   return createDiscordMessage({
@@ -146,7 +173,7 @@ async function preflightAccepts(row: Row): Promise<boolean> {
         message,
       }),
       client: createGuildTextClient(CHANNEL_ID),
-      botUserId: BOT_ID,
+      botUserId: row.botId ?? BOT_ID,
     }),
     guildEntries: row.guildEntries ?? gated(true),
   });
@@ -171,7 +198,7 @@ async function policyKeeps(row: Row): Promise<boolean> {
     // SAFETY: the stale policy reads only the published policy fields set above.
   } as unknown as DiscordLivePolicy;
   const disposition = createDiscordStaleAmbientPendingDisposition({
-    botUserId: BOT_ID,
+    botUserId: row.botId ?? BOT_ID,
     client: createInternalTestClient(),
     readPolicy: async () => policy,
     resolveChannelInfo: () => ({ guildId: GUILD_ID, name: "general", type: ChannelType.GuildText }),

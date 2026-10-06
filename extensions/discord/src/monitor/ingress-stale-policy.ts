@@ -24,7 +24,12 @@ import {
   resolveDiscordMentionPolicy,
 } from "./allow-list.js";
 import type { DiscordLivePolicy, DiscordLivePolicyReader } from "./live-policy.js";
-import { resolveDiscordMessageText } from "./message-text.js";
+import { shouldHydrateDiscordMessagePayload } from "./message-handler.hydration.js";
+import { hasRawDiscordUserMention } from "./message-handler.raw-mention.js";
+import {
+  resolveDiscordMessageMentionDocuments,
+  resolveDiscordMessageText,
+} from "./message-text.js";
 
 /** Ambient guild chatter older than this can no longer be the user's live turn. */
 const DISCORD_STALE_AMBIENT_BACKLOG_MS = 15 * 60 * 1_000;
@@ -45,6 +50,11 @@ type DiscordStalePolicyMessage = {
   payloadReceivedAt: number | null;
   mentionEveryone: boolean;
   mentionedUserIds: string[];
+  /**
+   * Documents preflight scans for a raw bot mention when the frame needs REST
+   * hydration and REST is unavailable; empty when preflight would not hydrate.
+   */
+  unhydratedMentionDocuments: string[];
   hasRoleMention: boolean;
   referencedAuthorId?: string;
   isOrdinaryReply: boolean;
@@ -142,6 +152,9 @@ function readDiscordStalePolicyRow(
         : null,
     mentionEveryone: rawMessage.mention_everyone,
     mentionedUserIds,
+    unhydratedMentionDocuments: shouldHydrateDiscordMessagePayload(message)
+      ? resolveDiscordMessageMentionDocuments(message)
+      : [],
     hasRoleMention: Array.isArray(rawMessage.mention_roles) && rawMessage.mention_roles.length > 0,
     ...(isRecord(referencedAuthor) && typeof referencedAuthor.id === "string"
       ? { referencedAuthorId: referencedAuthor.id }
@@ -174,11 +187,12 @@ function resolveSentAtMs(
 
 /**
  * Preflight's mention facts replayed on the stored frame: the explicit native
- * mention, @everyone, provider-filtered mention patterns for every roster
- * agent, broadcast participants matched with unfiltered patterns, reply to the
- * bot as an implicit mention, and the canonical decision under a mention-gated
- * channel (non-thread channels never restrict implicit kinds). True when
- * preflight would treat the message as mentioned.
+ * mention (or the raw bot mention preflight accepts when hydration fails),
+ * @everyone, provider-filtered mention patterns for every roster agent,
+ * broadcast participants matched with unfiltered patterns, reply to the bot as
+ * an implicit mention, and the canonical decision under a mention-gated channel
+ * (non-thread channels never restrict implicit kinds). True when preflight
+ * would treat the message as mentioned.
  */
 function isMentionedForPreflight(
   message: DiscordStalePolicyMessage,
@@ -193,7 +207,12 @@ function isMentionedForPreflight(
     message.mentionedUserIds.length > 0 || message.hasRoleMention || message.mentionEveryone;
   const explicit = {
     hasAnyMention,
-    isExplicitlyMentioned: message.mentionedUserIds.includes(botId),
+    // Preflight's fallback when hydration fails: the exact raw bot mention.
+    isExplicitlyMentioned:
+      message.mentionedUserIds.includes(botId) ||
+      message.unhydratedMentionDocuments.some((mentionDocument) =>
+        hasRawDiscordUserMention(mentionDocument, botId),
+      ),
     canResolveExplicit: true,
   };
   const groupThread = resolveGroupThreadMentionFacts({
