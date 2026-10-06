@@ -46,8 +46,8 @@ export function registerRegistryRestoreRetryTest({
     expect(mocks.restoreSubagentRunsFromDisk).toHaveBeenCalledTimes(2);
     expect(mod.getSubagentRunByRunId(runId)?.runId).toBe(runId);
     expect(mocks.onAgentEvent).toHaveBeenCalledOnce();
-    // Successful restore must retire its retry timer. Other restored-run
-    // lifecycle/sweeper timers are legitimate and should not be counted here.
+    expect(vi.getTimerCount()).toBe(1);
+    // Successful restore must retire its retry timer.
     vi.advanceTimersByTime(2_000);
     expect(mocks.restoreSubagentRunsFromDisk).toHaveBeenCalledTimes(2);
 

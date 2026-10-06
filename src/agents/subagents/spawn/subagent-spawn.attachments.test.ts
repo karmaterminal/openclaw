@@ -176,12 +176,45 @@ describe("spawnSubagentDirect filename validation", () => {
   });
 
   it("rejects a raw-valid path list whose wrapped prompt exceeds the budget", async () => {
-    // Each basename stays portable while the complete rendered path block exceeds 4096.
-    const attachments = Array.from({ length: 17 }, (_, index) => ({
-      name: `${String(index).padStart(2, "0")}-${"n".repeat(236)}.bin`,
-      content: validContent,
-      encoding: "base64" as const,
-    }));
+    // Measure the staged directory and wrapper overhead from a real spawn, then pick
+    // portable basenames (<=255 bytes) whose raw path list stays under 4096 while the
+    // wrapped block exceeds it. A raw-length check would accept this input.
+    const probeName = "probe.bin";
+    const probe = await spawnWithName(probeName);
+    expect(probe.status).toBe("accepted");
+    const probeBlock =
+      /Staged attachment file paths[^\n]*\n<untrusted-text>\n([^\n]*)\n<\/untrusted-text>/.exec(
+        getChildSystemPrompt(),
+      );
+    const probePath = expectDefined(probeBlock?.[1], "probe staged path");
+    const wrapperOverhead = expectDefined(probeBlock?.[0], "probe block").length - probePath.length;
+    const dirLength = probePath.length - probeName.length - 1;
+    callGatewayMock.mockClear();
+
+    const budget = 4096;
+    const targetRaw = budget - Math.ceil(wrapperOverhead / 2);
+    const count = Math.ceil(targetRaw / (dirLength + 2 + 240));
+    const nameBudget = targetRaw - (count - 1) - count * (dirLength + 1);
+    const baseLength = Math.floor(nameBudget / count);
+    const nameLengths = Array.from({ length: count }, (_, index) =>
+      index === count - 1 ? nameBudget - baseLength * (count - 1) : baseLength,
+    );
+    const attachments = nameLengths.map((length, index) => {
+      const prefix = `${String(index).padStart(2, "0")}-`;
+      return {
+        name: `${prefix}${"n".repeat(length - prefix.length - ".bin".length)}.bin`,
+        content: validContent,
+        encoding: "base64" as const,
+      };
+    });
+    const rawLength =
+      attachments.reduce((sum, { name }) => sum + dirLength + 1 + name.length, 0) + count - 1;
+    expect(Math.max(...attachments.map(({ name }) => Buffer.byteLength(name)))).toBeLessThanOrEqual(
+      255,
+    );
+    expect(rawLength).toBeLessThan(budget);
+    expect(rawLength + wrapperOverhead).toBeGreaterThan(budget);
+
     const result = await subagentSpawnModule.spawnSubagentDirect(
       { task: "test", attachments },
       ctx,
