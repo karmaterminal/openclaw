@@ -10,6 +10,7 @@ import type { OpenClawStateWorkerOperations } from "../state/openclaw-state-work
 import * as stateWorker from "../state/openclaw-state-worker-store.js";
 import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
 import { runSpawnPipeline } from "./spawn-pipeline.js";
+import { SubagentRegistryWriteError } from "./subagents/registry/subagent-registry-persistence.js";
 import type {
   RegisterSubagentRunParams,
   SubagentRegistrationIdentity,
@@ -70,6 +71,23 @@ function interceptRegistryWrites() {
         workerOptions,
       ),
     );
+}
+
+// Frond decision (🩸, Discord 1556891156753813545): at the registerSubagentRun boundary
+// a pre-publication refusal is a SubagentRegistrationError (AggregateError) carrying
+// registrationOwnership "predecessor-restored", with the underlying failure as its
+// cause and errors[0]. A refused persistence write is upstream's not-committed
+// SubagentRegistryWriteError, whose own cause is the store's original error.
+function isRefusedRegistration(error: unknown, persistError: Error): boolean {
+  expect(error).toBeInstanceOf(AggregateError);
+  expect(error).toHaveProperty("name", "SubagentRegistrationError");
+  expect(error).toHaveProperty("registrationOwnership.status", "predecessor-restored");
+  const cause = (error as AggregateError).cause;
+  expect((error as AggregateError).errors[0]).toBe(cause);
+  expect(cause).toBeInstanceOf(SubagentRegistryWriteError);
+  expect(cause).toHaveProperty("outcome", "not-committed");
+  expect((cause as SubagentRegistryWriteError).cause).toBe(persistError);
+  return true;
 }
 
 describe("subagent registration rollback", () => {
@@ -243,10 +261,14 @@ describe("subagent registration rollback", () => {
     const childSessionKey = "agent:main:subagent:rollback-after-kill";
     const runId = "run-rollback-after-kill";
     const liveRun = createAcceptedLiveRun(runId, childSessionKey);
+    // Upstream's test add is a real registry write of the canonical fixture, so the row
+    // is already durable. Re-saving it raw installs a row the registry treats as another
+    // execution on its next version refresh, and the kill then loses its selected owner.
     await addSubagentRunForTests(liveRun);
-    saveSubagentRegistryToSqlite(
-      canonicalSubagentRunFixtures(new Map([[runId, structuredClone(liveRun)]])),
-    );
+    expect(loadSubagentRegistryFromSqlite().get(runId)).toMatchObject({
+      runId,
+      execution: { status: "running" },
+    });
 
     await expect(markSubagentRunTerminated({ runId, reason: "manual kill" })).resolves.toBe(1);
     const killed = await getSubagentRunByChildSessionKey(childSessionKey);
@@ -328,9 +350,6 @@ describe("subagent registration rollback", () => {
       throw persistError;
     };
 
-    // HIGH (absorb 14fe10d0): contract changed by upstream; needs frond decision:
-    // the failure now surfaces from the async FIFO writer (SubagentRegistryWriteError /
-    // SubagentRegistrationError wrapping). The `cause: persistError` matcher is kept as-is.
     await expect(
       registerSubagentRun({
         runId,
@@ -340,7 +359,7 @@ describe("subagent registration rollback", () => {
         task: "task registration failure",
         cleanup: "keep",
       }),
-    ).rejects.toThrow(expect.objectContaining({ cause: persistError }));
+    ).rejects.toSatisfy((error) => isRefusedRegistration(error, persistError));
     expect(
       listSubagentRunsForRequester("agent:main:main").find((entry) => entry.runId === runId),
     ).toMatchObject({
@@ -358,10 +377,9 @@ describe("subagent registration rollback", () => {
       generation: priorSameIdRun.generation,
     });
     expect(persisted.get(olderRun.runId)?.killReconciliation).toEqual(expectedKillReconciliation);
-    // HIGH (absorb 14fe10d0): contract changed by upstream; needs frond decision:
-    // this asserts that registration admits the older generation's run id in the
-    // same (single) write as the new row; upstream's one-transaction registration
-    // must still select it for the kill-reconciliation restore to hold.
+    // Upstream's one-transaction registration still admits the older generation's run
+    // id in the same (single) write as the new row, which the kill-reconciliation
+    // restore depends on.
     expect(persistenceScopes).toEqual([[runId, olderRun.runId]]);
   });
 
@@ -388,7 +406,7 @@ describe("subagent registration rollback", () => {
         task: "replacement that must roll back",
         cleanup: "keep",
       }),
-    ).rejects.toThrow(expect.objectContaining({ cause: persistError }));
+    ).rejects.toSatisfy((error) => isRefusedRegistration(error, persistError));
     expect(
       listSubagentRunsForRequester("agent:main:main").find((entry) => entry.runId === runId),
     ).toMatchObject({
