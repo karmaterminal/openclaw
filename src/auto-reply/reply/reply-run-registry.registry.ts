@@ -23,6 +23,11 @@ import {
 import { resolveReplyMessageInjectionRejection } from "./reply-run-registry.message-injection.js";
 import { createReplyOperation } from "./reply-run-registry.operation.js";
 import {
+  cancelReplyOperationForReset,
+  resetRetiringReplyRunsForTest,
+  type ReplyRunResetCancellation,
+} from "./reply-run-registry.reset-retirement.js";
+import {
   clearReplyRunState,
   evictReplyOperationByOperation,
   expireStaleReplyOperation,
@@ -325,37 +330,13 @@ export function forceClearReplyRunBySessionId(sessionId: string, cause?: unknown
   return operation ? forceClearReplyOperation(operation, cause) : false;
 }
 
-const RESET_CANCELLATION_MAX_ATTEMPTS = 3;
-
-function cancelReplyOperationForReset(operation: ReplyOperation): void {
-  const errors: unknown[] = [];
-  for (let attempt = 0; attempt < RESET_CANCELLATION_MAX_ATTEMPTS; attempt += 1) {
-    try {
-      if (operation.phase === "aborted") {
-        getAttachedBackend(operation)?.cancel("restart");
-      } else {
-        operation.abortForRestart();
-      }
-      if (replyRunState.activeRunsByKey.get(operation.key) === operation) {
-        operation.complete();
-      }
-      return;
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  throw new AggregateError(
-    errors,
-    `Reply backend cancellation failed after ${RESET_CANCELLATION_MAX_ATTEMPTS} attempts`,
-  );
-}
-
-export function clearReplyRunForResetBySessionId(sessionId: string): void {
+/** A committed reset never fails on backend cancellation; a refused cancel leaves the owner retiring. */
+export function clearReplyRunForResetBySessionId(sessionId: string): ReplyRunResetCancellation {
   const operation = resolveReplyRunForCurrentSessionId(sessionId);
   if (!operation || isReplyOperationPreBackendPhase(operation.phase)) {
-    return;
+    return { status: "none" };
   }
-  cancelReplyOperationForReset(operation);
+  return cancelReplyOperationForReset(operation);
 }
 
 /** Retry the exact current-key owner only when an earlier reset already aborted it. */
@@ -610,6 +591,7 @@ const replyRunRegistryTestApi = {
     replyRunState.sourceTurnByKey.clear();
     replyRunState.completionObservationsByKey?.clear();
     replyRunSettle.resetReplyRunSettleTimersForTesting();
+    resetRetiringReplyRunsForTest();
     for (const waiters of replyRunState.waitersByKey.values()) {
       for (const waiter of waiters) {
         waiter.finish(false);

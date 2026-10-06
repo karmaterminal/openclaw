@@ -18,6 +18,10 @@ export {
 } from "./reply-run-registry.message-injection.js";
 export { createReplyOperation } from "./reply-run-registry.operation.js";
 export {
+  isReplyOperationRetiringForReset,
+  type ReplyRunResetCancellation,
+} from "./reply-run-registry.reset-retirement.js";
+export {
   abortActiveReplyRuns,
   captureGatewayReplyRunRestartAbort,
   abortReplyRunBySessionId,

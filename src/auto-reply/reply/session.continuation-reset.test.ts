@@ -19,7 +19,11 @@ import { consumePendingDelegates, enqueuePendingDelegate } from "../continuation
 import type { PendingContinuationWork } from "../continuation/work-flow-state.js";
 import { enqueuePendingWorkReplacing } from "../continuation/work-replacement-store.js";
 import { consumePendingWork } from "../continuation/work-store.js";
-import { createReplyOperation, replyRunRegistry } from "./reply-run-registry.js";
+import {
+  createReplyOperation,
+  isReplyOperationRetiringForReset,
+  replyRunRegistry,
+} from "./reply-run-registry.js";
 import {
   initSessionState,
   runExplicitResetCases,
@@ -152,10 +156,11 @@ describe("initSessionState guarded initialization", () => {
         },
       },
     });
-    let cancellationAttempts = 0;
+    const reseedSession = () =>
+      writeSessionStoreFast(storePath, { [sessionKey]: { sessionId, updatedAt: Date.now() } });
+    let cancellationFails = true;
     const cancel = vi.fn(() => {
-      cancellationAttempts += 1;
-      if (cancellationAttempts <= 3) {
+      if (cancellationFails) {
         throw new Error("backend cancellation failed");
       }
     });
@@ -183,20 +188,43 @@ describe("initSessionState guarded initialization", () => {
     });
 
     try {
-      await expect(initSessionState(createResetParams())).rejects.toThrow(
-        "Reply backend cancellation failed after 3 attempts",
-      );
-
+      // The reset is durably committed, so /new reports success even though the
+      // backend never accepted cancellation.
+      const first = await initSessionState(createResetParams());
+      expect(first.resetTriggered).toBe(true);
       expect(loadSessionEntry({ storePath, sessionKey })?.mainRestartRecovery).toBeUndefined();
       expect(cancel).toHaveBeenCalledWith("restart");
-      expect(cancel).toHaveBeenCalledTimes(3);
-      expect(replyRunRegistry.isActive(sessionKey)).toBe(true);
+      const afterFirstReset = cancel.mock.calls.length;
 
-      await expect(initSessionState(createResetParams())).rejects.toThrow(
-        "reply session initialization conflicted",
-      );
-      expect(cancel).toHaveBeenCalledTimes(4);
+      // The still-running owner stays in custody as retiring; it is not released.
+      expect(replyRunRegistry.isActive(sessionKey)).toBe(true);
+      expect(isReplyOperationRetiringForReset(activeReply)).toBe(true);
+
+      // Cancellation is retried on the backoff timer (first retry after 1 s) while it fails.
+      await vi.waitFor(() => expect(cancel.mock.calls.length).toBeGreaterThan(afterFirstReset), {
+        timeout: 5_000,
+      });
+      expect(replyRunRegistry.isActive(sessionKey)).toBe(true);
+      expect(isReplyOperationRetiringForReset(activeReply)).toBe(true);
+      const beforeRepeatedReset = cancel.mock.calls.length;
+
+      // A repeated /new retries cancellation immediately and still succeeds. The store is
+      // reseeded first, as runExplicitResetCases does: back-to-back /new commits on one
+      // unseeded row conflict at upstream 10334ec913 too, with no reply run registered.
+      await reseedSession();
+      const second = await initSessionState(createResetParams());
+      expect(second.resetTriggered).toBe(true);
+      expect(cancel.mock.calls.length).toBeGreaterThan(beforeRepeatedReset);
+      expect(replyRunRegistry.isActive(sessionKey)).toBe(true);
+      expect(isReplyOperationRetiringForReset(activeReply)).toBe(true);
+
+      // Once the backend accepts cancellation the owner retires, and /new still succeeds.
+      cancellationFails = false;
+      await reseedSession();
+      const third = await initSessionState(createResetParams());
+      expect(third.resetTriggered).toBe(true);
       expect(replyRunRegistry.isActive(sessionKey)).toBe(false);
+      expect(isReplyOperationRetiringForReset(activeReply)).toBe(false);
     } finally {
       activeReply.complete();
     }
