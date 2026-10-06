@@ -134,7 +134,9 @@ function normalizeTraceparent(traceparent?: string): string | undefined {
 
 type ReceiptOptions = { allowDuplicate?: boolean };
 
-function resolveSessionDeliveryAckStateDir(options: SystemEventOptions): string | undefined {
+function resolveSessionDeliveryAckStateDir(
+  options: Pick<SystemEventOptions, "sessionDeliveryAckId" | "sessionDeliveryAckStateDir">,
+): string | undefined {
   if (!options.sessionDeliveryAckId) {
     return undefined;
   }
@@ -355,7 +357,7 @@ export function hasQueuedSystemEventDelivery(
   if (!options.sessionDeliveryAckId) {
     return false;
   }
-  const stateDir = resolveSessionDeliveryAckStateDir(options as SystemEventOptions);
+  const stateDir = resolveSessionDeliveryAckStateDir(options);
   if (isDeliveryAdoptionClaimed(options.sessionDeliveryAckId, stateDir)) {
     return true;
   }
