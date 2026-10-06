@@ -580,6 +580,12 @@ export async function loadSubagentSpawnModuleForTest(params: {
         return registration;
       },
     ),
+    // H1 armed registration: the seam defaults to a confirmed acceptance and a
+    // recorded collector launch marker (the registry owner is mocked in this harness).
+    armSubagentLaunchDispatch: vi.fn(async () => true),
+    confirmSubagentSpawnAcceptance: vi.fn(async () => "confirmed" as const),
+    markSubagentLaunchDispatchUncertain: vi.fn(),
+    releaseSubagentSpawnAcceptanceHoldForRun: vi.fn(),
     recordAcceptedSubagentSpawnRollback:
       params.recordAcceptedSubagentSpawnRollbackMock ??
       vi.fn(async () => ({ status: "persisted" })),

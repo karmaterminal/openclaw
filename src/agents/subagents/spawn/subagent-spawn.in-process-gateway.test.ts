@@ -692,8 +692,14 @@ describe("spawnSubagentDirect in-process Gateway collector launch", () => {
       expect(subagentRuns.get(firstRunId!)?.queuedLaunch).toBeUndefined();
       expect(subagentRuns.get(firstRunId!)?.execution).toEqual(killedExecution);
       expect(subagentRuns.get(firstRunId!)?.killReconciliation).toEqual(killedReconciliation);
+      // H1 §3.4: the dispatch marker written before this launch is disarmed when the
+      // failed launch settles; the killed snapshot was taken while it was armed.
+      expect(killedSnapshot.launchDispatch).toMatchObject({
+        idempotencyKey: firstRequest.params.idempotencyKey,
+      });
       expect(subagentRuns.get(firstRunId!)).toEqual({
         ...killedSnapshot,
+        launchDispatch: undefined,
         swarmLaunchPending: false,
         queuedLaunch: undefined,
         collectorLaunchCleanupPending: false,

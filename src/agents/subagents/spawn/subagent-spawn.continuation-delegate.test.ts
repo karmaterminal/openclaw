@@ -362,6 +362,51 @@ describe("spawnSubagentDirect continuation delegate seam flow", () => {
     expect(gatewayRequestRecords().map((request) => request.method)).toContain("chat.abort");
   });
 
+  // H1 §3.2 (absorb 14fe10d0): the deferred final acceptance owner receives the
+  // pipeline's rollback handle (previously dropped here, making post-accept
+  // rollbacks no-ops) plus its confirm handle, and the child is armed at registration.
+  it("threads the accepted rollback and confirm handles to the deferred acceptance owner", async () => {
+    const admission = createDelegateAdmissionAuthority();
+    hoisted.callGatewayMock.mockImplementation(async (request: { method?: string }) => {
+      if (request.method === "agent") {
+        return { runId: "run-deferred-acceptance" };
+      }
+      if (request.method === "chat.abort") {
+        return { aborted: true, runIds: ["run-deferred-acceptance"] };
+      }
+      return {};
+    });
+
+    const result = await spawnSubagentDirect(
+      { task: "deferred final acceptance" },
+      {
+        agentSessionKey: "agent:main:main",
+        continuationDelegateAdmission: admission.authority,
+      },
+    );
+
+    expect(result).toMatchObject({ status: "accepted", runId: "run-deferred-acceptance" });
+    expect(firstRegisteredSubagentRun()).toMatchObject({
+      acceptanceCustody: { gatewayRunId: "run-deferred-acceptance" },
+    });
+    expect(result.rollbackAccepted).toBeTypeOf("function");
+    expect(result.confirmAccepted).toBeTypeOf("function");
+    expect(result.releaseAcceptanceHold).toBeTypeOf("function");
+
+    await result.rollbackAccepted!();
+    expect(hoisted.recordAcceptedSubagentSpawnRollbackMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "run-deferred-acceptance",
+        gatewayRunId: "run-deferred-acceptance",
+      }),
+    );
+    // Termination authority lives in the registration scope this seam mocks out;
+    // the real abort after a post-accept rollback is covered end to end by T8.
+    expect(hoisted.rollbackSubagentRunRegistrationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "run-deferred-acceptance" }),
+    );
+  });
+
   it("preserves continuation flow identity for the child run and session", async () => {
     const flowId = "flow-after-swarm-merge";
     const result = await spawnSubagentDirect(
