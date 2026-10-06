@@ -614,9 +614,25 @@ export function createSubagentRegistrySweeper(params: {
         ) {
           continue;
         }
+        // A group archives only as a whole: once any member is replaced or the
+        // membership changes, stop before the next phase instead of finishing it.
+        const isGroupCurrent = () => {
+          const liveGroup = readGroup();
+          return (
+            liveGroup.length === groupEntries.length &&
+            groupEntries.every(([runId, expected]) => {
+              const row = runs.get(runId);
+              return (
+                isCleanupCurrent(row, expected) &&
+                isCollectorArchiveReady(row, now) &&
+                liveGroup.some(([liveRunId]) => liveRunId === runId)
+              );
+            })
+          );
+        };
         for (const [candidateRunId, candidate] of groupEntries) {
           let current = runs.get(candidateRunId);
-          if (!isCleanupCurrent(current, candidate) || !isCollectorArchiveReady(current, now)) {
+          if (!isGroupCurrent() || !isCleanupCurrent(current, candidate)) {
             continue collectorGroups;
           }
           if (!shouldSuppressSubagentRecoverySessionEffects(current)) {
@@ -651,7 +667,7 @@ export function createSubagentRegistrySweeper(params: {
               continue collectorGroups;
             }
           }
-          if (!isCleanupCurrent(runs.get(candidateRunId), candidate)) {
+          if (!isGroupCurrent()) {
             continue collectorGroups;
           }
           if (!(await safeRemoveAttachmentsDir(current))) {
