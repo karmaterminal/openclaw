@@ -48,19 +48,14 @@ import {
 import { createSubagentRegistryRestorer } from "./subagent-registry-restore.js";
 import { handleOrphanedSubagentResume } from "./subagent-registry-resume-orphan.js";
 import type { RegisterSubagentRunParams } from "./subagent-registry-run-launch-record.js";
-import type {
-  SubagentRegistrationIdentity,
-  SubagentRegistrationOwnership,
-} from "./subagent-registry-run-launch.js";
+import type { SubagentRegistrationOwnership } from "./subagent-registry-run-launch.js";
 import { createSweeperRunManagerOperations } from "./subagent-registry-run-manager-bridge.js";
 import { createSubagentRunManager } from "./subagent-registry-run-manager.js";
+import { createSubagentSpawnAcceptanceApi } from "./subagent-registry-spawn-acceptance-api.js";
 import {
   deferArmedSubagentResume,
   isSubagentSpawnAcceptanceHeld,
   isSubagentSpawnArmed,
-  markSubagentSpawnDisarmUncertain,
-  releaseSubagentSpawnAcceptanceHold,
-  takeDeferredArmedSubagentResume,
 } from "./subagent-registry-spawn-acceptance.js";
 import { clearSubagentRunsReadCacheForTest } from "./subagent-registry-state.js";
 import { callGatewayForSweep } from "./subagent-registry-sweep-gateway.js";
@@ -583,56 +578,6 @@ export const releaseAcceptedSubagentSpawnRollback =
   subagentRunManager.releaseAcceptedSubagentSpawnRollback;
 export const armSubagentLaunchDispatch = subagentRunManager.armSubagentLaunchDispatch;
 
-/**
- * Final acceptance owner disarms the native acceptance intent. On confirmation the
- * hold is released and any resume deferred by the F2 fence (or an already-ended
- * child's delivery) is replayed exactly once.
- */
-export async function confirmSubagentSpawnAcceptance(params: {
-  runId: string;
-  childSessionKey: string;
-  expectedRegistration?: SubagentRegistrationIdentity;
-}): Promise<"confirmed" | "refused" | "uncertain"> {
-  const outcome = await subagentRunManager.confirmSubagentSpawnAcceptance(params);
-  if (outcome === "confirmed") {
-    const current = subagentRuns.get(params.runId.trim());
-    if (current && !isSubagentSpawnArmed(current)) {
-      const deferred = takeDeferredArmedSubagentResume(current);
-      if (deferred || typeof current.execution.endedAt === "number") {
-        resumeSubagentRun(current.runId, deferred ?? "live");
-      }
-    }
-  }
-  return outcome;
-}
-
-/** A collector start write with an unknown outcome keeps its launch held until restart. */
-export function markSubagentLaunchDispatchUncertain(runId: string): void {
-  const current = subagentRuns.get(runId.trim());
-  const owner =
-    current ??
-    [...subagentRuns.values()].find((candidate) => candidate.swarmRunId === runId.trim());
-  if (owner) {
-    markSubagentSpawnDisarmUncertain(owner);
-  }
-}
-
-/**
- * The acceptance owner let go without confirming: the sweeper fails the arm closed.
- * A resume deferred while armed is dropped even when the rollback already converted
- * the arm to custody, so no later disarm can replay it.
- */
-export function releaseSubagentSpawnAcceptanceHoldForRun(runId: string): void {
-  const current = subagentRuns.get(runId.trim());
-  if (!current) {
-    return;
-  }
-  releaseSubagentSpawnAcceptanceHold(current);
-  takeDeferredArmedSubagentResume(current);
-  if (isSubagentSpawnArmed(current)) {
-    scheduleSubagentRegistrySweep({ delayMs: 0 });
-  }
-}
 // Registration always settles through the registry writer. Callers await it and read
 // the ownership the continuation spawn path checks.
 export function registerSubagentRun(
@@ -647,40 +592,17 @@ export function registerSubagentRun(
     options,
   );
 }
-/**
- * The collector start transition disarms a dispatched launch marker in its own write
- * (H1 §3.4). Like native confirmation it then replays, exactly once, any resume the
- * F2 fence deferred while the launch was armed.
- */
-export async function startQueuedSubagentRun(
-  runId: string,
-  gatewayRunId?: string,
-  lifecycleGeneration?: string,
-  gatewayContextResolver?: GatewayContextResolver,
-): Promise<boolean> {
-  const id = runId.trim();
-  const selected =
-    subagentRuns.get(id) ?? [...subagentRuns.values()].find((row) => row.swarmRunId === id);
-  const started = await subagentRunManager.startQueuedSubagentRun(
-    runId,
-    gatewayRunId,
-    lifecycleGeneration,
-    gatewayContextResolver,
-  );
-  const current = selected && subagentRuns.get(gatewayRunId?.trim() || selected.runId);
-  if (
-    started &&
-    current &&
-    isSameSubagentRunOwner(current, selected) &&
-    !isSubagentSpawnArmed(current)
-  ) {
-    const deferred = takeDeferredArmedSubagentResume(current);
-    if (deferred) {
-      resumeSubagentRun(current.runId, deferred);
-    }
-  }
-  return started;
-}
+const spawnAcceptanceApi = createSubagentSpawnAcceptanceApi({
+  manager: subagentRunManager,
+  resume: (runId, source) => resumeSubagentRun(runId, source),
+  scheduleSweep: scheduleSubagentRegistrySweep,
+});
+export const {
+  confirmSubagentSpawnAcceptance,
+  markSubagentLaunchDispatchUncertain,
+  releaseSubagentSpawnAcceptanceHoldForRun,
+  startQueuedSubagentRun,
+} = spawnAcceptanceApi;
 export const settleFailedQueuedSubagentLaunch = subagentRunManager.settleFailedQueuedSubagentLaunch;
 
 export const adoptPausedSubagentRunForFollowUp =

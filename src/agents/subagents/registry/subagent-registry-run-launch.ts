@@ -26,7 +26,6 @@ import {
   updateSwarmCollectorCompletion,
 } from "../swarm/swarm-collector.js";
 import { bindSwarmRunReservation, ownsSwarmRunReservation } from "../swarm/swarm-scheduler.js";
-import { matchesSubagentChildSessionOwner } from "./subagent-child-owner-match.js";
 import { SUBAGENT_ENDED_REASON_ERROR } from "./subagent-lifecycle-events.js";
 import {
   getCurrentSubagentRunOwner,
@@ -38,9 +37,12 @@ import {
   assertSubagentRegistryWriteSourceCurrent,
   mutateSubagentRuns,
   SubagentRegistryMutationRejectedError,
-  waitForPendingSubagentKillClaim,
 } from "./subagent-registry-persistence.js";
 import { registerRequiredQueuedSubagent } from "./subagent-registry-queued-registration.js";
+import {
+  planQueuedSubagentRunStart,
+  resolveSwarmWaitOwnerSessionKeys,
+} from "./subagent-registry-run-launch-queued.js";
 import {
   createSubagentRegistrationRecord,
   type RegisterSubagentRunParams,
@@ -54,44 +56,11 @@ import type {
   SubagentRunRecord,
 } from "./subagent-registry.types.js";
 import {
-  bindSubagentRunRuntimeKey,
   compareSubagentRunGeneration,
   getSubagentRunRuntimeKey,
   isSameSubagentRunOwner,
-  latestSubagentRun,
   nextSubagentRunGeneration,
 } from "./subagent-run-generation.js";
-
-function resolveSwarmWaitOwnerSessionKeys(
-  getRunsForChildSession: (
-    childSessionKey: string,
-    childAgentId?: string,
-  ) => Iterable<SubagentRunRecord>,
-  requesterSessionKey: string,
-  requesterAgentId?: string,
-): string[] {
-  const ownerSessionKeys: string[] = [];
-  const visited: Array<{ childSessionKey: string; childAgentId?: string }> = [];
-  let currentSessionKey = requesterSessionKey.trim();
-  let currentAgentId = requesterAgentId;
-  while (
-    currentSessionKey &&
-    !visited.some((entry) =>
-      matchesSubagentChildSessionOwner(entry, currentSessionKey, currentAgentId),
-    )
-  ) {
-    visited.push({ childSessionKey: currentSessionKey, childAgentId: currentAgentId });
-    ownerSessionKeys.push(currentSessionKey);
-    const latestOwner = latestSubagentRun(
-      getRunsForChildSession(currentSessionKey, currentAgentId),
-    );
-    currentSessionKey =
-      latestOwner?.controllerSessionKey?.trim() || latestOwner?.requesterSessionKey.trim() || "";
-    currentAgentId =
-      parseAgentSessionKey(currentSessionKey)?.agentId ?? latestOwner?.requesterAgentId;
-  }
-  return ownerSessionKeys;
-}
 
 export type { RegisterSubagentRunParams } from "./subagent-registry-run-launch-record.js";
 export type {
@@ -571,71 +540,14 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
     const context = captureOpenClawStateWorkerContext();
     const started = await mutateSubagentRuns(
       [selected.runId, nextRunId],
-      (rows) => {
-        const current = rows.get(selected.runId);
-        if (
-          !current ||
-          !isSameSubagentRunOwner(current, selected) ||
-          !isAgentEventLifecycleGenerationCurrent(acceptedLifecycleGeneration)
-        ) {
-          return { value: undefined };
-        }
-        const lifecycleStarted =
-          current.execution.status === "running" &&
-          typeof current.execution.startedAt === "number" &&
-          current.swarmLaunchPending === true;
-        const terminalBeforeAcceptance =
-          current.collectorCompletion !== undefined && current.queuedLaunch !== undefined;
-        if (
-          current.killIntent ||
-          current.killReconciliation ||
-          waitForPendingSubagentKillClaim(current, context.admission) ||
-          (current.swarmLaunchPending === true &&
-            typeof current.execution.endedAt === "number" &&
-            current.collectorCompletion === undefined) ||
-          (!terminalBeforeAcceptance && current.execution.status !== "queued" && !lifecycleStarted)
-        ) {
-          return { value: undefined };
-        }
-        if (nextRunId !== current.runId && rows.get(nextRunId)) {
-          throw new SubagentRegistryMutationRejectedError(
-            `collector gateway run id already exists: ${nextRunId}`,
-          );
-        }
-        const entry = structuredClone(current);
-        entry.swarmRunId ??= current.runId;
-        entry.schedulerSlotId ??= entry.swarmRunId;
-        entry.runId = nextRunId;
-        if (!terminalBeforeAcceptance) {
-          const startedAt =
-            current.execution.status === "running" ? current.execution.startedAt : undefined;
-          entry.execution = {
-            ...entry.execution,
-            status: "running",
-            acceptedAt: Date.now(),
-            lifecycleGeneration: acceptedLifecycleGeneration,
-            restartRecovery: undefined,
-            suppressSessionEffects: undefined,
-            startedAt,
-          };
-          entry.sessionStartedAt =
-            typeof startedAt === "number" ? (entry.sessionStartedAt ?? startedAt) : undefined;
-        }
-        entry.swarmLaunchPending = false;
-        entry.queuedLaunch = undefined;
-        // The start transition proves the dispatched launch started: disarm in the same write.
-        delete entry.launchDispatch;
-        bindSubagentRunRuntimeKey(entry, getSubagentRunRuntimeKey(current));
-        const postimages = new Map<string, SubagentRunRecord | null>([[nextRunId, entry]]);
-        if (selected.runId !== nextRunId) {
-          postimages.set(selected.runId, null);
-        }
-        return {
-          value: { source: current, entry, terminalBeforeAcceptance },
-          postimages,
-          ...(current.runId !== nextRunId ? { rekeys: new Map([[current.runId, nextRunId]]) } : {}),
-        };
-      },
+      (rows) =>
+        planQueuedSubagentRunStart(
+          rows,
+          selected,
+          nextRunId,
+          acceptedLifecycleGeneration,
+          context.admission,
+        ),
       {
         runs: this.options.runs,
         context,
