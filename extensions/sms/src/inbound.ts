@@ -141,7 +141,7 @@ export async function dispatchSmsInboundEvent(params: {
           log: params.log,
         })
       : { body: params.msg.body, media: [], cleanup: async () => undefined };
-  let adoptionState: "pending" | "deferred" | "adopted" | "abandoned" = "pending";
+  let adoptionState: "pending" | "deferred" | "adopted" | "cancelled" | "abandoned" = "pending";
   try {
     const turnAdoptionLifecycle =
       materialized.media.length > 0 && params.turnAdoptionLifecycle
@@ -162,6 +162,23 @@ export async function dispatchSmsInboundEvent(params: {
                 adoptionState = "deferred";
               }
               return deferred;
+            },
+            onCancelled: async () => {
+              adoptionState = "cancelled";
+              // Cancellation releases the claim without retry budget, but the
+              // deferred files are just as orphaned as after abandonment.
+              await materialized
+                .cleanup()
+                .then(() =>
+                  params.turnAdoptionLifecycle?.onCancelled
+                    ? params.turnAdoptionLifecycle.onCancelled()
+                    : params.turnAdoptionLifecycle?.onAbandoned?.(),
+                )
+                .catch((error: unknown) => {
+                  params.log?.warn?.(
+                    `Failed to cancel Twilio MMS ingress ${params.msg.messageSid}: ${String(error)}`,
+                  );
+                });
             },
             onAbandoned: () => {
               adoptionState = "abandoned";
@@ -311,7 +328,11 @@ export async function dispatchSmsInboundEvent(params: {
       },
     });
   } finally {
-    if (adoptionState === "pending" || adoptionState === "abandoned") {
+    if (
+      adoptionState === "pending" ||
+      adoptionState === "cancelled" ||
+      adoptionState === "abandoned"
+    ) {
       await materialized.cleanup();
     }
   }
