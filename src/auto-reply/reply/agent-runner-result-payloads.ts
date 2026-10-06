@@ -58,7 +58,10 @@ import { replyRunRegistry } from "./reply-run-registry.js";
 import { createReplyToModeFilterForChannel } from "./reply-threading.js";
 import { resolveSourceReplyExpectation } from "./source-reply-delivery-mode.js";
 import { resolveStrandedReplyRecovery } from "./stranded-reply-recovery.js";
-import { buildWaitingStatusPayload } from "./waiting-status.js";
+import {
+  attachWaitingStatusProgressContinuation,
+  buildWaitingStatusPayload,
+} from "./waiting-status.js";
 export async function prepareReplyAgentPayloads(state: {
   context: FinalizeReplyAgentRunInput;
   accounting: AccountedAgentTurn;
@@ -433,13 +436,10 @@ export async function prepareReplyAgentPayloads(state: {
   // Report usage before any early return so silent replies still emit it (#152396).
   emitReplyAgentUsageDiagnostic(state);
 
-  // Drain any late tool/block deliveries before deciding there's "nothing to send".
-  // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
-  // keep the typing indicator stuck. A tool-only continuation turn may have no visible
-  // text while still needing delegate consumption/persistence below. Terminal failures are
-  // likewise delivered after normal payload filtering.
-  // Exact counts: before custody hydration or after an unresolved write the
-  // projection is unknown, and reading that as zero would drop committed work.
+  // A tool-only continuation turn may have no visible text while still needing
+  // delegate consumption/persistence below. Exact counts: before custody hydration or
+  // after an unresolved write the projection is unknown, and reading that as zero
+  // would drop committed work.
   const queuedDelegateCounts =
     resolveLiveContinuationRuntimeConfig(cfg).enabled && sessionKey
       ? await resolveQueuedDelegateCounts(sessionKey)
@@ -574,10 +574,18 @@ export async function prepareReplyAgentPayloads(state: {
       ? appendUnscheduledReminderNote(replyPayloads)
       : replyPayloads;
 
+  const statusPayload = guardedReplyPayloads.find(
+    (payload) => getReplyPayloadMetadata(payload)?.continuationStatus === true,
+  );
+  if (statusPayload) {
+    await attachWaitingStatusProgressContinuation({
+      payload: statusPayload,
+      acceptedSessionSpawns: runResult.acceptedSessionSpawns,
+      operation: replyOperation,
+    });
+  }
+
   if (continuationOwner) {
-    const statusPayload = guardedReplyPayloads.find(
-      (payload) => getReplyPayloadMetadata(payload)?.continuationStatus === true,
-    );
     const acceptedSessionSpawns = runResult.acceptedSessionSpawns;
     const requesterSessionKey = sessionKey ?? followupRun.run.sessionKey;
     if (!requesterSessionKey || !acceptedSessionSpawns?.length || !statusPayload) {

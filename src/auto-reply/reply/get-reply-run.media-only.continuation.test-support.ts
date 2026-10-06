@@ -1,6 +1,7 @@
 // Continuation-owned runPreparedReply cases registered by get-reply-run.media-only.test.ts:
 // system-event adoption (managed deliveries, recipient authority, conversation-data routing)
 // and continuation-wake marking, plus the runner-call and actual-drain helpers both files share.
+import { expectDefined } from "@openclaw/normalization-core";
 import { expect, it, vi, type Mock } from "vitest";
 import { enqueueSystemEvent, peekSystemEventEntries } from "../../infra/system-events.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
@@ -18,11 +19,10 @@ import {
 } from "./session-system-events.js";
 
 export function requireRunReplyAgentCall(index = 0) {
-  const call = vi.mocked(runReplyAgent).mock.calls.at(index)?.[0];
-  if (!call) {
-    throw new Error(`runReplyAgent call ${index} missing`);
-  }
-  return call;
+  return expectDefined(
+    vi.mocked(runReplyAgent).mock.calls.at(index)?.[0],
+    `runReplyAgent call ${index}`,
+  );
 }
 
 export async function useActualSystemEventDrain() {

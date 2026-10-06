@@ -13,6 +13,11 @@ import {
 } from "vitest";
 import { ErrorCodes } from "../../../packages/gateway-protocol/src/index.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  buildProjectedAgentRunIndex,
+  clearAgentRunContext,
+  registerAgentRunContext,
+} from "../../infra/agent-run-registry.js";
 import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { bindSessionRowProjection } from "../session-row-projection-access.js";
 import { expectSubagentFollowupReactivation } from "./subagent-followup.test-helpers.js";
@@ -201,6 +206,17 @@ describe("sessions.send completed subagent follow-up status", () => {
     loadSession(childSessionKey, "sess-followup");
     completedRun(childSessionKey);
     replaceSubagentRunAfterSteerMock.mockReturnValue(true);
+    chatSendMock.mockImplementationOnce(async ({ respond }: { respond: RespondFn }) => {
+      registerAgentRunContext("run-new", {
+        agentId: "main",
+        sessionKey: childSessionKey,
+        sessionId: "sess-followup",
+        projectSessionActive: true,
+      });
+      projection.state.rowContext.projectedAgentRuns = buildProjectedAgentRunIndex();
+      respond(true, { runId: "run-new", status: "started" }, undefined, undefined);
+    });
+    onTestFinished(() => clearAgentRunContext("run-new"));
     const broadcastToConnIds = vi.fn();
     const projection = createSessionRowProjectionFixture({
       cfg: {},
@@ -210,7 +226,6 @@ describe("sessions.send completed subagent follow-up status", () => {
         [childSessionKey]: {
           sessionId: "sess-followup",
           updatedAt: 123,
-          status: "running",
           startedAt: 123,
           runtimeMs: 10,
         },

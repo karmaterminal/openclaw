@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { resolveDefaultAgentId } from "../../agents/agent-scope-config.js";
 import { resolveReplyCompletion } from "../../agents/reply-completion.js";
@@ -130,7 +131,8 @@ export async function runReplyAgent(
       isHeartbeat,
     }));
   const visiblePartialReply = bindVisiblePartialReplyObserver(opts);
-  const runOpts = visiblePartialReply.runOpts;
+  // Every reply run carries a run id so the live run registry can own its liveness.
+  const runOpts = { ...visiblePartialReply.runOpts, runId: opts?.runId ?? randomUUID() };
   const replyOperationRunState = replyRunState.resolveReplyOperationRunState(opts);
   if (replyOperationRunState) {
     replyOperationRunState.replyCompletion = resolveReplyCompletion(
@@ -183,7 +185,6 @@ export async function runReplyAgent(
     // Durable source ownership identifies provider redelivery even if the run
     // became terminal before its claim cleanup committed.
     if (
-      restartRecoveryEntry?.status !== "running" &&
       sessionKey &&
       storePath &&
       hasRestartRecoverySourceClaim(restartRecoveryEntry, restartRecoverySourceTurnId)
@@ -582,7 +583,6 @@ export async function runReplyAgent(
       }
     }
   }
-  replyOperation.bindToolAuthoritySnapshot(prepareReplyToolAuthority(followupRun));
   bindReplyOperationTyping(replyOperation, typing);
   let runFollowupTurn = queuedRunFollowupTurn;
   let shouldDrainQueuedFollowupsAfterClear = false;
@@ -614,7 +614,7 @@ export async function runReplyAgent(
     cfg,
     followupRun,
     getActiveSessionEntry: () => activeSessionEntry,
-    opts,
+    opts: runOpts,
     replyOperation,
     restartRecoverySourceTurnId,
     runtimePolicySessionKey,
@@ -637,6 +637,7 @@ export async function runReplyAgent(
     },
   });
   try {
+    await replyOperation.bindToolAuthoritySnapshotAsync(prepareReplyToolAuthority(followupRun));
     return await executePreparedReplyAgentRun({
       ...params,
       activeSessionStore,

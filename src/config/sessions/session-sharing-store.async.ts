@@ -10,7 +10,7 @@ import { emitSessionLifecycleEvent } from "../../sessions/session-lifecycle-even
 import { sessionChanges, type SessionRowChange } from "../../sessions/session-row-changes.js";
 import { runOpenClawAgentWriteWithYieldingAdmission } from "../../state/openclaw-agent-db-transaction.js";
 import {
-  withOpenClawAgentDatabaseAsync,
+  withOpenClawAgentDatabaseRuntime,
   type OpenClawAgentDatabase,
 } from "../../state/openclaw-agent-db.js";
 import {
@@ -32,6 +32,7 @@ import { recordSessionParticipant } from "./session-accessor.sqlite-participants
 import { captureSessionRecipientAuthorityInTransaction } from "./session-accessor.sqlite-recipient-authority.js";
 import { resolveSqliteScope, toDatabaseOptions } from "./session-accessor.sqlite-scope.js";
 import type { SessionCollaborationScope } from "./session-collaboration-scope.js";
+import { captureIncognitoSessionOperation } from "./session-incognito-binding.js";
 import type { IncognitoSessionAuthority } from "./session-incognito-contract.js";
 import type { IncognitoSideDataOperations } from "./session-incognito-side-data-contract.js";
 import type { SessionRecipientAuthority } from "./session-recipient-authority-types.js";
@@ -131,8 +132,9 @@ export async function runSessionCollaborationWrite<
     sessionKey: resolved.sessionKey,
   };
   const capturedScope = { ...location, env };
-  if (scope.incognito) {
-    const { actor, authority } = scope.incognito;
+  const incognito = scope.incognito ?? captureIncognitoSessionOperation(scope);
+  if (incognito) {
+    const { actor, authority } = incognito;
     if (actor.agentId !== location.agentId || actor.path !== location.storePath) {
       throw new Error("Collaboration target differs from its captured incognito actor");
     }
@@ -217,7 +219,7 @@ export async function runSessionCollaborationWrite<
     return await runOpenClawAgentWriteAdmission(
       options,
       () =>
-        withOpenClawAgentDatabaseAsync(
+        withOpenClawAgentDatabaseRuntime(
           options,
           async (database) => {
             const { db } = database;

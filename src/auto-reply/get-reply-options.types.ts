@@ -18,7 +18,12 @@ export type { SourceReplyDeliveryMode } from "./source-reply-delivery-mode.types
 export type ContinuationTrigger = "work-wake" | "delegate-return" | "subagent-return";
 
 /** An accepted visible work session and its canonical Control UI link. */
-export type VisibleWorkSession = { sessionKey: string; url: string; label?: string };
+export type VisibleWorkSession = {
+  sessionKey: string;
+  url: string;
+  label?: string;
+  publicRead?: boolean;
+};
 
 /** A successful runtime append, independent of optional active-path projection anchors. */
 export type ReplyDispatchAssistantTranscript = Pick<

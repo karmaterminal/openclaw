@@ -72,6 +72,15 @@ export function createMockReplyOperation(
       toolAuthoritySnapshot = snapshot;
       toolAuthorityFingerprint = fingerprint;
     }),
+    bindToolAuthoritySnapshotAsync: vi.fn(async (snapshot) => {
+      if (replyOperation.result || (toolAuthoritySnapshot && toolAuthoritySnapshot !== snapshot)) {
+        throw new Error("Reply operation cannot change tool authority after admission");
+      }
+      if (!toolAuthoritySnapshot) {
+        toolAuthorityFingerprint = await (snapshot.fingerprintAsync?.() ?? snapshot.fingerprint());
+        toolAuthoritySnapshot = snapshot;
+      }
+    }),
     projectToolAuthorityFingerprint: vi.fn((overlay) => {
       if (replyOperation.result || !toolAuthoritySnapshot || !toolAuthorityRoute) {
         return undefined;
@@ -82,6 +91,15 @@ export function createMockReplyOperation(
         return undefined;
       }
     }),
+    projectToolAuthorityFingerprintAsync: vi.fn(async (overlay) => {
+      if (replyOperation.result || !toolAuthoritySnapshot || !toolAuthorityRoute) {
+        return undefined;
+      }
+      return (
+        toolAuthoritySnapshot.projectAsync?.(overlay, toolAuthorityRoute) ??
+        toolAuthoritySnapshot.project(overlay, toolAuthorityRoute)
+      );
+    }),
     setAutomaticFallbackRoute: vi.fn(),
     bindToolAuthorityRoute: vi.fn((route) => {
       if (replyOperation.result || !toolAuthoritySnapshot) {
@@ -91,6 +109,15 @@ export function createMockReplyOperation(
       toolAuthorityRoute = { ...route };
       toolAuthorityFingerprint = fingerprint;
       return fingerprint;
+    }),
+    bindToolAuthorityRouteAsync: vi.fn(async (route) => {
+      if (replyOperation.result || !toolAuthoritySnapshot) {
+        throw new Error("Reply operation has no active tool authority snapshot");
+      }
+      toolAuthorityFingerprint = await (toolAuthoritySnapshot.fingerprintAsync?.(route) ??
+        toolAuthoritySnapshot.fingerprint(route));
+      toolAuthorityRoute = { ...route };
+      return toolAuthorityFingerprint;
     }),
     updateSessionId: updateSessionIdMock,
     updateSessionKey: vi.fn(),

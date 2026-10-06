@@ -301,6 +301,7 @@ export function createAgentTurnService(
           effectiveBootstrapContextRunKind,
           preAttachmentSession,
           respond,
+          assertCurrent: assertRequestCurrent,
         });
         assertRequestCurrent();
         if (!preparedSession) {

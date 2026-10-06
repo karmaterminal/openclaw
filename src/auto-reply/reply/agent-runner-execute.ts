@@ -314,8 +314,7 @@ export async function executePreparedReplyAgentRun(
     }
   }
   // Adoption marks run start and must never be spool-replayed (would re-run tools).
-  // Suppressed delivery persists only the user transcript; crashed suppressed runs die
-  // silently. Deliverable turns atomically persist transcript plus recovery ownership.
+  // New input and its recovery claim share admission; otherwise lifecycle start owns the claim.
   await turnAdoptionLifecycle?.onAdopted();
   const runOutcome = await withBeforeAgentReplyObserver(
     {
@@ -494,6 +493,7 @@ export function createReplyAgentRestartRecoveryController(
     agentId: followupRun.run.agentId,
     lifecycleGeneration: replyOperation.lifecycleGeneration,
     admissionRunId,
+    executionRunId: opts?.runId,
     getEntry: () =>
       sessionKey
         ? (activeSessionStore?.[sessionKey] ?? getActiveSessionEntry())
