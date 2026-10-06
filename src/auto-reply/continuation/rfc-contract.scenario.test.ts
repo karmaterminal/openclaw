@@ -395,6 +395,8 @@ describe("continuation RFC contract scenarios", () => {
         enqueued: 2,
         delivered: 2,
         deliveryIds: [`delivery:${ROOT_SESSION}`, `delivery:${SIBLING_SESSION}`],
+        deliveredSessionKeys: [ROOT_SESSION, SIBLING_SESSION],
+        heldSessionKeys: [],
       });
 
       expect(deps.enqueueSessionDelivery).toHaveBeenCalledTimes(2);

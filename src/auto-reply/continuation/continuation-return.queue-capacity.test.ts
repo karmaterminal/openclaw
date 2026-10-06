@@ -47,6 +47,7 @@ import {
   resetSystemEventsForTest,
   restoreConsumedSystemEventEntries,
 } from "../../infra/system-events.js";
+import { defaultRuntime } from "../../runtime.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import {
   createGatewaySchedulerClock,
@@ -81,12 +82,22 @@ vi.mock("../../infra/session-delivery-queue-runtime.js", async (importOriginal) 
 });
 
 const announceLog = vi.hoisted(() => [] as string[]);
+const targetingWarnings = vi.hoisted(() => [] as string[]);
 vi.mock("../../logging/subsystem.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../logging/subsystem.js")>();
   return {
     ...actual,
     createSubsystemLogger: (subsystem: string) => {
       const logger = actual.createSubsystemLogger(subsystem);
+      if (subsystem === "continuation/targeting") {
+        return {
+          ...logger,
+          warn: (message: string, meta?: Record<string, unknown>) => {
+            targetingWarnings.push(message);
+            logger.warn(message, meta);
+          },
+        };
+      }
       if (subsystem !== "continuation/announce") {
         return logger;
       }
@@ -95,6 +106,10 @@ vi.mock("../../logging/subsystem.js", async (importOriginal) => {
         info: (message: string, meta?: Record<string, unknown>) => {
           announceLog.push(message);
           logger.info(message, meta);
+        },
+        warn: (message: string, meta?: Record<string, unknown>) => {
+          announceLog.push(message);
+          logger.warn(message, meta);
         },
       };
     },
@@ -169,6 +184,8 @@ function startRuntime(): void {
       }
     },
     log: runtimeLog,
+    // Worst case for retry rate: every jittered delay at its lower bound.
+    random: () => 0,
   });
 }
 
@@ -285,6 +302,7 @@ function resetObservers(): void {
   vi.mocked(requestHeartbeatNow).mockClear();
   vi.mocked(scheduleSessionDelivery).mockClear();
   announceLog.length = 0;
+  targetingWarnings.length = 0;
 }
 
 function promptHas(prepared: Awaited<ReturnType<typeof preparePrompt>>, text: string): boolean {
@@ -767,6 +785,7 @@ describe("capacity-deferred returns: observability, backoff, restart, producer w
     expect(saturationWarnings()[0]).toContain(SESSION_KEY);
     expect(saturationWarnings()[0]).toContain(deliveryId);
     expect(saturationWarnings()[0]).toContain("continuation return");
+    expect(saturationWarnings()[0]).toMatch(/row age \d+s, \d+ attempts/);
 
     // Rate-limited: no repeat inside the next five minutes, one after it.
     await stepClock(240_000);
@@ -789,7 +808,7 @@ describe("capacity-deferred returns: observability, backoff, restart, producer w
     expect(saturationWarnings()).toHaveLength(2);
   });
 
-  it("Q2-T2: many capacity-deferred rows back off to a 30s ceiling (bounded aggregate retry rate), never stop, and are admitted after the queue drains", async () => {
+  it("Q2-T2: many capacity-deferred rows back off with jitter toward a 30s ceiling (bounded aggregate retry rate), never stop, and are admitted after the queue drains", async () => {
     const stateDir = custody.stateDir();
     await seedRecipientSession(stateDir);
     fillQueueWithNotes(MAX_EVENTS);
@@ -801,11 +820,12 @@ describe("capacity-deferred returns: observability, backoff, restart, producer w
 
     await stepClock(180_000);
     const warmed = attempts.length;
-    // Steady state: each row retries at most once per 30s ceiling. Without a
-    // backoff this window would see ROWS * 120 attempts.
+    // Steady state, even with every jittered delay at its 15s lower bound: each
+    // row retries at most once per 15s. Without a backoff this window would see
+    // ROWS * 120 attempts.
     await stepClock(120_000);
     const steady = attempts.length - warmed;
-    expect(steady).toBeLessThanOrEqual(ROWS * (120 / 30 + 1));
+    expect(steady).toBeLessThanOrEqual(ROWS * (120 / 15 + 1));
     // ...and no row stops retrying (no attempt cap).
     for (const id of ids) {
       expect(attemptsFor(id).length).toBeGreaterThanOrEqual(10);
@@ -1018,5 +1038,81 @@ describe("capacity-deferred returns: observability, backoff, restart, producer w
     expect(wakesFor(SESSION_KEY)).toEqual([
       expect.objectContaining({ source: "restart-sentinel", reason: "wake" }),
     ]);
+  });
+
+  it("Q2-T6: a targeted return the full queue refused is reported held, not Delivered", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    fillQueueWithNotes(MAX_EVENTS);
+    resetObservers();
+    const runtimeLogSpy = vi.spyOn(defaultRuntime, "log");
+    try {
+      const routed = await routeSubagentContinuationReturn({
+        cfg: {},
+        continuationEnabled: true,
+        isContinuationChainDelegate: false,
+        maxChainLength: 10,
+        task: "targeted held",
+        taskLabel: "targeted held",
+        triggerMessage: "RETURN-TARGETED-HELD",
+        announceId: "q2-t6",
+        childSessionKey: CHILD_SESSION_KEY,
+        childAgentId: "main",
+        childRunId: "run-q2-t6",
+        targetRequesterSessionKey: SESSION_KEY,
+        targetRequesterAgentId: "main",
+        continuationTargetSessionKey: SESSION_KEY,
+      });
+      expect(routed.handled).toBe(true);
+      const runtimeLines = runtimeLogSpy.mock.calls.map(([line]) => String(line));
+      expect(runtimeLines.some((line) => line.includes("Delivered"))).toBe(false);
+      expect(
+        announceLog.filter((line) =>
+          line.includes("[continuation:targeted-return] Held for retry"),
+        ),
+      ).toEqual([expect.stringContaining(SESSION_KEY)]);
+      expect(await pendingTexts(stateDir)).toEqual(["RETURN-TARGETED-HELD"]);
+    } finally {
+      runtimeLogSpy.mockRestore();
+    }
+  });
+
+  it("Q2-T7: with no delivery runtime active, a held return says so (rate-limited) and is armed by the next runtime's startup scan", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    await stopRuntime?.();
+    stopRuntime = undefined;
+    fillQueueWithNotes(MAX_EVENTS);
+    resetObservers();
+
+    const first = await refuseTargetedReturn(stateDir, "q2-t7-a");
+    const second = await refuseTargetedReturn(stateDir, "q2-t7-b");
+    // Nothing could arm the retry; the producer must not claim it did.
+    await expect(vi.mocked(scheduleSessionDelivery).mock.results[0]?.value).resolves.toBe(false);
+    expect(targetingWarnings.some((line) => line.includes("retry armed"))).toBe(false);
+    expect(targetingWarnings.filter((line) => line.includes("no delivery runtime"))).toEqual([
+      expect.stringContaining(first),
+    ]);
+    expect((await pendingRows(stateDir)).map((entry) => entry.id).toSorted()).toEqual(
+      [first, second].toSorted(),
+    );
+
+    // Gateway startup: install the runtime, recover, then scan every pending row.
+    startRuntime();
+    await recoverPendingRestartContinuationDeliveries({
+      deps: {} as never,
+      queueContext: captureContinuationQueueContext(stateDir),
+      log: runtimeLog,
+    });
+    await schedulePendingSessionDeliveries();
+    await stepClock(2_000);
+    expect(peekSystemEvents(SESSION_KEY)).toHaveLength(MAX_EVENTS);
+    await runAdoptedTurn();
+    await stepClock(31_000);
+    expect(peekSystemEvents(SESSION_KEY).toSorted()).toEqual(
+      ["RETURN-q2-t7-a", "RETURN-q2-t7-b"].toSorted(),
+    );
+    await runAdoptedTurn();
+    expect(await pendingRows(stateDir)).toEqual([]);
   });
 });

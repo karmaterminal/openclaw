@@ -166,28 +166,40 @@ export async function routeSubagentContinuationReturn(params: {
     const recipientAuthorities = recipientAuthorityBinding
       ? continuationRecipientAuthorityMap(recipientAuthorityBinding, targetSessionKeys)
       : undefined;
-    if (targetSessionKeys.length > 0) {
-      await enqueueContinuationReturnDeliveries({
-        targetSessionKeys,
-        text:
-          params.triggerMessage ||
-          `[continuation:enrichment-return] Delegate completed: ${params.taskLabel}`,
-        idempotencyKeyBase: `continuation-return:${params.announceId}`,
-        wakeRecipients: params.wakeOnReturn === true || params.silentAnnounce !== true,
-        childRunId: params.childRunId,
-        ...(recipientAuthorities ? { recipientAuthorities } : {}),
-        ...(params.continuationFanoutMode ? { fanoutMode: params.continuationFanoutMode } : {}),
-        ...(completionTrace.chainStepRemaining !== undefined
-          ? { chainStepRemaining: completionTrace.chainStepRemaining }
-          : {}),
-        ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
-        recipientAgentIds,
-        ownerAgentId: params.childAgentId,
-      });
+    const outcome =
+      targetSessionKeys.length > 0
+        ? await enqueueContinuationReturnDeliveries({
+            targetSessionKeys,
+            text:
+              params.triggerMessage ||
+              `[continuation:enrichment-return] Delegate completed: ${params.taskLabel}`,
+            idempotencyKeyBase: `continuation-return:${params.announceId}`,
+            wakeRecipients: params.wakeOnReturn === true || params.silentAnnounce !== true,
+            childRunId: params.childRunId,
+            ...(recipientAuthorities ? { recipientAuthorities } : {}),
+            ...(params.continuationFanoutMode ? { fanoutMode: params.continuationFanoutMode } : {}),
+            ...(completionTrace.chainStepRemaining !== undefined
+              ? { chainStepRemaining: completionTrace.chainStepRemaining }
+              : {}),
+            ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
+            recipientAgentIds,
+            ownerAgentId: params.childAgentId,
+          })
+        : undefined;
+    // Report custody as it is: a return the full queue refused is held by its
+    // durable row for retry, not delivered.
+    const deliveredSessionKeys = outcome?.deliveredSessionKeys ?? [];
+    const heldSessionKeys = outcome?.heldSessionKeys ?? [];
+    if (deliveredSessionKeys.length > 0 || heldSessionKeys.length === 0) {
+      defaultRuntime.log(
+        `[continuation:targeted-return] Delivered to ${deliveredSessionKeys.join(",")} from ${params.childSessionKey}`,
+      );
     }
-    defaultRuntime.log(
-      `[continuation:targeted-return] Delivered to ${targetSessionKeys.join(",")} from ${params.childSessionKey}`,
-    );
+    if (heldSessionKeys.length > 0) {
+      continuationLog.warn(
+        `[continuation:targeted-return] Held for retry (system event queue full) to ${heldSessionKeys.join(",")} from ${params.childSessionKey}`,
+      );
+    }
     return { handled: true };
   }
 

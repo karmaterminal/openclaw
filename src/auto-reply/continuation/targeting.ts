@@ -95,6 +95,36 @@ const defaultContinuationReturnDeliveryDeps: ContinuationReturnDeliveryDeps = {
   requestHeartbeatNow,
 };
 
+// A held return whose retry could not be armed (no delivery runtime owns this
+// state database in this process) waits for the next runtime activation scan.
+// Warn once per state database and session per window; the rest go to debug.
+const UNARMED_HELD_RETURN_WARN_EVERY_MS = 60_000;
+const unarmedHeldReturnWarnedAt = new Map<string, number>();
+
+function reportUnarmedHeldReturn(params: {
+  deliveryId: string;
+  sessionKey: string;
+  stateDir?: string;
+}): void {
+  const now = Date.now();
+  const key = `${params.stateDir ?? ""}\u0000${params.sessionKey}`;
+  const message = `[continuation:return-held] system event queue full and no delivery runtime is active for this state database; deliveryId=${params.deliveryId} session=${params.sessionKey} stays pending until a gateway delivery runtime starts on this state database (its startup scan arms every pending row)`;
+  const last = unarmedHeldReturnWarnedAt.get(key);
+  if (last !== undefined && now - last < UNARMED_HELD_RETURN_WARN_EVERY_MS) {
+    log.debug(message);
+    return;
+  }
+  if (unarmedHeldReturnWarnedAt.size >= 256) {
+    for (const [staleKey, at] of unarmedHeldReturnWarnedAt) {
+      if (now - at >= UNARMED_HELD_RETURN_WARN_EVERY_MS) {
+        unarmedHeldReturnWarnedAt.delete(staleKey);
+      }
+    }
+  }
+  unarmedHeldReturnWarnedAt.set(key, now);
+  log.warn(message);
+}
+
 // Resolved on first use, like continuation-notice-surface: an eager binding
 // would force every test that mocks the runtime module to declare it.
 const scheduleRefusedReturnDelivery: typeof scheduleSessionDelivery = async (...args) =>
@@ -161,6 +191,10 @@ export async function enqueueContinuationReturnDeliveries(
   /** Rows whose event reached the queue now; `enqueued - delivered` wait for the scheduler's retry. */
   delivered: number;
   deliveryIds: string[];
+  /** Recipients whose event reached the queue now. */
+  deliveredSessionKeys: string[];
+  /** Recipients whose return the full queue refused; their rows are held for retry. */
+  heldSessionKeys: string[];
 }> {
   if (!params.ownerAgentId) {
     throw new Error("Continuation return source owner is unavailable.");
@@ -173,6 +207,8 @@ export async function enqueueContinuationReturnDeliveries(
     }),
   );
   const deliveryIds: string[] = [];
+  const deliveredSessionKeys: string[] = [];
+  const heldSessionKeys: string[] = [];
   let delivered = 0;
   const returnWake: ContinuationReturnWake =
     params.returnWake ??
@@ -265,13 +301,18 @@ export async function enqueueContinuationReturnDeliveries(
       // Not delivered and not woken: a wake now would run a turn without the
       // return. The scheduler retries the row (deferred while the queue stays
       // full) and the replay that admits it wakes the recipient.
-      log.warn(
-        `[continuation:return-held] system event queue full; deliveryId=${deliveryId} session=${sessionKey} retry armed`,
-      );
-      await (deps.scheduleSessionDelivery ?? scheduleRefusedReturnDelivery)(
+      heldSessionKeys.push(sessionKey);
+      const armed = await (deps.scheduleSessionDelivery ?? scheduleRefusedReturnDelivery)(
         deliveryId,
         captureContinuationQueueContext(params.stateDir),
       );
+      if (armed) {
+        log.warn(
+          `[continuation:return-held] system event queue full; deliveryId=${deliveryId} session=${sessionKey} retry armed`,
+        );
+      } else {
+        reportUnarmedHeldReturn({ deliveryId, sessionKey, stateDir: params.stateDir });
+      }
       continue;
     }
     if (params.wakeRecipients) {
@@ -289,6 +330,7 @@ export async function enqueueContinuationReturnDeliveries(
     // recipient consumption; non-attached recipients still need restart recovery
     // to replay this file.
     delivered += 1;
+    deliveredSessionKeys.push(sessionKey);
   }
 
   if (
@@ -310,5 +352,7 @@ export async function enqueueContinuationReturnDeliveries(
     enqueued: deliveryIds.length,
     delivered,
     deliveryIds,
+    deliveredSessionKeys,
+    heldSessionKeys,
   };
 }

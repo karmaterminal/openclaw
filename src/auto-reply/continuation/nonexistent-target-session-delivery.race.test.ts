@@ -234,7 +234,13 @@ describe("branch 3 — target deleted during dispatch race", () => {
       },
     );
 
-    expect(result).toEqual({ enqueued: 0, delivered: 0, deliveryIds: [] });
+    expect(result).toEqual({
+      enqueued: 0,
+      delivered: 0,
+      deliveryIds: [],
+      deliveredSessionKeys: [],
+      heldSessionKeys: [],
+    });
     expect(ackSessionDelivery).toHaveBeenCalledWith(
       "delivery-stale-authority",
       expectProcessQueueContext(),
@@ -301,7 +307,13 @@ describe("branch 3 — target deleted during dispatch race", () => {
       },
     );
 
-    expect(result).toEqual({ enqueued: 0, delivered: 0, deliveryIds: [] });
+    expect(result).toEqual({
+      enqueued: 0,
+      delivered: 0,
+      deliveryIds: [],
+      deliveredSessionKeys: [],
+      heldSessionKeys: [],
+    });
     expect(enqueueSystemEvent).toHaveBeenCalledTimes(1);
     expect(removeSystemEvents).toHaveBeenCalledWith(EXISTING_TARGET, expect.any(Function));
     expect(ackSessionDelivery).toHaveBeenCalledWith(

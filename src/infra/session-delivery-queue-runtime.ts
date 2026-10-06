@@ -28,13 +28,18 @@ type SessionDeliveryRuntime = {
   reloadPending?: typeof loadPendingSessionDelivery;
   listPending?: typeof loadPendingSessionDeliveries;
   onSettled?: SettleSessionDeliveryFn;
+  /** Jitter source for capacity backoff, in [0, 1). Injected by tests. */
+  random?: () => number;
 };
 
 const RUNTIME_RELOAD_RETRY_MS = 1_000;
 // A row the target's full system-event queue refused is retried without an
-// attempt cap (a capped deferral would turn back into loss). Each row backs off
-// from 1s to this ceiling, so many saturated rows cost at most one attempt per
-// row per ceiling. The backoff resets when the queue admits a row.
+// attempt cap (a capped deferral would turn back into loss); it keeps custody
+// until a prompt adopts it. The first retry comes after 1s; later retries back
+// off exponentially toward this ceiling with "equal jitter" (each delay drawn
+// from [d/2, d], never below 1s), so many saturated rows neither retry in
+// lockstep nor cost more than one attempt per row per half-ceiling. The backoff
+// resets when the queue admits a row.
 const CAPACITY_RETRY_CEILING_MS = 30_000;
 // Saturation must be visible: report a row still deferred after this long,
 // then again at most once per interval while it stays deferred.
@@ -42,6 +47,8 @@ const CAPACITY_SATURATION_WARN_AFTER_MS = 60_000;
 const CAPACITY_SATURATION_WARN_EVERY_MS = 5 * 60_000;
 
 type CapacityDeferralState = SessionDeliveryCapacityDeferral & {
+  /** Durable enqueue time, for the row's age in the saturation warning. */
+  enqueuedAt: number;
   firstDeferredAt: number;
   deferrals: number;
   lastWarnedAt?: number;
@@ -118,12 +125,14 @@ function describeCapacityDeferral(id: string, state: CapacityDeferralState): str
 /** Record one capacity refusal; returns the backoff before the next attempt. */
 function noteCapacityDeferral(
   activeRuntime: NonNullable<typeof runtime>,
-  id: string,
+  entry: QueuedSessionDelivery,
   deferral: SessionDeliveryCapacityDeferral,
   now: number,
 ): number {
+  const id = entry.id;
   const state = activeRuntime.capacityDeferrals.get(id) ?? {
     ...deferral,
+    enqueuedAt: entry.enqueuedAt,
     firstDeferredAt: now,
     deferrals: 0,
   };
@@ -142,13 +151,23 @@ function noteCapacityDeferral(
   ) {
     state.lastWarnedAt = now;
     activeRuntime.log.warn(
-      `session delivery: ${describeCapacityDeferral(id, state)} still deferred after ${Math.round(deferredMs / 1_000)}s (${state.deferrals} attempts): system event queue full; the session is not draining its pending events`,
+      `session delivery: ${describeCapacityDeferral(id, state)} still deferred after ${Math.round(deferredMs / 1_000)}s (row age ${Math.round(Math.max(0, now - state.enqueuedAt) / 1_000)}s, ${state.deferrals} attempts): system event queue full; the session is not draining its pending events. The row stays pending until a prompt adopts it.`,
     );
   }
-  return Math.min(
+  return resolveCapacityRetryDelayMs(state.deferrals, activeRuntime.random ?? Math.random);
+}
+
+/** Delay before the attempt after the `deferrals`-th consecutive capacity refusal. */
+function resolveCapacityRetryDelayMs(deferrals: number, random: () => number): number {
+  if (deferrals <= 1) {
+    return RUNTIME_RELOAD_RETRY_MS;
+  }
+  const ceilingMs = Math.min(
     CAPACITY_RETRY_CEILING_MS,
-    RUNTIME_RELOAD_RETRY_MS * 2 ** Math.min(state.deferrals - 1, 16),
+    RUNTIME_RELOAD_RETRY_MS * 2 ** Math.min(deferrals - 1, 16),
   );
+  const unit = Math.min(Math.max(random(), 0), 1);
+  return Math.max(RUNTIME_RELOAD_RETRY_MS, ceilingMs * (0.5 + 0.5 * unit));
 }
 
 /** The row left the capacity wait (admitted, settled, or deferred for another reason). */
@@ -232,7 +251,7 @@ async function runScheduledSessionDelivery(id: string, generation: number): Prom
     armSessionDelivery(
       pending,
       generation,
-      noteCapacityDeferral(activeRuntime, id, capacityDeferral, now),
+      noteCapacityDeferral(activeRuntime, pending, capacityDeferral, now),
     );
     return;
   }

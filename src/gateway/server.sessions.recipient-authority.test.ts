@@ -67,6 +67,8 @@ test.each(["new", "reset"] as const)(
       enqueued: 1,
       delivered: 1,
       deliveryIds: [`delivery-${reason}`],
+      deliveredSessionKeys: [sessionKey],
+      heldSessionKeys: [],
     });
     expect(enqueueSessionDelivery).toHaveBeenCalledWith(
       expect.objectContaining({

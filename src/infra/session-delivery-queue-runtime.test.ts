@@ -22,6 +22,7 @@ import {
   loadPendingSessionDelivery,
   loadPendingSessionDeliveries,
   releaseSessionDeliveryClaim,
+  SessionDeliveryDeferredError,
 } from "./session-delivery-queue-storage.js";
 
 const logger = {
@@ -625,5 +626,76 @@ describe("session delivery queue runtime", () => {
       expect(deliver).toHaveBeenCalledTimes(1);
       expect(await loadPendingSessionDeliveries(queueContext)).toStrictEqual([]);
     });
+  });
+
+  // Lane Q2 (🕯 1556920142292717691, 🌊 1556913420945854596): capacity
+  // deferrals retry without a cap at a bounded, jittered rate.
+  async function capacityRetryGaps(random: () => number, totalMs: number): Promise<number[]> {
+    const times: number[] = [];
+    await withRuntime(async (startRuntime, queueContext, time) => {
+      const id = await enqueueSessionDelivery(
+        {
+          kind: "systemEvent",
+          sessionKey: "agent:main:main",
+          agentId: "main",
+          text: "held return",
+          idempotencyKey: "continuation-return:jitter:agent:main:main",
+          awaitPromptAdoption: true,
+        },
+        queueContext,
+      );
+      startRuntime({
+        log: logger,
+        random,
+        deliver: async () => {
+          times.push(time.clock.clock.now());
+          throw new SessionDeliveryDeferredError("system event queue is full", {
+            capacity: { sessionKey: "agent:main:main", continuationReturn: true },
+          });
+        },
+      });
+      await scheduleSessionDelivery(id, queueContext);
+      for (let elapsed = 0; elapsed <= totalMs; elapsed += 1_000) {
+        await time.advanceBy(elapsed === 0 ? 0 : 1_000);
+        for (let index = 0; index < 50; index += 1) {
+          const armedAt = time.clock.armedAtMs;
+          if (armedAt === null || armedAt > time.clock.clock.now()) {
+            break;
+          }
+          await time.clock.wake();
+        }
+      }
+      expect(await loadPendingSessionDelivery(id, queueContext)).not.toBeNull();
+    });
+    return times.slice(1).map((at, index) => at - (times[index] as number));
+  }
+
+  it("backs capacity-deferred rows off with equal jitter: 1s first, then [d/2, d] toward a 30s ceiling, never stopping", async () => {
+    // Lower bound: every draw at 0.
+    expect(await capacityRetryGaps(() => 0, 120_000)).toEqual([
+      1_000, 1_000, 2_000, 4_000, 8_000, 15_000, 15_000, 15_000, 15_000, 15_000, 15_000,
+    ]);
+    // Upper bound: every draw just below 1 (the delay fires on the next whole second).
+    expect(await capacityRetryGaps(() => 0.999_999, 160_000)).toEqual([
+      1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000, 30_000, 30_000,
+    ]);
+    // Any draw stays inside the bounds.
+    let seed = 7;
+    const seeded = () => {
+      seed = (seed * 48_271) % 2_147_483_647;
+      return seed / 2_147_483_647;
+    };
+    const gaps = await capacityRetryGaps(seeded, 300_000);
+    expect(gaps[0]).toBe(1_000);
+    for (const [index, gap] of gaps.entries()) {
+      // The delay after the (index + 1)-th consecutive refusal.
+      const ceiling = Math.min(30_000, 1_000 * 2 ** index);
+      expect(gap).toBeGreaterThanOrEqual(Math.max(1_000, ceiling / 2));
+      expect(gap).toBeLessThanOrEqual(ceiling);
+    }
+    expect(gaps.length).toBeGreaterThanOrEqual(10);
+    expect(logger.warn.mock.calls.map(([message]) => String(message))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/row age \d+s, \d+ attempts/)]),
+    );
   });
 });
