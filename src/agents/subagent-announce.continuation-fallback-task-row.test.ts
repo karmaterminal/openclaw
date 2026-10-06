@@ -80,7 +80,7 @@ function makeConfig(): OpenClawConfig {
   return {
     session: { mainKey: "main", scope: "per-sender" as const },
     agents: {
-      list: [{ id: "main" }],
+      entries: { main: {} },
       defaults: {
         workspace: process.cwd(),
         model: { primary: "openai/gpt-5.5" },
@@ -91,9 +91,9 @@ function makeConfig(): OpenClawConfig {
   };
 }
 
-async function waitFor(predicate: () => boolean, timeoutMs = 4_000) {
+async function waitFor(predicate: () => boolean | Promise<boolean>, timeoutMs = 4_000) {
   const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() > deadline) {
       throw new Error("timed out waiting for condition");
     }
@@ -112,7 +112,7 @@ describe("continuation spawn over the WebSocket fallback", () => {
     stateDir = mkdtempSync(join(tmpdir(), "openclaw-continuation-fallback-row-"));
     vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
     resetAgentEventsForTest();
-    resetSubagentRegistryForTests();
+    await resetSubagentRegistryForTests();
     resetDelegateStoreForTests();
     resetSystemEventsForTest();
     setRuntimeConfigSnapshot(makeConfig());
@@ -126,11 +126,11 @@ describe("continuation spawn over the WebSocket fallback", () => {
     );
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     clearRuntimeConfigSnapshot();
     resetSystemEventsForTest();
     resetDelegateStoreForTests();
-    resetSubagentRegistryForTests();
+    await resetSubagentRegistryForTests();
     resetAgentEventsForTest();
     vi.unstubAllEnvs();
     closeOpenClawAgentDatabasesForTest();
@@ -183,11 +183,11 @@ describe("continuation spawn over the WebSocket fallback", () => {
 
     // The run ended before its descendant, so completion is retryable: it must
     // park until the descendant settles; a `task-missing` retirement would lose the wake.
-    await waitFor(() => {
-      const entry = getSubagentRunByChildSessionKey(childSessionKey);
+    await waitFor(async () => {
+      const entry = await getSubagentRunByChildSessionKey(childSessionKey);
       return entry?.wakeOnDescendantSettle === true || entry?.delivery?.status === "discarded";
     });
-    const parked = getSubagentRunByChildSessionKey(childSessionKey);
+    const parked = await getSubagentRunByChildSessionKey(childSessionKey);
     expect(parked?.delivery).not.toMatchObject({ discardReason: "task-missing" });
     expect(parked?.runId).toBe(runId);
     expect(parked?.wakeOnDescendantSettle).toBe(true);

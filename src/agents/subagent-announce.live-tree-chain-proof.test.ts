@@ -142,7 +142,7 @@ function makeConfig(): OpenClawConfig {
   return {
     session: { mainKey: "main", scope: "per-sender" as const },
     agents: {
-      list: [{ id: "main" }],
+      entries: { main: {} },
       defaults: {
         workspace: process.cwd(),
         // Pin the model so spawns never inherit the moving product default.
@@ -278,7 +278,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     await hydrateContinuationCustody();
 
     resetAgentEventsForTest();
-    resetSubagentRegistryForTests();
+    await resetSubagentRegistryForTests();
     resetDelegateStoreForTests();
     resetContinueDelegateTurnAdmissionForTests();
     resetSystemEventsForTest();
@@ -310,7 +310,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     resetSystemEventsForTest();
     resetDelegateStoreForTests();
     resetContinueDelegateTurnAdmissionForTests();
-    resetSubagentRegistryForTests();
+    await resetSubagentRegistryForTests();
     resetAgentEventsForTest();
     resetContinuationTracer();
     resetDiagnosticTraceContextForTest();
@@ -464,14 +464,14 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
       ],
     });
 
-    await waitFor(() => {
-      const intermediate = getSubagentRunByChildSessionKey(hop1ChildSessionKey);
+    await waitFor(async () => {
+      const intermediate = await getSubagentRunByChildSessionKey(hop1ChildSessionKey);
       return (
         intermediate?.wakeOnDescendantSettle === true ||
         typeof intermediate?.cleanupCompletedAt === "number"
       );
     }, 4_000);
-    const waitingIntermediate = getSubagentRunByChildSessionKey(hop1ChildSessionKey);
+    const waitingIntermediate = await getSubagentRunByChildSessionKey(hop1ChildSessionKey);
     await expect(countPendingDescendantRuns(hop1ChildSessionKey, () => {})).resolves.toBe(1);
     expect(waitingIntermediate?.runId).toBe(hop1RunId);
     expect(waitingIntermediate?.wakeOnDescendantSettle).toBe(true);
@@ -488,7 +488,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     });
 
     expect(getSubagentDepthFromSessionStore(hop2Run.requesterSessionKey)).toBe(1);
-    expect(getSubagentRunByChildSessionKey(hop2SessionKey)?.runId).toBe(hop2RunId);
+    expect((await getSubagentRunByChildSessionKey(hop2SessionKey))?.runId).toBe(hop2RunId);
     expect((await loadSessionEntryByKey(rootSessionKey))?.sessionId).toBe("sess-root");
     expect((await loadSessionEntryByKey(hop1ChildSessionKey))?.sessionId).toBeTruthy();
     expect((await loadSessionEntryByKey(hop2SessionKey))?.sessionId).toBeTruthy();
@@ -532,7 +532,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
       4_000,
     );
 
-    const recoveredIntermediate = getSubagentRunByChildSessionKey(hop1ChildSessionKey);
+    const recoveredIntermediate = await getSubagentRunByChildSessionKey(hop1ChildSessionKey);
     if (!recoveredIntermediate || recoveredIntermediate.runId === hop1RunId) {
       throw new Error("expected descendant completion to replace the intermediate run");
     }
@@ -755,8 +755,8 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     ).toHaveLength(1);
     expectSubagentRunOwnedBy(originChildSessionKey, delegateRun.runId);
     expect(listDelegateRuns()).toHaveLength(1);
-    releaseSubagentRun(originChildRunId);
-    expect(getSubagentRunByChildSessionKey(originChildSessionKey)).toBeNull();
+    await releaseSubagentRun(originChildRunId);
+    expect(await getSubagentRunByChildSessionKey(originChildSessionKey)).toBeNull();
 
     const delegateChildSessionKey = delegateRun.childSessionKey;
     const delegateChildRunId = delegateRun.runId;
@@ -817,8 +817,8 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     } catch {
       throw new Error(
         JSON.stringify({
-          originRun: getSubagentRunByChildSessionKey(originChildSessionKey),
-          delegateRun: getSubagentRunByChildSessionKey(delegateChildSessionKey),
+          originRun: await getSubagentRunByChildSessionKey(originChildSessionKey),
+          delegateRun: await getSubagentRunByChildSessionKey(delegateChildSessionKey),
           originEvents: peekSystemEventEntries(originChildSessionKey).map((entry) => entry.text),
           rootEvents: peekSystemEventEntries(rootSessionKey).map((entry) => entry.text),
           gatewayCalls: callGatewayMock.mock.calls,
