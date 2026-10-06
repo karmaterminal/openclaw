@@ -36,6 +36,7 @@ const STALE_AT = NOW - DISCORD_STALE_AMBIENT_BACKLOG_MS - 60_000;
 const CHANNELS: Record<string, DiscordGatewayChannelInfo> = {
   "chan-gated": { guildId: "g1", name: "general", type: ChannelType.GuildText },
   "chan-open": { guildId: "g1", name: "concierge", type: ChannelType.GuildText },
+  "chan-gated-2": { guildId: "g1", name: "random", type: ChannelType.GuildText },
   "thread-1": {
     guildId: "g1",
     name: "triage",
@@ -50,6 +51,7 @@ function rawMessage(params: {
   content?: string;
   sentAt: number;
   mentions?: Array<{ id: string }>;
+  embeds?: unknown[];
 }): APIMessage {
   return {
     id: params.id,
@@ -63,7 +65,7 @@ function rawMessage(params: {
       avatar: null,
     },
     attachments: [],
-    embeds: [],
+    embeds: params.embeds ?? [],
     mentions: params.mentions ?? [],
     mention_roles: [],
     mention_everyone: false,
@@ -309,6 +311,64 @@ describe("Discord ingress stale ambient backlog boundary", () => {
       }
 
       expect(dispatched).toEqual(["stale-broadcast-request"]);
+      expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+        { id: "stale-ambient", reason: "stale-ambient-backlog" },
+      ]);
+    });
+  });
+
+  it("leaves a row the policy cannot project to claim-time handling and keeps draining", async () => {
+    await withQueue(async (queue) => {
+      // ClawSweeper rev 18: passes the container checks, but text projection
+      // throws on the null embed. It must not reject the pre-claim pass.
+      await seed(queue, {
+        id: "stale-unreadable",
+        channelId: "chan-gated",
+        sentAt: STALE_AT,
+        content: "",
+        embeds: [null],
+      });
+      await seed(queue, { id: "stale-ambient", channelId: "chan-gated-2", sentAt: STALE_AT + 1 });
+      await seed(queue, {
+        id: "stale-addressed",
+        channelId: "chan-open",
+        sentAt: STALE_AT + 2,
+        mentions: [{ id: BOT_ID }],
+      });
+
+      const dispatched: string[] = [];
+      const monitor = createDiscordIngressMonitor({
+        accountId: "default",
+        // SAFETY: gateway mapping only reads the raw frame for these fixtures.
+        client: {} as Client,
+        runtime: { error: vi.fn(), log: vi.fn() },
+        botUserId: BOT_ID,
+        readPolicy: async () => livePolicy(),
+        resolveChannelInfo: (channelId) => CHANNELS[channelId],
+        isChannelInventoryHydrating: () => false,
+        queue,
+        dispatch: async (event, lifecycle) => {
+          dispatched.push(String(event.id));
+          await lifecycle.onAdopted();
+        },
+      });
+
+      monitor.start();
+      try {
+        await vi.waitFor(
+          async () => {
+            expect(await queue.listPending({ limit: "all" })).toEqual([]);
+            expect(await queue.listClaims()).toEqual([]);
+          },
+          { timeout: 15_000, interval: 50 },
+        );
+      } finally {
+        await monitor.stop();
+      }
+
+      // The unreadable row reached the canonical claim path; it was neither
+      // expired nor dropped, and the other lanes were decided as usual.
+      expect(dispatched.toSorted()).toEqual(["stale-addressed", "stale-unreadable"]);
       expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
         { id: "stale-ambient", reason: "stale-ambient-backlog" },
       ]);

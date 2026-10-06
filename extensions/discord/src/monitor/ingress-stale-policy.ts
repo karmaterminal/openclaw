@@ -136,14 +136,26 @@ function readDiscordStalePolicyRow(
   const referencedAuthor = isRecord(referencedMessage) ? referencedMessage.author : undefined;
   const sentAtMs = Date.parse(rawMessage.timestamp);
   const payloadReceivedAt = payload.receivedAt;
-  // SAFETY: the structural checks above prove the stored frame is a MESSAGE_CREATE payload.
-  const message = new Message(client, rawMessage as unknown as APIMessage);
+  let text: string;
+  let unhydratedMentionDocuments: string[];
+  try {
+    // SAFETY: the structural checks above prove the stored frame is a MESSAGE_CREATE payload.
+    const message = new Message(client, rawMessage as unknown as APIMessage);
+    // Preflight's own projection (documents, then native mentions rewritten to
+    // usernames), so pre-claim matches exactly the text preflight matches.
+    text = resolveDiscordMessageText(message, { includeForwarded: false });
+    unhydratedMentionDocuments = shouldHydrateDiscordMessagePayload(message)
+      ? resolveDiscordMessageMentionDocuments(message)
+      : [];
+  } catch {
+    // A frame preflight's projection cannot read (e.g. a null embed) is
+    // unreadable here too; it must not reject the pre-claim pass.
+    return null;
+  }
   return {
     channelId,
     ...(guildId ? { guildId } : {}),
-    // Preflight's own projection (documents, then native mentions rewritten to
-    // usernames), so pre-claim matches exactly the text preflight matches.
-    text: resolveDiscordMessageText(message, { includeForwarded: false }),
+    text,
     hasTypedText: Boolean(rawMessage.content.trim()),
     sentAtMs: Number.isFinite(sentAtMs) ? sentAtMs : null,
     payloadReceivedAt:
@@ -152,9 +164,7 @@ function readDiscordStalePolicyRow(
         : null,
     mentionEveryone: rawMessage.mention_everyone,
     mentionedUserIds,
-    unhydratedMentionDocuments: shouldHydrateDiscordMessagePayload(message)
-      ? resolveDiscordMessageMentionDocuments(message)
-      : [],
+    unhydratedMentionDocuments,
     hasRoleMention: Array.isArray(rawMessage.mention_roles) && rawMessage.mention_roles.length > 0,
     ...(isRecord(referencedAuthor) && typeof referencedAuthor.id === "string"
       ? { referencedAuthorId: referencedAuthor.id }

@@ -442,6 +442,8 @@ describe("discord stale ambient pending disposition", () => {
     await expect(resolve({ message: { content: undefined } })).resolves.toBeNull();
     await expect(resolve({ message: { timestamp: undefined } })).resolves.toBeNull();
     await expect(resolve({ message: { embeds: "not-an-array" } })).resolves.toBeNull();
+    // Container-valid, but the text projection throws on the null embed.
+    await expect(resolve({ message: { content: "", embeds: [null] } })).resolves.toBeNull();
   });
 
   it("keeps rows with an unsupported or missing payload version claimable", async () => {
