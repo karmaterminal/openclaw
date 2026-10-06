@@ -42,8 +42,17 @@ export function registerNestedCompletionRegressionMatrix(options: {
   };
   agentSpy: Mock<(req: AgentCallRequest) => Promise<ReturnType<typeof visibleAgentResponse>>>;
   getAgentCall: (index?: number) => AgentCallRequest;
+  // Upstream #163471 carries completion context in `internalEvents`; `message` is the generic
+  // runtime-event prompt. This reads the projected context (falling back to `message`).
+  getAgentCallContext: (call?: AgentCallRequest) => string;
 }): void {
-  const { defaultOutcomeAnnounce, subagentRegistryMock, agentSpy, getAgentCall } = options;
+  const {
+    defaultOutcomeAnnounce,
+    subagentRegistryMock,
+    agentSpy,
+    getAgentCall,
+    getAgentCallContext,
+  } = options;
   const runSubagentAnnounceFlow = (params: AnnounceFlowParams) =>
     options.getRunSubagentAnnounceFlow()(params);
 
@@ -107,7 +116,7 @@ export function registerNestedCompletionRegressionMatrix(options: {
 
       expect(didAnnounce).toBe("delivered");
       const call = getAgentCall();
-      const message = call?.params?.message ?? "";
+      const message = getAgentCallContext(call);
       expect(message).toContain("Child completion results:");
       expect(message).toContain("child final answer");
       expect(message).not.toContain("placeholder waiting text");
@@ -163,7 +172,7 @@ export function registerNestedCompletionRegressionMatrix(options: {
       expect(announced).toBe("delivered");
       expect(agentSpy).toHaveBeenCalledTimes(1);
       const call = getAgentCall();
-      const message = call?.params?.message ?? "";
+      const message = getAgentCallContext(call);
       expect(message).toContain("result A");
       expect(message).toContain("result B");
     });
@@ -245,13 +254,13 @@ export function registerNestedCompletionRegressionMatrix(options: {
       expect(parentAnnounced).toBe("delivered");
       expect(agentSpy).toHaveBeenCalledTimes(2);
 
-      expect(getAgentCall().params?.message).toContain("middle synthesized output from A and B");
-      expect(getAgentCall().params?.message).not.toContain("middle child result A");
+      const middleContext = getAgentCallContext();
+      expect(middleContext).toContain("middle synthesized output from A and B");
+      expect(middleContext).not.toContain("middle child result A");
       const parentCall = getAgentCall(1);
-      expect(parentCall?.params?.message ?? "").toContain("parent final decision");
-      expect(parentCall?.params?.message ?? "").not.toContain(
-        "middle synthesized output from A and B",
-      );
+      const parentContext = getAgentCallContext(parentCall);
+      expect(parentContext).toContain("parent final decision");
+      expect(parentContext).not.toContain("middle synthesized output from A and B");
     });
 
     it("preserves child output order in the parent synthesis wake", async () => {
@@ -298,7 +307,7 @@ export function registerNestedCompletionRegressionMatrix(options: {
 
       expect(didAnnounce).toBe("delivered");
       const call = getAgentCall();
-      const message = call?.params?.message ?? "";
+      const message = getAgentCallContext(call);
       const firstIndex = message.indexOf("result one");
       const secondIndex = message.indexOf("result two");
       const thirdIndex = message.indexOf("result three");
@@ -336,7 +345,7 @@ export function registerNestedCompletionRegressionMatrix(options: {
 
       expect(didAnnounce).toBe("delivered");
       const call = getAgentCall();
-      const message = call?.params?.message ?? "";
+      const message = getAgentCallContext(call);
       expect(message).toContain("status: error: child exploded");
       expect(message).toContain("traceback: child exploded");
     });

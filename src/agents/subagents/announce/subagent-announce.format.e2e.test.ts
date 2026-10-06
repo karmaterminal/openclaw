@@ -2624,6 +2624,7 @@ describe("subagent announce formatting", () => {
     subagentRegistryMock,
     agentSpy,
     getAgentCall,
+    getAgentCallContext,
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
