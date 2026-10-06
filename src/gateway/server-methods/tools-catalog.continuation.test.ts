@@ -73,7 +73,7 @@ describe("tools.catalog Disable All for continuation tools", { timeout: 240000 }
       const baseConfig: OpenClawConfig = {
         agents: {
           defaults: { continuation: { enabled: true } },
-          list: [{ id: "main" }],
+          entries: { main: {} },
         },
       };
       // Control: without the deny list the runtime registers all five tools.
@@ -85,7 +85,7 @@ describe("tools.catalog Disable All for continuation tools", { timeout: 240000 }
       const disabledConfig: OpenClawConfig = {
         agents: {
           defaults: { continuation: { enabled: true } },
-          list: [{ id: "main", tools: { deny: await readCatalogToolIds(baseConfig) } }],
+          entries: { main: { tools: { deny: await readCatalogToolIds(baseConfig) } } },
         },
       };
       expect(buildContinuationToolNames(disabledConfig)).toEqual([]);

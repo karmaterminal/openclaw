@@ -69,7 +69,7 @@ describe("continuation cross-session targeting", () => {
 
       expect(
         resolveContinuationRecipientAgentIds(
-          { agents: { list: [{ id: "main" }, { id: "helper" }] } },
+          { agents: { entries: { main: {}, helper: {} } } },
           [sessionKey],
           env,
         ),

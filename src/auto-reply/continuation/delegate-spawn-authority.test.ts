@@ -31,7 +31,9 @@ describe("continuation delegate claim construction", () => {
       vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
       setRuntimeConfigSnapshot({
         agents: {
-          list: [{ id: "main", default: true }, { id: "research" }],
+          ownership: "explicit",
+          defaults: { systemAgent: { agentId: "main" } },
+          entries: { main: {}, research: {} },
         },
         session: { scope: "global", store: storePath },
       });
