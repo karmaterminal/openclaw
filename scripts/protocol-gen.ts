@@ -1,4 +1,3 @@
-// Protocol Gen script supports OpenClaw repository automation.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripInternalProtocolFields } from "../packages/gateway-protocol/src/schema/internal-fields.js";

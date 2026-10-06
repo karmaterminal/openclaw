@@ -202,8 +202,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: approved async upstream-link writes with released sync compatibility.
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
       // system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the 10334ec913 merge: upstream 3650, merged tree 3661 (+11).
-      3661,
+      // Measured on the dd619529b2 merge: upstream 3649, merged tree 3660 (+11).
+      3660,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -218,8 +218,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: resolve the controller from the current invocation registry.
       // +2: approved async upstream-link writes with released sync compatibility.
       // +4: the continuation feature's callable contracts; measured +4 over base 2187 on b51feb98eb.
-      // Measured on the 10334ec913 merge: upstream 2112, merged tree 2116 (+4).
-      2116,
+      // Measured on the dd619529b2 merge: upstream 2111, merged tree 2115 (+4).
+      2115,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
