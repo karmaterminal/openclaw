@@ -88,18 +88,16 @@ it("never treats natively captured authority as current while an incognito actor
     const patched = await withIncognitoSessionActor(
       actor,
       async () =>
-        await patchSessionEntryCore(scope, () => ({ visibility: "private" }), {
+        await patchSessionEntryCore(scope, () => ({ visibility: "draft" }), {
           afterPersistInTransaction: () => {
             hookRan = true;
           },
         }),
     );
-    expect(patched?.visibility).toBe("private");
+    expect(patched?.visibility).toBe("draft");
     expect(hookRan).toBe(false);
     expect(isSessionRecipientAuthorityCurrent(scope, nativeAuthority)).toBe(false);
-    expect((await actor.sessions.read(authority, { sessionKey })).entry?.visibility).toBe(
-      "private",
-    );
+    expect((await actor.sessions.read(authority, { sessionKey })).entry?.visibility).toBe("draft");
   } finally {
     await actor.close().catch(() => undefined);
   }
