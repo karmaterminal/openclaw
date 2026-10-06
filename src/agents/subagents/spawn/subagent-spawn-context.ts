@@ -198,6 +198,18 @@ export async function rollbackPreparedContextEngine(
   }
 }
 
+/** Rolls back a prepared context this spawn still owns; otherwise only releases its hold. */
+export async function settlePreparedContextEngine(
+  preparation: PreparedContextEngineSubagentSpawn | undefined,
+  rollback: boolean,
+): Promise<void> {
+  if (rollback) {
+    await rollbackPreparedContextEngine(preparation);
+  } else {
+    await preparation?.dispose().catch(() => {});
+  }
+}
+
 export function resolveSubagentContextMode(params: {
   requestedContext?: SpawnSubagentContextMode;
   threadRequested: boolean;

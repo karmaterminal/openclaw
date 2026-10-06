@@ -30,7 +30,7 @@ import {
 import {
   prepareContextEngineSubagentSpawn,
   prepareSubagentSessionContext,
-  rollbackPreparedContextEngine,
+  settlePreparedContextEngine,
   type PreparedContextEngineSubagentSpawn,
 } from "./subagent-spawn-context.js";
 import {
@@ -628,11 +628,10 @@ export async function spawnSubagentDirect(
             if (canRetireReservation?.() !== false) {
               swarmReservation?.withdraw();
             }
-            if (!canLaunch && canCleanupCreatedSession?.() !== false) {
-              await rollbackPreparedContextEngine(contextEnginePreparation);
-            } else {
-              await contextEnginePreparation?.dispose().catch(() => {});
-            }
+            await settlePreparedContextEngine(
+              contextEnginePreparation,
+              !canLaunch && canCleanupCreatedSession?.() !== false,
+            );
           }
           contextEnginePreparation = undefined;
         } else {
@@ -707,11 +706,10 @@ export async function spawnSubagentDirect(
       swarmReservation?.withdraw();
     }
     try {
-      if (params.collect && contextEnginePreparation && canCleanupCreatedSession?.() !== false) {
-        await rollbackPreparedContextEngine(contextEnginePreparation);
-      } else {
-        await contextEnginePreparation?.dispose().catch(() => {});
-      }
+      await settlePreparedContextEngine(
+        contextEnginePreparation,
+        params.collect === true && canCleanupCreatedSession?.() !== false,
+      );
     } finally {
       await swarmReservation?.release();
     }
