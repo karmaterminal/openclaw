@@ -424,6 +424,13 @@ describe("spawn context-engine resource custody", () => {
         expect(fixture.database.isOpen).toBe(true);
         releaseNativeCleanup.resolve();
         await vi.runAllTimersAsync();
+        if (outcome === "failure") {
+          // Continuation's session-cleanup gate reads durable custody (work store,
+          // descendant runs, staged delegates) through the database worker before
+          // the failed launch settles; fake timers cannot flush that real I/O.
+          await vi.waitFor(() => expect(settleLaunchFailure).toHaveBeenCalled());
+          await vi.runAllTimersAsync();
+        }
 
         expect(scheduler.isSwarmRunActive(result.runId!)).toBe(true);
         expect(fixture.retired).not.toHaveBeenCalled();
