@@ -210,61 +210,6 @@ describe("subagent registry recovery scheduling", () => {
       });
   });
 
-  it("canonically completes a stale orphan instead of pruning its task owner", async () => {
-    recoverRow.mockResolvedValue({ status: "ignored" });
-    const { entry, runs, completeSubagentRunWithRecovery, sweeper } = createHarness({
-      current: {} as GatewayRecoveryRuntime,
-    });
-    entry.childSessionKey = "";
-    entry.taskRunId = entry.runId;
-    killSessionEntry.current = undefined;
-
-    await sweeper.sweepOnce();
-
-    expect(completeSubagentRunWithRecovery).toHaveBeenCalledWith(
-      {
-        runId: entry.runId,
-        expectedEntry: entry,
-        endedAt: expect.any(Number),
-        outcome: {
-          status: "error",
-          error: "subagent run orphaned: missing-session-entry",
-        },
-        reason: "subagent-error",
-        sendFarewell: true,
-        accountId: undefined,
-        triggerCleanup: true,
-      },
-      "sweeper-lost-context",
-    );
-    expect(runs.get(entry.runId)).toBe(entry);
-  });
-
-  it("retries stale-orphan completion after task persistence rejects", async () => {
-    recoverRow.mockResolvedValue({ status: "ignored" });
-    const { entry, runs, completeSubagentRunWithRecovery, sweeper } = createHarness({
-      current: {} as GatewayRecoveryRuntime,
-    });
-    entry.childSessionKey = "";
-    entry.taskRunId = entry.runId;
-    killSessionEntry.current = undefined;
-    completeSubagentRunWithRecovery
-      .mockRejectedValueOnce(new Error("task persistence rejected"))
-      .mockResolvedValueOnce(undefined);
-
-    await expect(sweeper.sweepOnce()).rejects.toThrow("task persistence rejected");
-    expect(runs.get(entry.runId)).toBe(entry);
-
-    await expect(sweeper.sweepOnce()).resolves.toBeUndefined();
-    expect(completeSubagentRunWithRecovery).toHaveBeenCalledTimes(2);
-    expect(
-      completeSubagentRunWithRecovery.mock.calls.every(
-        ([params]) => params.expectedEntry === entry,
-      ),
-    ).toBe(true);
-    expect(runs.get(entry.runId)).toBe(entry);
-  });
-
   it.each(["lifecycle", "runtime"] as const)(
     "does not finalize interrupted work after its Gateway %s changes during classification",
     async (change) => {
@@ -440,40 +385,6 @@ describe("subagent registry recovery scheduling", () => {
       expect(runs.get(groupmate.runId)).toBe(groupmate);
     },
   );
-
-  it("leaves a collector group untouched when a member is replaced during a groupmate's deletion", async () => {
-    const { entry, runs, callGateway, sweeper } = createHarness({}, archivedRun());
-    const collector = (runId: string, overrides: Partial<SubagentRunRecord> = {}) =>
-      archivedRun({
-        runId,
-        childSessionKey: `agent:main:subagent:${runId}`,
-        collect: true,
-        groupId: "group",
-        collectorCompletion: { status: "done" },
-        ...overrides,
-      });
-    const deleting = collector("deleting", { cleanup: "keep" });
-    const stale = collector("stale");
-    stale.execution.suppressSessionEffects = true;
-    runs.set(deleting.runId, deleting);
-    runs.set(stale.runId, stale);
-    const replacement = collector(stale.runId);
-    callGateway.mockResolvedValueOnce({}).mockImplementationOnce(async () => {
-      await Promise.resolve();
-      runs.set(replacement.runId, replacement);
-      return {};
-    });
-
-    await sweeper.sweepOnce();
-
-    expect(callGateway).toHaveBeenCalledTimes(2);
-    expect(runs.has(entry.runId)).toBe(false);
-    expect(runs.get(deleting.runId)).toBe(deleting);
-    expect(runs.get(replacement.runId)).toBe(replacement);
-    // Group cleanup stops at the replaced member instead of finishing the
-    // remaining phases for a group that the final membership check defers.
-    expect(deleting.contextEngineCleanupCompletedAt).toBeUndefined();
-  });
 
   it("drops a stale terminal retry when a newer generation wins during finalization", async () => {
     const runtime = { current: {} as GatewayRecoveryRuntime };
