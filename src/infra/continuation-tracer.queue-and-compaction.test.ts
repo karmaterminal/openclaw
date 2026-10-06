@@ -6,10 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import { drainSessionStoreWriterQueuesForTest } from "../config/sessions/store-writer-state.test-support.js";
 import type { SessionEntry } from "../config/sessions/types.js";
-import {
-  disposeOpenClawAgentDatabaseByPath,
-  openOpenClawAgentDatabase,
-} from "../state/openclaw-agent-db.js";
+import { disposeOpenClawAgentDatabaseByPath } from "../state/openclaw-agent-db-disposal.js";
+import { openOpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
 import {
   CONTINUATION_SIGNAL_KINDS,
   emitContinuationCompactionReleasedSpan,
@@ -586,7 +584,7 @@ describe("continuation-tracer :: compaction.id cross-cutting attr", () => {
       expect(attrs2["compaction.id"]).toBe(count3);
     } finally {
       await drainSessionStoreWriterQueuesForTest();
-      disposeOpenClawAgentDatabaseByPath(storePath);
+      await disposeOpenClawAgentDatabaseByPath(storePath);
       fs.rmSync(root, { recursive: true, force: true });
     }
   });

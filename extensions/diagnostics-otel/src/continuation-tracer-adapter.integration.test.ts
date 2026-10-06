@@ -51,7 +51,6 @@ import {
   type DiagnosticTraceContext,
 } from "../api.js";
 import { createContinuationOtelTracerAdapter } from "./continuation-tracer-adapter.js";
-import { resolveContentCapturePolicy } from "./service-content-normalization.js";
 import { createDiagnosticsEventHandler } from "./service-events.js";
 import { createDiagnosticsMetrics } from "./service-metrics.js";
 import type { DiagnosticsRecorderRuntime } from "./service-recorder-runtime.js";
@@ -231,7 +230,8 @@ function installProductionDiagnostics(provider: BasicTracerProvider) {
   const recorderRuntime: DiagnosticsRecorderRuntime = {
     ...createDiagnosticsMetrics(metrics.getMeter("openclaw")),
     ...traces,
-    contentCapturePolicy: resolveContentCapturePolicy(undefined),
+    // Unset content capture resolves to no capture (upstream #163911 collapsed the policy to a flag).
+    captureContent: false,
     tracesEnabled: true,
   };
   const recorders = {
@@ -249,8 +249,7 @@ function installProductionDiagnostics(provider: BasicTracerProvider) {
       warn() {},
     },
     recorders,
-    recordLogRecord: undefined,
-    recordSecurityEvent: undefined,
+    recordLogEvent: undefined,
   });
   const unsubscribe = onTrustedInternalDiagnosticEvent(handler);
   const tracePropagationBridge = {

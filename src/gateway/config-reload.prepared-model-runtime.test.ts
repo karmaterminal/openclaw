@@ -1,6 +1,6 @@
 // Prepared model runtime policy paths hot-reload without restarting Gateway subsystems.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ChannelPlugin } from "../channels/plugins/types.js";
+import type { ChannelPlugin } from "../channels/plugins/types.plugin.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
 import { createChannelTestPluginBase, createTestRegistry } from "../test-utils/channel-plugins.js";
 import { buildGatewayReloadPlan, resolveConfigReloadMetadata } from "./config-reload-plan.js";
