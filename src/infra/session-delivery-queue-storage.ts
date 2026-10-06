@@ -148,6 +148,7 @@ export async function withSessionDeliveryEnqueueAdmission<T>(
 }
 
 export type {
+  ContinuationReturnWake,
   SessionDeliveryContext,
   SessionDeliveryRoute,
   SessionDeliverySettledOutcome,

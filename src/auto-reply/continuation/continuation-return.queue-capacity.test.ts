@@ -20,8 +20,15 @@ import {
   captureSessionRecipientAuthority,
   replaceSessionEntry,
 } from "../../config/sessions/session-accessor.js";
-import { deliverQueuedSessionDelivery } from "../../gateway/server-restart-sentinel.js";
-import { requestHeartbeat, requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
+import {
+  deliverQueuedSessionDelivery,
+  recoverPendingRestartContinuationDeliveries,
+} from "../../gateway/server-restart-sentinel.js";
+import {
+  hasTrustedContinuationHeartbeatWake,
+  requestHeartbeat,
+  requestHeartbeatNow,
+} from "../../infra/heartbeat-wake.js";
 import {
   schedulePendingSessionDeliveries,
   scheduleSessionDelivery,
@@ -140,10 +147,11 @@ type DeliveryAttempt = { id: string; outcome: string };
 let clock: ReturnType<typeof createGatewaySchedulerClock>;
 let stopRuntime: (() => Promise<void>) | undefined;
 const attempts: DeliveryAttempt[] = [];
+/** The delivery runtime's own logger (production wires the gateway log child). */
+const runtimeLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
-beforeEach(() => {
-  resetSystemEventsForTest();
-  attempts.length = 0;
+/** Install a delivery runtime as gateway startup does (a restart installs a new one). */
+function startRuntime(): void {
   clock = createGatewaySchedulerClock(Date.now());
   const stateDir = custody.stateDir();
   stopRuntime = startSessionDeliveryRuntime({
@@ -160,8 +168,17 @@ beforeEach(() => {
         throw error;
       }
     },
-    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    log: runtimeLog,
   });
+}
+
+beforeEach(() => {
+  resetSystemEventsForTest();
+  attempts.length = 0;
+  runtimeLog.info.mockClear();
+  runtimeLog.warn.mockClear();
+  runtimeLog.error.mockClear();
+  startRuntime();
 });
 
 afterEach(async () => {
@@ -221,6 +238,48 @@ function wakesFor(sessionKey: string): unknown[] {
   );
 }
 
+/**
+ * Step the gateway clock in `stepMs` increments, running every armed drain to
+ * completion at each step (the scheduler awaits its due jobs).
+ */
+async function stepClock(totalMs: number, stepMs = 1_000): Promise<void> {
+  for (let elapsed = 0; elapsed < totalMs; elapsed += stepMs) {
+    await clock.advanceBy(stepMs);
+    for (let index = 0; index < 50; index += 1) {
+      if (clock.armedAtMs === null || clock.armedAtMs > clock.clock.now()) {
+        break;
+      }
+      await clock.wake();
+    }
+  }
+}
+
+type ExpectedReplayWake =
+  | { kind: "producer"; reason: "delegate-return" | "silent-wake-enrichment"; parentRunId: string }
+  | { kind: "none" };
+
+/** The wake the admitting replay requested must be the producer's own fast-path wake. */
+function expectReplayWake(expected: ExpectedReplayWake): void {
+  const wakes = wakesFor(SESSION_KEY) as Array<{
+    reason?: string;
+    parentRunId?: string;
+    source?: string;
+  }>;
+  if (expected.kind === "none") {
+    expect(wakes).toEqual([]);
+    return;
+  }
+  expect(wakes).toHaveLength(1);
+  expect(wakes[0]).toMatchObject({
+    reason: expected.reason,
+    parentRunId: expected.parentRunId,
+    agentId: "main",
+    sessionKey: SESSION_KEY,
+  });
+  expect(wakes[0]?.source).not.toBe("restart-sentinel");
+  expect(hasTrustedContinuationHeartbeatWake(wakes[0])).toBe(true);
+}
+
 function resetObservers(): void {
   vi.mocked(requestHeartbeat).mockClear();
   vi.mocked(requestHeartbeatNow).mockClear();
@@ -241,6 +300,7 @@ async function expectRefusedReturnRetriedToAdoption(params: {
   stateDir: string;
   text: string;
   deliveryId: string;
+  expectedWake: ExpectedReplayWake;
 }): Promise<void> {
   const { stateDir, text, deliveryId } = params;
   const oldEvents = peekSystemEvents(SESSION_KEY);
@@ -273,7 +333,8 @@ async function expectRefusedReturnRetriedToAdoption(params: {
       awaitsAdoption: event.sessionDeliveryAwaitsTurnAdoption,
     })),
   ).toEqual([{ ackId: deliveryId, awaitsAdoption: true }]);
-  expect(wakesFor(SESSION_KEY)).toHaveLength(1);
+  // The admitting replay wakes exactly as the producer's fast path would have.
+  expectReplayWake(params.expectedWake);
   expect((await pendingRows(stateDir)).map((entry) => entry.id)).toContain(deliveryId);
 
   // Further retries before adoption neither duplicate the event nor re-wake.
@@ -335,6 +396,7 @@ describe("continuation returns at system-event queue capacity (cap=20)", () => {
       stateDir,
       text: "RETURN-T1",
       deliveryId: deliveryId as string,
+      expectedWake: { kind: "producer", reason: "delegate-return", parentRunId: "run-q-t1" },
     });
   });
 
@@ -369,6 +431,7 @@ describe("continuation returns at system-event queue capacity (cap=20)", () => {
       stateDir,
       text: "RETURN-T2",
       deliveryId: deliveryId as string,
+      expectedWake: { kind: "producer", reason: "delegate-return", parentRunId: "run-q-t2" },
     });
   });
 
@@ -448,7 +511,16 @@ describe("continuation returns at system-event queue capacity (cap=20)", () => {
     const deliveryId = rows[0]?.id as string;
     expect(vi.mocked(scheduleSessionDelivery).mock.calls.map(([id]) => id)).toEqual([deliveryId]);
 
-    await expectRefusedReturnRetriedToAdoption({ stateDir, text: "RETURN-SILENT-T3", deliveryId });
+    await expectRefusedReturnRetriedToAdoption({
+      stateDir,
+      text: "RETURN-SILENT-T3",
+      deliveryId,
+      expectedWake: {
+        kind: "producer",
+        reason: "silent-wake-enrichment",
+        parentRunId: "run-q-t3",
+      },
+    });
   });
 
   it("Q-T3b: an admitted silent-enrichment return is logged Delivered, woken, and still durably owned until adoption", async () => {
@@ -633,5 +705,318 @@ describe("cut 08fead65d2 capacity characterization on the absorb (A/B/C)", () =>
     expect(drained.find((event) => event.text === "TARGETED-RETURN-C")?.sessionDeliveryAckId).toBe(
       (await pendingRows(stateDir))[0]?.id,
     );
+  });
+});
+
+// Lane Q2 (🕯 review 1556912687827656726, 🌊 review 1556913420945854596).
+describe("capacity-deferred returns: observability, backoff, restart, producer wake", () => {
+  function routeSilent(params: { announceId: string; text: string; wakeOnReturn: boolean }) {
+    return routeSubagentContinuationReturn({
+      cfg: {},
+      continuationEnabled: true,
+      isContinuationChainDelegate: false,
+      maxChainLength: 10,
+      task: params.text,
+      taskLabel: params.text,
+      triggerMessage: params.text,
+      announceId: params.announceId,
+      childSessionKey: CHILD_SESSION_KEY,
+      childAgentId: "main",
+      childRunId: `run-${params.announceId}`,
+      targetRequesterSessionKey: SESSION_KEY,
+      targetRequesterAgentId: "main",
+      silentAnnounce: true,
+      wakeOnReturn: params.wakeOnReturn,
+    });
+  }
+
+  async function refuseTargetedReturn(stateDir: string, id: string): Promise<string> {
+    const result = await enqueueContinuationReturnDeliveries({
+      targetSessionKeys: [SESSION_KEY],
+      text: `RETURN-${id}`,
+      idempotencyKeyBase: `continuation-return:${id}`,
+      wakeRecipients: true,
+      childRunId: `run-${id}`,
+      stateDir,
+      ownerAgentId: "main",
+    });
+    expect(result.delivered).toBe(0);
+    return result.deliveryIds[0] as string;
+  }
+
+  function saturationWarnings(): string[] {
+    return runtimeLog.warn.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.includes("system event queue full"));
+  }
+
+  it("Q2-T1: sustained capacity deferral is reported once past 60s, then every 5 minutes, with session and row id", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    fillQueueWithNotes(MAX_EVENTS);
+    const deliveryId = await refuseTargetedReturn(stateDir, "q2-t1");
+
+    // Deferred retries keep running, but nothing is reported before 60s.
+    await stepClock(55_000);
+    expect(attemptsFor(deliveryId).length).toBeGreaterThan(1);
+    expect(saturationWarnings()).toEqual([]);
+
+    // Past the threshold: exactly one warning naming the session and the row.
+    await stepClock(40_000);
+    expect(saturationWarnings()).toHaveLength(1);
+    expect(saturationWarnings()[0]).toContain(SESSION_KEY);
+    expect(saturationWarnings()[0]).toContain(deliveryId);
+    expect(saturationWarnings()[0]).toContain("continuation return");
+
+    // Rate-limited: no repeat inside the next five minutes, one after it.
+    await stepClock(240_000);
+    expect(saturationWarnings()).toHaveLength(1);
+    await stepClock(90_000);
+    expect(saturationWarnings()).toHaveLength(2);
+    expect(saturationWarnings()[1]).toContain(deliveryId);
+
+    // Once the queue admits the row, the recovery is reported and warnings stop.
+    drainSystemEventEntries(SESSION_KEY);
+    await stepClock(31_000);
+    expect(peekSystemEvents(SESSION_KEY)).toEqual(["RETURN-q2-t1"]);
+    expect(
+      runtimeLog.info.mock.calls.some(
+        ([message]) =>
+          String(message).includes(deliveryId) && String(message).includes("admitted after"),
+      ),
+    ).toBe(true);
+    await stepClock(600_000);
+    expect(saturationWarnings()).toHaveLength(2);
+  });
+
+  it("Q2-T2: many capacity-deferred rows back off to a 30s ceiling (bounded aggregate retry rate), never stop, and are admitted after the queue drains", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    fillQueueWithNotes(MAX_EVENTS);
+    const ROWS = 8;
+    const ids: string[] = [];
+    for (let index = 0; index < ROWS; index += 1) {
+      ids.push(await refuseTargetedReturn(stateDir, `q2-t2-${index}`));
+    }
+
+    await stepClock(180_000);
+    const warmed = attempts.length;
+    // Steady state: each row retries at most once per 30s ceiling. Without a
+    // backoff this window would see ROWS * 120 attempts.
+    await stepClock(120_000);
+    const steady = attempts.length - warmed;
+    expect(steady).toBeLessThanOrEqual(ROWS * (120 / 30 + 1));
+    // ...and no row stops retrying (no attempt cap).
+    for (const id of ids) {
+      expect(attemptsFor(id).length).toBeGreaterThanOrEqual(10);
+    }
+    expect(peekSystemEvents(SESSION_KEY)).toHaveLength(MAX_EVENTS);
+    expect(peekSystemEvents(SESSION_KEY).some((text) => text.startsWith("RETURN-"))).toBe(false);
+
+    // Capacity frees: every row is admitted within one ceiling interval, once.
+    drainSystemEventEntries(SESSION_KEY);
+    await stepClock(31_000);
+    expect(peekSystemEvents(SESSION_KEY).toSorted()).toEqual(
+      ids.map((_, index) => `RETURN-q2-t2-${index}`).toSorted(),
+    );
+    await runAdoptedTurn();
+    expect(await pendingRows(stateDir)).toEqual([]);
+
+    // Backoff state belongs to the deferral: a new refusal starts at 1s again.
+    fillQueueWithNotes(MAX_EVENTS);
+    const fresh = await refuseTargetedReturn(stateDir, "q2-t2-fresh");
+    await stepClock(1_000);
+    await stepClock(1_000);
+    expect(attemptsFor(fresh).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("Q2-T3: a capacity-deferred row survives gateway stop and restart, is picked up by the startup scan, and is delivered once", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    fillQueueWithNotes(MAX_EVENTS);
+    const deliveryId = await refuseTargetedReturn(stateDir, "q2-t3");
+    await stepClock(3_000);
+    expect(attemptsFor(deliveryId)).toContain("SessionDeliveryDeferredError");
+
+    // Stop: the runtime is fenced; nothing retries, nothing settles the row.
+    await stopRuntime?.();
+    stopRuntime = undefined;
+    const beforeStop = attemptsFor(deliveryId).length;
+    await clock.advanceBy(60_000);
+    expect(attemptsFor(deliveryId)).toHaveLength(beforeStop);
+    expect((await pendingRows(stateDir)).map((entry) => entry.id)).toEqual([deliveryId]);
+
+    // Restart into a still-saturated session: in-memory events are gone, but
+    // twenty other notices land before startup recovery runs.
+    resetSystemEventsForTest();
+    fillQueueWithNotes(MAX_EVENTS, "post-restart");
+    resetObservers();
+    startRuntime();
+    const queueContext = captureContinuationQueueContext(stateDir);
+    await recoverPendingRestartContinuationDeliveries({
+      deps: {} as never,
+      queueContext,
+      log: runtimeLog,
+    });
+    expect((await pendingRows(stateDir)).map((entry) => entry.id)).toEqual([deliveryId]);
+    expect(peekSystemEvents(SESSION_KEY)).not.toContain("RETURN-q2-t3");
+    expect(wakesFor(SESSION_KEY)).toEqual([]);
+
+    // The startup scan (server-runtime-services) arms it on the new runtime.
+    await schedulePendingSessionDeliveries();
+    await stepClock(1_000);
+    expect(attemptsFor(deliveryId).length).toBeGreaterThan(beforeStop);
+    expect(peekSystemEvents(SESSION_KEY)).not.toContain("RETURN-q2-t3");
+
+    // Capacity frees: delivered once, with the producer's wake, acked on adoption.
+    await runAdoptedTurn();
+    resetObservers();
+    await stepClock(31_000);
+    expect(peekSystemEvents(SESSION_KEY)).toEqual(["RETURN-q2-t3"]);
+    expectReplayWake({ kind: "producer", reason: "delegate-return", parentRunId: "run-q2-t3" });
+    const prepared = await runAdoptedTurn();
+    expect(prepared.blocks.filter((block) => block.text.includes("RETURN-q2-t3"))).toHaveLength(1);
+    expect(await pendingRows(stateDir)).toEqual([]);
+    await stepClock(60_000);
+    expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
+  });
+
+  it("Q2-T3b: after a restart with free capacity, startup recovery delivers the deferred row once", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    fillQueueWithNotes(MAX_EVENTS);
+    const deliveryId = await refuseTargetedReturn(stateDir, "q2-t3b");
+    await stepClock(2_000);
+    await stopRuntime?.();
+    stopRuntime = undefined;
+
+    resetSystemEventsForTest();
+    resetObservers();
+    startRuntime();
+    await recoverPendingRestartContinuationDeliveries({
+      deps: {} as never,
+      queueContext: captureContinuationQueueContext(stateDir),
+      log: runtimeLog,
+    });
+    await schedulePendingSessionDeliveries();
+    await stepClock(5_000);
+    expect(peekSystemEvents(SESSION_KEY)).toEqual(["RETURN-q2-t3b"]);
+    expectReplayWake({ kind: "producer", reason: "delegate-return", parentRunId: "run-q2-t3b" });
+    const prepared = await runAdoptedTurn();
+    expect(prepared.managedDeliveries.map((delivery) => delivery.id)).toEqual([deliveryId]);
+    expect(await pendingRows(stateDir)).toEqual([]);
+  });
+
+  it("Q2-T4: a silent return with wakeOnReturn=false is replayed after a cap refusal without any wake", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    fillQueueWithNotes(MAX_EVENTS);
+    resetObservers();
+
+    const routed = await routeSilent({
+      announceId: "q2-t4",
+      text: "RETURN-SILENT-NOWAKE",
+      wakeOnReturn: false,
+    });
+    expect(routed.handled).toBe(true);
+    const rows = await pendingRows(stateDir);
+    expect(rows).toHaveLength(1);
+    const deliveryId = rows[0]?.id as string;
+    // The row carries the producer's intent: no wake.
+    expect(rows[0]?.kind === "systemEvent" ? rows[0].returnWake : undefined).toBe(false);
+
+    await expectRefusedReturnRetriedToAdoption({
+      stateDir,
+      text: "RETURN-SILENT-NOWAKE",
+      deliveryId,
+      expectedWake: { kind: "none" },
+    });
+  });
+
+  it("Q2-T4b: a targeted silent return (wakeOnReturn=false) is replayed after a cap refusal without any wake", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    fillQueueWithNotes(MAX_EVENTS);
+    resetObservers();
+
+    await routeSubagentContinuationReturn({
+      cfg: {},
+      continuationEnabled: true,
+      isContinuationChainDelegate: false,
+      maxChainLength: 10,
+      task: "targeted silent",
+      taskLabel: "targeted silent",
+      triggerMessage: "RETURN-TARGETED-NOWAKE",
+      announceId: "q2-t4b",
+      childSessionKey: CHILD_SESSION_KEY,
+      childAgentId: "main",
+      childRunId: "run-q2-t4b",
+      targetRequesterSessionKey: SESSION_KEY,
+      targetRequesterAgentId: "main",
+      continuationTargetSessionKey: SESSION_KEY,
+      silentAnnounce: true,
+      wakeOnReturn: false,
+    });
+    const rows = await pendingRows(stateDir);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.kind === "systemEvent" ? rows[0].returnWake : undefined).toBe(false);
+    expect(wakesFor(SESSION_KEY)).toEqual([]);
+
+    await expectRefusedReturnRetriedToAdoption({
+      stateDir,
+      text: "RETURN-TARGETED-NOWAKE",
+      deliveryId: rows[0]?.id as string,
+      expectedWake: { kind: "none" },
+    });
+  });
+
+  it("Q2-T5: the durable row records the producer's wake reason, and a legacy row keeps the generic restart-sentinel wake", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    fillQueueWithNotes(MAX_EVENTS);
+    await routeSilent({ announceId: "q2-t5", text: "RETURN-SILENT-WAKE", wakeOnReturn: true });
+    const targetedId = await refuseTargetedReturn(stateDir, "q2-t5-targeted");
+    const rows = await pendingRows(stateDir);
+    const byText = new Map(
+      rows.map((entry) => [entry.kind === "systemEvent" ? entry.text : entry.id, entry]),
+    );
+    const silentRow = byText.get("RETURN-SILENT-WAKE");
+    const targetedRow = byText.get("RETURN-q2-t5-targeted");
+    expect(silentRow?.kind === "systemEvent" ? silentRow.returnWake : undefined).toEqual({
+      reason: "silent-wake-enrichment",
+      parentRunId: "run-q2-t5",
+    });
+    expect(targetedRow?.id).toBe(targetedId);
+    expect(targetedRow?.kind === "systemEvent" ? targetedRow.returnWake : undefined).toEqual({
+      reason: "delegate-return",
+      parentRunId: "run-q2-t5-targeted",
+    });
+
+    // A continuation-return row written before the field existed replays as before.
+    drainSystemEventEntries(SESSION_KEY);
+    await runAdoptedTurn();
+    await stepClock(31_000);
+    await runAdoptedTurn();
+    expect(await pendingRows(stateDir)).toEqual([]);
+    const legacyId = await enqueueSessionDelivery(
+      {
+        kind: "systemEvent",
+        sessionKey: SESSION_KEY,
+        agentId: "main",
+        text: "RETURN-LEGACY",
+        idempotencyKey: `continuation-return:q2-t5-legacy:${SESSION_KEY}`,
+        awaitPromptAdoption: true,
+      },
+      captureContinuationQueueContext(stateDir),
+    );
+    resetObservers();
+    await schedulePendingSessionDeliveries();
+    await stepClock(1_000);
+    expect(peekSystemEventEntries(SESSION_KEY).map((event) => event.sessionDeliveryAckId)).toEqual([
+      legacyId,
+    ]);
+    expect(wakesFor(SESSION_KEY)).toEqual([
+      expect.objectContaining({ source: "restart-sentinel", reason: "wake" }),
+    ]);
   });
 });

@@ -58,6 +58,14 @@ export type SessionDeliveryRoute = {
 
 export type SessionDeliverySettledOutcome = "recovered" | "moved-to-failed";
 
+/**
+ * The producer's wake for a continuation return, replayed when a retry admits
+ * the event. `false`: the producer does not wake on admission.
+ */
+export type ContinuationReturnWake =
+  | false
+  | { reason: "delegate-return" | "silent-wake-enrichment"; parentRunId?: string };
+
 /** Original requester facts; admission still validates the current owning session. */
 export type SessionDeliveryRequesterBinding = Readonly<{
   agentId: string;
@@ -96,6 +104,11 @@ type QueuedSessionDeliveryGenericPayload =
        * cheaper fire-and-complete behavior.
        */
       awaitPromptAdoption?: boolean;
+      /**
+       * Continuation returns only. Absent on rows written before it existed,
+       * which keep the generic restart-sentinel wake on replay.
+       */
+      returnWake?: ContinuationReturnWake;
     } & QueuedSessionDeliveryPayloadMetadata)
   | ({
       kind: "agentTurn";
@@ -301,6 +314,17 @@ const QueuedPlainSystemEventSchema = z
     deliveryContext: QueuedGenericDeliveryContextSchema.optional(),
     idempotencyKey: z.string().optional(),
     awaitPromptAdoption: z.boolean().optional(),
+    returnWake: z
+      .union([
+        z.literal(false),
+        z
+          .object({
+            reason: z.enum(["delegate-return", "silent-wake-enrichment"]),
+            parentRunId: z.string().optional(),
+          })
+          .strict(),
+      ])
+      .optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {

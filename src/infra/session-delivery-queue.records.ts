@@ -45,8 +45,23 @@ export function prepareClaimedSessionDelivery(
   };
 }
 
+/** The target session's system-event queue refused the replay; the row waits for capacity. */
+export type SessionDeliveryCapacityDeferral = {
+  sessionKey: string;
+  continuationReturn: boolean;
+};
+
 export class SessionDeliveryDeferredError extends Error {
   override name = "SessionDeliveryDeferredError";
+  /** Set only for a capacity refusal, so the retry runtime can back off and report saturation. */
+  readonly capacity?: SessionDeliveryCapacityDeferral;
+
+  constructor(message?: string, options?: { capacity?: SessionDeliveryCapacityDeferral }) {
+    super(message);
+    if (options?.capacity) {
+      this.capacity = options.capacity;
+    }
+  }
 }
 
 /** Signals that retry budget was already persisted before a later transition failed. */

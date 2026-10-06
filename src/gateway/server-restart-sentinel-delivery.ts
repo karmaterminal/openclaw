@@ -9,8 +9,13 @@ import type { CliDeps } from "../cli/deps.types.js";
 import { isSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.js";
 import type { SessionRecipientAuthority } from "../config/sessions/session-recipient-authority-types.js";
 import { toErrorObject } from "../infra/errors.js";
-import { requestHeartbeat } from "../infra/heartbeat-wake.js";
 import {
+  markTrustedContinuationHeartbeatWake,
+  requestHeartbeat,
+  requestHeartbeatNow,
+} from "../infra/heartbeat-wake.js";
+import {
+  type ContinuationReturnWake,
   markSessionDeliveryAttemptStarted,
   markSessionDeliverySettlement,
   SessionDeliveryDeadLetteredError,
@@ -51,10 +56,23 @@ type ResolvedQueuedSessionDelivery = QueuedSessionDelivery & {
  */
 type RestartSentinelWakeOutcome = "queued" | "refused" | "stale-authority";
 
-/** The row stays pending and the delivery scheduler retries it without charging its retry budget. */
-function deferRefusedRestartSentinelWake(params: { sessionKey: string; queueId: string }): never {
-  log.warn("session event delivery deferred: system event queue is full", params);
-  throw new SessionDeliveryDeferredError("system event queue is full; retrying the durable row");
+/**
+ * The row stays pending and the delivery scheduler retries it without charging
+ * its retry budget. The scheduler backs off and reports sustained saturation
+ * (rate-limited), so each attempt here logs only at debug.
+ */
+function deferRefusedRestartSentinelWake(params: {
+  sessionKey: string;
+  queueId: string;
+  continuationReturn?: boolean;
+}): never {
+  log.debug("session event delivery deferred: system event queue is full", params);
+  throw new SessionDeliveryDeferredError("system event queue is full; retrying the durable row", {
+    capacity: {
+      sessionKey: params.sessionKey,
+      continuationReturn: params.continuationReturn === true,
+    },
+  });
 }
 
 function enqueueRestartSentinelWake(params: {
@@ -75,6 +93,8 @@ function enqueueRestartSentinelWake(params: {
   recipientAuthority?: SessionRecipientAuthority;
   awaitsTurnAdoption?: boolean;
   isRecipientAuthorityCurrent?: () => boolean;
+  /** A continuation return's own wake; absent keeps the generic restart-sentinel wake. */
+  returnWake?: ContinuationReturnWake;
 }): RestartSentinelWakeOutcome {
   const eventOptions = {
     sessionKey: params.sessionKey,
@@ -108,6 +128,21 @@ function enqueueRestartSentinelWake(params: {
     // row that already rides a queued event (whose producer already woke the
     // session). Only the latter is delivered; neither needs another wake.
     return hasQueuedSystemEventDelivery(ownedOptions) ? "queued" : "refused";
+  }
+  if (params.returnWake !== undefined) {
+    // Replay wakes exactly as the producer's fast-path admission would have:
+    // a trusted continuation wake with the producer's reason, or none at all.
+    if (params.returnWake) {
+      requestHeartbeatNow(
+        markTrustedContinuationHeartbeatWake({
+          sessionKey: params.sessionKey,
+          agentId: params.agentId,
+          reason: params.returnWake.reason,
+          ...(params.returnWake.parentRunId ? { parentRunId: params.returnWake.parentRunId } : {}),
+        }),
+      );
+    }
+    return "queued";
   }
   requestHeartbeat({
     source: "restart-sentinel",
@@ -233,9 +268,16 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       recipientAuthority,
       awaitsTurnAdoption,
       isRecipientAuthorityCurrent: recipientAuthorityCurrent,
+      ...(isContinuationReturn && params.entry.returnWake !== undefined
+        ? { returnWake: params.entry.returnWake }
+        : {}),
     });
     if (replayed === "refused") {
-      deferRefusedRestartSentinelWake({ sessionKey: canonicalKey, queueId: params.entry.id });
+      deferRefusedRestartSentinelWake({
+        sessionKey: canonicalKey,
+        queueId: params.entry.id,
+        continuationReturn: isContinuationReturn,
+      });
     }
     if (replayed === "stale-authority") {
       log.warn("session event delivery wake skipped: recipient authority changed", {

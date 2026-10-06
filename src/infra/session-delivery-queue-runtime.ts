@@ -13,7 +13,11 @@ import {
   loadPendingSessionDeliveries,
   loadPendingSessionDelivery,
 } from "./session-delivery-queue-storage.js";
-import type { QueuedSessionDelivery } from "./session-delivery-queue.records.js";
+import {
+  SessionDeliveryDeferredError,
+  type QueuedSessionDelivery,
+  type SessionDeliveryCapacityDeferral,
+} from "./session-delivery-queue.records.js";
 
 type SessionDeliveryRuntime = {
   scheduler: GatewayScheduler;
@@ -27,11 +31,29 @@ type SessionDeliveryRuntime = {
 };
 
 const RUNTIME_RELOAD_RETRY_MS = 1_000;
+// A row the target's full system-event queue refused is retried without an
+// attempt cap (a capped deferral would turn back into loss). Each row backs off
+// from 1s to this ceiling, so many saturated rows cost at most one attempt per
+// row per ceiling. The backoff resets when the queue admits a row.
+const CAPACITY_RETRY_CEILING_MS = 30_000;
+// Saturation must be visible: report a row still deferred after this long,
+// then again at most once per interval while it stays deferred.
+const CAPACITY_SATURATION_WARN_AFTER_MS = 60_000;
+const CAPACITY_SATURATION_WARN_EVERY_MS = 5 * 60_000;
+
+type CapacityDeferralState = SessionDeliveryCapacityDeferral & {
+  firstDeferredAt: number;
+  deferrals: number;
+  lastWarnedAt?: number;
+};
+
 let runtime:
   | (Omit<SessionDeliveryRuntime, "scheduler"> & {
       scheduler: GatewaySchedulerScope;
       runningEntries: Set<string>;
       pendingSchedules: Set<Promise<void>>;
+      /** Process-local: a restart starts every row at the base cadence again. */
+      capacityDeferrals: Map<string, CapacityDeferralState>;
     })
   | undefined;
 let runtimeGeneration = 0;
@@ -89,6 +111,73 @@ function armSessionDelivery(
   );
 }
 
+function describeCapacityDeferral(id: string, state: CapacityDeferralState): string {
+  return `${state.continuationReturn ? "continuation return" : "session event"} ${id} for session ${state.sessionKey}`;
+}
+
+/** Record one capacity refusal; returns the backoff before the next attempt. */
+function noteCapacityDeferral(
+  activeRuntime: NonNullable<typeof runtime>,
+  id: string,
+  deferral: SessionDeliveryCapacityDeferral,
+  now: number,
+): number {
+  const state = activeRuntime.capacityDeferrals.get(id) ?? {
+    ...deferral,
+    firstDeferredAt: now,
+    deferrals: 0,
+  };
+  state.deferrals += 1;
+  activeRuntime.capacityDeferrals.set(id, state);
+  if (state.deferrals === 1) {
+    activeRuntime.log.info(
+      `session delivery: ${describeCapacityDeferral(id, state)} deferred: system event queue full; retrying with backoff`,
+    );
+  }
+  const deferredMs = now - state.firstDeferredAt;
+  if (
+    deferredMs >= CAPACITY_SATURATION_WARN_AFTER_MS &&
+    (state.lastWarnedAt === undefined ||
+      now - state.lastWarnedAt >= CAPACITY_SATURATION_WARN_EVERY_MS)
+  ) {
+    state.lastWarnedAt = now;
+    activeRuntime.log.warn(
+      `session delivery: ${describeCapacityDeferral(id, state)} still deferred after ${Math.round(deferredMs / 1_000)}s (${state.deferrals} attempts): system event queue full; the session is not draining its pending events`,
+    );
+  }
+  return Math.min(
+    CAPACITY_RETRY_CEILING_MS,
+    RUNTIME_RELOAD_RETRY_MS * 2 ** Math.min(state.deferrals - 1, 16),
+  );
+}
+
+/** The row left the capacity wait (admitted, settled, or deferred for another reason). */
+function clearCapacityDeferral(
+  activeRuntime: NonNullable<typeof runtime>,
+  id: string,
+  now: number,
+  generation: number,
+): void {
+  const state = activeRuntime.capacityDeferrals.get(id);
+  if (!state) {
+    return;
+  }
+  activeRuntime.capacityDeferrals.delete(id);
+  if (state.lastWarnedAt !== undefined) {
+    activeRuntime.log.info(
+      `session delivery: ${describeCapacityDeferral(id, state)} admitted after ${Math.round((now - state.firstDeferredAt) / 1_000)}s of capacity deferral`,
+    );
+  }
+  // The queue admitted one row for this session; let its other waiting rows
+  // try again at the base cadence instead of sitting out their backoff.
+  for (const [otherId, other] of activeRuntime.capacityDeferrals) {
+    if (other.sessionKey === state.sessionKey) {
+      other.deferrals = 0;
+      armSessionDeliveryId(otherId, RUNTIME_RELOAD_RETRY_MS, generation);
+    }
+  }
+}
+
 async function runScheduledSessionDelivery(id: string, generation: number): Promise<void> {
   const activeRuntime = runtime;
   if (!activeRuntime || generation !== runtimeGeneration) {
@@ -99,6 +188,10 @@ async function runScheduledSessionDelivery(id: string, generation: number): Prom
   }
   activeRuntime.runningEntries.add(id);
   let pending: QueuedSessionDelivery | null = null;
+  let capacityDeferral: SessionDeliveryCapacityDeferral | undefined;
+  // Backoff state moves only on evidence: an attempt that ran, or a row gone.
+  let attempted = false;
+  let drained = false;
   try {
     pending = await (activeRuntime.drain ?? drainPendingSessionDelivery)({
       id,
@@ -106,9 +199,21 @@ async function runScheduledSessionDelivery(id: string, generation: number): Prom
       now: () => activeRuntime.scheduler.now(),
       logLabel: "session delivery",
       log: activeRuntime.log,
-      deliver: activeRuntime.deliver,
+      deliver: async (entry, context) => {
+        capacityDeferral = undefined;
+        attempted = true;
+        try {
+          await activeRuntime.deliver(entry, context);
+        } catch (error) {
+          if (error instanceof SessionDeliveryDeferredError && error.capacity) {
+            capacityDeferral = error.capacity;
+          }
+          throw error;
+        }
+      },
       onSettled: activeRuntime.onSettled,
     });
+    drained = true;
   } catch (error) {
     activeRuntime.log.error(`session delivery: runtime drain failed for ${id}: ${String(error)}`);
     if (runtime && generation === runtimeGeneration) {
@@ -121,6 +226,18 @@ async function runScheduledSessionDelivery(id: string, generation: number): Prom
   }
   if (!runtime || generation !== runtimeGeneration) {
     return;
+  }
+  const now = activeRuntime.scheduler.now();
+  if (pending && capacityDeferral) {
+    armSessionDelivery(
+      pending,
+      generation,
+      noteCapacityDeferral(activeRuntime, id, capacityDeferral, now),
+    );
+    return;
+  }
+  if (drained && (attempted || !pending)) {
+    clearCapacityDeferral(activeRuntime, id, now, generation);
   }
   if (pending) {
     // Any still-pending row means the drain deferred, failed, or was owned
@@ -139,6 +256,7 @@ export function startSessionDeliveryRuntime(params: SessionDeliveryRuntime): () 
     scheduler: params.scheduler.scope(),
     runningEntries: new Set<string>(),
     pendingSchedules: new Set<Promise<void>>(),
+    capacityDeferrals: new Map<string, CapacityDeferralState>(),
   };
   runtime = activeRuntime;
   let stopPromise: Promise<void> | undefined;

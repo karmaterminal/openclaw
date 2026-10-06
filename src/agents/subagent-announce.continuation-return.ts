@@ -225,8 +225,12 @@ export async function routeSubagentContinuationReturn(params: {
         params.triggerMessage ||
         `[continuation:enrichment-return] Delegate completed: ${params.taskLabel}`,
       idempotencyKeyBase: `continuation-return:${params.announceId}`,
-      // The silent path owns its wake below, with its own reason.
+      // The silent path owns its wake below, with its own reason. A retry that
+      // admits a held return replays that same wake, or none.
       wakeRecipients: false,
+      returnWake: params.wakeOnReturn
+        ? { reason: "silent-wake-enrichment", parentRunId: params.childRunId }
+        : false,
       childRunId: params.childRunId,
       ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
       ...(requesterAgentId

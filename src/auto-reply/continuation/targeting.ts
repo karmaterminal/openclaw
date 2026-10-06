@@ -11,6 +11,7 @@ import {
   enqueueSessionDelivery,
 } from "../../infra/session-delivery-queue-storage.js";
 import type {
+  ContinuationReturnWake,
   QueuedSessionDeliveryPayload,
   SessionDeliveryContext,
 } from "../../infra/session-delivery-queue-storage.js";
@@ -139,6 +140,12 @@ export async function enqueueContinuationReturnDeliveries(
     recipientAuthorities?: ReadonlyMap<string, SessionRecipientAuthority>;
     deliveryContext?: SessionDeliveryContext;
     wakeRecipients?: boolean;
+    /**
+     * The wake a retry replays when it admits a held return. Defaults to this
+     * call's own wake (`delegate-return` when `wakeRecipients`, else none); a
+     * caller that wakes by itself names its own.
+     */
+    returnWake?: ContinuationReturnWake;
     childRunId?: string;
     stateDir?: string;
     traceparent?: string;
@@ -167,6 +174,14 @@ export async function enqueueContinuationReturnDeliveries(
   );
   const deliveryIds: string[] = [];
   let delivered = 0;
+  const returnWake: ContinuationReturnWake =
+    params.returnWake ??
+    (params.wakeRecipients
+      ? {
+          reason: "delegate-return",
+          ...(params.childRunId ? { parentRunId: params.childRunId } : {}),
+        }
+      : false);
 
   for (const { sessionKey, recipientAgentId } of targets) {
     const text = params.text;
@@ -199,6 +214,8 @@ export async function enqueueContinuationReturnDeliveries(
       ...commonPayload,
       ...(recipientAuthority ? { recipientAuthority } : {}),
       awaitPromptAdoption: true,
+      // A retry that admits a held return wakes as this producer would have.
+      returnWake,
     };
     const deliveryId = await deps.enqueueSessionDelivery(
       payload,
