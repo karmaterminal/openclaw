@@ -32,6 +32,7 @@ import type {
   SessionMetadataExpectedEntry,
   SessionOwnerAssignParams,
 } from "./session-sharing-store.types.js";
+import type { InternalSessionEntry } from "./types.js";
 
 function metadataAuthorityEntry(entry: SessionMetadataExpectedEntry): SessionMetadataExpectedEntry {
   return {
@@ -132,9 +133,10 @@ export function assignSessionOwner(
   const updated = runOpenClawAgentWriteTransaction(
     (database) => {
       params.assertCurrent?.();
+      const incognito = isIncognitoOpenClawAgentSqlitePath(database.path, options);
       if (
         params.expectedSessionId !== undefined &&
-        (isIncognitoOpenClawAgentSqlitePath(database.path, options)
+        (incognito
           ? readIncognitoSessionEntryCurrent(database.db, resolved.sessionKey)?.sessionId
           : readSessionEntryInstanceId(database, resolved.sessionKey)) !== params.expectedSessionId
       ) {
@@ -154,9 +156,15 @@ export function assignSessionOwner(
       // Decode the row's own owner and creator only. Resolving the full entry
       // projects participant rows, and a corrupt participant identity there must
       // not roll back a recorded owner assignment; the read projection still
-      // surfaces that corruption to its own callers.
-      const currentRow = readExactSessionEntryRawRow(database, resolved.sessionKey);
-      const currentEntry = currentRow ? parseSessionEntryJson(currentRow, "list") : null;
+      // surfaces that corruption to its own callers. Incognito sessions read the
+      // process-held entry, never the session rows.
+      let currentEntry: Pick<InternalSessionEntry, "owner" | "createdActor"> | null | undefined;
+      if (incognito) {
+        currentEntry = readIncognitoSessionEntryCurrent(database.db, resolved.sessionKey);
+      } else {
+        const currentRow = readExactSessionEntryRawRow(database, resolved.sessionKey);
+        currentEntry = currentRow ? parseSessionEntryJson(currentRow, "list") : null;
+      }
       const previousOwner = currentEntry?.owner?.actor ?? currentEntry?.createdActor;
       const ownerChanged =
         previousOwner?.type !== owner.actor.type || previousOwner?.id !== owner.actor.id;
