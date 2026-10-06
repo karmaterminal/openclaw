@@ -330,4 +330,54 @@ describe("channel ingress pending disposition", () => {
       drain.dispose();
     });
   });
+
+  it.each(["defer", "lost-cas", "none"] as const)(
+    "keeps a disposition-held row from superseding active work (%s)",
+    async (mode) => {
+      await withTempState(async (stateDir) => {
+        const queue = createTestIngressQueue(stateDir);
+        await queue.enqueue("old", { text: "old" }, { laneKey: "shared" });
+        const fail = queue.fail.bind(queue);
+        queue.fail = vi.fn(async (...args: Parameters<typeof queue.fail>) =>
+          args[0] === "new" ? false : await fail(...args),
+        );
+        let oldSignal: AbortSignal | undefined;
+        const drain = createChannelIngressDrain({
+          queue,
+          now: () => 10,
+          shouldSupersedePending: (candidate) => candidate.id === "new",
+          resolvePendingDisposition: (record) =>
+            record.id !== "new" || mode === "none"
+              ? null
+              : mode === "defer"
+                ? { kind: "defer" }
+                : { kind: "fail", reason: "stale-ambient-backlog", message: "stale row" },
+          dispatchClaimedEvent: async (claim, lifecycle) => {
+            if (claim.id === "old") {
+              oldSignal = lifecycle.abortSignal;
+              return { kind: "deferred" };
+            }
+            await lifecycle.onAdopted();
+            return { kind: "completed" };
+          },
+        });
+        try {
+          await drain.drainOnce();
+          await queue.enqueue("new", { text: "new" }, { laneKey: "shared" });
+          const held = mode !== "none";
+          // A row the hook holds (or whose fail lost its CAS) can neither cancel
+          // the pre-adoption owner nor start in the same pass; the control does.
+          expect(await drain.drainOnce()).toEqual({ started: held ? 0 : 1 });
+          await drain.waitForIdle();
+          expect(oldSignal?.aborted).toBe(!held);
+          expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual(
+            held ? ["new"] : [],
+          );
+          expect((await queue.listClaims()).map((claim) => claim.id)).toEqual(held ? ["old"] : []);
+        } finally {
+          drain.dispose();
+        }
+      });
+    },
+  );
 });

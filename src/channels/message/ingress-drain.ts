@@ -664,6 +664,11 @@ export function createChannelIngressDrain<
         break;
       }
       const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
+      // A lane the disposition hook holds is fenced for this pass: its rows
+      // neither cancel active work nor get their block lifted.
+      if (disposition.blockedLaneKeys.has(laneKey)) {
+        continue;
+      }
       if (await supersedeActiveIfNeeded(event, laneKey)) {
         blockedLaneKeys.delete(laneKey);
       }
