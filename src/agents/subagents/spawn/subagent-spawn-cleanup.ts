@@ -388,43 +388,6 @@ export async function cleanupFailedSpawnBeforeAgentStart(params: {
   };
 }
 
-export async function terminateFailedRegistrationRun(params: {
-  childSessionKey: string;
-  gatewayRunId: string;
-  expectedSessionId?: string;
-  expectedLifecycleRevision?: string;
-  isCleanupCurrent: () => boolean;
-  isAbortCurrent: () => boolean;
-  cleanupOwner?: ReturnType<typeof bindSubagentSpawnCleanup>;
-  retainAdmission?: () => () => void;
-}): Promise<string | undefined> {
-  // A failed required registration stops its accepted run while uncertain
-  // or retained registry data still forbids deleting the session.
-  const deleteSessionOnMiss = params.isCleanupCurrent();
-  if (!deleteSessionOnMiss && params.retainAdmission && params.cleanupOwner?.terminateAcceptedRun) {
-    const termination = await params.cleanupOwner.terminateAcceptedRun(params.retainAdmission);
-    if (termination.status !== "settled") {
-      return (
-        `Child termination is not confirmed: ${formatErrorMessage(termination.error)}. ` +
-        (termination.status === "pending"
-          ? "Its session is retained, and Gateway cleanup is pending."
-          : "Its session is retained; Gateway cleanup could not be scheduled.")
-      );
-    }
-  } else {
-    await terminateAcceptedCollectorRun({
-      childSessionKey: params.childSessionKey,
-      gatewayRunId: params.gatewayRunId,
-      expectedSessionId: params.expectedSessionId,
-      expectedLifecycleRevision: params.expectedLifecycleRevision,
-      isCurrent: deleteSessionOnMiss ? params.isCleanupCurrent : params.isAbortCurrent,
-      sessionCleanup: deleteSessionOnMiss ? "delete-on-abort-miss" : "preserve",
-      ...(params.cleanupOwner ? { callGateway: params.cleanupOwner.callGateway } : {}),
-    });
-  }
-  return undefined;
-}
-
 async function requestAcceptedRunAbort(params: AcceptedRunAbortParams): Promise<unknown> {
   const call = params.callGateway ?? callSubagentGateway;
   params.signal?.throwIfAborted();
