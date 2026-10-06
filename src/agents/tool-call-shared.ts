@@ -5,7 +5,10 @@
  */
 import type { AgentMessage } from "@openclaw/agent-core";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
+import {
+  normalizeOptionalLowercaseString,
+  normalizeOptionalString,
+} from "@openclaw/normalization-core/string-coerce";
 import { collectCompletedToolCallBlocks } from "../../packages/agent-core/src/harness/session/tool-result-pairing.js";
 import { REDACTED_SENTINEL } from "../config/redact-snapshot.js";
 
@@ -46,14 +49,10 @@ export function normalizeAllowedToolNames(allowedToolNames?: Iterable<string>): 
   }
   const normalized = new Set<string>();
   for (const name of allowedToolNames) {
-    if (typeof name !== "string") {
-      continue;
+    const key = normalizeOptionalLowercaseString(name);
+    if (key) {
+      normalized.add(key);
     }
-    const trimmed = name.trim();
-    if (!trimmed) {
-      continue;
-    }
-    normalized.add(normalizeLowercaseStringOrEmpty(trimmed));
   }
   return normalized.size > 0 ? normalized : null;
 }
@@ -63,10 +62,7 @@ export function isAllowedToolCallName(
   name: unknown,
   allowedToolNames: Set<string> | null,
 ): boolean {
-  if (typeof name !== "string") {
-    return false;
-  }
-  const trimmed = name.trim();
+  const trimmed = normalizeOptionalString(name);
   if (!trimmed) {
     return false;
   }
@@ -76,7 +72,7 @@ export function isAllowedToolCallName(
   if (!allowedToolNames) {
     return true;
   }
-  return allowedToolNames.has(normalizeLowercaseStringOrEmpty(trimmed));
+  return allowedToolNames.has(trimmed.toLowerCase());
 }
 
 function redactContinueDelegateAttachmentContent(

@@ -26,15 +26,16 @@ export function assertSubagentCollectorAdmission(
   }
 }
 
-export function publishSubagentSpawnRegistration(params: {
+export async function publishSubagentSpawnRegistration(params: {
   cfg: OpenClawConfig;
   childEntry: SessionEntry | undefined;
   childSessionKey: string;
   agentId: string;
-}): void {
+}): Promise<void> {
   const { cfg, childEntry, childSessionKey, agentId } = params;
   if (childEntry) {
-    recordSessionCreated(cfg, {
+    // Upstream made creation signalling async; callers must await this publication.
+    await recordSessionCreated(cfg, {
       sessionKey: childSessionKey,
       agentId,
       entry: childEntry,

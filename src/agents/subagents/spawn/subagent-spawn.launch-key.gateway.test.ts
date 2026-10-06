@@ -17,11 +17,8 @@ import { captureEnv, setTestEnvValue } from "../../../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../../../test-utils/session-state-cleanup.js";
 import { loadAgentRuntimePluginRegistryHandle } from "../../runtime-plugins.js";
 import { subagentRuns } from "../registry/subagent-registry-memory.js";
-import {
-  persistSubagentRunsToDisk,
-  restoreSubagentRunsFromDisk,
-} from "../registry/subagent-registry-state.js";
-import { loadSubagentRunsByRunIdsFromSqlite } from "../registry/subagent-registry.store.sqlite.js";
+import { restoreSubagentRunsFromDisk } from "../registry/subagent-registry-persistence.js";
+import { loadSubagentRegistryFromSqlite } from "../registry/subagent-registry-state.fixture.test-support.js";
 import { resetSubagentRegistryForTests } from "../registry/subagent-registry.test-helpers.js";
 import {
   externalCliClient,
@@ -33,10 +30,21 @@ vi.mock("../../runtime-plugins.js", () => ({
   loadAgentRuntimePluginRegistryHandle:
     vi.fn<typeof import("../../runtime-plugins.js").loadAgentRuntimePluginRegistryHandle>(),
 }));
-vi.mock("../registry/subagent-registry-state.js", { spy: true });
+// Upstream moved restore into the persistence module; registry writes now go through
+// the real sqlite worker (mutateSubagentRuns), so there is no sync persist to stub.
+vi.mock("../registry/subagent-registry-persistence.js", { spy: true });
 
 const envSnapshot = captureEnv(["OPENCLAW_CONFIG_PATH", "OPENCLAW_STATE_DIR"]);
 let stateDir = "";
+
+/** Durable rows for the given run ids, read from fixture storage (upstream's by-id loader is gone). */
+function loadDurableRunsByRunIds(runIds: readonly string[]) {
+  const durable = loadSubagentRegistryFromSqlite();
+  return runIds.flatMap((runId) => {
+    const row = durable.get(runId);
+    return row ? [row] : [];
+  });
+}
 
 function installPreflightTurnFacade(gatewayContext: GatewayRequestContext) {
   const admissions: Array<{ runId: string; clientMode?: string }> = [];
@@ -86,11 +94,10 @@ function spawnWithContinuationRunId(
 describe("spawnSubagentDirect continuation launch key at the Gateway boundary", () => {
   beforeEach(async () => {
     resetGatewayWorkAdmission();
-    resetSubagentRegistryForTests({ persist: false });
+    await resetSubagentRegistryForTests({ persist: false });
     clearRuntimeConfigSnapshot();
     clearConfigCache();
     vi.mocked(loadAgentRuntimePluginRegistryHandle).mockReturnValue(createTestRegistry([]));
-    vi.mocked(persistSubagentRunsToDisk).mockImplementation(() => {});
     vi.mocked(restoreSubagentRunsFromDisk).mockResolvedValue(0);
 
     stateDir = await mkdtemp(path.join(os.tmpdir(), "openclaw-launch-key-"));
@@ -111,9 +118,8 @@ describe("spawnSubagentDirect continuation launch key at the Gateway boundary", 
 
   afterEach(async () => {
     resetGatewayWorkAdmission();
-    resetSubagentRegistryForTests({ persist: false });
+    await resetSubagentRegistryForTests({ persist: false });
     vi.mocked(loadAgentRuntimePluginRegistryHandle).mockReset();
-    vi.mocked(persistSubagentRunsToDisk).mockReset();
     vi.mocked(restoreSubagentRunsFromDisk).mockReset();
     clearRuntimeConfigSnapshot();
     clearConfigCache();
@@ -141,7 +147,7 @@ describe("spawnSubagentDirect continuation launch key at the Gateway boundary", 
       requesterSessionKey: "agent:main:main",
       childSessionKey: result.childSessionKey,
     });
-    expect(loadSubagentRunsByRunIdsFromSqlite([childRunId])).toEqual([
+    expect(loadDurableRunsByRunIds([childRunId])).toEqual([
       expect.objectContaining({ runId: childRunId, requesterSessionKey: "agent:main:main" }),
     ]);
   });
@@ -168,7 +174,7 @@ describe("spawnSubagentDirect continuation launch key at the Gateway boundary", 
     expect(admissions).toHaveLength(1);
     expect(subagentRuns.get(childRunId)).toBe(existing);
     expect(structuredClone(subagentRuns.get(childRunId))).toEqual(existingSnapshot);
-    expect(loadSubagentRunsByRunIdsFromSqlite([childRunId])).toEqual([
+    expect(loadDurableRunsByRunIds([childRunId])).toEqual([
       expect.objectContaining({ requesterSessionKey: "agent:main:owner" }),
     ]);
   });

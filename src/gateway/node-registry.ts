@@ -24,6 +24,7 @@ import {
   type NodeApprovalSurface,
 } from "../infra/node-pairing-surface.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { enqueueKeyedTask } from "../plugin-sdk/keyed-async-queue.js";
 import { parseComputerUseCapabilityDescriptor } from "../plugins/computer-use-contract.js";
 import type { NodeHostStats } from "../shared/node-host-stats.js";
 import {
@@ -38,11 +39,7 @@ import {
 import { resolveEffectiveComputerUseDescriptor } from "./node-computer-use-descriptor.js";
 import { isSerializedEventPayload, type SerializedEventPayload } from "./node-event-payload.js";
 import { sendNodeWebSocketEvent } from "./node-event-send.js";
-import {
-  buildNodeInvokeCancel,
-  buildNodeInvokeInput,
-  serializeNodeEvent,
-} from "./node-invoke-request.js";
+import { serializeNodeEvent } from "./node-invoke-request.js";
 import type { NodeInvokeParams, NodeInvokeResult } from "./node-invoke.types.js";
 import {
   createRegisteredNodePluginToolDescriptorMap,
@@ -208,11 +205,10 @@ export class NodeRegistry {
       ) {
         return;
       }
-      this.sendEventToSession(
-        node,
-        "node.invoke.cancel",
-        buildNodeInvokeCancel({ invokeId: requestId, nodeId: pending.nodeId }),
-      );
+      this.sendEventToSession(node, "node.invoke.cancel", {
+        invokeId: requestId,
+        nodeId: pending.nodeId,
+      });
     },
     isConnectionActive: (pending) => {
       const node = this.nodesById.get(pending.nodeId);
@@ -226,16 +222,12 @@ export class NodeRegistry {
     sendInput: (invokeId, pending, seq, payloadJSON) => {
       const node = this.nodesById.get(pending.nodeId);
       return node
-        ? this.sendEventToSession(
-            node,
-            "node.invoke.input",
-            buildNodeInvokeInput({
-              invokeId,
-              nodeId: pending.nodeId,
-              seq,
-              payloadJSON,
-            }),
-          )
+        ? this.sendEventToSession(node, "node.invoke.input", {
+            id: invokeId,
+            nodeId: pending.nodeId,
+            seq,
+            payloadJSON,
+          })
         : false;
     },
     onFailedResult: (pending) => {
@@ -1319,67 +1311,42 @@ export class NodeRegistry {
     payloadJSON?: SerializedEventPayload | null,
     preparePayload?: NodeEventPayloadPreparation,
   ): Promise<boolean> {
-    const previous = this.pairingGenerationEventChains.get(nodeId) ?? Promise.resolve();
-    const send = previous.then(() =>
-      this.sendEventRawForPairingGenerationNow(
-        nodeId,
-        pairingGeneration,
-        event,
-        payloadJSON,
-        preparePayload,
-      ),
-    );
-    const tail = send.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.pairingGenerationEventChains.set(nodeId, tail);
-    try {
-      return await send;
-    } finally {
-      if (this.pairingGenerationEventChains.get(nodeId) === tail) {
-        this.pairingGenerationEventChains.delete(nodeId);
-      }
-    }
-  }
-
-  private async sendEventRawForPairingGenerationNow(
-    nodeId: string,
-    pairingGeneration: string,
-    event: string,
-    payloadJSON?: SerializedEventPayload | null,
-    preparePayload?: NodeEventPayloadPreparation,
-  ): Promise<boolean> {
-    let node = this.getRegisteredSessionForPairingGeneration(nodeId, pairingGeneration);
-    if (!node) {
-      return false;
-    }
-    if (this.options.resolveCurrentPairingState) {
-      const resolution = await this.resolvePairingLease(this.capturePairingLease(node), {
-        invalidateStale: true,
-      });
-      if (resolution.status !== "current") {
-        if (resolution.status === "stale" && resolution.presenceInvalidated) {
-          this.publishActiveNodeContext();
+    return await enqueueKeyedTask({
+      tails: this.pairingGenerationEventChains,
+      key: nodeId,
+      task: async () => {
+        let node = this.getRegisteredSessionForPairingGeneration(nodeId, pairingGeneration);
+        if (!node) {
+          return false;
         }
-        return false;
-      }
-      node = resolution.session;
-    }
-    // Select stream baselines after queued sends and pairing verification settle.
-    const prepared = preparePayload?.(node.connId);
-    if (preparePayload && !prepared) {
-      return false;
-    }
-    const sent = this.observeEventSend(
-      node,
-      event,
-      this.sendEventRawInternal(node, event, prepared ? prepared.payloadJSON : payloadJSON),
-    );
-    if (sent && this.nodesById.get(nodeId) === node) {
-      prepared?.onSent?.();
-    }
-    return sent;
+        if (this.options.resolveCurrentPairingState) {
+          const resolution = await this.resolvePairingLease(this.capturePairingLease(node), {
+            invalidateStale: true,
+          });
+          if (resolution.status !== "current") {
+            if (resolution.status === "stale" && resolution.presenceInvalidated) {
+              this.publishActiveNodeContext();
+            }
+            return false;
+          }
+          node = resolution.session;
+        }
+        // Select stream baselines after queued sends and pairing verification settle.
+        const prepared = preparePayload?.(node.connId);
+        if (preparePayload && !prepared) {
+          return false;
+        }
+        const sent = this.observeEventSend(
+          node,
+          event,
+          this.sendEventRawInternal(node, event, prepared ? prepared.payloadJSON : payloadJSON),
+        );
+        if (sent && this.nodesById.get(nodeId) === node) {
+          prepared?.onSent?.();
+        }
+        return sent;
+      },
+    });
   }
 
   private sendEventInternal(node: NodeSession, event: string, payload: unknown): boolean {

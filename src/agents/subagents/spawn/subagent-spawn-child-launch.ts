@@ -1,4 +1,5 @@
 /** Native child-run dispatch for a subagent spawn, behind the continuation-ownership gate. */
+import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
 import { registerSubagentTraceparentHandoff } from "../../subagent-traceparent-handoff.js";
 import type { ContinuationSpawnParams } from "../announce/subagent-announce.runtime.js";
@@ -17,6 +18,8 @@ export function createSubagentChildRunLauncher(launch: {
   childLaunch: ReturnType<typeof buildSubagentLaunchRequest>["childLaunch"];
   gatewayIdentity: () => ReturnType<typeof buildSubagentSpawnGatewayIdentity>;
   gatewayContextResolver: GatewayContextResolver | undefined;
+  /** Child session committed by spawn preparation; fences dispatch to that exact session. */
+  childEntry: Pick<SessionEntry, "sessionId" | "lifecycleRevision"> | undefined;
   cleanupOwner: ReturnType<typeof bindSubagentSpawnCleanup> | undefined;
   onAccepted: (acceptedChildRunId: string) => void;
 }) {
@@ -42,6 +45,14 @@ export function createSubagentChildRunLauncher(launch: {
       ),
       childLaunch.authorization,
       launch.gatewayContextResolver,
+      launch.childEntry?.sessionId && launch.childEntry.lifecycleRevision
+        ? {
+            sessionKey: childSessionKey,
+            sessionId: launch.childEntry.sessionId,
+            lifecycleRevision: launch.childEntry.lifecycleRevision,
+            runId: childIdem,
+          }
+        : undefined,
     );
     const acceptedChildRunId = readGatewayRunId(result.response) ?? childIdem;
     launch.onAccepted(acceptedChildRunId);

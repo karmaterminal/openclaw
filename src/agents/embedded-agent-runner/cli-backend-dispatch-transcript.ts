@@ -1,16 +1,13 @@
 import { asOptionalObjectRecord } from "@openclaw/normalization-core/record-coerce";
 import { appendTranscriptMessage } from "../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { ToolResultMessage } from "../../llm/types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { AgentMessage } from "../runtime/index.js";
 import { buildAssistantMessage, buildUsageWithNoCost } from "../stream-message-shared.js";
 import { sanitizeTranscriptToolCallBlock } from "../tool-call-shared.js";
 
 const log = createSubsystemLogger("agents/embedded-cli-dispatch");
-
-type ToolResultContent =
-  | { type: "text"; text: string }
-  | { type: "image"; data: string; mimeType: string };
 
 type CliDispatchTranscriptToolEvent = {
   phase: "start" | "result";
@@ -20,15 +17,6 @@ type CliDispatchTranscriptToolEvent = {
   result?: unknown;
   isError?: boolean;
   resultContentSource?: "network";
-};
-
-type CliDispatchTranscriptRecorder = {
-  noteToolEvent: (event: CliDispatchTranscriptToolEvent) => void;
-  noteAssistantText: (text: string) => void;
-  /** Flushes on abort before the CLI child settles so timeout salvage can read partial text. */
-  flushAssistantSnapshot: () => void;
-  /** Appends the final assistant snapshot and drains pending writes. */
-  finalize: (finalText?: string) => Promise<void>;
 };
 
 // The CLI writes no OpenClaw transcript. Mirror tools immediately for live readers,
@@ -48,7 +36,7 @@ export function createCliDispatchTranscriptRecorder(params: {
   expectedLifecycleRevision?: string;
   expectedWriterRunId?: string;
   senderIsOwner?: boolean;
-}): CliDispatchTranscriptRecorder {
+}) {
   let tail: Promise<void> = Promise.resolve();
   let lastAssistantText = "";
   let lastWrittenAssistantText = "";
@@ -116,7 +104,7 @@ export function createCliDispatchTranscriptRecorder(params: {
   }));
 
   return {
-    noteToolEvent: (event) => {
+    noteToolEvent: (event: CliDispatchTranscriptToolEvent) => {
       if (finalized) {
         return;
       }
@@ -155,11 +143,12 @@ export function createCliDispatchTranscriptRecorder(params: {
           : {}),
       }));
     },
-    noteAssistantText: (text) => {
+    noteAssistantText: (text: string) => {
       if (!finalized && text.trim()) {
         lastAssistantText = text;
       }
     },
+    // Flush before the CLI child settles so timeout salvage can read partial text.
     flushAssistantSnapshot: () => {
       if (finalized) {
         return;
@@ -171,7 +160,7 @@ export function createCliDispatchTranscriptRecorder(params: {
       lastWrittenAssistantText = text;
       enqueue(() => buildZeroUsageAssistantMessage([{ type: "text", text }], "aborted"));
     },
-    finalize: async (finalText) => {
+    finalize: async (finalText?: string) => {
       if (finalized) {
         await tail;
         return;
@@ -188,7 +177,7 @@ export function createCliDispatchTranscriptRecorder(params: {
 }
 
 /** Maps a sanitized CLI tool result onto transcript content blocks. */
-function normalizeToolResultContent(result: unknown): ToolResultContent[] {
+function normalizeToolResultContent(result: unknown): ToolResultMessage["content"] {
   if (typeof result === "string") {
     return result ? [{ type: "text", text: result }] : [];
   }
@@ -197,7 +186,7 @@ function normalizeToolResultContent(result: unknown): ToolResultContent[] {
   if (!Array.isArray(content)) {
     return [];
   }
-  const blocks: ToolResultContent[] = [];
+  const blocks: ToolResultMessage["content"] = [];
   for (const block of content) {
     if (typeof block === "string") {
       blocks.push({ type: "text", text: block });

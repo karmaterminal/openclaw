@@ -532,7 +532,7 @@ export async function accountFollowupTurn(params: {
     defaultModel: defaults.defaultModel,
     followupRun: turn.queued,
     getActiveSessionEntry,
-    isHeartbeat: defaults.opts?.isHeartbeat === true,
+    isHeartbeat: false,
     noOpRearmWakeClass: undefined,
     opts: defaults.opts,
     pendingToolTasks: execution.pendingToolTasks,
@@ -627,7 +627,7 @@ export async function accountFollowupTurn(params: {
   turn.session.publish(getActiveSessionEntry());
   if (turn.queued.run.verboseLevelOverride !== "off" || turn.queued.run.traceAuthorized === true) {
     turn.session.publish(
-      refreshSessionEntryFromStore({
+      await refreshSessionEntryFromStore({
         storePath,
         sessionKey,
         fallbackEntry: turn.session.current(),

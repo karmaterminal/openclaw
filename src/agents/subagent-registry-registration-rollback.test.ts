@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./subagents/registry/subagent-registry.mocks.shared.js";
 import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
+import type { SqliteWorkerCommand } from "../infra/sqlite-worker-contract.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
+import type { OpenClawStateWorkerOperations } from "../state/openclaw-state-worker-contract.js";
+import * as stateWorker from "../state/openclaw-state-worker-store.js";
 import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
 import { runSpawnPipeline } from "./spawn-pipeline.js";
 import type {
@@ -12,16 +15,15 @@ import type {
   SubagentRegistrationIdentity,
 } from "./subagents/registry/subagent-registry-run-launch.js";
 import {
+  loadSubagentRegistryFromSqlite,
+  saveSubagentRegistryToSqlite,
+} from "./subagents/registry/subagent-registry-state.fixture.test-support.js";
+import {
   markSubagentRunTerminated,
   recordAcceptedSubagentSpawnRollback,
   rollbackSubagentRunRegistration,
 } from "./subagents/registry/subagent-registry.js";
 import { canonicalSubagentRunFixtures } from "./subagents/registry/subagent-registry.persistence.test-support.js";
-import {
-  loadSubagentRegistryFromSqlite,
-  saveSubagentRegistryChangesToSqlite,
-} from "./subagents/registry/subagent-registry.store.sqlite.js";
-import { saveSubagentRegistryToSqlite } from "./subagents/registry/subagent-registry.store.test-support.js";
 import {
   addSubagentRunForTests,
   getSubagentRunByChildSessionKey,
@@ -32,33 +34,43 @@ import {
 } from "./subagents/registry/subagent-registry.test-helpers.js";
 import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.types.js";
 
-type PersistDisk =
-  typeof import("./subagents/registry/subagent-registry-state.js").persistSubagentRunsToDisk;
-type PersistOrThrow =
-  typeof import("./subagents/registry/subagent-registry-state.js").persistSubagentRunsToDiskOrThrow;
+type RegistryWrite = Extract<
+  SqliteWorkerCommand<OpenClawStateWorkerOperations>,
+  { type: "subagents.persistChanges" }
+>;
 
-// Two INDEPENDENT override slots, not one global redirect: only one case in this
-// file swaps persistSubagentRunsToDisk for the sqlite writer, and redirecting it
-// for every case would silently change what the others exercise. The or-throw
-// override is handed the REAL implementation, because this module is mocked and a
-// top-level import of it would resolve to the wrapper and recurse.
-let persistDiskOverride: PersistDisk | undefined;
-let persistOrThrowOverride:
-  | ((real: PersistOrThrow, ...args: Parameters<PersistOrThrow>) => void)
-  | undefined;
-vi.mock("./subagents/registry/subagent-registry-state.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("./subagents/registry/subagent-registry-state.js")>();
-  return {
-    ...actual,
-    persistSubagentRunsToDisk: (...args: Parameters<PersistDisk>) =>
-      (persistDiskOverride ?? actual.persistSubagentRunsToDisk)(...args),
-    persistSubagentRunsToDiskOrThrow: (...args: Parameters<PersistOrThrow>) =>
-      persistOrThrowOverride
-        ? persistOrThrowOverride(actual.persistSubagentRunsToDiskOrThrow, ...args)
-        : actual.persistSubagentRunsToDiskOrThrow(...args),
-  };
-});
+// Upstream (14fe10d01c) deleted the synchronous persistSubagentRunsToDisk* writers:
+// every registry write is now one `subagents.persistChanges` command through the
+// async FIFO writer. The old or-throw override is re-homed onto that command. The
+// old persistDiskOverride (redirecting the best-effort writer to sqlite) has no
+// new-world equivalent: every write already lands in the real sqlite store.
+let persistOrThrowOverride: ((write: RegistryWrite["input"]) => void) | undefined;
+
+function interceptRegistryWrites() {
+  const runWorkerOperation = stateWorker.runOpenClawStateWorkerOperation;
+  return vi
+    .spyOn(stateWorker, "runOpenClawStateWorkerOperation")
+    .mockImplementation((workerContext, operation, workerOptions) =>
+      runWorkerOperation(
+        workerContext,
+        (scope) =>
+          operation({
+            ...scope,
+            execute: async (
+              command: SqliteWorkerCommand<OpenClawStateWorkerOperations>,
+              ...rest: unknown[]
+            ) => {
+              if (persistOrThrowOverride && command.type === "subagents.persistChanges") {
+                persistOrThrowOverride(command.input);
+              }
+              // SAFETY: forwards the original execute arguments unchanged.
+              return (scope.execute as (...args: unknown[]) => unknown)(command, ...rest);
+            },
+          } as typeof scope),
+        workerOptions,
+      ),
+    );
+}
 
 describe("subagent registration rollback", () => {
   const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
@@ -67,13 +79,14 @@ describe("subagent registration rollback", () => {
   beforeEach(async () => {
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-rollback-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
+    interceptRegistryWrites();
   });
 
   afterEach(async () => {
-    closeOpenClawStateDatabaseForTest();
-    persistDiskOverride = undefined;
     persistOrThrowOverride = undefined;
-    resetSubagentRegistryForTests({ persist: false });
+    vi.restoreAllMocks();
+    await resetSubagentRegistryForTests({ persist: false });
+    closeOpenClawStateDatabaseForTest();
     if (tempStateDir) {
       await fs.rm(tempStateDir, { recursive: true, force: true });
       tempStateDir = undefined;
@@ -193,10 +206,10 @@ describe("subagent registration rollback", () => {
   // the marker whenever live cleanup authority had been revoked, an accepted child
   // would be orphaned with nothing for the sweeper to reconcile. The durable row is fenced by expectedRegistration plus frozen session
   // identity and run id; the live predicate belongs only on termination.
-  it("persists exact-registration rollback custody even after cleanup ownership flips", () => {
+  it("persists exact-registration rollback custody even after cleanup ownership flips", async () => {
     const childSessionKey = "agent:main:subagent:rollback-custody-survives-revocation";
     const runId = "run-rollback-custody-survives-revocation";
-    addSubagentRunForTests(createAcceptedLiveRun(runId, childSessionKey));
+    await addSubagentRunForTests(createAcceptedLiveRun(runId, childSessionKey));
     saveSubagentRegistryToSqlite(
       canonicalSubagentRunFixtures(
         new Map([[runId, createAcceptedLiveRun(runId, childSessionKey)]]),
@@ -204,7 +217,7 @@ describe("subagent registration rollback", () => {
     );
 
     // Ownership is already gone by the time the rollback is recorded.
-    const result = recordAcceptedSubagentSpawnRollback({
+    const result = await recordAcceptedSubagentSpawnRollback({
       runId,
       childSessionKey,
       gatewayRunId: runId,
@@ -213,7 +226,7 @@ describe("subagent registration rollback", () => {
     });
 
     expect(result).toEqual({ status: "persisted" });
-    expect(getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
+    expect(await getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
       acceptedSpawnRollback: { gatewayRunId: runId },
       suppressCompletionDelivery: true,
       execution: { suppressSessionEffects: true },
@@ -230,18 +243,18 @@ describe("subagent registration rollback", () => {
     const childSessionKey = "agent:main:subagent:rollback-after-kill";
     const runId = "run-rollback-after-kill";
     const liveRun = createAcceptedLiveRun(runId, childSessionKey);
-    addSubagentRunForTests(liveRun);
+    await addSubagentRunForTests(liveRun);
     saveSubagentRegistryToSqlite(
       canonicalSubagentRunFixtures(new Map([[runId, structuredClone(liveRun)]])),
     );
 
     await expect(markSubagentRunTerminated({ runId, reason: "manual kill" })).resolves.toBe(1);
-    const killed = getSubagentRunByChildSessionKey(childSessionKey);
+    const killed = await getSubagentRunByChildSessionKey(childSessionKey);
     expect(killed).not.toBeNull();
     const killedExecution = structuredClone(killed!.execution);
     const killedReconciliation = structuredClone(killed!.killReconciliation);
 
-    const result = recordAcceptedSubagentSpawnRollback({
+    const result = await recordAcceptedSubagentSpawnRollback({
       runId,
       childSessionKey,
       gatewayRunId: runId,
@@ -250,12 +263,14 @@ describe("subagent registration rollback", () => {
     });
 
     expect(result).toEqual({ status: "persisted" });
-    expect(getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
+    expect(await getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
       acceptedSpawnRollback: { gatewayRunId: runId },
       suppressCompletionDelivery: true,
       killReconciliation: killedReconciliation,
     });
-    expect(getSubagentRunByChildSessionKey(childSessionKey)?.execution).toEqual(killedExecution);
+    expect((await getSubagentRunByChildSessionKey(childSessionKey))?.execution).toEqual(
+      killedExecution,
+    );
     const persisted = loadSubagentRegistryFromSqlite().get(runId);
     expect(persisted).toMatchObject({
       acceptedSpawnRollback: { gatewayRunId: runId },
@@ -265,13 +280,13 @@ describe("subagent registration rollback", () => {
     expect(persisted?.execution).toEqual(killedExecution);
   });
 
-  it("rejects rollback custody when the registration identity no longer matches", () => {
+  it("rejects rollback custody when the registration identity no longer matches", async () => {
     const childSessionKey = "agent:main:subagent:rollback-custody-stale-identity";
     const runId = "run-rollback-custody-stale-identity";
-    addSubagentRunForTests(createAcceptedLiveRun(runId, childSessionKey));
+    await addSubagentRunForTests(createAcceptedLiveRun(runId, childSessionKey));
 
     // expectedRegistration is the CAS axis that still guards the recorder.
-    const result = recordAcceptedSubagentSpawnRollback({
+    const result = await recordAcceptedSubagentSpawnRollback({
       runId,
       childSessionKey,
       gatewayRunId: runId,
@@ -280,20 +295,22 @@ describe("subagent registration rollback", () => {
     });
 
     expect(result).toEqual({ status: "rejected" });
-    expect(getSubagentRunByChildSessionKey(childSessionKey)?.acceptedSpawnRollback).toBeUndefined();
+    expect(
+      (await getSubagentRunByChildSessionKey(childSessionKey))?.acceptedSpawnRollback,
+    ).toBeUndefined();
   });
 
   // Upstream removed the Tasks runtime (6652f7eac8), so the post-persist task-row
   // failure that used to drive this case no longer exists. The same rollback now
   // runs when the registration's own persistence fails, and must still restore
   // both the same-id row and the older generation's kill reconciliation.
-  it("restores same-id and older kill state after registration persistence throws", () => {
+  it("restores same-id and older kill state after registration persistence throws", async () => {
     const childSessionKey = "agent:main:subagent:task-registration-fails";
     const runId = "run-task-registration-fails";
     const priorSameIdRun = createPriorSameIdRun(runId, childSessionKey);
     const olderRun = createOlderKilledRun(childSessionKey);
-    addSubagentRunForTests(priorSameIdRun);
-    addSubagentRunForTests(olderRun);
+    await addSubagentRunForTests(priorSameIdRun);
+    await addSubagentRunForTests(olderRun);
     saveSubagentRegistryToSqlite(
       canonicalSubagentRunFixtures(
         new Map([
@@ -305,12 +322,16 @@ describe("subagent registration rollback", () => {
     const expectedKillReconciliation = structuredClone(olderRun.killReconciliation);
     const persistenceScopes: string[][] = [];
     const persistError = new Error("registration sqlite busy");
-    persistOrThrowOverride = (_real, _runs, changedRunIds) => {
-      persistenceScopes.push([...(changedRunIds ?? [])]);
+    persistOrThrowOverride = (write) => {
+      // The FIFO writer admits every selected run id as a version fence (sorted).
+      persistenceScopes.push(write.versions.map(({ runId: id }) => id).toSorted());
       throw persistError;
     };
 
-    expect(() =>
+    // HIGH (absorb 14fe10d0): contract changed by upstream; needs frond decision:
+    // the failure now surfaces from the async FIFO writer (SubagentRegistryWriteError /
+    // SubagentRegistrationError wrapping). The `cause: persistError` matcher is kept as-is.
+    await expect(
       registerSubagentRun({
         runId,
         childSessionKey,
@@ -319,7 +340,7 @@ describe("subagent registration rollback", () => {
         task: "task registration failure",
         cleanup: "keep",
       }),
-    ).toThrow(expect.objectContaining({ cause: persistError }));
+    ).rejects.toThrow(expect.objectContaining({ cause: persistError }));
     expect(
       listSubagentRunsForRequester("agent:main:main").find((entry) => entry.runId === runId),
     ).toMatchObject({
@@ -337,24 +358,28 @@ describe("subagent registration rollback", () => {
       generation: priorSameIdRun.generation,
     });
     expect(persisted.get(olderRun.runId)?.killReconciliation).toEqual(expectedKillReconciliation);
+    // HIGH (absorb 14fe10d0): contract changed by upstream; needs frond decision:
+    // this asserts that registration admits the older generation's run id in the
+    // same (single) write as the new row; upstream's one-transaction registration
+    // must still select it for the kill-reconciliation restore to hold.
     expect(persistenceScopes).toEqual([[runId, olderRun.runId]]);
   });
 
-  it("restores a same-id run when initial registration persistence fails", () => {
+  it("restores a same-id run when initial registration persistence fails", async () => {
     const runId = "run-initial-persist-same-id";
     const childSessionKey = "agent:main:subagent:initial-persist-same-id";
     const priorSameIdRun = createPriorSameIdRun(runId, childSessionKey);
-    addSubagentRunForTests(priorSameIdRun);
+    await addSubagentRunForTests(priorSameIdRun);
     saveSubagentRegistryToSqlite(
       canonicalSubagentRunFixtures(new Map([[priorSameIdRun.runId, priorSameIdRun]])),
     );
     const persistError = new Error("initial sqlite busy");
-    persistDiskOverride = saveSubagentRegistryChangesToSqlite;
+    // persistDiskOverride (best-effort writer -> sqlite) is gone: all writes use sqlite.
     persistOrThrowOverride = () => {
       throw persistError;
     };
 
-    expect(() =>
+    await expect(
       registerSubagentRun({
         runId,
         childSessionKey,
@@ -363,7 +388,7 @@ describe("subagent registration rollback", () => {
         task: "replacement that must roll back",
         cleanup: "keep",
       }),
-    ).toThrow(expect.objectContaining({ cause: persistError }));
+    ).rejects.toThrow(expect.objectContaining({ cause: persistError }));
     expect(
       listSubagentRunsForRequester("agent:main:main").find((entry) => entry.runId === runId),
     ).toMatchObject({
@@ -409,7 +434,7 @@ describe("subagent registration rollback", () => {
     expect(thrown).toBeInstanceOf(AggregateError);
     expect((thrown as AggregateError).errors[0]).toBe(publishError);
     expect((thrown as AggregateError).cause).toBe(publishError);
-    const retained = getSubagentRunByChildSessionKey(childSessionKey);
+    const retained = await getSubagentRunByChildSessionKey(childSessionKey);
     expect(retained).toMatchObject({
       runId: registration.runId,
       acceptedSpawnRollback: {
@@ -426,7 +451,7 @@ describe("subagent registration rollback", () => {
       execution: { suppressSessionEffects: true },
     });
     await testing.sweepOnceForTests();
-    expect(getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
+    expect(await getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
       runId: registration.runId,
       acceptedSpawnRollback: { gatewayRunId: registration.runId },
       suppressCompletionDelivery: true,
@@ -438,7 +463,7 @@ describe("subagent registration rollback", () => {
     const runId = "run-pipeline-registration";
     const childSessionKey = "agent:main:subagent:pipeline-predecessor";
     const predecessor = createPriorSameIdRun(runId, childSessionKey);
-    addSubagentRunForTests(predecessor);
+    await addSubagentRunForTests(predecessor);
     saveSubagentRegistryToSqlite(canonicalSubagentRunFixtures(new Map([[runId, predecessor]])));
     // The Tasks runtime is gone upstream (6652f7eac8); fail the replacement at
     // its own persistence instead of at the removed task-row step.
@@ -473,7 +498,7 @@ describe("subagent registration rollback", () => {
       }),
     );
     expect(cleanupOnFailure).toHaveBeenCalledOnce();
-    const restored = getSubagentRunByChildSessionKey(childSessionKey);
+    const restored = await getSubagentRunByChildSessionKey(childSessionKey);
     expect(restored).toMatchObject({
       runId,
       task: predecessor.task,
@@ -508,7 +533,7 @@ describe("subagent registration rollback", () => {
         .status,
     ).toBe("no-new-row");
     expect(cleanupOnFailure).toHaveBeenCalledOnce();
-    expect(getSubagentRunByChildSessionKey(childSessionKey)).toBeNull();
+    expect(await getSubagentRunByChildSessionKey(childSessionKey)).toBeNull();
     expect(loadSubagentRegistryFromSqlite().has("run-pipeline-registration")).toBe(false);
   });
 
@@ -547,9 +572,9 @@ describe("subagent registration rollback", () => {
     expect(recordRollback).not.toHaveBeenCalled();
     expect(terminationAttempts).toEqual([runId]);
     expect(loadSubagentRegistryFromSqlite().has(runId)).toBe(false);
-    resetSubagentRegistryForTests({ persist: false });
+    await resetSubagentRegistryForTests({ persist: false });
     await testing.sweepOnceForTests();
-    expect(getSubagentRunByChildSessionKey("agent:main:subagent:any")).toBeNull();
+    expect(await getSubagentRunByChildSessionKey("agent:main:subagent:any")).toBeNull();
   });
 
   it("keeps normal registration and rollback exactly once", async () => {
@@ -567,12 +592,12 @@ describe("subagent registration rollback", () => {
     if (!result.ok) {
       return;
     }
-    const registered = getSubagentRunByChildSessionKey(childSessionKey);
+    const registered = await getSubagentRunByChildSessionKey(childSessionKey);
     expect(registered?.runId).toBe(result.runId);
     if (!registered || registered.generation === undefined) {
       throw new Error("expected exact registered row identity");
     }
-    expect(
+    await expect(
       rollbackSubagentRunRegistration({
         runId: registered.runId,
         childSessionKey,
@@ -583,9 +608,9 @@ describe("subagent registration rollback", () => {
           createdAt: registered.createdAt,
         },
       }),
-    ).toBe(false);
+    ).resolves.toBe(false);
     await result.rollbackAccepted();
-    expect(getSubagentRunByChildSessionKey(childSessionKey)).toBeNull();
+    expect(await getSubagentRunByChildSessionKey(childSessionKey)).toBeNull();
     expect(cleanupOnFailure).toHaveBeenCalledOnce();
   });
 });

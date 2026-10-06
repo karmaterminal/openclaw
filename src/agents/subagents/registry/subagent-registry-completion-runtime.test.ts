@@ -14,16 +14,19 @@ import {
 } from "../../../shared/async-work-scope.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import { AGENT_RUN_TERMINAL_RETRY_GRACE_MS } from "../../agent-run-terminal-outcome.js";
+import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
 import {
   SUBAGENT_ENDED_REASON_COMPLETE,
   SUBAGENT_ENDED_REASON_ERROR,
   SUBAGENT_ENDED_REASON_KILLED,
 } from "./subagent-lifecycle-events.js";
 import { createSubagentRegistryCompletionRuntime } from "./subagent-registry-completion-runtime.js";
-import type { SubagentCompletionRequest, SubagentRunRecord } from "./subagent-registry.types.js";
+import { installLifecycleWorkerAckFixture } from "./subagent-registry-lifecycle-controller.test-support.js";
+import type { SubagentCompletionRequest } from "./subagent-registry.types.js";
+import { getSubagentRunRuntimeKey, isSameSubagentRunOwner } from "./subagent-run-generation.js";
 
 function createHarness() {
-  const entry: SubagentRunRecord = {
+  const entry = createSubagentRunRecord({
     runId: "completion-test",
     generation: 1,
     childSessionKey: "agent:main:subagent:completion-test",
@@ -38,9 +41,10 @@ function createHarness() {
     completion: { required: false, resultText: null, capturedAt: 1 },
     delivery: { status: "not_required" },
     cleanupHandled: true,
-  };
+  });
   const runs = new Map([[entry.runId, entry]]);
-  const resumed = new Set([entry.runId]);
+  installLifecycleWorkerAckFixture(runs);
+  const resumed = new Set([getSubagentRunRuntimeKey(entry)]);
   const retryTimers = new Set<ReturnType<typeof setTimeout>>();
   const resumeError = new Error("synthetic resume failure");
   const completeSubagentRun = vi
@@ -238,7 +242,7 @@ describe("subagent completion rejection ownership", () => {
         : kind === "timeout"
           ? h.runtime.pendingLifecycle.scheduleTimeout
           : h.runtime.pendingLifecycle.scheduleCancellation;
-    schedule({ runId: h.entry.runId, endedAt: 1, error: "failed" });
+    schedule({ runId: h.entry.runId, expectedEntry: h.entry, endedAt: 1, error: "failed" });
     await vi.advanceTimersByTimeAsync(AGENT_RUN_TERMINAL_RETRY_GRACE_MS);
     expect(h.completeSubagentRun).toHaveBeenCalledTimes(2);
     expect(h.completeSubagentRun).toHaveBeenLastCalledWith(expect.objectContaining({ reason }));
@@ -248,9 +252,9 @@ describe("subagent completion rejection ownership", () => {
       runId: h.entry.runId,
       error: h.resumeError,
     });
-    expect(h.runs.get(h.entry.runId)).toBe(h.entry);
-    expect(h.entry.cleanupHandled).toBe(false);
-    expect(h.resumed.has(h.entry.runId)).toBe(false);
+    expect(isSameSubagentRunOwner(h.runs.get(h.entry.runId), h.entry)).toBe(true);
+    expect(h.runs.get(h.entry.runId)?.cleanupHandled).toBe(false);
+    expect(h.resumed.has(getSubagentRunRuntimeKey(h.entry))).toBe(false);
     expect(getActiveGatewayRootWorkCount()).toBe(0);
   });
 
@@ -357,7 +361,7 @@ describe("subagent completion rejection ownership", () => {
         expect(h.resumeRun).not.toHaveBeenCalled();
         expect(h.scheduleSweep).not.toHaveBeenCalled();
         expect(h.entry.cleanupHandled).toBe(true);
-        expect(h.resumed.has(h.entry.runId)).toBe(true);
+        expect(h.resumed.has(getSubagentRunRuntimeKey(h.entry))).toBe(true);
       } finally {
         release.resolve();
         await completion;
@@ -382,7 +386,7 @@ describe("subagent completion rejection ownership", () => {
       expect(h.completeSubagentRun).toHaveBeenCalledTimes(2);
       expect(h.resumeRun).not.toHaveBeenCalled();
       expect(h.entry.cleanupHandled).toBe(true);
-      expect(h.resumed.has(h.entry.runId)).toBe(true);
+      expect(h.resumed.has(getSubagentRunRuntimeKey(h.entry))).toBe(true);
       if (state === "running") {
         expect(h.scheduleSweep).toHaveBeenCalledExactlyOnceWith({ delayMs: 1_000 });
       } else {

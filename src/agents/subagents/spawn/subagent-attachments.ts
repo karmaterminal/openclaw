@@ -60,16 +60,6 @@ type MaterializeSubagentAttachmentsResult =
 
 type PreparedSubagentAttachment = PreparedInlineAttachmentSnapshot;
 
-type SubagentAttachmentRequest =
-  | {
-      status: "ok";
-      attachments: SubagentInlineAttachment[];
-      limits: AttachmentLimits;
-    }
-  | { status: "none" }
-  | { status: "forbidden"; error: string }
-  | { status: "error"; error: string };
-
 function resolveAttachmentLimits(config: OpenClawConfig): AttachmentLimits {
   const attachmentsCfg = config.tools?.sessions_spawn?.attachments;
   return {
@@ -97,28 +87,28 @@ function resolveAttachmentLimits(config: OpenClawConfig): AttachmentLimits {
 function resolveSubagentAttachmentRequest(params: {
   config: OpenClawConfig;
   attachments?: SubagentInlineAttachment[];
-}): SubagentAttachmentRequest {
+}) {
   const requestedAttachments = Array.isArray(params.attachments) ? params.attachments : [];
   if (requestedAttachments.length === 0) {
-    return { status: "none" };
+    return null;
   }
 
   const limits = resolveAttachmentLimits(params.config);
   if (!limits.enabled) {
     return {
-      status: "forbidden",
+      status: "forbidden" as const,
       error:
         "attachments are disabled for sessions_spawn (enable tools.sessions_spawn.attachments.enabled)",
     };
   }
   if (requestedAttachments.length > limits.maxFiles) {
     return {
-      status: "error",
+      status: "error" as const,
       error: `attachments_file_count_exceeded (maxFiles=${limits.maxFiles})`,
     };
   }
 
-  return { status: "ok", attachments: requestedAttachments, limits };
+  return { status: "ok" as const, attachments: requestedAttachments, limits };
 }
 
 function sanitizeMountPathHint(value?: string): string | undefined {
@@ -231,7 +221,7 @@ export function validateSubagentAttachments(params: {
   redactContinuationErrorDetails?: boolean;
 }): string | undefined {
   const request = resolveSubagentAttachmentRequest(params);
-  if (request.status === "none") {
+  if (!request) {
     return undefined;
   }
   if (request.status !== "ok") {
@@ -258,7 +248,7 @@ export function resolveAcpSessionsSpawnImageAttachments(params: {
   | { status: "error"; error: string }
   | null {
   const request = resolveSubagentAttachmentRequest(params);
-  if (request.status === "none") {
+  if (!request) {
     return null;
   }
   if (request.status !== "ok") {
@@ -298,7 +288,7 @@ export async function materializeSubagentAttachments(params: {
   redactContinuationErrorDetails?: boolean;
 }): Promise<MaterializeSubagentAttachmentsResult | null> {
   const request = resolveSubagentAttachmentRequest(params);
-  if (request.status === "none") {
+  if (!request) {
     return null;
   }
   if (request.status !== "ok") {

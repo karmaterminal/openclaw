@@ -12,6 +12,7 @@ import {
   getAgentEventLifecycleGeneration,
 } from "../../infra/agent-events.js";
 import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
+import { diagnosticLogger } from "../../logging/diagnostic-runtime.js";
 import {
   getGatewayContextResolver,
   getPluginRuntimeGatewayRequestScope,
@@ -33,7 +34,6 @@ import {
   createReplyAgentRestartRecoveryController,
   executePreparedReplyAgentRun,
 } from "./agent-runner-execute.js";
-import { resolveReplySteeringAuthority } from "./agent-runner-fallback-authority.js";
 import {
   bindVisiblePartialReplyObserver,
   createShouldEmitToolOutput,
@@ -44,7 +44,7 @@ import { deliverPreparedBlockReply } from "./agent-runner-presentation.js";
 import { runReplyQuestionInput } from "./agent-runner-question-input.js";
 import { runActiveReplySteer } from "./agent-runner-steer-adoption.js";
 import { resolveQueuedReplyExecutionConfig } from "./agent-runner-utils.js";
-import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
+import { createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveBlockStreamingConfig } from "./block-streaming.js";
 import {
   type CompactionNoticePhase,
@@ -211,16 +211,15 @@ export async function runReplyAgent(
   const effectiveShouldFollowup = !effectiveResetTriggered && shouldFollowup;
   const messageInjectionDisposition = opts?.messageInjectionDisposition ?? "none";
   const activeReplyOperation = sessionKey
-    ? (replyRunRegistry.get(sessionKey) ?? providedReplyOperation)
+    ? replyRunRegistry.get(sessionKey)
     : providedReplyOperation;
-  const steeringAuthority = resolveReplySteeringAuthority(followupRun, activeReplyOperation);
-  const shouldQueueAuthorityMismatch =
-    effectiveShouldSteer && isActive && steeringAuthority.shouldQueueAuthorityMismatch;
-  if (shouldQueueAuthorityMismatch) {
-    logVerbose(
-      `queue: active session ${activeReplyOperation?.sessionId ?? followupRun.run.sessionId} has different or unknown tool authority; queuing instead of steering`,
-    );
-  }
+  // A source-only reservation still owns completion, but is not a steering target.
+  const shouldQueueProvidedSteer =
+    effectiveShouldSteer &&
+    isActive &&
+    messageInjectionDisposition === "none" &&
+    !activeReplyOperation &&
+    Boolean(providedReplyOperation);
   const typingSignals = createTypingSignaler({
     typing,
     mode: typingMode,
@@ -241,14 +240,8 @@ export async function runReplyAgent(
   const shouldQueueTerminalReceiptSteer =
     effectiveShouldSteer &&
     isActive &&
-    !shouldQueueAuthorityMismatch &&
     messageInjectionDisposition === "none" &&
     terminalDeliveryBlockReason !== undefined;
-  if (shouldQueueTerminalReceiptSteer) {
-    logVerbose(
-      `queue: active session ${activeReplyOperation?.sessionId ?? followupRun.run.sessionId} cannot accept steering (${terminalDeliveryBlockReason}); queuing instead`,
-    );
-  }
 
   const questionInput = await runReplyQuestionInput(input);
   if (questionInput.handled) {
@@ -331,7 +324,7 @@ export async function runReplyAgent(
   if (
     effectiveShouldSteer &&
     isActive &&
-    !shouldQueueAuthorityMismatch &&
+    !shouldQueueProvidedSteer &&
     !shouldQueueTerminalReceiptSteer &&
     messageInjectionDisposition === "none"
   ) {
@@ -353,9 +346,6 @@ export async function runReplyAgent(
       touchActiveSessionEntry,
       typing,
       typingSignals,
-      toolAuthorityFingerprint: steeringAuthority.toolAuthorityFingerprint,
-      automaticFallbackRoute: steeringAuthority.automaticFallbackRoute,
-      pendingInputAuthorityFingerprint: steeringAuthority.pendingInputAuthorityFingerprint,
     });
     return result === "handled" ? undefined : result;
   }
@@ -364,7 +354,7 @@ export async function runReplyAgent(
     hasQueuedFollowups,
     isActive,
     isHeartbeat,
-    shouldFollowup: effectiveShouldFollowup || shouldQueueAuthorityMismatch,
+    shouldFollowup: effectiveShouldFollowup || shouldQueueProvidedSteer,
     resetTriggered: effectiveResetTriggered,
   });
   if (activeRunQueueAction === "drop") {
@@ -386,6 +376,23 @@ export async function runReplyAgent(
       queuedRunFollowupTurn,
       false,
     );
+    if (shouldQueueTerminalReceiptSteer || shouldQueueProvidedSteer) {
+      diagnosticLogger.warn("steering rejected; applying follow-up policy", {
+        reason: shouldQueueTerminalReceiptSteer
+          ? terminalDeliveryBlockReason
+          : "source-operation-pending",
+        disposition: enqueued
+          ? "followup-queued"
+          : replyOperationRunState?.admission?.status === "skipped" &&
+              replyOperationRunState.admission.reason === "queue-cap"
+            ? "skipped-queue-cap"
+            : "followup-not-enqueued",
+        channel:
+          followupRun.originatingChannel ?? followupRun.run.messageProvider ?? sessionCtx.Provider,
+        sessionId: activeReplyOperation?.sessionId ?? followupRun.run.sessionId,
+        runId: opts?.runId,
+      });
+    }
     if (!enqueued) {
       releaseAdmissionTicket();
       typing.cleanup();
@@ -396,7 +403,8 @@ export async function runReplyAgent(
     }
     // The queue must stay dormant while the active owner can still collect
     // messages. Registering after enqueue closes the owner-clear race.
-    const queuedOperationOwner = replyRunRegistry.get(queueKey) ?? activeReplyOperation;
+    const queuedOperationOwner =
+      replyRunRegistry.get(queueKey) ?? activeReplyOperation ?? providedReplyOperation;
     if (queuedOperationOwner) {
       scheduleFollowupDrainAfterReplyOperationClear({
         operation: queuedOperationOwner,
@@ -485,7 +493,7 @@ export async function runReplyAgent(
             accountId: sessionCtx.AccountId,
             chunking: blockReplyChunking,
           }).coalescing,
-          buffer: createAudioAsVoiceBuffer({ isAudioPayload }),
+          isAudioPayload,
         })
       : null;
   const resolveVisibleReplyDelivery = async () => {
@@ -688,6 +696,7 @@ export async function runReplyAgent(
       blockReplyPipeline,
       clearRestartRecoveryDeliveryClaim,
       postCompactionDelegatesToPreserve: continuation.postCompactionDelegatesToPreserve,
+      isHeartbeat,
       providedReplyOperation,
       queueKey,
       replyOperation,

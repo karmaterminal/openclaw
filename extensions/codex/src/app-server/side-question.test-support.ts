@@ -274,7 +274,7 @@ export function platformPreparedRuntimeAuth(resolvedApiKey?: string) {
 
 function sideParams(overrides: Partial<SideQuestionParams> = {}): SideQuestionParams {
   let hostCapabilities = overrides.hostCapabilities ?? TEST_HOST_CAPABILITIES;
-  if (!hostCapabilities.createToolSurface) {
+  if (!hostCapabilities.createToolSurfaceAsync) {
     hostCapabilities = createCodexTestHostCapabilities(hostCapabilities);
     // The shared factory also receives the real builder; the mock records only the tool options.
     setCodexTestToolFactory({ hostCapabilities }, (toolOptions) =>
@@ -387,16 +387,12 @@ export function useSideQuestionTestSetup() {
     ]);
 
     readCodexAppServerBindingMock.mockReturnValue({
-      schemaVersion: 1,
       threadId: "parent-thread",
-      sessionFile: "/tmp/session-1.jsonl",
       cwd: "/tmp/workspace",
       authProfileId: "openai:work",
       model: "gpt-5.5",
       approvalPolicy: "on-request",
       sandbox: "workspace-write",
-      createdAt: new Date(0).toISOString(),
-      updatedAt: new Date(0).toISOString(),
     });
     isCodexAppServerNativeAuthProfileMock.mockReturnValue(true);
     getSharedCodexAppServerClientMock.mockResolvedValue(createFakeClient());
@@ -492,4 +488,25 @@ export async function runSideQuestionWithManagedWebSearchCall(
   const forkCall = client.request.mock.calls.find(([method]) => method === "thread/fork");
   const forkConfig = (forkCall?.[1] as { config?: Record<string, unknown> } | undefined)?.config;
   return { forkConfig, result, toolResponse };
+}
+
+export function createPendingClient({ interrupt = true } = {}) {
+  const client = createFakeClient({ completeTurn: false });
+  client.request.mockImplementation(async (method: string) => {
+    if (method === "thread/fork") {
+      return threadResult("side-thread");
+    }
+    if (method === "turn/start") {
+      return turnStartResult("turn-1");
+    }
+    if (
+      method === "thread/inject_items" ||
+      method === "thread/unsubscribe" ||
+      (interrupt && method === "turn/interrupt")
+    ) {
+      return {};
+    }
+    throw new Error(`unexpected request: ${method}`);
+  });
+  return client;
 }

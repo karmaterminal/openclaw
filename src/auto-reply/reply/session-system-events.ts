@@ -25,7 +25,10 @@ import {
   isHeartbeatDeliveryAwarenessEvent,
 } from "../../infra/heartbeat-events-filter.js";
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
-import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
+import {
+  isSystemEventStoreCurrent,
+  resolveSystemEventQueueKey,
+} from "../../infra/system-event-ownership.js";
 import {
   consumeSelectedSystemEventEntries,
   restoreConsumedSystemEventEntries,
@@ -144,6 +147,7 @@ export async function prepareFormattedSystemEvents(params: {
   isNewSession: boolean;
   suppressHeartbeatOwnedEvents?: boolean;
   events?: readonly SystemEvent[];
+  deferredEventIds?: readonly string[];
 }): Promise<PreparedFormattedSystemEvents> {
   const blocks: PreparedSystemEventBlock[] = [];
   const queueKey = resolveSystemEventQueueKey(params.sessionKey, params.agentId);
@@ -260,7 +264,11 @@ export async function prepareFormattedSystemEvents(params: {
       );
     }
   }
-  const queued = consumeSelectedSystemEventEntries(queueKey, selected);
+  // Heartbeat admission may defer captured occurrences to a delivery owner: they
+  // are still formatted into this prompt but stay queued until that owner commits.
+  const queued = consumeSelectedSystemEventEntries(queueKey, selected, {
+    deferredEventIds: params.deferredEventIds,
+  });
   for (const delivery of adoptionScopedDeliveries) {
     const consumed = queued.filter((event) => event.sessionDeliveryAckId === delivery.id);
     delivery.restore = () => restoreConsumedSystemEventEntries(queueKey, consumed);
@@ -304,13 +312,16 @@ export async function prepareFormattedSystemEvents(params: {
       );
     }
   }
-  const sessionStateTargets = promptEvents
-    .map((event) =>
-      event.contextKey ? decodeSessionStateNoticeContextKey(event.contextKey) : undefined,
-    )
-    .filter((target): target is string => target !== undefined);
-  if (sessionStateTargets.length > 0) {
-    acknowledgeSessionStateNotices(params.sessionKey, sessionStateTargets);
+  const sessionStateNotices = promptEvents.flatMap((event) => {
+    const targetSessionKey = event.contextKey
+      ? decodeSessionStateNoticeContextKey(event.contextKey)
+      : undefined;
+    return targetSessionKey === undefined
+      ? []
+      : [{ targetSessionKey, watcherStorePath: event.sessionStorePath ?? null }];
+  });
+  if (sessionStateNotices.length > 0) {
+    await acknowledgeSessionStateNotices(params.sessionKey, sessionStateNotices);
   }
   const drainedContinuationCount = promptEvents.filter((event) =>
     event.text.startsWith("[continuation:"),
@@ -323,6 +334,10 @@ export async function prepareFormattedSystemEvents(params: {
     log: (message) => defaultRuntime.log(message),
   });
   for (const event of promptEvents) {
+    // A same-store resolver handoff does not retire already-consumed events.
+    if (!isSystemEventStoreCurrent(params.sessionKey, event.sessionStorePath, params.agentId)) {
+      continue;
+    }
     const compacted = compactSystemEvent(event);
     if (!compacted) {
       continue;

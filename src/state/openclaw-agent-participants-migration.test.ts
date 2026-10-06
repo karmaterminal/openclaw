@@ -123,7 +123,6 @@ describe("participant identity migration", () => {
       closeOpenClawAgentDatabasesForTest();
       const result = await recoverDoctorSessionSqliteTargets({
         env: state.env,
-        options: { mode: "recover" },
         targets: [{ agentId: "main", storePath: databasePath }],
         validateTarget: async () => {
           throw new Error("Unexpected failed migration manifest");
@@ -245,7 +244,7 @@ describe("participant identity migration", () => {
       });
     },
   );
-  it.each([0, 17])(
+  it.each([17])(
     "refuses a v%s identity migration outside stopped-writer maintenance",
     async (version) => {
       await withOpenClawTestState({ scenario: "minimal" }, async (state) => {

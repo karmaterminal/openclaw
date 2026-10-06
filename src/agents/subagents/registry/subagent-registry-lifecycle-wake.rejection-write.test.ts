@@ -56,7 +56,6 @@ type Harness = {
   readonly controller: SubagentLifecycleController;
   readonly entry: SubagentRunRecord;
   readonly warn: ReturnType<typeof vi.fn>;
-  readonly persisted: string[][];
   readonly origin: AsyncWorkScope;
 };
 
@@ -78,7 +77,6 @@ function buildHarness(wakeFailure: Error): Harness {
     },
   };
   const runs = new Map([[entry.runId, entry]]);
-  const persisted: string[][] = [];
   const warn = vi.fn();
   const unexpected = async (): Promise<never> => {
     throw new Error("unexpected completion, cleanup, or transport effect");
@@ -91,11 +89,9 @@ function buildHarness(wakeFailure: Error): Harness {
     resumedRuns: new Set(),
     subagentAnnounceTimeoutMs: 1_000,
     getRuntimeConfig: () => ({}),
-    persist: vi.fn(),
-    persistOrThrow: (...runIds: string[]) => persisted.push(runIds),
-    persistAsyncOrThrow: async (_context, _publication, ...runIds) => {
-      persisted.push(runIds);
-    },
+    // Upstream 14fe10d01c removed the injected persist callbacks; registry writes go
+    // through mutateSubagentRuns, and the rejection itself reaches the mocked
+    // settleRequesterCompletionBatch below, so this proof needs no persistence stub.
     clearPendingLifecycleError: vi.fn(),
     countPendingDescendantRuns: async () => 0,
     getLatestRunForChildSession: () => null,
@@ -113,7 +109,7 @@ function buildHarness(wakeFailure: Error): Harness {
     maybeWakeRequesterAfterAllChildrenSettled: wake,
     warn,
   });
-  return { controller, entry, warn, persisted, origin: new AsyncWorkScope() };
+  return { controller, entry, warn, origin: new AsyncWorkScope() };
 }
 
 function warnedMessages(warn: ReturnType<typeof vi.fn>): string[] {

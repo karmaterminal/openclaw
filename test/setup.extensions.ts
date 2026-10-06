@@ -2,20 +2,25 @@
 import { afterAll, afterEach, beforeEach, expect, vi } from "vitest";
 import { installSharedTestSetup } from "./setup.shared.js";
 
+const codexAppServerTestPattern = /\/extensions\/codex\/src\/app-server\/.*\.test\.ts$/;
+// The continuation-origin export test drives the Codex attempt harness
+// from diagnostics-otel, so it needs the same runtime fixture.
+const codexContinuationOriginTestPattern =
+  /\/extensions\/diagnostics-otel\/src\/codex-dynamic-tool-origin\.integration\.test\.ts$/;
+const usesCodexAttemptRuntime = (testPath: string) =>
+  codexAppServerTestPattern.test(testPath) || codexContinuationOriginTestPattern.test(testPath);
+if (usesCodexAttemptRuntime(expect.getState().testPath?.replaceAll("\\", "/") ?? "")) {
+  // Prepare declarations before collection without binding worker-cpu ahead of file mocks.
+  await import("../src/test-utils/prepare-compiled-subprocesses.js");
+}
+
 const testEnv = installSharedTestSetup({ loadProfileEnv: false });
 let restoreUpstreamLinks: (() => void) | undefined;
 
 beforeEach(async (context) => {
   vi.useRealTimers();
   const testPath = expect.getState().testPath?.replaceAll("\\", "/");
-  // The continuation-origin export test drives the Codex attempt harness
-  // from diagnostics-otel, so it needs the same runtime fixture.
-  if (
-    /\/extensions\/codex\/src\/app-server\/.*\.test\.ts$/.test(testPath ?? "") ||
-    /\/extensions\/diagnostics-otel\/src\/codex-dynamic-tool-origin\.integration\.test\.ts$/.test(
-      testPath ?? "",
-    )
-  ) {
+  if (usesCodexAttemptRuntime(testPath ?? "")) {
     const { getTrackedWorkerPoolSnapshot } = await vi.importActual<
       typeof import("../src/infra/worker-cpu.js")
     >("../src/infra/worker-cpu.js");
@@ -64,11 +69,11 @@ beforeEach(async (context) => {
     ),
   ]);
   const upsert = vi
-    .spyOn(owner, "upsertSessionUpstreamLink")
-    .mockImplementation(facade.upsertSessionUpstreamLink);
+    .spyOn(owner, "upsertSessionUpstreamLinkWithCurrentSource")
+    .mockImplementation((input, options) => facade.upsertSessionUpstreamLinkAsync(input, options));
   const remove = vi
-    .spyOn(owner, "deleteSessionUpstreamLink")
-    .mockImplementation(facade.deleteSessionUpstreamLink);
+    .spyOn(owner, "deleteSessionUpstreamLinkAsync")
+    .mockImplementation(facade.deleteSessionUpstreamLinkAsync);
   restoreUpstreamLinks = () => {
     upsert.mockRestore();
     remove.mockRestore();

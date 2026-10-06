@@ -355,7 +355,8 @@ export async function deliverQueuedPostCompactionDelegate(
   if (attemptRunIds.length === 0) {
     // Backstop for entries a build without attempt keys enqueued (§5.4.5,
     // "Drain backstop"): C's own replay guard is the only admission proof.
-    const legacyRun = getSubagentRunByChildSessionKey(acceptedChildSessionKey);
+    // Child-scoped registry reads are async upstream (agent-scoped snapshot).
+    const legacyRun = await getSubagentRunByChildSessionKey(acceptedChildSessionKey);
     const legacyEvidence: DelegateAdmissionEvidence =
       legacyRun?.requesterSessionKey === params.entry.sessionKey
         ? { kind: "admitted", runId: legacyRun.runId, childSessionKey: acceptedChildSessionKey }

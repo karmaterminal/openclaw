@@ -11,6 +11,7 @@ type SpawnPipelinePhase = "initialize" | "dispatch" | "register";
 
 export type SpawnBackendAdapter<TState> = {
   initialize(): Promise<TState>;
+  retainRegistrationScope?(scope: SubagentRegistrationScope): void;
   dispatchTurn(state: TState): Promise<{ runId: string }>;
   cleanupOnFailure(params: {
     phase: SpawnPipelinePhase;
@@ -24,6 +25,10 @@ type RegisterSubagentRunInput = Parameters<typeof registerSubagentRun>[0];
 type OwnedSubagentRegistration = RegisterSubagentRunInput & {
   expectedRegistration: SubagentRegistrationIdentity;
 };
+type AcceptedRollbackOwnerStatus =
+  | { status: "persisted" }
+  | { status: "pending-persistence"; error: unknown }
+  | { status: "rejected" };
 
 type SpawnProgressOrigin = {
   channel?: string;
@@ -121,7 +126,7 @@ type SpawnPipelineParams<TState> = {
   progressSessionKey: string;
   assertRegistrationAdmission?: () => void;
   assertPostPublicationAdmission?: () => void;
-  publishRegistration?: (registration: RegisterSubagentRunInput) => void;
+  publishRegistration?: (registration: RegisterSubagentRunInput) => void | Promise<void>;
   afterRegistration?: (
     state: TState,
     runId: string,
@@ -130,11 +135,8 @@ type SpawnPipelineParams<TState> = {
   recordAcceptedRollback?: (
     registration: OwnedSubagentRegistration,
     error: unknown,
-  ) =>
-    | { status: "persisted" }
-    | { status: "pending-persistence"; error: unknown }
-    | { status: "rejected" };
-  rollbackRegistration?: (registration: OwnedSubagentRegistration) => boolean;
+  ) => AcceptedRollbackOwnerStatus | Promise<AcceptedRollbackOwnerStatus>;
+  rollbackRegistration?: (registration: OwnedSubagentRegistration) => boolean | Promise<boolean>;
 };
 
 export async function runSpawnPipeline<TState>(
@@ -161,7 +163,7 @@ export async function runSpawnPipeline<TState>(
         const failures: unknown[] = [];
         const ownership = registrationOwnership;
         const ownedRegistration = { ...registration, expectedRegistration: ownership };
-        const rollbackOwner = params.recordAcceptedRollback?.(ownedRegistration, error);
+        const rollbackOwner = await params.recordAcceptedRollback?.(ownedRegistration, error);
         if (rollbackOwner?.status === "rejected") {
           failures.push(
             new Error(`Accepted subagent rollback owner was rejected: ${ownership.runId}`),
@@ -183,7 +185,7 @@ export async function runSpawnPipeline<TState>(
         }
         if (cleanupComplete) {
           try {
-            if (params.rollbackRegistration?.(ownedRegistration) === false) {
+            if ((await params.rollbackRegistration?.(ownedRegistration)) === false) {
               throw new Error(
                 `Accepted subagent registration rollback lost ownership: ${ownership.runId}`,
               );
@@ -218,21 +220,18 @@ export async function runSpawnPipeline<TState>(
       params.assertActive?.();
       registration = params.buildRegistration(state, runId);
       params.assertRegistrationAdmission?.();
-      const registrationOutcome = registration.queued
-        ? registerSubagentRun(registration, {
-            assertCurrent: params.assertActive,
-            retainOwnership: (scope) => {
-              registrationScope = scope;
-            },
-          })
-        : registerSubagentRun(registration, { assertCurrent: params.assertActive });
-      const registrationResult =
-        registrationOutcome instanceof Promise ? await registrationOutcome : registrationOutcome;
+      const registrationResult = await registerSubagentRun(registration, {
+        assertCurrent: params.assertActive,
+        retainOwnership: (scope) => {
+          registrationScope = scope;
+          params.adapter.retainRegistrationScope?.(scope);
+        },
+      });
       if (registrationResult.status !== "new-row-committed") {
         throw new SpawnRegistrationOwnershipError(registrationResult);
       }
       registrationOwnership = registrationResult.attempted;
-      params.publishRegistration?.(registration);
+      await params.publishRegistration?.(registration);
       // Release launch admission only after any authority preparation and registry acknowledgement.
       params.admissionReservation?.release();
     } catch (error) {

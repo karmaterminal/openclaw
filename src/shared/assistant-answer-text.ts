@@ -10,10 +10,6 @@ import {
   sanitizeAssistantVisibleText,
 } from "./text/assistant-visible-text.js";
 
-function isAssistantTextContentBlockType(value: unknown): boolean {
-  return value === "text" || value === "input_text" || value === "output_text";
-}
-
 // Keeps an item's original bytes when sanitizing only trimmed its surrounding
 // whitespace, so per-item continuation hops are delivered verbatim.
 function preserveItemWhitespace(sanitize: (text: string) => string): (text: string) => string {
@@ -62,39 +58,13 @@ export function resolveRawAssistantAnswerParts(
             .filter((text) => text.trim());
     return finalAnswerParts.length ? finalAnswerParts : [finalAnswerText];
   }
-  if (Array.isArray(lastAssistant.content)) {
-    const hasExplicitPhasedTextBlock = lastAssistant.content.some((block) => {
-      const record = asOptionalRecord(block);
-      return (
-        record !== undefined &&
-        isAssistantTextContentBlockType(record.type) &&
-        Boolean(parseAssistantTextSignature(record)?.phase)
-      );
-    });
-    if (!hasExplicitPhasedTextBlock) {
-      const signedUnphasedParts = lastAssistant.content
-        .map((block) => {
-          const record = asOptionalRecord(block);
-          if (!record) {
-            return null;
-          }
-          const signature = parseAssistantTextSignature(record);
-          if (
-            !isAssistantTextContentBlockType(record.type) ||
-            typeof record.text !== "string" ||
-            !signature?.id ||
-            signature.phase
-          ) {
-            return null;
-          }
-          const text = sanitizeFinalAnswerText(record.text);
-          return text.trim() ? text : null;
-        })
-        .filter((value): value is string => typeof value === "string");
-      if (signedUnphasedParts.length) {
-        return signedUnphasedParts;
-      }
-    }
+  // Signed unphased blocks retain their own answer semantics regardless of the message phase.
+  const signedUnphasedParts = readAssistantTextBlocksForPhase({ content: lastAssistant.content })
+    .filter((block) => parseAssistantTextSignature(block)?.id)
+    .map((block) => sanitizeFinalAnswerText(block.text))
+    .filter((text) => text.trim());
+  if (signedUnphasedParts.length) {
+    return signedUnphasedParts;
   }
   const visibleText = extractAssistantTextForPhase(lastAssistant, {
     sanitizeText: options.preserveItemWhitespace

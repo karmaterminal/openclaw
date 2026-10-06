@@ -3,6 +3,25 @@ import type { callGateway } from "../../../gateway/call.js";
 import { terminateAcceptedCollectorRun } from "../spawn/subagent-spawn-cleanup.js";
 import { hasPendingSubagentRetirementPublication } from "./subagent-registry-memory.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
+import { isSameSubagentRunOwner } from "./subagent-run-generation.js";
+
+type AcceptedSpawnRollback = NonNullable<SubagentRunRecord["acceptedSpawnRollback"]>;
+
+// Registry rows are frozen and every write publishes a new row object, so custody is
+// compared by its durable fields rather than by object identity.
+function isSameAcceptedSpawnRollback(
+  current: AcceptedSpawnRollback | undefined,
+  expected: AcceptedSpawnRollback,
+): boolean {
+  return (
+    current !== undefined &&
+    current.gatewayRunId === expected.gatewayRunId &&
+    current.requestedAt === expected.requestedAt &&
+    current.reason === expected.reason &&
+    current.expectedSessionId === expected.expectedSessionId &&
+    current.expectedLifecycleRevision === expected.expectedLifecycleRevision
+  );
+}
 
 export async function reconcileAcceptedSpawnRollback(params: {
   runId: string;
@@ -16,24 +35,28 @@ export async function reconcileAcceptedSpawnRollback(params: {
     reason: string;
     expectedSessionId?: string;
     expectedLifecycleRevision?: string;
-  }) =>
+  }) => Promise<
     | { status: "persisted" }
     | { status: "pending-persistence"; error: unknown }
-    | { status: "rejected" };
+    | { status: "rejected" }
+  >;
   releaseAcceptedSubagentSpawnRollback: (params: {
     runId: string;
     childSessionKey: string;
     gatewayRunId: string;
-  }) => boolean;
-  rollbackSubagentRunRegistration: (params: { runId: string; childSessionKey: string }) => boolean;
-  settleFailedQueuedSubagentLaunch: (runId: string, error: string) => boolean;
+  }) => Promise<boolean>;
+  rollbackSubagentRunRegistration: (params: {
+    runId: string;
+    childSessionKey: string;
+  }) => Promise<boolean>;
+  settleFailedQueuedSubagentLaunch: (runId: string, error: string) => Promise<boolean>;
   warn: (message: string, meta?: Record<string, unknown>) => void;
 }): Promise<boolean> {
   const rollback = params.entry.acceptedSpawnRollback;
-  if (!rollback || params.runs.get(params.runId) !== params.entry) {
+  if (!rollback || !isSameSubagentRunOwner(params.runs.get(params.runId), params.entry)) {
     return false;
   }
-  const record = params.recordAcceptedSubagentSpawnRollback({
+  const record = await params.recordAcceptedSubagentSpawnRollback({
     runId: params.runId,
     childSessionKey: params.entry.childSessionKey,
     gatewayRunId: rollback.gatewayRunId,
@@ -56,29 +79,31 @@ export async function reconcileAcceptedSpawnRollback(params: {
     callGateway: params.callGateway,
     retry: false,
   });
+  const current = params.runs.get(params.runId);
   if (
     !terminated ||
-    params.runs.get(params.runId) !== params.entry ||
-    params.entry.acceptedSpawnRollback !== rollback ||
+    !current ||
+    !isSameSubagentRunOwner(current, params.entry) ||
+    !isSameAcceptedSpawnRollback(current.acceptedSpawnRollback, rollback) ||
     // A Stop that began publishing during termination decides the outcome first;
     // settlement and release are idempotent and wait for a later sweep.
-    hasPendingSubagentRetirementPublication(params.entry)
+    hasPendingSubagentRetirementPublication(current)
   ) {
     return true;
   }
-  if (params.entry.collect) {
-    params.settleFailedQueuedSubagentLaunch(params.runId, rollback.reason);
+  if (current.collect) {
+    await params.settleFailedQueuedSubagentLaunch(params.runId, rollback.reason);
     // The accepted child is proven stopped, so this custody is discharged. Keeping
     // it would terminate the same gateway run again on every sweep.
-    params.releaseAcceptedSubagentSpawnRollback({
+    await params.releaseAcceptedSubagentSpawnRollback({
       runId: params.runId,
-      childSessionKey: params.entry.childSessionKey,
+      childSessionKey: current.childSessionKey,
       gatewayRunId: rollback.gatewayRunId,
     });
   } else {
-    params.rollbackSubagentRunRegistration({
+    await params.rollbackSubagentRunRegistration({
       runId: params.runId,
-      childSessionKey: params.entry.childSessionKey,
+      childSessionKey: current.childSessionKey,
     });
   }
   return true;

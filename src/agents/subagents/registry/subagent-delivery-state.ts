@@ -45,7 +45,10 @@ export function projectSubagentRunForSessionList(entry: SubagentRunRecord): Suba
     ...(entry.taskRunId !== undefined ? { taskRunId: entry.taskRunId } : {}),
     ...(entry.pauseReason ? { pauseReason: entry.pauseReason } : {}),
     ...(entry.swarmRunId ? { swarmRunId: entry.swarmRunId } : {}),
+    ...(entry.schedulerSlotId ? { schedulerSlotId: entry.schedulerSlotId } : {}),
+    ...(entry.swarmLaunchReplayKey ? { swarmLaunchReplayKey: entry.swarmLaunchReplayKey } : {}),
     childSessionKey: entry.childSessionKey,
+    ...(entry.childAgentId ? { childAgentId: entry.childAgentId } : {}),
     ...(entry.controllerSessionKey ? { controllerSessionKey: entry.controllerSessionKey } : {}),
     requesterSessionKey: entry.requesterSessionKey,
     requesterStorePath: entry.requesterStorePath,
@@ -107,6 +110,7 @@ export function projectSubagentRunForMaintenance(
   return {
     runId: entry.runId,
     childSessionKey: entry.childSessionKey,
+    ...(entry.childAgentId ? { childAgentId: entry.childAgentId } : {}),
     requesterSessionKey: entry.requesterSessionKey,
     createdAt: entry.createdAt,
     cleanupCompletedAt: entry.cleanupCompletedAt,
@@ -229,6 +233,36 @@ export function isCompletedRequesterDeliveryBlocked(
     isDeliverySuspended(entry) &&
     entry.delivery?.suspendedReason === "permanent_failure" &&
     entry.delivery.lastDropReason === "message_tool_delivery_missing"
+  );
+}
+
+/** Delivered child history releases its requester only after every completion owner settles. */
+export function isSettledSubagentRequesterHistory(entry: SubagentRunRecord): boolean {
+  const endedAt = entry.execution.endedAt;
+  const cleanedAt = entry.cleanupCompletedAt;
+  return (
+    entry.execution.status === "terminal" &&
+    typeof endedAt === "number" &&
+    Number.isFinite(endedAt) &&
+    typeof cleanedAt === "number" &&
+    Number.isFinite(cleanedAt) &&
+    cleanedAt >= endedAt &&
+    entry.delivery?.status === "delivered" &&
+    !entry.requesterTurnRunId &&
+    !entry.requesterSettleWake &&
+    !entry.retireAfterRequesterTurn &&
+    !entry.wakeOnDescendantSettle &&
+    !entry.pauseReason &&
+    !entry.killIntent &&
+    !entry.killReconciliation &&
+    !entry.execution.restartRecovery &&
+    !entry.terminalOwner &&
+    !entry.suppressAnnounceReason &&
+    !entry.collect &&
+    !entry.collectorCompletion &&
+    !entry.collectorLaunchCleanupPending &&
+    !entry.swarmLaunchPending &&
+    !entry.queuedLaunch
   );
 }
 

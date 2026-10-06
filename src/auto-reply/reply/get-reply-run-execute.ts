@@ -420,6 +420,13 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     ...(queuedFollowupAbortSignal ? { abortSignal: queuedFollowupAbortSignal } : {}),
     deliveryCorrelations: opts?.queuedDeliveryCorrelations,
     turnAdoptionLifecycle: effectiveTurnAdoptionLifecycle,
+    runObservers: {
+      onAgentRunStart: opts?.onAgentRunStart,
+      onAgentRunTerminalOutcome: opts?.onAgentRunTerminalOutcome,
+      onModelSelected: opts?.onModelSelected,
+      prepareAssistantTranscriptMessage: opts?.prepareAssistantTranscriptMessage,
+      resolveReplyDelivery: opts?.resolveReplyDelivery,
+    },
     ...(opts?.onFollowupQueueDisposition
       ? { onQueueDisposition: opts.onFollowupQueueDisposition }
       : {}),

@@ -8,12 +8,22 @@ import "./subagents/registry/subagent-registry.mocks.shared.js";
 import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/config.js";
 import { callGateway } from "../gateway/call.js";
+import type { ChatAbortControllerEntry } from "../gateway/chat-abort.types.js";
 import { onAgentEvent } from "../infra/agent-events.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
-import { captureEnv, deleteTestEnvValue, setTestEnvValue, withEnv } from "../test-utils/env.js";
+import {
+  captureEnv,
+  deleteTestEnvValue,
+  setTestEnvValue,
+  withEnvAsync,
+} from "../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
 import { resetSubagentRegistryRuntimeLoadersForTests } from "./subagents/registry/subagent-registry-deps.js";
+import {
+  loadSubagentRegistryFromSqlite,
+  saveSubagentRegistryToSqlite,
+} from "./subagents/registry/subagent-registry-state.fixture.test-support.js";
 import { createSubagentPersistenceRuntime } from "./subagents/registry/subagent-registry.persistence-fixture.test-support.js";
 import {
   canonicalSubagentRunFixtures,
@@ -21,8 +31,6 @@ import {
   writeSubagentSessionEntry,
 } from "./subagents/registry/subagent-registry.persistence.test-support.js";
 import type { SubagentRunFixture } from "./subagents/registry/subagent-registry.persistence.test-support.js";
-import { loadSubagentRegistryFromSqlite } from "./subagents/registry/subagent-registry.store.sqlite.js";
-import { saveSubagentRegistryToSqlite } from "./subagents/registry/subagent-registry.store.test-support.js";
 import {
   activateSubagentRegistry,
   getLatestSubagentRunByChildSessionKey,
@@ -46,16 +54,9 @@ vi.mock("./subagents/announce/subagent-announce.js", async (importOriginal) => {
   };
 });
 
-// persistSubagentRunsToDisk is redirected to the sqlite writer, matching upstream's
-// own idiom in subagent-registry.persistence.test.ts. The registry imports this
-// entry point directly, so the module mock is what reaches the runtime.
-vi.mock("./subagents/registry/subagent-registry-state.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("./subagents/registry/subagent-registry-state.js")>();
-  const { saveSubagentRegistryChangesToSqlite: saveRegistryToSqlite } =
-    await import("./subagents/registry/subagent-registry.store.sqlite.js");
-  return { ...actual, persistSubagentRunsToDisk: saveRegistryToSqlite };
-});
+// No persistence redirect: upstream (14fe10d01c) deleted persistSubagentRunsToDisk,
+// and every registry write now goes through mutateSubagentRuns to the real SQLite
+// worker, which is the store readPersistedRuns() inspects.
 
 function expectFields(value: unknown, expected: Record<string, unknown>): void {
   if (!value || typeof value !== "object") {
@@ -175,10 +176,14 @@ describe("subagent registry persistence", () => {
   const readPersistedRuns = () => loadSubagentRegistryFromSqlite();
 
   const restartRegistry = async () => {
-    resetSubagentRegistryForTests({ persist: false });
+    await resetSubagentRegistryForTests({ persist: false });
     await initSubagentRegistry();
     const recoveryRuntime = createSubagentPersistenceRuntime(callGateway);
-    const gateway = { recoveryRuntime, resolveGatewayContext: () => gateway as never };
+    const gateway = {
+      recoveryRuntime,
+      chatAbortControllers: new Map<string, ChatAbortControllerEntry>(),
+      resolveGatewayContext: () => gateway as never,
+    };
     await activateSubagentRegistry(() => gateway as never);
   };
 
@@ -199,7 +204,7 @@ describe("subagent registry persistence", () => {
 
   afterEach(async () => {
     await settleSubagentRegistryPersistenceWork();
-    resetSubagentRegistryForTests({ persist: false });
+    await resetSubagentRegistryForTests({ persist: false });
     await cleanupSessionStateForTest();
     closeOpenClawStateDatabaseForTest();
     if (tempStateDir) {
@@ -355,9 +360,10 @@ describe("subagent registry persistence", () => {
       { seedChildSessions: false },
     );
 
-    resetSubagentRegistryForTests({ persist: false });
+    await resetSubagentRegistryForTests({ persist: false });
 
-    const resolved = withEnv({ OPENCLAW_TEST_READ_SUBAGENT_RUNS_FROM_SQLITE: "1" }, () =>
+    // The read is async upstream; keep the SQLite-read flag set until it resolves.
+    const resolved = await withEnvAsync({ OPENCLAW_TEST_READ_SUBAGENT_RUNS_FROM_SQLITE: "1" }, () =>
       getSubagentRunByChildSessionKey(childSessionKey),
     );
 
@@ -401,9 +407,9 @@ describe("subagent registry persistence", () => {
       { seedChildSessions: false },
     );
 
-    resetSubagentRegistryForTests({ persist: false });
+    await resetSubagentRegistryForTests({ persist: false });
 
-    const resolved = withEnv({ OPENCLAW_TEST_READ_SUBAGENT_RUNS_FROM_SQLITE: "1" }, () =>
+    const resolved = await withEnvAsync({ OPENCLAW_TEST_READ_SUBAGENT_RUNS_FROM_SQLITE: "1" }, () =>
       getLatestSubagentRunByChildSessionKey(childSessionKey),
     );
 

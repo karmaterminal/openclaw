@@ -430,6 +430,9 @@ export async function prepareReplyAgentPayloads(state: {
       ]
     : [];
 
+  // Report usage before any early return so silent replies still emit it (#152396).
+  emitReplyAgentUsageDiagnostic(state);
+
   // Drain any late tool/block deliveries before deciding there's "nothing to send".
   // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
   // keep the typing indicator stuck. A tool-only continuation turn may have no visible
@@ -564,10 +567,7 @@ export async function prepareReplyAgentPayloads(state: {
   // turn) already covers the commitment — avoids false positives (#32228).
   const coveredByExistingCron =
     hasReminderCommitment && successfulCronAdds === 0
-      ? await hasSessionRelatedCronJobs({
-          cronStorePath: undefined,
-          sessionKey,
-        })
+      ? await hasSessionRelatedCronJobs(sessionKey)
       : false;
   const guardedReplyPayloads =
     hasReminderCommitment && successfulCronAdds === 0 && !coveredByExistingCron
@@ -638,8 +638,6 @@ export async function prepareReplyAgentPayloads(state: {
   }
   await signalTypingIfNeeded(guardedReplyPayloads, typingSignals);
 
-  emitReplyAgentUsageDiagnostic(state);
-
   const responseUsageSessionRaw =
     activeSessionEntry?.responseUsage ??
     (sessionKey ? activeSessionStore?.[sessionKey]?.responseUsage : undefined);
@@ -658,7 +656,7 @@ export async function prepareReplyAgentPayloads(state: {
   // Refresh inherited verbosity even when it started off: session preferences
   // and plugin diagnostics may change while the model runs.
   if (followupRun.run.verboseLevelOverride !== "off" || followupRun.run.traceAuthorized === true) {
-    activeSessionEntry = refreshSessionEntryFromStore({
+    activeSessionEntry = await refreshSessionEntryFromStore({
       storePath,
       sessionKey,
       fallbackEntry: activeSessionEntry,

@@ -47,6 +47,7 @@ export type SubagentAnnounceFlowParams = {
   isCompletionDeliveryAllowed?: () => boolean;
   isCompletionOwnedByRequesterYield?: () => boolean;
   signal?: AbortSignal;
+  onExecutionStarted?: () => void;
   onDeliveryResult?: (delivery: SubagentAnnounceDeliveryResult) => void | Promise<void>;
   silentAnnounce?: boolean;
   wakeOnReturn?: boolean;
@@ -56,7 +57,7 @@ export type SubagentAnnounceFlowParams = {
   continuationRecipientAuthorityBinding?: import("../../../config/sessions/session-recipient-authority-types.js").ContinuationRecipientAuthorityBinding;
   persistContinuationRecipientAuthorityBinding?: (
     binding: import("../../../config/sessions/session-recipient-authority-types.js").ContinuationRecipientAuthorityBinding,
-  ) => boolean;
+  ) => boolean | Promise<boolean>;
   traceparent?: string;
   onBeforeDeleteChildSession?: () => boolean | Promise<boolean>;
   resolveGatewayContext?: import("../../../gateway/server-methods/types.js").GatewayContextResolver;

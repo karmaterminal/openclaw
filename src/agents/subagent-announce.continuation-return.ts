@@ -26,7 +26,8 @@ import { parseContinuationChainHop } from "./subagent-announce.continuation.acco
 const continuationLog = createSubsystemLogger("continuation/announce");
 
 type RegistryReturnRuntime = {
-  shouldIgnorePostCompletionAnnounceForSession: (sessionKey: string) => boolean;
+  // Upstream made registry reads async; a sync stub is still accepted.
+  shouldIgnorePostCompletionAnnounceForSession: (sessionKey: string) => boolean | Promise<boolean>;
 };
 
 async function listKnownSessionKeysOnHost(cfg: OpenClawConfig): Promise<string[]> {
@@ -85,7 +86,7 @@ export async function routeSubagentContinuationReturn(params: {
   continuationRecipientAuthorityBinding?: ContinuationRecipientAuthorityBinding;
   persistContinuationRecipientAuthorityBinding?: (
     binding: ContinuationRecipientAuthorityBinding,
-  ) => boolean;
+  ) => boolean | Promise<boolean>;
   traceparent?: string;
   registryRuntime?: RegistryReturnRuntime;
 }): Promise<{
@@ -138,10 +139,15 @@ export async function routeSubagentContinuationReturn(params: {
           allSessionKeys,
           childSessionKey: params.childSessionKey,
         });
-    const targetSessionKeys = resolvedTargetSessionKeys.filter(
-      (sessionKey) =>
-        !params.registryRuntime?.shouldIgnorePostCompletionAnnounceForSession(sessionKey),
-    );
+    // The guard is async: an unawaited Promise is truthy and would drop every recipient.
+    const targetSessionKeys: string[] = [];
+    for (const sessionKey of resolvedTargetSessionKeys) {
+      if (
+        !(await params.registryRuntime?.shouldIgnorePostCompletionAnnounceForSession(sessionKey))
+      ) {
+        targetSessionKeys.push(sessionKey);
+      }
+    }
     const recipientAgentIds = resolveContinuationRecipientAgentIds(params.cfg, targetSessionKeys);
     if (
       recipientAuthorityBinding?.selection === "pending" &&
@@ -154,7 +160,7 @@ export async function routeSubagentContinuationReturn(params: {
       recipientAuthorityBinding.fanoutMode === "all"
     ) {
       const selected = await captureContinuationRecipientAuthorities(targetSessionKeys);
-      if (!params.persistContinuationRecipientAuthorityBinding?.(selected)) {
+      if (!(await params.persistContinuationRecipientAuthorityBinding?.(selected))) {
         throw new Error("Continuation all-recipient authority selection was not durably committed");
       }
       recipientAuthorityBinding = selected;
@@ -193,7 +199,7 @@ export async function routeSubagentContinuationReturn(params: {
     // and explicit returns; otherwise a cleaned run-mode requester can be
     // reopened merely because the delegate did not specify fanout metadata.
     if (
-      params.registryRuntime?.shouldIgnorePostCompletionAnnounceForSession(
+      await params.registryRuntime?.shouldIgnorePostCompletionAnnounceForSession(
         params.targetRequesterSessionKey,
       )
     ) {

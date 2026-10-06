@@ -8,6 +8,7 @@ import type { CompactionRequestBudget } from "../../agents/sessions/compaction/r
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { PreparedReplyTranscriptStart } from "../get-reply-options.types.js";
 import type { ThinkLevel } from "../thinking.js";
 import type { AgentLifecycleTerminalBackstop } from "./agent-lifecycle-terminal.js";
 import type {
@@ -48,7 +49,8 @@ export type AgentFallbackCandidateCommonParams = RunEntryCandidateOptions & {
     ReturnType<typeof import("./current-turn-images.js").resolveCurrentTurnImages>
   >;
   signalExecutionPhaseForTyping: NonNullable<RunEmbeddedAgentParams["onExecutionPhase"]>;
-  notifyAgentRunStart: () => void;
+  prepareAgentRunStart: () => void | Promise<void>;
+  notifyAgentRunStart: (transcriptStart?: PreparedReplyTranscriptStart | null) => void;
   preserveProgressCallbackStartOrder: boolean;
   presentation: ReturnType<typeof createAgentTurnPresentation>;
   timing: AgentTurnTimingTracker;
@@ -115,8 +117,10 @@ export type AgentFallbackCycleParams = {
   state: AgentFallbackCycleState;
   presentation: ReturnType<typeof createAgentTurnPresentation>;
   directBlockDeliveries: DirectBlockDelivery[];
-  notifyAgentRunStart: () => void;
-  signalExecutionPhaseForTyping: NonNullable<RunEmbeddedAgentParams["onExecutionPhase"]>;
+  createAgentRunStartCallbacks: () => Pick<
+    AgentFallbackCandidateCommonParams,
+    "prepareAgentRunStart" | "notifyAgentRunStart" | "signalExecutionPhaseForTyping"
+  > & { close: () => void };
   notifyUserAboutCompaction: boolean;
   timing: AgentTurnTimingTracker;
   modelPatch: AgentFallbackModelPatch;

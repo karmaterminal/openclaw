@@ -1,15 +1,9 @@
 import { toErrorObject } from "../../../infra/errors.js";
-import type { ImageContent } from "../../../llm/types.js";
-import type { MediaFact } from "../../../media/media-facts.js";
 import { hasPromptImageInput } from "../../../media/prompt-image-input.js";
-import type { PromptImageOrderEntry } from "../../../media/prompt-image-order.js";
-import type { UserTurnTranscriptRecorder } from "../../../sessions/user-turn-transcript.types.js";
 import {
   cancelPendingAgentQuestionForSession,
   claimPendingAgentQuestionAnswer,
 } from "../../harness/gateway-question.js";
-import type { CurrentInboundPromptContext } from "../../internal-runtime-context.js";
-import type { AgentMessage } from "../../runtime/index.js";
 import type { AgentSession } from "../../sessions/index.js";
 import { retireQueuedUserMessage } from "../../sessions/queued-user-message-retirement.js";
 import {
@@ -23,11 +17,7 @@ import type {
 } from "../run-state.js";
 
 type EmbeddedAgentActiveSessionSteerTarget = {
-  agent?: {
-    cancelSteeringMessage?: (
-      predicate: (message: AgentMessage) => boolean,
-    ) => AgentMessage | undefined;
-  };
+  agent?: Partial<Pick<AgentSession["agent"], "cancelSteeringMessage">>;
   steer: AgentSession["steer"];
   subscribe(listener: (event: unknown) => void): () => void;
 };
@@ -39,44 +29,6 @@ class EmbeddedSteeringAcceptedUnconfirmedError extends Error {
     super(message, options);
     this.name = "EmbeddedSteeringAcceptedUnconfirmedError";
   }
-}
-
-function steerActiveSession(
-  activeSession: EmbeddedAgentActiveSessionSteerTarget,
-  text: string,
-  images?: ImageContent[],
-  userTurnTranscriptRecorder?: UserTurnTranscriptRecorder,
-  media?: MediaFact[],
-  imageOrder?: PromptImageOrderEntry[],
-  queueIdentity?: string,
-  canInject?: () => boolean,
-  currentInboundContext?: CurrentInboundPromptContext,
-): Promise<void> {
-  if (currentInboundContext || canInject) {
-    return activeSession.steer(
-      text,
-      images,
-      userTurnTranscriptRecorder,
-      media,
-      imageOrder,
-      queueIdentity,
-      canInject,
-      currentInboundContext,
-    );
-  }
-  if (media?.length || queueIdentity) {
-    return activeSession.steer(
-      text,
-      images,
-      userTurnTranscriptRecorder,
-      media,
-      imageOrder,
-      queueIdentity,
-    );
-  }
-  return userTurnTranscriptRecorder
-    ? activeSession.steer(text, images, userTurnTranscriptRecorder)
-    : activeSession.steer(text, images);
 }
 
 function isQueuedUserMessageEnd(event: unknown, queueIdentity: string): boolean {
@@ -174,9 +126,7 @@ async function steerWithTranscriptLifecycle(
         return;
       }
       settled = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
+      clearTimeout(timer);
       unsubscribe?.();
       unsubscribePersistenceFailure?.();
       abortSignal?.removeEventListener("abort", onAbort);
@@ -222,7 +172,7 @@ async function steerWithTranscriptLifecycle(
       reportAcceptance(false);
       finish(new Error(message));
     };
-    const timer: ReturnType<typeof setTimeout> | undefined = setTimeout(
+    const timer = setTimeout(
       () => {
         const message =
           "queued steering message was not committed to the transcript before timeout";
@@ -253,8 +203,7 @@ async function steerWithTranscriptLifecycle(
       rejectBeforeAcceptance("queued steering message was cancelled before acceptance");
       return;
     }
-    const steer = steerActiveSession(
-      activeSession,
+    const steer = activeSession.steer(
       text,
       images,
       userTurnTranscriptRecorder,
@@ -359,8 +308,7 @@ export async function steerActiveSessionWithOptionalDeliveryWait(
   }
   if (!options || (options.waitForTranscriptCommit === undefined && !options.onQueueSettled)) {
     try {
-      await steerActiveSession(
-        activeSession,
+      await activeSession.steer(
         text,
         options?.images,
         options?.userTurnTranscriptRecorder,

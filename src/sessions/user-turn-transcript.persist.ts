@@ -2,16 +2,16 @@
 import { randomUUID } from "node:crypto";
 import {
   persistSessionTranscriptTurn,
-  readActiveTranscriptEntryAnchor,
   type SessionTranscriptTurnPersistOptions,
 } from "../config/sessions/session-accessor.js";
+import { readActiveTranscriptEntryAnchorAsync } from "../config/sessions/session-transcript-anchor-read.js";
 import { waitForSessionTranscriptProjection } from "../config/sessions/session-transcript-reconcile.js";
+import { captureOwnedTranscriptWriteAssertion } from "../config/sessions/transcript-write-context.js";
 import { isUserMessage, resolvePersistedUserTurnMessage } from "./user-turn-transcript.message.js";
 import { preparePersistedUserTurnMessageForTranscriptWrite } from "./user-turn-transcript.metadata.js";
 import type {
   PersistUserTurnTranscriptParams,
   PersistedUserTurnMessage,
-  UserTurnTranscriptAdmissionReceipt,
   UserTurnTranscriptPersistResult,
 } from "./user-turn-transcript.types.js";
 
@@ -63,31 +63,35 @@ export async function persistUserTurnTranscript(
         {
           message,
           idempotencyLookup: "scan",
-          prepareMessageAfterIdempotencyCheck: (candidate) =>
-            preparePersistedUserTurnMessageForTranscriptWrite(
-              // SAFETY: candidates are the single user message this call submitted.
-              candidate as PersistedUserTurnMessage,
-              params,
-            ),
+          workerPreparation: {
+            beforeFreshMessageCommit: params.beforeFreshMessageCommit,
+            prepareMessageAfterIdempotencyCheck: (candidate) =>
+              preparePersistedUserTurnMessageForTranscriptWrite(
+                // SAFETY: candidates are the single user message this call submitted.
+                candidate as PersistedUserTurnMessage,
+                params,
+              ),
+          },
         },
       ],
     },
   );
-  // SAFETY: messages[0] is the result for the one message submitted above, in submission order.
-  let appended = turn.messages[0] as
-    | {
-        anchor?: Omit<UserTurnTranscriptAdmissionReceipt, "logicalTurnId" | "role">;
-        appended: boolean;
-        messageId: string;
-        message: PersistedUserTurnMessage;
-      }
-    | undefined;
-  if (appended && !appended.anchor && appended.message.role === "user") {
+  const result = turn.messages[0];
+  if (!result || !isUserMessage(result.message)) {
+    return undefined;
+  }
+  let appended = { ...result, message: result.message };
+  if (!appended.anchor) {
+    const assertCurrent = captureOwnedTranscriptWriteAssertion(params);
     await waitForSessionTranscriptProjection(params);
-    const anchor = readActiveTranscriptEntryAnchor({ ...params, entryId: appended.messageId });
+    const anchor = await readActiveTranscriptEntryAnchorAsync({
+      ...params,
+      entryId: appended.messageId,
+    });
+    assertCurrent();
     appended = anchor ? { ...appended, anchor } : appended;
   }
-  if (!appended?.anchor || appended.message.role !== "user") {
+  if (!appended.anchor) {
     return undefined;
   }
   if (committedWithoutAnchor && appended.appended) {

@@ -22,6 +22,7 @@ const loadSessionEntryMock = vi.fn();
 const loadGatewaySessionEntryReadOnlyMock = vi.fn();
 const resolveDeletedAgentIdFromSessionKeyMock = vi.fn();
 const getLatestSubagentRunByChildSessionKeyMock = vi.fn();
+const getLatestLiveSubagentRunByChildSessionKeyMock = vi.fn();
 const replaceSubagentRunAfterSteerMock = vi.fn();
 const terminateAcceptedCollectorRunMock = vi.fn();
 const chatSendMock = vi.fn();
@@ -41,6 +42,14 @@ vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async () =>
     ...actual,
     getLatestSubagentRunByChildSessionKey: (...args: unknown[]) =>
       getLatestSubagentRunByChildSessionKeyMock(...args),
+    getLatestLiveSubagentRunByChildSessionKey: (
+      ...args: Parameters<typeof actual.getLatestLiveSubagentRunByChildSessionKey>
+    ) => {
+      const run = getLatestLiveSubagentRunByChildSessionKeyMock(...args);
+      return run && run.childSessionKey === args[0].trim() && (!args[1] || args[1](run))
+        ? run
+        : null;
+    },
   };
 });
 
@@ -131,7 +140,8 @@ function completedRun(childSessionKey: string) {
       outcome: { status: "ok" as const },
     },
   };
-  getLatestSubagentRunByChildSessionKeyMock.mockReturnValue(run);
+  getLatestSubagentRunByChildSessionKeyMock.mockResolvedValue(run);
+  getLatestLiveSubagentRunByChildSessionKeyMock.mockReturnValue(run);
   return run;
 }
 
@@ -162,6 +172,7 @@ describe("sessions.send completed subagent follow-up status", () => {
     loadGatewaySessionEntryReadOnlyMock.mockReset();
     resolveDeletedAgentIdFromSessionKeyMock.mockReset().mockReturnValue(null);
     getLatestSubagentRunByChildSessionKeyMock.mockReset();
+    getLatestLiveSubagentRunByChildSessionKeyMock.mockReset();
     replaceSubagentRunAfterSteerMock.mockReset();
     terminateAcceptedCollectorRunMock.mockReset();
     chatSendMock.mockReset().mockImplementation(async ({ respond }: { respond: RespondFn }) => {
@@ -188,7 +199,7 @@ describe("sessions.send completed subagent follow-up status", () => {
     onTestFinished(() => state.cleanup());
     const childSessionKey = "agent:main:subagent:followup";
     loadSession(childSessionKey, "sess-followup");
-    const run = completedRun(childSessionKey);
+    completedRun(childSessionKey);
     replaceSubagentRunAfterSteerMock.mockReturnValue(true);
     const broadcastToConnIds = vi.fn();
     const projection = createSessionRowProjectionFixture({
@@ -227,7 +238,6 @@ describe("sessions.send completed subagent follow-up status", () => {
     expectSubagentFollowupReactivation({
       replaceSubagentRunAfterSteerMock,
       broadcastToConnIds,
-      completedRun: run,
       childSessionKey,
       status: "running",
       task: "follow-up",
@@ -272,7 +282,7 @@ describe("sessions.send completed subagent follow-up status", () => {
   });
 
   it("steers the selected global agent with committed receipt and interrupt facts", async () => {
-    const cfg = { agents: { list: [{ id: "main", default: true }, { id: "work" }] } };
+    const cfg = { agents: { entries: { main: {}, work: {} } } };
     loadSession("global", "sess-work-global", workStorePath, cfg);
     const payload = {
       runId: "run-work",

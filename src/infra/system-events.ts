@@ -8,6 +8,7 @@ import {
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
 import type { SessionRecipientAuthority } from "../config/sessions/session-recipient-authority-types.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { channelRouteDedupeKey } from "../plugin-sdk/channel-route.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
 import { resolveGlobalMap } from "../shared/global-singleton.js";
@@ -56,10 +57,22 @@ export type SystemEvent = {
    * fail-the-write on a malformed header.
    */
   traceparent?: string;
+  /** Queued by work a conversation turn started, not heartbeat or automation work. */
+  fromConversationTurn?: true;
   sessionStorePath?: string | null;
 };
 
 const MAX_EVENTS = 20;
+const log = createSubsystemLogger("system-events");
+
+export class SystemEventQueueFullError extends Error {
+  constructor() {
+    super(
+      `System event queue is full (${MAX_EVENTS} pending). Let the session process pending events before retrying the notification.`,
+    );
+    this.name = "SystemEventQueueFullError";
+  }
+}
 
 type SessionQueue = {
   queue: SystemEvent[];
@@ -105,6 +118,7 @@ type SystemEventOptions = {
    * a malformed traceparent never prevents an enqueue).
    */
   traceparent?: string;
+  fromConversationTurn?: boolean;
   /** Replace the pending event for this context and delivery route. Requires contextKey. */
   replace?: boolean;
 };
@@ -214,7 +228,7 @@ export function enqueueSystemEventEntry(
 function enqueueOwnedSystemEventEntry(
   text: string,
   options: SystemEventOptions,
-  receiptOptions?: ReceiptOptions,
+  receiptOptions?: ReceiptOptions & { throwOnFull?: boolean },
 ): SystemEvent | null {
   const key = requireSessionKey(options.sessionKey);
   const sessionStorePath =
@@ -227,7 +241,7 @@ function enqueueOwnedSystemEventEntry(
   }
   const entry = getOrCreateSessionQueue(key);
   if (options.replace) {
-    return replaceSystemEventEntry(text, options, entry, sessionStorePath);
+    return replaceSystemEventEntry(text, options, entry, sessionStorePath, key, receiptOptions);
   }
   const cleaned = text.trim();
   if (!cleaned) {
@@ -257,6 +271,7 @@ function enqueueOwnedSystemEventEntry(
       ? { recipientAuthority: { ...options.recipientAuthority } }
       : {}),
     ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
+    ...(options.fromConversationTurn ? { fromConversationTurn: true as const } : {}),
   };
   if (event.sessionDeliveryAckId) {
     // An ack id + state dir identifies ONE persisted row, so the slot is located
@@ -293,8 +308,12 @@ function enqueueOwnedSystemEventEntry(
   ) {
     return null;
   }
+  // A full queue refuses new work instead of silently dropping accepted events.
+  // Durable producers keep their row pending and replay it once the queue drains.
+  if (refuseWhenQueueFull(entry, key, receiptOptions)) {
+    return null;
+  }
   entry.queue.push(event);
-  evictOverflow(entry);
   return event;
 }
 
@@ -310,7 +329,10 @@ export function enqueueSystemEventWithReceipt(
   options: SystemEventOptions,
   receiptOptions?: ReceiptOptions,
 ): (() => boolean) | null {
-  const event = enqueueOwnedSystemEventEntry(text, options, receiptOptions);
+  const event = enqueueOwnedSystemEventEntry(text, options, {
+    ...receiptOptions,
+    throwOnFull: true,
+  });
   if (!event) {
     return null;
   }
@@ -361,6 +383,8 @@ function replaceSystemEventEntry(
   options: SystemEventOptions,
   entry: SessionQueue,
   sessionStorePath: string | null | undefined,
+  sessionKey: string,
+  receiptOptions?: { throwOnFull?: boolean },
 ): SystemEvent | null {
   const cleaned = text.trim();
   if (!cleaned) {
@@ -389,6 +413,7 @@ function replaceSystemEventEntry(
       ? { recipientAuthority: { ...options.recipientAuthority } }
       : {}),
     ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
+    ...(options.fromConversationTurn ? { fromConversationTurn: true as const } : {}),
   };
   const matches = (event: SystemEvent) =>
     (event.contextKey ?? null) === normalizedContextKey &&
@@ -406,11 +431,14 @@ function replaceSystemEventEntry(
     return null;
   }
 
+  // A matching slot is reused at capacity; a new keyed source is refused when full.
+  if (matching.length === 0 && refuseWhenQueueFull(entry, sessionKey, receiptOptions)) {
+    return null;
+  }
   // One keyed source owns one queue slot. Moving a replacement to the end keeps
   // event ordering current without allowing repeated updates to evict other sources.
   entry.queue = entry.queue.filter((event) => !matches(event));
   entry.queue.push(replacement);
-  evictOverflow(entry);
   entry.lastContextKey = normalizedContextKey;
   return replacement;
 }
@@ -461,6 +489,23 @@ function matchesConsumedSystemEvent(queued: SystemEvent, consumed: SystemEvent):
 // durable row. Durable-backed entries (a managed return whose delivery row is
 // still pending) are never evicted: dropping one from memory loses the return
 // until gateway restart. The queue may exceed the cap only by such entries.
+/** Upstream capacity contract: report a full queue instead of dropping an accepted event. */
+function refuseWhenQueueFull(
+  entry: SessionQueue,
+  sessionKey: string,
+  receiptOptions?: { throwOnFull?: boolean },
+): boolean {
+  if (entry.queue.length < MAX_EVENTS) {
+    return false;
+  }
+  const error = new SystemEventQueueFullError();
+  log.warn(error.message, { sessionKey });
+  if (receiptOptions?.throwOnFull) {
+    throw error;
+  }
+  return true;
+}
+
 function evictOverflow(entry: SessionQueue): void {
   let overflow = entry.queue.length - MAX_EVENTS;
   if (overflow <= 0) {
@@ -488,25 +533,32 @@ function resetQueueState(key: string, entry: SessionQueue) {
 export function consumeSelectedSystemEventEntries(
   sessionKey: string,
   consumedEntries: readonly SystemEvent[],
+  options?: { deferredEventIds?: readonly string[] },
 ): SystemEvent[] {
   const key = requireSessionKey(sessionKey);
   const entry = queues.get(key);
   if (!entry || entry.queue.length === 0 || consumedEntries.length === 0) {
     return [];
   }
-  const removed: SystemEvent[] = [];
+  // Prompt admission can defer captured occurrences to a delivery owner. Selection
+  // still resolves against the live queue, in captured order, never late arrivals.
+  const deferredIds = new Set(options?.deferredEventIds);
+  const selected: SystemEvent[] = [];
   for (const consumed of consumedEntries) {
     const index = entry.queue.findIndex((event) => matchesConsumedSystemEvent(event, consumed));
     if (index === -1) {
       continue;
     }
-    const [event] = entry.queue.splice(index, 1);
+    const event = entry.queue[index];
     if (event) {
-      removed.push(cloneSystemEvent(event));
+      if (!event.id || !deferredIds.has(event.id)) {
+        entry.queue.splice(index, 1);
+      }
+      selected.push(cloneSystemEvent(event));
     }
   }
   resetQueueState(key, entry);
-  return removed;
+  return selected;
 }
 
 /**

@@ -1,15 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
-import {
-  captureSubagentRunMutationSnapshot,
-  publishSubagentRunPostimages,
-  SubagentRegistryWriteError,
-} from "./subagent-registry-persistence.js";
+import type { SubagentRunMutation } from "./subagent-registry-mutation.types.js";
+import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
 import { annotateSubagentRunRollbackCustody } from "./subagent-registry-rollback-custody.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
+import { copySubagentRunRuntimeOwner } from "./subagent-run-generation.js";
 
 const runId = "run-staged-kill";
+const siblingRunId = "run-staged-sibling";
 const rollback = { gatewayRunId: "gateway-run", requestedAt: 2, reason: "start lost to Stop" };
 const claim = { requestedAt: 3, reason: "killed" };
 
@@ -31,62 +30,95 @@ function createRow(id = runId): SubagentRunRecord {
 }
 
 /**
- * Mirrors the native writer: bytes are captured when the write is staged, and
- * the preimage fence runs again before commit. `commitFirst` models a write
- * whose commit was granted before the custody annotation superseded it.
+ * Upstream 14fe10d01c replaced staged postimage publication (and the custody
+ * rebase it needed) with one FIFO writer, `mutateSubagentRuns`. This fixture
+ * stands in for the native store through the writer's `commit` seam: like the
+ * real writer, durable bytes are copies of the planned postimages. The first
+ * write (the Stop's kill claim) is held, either before its commit
+ * (`commitFirst=false`) or after its bytes are durable but before the receipt
+ * returns (`commitFirst=true`), while later writes on the same row queue behind it.
  */
 function stageKillClaim(options: { commitFirst?: boolean; sibling?: boolean } = {}) {
-  const entry = createRow();
-  const runs = new Map([[runId, entry]]);
-  const rows = [entry];
+  const runs = new Map<string, SubagentRunRecord>([[runId, createRow()]]);
+  const rowIds = [runId];
   if (options.sibling) {
     // A multi-row Stop also stages the same session's other row.
-    const sibling = createRow("run-staged-sibling");
-    runs.set(sibling.runId, sibling);
-    rows.push(sibling);
+    runs.set(siblingRunId, createRow(siblingRunId));
+    rowIds.push(siblingRunId);
   }
+  const context = captureOpenClawStateWorkerContext();
   const durable = new Map<string, SubagentRunRecord>();
   const firstWrite = createDeferred();
+  const firstWriteEntered = createDeferred();
   let writes = 0;
-  const previous = new Map(rows.map((row) => [row, captureSubagentRunMutationSnapshot(row)]));
-  for (const row of rows) {
-    row.killIntent = claim;
-  }
-  const publication = publishSubagentRunPostimages({
-    runs,
-    previous,
-    context: captureOpenClawStateWorkerContext(),
-    assertCurrent: () => {},
-    persist: async (_context, callbacks, ...runIds) => {
-      writes += 1;
-      const bytes = runIds.map((id) => structuredClone(runs.get(id)!));
-      // Native commits always settle after staging restores the live preimage.
-      await (writes === 1 ? firstWrite.promise : Promise.resolve());
-      let current = true;
-      try {
-        callbacks.assertCurrent();
-      } catch (error) {
-        if (!options.commitFirst) {
-          throw new SubagentRegistryWriteError("not-committed", error);
-        }
-        current = false;
-      }
-      for (const row of bytes) {
-        durable.set(row.runId, row);
-      }
-      // The custody writer overwrote this commit, so it never publishes.
-      if (current) {
-        callbacks.onCommitted?.();
+  const commit = async <T>(planned: SubagentRunMutation<T>): Promise<SubagentRunMutation<T>> => {
+    writes += 1;
+    const first = writes === 1;
+    if (first && !options.commitFirst) {
+      firstWriteEntered.resolve();
+      await firstWrite.promise;
+    }
+    const postimages = new Map(
+      [...(planned.postimages ?? [])].map(
+        ([id, row]) =>
+          [id, row ? copySubagentRunRuntimeOwner(row, structuredClone(row)) : null] as const,
+      ),
+    );
+    for (const [id, row] of postimages) {
+      if (row) {
+        durable.set(id, structuredClone(row));
       } else {
-        durable.set(runId, structuredClone(entry));
+        durable.delete(id);
       }
-    },
-  });
+    }
+    if (first && options.commitFirst) {
+      firstWriteEntered.resolve();
+      await firstWrite.promise;
+    }
+    return { value: planned.value, postimages };
+  };
+  const mutate = <T>(
+    ids: readonly string[],
+    plan: (rows: ReadonlyMap<string, SubagentRunRecord>) => SubagentRunMutation<T>,
+  ) => mutateSubagentRuns(ids, plan, { runs, context, commit });
+  const publication = mutate(rowIds, (rows) => ({
+    value: true,
+    postimages: new Map(
+      rowIds.flatMap((id) => {
+        const row = rows.get(id);
+        return row ? [[id, { ...row, killIntent: claim }] as const] : [];
+      }),
+    ),
+  }));
+  // Mirrors SubagentRunManager.recordAcceptedSubagentSpawnRollback: plan on a copy
+  // of the current (frozen) row, so custody lands after any queued owner write.
+  const recordCustody = () =>
+    mutate([runId], (rows) => {
+      const current = rows.get(runId);
+      if (!current) {
+        return { value: false };
+      }
+      const next = { ...current };
+      annotateSubagentRunRollbackCustody(next, rollback);
+      return { value: true, postimages: new Map([[runId, next]]) };
+    });
+  const changeLabel = () =>
+    mutate([runId], (rows) => {
+      const current = rows.get(runId);
+      return current
+        ? {
+            value: true,
+            postimages: new Map([[runId, { ...current, label: "changed by another owner" }]]),
+          }
+        : { value: false };
+    });
   return {
-    entry,
     runs,
     durable,
     publication,
+    recordCustody,
+    changeLabel,
+    entered: firstWriteEntered.promise,
     release: firstWrite.resolve,
     writes: () => writes,
   };
@@ -97,19 +129,27 @@ describe("staged registry writes and rollback custody", () => {
     "rebases a staged kill onto custody recorded while it was pending (commitFirst=%s)",
     async (commitFirst) => {
       const staged = stageKillClaim({ commitFirst });
-      expect(staged.entry.killIntent).toBeUndefined();
-      annotateSubagentRunRollbackCustody(staged.entry, rollback);
+      await staged.entered;
+      expect(staged.runs.get(runId)?.killIntent).toBeUndefined();
+      // HIGH (absorb 14fe10d0): contract changed by upstream; needs frond decision:
+      // custody used to be applied to the live row synchronously, superseding the
+      // staged write, which then rebased onto it. Upstream's FIFO writer instead
+      // queues custody BEHIND the pending owner write, so custody is neither live
+      // nor durable until that write settles. The asserted end state (both the
+      // kill claim and the custody survive, live and durable) is unchanged.
+      const custody = staged.recordCustody();
       staged.release();
 
-      await expect(staged.publication).resolves.toEqual({
-        outcome: "committed",
-        publication: "published",
-      });
+      await expect(staged.publication).resolves.toBe(true);
+      await expect(custody).resolves.toBe(true);
       expect(staged.writes()).toBe(2);
-      // The Stop's exact claim object stays the live owner, beside the custody.
-      expect(staged.entry.killIntent).toBe(claim);
-      expect(staged.entry.acceptedSpawnRollback).toBe(rollback);
-      expect(staged.entry.execution.suppressSessionEffects).toBe(true);
+      const live = staged.runs.get(runId);
+      // HIGH (absorb 14fe10d0): rows are frozen copies upstream, so the Stop's
+      // claim is matched by value (as releaseSubagentRunKillClaim does), not by
+      // object identity.
+      expect(live?.killIntent).toEqual(claim);
+      expect(live?.acceptedSpawnRollback).toEqual(rollback);
+      expect(live?.execution.suppressSessionEffects).toBe(true);
       expect(staged.durable.get(runId)).toMatchObject({
         killIntent: claim,
         acceptedSpawnRollback: rollback,
@@ -120,39 +160,64 @@ describe("staged registry writes and rollback custody", () => {
 
   it("rebases a multi-row write whose sibling row is unchanged", async () => {
     const staged = stageKillClaim({ sibling: true });
-    annotateSubagentRunRollbackCustody(staged.entry, rollback);
+    await staged.entered;
+    const custody = staged.recordCustody();
     staged.release();
 
-    await expect(staged.publication).resolves.toMatchObject({ publication: "published" });
+    await expect(staged.publication).resolves.toBe(true);
+    await expect(custody).resolves.toBe(true);
     expect(staged.writes()).toBe(2);
     expect(staged.durable.get(runId)).toMatchObject({
       killIntent: claim,
       acceptedSpawnRollback: rollback,
     });
-    const sibling = staged.durable.get("run-staged-sibling");
+    const sibling = staged.durable.get(siblingRunId);
     expect(sibling).toMatchObject({ killIntent: claim });
     expect(sibling?.acceptedSpawnRollback).toBeUndefined();
-    expect(staged.runs.get("run-staged-sibling")?.killIntent).toBe(claim);
+    expect(staged.runs.get(siblingRunId)?.killIntent).toEqual(claim);
   });
 
+  // HIGH (absorb 14fe10d0): contract changed by upstream; needs frond decision:
+  // the old writer superseded a staged write whose live row changed beyond a
+  // custody annotation (outcome "not-committed", one write, no durable row).
+  // Upstream has no supersession: overlapping writes on a row are serialized and
+  // each plans on its predecessor's postimage. The surviving meaning is "no lost
+  // update": neither the other owner's change nor the custody is overwritten by
+  // the staged write, and the staged write does not commit stale bytes.
   it("keeps the supersession when the row changed beyond the custody annotation", async () => {
     const staged = stageKillClaim();
-    annotateSubagentRunRollbackCustody(staged.entry, rollback);
-    staged.entry.label = "changed by another owner";
+    await staged.entered;
+    const custody = staged.recordCustody();
+    const changed = staged.changeLabel();
     staged.release();
 
-    await expect(staged.publication).rejects.toMatchObject({ outcome: "not-committed" });
-    expect(staged.writes()).toBe(1);
-    expect(staged.entry.killIntent).toBeUndefined();
-    expect(staged.durable.has(runId)).toBe(false);
+    await expect(staged.publication).resolves.toBe(true);
+    await expect(custody).resolves.toBe(true);
+    await expect(changed).resolves.toBe(true);
+    expect(staged.writes()).toBe(3);
+    for (const row of [staged.runs.get(runId), staged.durable.get(runId)]) {
+      expect(row).toMatchObject({
+        killIntent: claim,
+        acceptedSpawnRollback: rollback,
+        label: "changed by another owner",
+      });
+    }
   });
 
+  // HIGH (absorb 14fe10d0): same contract change as above, without custody.
   it("keeps the supersession when no custody was recorded", async () => {
     const staged = stageKillClaim();
-    staged.entry.label = "changed by another owner";
+    await staged.entered;
+    const changed = staged.changeLabel();
     staged.release();
 
-    await expect(staged.publication).rejects.toMatchObject({ outcome: "not-committed" });
-    expect(staged.writes()).toBe(1);
+    await expect(staged.publication).resolves.toBe(true);
+    await expect(changed).resolves.toBe(true);
+    expect(staged.writes()).toBe(2);
+    expect(staged.durable.get(runId)).toMatchObject({
+      killIntent: claim,
+      label: "changed by another owner",
+    });
+    expect(staged.durable.get(runId)?.acceptedSpawnRollback).toBeUndefined();
   });
 });

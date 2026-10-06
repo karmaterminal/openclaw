@@ -18,7 +18,7 @@ import { clearDelegateDispatchHedge } from "../continuation/delegate-dispatch-he
 import { cancelSessionContinuations } from "../continuation/session-reset.js";
 import { clearTrackedContinuationTimers } from "../continuation/state.js";
 import { clearContinuationWorkDispatch } from "../continuation/work-dispatch.js";
-import { clearSessionLifecycleQueues, type ClearSessionQueueResult } from "./queue/cleanup.js";
+import { clearSessionLifecycleQueues } from "./queue/cleanup.js";
 import {
   clearReplyRunForResetBySessionId,
   resolveActiveReplyOperationForSessionId,
@@ -76,10 +76,6 @@ export async function stopSessionResetSubagents(
 
 type SessionRuntimeCleanupReason = "new" | "reset" | "delete" | "idle" | "daily";
 
-type ClearSessionResetRuntimeStateResult = ClearSessionQueueResult & {
-  systemEventsCleared: number;
-};
-
 function interruptsContinuationAuthority(reason: SessionRuntimeCleanupReason): boolean {
   return reason === "new" || reason === "reset" || reason === "delete";
 }
@@ -94,7 +90,7 @@ export async function clearSessionResetRuntimeState(
     activeReplySessionId?: string;
     assertCurrent: () => void;
   },
-): Promise<ClearSessionResetRuntimeStateResult> {
+): Promise<void> {
   opts.assertCurrent();
   const normalizedKeys = [
     ...new Set(keys.flatMap((key) => (typeof key === "string" && key.trim() ? [key.trim()] : []))),
@@ -117,8 +113,6 @@ export async function clearSessionResetRuntimeState(
     sessionId: opts.activeReplySessionId,
     assertCurrent: opts.assertCurrent,
   });
-  let systemEventsCleared = 0;
-
   for (const key of cleared.keys) {
     opts.assertCurrent();
     if (interruptContinuations) {
@@ -132,8 +126,7 @@ export async function clearSessionResetRuntimeState(
       continue;
     }
     const queueKey = resolveSystemEventQueueKey(key, opts.agentId);
-    const removed = consumeSelectedSystemEventEntries(queueKey, peekSystemEventEntries(queueKey));
-    systemEventsCleared += removed.length;
+    consumeSelectedSystemEventEntries(queueKey, peekSystemEventEntries(queueKey));
   }
 
   if (opts.activeReplySessionId) {
@@ -154,9 +147,4 @@ export async function clearSessionResetRuntimeState(
       clearReplyRunForResetBySessionId(opts.activeReplySessionId);
     }
   }
-
-  return {
-    ...cleared,
-    systemEventsCleared,
-  };
 }

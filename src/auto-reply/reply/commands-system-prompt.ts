@@ -1,6 +1,6 @@
 import { isAcpRuntimeSpawnAvailable } from "../../acp/runtime/availability.js";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope-config.js";
-import { createOpenClawCodingTools } from "../../agents/agent-tools.js";
+import { createOpenClawCodingToolsAsync } from "../../agents/agent-tools.js";
 import { makeBootstrapWarn, resolveBootstrapContextForRun } from "../../agents/bootstrap-files.js";
 import { resolveEmbeddedFullAccessState } from "../../agents/embedded-agent-runner/sandbox-info.js";
 import {
@@ -20,10 +20,12 @@ import { normalizeChatType } from "../../channels/chat-type.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { listRegisteredPluginAgentPromptGuidance } from "../../plugins/command-registry-state.js";
 import { resolveSkillsPrompt } from "../../skills/loading/workspace-skill-prompt.js";
+import { resolveSessionSkillExecutionWorkspace } from "../../skills/loading/workspace-skill-roots.js";
 import { resolveEmbeddedRunSkillEntries } from "../../skills/runtime/embedded-run-entries.js";
 import { getRemoteSkillEligibility } from "../../skills/runtime/remote.js";
 import { resolveReusableWorkspaceSkillSnapshot } from "../../skills/runtime/session-snapshot.js";
 import type { SkillEligibilityContext, SkillSnapshot } from "../../skills/types.js";
+import { prepareTtsPreferences } from "../../tts/tts-preferences.js";
 import type { HandleCommandsParams } from "./commands-types.js";
 import { resolveRuntimePolicySessionKey } from "./runtime-policy-session-key.js";
 
@@ -70,7 +72,8 @@ async function resolveCommandSkillsPrompt(params: {
   sandboxed: boolean;
   sessionKey: string | undefined;
   workspaceDir: string; // Preserve the caller's sandbox task root.
-  executionWorkspaceDir: string;
+  executionWorkspaceDir?: string;
+  executionWorkspaceFileHost?: "gateway";
   skillsSnapshot?: SkillSnapshot;
 }): Promise<string> {
   let skillsSnapshot: SkillSnapshot;
@@ -79,6 +82,7 @@ async function resolveCommandSkillsPrompt(params: {
       await resolveReusableWorkspaceSkillSnapshot({
         workspaceDir: resolveAgentWorkspaceDir(params.config, params.agentId),
         executionWorkspaceDir: params.executionWorkspaceDir,
+        executionWorkspaceFileHost: params.executionWorkspaceFileHost,
         config: params.config,
         agentId: params.agentId,
         resolveEligibility: () => ({
@@ -214,37 +218,39 @@ export async function resolveCommandsSystemPromptBundle(params: HandleCommandsPa
     sandboxed: sandboxRuntime.sandboxed,
     sessionKey: toolPolicySessionKey,
     workspaceDir,
-    executionWorkspaceDir: targetSessionEntry?.worktree?.canonicalWorkspaceDir ?? workspaceDir,
+    ...resolveSessionSkillExecutionWorkspace(
+      targetSessionEntry?.worktree?.canonicalWorkspaceDir,
+      workspaceDir,
+    ),
     skillsSnapshot: targetSessionEntry?.skillsSnapshot,
   });
   const continuationToolOpts = buildInventoryContinuationToolOpts(
     params.cfg?.agents?.defaults?.continuation?.enabled === true,
   );
-  const tools = (() => {
-    try {
-      return createOpenClawCodingTools({
-        config: params.cfg,
-        agentId: sessionAgentId,
-        workspaceDir,
-        sessionKey: toolPolicySessionKey,
-        allowGatewaySubagentBinding: true,
-        messageProvider: params.command.channel,
-        groupId: targetSessionEntry?.groupId ?? undefined,
-        groupChannel: targetSessionEntry?.groupChannel ?? undefined,
-        groupSpace: targetSessionEntry?.space ?? undefined,
-        spawnedBy: targetSessionEntry?.spawnedBy ?? undefined,
-        senderId: params.command.senderId,
-        senderName: params.ctx.SenderName,
-        senderUsername: params.ctx.SenderUsername,
-        senderE164: params.ctx.SenderE164,
-        modelProvider: params.provider,
-        modelId: params.model,
-        ...continuationToolOpts,
-      });
-    } catch {
-      return [];
-    }
-  })();
+  let tools: Awaited<ReturnType<typeof createOpenClawCodingToolsAsync>>;
+  try {
+    tools = await createOpenClawCodingToolsAsync({
+      config: params.cfg,
+      agentId: sessionAgentId,
+      workspaceDir,
+      sessionKey: toolPolicySessionKey,
+      allowGatewaySubagentBinding: true,
+      messageProvider: params.command.channel,
+      groupId: targetSessionEntry?.groupId ?? undefined,
+      groupChannel: targetSessionEntry?.groupChannel ?? undefined,
+      groupSpace: targetSessionEntry?.space ?? undefined,
+      spawnedBy: targetSessionEntry?.spawnedBy ?? undefined,
+      senderId: params.command.senderId,
+      senderName: params.ctx.SenderName,
+      senderUsername: params.ctx.SenderUsername,
+      senderE164: params.ctx.SenderE164,
+      modelProvider: params.provider,
+      modelId: params.model,
+      ...continuationToolOpts,
+    });
+  } catch {
+    tools = [];
+  }
   const toolNames = tools.map((t) => t.name);
   const promptSurface = resolveAgentPromptSurfaceForSessionKey(params.sessionKey);
   const accountId = params.command.accountId ?? params.ctx.AccountId;
@@ -291,6 +297,7 @@ export async function resolveCommandsSystemPromptBundle(params: HandleCommandsPa
     workspaceDir,
   });
   const systemPrompt = buildConfiguredAgentSystemPrompt({
+    preparedTtsPreferences: params.opts?.preparedTtsPreferences ?? (await prepareTtsPreferences()),
     config: params.cfg,
     preparedModelRuntime,
     agentId: sessionAgentId,

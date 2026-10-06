@@ -20,7 +20,6 @@ import type { SubagentRunReadRecord } from "./subagent-registry-read.types.js";
 import {
   getSubagentSessionListRunsSnapshotForChildSessions,
   getSubagentRunsSnapshotForChildSession,
-  getSubagentRunsSnapshotForController,
   getSubagentRunsSnapshotForRead,
   getSubagentSessionListRunsSnapshotForRead,
   getSubagentSessionListRunsSnapshotForSessions,
@@ -79,14 +78,15 @@ export function buildLatestSubagentSessionListReadIndex(
   );
 }
 
-export function listSubagentRunsForController(
-  controllerSessionKey: string,
-  controllerAgentId?: string,
-): SubagentRunRecord[] {
-  return listRunsForControllerFromRuns(
-    getSubagentRunsSnapshotForController(subagentRuns, controllerSessionKey),
-    controllerSessionKey,
-    controllerAgentId,
+/** Capacity reads retain active-first selection without hydrating child payloads. */
+export function getSubagentSessionListRunByChildSessionKey(
+  childSessionKey: string,
+): SubagentRunReadRecord | null {
+  return getSubagentRunByChildSessionKeyFromRuns(
+    getSubagentSessionListRunsSnapshotForChildSessions([childSessionKey]),
+    childSessionKey,
+    undefined,
+    subagentRuns,
   );
 }
 
@@ -151,15 +151,19 @@ export async function countActiveDescendantRuns(
   );
 }
 
-export function resolveRequesterForChildSession(childSessionKey: string): {
+export async function resolveRequesterForChildSession(
+  childSessionKey: string,
+  childAgentId?: string,
+): Promise<{
   requesterSessionKey: string;
   requesterAgentId?: string;
   requesterOrigin?: DeliveryContext;
-} | null {
+} | null> {
   const resolved = resolveRequesterForChildSessionFromRuns(
     // Only this child's runs: a full snapshot here puts every read on the Gateway loop (#154727).
-    getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey),
+    await getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey, childAgentId),
     childSessionKey,
+    childAgentId,
   );
   if (!resolved) {
     return null;
@@ -171,19 +175,31 @@ export function resolveRequesterForChildSession(childSessionKey: string): {
   };
 }
 
-export function shouldIgnorePostCompletionAnnounceForSession(childSessionKey: string): boolean {
+export async function shouldIgnorePostCompletionAnnounceForSession(
+  childSessionKey: string,
+  childAgentId?: string,
+): Promise<boolean> {
   return shouldIgnorePostCompletionAnnounceForSessionFromRuns(
     // Only this child's runs: a full snapshot here puts every read on the Gateway loop (#154727).
-    getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey),
+    await getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey, childAgentId),
     childSessionKey,
+    childAgentId,
   );
 }
 
 /** True when the process-local registry still owns an active run for the child session. */
-export function isSubagentSessionRunActive(childSessionKey: string): boolean {
+export function isSubagentSessionRunActive(
+  childSessionKey: string,
+  childAgentId?: string,
+): boolean {
   // Liveness is mutation ownership, so a persisted snapshot must not outvote the raw live map.
   return isSubagentRunLive(
-    getLatestSubagentRunByChildSessionKeyFromRuns(subagentRuns, childSessionKey),
+    getLatestSubagentRunByChildSessionKeyFromRuns(
+      subagentRuns,
+      childSessionKey,
+      undefined,
+      childAgentId,
+    ),
   );
 }
 
@@ -200,20 +216,28 @@ export function listAncestorSessionKeys(sessionKey: string): string[] {
   return listAncestorSessionKeysFromRuns(getSubagentRunsSnapshotForRead(subagentRuns), sessionKey);
 }
 
-export function getSubagentRunByChildSessionKey(childSessionKey: string): SubagentRunRecord | null {
+/** Prefer the child's unended run, else its latest; child-scoped async read (feature seam). */
+export async function getSubagentRunByChildSessionKey(
+  childSessionKey: string,
+  childAgentId?: string,
+): Promise<SubagentRunRecord | null> {
   return getSubagentRunByChildSessionKeyFromRuns(
-    getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey),
+    await getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey, childAgentId),
     childSessionKey,
+    childAgentId,
   );
 }
 
-export function getLatestSubagentRunByChildSessionKey(
+export async function getLatestSubagentRunByChildSessionKey(
   childSessionKey: string,
-): SubagentRunRecord | null {
+  childAgentId?: string,
+): Promise<SubagentRunRecord | null> {
   return (
     getLatestSubagentRunByChildSessionKeyFromRuns(
-      getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey),
+      await getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey, childAgentId),
       childSessionKey,
+      undefined,
+      childAgentId,
     ) ?? null
   );
 }
@@ -227,14 +251,16 @@ export function getLatestSubagentRunByChildSessionKey(
 export function getLatestLiveSubagentRunByChildSessionKey(
   childSessionKey: string,
   matches?: (entry: SubagentRunRecord) => boolean,
+  childAgentId?: string,
 ): SubagentRunRecord | null {
   const key = childSessionKey.trim();
   // Mutation ownership is process-local; persisted rows can be stale after a replacement.
   return (
     getLatestSubagentRunByChildSessionKeyFromRuns(
-      getSubagentRunsForChildSession(key),
+      getSubagentRunsForChildSession(key, childAgentId),
       key,
       matches,
+      childAgentId,
     ) ?? null
   );
 }

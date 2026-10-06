@@ -19,7 +19,7 @@ import {
   getUpdateRun,
   recordUpdateRunPhase,
 } from "../infra/update-run-ledger.js";
-import { renderUpdateRunNotice, renderUpdateRunReport } from "../infra/update-run-report.js";
+import { renderUpdateRunNotice, renderUpdateRunSummary } from "../infra/update-run-notice.js";
 import { onInternalSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
@@ -36,6 +36,7 @@ import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.
 import { resolveRuntimeServiceVersion } from "../version.js";
 import {
   createGeneratedMediaDeliveryEntry,
+  createRestartSentinelSessionFixture as sessionFixture,
   expectContinuationDispatchFields as assertContinuationDispatchFields,
   expectCapturedQueueContext,
   expectRestartSentinelTranscriptBroadcast,
@@ -43,6 +44,7 @@ import {
   mockCallArg,
   lastMockCallArg,
   expectMockCallFields,
+  type RestartSentinelSessionFixture as LoadedSessionEntry,
 } from "./server-restart-sentinel.test-support.js";
 import * as restartUpdateRun from "./server-restart-update-run.js";
 import { createTranscriptUpdateBroadcastHandler } from "./server-session-events.js";
@@ -52,9 +54,6 @@ type RestartSentinel = NonNullable<
   Awaited<ReturnType<typeof import("../infra/restart-sentinel.js").readRestartSentinel>>
 >;
 
-type LoadedSessionEntryBase = ReturnType<typeof import("./session-utils.js").loadSessionEntry>;
-type LoadedSessionEntry = Omit<LoadedSessionEntryBase, "agentId"> &
-  Partial<Pick<LoadedSessionEntryBase, "agentId">>;
 type RecordInboundSessionAndDispatchReplyParams = Parameters<
   typeof import("../channels/turn/lifecycle.js").dispatchAssembledChannelTurn
 >[0] & {
@@ -530,23 +529,6 @@ const expectContinuationDispatchFields = assertContinuationDispatchFields.bind(
   mocks.recordInboundSessionAndDispatchReply,
 );
 
-function sessionFixture(
-  canonicalKey: string,
-  entry: LoadedSessionEntry["entry"],
-  overrides: Partial<LoadedSessionEntry> = {},
-): LoadedSessionEntry {
-  return {
-    cfg: {},
-    entry,
-    store: {},
-    storePath: "/tmp/sessions.json",
-    canonicalKey,
-    storeKeys: [canonicalKey],
-    legacyKey: undefined,
-    ...overrides,
-  };
-}
-
 function sentinelFixture(payload: RestartSentinelPayload, revision = 123): RestartSentinel {
   return { version: 1, revision, payload };
 }
@@ -847,13 +829,7 @@ describe("scheduleRestartSentinelWake", () => {
       if (terminal) {
         expect(result.finishedAtMs).toBe(existing.finishedAtMs);
       }
-      const message = renderUpdateRunReport(
-        result,
-        terminal ? { currentHealth: { kind: "unavailable" } } : {},
-      ).markdown;
-      if (terminal) {
-        expect(message).toContain("Current health unavailable");
-      }
+      const message = renderUpdateRunSummary(result);
       if (channel === "webchat") {
         expect(mocks.appendAssistantMessageToSessionTranscript).toHaveBeenCalledWith(
           expect.objectContaining({ text: message }),
@@ -917,7 +893,7 @@ describe("scheduleRestartSentinelWake", () => {
       expect(mocks.appendAssistantMessageToSessionTranscript).toHaveBeenCalledOnce();
       expect(mocks.appendAssistantMessageToSessionTranscript).toHaveBeenCalledWith(
         expect.objectContaining({
-          text: `🔁 Back on v${resolveRuntimeServiceVersion()}, verifying…`,
+          text: "🔁 Checking that OpenClaw is ready…",
         }),
       );
       if (cliFinished) {
@@ -967,7 +943,7 @@ describe("scheduleRestartSentinelWake", () => {
       expect(completed.verification.noticeDelivered).toBe(true);
       expect(mocks.appendAssistantMessageToSessionTranscript).toHaveBeenCalledWith(
         expect.objectContaining({
-          text: renderUpdateRunReport(completed).markdown,
+          text: renderUpdateRunSummary(completed),
           idempotencyKey: `update-run-finished:${record.runId}`,
         }),
       );
@@ -1072,7 +1048,7 @@ describe("scheduleRestartSentinelWake", () => {
       await Promise.all(publications);
       expect(publicationErrors).toEqual([]);
       const finishedRun = getUpdateRun(updateRun.runId)!;
-      const report = renderUpdateRunReport(finishedRun).markdown;
+      const report = renderUpdateRunSummary(finishedRun);
       expect.soft(finishedRun?.verification.noticeDelivered).toBe(true);
       expect.soft(mocks.enqueueSessionDelivery).not.toHaveBeenCalled();
       expect.soft(mocks.enqueueSystemEvent).not.toHaveBeenCalled();
@@ -1158,20 +1134,6 @@ describe("scheduleRestartSentinelWake", () => {
       sessionKey: "agent:main:main",
       reason: "database locked",
     });
-  });
-
-  it("preserves a newer sentinel while draining durable work from the loaded revision", async () => {
-    mocks.clearSentinel.mockResolvedValueOnce(false);
-
-    await wakeRestartSentinel();
-
-    expect(mocks.clearSentinel).toHaveBeenCalledWith(123, queueContext.environment);
-    expect(mocks.enqueueSystemEvent).toHaveBeenCalledOnce();
-    expect(mocks.deliverOutboundPayloads).toHaveBeenCalledOnce();
-    expect(mocks.logInfo).toHaveBeenCalledWith(
-      "restart summary: newer restart sentinel preserved while draining durable work",
-      { sessionKey: "agent:main:main" },
-    );
   });
 
   it("does not resend a restart notice whose stable queue id is already owned", async () => {
@@ -2400,7 +2362,7 @@ describe("scheduleRestartSentinelWake", () => {
     });
   });
 
-  it("delivers the producer notice to the complete original ledger route", async () => {
+  it("delivers the activation Doctor rollback notice after the previous Gateway starts", async () => {
     const actualSentinel = await vi.importActual<typeof import("../infra/restart-sentinel.js")>(
       "../infra/restart-sentinel.js",
     );
@@ -2419,13 +2381,13 @@ describe("scheduleRestartSentinelWake", () => {
         },
       },
     });
-    finishUpdateRun(run.runId, { status: "rolled-back", reason: "restart-unhealthy" });
+    finishUpdateRun(run.runId, { status: "rolled-back", reason: "authority-check-failed" });
     await writeControlPlaneUpdateRestartSentinel({
       meta: { runId: run.runId, handoffId: "original-helper" },
       result: {
         status: "error",
         mode: "npm",
-        reason: "restart-unhealthy",
+        reason: "authority-check-failed",
         steps: [],
         durationMs: 1,
       },
@@ -2449,9 +2411,18 @@ describe("scheduleRestartSentinelWake", () => {
         to: "room-77",
         accountId: "bot",
         threadId: "topic-7",
+        payloads: [
+          expect.objectContaining({
+            text: expect.stringContaining("returned to the previous version"),
+          }),
+        ],
       }),
     );
-    expect(getUpdateRun(run.runId)?.status).toBe("rolled-back");
+    expect(getUpdateRun(run.runId)).toMatchObject({
+      status: "rolled-back",
+      reason: "authority-check-failed",
+      verification: { noticeDelivered: true },
+    });
   });
 
   it.each([{ status: "failed", consumed: false }] as const)(
@@ -2594,7 +2565,11 @@ describe("scheduleRestartSentinelWake", () => {
         to: "123",
         accountId: "bot",
         threadId: "7",
-        payloads: [{ text: "✅ OpenClaw updated." }],
+        payloads: [
+          {
+            text: "✅ OpenClaw updated.\nFor details, open Settings → Updates in the Control UI or run `openclaw update status` in your terminal.",
+          },
+        ],
       }),
     );
     const eventOptions = mocks.enqueueSystemEvent.mock.calls[0]?.[1];

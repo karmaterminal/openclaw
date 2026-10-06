@@ -3,18 +3,19 @@ import { asNonNegativeFiniteNumber } from "@openclaw/normalization-core/number-c
 import type { EmbeddedAgentCompactResult } from "../../agents/embedded-agent-runner/types.js";
 import {
   type ExecPolicyOverrides,
+  prepareExecDefaults,
   resolveNodeExecEligibility,
+  resolvePreparedExecDefaultsAsync,
 } from "../../agents/exec-defaults.js";
 import type { SessionEntry } from "../../config/sessions.js";
-import {
-  loadSessionEntry,
-  patchSessionEntryCore,
-  updateSessionEntry,
-} from "../../config/sessions/session-accessor.js";
+import { patchSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { projectCompactionAccountingPatch } from "../../config/sessions/session-entry-projection.js";
+import { readSessionEntryInWorker } from "../../config/sessions/session-entry-read-runtime.js";
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { isFastTestRuntimeEnv } from "../../infra/env.js";
+import { loadExecApprovalsReadOnlyAsync } from "../../infra/exec-approvals-store.js";
+import { resolveSessionSkillExecutionWorkspace } from "../../skills/loading/workspace-skill-roots.js";
 import { getRemoteSkillEligibility } from "../../skills/runtime/remote.js";
 import { resolveReusableWorkspaceSkillSnapshot } from "../../skills/runtime/session-snapshot.js";
 import type { ReplySessionEntryHandle } from "./session-entry-handle.js";
@@ -45,7 +46,7 @@ async function persistSkillSnapshot(params: {
   expectedSession: Pick<SessionEntry, "sessionId" | "lifecycleRevision"> | undefined;
   sessionEntryHandle?: ReplySessionEntryHandle;
   sessionStore?: Record<string, SessionEntry>;
-  sessionKey?: string;
+  sessionKey: string;
   sessionId?: string;
   storePath?: string;
   currentEntry: SessionEntry;
@@ -53,22 +54,15 @@ async function persistSkillSnapshot(params: {
   isFirstTurnInSession: boolean;
 }): Promise<{ entry: SessionEntry | undefined; updated: boolean }> {
   const updates = {
-    sessionId: params.sessionId ?? params.currentEntry.sessionId ?? crypto.randomUUID(),
+    sessionId: params.sessionId ?? params.currentEntry.sessionId,
     updatedAt: Date.now(),
     ...(params.isFirstTurnInSession ? { systemSent: true } : {}),
     skillsSnapshot: params.skillsSnapshot,
   };
-  if (!params.sessionEntryHandle && (!params.sessionStore || !params.sessionKey)) {
-    return { entry: undefined, updated: false };
-  }
-  if (!params.storePath || !params.sessionKey) {
+  if (!params.storePath) {
     const current = params.sessionEntryHandle
-      ? params.sessionKey
-        ? params.sessionEntryHandle.get(params.sessionKey)
-        : params.sessionEntryHandle.getCurrent()
-      : params.sessionKey
-        ? params.sessionStore?.[params.sessionKey]
-        : undefined;
+      ? params.sessionEntryHandle.get(params.sessionKey)
+      : params.sessionStore?.[params.sessionKey];
     if (
       current?.sessionId !== params.expectedSession?.sessionId ||
       current?.lifecycleRevision !== params.expectedSession?.lifecycleRevision
@@ -82,7 +76,7 @@ async function persistSkillSnapshot(params: {
     return { entry: nextEntry, updated: true };
   }
   let updated = false;
-  const persistedEntry = await updateSessionEntry(
+  const persistedEntry = await patchSessionEntryCore(
     {
       storePath: params.storePath,
       sessionKey: params.sessionKey,
@@ -93,6 +87,7 @@ async function persistSkillSnapshot(params: {
         entry.lifecycleRevision === params.expectedSession?.lifecycleRevision;
       return updated ? updates : null;
     },
+    { workerGuard: {} },
   );
   publishSessionEntry(params, persistedEntry ?? undefined);
   return { entry: persistedEntry ?? undefined, updated: Boolean(persistedEntry) && updated };
@@ -151,20 +146,26 @@ export async function ensureSkillSnapshot(params: {
     lifecycleRevision: nextEntry.lifecycleRevision,
   };
   let systemSent = sessionEntry?.systemSent ?? false;
-  const nodeSkillsEligibility = resolveNodeExecEligibility({
+  const execParams = {
     cfg,
     sessionEntry,
     sessionKey,
     agentId,
     execOverrides: params.execOverrides,
-  });
+  };
+  const execDefaults = await resolvePreparedExecDefaultsAsync(
+    prepareExecDefaults(execParams),
+    loadExecApprovalsReadOnlyAsync,
+  );
+  const nodeSkillsEligibility = resolveNodeExecEligibility(execParams, execDefaults);
   const existingSnapshot = nextEntry?.skillsSnapshot;
   const resolveSnapshot = (snapshot: SessionEntry["skillsSnapshot"]) =>
     resolveReusableWorkspaceSkillSnapshot({
       workspaceDir,
-      ...(params.executionWorkspaceDir
-        ? { executionWorkspaceDir: params.executionWorkspaceDir }
-        : {}),
+      ...resolveSessionSkillExecutionWorkspace(
+        nextEntry?.worktree?.canonicalWorkspaceDir,
+        params.executionWorkspaceDir,
+      ),
       config: cfg,
       agentId,
       skillFilter,
@@ -191,15 +192,11 @@ export async function ensureSkillSnapshot(params: {
         ? initialSnapshotState.snapshot
         : (await resolveSnapshot(current.skillsSnapshot)).snapshot;
     const { entry: persistedEntry, updated } = await persistSkillSnapshot({
+      ...params,
       expectedSession,
-      sessionEntryHandle,
-      sessionStore,
       sessionKey,
-      sessionId,
-      storePath,
       currentEntry: current,
       skillsSnapshot: skillSnapshot,
-      isFirstTurnInSession,
     });
     if (!updated) {
       return {
@@ -229,15 +226,11 @@ export async function ensureSkillSnapshot(params: {
       updatedAt: Date.now(),
     };
     const { entry: persistedEntry, updated } = await persistSkillSnapshot({
+      ...params,
       expectedSession,
-      sessionEntryHandle,
-      sessionStore,
       sessionKey,
-      sessionId,
-      storePath,
       currentEntry: current,
       skillsSnapshot,
-      isFirstTurnInSession,
     });
     if (!updated) {
       return {
@@ -253,7 +246,7 @@ export async function ensureSkillSnapshot(params: {
     // Even a reusable snapshot crosses an await. Return the current row so the
     // reply caller cannot restore stale metadata or a retired session generation.
     const current = storePath
-      ? loadSessionEntry({ storePath, sessionKey })
+      ? await readSessionEntryInWorker({ storePath, sessionKey })
       : sessionEntryHandle
         ? sessionEntryHandle.get(sessionKey)
         : sessionStore?.[sessionKey];
@@ -361,7 +354,7 @@ export async function incrementCompactionCount(params: {
                 }
               },
             }
-          : {}),
+          : { workerGuard: {} }),
       },
     );
   } catch (error) {

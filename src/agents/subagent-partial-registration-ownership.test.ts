@@ -28,7 +28,7 @@ describe("partial subagent registration ownership", () => {
 
   afterEach(async () => {
     closeOpenClawStateDatabaseForTest();
-    resetSubagentRegistryForTests({ persist: false });
+    await resetSubagentRegistryForTests({ persist: false });
     if (tempStateDir) {
       await fs.rm(tempStateDir, { recursive: true, force: true });
       tempStateDir = undefined;
@@ -52,7 +52,7 @@ describe("partial subagent registration ownership", () => {
           dispatchTurn: async () => ({ runId }),
           cleanupOnFailure: async () => {
             terminationAttempts.push(runId);
-            expect(getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
+            expect(await getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
               runId,
               acceptedSpawnRollback: { gatewayRunId: runId },
               suppressCompletionDelivery: true,
@@ -90,7 +90,7 @@ describe("partial subagent registration ownership", () => {
     });
     expect(terminationAttempts).toEqual([runId]);
     await testing.sweepOnceForTests();
-    expect(getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
+    expect(await getSubagentRunByChildSessionKey(childSessionKey)).toMatchObject({
       acceptedSpawnRollback: { gatewayRunId: runId },
       suppressCompletionDelivery: true,
       execution: { suppressSessionEffects: true },

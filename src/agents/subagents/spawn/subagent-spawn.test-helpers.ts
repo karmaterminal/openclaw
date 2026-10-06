@@ -8,7 +8,10 @@ import type { ThinkLevel } from "../../../auto-reply/thinking.shared.js";
 import { resolveLeastPrivilegeOperatorScopesForMethod } from "../../../gateway/method-scopes.js";
 import type { SubagentLifecycleHookRunner } from "../../../plugins/hooks.js";
 import type { RegisterSubagentRunParams } from "../registry/subagent-registry-run-launch-record.js";
-import type { RegisterSubagentRunOptions } from "../registry/subagent-registry.types.js";
+import type {
+  RegisterSubagentRunOptions,
+  SubagentRegistrationScope,
+} from "../registry/subagent-registry.types.js";
 
 type MockFn = (...args: unknown[]) => unknown;
 type MockImplementationTarget = {
@@ -24,8 +27,24 @@ type HookRunner = Pick<SubagentLifecycleHookRunner, "hasHooks"> &
     >
   >;
 type SubagentSpawnModuleForTest = Awaited<typeof import("./subagent-spawn.js")> & {
-  resetSubagentRegistryForTests: MockFn;
+  resetSubagentRegistryForTests: typeof import("../registry/subagent-registry.test-helpers.js").resetSubagentRegistryForTests;
 };
+
+export function createSubagentRegistrationScopeForTest(
+  overrides: Partial<SubagentRegistrationScope> &
+    Pick<SubagentRegistrationScope, "settleFailedLaunch">,
+): SubagentRegistrationScope {
+  return {
+    canLaunch: () => true,
+    canAcceptLaunch: () => true,
+    canAbortAcceptedRun: () => true,
+    canCleanupSession: () => true,
+    canRetireReservation: () => true,
+    waitForClaim: () => undefined,
+    waitForRetirementPublication: () => undefined,
+    ...overrides,
+  };
+}
 
 export function firstMockCall(mock: { mock: { calls: unknown[][] } }, label: string): unknown[] {
   const call = mock.mock.calls[0];
@@ -131,12 +150,7 @@ export function createConfigOverride(overrides?: Record<string, unknown>) {
       defaults: {
         workspace: os.tmpdir(),
       },
-      list: [
-        {
-          id: "main",
-          workspace: "/tmp/workspace-main",
-        },
-      ],
+      entries: { main: { workspace: "/tmp/workspace-main" } },
     },
     ...overrides,
   });
@@ -317,7 +331,7 @@ export async function loadSubagentSpawnModuleForTest(params: {
     vi.resetModules();
   }
 
-  const resetSubagentRegistryForTests = vi.fn();
+  const resetSubagentRegistryForTests = vi.fn(async () => {});
 
   vi.doMock("../../provider-model-normalization.runtime.js", () => ({
     normalizeProviderModelIdWithRuntime: () => undefined,
@@ -499,7 +513,8 @@ export async function loadSubagentSpawnModuleForTest(params: {
   }));
 
   vi.doMock("../registry/subagent-registry.js", () => ({
-    completeCollectorLaunchCleanup: params.completeCollectorLaunchCleanupMock ?? vi.fn(),
+    completeCollectorLaunchCleanup:
+      params.completeCollectorLaunchCleanupMock ?? vi.fn(async () => {}),
     countActiveRunsForSession: params.countActiveRunsForSession ?? (() => 0),
     prepareSubagentRunsByRunIds:
       params.prepareSubagentRunsByRunIds ??
@@ -511,7 +526,7 @@ export async function loadSubagentSpawnModuleForTest(params: {
       })),
     listSwarmRunsForGroup: params.listSwarmRunsForGroup ?? vi.fn(() => []),
     registerSubagentRun: vi.fn(
-      (record: RegisterSubagentRunParams, options?: RegisterSubagentRunOptions) => {
+      async (record: RegisterSubagentRunParams, options?: RegisterSubagentRunOptions) => {
         // Registration outcome for a successful registration. Concrete, not
         // undefined: callers assert on `status` and `attempted`.
         const committed = (registered: RegisterSubagentRunParams) => ({
@@ -523,65 +538,59 @@ export async function loadSubagentSpawnModuleForTest(params: {
             createdAt: Date.now(),
           },
         });
-        // Upstream types registration as `void | Promise<void>`, so upstream tests
+        // Upstream types registration as `Promise<void>`, so upstream tests
         // express success with a mock that returns nothing. Map that success onto
         // the ownership result; a throwing or rejecting mock still fails.
-        const register = (
+        const register = async (
           registered: RegisterSubagentRunParams,
           registerOptions?: RegisterSubagentRunOptions,
         ) => {
           if (!params.registerSubagentRunMock) {
             return committed(registered);
           }
-          const outcome: unknown = params.registerSubagentRunMock(registered, registerOptions);
-          if (outcome instanceof Promise) {
-            return outcome.then((settled: unknown) => settled ?? committed(registered));
-          }
+          const outcome: unknown = await params.registerSubagentRunMock(
+            registered,
+            registerOptions,
+          );
           return outcome ?? committed(registered);
         };
         if (!record.queued || !options?.retainOwnership) {
-          return register(record, options);
+          return await register(record, options);
         }
         let retained = false;
-        const result = register(record, {
+        const registration = await register(record, {
           ...options,
           retainOwnership(scope) {
             retained = true;
             options.retainOwnership?.(scope);
           },
         } satisfies RegisterSubagentRunOptions);
-        return Promise.resolve(result).then((registration) => {
-          // Successful queued registration transfers custody; stricter test scopes win.
-          if (!retained) {
-            options.retainOwnership?.({
-              canLaunch: () => true,
-              canAcceptLaunch: () => true,
-              canCleanupSession: () => true,
-              canRetireReservation: () => true,
-              waitForClaim: () => undefined,
-              waitForRetirementPublication: () => undefined,
+        // Successful queued registration transfers custody; stricter test scopes win.
+        if (!retained) {
+          options.retainOwnership?.(
+            createSubagentRegistrationScopeForTest({
               settleFailedLaunch: async (error) => {
-                params.settleFailedQueuedSubagentLaunchMock?.(record.runId, error);
+                await params.settleFailedQueuedSubagentLaunchMock?.(record.runId, error);
               },
-            });
-          }
-          // Return the registration result. Upstream ended this branch with
-          // `.then(() => { ... })`, which resolved to undefined and discarded the
-          // registration -- that is what turned accepted queued spawns into errors.
-          return registration;
-        });
+            }),
+          );
+        }
+        // Return the registration result; resolving to undefined would discard the
+        // registration and turn accepted queued spawns into errors.
+        return registration;
       },
     ),
     recordAcceptedSubagentSpawnRollback:
-      params.recordAcceptedSubagentSpawnRollbackMock ?? vi.fn(() => ({ status: "persisted" })),
+      params.recordAcceptedSubagentSpawnRollbackMock ??
+      vi.fn(async () => ({ status: "persisted" })),
     releaseAcceptedSubagentSpawnRollback:
-      params.releaseAcceptedSubagentSpawnRollbackMock ?? vi.fn(() => true),
+      params.releaseAcceptedSubagentSpawnRollbackMock ?? vi.fn(async () => true),
     rollbackSubagentRunRegistration:
-      params.rollbackSubagentRunRegistrationMock ?? vi.fn(() => true),
+      params.rollbackSubagentRunRegistrationMock ?? vi.fn(async () => true),
     resetSubagentRegistryForTests,
     settleFailedQueuedSubagentLaunch:
-      params.settleFailedQueuedSubagentLaunchMock ?? vi.fn(() => true),
-    startQueuedSubagentRun: params.startQueuedSubagentRunMock ?? vi.fn(() => true),
+      params.settleFailedQueuedSubagentLaunchMock ?? vi.fn(async () => true),
+    startQueuedSubagentRun: params.startQueuedSubagentRunMock ?? vi.fn(async () => true),
   }));
 
   const subagentSpawnModule = await import("./subagent-spawn.js");
