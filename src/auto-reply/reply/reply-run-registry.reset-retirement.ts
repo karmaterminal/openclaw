@@ -80,7 +80,7 @@ export function cancelReplyOperationForReset(operation: ReplyOperation): ReplyRu
       entry = { attempts: 0 };
       retiringResets.set(operation, entry);
       // Owner completion is the other confirmed stop; stop retrying at once.
-      void operation.ownerSettlement.then(() => dropRetirement(operation));
+      void operation.ownerSettlement?.then(() => dropRetirement(operation));
     }
     entry.attempts += 1;
     scheduleRetry(operation, entry);

@@ -242,6 +242,7 @@ describe("runReplyAgent auto-compaction token update", () => {
   async function runBaseReplyWithAgentMeta(params: {
     agentMeta: Record<string, unknown>;
     lastTurnCompactions?: number;
+    metaOverrides?: Record<string, unknown>;
     collectDiagnostics?: boolean;
     config?: OpenClawConfig;
     tmpPrefix: string;
@@ -265,6 +266,7 @@ describe("runReplyAgent auto-compaction token update", () => {
         ...(params.lastTurnCompactions !== undefined
           ? { contextManagement: { lastTurnCompactions: params.lastTurnCompactions } }
           : {}),
+        ...params.metaOverrides,
       },
     });
 
@@ -1014,6 +1016,72 @@ describe("runReplyAgent auto-compaction token update", () => {
       expect(stored).not.toHaveProperty([sessionKey, "compactionCount"]);
     },
   );
+
+  describe("runReplyAgent operational compaction count (PR-NOTES F3)", () => {
+    // The post-compaction refresh is driven by the current turn's
+    // contextManagement.lastTurnCompactions. The aggregate agentMeta.compactionCount is a
+    // diagnostic fallback only when the turn did not finish (incomplete or timed out).
+    it.each([
+      {
+        name: "a completed turn reporting only the aggregate agentMeta.compactionCount",
+        agentMeta: { compactionCount: 1 },
+        lastTurnCompactions: undefined,
+        metaOverrides: undefined,
+        refreshed: false,
+      },
+      {
+        name: "a completed turn reporting current-turn lastTurnCompactions",
+        agentMeta: { compactionCount: 0 },
+        lastTurnCompactions: 1,
+        metaOverrides: undefined,
+        refreshed: true,
+      },
+      {
+        name: "a timed-out turn falling back to the aggregate count",
+        agentMeta: { compactionCount: 1 },
+        lastTurnCompactions: undefined,
+        metaOverrides: { timeoutPhase: "provider" },
+        refreshed: true,
+      },
+      {
+        name: "an incomplete turn falling back to the aggregate count",
+        agentMeta: { compactionCount: 1 },
+        lastTurnCompactions: undefined,
+        metaOverrides: { error: { kind: "incomplete_turn", message: "incomplete" } },
+        refreshed: true,
+      },
+    ])("refreshes post-compaction context for $name: $refreshed", async (scenario) => {
+      const workspaceDir = tempDirs.make("openclaw-operational-compaction-workspace-");
+      await fs.writeFile(
+        path.join(workspaceDir, "AGENTS.md"),
+        ["## Session Startup", "Read the operational startup file."].join("\n"),
+        "utf-8",
+      );
+
+      const { sessionKey } = await runBaseReplyWithAgentMeta({
+        tmpPrefix: "openclaw-operational-compaction-root-",
+        workspaceDir,
+        lastTurnCompactions: scenario.lastTurnCompactions,
+        metaOverrides: scenario.metaOverrides,
+        config: {
+          agents: { defaults: { compaction: { postCompactionSections: ["Session Startup"] } } },
+        },
+        agentMeta: {
+          ...scenario.agentMeta,
+          lastCallUsage: { input: 10_000, output: 500, total: 10_500 },
+        },
+      });
+
+      const events = peekSystemEvents(resolveSystemEventQueueKey(sessionKey, "main"));
+      if (scenario.refreshed) {
+        expect(events.some((event) => event.includes("Post-compaction context refresh"))).toBe(
+          true,
+        );
+      } else {
+        expect(events).toHaveLength(0);
+      }
+    });
+  });
 });
 
 describe("runReplyAgent block streaming", () => {
