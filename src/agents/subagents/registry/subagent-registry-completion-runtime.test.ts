@@ -404,7 +404,10 @@ describe("subagent completion rejection ownership", () => {
     expect(h.completeSubagentRun).toHaveBeenCalledTimes(2);
     expect(h.scheduleSweep).not.toHaveBeenCalled();
     expect(h.resumeRun).toHaveBeenCalledExactlyOnceWith(h.entry.runId);
-    expect(h.entry.cleanupHandled).toBe(false);
+    // Upstream 14fe10d01c publishes immutable postimages, so the cleanup reset is
+    // observed on the live row (as upstream's sibling recovery case reads it).
+    expect(isSameSubagentRunOwner(h.runs.get(h.entry.runId), h.entry)).toBe(true);
+    expect(h.runs.get(h.entry.runId)?.cleanupHandled).toBe(false);
     expect(h.resumed.has(getSubagentRunRuntimeKey(h.entry))).toBe(false);
   });
 });
