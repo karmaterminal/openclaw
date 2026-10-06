@@ -261,6 +261,17 @@ const ALLOWLIST = [
       "Not applicable to production restarts; each test starts with no command in flight and the durable custody store is untouched.",
   },
   {
+    file: "src/auto-reply/continuation/targeting.ts",
+    symbol: "unarmedHeldReturnWarnedAt",
+    owner: "continuation targeted-return reporter",
+    purpose:
+      "Rate-limits the warning for a held return whose retry could not be armed to once per state database and session per window.",
+    safeVolatileClassification:
+      "Map of state-database/session keys to the last warning time; log throttling only, the held return itself is a durable queue row.",
+    restartContract:
+      "Lost on process restart; the next unarmed held return warns again, and the durable row is recovered by the startup scan or periodic sweep.",
+  },
+  {
     file: "src/auto-reply/continuation/work-terminal-notice.ts",
     symbol: "retryTimers",
     owner: "continuation terminal-notice retrier",
@@ -334,14 +345,15 @@ const ALLOWLIST = [
   },
   {
     file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "successorBarrierStartsByOperation",
+    // Upstream 14fe10d01c replaced the successor-barrier start callbacks with this map.
+    symbol: "backendReadyByOperation",
     owner: "reply run registry singleton",
     purpose:
-      "Weakly records the start callbacks that release successor fences once an operation begins.",
+      "Weakly records the promise that resolves once a live operation's backend is attached, so successor fences wait for it.",
     safeVolatileClassification:
-      "WeakMap of live ReplyOperations to in-process closures; nothing durable is represented.",
+      "WeakMap of live ReplyOperations to in-process promises; nothing durable is represented.",
     restartContract:
-      "Lost on process restart; no live successor is waiting, so no fence needs releasing.",
+      "Lost on process restart; no live operation or successor is waiting, so no readiness needs signalling.",
   },
   {
     file: "src/auto-reply/reply/reply-run-registry.state.ts",
