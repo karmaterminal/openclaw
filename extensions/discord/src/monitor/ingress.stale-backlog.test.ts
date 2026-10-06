@@ -518,4 +518,88 @@ describe("Discord ingress stale ambient backlog boundary", () => {
       ]);
     });
   });
+
+  it.each([
+    ["the gated channel is renamed into a direct-open name", "chan-gated", "concierge"],
+    ["an unrelated channel is renamed (control)", "chan-other", "concierge"],
+  ])(
+    "re-checks the channel facts at the fail commit when %s",
+    async (_case, renamedId, renamedTo) => {
+      await withQueue(async (queue) => {
+        await seed(queue, { id: "stale-ambient", channelId: "chan-gated", sentAt: STALE_AT });
+        const { gateway, handleDispatch } = createRegisteredGateway();
+        registerGateway("default", gateway);
+        await handleDispatch(GatewayDispatchEvents.Ready, {
+          session_id: "s1",
+          guilds: [{ id: "g1", unavailable: true }],
+        });
+        await handleDispatch(GatewayDispatchEvents.GuildCreate, {
+          id: "g1",
+          voice_states: [],
+          channels: [
+            { id: "chan-gated", name: "general", type: ChannelType.GuildText },
+            { id: "chan-other", name: "random", type: ChannelType.GuildText },
+          ],
+          threads: [],
+        });
+        // ClawSweeper rev 22: a CHANNEL_UPDATE lands after the verdict and
+        // before the SQLite fail commits.
+        const fail = queue.fail.bind(queue);
+        let renamed = false;
+        queue.fail = vi.fn(async (...args: Parameters<typeof queue.fail>) => {
+          if (!renamed) {
+            renamed = true;
+            await handleDispatch(GatewayDispatchEvents.ChannelUpdate, {
+              id: renamedId,
+              guild_id: "g1",
+              name: renamedTo,
+              type: ChannelType.GuildText,
+            });
+          }
+          return await fail(...args);
+        });
+
+        const dispatched: string[] = [];
+        const monitor = createDiscordIngressMonitor({
+          accountId: "default",
+          // SAFETY: gateway mapping only reads the raw frame for these fixtures.
+          client: {} as Client,
+          runtime: { error: vi.fn(), log: vi.fn() },
+          botUserId: BOT_ID,
+          readPolicy: async () =>
+            livePolicy({ g1: { channels: { concierge: { requireMention: false } } } }),
+          queue,
+          dispatch: async (event, lifecycle) => {
+            dispatched.push(String(event.id));
+            await lifecycle.onAdopted();
+          },
+        });
+
+        monitor.start();
+        try {
+          await vi.waitFor(
+            async () => {
+              expect(await queue.listPending({ limit: "all" })).toEqual([]);
+              expect(await queue.listClaims()).toEqual([]);
+            },
+            { timeout: 15_000, interval: 50 },
+          );
+        } finally {
+          await monitor.stop();
+        }
+
+        if (renamedId === "chan-gated") {
+          // The old verdict rolled back; the next pass read the new name and
+          // left the row to the direct-open channel's normal dispatch.
+          expect(dispatched).toEqual(["stale-ambient"]);
+          expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+        } else {
+          expect(dispatched).toEqual([]);
+          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+            { id: "stale-ambient", reason: "stale-ambient-backlog" },
+          ]);
+        }
+      });
+    },
+  );
 });

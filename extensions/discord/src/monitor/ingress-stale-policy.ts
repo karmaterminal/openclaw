@@ -172,6 +172,21 @@ function readDiscordStalePolicyRow(
   };
 }
 
+/**
+ * Every inventory fact the verdict reads: the type gate, the channel config
+ * match by name/slug, and the parent-category fallback (plus the owning guild).
+ */
+function channelFactsKey(channelInfo: DiscordGatewayChannelInfo | undefined): string | undefined {
+  return channelInfo
+    ? JSON.stringify([
+        channelInfo.guildId,
+        channelInfo.type,
+        channelInfo.name,
+        channelInfo.parentId,
+      ])
+    : undefined;
+}
+
 /** Only non-thread guild surfaces may ever be expired. */
 function isNonThreadGuildChannel(channelInfo: DiscordGatewayChannelInfo): boolean {
   return (
@@ -359,12 +374,18 @@ export function createDiscordStaleAmbientPendingDisposition(params: {
     ) {
       return null;
     }
+    const inspectedFacts = channelFactsKey(channelInfo);
     return {
       kind: "fail" as const,
       reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON,
-      // Re-checked at the queue's commit: a policy or config publish after
-      // this verdict (but before the write) rolls the fail back.
-      isStillValid: () => policy.isCurrent() && policy.isConfigCurrent(),
+      // Re-checked at the queue's commit grants: a policy or config publish, a
+      // CHANNEL_UPDATE/DELETE that changes the facts read above, or a new
+      // session (READY re-hydrating the guild) after this verdict rolls it back.
+      isStillValid: () =>
+        policy.isCurrent() &&
+        policy.isConfigCurrent() &&
+        !params.isChannelInventoryHydrating(guildId) &&
+        channelFactsKey(params.resolveChannelInfo(message.channelId)) === inspectedFacts,
       message:
         `Discord ambient message ${record.id} on ${context.laneKey} is ${ageMs}ms old ` +
         `(limit ${DISCORD_STALE_AMBIENT_BACKLOG_MS}ms); suppressing stale backlog before dispatch.`,
