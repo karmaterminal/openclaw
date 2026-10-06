@@ -23,7 +23,10 @@ import {
 import { clearSessionStoreCacheForTest } from "../../config/sessions/store-writer-state.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { peekSystemEvents, resetSystemEventsForTest } from "../../infra/system-events.js";
-import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
+import {
+  closeOpenClawAgentDatabasesAsync,
+  closeOpenClawAgentDatabasesForTest,
+} from "../../state/openclaw-agent-db.js";
 import { createTestPreparedRunAdmission } from "../admitted-run-context.test-support.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
 import {
@@ -275,6 +278,8 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     resetSystemEventsForTest();
     clearRuntimeConfigSnapshot();
     clearSessionStoreCacheForTest();
+    // Drain worker-retained agent databases before removing their root (upstream pattern).
+    await closeOpenClawAgentDatabasesAsync();
     closeOpenClawAgentDatabasesForTest();
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
@@ -363,6 +368,9 @@ describe("runAgentAttempt spawn-init continueWorkOpts plumbing", () => {
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
     clearSessionStoreCacheForTest();
+    // The worker retains the agent database after the turn; drain it before the
+    // fresh caller-side read, or the reopen races the closing resources.
+    await closeOpenClawAgentDatabasesAsync();
     closeOpenClawAgentDatabasesForTest();
     const persisted = loadSessionEntry({ storePath, sessionKey });
     expect(sessionStore[sessionKey]?.continuationChainCount).toBe(1);
