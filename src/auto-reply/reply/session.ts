@@ -113,7 +113,7 @@ import { resolveEffectiveResetTargetSessionKey } from "./acp-reset-target.js";
 import { readBeforeResetMessages } from "./commands-reset-hooks.js";
 import { shouldBypassAcpDispatchForCommand } from "./dispatch-acp-command-bypass.js";
 import { normalizeInboundTextNewlines } from "./inbound-text.js";
-import { replyRunRegistry, retryRetainedReplyRunResetBySessionKey } from "./reply-run-registry.js";
+import { replyRunRegistry } from "./reply-run-registry.js";
 import { resolveRuntimePolicySessionKey } from "./runtime-policy-session-key.js";
 import {
   resolveSessionDefaultAccountId,
@@ -514,9 +514,6 @@ async function initSessionStateAttemptLocked(
     resetTriggered = true;
   }
 
-  if (resetTriggered) {
-    retryRetainedReplyRunResetBySessionKey(sessionKey);
-  }
   // Settle binding reads before taking the session snapshot.
   const softResetAllowed =
     softResetMatched &&

@@ -3,16 +3,12 @@ import { createDeferred } from "../../../test/helpers/promise.js";
 import { createAgentRunRestartAbortError } from "../../agents/run-termination.js";
 import { resetDiagnosticRunActivityForTest } from "../../logging/diagnostic-run-activity.js";
 import { resetCommandQueueStateForTest } from "../../process/command-queue.test-support.js";
-import {
-  REPLY_RUN_TERMINAL_SETTLE_TIMEOUT_MS,
-  type ReplyBackendHandle,
-} from "./reply-run-registry.contracts.js";
+import type { ReplyBackendHandle } from "./reply-run-registry.contracts.js";
 import {
   abortActiveReplyRuns,
   clearReplyRunForResetBySessionId,
   isReplyRunAbortableForCompaction,
   isReplyRunAbortableForSignal,
-  isReplyOperationRetiringForReset,
   isReplyRunActiveForSessionId,
   replyRunRegistry,
   retainReplyOperationUntilComplete,
@@ -104,74 +100,6 @@ describe("reply run registry cancellation", () => {
 
     expect(operation.result).toBeNull();
     expect(replyRunRegistry.isActive("agent:main:main")).toBe(true);
-  });
-
-  it("retires a reset-cancelled owner when it completes itself, without further cancels", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      const { operation, cancel } = createRunningOperation(undefined, {
-        isStreaming: () => false,
-      });
-      cancel.mockImplementation(() => {
-        throw new Error("backend cancellation failed");
-      });
-
-      expect(clearReplyRunForResetBySessionId(operation.sessionId)).toMatchObject({
-        status: "retiring",
-      });
-      expect(replyRunRegistry.isActive(operation.key)).toBe(true);
-      expect(isReplyOperationRetiringForReset(operation)).toBe(true);
-
-      // Cancellation is retried on a capped backoff, and the terminal-settle window
-      // never force-releases an owner that refused cancellation.
-      await vi.advanceTimersByTimeAsync(1_000);
-      expect(cancel).toHaveBeenCalledTimes(2);
-      await vi.advanceTimersByTimeAsync(REPLY_RUN_TERMINAL_SETTLE_TIMEOUT_MS);
-      expect(cancel.mock.calls.length).toBeGreaterThan(2);
-      expect(replyRunRegistry.isActive(operation.key)).toBe(true);
-      expect(isReplyOperationRetiringForReset(operation)).toBe(true);
-
-      // The run observed its abort signal and finished: that is the confirmed stop.
-      operation.complete();
-      await vi.advanceTimersByTimeAsync(0);
-      expect(replyRunRegistry.isActive(operation.key)).toBe(false);
-      expect(isReplyOperationRetiringForReset(operation)).toBe(false);
-      const callsAtStop = cancel.mock.calls.length;
-      await vi.advanceTimersByTimeAsync(120_000);
-      expect(cancel).toHaveBeenCalledTimes(callsAtStop);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("retires a reset-retiring owner once a retried cancellation is accepted", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      const { operation, cancel } = createRunningOperation(undefined, {
-        isStreaming: () => false,
-      });
-      let refuse = true;
-      cancel.mockImplementation(() => {
-        if (refuse) {
-          throw new Error("backend cancellation failed");
-        }
-      });
-
-      expect(clearReplyRunForResetBySessionId(operation.sessionId)).toMatchObject({
-        status: "retiring",
-        attempts: 1,
-      });
-      refuse = false;
-      await vi.advanceTimersByTimeAsync(1_000);
-      expect(cancel).toHaveBeenCalledTimes(2);
-      expect(cancel).toHaveBeenLastCalledWith("restart");
-      expect(replyRunRegistry.isActive(operation.key)).toBe(false);
-      expect(isReplyOperationRetiringForReset(operation)).toBe(false);
-      await vi.advanceTimersByTimeAsync(120_000);
-      expect(cancel).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("keeps retained terminal failures immutable across late aborts", () => {

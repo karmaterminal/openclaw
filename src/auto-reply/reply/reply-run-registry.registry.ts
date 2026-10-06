@@ -23,11 +23,6 @@ import {
 import { resolveReplyMessageInjectionRejection } from "./reply-run-registry.message-injection.js";
 import { createReplyOperation } from "./reply-run-registry.operation.js";
 import {
-  cancelReplyOperationForReset,
-  resetRetiringReplyRunsForTest,
-  type ReplyRunResetCancellation,
-} from "./reply-run-registry.reset-retirement.js";
-import {
   clearReplyRunState,
   evictReplyOperationByOperation,
   expireStaleReplyOperation,
@@ -330,27 +325,20 @@ export function forceClearReplyRunBySessionId(sessionId: string, cause?: unknown
   return operation ? forceClearReplyOperation(operation, cause) : false;
 }
 
-/** A committed reset never fails on backend cancellation; a refused cancel leaves the owner retiring. */
-export function clearReplyRunForResetBySessionId(sessionId: string): ReplyRunResetCancellation {
+export function clearReplyRunForResetBySessionId(sessionId: string): void {
   const operation = resolveReplyRunForCurrentSessionId(sessionId);
   if (!operation || isReplyOperationPreBackendPhase(operation.phase)) {
-    return { status: "none" };
+    return;
   }
-  return cancelReplyOperationForReset(operation);
-}
-
-/** Retry the exact current-key owner only when an earlier reset already aborted it. */
-export function retryRetainedReplyRunResetBySessionKey(sessionKey: string): boolean {
-  const operation = replyRunRegistry.get(sessionKey);
-  if (
-    operation?.phase !== "aborted" ||
-    operation.result?.kind !== "aborted" ||
-    operation.result.code !== "aborted_for_restart"
-  ) {
-    return false;
+  try {
+    operation.abortForRestart();
+  } finally {
+    // Backend cancellation may synchronously retire this operation and admit a
+    // replacement. Only clear the exact archived operation resolved above.
+    if (replyRunState.activeRunsByKey.get(operation.key) === operation) {
+      operation.complete();
+    }
   }
-  cancelReplyOperationForReset(operation);
-  return true;
 }
 
 export function waitForReplyRunEndBySessionId(
@@ -591,7 +579,6 @@ const replyRunRegistryTestApi = {
     replyRunState.sourceTurnByKey.clear();
     replyRunState.completionObservationsByKey?.clear();
     replyRunSettle.resetReplyRunSettleTimersForTesting();
-    resetRetiringReplyRunsForTest();
     for (const waiters of replyRunState.waitersByKey.values()) {
       for (const waiter of waiters) {
         waiter.finish(false);

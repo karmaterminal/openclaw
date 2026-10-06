@@ -22,7 +22,6 @@ import {
   type ReplyOperationPhase,
   type ReplyTurnKind,
 } from "./reply-run-registry.contracts.js";
-import { isReplyOperationRetiringForReset } from "./reply-run-registry.reset-retirement.js";
 import {
   abortFrozenOperations,
   attachedBackendByOperation,
@@ -632,10 +631,7 @@ export function createReplyOperation(params: {
     },
   });
   const terminalSettleTimer = replyRunSettle.createReplyRunSettleTimer({
-    // A reset-retiring owner refused cancellation and may still run; only a confirmed stop releases it.
-    canExpire: () =>
-      replyRunState.activeRunsByKey.get(currentSessionKey) === operation &&
-      !isReplyOperationRetiringForReset(operation),
+    canExpire: () => replyRunState.activeRunsByKey.get(currentSessionKey) === operation,
     onExpire: () => {
       // Retained terminal results get one delivery grace window, not a second lifetime.
       diag.warn(
