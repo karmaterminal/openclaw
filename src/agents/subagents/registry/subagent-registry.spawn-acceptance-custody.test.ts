@@ -29,6 +29,7 @@ import {
 import * as registry from "./subagent-registry.js";
 import {
   activateSubagentRegistry,
+  addSubagentRunForTests,
   initSubagentRegistry,
   resetSubagentRegistryForTests,
   resumeSubagentRun,
@@ -130,6 +131,7 @@ type OwnedRegistration = RegisterSubagentRunParams & {
 /** The native spawn's own pipeline wiring (subagent-spawn.ts), minus the Gateway. */
 function spawnNative(options: {
   expectsCompletionMessage?: boolean;
+  requesterTurnRunId?: string;
   deferred?: boolean;
   afterRegistration?: () => Promise<void>;
   terminate?: () => Promise<void>;
@@ -157,6 +159,7 @@ function spawnNative(options: {
         task: "armed acceptance",
         cleanup: "keep",
         expectsCompletionMessage: options.expectsCompletionMessage ?? true,
+        ...(options.requesterTurnRunId ? { requesterTurnRunId: options.requesterTurnRunId } : {}),
         acceptanceCustody: { gatewayRunId },
       }) as RegisterSubagentRunParams,
     ...(options.afterRegistration ? { afterRegistration: options.afterRegistration } : {}),
@@ -246,6 +249,20 @@ async function restartFrom(image: Map<string, SubagentRunRecord>) {
   await activateSubagentRegistry(gatewayContext.resolveGatewayContext);
   await settle();
   return dispatchAgent;
+}
+
+/** No announce or requester wake carries this armed child's own result. */
+function expectNoDeliveryForArmedChild(): void {
+  const calls = [
+    ...announceMocks.runSubagentAnnounceFlow.mock.calls,
+    ...announceMocks.maybeWakeRequesterAfterAllChildrenSettled.mock.calls,
+  ] as unknown[][];
+  expect(
+    calls.filter(([request]) => {
+      const params = request as { childRunId?: string; settledEntry?: { runId?: string } };
+      return params.childRunId === runId || params.settledEntry?.runId === runId;
+    }),
+  ).toEqual([]);
 }
 
 function expectNoDelivery(): void {
@@ -461,6 +478,146 @@ describe("armed registration: accepted-spawn custody (H1)", () => {
       } else {
         expect(result.ok).toBe(false);
         expect(liveRow()).toBeUndefined();
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "T9c (ancestor walk, F5): a settled grandchild does not give up its held armed ancestor (confirm=%s)",
+    async (confirm) => {
+      const entered = createDeferred();
+      const decide = createDeferred();
+      const spawning = spawnNative({
+        expectsCompletionMessage: false,
+        afterRegistration: async () => {
+          entered.resolve();
+          await decide.promise;
+          if (!confirm) {
+            throw new Error("final acceptance failed");
+          }
+        },
+      });
+      await entered.promise;
+      // The armed child ended long ago (beyond ANNOUNCE_EXPIRY_MS) while held.
+      endChild(1);
+      await vi.waitFor(() => expect(liveRow()?.execution.endedAt).toBeTypeOf("number"));
+      await quiesce();
+      // Its own grandchild settles: the expiry give-up completes its cleanup
+      // bookkeeping, which walks the ancestors (resumeAncestorCleanup) directly,
+      // outside the F2 resume funnel.
+      const grandchildRunId = "run-acceptance-grandchild";
+      await addSubagentRunForTests({
+        runId: grandchildRunId,
+        childSessionKey: "agent:main:subagent:acceptance-grandchild",
+        requesterSessionKey: childSessionKey,
+        requesterAgentId: "main",
+        requesterDisplayKey: "acceptance",
+        task: "grandchild",
+        cleanup: "keep",
+        generation: 1,
+        createdAt: 1,
+        expectsCompletionMessage: false,
+        execution: {
+          status: "terminal",
+          startedAt: 1,
+          endedAt: 1,
+          outcome: { status: "ok" },
+        },
+        completion: { required: false, resultText: null, capturedAt: 1 },
+        delivery: { status: "not_required" },
+      });
+      resumeSubagentRun(grandchildRunId);
+      await vi.waitFor(() =>
+        expect(
+          subagentRuns.get(grandchildRunId)?.cleanupCompletedAt ??
+            (subagentRuns.get(grandchildRunId) ? undefined : "released"),
+        ).toBeDefined(),
+      );
+      await quiesce();
+      // F5: the walk reached the armed ancestor and left it alone.
+      expect(liveRow()?.spawnAcceptance).toMatchObject({ gatewayRunId });
+      expect(liveRow()?.cleanupCompletedAt).toBeUndefined();
+      expect(liveRow()?.cleanupHandled).toBeFalsy();
+      expectNoDeliveryForArmedChild();
+
+      decide.resolve();
+      const result = await spawning;
+      await quiesce();
+      if (confirm) {
+        expect(result.ok).toBe(true);
+        // Confirmation replays the ended child's give-up exactly once.
+        await vi.waitFor(() =>
+          expect(
+            liveRow()?.cleanupCompletedAt ?? (liveRow() ? undefined : "released"),
+          ).toBeDefined(),
+        );
+      } else {
+        expect(result.ok).toBe(false);
+        expect(liveRow()).toBeUndefined();
+        expectNoDeliveryForArmedChild();
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "T9 (yield batch, G2): a yielded requester batch is not woken for a held armed child (confirm=%s)",
+    async (confirm) => {
+      const requesterTurnRunId = "requester-turn-acceptance";
+      const entered = createDeferred();
+      const decide = createDeferred();
+      const spawning = spawnNative({
+        requesterTurnRunId,
+        afterRegistration: async () => {
+          entered.resolve();
+          await decide.promise;
+          if (!confirm) {
+            throw new Error("final acceptance failed");
+          }
+        },
+      });
+      await entered.promise;
+      // The requester yields in the same turn, and the armed child completes.
+      await expect(
+        registry.markRequesterTurnYielded({
+          requesterSessionKey: "agent:main:main",
+          requesterTurnRunId,
+        }),
+      ).resolves.toBe(1);
+      endChild();
+      await vi.waitFor(() => expect(liveRow()?.execution.endedAt).toBeTypeOf("number"));
+      await registry.settleRequesterAfterSessionSpawns({
+        requesterSessionKey: "agent:main:main",
+        requesterTurnRunId,
+        requesterYielded: true,
+        acceptedSessionSpawns: [{ runId, childSessionKey, expectsCompletionMessage: true }],
+      });
+      await quiesce();
+      // G2 (and G1): no requester wake and no announce while the spawn is unconfirmed.
+      expectNoDelivery();
+
+      decide.resolve();
+      const result = await spawning;
+      await quiesce();
+      await testing.sweepOnceForTests();
+      await quiesce();
+      if (confirm) {
+        expect(result.ok).toBe(true);
+        // The confirmation flush delivers the yielded batch's child exactly once.
+        await vi.waitFor(() =>
+          expect(
+            announceMocks.runSubagentAnnounceFlow.mock.calls.length +
+              announceMocks.maybeWakeRequesterAfterAllChildrenSettled.mock.calls.length,
+          ).toBeGreaterThan(0),
+        );
+        expect(announceMocks.runSubagentAnnounceFlow.mock.calls.length).toBeLessThanOrEqual(1);
+      } else {
+        expect(result.ok).toBe(false);
+        expect(liveRow()).toBeUndefined();
+        expectNoDelivery();
+        // The rolled-back member leaves nothing for the requester batch to wait on.
+        expect(
+          await registry.listUnsettledRequesterChildren({ requesterSessionKey: "agent:main:main" }),
+        ).toEqual([]);
       }
     },
   );
