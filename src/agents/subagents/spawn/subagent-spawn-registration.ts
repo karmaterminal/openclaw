@@ -1,7 +1,10 @@
 /** Subagent spawn registration admission, publication, and pipeline failure results. */
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
-import { recordSessionCreated } from "../../../sessions/session-created.js";
+import {
+  notifyHomeOfSessionCreated,
+  recordSessionCreatedStateEvent,
+} from "../../../sessions/session-created.js";
 import { summarizeSpawnError } from "../../spawn-pipeline.js";
 import {
   isSpawnSubagentAdmissionCancelledError,
@@ -26,16 +29,33 @@ export function assertSubagentCollectorAdmission(
   }
 }
 
-export async function publishSubagentSpawnRegistration(params: {
-  cfg: OpenClawConfig;
-  childEntry: SessionEntry | undefined;
-  childSessionKey: string;
-  agentId: string;
-}): Promise<void> {
-  const { cfg, childEntry, childSessionKey, agentId } = params;
+/** Records the child's "created" state event where upstream records it, before child_spawned. */
+export async function recordSubagentSessionCreated(
+  childEntry: SessionEntry | undefined,
+  childSessionKey: string,
+  agentId: string,
+): Promise<void> {
   if (childEntry) {
-    // Upstream made creation signalling async; callers must await this publication.
-    await recordSessionCreated(cfg, {
+    await recordSessionCreatedStateEvent({
+      sessionKey: childSessionKey,
+      agentId,
+      entry: childEntry,
+    });
+  }
+}
+
+/**
+ * Notifies Home of the child only once its acceptance is confirmed (H1 final
+ * acceptance): a rolled-back or refused child must never surface as a usable session.
+ */
+export async function notifyHomeOfAcceptedSubagentSession(
+  cfg: OpenClawConfig,
+  childEntry: SessionEntry | undefined,
+  childSessionKey: string,
+  agentId: string,
+): Promise<void> {
+  if (childEntry) {
+    await notifyHomeOfSessionCreated(cfg, {
       sessionKey: childSessionKey,
       agentId,
       entry: childEntry,

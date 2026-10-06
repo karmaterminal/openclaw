@@ -56,7 +56,8 @@ import { createSubagentSpawnLifecycleEmitter } from "./subagent-spawn-lifecycle.
 import {
   assertSubagentCollectorAdmission,
   buildSubagentSpawnPipelineFailureResult,
-  publishSubagentSpawnRegistration,
+  notifyHomeOfAcceptedSubagentSession,
+  recordSubagentSessionCreated,
 } from "./subagent-spawn-registration.js";
 import { resolveSubagentSpawnRequest } from "./subagent-spawn-request.js";
 import { cleanupAcceptedSubagentSpawnFailure } from "./subagent-spawn-rollback.js";
@@ -384,6 +385,7 @@ export async function spawnSubagentDirect(
         swarmMaxConcurrent: swarmConfig.maxConcurrent,
       });
     applySubagentContinuationLaunchFields(childLaunch.request, params);
+    await recordSubagentSessionCreated(childEntry, childSessionKey, targetAgentId);
     await recordSubagentSpawned({
       childSessionKey,
       childRunId: childIdem,
@@ -582,13 +584,8 @@ export async function spawnSubagentDirect(
         ctx.continuationDelegateAdmission?.assertCurrent("registry-acceptance"),
       assertPostPublicationAdmission: () =>
         ctx.continuationDelegateAdmission?.assertCurrent("final-acceptance"),
-      publishRegistration: () =>
-        publishSubagentSpawnRegistration({
-          cfg,
-          childEntry,
-          childSessionKey,
-          agentId: targetAgentId,
-        }),
+      onAcceptanceConfirmed: () =>
+        notifyHomeOfAcceptedSubagentSession(cfg, childEntry, childSessionKey, targetAgentId),
       afterRegistration: async (state, runId, registrationScope) => {
         ctx.continuationDelegateAdmission?.assertCurrent("lifecycle-publication");
         if (params.collect && swarmGroupId && swarmSchedulerGroupKey) {

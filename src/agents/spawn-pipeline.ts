@@ -138,6 +138,8 @@ type SpawnPipelineParams<TState> = {
   assertRegistrationAdmission?: () => void;
   assertPostPublicationAdmission?: () => void;
   publishRegistration?: (registration: RegisterSubagentRunInput) => void | Promise<void>;
+  /** Runs once, best-effort, when acceptance is confirmed (in the pipeline or by a deferred owner). */
+  onAcceptanceConfirmed?: (registration: RegisterSubagentRunInput) => void | Promise<void>;
   afterRegistration?: (
     state: TState,
     runId: string,
@@ -249,6 +251,18 @@ export async function runSpawnPipeline<TState>(
       });
       return rollbackPromise;
     };
+    let acceptanceAnnounced = false;
+    const announceAccepted = async () => {
+      if (acceptanceAnnounced) {
+        return;
+      }
+      acceptanceAnnounced = true;
+      try {
+        await params.onAcceptanceConfirmed?.(registration);
+      } catch {
+        // Presentation of a confirmed acceptance cannot undo it.
+      }
+    };
     const confirmAccepted = async (): Promise<SpawnAcceptanceOutcome> => {
       if (acceptanceUncertain) {
         return "uncertain";
@@ -270,6 +284,7 @@ export async function runSpawnPipeline<TState>(
       }
       if (outcome === "confirmed") {
         acceptanceSettled = true;
+        await announceAccepted();
       }
       return outcome;
     };
@@ -411,6 +426,10 @@ export async function runSpawnPipeline<TState>(
           };
         }
       }
+    }
+    if (!params.confirmAcceptance) {
+      // Without an acceptance owner the successful pipeline is the acceptance.
+      await announceAccepted();
     }
     const deferred = Boolean(params.confirmAcceptance && params.deferAcceptanceConfirmation);
     return {

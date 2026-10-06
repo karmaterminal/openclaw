@@ -22,6 +22,7 @@ import {
   releaseAgentRunDelegatedAuthority,
   validateAgentRunDelegatedAuthority,
 } from "../../../infra/agent-run-registry.js";
+import { peekSystemEvents } from "../../../infra/system-events.js";
 import { withPluginRuntimeGatewayRequestScope } from "../../../plugins/runtime/gateway-request-scope.js";
 import {
   isGatewaySubordinateWorkAdmissionClosed,
@@ -49,6 +50,10 @@ import { markSubagentRunTerminated } from "../registry/subagent-registry.js";
 import { resetSubagentRegistryForTests } from "../registry/subagent-registry.test-helpers.js";
 import { testing as swarmSchedulerTesting } from "../swarm/swarm-scheduler.test-support.js";
 import { withParentExecutionIdentity } from "./execution-identity-spawn-context.js";
+import {
+  SpawnSubagentAdmissionCancelledError,
+  type SpawnSubagentAdmissionAuthority,
+} from "./subagent-spawn-contract.js";
 import { buildSubagentExecutionSessionSpawnContext } from "./subagent-spawn-execution-identity.js";
 import "./subagent-spawn-model.mocks.shared.js";
 import { makeGatewayContext } from "./subagent-spawn.in-process-gateway.test-support.js";
@@ -816,5 +821,93 @@ describe("spawnSubagentDirect in-process Gateway collector launch", () => {
     expect(result.status).toBe("error");
     expect(result.error ?? "").toContain("Failed to register subagent run");
     expect(requests.some((request) => request.method === "chat.abort")).toBe(false);
+  });
+
+  // Frond decision (b): the child's "created" state event keeps upstream's place
+  // before child_spawned, but Home only hears of a session whose acceptance is confirmed.
+  function homeNoticesFor(childSessionKey: string): string[] {
+    return peekSystemEvents("agent:main:main").filter(
+      (text) => text.includes("New session created") && text.includes(childSessionKey),
+    );
+  }
+
+  function acceptInProcess() {
+    subagentSpawnTesting.setDepsForTest({
+      dispatchGatewayMethodInProcess: async <T>(_method: string, params: Record<string, unknown>) =>
+        ({ runId: params.idempotencyKey, status: "accepted" }) as T,
+    });
+  }
+
+  function delegateAdmission(resetAfter?: string): SpawnSubagentAdmissionAuthority {
+    const controller = new AbortController();
+    return {
+      signal: controller.signal,
+      source: {
+        ownerSessionKey: "agent:main:main",
+        flowId: "home-notice-flow",
+        expectedRevision: 1,
+      },
+      assertCurrent(boundary) {
+        if (controller.signal.aborted) {
+          throw new SpawnSubagentAdmissionCancelledError("delegate reset");
+        }
+        if (boundary === resetAfter) {
+          controller.abort("session-reset");
+        }
+      },
+    };
+  }
+
+  function spawnInScope(task: string, admission?: SpawnSubagentAdmissionAuthority) {
+    return withPluginRuntimeGatewayRequestScope(
+      { context: makeGatewayContext(), client: externalCliClient(), isWebchatConnect: () => false },
+      () =>
+        spawnSubagentDirect(
+          { task, context: "isolated", lightContext: true },
+          {
+            agentSessionKey: "agent:main:main",
+            ...(admission ? { continuationDelegateAdmission: admission } : {}),
+          },
+        ),
+    );
+  }
+
+  it("announces a deferred-acceptance child to Home exactly once, after confirmation", async () => {
+    acceptInProcess();
+    const result = await spawnInScope("confirmed delegate child", delegateAdmission());
+
+    expect(result.status).toBe("accepted");
+    const childSessionKey = expectDefined(result.childSessionKey, "accepted child session");
+    const events = (await listSessionStateEventsSince(childSessionKey, "main", 0)).events;
+    expect(events.map((event) => event.kind)).toEqual(["created", "child_spawned"]);
+    expect(homeNoticesFor(childSessionKey)).toEqual([]);
+
+    await expect(expectDefined(result.confirmAccepted, "confirm handle")()).resolves.toBe(
+      "confirmed",
+    );
+    expect(homeNoticesFor(childSessionKey)).toHaveLength(1);
+    await result.confirmAccepted?.();
+    expect(homeNoticesFor(childSessionKey)).toHaveLength(1);
+  });
+
+  it("never announces a child to Home when its acceptance is rolled back", async () => {
+    acceptInProcess();
+    const result = await spawnInScope(
+      "rolled back delegate child",
+      delegateAdmission("lifecycle-publication"),
+    );
+
+    expect(result.status).toBe("cancelled");
+    const childSessionKey = expectDefined(result.childSessionKey, "rolled back child session");
+    expect(homeNoticesFor(childSessionKey)).toEqual([]);
+  });
+
+  it("announces a sessions_spawn child to Home exactly once when the pipeline confirms it", async () => {
+    acceptInProcess();
+    const result = await spawnInScope("confirmed tool child");
+
+    expect(result.status).toBe("accepted");
+    const childSessionKey = expectDefined(result.childSessionKey, "accepted child session");
+    expect(homeNoticesFor(childSessionKey)).toHaveLength(1);
   });
 });

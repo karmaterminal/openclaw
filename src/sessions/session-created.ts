@@ -31,14 +31,11 @@ function reportCreationSignalFailure(error: unknown): void {
   }
 }
 
-/** Notify Home of a new logical session and record its trusted creation attribution. */
-export async function recordSessionCreated(
-  cfg: OpenClawConfig,
-  params: { sessionKey: string; entry: SessionEntry; agentId?: string },
-): Promise<void> {
-  const agentId = params.agentId ?? resolveAgentIdFromSessionKey(params.sessionKey);
+type SessionCreatedParams = { sessionKey: string; entry: SessionEntry; agentId?: string };
+
+function buildSessionCreatedEvent(params: SessionCreatedParams, agentId: string) {
   const actor = params.entry.createdActor;
-  const event = actor
+  return actor
     ? {
         sessionKey: params.sessionKey,
         sessionId: params.entry.sessionId,
@@ -50,21 +47,54 @@ export async function recordSessionCreated(
         summary: "session created",
       }
     : undefined;
-  let context: OpenClawStateWorkerContext | undefined;
-  if (event) {
-    try {
-      context = captureOpenClawStateWorkerContext();
-    } catch (error) {
-      reportCreationSignalFailure(error);
-    }
+}
+
+function captureCreationContext(): OpenClawStateWorkerContext | undefined {
+  try {
+    return captureOpenClawStateWorkerContext();
+  } catch (error) {
+    reportCreationSignalFailure(error);
+    return undefined;
   }
+}
+
+/** Notify Home of a new logical session and record its trusted creation attribution. */
+export async function recordSessionCreated(
+  cfg: OpenClawConfig,
+  params: SessionCreatedParams,
+): Promise<void> {
+  const agentId = params.agentId ?? resolveAgentIdFromSessionKey(params.sessionKey);
+  const event = buildSessionCreatedEvent(params, agentId);
+  const context = event ? captureCreationContext() : undefined;
+  await notifyHomeOfSessionCreated(cfg, { ...params, agentId });
+  if (event && context) {
+    await recordSessionStateEventAsync(event, { context });
+  }
+}
+
+/**
+ * Records only the trusted "created" state event. Callers whose session may still be
+ * rolled back record it at creation and notify Home once the session is accepted.
+ */
+export async function recordSessionCreatedStateEvent(params: SessionCreatedParams): Promise<void> {
+  const agentId = params.agentId ?? resolveAgentIdFromSessionKey(params.sessionKey);
+  const event = buildSessionCreatedEvent(params, agentId);
+  const context = event ? captureCreationContext() : undefined;
+  if (event && context) {
+    await recordSessionStateEventAsync(event, { context });
+  }
+}
+
+/** Notifies Home of a new session; failures are reported, never thrown. */
+export async function notifyHomeOfSessionCreated(
+  cfg: OpenClawConfig,
+  params: SessionCreatedParams,
+): Promise<void> {
+  const agentId = params.agentId ?? resolveAgentIdFromSessionKey(params.sessionKey);
   try {
     await enqueueSessionCreatedNotice({ ...params, cfg, agentId });
   } catch (error) {
     reportCreationSignalFailure(error);
-  }
-  if (event && context) {
-    await recordSessionStateEventAsync(event, { context });
   }
 }
 
