@@ -163,31 +163,32 @@ describe("discord stale ambient pending disposition", () => {
     ).resolves.toBeNull();
   });
 
-  it("preserves a raw bot mention preflight would accept after failed hydration", async () => {
-    // ClawSweeper rev 18: no mention metadata on a numeric raw mention sends
-    // preflight to REST hydration; when REST is unavailable it falls back to the
-    // exact raw bot mention, so this row is addressed work, not ambient backlog.
+  it("leaves every hydration-dependent row to claim-time preflight", async () => {
+    // ClawSweeper rev 18: a mention-shaped frame with no mention metadata sends
+    // preflight to REST hydration, whose outcome (or the raw bot mention
+    // fallback when REST is unavailable) decides it. Pre-claim cannot know it.
     const botUserId = "123456789012345678";
-    await expect(
-      resolve({ botUserId, message: { content: `hi <@${botUserId}>`, mentions: [] } }),
-    ).resolves.toBeNull();
-    await expect(
-      resolve({ botUserId, message: { content: `hi <@!${botUserId}>`, mentions: [] } }),
-    ).resolves.toBeNull();
-    await expect(
-      resolve({
-        botUserId,
-        message: { content: "", embeds: [{ title: `ping <@${botUserId}>` }], mentions: [] },
-      }),
-    ).resolves.toBeNull();
-    // Controls, as preflight's fallback decides them: another user's raw mention,
-    // an escaped or code-quoted bot mention, and a frame whose mention metadata
-    // is present (no hydration, so no fallback) all stay ambient.
     for (const message of [
+      { content: `hi <@${botUserId}>`, mentions: [] },
+      { content: `hi <@!${botUserId}>`, mentions: [] },
+      { content: "", embeds: [{ title: `ping <@${botUserId}>` }], mentions: [] },
+      // Hydration may still reveal metadata the stored frame lacks.
       { content: "hi <@987654321098765432>", mentions: [] },
+      { content: "@everyone heads up", mentions: [], mention_everyone: false },
+      { content: "@here heads up", mentions: [], mention_everyone: false },
+      { content: "<@&555555555555555555> heads up", mentions: [], mention_roles: [] },
       { content: `hi \\<@${botUserId}>`, mentions: [] },
-      { content: `hi \`<@${botUserId}>\``, mentions: [] },
-      { content: `hi <@${botUserId}>`, mentions: [{ id: "987654321098765432" }] },
+    ]) {
+      await expect(resolve({ botUserId, message })).resolves.toBeNull();
+    }
+    // Controls with nothing left to hydrate stay decidable and expire: another
+    // user's mention with its metadata, escaped and code-quoted bot mentions
+    // beside that metadata, and plain unaddressed text.
+    for (const message of [
+      { content: "hi <@987654321098765432>", mentions: [{ id: "987654321098765432" }] },
+      { content: `hi \\<@${botUserId}>`, mentions: [{ id: "987654321098765432" }] },
+      { content: `hi \`<@${botUserId}>\``, mentions: [{ id: "987654321098765432" }] },
+      { content: "just chatting", mentions: [] },
     ]) {
       await expect(resolve({ botUserId, message })).resolves.toMatchObject({
         reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON,
