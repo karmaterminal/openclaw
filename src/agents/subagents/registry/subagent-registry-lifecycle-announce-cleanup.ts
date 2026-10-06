@@ -3,6 +3,7 @@ import { isSystemEventStoreCurrent } from "../../../infra/system-event-ownership
 import { getGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
 import { defaultRuntime } from "../../../runtime.js";
 import { normalizeDeliveryContext } from "../../../utils/delivery-context.shared.js";
+import { resolveSubagentRequesterAgentId } from "../../subagent-requester-owner.js";
 import { loadSessionEntryByKey } from "../announce/subagent-announce-delivery.runtime.js";
 import { matchesSubagentChildSessionOwner } from "./subagent-child-owner-match.js";
 import {
@@ -420,7 +421,10 @@ export const startSubagentAnnounceCleanupFlow = (
     childRunId: pendingPayload.childRunId,
     runTimeoutSeconds: entry.runTimeoutSeconds,
     requesterSessionKey: pendingPayload.requesterSessionKey,
-    requesterAgentId: pendingPayload.requesterAgentId,
+    // Legacy rows predate requesterAgentId; derive the durable owner as upstream does.
+    requesterAgentId:
+      pendingPayload.requesterAgentId ??
+      resolveSubagentRequesterAgentId(params.getRuntimeConfig(), entry),
     requesterOrigin,
     task: pendingPayload.task,
     timeoutMs: params.subagentAnnounceTimeoutMs,
