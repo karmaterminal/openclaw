@@ -23,6 +23,19 @@ vi.mock("../../config/sessions/session-entry-read-runtime.js", async (importOrig
   };
 });
 
+type ActualSessionSystemEvents = typeof import("./session-system-events.js");
+
+// Production admission prepares system events and adopts them later. When a case
+// switches the drain mock to the actual drain ("through production reply admission"),
+// route preparation to the actual prepare instead of wrapping the drain, which would
+// acknowledge immediately and skip the deferred adoption the case claims to cover.
+async function resolveActualPreparation(
+  drain: () => unknown,
+): Promise<ActualSessionSystemEvents | undefined> {
+  const actual = await vi.importActual<ActualSessionSystemEvents>("./session-system-events.js");
+  return drain() === actual.drainFormattedSystemEvents ? actual : undefined;
+}
+
 function createSessionSystemEventsMocks() {
   const drainFormattedSystemEventsMock = vi.fn(
     async (_params: unknown): Promise<string | undefined> => undefined,
@@ -30,24 +43,36 @@ function createSessionSystemEventsMocks() {
   const state: {
     prepared?: PreparedFormattedSystemEvents;
     preparedQueue: PreparedFormattedSystemEvents[];
-  } = { preparedQueue: [] };
+    actualPrepareCalls: number;
+  } = { preparedQueue: [], actualPrepareCalls: 0 };
+  const prepareDefault = async (params: unknown): Promise<PreparedFormattedSystemEvents> => {
+    const queued = state.preparedQueue.shift();
+    if (queued) {
+      return queued;
+    }
+    if (state.prepared) {
+      return state.prepared;
+    }
+    const actual = await resolveActualPreparation(() =>
+      drainFormattedSystemEventsMock.getMockImplementation(),
+    );
+    if (actual) {
+      state.actualPrepareCalls += 1;
+      return await actual.prepareFormattedSystemEvents(
+        params as Parameters<ActualSessionSystemEvents["prepareFormattedSystemEvents"]>[0],
+      );
+    }
+    const text = await drainFormattedSystemEventsMock(params);
+    return {
+      blocks: text ? [{ text }] : [],
+      managedDeliveries: [],
+    };
+  };
   return {
     state,
+    prepareDefault,
     drainFormattedSystemEvents: drainFormattedSystemEventsMock,
-    prepareFormattedSystemEvents: vi.fn(async (params: unknown) => {
-      const queued = state.preparedQueue.shift();
-      if (queued) {
-        return queued;
-      }
-      if (state.prepared) {
-        return state.prepared;
-      }
-      const text = await drainFormattedSystemEventsMock(params);
-      return {
-        blocks: text ? [{ text }] : [],
-        managedDeliveries: [],
-      };
-    }),
+    prepareFormattedSystemEvents: vi.fn(prepareDefault),
   };
 }
 
@@ -58,20 +83,9 @@ export function resetContinuationMocks(): void {
   const mocks = sessionSystemEventsMocks;
   mocks.state.prepared = undefined;
   mocks.state.preparedQueue.length = 0;
-  mocks.drainFormattedSystemEvents.mockResolvedValue(undefined);
-  mocks.prepareFormattedSystemEvents.mockImplementation(async (params: unknown) => {
-    const queued = mocks.state.preparedQueue.shift();
-    if (queued) {
-      return queued;
-    }
-    if (mocks.state.prepared) {
-      return mocks.state.prepared;
-    }
-    const text = await mocks.drainFormattedSystemEvents(params);
-    return {
-      blocks: text ? [{ text }] : [],
-      managedDeliveries: [],
-    };
-  });
+  mocks.state.actualPrepareCalls = 0;
+  // mockReset also drops a queued once-implementation a previous case left unconsumed.
+  mocks.drainFormattedSystemEvents.mockReset().mockResolvedValue(undefined);
+  mocks.prepareFormattedSystemEvents.mockImplementation(mocks.prepareDefault);
   recipientAuthorityCurrentMock.mockReturnValue(true);
 }

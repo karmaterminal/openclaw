@@ -396,6 +396,23 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
     ]);
   });
 
+  it("routes an actual-drain admission case through the production prepare path", async () => {
+    const actual = await vi.importActual<typeof import("./session-system-events.js")>(
+      "./session-system-events.js",
+    );
+    vi.mocked(drainFormattedSystemEvents).mockImplementationOnce(actual.drainFormattedSystemEvents);
+    const sessionKey = "agent:main:prepare-path-proof";
+    enqueueSystemEvent("Prepared through production admission", { sessionKey });
+
+    await runPreparedReply(baseParams({ agentId: "main", sessionKey }));
+
+    expect(sessionSystemEventsMocks.state.actualPrepareCalls).toBeGreaterThan(0);
+    expect(vi.mocked(drainFormattedSystemEvents)).not.toHaveBeenCalled();
+    expect(requireRunReplyAgentCall().followupRun.currentInboundContext?.text).toContain(
+      "Prepared through production admission",
+    );
+  });
+
   it("marks delegate-return turns as continuation wakes and clears delegate-pending state", async () => {
     await runPreparedReply(
       baseParams({
