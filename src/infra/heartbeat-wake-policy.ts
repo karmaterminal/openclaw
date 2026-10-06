@@ -3,7 +3,11 @@ import { listAgentIds } from "../agents/agent-scope.js";
 import type { ContinuationTrigger } from "../auto-reply/get-reply-options.types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { normalizeAgentId } from "../routing/session-key.js";
-import type { HeartbeatWakeIntent, HeartbeatWakeSource } from "./heartbeat-wake-contracts.js";
+import {
+  hasTrustedContinuationHeartbeatWake,
+  type HeartbeatWakeIntent,
+  type HeartbeatWakeSource,
+} from "./heartbeat-wake-contracts.js";
 
 export type HeartbeatWakePayloadFlags = {
   isExecEventWake: boolean;
@@ -84,7 +88,23 @@ type TargetedUnscheduledWakeParams = {
   reason?: string;
   agentId?: string;
   sessionKey?: string;
+  /** Set by the scheduler handoff; the request itself may carry the internal marker instead. */
+  trustedContinuationRouting?: boolean;
 };
+
+/**
+ * A continuation return whose producer required a wake (delegate return or
+ * silent-wake enrichment). Only internal producers can set the trusted marker,
+ * so this exception cannot be requested through the public wake API.
+ */
+function isTrustedContinuationReturnWake(params: TargetedUnscheduledWakeParams): boolean {
+  const reason = params.reason?.trim();
+  return (
+    (params.trustedContinuationRouting === true || hasTrustedContinuationHeartbeatWake(params)) &&
+    params.intent === "immediate" &&
+    (reason === "delegate-return" || reason === "silent-wake-enrichment")
+  );
+}
 
 export function isTargetedUnscheduledWake(params: TargetedUnscheduledWakeParams): boolean {
   const hasSessionTarget = normalizeOptionalString(params.sessionKey) !== undefined;
@@ -97,6 +117,12 @@ export function isTargetedUnscheduledWake(params: TargetedUnscheduledWakeParams)
   // exactly its producer's shape; exec completions keep their event intent so
   // they cannot broaden the immediate-wake exception.
   const reason = params.reason?.trim();
+  // A wake-required continuation return must run its one turn whether or not
+  // the recipient has a heartbeat schedule, on the fast path and on replay
+  // alike. Session-targeted only: the return was queued for that session.
+  if (hasSessionTarget && isTrustedContinuationReturnWake(params)) {
+    return true;
+  }
   switch (params.source) {
     case "cron":
       return params.intent === "immediate" && (reason?.startsWith("cron:") ?? false);

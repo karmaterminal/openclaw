@@ -126,6 +126,8 @@ export type HeartbeatRunOptions = {
   continuationTrigger?: "delegate-return" | "subagent-return" | "work-wake";
   parentRunId?: string;
   trustedTargetSessionKey?: string;
+  /** Scheduler handoff of the internal trusted-continuation marker (see heartbeat-runner.ts). */
+  trustedContinuationRouting?: boolean;
   deps?: HeartbeatDeps;
 };
 

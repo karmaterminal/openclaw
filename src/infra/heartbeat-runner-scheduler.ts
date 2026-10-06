@@ -345,6 +345,7 @@ export function startHeartbeatRunnerScheduled(opts: {
             reason,
             agentId: requestedAgentId,
             sessionKey: requestedSessionKey,
+            trustedContinuationRouting: hasTrustedContinuationHeartbeatWake(params),
           });
         if (!allowsUnscheduledTarget) {
           return { status: "skipped", reason: "disabled" };

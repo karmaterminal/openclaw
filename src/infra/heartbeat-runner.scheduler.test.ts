@@ -10,12 +10,15 @@ import { createCronServiceState } from "../cron/service/state.js";
 import { wake as wakeCronService } from "../cron/service/wake.js";
 import { GatewayScheduler } from "./gateway-scheduler.js";
 import { heartbeatLog } from "./heartbeat-log.js";
+import { resolveHeartbeatWakeStage } from "./heartbeat-runner-execution.js";
 import { startHeartbeatRunner } from "./heartbeat-runner-scheduler.js";
 import {
   getHeartbeatWakeAbortSignal,
   HEARTBEAT_SKIP_PREEMPTED,
   HEARTBEAT_SKIP_REQUESTS_IN_FLIGHT,
+  markTrustedContinuationHeartbeatWake,
   requestHeartbeat,
+  requestHeartbeatNow,
   setHeartbeatsEnabled,
   setHeartbeatWakeHandler,
 } from "./heartbeat-wake.js";
@@ -477,6 +480,79 @@ describe("targeted unscheduled wake dispatch", () => {
     await wake(request);
     expect(runSpy).toHaveBeenCalledOnce();
     expectRun(0, request);
+  });
+
+  // Q3: a continuation return whose producer required a wake runs its one turn
+  // even when the recipient has no heartbeat schedule (fast path and replay
+  // share this trusted wake shape).
+  it.each(["delegate-return", "silent-wake-enrichment"])(
+    "runs one trusted %s continuation-return wake with disabled cadence",
+    async (reason) => {
+      start(config("0m", { main: {} }));
+      requestHeartbeatNow(
+        markTrustedContinuationHeartbeatWake({
+          reason,
+          agentId: "main",
+          sessionKey,
+          parentRunId: "run-unscheduled-return",
+          coalesceMs: 0,
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(1);
+      expect(runSpy).toHaveBeenCalledOnce();
+      expectRun(0, {
+        agentId: "main",
+        reason,
+        sessionKey,
+        parentRunId: "run-unscheduled-return",
+        trustedContinuationRouting: true,
+      });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(runSpy).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("does not widen the unscheduled exception to untrusted, untargeted, or work-wake continuation shapes", async () => {
+    start(config("0m", { main: {} }));
+    // Same shape without the internal trust marker (public callers cannot set it).
+    requestHeartbeatNow({ reason: "delegate-return", agentId: "main", sessionKey, coalesceMs: 0 });
+    await vi.advanceTimersByTimeAsync(1);
+    requestHeartbeatNow(
+      markTrustedContinuationHeartbeatWake({
+        reason: "delegate-return",
+        agentId: "main",
+        coalesceMs: 0,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    requestHeartbeatNow(
+      markTrustedContinuationHeartbeatWake({
+        reason: "continuation",
+        agentId: "main",
+        sessionKey,
+        coalesceMs: 0,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    expect(runSpy).not.toHaveBeenCalled();
+  });
+
+  it("admits a trusted continuation-return wake past the execution stage's schedule gate", async () => {
+    const cfg = config("0m", { main: {} });
+    const base = {
+      cfg,
+      agentId: "main",
+      sessionKey,
+      source: "other",
+      intent: "immediate",
+      reason: "delegate-return",
+    } as const;
+    await expect(resolveHeartbeatWakeStage(base)).resolves.toEqual({
+      kind: "skipped",
+      reason: "disabled",
+    });
+    const trusted = await resolveHeartbeatWakeStage({ ...base, trustedContinuationRouting: true });
+    expect(trusted).not.toEqual({ kind: "skipped", reason: "disabled" });
   });
 
   it("keeps targeted cron wakes globally disabled", async () => {
