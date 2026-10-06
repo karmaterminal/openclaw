@@ -2,18 +2,23 @@ import { computeBackoff, type BackoffPolicy } from "../../infra/backoff.js";
 import { diagnosticLogger as diag } from "../../logging/diagnostic-runtime.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import type { ReplyOperation } from "./reply-run-registry.contracts.js";
-import { getAttachedBackend, replyRunState } from "./reply-run-registry.state.js";
+import {
+  getAttachedBackend,
+  replyRunState,
+  terminalSettleByOperation,
+} from "./reply-run-registry.state.js";
 
 /**
  * A committed session reset owns the session's durable state, not the old run's
  * backend. When the backend refuses cancellation the reset still succeeds, but
  * the old owner stays registered as "retiring" so no successor can run beside
- * it. Custody ends only on a confirmed stop: a cancellation attempt that returns,
- * or the owner completing itself.
+ * it. A cancellation that returns only requests shutdown, so the owner keeps the
+ * slot until it completes itself, bounded by one terminal-settle window from the
+ * accepted request; a refused cancellation is retried and never times out.
  */
 export type ReplyRunResetCancellation =
   | { status: "none" }
-  | { status: "retired" }
+  | { status: "stopping" }
   | { status: "retiring"; attempts: number; error: unknown };
 
 type RetiringReset = { attempts: number; timer?: NodeJS.Timeout };
@@ -61,7 +66,7 @@ function scheduleRetry(operation: ReplyOperation, entry: RetiringReset): void {
   entry.timer.unref?.();
 }
 
-/** Request backend cancellation for a reset; never releases an owner whose cancel failed. */
+/** Request backend cancellation for a reset; never releases an owner that may still be running. */
 export function cancelReplyOperationForReset(operation: ReplyOperation): ReplyRunResetCancellation {
   if (!isRegistered(operation)) {
     // The owner already left the slot, which is the confirmed stop.
@@ -90,10 +95,12 @@ export function cancelReplyOperationForReset(operation: ReplyOperation): ReplyRu
     return { status: "retiring", attempts: entry.attempts, error };
   }
   dropRetirement(operation);
+  // cancel() only requests shutdown; the owner may still be running. Keep the
+  // slot until it completes, with the ordinary bounded terminal-settle release.
   if (isRegistered(operation)) {
-    operation.complete();
+    terminalSettleByOperation.get(operation)?.();
   }
-  return { status: "retired" };
+  return { status: "stopping" };
 }
 
 export function resetRetiringReplyRunsForTest(): void {

@@ -165,10 +165,60 @@ describe("reply run registry cancellation", () => {
       await vi.advanceTimersByTimeAsync(1_000);
       expect(cancel).toHaveBeenCalledTimes(2);
       expect(cancel).toHaveBeenLastCalledWith("restart");
-      expect(replyRunRegistry.isActive(operation.key)).toBe(false);
       expect(isReplyOperationRetiringForReset(operation)).toBe(false);
+      // An accepted cancel only requests shutdown; the owner keeps the slot.
+      expect(replyRunRegistry.isActive(operation.key)).toBe(true);
+
+      operation.complete();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(replyRunRegistry.isActive(operation.key)).toBe(false);
       await vi.advanceTimersByTimeAsync(120_000);
       expect(cancel).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a reset owner registered after cancel returns until the producer exits", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { operation, cancel } = createRunningOperation(undefined, {
+        isStreaming: () => false,
+      });
+
+      expect(clearReplyRunForResetBySessionId(operation.sessionId)).toMatchObject({
+        status: "stopping",
+      });
+      expect(cancel).toHaveBeenCalledWith("restart");
+      // cancel() returned, but the producer has not exited: no successor may run beside it.
+      expect(replyRunRegistry.isActive(operation.key)).toBe(true);
+      expect(() => createRunningOperation()).toThrow();
+
+      await vi.advanceTimersByTimeAsync(REPLY_RUN_TERMINAL_SETTLE_TIMEOUT_MS - 1);
+      expect(replyRunRegistry.isActive(operation.key)).toBe(true);
+
+      operation.complete();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(replyRunRegistry.isActive(operation.key)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("releases a reset owner whose accepted cancel never settles after one terminal-settle window", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { operation } = createRunningOperation(undefined, {
+        isStreaming: () => false,
+      });
+
+      expect(clearReplyRunForResetBySessionId(operation.sessionId)).toMatchObject({
+        status: "stopping",
+      });
+      await vi.advanceTimersByTimeAsync(REPLY_RUN_TERMINAL_SETTLE_TIMEOUT_MS - 1);
+      expect(replyRunRegistry.isActive(operation.key)).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(replyRunRegistry.isActive(operation.key)).toBe(false);
     } finally {
       vi.useRealTimers();
     }

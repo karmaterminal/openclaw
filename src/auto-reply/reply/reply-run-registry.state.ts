@@ -228,6 +228,8 @@ export const abortFrozenOperations = new WeakSet<ReplyOperation>();
 export const operationsByUpstreamAbortSignal = new WeakMap<AbortSignal, ReplyOperation>();
 export const producerCompletionByOperation = new WeakMap<ReplyOperation, Promise<void>>();
 export const backendReadyByOperation = new WeakMap<ReplyOperation, Promise<void>>();
+// Re-arms one bounded terminal-settle window once a reset's cancellation is accepted.
+export const terminalSettleByOperation = new WeakMap<ReplyOperation, () => void>();
 export const retainStateUntilCompleteOperations = new WeakSet<ReplyOperation>();
 type ReplyOperationAfterClear = {
   callbacks: Set<(sessionId: string) => void>;

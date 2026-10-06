@@ -47,6 +47,7 @@ import {
   retainStateUntilCompleteOperations,
   type ReplyRunAdmissionBarrier,
   startReplyOperationSuccessorBarriers,
+  terminalSettleByOperation,
   updateFollowupAdmissionSessionId,
   updateSuccessorAdmissionSessionId,
 } from "./reply-run-registry.state.js";
@@ -645,6 +646,12 @@ export function createReplyOperation(params: {
       );
       clearState();
     },
+  });
+
+  terminalSettleByOperation.set(operation, () => {
+    if (!stateCleared) {
+      terminalSettleTimer.renew(REPLY_RUN_TERMINAL_SETTLE_TIMEOUT_MS);
+    }
   });
 
   evictReplyOperationByOperation.set(operation, () => {
