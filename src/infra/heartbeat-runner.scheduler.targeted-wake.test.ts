@@ -31,10 +31,10 @@ describe("startHeartbeatRunner targeted wakes", () => {
     const runSpy = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
     const runner = await expectWakeDispatch({
       cfg: {
-        ...heartbeatConfig([
-          { id: "main", heartbeat: { every: "30m" } },
-          { id: "ops", heartbeat: { every: "15m" } },
-        ]),
+        ...heartbeatConfig({
+          main: { heartbeat: { every: "30m" } },
+          ops: { heartbeat: { every: "15m" } },
+        }),
       } as OpenClawConfig,
       runSpy,
       wake: {
@@ -61,7 +61,7 @@ describe("startHeartbeatRunner targeted wakes", () => {
     useFakeHeartbeatTime();
     const runSpy = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
     const runner = await expectWakeDispatch({
-      cfg: heartbeatConfig([{ id: "main", heartbeat: { every: "30m" } }]),
+      cfg: heartbeatConfig({ main: { heartbeat: { every: "30m" } } }),
       runSpy,
       wake: markTrustedContinuationHeartbeatWake(
         wake("delegate-return", {
@@ -85,10 +85,10 @@ describe("startHeartbeatRunner targeted wakes", () => {
     useFakeHeartbeatTime();
     const runSpy = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
     const runner = startHeartbeatRunner({
-      cfg: heartbeatConfig([
-        { id: "main", heartbeat: { every: "30m" } },
-        { id: "ops", heartbeat: { every: "15m" } },
-      ]),
+      cfg: heartbeatConfig({
+        main: { heartbeat: { every: "30m" } },
+        ops: { heartbeat: { every: "15m" } },
+      }),
       runOnce: runSpy,
     });
 
@@ -115,7 +115,7 @@ describe("startHeartbeatRunner targeted wakes", () => {
     useFakeHeartbeatTime();
     const runSpy = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
     const runner = await expectWakeDispatch({
-      cfg: heartbeatConfig([{ id: "main" }, { id: "ops" }]),
+      cfg: heartbeatConfig({ main: {}, ops: {} }),
       runSpy,
       wake: {
         source: "cron",
@@ -140,9 +140,8 @@ describe("startHeartbeatRunner targeted wakes", () => {
     const runSpy = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
     const runner = await expectWakeDispatch({
       cfg: {
-        ...heartbeatConfig([
-          {
-            id: "ops",
+        ...heartbeatConfig({
+          ops: {
             heartbeat: {
               every: "15m",
               prompt: "Ops prompt",
@@ -152,7 +151,7 @@ describe("startHeartbeatRunner targeted wakes", () => {
               accountId: "ops-account",
             },
           },
-        ]),
+        }),
       } as OpenClawConfig,
       runSpy,
       wake: {
@@ -185,9 +184,8 @@ describe("startHeartbeatRunner targeted wakes", () => {
     const runSpy = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
     const runner = await expectWakeDispatch({
       cfg: {
-        ...heartbeatConfig([
-          {
-            id: "ops",
+        ...heartbeatConfig({
+          ops: {
             heartbeat: {
               every: "15m",
               target: "discord:channel:ops",
@@ -195,7 +193,7 @@ describe("startHeartbeatRunner targeted wakes", () => {
               accountId: "ops-account",
             },
           },
-        ]),
+        }),
       } as OpenClawConfig,
       runSpy,
       wake: {
@@ -228,10 +226,10 @@ describe("startHeartbeatRunner targeted wakes", () => {
     const runSpy = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
     const runner = await expectWakeDispatch({
       cfg: {
-        ...heartbeatConfig([
-          { id: "main", heartbeat: { every: "30m" } },
-          { id: "finance", heartbeat: { every: "30m" } },
-        ]),
+        ...heartbeatConfig({
+          main: { heartbeat: { every: "30m" } },
+          finance: { heartbeat: { every: "30m" } },
+        }),
       } as OpenClawConfig,
       runSpy,
       wake: {

@@ -13,12 +13,12 @@ export function useFakeHeartbeatTime() {
 }
 
 export function heartbeatConfig(
-  list?: NonNullable<NonNullable<OpenClawConfig["agents"]>["list"]>,
+  entries?: NonNullable<OpenClawConfig["agents"]>["entries"],
 ): OpenClawConfig {
   return {
     agents: {
       defaults: { heartbeat: { every: "30m" } },
-      ...(list ? { list } : {}),
+      ...(entries ? { entries } : {}),
     },
   } as OpenClawConfig;
 }
