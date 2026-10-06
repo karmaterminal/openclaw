@@ -621,20 +621,20 @@ export function activateGatewayScheduledServices(params: {
   const heartbeatRunner = startHeartbeatRunner({
     cfg: params.cfgAtStart,
     readCurrentConfig: getRuntimeConfig,
-    ...(heartbeatGatewayContextResolver
-      ? {
-          runOnce: async (opts: Parameters<typeof runHeartbeatOnce>[0]) => {
-            const wakeSignal = getHeartbeatWakeAbortSignal();
-            const { runHeartbeatOnce } = await loadHeartbeatExecution();
-            // A stopped service or replaced wake must not enter execution after
-            // the import settles; the wake owner handles canceled work.
-            if (heartbeatStopped || wakeSignal?.aborted) {
-              return { status: "skipped", reason: "disabled" };
-            }
-            return await runScheduledHeartbeat(async () => await runHeartbeatOnce(opts));
-          },
-        }
-      : {}),
+    // Always the continuation-aware runner: the scheduler's own fallback
+    // (runHeartbeatOnceCore) skips continuation trigger mapping and trusted routing.
+    runOnce: async (opts: Parameters<typeof runHeartbeatOnce>[0]) => {
+      const wakeSignal = getHeartbeatWakeAbortSignal();
+      const { runHeartbeatOnce } = await loadHeartbeatExecution();
+      // A stopped service or replaced wake must not enter execution after
+      // the import settles; the wake owner handles canceled work.
+      if (heartbeatStopped || wakeSignal?.aborted) {
+        return { status: "skipped", reason: "disabled" };
+      }
+      return heartbeatGatewayContextResolver
+        ? await runScheduledHeartbeat(async () => await runHeartbeatOnce(opts))
+        : await runHeartbeatOnce(opts);
+    },
   });
   const sessionUpstreamMonitor = startSessionUpstreamMonitor({ scheduler });
   const stopSessionDeliveryRuntime = startPendingSessionDeliveryRuntime({
