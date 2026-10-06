@@ -1,15 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
 import { vi } from "vitest";
+import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { resolveExistingUsageSessionFile } from "../../infra/session-cost-usage.js";
+import { resolveUsageSessionSource } from "../../infra/session-cost-usage.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import { withEnvAsync } from "../../test-utils/env.js";
-import { loadGatewaySessionEntryReadOnly } from "../session-utils.js";
+import { resolveGatewaySessionStoreTargetInWorker } from "../session-utils-store-worker.js";
 
 export const TEST_RUNTIME_CONFIG = {
   agents: {
-    list: [{ id: "main", default: true }, { id: "opus" }],
+    ownership: "explicit",
+    defaults: { systemAgent: { agentId: "main" } },
+    entries: { main: {}, opus: {} },
   },
   session: {},
 } satisfies OpenClawConfig;
@@ -38,26 +41,24 @@ export function mockStoredUsageSession(
   sessionId: string,
   options: {
     agentId?: string;
-    config?: OpenClawConfig;
     resolution?: "valid" | "missing";
     storePath?: string;
   } = {},
 ) {
-  const entry = { sessionId, updatedAt: 1_000 };
+  const entry: SessionEntry = { sessionId, updatedAt: 1_000 };
   const agentId = options.agentId ?? "opus";
   const storePath = options.storePath ?? `/tmp/agents/${agentId}/agent/openclaw-agent.sqlite`;
-  vi.mocked(loadGatewaySessionEntryReadOnly).mockReturnValueOnce({
-    cfg: options.config ?? TEST_RUNTIME_CONFIG,
+  vi.mocked(resolveGatewaySessionStoreTargetInWorker).mockResolvedValueOnce({
     agentId,
     canonicalKey: key,
-    entry,
-    legacyKey: undefined,
     store: { [key]: entry },
     storeKeys: [key],
     storePath,
   });
-  vi.mocked(resolveExistingUsageSessionFile).mockReturnValueOnce(
-    options.resolution === "missing" ? undefined : `sqlite:${agentId}:${sessionId}:${storePath}`,
+  vi.mocked(resolveUsageSessionSource).mockResolvedValueOnce(
+    options.resolution === "missing"
+      ? undefined
+      : { entry, sessionFile: `sqlite:${agentId}:${sessionId}:${storePath}` },
   );
   return entry;
 }

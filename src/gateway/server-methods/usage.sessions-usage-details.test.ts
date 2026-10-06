@@ -7,7 +7,9 @@ import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 vi.mock("../../config/config.js", () => ({
   getRuntimeConfig: vi.fn(() => ({
     agents: {
-      list: [{ id: "main", default: true }, { id: "opus" }],
+      ownership: "explicit",
+      defaults: { systemAgent: { agentId: "main" } },
+      entries: { main: {}, opus: {} },
     },
     session: {},
   })),
@@ -17,7 +19,6 @@ vi.mock("../session-utils.js", async () => {
   const actual = await vi.importActual<typeof import("../session-utils.js")>("../session-utils.js");
   return {
     ...actual,
-    loadGatewaySessionEntryReadOnly: vi.fn(actual.loadGatewaySessionEntryReadOnly),
     loadCombinedSessionStoreForGatewayCore: vi.fn(() => ({
       agentIdBySessionKey: new Map(),
       durableTargets: [],
@@ -27,13 +28,24 @@ vi.mock("../session-utils.js", async () => {
   };
 });
 
+vi.mock("../session-utils-store-worker.js", async () => {
+  const actual = await vi.importActual<typeof import("../session-utils-store-worker.js")>(
+    "../session-utils-store-worker.js",
+  );
+  return {
+    resolveGatewaySessionStoreTargetInWorker: vi.fn(
+      actual.resolveGatewaySessionStoreTargetInWorker,
+    ),
+  };
+});
+
 vi.mock("../../infra/session-cost-usage.js", async () => {
   const actual = await vi.importActual<typeof import("../../infra/session-cost-usage.js")>(
     "../../infra/session-cost-usage.js",
   );
   return {
     ...actual,
-    resolveExistingUsageSessionFile: vi.fn(actual.resolveExistingUsageSessionFile),
+    resolveUsageSessionSource: vi.fn(actual.resolveUsageSessionSource),
     discoverAllSessions: vi.fn(async (params?: { agentId?: string }) => {
       if (params?.agentId === "opus") {
         return [
@@ -56,7 +68,7 @@ vi.mock("../../infra/session-cost-usage.js", async () => {
 });
 
 import { loadSessionLogs, loadSessionUsageTimeSeries } from "../../infra/session-cost-usage.js";
-import { loadGatewaySessionEntryReadOnly } from "../session-utils.js";
+import { resolveGatewaySessionStoreTargetInWorker } from "../session-utils-store-worker.js";
 import { usageHandlers } from "./usage.js";
 import {
   TEST_RUNTIME_CONFIG,
@@ -114,13 +126,12 @@ describe("sessions.usage details", () => {
         session: { store: storePath, scope: "global" },
         agents: {
           ownership: "explicit",
-          list: [{ id: "ops" }, { id: "research" }],
+          entries: { ops: {}, research: {} },
           defaults: { sessionStore: { agentId: "ops" } },
         },
       };
       mockStoredUsageSession("global", "s-ops", {
         agentId: "ops",
-        config,
         storePath,
       });
 
@@ -131,11 +142,10 @@ describe("sessions.usage details", () => {
       );
 
       expect(getUsageMockArg(respond, 0, 0)).toBe(true);
-      // Usage target reads use the list projection (upstream #152366); owner stays explicit.
-      expect(vi.mocked(loadGatewaySessionEntryReadOnly)).toHaveBeenCalledWith("global", {
-        agentId: "ops",
-        projection: "list",
-      });
+      // Usage target reads resolve through the store worker (upstream #163182); owner stays explicit.
+      expect(vi.mocked(resolveGatewaySessionStoreTargetInWorker)).toHaveBeenCalledWith(
+        expect.objectContaining({ cfg: config, key: "global", agentId: "ops" }),
+      );
       expect(vi.mocked(loadSessionUsageTimeSeries)).toHaveBeenCalledWith(
         expect.objectContaining({ agentId: "ops" }),
       );
