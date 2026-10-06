@@ -209,15 +209,27 @@ function createQueuedRegistrationFixture(runs = new Map<string, SubagentRunRecor
 
 export type QueuedRegistrationFixture = ReturnType<typeof createQueuedRegistrationFixture>;
 
+let activeFixture: QueuedRegistrationFixture | undefined;
+
+/** The running fixture, whose registry stands in for a mocked registry facade. */
+export function activeQueuedRegistrationFixture(): QueuedRegistrationFixture {
+  if (!activeFixture) {
+    throw new Error("No queued registration fixture is active");
+  }
+  return activeFixture;
+}
+
 export async function withQueuedRegistrationFixture(
   run: (fixture: QueuedRegistrationFixture) => Promise<void>,
   runs?: Map<string, SubagentRunRecord>,
 ): Promise<void> {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     const fixture = createQueuedRegistrationFixture(runs);
+    activeFixture = fixture;
     try {
       await run(fixture);
     } finally {
+      activeFixture = undefined;
       await fixture.close();
     }
   });

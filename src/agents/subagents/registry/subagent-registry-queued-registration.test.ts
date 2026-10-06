@@ -29,10 +29,17 @@ import * as registryPublication from "./subagent-registry-publication.js";
 import { registerQueuedRegistrationAdmissionCases } from "./subagent-registry-queued-admission.test-support.js";
 import { registerQueuedCancelledLaunchCases } from "./subagent-registry-queued-cancelled-launch.test-support.js";
 import { registerQueuedRegistrationClaimCases } from "./subagent-registry-queued-registration-claims.test-support.js";
-import { withQueuedRegistrationFixture } from "./subagent-registry-queued-registration.test-support.js";
+import {
+  activeQueuedRegistrationFixture,
+  withQueuedRegistrationFixture,
+} from "./subagent-registry-queued-registration.test-support.js";
 import { registerQueuedUnknownKillAuthorityTest } from "./subagent-registry-queued-uncertain-kill.test-support.js";
 import type { SubagentLaunchManager } from "./subagent-registry-run-launch.js";
 import * as runPause from "./subagent-registry-run-pause.js";
+import {
+  markSubagentSpawnDisarmUncertain,
+  releaseSubagentSpawnAcceptanceHold,
+} from "./subagent-registry-spawn-acceptance.js";
 import { observeRootWork } from "./subagent-registry.browser-cleanup.test-support.js";
 import type { SubagentCompletionRequest } from "./subagent-registry.types.js";
 
@@ -48,6 +55,22 @@ vi.mock("./subagent-registry.js", () => ({
   completeCollectorLaunchCleanup: vi.fn(),
   settleFailedQueuedSubagentLaunch: vi.fn(),
   startQueuedSubagentRun: vi.fn(),
+  // H1 launch marker: the collector's pre-dispatch arm and its hold release act on
+  // the fixture's own registry (its rows are not in the facade's live map).
+  armSubagentLaunchDispatch: (params: {
+    runId: string;
+    childSessionKey: string;
+    idempotencyKey: string;
+  }) => activeQueuedRegistrationFixture().manager.armSubagentLaunchDispatch(params),
+  releaseSubagentSpawnAcceptanceHoldForRun: (runId: string) => {
+    releaseSubagentSpawnAcceptanceHold(activeQueuedRegistrationFixture().runs.get(runId));
+  },
+  markSubagentLaunchDispatchUncertain: (runId: string) => {
+    const row = activeQueuedRegistrationFixture().runs.get(runId);
+    if (row) {
+      markSubagentSpawnDisarmUncertain(row);
+    }
+  },
 }));
 
 it("awaits intent and descriptor acknowledgements through the spawn pipeline", async () => {
