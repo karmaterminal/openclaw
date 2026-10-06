@@ -8,7 +8,7 @@ import { createDeferred } from "../../test/helpers/promise.js";
 import * as preparedModelRuntime from "../agents/prepared-model-runtime.js";
 import * as killControl from "../agents/subagents/registry/subagent-control-kill.js";
 import * as registryMemory from "../agents/subagents/registry/subagent-registry-memory.js";
-import { loadSubagentRegistryFromSqlite } from "../agents/subagents/registry/subagent-registry.store.sqlite.js";
+import { loadSubagentRegistryFromSqlite } from "../agents/subagents/registry/subagent-registry-state.fixture.test-support.js";
 import { spawnSubagentDirect } from "../agents/subagents/spawn/subagent-spawn.js";
 import { testing as spawnTesting } from "../agents/subagents/spawn/subagent-spawn.test-support.js";
 import { closeSwarmScheduler } from "../agents/subagents/swarm/swarm-scheduler.js";
@@ -60,13 +60,16 @@ describe("queued collector rollback custody behind a publishing Stop", () => {
           );
           return kill(params, {
             ...currentControl,
-            preparePublication: async (publishPrepared) => {
-              publicationEntered.resolve();
-              await releasePublication.promise;
-              if (publicationFailure) {
-                throw new Error("publication preparation failed");
-              }
-              return await preparation(publishPrepared);
+            preparePublication: {
+              ...preparation,
+              prepare: async (publishPrepared) => {
+                publicationEntered.resolve();
+                await releasePublication.promise;
+                if (publicationFailure) {
+                  throw new Error("publication preparation failed");
+                }
+                return await preparation.prepare(publishPrepared);
+              },
             },
           });
         });

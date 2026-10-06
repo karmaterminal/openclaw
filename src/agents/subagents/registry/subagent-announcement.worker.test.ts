@@ -263,7 +263,7 @@ it.each(["not-committed", "unknown", "successor"] as const)(
           },
         );
       });
-    let registration: Promise<void> | undefined;
+    let registration: Promise<unknown> | undefined;
     try {
       completeRegistered(run);
       await ready.promise;
@@ -755,7 +755,7 @@ it.each([false, true])(
       );
     let successor = entry;
     let rejectedRegistration: Promise<unknown> | undefined;
-    let registration: Promise<void> | undefined;
+    let registration: Promise<unknown> | undefined;
     try {
       await Promise.race([
         ready.promise,

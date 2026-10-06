@@ -405,6 +405,6 @@ describe("subagent completion rejection ownership", () => {
     expect(h.scheduleSweep).not.toHaveBeenCalled();
     expect(h.resumeRun).toHaveBeenCalledExactlyOnceWith(h.entry.runId);
     expect(h.entry.cleanupHandled).toBe(false);
-    expect(h.resumed.has(h.entry.runId)).toBe(false);
+    expect(h.resumed.has(getSubagentRunRuntimeKey(h.entry))).toBe(false);
   });
 });

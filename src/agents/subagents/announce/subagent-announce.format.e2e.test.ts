@@ -46,6 +46,7 @@ import { textAssistant } from "../../test-helpers/sparse-transcript.test-support
 import { subagentRuns } from "../registry/subagent-registry-memory.js";
 import type { SubagentRunRecord } from "../registry/subagent-registry.types.js";
 import { testing as subagentAnnounceDeliveryTesting } from "./subagent-announce-delivery.test-support.js";
+import { runSubagentAnnounceDispatch } from "./subagent-announce-dispatch.js";
 import { testing as subagentAnnounceOutputTesting } from "./subagent-announce-output.test-support.js";
 import { announceTesting as subagentAnnounceTesting } from "./subagent-announce-overrides.test-support.js";
 import {

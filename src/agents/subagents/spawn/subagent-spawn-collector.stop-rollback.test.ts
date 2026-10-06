@@ -57,6 +57,7 @@ function launchFixture(publication?: Promise<void>) {
   const scope: SubagentRegistrationScope = {
     canLaunch: () => true,
     canAcceptLaunch: () => true,
+    canAbortAcceptedRun: () => true,
     canCleanupSession: () => true,
     canRetireReservation: () => true,
     settleFailedLaunch: settle,

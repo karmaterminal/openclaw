@@ -14,9 +14,11 @@ import { closeOpenClawStateDatabaseForTest } from "../../../state/openclaw-state
 import { captureEnv, setTestEnvValue } from "../../../test-utils/env.js";
 import { createCollectorLaunchCallbacks } from "../spawn/subagent-spawn-collector.js";
 import { subagentRuns, waitForSubagentRetirementPublication } from "./subagent-registry-memory.js";
+import {
+  loadSubagentRegistryFromSqlite,
+  saveSubagentRegistryToSqlite,
+} from "./subagent-registry-state.fixture.test-support.js";
 import * as registry from "./subagent-registry.js";
-import { loadSubagentRegistryFromSqlite } from "./subagent-registry.store.sqlite.js";
-import { saveSubagentRegistryToSqlite } from "./subagent-registry.store.test-support.js";
 import {
   activateSubagentRegistry,
   addSubagentRunForTests,
@@ -62,7 +64,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   closeOpenClawStateDatabaseForTest();
-  resetSubagentRegistryForTests({ persist: false });
+  await resetSubagentRegistryForTests({ persist: false });
   if (stateDir) {
     await fs.rm(stateDir, { recursive: true, force: true });
     stateDir = undefined;
@@ -70,7 +72,7 @@ afterEach(async () => {
   envSnapshot.restore();
 });
 
-function seedQueuedCollector(): SubagentRunRecord {
+async function seedQueuedCollector(): Promise<SubagentRunRecord> {
   const entry: SubagentRunRecord = {
     runId,
     childSessionKey,
@@ -94,7 +96,7 @@ function seedQueuedCollector(): SubagentRunRecord {
       maxConcurrent: 1,
     },
   };
-  addSubagentRunForTests(entry);
+  await addSubagentRunForTests(entry);
   saveSubagentRegistryToSqlite(new Map([[runId, structuredClone(entry)]]));
   return subagentRuns.get(runId)!;
 }
@@ -117,11 +119,12 @@ async function startCollectorBehindStop(entry: SubagentRunRecord) {
 /** Real collector callbacks whose accepted start transition has already failed. */
 async function startCollector(entry: SubagentRunRecord) {
   const settled = vi.fn(async (error: string) => {
-    settleFailedQueuedSubagentLaunch(runId, error);
+    await settleFailedQueuedSubagentLaunch(runId, error);
   });
   const scope: SubagentRegistrationScope = {
     canLaunch: () => true,
     canAcceptLaunch: () => true,
+    canAbortAcceptedRun: () => true,
     canCleanupSession: () => true,
     canRetireReservation: () => true,
     settleFailedLaunch: settled,
@@ -147,7 +150,7 @@ async function startCollector(entry: SubagentRunRecord) {
 
 /** The start transition loses without a Stop, e.g. to a lost registry row race. */
 async function startCollectorWithoutStop(entry: SubagentRunRecord) {
-  const start = vi.spyOn(registry, "startQueuedSubagentRun").mockReturnValueOnce(false);
+  const start = vi.spyOn(registry, "startQueuedSubagentRun").mockResolvedValueOnce(false);
   try {
     return await startCollector(entry);
   } finally {
@@ -160,7 +163,7 @@ const durableRow = () => loadSubagentRegistryFromSqlite().get(runId);
 /** Restarts from a durable image; returns the restored Gateway's agent dispatch. */
 async function restartFrom(image: Map<string, SubagentRunRecord>) {
   closeOpenClawStateDatabaseForTest();
-  resetSubagentRegistryForTests({ persist: false });
+  await resetSubagentRegistryForTests({ persist: false });
   saveSubagentRegistryToSqlite(image);
   await initSubagentRegistry();
   const dispatchAgent = vi.fn(async () => ({ runId: "relaunched", status: "accepted" }));
@@ -173,7 +176,7 @@ async function restartFrom(image: Map<string, SubagentRunRecord>) {
 }
 
 it("keeps durable custody through a crash during the Stop publication wait", async () => {
-  const entry = seedQueuedCollector();
+  const entry = await seedQueuedCollector();
   const { retirement, settling } = await startCollectorBehindStop(entry);
 
   // Custody is durable before the collector waits on the Stop's publication.
@@ -207,7 +210,7 @@ it("keeps durable custody through a crash during the Stop publication wait", asy
 });
 
 it("reconciles once after a restart that follows the Stop's committed kill", async () => {
-  const entry = seedQueuedCollector();
+  const entry = await seedQueuedCollector();
   const { retirement, settling } = await startCollectorBehindStop(entry);
   // The Stop commits its kill while the collector still waits on publication.
   await expect(markSubagentRunTerminated({ runId, reason: "killed" })).resolves.toBe(1);
@@ -235,7 +238,7 @@ it("reconciles once after a restart that follows the Stop's committed kill", asy
 it.each([true, false])(
   "keeps rollback custody as the cleanup owner when the Stop rolls back (terminated=%s)",
   async (terminated) => {
-    const entry = seedQueuedCollector();
+    const entry = await seedQueuedCollector();
     const { retirement, claim, settling, settled } = await startCollectorBehindStop(entry);
     abortSucceeds = terminated;
     // The Stop withdraws its kill; the custody recorded before it stays.
@@ -275,7 +278,7 @@ it.each([true, false])(
 );
 
 it("lets a Stop that starts during accepted-child termination keep its kill", async () => {
-  const entry = seedQueuedCollector();
+  const entry = await seedQueuedCollector();
   const abortEntered = createDeferred();
   const abortResponse = createDeferred();
   sharedRegistryMocks.callGateway.mockImplementation((async (request: {
@@ -311,7 +314,7 @@ it("lets a Stop that starts during accepted-child termination keep its kill", as
 });
 
 it("restores pre-custody delivery when the sweeper releases custody after restart", async () => {
-  const entry = seedQueuedCollector();
+  const entry = await seedQueuedCollector();
   abortSucceeds = false;
   const { settling } = await startCollectorWithoutStop(entry);
   await expect(settling).resolves.toBe(true);

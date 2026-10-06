@@ -63,7 +63,7 @@ it("keeps ordinary subagent registration responsive while a SQLite writer is hel
       }),
     );
   let holder: ReturnType<typeof holdStateDatabaseWriteTransaction> | undefined;
-  let registration: Promise<void> | undefined;
+  let registration: Promise<unknown> | undefined;
   let hostSql: ReturnType<typeof observeHostDataSql> | undefined;
   let registrationSettled = false;
   const failures: unknown[] = [];
