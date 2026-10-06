@@ -414,7 +414,9 @@ export const createTelegramMessageProcessor = (
             deferredHeartbeatIntervalMs: participant.heartbeatIntervalMs,
             onCancelled: async () => {
               if (!adopted) {
-                void settle({ kind: "failed-retryable", error: "turn-cancelled" }, "terminal");
+                // Every coalesced participant settles as cancelled, so each
+                // member's claim is released without spending retry budget.
+                void settle({ kind: "cancelled" }, "terminal");
               }
               // Intentional cancellation must reach the drain's budget-free
               // settlement; abandonment would spend a retry attempt.
@@ -440,8 +442,8 @@ export const createTelegramMessageProcessor = (
         }
         if (turnAbortSignal.aborted) {
           const abortResult: TelegramMessageProcessingResult =
-            turnAbortSignal.reason === "skipped"
-              ? { kind: "skipped" }
+            turnAbortSignal.reason === "skipped" || turnAbortSignal.reason === "cancelled"
+              ? { kind: turnAbortSignal.reason }
               : {
                   kind: "failed-retryable",
                   error:
@@ -493,8 +495,8 @@ export const createTelegramMessageProcessor = (
           }
           if (turnAbortSignal.aborted && !participant.abortSignal.aborted) {
             const abortResult: TelegramMessageProcessingResult =
-              turnAbortSignal.reason === "skipped"
-                ? { kind: "skipped" }
+              turnAbortSignal.reason === "skipped" || turnAbortSignal.reason === "cancelled"
+                ? { kind: turnAbortSignal.reason }
                 : {
                     kind: "failed-retryable",
                     error:

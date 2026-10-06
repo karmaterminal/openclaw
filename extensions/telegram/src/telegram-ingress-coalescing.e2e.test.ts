@@ -239,6 +239,79 @@ describe("Telegram durable ingress coalescing", () => {
     }
   });
 
+  it("keeps every aged album member recoverable when the coalesced turn is cancelled", async () => {
+    const first = photoUpdate({ updateId: 1_101, messageId: 1, caption: "Two photo album" });
+    const second = photoUpdate({ updateId: 1_102, messageId: 2 });
+    const eventIds = [telegramQueueEventId(1_101), telegramQueueEventId(1_102)];
+    const queue = openTelegramIngressQueue({ stateDir });
+    // Each member was received long before the dead-letter age floor, with one try left.
+    for (const update of [first, second]) {
+      await writeTelegramSpooledUpdate({ stateDir, update, now: 1 });
+      for (let attempt = 1; attempt < DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS; attempt += 1) {
+        const claim = await queue.claim(telegramQueueEventId(update.update_id));
+        if (!claim) {
+          throw new Error(`Expected to seed album member ${update.update_id}`);
+        }
+        await queue.release(claim, { lastError: "prior failure", releasedAt: 1 });
+      }
+    }
+    const agedMembers = eventIds.map((id) =>
+      expect.objectContaining({
+        id,
+        attempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS - 1,
+        lastError: "prior failure",
+      }),
+    );
+    downstreamTurns
+      .mockImplementationOnce(async (_ctx, _abortSignal, lifecycle) => {
+        lifecycle?.onDeferred?.();
+        // The reply lane settles a cleared queued turn through onCancelled and
+        // falls back to abandonment only when the lifecycle cannot cancel.
+        await (lifecycle?.onCancelled ? lifecycle.onCancelled() : lifecycle?.onAbandoned?.());
+        return { queuedFinal: false, counts: { block: 0, final: 0, tool: 0 } };
+      })
+      .mockImplementationOnce(async (_ctx, _abortSignal, lifecycle) => {
+        await lifecycle?.onAdopted();
+        return { queuedFinal: false, counts: { block: 0, final: 0, tool: 0 } };
+      });
+    const albumTimers = holdTelegramMediaTimeouts(40);
+    const { monitor, telegramTransport } = await createMonitor();
+
+    try {
+      monitor.start();
+      await monitor.waitForIdle();
+      await vi.waitFor(async () =>
+        expect((await queue.listClaims()).map((claim) => claim.id).toSorted()).toEqual(eventIds),
+      );
+      flushHeldQuietWindow(albumTimers, 40);
+      await vi.waitFor(
+        () => {
+          expect(downstreamTurns, runtimeErrors.map(String).join("\n")).toHaveBeenCalledTimes(1);
+        },
+        { timeout: 5_000, interval: 5 },
+      );
+
+      // Cancellation spends no member's budget: both rows return to the drain
+      // with their prior retry facts and are buffered into the album again.
+      await vi.waitFor(async () => {
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+        expect((await queue.listClaims()).toSorted((a, b) => a.id.localeCompare(b.id))).toEqual(
+          agedMembers,
+        );
+      });
+      await monitor.waitForIdle();
+      flushHeldQuietWindow(albumTimers, 40);
+      await monitor.waitForDeferredClaims();
+      await vi.waitFor(() => expect(downstreamTurns).toHaveBeenCalledTimes(2));
+      await vi.waitFor(async () => expect(await queue.listClaims()).toEqual([]));
+      await assertSpoolTombstoned({ stateDir, updateIds: [1_101, 1_102] });
+    } finally {
+      albumTimers.mockRestore();
+      await monitor.stop();
+      await telegramTransport.close();
+    }
+  });
+
   it("keeps a later album alive and ordered behind a slowly adopting album", async () => {
     const { monitor } = await createMonitor({ adoptionStallTimeoutMs: 1_000 });
     const { headDispatched, releaseHead, headFinished } = holdFirstDownstreamTurn();

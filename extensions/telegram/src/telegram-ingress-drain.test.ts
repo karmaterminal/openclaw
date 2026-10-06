@@ -831,6 +831,68 @@ describe("createTelegramIngressMonitor", () => {
     });
   });
 
+  it("releases a coalesced member's aged row budget-free when its participant settles cancelled", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createChannelIngressQueueForTests<TelegramSpooledUpdatePayload>({
+        channelId: "telegram",
+        accountId: "default",
+        stateDir,
+      });
+      const eventId = "8".padStart(16, "0");
+      const payload = { ...updatePayload(8), receivedAt: 1 };
+      const laneKey = telegramSpooledUpdateLaneKey(payload.update);
+      // Received long before the dead-letter age floor, with one try left.
+      await queue.enqueue(eventId, payload, { laneKey, receivedAt: 1 });
+      for (let attempt = 1; attempt < DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS; attempt += 1) {
+        const claim = await queue.claim(eventId);
+        if (!claim) {
+          throw new Error("expected to claim the aged Telegram row");
+        }
+        await queue.release(claim, { lastError: "prior failure", releasedAt: 1 });
+      }
+      // A non-head album member only defers its participant; the coalesced
+      // turn settles it later with the shared result.
+      const participants: TelegramSpooledReplayDeferredParticipant[] = [];
+      const monitor = createTelegramIngressMonitor({
+        queue,
+        getConfig: () => cfg,
+        accountId: "default",
+        dispatch: async () => {
+          const participant = createTelegramSpooledReplayDeferredParticipant(
+            `test:coalesced-member-${participants.length}`,
+          );
+          if (participant) {
+            participants.push(participant);
+          }
+        },
+      });
+
+      try {
+        monitor.start();
+        await vi.waitFor(() => expect(participants).toHaveLength(1));
+        participants[0]?.settle({ kind: "cancelled" });
+
+        await vi.waitFor(() => expect(participants).toHaveLength(2));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+        expect(await queue.listClaims()).toEqual([
+          expect.objectContaining({
+            id: eventId,
+            attempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS - 1,
+            lastError: "prior failure",
+          }),
+        ]);
+        participants[1]?.settle({ kind: "completed" });
+        await vi.waitFor(async () => expect(await queue.listClaims()).toEqual([]));
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      } finally {
+        for (const participant of participants) {
+          participant.settle({ kind: "skipped" });
+        }
+        await monitor.stop();
+      }
+    });
+  });
+
   it("keeps an aged row at the retry ceiling recoverable when its queued turn is cancelled", async () => {
     await withTempState(async (stateDir) => {
       const queue = createChannelIngressQueueForTests<TelegramSpooledUpdatePayload>({
