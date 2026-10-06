@@ -36,6 +36,7 @@ import {
   peekSystemEvents,
   resetSystemEventsForTest,
 } from "../../infra/system-events.js";
+import { closeOpenClawAgentDatabasesAsync } from "../../state/openclaw-agent-db.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import {
   createGatewaySchedulerClock,
@@ -160,6 +161,9 @@ afterEach(async () => {
   await stopRuntime?.();
   stopRuntime = undefined;
   resetSystemEventsForTest();
+  // Prompt preparation reads the session through the worker-backed reader, which
+  // retains this test's agent database; drain it before custody removes the dir.
+  await closeOpenClawAgentDatabasesAsync(custody.stateDir());
 });
 
 /** Step the gateway clock, running every armed drain to completion at each step. */
