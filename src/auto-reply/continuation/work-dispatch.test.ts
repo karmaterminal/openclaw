@@ -321,6 +321,7 @@ vi.mock("./config.js", async (importOriginal) => {
 
 vi.mock("../../logging/subsystem.js", () => {
   const logger = {
+    trace: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),

@@ -307,6 +307,7 @@ vi.mock("./config.js", async (importOriginal) => {
 
 const { subsystemLoggerMock } = vi.hoisted(() => {
   const logger = {
+    trace: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
