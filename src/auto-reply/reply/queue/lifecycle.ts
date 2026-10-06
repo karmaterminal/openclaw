@@ -1,3 +1,4 @@
+import { defaultRuntime } from "../../../runtime.js";
 import type { TurnAdoptionLifecycle } from "../../get-reply-options.types.js";
 import type { FollowupRun } from "./types.js";
 
@@ -177,8 +178,14 @@ export function completeFollowupRunLifecycle(
         return;
       }
       completedTurnAdoptionLifecycleCallbacks.add(lifecycle);
-      // Async onAbandoned work must contain its own rejections; core guarantees a
-      // non-rejecting promise. onSettled must still run after a synchronous throw.
+      // Terminal callbacks start synchronously and onSettled runs right after,
+      // even after a synchronous throw. Async adapter work is not awaited, so its
+      // rejection is contained here instead of escaping as an unhandled rejection.
+      const containSettlement = (settlement: unknown, label: string) => {
+        void Promise.resolve(settlement).catch((error: unknown) => {
+          defaultRuntime.error?.(`followup queue ${label} failed: ${String(error)}`);
+        });
+      };
       try {
         if (disposition !== "consumed" && !admittedTurnAdoptionLifecycles.has(lifecycle)) {
           // Cancellation ended ownership before the reply lane, so it settles
@@ -189,9 +196,10 @@ export function completeFollowupRunLifecycle(
             (disposition === "cancelled" || lifecycle.abortSignal?.aborted) &&
             lifecycle.onCancelled
           ) {
-            void lifecycle.onCancelled();
+            containSettlement(lifecycle.onCancelled(), "cancellation");
           } else {
-            lifecycle.onAbandoned?.();
+            // Typed void, but channel adapters may still return a promise.
+            containSettlement(lifecycle.onAbandoned?.(), "abandonment");
           }
         }
       } finally {
