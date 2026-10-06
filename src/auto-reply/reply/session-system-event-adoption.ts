@@ -4,6 +4,7 @@ import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/sessio
 import type { SessionRecipientAuthority } from "../../config/sessions/session-recipient-authority-types.js";
 import { toErrorObject } from "../../infra/errors.js";
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
+import { releaseSystemEventDeliveryAdoption } from "../../infra/system-event-delivery-claims.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { consumeSelectedSystemEventEntries, type SystemEvent } from "../../infra/system-events.js";
 import { captureContinuationQueueContext } from "../continuation/queue-context.js";
@@ -115,6 +116,8 @@ export async function settleStaleSystemEventAuthority(params: {
       params.event.sessionDeliveryAckId,
       captureContinuationQueueContext(params.event.sessionDeliveryAckStateDir),
     );
+    // Retired, not adopted: no replay may queue it again in this process.
+    releaseSystemEventDeliveryAdoption(params.event, { settled: true });
   }
   // Resolved here rather than at each call site so a third caller cannot forget:
   // an already-qualified key resolves to itself, and a supplied owner is verified

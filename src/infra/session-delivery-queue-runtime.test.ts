@@ -260,7 +260,9 @@ describe("session delivery queue runtime", () => {
         queueContext,
       );
       const deliver = vi.fn(async () => {});
-      const stop = startRuntime({ deliver, log: logger });
+      // The assertion below reads the scheduler's earliest armed wake, which must
+      // be this row's claim timer, not the periodic pending sweep's.
+      const stop = startRuntime({ deliver, log: logger, pendingSweep: false });
 
       const claimed = await loadPendingSessionDelivery(id, queueContext);
       if (claimed?.availableAt === undefined) {

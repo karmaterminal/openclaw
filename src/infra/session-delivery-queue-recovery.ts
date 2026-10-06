@@ -25,6 +25,7 @@ import {
   type QueuedSessionDelivery,
   type SessionDeliverySettledOutcome,
 } from "./session-delivery-queue-storage.js";
+import { releaseSystemEventDeliveryAdoptionClaims } from "./system-event-delivery-claims.js";
 
 export type DeliverSessionDeliveryFn = (
   entry: QueuedSessionDelivery,
@@ -298,6 +299,9 @@ export async function recoverPendingSessionDeliveries(opts: {
   maxRecoveryMs?: number;
   maxEnqueuedAt?: number;
 }): Promise<DeliveryRecoverySummary> {
+  // Turns prepared before this recovery belong to an earlier gateway lifetime;
+  // their adoption claims must not keep replay from re-queueing those rows.
+  releaseSystemEventDeliveryAdoptionClaims(opts.queueContext.environment.OPENCLAW_STATE_DIR);
   const pending = (await loadPendingSessionDeliveries(opts.queueContext)).filter(
     (entry) => opts.maxEnqueuedAt == null || entry.enqueuedAt <= opts.maxEnqueuedAt,
   );

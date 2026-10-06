@@ -20,6 +20,11 @@ import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
 import { generateSecureUuid } from "./secure-random.js";
 import {
+  isDeliveryAdoptionClaimed,
+  releaseSystemEventDeliveryAdoption,
+  resetSystemEventDeliveryAdoptionClaimsForTest,
+} from "./system-event-delivery-claims.js";
+import {
   getSystemEventStorePath,
   isSystemEventStoreCurrent,
   registerSystemEventStoreOwner,
@@ -272,6 +277,14 @@ function enqueueOwnedSystemEventEntry(
     ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
     ...(options.fromConversationTurn ? { fromConversationTurn: true as const } : {}),
   };
+  if (
+    event.sessionDeliveryAckId &&
+    isDeliveryAdoptionClaimed(event.sessionDeliveryAckId, event.sessionDeliveryAckStateDir)
+  ) {
+    // A prepared turn is adopting (or already adopted) this row: re-queueing it
+    // would surface the same delivery in a second prompt.
+    return null;
+  }
   if (event.sessionDeliveryAckId) {
     // An ack id + state dir identifies ONE persisted row, so the slot is located
     // by that identity alone: a re-enqueue of the same durable row replaces its
@@ -330,8 +343,8 @@ export const enqueueSystemEventRaw = enqueueSystemEvent;
  * Whether the queue already holds the in-memory copy of one durable delivery
  * row. Producers call it after `enqueueSystemEvent` returned `false`, with the
  * same options, to tell a de-duplicated re-enqueue (the row is still riding a
- * queued event) from a capacity refusal (nothing queued; the row must be
- * retried).
+ * queued event, or a prepared turn is adopting it) from a capacity refusal
+ * (nothing queued; the row must be retried).
  */
 export function hasQueuedSystemEventDelivery(
   options: Pick<
@@ -343,6 +356,9 @@ export function hasQueuedSystemEventDelivery(
     return false;
   }
   const stateDir = resolveSessionDeliveryAckStateDir(options as SystemEventOptions);
+  if (isDeliveryAdoptionClaimed(options.sessionDeliveryAckId, stateDir)) {
+    return true;
+  }
   return (
     getSessionQueue(options.sessionKey)?.queue.some(
       (event) =>
@@ -601,6 +617,11 @@ export function restoreConsumedSystemEventEntries(
 ): void {
   const key = requireSessionKey(sessionKey);
   const entry = getOrCreateSessionQueue(key);
+  // The consuming turn gives these rows back: its claim ends whether or not
+  // the entry is restored here (a replaced store leaves the row to replay).
+  for (const event of events) {
+    releaseSystemEventDeliveryAdoption(event, { settled: false });
+  }
   const restored = events.filter(
     (event) =>
       isSystemEventStoreCurrent(key, event.sessionStorePath ?? getSystemEventStorePath(key)) &&
@@ -674,4 +695,5 @@ export function resolveSystemEventDeliveryContext(
 
 export function resetSystemEventsForTest() {
   queues.clear();
+  resetSystemEventDeliveryAdoptionClaimsForTest();
 }

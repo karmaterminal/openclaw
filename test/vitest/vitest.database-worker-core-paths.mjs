@@ -412,6 +412,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/continuation/work-terminal-notice.durability.test.ts",
   "src/auto-reply/continuation/continuation-return.queue-capacity.test.ts",
   "src/auto-reply/continuation/continuation-return.unscheduled-wake.test.ts",
+  "src/auto-reply/continuation/continuation-return.pending-sweep.test.ts",
   "src/auto-reply/reply/session-system-events.ack-formatted.test.ts",
   "src/auto-reply/continuation/custody-conjecture.scenario.test.ts",
   "src/auto-reply/continuation/post-compaction-chain-charge.test.ts",

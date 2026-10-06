@@ -113,7 +113,11 @@ function enqueueRestartSentinelWake(params: {
     ...(params.recipientAuthority ? { recipientAuthority: params.recipientAuthority } : {}),
   };
   const ownedOptions = withSystemEventOwner(eventOptions, params.agentId);
-  const admitted = enqueueSystemEvent(params.message, ownedOptions);
+  // A row whose event is already queued, or that a prepared turn is adopting,
+  // is delivered: replaying it (a retry, or the periodic pending sweep) must
+  // neither replace the queued occurrence nor wake the session again.
+  const admitted =
+    !hasQueuedSystemEventDelivery(ownedOptions) && enqueueSystemEvent(params.message, ownedOptions);
   if (params.recipientAuthority && params.isRecipientAuthorityCurrent?.() !== true) {
     removeSystemEvents(
       params.sessionKey,
@@ -291,7 +295,9 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       // drop the notice if the process
       // died before the prompt consumed it. The prompt-drain path acks the row
       // via the event's sessionDeliveryAckId once it is actually adopted.
-      throw new SessionDeliveryDeferredError("system event is awaiting durable prompt adoption");
+      throw new SessionDeliveryDeferredError("system event is awaiting durable prompt adoption", {
+        awaitingAdoptionInMemory: true,
+      });
     }
     return;
   }

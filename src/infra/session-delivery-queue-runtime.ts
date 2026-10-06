@@ -28,8 +28,14 @@ type SessionDeliveryRuntime = {
   reloadPending?: typeof loadPendingSessionDelivery;
   listPending?: typeof loadPendingSessionDeliveries;
   onSettled?: SettleSessionDeliveryFn;
-  /** Jitter source for capacity backoff, in [0, 1). Injected by tests. */
+  /** Jitter source for capacity backoff and the pending sweep, in [0, 1). Injected by tests. */
   random?: () => number;
+  /**
+   * The periodic pending sweep (default on). Only a test that asserts the exact
+   * timer its own row armed turns it off, because the sweep's timer is then the
+   * scheduler's earliest wake.
+   */
+  pendingSweep?: boolean;
 };
 
 const RUNTIME_RELOAD_RETRY_MS = 1_000;
@@ -45,6 +51,16 @@ const CAPACITY_RETRY_CEILING_MS = 30_000;
 // then again at most once per interval while it stays deferred.
 const CAPACITY_SATURATION_WARN_AFTER_MS = 60_000;
 const CAPACITY_SATURATION_WARN_EVERY_MS = 5 * 60_000;
+// Recovery inside a healthy process: a pending row that no runtime armed (it
+// was written while no runtime owned this state database, by another process,
+// or its arm was lost) is picked up by a low-frequency sweep that reuses the
+// startup scan but arms only rows that are neither armed nor running. The
+// period is jittered so processes sharing a database do not sweep in lockstep,
+// and one sweep arms a bounded number of rows; the rest wait for the next one.
+// Sweeps run every 45-75s (the producer's unarmed-row warning names this bound).
+const PENDING_SWEEP_INTERVAL_MS = 60_000;
+const PENDING_SWEEP_JITTER = 0.25;
+const PENDING_SWEEP_MAX_ARMED = 256;
 
 type CapacityDeferralState = SessionDeliveryCapacityDeferral & {
   /** Durable enqueue time, for the row's age in the saturation warning. */
@@ -58,6 +74,8 @@ let runtime:
   | (Omit<SessionDeliveryRuntime, "scheduler"> & {
       scheduler: GatewaySchedulerScope;
       runningEntries: Set<string>;
+      /** Rows with a scheduled attempt that has not started yet. */
+      armedEntries: Set<string>;
       pendingSchedules: Set<Promise<void>>;
       /** Process-local: a restart starts every row at the base cadence again. */
       capacityDeferrals: Map<string, CapacityDeferralState>;
@@ -90,14 +108,39 @@ function resolveRetryDelayMs(entry: QueuedSessionDelivery, now: number): number 
 }
 
 function armSessionDeliveryId(id: string, delayMs: number, generation: number): void {
-  if (!runtime || generation !== runtimeGeneration) {
+  const activeRuntime = runtime;
+  if (!activeRuntime || generation !== runtimeGeneration) {
     return;
   }
-  runtime.scheduler.schedule({
+  activeRuntime.armedEntries.add(id);
+  activeRuntime.scheduler.schedule({
     id: `session-delivery:${id}`,
     delayMs,
     mode: "earliest",
-    run: () => runScheduledSessionDelivery(id, generation),
+    run: () => {
+      activeRuntime.armedEntries.delete(id);
+      return runScheduledSessionDelivery(id, generation);
+    },
+  });
+}
+
+function armPendingSweep(generation: number): void {
+  const activeRuntime = runtime;
+  if (!activeRuntime || generation !== runtimeGeneration) {
+    return;
+  }
+  const unit = Math.min(Math.max((activeRuntime.random ?? Math.random)(), 0), 1);
+  activeRuntime.scheduler.schedule({
+    id: "session-delivery:sweep",
+    delayMs:
+      PENDING_SWEEP_INTERVAL_MS * (1 - PENDING_SWEEP_JITTER + 2 * PENDING_SWEEP_JITTER * unit),
+    run: async () => {
+      try {
+        await schedulePendingSessionDeliveries({ onlyUnarmed: true });
+      } finally {
+        armPendingSweep(generation);
+      }
+    },
   });
 }
 
@@ -208,6 +251,7 @@ async function runScheduledSessionDelivery(id: string, generation: number): Prom
   activeRuntime.runningEntries.add(id);
   let pending: QueuedSessionDelivery | null = null;
   let capacityDeferral: SessionDeliveryCapacityDeferral | undefined;
+  let awaitingAdoptionInMemory = false;
   // Backoff state moves only on evidence: an attempt that ran, or a row gone.
   let attempted = false;
   let drained = false;
@@ -220,12 +264,16 @@ async function runScheduledSessionDelivery(id: string, generation: number): Prom
       log: activeRuntime.log,
       deliver: async (entry, context) => {
         capacityDeferral = undefined;
+        awaitingAdoptionInMemory = false;
         attempted = true;
         try {
           await activeRuntime.deliver(entry, context);
         } catch (error) {
           if (error instanceof SessionDeliveryDeferredError && error.capacity) {
             capacityDeferral = error.capacity;
+          }
+          if (error instanceof SessionDeliveryDeferredError && error.awaitingAdoptionInMemory) {
+            awaitingAdoptionInMemory = true;
           }
           throw error;
         }
@@ -258,6 +306,12 @@ async function runScheduledSessionDelivery(id: string, generation: number): Prom
   if (drained && (attempted || !pending)) {
     clearCapacityDeferral(activeRuntime, id, now, generation);
   }
+  if (pending && awaitingAdoptionInMemory) {
+    // Delivered into memory; only prompt adoption is outstanding. Polling it
+    // would only re-read the row, so the periodic pending sweep re-checks it
+    // instead (and re-queues it if the in-memory copy was lost).
+    return;
+  }
   if (pending) {
     // Any still-pending row means the drain deferred, failed, or was owned
     // elsewhere. Never poll an unchanged immediately-due row at timer speed.
@@ -274,10 +328,14 @@ export function startSessionDeliveryRuntime(params: SessionDeliveryRuntime): () 
     ...params,
     scheduler: params.scheduler.scope(),
     runningEntries: new Set<string>(),
+    armedEntries: new Set<string>(),
     pendingSchedules: new Set<Promise<void>>(),
     capacityDeferrals: new Map<string, CapacityDeferralState>(),
   };
   runtime = activeRuntime;
+  if (params.pendingSweep !== false) {
+    armPendingSweep(generation);
+  }
   let stopPromise: Promise<void> | undefined;
   return () => {
     if (runtimeGeneration === generation) {
@@ -342,8 +400,15 @@ export async function scheduleSessionDelivery(
   }
 }
 
-/** Schedule every pending entry after startup recovery installs the runtime owner. */
-export async function schedulePendingSessionDeliveries(): Promise<void> {
+/**
+ * Schedule every pending entry after startup recovery installs the runtime
+ * owner. The periodic sweep passes `onlyUnarmed`: a row that is already armed
+ * (its backoff deadline stands) or running (its drain owns the re-arm) is left
+ * alone, and at most a bounded number of rows is armed per sweep.
+ */
+export async function schedulePendingSessionDeliveries(options?: {
+  onlyUnarmed?: boolean;
+}): Promise<void> {
   const generation = runtimeGeneration;
   const activeRuntime = runtime;
   if (!activeRuntime) {
@@ -365,8 +430,27 @@ export async function schedulePendingSessionDeliveries(): Promise<void> {
     if (!runtime || generation !== runtimeGeneration) {
       return;
     }
+    if (!options?.onlyUnarmed) {
+      for (const entry of entries) {
+        armSessionDelivery(entry, generation);
+      }
+      return;
+    }
+    let armed = 0;
     for (const entry of entries) {
+      if (armed >= PENDING_SWEEP_MAX_ARMED) {
+        break;
+      }
+      if (activeRuntime.armedEntries.has(entry.id) || activeRuntime.runningEntries.has(entry.id)) {
+        continue;
+      }
       armSessionDelivery(entry, generation);
+      armed += 1;
+    }
+    if (armed > 0) {
+      activeRuntime.log.info(
+        `session delivery: periodic sweep armed ${armed} pending ${armed === 1 ? "entry" : "entries"} that no runtime had scheduled`,
+      );
     }
   } finally {
     activeRuntime.pendingSchedules.delete(settled.promise);

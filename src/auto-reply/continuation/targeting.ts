@@ -96,7 +96,8 @@ const defaultContinuationReturnDeliveryDeps: ContinuationReturnDeliveryDeps = {
 };
 
 // A held return whose retry could not be armed (no delivery runtime owns this
-// state database in this process) waits for the next runtime activation scan.
+// state database in this process) is recovered by the next runtime's startup
+// scan, or by the periodic sweep of a runtime already running on the database.
 // Warn once per state database and session per window; the rest go to debug.
 const UNARMED_HELD_RETURN_WARN_EVERY_MS = 60_000;
 const unarmedHeldReturnWarnedAt = new Map<string, number>();
@@ -108,7 +109,7 @@ function reportUnarmedHeldReturn(params: {
 }): void {
   const now = Date.now();
   const key = `${params.stateDir ?? ""}\u0000${params.sessionKey}`;
-  const message = `[continuation:return-held] system event queue full and no delivery runtime is active for this state database; deliveryId=${params.deliveryId} session=${params.sessionKey} stays pending until a gateway delivery runtime starts on this state database (its startup scan arms every pending row)`;
+  const message = `[continuation:return-held] system event queue full and no delivery runtime is active for this state database; deliveryId=${params.deliveryId} session=${params.sessionKey} stays pending: it is recovered when a gateway delivery runtime starts on this state database (its startup scan arms every pending row), or by the periodic sweep (every 45-75s) of a gateway delivery runtime already running on it`;
   const last = unarmedHeldReturnWarnedAt.get(key);
   if (last !== undefined && now - last < UNARMED_HELD_RETURN_WARN_EVERY_MS) {
     log.debug(message);

@@ -26,6 +26,10 @@ import {
 } from "../../infra/heartbeat-events-filter.js";
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
 import {
+  claimSystemEventDeliveryAdoption,
+  releaseSystemEventDeliveryAdoption,
+} from "../../infra/system-event-delivery-claims.js";
+import {
   isSystemEventStoreCurrent,
   resolveSystemEventQueueKey,
 } from "../../infra/system-event-ownership.js";
@@ -245,10 +249,20 @@ export async function prepareFormattedSystemEvents(params: {
       continue;
     }
     const authorityKey = readPreparedSystemEventAuthorityKey(event);
+    const identity = {
+      sessionDeliveryAckId: id,
+      ...(stateDir ? { sessionDeliveryAckStateDir: stateDir } : {}),
+    };
     adoptionScopedDeliveries.push({
       id,
       acknowledge: async () => {
-        await ackSessionDelivery(id, captureContinuationQueueContext(stateDir));
+        let settled = false;
+        try {
+          await ackSessionDelivery(id, captureContinuationQueueContext(stateDir));
+          settled = true;
+        } finally {
+          releaseSystemEventDeliveryAdoption(identity, { settled });
+        }
       },
       ...(authorityKey ? { authorityKey } : {}),
     });
@@ -256,6 +270,13 @@ export async function prepareFormattedSystemEvents(params: {
   for (const ack of alreadyAdoptedAckIds) {
     try {
       await ackSessionDelivery(ack.id, captureContinuationQueueContext(ack.stateDir));
+      releaseSystemEventDeliveryAdoption(
+        {
+          sessionDeliveryAckId: ack.id,
+          ...(ack.stateDir ? { sessionDeliveryAckStateDir: ack.stateDir } : {}),
+        },
+        { settled: true },
+      );
     } catch (error) {
       defaultRuntime.log(
         `[session-system-events] failed to settle already-adopted session delivery ${ack.id}: ${
@@ -372,6 +393,16 @@ export async function prepareFormattedSystemEvents(params: {
   const managedDeliveries = adoptionScopedDeliveries.filter((delivery) =>
     formattedAckIds.has(delivery.id),
   );
+  // This turn now owns each managed delivery until it adopts (acknowledge) or
+  // gives it back (restore): a replay meanwhile must not queue it again.
+  for (const event of formattedEvents) {
+    if (
+      event.sessionDeliveryAckId &&
+      managedDeliveries.some((d) => d.id === event.sessionDeliveryAckId)
+    ) {
+      claimSystemEventDeliveryAdoption(event);
+    }
+  }
   // Each sub-line gets its own prefix so continuation lines can't be mistaken
   // for regular user content.
   const summaryLines =

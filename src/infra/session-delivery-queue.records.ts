@@ -55,11 +55,23 @@ export class SessionDeliveryDeferredError extends Error {
   override name = "SessionDeliveryDeferredError";
   /** Set only for a capacity refusal, so the retry runtime can back off and report saturation. */
   readonly capacity?: SessionDeliveryCapacityDeferral;
+  /**
+   * The row's event is queued in memory (or a prepared turn is adopting it):
+   * delivery is done and only adoption is outstanding, so the retry runtime
+   * leaves the row to its periodic pending sweep instead of polling it.
+   */
+  readonly awaitingAdoptionInMemory?: true;
 
-  constructor(message?: string, options?: { capacity?: SessionDeliveryCapacityDeferral }) {
+  constructor(
+    message?: string,
+    options?: { capacity?: SessionDeliveryCapacityDeferral; awaitingAdoptionInMemory?: true },
+  ) {
     super(message);
     if (options?.capacity) {
       this.capacity = options.capacity;
+    }
+    if (options?.awaitingAdoptionInMemory) {
+      this.awaitingAdoptionInMemory = true;
     }
   }
 }
