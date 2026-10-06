@@ -97,6 +97,27 @@ function readAudioAttachment(attachments: unknown[]): boolean {
   });
 }
 
+/** The MESSAGE_CREATE fields the policy and preflight's projection read from a stored frame. */
+function isPolicyReadableMessageFrame(
+  rawMessage: Record<string, unknown>,
+): rawMessage is Record<string, unknown> & APIMessage {
+  const referencedMessage = rawMessage.referenced_message;
+  return (
+    Boolean(nonEmptyString(rawMessage.channel_id)) &&
+    Boolean(nonEmptyString(rawMessage.id)) &&
+    isRecord(rawMessage.author) &&
+    readMentionedUserIds(rawMessage.mentions) !== null &&
+    typeof rawMessage.content === "string" &&
+    typeof rawMessage.timestamp === "string" &&
+    typeof rawMessage.mention_everyone === "boolean" &&
+    Array.isArray(rawMessage.attachments) &&
+    (rawMessage.embeds == null || Array.isArray(rawMessage.embeds)) &&
+    (rawMessage.mention_roles == null || Array.isArray(rawMessage.mention_roles)) &&
+    (referencedMessage == null || isRecord(referencedMessage)) &&
+    (rawMessage.message_reference == null || isRecord(rawMessage.message_reference))
+  );
+}
+
 /** Null for anything not fully readable, so such rows stay with the claim-time codec. */
 function readDiscordStalePolicyRow(
   payload: unknown,
@@ -107,33 +128,22 @@ function readDiscordStalePolicyRow(
     return null;
   }
   const rawMessage = payload.rawMessage;
+  if (!isPolicyReadableMessageFrame(rawMessage)) {
+    return null;
+  }
   const channelId = nonEmptyString(rawMessage.channel_id);
   const mentionedUserIds = readMentionedUserIds(rawMessage.mentions);
-  const referencedMessage = rawMessage.referenced_message;
-  if (
-    !channelId ||
-    !nonEmptyString(rawMessage.id) ||
-    !isRecord(rawMessage.author) ||
-    !mentionedUserIds ||
-    typeof rawMessage.content !== "string" ||
-    typeof rawMessage.timestamp !== "string" ||
-    typeof rawMessage.mention_everyone !== "boolean" ||
-    !Array.isArray(rawMessage.attachments) ||
-    (rawMessage.embeds != null && !Array.isArray(rawMessage.embeds)) ||
-    (rawMessage.mention_roles != null && !Array.isArray(rawMessage.mention_roles)) ||
-    (referencedMessage != null && !isRecord(referencedMessage)) ||
-    (rawMessage.message_reference != null && !isRecord(rawMessage.message_reference))
-  ) {
+  if (!channelId || !mentionedUserIds) {
     return null;
   }
   const guildId = nonEmptyString(rawMessage.guild_id);
+  const referencedMessage: unknown = rawMessage.referenced_message;
   const referencedAuthor = isRecord(referencedMessage) ? referencedMessage.author : undefined;
   const sentAtMs = Date.parse(rawMessage.timestamp);
   const payloadReceivedAt = payload.receivedAt;
   let text: string;
   try {
-    // SAFETY: the structural checks above prove the stored frame is a MESSAGE_CREATE payload.
-    const message = new Message(client, rawMessage as unknown as APIMessage);
+    const message = new Message(client, rawMessage);
     // Preflight's own projection (documents, then native mentions rewritten to
     // usernames), so pre-claim matches exactly the text preflight matches.
     text = resolveDiscordMessageText(message, { includeForwarded: false });
