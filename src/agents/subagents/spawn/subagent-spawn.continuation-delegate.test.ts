@@ -123,9 +123,9 @@ describe("spawnSubagentDirect continuation delegate seam flow", () => {
     }));
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     swarmSchedulerTesting.reset();
-    resetSubagentRegistryForTests();
+    await resetSubagentRegistryForTests();
     for (const mock of Object.values(hoisted)) {
       mock.mockReset();
     }

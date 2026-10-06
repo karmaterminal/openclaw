@@ -56,9 +56,9 @@ beforeEach(async () => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
   spawnSubagentDirectMock.mockReset();
-  resetSubagentRegistryForTests({ persist: false });
+  await resetSubagentRegistryForTests({ persist: false });
 });
 
 function dispatch(options: { recover?: boolean } = {}) {
@@ -158,7 +158,7 @@ describe("restart with an unresolved claim (RFC §5.4.4 boundaries 2-4, Q3)", ()
   it("crash after admission: the registry row under the recorded child run id is adopted, no notice", async () => {
     const { recordId, claimed } = await claimThenCrash();
     const childRunId = claimed.spawnAttempt?.childRunId ?? "";
-    addSubagentRunForTests({
+    await addSubagentRunForTests({
       runId: childRunId,
       childSessionKey: "agent:main:subagent:admitted-child",
       requesterSessionKey: OWNER,
@@ -180,7 +180,7 @@ describe("restart with an unresolved claim (RFC §5.4.4 boundaries 2-4, Q3)", ()
 
   it("a registry row under the run id owned by another requester is a collision, never adopted", async () => {
     const { recordId, claimed } = await claimThenCrash();
-    addSubagentRunForTests({
+    await addSubagentRunForTests({
       runId: claimed.spawnAttempt?.childRunId ?? "",
       childSessionKey: "agent:main:subagent:foreign-child",
       requesterSessionKey: OTHER_OWNER,
@@ -221,7 +221,7 @@ describe("attempt ids are never reused (RFC §5.4.4)", () => {
     const record = await enqueuePendingDelegate(OWNER, { task: "admitted late", delayMs: 0 });
     const [first] = await consumePendingDelegates(OWNER);
     await requeuePendingDelegate(first!, "retry", undefined, { failurePhase: "initialize" });
-    addSubagentRunForTests({
+    await addSubagentRunForTests({
       runId: first?.spawnAttempt?.childRunId ?? "",
       childSessionKey: "agent:main:subagent:late-child",
       requesterSessionKey: OWNER,

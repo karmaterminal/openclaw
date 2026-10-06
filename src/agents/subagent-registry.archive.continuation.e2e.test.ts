@@ -119,9 +119,8 @@ describe("subagent registry archive behavior (continuation work)", () => {
 
   const addCanonicalSubagentRunForTests = (
     entry: Parameters<typeof mod.addSubagentRunForTests>[0],
-  ) => {
+  ) =>
     mod.addSubagentRunForTests(createCanonicalSubagentRunFixture(createSubagentRunRecord(entry)));
-  };
 
   const waitForNoRequesterRuns = async () => {
     await vi.waitFor(() => {
@@ -129,7 +128,7 @@ describe("subagent registry archive behavior (continuation work)", () => {
     });
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
     vi.mocked(callGateway).mockReset();
@@ -148,17 +147,17 @@ describe("subagent registry archive behavior (continuation work)", () => {
     sessionAccessorMocks.listSessionEntriesReadOnly.mockReset();
     sessionAccessorMocks.listSessionEntriesReadOnly.mockReturnValue([]);
     sessionAccessorMocks.loadSessionEntryReadOnly.mockReset().mockReturnValue(undefined);
-    mod.resetSubagentRegistryForTests({ persist: false });
+    await mod.resetSubagentRegistryForTests({ persist: false });
   });
 
-  afterEach(() => {
-    mod.resetSubagentRegistryForTests({ persist: false });
+  afterEach(async () => {
+    await mod.resetSubagentRegistryForTests({ persist: false });
     vi.useRealTimers();
   });
 
   it("defers archive eviction without session identity while continuation work is live", async () => {
     const childSessionKey = "agent:main:subagent:delete-work-live";
-    mod.addSubagentRunForTests({
+    await mod.addSubagentRunForTests({
       runId: "run-delete-work-live",
       childSessionKey,
       requesterSessionKey: "agent:main:main",
@@ -204,7 +203,7 @@ describe("subagent registry archive behavior (continuation work)", () => {
     const now = Date.now();
     const groupId = "collector-work-live";
     for (const suffix of ["one", "two"]) {
-      addCanonicalSubagentRunForTests({
+      await addCanonicalSubagentRunForTests({
         runId: `run-collector-work-live-${suffix}`,
         childSessionKey: `agent:main:subagent:collector-work-live-${suffix}`,
         requesterSessionKey: "agent:main:main",
@@ -258,7 +257,7 @@ describe("subagent registry archive behavior (continuation work)", () => {
       lifecycleRevision: "lifecycle-delete-custody-live",
       updatedAt: Date.now(),
     });
-    addCanonicalSubagentRunForTests({
+    await addCanonicalSubagentRunForTests({
       runId: "run-delete-custody-live",
       childSessionKey,
       requesterSessionKey: "agent:main:main",
