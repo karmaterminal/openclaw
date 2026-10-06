@@ -478,6 +478,15 @@ export function registerOperatorSpawnRollbackCases(options: {
         expect(embeddedSettled).toBe(false);
         expect(context.chatAbortControllers.get(accepted.runId)).toBe(accepted.entry);
         expect(subagentRuns.has(accepted.runId)).toBe(false);
+        // The result is returned while the retained owner's retry is still pending:
+        // its first abort failed, its retry is parked, and nothing deleted the session.
+        expect(abortAttempts).toBe(2);
+        expect(
+          loadSessionEntry({ storePath: bound.storePath, sessionKey: accepted.sessionKey }),
+        ).toMatchObject(accepted.sessionIdentity);
+        expect(cleanupDispatch.mock.calls.some(([method]) => method === "sessions.delete")).toBe(
+          false,
+        );
 
         const otherSpawn = invoke("capacity-during-uncertain-cleanup");
         invocations.push(otherSpawn);

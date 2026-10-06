@@ -53,7 +53,14 @@ export function buildSubagentSpawnPipelineFailureResult(
     childIdem,
     childSessionKey,
     reportFailurePhase,
-  }: { childIdem: string; childSessionKey: string; reportFailurePhase: boolean },
+    acceptedRunCleanupError,
+  }: {
+    childIdem: string;
+    childSessionKey: string;
+    reportFailurePhase: boolean;
+    /** Upstream's pending accepted-run termination text, appended to the error. */
+    acceptedRunCleanupError?: string;
+  },
 ): SpawnSubagentResult {
   const runId = pipelineResult.runId ?? childIdem;
   const spawnError =
@@ -68,10 +75,14 @@ export function buildSubagentSpawnPipelineFailureResult(
       : spawnStatus === "forbidden"
         ? "forbidden"
         : "error",
-    error:
+    error: [
       pipelineResult.phase === "register" && spawnStatus !== "forbidden"
         ? `Failed to register subagent run: ${summarizeSpawnError(pipelineResult.error)}`
         : summarizeSpawnError(pipelineResult.error),
+      acceptedRunCleanupError,
+    ]
+      .filter(Boolean)
+      .join(" "),
     childSessionKey,
     ...(pipelineResult.phase === "initialize" ? {} : { runId }),
     ...(reportFailurePhase ? { failurePhase: pipelineResult.phase } : {}),

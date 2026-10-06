@@ -451,6 +451,7 @@ export async function spawnSubagentDirect(
       });
     type SubagentBackendState = { contextEnginePreparation?: PreparedContextEngineSubagentSpawn };
     let registrationRequired = true;
+    let acceptedRunCleanupError: string | undefined;
     const adapter: SpawnBackendAdapter<SubagentBackendState> = {
       retainRegistrationScope(scope) {
         canCleanupCreatedSession = scope.canCleanupSession;
@@ -499,7 +500,7 @@ export async function spawnSubagentDirect(
           runId: childIdem,
           requesterSessionKey: requesterInternalKey,
         });
-        await cleanupAcceptedSubagentSpawnFailure({
+        acceptedRunCleanupError = await cleanupAcceptedSubagentSpawnFailure({
           phase,
           error,
           runId: childIdem,
@@ -653,6 +654,7 @@ export async function spawnSubagentDirect(
         childIdem,
         childSessionKey,
         reportFailurePhase: params.continuationChildRunId !== undefined,
+        acceptedRunCleanupError,
       });
     }
     const childRunId = pipelineResult.runId;

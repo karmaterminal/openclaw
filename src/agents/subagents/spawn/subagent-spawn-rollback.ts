@@ -43,8 +43,11 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
    * authority.
    */
   callGateway?: Parameters<typeof terminateAcceptedCollectorRun>[0]["callGateway"];
-}): Promise<void> {
+}): Promise<string | undefined> {
   const cleanupFailures: unknown[] = [];
+  // Upstream's #158251 contract: termination the retained owner is still retrying is
+  // reported in the error result, not thrown; the owner keeps the admission until it settles.
+  let acceptedRunCleanupError: string | undefined;
   const ownsChild = params.isCurrent?.() !== false;
   const isAbortCurrent = params.isAbortCurrent ?? params.isCurrent;
   const callGateway = params.callGateway ?? params.cleanupOwner?.callGateway;
@@ -57,7 +60,8 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
     try {
       // Upstream's terminateFailedRegistrationRun split (fdbf48d138): while the
       // registry still retains the row, stop the accepted run but preserve its
-      // session. The feature keeps requiring confirmed termination either way.
+      // session. A pending retry is upstream's error-result text; termination that could
+      // not be scheduled has no retry left and stays a thrown cleanup failure.
       const deleteSessionOnMiss = ownsChild;
       if (
         !deleteSessionOnMiss &&
@@ -65,12 +69,14 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
         params.cleanupOwner?.terminateAcceptedRun
       ) {
         const termination = await params.cleanupOwner.terminateAcceptedRun(params.retainAdmission);
-        if (termination.status !== "settled") {
+        if (termination.status === "pending") {
+          acceptedRunCleanupError =
+            `Child termination is not confirmed: ${formatErrorMessage(termination.error)}. ` +
+            "Its session is retained, and Gateway cleanup is pending.";
+        } else if (termination.status !== "settled") {
           throw new Error(
             `Accepted child termination was not confirmed: ${params.acceptedChildRunId}: ${formatErrorMessage(termination.error)}. ` +
-              (termination.status === "pending"
-                ? "Its session is retained, and Gateway cleanup is pending."
-                : "Its session is retained; Gateway cleanup could not be scheduled."),
+              "Its session is retained; Gateway cleanup could not be scheduled.",
             { cause: params.error },
           );
         }
@@ -134,4 +140,5 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
     aggregate.cause = cleanupFailures[0];
     throw aggregate;
   }
+  return acceptedRunCleanupError;
 }
