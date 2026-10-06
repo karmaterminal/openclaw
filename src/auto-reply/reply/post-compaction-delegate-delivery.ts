@@ -535,6 +535,7 @@ export async function deliverQueuedPostCompactionDelegate(
     ownerSessionKey: params.entry.sessionKey,
   });
   let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
+  let releaseAcceptedSpawnHold: (() => void) | undefined;
   try {
     const spawnFence = await deps.revalidatePendingDelegateForSpawn(
       {
@@ -644,6 +645,7 @@ export async function deliverQueuedPostCompactionDelegate(
       );
     }
     rollbackAcceptedSpawn = spawnResult.rollbackAccepted;
+    releaseAcceptedSpawnHold = spawnResult.releaseAcceptanceHold;
     // Charge the chain only now that a child is actually accepted. Everything
     // above this line — spawn fence, attachment materialization,
     // spawn rejection — leaves the persisted depth untouched, so a retry after any
@@ -693,9 +695,27 @@ export async function deliverQueuedPostCompactionDelegate(
         ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
       }),
     );
+    // Final acceptance point (H1 §3.2): disarm the child's durable acceptance intent.
+    const acceptance = await spawnResult.confirmAccepted?.();
+    if (acceptance === "refused") {
+      throw new Error(
+        `[continuation:post-compaction-accept-not-confirmed] entryId=${params.entry.id}`,
+      );
+    }
+    if (acceptance === "uncertain") {
+      // Own acceptance is committed: keep it, never roll back or respawn.
+      deps.log(
+        `[continuation:delegate-accept-uncertain] flowId=${params.entry.sourceFlowId ?? "unknown"} entryId=${params.entry.id}`,
+      );
+    }
     rollbackAcceptedSpawn = undefined;
   } finally {
-    await rollbackAcceptedSpawn?.();
-    activeDispatch.release();
+    try {
+      await rollbackAcceptedSpawn?.();
+    } finally {
+      // An unconfirmed arm is let go here; the registry sweeper fails it closed.
+      releaseAcceptedSpawnHold?.();
+      activeDispatch.release();
+    }
   }
 }

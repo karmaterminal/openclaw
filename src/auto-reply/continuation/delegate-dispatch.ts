@@ -361,6 +361,7 @@ export async function dispatchToolDelegates(
     let dispatchSpan: ReturnType<typeof startContinuationDelegateSpan> | undefined;
     let spawnAttempted = false;
     let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
+    let releaseAcceptedSpawnHold: (() => void) | undefined;
     const activeDispatch = registerContinuationDelegateDispatchClaim({
       controller: "pending",
       delegate,
@@ -473,6 +474,7 @@ export async function dispatchToolDelegates(
 
       if (result.status === "accepted") {
         rollbackAcceptedSpawn = result.rollbackAccepted;
+        releaseAcceptedSpawnHold = result.releaseAcceptanceHold;
         // INFO-level on EVERY successful spawn — observability parity.
         log.info(
           `[continuation:delegate-spawned] hop=${nextHop}/${maxChainLength} mode=${delegate.mode ?? "normal"} session=${sessionKey} task=${delegate.task.slice(0, 80)}`,
@@ -507,8 +509,20 @@ export async function dispatchToolDelegates(
             continue;
           }
         }
-        dispatchSpan.setStatus("OK");
         commitPlannedChainState(dispatchChainId);
+        // Final acceptance point (H1 §3.2): disarm the child's durable acceptance intent.
+        const acceptance = await result.confirmAccepted?.();
+        if (acceptance === "refused") {
+          throw new Error("Continuation delegate acceptance could not be confirmed.");
+        }
+        rollbackAcceptedSpawn = undefined;
+        if (acceptance === "uncertain") {
+          // Own acceptance is committed: keep it, never roll back or respawn.
+          log.warn(
+            `[continuation:delegate-accept-uncertain] flowId=${delegate.flowId ?? "unknown"} session=${sessionKey} child=${result.runId ?? "unknown"}`,
+          );
+        }
+        dispatchSpan.setStatus("OK");
       } else if (!spawnResultNeverDispatched(result)) {
         dispatchSpan.setStatus("ERROR", result.error ?? `delegate spawn ${result.status}`);
         await settleUncertainSpawn(`${result.status}:${result.failurePhase ?? "unknown-phase"}`);
@@ -570,6 +584,8 @@ export async function dispatchToolDelegates(
       );
       rejected++;
     } finally {
+      // An unconfirmed arm is let go here; the registry sweeper fails it closed.
+      releaseAcceptedSpawnHold?.();
       activeDispatch.release();
       dispatchSpan?.end();
     }

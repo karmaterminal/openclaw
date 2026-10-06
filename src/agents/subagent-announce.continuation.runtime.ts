@@ -482,6 +482,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
         ownerSessionKey: params.childSessionKey,
       });
       let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
+      let releaseAcceptedSpawnHold: (() => void) | undefined;
       let spawnAttempted = false;
       try {
         if (
@@ -565,6 +566,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
         );
         if (spawnResult.status === "accepted") {
           rollbackAcceptedSpawn = spawnResult.rollbackAccepted;
+          releaseAcceptedSpawnHold = spawnResult.releaseAcceptanceHold;
           if (delegate.flowId) {
             const committed = await markPendingDelegateSpawnAccepted(
               delegate,
@@ -584,6 +586,18 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
               );
               continue;
             }
+          }
+          // Final acceptance point (H1 §3.2): disarm the child's durable acceptance intent.
+          const acceptance = await spawnResult.confirmAccepted?.();
+          if (acceptance === "refused") {
+            throw new Error("Tool delegate acceptance could not be confirmed.");
+          }
+          rollbackAcceptedSpawn = undefined;
+          if (acceptance === "uncertain") {
+            // Own acceptance is committed: keep it, never roll back or respawn.
+            defaultRuntime.log(
+              `[continuation:delegate-accept-uncertain] flowId=${delegate.flowId ?? "unknown"} session=${params.childSessionKey}`,
+            );
           }
           toolHopBase = nextHop;
         } else if (!spawnResultNeverDispatched(spawnResult)) {
@@ -620,6 +634,8 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
           `[subagent-chain-hop] Tool delegate spawn failed from ${params.childSessionKey}: ${String(error)}`,
         );
       } finally {
+        // An unconfirmed arm is let go here; the registry sweeper fails it closed.
+        releaseAcceptedSpawnHold?.();
         activeDispatch.release();
       }
     }

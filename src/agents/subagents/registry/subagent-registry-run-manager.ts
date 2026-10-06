@@ -37,23 +37,15 @@ import { annotateSubagentRunRollbackCustody } from "./subagent-registry-rollback
 import { SubagentLaunchManager } from "./subagent-registry-run-launch.js";
 import type { SubagentRegistrationIdentity } from "./subagent-registry-run-launch.js";
 import type { SubagentManagerOptions } from "./subagent-registry-run-wait.js";
+import {
+  armSubagentLaunchDispatchWrite,
+  confirmSubagentSpawnAcceptanceWrite,
+  matchesRegistrationIdentity,
+} from "./subagent-registry-spawn-acceptance-writes.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { isSameSubagentRunOwner } from "./subagent-run-generation.js";
 
 const log = createSubsystemLogger("agents/subagent-registry");
-
-function matchesRegistrationIdentity(
-  entry: SubagentRunRecord,
-  expected: SubagentRegistrationIdentity | undefined,
-): boolean {
-  return (
-    expected === undefined ||
-    (entry.runId === expected.runId &&
-      entry.childSessionKey === expected.childSessionKey &&
-      entry.generation === expected.generation &&
-      entry.createdAt === expected.createdAt)
-  );
-}
 
 class SubagentRunManager extends SubagentLaunchManager {
   readonly recordAcceptedSubagentSpawnRollback = async (params: {
@@ -104,6 +96,9 @@ class SubagentRunManager extends SubagentLaunchManager {
           };
           const next = { ...entry };
           annotateSubagentRunRollbackCustody(next, rollback);
+          // Custody supersedes the acceptance intent in one write: armed -> custody.
+          delete next.spawnAcceptance;
+          delete next.launchDispatch;
           return { value: true, postimages: new Map([[runId, next]]) };
         },
         { runs: this.options.runs },
@@ -115,6 +110,18 @@ class SubagentRunManager extends SubagentLaunchManager {
       return { status: "pending-persistence", error };
     }
   };
+
+  readonly confirmSubagentSpawnAcceptance = (params: {
+    runId: string;
+    childSessionKey: string;
+    expectedRegistration?: SubagentRegistrationIdentity;
+  }) => confirmSubagentSpawnAcceptanceWrite(this.options.runs, params);
+
+  readonly armSubagentLaunchDispatch = (params: {
+    runId: string;
+    childSessionKey: string;
+    idempotencyKey: string;
+  }) => armSubagentLaunchDispatchWrite(this.options.runs, params);
 
   /**
    * Releases accepted-spawn rollback custody once the launch owner has confirmed

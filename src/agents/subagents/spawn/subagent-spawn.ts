@@ -14,6 +14,7 @@ import {
   rollbackSubagentRunRegistration,
 } from "../registry/subagent-registry.js";
 import { materializeSubagentAttachments } from "./subagent-attachments.js";
+import * as acceptance from "./subagent-spawn-acceptance.js";
 import { createSubagentChildRunLauncher } from "./subagent-spawn-child-launch.js";
 import { resolveSubagentChildPlan } from "./subagent-spawn-child-plan.js";
 import {
@@ -572,8 +573,10 @@ export async function spawnSubagentDirect(
             continuationTargetSessionKeys,
             continuationRecipientAuthorityBinding,
           }),
+          ...acceptance.arm(params, acceptedChildRunId ?? runId, provisionalSessionIdentity),
         };
       },
+      ...acceptance.buildNativeSpawnAcceptance({ collect: params.collect === true, ctx }),
       assertRegistrationAdmission: () =>
         ctx.continuationDelegateAdmission?.assertCurrent("registry-acceptance"),
       assertPostPublicationAdmission: () =>
@@ -677,11 +680,17 @@ export async function spawnSubagentDirect(
       context: preparedSpawnContext.mode,
       taskName,
       note:
-        [envelope.acceptedNote, preparedSpawnContext.forkFallbackNote].filter(Boolean).join(" ") ||
-        undefined,
+        [
+          envelope.acceptedNote,
+          preparedSpawnContext.forkFallbackNote,
+          acceptance.note(pipelineResult),
+        ]
+          .filter(Boolean)
+          .join(" ") || undefined,
       ...resolvedModelMetadata,
       modelApplied: plan.modelApplied || undefined,
       attachments: materializedAttachments?.receipt,
+      ...acceptance.buildAcceptedSpawnHandles(pipelineResult, ctx),
     };
   } catch (error) {
     if (returnsPhaselessSubagentSpawnCancel(error, params, pipelineEntered)) {

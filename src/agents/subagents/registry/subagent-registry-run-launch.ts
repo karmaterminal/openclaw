@@ -46,6 +46,7 @@ import {
   type RegisterSubagentRunParams,
 } from "./subagent-registry-run-launch-record.js";
 import { SubagentRecoveryManager } from "./subagent-registry-run-recovery.js";
+import * as spawnAcceptance from "./subagent-registry-spawn-acceptance.js";
 import type {
   RegisterSubagentRunOptions,
   SubagentRegistrationOwnership,
@@ -375,6 +376,8 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
               return;
             }
             registered = entry;
+            // The launch owner holds the arm until its final acceptance owner decides.
+            spawnAcceptance.holdSubagentSpawnAcceptance(entry);
             try {
               options.assertPublicationCurrent?.();
               if (authority?.operatorAuthority) {
@@ -489,6 +492,8 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
             : "refused";
         initialFailure = error;
       }
+      // Failed after publication: no caller owns the arm, so release it to the sweeper.
+      spawnAcceptance.releaseSubagentSpawnAcceptanceHold(registered);
       if (!registerParams.queued && registered && !activated) {
         subagentRuns.retireCompletionAuthority(registered);
         if (registryCurrent() && currentEntry()) {
@@ -618,6 +623,8 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
         }
         entry.swarmLaunchPending = false;
         entry.queuedLaunch = undefined;
+        // The start transition proves the dispatched launch started: disarm in the same write.
+        delete entry.launchDispatch;
         bindSubagentRunRuntimeKey(entry, getSubagentRunRuntimeKey(current));
         const postimages = new Map<string, SubagentRunRecord | null>([[nextRunId, entry]]);
         if (selected.runId !== nextRunId) {
@@ -698,6 +705,8 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
             outcome: { status: "error", error, endedAt },
           };
           entry.queuedLaunch = undefined;
+          // The failed launch is settled; a dispatched marker has nothing left to guard.
+          delete entry.launchDispatch;
           entry.collectorLaunchCleanupPending = true;
           entry.completion = { required: false, resultText: error, capturedAt: endedAt };
           updateSwarmCollectorCompletion(entry, this.options.getRuntimeConfig(), prepared);
@@ -706,10 +715,14 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
           if (!current.collect || typeof endedAt !== "number") {
             return { value: false };
           }
-          if (current.collectorCompletion) {
+          if (current.collectorCompletion && !current.launchDispatch) {
             return { value: true };
           }
           entry = structuredClone(current);
+          delete entry.launchDispatch;
+          if (current.collectorCompletion) {
+            return { value: true, postimages: new Map([[entry.runId, entry]]) };
+          }
           prepareTerminatedCollectorLaunch(
             entry,
             endedAt,

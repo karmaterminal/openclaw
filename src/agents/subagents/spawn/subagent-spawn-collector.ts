@@ -11,10 +11,15 @@ import { getAsyncWorkSignal } from "../../../shared/async-work-scope.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import type { AdmittedRunOperatorAuthority } from "../../admitted-run-context.js";
 import { summarizeSpawnError } from "../../spawn-pipeline.js";
+import { subagentRuns } from "../registry/subagent-registry-memory.js";
+import { classifySubagentDisarmFailure } from "../registry/subagent-registry-spawn-acceptance-writes.js";
 import {
+  armSubagentLaunchDispatch,
   completeCollectorLaunchCleanup,
+  markSubagentLaunchDispatchUncertain,
   recordAcceptedSubagentSpawnRollback,
   releaseAcceptedSubagentSpawnRollback,
+  releaseSubagentSpawnAcceptanceHoldForRun,
   settleFailedQueuedSubagentLaunch,
   startQueuedSubagentRun,
 } from "../registry/subagent-registry.js";
@@ -143,6 +148,8 @@ export function createCollectorLaunchCallbacks(params: {
   let pendingLaunchTermination: string | undefined;
   let dispatchAttempted = false;
   const recordRollbackOwner = async (gatewayRunId: string, reason: string, error: unknown) => {
+    // Whatever the record outcome, the dispatched launch is no longer held: custody
+    // (or the still-armed launch marker) is the sweeper's to fail closed.
     const rollbackOwner = await recordAcceptedSubagentSpawnRollback({
       runId: childRunId,
       childSessionKey,
@@ -155,6 +162,7 @@ export function createCollectorLaunchCallbacks(params: {
       // row is fenced by expectedRegistration plus frozen session identity and run
       // id; the live predicate is consumed only by terminateAcceptedCollectorRun.
     });
+    releaseSubagentSpawnAcceptanceHoldForRun(childRunId);
     if (rollbackOwner.status === "persisted") {
       return error;
     }
@@ -171,6 +179,14 @@ export function createCollectorLaunchCallbacks(params: {
     return aggregate;
   };
   let launchRegistered = false;
+  const launchIdempotencyKey = () => {
+    const row = subagentRuns.get(childRunId);
+    const queuedKey = row?.queuedLaunch?.request.idempotencyKey;
+    return (
+      row?.swarmLaunchIdempotencyKey ??
+      (typeof queuedKey === "string" && queuedKey ? queuedKey : childRunId)
+    );
+  };
   const startOnce = async () => {
     await runWithGatewayIndependentRootWorkContinuation(async () => {
       for (
@@ -190,8 +206,25 @@ export function createCollectorLaunchCallbacks(params: {
         },
       );
       assertLaunchCurrent();
+      // H1 §3.4: durable launch marker before dispatch. A failed write dispatches nothing.
+      // A dispatched launch is never relaunched by restore; its start transition disarms it.
+      if (
+        !(await armSubagentLaunchDispatch({
+          runId: childRunId,
+          childSessionKey,
+          idempotencyKey: launchIdempotencyKey(),
+        }))
+      ) {
+        throw new Error("Collector launch marker could not be recorded before dispatch");
+      }
       dispatchAttempted = true;
-      const launch = await params.launchChildRun(assertLaunchCurrent);
+      let launch: Awaited<ReturnType<typeof params.launchChildRun>>;
+      try {
+        launch = await params.launchChildRun(assertLaunchCurrent);
+      } catch (error) {
+        releaseSubagentSpawnAcceptanceHoldForRun(childRunId);
+        throw error;
+      }
       // Queued registration already owns the task row before either dispatch route starts.
       // Out-of-process Gateway tracking finds that exact runId and suppresses its CLI row.
       const gatewayRunId = readGatewayRunId(launch.response) ?? childRunId;
@@ -205,6 +238,7 @@ export function createCollectorLaunchCallbacks(params: {
           sessionCleanup: "preserve",
         });
         launchTerminationConfirmed = true;
+        releaseSubagentSpawnAcceptanceHoldForRun(childRunId);
         throw new Error("Collector registration changed during launch");
       }
       params.recordParticipant();
@@ -222,6 +256,14 @@ export function createCollectorLaunchCallbacks(params: {
         }
         launchRegistered = true;
       } catch (error) {
+        if (classifySubagentDisarmFailure(error) === "uncertain") {
+          // §3.6: the start write may have landed. Never act on the rollback branch:
+          // keep the hold, skip custody and termination, and leave settlement to the
+          // next process restore, which decides by the durable row.
+          markSubagentLaunchDispatchUncertain(childRunId);
+          launchRegistered = true;
+          return;
+        }
         // Publication temporarily blocks cleanup authority. Settle rollback after
         // that barrier so a paused owner cannot count as confirmed termination.
         pendingLaunchTermination = gatewayRunId;

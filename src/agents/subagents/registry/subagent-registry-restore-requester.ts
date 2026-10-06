@@ -5,6 +5,7 @@ import type { SubagentLifecycleOptions } from "./subagent-registry-lifecycle-con
 import type { SubagentLifecycleController } from "./subagent-registry-lifecycle.js";
 import { SubagentRegistryMutationRejectedError } from "./subagent-registry-persistence.js";
 import { selectRequesterTurnChildren } from "./subagent-registry-requester-yield.js";
+import { isSubagentSpawnArmed } from "./subagent-registry-spawn-acceptance.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
 /** Reconstruct requester claims without owning retries or altering failed cohort custody. */
@@ -28,7 +29,12 @@ export async function settleRestoredRequesterTurns({
     resolveSubagentRequesterAgentId(cfg, entry);
   for (const entry of runs.values()) {
     const requesterTurnRunId = entry.requesterTurnRunId?.trim();
-    if (!requesterTurnRunId || entry.expectsCompletionMessage !== true) {
+    // F4 (H1): an armed row's requester turn waits for its acceptance owner.
+    if (
+      !requesterTurnRunId ||
+      entry.expectsCompletionMessage !== true ||
+      isSubagentSpawnArmed(entry)
+    ) {
       continue;
     }
     const identity = JSON.stringify([

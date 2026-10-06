@@ -132,6 +132,15 @@ export type SpawnSubagentResult = {
   failurePhase?: ContinuationSpawnFailurePhase;
   /** Removes and terminates this exact accepted run if its source handoff loses authority. */
   rollbackAccepted?: () => Promise<void>;
+  /**
+   * Continuation delegate callers own final acceptance: confirm at the last fallible
+   * step. Only "refused" may lead to rollbackAccepted; "uncertain" converges forward.
+   */
+  confirmAccepted?: () => Promise<"confirmed" | "refused" | "uncertain">;
+  /** Let go of an unconfirmed acceptance; the registry sweeper then fails it closed. */
+  releaseAcceptanceHold?: () => void;
+  /** The registry acknowledgement of acceptance was lost; a restart may cancel the child. */
+  acceptance?: "uncertain";
   attachments?: {
     count: number;
     totalBytes: number;

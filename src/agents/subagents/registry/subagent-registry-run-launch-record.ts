@@ -53,6 +53,8 @@ export type RegisterSubagentRunParams = {
   continuationRecipientAuthorityBinding?: ContinuationRecipientAuthorityBinding;
   traceparent?: string;
   gatewayContextResolver?: GatewayContextResolver;
+  /** Native accepted child: arm the acceptance intent in the registration write itself. */
+  acceptanceCustody?: Omit<NonNullable<SubagentRunRecord["spawnAcceptance"]>, "armedAt">;
 };
 
 export function createSubagentRegistrationRecord(
@@ -140,5 +142,17 @@ export function createSubagentRegistrationRecord(
     continuationFanoutMode: registerParams.continuationFanoutMode,
     continuationRecipientAuthorityBinding: registerParams.continuationRecipientAuthorityBinding,
     ...(registerParams.traceparent ? { traceparent: registerParams.traceparent } : {}),
+    ...(!queued && registerParams.acceptanceCustody?.gatewayRunId.trim()
+      ? {
+          spawnAcceptance: {
+            gatewayRunId: registerParams.acceptanceCustody.gatewayRunId.trim(),
+            expectedSessionId:
+              registerParams.acceptanceCustody.expectedSessionId?.trim() || undefined,
+            expectedLifecycleRevision:
+              registerParams.acceptanceCustody.expectedLifecycleRevision?.trim() || undefined,
+            armedAt: now,
+          },
+        }
+      : {}),
   });
 }

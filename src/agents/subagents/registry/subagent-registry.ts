@@ -48,9 +48,20 @@ import {
 import { createSubagentRegistryRestorer } from "./subagent-registry-restore.js";
 import { handleOrphanedSubagentResume } from "./subagent-registry-resume-orphan.js";
 import type { RegisterSubagentRunParams } from "./subagent-registry-run-launch-record.js";
-import type { SubagentRegistrationOwnership } from "./subagent-registry-run-launch.js";
+import type {
+  SubagentRegistrationIdentity,
+  SubagentRegistrationOwnership,
+} from "./subagent-registry-run-launch.js";
 import { createSweeperRunManagerOperations } from "./subagent-registry-run-manager-bridge.js";
 import { createSubagentRunManager } from "./subagent-registry-run-manager.js";
+import {
+  deferArmedSubagentResume,
+  isSubagentSpawnAcceptanceHeld,
+  isSubagentSpawnArmed,
+  markSubagentSpawnDisarmUncertain,
+  releaseSubagentSpawnAcceptanceHold,
+  takeDeferredArmedSubagentResume,
+} from "./subagent-registry-spawn-acceptance.js";
 import { clearSubagentRunsReadCacheForTest } from "./subagent-registry-state.js";
 import { callGatewayForSweep } from "./subagent-registry-sweep-gateway.js";
 import { hasContinuationWorkForSweepEntry } from "./subagent-registry-sweep-guards.js";
@@ -236,6 +247,16 @@ export function resumeSubagentRun(runId: string, source: "live" | "restore" = "l
     // Startup orphan recovery replays this durable exact-run winner before it
     // reads session/config state. Do not prune or resume it through announce.
     resumedRuns.add(getSubagentRunRuntimeKey(entry));
+    return;
+  }
+  if (isSubagentSpawnArmed(entry)) {
+    // F2: an armed row (held or not) is fenced from orphan completion, expiry
+    // give-up and announce/wake until its acceptance owner confirms. Confirmation
+    // replays this deferred resume exactly once; resumedRuns stays unset so it can.
+    deferArmedSubagentResume(entry, source);
+    if (!isSubagentSpawnAcceptanceHeld(entry)) {
+      scheduleSubagentRegistrySweep({ delayMs: 0 });
+    }
     return;
   }
   if (
@@ -560,6 +581,54 @@ export const recordAcceptedSubagentSpawnRollback =
   subagentRunManager.recordAcceptedSubagentSpawnRollback;
 export const releaseAcceptedSubagentSpawnRollback =
   subagentRunManager.releaseAcceptedSubagentSpawnRollback;
+export const armSubagentLaunchDispatch = subagentRunManager.armSubagentLaunchDispatch;
+
+/**
+ * Final acceptance owner disarms the native acceptance intent. On confirmation the
+ * hold is released and any resume deferred by the F2 fence (or an already-ended
+ * child's delivery) is replayed exactly once.
+ */
+export async function confirmSubagentSpawnAcceptance(params: {
+  runId: string;
+  childSessionKey: string;
+  expectedRegistration?: SubagentRegistrationIdentity;
+}): Promise<"confirmed" | "refused" | "uncertain"> {
+  const outcome = await subagentRunManager.confirmSubagentSpawnAcceptance(params);
+  if (outcome === "confirmed") {
+    const current = subagentRuns.get(params.runId.trim());
+    if (current && !isSubagentSpawnArmed(current)) {
+      const deferred = takeDeferredArmedSubagentResume(current);
+      if (deferred || typeof current.execution.endedAt === "number") {
+        resumeSubagentRun(current.runId, deferred ?? "live");
+      }
+    }
+  }
+  return outcome;
+}
+
+/** A collector start write with an unknown outcome keeps its launch held until restart. */
+export function markSubagentLaunchDispatchUncertain(runId: string): void {
+  const current = subagentRuns.get(runId.trim());
+  const owner =
+    current ??
+    [...subagentRuns.values()].find((candidate) => candidate.swarmRunId === runId.trim());
+  if (owner) {
+    markSubagentSpawnDisarmUncertain(owner);
+  }
+}
+
+/** The acceptance owner let go without confirming: the sweeper fails the arm closed. */
+export function releaseSubagentSpawnAcceptanceHoldForRun(runId: string): void {
+  const current = subagentRuns.get(runId.trim());
+  if (!current) {
+    return;
+  }
+  releaseSubagentSpawnAcceptanceHold(current);
+  if (isSubagentSpawnArmed(current)) {
+    takeDeferredArmedSubagentResume(current);
+    scheduleSubagentRegistrySweep({ delayMs: 0 });
+  }
+}
 // Registration always settles through the registry writer. Callers await it and read
 // the ownership the continuation spawn path checks.
 export function registerSubagentRun(

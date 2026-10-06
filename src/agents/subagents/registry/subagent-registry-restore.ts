@@ -38,6 +38,7 @@ import { getLatestSubagentRunForChild } from "./subagent-registry-queries.js";
 import type { SubagentRunReadRecord } from "./subagent-registry-read.types.js";
 import { isRetiredSubagentSessionOwner } from "./subagent-registry-restart-recovery-helpers.js";
 import { settleRestoredRequesterTurns } from "./subagent-registry-restore-requester.js";
+import { isSubagentSpawnArmed } from "./subagent-registry-spawn-acceptance.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { getSubagentRunRuntimeKey, isSameSubagentRunOwner } from "./subagent-run-generation.js";
 import { deleteSubagentSessionForCleanup } from "./subagent-session-cleanup.js";
@@ -265,6 +266,11 @@ export function createSubagentRegistryRestorer(config: {
       // Restart recovery exclusively owns receipt-bearing source rows until it
       // remaps or terminalizes them. Generic resume would wait on an obsolete run.
       if (entry.execution.restartRecovery || entry.killIntent || entry.killReconciliation) {
+        continue;
+      }
+      // F1 (H1): an armed row is never resumed or relaunched; with no owner left
+      // after restart, the sweeper fails it closed (abort, then roll back/settle).
+      if (isSubagentSpawnArmed(entry)) {
         continue;
       }
       if (entry.collect && entry.execution.status === "queued") {

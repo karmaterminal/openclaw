@@ -21,14 +21,12 @@ import type {
   SubagentLifecycleController,
   SubagentLifecycleOptions,
 } from "./subagent-registry-lifecycle.js";
-import {
-  hasPendingSubagentRetirementPublication,
-  subagentRuns,
-} from "./subagent-registry-memory.js";
+import { subagentRuns } from "./subagent-registry-memory.js";
 import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
 import { createInterruptedRecoveryCoordinator } from "./subagent-registry-restart-recovery-coordinator.js";
 import { isRestoredQueuedFailureSettlementClaimed } from "./subagent-registry-restore.js";
 import type { createSubagentRunManager } from "./subagent-registry-run-manager.js";
+import { isSubagentSpawnArmed } from "./subagent-registry-spawn-acceptance.js";
 import {
   discardSuspendedPendingFinalDelivery,
   isSuspendedPendingFinalDelivery,
@@ -36,6 +34,8 @@ import {
   warnSuspendedDeliveryPressure,
 } from "./subagent-registry-suspended-delivery.js";
 import {
+  decideAcceptedSpawnCustodyRow,
+  isAcceptedSpawnCustodyRow,
   reconcileAcceptedSpawnRollback,
   selectNextAcceptedSpawnRollbackCandidate,
 } from "./subagent-registry-sweep-accepted.js";
@@ -258,6 +258,7 @@ export function createSubagentRegistrySweeper(params: {
           entry.killIntent ||
           entry.killReconciliation ||
           entry.acceptedSpawnRollback ||
+          isSubagentSpawnArmed(entry) ||
           !(entry.collect && entry.collectorCompletion
             ? entry.collectorLaunchCleanupPending ||
               (isCollectorArchiveReady(entry, now) && !params.shouldDeferArchive(entry))
@@ -283,6 +284,14 @@ export function createSubagentRegistrySweeper(params: {
           // The restored FIFO callback owns this row until durable settlement.
           continue;
         }
+        // H1 v4 §3.3a: armed/custody rows are decided before retired authority (Stop first).
+        if (isAcceptedSpawnCustodyRow(entry)) {
+          const candidate = await decideAcceptedSpawnCustodyRow({ runId, entry, runs, now });
+          if (candidate) {
+            acceptedSpawnRollbackCandidates.push({ runId, entry: candidate });
+          }
+          continue;
+        }
         if (
           subagentRuns.isCompletionAuthorityRetired(entry) &&
           ["pending", "in_progress"].includes(entry.delivery?.status ?? "")
@@ -306,12 +315,9 @@ export function createSubagentRegistrySweeper(params: {
           continue;
         }
         entry = reconciled;
-        if (entry.acceptedSpawnRollback) {
-          // A Stop still publishing on this row decides its outcome first; the
-          // launch owner holding this custody waits on the same barrier.
-          if (!hasPendingSubagentRetirementPublication(entry)) {
-            acceptedSpawnRollbackCandidates.push({ runId, entry });
-          }
+        if (entry.acceptedSpawnRollback || isSubagentSpawnArmed(entry)) {
+          // A provisional-kill reconcile can publish custody or an arm; the next
+          // pass decides it in the hoisted branch above.
           continue;
         }
         // Yield freezes the parent's wake before its children finish. Keep

@@ -319,6 +319,11 @@ export function scheduleRequesterSettleWake(
   if (context.cancelledRequesterSettleWakeRuns.has(getSubagentRunRuntimeKey(entry))) {
     return;
   }
+  if (entry.spawnAcceptance) {
+    // G2 (H1): the requester is not woken for an unconfirmed spawn; the
+    // confirmation flush replays the wake, a rollback suppresses it.
+    return;
+  }
   const pendingAtAdmission = getPendingWakeCommit(context, entry);
   const admittedWake = entry.requesterSettleWake;
   const requesterSessionKey = entry.requesterSessionKey?.trim();

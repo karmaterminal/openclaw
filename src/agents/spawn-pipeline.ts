@@ -1,4 +1,5 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { SubagentLifecycleHookRunner } from "../plugins/hooks.js";
 import type {
   SubagentRegistrationIdentity,
@@ -6,6 +7,8 @@ import type {
 } from "./subagents/registry/subagent-registry-run-launch.js";
 import { registerSubagentRun } from "./subagents/registry/subagent-registry.js";
 import type { SubagentRegistrationScope } from "./subagents/registry/subagent-registry.types.js";
+
+const log = createSubsystemLogger("agents/spawn-pipeline");
 
 type SpawnPipelinePhase = "initialize" | "dispatch" | "register";
 
@@ -39,12 +42,20 @@ type SpawnProgressOrigin = {
   messageId?: string | number;
 };
 
+export type SpawnAcceptanceOutcome = "confirmed" | "refused" | "uncertain";
+
 type SpawnPipelineResult<TState> =
   | {
       ok: true;
       state: TState;
       runId: string;
       rollbackAccepted: () => Promise<void>;
+      /** Deferred final acceptance: the caller confirms at its last fallible step. */
+      confirmAccepted?: () => Promise<SpawnAcceptanceOutcome>;
+      /** Lets go of an unconfirmed arm; the sweeper then fails it closed. */
+      releaseAcceptanceHold?: () => void;
+      /** The registry acknowledgement of acceptance was lost; restart decides. */
+      acceptance?: "uncertain";
       registrationScope?: SubagentRegistrationScope;
     }
   | {
@@ -137,6 +148,15 @@ type SpawnPipelineParams<TState> = {
     error: unknown,
   ) => AcceptedRollbackOwnerStatus | Promise<AcceptedRollbackOwnerStatus>;
   rollbackRegistration?: (registration: OwnedSubagentRegistration) => boolean | Promise<boolean>;
+  /**
+   * Disarms the registration's durable acceptance intent (H1). Only `refused` may
+   * lead to a rollback; `uncertain` converges forward with rollback disabled.
+   */
+  confirmAcceptance?: (registration: OwnedSubagentRegistration) => Promise<SpawnAcceptanceOutcome>;
+  /** The caller owns final acceptance; return a confirm handle instead of confirming. */
+  deferAcceptanceConfirmation?: boolean;
+  /** Releases the in-process hold on an unconfirmed arm. */
+  releaseAcceptanceHold?: (registration: OwnedSubagentRegistration) => void;
 };
 
 export async function runSpawnPipeline<TState>(
@@ -150,9 +170,26 @@ export async function runSpawnPipeline<TState>(
     let registration: RegisterSubagentRunInput;
     let registrationOwnership: SubagentRegistrationIdentity | undefined;
     let rollbackPromise: Promise<void> | undefined;
+    // An uncertain disarm forbids the rollback branch for the life of this process.
+    let acceptanceUncertain = false;
+    let acceptanceSettled = false;
+    const releaseHold = () => {
+      if (registrationOwnership && !acceptanceSettled) {
+        params.releaseAcceptanceHold?.({
+          ...registration,
+          expectedRegistration: registrationOwnership,
+        });
+      }
+    };
     const rollbackAccepted = (
       error: unknown = new Error("Accepted subagent registration rolled back."),
     ): Promise<void> => {
+      if (acceptanceUncertain) {
+        log.warn("accepted subagent rollback skipped: acceptance outcome is uncertain", {
+          runId: registrationOwnership?.runId ?? runId,
+        });
+        return Promise.resolve();
+      }
       if (!registrationOwnership) {
         return rollbackPromise ?? Promise.resolve();
       }
@@ -204,9 +241,37 @@ export async function runSpawnPipeline<TState>(
           throw aggregate;
         }
       })().finally(() => {
+        // The rollback either converted the arm to custody, deleted the row, or
+        // failed; in every case the sweeper owns what is left.
+        releaseHold();
+        acceptanceSettled = true;
         rollbackPromise = undefined;
       });
       return rollbackPromise;
+    };
+    const confirmAccepted = async (): Promise<SpawnAcceptanceOutcome> => {
+      if (acceptanceUncertain) {
+        return "uncertain";
+      }
+      if (acceptanceSettled || !registrationOwnership || !params.confirmAcceptance) {
+        return acceptanceSettled ? "refused" : "confirmed";
+      }
+      let outcome: SpawnAcceptanceOutcome;
+      try {
+        outcome = await params.confirmAcceptance({
+          ...registration,
+          expectedRegistration: registrationOwnership,
+        });
+      } catch {
+        outcome = "refused";
+      }
+      if (outcome === "uncertain") {
+        acceptanceUncertain = true;
+      }
+      if (outcome === "confirmed") {
+        acceptanceSettled = true;
+      }
+      return outcome;
     };
     try {
       params.assertActive?.();
@@ -324,11 +389,47 @@ export async function runSpawnPipeline<TState>(
         }
       }
     }
+    if (params.confirmAcceptance && !params.deferAcceptanceConfirmation) {
+      // Non-deferred owner (sessions_spawn): this pipeline is the final acceptance point.
+      const outcome = await confirmAccepted();
+      if (outcome === "refused") {
+        const error = new Error(`Subagent acceptance could not be confirmed: ${runId}`);
+        try {
+          await rollbackAccepted(error);
+          return { ok: false, phase, state, runId, error };
+        } catch (rollbackError) {
+          return {
+            ok: false,
+            phase,
+            state,
+            runId,
+            error: combineSpawnRollbackError(
+              error,
+              rollbackError,
+              `Subagent acceptance rollback incomplete: ${runId}`,
+            ),
+          };
+        }
+      }
+    }
+    const deferred = Boolean(params.confirmAcceptance && params.deferAcceptanceConfirmation);
     return {
       ok: true,
       state,
       runId,
       rollbackAccepted: () => rollbackAccepted(),
+      ...(deferred
+        ? {
+            confirmAccepted,
+            releaseAcceptanceHold: () => {
+              if (!acceptanceUncertain) {
+                releaseHold();
+                acceptanceSettled = true;
+              }
+            },
+          }
+        : {}),
+      ...(acceptanceUncertain ? { acceptance: "uncertain" as const } : {}),
       ...(registrationScope ? { registrationScope } : {}),
     };
   } finally {

@@ -182,6 +182,20 @@ type SubagentAcceptedSpawnRollback = {
   suppressedCompletionDelivery?: true;
 };
 
+/** Native acceptance intent: armed in the registration write, disarmed by the final acceptance owner. */
+type SubagentSpawnAcceptance = {
+  gatewayRunId: string;
+  expectedSessionId?: string;
+  expectedLifecycleRevision?: string;
+  armedAt: number;
+};
+
+/** Collector launch dispatched; cleared by the queued-to-running start transition. */
+type SubagentLaunchDispatch = {
+  idempotencyKey: string;
+  dispatchedAt: number;
+};
+
 export type SubagentRunRecord = Omit<SubagentRunReadRecord, "execution" | "collectorCompletion"> & {
   /** Child identity stays fixed when recovery redirects transcript writes. */
   childSessionIdentity?: Pick<SessionEntry, "sessionId" | "lifecycleRevision">;
@@ -207,6 +221,10 @@ export type SubagentRunRecord = Omit<SubagentRunReadRecord, "execution" | "colle
   suppressAnnounceReason?: "steer-restart" | "killed";
   /** Accepted child awaiting exact termination before failed spawn ownership can retire. */
   acceptedSpawnRollback?: SubagentAcceptedSpawnRollback;
+  /** Accepted native child awaiting its final acceptance owner; restart fails it closed. */
+  spawnAcceptance?: SubagentSpawnAcceptance;
+  /** Dispatched collector launch awaiting its start transition; never relaunched. */
+  launchDispatch?: SubagentLaunchDispatch;
   /** Sticky owner while restart recovery replays this exact terminal run. */
   terminalOwner?: "interrupted-recovery";
   /** Present only while a current-version killed run awaits bounded reconciliation. */

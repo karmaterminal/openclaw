@@ -48,6 +48,7 @@ import {
   assertSubagentRegistryWriteSourceCurrent,
   assertSubagentRegistryWriteOutcomeKnown,
 } from "./subagent-registry-persistence.js";
+import { isSubagentSpawnArmed } from "./subagent-registry-spawn-acceptance.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { hasRequesterCompletionCohort } from "./subagent-requester-settle-identity.js";
 import { getSubagentRunRuntimeKey } from "./subagent-run-generation.js";
@@ -92,7 +93,9 @@ export const resumeAncestorCleanup = (
       entry.cleanupHandled ||
       context.cleanupFailureCounts.has(getSubagentRunRuntimeKey(entry)) ||
       isDeliverySuspended(entry) ||
-      params.suppressAnnounceForSteerRestart(entry)
+      params.suppressAnnounceForSteerRestart(entry) ||
+      // F5 (H1): an armed ancestor is not given up or resumed by the walk.
+      isSubagentSpawnArmed(entry)
     ) {
       continue;
     }
@@ -138,6 +141,11 @@ export const startSubagentAnnounceCleanupFlow = (
   if (entry.killReconciliation) {
     // Restores and unrelated cleanup retries must not publish a provisional
     // kill. The sweeper re-enters here after durable reconciliation.
+    return false;
+  }
+  if (entry.spawnAcceptance) {
+    // G1 (H1): no delivery while the spawn's acceptance is unconfirmed; the
+    // confirmation flush re-enters here, and a rollback suppresses delivery.
     return false;
   }
   const cleanup = entry.cleanup;

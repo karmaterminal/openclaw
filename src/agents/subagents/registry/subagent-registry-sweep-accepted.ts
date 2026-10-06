@@ -1,7 +1,13 @@
 // Sweeper reconciliation for accepted spawn rollbacks.
 import type { callGateway } from "../../../gateway/call.js";
+import { reconcileRetiredSubagentCancellation } from "../completion/subagent-completion-admission.store.js";
 import { terminateAcceptedCollectorRun } from "../spawn/subagent-spawn-cleanup.js";
 import { hasPendingSubagentRetirementPublication } from "./subagent-registry-memory.js";
+import {
+  isSubagentSpawnAcceptanceHeld,
+  isSubagentSpawnArmed,
+  resolveArmedSpawnRollback,
+} from "./subagent-registry-spawn-acceptance.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { isSameSubagentRunOwner } from "./subagent-run-generation.js";
 
@@ -52,10 +58,13 @@ export async function reconcileAcceptedSpawnRollback(params: {
   settleFailedQueuedSubagentLaunch: (runId: string, error: string) => Promise<boolean>;
   warn: (message: string, meta?: Record<string, unknown>) => void;
 }): Promise<boolean> {
-  const rollback = params.entry.acceptedSpawnRollback;
-  if (!rollback || !isSameSubagentRunOwner(params.runs.get(params.runId), params.entry)) {
+  // An unheld armed row is adopted as if it carried custody (H1 v4): the record
+  // below converts armed -> custody; termination runs even when that write fails.
+  const adopted = params.entry.acceptedSpawnRollback ?? resolveArmedSpawnRollback(params.entry);
+  if (!adopted || !isSameSubagentRunOwner(params.runs.get(params.runId), params.entry)) {
     return false;
   }
+  let rollback = adopted;
   const record = await params.recordAcceptedSubagentSpawnRollback({
     runId: params.runId,
     childSessionKey: params.entry.childSessionKey,
@@ -71,6 +80,16 @@ export async function reconcileAcceptedSpawnRollback(params: {
       error: record.error,
     });
   }
+  // A converted arm now carries its own custody fields; compare against those.
+  const recorded = params.runs.get(params.runId);
+  if (
+    !params.entry.acceptedSpawnRollback &&
+    recorded &&
+    isSameSubagentRunOwner(recorded, params.entry) &&
+    recorded.acceptedSpawnRollback?.gatewayRunId === adopted.gatewayRunId
+  ) {
+    rollback = recorded.acceptedSpawnRollback;
+  }
   const terminated = await terminateAcceptedCollectorRun({
     childSessionKey: params.entry.childSessionKey,
     gatewayRunId: rollback.gatewayRunId,
@@ -84,29 +103,81 @@ export async function reconcileAcceptedSpawnRollback(params: {
     !terminated ||
     !current ||
     !isSameSubagentRunOwner(current, params.entry) ||
-    !isSameAcceptedSpawnRollback(current.acceptedSpawnRollback, rollback) ||
+    !(
+      isSameAcceptedSpawnRollback(current.acceptedSpawnRollback, rollback) ||
+      // The conversion write failed (refused or fenced): the row is still armed.
+      (!current.acceptedSpawnRollback &&
+        resolveArmedSpawnRollback(current)?.gatewayRunId === adopted.gatewayRunId)
+    ) ||
     // A Stop that began publishing during termination decides the outcome first;
     // settlement and release are idempotent and wait for a later sweep.
     hasPendingSubagentRetirementPublication(current)
   ) {
     return true;
   }
-  if (current.collect) {
-    await params.settleFailedQueuedSubagentLaunch(params.runId, rollback.reason);
-    // The accepted child is proven stopped, so this custody is discharged. Keeping
-    // it would terminate the same gateway run again on every sweep.
-    await params.releaseAcceptedSubagentSpawnRollback({
+  // v3: a fenced (uncertain) or refused write must not throw out of the sweep; the
+  // row stays fail-closed (armed or custody) and the next pass retries the abort.
+  try {
+    if (current.collect) {
+      await params.settleFailedQueuedSubagentLaunch(params.runId, rollback.reason);
+      // The accepted child is proven stopped, so this custody is discharged. Keeping
+      // it would terminate the same gateway run again on every sweep.
+      await params.releaseAcceptedSubagentSpawnRollback({
+        runId: params.runId,
+        childSessionKey: current.childSessionKey,
+        gatewayRunId: rollback.gatewayRunId,
+      });
+    } else {
+      await params.rollbackSubagentRunRegistration({
+        runId: params.runId,
+        childSessionKey: current.childSessionKey,
+      });
+    }
+  } catch (error) {
+    params.warn("accepted spawn rollback reconcile deferred", {
       runId: params.runId,
       childSessionKey: current.childSessionKey,
-      gatewayRunId: rollback.gatewayRunId,
-    });
-  } else {
-    await params.rollbackSubagentRunRegistration({
-      runId: params.runId,
-      childSessionKey: current.childSessionKey,
+      error,
     });
   }
   return true;
+}
+
+export function isAcceptedSpawnCustodyRow(entry: SubagentRunRecord): boolean {
+  return Boolean(entry.spawnAcceptance || entry.launchDispatch || entry.acceptedSpawnRollback);
+}
+
+/**
+ * H1 v4 §3.3a: the sweeper decides armed and custody rows here, right after its
+ * owner checks and before the retired-authority branch (which would otherwise
+ * `continue` them forever). Stop precedence is kept in the original order:
+ * (a) a provisional kill reconciles first, (b) the owner is refreshed, (c) a Stop
+ * still publishing blocks adoption, (d) only custody or an unheld arm is adopted.
+ * Returns the row to adopt, or undefined; the caller always `continue`s.
+ */
+export async function decideAcceptedSpawnCustodyRow(params: {
+  runId: string;
+  entry: SubagentRunRecord;
+  runs: Map<string, SubagentRunRecord>;
+  now: number;
+}): Promise<SubagentRunRecord | undefined> {
+  if (
+    params.entry.killReconciliation &&
+    (await reconcileRetiredSubagentCancellation(params.entry, params.now)) === false
+  ) {
+    return undefined;
+  }
+  const entry = params.runs.get(params.runId);
+  if (!entry || !isSameSubagentRunOwner(entry, params.entry)) {
+    return undefined;
+  }
+  if (hasPendingSubagentRetirementPublication(entry)) {
+    return undefined;
+  }
+  return entry.acceptedSpawnRollback ||
+    (isSubagentSpawnArmed(entry) && !isSubagentSpawnAcceptanceHeld(entry))
+    ? entry
+    : undefined;
 }
 
 export function selectNextAcceptedSpawnRollbackCandidate<T extends { runId: string }>(
