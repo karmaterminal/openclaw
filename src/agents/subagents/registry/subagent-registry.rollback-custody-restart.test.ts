@@ -96,8 +96,12 @@ async function seedQueuedCollector(): Promise<SubagentRunRecord> {
       maxConcurrent: 1,
     },
   };
+  // Upstream's test add is a real registry write, so the row is already durable with
+  // the fixture's canonical identity (requesterStorePath). Re-saving the raw input
+  // would install a foreign row whose identity differs, which the registry would
+  // treat as another execution on its next version refresh.
   await addSubagentRunForTests(entry);
-  saveSubagentRegistryToSqlite(new Map([[runId, structuredClone(entry)]]));
+  expect(loadSubagentRegistryFromSqlite().get(runId)).toMatchObject({ runId, queuedLaunch: {} });
   return subagentRuns.get(runId)!;
 }
 

@@ -170,7 +170,12 @@ describe("queued collector rollback custody behind a publishing Stop", () => {
         await stopping;
         await dispatched.promise;
         await closeSwarmScheduler();
-        expect(entry.collectorCompletion?.status).toBe("killed");
+        // Upstream rows are immutable snapshots: read the same owner's current live row.
+        const live = expectDefined(
+          registryMemory.getCurrentSubagentRunOwner(registryMemory.subagentRuns, entry),
+          "live collector owner",
+        );
+        expect(live.collectorCompletion?.status).toBe("killed");
         expect(abortedRunIds).toContain(nativeRunId);
         // Termination discharged the custody, so restart has nothing left to reconcile.
         const settled = loadSubagentRegistryFromSqlite().get(entry.runId);
