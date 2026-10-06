@@ -64,6 +64,7 @@ import { withAgentRunDispatchExecutionIdentity } from "./agent-run-dispatch-exec
 import { resolveExecutionIdentitySpawnFacts } from "./agent-run-execution-lineage.js";
 import { resolveAgentRunContinuationHandoff } from "./agent-run-execution-phase.continuation.js";
 import type { StartAgentRunExecutionParams } from "./agent-run-execution-types.js";
+import { emitAgentRunSessionChanges } from "./agent-run-session-effects.js";
 import { settleUnstartedGatewayFollowup } from "./agent-run-subagent.js";
 import {
   annotateAgentRunUserTurnPrompt,
@@ -328,29 +329,7 @@ async function executeAgentRun(
             assertCurrent: assertDispatchCurrent,
           });
         }
-        if (
-          !params.suppressVisibleSessionEffects &&
-          params.requestedSessionKey &&
-          params.resolvedSessionKey &&
-          params.isNewSession
-        ) {
-          emitSessionsChanged(params.context, {
-            sessionKey: params.resolvedSessionKey,
-            agentId: params.activeSessionAgentId,
-            reason: "create",
-          });
-        }
-        if (!params.suppressVisibleSessionEffects && params.resolvedSessionKey) {
-          emitSessionsChanged(
-            params.context,
-            {
-              sessionKey: params.resolvedSessionKey,
-              agentId: params.activeSessionAgentId,
-              reason: "send",
-            },
-            { accessChanged: false },
-          );
-        }
+        emitAgentRunSessionChanges(params);
 
         if (!params.isRawModelRun) {
           ({ message, execApprovalContinuationPromptRange } = annotateAgentRunUserTurnPrompt({
