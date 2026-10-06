@@ -37,6 +37,7 @@ import {
   waitForQueueDebounce,
 } from "../../../utils/queue-helpers.js";
 import { isRoutableChannel } from "../route-reply.js";
+import { dropAbortedFollowups } from "./aborted-followups.js";
 import { resolveCollectedRun } from "./collected-run.js";
 import {
   collectRuntimeMetadata,
@@ -60,6 +61,9 @@ import {
 } from "./state.js";
 import { consumeQueueSummaryDelivery } from "./summary-consumption.js";
 import { FollowupRunDeferredError, isFollowupRunAborted, type FollowupRun } from "./types.js";
+
+// Enqueue and drain-boundary module mocks reach the cancellation sweep here.
+export { dropAbortedFollowups };
 
 type InternalFollowupRun = FollowupRun & {
   /** Keep admission state out of the public plugin-facing FollowupRun contract. */
@@ -673,48 +677,6 @@ async function runQueueSummaryDelivery(
     }
     trimSummaryElisionsToCap(queue);
   }
-}
-
-export async function dropAbortedFollowups(
-  queue: FollowupQueueSummaryState & Pick<FollowupQueueState, "items">,
-  runFollowup: (run: FollowupRun) => Promise<void>,
-): Promise<number> {
-  // Waiting reservations are cancellable; started injections retain custody until their outcome.
-  const canDrop = (run: FollowupRun) =>
-    run.steerPending?.phase !== "injecting" &&
-    isFollowupRunAborted(run) &&
-    !queue.inFlight.has(run) &&
-    !queue.activeSummarySources.has(run);
-  const pending = queue.items.filter(canDrop);
-  const summaries = [
-    ...queue.summarySources,
-    ...queue.summaryElisions.flatMap((entry) => entry.sources),
-  ].filter(canDrop);
-  // Detach identities and release both dedupe owners before ingress can retry.
-  removeQueuedItemsByRef(queue.items, pending);
-  consumeQueueSummaryDelivery(
-    queue,
-    { sources: summaries, droppedCount: summaries.length },
-    "retained",
-  );
-  for (const item of [...pending, ...summaries]) {
-    try {
-      completeFollowupRunLifecycle(item, "cancelled");
-    } catch (error) {
-      defaultRuntime.error?.(`followup queue cancellation settlement failed: ${String(error)}`);
-    }
-  }
-  await Promise.all(
-    pending.map(async (item) => {
-      try {
-        await runFollowup(item);
-      } catch (error) {
-        // Aborted work cannot run again; report failed presentation cleanup without restoring it.
-        defaultRuntime.error?.(`followup queue cancellation cleanup failed: ${String(error)}`);
-      }
-    }),
-  );
-  return pending.length + summaries.length;
 }
 
 function resolveCrossChannelKey(item: FollowupRun): { cross?: true; key?: string } {
