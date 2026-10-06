@@ -251,7 +251,6 @@ function enqueueOwnedSystemEventEntry(
   const normalizedDeliveryContext = normalizeDeliveryContext(options.deliveryContext);
   const normalizedTraceparent = normalizeTraceparent(options.traceparent);
   const sessionDeliveryAckStateDir = resolveSessionDeliveryAckStateDir(options);
-  applyContextKeyPolicy(entry, normalizedContextKey);
   const event: SystemEvent = {
     id: generateSecureUuid(),
     text: cleaned,
@@ -288,6 +287,7 @@ function enqueueOwnedSystemEventEntry(
         return null;
       }
       entry.queue[durableIndex] = event;
+      applyContextKeyPolicy(entry, normalizedContextKey);
       return cloneSystemEvent(event);
     }
   }
@@ -313,6 +313,9 @@ function enqueueOwnedSystemEventEntry(
   if (refuseWhenQueueFull(entry, key, receiptOptions)) {
     return null;
   }
+  // Only an admitted event becomes the last context: a refused or de-duplicated
+  // one never reached the queue, so a later change check must not compare to it.
+  applyContextKeyPolicy(entry, normalizedContextKey);
   entry.queue.push(event);
   return event;
 }
@@ -322,6 +325,32 @@ export function enqueueSystemEvent(text: string, options: SystemEventOptions) {
 }
 
 export const enqueueSystemEventRaw = enqueueSystemEvent;
+
+/**
+ * Whether the queue already holds the in-memory copy of one durable delivery
+ * row. Producers call it after `enqueueSystemEvent` returned `false`, with the
+ * same options, to tell a de-duplicated re-enqueue (the row is still riding a
+ * queued event) from a capacity refusal (nothing queued; the row must be
+ * retried).
+ */
+export function hasQueuedSystemEventDelivery(
+  options: Pick<
+    SystemEventOptions,
+    "sessionKey" | "sessionDeliveryAckId" | "sessionDeliveryAckStateDir"
+  >,
+): boolean {
+  if (!options.sessionDeliveryAckId) {
+    return false;
+  }
+  const stateDir = resolveSessionDeliveryAckStateDir(options as SystemEventOptions);
+  return (
+    getSessionQueue(options.sessionKey)?.queue.some(
+      (event) =>
+        event.sessionDeliveryAckId === options.sessionDeliveryAckId &&
+        event.sessionDeliveryAckStateDir === stateDir,
+    ) ?? false
+  );
+}
 
 /** Enqueues one occurrence and returns one-use removal ownership for its UUID. */
 export function enqueueSystemEventWithReceipt(
