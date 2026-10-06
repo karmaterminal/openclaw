@@ -1380,6 +1380,7 @@ export const PR_PROTECTED_RUNTIME_TEST_FILES: readonly string[] = [
   "src/agents/subagents/registry/subagent-registry-state.async.test.ts",
   "src/agents/subagents/registry/subagent-registry-state.test.ts",
   "src/agents/subagents/registry/subagent-registry-sweeper-lifecycle.test.ts",
+  "src/agents/subagents/registry/subagent-registry-sweeper-recovery.orphan-collector.test.ts",
   "src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts",
   "src/agents/subagents/registry/subagent-registry-task-replacement.test.ts",
   "src/agents/subagents/registry/subagent-registry-worker.test.ts",
