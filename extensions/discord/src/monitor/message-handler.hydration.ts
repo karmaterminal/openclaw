@@ -28,7 +28,9 @@ export function shouldHydrateDiscordMessagePayload(message: Message) {
 
 type ReferencedMessagePayloadState = "complete" | "missing" | "invalid";
 
-function resolveReferencedMessagePayloadState(message: Message): ReferencedMessagePayloadState {
+export function resolveReferencedMessagePayloadState(
+  message: Message,
+): ReferencedMessagePayloadState {
   const reference = message.messageReference;
   if (!reference?.message_id) {
     return "complete";

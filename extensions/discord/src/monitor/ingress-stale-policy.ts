@@ -24,7 +24,10 @@ import {
   resolveDiscordMentionPolicy,
 } from "./allow-list.js";
 import type { DiscordLivePolicy, DiscordLivePolicyReader } from "./live-policy.js";
-import { shouldHydrateDiscordMessagePayload } from "./message-handler.hydration.js";
+import {
+  resolveReferencedMessagePayloadState,
+  shouldHydrateDiscordMessagePayload,
+} from "./message-handler.hydration.js";
 import { resolveDiscordMessageText } from "./message-text.js";
 
 /** Ambient guild chatter older than this can no longer be the user's live turn. */
@@ -134,9 +137,13 @@ function readDiscordStalePolicyRow(
     // Preflight's own projection (documents, then native mentions rewritten to
     // usernames), so pre-claim matches exactly the text preflight matches.
     text = resolveDiscordMessageText(message, { includeForwarded: false });
-    if (shouldHydrateDiscordMessagePayload(message)) {
-      // Preflight would hydrate this frame first: REST (or, when REST fails,
-      // its raw bot mention fallback) decides it, and pre-claim cannot.
+    if (
+      shouldHydrateDiscordMessagePayload(message) ||
+      resolveReferencedMessagePayloadState(message) !== "complete"
+    ) {
+      // Preflight would hydrate this frame or re-fetch its reply target first:
+      // REST (or, when REST fails, its raw bot mention fallback) decides it,
+      // and pre-claim cannot.
       return null;
     }
   } catch {

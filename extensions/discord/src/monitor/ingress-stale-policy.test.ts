@@ -212,13 +212,46 @@ describe("discord stale ambient pending disposition", () => {
       type: MessageType.Reply,
       message_reference: { message_id: "m0", channel_id: "c1" },
     };
+    // Canonical nested target: matching id, author and a body, so preflight
+    // takes it as is and never re-fetches it.
+    const target = (authorId: string, overrides: Record<string, unknown> = {}) => ({
+      id: "m0",
+      channel_id: "c1",
+      content: "earlier answer",
+      timestamp: new Date(STALE_AT - 1_000).toISOString(),
+      mentions: [],
+      attachments: [],
+      embeds: [],
+      author: { id: authorId, username: authorId },
+      ...overrides,
+    });
     await expect(
-      resolve({ message: { ...reply, referenced_message: { author: { id: "user-2" } } } }),
+      resolve({ message: { ...reply, referenced_message: target("user-2") } }),
     ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
     await expect(
-      resolve({ message: { ...reply, referenced_message: { author: { id: BOT_ID } } } }),
+      resolve({ message: { ...reply, referenced_message: target(BOT_ID) } }),
     ).resolves.toBeNull();
     await expect(resolve({ message: reply })).resolves.toBeNull();
+  });
+
+  it("leaves a stale reply whose target preflight would re-fetch to claim-time preflight", async () => {
+    // 🌊 on 8f5f545fec6: a nested target without a matching id or without a
+    // body makes preflight re-fetch it, and REST may return the bot as its
+    // author (reply to the bot is an implicit mention). Pre-claim cannot know.
+    const reply = {
+      type: MessageType.Reply,
+      message_reference: { message_id: "m0", channel_id: "c1" },
+    };
+    for (const authorId of ["user-2", BOT_ID]) {
+      const author = { id: authorId, username: authorId };
+      for (const referenced_message of [
+        { author, content: "earlier answer" },
+        { id: "m9", author, content: "earlier answer", attachments: [] },
+        { id: "m0", author, content: "", attachments: [], embeds: [] },
+      ]) {
+        await expect(resolve({ message: { ...reply, referenced_message } })).resolves.toBeNull();
+      }
+    }
   });
 
   it("preserves command-like work", async () => {

@@ -28,6 +28,8 @@ const STALE_TIMESTAMP = new Date(Date.now() - 60 * 60 * 1_000).toISOString();
 const HUMAN = { id: "user-1", bot: false, username: "alice" };
 /** Discord snowflakes are numeric; only those reach preflight's hydration path. */
 const NUMERIC_BOT_ID = "123456789012345678";
+/** Numeric too: preflight's reply-target re-fetch normalizes the id first. */
+const REPLY_TARGET_ID = "1000";
 
 const gated = (requireMention: boolean): Record<string, DiscordGuildEntryResolved> => ({
   [GUILD_ID]: { channels: { [CHANNEL_ID]: { enabled: true, requireMention } } },
@@ -53,6 +55,8 @@ type Row = {
   embeds?: Array<{ title: string }>;
   mentionedEveryone?: boolean;
   replyToBot?: boolean;
+  /** Canonical stored target by another user, or a bodiless one REST resolves to the bot. */
+  replyTo?: "other-canonical" | "bot-via-rest";
   botId?: string;
 };
 
@@ -107,6 +111,14 @@ const ROWS: Row[] = [
     cfg: NAMED_AGENT_CFG,
     mentionedUsers: [{ id: "user-2", username: "bob" }],
   },
+  { name: "canonical reply to another user", content: "yes, that one", replyTo: "other-canonical" },
+  // 🌊 on 8f5f545fec6: the stored target has no body, so preflight re-fetches
+  // it and REST names the bot as its author: a reply to the bot after all.
+  {
+    name: "reply whose stored target needs re-fetch, REST returns the bot",
+    content: "yes, that one",
+    replyTo: "bot-via-rest",
+  },
 ];
 
 // ClawSweeper rev 18: no mention metadata on a mention-shaped frame sends
@@ -136,15 +148,26 @@ const HYDRATION_DEPENDENT_ROWS: Row[] = [
   { name: "role mention text", content: "<@&555555555555555555> heads up", botId: NUMERIC_BOT_ID },
 ];
 
+function buildReplyTarget(params: { content: string; authorId: string }) {
+  return createDiscordMessage({
+    id: REPLY_TARGET_ID,
+    channelId: CHANNEL_ID,
+    content: params.content,
+    author: {
+      id: params.authorId,
+      bot: params.authorId !== HUMAN.id && params.authorId !== "user-2",
+    },
+  });
+}
+
 function buildMessage(row: Row) {
   const referencedMessage = row.replyToBot
-    ? createDiscordMessage({
-        id: "m0",
-        channelId: CHANNEL_ID,
-        content: "earlier answer",
-        author: { id: row.botId ?? BOT_ID, bot: true },
-      })
-    : undefined;
+    ? buildReplyTarget({ content: "earlier answer", authorId: row.botId ?? BOT_ID })
+    : row.replyTo === "other-canonical"
+      ? buildReplyTarget({ content: "earlier answer", authorId: "user-2" })
+      : row.replyTo === "bot-via-rest"
+        ? buildReplyTarget({ content: "", authorId: "user-2" })
+        : undefined;
   return createDiscordMessage({
     id: "m1",
     channelId: CHANNEL_ID,
@@ -157,7 +180,7 @@ function buildMessage(row: Row) {
     ...(referencedMessage
       ? {
           type: MessageType.Reply,
-          messageReference: { message_id: "m0", channel_id: CHANNEL_ID },
+          messageReference: { message_id: REPLY_TARGET_ID, channel_id: CHANNEL_ID },
           referencedMessage,
         }
       : {}),
@@ -176,7 +199,17 @@ async function preflightAccepts(row: Row): Promise<boolean> {
         author: message.author,
         message,
       }),
-      client: createGuildTextClient(CHANNEL_ID),
+      client:
+        row.replyTo === "bot-via-rest"
+          ? Object.assign(createGuildTextClient(CHANNEL_ID), {
+              rest: {
+                // The canonical target: the bot's own earlier answer.
+                get: async () =>
+                  buildReplyTarget({ content: "earlier answer", authorId: row.botId ?? BOT_ID })
+                    .rawData,
+              },
+            })
+          : createGuildTextClient(CHANNEL_ID),
       botUserId: row.botId ?? BOT_ID,
     }),
     guildEntries: row.guildEntries ?? gated(true),
