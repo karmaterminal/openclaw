@@ -32,9 +32,13 @@ vi.mock("./agent-scope.js", async () => {
 });
 
 vi.mock("./agent-tools.js", () => ({
-  createOpenClawCodingToolsInternal: (
+  createOpenClawCodingToolsInternalAsync: async (
     options?: Parameters<typeof createOpenClawCodingToolsInternal>[0],
   ) => effectiveInventoryState.createToolsMock(options),
+}));
+
+vi.mock("./auth-profiles/source-check.js", () => ({
+  hasAnyAuthProfileStoreSourceAsync: async () => false,
 }));
 
 vi.mock("./embedded-agent-runner/tool-schema-runtime.js", () => ({
@@ -68,8 +72,8 @@ describe("resolveEffectiveToolInventory continuation tools", () => {
     setActivePluginRegistry(createEmptyPluginRegistry());
   });
 
-  it("threads requestCompactionOpts when continuation.enabled is true", () => {
-    resolveEffectiveToolInventory({
+  it("threads requestCompactionOpts when continuation.enabled is true", async () => {
+    await resolveEffectiveToolInventory({
       cfg: { agents: { defaults: { continuation: { enabled: true } } } },
     });
 
@@ -83,8 +87,8 @@ describe("resolveEffectiveToolInventory continuation tools", () => {
     );
   });
 
-  it("threads continueWorkOpts when continuation.enabled is true", () => {
-    resolveEffectiveToolInventory({
+  it("threads continueWorkOpts when continuation.enabled is true", async () => {
+    await resolveEffectiveToolInventory({
       cfg: { agents: { defaults: { continuation: { enabled: true } } } },
     });
 
@@ -97,8 +101,8 @@ describe("resolveEffectiveToolInventory continuation tools", () => {
     );
   });
 
-  it("omits requestCompactionOpts when continuation.enabled is not true", () => {
-    resolveEffectiveToolInventory({ cfg: {} });
+  it("omits requestCompactionOpts when continuation.enabled is not true", async () => {
+    await resolveEffectiveToolInventory({ cfg: {} });
 
     expect(effectiveInventoryState.createToolsMock).toHaveBeenCalledTimes(1);
     const passed = effectiveInventoryState.createToolsMock.mock.calls[0]?.[0];
