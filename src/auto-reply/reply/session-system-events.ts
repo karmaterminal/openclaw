@@ -27,6 +27,7 @@ import {
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
 import {
   claimSystemEventDeliveryAdoption,
+  createDeliveryAdoptionTurnHold,
   releaseSystemEventDeliveryAdoption,
 } from "../../infra/system-event-delivery-claims.js";
 import {
@@ -225,6 +226,8 @@ export async function prepareFormattedSystemEvents(params: {
   // the persisted turn already adopted must be settled and excluded, not
   // re-injected.
   const adoptionScopedDeliveries: PreparedManagedSystemEventDelivery[] = [];
+  // The turn that will adopt these deliveries binds this hold while it runs.
+  const turnHold = createDeliveryAdoptionTurnHold();
   const seenAdoptionScopedIds = new Set<string>();
   const alreadyAdoptedAckIds: { id: string; stateDir?: string }[] = [];
   // Keyed by ack id, not object identity: consumeSelectedSystemEventEntries
@@ -265,6 +268,7 @@ export async function prepareFormattedSystemEvents(params: {
         }
       },
       ...(authorityKey ? { authorityKey } : {}),
+      turnHold,
     });
   }
   for (const ack of alreadyAdoptedAckIds) {
@@ -400,7 +404,7 @@ export async function prepareFormattedSystemEvents(params: {
       event.sessionDeliveryAckId &&
       managedDeliveries.some((d) => d.id === event.sessionDeliveryAckId)
     ) {
-      claimSystemEventDeliveryAdoption(event);
+      claimSystemEventDeliveryAdoption(event, turnHold);
     }
   }
   // Each sub-line gets its own prefix so continuation lines can't be mistaken

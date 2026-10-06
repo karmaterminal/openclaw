@@ -27,14 +27,27 @@ export function composeManagedDeliveryTurnLifecycle(params: {
   if (deliveries.size === 0) {
     return { lifecycle: original, restoreIfNotHandedOff: () => {} };
   }
+  // This turn now owns the deliveries' adoption claims for as long as it is in
+  // flight (running, or handed to the followup queue): a replay can never take a
+  // row from under it, however long it runs. Every end of the turn ends the hold.
+  for (const delivery of deliveries.values()) {
+    delivery.turnHold?.bind();
+  }
+  const endHolds = () => {
+    for (const delivery of deliveries.values()) {
+      delivery.turnHold?.end();
+    }
+  };
   let adopted = false;
   let handedOff = false;
   let restored = false;
   const restore = () => {
     if (adopted || restored) {
+      endHolds();
       return;
     }
     restored = true;
+    endHolds();
     // Each restore prepends its own events; restoring the last delivery first
     // leaves the queue in the original order.
     for (const delivery of [...deliveries.values()].toReversed()) {
@@ -45,11 +58,15 @@ export function composeManagedDeliveryTurnLifecycle(params: {
     ...original,
     onAdopted: async () => {
       adopted = true;
-      await settleManagedSystemEventsAfterTurnAdoption({
-        deliveries: deliveries.values(),
-        persistedMessage: params.getPersistedMessage(),
-        onTurnAdopted: original?.onAdopted,
-      });
+      try {
+        await settleManagedSystemEventsAfterTurnAdoption({
+          deliveries: deliveries.values(),
+          persistedMessage: params.getPersistedMessage(),
+          onTurnAdopted: original?.onAdopted,
+        });
+      } finally {
+        endHolds();
+      }
     },
     onDeferred: () => {
       const accepted = original?.onDeferred?.();

@@ -41,6 +41,7 @@ import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
 } from "../../test-utils/gateway-scheduler-clock.js";
+import { composeManagedDeliveryTurnLifecycle } from "../reply/managed-delivery-turn-lifecycle.js";
 import { settleManagedSystemEventsAfterTurnAdoption } from "../reply/session-system-event-adoption.js";
 import { prepareFormattedSystemEvents } from "../reply/session-system-events.js";
 import { useContinuationCustodyTestState } from "./custody/custody.test-support.js";
@@ -91,15 +92,19 @@ const SESSION_ID = "session-sweep-recipient";
 
 const custody = useContinuationCustodyTestState();
 
-async function seedRecipientSession(stateDir: string): Promise<void> {
+async function seedRecipientSession(
+  stateDir: string,
+  sessionKey = SESSION_KEY,
+  sessionId = SESSION_ID,
+): Promise<void> {
   await replaceSessionEntry(
     {
       storePath: resolveSessionStorePathCore(stateDir, { agentId: "main" }),
-      sessionKey: SESSION_KEY,
+      sessionKey,
     },
     {
-      sessionKey: SESSION_KEY,
-      sessionId: SESSION_ID,
+      sessionKey,
+      sessionId,
       updatedAt: Date.now(),
       status: "done",
     } as never,
@@ -487,6 +492,176 @@ describe("pending rows nothing armed: periodic sweep without duplicate adoption"
       lease.mockRestore();
     }
     expect(await adoptAndCount("RETURN-q3-s7")).toBe(1);
+    expect(acksFor(deliveryId)).toBe(1);
+    expect(await pendingRows(stateDir)).toEqual([]);
+  });
+
+  it("Q4-F1: 300 earlier rows delivered into memory and unadopted cannot starve a row written after them", async () => {
+    const stateDir = custody.stateDir();
+    // 300 returns, 20 per session (the per-session queue cap), all admitted into
+    // memory by the producer's fast path and never adopted.
+    const EARLY_ROWS = 300;
+    const sessions = EARLY_ROWS / MAX_EVENTS;
+    for (let session = 0; session < sessions; session += 1) {
+      const sessionKey = `agent:main:sweep-early-${session}`;
+      await seedRecipientSession(stateDir, sessionKey, `session-sweep-early-${session}`);
+      for (let index = 0; index < MAX_EVENTS; index += 1) {
+        const id = `q4-f1-early-${session}-${index}`;
+        const result = await enqueueContinuationReturnDeliveries({
+          targetSessionKeys: [sessionKey],
+          text: `RETURN-${id}`,
+          idempotencyKeyBase: `continuation-return:${id}`,
+          wakeRecipients: true,
+          childRunId: `run-${id}`,
+          stateDir,
+          ownerAgentId: "main",
+        });
+        expect(result.delivered).toBe(1);
+      }
+    }
+    // Their scheduled attempts ran: every early row is now pending, in memory, unarmed.
+    await stepClock(2_000);
+    const early = await pendingRows(stateDir);
+    expect(early).toHaveLength(EARLY_ROWS);
+    for (let session = 0; session < sessions; session += 1) {
+      expect(peekSystemEvents(`agent:main:sweep-early-${session}`)).toHaveLength(MAX_EVENTS);
+    }
+
+    // Only now does another process write a row (it sorts after all 300).
+    await seedRecipientSession(stateDir);
+    resetObservers();
+    runtimeLog.info.mockClear();
+    const laterId = await enqueueSessionDelivery(
+      {
+        kind: "systemEvent",
+        sessionKey: SESSION_KEY,
+        agentId: "main",
+        text: "RETURN-q4-f1-later",
+        idempotencyKey: `continuation-return:q4-f1-later:${SESSION_KEY}`,
+        awaitPromptAdoption: true,
+        returnWake: { reason: "delegate-return", parentRunId: "run-q4-f1-later" },
+      },
+      captureContinuationQueueContext(stateDir),
+    );
+    const rows = await pendingRows(stateDir);
+    expect(rows.at(-1)?.id).toBe(laterId);
+
+    // Bound: ceil(301 / 256) = 2 sweeps. random() = 0 puts sweeps at 45s and 90s.
+    const sweepsBound = Math.ceil(rows.length / 256);
+    expect(sweepsBound).toBe(2);
+    await stepClock(sweepsBound * 45_000 + 2_000);
+    expect(attemptsFor(laterId).length).toBeGreaterThan(0);
+    expect(peekSystemEvents(SESSION_KEY)).toEqual(["RETURN-q4-f1-later"]);
+    expectReplayWake({
+      kind: "producer",
+      reason: "delegate-return",
+      parentRunId: "run-q4-f1-later",
+    });
+    // The armed-work bound per sweep still holds.
+    const armedPerSweep = runtimeLog.info.mock.calls
+      .map(([message]) => /periodic sweep armed (\d+) pending/.exec(String(message))?.[1])
+      .filter((count): count is string => count !== undefined)
+      .map(Number);
+    expect(armedPerSweep.length).toBeGreaterThan(0);
+    for (const count of armedPerSweep) {
+      expect(count).toBeLessThanOrEqual(256);
+    }
+
+    expect(await adoptAndCount("RETURN-q4-f1-later")).toBe(1);
+    expect(acksFor(laterId)).toBe(1);
+  });
+
+  it("Q4-L1: an adopting turn still in progress past the 10-minute lease keeps its claim: no replay, one appearance, one ack", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    const deliveryId = await admitTargetedReturn(stateDir, "q4-l1");
+    resetObservers();
+
+    // The real turn lifecycle takes the prepared delivery; the turn is running.
+    const prepared = await preparePrompt();
+    expect(prepared.managedDeliveries.map((delivery) => delivery.id)).toEqual([deliveryId]);
+    const turnEnded = { abandoned: 0, settled: 0, adopted: 0 };
+    const turn = composeManagedDeliveryTurnLifecycle({
+      deliveries: new Map(prepared.managedDeliveries.map((delivery) => [delivery.id, delivery])),
+      original: {
+        onAdopted: () => {
+          turnEnded.adopted += 1;
+        },
+        onAbandoned: () => {
+          turnEnded.abandoned += 1;
+        },
+        onSettled: () => {
+          turnEnded.settled += 1;
+        },
+      },
+      getPersistedMessage: () => ({ __openclaw: { sessionDeliveryAckIds: [deliveryId] } }),
+    });
+    expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
+
+    const realNow = Date.now();
+    const wallClock = vi.spyOn(Date, "now").mockReturnValue(realNow);
+    try {
+      // Past the lease, twice, with sweeps and their replay attempts in between.
+      for (const offsetMs of [11 * 60_000, 25 * 60_000, 61 * 60_000]) {
+        wallClock.mockReturnValue(realNow + offsetMs);
+        const attemptsBefore = attemptsFor(deliveryId).length;
+        await stepClock(SWEEP_PERIOD_MAX_MS);
+        // A replay attempt did run in this window ...
+        expect(attemptsFor(deliveryId).length).toBeGreaterThan(attemptsBefore);
+        // ... and found the row owned by the live turn.
+        expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
+        expect(wakesFor(SESSION_KEY)).toEqual([]);
+        expect(acksFor(deliveryId)).toBe(0);
+        expect((await pendingRows(stateDir)).map((entry) => entry.id)).toEqual([deliveryId]);
+        // The turn is still in progress.
+        expect(turnEnded).toEqual({ abandoned: 0, settled: 0, adopted: 0 });
+      }
+      // No second prompt appearance while the turn holds it.
+      expect(await adoptAndCount("RETURN-q4-l1")).toBe(0);
+
+      // The turn completes and adopts.
+      await turn.lifecycle?.onAdopted?.();
+      turn.lifecycle?.onSettled?.();
+      expect(turnEnded).toEqual({ abandoned: 0, settled: 1, adopted: 1 });
+      expect(acksFor(deliveryId)).toBe(1);
+      expect(await pendingRows(stateDir)).toEqual([]);
+
+      await stepClock(SWEEP_PERIOD_MAX_MS);
+      expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
+      expect(wakesFor(SESSION_KEY)).toEqual([]);
+      expect(await adoptAndCount("RETURN-q4-l1")).toBe(0);
+      expect(acksFor(deliveryId)).toBe(1);
+    } finally {
+      wallClock.mockRestore();
+    }
+  });
+
+  it("Q4-L2: a long-running turn that is abandoned past the lease releases its claim: the return is delivered once and acked once", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    const deliveryId = await admitTargetedReturn(stateDir, "q4-l2");
+    const prepared = await preparePrompt();
+    const turn = composeManagedDeliveryTurnLifecycle({
+      deliveries: new Map(prepared.managedDeliveries.map((delivery) => [delivery.id, delivery])),
+      original: { onAdopted: () => {} },
+      getPersistedMessage: () => undefined,
+    });
+    const realNow = Date.now();
+    const wallClock = vi.spyOn(Date, "now").mockReturnValue(realNow + 30 * 60_000);
+    try {
+      resetObservers();
+      await stepClock(SWEEP_PERIOD_MAX_MS);
+      expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
+
+      // The turn ends without adopting: its event goes back, its claim is gone.
+      turn.lifecycle?.onAbandoned?.();
+      expect(peekSystemEvents(SESSION_KEY)).toEqual(["RETURN-q4-l2"]);
+      await stepClock(SWEEP_PERIOD_MAX_MS);
+      expect(peekSystemEvents(SESSION_KEY)).toEqual(["RETURN-q4-l2"]);
+    } finally {
+      wallClock.mockRestore();
+    }
+    expect(await adoptAndCount("RETURN-q4-l2")).toBe(1);
     expect(acksFor(deliveryId)).toBe(1);
     expect(await pendingRows(stateDir)).toEqual([]);
   });

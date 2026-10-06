@@ -4,7 +4,10 @@ import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/sessio
 import type { SessionRecipientAuthority } from "../../config/sessions/session-recipient-authority-types.js";
 import { toErrorObject } from "../../infra/errors.js";
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
-import { releaseSystemEventDeliveryAdoption } from "../../infra/system-event-delivery-claims.js";
+import {
+  releaseSystemEventDeliveryAdoption,
+  type DeliveryAdoptionTurnHold,
+} from "../../infra/system-event-delivery-claims.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { consumeSelectedSystemEventEntries, type SystemEvent } from "../../infra/system-events.js";
 import { captureContinuationQueueContext } from "../continuation/queue-context.js";
@@ -33,6 +36,8 @@ export type PreparedManagedSystemEventDelivery = {
   /** Adopted by a turn whose staged user message cannot carry the ack id. */
   adoptedWithoutReceipt?: boolean;
   authorityKey?: string;
+  /** Keeps the delivery's adoption claim alive while the adopting turn is in flight. */
+  turnHold?: DeliveryAdoptionTurnHold;
 };
 
 export type PreparedFormattedSystemEvents = {
