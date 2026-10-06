@@ -58,6 +58,10 @@ const CAPACITY_SATURATION_WARN_EVERY_MS = 5 * 60_000;
 // period is jittered so processes sharing a database do not sweep in lockstep,
 // and one sweep arms a bounded number of rows; the rest wait for the next one.
 // Sweeps run every 45-75s (the producer's unarmed-row warning names this bound).
+// A sweep resumes after the last row the previous sweep armed and wraps, so rows
+// that stay pending after their attempt (delivered into memory, awaiting prompt
+// adoption) cannot hold the head of the list and starve a later row: every
+// unarmed row is armed within ceil(pending / PENDING_SWEEP_MAX_ARMED) sweeps.
 const PENDING_SWEEP_INTERVAL_MS = 60_000;
 const PENDING_SWEEP_JITTER = 0.25;
 const PENDING_SWEEP_MAX_ARMED = 256;
@@ -79,9 +83,21 @@ let runtime:
       pendingSchedules: Set<Promise<void>>;
       /** Process-local: a restart starts every row at the base cadence again. */
       capacityDeferrals: Map<string, CapacityDeferralState>;
+      /** Queue-order key of the last row a budget-limited sweep armed; the next sweep resumes after it. */
+      sweepCursor?: PendingSweepCursor;
     })
   | undefined;
 let runtimeGeneration = 0;
+
+/** Pending rows are listed in (enqueuedAt, id) order. */
+type PendingSweepCursor = { enqueuedAt: number; id: string };
+
+function isAfterSweepCursor(entry: QueuedSessionDelivery, cursor: PendingSweepCursor): boolean {
+  return (
+    entry.enqueuedAt > cursor.enqueuedAt ||
+    (entry.enqueuedAt === cursor.enqueuedAt && entry.id > cursor.id)
+  );
+}
 
 function armPendingScan(generation: number): void {
   if (!runtime || generation !== runtimeGeneration) {
@@ -436,16 +452,29 @@ export async function schedulePendingSessionDeliveries(options?: {
       }
       return;
     }
+    // Resume after the previous budget-limited sweep's last armed row, then wrap.
+    const cursor = activeRuntime.sweepCursor;
+    const ordered = cursor
+      ? [
+          ...entries.filter((entry) => isAfterSweepCursor(entry, cursor)),
+          ...entries.filter((entry) => !isAfterSweepCursor(entry, cursor)),
+        ]
+      : entries;
+    activeRuntime.sweepCursor = undefined;
+    // Only rows actually armed count against the budget.
     let armed = 0;
-    for (const entry of entries) {
-      if (armed >= PENDING_SWEEP_MAX_ARMED) {
-        break;
-      }
+    for (const entry of ordered) {
       if (activeRuntime.armedEntries.has(entry.id) || activeRuntime.runningEntries.has(entry.id)) {
         continue;
       }
+      if (armed >= PENDING_SWEEP_MAX_ARMED) {
+        break;
+      }
       armSessionDelivery(entry, generation);
       armed += 1;
+      if (armed >= PENDING_SWEEP_MAX_ARMED) {
+        activeRuntime.sweepCursor = { enqueuedAt: entry.enqueuedAt, id: entry.id };
+      }
     }
     if (armed > 0) {
       activeRuntime.log.info(
