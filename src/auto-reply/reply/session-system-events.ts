@@ -278,6 +278,58 @@ export async function prepareFormattedSystemEvents(params: {
       !(event.sessionDeliveryAckId && excludedAdoptedAckIds.has(event.sessionDeliveryAckId)) &&
       (!event.expectedSessionId || event.expectedSessionId === currentSessionId),
   );
+  const sessionStateNotices = promptEvents.flatMap((event) => {
+    const targetSessionKey = event.contextKey
+      ? decodeSessionStateNoticeContextKey(event.contextKey)
+      : undefined;
+    return targetSessionKey === undefined
+      ? []
+      : [{ targetSessionKey, watcherStorePath: event.sessionStorePath ?? null }];
+  });
+  if (sessionStateNotices.length > 0) {
+    await acknowledgeSessionStateNotices(params.sessionKey, sessionStateNotices);
+  }
+  const drainedContinuationCount = promptEvents.filter((event) =>
+    event.text.startsWith("[continuation:"),
+  ).length;
+  const traceparent = promptEvents.find((event) => event.traceparent)?.traceparent;
+  emitContinuationQueueDrainSpan({
+    drainedCount: promptEvents.length,
+    drainedContinuationCount,
+    ...(traceparent ? { traceparent } : {}),
+    log: (message) => defaultRuntime.log(message),
+  });
+  // Only an event that is formatted into this prompt may settle its durable
+  // row. A selected event dropped above (bound to another session id, from a
+  // replaced store, or empty after compaction) was consumed from memory, but its
+  // row stays pending so replay can still deliver it where it belongs.
+  const formattedEvents: SystemEvent[] = [];
+  for (const event of promptEvents) {
+    // A same-store resolver handoff does not retire already-consumed events.
+    if (!isSystemEventStoreCurrent(params.sessionKey, event.sessionStorePath, params.agentId)) {
+      continue;
+    }
+    const compacted = compactSystemEvent(event);
+    if (!compacted) {
+      continue;
+    }
+    formattedEvents.push(event);
+    const timestamp = `[${formatSystemEventTimestamp(event.ts, params.cfg)}]`;
+    const lines = compacted
+      .split("\n")
+      .map((subline, index) => `System: ${index === 0 ? `${timestamp} ` : ""}${subline}`);
+    // Inbound text is deliberately not rewritten to neutralize look-alike `System:` lines.
+    // Role separation plus external-content wrapping is the boundary.
+    // This is an explicit product decision.
+    const authorityKey = readPreparedSystemEventAuthorityKey(event);
+    blocks.push({
+      ...(event.sessionDeliveryAckId
+        ? { key: `session-delivery:${event.sessionDeliveryAckId}` }
+        : {}),
+      text: lines.join("\n"),
+      ...(authorityKey ? { authorityKey } : {}),
+    });
+  }
   const sessionDeliveryAcks = new Map<
     string,
     {
@@ -289,7 +341,7 @@ export async function prepareFormattedSystemEvents(params: {
   // adoption, and a crash or admission failure after this point would otherwise
   // complete the durable row with nothing delivered. They were classified above
   // and settle via settleManagedSystemEventsAfterTurnAdoption.
-  for (const event of selected.filter((entry) => !entry.sessionDeliveryAwaitsTurnAdoption)) {
+  for (const event of formattedEvents.filter((entry) => !entry.sessionDeliveryAwaitsTurnAdoption)) {
     const id = normalizeOptionalString(event.sessionDeliveryAckId);
     if (!id) {
       continue;
@@ -312,52 +364,14 @@ export async function prepareFormattedSystemEvents(params: {
       );
     }
   }
-  const sessionStateNotices = promptEvents.flatMap((event) => {
-    const targetSessionKey = event.contextKey
-      ? decodeSessionStateNoticeContextKey(event.contextKey)
-      : undefined;
-    return targetSessionKey === undefined
-      ? []
-      : [{ targetSessionKey, watcherStorePath: event.sessionStorePath ?? null }];
-  });
-  if (sessionStateNotices.length > 0) {
-    await acknowledgeSessionStateNotices(params.sessionKey, sessionStateNotices);
-  }
-  const drainedContinuationCount = promptEvents.filter((event) =>
-    event.text.startsWith("[continuation:"),
-  ).length;
-  const traceparent = promptEvents.find((event) => event.traceparent)?.traceparent;
-  emitContinuationQueueDrainSpan({
-    drainedCount: promptEvents.length,
-    drainedContinuationCount,
-    ...(traceparent ? { traceparent } : {}),
-    log: (message) => defaultRuntime.log(message),
-  });
-  for (const event of promptEvents) {
-    // A same-store resolver handoff does not retire already-consumed events.
-    if (!isSystemEventStoreCurrent(params.sessionKey, event.sessionStorePath, params.agentId)) {
-      continue;
-    }
-    const compacted = compactSystemEvent(event);
-    if (!compacted) {
-      continue;
-    }
-    const timestamp = `[${formatSystemEventTimestamp(event.ts, params.cfg)}]`;
-    const lines = compacted
-      .split("\n")
-      .map((subline, index) => `System: ${index === 0 ? `${timestamp} ` : ""}${subline}`);
-    // Inbound text is deliberately not rewritten to neutralize look-alike `System:` lines.
-    // Role separation plus external-content wrapping is the boundary.
-    // This is an explicit product decision.
-    const authorityKey = readPreparedSystemEventAuthorityKey(event);
-    blocks.push({
-      ...(event.sessionDeliveryAckId
-        ? { key: `session-delivery:${event.sessionDeliveryAckId}` }
-        : {}),
-      text: lines.join("\n"),
-      ...(authorityKey ? { authorityKey } : {}),
-    });
-  }
+  const formattedAckIds = new Set(
+    formattedEvents.flatMap((event) =>
+      event.sessionDeliveryAckId ? [event.sessionDeliveryAckId] : [],
+    ),
+  );
+  const managedDeliveries = adoptionScopedDeliveries.filter((delivery) =>
+    formattedAckIds.has(delivery.id),
+  );
   // Each sub-line gets its own prefix so continuation lines can't be mistaken
   // for regular user content.
   const summaryLines =
@@ -371,7 +385,7 @@ export async function prepareFormattedSystemEvents(params: {
   }
   return {
     blocks,
-    managedDeliveries: adoptionScopedDeliveries,
+    managedDeliveries,
     ...(authorityOwner ? { authorityOwner } : {}),
   };
 }
