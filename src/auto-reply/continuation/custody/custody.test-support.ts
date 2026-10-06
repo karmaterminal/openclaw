@@ -5,6 +5,7 @@
 // hydrates it. Suites that use this run in the database-worker test lane.
 import { afterEach, beforeEach, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
+import { closeOpenClawAgentDatabasesAsync } from "../../../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseAsync } from "../../../state/openclaw-state-db.js";
 import { invalidateContinuationCustodyLifetime } from "./custody-lifetime.js";
 import { resetContinuationCustodyProjection } from "./custody-projection.js";
@@ -24,6 +25,9 @@ export function useContinuationCustodyTestState(): { stateDir: () => string } {
   const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
     afterEach(async () => {
       resetContinuationCustodyProjection();
+      // Worker-backed session reads retain agent databases under this state dir;
+      // drain them before the directory is removed, as upstream's suites do.
+      await closeOpenClawAgentDatabasesAsync();
       await closeOpenClawStateDatabaseAsync();
       vi.unstubAllEnvs();
       stateDir = undefined;
