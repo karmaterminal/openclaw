@@ -9,9 +9,9 @@ import {
 } from "../../config/sessions.js";
 import {
   isSessionRecipientAuthorityCurrent,
-  loadSessionEntry,
   loadTranscriptEvents,
 } from "../../config/sessions/session-accessor.js";
+import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { buildChannelSummary } from "../../infra/channel-summary.js";
 import { emitContinuationQueueDrainSpan } from "../../infra/continuation-tracer.js";
@@ -165,6 +165,14 @@ export async function prepareFormattedSystemEvents(params: {
   let selected = selectGenericSystemEvents(params.events ?? peekSystemEventEntries(queueKey), {
     suppressHeartbeatOwnedEvents: params.suppressHeartbeatOwnedEvents,
   });
+  // Heartbeat admission may defer captured occurrences to a delivery owner: they
+  // are still formatted into this prompt but stay queued until that owner commits.
+  // Consume before the first await, as upstream does: a concurrent drain or a
+  // same-store resolver handoff must not observe (or re-select) these entries
+  // while this preparation waits on worker-backed reads below.
+  let queued = consumeSelectedSystemEventEntries(queueKey, selected, {
+    deferredEventIds: params.deferredEventIds,
+  });
   // Storage must resolve under the SAME agent the ownership filter selected for,
   // or a global-scope key under a non-default agent reads the wrong store.
   const agentId = resolveAgentIdFromSessionKey(params.sessionKey, params.agentId);
@@ -174,15 +182,44 @@ export async function prepareFormattedSystemEvents(params: {
     sessionKey: params.sessionKey,
     storePath,
   };
-  const currentSessionEntry = loadSessionEntry({
-    agentId,
-    sessionKey: params.sessionKey,
-    storePath,
-    readConsistency: "latest",
-    hydrateSkillPromptRefs: false,
-  });
-  const currentSessionId = currentSessionEntry?.sessionId;
-  const removeStaleAuthorityEvents = async () => {
+  // Stale-authority entries are settled (acked + removed) rather than formatted.
+  // Authority-bound entries always carry a queue identity (id or ack id), which
+  // survives the clone consumption hands back.
+  const settledStaleAuthorityKeys = new Set<string>();
+  const isSettledStaleAuthority = (event: SystemEvent) => {
+    const key = event.recipientAuthority ? (event.id ?? event.sessionDeliveryAckId) : undefined;
+    return key !== undefined && settledStaleAuthorityKeys.has(key);
+  };
+  let adoptedDeliveryIds: Set<string>;
+  let currentSessionId: string | undefined;
+  try {
+    // Session reads stay off the caller thread: the worker-backed reader owns
+    // store discovery, schema admission and the latest committed row.
+    const currentSessionEntry = await readSessionEntryReadOnlyInWorker({
+      agentId,
+      sessionKey: params.sessionKey,
+      storePath,
+      projection: "list",
+    });
+    currentSessionId = currentSessionEntry?.sessionId;
+    // Adoption-scoped events settle only after the turn is durably adopted, so a
+    // crash between the transcript write and the queue ack leaves an ack id that
+    // IS already adopted but whose row is still pending. Consult the transcript,
+    // or an adoption-scoped notice would be re-injected.
+    const hasAdoptionScopedDelivery = selected.some(
+      (event) => event.sessionDeliveryAckId && event.sessionDeliveryAwaitsTurnAdoption,
+    );
+    adoptedDeliveryIds =
+      currentSessionId && hasAdoptionScopedDelivery
+        ? readAdoptedSystemEventDeliveryIds(
+            await loadTranscriptEvents({
+              agentId,
+              sessionId: currentSessionId,
+              sessionKey: params.sessionKey,
+              storePath,
+            }),
+          )
+        : new Set<string>();
     const staleAuthorityEvents = selected.filter(
       (event) =>
         event.recipientAuthority &&
@@ -193,31 +230,25 @@ export async function prepareFormattedSystemEvents(params: {
         event,
         sessionKey: queueKey,
       });
+      const key = event.id ?? event.sessionDeliveryAckId;
+      if (key) {
+        settledStaleAuthorityKeys.add(key);
+      }
     }
     if (staleAuthorityEvents.length > 0) {
       const stale = new Set(staleAuthorityEvents);
       selected = selected.filter((event) => !stale.has(event));
+      queued = queued.filter((event) => !isSettledStaleAuthority(event));
     }
-  };
-  // Adoption-scoped events settle only after the turn is durably adopted, so a
-  // crash between the transcript write and the queue ack leaves an ack id that
-  // IS already adopted but whose row is still pending. Consult the transcript,
-  // or an adoption-scoped notice would be re-injected.
-  const hasAdoptionScopedDelivery = selected.some(
-    (event) => event.sessionDeliveryAckId && event.sessionDeliveryAwaitsTurnAdoption,
-  );
-  const adoptedDeliveryIds =
-    currentSessionId && hasAdoptionScopedDelivery
-      ? readAdoptedSystemEventDeliveryIds(
-          await loadTranscriptEvents({
-            agentId,
-            sessionId: currentSessionId,
-            sessionKey: params.sessionKey,
-            storePath,
-          }),
-        )
-      : new Set<string>();
-  await removeStaleAuthorityEvents();
+  } catch (error) {
+    // Nothing was formatted or claimed yet: a failed read or stale settlement
+    // gives every unsettled entry back to the queue for the next turn.
+    restoreConsumedSystemEventEntries(
+      queueKey,
+      queued.filter((event) => !isSettledStaleAuthority(event)),
+    );
+    throw error;
+  }
   const authorityOwner = createPreparedSystemEventAuthorityOwner({
     scope: authorityScope,
     events: selected,
@@ -289,11 +320,6 @@ export async function prepareFormattedSystemEvents(params: {
       );
     }
   }
-  // Heartbeat admission may defer captured occurrences to a delivery owner: they
-  // are still formatted into this prompt but stay queued until that owner commits.
-  const queued = consumeSelectedSystemEventEntries(queueKey, selected, {
-    deferredEventIds: params.deferredEventIds,
-  });
   for (const delivery of adoptionScopedDeliveries) {
     const consumed = queued.filter((event) => event.sessionDeliveryAckId === delivery.id);
     delivery.restore = () => restoreConsumedSystemEventEntries(queueKey, consumed);

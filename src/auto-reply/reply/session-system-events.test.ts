@@ -44,8 +44,11 @@ vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) 
 });
 vi.mock("../../config/sessions/session-accessor.js", () => ({
   isSessionRecipientAuthorityCurrent: mocks.isSessionRecipientAuthorityCurrent,
-  loadSessionEntry: mocks.loadSessionEntry,
   loadTranscriptEvents: mocks.loadTranscriptEvents,
+}));
+// The current session id is read through the worker-backed session reader.
+vi.mock("../../config/sessions/session-entry-read-runtime.js", () => ({
+  readSessionEntryReadOnlyInWorker: async (scope: unknown) => mocks.loadSessionEntry(scope),
 }));
 
 vi.mock("../../runtime.js", () => ({
@@ -58,6 +61,19 @@ const { drainFormattedSystemEvents, prepareFormattedSystemEvents } =
   await import("./session-system-events.js");
 const { settleManagedSystemEventsAfterTurnAdoption } =
   await import("./session-system-event-adoption.js");
+
+// Route the mocked queue seams to the real in-memory queue for one case.
+async function useActualQueue() {
+  const actual = await vi.importActual<typeof import("../../infra/system-events.js")>(
+    "../../infra/system-events.js",
+  );
+  actual.resetSystemEventsForTest();
+  mocks.peekSystemEventEntries.mockImplementation(actual.peekSystemEventEntries);
+  mocks.consumeSelectedSystemEventEntries.mockImplementation(
+    actual.consumeSelectedSystemEventEntries,
+  );
+  return actual;
+}
 
 describe("drainFormattedSystemEvents trace context", () => {
   beforeEach(() => {
@@ -227,6 +243,60 @@ describe("drainFormattedSystemEvents trace context", () => {
 
     expect(delivery1).not.toHaveBeenCalled();
     expect(delivery2).toHaveBeenCalledOnce();
+  });
+
+  it("gives consumed entries back to the queue when the session read fails", async () => {
+    const actual = await useActualQueue();
+    actual.enqueueSystemEvent("queued before a failed read", { sessionKey: MAIN_QUEUE_KEY });
+    mocks.loadSessionEntry.mockImplementation(() => {
+      throw new Error("session read failed");
+    });
+
+    const preparing = prepareFormattedSystemEvents({
+      cfg: {},
+      agentId: "main",
+      sessionKey: "main",
+      isMainSession: false,
+      isNewSession: false,
+    });
+    // Consumed before the first await, as upstream's drain does.
+    expect(actual.peekSystemEventEntries(MAIN_QUEUE_KEY)).toEqual([]);
+    await expect(preparing).rejects.toThrow("session read failed");
+
+    expect(actual.peekSystemEventEntries(MAIN_QUEUE_KEY).map((event) => event.text)).toEqual([
+      "queued before a failed read",
+    ]);
+  });
+
+  it("keeps a settled stale entry out of the queue when a later stale settlement fails", async () => {
+    const actual = await useActualQueue();
+    for (const id of ["delivery-stale-settled", "delivery-stale-failing"]) {
+      actual.enqueueSystemEvent(`stale ${id}`, {
+        sessionKey: MAIN_QUEUE_KEY,
+        trusted: true,
+        sessionDeliveryAckId: id,
+        recipientAuthority: { state: "bound", epoch: RECIPIENT_AUTHORITY_EPOCH },
+      });
+    }
+    mocks.isSessionRecipientAuthorityCurrent.mockReturnValue(false);
+    // Settlement runs in queue order: the first stale row settles, the second fails.
+    mocks.ackSessionDelivery
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("stale settlement failed"));
+
+    await expect(
+      prepareFormattedSystemEvents({
+        cfg: {},
+        agentId: "main",
+        sessionKey: "main",
+        isMainSession: false,
+        isNewSession: false,
+      }),
+    ).rejects.toThrow("stale settlement failed");
+
+    expect(
+      actual.peekSystemEventEntries(MAIN_QUEUE_KEY).map((event) => event.sessionDeliveryAckId),
+    ).toEqual(["delivery-stale-failing"]);
   });
 
   it("finalizes ingress adoption before fallible managed delivery settlement", async () => {

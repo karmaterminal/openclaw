@@ -8,6 +8,21 @@ vi.mock("../continuation/context-pressure.js", () => ({
   checkContextPressure: vi.fn().mockReturnValue({ fired: false, band: 0 }),
 }));
 
+// System-event preparation reads the current session through the worker-backed
+// reader; route it to the parent's mocked session accessor so cases that drive
+// the actual preparation keep their seeded entry and touch no real store.
+vi.mock("../../config/sessions/session-entry-read-runtime.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../config/sessions/session-entry-read-runtime.js")>();
+  return {
+    ...actual,
+    readSessionEntryReadOnlyInWorker: vi.fn(async (scope: { sessionKey: string }) => {
+      const accessor = await import("../../config/sessions/session-accessor.js");
+      return accessor.loadSessionEntry(scope);
+    }),
+  };
+});
+
 function createSessionSystemEventsMocks() {
   const drainFormattedSystemEventsMock = vi.fn(
     async (_params: unknown): Promise<string | undefined> => undefined,
