@@ -162,6 +162,48 @@ describe("followup lifecycle terminal disposition", () => {
     },
   );
 
+  it.each([
+    { disposition: "cancelled" as const, callback: "onCancelled" as const },
+    { disposition: undefined, callback: "onAbandoned" as const },
+  ])(
+    "contains a rejecting async $callback behind the dedupe release wrapper",
+    async ({ disposition, callback }) => {
+      const unhandled = vi.fn();
+      process.on("unhandledRejection", unhandled);
+      const reportError = vi.spyOn(defaultRuntime, "error").mockImplementation(() => undefined);
+      try {
+        const calls: string[] = [];
+        const lifecycle = {
+          ...createLifecycle(new AbortController().signal),
+          // A plain async function: a vi.fn would observe the rejection itself.
+          [callback]: async () => {
+            calls.push(callback);
+            throw new Error(`${callback} settlement failed`);
+          },
+          onSettled: vi.fn(() => {
+            calls.push("onSettled");
+          }),
+        };
+        // The dedupe owner wraps both callbacks; the wrapper must hand the
+        // callback's promise back so core can contain its rejection.
+        releaseBeforeTurnAdoptionRetry(lifecycle, () => calls.push("release"));
+        completeFollowupRunLifecycle({ turnAdoptionLifecycle: lifecycle }, disposition);
+        expect(calls).toEqual(["release", callback, "onSettled"]);
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve);
+        });
+        expect(unhandled).not.toHaveBeenCalled();
+        expect(reportError).toHaveBeenCalledWith(
+          expect.stringContaining(`${callback} settlement failed`),
+        );
+        expect(lifecycle.onSettled).toHaveBeenCalledOnce();
+      } finally {
+        process.off("unhandledRejection", unhandled);
+        reportError.mockRestore();
+      }
+    },
+  );
+
   it("never fires a terminal callback for an admitted or consumed run", async () => {
     const admitted = createLifecycle();
     const run = { turnAdoptionLifecycle: admitted };

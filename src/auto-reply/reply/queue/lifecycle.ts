@@ -109,9 +109,10 @@ export function releaseBeforeTurnAdoptionRetry(
   release: () => void,
 ): void {
   const onAbandoned = lifecycle.onAbandoned;
+  // Hand the callback's result back so core can contain an async rejection.
   lifecycle.onAbandoned = () => {
     release();
-    onAbandoned?.();
+    return onAbandoned?.();
   };
   const onCancelled = lifecycle.onCancelled;
   if (onCancelled) {
