@@ -177,14 +177,12 @@ describe("staged registry writes and rollback custody", () => {
     expect(staged.runs.get(siblingRunId)?.killIntent).toEqual(claim);
   });
 
-  // HIGH (absorb 14fe10d0): contract changed by upstream; needs frond decision:
-  // the old writer superseded a staged write whose live row changed beyond a
-  // custody annotation (outcome "not-committed", one write, no durable row).
-  // Upstream has no supersession: overlapping writes on a row are serialized and
-  // each plans on its predecessor's postimage. The surviving meaning is "no lost
-  // update": neither the other owner's change nor the custody is overwritten by
-  // the staged write, and the staged write does not commit stale bytes.
-  it("keeps the supersession when the row changed beyond the custody annotation", async () => {
+  // H2 re-spec (🩸, absorb 14fe10d0 rollback-custody fix spec): upstream removed
+  // staged-postimage supersession. Overlapping writes on a row are serialized and
+  // each plans on its predecessor's postimage, so the contract is "no lost update":
+  // every owner's write survives in the live AND the durable row. The `commit`
+  // fixture proves FIFO ordering only; product custody recovery is H1's tests.
+  it("serializes a staged kill, custody, and another owner's change with no lost update", async () => {
     const staged = stageKillClaim();
     await staged.entered;
     const custody = staged.recordCustody();
@@ -204,8 +202,8 @@ describe("staged registry writes and rollback custody", () => {
     }
   });
 
-  // HIGH (absorb 14fe10d0): same contract change as above, without custody.
-  it("keeps the supersession when no custody was recorded", async () => {
+  // H2 re-spec: the same serialized "no lost update" contract without custody.
+  it("serializes a staged kill and another owner's change with no lost update", async () => {
     const staged = stageKillClaim();
     await staged.entered;
     const changed = staged.changeLabel();
@@ -214,10 +212,12 @@ describe("staged registry writes and rollback custody", () => {
     await expect(staged.publication).resolves.toBe(true);
     await expect(changed).resolves.toBe(true);
     expect(staged.writes()).toBe(2);
-    expect(staged.durable.get(runId)).toMatchObject({
-      killIntent: claim,
-      label: "changed by another owner",
-    });
-    expect(staged.durable.get(runId)?.acceptedSpawnRollback).toBeUndefined();
+    for (const row of [staged.runs.get(runId), staged.durable.get(runId)]) {
+      expect(row).toMatchObject({
+        killIntent: claim,
+        label: "changed by another owner",
+      });
+      expect(row?.acceptedSpawnRollback).toBeUndefined();
+    }
   });
 });
