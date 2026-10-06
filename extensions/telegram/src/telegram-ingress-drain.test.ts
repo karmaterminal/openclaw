@@ -31,11 +31,13 @@ import { telegramSpooledUpdateLaneKey } from "./telegram-ingress-spool.test-supp
 const buildTelegramMessageContext = vi.hoisted(() => vi.fn());
 const dispatchTelegramMessage = vi.hoisted(() => vi.fn());
 
-vi.mock("./bot-message-context.js", () => ({
+vi.mock("./bot-message-context.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./bot-message-context.js")>()),
   buildTelegramMessageContext,
 }));
 
-vi.mock("./bot-message-dispatch.js", () => ({
+vi.mock("./bot-message-dispatch.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./bot-message-dispatch.js")>()),
   dispatchTelegramMessage,
 }));
 
