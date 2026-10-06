@@ -7,6 +7,7 @@ import {
   isSubagentSpawnAcceptanceHeld,
   isSubagentSpawnArmed,
   resolveArmedSpawnRollback,
+  takeDeferredArmedSubagentResume,
 } from "./subagent-registry-spawn-acceptance.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { isSameSubagentRunOwner } from "./subagent-run-generation.js";
@@ -63,6 +64,10 @@ export async function reconcileAcceptedSpawnRollback(params: {
   const adopted = params.entry.acceptedSpawnRollback ?? resolveArmedSpawnRollback(params.entry);
   if (!adopted || !isSameSubagentRunOwner(params.runs.get(params.runId), params.entry)) {
     return false;
+  }
+  if (!params.entry.acceptedSpawnRollback) {
+    // Adoption is the rollback of an unheld arm: a resume it deferred never replays.
+    takeDeferredArmedSubagentResume(params.entry);
   }
   let rollback = adopted;
   const record = await params.recordAcceptedSubagentSpawnRollback({

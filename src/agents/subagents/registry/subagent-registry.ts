@@ -401,7 +401,7 @@ const subagentRestorer = createSubagentRegistryRestorer({
   listSwarmRunsForGroup: (groupId, requesterSessionKey, requesterAgentId) =>
     listSwarmRunsForGroup(groupId, requesterSessionKey, requesterAgentId),
   startQueuedSubagentRun: (runId, gatewayRunId, lifecycleGeneration) =>
-    subagentRunManager.startQueuedSubagentRun(runId, gatewayRunId, lifecycleGeneration),
+    startQueuedSubagentRun(runId, gatewayRunId, lifecycleGeneration),
   terminateAcceptedRestoredCollectorRun: ({
     entry,
     gatewayRunId,
@@ -617,15 +617,19 @@ export function markSubagentLaunchDispatchUncertain(runId: string): void {
   }
 }
 
-/** The acceptance owner let go without confirming: the sweeper fails the arm closed. */
+/**
+ * The acceptance owner let go without confirming: the sweeper fails the arm closed.
+ * A resume deferred while armed is dropped even when the rollback already converted
+ * the arm to custody, so no later disarm can replay it.
+ */
 export function releaseSubagentSpawnAcceptanceHoldForRun(runId: string): void {
   const current = subagentRuns.get(runId.trim());
   if (!current) {
     return;
   }
   releaseSubagentSpawnAcceptanceHold(current);
+  takeDeferredArmedSubagentResume(current);
   if (isSubagentSpawnArmed(current)) {
-    takeDeferredArmedSubagentResume(current);
     scheduleSubagentRegistrySweep({ delayMs: 0 });
   }
 }
@@ -643,7 +647,40 @@ export function registerSubagentRun(
     options,
   );
 }
-export const startQueuedSubagentRun = subagentRunManager.startQueuedSubagentRun;
+/**
+ * The collector start transition disarms a dispatched launch marker in its own write
+ * (H1 §3.4). Like native confirmation it then replays, exactly once, any resume the
+ * F2 fence deferred while the launch was armed.
+ */
+export async function startQueuedSubagentRun(
+  runId: string,
+  gatewayRunId?: string,
+  lifecycleGeneration?: string,
+  gatewayContextResolver?: GatewayContextResolver,
+): Promise<boolean> {
+  const id = runId.trim();
+  const selected =
+    subagentRuns.get(id) ?? [...subagentRuns.values()].find((row) => row.swarmRunId === id);
+  const started = await subagentRunManager.startQueuedSubagentRun(
+    runId,
+    gatewayRunId,
+    lifecycleGeneration,
+    gatewayContextResolver,
+  );
+  const current = selected && subagentRuns.get(gatewayRunId?.trim() || selected.runId);
+  if (
+    started &&
+    current &&
+    isSameSubagentRunOwner(current, selected) &&
+    !isSubagentSpawnArmed(current)
+  ) {
+    const deferred = takeDeferredArmedSubagentResume(current);
+    if (deferred) {
+      resumeSubagentRun(current.runId, deferred);
+    }
+  }
+  return started;
+}
 export const settleFailedQueuedSubagentLaunch = subagentRunManager.settleFailedQueuedSubagentLaunch;
 
 export const adoptPausedSubagentRunForFollowUp =

@@ -15,6 +15,7 @@ import { createCollectorLaunchCallbacks } from "../spawn/subagent-spawn-collecto
 import { closeSwarmScheduler } from "../swarm/swarm-scheduler.js";
 import { subagentRuns, waitForSubagentRetirementPublication } from "./subagent-registry-memory.js";
 import { restoreSubagentRunsFromDisk } from "./subagent-registry-persistence.js";
+import { takeDeferredArmedSubagentResume } from "./subagent-registry-spawn-acceptance.js";
 import {
   loadSubagentRegistryFromSqlite,
   saveSubagentRegistryToSqlite,
@@ -24,6 +25,7 @@ import {
   addSubagentRunForTests,
   initSubagentRegistry,
   resetSubagentRegistryForTests,
+  resumeSubagentRun,
   settleFailedQueuedSubagentLaunch,
   testing,
 } from "./subagent-registry.test-helpers.js";
@@ -114,7 +116,7 @@ async function seedQueuedCollector(): Promise<SubagentRunRecord> {
   return subagentRuns.get(runId)!;
 }
 
-function collectorCallbacks(entry: SubagentRunRecord) {
+function collectorCallbacks(entry: SubagentRunRecord, onLaunch?: () => void) {
   const scope: SubagentRegistrationScope = {
     canLaunch: () => true,
     canAcceptLaunch: () => true,
@@ -133,7 +135,10 @@ function collectorCallbacks(entry: SubagentRunRecord) {
     requesterSessionKey: "agent:main:main",
     registrationScope: scope,
     provisionalSessionIdentity: {},
-    launchChildRun: async () => ({ response: { runId: gatewayRunId, status: "accepted" } }),
+    launchChildRun: async () => {
+      onLaunch?.();
+      return { response: { runId: gatewayRunId, status: "accepted" } };
+    },
     recordParticipant: () => {},
     emitSpawnLifecycleHooks: async () => {},
     cleanupFailedSpawn: async () => ({ attachmentsRemoved: true, sessionDeleted: true }),
@@ -263,5 +268,53 @@ it.each(["landed", "not-landed"] as const)(
       expect(successfulAborts).toEqual([runId]);
       expect(durable().get(runId)).toMatchObject({ collectorCompletion: { status: "failed" } });
     }
+  },
+);
+
+it.each(["started", "rolled-back"] as const)(
+  "T17: a resume deferred on a dispatched launch replays once on start, and is dropped on rollback (%s)",
+  async (outcome) => {
+    const entry = await seedQueuedCollector();
+    if (outcome === "rolled-back") {
+      faultWrites("refuse", startWrite);
+    }
+    // While the launch is dispatched (armed by launchDispatch, held by its owner) a
+    // resume path fires for the child, whose session entry is missing.
+    let deferredWhileArmed: SubagentRunRecord | undefined;
+    const callbacks = collectorCallbacks(entry, () => {
+      resumeSubagentRun(runId);
+      deferredWhileArmed = subagentRuns.get(runId);
+    });
+    const result: unknown = await callbacks.start().catch((error: unknown) => error);
+    for (let i = 0; i < 10; i += 1) {
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+    }
+    // F2 fenced it: the armed row was neither resumed nor orphan-completed in flight.
+    expect(deferredWhileArmed?.launchDispatch).toMatchObject({ idempotencyKey: runId });
+    expect(deferredWhileArmed?.execution.outcome).toBeUndefined();
+    if (outcome === "started") {
+      expect(result).toBeUndefined();
+      // The start transition disarmed the launch and replayed the deferred resume.
+      await vi.waitFor(() =>
+        expect(subagentRuns.get(gatewayRunId)?.execution.outcome).toMatchObject({
+          status: "error",
+          error: expect.stringContaining("orphaned"),
+        }),
+      );
+      expect(subagentRuns.get(gatewayRunId)?.launchDispatch).toBeUndefined();
+    } else {
+      expect(result).toBeInstanceOf(Error);
+      // Rolled back: the launch is settled as failed, never orphan-completed.
+      await testing.sweepOnceForTests();
+      const settled = subagentRuns.get(runId);
+      expect(settled?.collectorCompletion).toMatchObject({ status: "failed" });
+      expect(settled?.execution.outcome).not.toMatchObject({
+        error: expect.stringContaining("orphaned"),
+      });
+    }
+    // Exactly once: nothing is left for a later disarm to replay.
+    expect(takeDeferredArmedSubagentResume(deferredWhileArmed!)).toBeUndefined();
   },
 );
