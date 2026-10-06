@@ -1,9 +1,11 @@
 import { expect, it } from "vitest";
+import type { SessionEntry } from "../../config/sessions.js";
 import {
   onInternalDiagnosticEvent,
   type DiagnosticEventPayload,
 } from "../../infra/diagnostic-events.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
+import { createReplyContinuationController } from "./agent-runner-continuation.js";
 import { finalizeReplyAgentRun } from "./agent-runner-result.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
 import { createReplyOperation } from "./reply-run-registry.js";
@@ -35,23 +37,44 @@ it("emits usage diagnostics for a deliberate silent reply", async () => {
   replyOperation.setPhase("running");
   const diagnostics: DiagnosticEventPayload[] = [];
   const unsubscribe = onInternalDiagnosticEvent((event) => diagnostics.push(event));
+  // Continuation-owned finalize inputs, built as the continuation accounting fixture builds them.
+  const activeSessionStore: Record<string, SessionEntry> = {};
+  let activeSessionEntry: SessionEntry | undefined;
+  const getActiveSessionEntry = () => activeSessionEntry;
+  const setActiveSessionEntry = (next: SessionEntry | undefined) => {
+    activeSessionEntry = next;
+  };
+  const continuation = createReplyContinuationController({
+    cfg,
+    sessionKey,
+    storePath: undefined,
+    isContinuationWake: false,
+    activeSessionStore,
+    getActiveSessionEntry,
+    setActiveSessionEntry,
+  });
   const context: FinalizeReplyAgentRunInput = {
     activeIsNewSession: false,
     activeSessionEntry: undefined,
-    activeSessionStore: {},
+    activeSessionStore,
     blockReplyPipeline: null,
     blockStreamingEnabled: false,
     cfg,
     commandBody: followupRun.prompt,
+    continuation,
     defaultModel: "gpt-5.6-luna",
     followupRun,
+    getActiveSessionEntry,
+    setActiveSessionEntry,
     isHeartbeat: true,
+    noOpRearmWakeClass: undefined,
     pendingToolTasks: new Set(),
     preflightCompactionApplied: false,
     queueKey: sessionKey,
     replyMediaContext: { normalizePayload: async (payload) => payload },
     replyOperation,
     replyRouteThreadId: undefined,
+    replySessionKey: sessionKey,
     replyToChannel: undefined,
     replyToMode: "off",
     resolvedBlockStreamingBreak: "message_end",

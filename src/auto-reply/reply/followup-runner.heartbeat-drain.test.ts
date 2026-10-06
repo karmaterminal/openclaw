@@ -113,6 +113,8 @@ it("keeps heartbeat cleanup options out of a deferred queued user turn", async (
     await cleanupReplyAgentRun({
       blockReplyPipeline: null,
       clearRestartRecoveryDeliveryClaim: async () => {},
+      // Continuation: no post-compaction delegates to re-persist for this heartbeat.
+      postCompactionDelegatesToPreserve: [],
       isHeartbeat: true,
       providedReplyOperation: heartbeatOperation,
       queueKey: key,

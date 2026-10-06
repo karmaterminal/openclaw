@@ -249,7 +249,14 @@ describe("branch 3 — target deleted during dispatch race", () => {
     const enqueueSessionDelivery = vi.fn(async () => "delivery-stale-before-wake");
     const ackSessionDelivery = vi.fn(async () => undefined);
     const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>((text, options) => {
-      systemEvents.push({ text, ts: 2, ...options });
+      // Mirror the queue's stored shape: only a conversation-turn origin is recorded (upstream).
+      const { fromConversationTurn, ...stored } = options;
+      systemEvents.push({
+        text,
+        ts: 2,
+        ...stored,
+        ...(fromConversationTurn ? { fromConversationTurn: true as const } : {}),
+      });
       return true;
     });
     const removeSystemEvents = vi.fn(

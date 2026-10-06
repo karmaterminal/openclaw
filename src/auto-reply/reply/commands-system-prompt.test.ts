@@ -450,7 +450,7 @@ describe("resolveCommandsSystemPromptBundle", () => {
 
     await resolveCommandsSystemPromptBundle(params);
 
-    expect(vi.mocked(createOpenClawCodingTools)).toHaveBeenCalledWith(
+    expect(vi.mocked(createOpenClawCodingToolsAsync)).toHaveBeenCalledWith(
       expect.objectContaining({
         continueWorkOpts: expect.objectContaining({
           requestContinuation: expect.any(Function),
@@ -468,7 +468,7 @@ describe("resolveCommandsSystemPromptBundle", () => {
 
     await resolveCommandsSystemPromptBundle(params);
 
-    const call = vi.mocked(createOpenClawCodingTools).mock.calls.at(-1)?.[0];
+    const call = vi.mocked(createOpenClawCodingToolsAsync).mock.calls.at(-1)?.[0];
     expect(call?.requestCompactionOpts).toBeUndefined();
     expect(call?.continueWorkOpts).toBeUndefined();
   });

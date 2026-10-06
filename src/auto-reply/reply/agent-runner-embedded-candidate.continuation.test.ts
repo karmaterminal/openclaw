@@ -151,6 +151,8 @@ function runCandidate(
     model: "gpt-5.6-luna",
     isFallbackRetry: false,
     agentHarnessRuntimeOverride: undefined,
+    // Concrete candidate runtime, as upstream's reply fixtures resolve it (#163909).
+    candidateAgentRuntime: "openclaw",
     classifyResult: () => null,
     modelRoutingProvenance: {
       requestedProvider: "openai",
@@ -175,6 +177,7 @@ function runCandidate(
     bootstrapPromptWarningSignaturesSeen: [],
     currentTurnImages: { images: undefined, imageOrder: undefined },
     signalExecutionPhaseForTyping: vi.fn(),
+    prepareAgentRunStart: vi.fn(),
     notifyAgentRunStart: vi.fn(),
     notifyUserAboutCompaction: false,
     // sourceRepliesAreToolOnly is no longer a turn param: upstream derives it
