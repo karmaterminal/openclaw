@@ -412,6 +412,16 @@ export const createTelegramMessageProcessor = (
             },
             onDeferredHeartbeat: () => participant.heartbeat(),
             deferredHeartbeatIntervalMs: participant.heartbeatIntervalMs,
+            onCancelled: async () => {
+              if (!adopted) {
+                void settle({ kind: "failed-retryable", error: "turn-cancelled" }, "terminal");
+              }
+              // Intentional cancellation must reach the drain's budget-free
+              // settlement; abandonment would spend a retry attempt.
+              await (drainLifecycle?.onCancelled
+                ? drainLifecycle.onCancelled()
+                : drainLifecycle?.onAbandoned());
+            },
             onAbandoned: () => {
               if (!adopted) {
                 void settle({ kind: "failed-retryable", error: "turn-abandoned" }, "terminal");

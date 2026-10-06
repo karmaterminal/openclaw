@@ -13,7 +13,7 @@ type TelegramUpdateProcessingFrame = {
 
 type TelegramSpooledReplayLifecycle = Omit<
   ChannelIngressMonitorLifecycle,
-  "admission" | "onFailed" | "onCancelled" | "onAdoptionFinalizing"
+  "admission" | "onFailed" | "onAdoptionFinalizing"
 > & {
   /** Clears pre-adoption stall while durable adoption finalization is held. */
   onAdoptionFinalizing?: () => void;
