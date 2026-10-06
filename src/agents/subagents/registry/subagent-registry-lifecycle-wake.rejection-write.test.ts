@@ -44,7 +44,11 @@ vi.mock("../../internal-session-effects.js", () => ({
 vi.mock("../requester-cron-authority.js", () => ({
   revokeRequesterCronAuthorityBatch: vi.fn(),
 }));
-vi.mock("./subagent-registry-memory.js", () => ({
+// Upstream 14fe10d01c's registry state module reads immutableSubagentRun at load
+// and the controller resolves owners through getCurrentSubagentRunOwner, so keep
+// the real pure helpers and replace only the process-wide run map.
+vi.mock("./subagent-registry-memory.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./subagent-registry-memory.js")>()),
   subagentRuns: { confirmRetirement: vi.fn() },
 }));
 vi.mock("../../../runtime.js", () => ({ defaultRuntime: { log: vi.fn() } }));
