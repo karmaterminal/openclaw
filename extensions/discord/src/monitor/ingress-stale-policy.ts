@@ -352,8 +352,10 @@ export function createDiscordStaleAmbientPendingDisposition(params: {
       !channelInfo ||
       !isNonThreadGuildChannel(channelInfo) ||
       !isMentionGatedChannel(message, channelInfo, policy, botId) ||
-      // A newer published policy may already accept this row as work.
-      !policy.isCurrent()
+      // A newer published policy or any edit to the config the classifier read
+      // (agents, broadcast, mention patterns) may already accept this row as work.
+      !policy.isCurrent() ||
+      !policy.isConfigCurrent()
     ) {
       return null;
     }

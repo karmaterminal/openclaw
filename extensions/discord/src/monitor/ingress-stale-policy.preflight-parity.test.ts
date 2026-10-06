@@ -221,6 +221,7 @@ async function policyKeeps(row: Row): Promise<boolean> {
   const message = buildMessage(row);
   const policy = {
     isCurrent: () => true,
+    isConfigCurrent: () => true,
     accountId: "default",
     cfg: row.cfg ?? DEFAULT_PREFLIGHT_CFG,
     discordConfig: row.discordConfig ?? {},

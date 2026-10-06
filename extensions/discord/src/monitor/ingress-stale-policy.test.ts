@@ -30,11 +30,13 @@ type PolicyOverrides = {
   discordConfig?: Record<string, unknown>;
   guildEntries?: Record<string, DiscordGuildEntryResolved>;
   isCurrent?: () => boolean;
+  isConfigCurrent?: () => boolean;
 };
 
 function livePolicy(overrides: PolicyOverrides = {}): DiscordLivePolicy {
   return {
     isCurrent: overrides.isCurrent ?? (() => true),
+    isConfigCurrent: overrides.isConfigCurrent ?? (() => true),
     accountId: "default",
     cfg: overrides.cfg ?? ({} as OpenClawConfig),
     discordConfig: overrides.discordConfig ?? {},
@@ -386,6 +388,8 @@ describe("discord stale ambient pending disposition", () => {
 
   it("preserves work when the published policy went stale mid-decision", async () => {
     await expect(resolve({ isCurrent: () => false })).resolves.toBeNull();
+    // Any edit to the config the classifier read (agents, broadcast, patterns).
+    await expect(resolve({ isConfigCurrent: () => false })).resolves.toBeNull();
   });
 
   it("preserves work when the policy cannot be read", async () => {

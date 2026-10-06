@@ -95,6 +95,7 @@ function livePolicy(
 ): DiscordLivePolicy {
   return {
     isCurrent: () => true,
+    isConfigCurrent: () => true,
     accountId: "default",
     cfg,
     discordConfig,
