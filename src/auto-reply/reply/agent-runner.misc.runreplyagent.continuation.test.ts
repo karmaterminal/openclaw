@@ -179,3 +179,77 @@ describe("runReplyAgent auto-compaction token update", () => {
     expect(scheduleFollowupDrain).toHaveBeenCalledTimes(1);
   });
 });
+
+// PR-NOTES F3: the post-compaction refresh is driven by the current turn's
+// contextManagement.lastTurnCompactions. The aggregate agentMeta.compactionCount is a
+// diagnostic fallback only when the turn did not finish (incomplete or timed out).
+describe("runReplyAgent operational compaction count", () => {
+  it.each([
+    {
+      name: "a completed turn reporting only the aggregate agentMeta.compactionCount",
+      meta: { agentMeta: { compactionCount: 1 } },
+      refreshed: false,
+    },
+    {
+      name: "a completed turn reporting current-turn lastTurnCompactions",
+      meta: { agentMeta: { compactionCount: 0 }, contextManagement: { lastTurnCompactions: 1 } },
+      refreshed: true,
+    },
+    {
+      name: "a timed-out turn falling back to the aggregate count",
+      meta: { agentMeta: { compactionCount: 1 }, timeoutPhase: "provider" },
+      refreshed: true,
+    },
+    {
+      name: "an incomplete turn falling back to the aggregate count",
+      meta: {
+        agentMeta: { compactionCount: 1 },
+        error: { kind: "incomplete_turn", message: "incomplete" },
+      },
+      refreshed: true,
+    },
+  ])("refreshes post-compaction context for $name: $refreshed", async (scenario) => {
+    const workspaceDir = tempDirs.make("openclaw-operational-compaction-workspace-");
+    await fs.writeFile(
+      path.join(workspaceDir, "AGENTS.md"),
+      "## Session Startup\nRead the operational startup file.\n",
+      "utf-8",
+    );
+    const sessionKey = "main";
+    const sessionEntry = { sessionId: "session", updatedAt: Date.now(), totalTokens: 50_000 };
+    runEmbeddedAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "ok" }],
+      meta: {
+        ...scenario.meta,
+        agentMeta: {
+          ...scenario.meta.agentMeta,
+          lastCallUsage: { input: 10_000, output: 500, total: 10_500 },
+        },
+      },
+    });
+
+    await createBaseRun({
+      run: {
+        agentId: "main",
+        agentDir: path.join(rootDir, "agent"),
+        workspaceDir,
+        reasoningLevel: "on",
+        config: {
+          agents: { defaults: { compaction: { postCompactionSections: ["Session Startup"] } } },
+        },
+      },
+      reply: {
+        sessionEntry,
+        sessionStore: { [sessionKey]: sessionEntry },
+        sessionKey,
+      },
+    }).run();
+
+    const events = peekSystemEvents(resolveSystemEventQueueKey(sessionKey, "main"));
+    if (scenario.refreshed) {
+      expect(events.some((event) => event.includes("Post-compaction context refresh"))).toBe(true);
+    } else {
+      expect(events).toHaveLength(0);
+    }
+  });
+});

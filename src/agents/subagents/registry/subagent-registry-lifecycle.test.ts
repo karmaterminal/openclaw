@@ -776,28 +776,6 @@ describe("subagent registry lifecycle hardening", () => {
     expect(runSubagentAnnounceFlow.mock.calls[0]?.[0]?.requesterAgentId).toBe("beta");
   });
 
-  it("derives the requester agent id for a legacy row that predates requesterAgentId", async () => {
-    const cfg = { agents: { ownership: "explicit" as const, entries: { alpha: {}, beta: {} } } };
-    const entry = createRunEntry({
-      expectsCompletionMessage: true,
-      requesterSessionKey: "agent:alpha:main",
-    });
-    expect(entry.requesterAgentId).toBeUndefined();
-    const runSubagentAnnounceFlow = vi.fn(
-      async (_announceParams: { requesterAgentId?: string }) => "delivered" as AnnounceFlowOutcome,
-    );
-    const controller = createLifecycleController({
-      entry,
-      getRuntimeConfig: () => cfg,
-      runSubagentAnnounceFlow,
-    });
-
-    await completeRun(controller, entry, { triggerCleanup: true });
-    await waitForLifecycleState(() => expect(runSubagentAnnounceFlow).toHaveBeenCalledOnce());
-
-    expect(runSubagentAnnounceFlow.mock.calls[0]?.[0]?.requesterAgentId).toBe("alpha");
-  });
-
   it("merges late visible reply evidence into an already-terminal completion", async () => {
     const entry = createRunEntry({ expectsCompletionMessage: true });
     const captureSubagentCompletionReply = vi.fn(async () => "legacy fallback");

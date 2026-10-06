@@ -49,7 +49,8 @@ describe("scheduled heartbeat continuation routing", () => {
       } as never);
 
       expect(hoisted.runHeartbeatOnce).toHaveBeenCalledOnce();
-      expect(hoisted.runHeartbeatOnce.mock.calls[0]?.[0]).toMatchObject({
+      const [runOptions] = (hoisted.runHeartbeatOnce.mock.calls[0] ?? []) as unknown[];
+      expect(runOptions).toMatchObject({
         continuationTrigger: "delegate-return",
         trustedTargetSessionKey: "agent:main:subagent:child",
       });

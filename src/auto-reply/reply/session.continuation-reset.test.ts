@@ -140,6 +140,64 @@ afterEach(async () => {
   await closeOpenClawStateDatabaseAsync();
 });
 describe("initSessionState guarded initialization", () => {
+  // Upstream session.test.ts case (U:591), restored here; see PR-NOTES F1 for the registry clause.
+  it("reports a committed reset as successful when reply cancellation throws", async () => {
+    const storePath = await makeStorePath("openclaw-session-init-reset-cancel-failure-");
+    const sessionKey = "agent:main:matrix:channel:cancel-failure";
+    const sessionId = "committed-reset-session";
+    await writeSessionStoreFast(storePath, {
+      [sessionKey]: {
+        sessionId,
+        updatedAt: Date.now(),
+        mainRestartRecovery: {
+          cycleId: "cycle-1",
+          revision: 4,
+          chargedAttempts: 3,
+          tombstone: { reason: "automatic recovery exhausted" },
+        },
+      },
+    });
+    const cancel = vi.fn(() => {
+      throw new Error("backend cancellation failed");
+    });
+    const activeReply = createReplyOperation({
+      sessionKey,
+      sessionId,
+      resetTriggered: false,
+    });
+    activeReply.attachBackend({ kind: "embedded", cancel, isStreaming: () => false });
+    activeReply.setPhase("running");
+
+    try {
+      const reset = await initSessionState({
+        ctx: {
+          Body: "/new",
+          RawBody: "/new",
+          CommandBody: "/new",
+          From: "@owner:example.test",
+          To: "!cancel-failure:example.test",
+          ChatType: "channel",
+          SessionKey: sessionKey,
+          Provider: "matrix",
+          Surface: "matrix",
+        },
+        cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
+        commandAuthorized: true,
+      });
+
+      expect(reset.resetTriggered).toBe(true);
+      expect(reset.sessionEntry.mainRestartRecovery).toBeUndefined();
+      expect(loadSessionEntry({ storePath, sessionKey })?.mainRestartRecovery).toBeUndefined();
+      expect(cancel).toHaveBeenCalledWith("restart");
+      // Deviation from upstream (PR-NOTES F1): the cancel never reached the backend, so the
+      // still-running owner stays in custody as retiring instead of being released here.
+      expect(replyRunRegistry.isActive(sessionKey)).toBe(true);
+      expect(isReplyOperationRetiringForReset(activeReply)).toBe(true);
+    } finally {
+      activeReply.complete();
+    }
+  });
+
   it("retries retained cancellation through a repeated committed reset", async () => {
     const storePath = await makeStorePath("openclaw-session-init-reset-cancel-failure-");
     const sessionKey = "agent:main:matrix:channel:cancel-failure";
