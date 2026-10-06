@@ -362,6 +362,9 @@ export function createDiscordStaleAmbientPendingDisposition(params: {
     return {
       kind: "fail" as const,
       reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON,
+      // Re-checked at the queue's commit: a policy or config publish after
+      // this verdict (but before the write) rolls the fail back.
+      isStillValid: () => policy.isCurrent() && policy.isConfigCurrent(),
       message:
         `Discord ambient message ${record.id} on ${context.laneKey} is ${ageMs}ms old ` +
         `(limit ${DISCORD_STALE_AMBIENT_BACKLOG_MS}ms); suppressing stale backlog before dispatch.`,

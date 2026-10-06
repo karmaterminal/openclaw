@@ -380,4 +380,49 @@ describe("channel ingress pending disposition", () => {
       });
     },
   );
+
+  it.each([true, false])(
+    "commits a fail only while its verdict is still valid at the write (edited=%s)",
+    async (edited) => {
+      await withTempState(async (stateDir) => {
+        const queue = createTestIngressQueue(stateDir);
+        await queue.enqueue("row", { text: "old ambient" }, { laneKey: "lane:a", receivedAt: 0 });
+        let valid = true;
+        const fail = queue.fail.bind(queue);
+        // The policy's inputs change after the resolver returned its verdict but
+        // before the drain writes it (a config publish in that gap).
+        queue.fail = vi.fn(async (...args: Parameters<typeof queue.fail>) => {
+          if (edited) {
+            valid = false;
+          }
+          return await fail(...args);
+        });
+        const drain = createChannelIngressDrain({
+          queue,
+          now: () => 10,
+          resolvePendingDisposition: () => ({
+            kind: "fail",
+            reason: "stale-ambient-backlog",
+            message: "stale ambient row",
+            isStillValid: () => valid,
+          }),
+          dispatchClaimedEvent: async (_claim, lifecycle) => {
+            await lifecycle.onAdopted();
+          },
+        });
+        try {
+          expect(await drain.drainOnce()).toEqual({ started: 0 });
+          expect((await queue.listFailed?.({ limit: "all" }))?.map((row) => row.id)).toEqual(
+            edited ? [] : ["row"],
+          );
+          // An invalidated verdict leaves the row claimable for the next pass.
+          expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual(
+            edited ? ["row"] : [],
+          );
+        } finally {
+          drain.dispose();
+        }
+      });
+    },
+  );
 });

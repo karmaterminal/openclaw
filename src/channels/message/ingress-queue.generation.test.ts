@@ -117,4 +117,26 @@ describe("channel ingress queue row generations", () => {
       ]);
     });
   });
+
+  it("refuses a fail whose caller guard turns false by its commit", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createTestIngressQueue<{ text: string }>(stateDir);
+      await queue.enqueue("kept", { text: "kept" });
+      await queue.enqueue("failed", { text: "failed" });
+      const checks: boolean[] = [];
+      // Current when the write transaction opens, stale by the commit grant.
+      const guard = () => {
+        checks.push(checks.length === 0);
+        return checks.at(-1)!;
+      };
+
+      expect(await queue.fail("kept", { reason: "policy", isCurrent: guard })).toBe(false);
+      expect(checks).toEqual([true, false]);
+      expect(await queue.fail("failed", { reason: "policy", isCurrent: () => true })).toBe(true);
+      expect((await queue.listPending({ limit: "all" })).map((row) => row.id)).toEqual(["kept"]);
+      expect((await queue.listFailed?.({ limit: "all" }))?.map((row) => row.id)).toEqual([
+        "failed",
+      ]);
+    });
+  });
 });

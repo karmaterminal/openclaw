@@ -7,8 +7,12 @@
 import type { ChannelIngressQueue, ChannelIngressQueueRecord } from "./ingress-queue.types.js";
 
 type ChannelIngressPendingDisposition =
-  /** Terminally fail the stored row; it can never become work. */
-  | { kind: "fail"; reason: string; message: string }
+  /**
+   * Terminally fail the stored row; it can never become work. `isStillValid`
+   * (default valid) is re-checked at the fail's commit; false leaves the row
+   * pending for the next pass.
+   */
+  | { kind: "fail"; reason: string; message: string; isStillValid?: () => boolean }
   /** Hold the row and its lane for this pass; the channel cannot classify it yet. */
   | { kind: "defer" };
 
@@ -75,11 +79,18 @@ export async function applyIngressPendingDispositions<TPayload, TMetadata, TComp
       // Only the generation the policy judged; a row claimed, failed and
       // resubmitted while the policy ran is fresh work and stays pending.
       generation: { updatedAt: record.updatedAt },
+      // The verdict's own guard runs at the commit grant, not before this
+      // await: an input change after the policy returned rolls the fail back.
+      ...(disposition.isStillValid ? { isCurrent: disposition.isStillValid } : {}),
     });
     if (!committed) {
-      // A concurrent transition won; hold the lane so later same-lane work
-      // cannot overtake the real owner.
-      params.log(`ingress drain: pending disposition lost race for event ${record.id}`);
+      // A concurrent transition won, or the verdict went stale before its
+      // commit; hold the lane so later same-lane work cannot overtake it.
+      params.log(
+        disposition.isStillValid?.() === false
+          ? `ingress drain: pending disposition invalidated before commit for event ${record.id}`
+          : `ingress drain: pending disposition lost race for event ${record.id}`,
+      );
       retained.push(record);
       blockedLaneKeys.add(laneKey);
     }

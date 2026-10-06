@@ -158,6 +158,17 @@ describe("discord stale ambient policy freshness", () => {
     ).resolves.toBeNull();
   });
 
+  it.each(EDITS)("invalidates a returned verdict at its commit ($name)", async (row) => {
+    // 🌊 on 08d7a0292c: the edit lands after the policy returned, before the
+    // drain's write; the verdict's guard is what the queue re-checks at commit.
+    const verdict = await decide({ cfg: row.base ?? BASE, content: row.content });
+    expect(verdict).toMatchObject({ kind: "fail", reason: "stale-ambient-backlog" });
+    const guard = (verdict as { isStillValid?: () => boolean }).isStillValid;
+    expect(guard?.()).toBe(true);
+    publish(row.edit);
+    expect(guard?.()).toBe(false);
+  });
+
   it("keeps a verdict when only the same published config is re-read", async () => {
     const cfg = BASE;
     await expect(

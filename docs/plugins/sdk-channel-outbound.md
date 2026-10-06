@@ -126,7 +126,11 @@ is dispositioned, claimed, or started ahead of its head. The drain commits a
 fail only against the exact row generation the policy inspected (`updatedAt`,
 which every queue transition moves strictly forward even under a frozen clock),
 so a row that was claimed, failed and resubmitted while the policy ran keeps
-its fresh generation. A row failed here never reaches the channel's inbound
+its fresh generation. A `fail` may carry an optional `isStillValid()` guard
+(absent means valid); the queue re-checks it synchronously on the drain's thread
+when the fail's write transaction opens and again at its commit grant, so a
+policy input that changes after the hook returned rolls the fail back and the
+row stays pending for the next pass, with its lane fenced for this one. A row failed here never reaches the channel's inbound
 handler, so whatever that handler would have done with a skipped message, such
 as recording it as pending conversation history, does not happen.
 The returned monitor exposes `admit`, `ensureQueueAvailable`, `start`, `pause`,

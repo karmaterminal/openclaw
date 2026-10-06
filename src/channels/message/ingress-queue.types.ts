@@ -207,6 +207,12 @@ export type ChannelIngressQueue<TPayload, TMetadata = unknown, TCompletedMetadat
       failedAt?: number;
       /** Fail only the generation the caller inspected; a later one is untouched. */
       generation?: ChannelIngressQueueRecordGeneration;
+      /**
+       * Caller precondition, checked synchronously on the caller's thread when
+       * the write transaction opens and again at its commit grant; false rolls
+       * the write back and the call returns false.
+       */
+      isCurrent?: () => boolean;
     },
   ): Promise<boolean>;
   /** Additive SDK seam; actual runtime queues support operator resubmission. */
