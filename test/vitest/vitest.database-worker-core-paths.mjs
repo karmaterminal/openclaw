@@ -333,6 +333,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/subagent-announce.continuation.work-scope.test.ts",
   // Kill-state rollback now awaits the async registry write, which needs the host broker.
   "src/agents/subagent-registry-registration-rollback.test.ts",
+  "src/agents/subagent-partial-registration-ownership.test.ts",
   "src/agents/subagent-registry.persistence.restore-recovery.test.ts",
   // Agents, gateway and tool suites on real continuation custody.
   "src/agents/tools/continue-delegate-attachment-validation.test.ts",
