@@ -783,8 +783,17 @@ it.each([false, true])(
           }),
         ]);
         const rejection = await rejectedRegistration;
-        expect(rejection).toBeInstanceOf(SubagentRegistryMutationRejectedError);
-        expect(rejection).toHaveProperty(
+        // Frond decision (🩸, Discord 1556891156753813545): at the registerSubagentRun
+        // boundary the pre-publication owner-change rejection is wrapped in
+        // SubagentRegistrationError carrying registrationOwnership; the mutation
+        // rejection survives as its cause.
+        expect(rejection).toBeInstanceOf(AggregateError);
+        expect(rejection).toHaveProperty("name", "SubagentRegistrationError");
+        expect(rejection).toHaveProperty("registrationOwnership.status", "predecessor-restored");
+        const cause = (rejection as AggregateError).cause;
+        expect((rejection as AggregateError).errors[0]).toBe(cause);
+        expect(cause).toBeInstanceOf(SubagentRegistryMutationRejectedError);
+        expect(cause).toHaveProperty(
           "message",
           "Subagent registration owner changed during preparation",
         );
