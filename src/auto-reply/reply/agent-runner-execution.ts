@@ -54,6 +54,7 @@ import {
   type AppContextTurnParams,
 } from "./agent-runner-execution-mcp-context.js";
 import { recordAgentTurnExecutionOutcome } from "./agent-runner-execution-outcome.js";
+import { createAgentTurnReplyMediaContext } from "./agent-runner-execution-reply-media.js";
 import type {
   AgentTurnCompaction,
   AgentTurnExecutionResult,
@@ -83,7 +84,6 @@ import type { FollowupRun } from "./queue.js";
 import { resolveFollowupAbortSignal } from "./queue/types.js";
 import { resolveReplyFailureVisibility, type DirectBlockDelivery } from "./reply-delivery.js";
 import type { ReplyMediaContext } from "./reply-media-paths.js";
-import { createReplyMediaContext } from "./reply-media-paths.runtime.js";
 import { resolveReplyOperationAbortReason } from "./reply-operation-abort.js";
 import {
   markReplyOperationExecutionStarted,
@@ -183,23 +183,7 @@ async function executeAgentTurnInternalLoop(
     replyMediaContext =
       params.replyMediaContext ??
       agentTurnTiming.measureSync("reply_media_context", () =>
-        createReplyMediaContext({
-          cfg: runtimeConfig,
-          agentId: params.followupRun.run.agentId,
-          sessionKey: params.sessionKey,
-          workspaceDir: params.followupRun.run.workspaceDir,
-          mediaNormalizationOwner: params.followupRun.run.mediaNormalizationOwner,
-          messageProvider: params.followupRun.run.messageProvider,
-          accountId:
-            params.followupRun.originatingAccountId ?? params.followupRun.run.agentAccountId,
-          groupId: params.followupRun.run.groupId,
-          groupChannel: params.followupRun.run.groupChannel,
-          groupSpace: params.followupRun.run.groupSpace,
-          requesterSenderId: params.followupRun.run.senderId,
-          requesterSenderName: params.followupRun.run.senderName,
-          requesterSenderUsername: params.followupRun.run.senderUsername,
-          requesterSenderE164: params.followupRun.run.senderE164,
-        }),
+        createAgentTurnReplyMediaContext(params, runtimeConfig),
       );
     const internalFollowupRun = params.followupRun as InternalFollowupRun;
     const hasQueuedCurrentTurnImages =
