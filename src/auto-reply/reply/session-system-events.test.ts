@@ -47,7 +47,8 @@ vi.mock("../../config/sessions/session-accessor.js", () => ({
   loadTranscriptEvents: mocks.loadTranscriptEvents,
 }));
 // The current session id is read through the worker-backed session reader.
-vi.mock("../../config/sessions/session-entry-read-runtime.js", () => ({
+vi.mock("../../config/sessions/session-entry-read-runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../config/sessions/session-entry-read-runtime.js")>()),
   readSessionEntryReadOnlyInWorker: async (scope: unknown) => mocks.loadSessionEntry(scope),
 }));
 

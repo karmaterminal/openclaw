@@ -36,10 +36,14 @@ vi.mock("../../../infra/agent-run-registry.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../infra/agent-run-registry.js")>()),
   getAgentRunContext,
 }));
-vi.mock("../../internal-session-effects.js", () => ({
+vi.mock("../../internal-session-effects.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../internal-session-effects.js")>()),
   removeInternalSessionEffectsSession,
 }));
-vi.mock("./subagent-control.runtime.js", () => killRuntime);
+vi.mock("./subagent-control.runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./subagent-control.runtime.js")>()),
+  ...killRuntime,
+}));
 vi.mock("./subagent-control-session.js", { spy: true });
 vi.mock("./subagent-session-reconciliation.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./subagent-session-reconciliation.js")>();

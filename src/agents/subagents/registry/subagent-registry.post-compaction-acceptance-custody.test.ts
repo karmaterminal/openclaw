@@ -49,7 +49,8 @@ import {
 const announceMocks = vi.hoisted(() => ({
   runSubagentAnnounceFlow: vi.fn(async () => true),
 }));
-vi.mock("../announce/subagent-announce.js", () => ({
+vi.mock("../announce/subagent-announce.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../announce/subagent-announce.js")>()),
   runSubagentAnnounceFlow: announceMocks.runSubagentAnnounceFlow,
   captureSubagentCompletionReply: vi.fn(async () => undefined),
 }));

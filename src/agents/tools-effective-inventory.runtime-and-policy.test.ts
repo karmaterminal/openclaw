@@ -37,7 +37,8 @@ vi.mock("./agent-tools.js", () => ({
   ) => effectiveInventoryState.createToolsMock(options),
 }));
 
-vi.mock("./auth-profiles/source-check.js", () => ({
+vi.mock("./auth-profiles/source-check.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./auth-profiles/source-check.js")>()),
   hasAnyAuthProfileStoreSourceAsync: async () => false,
 }));
 

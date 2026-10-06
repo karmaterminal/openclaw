@@ -28,6 +28,7 @@ vi.mock("../session-utils.js", async () => {
   };
 });
 
+// mock-isolation: keep worker session reads unreachable so storeless sessions use JSONL details
 vi.mock("../session-utils-store-worker.js", async () => {
   const actual = await vi.importActual<typeof import("../session-utils-store-worker.js")>(
     "../session-utils-store-worker.js",

@@ -23,8 +23,14 @@ const completionDeliveryMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../config/config.js", { spy: true });
-vi.mock("../../../context-engine/init.js", () => ({ ensureContextEnginesInitialized: vi.fn() }));
-vi.mock("../../runtime-plugins.js", () => ({ loadAgentRuntimePluginRegistryHandle: vi.fn() }));
+vi.mock("../../../context-engine/init.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../context-engine/init.js")>()),
+  ensureContextEnginesInitialized: vi.fn(),
+}));
+vi.mock("../../runtime-plugins.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../runtime-plugins.js")>()),
+  loadAgentRuntimePluginRegistryHandle: vi.fn(),
+}));
 vi.mock("../completion/subagent-completion-admission.store.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../completion/subagent-completion-admission.store.js")
@@ -33,17 +39,24 @@ vi.mock("../completion/subagent-completion-admission.store.js", async (importOri
   settleRequesterCompletionBatch: completionDeliveryMocks.settleRequesterCompletionBatch,
   mutateRequesterSettleWakeBatch: completionDeliveryMocks.mutateRequesterSettleWakeBatch,
 }));
-vi.mock("../../../browser-lifecycle-cleanup.js", () => ({
+vi.mock("../../../browser-lifecycle-cleanup.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../browser-lifecycle-cleanup.js")>()),
   cleanupBrowserSessionsForLifecycleEnd: vi.fn(async () => {}),
 }));
-vi.mock("../../agent-bundle-mcp-tools.js", () => ({
+vi.mock("../../agent-bundle-mcp-tools.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../agent-bundle-mcp-tools.js")>()),
   retireSessionMcpRuntimeForSessionKey: vi.fn(async () => true),
 }));
-vi.mock("../../internal-session-effects.js", () => ({
+vi.mock("../../internal-session-effects.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../internal-session-effects.js")>()),
   removeInternalSessionEffectsSession: vi.fn(async () => {}),
 }));
-vi.mock("../../../runtime.js", () => ({ defaultRuntime: { log: vi.fn() } }));
-vi.mock("../announce/subagent-announce.js", () => ({
+vi.mock("../../../runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../runtime.js")>()),
+  defaultRuntime: { log: vi.fn() },
+}));
+vi.mock("../announce/subagent-announce.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../announce/subagent-announce.js")>()),
   captureSubagentCompletionReply: vi.fn(async () => undefined),
   runSubagentAnnounceFlow: vi.fn(async () => "retryable" as const),
 }));

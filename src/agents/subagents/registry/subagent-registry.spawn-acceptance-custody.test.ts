@@ -47,11 +47,15 @@ const announceMocks = vi.hoisted(() => ({
   runSubagentAnnounceFlow: vi.fn(async () => true),
   maybeWakeRequesterAfterAllChildrenSettled: vi.fn(async () => false),
 }));
-vi.mock("../announce/subagent-announce.js", () => ({
+vi.mock("../announce/subagent-announce.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../announce/subagent-announce.js")>()),
   runSubagentAnnounceFlow: announceMocks.runSubagentAnnounceFlow,
   captureSubagentCompletionReply: vi.fn(async () => undefined),
 }));
-vi.mock("../announce/subagent-announce.requester-settle-wake.js", () => ({
+vi.mock("../announce/subagent-announce.requester-settle-wake.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../announce/subagent-announce.requester-settle-wake.js")
+  >()),
   maybeWakeRequesterAfterAllChildrenSettled:
     announceMocks.maybeWakeRequesterAfterAllChildrenSettled,
 }));
