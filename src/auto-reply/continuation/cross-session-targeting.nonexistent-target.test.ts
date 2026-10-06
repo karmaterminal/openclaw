@@ -308,35 +308,41 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
   });
 
   it("enqueues in-memory system event for a nonexistent target (real system events)", async () => {
-    const enqueueSessionDelivery = vi.fn(async () => "delivery-id");
-    const requestHeartbeatNow = vi.fn();
+    // Returns settle on prompt adoption, so the drain acks a real durable row.
+    await withTestDir({ prefix: "openclaw-nonexistent-target-inmem-" }, async (stateDir) => {
+      const requestHeartbeatNow = vi.fn();
 
-    await enqueueContinuationReturnDeliveries(
-      {
-        ownerAgentId: "main",
-        targetSessionKeys: ["agent:main:never-existed"],
-        text: "[continuation:enrichment-return] in-memory nonexistent",
-        idempotencyKeyBase: "continuation-return:inmem-nonexistent",
-        wakeRecipients: false,
-      },
-      {
-        enqueueSessionDelivery,
-        ackSessionDelivery: vi.fn(async () => undefined),
-        enqueueSystemEvent,
-        requestHeartbeatNow,
-      },
-    );
+      await enqueueContinuationReturnDeliveries(
+        {
+          ownerAgentId: "main",
+          targetSessionKeys: ["agent:main:never-existed"],
+          text: "[continuation:enrichment-return] in-memory nonexistent",
+          idempotencyKeyBase: "continuation-return:inmem-nonexistent",
+          wakeRecipients: false,
+          stateDir,
+        },
+        {
+          enqueueSessionDelivery: realEnqueueSessionDelivery,
+          ackSessionDelivery: realAckSessionDelivery,
+          enqueueSystemEvent,
+          requestHeartbeatNow,
+        },
+      );
 
-    expect(peekSystemEventEntries("agent:main:never-existed")).toHaveLength(1);
-    const context = await drainFormattedSystemEvents({
-      cfg: {},
-      agentId: "main",
-      sessionKey: "agent:main:never-existed",
-      isMainSession: false,
-      isNewSession: false,
+      expect(peekSystemEventEntries("agent:main:never-existed")).toHaveLength(1);
+      const context = await drainFormattedSystemEvents({
+        cfg: {},
+        agentId: "main",
+        sessionKey: "agent:main:never-existed",
+        isMainSession: false,
+        isNewSession: false,
+      });
+      expect(context).toContain("System:");
+      expect(context).toContain("in-memory nonexistent");
+      expect(peekSystemEventEntries("agent:main:never-existed")).toEqual([]);
+      expect(await loadPendingSessionDeliveries(captureContinuationQueueContext(stateDir))).toEqual(
+        [],
+      );
     });
-    expect(context).toContain("System:");
-    expect(context).toContain("in-memory nonexistent");
-    expect(peekSystemEventEntries("agent:main:never-existed")).toEqual([]);
   });
 });

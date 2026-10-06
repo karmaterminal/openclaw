@@ -52,7 +52,8 @@ const resolveContinuationRuntimeConfigMock = vi.fn((_cfg?: unknown) => ({
 // The silent/wake routing seam: these are dynamic-imported INSIDE the
 // runSubagentAnnounceFlow body, so they must be mocked at module level
 // for vi.mock to intercept the dynamic import.
-const enqueueSystemEventMock = vi.fn((_text: string, _options?: unknown) => undefined);
+// `true` is the queue's admission contract; producers now act on the result.
+const enqueueSystemEventMock = vi.fn((_text: string, _options?: unknown) => true);
 const requestHeartbeatNowMock = vi.fn((_options: unknown) => undefined);
 
 // Spy on the ordinary delivery path (not silent) so we can assert it
@@ -179,6 +180,8 @@ vi.mock("../auto-reply/continuation/config.js", () => ({
 // mock implementation.
 vi.mock("../infra/system-events.js", () => ({
   enqueueSystemEventRaw: (text: string, options?: unknown) => enqueueSystemEventMock(text, options),
+  hasQueuedSystemEventDelivery: () => false,
+  removeSystemEvents: () => [],
 }));
 
 vi.mock("../infra/heartbeat-wake.js", () => ({
@@ -246,7 +249,7 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (RFC §2
     isEmbeddedAgentRunActiveMock.mockReset().mockReturnValue(false);
     queueEmbeddedAgentMessageMock.mockReset().mockReturnValue(false);
     waitForEmbeddedAgentRunEndMock.mockReset().mockResolvedValue(true);
-    enqueueSystemEventMock.mockReset();
+    enqueueSystemEventMock.mockReset().mockReturnValue(true);
     requestHeartbeatNowMock.mockReset();
     deliverSubagentAnnouncementMock
       .mockReset()

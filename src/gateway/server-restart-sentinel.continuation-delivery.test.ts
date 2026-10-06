@@ -511,20 +511,24 @@ describe("scheduleRestartSentinelWake", () => {
       legacyKey: undefined,
     });
 
-    await deliverQueuedSessionDelivery({
-      deps: {} as never,
-      entry: {
-        id: "continuation-return-helper-replay",
-        kind: "systemEvent",
-        sessionKey,
-        agentId: "helper",
-        text: "main child completed",
-        idempotencyKey: "continuation-return:main-child:agent:helper:return",
-        enqueuedAt: 1,
-        retryCount: 0,
-      },
-      stateDir: "/tmp/restart-delivery-state",
-    });
+    // A continuation return settles only on prompt adoption, including a row
+    // written before returns carried awaitPromptAdoption: replay keeps it pending.
+    await expect(
+      deliverQueuedSessionDelivery({
+        deps: {} as never,
+        entry: {
+          id: "continuation-return-helper-replay",
+          kind: "systemEvent",
+          sessionKey,
+          agentId: "helper",
+          text: "main child completed",
+          idempotencyKey: "continuation-return:main-child:agent:helper:return",
+          enqueuedAt: 1,
+          retryCount: 0,
+        },
+        stateDir: "/tmp/restart-delivery-state",
+      }),
+    ).rejects.toThrow("system event is awaiting durable prompt adoption");
 
     const eventOptions = mocks.enqueueSystemEvent.mock.calls[0]?.[1];
     const helperQueueKey = resolveSystemEventQueueKey(sessionKey, "helper");

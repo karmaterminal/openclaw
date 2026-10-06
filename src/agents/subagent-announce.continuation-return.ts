@@ -4,7 +4,6 @@ import {
   parseContinuationRecipientAuthorityBinding,
   resolveContinuationRecipientAgentIds,
 } from "../auto-reply/continuation/recipient-authority-binding.js";
-import { withContinuationOwner } from "../auto-reply/continuation/system-event-ownership.js";
 import {
   enqueueContinuationReturnDeliveries,
   resolveContinuationReturnTargetSessionKeys,
@@ -18,7 +17,6 @@ import {
   markTrustedContinuationHeartbeatWake,
   requestHeartbeatNow,
 } from "../infra/heartbeat-wake.js";
-import { enqueueSystemEventRaw as enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { defaultRuntime } from "../runtime.js";
 import { parseContinuationChainHop } from "./subagent-announce.continuation.accounting.js";
@@ -213,16 +211,35 @@ export async function routeSubagentContinuationReturn(params: {
         `[continuation/silent-wake] wakeOnReturn=true target=${params.targetRequesterSessionKey} silentAnnounce=true`,
       );
     }
-    const eventOptions = {
-      sessionKey: params.targetRequesterSessionKey,
-      trusted: true,
-      ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
-    };
-    enqueueSystemEvent(
-      params.triggerMessage ||
+    // The silent return gets the same durable custody as a targeted return,
+    // whether or not it wakes the requester: a delivery row is written first,
+    // the in-memory event is only its fast path, and the row settles on prompt
+    // adoption. There is no best-effort class here. At system-event queue
+    // capacity the fast path is refused; the row stays pending, the delivery
+    // scheduler retries it, and the replay that admits it wakes the requester.
+    // Only an admitted return is logged "Delivered" or woken now.
+    const requesterAgentId = params.targetRequesterAgentId ?? params.childAgentId;
+    const outcome = await enqueueContinuationReturnDeliveries({
+      targetSessionKeys: [params.targetRequesterSessionKey],
+      text:
+        params.triggerMessage ||
         `[continuation:enrichment-return] Delegate completed: ${params.taskLabel}`,
-      withContinuationOwner(eventOptions, params.childAgentId),
-    );
+      idempotencyKeyBase: `continuation-return:${params.announceId}`,
+      // The silent path owns its wake below, with its own reason.
+      wakeRecipients: false,
+      childRunId: params.childRunId,
+      ...(completionTrace.traceparent ? { traceparent: completionTrace.traceparent } : {}),
+      ...(requesterAgentId
+        ? { recipientAgentIds: new Map([[params.targetRequesterSessionKey, requesterAgentId]]) }
+        : {}),
+      ownerAgentId: params.childAgentId,
+    });
+    if (outcome.delivered === 0) {
+      continuationLog.warn(
+        `[continuation:enrichment-return] Held for retry (system event queue full) to ${params.targetRequesterSessionKey} from ${params.childSessionKey} deliveryIds=${outcome.deliveryIds.join(",")}`,
+      );
+      return { handled: true };
+    }
     continuationLog.info(
       `[continuation:enrichment-return] Delivered to ${params.targetRequesterSessionKey} from ${params.childSessionKey}`,
     );

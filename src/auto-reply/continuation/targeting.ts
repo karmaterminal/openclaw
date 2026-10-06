@@ -5,6 +5,7 @@ import {
   markTrustedContinuationHeartbeatWake,
   requestHeartbeatNow,
 } from "../../infra/heartbeat-wake.js";
+import type { scheduleSessionDelivery } from "../../infra/session-delivery-queue-runtime.js";
 import {
   ackSessionDelivery,
   enqueueSessionDelivery,
@@ -15,8 +16,10 @@ import type {
 } from "../../infra/session-delivery-queue-storage.js";
 import {
   enqueueSystemEventRaw as enqueueSystemEvent,
+  hasQueuedSystemEventDelivery,
   removeSystemEvents,
 } from "../../infra/system-events.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { normalizeAgentId, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { captureContinuationQueueContext } from "./queue-context.js";
 import { withContinuationOwner } from "./system-event-ownership.js";
@@ -79,13 +82,24 @@ type ContinuationReturnDeliveryDeps = {
     authority: SessionRecipientAuthority,
   ) => boolean;
   removeSystemEvents?: typeof removeSystemEvents;
+  /** Arms the delivery scheduler's retry for a row the full queue refused. */
+  scheduleSessionDelivery?: typeof scheduleSessionDelivery;
 };
+
+const log = createSubsystemLogger("continuation/targeting");
 
 const defaultContinuationReturnDeliveryDeps: ContinuationReturnDeliveryDeps = {
   enqueueSessionDelivery,
   enqueueSystemEvent,
   requestHeartbeatNow,
 };
+
+// Resolved on first use, like continuation-notice-surface: an eager binding
+// would force every test that mocks the runtime module to declare it.
+const scheduleRefusedReturnDelivery: typeof scheduleSessionDelivery = async (...args) =>
+  await (
+    await import("../../infra/session-delivery-queue-runtime.js")
+  ).scheduleSessionDelivery(...args);
 
 function resolveContinuationReturnDeliveryTarget(params: {
   sessionKey: string;
@@ -134,7 +148,13 @@ export async function enqueueContinuationReturnDeliveries(
     ownerAgentId?: string;
   },
   deps: ContinuationReturnDeliveryDeps = defaultContinuationReturnDeliveryDeps,
-): Promise<{ enqueued: number; delivered: number; deliveryIds: string[] }> {
+): Promise<{
+  /** Durable rows written for current recipients, including any the full queue refused. */
+  enqueued: number;
+  /** Rows whose event reached the queue now; `enqueued - delivered` wait for the scheduler's retry. */
+  delivered: number;
+  deliveryIds: string[];
+}> {
   if (!params.ownerAgentId) {
     throw new Error("Continuation return source owner is unavailable.");
   }
@@ -172,9 +192,13 @@ export async function enqueueContinuationReturnDeliveries(
       // recipient identity instead.
       idempotencyKey: `${params.idempotencyKeyBase}:${sessionKey}`,
     };
+    // Every return settles only once a prompt adopts it, with or without
+    // recipient authority: if the queue refuses the fast path, or the process
+    // dies before adoption, the row is what replays the return.
     const payload: QueuedSessionDeliveryPayload = {
       ...commonPayload,
-      ...(recipientAuthority ? { recipientAuthority, awaitPromptAdoption: true } : {}),
+      ...(recipientAuthority ? { recipientAuthority } : {}),
+      awaitPromptAdoption: true,
     };
     const deliveryId = await deps.enqueueSessionDelivery(
       payload,
@@ -196,23 +220,16 @@ export async function enqueueContinuationReturnDeliveries(
       ...(params.traceparent ? { traceparent: params.traceparent } : {}),
       sessionDeliveryAckId: deliveryId,
       ...(params.stateDir ? { sessionDeliveryAckStateDir: params.stateDir } : {}),
-      ...(recipientAuthority
-        ? {
-            recipientAuthority,
-            sessionDeliveryAwaitsTurnAdoption: true,
-          }
-        : {}),
+      ...(recipientAuthority ? { recipientAuthority } : {}),
+      sessionDeliveryAwaitsTurnAdoption: true,
     };
-    const enqueued = deps.enqueueSystemEvent(
-      text,
-      withContinuationOwner(eventOptions, recipientAgentId),
-    );
-    if (!enqueued) {
-      // Idempotent delivery enqueue can return the existing durable row id for
-      // the already-queued in-memory event. Do not ack here: that would delete
-      // the durable backing row for the surviving queued event before the
-      // prompt-drain path consumes it. The surviving event carries the ack id.
-    }
+    const ownedEventOptions = withContinuationOwner(eventOptions, recipientAgentId);
+    // Never ack on `false`. It is either a de-duplicated re-enqueue (the
+    // idempotent row already rides a queued event that carries its ack id) or a
+    // capacity refusal (nothing is queued and the row is the only copy).
+    const refused =
+      !deps.enqueueSystemEvent(text, ownedEventOptions) &&
+      !hasQueuedSystemEventDelivery(ownedEventOptions);
     if (!recipientAuthorityCurrent()) {
       (deps.removeSystemEvents ?? removeSystemEvents)(
         sessionKey,
@@ -221,6 +238,20 @@ export async function enqueueContinuationReturnDeliveries(
           event.sessionDeliveryAckStateDir === params.stateDir,
       );
       await (deps.ackSessionDelivery ?? ackSessionDelivery)(
+        deliveryId,
+        captureContinuationQueueContext(params.stateDir),
+      );
+      continue;
+    }
+    deliveryIds.push(deliveryId);
+    if (refused) {
+      // Not delivered and not woken: a wake now would run a turn without the
+      // return. The scheduler retries the row (deferred while the queue stays
+      // full) and the replay that admits it wakes the recipient.
+      log.warn(
+        `[continuation:return-held] system event queue full; deliveryId=${deliveryId} session=${sessionKey} retry armed`,
+      );
+      await (deps.scheduleSessionDelivery ?? scheduleRefusedReturnDelivery)(
         deliveryId,
         captureContinuationQueueContext(params.stateDir),
       );
@@ -240,7 +271,6 @@ export async function enqueueContinuationReturnDeliveries(
     // carries the ack id and the prompt-drain path acknowledges it only after
     // recipient consumption; non-attached recipients still need restart recovery
     // to replay this file.
-    deliveryIds.push(deliveryId);
     delivered += 1;
   }
 

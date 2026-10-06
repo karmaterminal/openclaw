@@ -19,7 +19,11 @@ import {
   type QueuedSessionDelivery,
 } from "../infra/session-delivery-queue-storage.js";
 import { withSystemEventOwner } from "../infra/system-event-ownership.js";
-import { enqueueSystemEvent, removeSystemEvents } from "../infra/system-events.js";
+import {
+  enqueueSystemEvent,
+  hasQueuedSystemEventDelivery,
+  removeSystemEvents,
+} from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
@@ -37,6 +41,21 @@ const log = createSubsystemLogger("gateway/restart-sentinel");
 type ResolvedQueuedSessionDelivery = QueuedSessionDelivery & {
   runtimeContextFragments?: RuntimeContextFragment[];
 };
+
+/**
+ * - `queued`: the event is in the queue (newly admitted, or its durable row
+ *   already rides a queued copy).
+ * - `refused`: the queue is full and nothing was queued. The caller must keep
+ *   the durable row pending for a retry and must not report success.
+ * - `stale-authority`: recipient authority changed; the event was withdrawn.
+ */
+type RestartSentinelWakeOutcome = "queued" | "refused" | "stale-authority";
+
+/** The row stays pending and the delivery scheduler retries it without charging its retry budget. */
+function deferRefusedRestartSentinelWake(params: { sessionKey: string; queueId: string }): never {
+  log.warn("session event delivery deferred: system event queue is full", params);
+  throw new SessionDeliveryDeferredError("system event queue is full; retrying the durable row");
+}
 
 function enqueueRestartSentinelWake(params: {
   /** Durable queue row id; keys the wake so recovered work keeps its turn budget. */
@@ -56,7 +75,7 @@ function enqueueRestartSentinelWake(params: {
   recipientAuthority?: SessionRecipientAuthority;
   awaitsTurnAdoption?: boolean;
   isRecipientAuthorityCurrent?: () => boolean;
-}): boolean {
+}): RestartSentinelWakeOutcome {
   const eventOptions = {
     sessionKey: params.sessionKey,
     // Recovered work keeps its ordinary turn budget when delivered by heartbeat.
@@ -73,7 +92,8 @@ function enqueueRestartSentinelWake(params: {
       : {}),
     ...(params.recipientAuthority ? { recipientAuthority: params.recipientAuthority } : {}),
   };
-  enqueueSystemEvent(params.message, withSystemEventOwner(eventOptions, params.agentId));
+  const ownedOptions = withSystemEventOwner(eventOptions, params.agentId);
+  const admitted = enqueueSystemEvent(params.message, ownedOptions);
   if (params.recipientAuthority && params.isRecipientAuthorityCurrent?.() !== true) {
     removeSystemEvents(
       params.sessionKey,
@@ -81,7 +101,13 @@ function enqueueRestartSentinelWake(params: {
         event.sessionDeliveryAckId === params.sessionDeliveryAckId &&
         event.sessionDeliveryAckStateDir === params.sessionDeliveryAckStateDir,
     );
-    return false;
+    return "stale-authority";
+  }
+  if (!admitted) {
+    // `false` is either a capacity refusal or a de-duplicated re-enqueue of a
+    // row that already rides a queued event (whose producer already woke the
+    // session). Only the latter is delivered; neither needs another wake.
+    return hasQueuedSystemEventDelivery(ownedOptions) ? "queued" : "refused";
   }
   requestHeartbeat({
     source: "restart-sentinel",
@@ -90,7 +116,7 @@ function enqueueRestartSentinelWake(params: {
     agentId: params.agentId,
     sessionKey: params.sessionKey,
   });
-  return true;
+  return "queued";
 }
 
 function resolveQueuedSessionDeliveryContext(entry: QueuedSessionDelivery):
@@ -192,6 +218,9 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       });
       return;
     }
+    // A continuation return settles only on prompt adoption, whether or not it
+    // carries recipient authority; rows written before that rule replay the same way.
+    const awaitsTurnAdoption = params.entry.awaitPromptAdoption === true || isContinuationReturn;
     const replayed = enqueueRestartSentinelWake({
       entryId: params.entry.id,
       message: params.entry.text,
@@ -202,17 +231,20 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       sessionDeliveryAckId: params.entry.id,
       sessionDeliveryAckStateDir: stateDir,
       recipientAuthority,
-      awaitsTurnAdoption: params.entry.awaitPromptAdoption,
+      awaitsTurnAdoption,
       isRecipientAuthorityCurrent: recipientAuthorityCurrent,
     });
-    if (!replayed) {
+    if (replayed === "refused") {
+      deferRefusedRestartSentinelWake({ sessionKey: canonicalKey, queueId: params.entry.id });
+    }
+    if (replayed === "stale-authority") {
       log.warn("session event delivery wake skipped: recipient authority changed", {
         sessionKey: canonicalKey,
         queueId: params.entry.id,
       });
       return;
     }
-    if (params.entry.awaitPromptAdoption) {
+    if (awaitsTurnAdoption) {
       // The in-memory queue is not durable, so completing the row here would
       // drop the notice if the process
       // died before the prompt consumed it. The prompt-drain path acks the row
@@ -232,7 +264,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       expectedSessionId: params.entry.expectedSessionId,
       actualSessionId: entry?.sessionId ?? null,
     });
-    enqueueRestartSentinelWake({
+    const replayed = enqueueRestartSentinelWake({
       entryId: params.entry.id,
       message: params.entry.message,
       sessionKey: canonicalKey,
@@ -242,11 +274,14 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       sessionDeliveryAckId: params.entry.id,
       sessionDeliveryAckStateDir: stateDir,
     });
+    if (replayed === "refused") {
+      deferRefusedRestartSentinelWake({ sessionKey: canonicalKey, queueId: params.entry.id });
+    }
     return;
   }
 
   if (!params.entry.route) {
-    enqueueRestartSentinelWake({
+    const replayed = enqueueRestartSentinelWake({
       entryId: params.entry.id,
       message: params.entry.message,
       sessionKey: canonicalKey,
@@ -256,6 +291,9 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       sessionDeliveryAckId: params.entry.id,
       sessionDeliveryAckStateDir: stateDir,
     });
+    if (replayed === "refused") {
+      deferRefusedRestartSentinelWake({ sessionKey: canonicalKey, queueId: params.entry.id });
+    }
     return;
   }
 
