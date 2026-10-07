@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import { asNonNegativeFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import type { EmbeddedAgentCompactResult } from "../../agents/embedded-agent-runner/types.js";
 import {
   type ExecPolicyOverrides,
@@ -10,7 +9,7 @@ import {
 import { withSandboxRuntimeStatusInWorker } from "../../agents/sandbox/runtime-status.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { patchSessionEntryCore } from "../../config/sessions/session-accessor.js";
-import { projectCompactionAccountingPatch } from "../../config/sessions/session-entry-projection.js";
+import { applySessionEntryOperation } from "../../config/sessions/session-accessor.sqlite-entry.js";
 import { readSessionEntryInWorker } from "../../config/sessions/session-entry-read-runtime.js";
 import type { SessionSourceAssertion } from "../../config/sessions/session-source-authority.js";
 import { captureSessionTranscriptStorageEnvironment } from "../../config/sessions/transcript-target-binding.js";
@@ -316,38 +315,25 @@ export async function incrementCompactionCount(params: {
     lifecycleRevision: initial.lifecycleRevision,
     activeWriterRunId: initial.activeWriterRunId,
   };
-  const incrementBy = Math.max(0, params.amount ?? 1);
-  const resolvedTokensAfter = asNonNegativeFiniteNumber(params.tokensAfter);
-  const tokensAfter =
-    resolvedTokensAfter === undefined ? undefined : Math.floor(resolvedTokensAfter);
-  const now = params.now ?? Date.now();
-  const update = (current: InternalSessionEntry): Partial<InternalSessionEntry> | null => {
-    if (
-      !(authorize?.() ?? true) ||
-      current.sessionId !== expected.sessionId ||
-      current.lifecycleRevision !== expected.lifecycleRevision ||
-      current.activeWriterRunId !== expected.activeWriterRunId
-    ) {
-      return null;
-    }
-    // The writer-serialized row owns the count, not the caller's pre-await cache.
-    return projectCompactionAccountingPatch(current, {
-      amount: incrementBy,
-      compactionKind: params.compactionKind,
-      now,
-      tokensAfter,
-      newSessionId: params.newSessionId,
-      sessionKey,
-      transcriptByteCompactionLatch: params.transcriptByteCompactionLatch,
-    });
-  };
   let committed = false;
   const authorityRevoked = new Error("compaction accounting authority revoked");
   let persisted: InternalSessionEntry | null;
   try {
-    persisted = await patchSessionEntryCore(
+    persisted = await applySessionEntryOperation(
       { agentId: params.agentId, storePath, sessionKey },
-      update,
+      {
+        kind: "compaction-accounting",
+        expected,
+        accounting: {
+          amount: params.amount,
+          compactionKind: params.compactionKind,
+          now: params.now,
+          tokensAfter: params.tokensAfter,
+          newSessionId: params.newSessionId,
+          sessionKey,
+          transcriptByteCompactionLatch: params.transcriptByteCompactionLatch,
+        },
+      },
       {
         onCommitted: (entry) => {
           committed = true;
@@ -356,15 +342,15 @@ export async function incrementCompactionCount(params: {
             sessionStore[sessionKey] = entry;
           }
         },
-        ...(authorize
-          ? {
-              assertCommitAllowed: () => {
+        workerGuard: {
+          assertCurrent: authorize
+            ? () => {
                 if (!authorize()) {
                   throw authorityRevoked;
                 }
-              },
-            }
-          : { workerGuard: {} }),
+              }
+            : undefined,
+        },
       },
     );
   } catch (error) {

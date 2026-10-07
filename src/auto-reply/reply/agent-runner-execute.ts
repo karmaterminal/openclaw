@@ -484,6 +484,8 @@ export function createReplyAgentRestartRecoveryController(
     normalizeOptionalString(sessionCtx.MessageSidFull);
   const recovery = createReplyRestartRecoveryClaimController({
     agentId: followupRun.run.agentId,
+    operatorAuthority: followupRun.operatorAuthority,
+    inputProvenance: followupRun.run.inputProvenance,
     lifecycleGeneration: replyOperation.lifecycleGeneration,
     admissionRunId,
     executionRunId: opts?.runId,
