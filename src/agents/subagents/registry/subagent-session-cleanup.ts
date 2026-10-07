@@ -12,6 +12,7 @@ import {
   isGatewayRestartDrainError,
   runWithGatewayDetachedWorkAdmission,
 } from "../../../process/gateway-work-admission.js";
+import { runOutsideAsyncWorkScope } from "../../../shared/async-work-scope.js";
 import { createLazyRuntimeModule } from "../../../shared/lazy-runtime.js";
 import type { SpawnSubagentMode } from "../spawn/subagent-spawn.types.js";
 
@@ -108,12 +109,9 @@ export function resetSubagentSessionCleanupForTests(): void {
   cleanupRetryTimers.clear();
 }
 
-export async function deleteSubagentSessionForCleanup(
+async function runCleanupContinuationGuards(
   params: DeleteSubagentSessionForCleanupParams,
-): Promise<SubagentSessionCleanupOutcome> {
-  if (!params.expectedSessionId || !params.expectedLifecycleRevision) {
-    return "failed";
-  }
+): Promise<"changed" | "deferred" | "clear"> {
   const [
     { hasLiveContinuationCustody },
     { failStagedPostCompactionDelegatesForCleanup },
@@ -144,7 +142,7 @@ export async function deleteSubagentSessionForCleanup(
     (await countActiveDescendantRuns(params.childSessionKey)) > 0
   ) {
     scheduleDeferredCleanupRetry(params);
-    return "failed";
+    return "deferred";
   }
   const failedPostCompactionDelegates = await failStagedPostCompactionDelegatesForCleanup(
     params.childSessionKey,
@@ -154,6 +152,36 @@ export async function deleteSubagentSessionForCleanup(
     log.warn(
       `[subagent-session-cleanup-post-compaction-delegates-dropped] child=${params.childSessionKey} count=${failedPostCompactionDelegates}`,
     );
+  }
+  return "clear";
+}
+
+export async function deleteSubagentSessionForCleanup(
+  params: DeleteSubagentSessionForCleanupParams,
+): Promise<SubagentSessionCleanupOutcome> {
+  if (!params.expectedSessionId || !params.expectedLifecycleRevision) {
+    return "failed";
+  }
+  // The continuation guards read durable state. A run's finalizer can call this while its
+  // Gateway closes, and upstream requires that cleanup to settle before the Gateway
+  // retires, so the reads must not inherit the closing request's work scope. A guard that
+  // still fails is reported like a failed delete: onError, deferred retry, "failed".
+  let guard: "changed" | "deferred" | "clear";
+  try {
+    guard = await runOutsideAsyncWorkScope(() => runCleanupContinuationGuards(params));
+  } catch (error) {
+    log.warn(
+      `[subagent-session-cleanup-guard-failed] child=${params.childSessionKey} error=${error instanceof Error ? error.message : String(error)}`,
+    );
+    params.onError?.(error);
+    scheduleDeferredCleanupRetry(params);
+    return "failed";
+  }
+  if (guard === "changed") {
+    return "changed";
+  }
+  if (guard === "deferred") {
+    return "failed";
   }
 
   clearDeferredCleanupRetry(params.childSessionKey);
