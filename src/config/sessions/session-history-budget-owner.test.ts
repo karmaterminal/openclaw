@@ -151,7 +151,8 @@ function readRuntimeImports(relativePath: string): {
 it.each([
   ["session lifecycle facade", "./session-accessor.lifecycle.ts"],
   ["legacy main-session migration operations", "./legacy-main-session-migration-operations.ts"],
-  ["history entry eviction runtime", "./session-history-entry-eviction.runtime.ts"],
+  // Upstream #163990 folded the eviction runtime into the eviction module.
+  ["history entry eviction", "./session-history-eviction.ts"],
 ] as const)("keeps SQLite lifecycle owner lazy for %s", (_label, relativePath) => {
   const imports = readRuntimeImports(relativePath);
   expect(imports.staticImports.has(sqliteLifecycleSpecifier)).toBe(false);

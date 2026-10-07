@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ensureMemoryIndexSchema } from "../../packages/memory-host-sdk/src/host/memory-schema.js";
 import { compactDoctorSessionSqliteTarget } from "../commands/doctor-session-sqlite-compact.js";
 import { recoverDoctorSessionSqliteTargets } from "../commands/doctor-session-sqlite-recover-report.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
@@ -490,6 +491,10 @@ describe("participant identity migration", () => {
               .prepare("SELECT schema_version FROM schema_meta WHERE meta_key = 'primary'")
               .get()?.schema_version,
           ).toBe(OPENCLAW_AGENT_SCHEMA_VERSION);
+          // The memory storage upgrade still recreates the path-only chunk index that
+          // upstream #165075 retired in the memory schema publisher; a seat converges once
+          // the publisher runs, so compare the shape after it, as production does.
+          ensureMemoryIndexSchema({ db: database, cacheEnabled: false, ftsEnabled: false });
           expect(normalizeSqliteSchemaShapeSql(collectSqliteSchemaShape(database))).toEqual(
             normalizeSqliteSchemaShapeSql(
               createSqliteSchemaShapeFromSql(
