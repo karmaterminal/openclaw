@@ -129,7 +129,7 @@ vi.mock("../continuation/delegate-store.js", async (importOriginal) => {
   };
 });
 
-import { runReplyAgent } from "./agent-runner.js";
+import { runReplyAgent } from "./agent-runner-run.js";
 
 useContinuationCustodyTestState();
 

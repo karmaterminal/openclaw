@@ -159,7 +159,7 @@ vi.mock("../../infra/system-events.js", async (importOriginal) => {
   };
 });
 
-import { runReplyAgent } from "./agent-runner.js";
+import { runReplyAgent } from "./agent-runner-run.js";
 
 type RunWithModelFallbackParams = {
   provider: string;

@@ -1,8 +1,7 @@
 /** Reply media context for one agent turn, bound to its run and requester identity. */
 import type { OpenClawConfig } from "../../config/config.js";
 import type { AppContextTurnParams } from "./agent-runner-execution-mcp-context.js";
-import type { ReplyMediaContext } from "./reply-media-paths.js";
-import { createReplyMediaContext } from "./reply-media-paths.runtime.js";
+import { createReplyMediaContext, type ReplyMediaContext } from "./reply-media-paths.js";
 
 export function createAgentTurnReplyMediaContext(
   params: AppContextTurnParams,
