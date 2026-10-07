@@ -9,6 +9,7 @@ import { runBeforeAgentReplyForTurn } from "../../plugins/before-agent-reply.js"
 import { enqueueCommandInLane } from "../../process/command-queue.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { createReplyContinuationController } from "./agent-runner-continuation.js";
 import { executePreparedReplyAgentRun } from "./agent-runner-execute.js";
 import { executeAgentTurn } from "./agent-runner-execution.js";
 import { createTestFollowupRun } from "./agent-runner.test-fixtures.js";
@@ -108,9 +109,24 @@ it("keeps a cron context prefix readable when an inbound turn persists before qu
       key: target.sessionKey,
       sessionId: target.sessionId,
     });
+    const getActiveSessionEntry = () => entry;
+    const setActiveSessionEntry = (next: InternalSessionEntry | undefined) => {
+      if (next) {
+        entry = next;
+      }
+    };
     const inbound = executePreparedReplyAgentRun({
       ...target,
       ...recovery,
+      continuation: createReplyContinuationController({
+        cfg: {},
+        sessionKey: target.sessionKey,
+        storePath: undefined,
+        isContinuationWake: false,
+        activeSessionStore: undefined,
+        getActiveSessionEntry,
+        setActiveSessionEntry,
+      }),
       followupRun,
       replyOperation,
       typing,
@@ -136,12 +152,8 @@ it("keeps a cron context prefix readable when an inbound turn persists before qu
       typingMode: "never",
       typingSignals: createTypingSignaler({ typing, mode: "never", isHeartbeat: false }),
       applyReplyToMode: (payload) => payload,
-      getActiveSessionEntry: () => entry,
-      setActiveSessionEntry: (next) => {
-        if (next) {
-          entry = next;
-        }
-      },
+      getActiveSessionEntry,
+      setActiveSessionEntry,
       isRestartRecoveryArmed: recovery.isArmed,
       resolveVisibleReplyDelivery: async () => false,
       returnWithQueuedFollowupDrain: (value) => value,
