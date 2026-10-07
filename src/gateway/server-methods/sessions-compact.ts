@@ -391,29 +391,31 @@ export const sessionCompactHandlers: GatewayRequestHandlers = {
               undefined,
             );
             if (trimResult.compacted) {
-              // Release staged post-compaction delegates from the worker-read current row.
-              const entryAfterTrim =
-                (await readCurrentEntry().catch(() => undefined)) ?? latestEntry;
+              // Release staged post-compaction delegates from the worker-read current row,
+              // falling back to the row this request read before the lifecycle fence.
+              const entryAfterTrim = (await readCurrentEntry().catch(() => undefined)) ?? entry;
               const targetAgentId = target.agentId ?? requestedAgentId;
-              await releaseManualPostCompactionDelegatesIfNeeded({
-                cfg,
-                compactionCount: entryAfterTrim.compactionCount ?? 0,
-                entry: entryAfterTrim,
-                model: resolveSessionModelRef(cfg, entryAfterTrim, targetAgentId),
-                sessionFile: formatSqliteSessionFileMarker({
-                  agentId: targetAgentId,
+              if (entryAfterTrim) {
+                await releaseManualPostCompactionDelegatesIfNeeded({
+                  cfg,
+                  compactionCount: entryAfterTrim.compactionCount ?? 0,
+                  entry: entryAfterTrim,
+                  model: resolveSessionModelRef(cfg, entryAfterTrim, targetAgentId),
+                  sessionFile: formatSqliteSessionFileMarker({
+                    agentId: targetAgentId,
+                    sessionId: entryAfterTrim.sessionId ?? sessionId,
+                    storePath,
+                  }),
                   sessionId: entryAfterTrim.sessionId ?? sessionId,
+                  sessionKey: target.canonicalKey,
+                  store: { [target.canonicalKey]: entryAfterTrim },
                   storePath,
-                }),
-                sessionId: entryAfterTrim.sessionId ?? sessionId,
-                sessionKey: target.canonicalKey,
-                store: { [target.canonicalKey]: entryAfterTrim },
-                storePath,
-                targetAgentId,
-                workspaceDir:
-                  normalizeOptionalString(entryAfterTrim.spawnedWorkspaceDir) ??
-                  resolveAgentWorkspaceDir(cfg, targetAgentId),
-              });
+                  targetAgentId,
+                  workspaceDir:
+                    normalizeOptionalString(entryAfterTrim.spawnedWorkspaceDir) ??
+                    resolveAgentWorkspaceDir(cfg, targetAgentId),
+                });
+              }
               emitSessionsChanged(context, {
                 sessionKey: target.canonicalKey,
                 agentId: target.agentId,
