@@ -45,6 +45,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/live-model-switch.worker.test.ts",
   "src/agents/tools/sessions-tool.test.ts",
   "src/agents/embedded-agent-runner/compaction-successor.test.ts",
+  "src/agents/embedded-agent-runner/run.continuation-opts-forward.test.ts",
   "src/agents/embedded-agent-runner/run.harness-auth-failover.test.ts",
   "src/agents/embedded-agent-runner/run.inherited-auth-owner.test.ts",
   "src/agents/embedded-agent-runner/run.plugin-runtime-refresh.integration.test.ts",
