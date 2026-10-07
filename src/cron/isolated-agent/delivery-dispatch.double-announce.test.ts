@@ -20,7 +20,6 @@ const {
   listDescendantRunsForRequesterMock,
   deliverOutboundPayloadsMock,
   enqueueSystemEventMock,
-  sendDurableMessageBatchCoreMock,
   ensureOutboundSessionEntryMock,
   loadCronSessionEntryLatestMock,
   maybeApplyTtsToPayloadMock,
@@ -41,7 +40,6 @@ const {
   listDescendantRunsForRequesterMock: vi.fn().mockResolvedValue([]),
   deliverOutboundPayloadsMock: vi.fn().mockResolvedValue([{ ok: true }]),
   enqueueSystemEventMock: vi.fn(),
-  sendDurableMessageBatchCoreMock: vi.fn(),
   ensureOutboundSessionEntryMock: vi.fn().mockResolvedValue(undefined),
   loadCronSessionEntryLatestMock: vi.fn(),
   maybeApplyTtsToPayloadMock: vi.fn(async (params: { payload: unknown }) => params.payload),
@@ -174,17 +172,6 @@ vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEventRaw: enqueueSystemEventMock,
 }));
 
-vi.mock("./delivery-outbound.runtime.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./delivery-outbound.runtime.js")>();
-  sendDurableMessageBatchCoreMock.mockImplementation(actual.sendDurableMessageBatchCore);
-  return {
-    ...actual,
-    createOutboundSendDeps: createOutboundSendDepsMock,
-    enqueueSystemEvent: enqueueSystemEventMock,
-    sendDurableMessageBatchCore: sendDurableMessageBatchCoreMock,
-  };
-});
-
 vi.mock("../../tts/tts.runtime.js", () => ({
   maybeApplyTtsToPayload: maybeApplyTtsToPayloadMock,
 }));
@@ -224,7 +211,6 @@ import type { DispatchCronDeliveryParams } from "./delivery-dispatch-types.js";
 import {
   deletingRunParams,
   emptyParams,
-  messageToolOutcome,
 } from "./delivery-dispatch.double-announce.test-support.js";
 import {
   dispatchCronDelivery,
