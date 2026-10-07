@@ -21,7 +21,7 @@ import {
   resolveTimezone,
 } from "../../infra/format-time/format-datetime.ts";
 import {
-  isExecCompletionEvent,
+  isExecCompletionSystemEvent,
   isHeartbeatDeliveryAwarenessEvent,
 } from "../../infra/heartbeat-events-filter.js";
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
@@ -68,7 +68,7 @@ function selectGenericSystemEvents(
   // awareness stays queued for the next ordinary target turn.
   return events.filter(
     (event) =>
-      !isExecCompletionEvent(event.text) &&
+      !isExecCompletionSystemEvent(event) &&
       !(
         options?.suppressHeartbeatOwnedEvents === true &&
         (isCronContextSystemEvent(event) || isHeartbeatDeliveryAwarenessEvent(event))
