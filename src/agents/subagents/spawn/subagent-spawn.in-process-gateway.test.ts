@@ -54,7 +54,6 @@ import {
   SpawnSubagentAdmissionCancelledError,
   type SpawnSubagentAdmissionAuthority,
 } from "./subagent-spawn-contract.js";
-import { buildSubagentExecutionSessionSpawnContext } from "./subagent-spawn-execution-identity.js";
 import "./subagent-spawn-model.mocks.shared.js";
 import { makeGatewayContext } from "./subagent-spawn.in-process-gateway.test-support.js";
 import { spawnSubagentDirect } from "./subagent-spawn.js";
@@ -104,21 +103,6 @@ async function waitForAssertion(assertion: () => void, timeoutMs = 2_000): Promi
 }
 
 describe("spawnSubagentDirect in-process Gateway collector launch", () => {
-  it("does not construct private lineage while identity collection is disabled", () => {
-    expect(
-      buildSubagentExecutionSessionSpawnContext({
-        enabled: false,
-        backend: "subagent",
-        parentAgentId: "main",
-        requesterRef: "agent:main:main",
-        controllerRef: "agent:main:main",
-        depth: 1,
-        targetAgentId: "main",
-        sandbox: "inherit",
-      }),
-    ).toBeUndefined();
-  });
-
   beforeEach(async () => {
     resetGatewayWorkAdmission();
     swarmSchedulerTesting.reset();

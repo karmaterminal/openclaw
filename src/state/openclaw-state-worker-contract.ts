@@ -16,6 +16,7 @@ import type {
   WorkspaceStateWorkerOperations,
 } from "../agents/workspace-state-store.worker-contract.js";
 import type { reserveWorktreeCapacityInWorker } from "../agents/worktrees/capacity.worker.js";
+import type { recoverPendingWorktreesInWorker } from "../agents/worktrees/registry-run-end.worker.js";
 import type { WorktreeTemplateWorkerOperations } from "../agents/worktrees/template-registry.worker.js";
 import type { ContinuationCustodyWorkerOperations } from "../auto-reply/continuation/custody/custody-store.worker-contract.js";
 import type { ClawInstallSchemaVersionRow } from "../claws/provenance-runtime-read.kernel.js";
@@ -92,6 +93,10 @@ export type OpenClawStateWorkerOperations = RegisteredStateWorkerOperations &
     "worktrees.reserveCapacity": {
       input: Parameters<typeof reserveWorktreeCapacityInWorker>[0];
       output: ReturnType<typeof reserveWorktreeCapacityInWorker>;
+    };
+    "worktrees.recoverPending": {
+      input: Parameters<typeof recoverPendingWorktreesInWorker>[0];
+      output: ReturnType<typeof recoverPendingWorktreesInWorker>;
     };
     "database.walMaintenance": { input: SqliteWalPeriodicRequest; output: SqliteWalPeriodicResult };
     "deviceIdentity.read": { input: { identityKey: string }; output: DeviceIdentity | null };

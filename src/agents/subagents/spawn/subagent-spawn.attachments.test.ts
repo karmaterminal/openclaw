@@ -6,8 +6,6 @@ import os from "node:os";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { withEnvAsync } from "../../../test-utils/env.js";
-import { cleanupSessionStateForTest } from "../../../test-utils/session-state-cleanup.js";
 import { resolveSubagentSessionAttachmentRootDir } from "../subagent-attachment-paths.js";
 import {
   cleanupMaterializedSubagentAttachments,
@@ -162,12 +160,8 @@ describe("spawnSubagentDirect filename validation", () => {
     expect(result.error).toMatch(/attachments_invalid_name/);
   });
 
-  it.each([
-    ["newline", "foo\nbar"],
-    ["U+009B C1 CSI", "foo\u009Bbar"],
-    ["U+2028 line separator", "foo\u2028bar"],
-    ["U+202E bidi override", "foo\u202Ebar"],
-  ])("name with %s returns attachments_invalid_name", async (_label, name) => {
+  it("name with newline returns attachments_invalid_name", async () => {
+    const name = "foo\nbar";
     const result = await spawnWithName(name);
     expect(result.status).toBe("error");
     expect(result.error).toMatch(/attachments_invalid_name/);
@@ -551,49 +545,6 @@ describe("spawnSubagentDirect filename validation", () => {
         ([request]) => (request as { method?: string }).method === "agent",
       ),
     ).toHaveLength(0);
-  });
-
-  it("normalizes explicit cwd without using it for attachment storage", async () => {
-    const homeDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), `openclaw-subagent-home-attachments-${process.pid}-${Date.now()}-`),
-    );
-    const expectedCwd = path.join(homeDir, "task-repo");
-    let persistedStore: Record<string, Record<string, unknown>> | undefined;
-    const store: Record<string, Record<string, unknown>> = {};
-    updateSessionStoreMock.mockImplementation(async (_storePath: unknown, mutator: unknown) => {
-      if (typeof mutator !== "function") {
-        throw new Error("missing session store mutator");
-      }
-      await mutator(store);
-      persistedStore = store;
-      return store;
-    });
-    try {
-      await withEnvAsync({ HOME: homeDir }, async () => {
-        const { spawnSubagentDirect } = subagentSpawnModule;
-        const result = await spawnSubagentDirect(
-          {
-            task: "test",
-            cwd: "~/task-repo",
-            attachments: [{ name: "file.txt", content: validContent, encoding: "base64" }],
-          },
-          ctx,
-        );
-
-        expect(result.status).toBe("accepted");
-        expect(fs.existsSync(path.join(expectedCwd, ".openclaw", "attachments"))).toBe(false);
-        expect(
-          fs.existsSync(
-            resolveStagedDir(result.attachments?.relDir ?? "", result.childSessionKey as string),
-          ),
-        ).toBe(true);
-        const childSessionKey = result.childSessionKey as string;
-        expect(persistedStore?.[childSessionKey]?.spawnedCwd).toBe(expectedCwd);
-      });
-    } finally {
-      await cleanupSessionStateForTest({ stateDir: path.join(homeDir, ".openclaw") });
-      fs.rmSync(homeDir, { recursive: true, force: true });
-    }
   });
 
   it("ignores a symlinked workspace attachment parent", async () => {

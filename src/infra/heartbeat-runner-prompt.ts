@@ -134,10 +134,7 @@ export async function resolveHeartbeatPreflight(params: {
   } catch (error) {
     log.warn(`heartbeat: scratch read failed: ${formatErrorMessage(error)}`);
   }
-  const wakeFlags = resolveHeartbeatWakePayloadFlags({
-    source: params.source,
-    reason: params.reason,
-  });
+  const wakeFlags = resolveHeartbeatWakePayloadFlags(params);
   const queue = resolveHeartbeatSession(
     params.cfg,
     params.agentId,
@@ -267,7 +264,6 @@ export function resolveHeartbeatRunPrompt(params: {
   preflight: HeartbeatPreflight;
   canRelayToUser: boolean;
   scheduledTasks: readonly HeartbeatScheduledTask[];
-  heartbeatScratchContent?: string;
   useHeartbeatResponseTool: boolean;
 }): HeartbeatPromptResolution {
   const pendingEventEntries = params.preflight.pendingEventEntries;
@@ -310,7 +306,7 @@ ${taskList}
 
 ${completionInstruction}`;
     return {
-      prompt: appendHeartbeatScratch(taskPrompt, params.heartbeatScratchContent),
+      prompt: appendHeartbeatScratch(taskPrompt, params.preflight.heartbeatScratchContent),
       hasTaskContinuation: hasBackgroundTaskEvent,
       hasExecCompletion: false,
       hasRelayableExecCompletion: false,
@@ -334,7 +330,7 @@ ${completionInstruction}`;
         ? resolveHeartbeatResponseToolPrompt(params.cfg, params.heartbeat)
         : resolveConfiguredHeartbeatPrompt(params.cfg, params.heartbeat);
   return {
-    prompt: appendHeartbeatScratch(basePrompt, params.heartbeatScratchContent),
+    prompt: appendHeartbeatScratch(basePrompt, params.preflight.heartbeatScratchContent),
     hasTaskContinuation:
       hasExecCompletion ||
       hasBackgroundTaskEvent ||
