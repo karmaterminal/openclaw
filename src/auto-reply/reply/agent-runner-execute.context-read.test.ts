@@ -14,6 +14,7 @@ import { executePreparedReplyAgentRun } from "./agent-runner-execute.js";
 import { executeAgentTurn } from "./agent-runner-execution.js";
 import { createTestFollowupRun } from "./agent-runner.test-fixtures.js";
 import { createReplyRestartRecoveryClaimController } from "./restart-recovery-claim.js";
+import { resolveReplyHookTrigger } from "./run-provenance.js";
 import { createMockReplyOperation, createMockTypingController } from "./test-helpers.js";
 import { createTypingSignaler } from "./typing-mode.js";
 
@@ -135,6 +136,8 @@ it("keeps a cron context prefix readable when an inbound turn persists before qu
       cfg: {},
       commandBody: "incoming DM",
       defaultModel: "test",
+      hookTrigger: resolveReplyHookTrigger({ isHeartbeat: false }),
+      isContinuationWake: false,
       isHeartbeat: false,
       queueKey: target.sessionKey,
       resolvedQueue: { mode: "followup" },
