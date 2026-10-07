@@ -1,4 +1,3 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../../auto-reply/tokens.js";
 import { hasSqliteWorkerOutcomeUnknown } from "../../../infra/sqlite-worker-contract.js";
@@ -33,6 +32,7 @@ import {
   deliverSubagentAnnouncement,
   loadSessionEntryByKey,
 } from "./subagent-announce-delivery.js";
+import { hasUsableSessionEntry } from "./subagent-announce-delivery.runtime.js";
 import { runDescendantWake } from "./subagent-announce-descendant-wake.js";
 import type { SubagentAnnounceDeliveryResult } from "./subagent-announce-dispatch.js";
 import {
@@ -80,14 +80,6 @@ export type {
   SubagentAnnounceFlowOutcome,
   SubagentAnnounceFlowParams,
 } from "./subagent-announce.types.js";
-
-export function hasUsableSessionEntry(entry: unknown): entry is Record<string, unknown> {
-  if (!isRecord(entry)) {
-    return false;
-  }
-  const sessionId = entry.sessionId;
-  return typeof sessionId !== "string" || sessionId.trim() !== "";
-}
 
 export async function runSubagentAnnounceFlow(
   params: SubagentAnnounceFlowParams,
@@ -302,7 +294,6 @@ async function runSubagentAnnounceFlowBound(
         prepareCurrent: prepareChildSessionEffects,
         isChildSessionEffectsAllowed: () =>
           childSessionEffectsAllowed() && completionDeliveryAllowed(),
-        hasUsableSessionEntry,
         resolveGatewayContext: params.resolveGatewayContext,
         deps: {
           callGateway: callSubagentLifecycleGateway,

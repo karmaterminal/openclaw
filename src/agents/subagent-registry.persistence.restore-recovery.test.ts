@@ -44,15 +44,10 @@ import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.t
 const { announceSpy } = vi.hoisted(() => ({
   announceSpy: vi.fn(async () => "delivered" as const),
 }));
-vi.mock("./subagents/announce/subagent-announce.js", async (importOriginal) => {
-  const { hasUsableSessionEntry } =
-    await importOriginal<typeof import("./subagents/announce/subagent-announce.js")>();
-  return {
-    hasUsableSessionEntry,
-    runSubagentAnnounceFlow: announceSpy,
-    captureSubagentCompletionReply: vi.fn(async () => undefined),
-  };
-});
+vi.mock("./subagents/announce/subagent-announce.js", () => ({
+  runSubagentAnnounceFlow: announceSpy,
+  captureSubagentCompletionReply: vi.fn(async () => undefined),
+}));
 
 // No persistence redirect: upstream (14fe10d01c) deleted persistSubagentRunsToDisk,
 // and every registry write now goes through mutateSubagentRuns to the real SQLite

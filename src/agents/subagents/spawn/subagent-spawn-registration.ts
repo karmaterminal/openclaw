@@ -15,7 +15,7 @@ import type { resolveSubagentSpawnRequest } from "./subagent-spawn-request.js";
 type ResolveCollectorAdmission = Extract<
   Awaited<ReturnType<typeof resolveSubagentSpawnRequest>>,
   { ok: true }
->["resolved"]["admission"]["resolve"];
+>["resolved"]["resolveAdmission"];
 
 /** Collector registration must still fit the group's live admission budget. */
 export function assertSubagentCollectorAdmission(

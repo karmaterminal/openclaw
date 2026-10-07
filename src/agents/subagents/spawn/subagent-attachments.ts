@@ -248,10 +248,7 @@ export function resolveAcpSessionsSpawnImageAttachments(params: {
   | { status: "error"; error: string }
   | null {
   const request = resolveSubagentAttachmentRequest(params);
-  if (!request) {
-    return null;
-  }
-  if (request.status !== "ok") {
+  if (!request || request.status !== "ok") {
     return request;
   }
 
@@ -288,10 +285,7 @@ export async function materializeSubagentAttachments(params: {
   redactContinuationErrorDetails?: boolean;
 }): Promise<MaterializeSubagentAttachmentsResult | null> {
   const request = resolveSubagentAttachmentRequest(params);
-  if (!request) {
-    return null;
-  }
-  if (request.status !== "ok") {
+  if (!request || request.status !== "ok") {
     return request;
   }
   if (params.sandboxed) {
@@ -364,11 +358,11 @@ export async function materializeSubagentAttachments(params: {
     const attachmentStore = privateFileStore(absRootDir);
 
     const files: SubagentAttachmentReceipt["files"] = [];
-    for (const { name, buf, bytes } of prepared.attachments) {
+    for (const { name, buf } of prepared.attachments) {
       const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
       params.assertActive?.();
       await attachmentStore.writeText(path.posix.join(attachmentId, name), buf);
-      files.push({ name, bytes, sha256 });
+      files.push({ name, bytes: buf.byteLength, sha256 });
     }
 
     const receipt = {

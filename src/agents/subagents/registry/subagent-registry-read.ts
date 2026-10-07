@@ -13,11 +13,11 @@ import {
   countActiveDescendantRunsFromRuns,
   countPendingDescendantRunsFromRuns,
   getLatestSubagentRunByChildSessionKeyFromRuns,
+  getLatestSubagentRunForChild,
   getSubagentRunByChildSessionKeyFromRuns,
   listAncestorSessionKeysFromRuns,
   listRunsForControllerFromRuns,
   listRunsForRequesterFromRuns,
-  resolveRequesterForChildSessionFromRuns,
   shouldIgnorePostCompletionAnnounceForSessionFromRuns,
   type LatestSubagentRunReadIndex,
   type SubagentRunReadIndex,
@@ -72,10 +72,7 @@ export function buildSubagentSessionListReadIndex(
   return buildSubagentRunReadIndexFromRuns({
     runs,
     inMemoryRuns: sessionKeys
-      ? [...runs.keys()].flatMap((runId) => {
-          const current = subagentRuns.get(runId);
-          return current ? [current] : [];
-        })
+      ? [...runs.keys()].flatMap((runId) => subagentRuns.get(runId) ?? [])
       : subagentRuns.values(),
     now,
   });
@@ -178,11 +175,10 @@ export async function resolveRequesterForChildSession(
   requesterAgentId?: string;
   requesterOrigin?: DeliveryContext;
 } | null> {
-  const resolved = resolveRequesterForChildSessionFromRuns(
+  const resolved = getLatestSubagentRunForChild(
     // Only this child's runs: a full snapshot here puts every read on the Gateway loop (#154727).
     await getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey, childAgentId),
-    childSessionKey,
-    childAgentId,
+    { childSessionKey, childAgentId },
   );
   if (!resolved) {
     return null;
@@ -213,12 +209,7 @@ export function isSubagentSessionRunActive(
 ): boolean {
   // Liveness is mutation ownership, so a persisted snapshot must not outvote the raw live map.
   return isSubagentRunLive(
-    getLatestSubagentRunByChildSessionKeyFromRuns(
-      subagentRuns,
-      childSessionKey,
-      undefined,
-      childAgentId,
-    ),
+    getLatestSubagentRunForChild(subagentRuns, { childSessionKey, childAgentId }),
   );
 }
 
@@ -252,11 +243,9 @@ export async function getLatestSubagentRunByChildSessionKey(
   childAgentId?: string,
 ): Promise<SubagentRunRecord | null> {
   return (
-    getLatestSubagentRunByChildSessionKeyFromRuns(
+    getLatestSubagentRunForChild(
       await getSubagentRunsSnapshotForChildSession(subagentRuns, childSessionKey, childAgentId),
-      childSessionKey,
-      undefined,
-      childAgentId,
+      { childSessionKey, childAgentId },
     ) ?? null
   );
 }

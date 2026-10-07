@@ -115,7 +115,7 @@ export function createSubagentRegistrySweeper(params: {
   ) => Iterable<[string, SubagentRunRecord]>;
   warn: (message: string, meta?: Record<string, unknown>) => void;
 }) {
-  const { runs, resumedRuns } = params;
+  const { runs } = params;
   let acceptedSpawnRollbackCursor: string | undefined;
   let intervalStarted = false;
   let scheduled: { timer: NodeJS.Timeout; at: number } | undefined;
@@ -336,49 +336,30 @@ export function createSubagentRegistrySweeper(params: {
             now - (entry.delivery?.suspendedAt ?? now) >= SUBAGENT_SUSPENDED_DELIVERY_RETENTION_MS;
           if (expired) {
             await discardSuspendedPendingFinalDelivery({
+              ...params,
               runId,
               entry,
               now,
-              reason: "expired",
-              resumedRuns,
-              clearPendingLifecycleError: params.clearPendingLifecycleError,
-              clearPendingLifecycleTimeout: params.clearPendingLifecycleTimeout,
-              discardTerminalDelivery: params.discardTerminalDelivery,
-              completeCleanupBookkeeping: params.completeCleanupBookkeeping,
               isCurrent: () => params.isCleanupOwnerCurrent(entry),
-              sessionEffectsHostCurrent: params.sessionEffectsHostCurrent,
-              shouldSuppressSessionEffects: params.shouldSuppressSessionEffects,
-              shouldEmitEndedHookForRun: params.shouldEmitEndedHookForRun,
-              emitSubagentEndedHookForRun: params.emitSubagentEndedHookForRun,
-              warn: params.warn,
             });
           }
           continue;
         }
         if (entry.killIntent) {
           await reconcileDurableSubagentKillIntent({
+            ...params,
             runId,
             entry,
-            runs,
-            getRunsForChildSession: params.getRunsForChildSession,
             loadKillRuntime: () => killRuntimeLoader.load(),
-            completeSubagentRunWithRecovery: params.completeSubagentRunWithRecovery,
-            retireSupersededRun: params.retireSupersededRun,
-            warn: params.warn,
           });
           continue;
         }
         if (entry.killReconciliation) {
           await reconcileProvisionalSubagentKill({
+            ...params,
             runId,
             entry,
             now,
-            runs,
-            completeSubagentRunWithRecovery: params.completeSubagentRunWithRecovery,
-            retireSupersededRun: params.retireSupersededRun,
-            startSubagentAnnounceCleanupFlow: params.startSubagentAnnounceCleanupFlow,
-            getRunsForChildSession: params.getRunsForChildSession,
-            warn: params.warn,
           });
           continue;
         }
@@ -402,40 +383,25 @@ export function createSubagentRegistrySweeper(params: {
             const completion = resolveCompletionFromSessionEntry(sessionEntry, now, {
               notBeforeMs: entry.execution.startedAt ?? entry.createdAt,
             });
-            if (completion) {
-              await params.completeSubagentRunWithRecovery(
-                {
-                  runId,
-                  startedAt: completion.startedAt,
-                  endedAt: completion.endedAt,
-                  outcome: completion.outcome,
-                  reason: completion.reason,
-                  sendFarewell: true,
-                  accountId: entry.requesterOrigin?.accountId,
-                  triggerCleanup: true,
-                },
-                "sweeper-session-completion",
-              );
-              continue;
-            }
-
             await params.completeSubagentRunWithRecovery(
               {
                 runId,
-                expectedEntry: entry,
-                endedAt: now,
-                outcome: {
-                  status: "error",
-                  error: orphanReason
-                    ? `subagent run orphaned: ${orphanReason}`
-                    : "subagent run lost active execution context",
-                },
-                reason: SUBAGENT_ENDED_REASON_ERROR,
+                ...(completion ?? {
+                  expectedEntry: entry,
+                  endedAt: now,
+                  outcome: {
+                    status: "error" as const,
+                    error: orphanReason
+                      ? `subagent run orphaned: ${orphanReason}`
+                      : "subagent run lost active execution context",
+                  },
+                  reason: SUBAGENT_ENDED_REASON_ERROR,
+                }),
                 sendFarewell: true,
                 accountId: entry.requesterOrigin?.accountId,
                 triggerCleanup: true,
               },
-              "sweeper-lost-context",
+              completion ? "sweeper-session-completion" : "sweeper-lost-context",
             );
             continue;
           }
@@ -498,7 +464,6 @@ export function createSubagentRegistrySweeper(params: {
                 }
                 draft.collectorLaunchCleanupPending = false;
                 draft.cleanupCompletedAt = now;
-                return draft;
               },
             );
             if (!updated) {
@@ -558,21 +523,18 @@ export function createSubagentRegistrySweeper(params: {
             continue;
           }
           const sessionIdentity = cleanupIdentities.get(getSubagentRunRuntimeKey(entry));
-          if (!sessionIdentity) {
-            sessionOwnershipChanged = true;
-          } else {
-            try {
-              sessionOwnershipChanged =
-                (await deleteSweptSession(entry, sessionIdentity, runs, params.callGateway)) ===
+          try {
+            sessionOwnershipChanged =
+              !sessionIdentity ||
+              (await deleteSweptSession(entry, sessionIdentity, runs, params.callGateway)) ===
                 "changed";
-            } catch (error) {
-              params.warn("sessions.delete failed during subagent sweep; keeping run for retry", {
-                runId,
-                childSessionKey: entry.childSessionKey,
-                error,
-              });
-              continue;
-            }
+          } catch (error) {
+            params.warn("sessions.delete failed during subagent sweep; keeping run for retry", {
+              runId,
+              childSessionKey: entry.childSessionKey,
+              error,
+            });
+            continue;
           }
         }
         const deleted = await mutateCleanup(

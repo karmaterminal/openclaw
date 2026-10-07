@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { resetGatewayWorkAdmission } from "../../../process/gateway-work-admission.js";
 import { AsyncWorkScope } from "../../../shared/async-work-scope.js";
-import { settleRequesterCompletionBatch } from "../completion/subagent-completion-admission.store.js";
+import { mutateRequesterCompletionBatch } from "../completion/subagent-completion-admission.store.js";
 import {
   SubagentLifecycleController,
   type SubagentLifecycleOptions,
@@ -33,7 +33,7 @@ vi.mock("./subagent-registry-lifecycle-delivery.js", () => ({
 vi.mock("../completion/subagent-completion-admission.store.js", () => ({
   blockSubagentCompletionDelivery: vi.fn(),
   // Upstream 10e951e857 reads the settlement's publication receipt.
-  settleRequesterCompletionBatch: vi.fn(async () => ({ applied: true, publication: "published" })),
+  mutateRequesterCompletionBatch: vi.fn(async () => ({ applied: true, publication: "published" })),
 }));
 vi.mock("../../agent-bundle-mcp-tools.js", () => ({
   retireSessionMcpRuntimeForSessionKey: vi.fn(),
@@ -95,7 +95,7 @@ function buildHarness(wakeFailure: Error): Harness {
     getRuntimeConfig: () => ({}),
     // Upstream 14fe10d01c removed the injected persist callbacks; registry writes go
     // through mutateSubagentRuns, and the rejection itself reaches the mocked
-    // settleRequesterCompletionBatch below, so this proof needs no persistence stub.
+    // mutateRequesterCompletionBatch below, so this proof needs no persistence stub.
     clearPendingLifecycleError: vi.fn(),
     countPendingDescendantRuns: async () => 0,
     getLatestRunForChildSession: () => null,
@@ -142,12 +142,15 @@ describe("requester settle wake rejection write", () => {
         "failed to persist requester settle wake rejection",
       );
       // The rejection reached settlement carrying the failed outcome. Disarming the
-      // row is settleRequesterCompletionBatch's job and is mocked out of this proof;
+      // row is mutateRequesterCompletionBatch's job and is mocked out of this proof;
       // what matters here is that the write was ATTEMPTED and did not throw.
-      expect(settleRequesterCompletionBatch).toHaveBeenCalledTimes(1);
-      const settled = vi.mocked(settleRequesterCompletionBatch).mock.calls[0]?.[0];
-      expect(settled?.outcome).toMatchObject({ delivered: false, path: "none" });
-      expect(settled?.entries.map((member) => member.subagent.runId)).toEqual(["rejection-run"]);
+      expect(mutateRequesterCompletionBatch).toHaveBeenCalledTimes(1);
+      const settled = vi.mocked(mutateRequesterCompletionBatch).mock.calls[0]?.[0];
+      expect(settled?.operation).toMatchObject({
+        kind: "settle",
+        outcome: { delivered: false, path: "none" },
+      });
+      expect(settled?.entries.map((entry) => entry.runId)).toEqual(["rejection-run"]);
     } finally {
       controller.clearScheduledResumeTimers();
       await origin.drain();

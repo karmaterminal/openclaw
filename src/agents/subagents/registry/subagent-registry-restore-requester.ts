@@ -51,13 +51,15 @@ export async function settleRestoredRequesterTurns({
     const requesterTurnRunId = firstEntry.requesterTurnRunId!;
     try {
       const superseded: SubagentRunRecord[] = [];
-      let entries = selectRequesterTurnChildren(
-        runs,
-        firstEntry.requesterSessionKey,
-        requesterAgentId,
-        requesterTurnRunId,
-        (entry) => superseded.push(entry),
-      );
+      const selectEntries = (onSuperseded: (entry: SubagentRunRecord) => void) =>
+        selectRequesterTurnChildren(
+          runs,
+          firstEntry.requesterSessionKey,
+          requesterAgentId,
+          requesterTurnRunId,
+          onSuperseded,
+        );
+      let entries = selectEntries((entry) => superseded.push(entry));
       for (const entry of superseded) {
         await retireSupersededRun(entry.runId, entry, assertCurrent);
         assertCurrent();
@@ -69,15 +71,9 @@ export async function settleRestoredRequesterTurns({
       }
       if (superseded.length > 0) {
         // Retirement can yield to another claim; select its surviving members afresh.
-        entries = selectRequesterTurnChildren(
-          runs,
-          firstEntry.requesterSessionKey,
-          requesterAgentId,
-          requesterTurnRunId,
-          () => {
-            throw new SubagentRegistryMutationRejectedError("Restored cohort changed");
-          },
-        );
+        entries = selectEntries(() => {
+          throw new SubagentRegistryMutationRejectedError("Restored cohort changed");
+        });
       }
       if (entries.length === 0) {
         continue;
