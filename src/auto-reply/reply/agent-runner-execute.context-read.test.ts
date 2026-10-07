@@ -9,10 +9,12 @@ import { runBeforeAgentReplyForTurn } from "../../plugins/before-agent-reply.js"
 import { enqueueCommandInLane } from "../../process/command-queue.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { createReplyContinuationController } from "./agent-runner-continuation.js";
 import { executePreparedReplyAgentRun } from "./agent-runner-execute.js";
 import { executeAgentTurn } from "./agent-runner-execution.js";
 import { createTestFollowupRun } from "./agent-runner.test-fixtures.js";
 import { createReplyRestartRecoveryClaimController } from "./restart-recovery-claim.js";
+import { resolveReplyHookTrigger } from "./run-provenance.js";
 import { createMockReplyOperation, createMockTypingController } from "./test-helpers.js";
 import { createTypingSignaler } from "./typing-mode.js";
 
@@ -108,9 +110,24 @@ it("keeps a cron context prefix readable when an inbound turn persists before qu
       key: target.sessionKey,
       sessionId: target.sessionId,
     });
+    const getActiveSessionEntry = () => entry;
+    const setActiveSessionEntry = (next: InternalSessionEntry | undefined) => {
+      if (next) {
+        entry = next;
+      }
+    };
     const inbound = executePreparedReplyAgentRun({
       ...target,
       ...recovery,
+      continuation: createReplyContinuationController({
+        cfg: {},
+        sessionKey: target.sessionKey,
+        storePath: undefined,
+        isContinuationWake: false,
+        activeSessionStore: undefined,
+        getActiveSessionEntry,
+        setActiveSessionEntry,
+      }),
       followupRun,
       replyOperation,
       typing,
@@ -119,6 +136,8 @@ it("keeps a cron context prefix readable when an inbound turn persists before qu
       cfg: {},
       commandBody: "incoming DM",
       defaultModel: "test",
+      hookTrigger: resolveReplyHookTrigger({ isHeartbeat: false }),
+      isContinuationWake: false,
       isHeartbeat: false,
       queueKey: target.sessionKey,
       resolvedQueue: { mode: "followup" },
@@ -136,12 +155,8 @@ it("keeps a cron context prefix readable when an inbound turn persists before qu
       typingMode: "never",
       typingSignals: createTypingSignaler({ typing, mode: "never", isHeartbeat: false }),
       applyReplyToMode: (payload) => payload,
-      getActiveSessionEntry: () => entry,
-      setActiveSessionEntry: (next) => {
-        if (next) {
-          entry = next;
-        }
-      },
+      getActiveSessionEntry,
+      setActiveSessionEntry,
       isRestartRecoveryArmed: recovery.isArmed,
       resolveVisibleReplyDelivery: async () => false,
       returnWithQueuedFollowupDrain: (value) => value,
