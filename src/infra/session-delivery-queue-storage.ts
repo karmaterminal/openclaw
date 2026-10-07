@@ -18,9 +18,10 @@ import { sha256Hex } from "./crypto-digest.js";
 import { bindDeliveryQueueEntry } from "./delivery-queue-sqlite-bound.js";
 import type { DeliveryQueueEntryLoadResult } from "./delivery-queue-sqlite-codec.js";
 import {
-  getDeliveryQueueEntryStatus,
+  inspectDeliveryQueueReceipt,
   type DeliveryQueueEntryState,
 } from "./delivery-queue-sqlite.js";
+import { captureDeliveryQueueStateContext } from "./delivery-queue-state-context.js";
 import { generateSecureUuid } from "./secure-random.js";
 import { scrubTerminalQueuedAttachments } from "./session-delivery-queue-attachment-metadata.js";
 import {
@@ -590,7 +591,13 @@ export async function ackSessionDelivery(
   const entry = await loadPendingSessionDelivery(id, context);
   const stateDir = context.environment.OPENCLAW_STATE_DIR;
   if (!entry) {
-    if (getDeliveryQueueEntryStatus(SESSION_DELIVERY_QUEUE_NAME, id, stateDir) === "completed") {
+    const receipt = await inspectDeliveryQueueReceipt(
+      SESSION_DELIVERY_QUEUE_NAME,
+      id,
+      false,
+      captureDeliveryQueueStateContext(stateDir),
+    );
+    if (receipt.status === "completed") {
       return;
     }
     throw new SessionDeliveryAcknowledgementFinalizeError(id);

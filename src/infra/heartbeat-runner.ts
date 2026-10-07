@@ -15,7 +15,6 @@ import { hasTrustedContinuationHeartbeatWake } from "./heartbeat-wake.js";
 export type { HeartbeatDeps } from "./heartbeat-runner-execution.js";
 export { resolveHeartbeatAgents } from "./heartbeat-config.js";
 export { resolveConfiguredHeartbeatPrompt } from "./heartbeat-runner-config.js";
-export { resolveHeartbeatSchedulerSeed } from "./heartbeat-schedule.js";
 export type { HeartbeatRunner } from "./heartbeat-runner-scheduler.js";
 export { resolveHeartbeatSession } from "./heartbeat-runner-session.js";
 export { isCronSystemEvent } from "./heartbeat-events-filter.js";

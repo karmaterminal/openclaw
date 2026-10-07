@@ -372,20 +372,16 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
   const systemPromptReport = buildSystemPromptReport(reportInputs);
   params.setup.prepStages?.mark("system-prompt");
 
-  let toolPromptPreparation: {
-    mode: EmbeddedRunAttemptParams["permissionMode"];
-    tools: PromptTools;
-    capabilities: string[];
-    catalogEntries: NonNullable<ToolSearchCatalogRef["current"]>["entries"] | undefined;
-    permissionChanged: boolean;
-    promise: Promise<SystemPromptRefresh>;
-  } = {
+  const readToolPromptInputs = (tools: PromptTools, permissionChanged = false) => ({
     mode: attempt.permissionMode,
-    tools: [...params.effectiveTools],
+    tools,
     capabilities: [...params.capabilityToolNames].toSorted(),
     catalogEntries: params.toolSearchCatalogRef?.current?.entries,
-    permissionChanged: false,
-    promise: Promise.resolve((currentSystemPrompt) => currentSystemPrompt),
+    permissionChanged,
+  });
+  let toolPromptPreparation = {
+    ...readToolPromptInputs([...params.effectiveTools]),
+    promise: Promise.resolve<SystemPromptRefresh>((currentSystemPrompt) => currentSystemPrompt),
   };
 
   return {
@@ -397,9 +393,8 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
       effectiveTools: PromptTools = params.effectiveTools,
       { permissionChanged = false }: { permissionChanged?: boolean } = {},
     ): Promise<SystemPromptRefresh> => {
-      const mode = attempt.permissionMode;
-      const capabilities = [...params.capabilityToolNames].toSorted();
-      const catalogEntries = params.toolSearchCatalogRef?.current?.entries;
+      const inputs = readToolPromptInputs(effectiveTools, permissionChanged);
+      const { mode, capabilities, catalogEntries } = inputs;
       if (
         toolPromptPreparation.mode === mode &&
         toolPromptPreparation.permissionChanged === permissionChanged &&
@@ -467,11 +462,8 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
         return refresh;
       })();
       toolPromptPreparation = {
-        mode,
+        ...inputs,
         tools,
-        capabilities,
-        catalogEntries,
-        permissionChanged,
         promise,
       };
       return promise;

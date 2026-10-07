@@ -302,37 +302,23 @@ export function buildEmbeddedRunPayloads(params: {
       );
       // An earlier continuation signal means the raw answer holds several
       // hops; emit each as its own item instead of one joined blob.
-      const canonicalFinalAnswerTexts =
-        rawAnswerHasEarlierContinuation && shouldPreferRawAnswerText
-          ? fallbackRawAnswerParts.filter((part) => part.trim().length > 0)
-          : [fallbackAnswerSourceText];
       const preserveCanonicalItemWhitespace =
         rawAnswerHasEarlierContinuation && shouldPreferRawAnswerText;
-      const hasAssistantTextPayload = nonEmptyAssistantTexts.length > 0;
-      const answerTexts =
+      const rawAnswerHopParts = preserveCanonicalItemWhitespace
+        ? fallbackRawAnswerParts.filter((part) => part.trim().length > 0)
+        : [];
+      const answerDirectives =
         shouldUseCanonicalFinalAnswer || shouldPreferRawAnswerText
-          ? canonicalFinalAnswerTexts
-          : hasAssistantTextPayload
-            ? nonEmptyAssistantTexts
-            : fallbackAnswerText
-              ? [fallbackAnswerText]
+          ? rawAnswerHopParts.length > 1
+            ? rawAnswerHopParts.map((part) => parseReplyDirectives(part))
+            : [fallbackAnswerDirectiveState ?? parseReplyDirectives(fallbackAnswerSourceText)]
+          : nonEmptyAssistantTexts.length > 0
+            ? nonEmptyAssistantTexts.map((text) => parseReplyDirectives(text))
+            : fallbackAnswerDirectiveState
+              ? [fallbackAnswerDirectiveState]
               : [];
-      const preparedAnswerDirectives =
-        answerTexts.length === 1 &&
-        (shouldUseCanonicalFinalAnswer || shouldPreferRawAnswerText || !hasAssistantTextPayload)
-          ? fallbackAnswerDirectiveState
-          : null;
-      for (const text of answerTexts) {
-        const {
-          text: cleanedText,
-          mediaUrls,
-          mediaFailures,
-          audioAsVoice,
-          replyToId,
-          replyToTag,
-          replyToCurrent,
-          isSilent,
-        } = preparedAnswerDirectives ?? parseReplyDirectives(text);
+      for (const directives of answerDirectives) {
+        const { text: cleanedText, mediaUrls, mediaFailures, isSilent } = directives;
         hasIntentionalSilentFinal = isSilent;
         const ttsFacts = shouldUseCanonicalFinalAnswer ? storedDelivery?.tts : undefined;
         const delivery = shouldUseCanonicalFinalAnswer
@@ -342,7 +328,7 @@ export function buildEmbeddedRunPayloads(params: {
               replyToId: storedDelivery?.replyToId,
               replyToTag: Boolean(storedDelivery?.replyToCurrent || storedDelivery?.replyToId),
             }
-          : { audioAsVoice, replyToId, replyToTag, replyToCurrent };
+          : directives;
         if (
           !cleanedText &&
           (!mediaUrls || mediaUrls.length === 0) &&

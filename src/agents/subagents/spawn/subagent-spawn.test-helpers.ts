@@ -337,7 +337,8 @@ export async function loadSubagentSpawnModuleForTest(params: {
     normalizeProviderModelIdWithRuntime: () => undefined,
   }));
 
-  vi.doMock("./subagent-spawn.runtime.js", () => ({
+  vi.doMock("./subagent-spawn.runtime.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("./subagent-spawn.runtime.js")>()),
     callGateway: (opts: unknown) => params.callGatewayMock(opts),
     dispatchGatewayMethodInProcess: (...args: unknown[]) =>
       params.dispatchGatewayMethodInProcessMock?.(...args),
@@ -465,6 +466,8 @@ export async function loadSubagentSpawnModuleForTest(params: {
       });
       return updated ?? null;
     },
+    listSessionBindingsBySessionAsync: async (sessionKey: string) =>
+      params.getSessionBindingService?.().listBySession(sessionKey) ?? [],
     getSessionBindingService:
       params.getSessionBindingService ??
       (() => ({
