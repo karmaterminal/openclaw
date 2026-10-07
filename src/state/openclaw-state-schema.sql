@@ -1774,7 +1774,7 @@ CREATE TABLE IF NOT EXISTS continuation_records (
   attachment_id TEXT,
   terminal_notice_pending TEXT CHECK (
     terminal_notice_pending IS NULL OR terminal_notice_pending IN (
-      'retry-exhausted', 'delegate-spawn-interrupted'
+      'retry-exhausted', 'delegate-spawn-interrupted', 'rollback-election-conflict'
     )
   ),
   CHECK ((status IN ('succeeded', 'failed', 'cancelled')) = (ended_at IS NOT NULL)),
