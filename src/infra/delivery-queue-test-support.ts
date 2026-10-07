@@ -1,8 +1,6 @@
 // Test helper for driving delivery queue rows into their failed terminal state.
-import {
-  loadDeliveryQueueEntry,
-  terminalizePendingDeliveryQueueEntry,
-} from "./delivery-queue-sqlite.js";
+import { terminalizePendingDeliveryQueueEntry } from "./delivery-queue-sqlite.js";
+import { loadDeliveryQueueEntry } from "./delivery-queue-sqlite.test-support.js";
 
 function enoent(queueName: string, id: string): Error & { code: string } {
   const error = new Error(`No pending ${queueName} delivery queue entry ${id}`) as Error & {

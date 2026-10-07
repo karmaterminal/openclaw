@@ -34,6 +34,7 @@ import type { EmbeddedRunAttemptInternalParams } from "./internal-params.js";
 import { prepareEmbeddedAttemptPromptExecution } from "./prompt-image-preparation.js";
 import { CODEX_HARNESS_ID, resolveAttemptTrajectoryAttribution } from "./runtime-resolution.js";
 import { resolveEmbeddedAttemptSessionTarget } from "./session-prompt-state.js";
+import { projectEmbeddedMessageContext } from "./shared-run-context.js";
 import { MAX_BEFORE_AGENT_FINALIZE_REVISIONS } from "./terminal-retry-state.js";
 
 /** Prepares the selected runtime and dispatches an attempt under its admitted lifecycle. */
@@ -179,15 +180,16 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
         })
       : undefined;
   assertTrajectoryCurrent();
-  let startupStagesEmitted = input.startupStagesEmitted;
-  if (!startupStagesEmitted) {
+  if (!input.startupStagesEmitted) {
     startupStages.mark(EMBEDDED_RUN_ATTEMPT_DISPATCH_STAGE.runtimePlan);
     startupStages.mark(EMBEDDED_RUN_ATTEMPT_DISPATCH_STAGE.dispatch);
     notifyExecutionPhase("attempt_dispatch", { provider, model: modelId });
     emitStartupStageSummary(EMBEDDED_RUN_ATTEMPT_DISPATCH_STAGE.dispatch);
-    startupStagesEmitted = true;
   }
   const fallbackReason = input.resolveRuntimeFallbackReason();
+  const explicitAuthProfile = Boolean(
+    runtime.lastProfileId && runtime.lastProfileId === lockedProfileId,
+  );
   recordAdmittedModelRoutingDecision({
     admittedRunContext: params.admittedRunContext,
     abortSignal: params.abortSignal,
@@ -196,8 +198,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
       params.modelRoutingProvenance?.requestedModel ?? requestedModelId ?? runInput.modelId,
     selectedProvider: provider,
     selectedModel: modelId,
-    selectionMode:
-      runtime.lastProfileId && runtime.lastProfileId === lockedProfileId ? "explicit" : "automatic",
+    selectionMode: explicitAuthProfile ? "explicit" : "automatic",
     credentialProfileId: runtime.lastProfileId,
     fallbackSelected:
       params.modelRoutingProvenance?.stage === "fallback" || Boolean(fallbackReason),
@@ -218,8 +219,6 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     params.modelRoutingProvenance?.stage === "fallback" ||
     Boolean(fallbackReason);
   const attemptContextEngine = nativeModelOwned ? undefined : contextEngine;
-  const authProfileIdSource =
-    runtime.lastProfileId && runtime.lastProfileId === lockedProfileId ? "user" : "auto";
   const attemptAbortController = new AbortController();
   input.setPostCompactionAbortController(attemptAbortController);
   const preparedExecApprovalContinuation = prepareExecApprovalContinuationForAttempt({
@@ -397,20 +396,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     memberRoleIds: params.memberRoleIds,
     spawnedBy: params.spawnedBy,
     isCanonicalWorkspace,
-    senderId: params.senderId,
-    senderName: params.senderName,
-    senderUsername: params.senderUsername,
-    senderE164: params.senderE164,
-    senderIsOwner: params.senderIsOwner,
-    approvalReviewerDeviceId: params.approvalReviewerDeviceId,
-    currentChannelId: params.currentChannelId,
-    chatId: params.chatId,
-    channelContext: params.channelContext,
-    currentMessagingTarget: params.currentMessagingTarget,
-    currentThreadTs: params.currentThreadTs,
-    currentMessageId: params.currentMessageId,
-    currentInboundAudio: params.currentInboundAudio,
-    replyToMode: params.replyToMode,
+    ...projectEmbeddedMessageContext(params),
     hasRepliedRef: params.hasRepliedRef,
     sessionFile,
     ...(sessionManager ? { sessionManager } : { sessionTarget: resolvedSessionTarget }),
@@ -517,7 +503,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     ),
     resolvedApiKey: resolvedAttemptApiKey,
     authProfileId: runtime.lastProfileId,
-    authProfileIdSource,
+    authProfileIdSource: explicitAuthProfile ? "user" : "auto",
     initialReplayState: input.replayState,
     authStorage,
     authProfileStore,
@@ -639,10 +625,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     internalEvents: params.internalEvents,
     runtimeContextFragments: params.runtimeContextFragments,
     bootstrapPromptWarningSignaturesSeen: input.bootstrapPromptWarningSignaturesSeen,
-    bootstrapPromptWarningSignature:
-      input.bootstrapPromptWarningSignaturesSeen[
-        input.bootstrapPromptWarningSignaturesSeen.length - 1
-      ],
+    bootstrapPromptWarningSignature: input.bootstrapPromptWarningSignaturesSeen.at(-1),
     suppressNextUserMessagePersistence,
     beforeAgentFinalizeRevisionAttempts,
     completionCheck: terminalRetryState.completionCheck,
@@ -681,6 +664,6 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
   return {
     dispatchedAttempt: { rawAttempt, preparedAttempt: attemptParams },
     runtimePlan,
-    startupStagesEmitted,
+    startupStagesEmitted: true,
   };
 }
