@@ -391,9 +391,10 @@ export const sessionCompactHandlers: GatewayRequestHandlers = {
               undefined,
             );
             if (trimResult.compacted) {
-              // Release staged post-compaction delegates from the worker-read current row,
-              // falling back to the row this request read before the lifecycle fence.
-              const entryAfterTrim = (await readCurrentEntry().catch(() => undefined)) ?? entry;
+              // Release staged post-compaction delegates only from the current row read after
+              // the trim. Without one, they stay staged: a row read before the lifecycle fence
+              // is not authority to release them.
+              const entryAfterTrim = await readCurrentEntry().catch(() => undefined);
               const targetAgentId = target.agentId ?? requestedAgentId;
               if (entryAfterTrim) {
                 await releaseManualPostCompactionDelegatesIfNeeded({

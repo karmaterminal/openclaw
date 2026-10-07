@@ -50,6 +50,26 @@ vi.mock("../auto-reply/reply/agent-runner-post-compaction-release.js", async (im
   };
 });
 
+// Trim seam: runs the real trim, then optionally replaces the session row so the
+// handler's post-trim current-row read no longer matches the compacted session.
+const trimSeams = vi.hoisted(() => ({
+  afterTrim: undefined as (() => Promise<void>) | undefined,
+}));
+
+vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../config/sessions/session-accessor.js")>();
+  return {
+    ...actual,
+    trimSessionTranscriptForManualCompact: async (
+      ...args: Parameters<typeof actual.trimSessionTranscriptForManualCompact>
+    ) => {
+      const result = await actual.trimSessionTranscriptForManualCompact(...args);
+      await trimSeams.afterTrim?.();
+      return result;
+    },
+  };
+});
+
 const { createSessionStoreDir, openClient } = setupGatewaySessionsTestHarness();
 
 // Cases here observe `peekSystemEvents` for the shared `agent:main:main` key.
@@ -387,4 +407,34 @@ test("sessions.compact releases staged post-compaction delegates", async () => {
   expect(postCompactionReleaseSeams.releaseCalls).toEqual(["agent:main:main"]);
   expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(0);
   await rehydrateContinuationCustodyAfterStateSettles();
+});
+
+test("sessions.compact keeps delegates staged when the post-trim row no longer matches", async () => {
+  await rehydrateContinuationCustodyAfterStateSettles();
+  await seedMaxLinesCompactionSession("sess-post-compaction-rotated");
+  await stagePostCompactionDelegate("agent:main:main", {
+    task: "must not release from a stale row",
+    createdAt: Date.now(),
+  });
+  postCompactionReleaseSeams.releaseCalls.length = 0;
+  trimSeams.afterTrim = async () => {
+    trimSeams.afterTrim = undefined;
+    await writeSessionStore({
+      entries: { main: sessionStoreEntry("sess-post-compaction-successor") },
+    });
+  };
+  try {
+    const compacted = await directSessionReq<{ ok: true; compacted: boolean; kept?: number }>(
+      "sessions.compact",
+      { key: "main", maxLines: 50 },
+    );
+
+    expect(compacted.ok).toBe(true);
+    expect(compacted.payload?.compacted).toBe(true);
+    expect(postCompactionReleaseSeams.releaseCalls).toEqual([]);
+    expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(1);
+  } finally {
+    trimSeams.afterTrim = undefined;
+    await rehydrateContinuationCustodyAfterStateSettles();
+  }
 });
