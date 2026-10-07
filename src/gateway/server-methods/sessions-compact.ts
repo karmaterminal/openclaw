@@ -12,6 +12,7 @@ import type { FollowupRun } from "../../auto-reply/reply/queue.js";
 import { hasPendingFollowupQueueWork } from "../../auto-reply/reply/queue/state.js";
 import {
   resolveSessionWorkStartError,
+  isSessionWorkStartInvalidatedError,
   SESSION_LIFECYCLE_CHANGED_ERROR_REASON,
   type SessionEntry,
 } from "../../config/sessions.js";
@@ -23,6 +24,7 @@ import {
 } from "../../config/sessions/session-accessor.js";
 import { projectCompactionAccountingPatch } from "../../config/sessions/session-entry-projection.js";
 import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
+import { composeSessionSourceAssertion } from "../../config/sessions/session-source-authority.js";
 import { readTranscriptStatsAsync } from "../../config/sessions/session-transcript-stats.js";
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -35,6 +37,7 @@ import {
 } from "../../sessions/session-lifecycle-admission.js";
 import { recordSessionCompacted } from "../../sessions/session-state-events.js";
 import { deliveryContextFromSession } from "../../utils/delivery-context.read.js";
+import { hasPreparedGatewayDeviceAuthority } from "../device-revocation.js";
 import { captureGatewayOperatorRunAuthority } from "../operator-run-authority.js";
 import {
   resolveRequestedSessionAgentId as resolveRequestedGlobalAgentId,
@@ -156,6 +159,10 @@ export const sessionCompactHandlers: GatewayRequestHandlers = {
       return;
     }
     const maxLines = params.maxLines;
+    const sessionChangedError = () =>
+      errorShape(ErrorCodes.INVALID_REQUEST, `Session ${key} changed before compaction. Retry.`, {
+        details: { reason: SESSION_LIFECYCLE_CHANGED_ERROR_REASON },
+      });
 
     const cfg = context.getRuntimeConfig();
     const requestedAgent = resolveRequestedGlobalAgentId(cfg, key, params.agentId);
@@ -277,10 +284,6 @@ export const sessionCompactHandlers: GatewayRequestHandlers = {
       };
       const queueIdentities = [key, target.canonicalKey, compactPrimaryKey, sessionId];
       const lifecycleIdentities = [...queueIdentities, lifecycleRevision];
-      const sessionChangedError = () =>
-        errorShape(ErrorCodes.INVALID_REQUEST, `Session ${key} changed before compaction. Retry.`, {
-          details: { reason: SESSION_LIFECYCLE_CHANGED_ERROR_REASON },
-        });
       let admissionError: ReturnType<typeof errorShape> | undefined;
       let compactionNoopReason: string | undefined;
       await runExclusiveSessionLifecycleMutation("compact", {
@@ -290,12 +293,12 @@ export const sessionCompactHandlers: GatewayRequestHandlers = {
         signal: abortSignal,
         prepare: async () => {
           assertRequestCurrent();
-          const latestEntry = await readCurrentEntry();
-          if (!latestEntry) {
-            admissionError = sessionChangedError();
-            return;
-          }
           if (maxLines === undefined) {
+            const latestEntry = await readCurrentEntry();
+            if (!latestEntry) {
+              admissionError = sessionChangedError();
+              return;
+            }
             compactionNoopReason = (
               await preflightGatewaySessionCompaction({
                 cfg,
@@ -350,16 +353,24 @@ export const sessionCompactHandlers: GatewayRequestHandlers = {
             respondNotCompacted({ ok: false, reason: compactionNoopReason });
             return;
           }
-          const latestEntry = await readCurrentEntry();
-          if (!latestEntry) {
-            respond(false, undefined, sessionChangedError());
-            return;
-          }
-
           const operationId = randomUUID();
           if (maxLines !== undefined) {
             const trimResult = await trimSessionTranscriptForManualCompact(transcriptScope, {
               maxLines,
+              authority: {
+                source: composeSessionSourceAssertion([
+                  requestAuthority.assertCurrent,
+                  options.sessionMutationAuthorization?.assertCurrent,
+                ]),
+                assertHostCurrent: () => {
+                  signal?.throwIfAborted();
+                  if (!hasPreparedGatewayDeviceAuthority(client, hasCurrentClientAuthority)) {
+                    throw new Error("Gateway requester authority changed");
+                  }
+                },
+                expectedLifecycleRevision: lifecycleRevision,
+                expectedSource: target.capturedReadSource,
+              },
             });
             if (trimResult.compacted) {
               await recordSessionCompacted({
@@ -380,29 +391,31 @@ export const sessionCompactHandlers: GatewayRequestHandlers = {
               undefined,
             );
             if (trimResult.compacted) {
-              // Release staged post-compaction delegates from the worker-read current row.
-              const entryAfterTrim =
-                (await readCurrentEntry().catch(() => undefined)) ?? latestEntry;
+              // Release staged post-compaction delegates from the worker-read current row,
+              // falling back to the row this request read before the lifecycle fence.
+              const entryAfterTrim = (await readCurrentEntry().catch(() => undefined)) ?? entry;
               const targetAgentId = target.agentId ?? requestedAgentId;
-              await releaseManualPostCompactionDelegatesIfNeeded({
-                cfg,
-                compactionCount: entryAfterTrim.compactionCount ?? 0,
-                entry: entryAfterTrim,
-                model: resolveSessionModelRef(cfg, entryAfterTrim, targetAgentId),
-                sessionFile: formatSqliteSessionFileMarker({
-                  agentId: targetAgentId,
+              if (entryAfterTrim) {
+                await releaseManualPostCompactionDelegatesIfNeeded({
+                  cfg,
+                  compactionCount: entryAfterTrim.compactionCount ?? 0,
+                  entry: entryAfterTrim,
+                  model: resolveSessionModelRef(cfg, entryAfterTrim, targetAgentId),
+                  sessionFile: formatSqliteSessionFileMarker({
+                    agentId: targetAgentId,
+                    sessionId: entryAfterTrim.sessionId ?? sessionId,
+                    storePath,
+                  }),
                   sessionId: entryAfterTrim.sessionId ?? sessionId,
+                  sessionKey: target.canonicalKey,
+                  store: { [target.canonicalKey]: entryAfterTrim },
                   storePath,
-                }),
-                sessionId: entryAfterTrim.sessionId ?? sessionId,
-                sessionKey: target.canonicalKey,
-                store: { [target.canonicalKey]: entryAfterTrim },
-                storePath,
-                targetAgentId,
-                workspaceDir:
-                  normalizeOptionalString(entryAfterTrim.spawnedWorkspaceDir) ??
-                  resolveAgentWorkspaceDir(cfg, targetAgentId),
-              });
+                  targetAgentId,
+                  workspaceDir:
+                    normalizeOptionalString(entryAfterTrim.spawnedWorkspaceDir) ??
+                    resolveAgentWorkspaceDir(cfg, targetAgentId),
+                });
+              }
               emitSessionsChanged(context, {
                 sessionKey: target.canonicalKey,
                 agentId: target.agentId,
@@ -413,6 +426,11 @@ export const sessionCompactHandlers: GatewayRequestHandlers = {
             return;
           }
 
+          const latestEntry = await readCurrentEntry();
+          if (!latestEntry) {
+            respond(false, undefined, sessionChangedError());
+            return;
+          }
           const transcriptStats = await readTranscriptStatsAsync(transcriptScope);
           assertRequestCurrent();
           if (transcriptStats.eventCount === 0) {
@@ -572,7 +590,13 @@ export const sessionCompactHandlers: GatewayRequestHandlers = {
         },
       });
     } catch (err) {
-      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
+      respond(
+        false,
+        undefined,
+        maxLines !== undefined && isSessionWorkStartInvalidatedError(err)
+          ? sessionChangedError()
+          : errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)),
+      );
     } finally {
       capturedOperator?.release();
     }
