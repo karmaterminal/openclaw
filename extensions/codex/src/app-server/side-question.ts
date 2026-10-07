@@ -5,7 +5,6 @@ import {
   embeddedAgentLog,
   formatErrorMessage,
   resolveSandboxContext,
-  runAgentCleanupStep,
   type AgentHarnessSideQuestionParamsV2,
   type AgentHarnessSideQuestionResult,
   type EmbeddedRunAttemptParamsV2,
@@ -93,6 +92,7 @@ import {
   readCodexSupportedReasoningEfforts,
   resolveCodexAppServerReasoningEffort,
 } from "./reasoning-effort.js";
+import { runCodexCleanupStep } from "./run-attempt-lifecycle.js";
 import type { CodexRunAttemptOptions } from "./run-attempt-types.js";
 import {
   ensureCodexSandboxExecServerEnvironment,
@@ -931,14 +931,8 @@ export async function runCodexAppServerSideQuestion(
         () => releaseCodexAppServerClientLease(clientLease),
         () => nativeHookRelay?.unregister(),
         () =>
-          runAgentCleanupStep({
-            runId: sideRunParams.runId,
-            sessionId: sideRunParams.sessionId,
-            step: "codex-side-native-hook-relay-release",
-            log: embeddedAgentLog,
-            cleanup: async () => {
-              await nativeHookRelay?.drain();
-            },
+          runCodexCleanupStep(sideRunParams, "codex-side-native-hook-relay-release", async () => {
+            await nativeHookRelay?.drain();
           }),
       ],
     });
