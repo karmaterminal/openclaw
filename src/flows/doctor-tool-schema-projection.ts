@@ -9,6 +9,8 @@ import { buildInventoryContinuationToolOpts } from "../agents/tools/continuation
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import type { ProviderRuntimeModel } from "../plugins/provider-runtime-model.types.js";
+import type { PluginRegistry } from "../plugins/registry-types.js";
+import { withPluginRuntimeGenerationRegistryScope } from "../plugins/runtime/generation-state.js";
 import { getPluginToolMeta } from "../plugins/tool-metadata.js";
 import type { DoctorToolSchemaFrame } from "./doctor-tool-schema-frames.js";
 import type { HealthFinding } from "./health-checks.js";
@@ -125,39 +127,38 @@ function agentRuntimeToolFailureFinding(params: {
 export async function collectAgentRuntimeToolSchemaFindings(
   params: DoctorToolSchemaFrame & {
     cfg: OpenClawConfig;
+    toolRegistry: PluginRegistry;
   },
 ): Promise<readonly HealthFinding[]> {
   let tools: AnyAgentTool[];
   try {
     const { createOpenClawCodingTools } = await import("../agents/agent-tools.js");
-    tools = createOpenClawCodingTools({
-      agentId: params.agentId,
-      agentDir: params.agentDir,
-      conversationCapabilityProfile: params.capabilityProfile,
-      workspaceDir: params.workspaceDir,
-      config: params.cfg,
-      modelProvider: params.modelRef.provider,
-      modelId: params.modelRef.model,
-      modelApi: params.model.api,
-      modelCompat: params.model.compat,
-      modelContextWindowTokens: params.model.contextWindow,
-      allowGatewaySubagentBinding: true,
-      emitBeforeToolCallDiagnostics: false,
-      ...buildInventoryContinuationToolOpts(
-        params.cfg.agents?.defaults?.continuation?.enabled === true,
-      ),
-    });
+    tools = withPluginRuntimeGenerationRegistryScope(params.toolRegistry, () =>
+      createOpenClawCodingTools({
+        agentId: params.agentId,
+        agentDir: params.agentDir,
+        conversationCapabilityProfile: params.capabilityProfile,
+        workspaceDir: params.workspaceDir,
+        config: params.cfg,
+        modelProvider: params.modelRef.provider,
+        modelId: params.modelRef.model,
+        modelApi: params.model.api,
+        modelCompat: params.model.compat,
+        modelContextWindowTokens: params.model.contextWindow,
+        allowGatewaySubagentBinding: true,
+        emitBeforeToolCallDiagnostics: false,
+        ...buildInventoryContinuationToolOpts(
+          params.cfg.agents?.defaults?.continuation?.enabled === true,
+        ),
+      }),
+    );
   } catch (error) {
     return [agentRuntimeToolFailureFinding({ agentId: params.agentId, error, phase: "load" })];
   }
 
   return collectNormalizedToolSchemaFindings({
-    agentId: params.agentId,
+    ...params,
     tools,
-    cfg: params.cfg,
-    workspaceDir: params.workspaceDir,
-    modelRef: params.modelRef,
-    model: params.model,
     normalizationFailureFinding: (error) =>
       agentRuntimeToolFailureFinding({
         agentId: params.agentId,

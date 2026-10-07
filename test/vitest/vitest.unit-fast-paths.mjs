@@ -291,7 +291,8 @@ const disqualifyingPatterns = [
   },
   {
     code: "runtime-singleton-state",
-    pattern: /\b(?:setActivePluginRegistry|resetPluginRuntimeStateForTest|reset.*ForTest)\s*\(/u,
+    pattern:
+      /\b(?:drainGlobalSingletonLifecycleState|setActivePluginRegistry|resetPluginRuntimeStateForTest|reset.*ForTest)\s*\(/u,
   },
 ];
 
