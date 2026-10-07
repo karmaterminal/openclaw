@@ -1,15 +1,10 @@
 /** Continuation-delegate spawn params: validation, child ids, launch fields, and registration fields. */
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
-import { getPluginRuntimeGatewayRequestScope } from "../../../plugins/runtime/gateway-request-scope.js";
 import { parseContinuationChildRunId } from "../../../shared/continuation-run-key.js";
 import {
   deriveContinuationDelegateChildRunId,
   deriveContinuationDelegateChildSessionKey,
 } from "../../subagent-continuation-ids.js";
-import {
-  getGatewayToolCallerIdentity,
-  resolveGatewayToolOperatorSelection,
-} from "../../tools/gateway-caller-context.js";
 import type { ContinuationSpawnParams } from "../announce/subagent-announce.runtime.js";
 import { prepareSubagentRunsByRunIds } from "../registry/subagent-registry.js";
 import {
@@ -191,23 +186,4 @@ export async function resolveSubagentContinuationLaunchError(
     validateSubagentContinuationSpawnParams(params) ??
     (await refuseRegisteredSubagentContinuationLaunch(params))
   );
-}
-
-/**
- * Resolves the spawn's Gateway binding and operator authority from the ambient caller.
- * The caller chain subsumes a single-source lookup; operatorAuthority is a
- * SEPARATE gate from continuationChainState -- chain state is accounting, never
- * authorization.
- */
-export function resolveSubagentSpawnOperatorBinding() {
-  const gatewayCaller = getGatewayToolCallerIdentity();
-  const gatewayScope = getPluginRuntimeGatewayRequestScope();
-  const gatewayContextResolver =
-    gatewayCaller?.gatewayContextResolver ??
-    gatewayScope?.resolveGatewayContext ??
-    gatewayScope?.context?.resolveGatewayContext;
-  const operatorAuthority =
-    resolveGatewayToolOperatorSelection().operatorAuthority ??
-    gatewayScope?.client?.internal?.operatorRunAuthority;
-  return { gatewayContextResolver, operatorAuthority };
 }

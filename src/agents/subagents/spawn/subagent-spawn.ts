@@ -40,7 +40,6 @@ import {
   returnsPhaselessSubagentSpawnCancel,
   resolveSubagentContinuationChildRunId,
   resolveSubagentContinuationChildSessionKey,
-  resolveSubagentSpawnOperatorBinding,
 } from "./subagent-spawn-continuation.js";
 import type {
   SpawnSubagentContext as BaseSpawnSubagentContext,
@@ -50,7 +49,7 @@ import type {
 import { prepareSubagentSpawnEnvelope } from "./subagent-spawn-envelope.js";
 import { resolveSubagentSpawnFailureLifecycleHooks } from "./subagent-spawn-failure-hooks.js";
 import { buildSubagentSpawnGatewayIdentity } from "./subagent-spawn-gateway-identity.js";
-import { readGatewayRunId } from "./subagent-spawn-gateway.js";
+import { captureSubagentSpawnGatewayContext, readGatewayRunId } from "./subagent-spawn-gateway.js";
 import { buildSubagentLaunchRequest } from "./subagent-spawn-launch-request.js";
 import { createSubagentSpawnLifecycleEmitter } from "./subagent-spawn-lifecycle.js";
 import {
@@ -81,11 +80,13 @@ export async function spawnSubagentDirect(
   const label = params.label?.trim() || "";
   const requestThreadBinding = params.thread === true;
   const sandboxMode = params.sandbox === "require" ? "require" : "inherit";
+  // Capture before any await. operatorAuthority is a separate gate from
+  // continuationChainState: chain state is accounting, never authorization.
+  const { gatewayContextResolver, operatorAuthority } = captureSubagentSpawnGatewayContext();
   const continuationLaunchError = await resolveSubagentContinuationLaunchError(params);
   if (continuationLaunchError) {
     return continuationLaunchError;
   }
-  const { gatewayContextResolver, operatorAuthority } = resolveSubagentSpawnOperatorBinding();
   const requestResolution = await resolveSubagentSpawnRequest(params, ctx);
   if (!requestResolution.ok) {
     return requestResolution.result;
