@@ -160,7 +160,7 @@ describe("requester settle wake rejection write", () => {
         kind: "settle",
         outcome: { delivered: false, path: "none" },
       });
-      expect(settled?.entries.map((entry) => entry.runId)).toEqual(["rejection-run"]);
+      expect(settled?.entries.map((batchEntry) => batchEntry.runId)).toEqual(["rejection-run"]);
     } finally {
       controller.clearScheduledResumeTimers();
       await origin.drain();
