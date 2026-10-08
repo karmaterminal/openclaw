@@ -35,8 +35,9 @@ import {
 } from "./session-delivery-queue-attachment-metadata.js";
 import {
   listSessionDeliverySummariesInDatabase,
-  quarantinePendingSessionDeliveryInDatabase,
-  requeueQuarantinedSessionDeliveryInDatabase,
+  quarantineSessionDeliveriesInDatabase,
+  requeueQuarantinedSessionDeliveriesInDatabase,
+  type SessionDeliveryBatchEntry,
   type SessionDeliveryInspectStatus,
   type SessionDeliverySummary,
 } from "./session-delivery-queue-quarantine.kernel.js";
@@ -332,12 +333,17 @@ export const sessionDeliveryOperations = {
     input: { statuses: SessionDeliveryInspectStatus[] },
     { open },
   ): SessionDeliverySummary[] => listSessionDeliverySummariesInDatabase(open(), input.statuses),
-  "sessionDelivery.quarantine": (input: { id: string; reason: string }, { open }) => {
-    const { id, reason } = input;
-    quarantinePendingSessionDeliveryInDatabase(open(), { id, reason, now: Date.now() });
+  "sessionDelivery.quarantineBatch": (
+    input: { entries: SessionDeliveryBatchEntry[]; reason: string },
+    { open },
+  ) => {
+    quarantineSessionDeliveriesInDatabase(open(), { ...input, now: Date.now() });
   },
-  "sessionDelivery.requeueQuarantined": (input: { id: string }, { open }) => {
-    requeueQuarantinedSessionDeliveryInDatabase(open(), { id: input.id, now: Date.now() });
+  "sessionDelivery.requeueQuarantinedBatch": (
+    input: { entries: SessionDeliveryBatchEntry[] },
+    { open },
+  ) => {
+    requeueQuarantinedSessionDeliveriesInDatabase(open(), { ...input, now: Date.now() });
   },
 } satisfies WorkerOperationHandlers;
 

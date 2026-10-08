@@ -6,8 +6,8 @@
 // time intact, and only the matching requeue returns it to `pending`.
 import { safeParseJsonRecord } from "@openclaw/normalization-core";
 import type { OpenClawStateDatabase } from "../state/openclaw-state-db-contract.js";
+import { sha256Hex } from "./crypto-digest.js";
 import type { DeliveryQueueDatabase } from "./delivery-queue-sqlite-bound.js";
-import { deliveryQueueEntryNotFoundError } from "./delivery-queue-sqlite.kernel.js";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
@@ -36,7 +36,78 @@ export type SessionDeliverySummary = {
   textLength: number | null;
   /** Set only for rows parked by operator quarantine. */
   quarantineReason: string | null;
+  /** Digest of the stored entry; batch transitions refuse rows changed since selection. */
+  entryDigest: string;
+  /** Why quarantine would refuse this row (shared predicate), or null when eligible. */
+  quarantineBlocker: string | null;
+  /** Why requeue would refuse this row (shared predicate), or null when eligible. */
+  requeueBlocker: string | null;
 };
+
+export type SessionDeliveryBatchAction = "quarantine" | "requeue";
+
+type EligibilityRow = {
+  status: string;
+  recovery_state: string | null;
+  last_error: string | null;
+  entry_json: string;
+};
+
+/**
+ * The single eligibility rule for operator transitions. The CLI applies it to its selection
+ * and the batch transaction re-applies it to every row, so a dry run predicts `--apply` exactly.
+ */
+export function resolveSessionDeliveryIneligibility(
+  action: SessionDeliveryBatchAction,
+  row: EligibilityRow | undefined,
+): string | null {
+  if (!row) {
+    return "not found in the session delivery queue";
+  }
+  if (action === "quarantine" && row.status !== "pending") {
+    return `not a pending session delivery (status ${row.status})`;
+  }
+  if (action === "requeue" && (row.status !== "failed" || !isOperatorQuarantine(row.last_error))) {
+    return `not quarantined by sessions deliveries quarantine (status ${row.status})`;
+  }
+  if (row.recovery_state !== null) {
+    return `owned by recovery settlement (recovery state ${row.recovery_state})`;
+  }
+  const entry = safeParseJsonRecord(row.entry_json);
+  if (!entry) {
+    return "has no decodable retained payload";
+  }
+  // Settlement-pending rows must be finalized by recovery, never parked or replayed by hand.
+  if (entry.settlementOutcome !== undefined || entry.acknowledgedAt !== undefined) {
+    return "owned by recovery settlement (settlement or acknowledgement recorded)";
+  }
+  return null;
+}
+
+export type SessionDeliveryBatchRefusal = { id: string; reason: string };
+
+/** Thrown when any row in a batch is ineligible; the whole transaction rolled back. */
+export class SessionDeliveryBatchRefusedError extends Error {
+  readonly code = "SESSION_DELIVERY_BATCH_REFUSED";
+  constructor(
+    readonly action: SessionDeliveryBatchAction,
+    readonly refusals: readonly SessionDeliveryBatchRefusal[],
+  ) {
+    super(formatSessionDeliveryBatchRefusal(action, refusals));
+    this.name = "SessionDeliveryBatchRefusedError";
+  }
+}
+
+export function formatSessionDeliveryBatchRefusal(
+  action: SessionDeliveryBatchAction,
+  refusals: readonly SessionDeliveryBatchRefusal[],
+): string {
+  return `Refusing sessions deliveries ${action}; nothing was changed. ${refusals
+    .map(({ id, reason }) => `${id}: ${reason}`)
+    .join("; ")}`;
+}
+
+export type SessionDeliveryBatchEntry = { id: string; entryDigest?: string };
 
 function queueDb(database: OpenClawStateDatabase) {
   return getNodeSqliteKysely<DeliveryQueueDatabase>(database.db);
@@ -92,6 +163,7 @@ export function listSessionDeliverySummariesInDatabase(
         "last_attempt_at",
         "last_error",
         "failed_at",
+        "recovery_state",
       ])
       .where("queue_name", "=", SESSION_DELIVERY_QUEUE_NAME)
       .where("status", "in", [...statuses])
@@ -114,117 +186,123 @@ export function listSessionDeliverySummariesInDatabase(
       textLength: resolveTextLength(entry),
       quarantineReason:
         row.status === "failed" && isOperatorQuarantine(row.last_error) ? row.last_error : null,
+      entryDigest: sha256Hex(row.entry_json),
+      quarantineBlocker: resolveSessionDeliveryIneligibility("quarantine", row),
+      requeueBlocker: resolveSessionDeliveryIneligibility("requeue", row),
     };
   });
 }
 
-/** Park one exact pending row as failed, preserving its payload so requeue can restore it. */
-export function quarantinePendingSessionDeliveryInDatabase(
+/**
+ * Validate every selected row, then transition all of them, inside one IMMEDIATE transaction.
+ * Any ineligible or changed row refuses the whole batch and rolls back, so nothing changes.
+ */
+function transitionSessionDeliveryBatch(
   database: OpenClawStateDatabase,
-  input: { id: string; reason: string; now: number },
+  action: SessionDeliveryBatchAction,
+  entries: readonly SessionDeliveryBatchEntry[],
+  transition: (row: EligibilityRow & { id: string }) => boolean,
+): void {
+  const ids = entries.map((entry) => entry.id);
+  if (ids.length === 0 || new Set(ids).size !== ids.length) {
+    throw new Error(`Session delivery ${action} batch needs distinct ids`);
+  }
+  runSqliteImmediateTransactionSync(
+    database.db,
+    () => {
+      const rows = entries.map((entry) => ({ entry, row: selectRow(database, entry.id) }));
+      const refusals: SessionDeliveryBatchRefusal[] = [];
+      for (const { entry, row } of rows) {
+        const reason =
+          resolveSessionDeliveryIneligibility(action, row) ??
+          (entry.entryDigest !== undefined && sha256Hex(row!.entry_json) !== entry.entryDigest
+            ? "changed since it was selected"
+            : null);
+        if (reason) {
+          refusals.push({ id: entry.id, reason });
+        }
+      }
+      if (refusals.length > 0) {
+        throw new SessionDeliveryBatchRefusedError(action, refusals);
+      }
+      for (const { entry, row } of rows) {
+        // Compare-and-set on the validated bytes; a miss aborts and rolls back the batch.
+        if (!transition(row!)) {
+          throw new SessionDeliveryBatchRefusedError(action, [
+            { id: entry.id, reason: "changed during the transition" },
+          ]);
+        }
+      }
+    },
+    { databaseLabel: "openclaw-state", operationLabel: `${action} session deliveries` },
+  );
+}
+
+/** Park every selected pending row as failed with its payload intact, or none of them. */
+export function quarantineSessionDeliveriesInDatabase(
+  database: OpenClawStateDatabase,
+  input: { entries: readonly SessionDeliveryBatchEntry[]; reason: string; now: number },
 ): void {
   if (!isOperatorQuarantine(input.reason)) {
     throw new Error(
       `Session delivery quarantine reason must start with ${SESSION_DELIVERY_QUARANTINE_REASON_PREFIX}`,
     );
   }
-  runSqliteImmediateTransactionSync(
-    database.db,
-    () => {
-      const row = selectRow(database, input.id);
-      if (row?.status === "failed" && row.last_error === input.reason) {
-        // A replayed request after its own commit settles as the same quarantine.
-        return;
-      }
-      if (row?.status !== "pending") {
-        throw deliveryQueueEntryNotFoundError(SESSION_DELIVERY_QUEUE_NAME, input.id);
-      }
-      // Recovery-owned states (settlement, send custody) must finish through recovery itself.
-      const entry = safeParseJsonRecord(row.entry_json);
-      if (
-        row.recovery_state !== null ||
-        entry?.settlementOutcome !== undefined ||
-        entry?.acknowledgedAt !== undefined
-      ) {
-        throw new Error(
-          `Session delivery ${input.id} is owned by recovery settlement and cannot be quarantined`,
-        );
-      }
-      const result = executeSqliteQuerySync(
-        database.db,
-        queueDb(database)
-          .updateTable("delivery_queue_entries")
-          .set({
-            status: "failed",
-            last_error: input.reason,
-            failed_at: input.now,
-            updated_at: input.now,
-          })
-          .where("queue_name", "=", SESSION_DELIVERY_QUEUE_NAME)
-          .where("id", "=", input.id)
-          .where("status", "=", "pending")
-          .where("recovery_state", "is", null)
-          .where("entry_json", "=", row.entry_json),
-      );
-      if (result.numAffectedRows !== 1n) {
-        throw deliveryQueueEntryNotFoundError(SESSION_DELIVERY_QUEUE_NAME, input.id);
-      }
-    },
-    { databaseLabel: "openclaw-state", operationLabel: "quarantine session delivery" },
-  );
+  transitionSessionDeliveryBatch(database, "quarantine", input.entries, (row) => {
+    const result = executeSqliteQuerySync(
+      database.db,
+      queueDb(database)
+        .updateTable("delivery_queue_entries")
+        .set({
+          status: "failed",
+          last_error: input.reason,
+          failed_at: input.now,
+          updated_at: input.now,
+        })
+        .where("queue_name", "=", SESSION_DELIVERY_QUEUE_NAME)
+        .where("id", "=", row.id)
+        .where("status", "=", "pending")
+        .where("recovery_state", "is", null)
+        .where("entry_json", "=", row.entry_json),
+    );
+    return result.numAffectedRows === 1n;
+  });
 }
 
-/** Return one operator-quarantined row to pending with its retry and failure state cleared. */
-export function requeueQuarantinedSessionDeliveryInDatabase(
+/** Return every selected operator-quarantined row to pending with retry state reset, or none. */
+export function requeueQuarantinedSessionDeliveriesInDatabase(
   database: OpenClawStateDatabase,
-  input: { id: string; now: number },
+  input: { entries: readonly SessionDeliveryBatchEntry[]; now: number },
 ): void {
-  runSqliteImmediateTransactionSync(
-    database.db,
-    () => {
-      const row = selectRow(database, input.id);
-      if (
-        row?.status !== "failed" ||
-        row.recovery_state !== null ||
-        !isOperatorQuarantine(row.last_error)
-      ) {
-        throw Object.assign(
-          new Error(`No operator-quarantined session delivery queue entry ${input.id}`),
-          { code: "ENOENT" },
-        );
-      }
-      const entry = safeParseJsonRecord(row.entry_json);
-      if (!entry) {
-        throw new Error(`Session delivery ${input.id} has no retained payload to requeue`);
-      }
-      // Keep key order so a row that was never charged round-trips byte-for-byte.
-      const restored: Record<string, unknown> = { ...entry, retryCount: 0 };
-      delete restored.lastError;
-      delete restored.lastAttemptAt;
-      const result = executeSqliteQuerySync(
-        database.db,
-        queueDb(database)
-          .updateTable("delivery_queue_entries")
-          .set({
-            status: "pending",
-            retry_count: 0,
-            last_attempt_at: null,
-            last_error: null,
-            failed_at: null,
-            updated_at: input.now,
-            entry_json: JSON.stringify(restored),
-          })
-          .where("queue_name", "=", SESSION_DELIVERY_QUEUE_NAME)
-          .where("id", "=", input.id)
-          .where("status", "=", "failed")
-          .where("recovery_state", "is", null)
-          .where("last_error", "=", row.last_error)
-          .where("entry_json", "=", row.entry_json),
-      );
-      if (result.numAffectedRows !== 1n) {
-        throw deliveryQueueEntryNotFoundError(SESSION_DELIVERY_QUEUE_NAME, input.id);
-      }
-    },
-    { databaseLabel: "openclaw-state", operationLabel: "requeue quarantined session delivery" },
-  );
+  transitionSessionDeliveryBatch(database, "requeue", input.entries, (row) => {
+    // Eligibility already proved the payload decodes; keep key order so an uncharged row
+    // round-trips byte-for-byte.
+    const restored: Record<string, unknown> = {
+      ...safeParseJsonRecord(row.entry_json),
+      retryCount: 0,
+    };
+    delete restored.lastError;
+    delete restored.lastAttemptAt;
+    const result = executeSqliteQuerySync(
+      database.db,
+      queueDb(database)
+        .updateTable("delivery_queue_entries")
+        .set({
+          status: "pending",
+          retry_count: 0,
+          last_attempt_at: null,
+          last_error: null,
+          failed_at: null,
+          updated_at: input.now,
+          entry_json: JSON.stringify(restored),
+        })
+        .where("queue_name", "=", SESSION_DELIVERY_QUEUE_NAME)
+        .where("id", "=", row.id)
+        .where("status", "=", "failed")
+        .where("recovery_state", "is", null)
+        .where("last_error", "=", row.last_error)
+        .where("entry_json", "=", row.entry_json),
+    );
+    return result.numAffectedRows === 1n;
+  });
 }

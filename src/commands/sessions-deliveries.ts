@@ -1,14 +1,16 @@
 // Operator commands for inspecting, quarantining and requeueing durable session deliveries.
-import fs from "node:fs/promises";
+import fs, { type FileHandle } from "node:fs/promises";
 import { sanitizeTerminalText } from "../../packages/terminal-core/src/safe-text.js";
 import { theme } from "../../packages/terminal-core/src/theme.js";
 import { runWithLocalStateOwner } from "../cli/local-state-owner.js";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import {
+  formatSessionDeliveryBatchRefusal,
   listSessionDeliverySummaries,
-  quarantineSessionDelivery,
-  requeueQuarantinedSessionDelivery,
+  quarantineSessionDeliveries,
+  requeueQuarantinedSessionDeliveries,
   SESSION_DELIVERY_QUARANTINE_REASON_PREFIX,
+  type SessionDeliveryBatchRefusal,
   type SessionDeliveryInspectStatus,
   type SessionDeliverySummary,
 } from "../infra/session-delivery-queue-storage.js";
@@ -35,7 +37,10 @@ export type SessionsDeliveriesMutationOptions = {
 type MutationAction = "quarantine" | "requeue";
 
 /** Listing shape: the idempotency key is reduced to its first segment and text to a length. */
-export type SessionDeliveryListRow = Omit<SessionDeliverySummary, "idempotencyKey"> & {
+export type SessionDeliveryListRow = Omit<
+  SessionDeliverySummary,
+  "idempotencyKey" | "entryDigest"
+> & {
   idempotencyPrefix: string | null;
 };
 
@@ -59,7 +64,13 @@ export type SessionDeliveriesReceipt = {
   dryRun: boolean;
   reason: string | null;
   selector: { ids?: string[]; idempotencyPrefix?: string; olderThanMs?: number };
+  /** True only when the batch transaction committed every row. */
+  applied: boolean;
   rows: ReceiptRow[];
+  /** Selected rows refused by the shared eligibility rule; any refusal blocks the whole batch. */
+  refused: SessionDeliveryBatchRefusal[];
+  /** Prefix matches left out because the shared eligibility rule rejects them. */
+  skipped: SessionDeliveryBatchRefusal[];
   error?: string;
 };
 
@@ -67,7 +78,11 @@ function idempotencyPrefixOf(key: string | null): string | null {
   return key === null ? null : (key.split(":")[0] ?? null);
 }
 
-function toListRow({ idempotencyKey, ...summary }: SessionDeliverySummary): SessionDeliveryListRow {
+function toListRow({
+  idempotencyKey,
+  entryDigest: _entryDigest,
+  ...summary
+}: SessionDeliverySummary): SessionDeliveryListRow {
   return { ...summary, idempotencyPrefix: idempotencyPrefixOf(idempotencyKey) };
 }
 
@@ -128,40 +143,114 @@ export function resolveSessionDeliveriesSelector(
   );
 }
 
+function blockerFor(action: MutationAction, row: SessionDeliverySummary): string | null {
+  return action === "quarantine" ? row.quarantineBlocker : row.requeueBlocker;
+}
+
+type Selection = {
+  selected: SessionDeliverySummary[];
+  refused: SessionDeliveryBatchRefusal[];
+  skipped: SessionDeliveryBatchRefusal[];
+};
+
+/** Apply the kernel's eligibility rule so a dry run reports exactly what `--apply` will do. */
 function selectRows(
-  candidates: readonly SessionDeliverySummary[],
+  summaries: readonly SessionDeliverySummary[],
   selector: Selector,
   action: MutationAction,
   now: number,
-): SessionDeliverySummary[] {
+): Selection {
   if (selector.kind === "ids") {
-    const byId = new Map(candidates.map((row) => [row.id, row]));
-    const missing = selector.ids.filter((id) => !byId.has(id));
-    if (missing.length > 0) {
-      throw new Error(
-        action === "quarantine"
-          ? `Not a pending session delivery: ${missing.join(", ")}. Nothing was changed.`
-          : `Not quarantined by sessions deliveries quarantine: ${missing.join(", ")}. Nothing was changed.`,
-      );
+    const byId = new Map(summaries.map((row) => [row.id, row]));
+    const selected: SessionDeliverySummary[] = [];
+    const refused: SessionDeliveryBatchRefusal[] = [];
+    for (const id of selector.ids) {
+      const row = byId.get(id);
+      const reason = row ? blockerFor(action, row) : "not found in the session delivery queue";
+      if (row) {
+        selected.push(row);
+      }
+      if (reason) {
+        refused.push({ id, reason });
+      }
     }
-    return selector.ids.map((id) => byId.get(id)!);
+    return { selected, refused, skipped: [] };
   }
   const cutoff = now - selector.olderThanMs;
-  return candidates.filter(
+  const statusBefore = action === "quarantine" ? "pending" : "failed";
+  const matches = summaries.filter(
     (row) =>
+      row.status === statusBefore &&
       row.idempotencyKey?.startsWith(selector.idempotencyPrefix) === true &&
       row.enqueuedAt <= cutoff,
   );
+  const skipped: SessionDeliveryBatchRefusal[] = [];
+  const selected = matches.filter((row) => {
+    const reason = blockerFor(action, row);
+    if (reason) {
+      skipped.push({ id: row.id, reason });
+    }
+    return reason === null;
+  });
+  return { selected, refused: [], skipped };
 }
 
-async function assertReceiptPathFree(receiptPath: string | undefined): Promise<void> {
+/**
+ * Claim the receipt file before any mutation: exclusive create with owner-only mode proves the
+ * path is new and writable, so a refused path stops the command while nothing has changed.
+ */
+async function openReceiptFile(receiptPath: string | undefined) {
   if (!receiptPath) {
+    return undefined;
+  }
+  try {
+    return await fs.open(receiptPath, "wx", 0o600);
+  } catch (error) {
+    throw new Error(
+      `Cannot create receipt file ${receiptPath}: ${error instanceof Error ? error.message : String(error)}. Choose a new, writable path. Nothing was changed.`,
+      { cause: error },
+    );
+  }
+}
+
+function printReceipt(
+  receipt: SessionDeliveriesReceipt,
+  options: SessionsDeliveriesMutationOptions,
+  runtime: RuntimeEnv,
+): void {
+  if (options.json) {
+    writeRuntimeJson(runtime, receipt);
     return;
   }
-  const existing = await fs.stat(receiptPath).catch(() => undefined);
-  if (existing) {
-    throw new Error(`Receipt path already exists: ${receiptPath}. Choose a new path.`);
+  const action = receipt.command.split(" ").at(-1);
+  runtime.log(
+    theme.heading(
+      receipt.applied
+        ? `${action === "quarantine" ? "Quarantined" : "Requeued"} ${receipt.rows.length} session deliveries`
+        : receipt.dryRun && !receipt.error
+          ? `Dry run: would ${action} ${receipt.rows.length} session deliveries (pass --apply to change them)`
+          : `Nothing was changed: ${action} of ${receipt.rows.length} session deliveries was not applied`,
+    ),
+  );
+  for (const row of receipt.rows) {
+    runtime.log(
+      `- ${sanitizeTerminalText(row.id)} session=${sanitizeTerminalText(row.sessionKey ?? "-")} enqueued=${new Date(row.enqueuedAt).toISOString()} textLength=${row.textLength ?? "-"} ${row.statusBefore} -> ${row.statusAfter}${row.applied ? "" : " (not applied)"}`,
+    );
   }
+  for (const { id, reason } of receipt.refused) {
+    runtime.log(`! refused ${sanitizeTerminalText(id)}: ${sanitizeTerminalText(reason)}`);
+  }
+  for (const { id, reason } of receipt.skipped) {
+    runtime.log(`~ skipped ${sanitizeTerminalText(id)}: ${sanitizeTerminalText(reason)}`);
+  }
+  if (receipt.error) {
+    runtime.log(`error: ${sanitizeTerminalText(receipt.error)}`);
+  }
+  runtime.log(
+    theme.muted(
+      `applied=${receipt.applied} dryRun=${receipt.dryRun} version=${receipt.version} commit=${receipt.commit ?? "unknown"} at=${receipt.generatedAt}${options.receipt ? ` receipt=${options.receipt}` : ""}`,
+    ),
+  );
 }
 
 async function runOwned<T>(
@@ -228,7 +317,32 @@ async function runMutation(
   const reason =
     action === "quarantine" ? `${SESSION_DELIVERY_QUARANTINE_REASON_PREFIX} ${reasonText}` : null;
   const dryRun = options.apply !== true;
-  await assertReceiptPathFree(options.receipt);
+  const receiptFile = await openReceiptFile(options.receipt);
+  try {
+    return await runMutationWithReceipt({
+      action,
+      options,
+      runtime,
+      selector,
+      reason,
+      dryRun,
+      receiptFile,
+    });
+  } finally {
+    await receiptFile?.close();
+  }
+}
+
+async function runMutationWithReceipt(params: {
+  action: MutationAction;
+  options: SessionsDeliveriesMutationOptions;
+  runtime: RuntimeEnv;
+  selector: Selector;
+  reason: string | null;
+  dryRun: boolean;
+  receiptFile: FileHandle | undefined;
+}): Promise<SessionDeliveriesReceipt> {
+  const { action, options, runtime, selector, reason, dryRun, receiptFile } = params;
   const receipt: SessionDeliveriesReceipt = {
     command: `sessions deliveries ${action}`,
     version: VERSION,
@@ -240,18 +354,19 @@ async function runMutation(
       selector.kind === "ids"
         ? { ids: selector.ids }
         : { idempotencyPrefix: selector.idempotencyPrefix, olderThanMs: selector.olderThanMs },
+    applied: false,
     rows: [],
+    refused: [],
+    skipped: [],
   };
   const statusBefore: SessionDeliveryInspectStatus = action === "quarantine" ? "pending" : "failed";
   const statusAfter: SessionDeliveryInspectStatus = action === "quarantine" ? "failed" : "pending";
   let failure: unknown;
   try {
     await runOwned(action, async (context, assertCurrent) => {
-      const summaries = await listSessionDeliverySummaries([statusBefore], context);
-      const candidates =
-        action === "quarantine" ? summaries : summaries.filter((row) => row.quarantineReason);
-      const selected = selectRows(candidates, selector, action, Date.now());
-      receipt.rows = selected.map((row) => ({
+      const summaries = await listSessionDeliverySummaries(["pending", "failed"], context);
+      const selection = selectRows(summaries, selector, action, Date.now());
+      receipt.rows = selection.selected.map((row) => ({
         id: row.id,
         sessionKey: row.sessionKey,
         entryKind: row.entryKind,
@@ -262,16 +377,24 @@ async function runMutation(
         statusAfter,
         applied: false,
       }));
-      if (dryRun) {
+      receipt.refused = selection.refused;
+      receipt.skipped = selection.skipped;
+      if (selection.refused.length > 0) {
+        throw new Error(formatSessionDeliveryBatchRefusal(action, selection.refused));
+      }
+      if (dryRun || selection.selected.length === 0) {
         return;
       }
+      assertCurrent();
+      // One worker op validates and transitions every row in a single IMMEDIATE transaction.
+      const entries = selection.selected.map(({ id, entryDigest }) => ({ id, entryDigest }));
+      if (action === "quarantine") {
+        await quarantineSessionDeliveries(entries, reason!, context);
+      } else {
+        await requeueQuarantinedSessionDeliveries(entries, context);
+      }
+      receipt.applied = true;
       for (const row of receipt.rows) {
-        assertCurrent();
-        if (action === "quarantine") {
-          await quarantineSessionDelivery(row.id, reason!, context);
-        } else {
-          await requeueQuarantinedSessionDelivery(row.id, context);
-        }
         row.applied = true;
       }
     });
@@ -279,34 +402,25 @@ async function runMutation(
     failure = error;
     receipt.error = error instanceof Error ? error.message : String(error);
   }
-  if (options.receipt && (receipt.rows.length > 0 || failure === undefined)) {
-    await fs.writeFile(options.receipt, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx" });
+  // stdout is the first record; the file copy follows and cannot erase it.
+  printReceipt(receipt, options, runtime);
+  if (receiptFile) {
+    try {
+      await receiptFile.writeFile(`${JSON.stringify(receipt, null, 2)}\n`, "utf8");
+      await receiptFile.sync();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        receipt.applied
+          ? `sessions deliveries ${action} WAS APPLIED to ${receipt.rows.length} rows and the receipt was printed above, but writing the receipt file ${options.receipt} failed: ${message}`
+          : `sessions deliveries ${action} changed nothing; the receipt was printed above, but writing the receipt file ${options.receipt} failed: ${message}`,
+        { cause: error },
+      );
+    }
   }
   if (failure !== undefined) {
     throw failure;
   }
-  if (options.json) {
-    writeRuntimeJson(runtime, receipt);
-    return receipt;
-  }
-  const verb = action === "quarantine" ? "quarantine" : "requeue";
-  runtime.log(
-    theme.heading(
-      dryRun
-        ? `Dry run: would ${verb} ${receipt.rows.length} session deliveries (pass --apply to change them)`
-        : `${verb === "quarantine" ? "Quarantined" : "Requeued"} ${receipt.rows.length} session deliveries`,
-    ),
-  );
-  for (const row of receipt.rows) {
-    runtime.log(
-      `- ${sanitizeTerminalText(row.id)} session=${sanitizeTerminalText(row.sessionKey ?? "-")} enqueued=${new Date(row.enqueuedAt).toISOString()} textLength=${row.textLength ?? "-"} ${row.statusBefore} -> ${row.statusAfter}${row.applied ? "" : " (not applied)"}`,
-    );
-  }
-  runtime.log(
-    theme.muted(
-      `version=${receipt.version} commit=${receipt.commit ?? "unknown"} at=${receipt.generatedAt}${options.receipt ? ` receipt=${options.receipt}` : ""}`,
-    ),
-  );
   return receipt;
 }
 

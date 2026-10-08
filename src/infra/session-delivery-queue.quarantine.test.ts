@@ -16,13 +16,19 @@ import {
   failSessionDelivery,
   listSessionDeliverySummaries,
   loadPendingSessionDeliveries,
-  quarantineSessionDelivery,
-  requeueQuarantinedSessionDelivery,
+  quarantineSessionDeliveries,
+  requeueQuarantinedSessionDeliveries,
   SESSION_DELIVERY_QUARANTINE_REASON_PREFIX,
 } from "./session-delivery-queue-storage.js";
 import { withSessionDeliveryQueue } from "./session-delivery-queue.test-helpers.js";
 
 const REASON = `${SESSION_DELIVERY_QUARANTINE_REASON_PREFIX} test`;
+
+type QueueContext = Parameters<typeof quarantineSessionDeliveries>[2];
+const quarantineSessionDelivery = (id: string, reason: string, context: QueueContext) =>
+  quarantineSessionDeliveries([{ id }], reason, context);
+const requeueQuarantinedSessionDelivery = (id: string, context: QueueContext) =>
+  requeueQuarantinedSessionDeliveries([{ id }], context);
 
 type RawRow = Record<string, unknown> & { entry_json: string };
 
@@ -183,10 +189,10 @@ describe("session delivery operator quarantine", () => {
       const before = readRawRow(stateDir, foreign);
 
       await expect(requeueQuarantinedSessionDelivery(foreign, queueContext)).rejects.toThrow(
-        "No operator-quarantined session delivery",
+        `${foreign}: not quarantined by sessions deliveries quarantine (status failed)`,
       );
       await expect(requeueQuarantinedSessionDelivery(pending, queueContext)).rejects.toThrow(
-        "No operator-quarantined session delivery",
+        `${pending}: not quarantined by sessions deliveries quarantine (status pending)`,
       );
       expect(readRawRow(stateDir, foreign)).toStrictEqual(before);
       expect(readRawRow(stateDir, pending)).toMatchObject({ status: "pending" });
@@ -203,13 +209,17 @@ describe("session delivery operator quarantine", () => {
         SESSION_DELIVERY_QUARANTINE_REASON_PREFIX,
       );
       await expect(quarantineSessionDelivery("missing", REASON, queueContext)).rejects.toThrow(
-        "No pending session delivery queue entry missing",
+        "missing: not found in the session delivery queue",
       );
       expect(readRawRow(stateDir, id)).toMatchObject({ status: "pending", last_error: null });
-      // Replaying the same quarantine after it committed settles idempotently.
       await quarantineSessionDelivery(id, REASON, queueContext);
-      await quarantineSessionDelivery(id, REASON, queueContext);
-      expect(readRawRow(stateDir, id)).toMatchObject({ status: "failed", last_error: REASON });
+      const quarantined = readRawRow(stateDir, id);
+      expect(quarantined).toMatchObject({ status: "failed", last_error: REASON });
+      // A second quarantine of an already-parked row is refused, not silently accepted.
+      await expect(quarantineSessionDelivery(id, REASON, queueContext)).rejects.toThrow(
+        `${id}: not a pending session delivery (status failed)`,
+      );
+      expect(readRawRow(stateDir, id)).toStrictEqual(quarantined);
     });
   });
 
@@ -229,6 +239,78 @@ describe("session delivery operator quarantine", () => {
         "owned by recovery settlement",
       );
       expect(readRawRow(stateDir, id)).toMatchObject({ status: "pending" });
+    });
+  });
+
+  it("quarantines a batch atomically: a recovery-owned second row refuses the whole batch", async () => {
+    await withSessionDeliveryQueue(async (stateDir, queueContext) => {
+      const first = await enqueueSessionDelivery(
+        { kind: "systemEvent", sessionKey: "agent:main:main", text: "first" },
+        queueContext,
+      );
+      const second = await enqueueSessionDelivery(
+        { kind: "systemEvent", sessionKey: "agent:main:main", text: "second" },
+        queueContext,
+      );
+      const entry = (await loadPendingSessionDeliveries(queueContext)).find((e) => e.id === second);
+      seedDeliveryQueueEntry({
+        queueName: "session",
+        entry: { ...entry!, settlementOutcome: "recovered" },
+        stateDir,
+      });
+      const before = [readRawRow(stateDir, first), readRawRow(stateDir, second)];
+
+      await expect(
+        quarantineSessionDeliveries([{ id: first }, { id: second }], REASON, queueContext),
+      ).rejects.toThrow(
+        `Refusing sessions deliveries quarantine; nothing was changed. ${second}: owned by recovery settlement`,
+      );
+      expect([readRawRow(stateDir, first), readRawRow(stateDir, second)]).toStrictEqual(before);
+      expect(before[0]).toMatchObject({ status: "pending" });
+    });
+  });
+
+  it("requeues a batch atomically: a foreign failed second row refuses the whole batch", async () => {
+    await withSessionDeliveryQueue(async (stateDir, queueContext) => {
+      const first = await enqueueSessionDelivery(
+        { kind: "systemEvent", sessionKey: "agent:main:main", text: "first" },
+        queueContext,
+      );
+      const second = await enqueueSessionDelivery(
+        { kind: "systemEvent", sessionKey: "agent:main:main", text: "second" },
+        queueContext,
+      );
+      await quarantineSessionDelivery(first, REASON, queueContext);
+      markFailedForeign(stateDir, second, "delivery exhausted");
+      const before = [readRawRow(stateDir, first), readRawRow(stateDir, second)];
+
+      await expect(
+        requeueQuarantinedSessionDeliveries([{ id: first }, { id: second }], queueContext),
+      ).rejects.toThrow(
+        `Refusing sessions deliveries requeue; nothing was changed. ${second}: not quarantined by sessions deliveries quarantine`,
+      );
+      expect([readRawRow(stateDir, first), readRawRow(stateDir, second)]).toStrictEqual(before);
+      expect(before[0]).toMatchObject({ status: "failed", last_error: REASON });
+    });
+  });
+
+  it("refuses a batch whose row changed since selection", async () => {
+    await withSessionDeliveryQueue(async (stateDir, queueContext) => {
+      const id = await enqueueSessionDelivery(
+        { kind: "systemEvent", sessionKey: "agent:main:main", text: "a" },
+        queueContext,
+      );
+      const [summary] = await listSessionDeliverySummaries(["pending"], queueContext);
+      await failSessionDelivery(id, "transient", queueContext);
+      const before = readRawRow(stateDir, id);
+      await expect(
+        quarantineSessionDeliveries(
+          [{ id, entryDigest: summary!.entryDigest }],
+          REASON,
+          queueContext,
+        ),
+      ).rejects.toThrow(`${id}: changed since it was selected`);
+      expect(readRawRow(stateDir, id)).toStrictEqual(before);
     });
   });
 });

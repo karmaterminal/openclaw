@@ -672,7 +672,11 @@ export async function moveSessionDeliveryToFailed(
 }
 
 export {
+  formatSessionDeliveryBatchRefusal,
   SESSION_DELIVERY_QUARANTINE_REASON_PREFIX,
+  SessionDeliveryBatchRefusedError,
+  type SessionDeliveryBatchAction,
+  type SessionDeliveryBatchRefusal,
   type SessionDeliveryInspectStatus,
   type SessionDeliverySummary,
 } from "./session-delivery-queue-quarantine.kernel.js";
@@ -685,25 +689,25 @@ export async function listSessionDeliverySummaries(
   return executeSessionDelivery(context, { type: "sessionDelivery.inspect", input: { statuses } });
 }
 
-/** Reversibly park one pending delivery as failed with an `operator-quarantine:` reason. */
-export async function quarantineSessionDelivery(
-  id: string,
+/** Atomically park every selected pending delivery as failed, or refuse and change nothing. */
+export async function quarantineSessionDeliveries(
+  entries: SessionDeliveryWorkerOperations["sessionDelivery.quarantineBatch"]["input"]["entries"],
   reason: string,
   context: OpenClawStateWorkerContext,
 ): Promise<void> {
   return executeSessionDelivery(context, {
-    type: "sessionDelivery.quarantine",
-    input: { id, reason },
+    type: "sessionDelivery.quarantineBatch",
+    input: { entries, reason },
   });
 }
 
-/** Return one operator-quarantined delivery to pending with retry and failure state cleared. */
-export async function requeueQuarantinedSessionDelivery(
-  id: string,
+/** Atomically requeue every selected operator-quarantined delivery, or refuse and change nothing. */
+export async function requeueQuarantinedSessionDeliveries(
+  entries: SessionDeliveryWorkerOperations["sessionDelivery.requeueQuarantinedBatch"]["input"]["entries"],
   context: OpenClawStateWorkerContext,
 ): Promise<void> {
   return executeSessionDelivery(context, {
-    type: "sessionDelivery.requeueQuarantined",
-    input: { id },
+    type: "sessionDelivery.requeueQuarantinedBatch",
+    input: { entries },
   });
 }
