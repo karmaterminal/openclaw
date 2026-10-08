@@ -26,6 +26,27 @@ import {
   sessionsDeliveriesRequeueCommand,
 } from "./sessions-deliveries.js";
 
+// Seams around the real batch worker call: simulate races before dispatch and a lost
+// acknowledgement after the worker committed. Both default to pass-through.
+const batchSeams = vi.hoisted(() => ({
+  beforeDispatch: undefined as undefined | (() => void),
+  afterCommit: undefined as undefined | (() => void),
+}));
+vi.mock("../infra/session-delivery-queue-storage.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../infra/session-delivery-queue-storage.js")>();
+  return {
+    ...actual,
+    quarantineSessionDeliveries: async (
+      ...args: Parameters<typeof actual.quarantineSessionDeliveries>
+    ) => {
+      batchSeams.beforeDispatch?.();
+      await actual.quarantineSessionDeliveries(...args);
+      batchSeams.afterCommit?.();
+    },
+  };
+});
+
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const SECRET = "secret-continuation-body";
 const HOUR = 60 * 60_000;
@@ -119,6 +140,8 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  batchSeams.beforeDispatch = undefined;
+  batchSeams.afterCommit = undefined;
   vi.restoreAllMocks();
   await closeOpenClawStateDatabaseAsync();
   resetConfigRuntimeState();
@@ -421,5 +444,92 @@ describe("sessions deliveries", () => {
     expect(printed).not.toContain(SECRET);
     // The pre-created file exists with owner-only permissions; the stdout receipt is the record.
     expect(fs.statSync(receiptPath).mode & 0o777).toBe(0o600);
+  });
+
+  it("reports an unknown outcome when the worker fails after committing the batch", async () => {
+    const first = await seed({ key: "continuation-return:a", ageMs: 30 * HOUR });
+    const second = await seed({ key: "continuation-return:b", ageMs: 30 * HOUR });
+    batchSeams.afterCommit = () => {
+      throw new Error("state worker acknowledgement lost");
+    };
+    const receiptPath = path.join(stateDir, "unknown-receipt.json");
+    const { runtime, logs } = createRuntime();
+
+    const outcome = sessionsDeliveriesQuarantineCommand(
+      { id: [first, second], apply: true, receipt: receiptPath },
+      runtime,
+    );
+    await expect(outcome).rejects.toThrow(
+      "outcome unknown; inspect the exact IDs with `openclaw sessions deliveries list` before retrying",
+    );
+    await expect(outcome).rejects.toThrow(`(${first}, ${second})`);
+    await expect(outcome).rejects.not.toThrow("nothing was changed");
+    // The transaction really committed before the acknowledgement failed.
+    expect(rowById(first)).toMatchObject({ status: "failed" });
+    expect(rowById(second)).toMatchObject({ status: "failed" });
+    const printed = logs.join("\n");
+    expect(printed).toContain("outcome unknown; inspect the exact IDs");
+    expect(printed).not.toMatch(/nothing was changed/iu);
+    expect(JSON.parse(fs.readFileSync(receiptPath, "utf8"))).toMatchObject({
+      applied: "unknown",
+      rows: [
+        { id: first, applied: "unknown" },
+        { id: second, applied: "unknown" },
+      ],
+    });
+  });
+
+  it("still says nothing was changed for a batch refusal raised inside the transaction", async () => {
+    const first = await seed({ key: "continuation-return:a", ageMs: 30 * HOUR });
+    const second = await seed({ key: "continuation-return:b", ageMs: 30 * HOUR });
+    // Passes the CLI pre-check, then changes before dispatch so the kernel's digest check refuses.
+    batchSeams.beforeDispatch = () => {
+      const { db } = openOpenClawStateDatabase({ env: env() });
+      db.prepare(
+        "UPDATE delivery_queue_entries SET entry_json = json_set(entry_json, '$.text', 'raced') WHERE queue_name = 'session' AND id = ?",
+      ).run(second);
+    };
+    const receiptPath = path.join(stateDir, "kernel-refusal.json");
+    const { runtime, logs } = createRuntime();
+
+    await expect(
+      sessionsDeliveriesQuarantineCommand(
+        { id: [first, second], apply: true, receipt: receiptPath },
+        runtime,
+      ),
+    ).rejects.toThrow(
+      `Refusing sessions deliveries quarantine; nothing was changed. ${second}: changed since it was selected`,
+    );
+    expect(rowById(first)).toMatchObject({ status: "pending" });
+    expect(rowById(second)).toMatchObject({ status: "pending" });
+    expect(logs.join("\n")).toContain("Nothing was changed: quarantine of 2 session deliveries");
+    expect(logs.join("\n")).not.toContain("outcome unknown");
+    expect(JSON.parse(fs.readFileSync(receiptPath, "utf8"))).toMatchObject({
+      applied: false,
+      rows: [
+        { id: first, applied: false },
+        { id: second, applied: false },
+      ],
+    });
+  });
+
+  it("still says nothing was changed for a refusal before dispatch", async () => {
+    const first = await seed({ key: "continuation-return:a", ageMs: 30 * HOUR });
+    let dispatched = false;
+    batchSeams.beforeDispatch = () => {
+      dispatched = true;
+    };
+    const before = readRows();
+    const { runtime, logs } = createRuntime();
+
+    await expect(
+      sessionsDeliveriesQuarantineCommand({ id: [first, "missing-id"], apply: true }, runtime),
+    ).rejects.toThrow(
+      "Refusing sessions deliveries quarantine; nothing was changed. missing-id: not found in the session delivery queue",
+    );
+    expect(dispatched).toBe(false);
+    expect(readRows()).toStrictEqual(before);
+    expect(logs.join("\n")).toContain("Nothing was changed: quarantine of 1 session deliveries");
+    expect(logs.join("\n")).not.toContain("outcome unknown");
   });
 });

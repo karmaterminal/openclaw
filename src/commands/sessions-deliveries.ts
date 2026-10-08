@@ -53,8 +53,10 @@ type ReceiptRow = {
   textLength: number | null;
   statusBefore: SessionDeliveryInspectStatus;
   statusAfter: SessionDeliveryInspectStatus;
-  applied: boolean;
+  applied: ReceiptApplied;
 };
+
+type ReceiptApplied = boolean | "unknown";
 
 export type SessionDeliveriesReceipt = {
   command: `sessions deliveries ${MutationAction}`;
@@ -64,8 +66,12 @@ export type SessionDeliveriesReceipt = {
   dryRun: boolean;
   reason: string | null;
   selector: { ids?: string[]; idempotencyPrefix?: string; olderThanMs?: number };
-  /** True only when the batch transaction committed every row. */
-  applied: boolean;
+  /**
+   * True only when the batch transaction committed every row. `"unknown"` means the batch was
+   * dispatched and the worker failed with something other than a batch refusal, so it may have
+   * committed; inspect the listed ids with `list`.
+   */
+  applied: ReceiptApplied;
   rows: ReceiptRow[];
   /** Selected rows refused by the shared eligibility rule; any refusal blocks the whole batch. */
   refused: SessionDeliveryBatchRefusal[];
@@ -140,6 +146,18 @@ export function resolveSessionDeliveriesSelector(
   }
   throw new Error(
     "Refusing to select rows implicitly. Pass --id <id> (repeatable), or --idempotency-prefix <prefix> with --older-than <duration>.",
+  );
+}
+
+/** A refusal raised by the batch transaction itself: it rolled back, so nothing changed. */
+function isSessionDeliveryBatchRefusal(error: unknown, action: MutationAction): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  // The worker boundary may not preserve the class, so also accept the kernel's exact prefix.
+  return (
+    (error as { code?: unknown }).code === "SESSION_DELIVERY_BATCH_REFUSED" ||
+    error.message.startsWith(formatSessionDeliveryBatchRefusal(action, []))
   );
 }
 
@@ -225,16 +243,18 @@ function printReceipt(
   const action = receipt.command.split(" ").at(-1);
   runtime.log(
     theme.heading(
-      receipt.applied
+      receipt.applied === true
         ? `${action === "quarantine" ? "Quarantined" : "Requeued"} ${receipt.rows.length} session deliveries`
         : receipt.dryRun && !receipt.error
           ? `Dry run: would ${action} ${receipt.rows.length} session deliveries (pass --apply to change them)`
-          : `Nothing was changed: ${action} of ${receipt.rows.length} session deliveries was not applied`,
+          : receipt.applied === "unknown"
+            ? `${action} of ${receipt.rows.length} session deliveries: outcome unknown; inspect the exact IDs with \`openclaw sessions deliveries list\` before retrying`
+            : `Nothing was changed: ${action} of ${receipt.rows.length} session deliveries was not applied`,
     ),
   );
   for (const row of receipt.rows) {
     runtime.log(
-      `- ${sanitizeTerminalText(row.id)} session=${sanitizeTerminalText(row.sessionKey ?? "-")} enqueued=${new Date(row.enqueuedAt).toISOString()} textLength=${row.textLength ?? "-"} ${row.statusBefore} -> ${row.statusAfter}${row.applied ? "" : " (not applied)"}`,
+      `- ${sanitizeTerminalText(row.id)} session=${sanitizeTerminalText(row.sessionKey ?? "-")} enqueued=${new Date(row.enqueuedAt).toISOString()} textLength=${row.textLength ?? "-"} ${row.statusBefore} -> ${row.statusAfter}${row.applied === true ? "" : row.applied === "unknown" ? " (outcome unknown)" : " (not applied)"}`,
     );
   }
   for (const { id, reason } of receipt.refused) {
@@ -388,10 +408,25 @@ async function runMutationWithReceipt(params: {
       assertCurrent();
       // One worker op validates and transitions every row in a single IMMEDIATE transaction.
       const entries = selection.selected.map(({ id, entryDigest }) => ({ id, entryDigest }));
-      if (action === "quarantine") {
-        await quarantineSessionDeliveries(entries, reason!, context);
-      } else {
-        await requeueQuarantinedSessionDeliveries(entries, context);
+      try {
+        if (action === "quarantine") {
+          await quarantineSessionDeliveries(entries, reason!, context);
+        } else {
+          await requeueQuarantinedSessionDeliveries(entries, context);
+        }
+      } catch (error) {
+        if (isSessionDeliveryBatchRefusal(error, action)) {
+          throw error;
+        }
+        // The worker may have committed before its acknowledgement or transport failed.
+        receipt.applied = "unknown";
+        for (const row of receipt.rows) {
+          row.applied = "unknown";
+        }
+        throw new Error(
+          `sessions deliveries ${action}: outcome unknown; inspect the exact IDs with \`openclaw sessions deliveries list\` before retrying (${entries.map((entry) => entry.id).join(", ")}). The state worker failed after dispatch: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
       }
       receipt.applied = true;
       for (const row of receipt.rows) {
@@ -411,9 +446,11 @@ async function runMutationWithReceipt(params: {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
-        receipt.applied
+        receipt.applied === true
           ? `sessions deliveries ${action} WAS APPLIED to ${receipt.rows.length} rows and the receipt was printed above, but writing the receipt file ${options.receipt} failed: ${message}`
-          : `sessions deliveries ${action} changed nothing; the receipt was printed above, but writing the receipt file ${options.receipt} failed: ${message}`,
+          : receipt.applied === "unknown"
+            ? `sessions deliveries ${action}: outcome unknown; inspect the exact IDs with \`openclaw sessions deliveries list\` before retrying. The receipt was printed above, but writing the receipt file ${options.receipt} failed: ${message}`
+            : `sessions deliveries ${action} changed nothing; the receipt was printed above, but writing the receipt file ${options.receipt} failed: ${message}`,
         { cause: error },
       );
     }
