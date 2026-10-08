@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   sessionsArchiveCommand: vi.fn(),
   sessionsDeleteCommand: vi.fn(),
   exportTrajectoryCommand: vi.fn(),
+  sessionsDeliveriesListCommand: vi.fn(),
+  sessionsDeliveriesQuarantineCommand: vi.fn(),
+  sessionsDeliveriesRequeueCommand: vi.fn(),
   ownerLoaded: vi.fn(),
   setVerbose: vi.fn(),
   runtime: { log: vi.fn(), error: vi.fn(), exit: vi.fn() },
@@ -42,6 +45,15 @@ vi.mock("../../commands/sessions-lifecycle.js", () => {
 vi.mock("../../commands/export-trajectory.js", () => {
   mocks.ownerLoaded();
   return { exportTrajectoryCommand: mocks.exportTrajectoryCommand };
+});
+vi.mock("../../commands/sessions-deliveries.js", async (importOriginal) => {
+  mocks.ownerLoaded();
+  return {
+    ...(await importOriginal<typeof import("../../commands/sessions-deliveries.js")>()),
+    sessionsDeliveriesListCommand: mocks.sessionsDeliveriesListCommand,
+    sessionsDeliveriesQuarantineCommand: mocks.sessionsDeliveriesQuarantineCommand,
+    sessionsDeliveriesRequeueCommand: mocks.sessionsDeliveriesRequeueCommand,
+  };
 });
 vi.mock("../../globals.js", () => ({ setVerbose: mocks.setVerbose }));
 vi.mock("../../runtime.js", async (importOriginal) => ({
@@ -280,5 +292,38 @@ describe("registerStatusHealthSessionsCommands", () => {
     expect(help).toContain("openclaw memory forget --agent <agent-id> --session <id-or-key>");
     expect(help).toContain("on the Gateway host or container using its state and configuration");
     expect(help).toContain("including for global keys");
+  });
+  it("forwards sessions deliveries list, quarantine and requeue options", async () => {
+    await run("sessions deliveries list --status failed --json");
+    expectOptions(mocks.sessionsDeliveriesListCommand, { status: "failed", json: true });
+    await run([
+      "sessions",
+      "deliveries",
+      "quarantine",
+      "--id",
+      "a",
+      "--id",
+      "b",
+      "--reason",
+      "fleet backlog",
+      "--apply",
+      "--receipt",
+      "./r.json",
+    ]);
+    expectOptions(mocks.sessionsDeliveriesQuarantineCommand, {
+      id: ["a", "b"],
+      reason: "fleet backlog",
+      apply: true,
+      receipt: "./r.json",
+    });
+    await run(
+      "sessions deliveries requeue --idempotency-prefix continuation-return: --older-than 6h",
+    );
+    expectOptions(mocks.sessionsDeliveriesRequeueCommand, {
+      id: [],
+      idempotencyPrefix: "continuation-return:",
+      olderThan: "6h",
+      apply: false,
+    });
   });
 });
