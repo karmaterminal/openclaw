@@ -69,6 +69,7 @@ const inProcessDispatchMock = vi.hoisted(() =>
   ),
 );
 
+// mock-isolation: Gateway calls get scripted replies; no live Gateway is contacted.
 vi.mock("../gateway/call.js", () => ({
   callGateway: (...args: [GatewayRequest]) => callGatewayMock(...args),
 }));
@@ -253,12 +254,14 @@ function installRecordingContinuationTracer(): RecordedContinuationSpan[] {
 // bounded continuation handoff; browser cleanup has owner tests. The registry
 // reaches this through loadSubagentBrowserCleanupModule(), so the mock has to sit
 // at the module boundary rather than on an injected dependency.
+// mock-isolation: Browser cleanup has owner tests; these cases load no browser plugin.
 vi.mock("../browser-lifecycle-cleanup.js", () => ({
   cleanupBrowserSessionsForLifecycleEnd: vi.fn(async () => {}),
 }));
 // Context-engine end-of-run notification activates the whole agent plugin
 // runtime (every bundled provider). Plugin activation has its own owner tests
 // and is not part of the continuation chain under proof.
+// mock-isolation: Plugin runtime activation has owner tests; these cases load no plugins.
 vi.mock("./runtime-plugins.js", () => ({
   loadAgentRuntimePluginRegistryHandle: vi.fn(),
 }));

@@ -10,6 +10,7 @@ import { AsyncWorkScope, trackAsyncWork } from "../shared/async-work-scope.js";
 
 const tracked: Array<PromiseSettledResult<string>> = [];
 
+// mock-isolation: Delegate dispatch is recorded without spawning delegates.
 vi.mock("../auto-reply/continuation/delegate-dispatch.js", () => ({
   dispatchToolDelegates: vi.fn(async (params: DelegateDispatchParams) => {
     // Spawn preparation tracks its async work on the current scope.
@@ -21,6 +22,7 @@ vi.mock("../auto-reply/continuation/delegate-dispatch.js", () => ({
   }),
 }));
 
+// mock-isolation: Delivery and requester lookups are scripted; the real module reads the session store and delivers to channels.
 vi.mock("./subagents/announce/subagent-announce-delivery.js", () => ({
   loadSessionEntryByKey: () => undefined,
 }));

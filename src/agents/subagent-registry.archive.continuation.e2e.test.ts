@@ -31,6 +31,7 @@ const flushSweepMicrotasks = async () => {
   await Promise.resolve();
 };
 
+// mock-isolation: Gateway calls get scripted replies; no live Gateway is contacted.
 vi.mock("../gateway/call.js", () => ({
   callGateway: vi.fn(async (request: unknown) => {
     const method = (request as { method?: string }).method;
@@ -51,12 +52,14 @@ vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
   };
 });
 
+// mock-isolation: A fixed lifecycle generation replaces the process-wide agent event bus.
 vi.mock("../infra/agent-events.js", () => ({
   getAgentEventLifecycleGeneration: () => "test-generation",
   isAgentEventLifecycleGenerationCurrent: (generation: string) => generation === "test-generation",
   onAgentEvent: vi.fn((_handler: unknown) => noop),
   registerAgentEventLifecycleRotationHandler: vi.fn(),
 }));
+// mock-isolation: No agent run context exists; the real registry is process-wide state.
 vi.mock("../infra/agent-run-registry.js", () => ({
   getAgentRunContext: vi.fn(() => undefined),
 }));
@@ -69,11 +72,13 @@ vi.mock("../config/config.js", async () => {
   };
 });
 
+// mock-isolation: Live custody checks come from the test; the real store reads continuation custody.
 vi.mock("../auto-reply/continuation/work-store.js", () => ({
   hasLiveContinuationCustody: hasLiveContinuationCustodyMock,
   hasLiveOrRecentlyDispatchedContinuationWork: hasLiveOrRecentlyDispatchedContinuationWorkMock,
 }));
 
+// mock-isolation: Announce flows are recorded without delivering through the Gateway.
 vi.mock("./subagents/announce/subagent-announce.js", () => ({
   runSubagentAnnounceFlow: vi.fn(async () => true),
   // loadSubagentAnnounceModule() is typed as a Pick of exactly these two, so this
@@ -81,6 +86,7 @@ vi.mock("./subagents/announce/subagent-announce.js", () => ({
   captureSubagentCompletionReply: vi.fn(async () => undefined),
 }));
 
+// mock-isolation: Settled children complete their batch without waking a requester session.
 vi.mock("./subagents/announce/subagent-announce.requester-settle-wake.js", () => ({
   maybeWakeRequesterAfterAllChildrenSettled: vi.fn(
     async (params: {
@@ -93,10 +99,12 @@ vi.mock("./subagents/announce/subagent-announce.requester-settle-wake.js", () =>
   ),
 }));
 
+// mock-isolation: Plugin runtime activation has owner tests; these cases load no plugins.
 vi.mock("./runtime-plugins.js", () => ({
   loadAgentRuntimePluginRegistryHandle: vi.fn(),
 }));
 
+// mock-isolation: No plugin hooks are registered, so plugin hooks never run.
 vi.mock("../plugins/hook-runner-global.js", () => ({
   getGlobalHookRunner: vi.fn(() => null),
 }));

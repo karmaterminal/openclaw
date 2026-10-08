@@ -17,6 +17,7 @@ vi.mock("./subagents/announce/subagent-announce.runtime.js", async (importOrigin
   readSessionMessagesAsync: vi.fn(async () => []),
 }));
 
+// mock-isolation: Gateway calls get scripted replies; no live Gateway is contacted.
 vi.mock("../gateway/call.js", () => ({
   callGateway: vi.fn(async (request: Record<string, unknown>) => {
     if (request.method === "chat.history") {
@@ -26,10 +27,12 @@ vi.mock("../gateway/call.js", () => ({
   }),
 }));
 
+// mock-isolation: Subagent depth is fixed by the test instead of read from the session store.
 vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: () => 1,
 }));
 
+// mock-isolation: Embedded agent runs are scripted; no agent session or provider runs.
 vi.mock("./embedded-agent.js", () => ({
   isEmbeddedAgentRunActive: () => false,
   queueEmbeddedAgentMessage: () => false,
@@ -62,6 +65,7 @@ vi.mock("../auto-reply/continuation/state.js", async (importOriginal) => ({
   unregisterContinuationTimerHandle: vi.fn(),
 }));
 
+// mock-isolation: Delegate custody is scripted; only the pure spawn-result classifier comes from the real store.
 vi.mock("../auto-reply/continuation/delegate-store.js", async (importOriginal) => ({
   annotateQueuedDelegatesChainTokensFold: vi.fn(async () => 0),
   clearQueuedDelegatesChainTokensFold: vi.fn(async () => 0),
@@ -78,6 +82,7 @@ vi.mock("../auto-reply/continuation/delegate-store.js", async (importOriginal) =
   ).spawnResultNeverDispatched,
 }));
 
+// mock-isolation: Post-compaction delegate staging and cleanup are recorded without the custody store.
 vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", () => ({
   failStagedPostCompactionDelegatesForCleanup: vi.fn(() => 0),
   stagePostCompactionDelegate: vi.fn(),
@@ -93,6 +98,7 @@ const { dispatchToolDelegatesMock } = vi.hoisted(() => ({
   ),
 }));
 
+// mock-isolation: Delegate dispatch is recorded without spawning delegates.
 vi.mock("../auto-reply/continuation/delegate-dispatch.js", () => ({
   dispatchToolDelegates: (params: DispatchToolDelegatesParams) => dispatchToolDelegatesMock(params),
 }));
