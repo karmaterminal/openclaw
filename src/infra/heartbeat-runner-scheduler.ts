@@ -106,6 +106,9 @@ export function startHeartbeatRunnerScheduled(opts: {
       authoritativeScheduledTick?: boolean;
       retainedWork?: boolean;
       conversationTurn?: boolean;
+      /** The wake's requester and target, so a flood names what keeps waking the agent. */
+      source?: string;
+      sessionKey?: string;
     } = {},
   ): DeferDecision => {
     const decision = shouldDeferWake({
@@ -122,6 +125,8 @@ export function startHeartbeatRunnerScheduled(opts: {
         log.warn("heartbeat: flood guard tripped, deferring wake", {
           agentId: agent.agentId,
           reason: reason ?? "(none)",
+          source: options.source ?? "(none)",
+          ...(options.sessionKey ? { sessionKey: options.sessionKey } : {}),
           recentRunCount: agent.recentRunStarts.length,
         });
         agent.floodLoggedSinceLastRun = true;
@@ -235,6 +240,8 @@ export function startHeartbeatRunnerScheduled(opts: {
         retainedWork,
         conversationTurn:
           pendingEvents.length > 0 && pendingEvents.every(isConversationExecCompletion),
+        ...(params.source ? { source: params.source } : {}),
+        ...(requestedSessionKey ? { sessionKey: requestedSessionKey } : {}),
       });
       if (deferral.defer) {
         // Retained exec work never owns cadence unless a scheduled tick joined it.
