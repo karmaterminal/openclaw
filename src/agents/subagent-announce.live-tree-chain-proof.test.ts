@@ -532,6 +532,12 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
       4_000,
     );
 
+    // The wake dispatch is recorded before the registry swaps in the wake run:
+    // the swap waits for the dispatch result and a fresh ownership check.
+    await waitFor(async () => {
+      const intermediate = await getSubagentRunByChildSessionKey(hop1ChildSessionKey);
+      return intermediate !== null && intermediate.runId !== hop1RunId;
+    }, 4_000);
     const recoveredIntermediate = await getSubagentRunByChildSessionKey(hop1ChildSessionKey);
     if (!recoveredIntermediate || recoveredIntermediate.runId === hop1RunId) {
       throw new Error("expected descendant completion to replace the intermediate run");
