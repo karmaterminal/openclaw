@@ -115,6 +115,10 @@ export async function runReplyAgent(
   // One lifecycle for all adoption sites in this run.
   const turnAdoptionLifecycle = opts?.turnAdoptionLifecycle;
   const releaseAdmissionTicket = () => opts?.[REPLY_ADMISSION_TICKET]?.release();
+  const releaseUnusedAdmission = () => {
+    releaseAdmissionTicket();
+    typing.cleanup();
+  };
   let activeSessionEntry = sessionEntry;
   const activeSessionStore = sessionStore;
   const effectiveResetTriggered = resetTriggered === true;
@@ -174,8 +178,7 @@ export async function runReplyAgent(
         : activeSessionEntry;
     assertReadCurrent();
   } catch (error) {
-    releaseAdmissionTicket();
-    typing.cleanup();
+    releaseUnusedAdmission();
     throw error;
   }
   if (
@@ -203,8 +206,7 @@ export async function runReplyAgent(
         }
       }
     }
-    releaseAdmissionTicket();
-    typing.cleanup();
+    releaseUnusedAdmission();
     return undefined;
   }
 
@@ -246,27 +248,22 @@ export async function runReplyAgent(
 
   const questionInput = await runReplyQuestionInput(input);
   if (questionInput.handled) {
-    releaseAdmissionTicket();
-    typing.cleanup();
+    releaseUnusedAdmission();
     return questionInput.payload;
   }
 
-  const baseShouldEmitToolResult = createShouldEmitToolResult({
+  const toolResultOptions = {
     sessionKey,
     storePath,
     resolvedVerboseLevel,
     verboseLevelOverride: followupRun.run.verboseLevelOverride,
-  });
+  };
+  const baseShouldEmitToolResult = createShouldEmitToolResult(toolResultOptions);
   const channelProgressCanConsumeToolResults =
     Boolean(opts?.forceToolResultProgress) && Boolean(opts?.onToolResult);
   const shouldEmitToolResult = () =>
     channelProgressCanConsumeToolResults || baseShouldEmitToolResult();
-  const shouldEmitToolOutput = createShouldEmitToolOutput({
-    sessionKey,
-    storePath,
-    resolvedVerboseLevel,
-    verboseLevelOverride: followupRun.run.verboseLevelOverride,
-  });
+  const shouldEmitToolOutput = createShouldEmitToolOutput(toolResultOptions);
 
   const pendingToolTasks = new Set<Promise<void>>();
   const blockReplyTimeoutMs = opts?.blockReplyTimeoutMs ?? BLOCK_REPLY_SEND_TIMEOUT_MS;
@@ -304,8 +301,7 @@ export async function runReplyAgent(
     if (replyOperationRunState) {
       replyOperationRunState.admission = { status: "accepted", mode: "steer" };
     }
-    releaseAdmissionTicket();
-    typing.cleanup();
+    releaseUnusedAdmission();
     return undefined;
   }
 
@@ -362,8 +358,7 @@ export async function runReplyAgent(
     if (replyOperationRunState) {
       replyOperationRunState.admission = { status: "skipped", reason: "active-run" };
     }
-    releaseAdmissionTicket();
-    typing.cleanup();
+    releaseUnusedAdmission();
     return undefined;
   }
 
@@ -395,8 +390,7 @@ export async function runReplyAgent(
       });
     }
     if (!enqueued) {
-      releaseAdmissionTicket();
-      typing.cleanup();
+      releaseUnusedAdmission();
       return undefined;
     }
     if (replyOperationRunState) {
@@ -549,8 +543,7 @@ export async function runReplyAgent(
           : { status: "skipped", reason: admission.reason };
     }
     if (admission.status === "skipped") {
-      releaseAdmissionTicket();
-      typing.cleanup();
+      releaseUnusedAdmission();
       if (admission.reason !== "active-run" || replyTurnKind !== "visible") {
         return undefined;
       }

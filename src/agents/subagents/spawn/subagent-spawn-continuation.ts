@@ -130,7 +130,7 @@ export function applySubagentContinuationLaunchFields(
 type ResolvedSpawnAdmission = Extract<
   Awaited<ReturnType<typeof resolveSubagentSpawnRequest>>,
   { ok: true }
->["resolved"]["admission"];
+>["resolved"];
 
 export function buildSubagentContinuationRegistrationFields(
   params: Omit<

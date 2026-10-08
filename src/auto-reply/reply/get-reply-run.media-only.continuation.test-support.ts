@@ -5,7 +5,7 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { expect, it, vi, type Mock } from "vitest";
 import { enqueueSystemEvent, peekSystemEventEntries } from "../../infra/system-events.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
-import { runReplyAgent } from "./agent-runner.runtime.js";
+import { runReplyAgent } from "./agent-runner-run.js";
 import { runPreparedReply } from "./get-reply-run.js";
 import {
   recipientAuthorityCurrentMock,

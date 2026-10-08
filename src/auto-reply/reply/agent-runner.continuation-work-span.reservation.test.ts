@@ -207,7 +207,7 @@ vi.mock("../../agents/subagents/registry/subagent-registry.js", () => ({
   markSubagentRunTerminated: () => 0,
 }));
 
-import { runReplyAgent } from "./agent-runner.js";
+import { runReplyAgent } from "./agent-runner-run.js";
 
 type RunWithModelFallbackParams = {
   provider: string;

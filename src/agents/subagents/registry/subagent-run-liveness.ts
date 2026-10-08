@@ -77,6 +77,16 @@ function resolveStaleCutoffMs(
   return defaultFloorMs;
 }
 
+export function isYieldedSubagentRun(entry: SubagentRunRecord): boolean {
+  return (
+    entry.pauseReason === "sessions_yield" &&
+    !entry.killIntent &&
+    !entry.killReconciliation &&
+    entry.suppressAnnounceReason !== "killed" &&
+    entry.endedReason !== "subagent-killed"
+  );
+}
+
 export function isStaleUnendedSubagentRun(
   entry: SubagentRunLivenessRecord,
   now = Date.now(),

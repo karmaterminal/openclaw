@@ -92,7 +92,6 @@ export async function sweepCollectorArchiveGroups(
               (row) => isCollectorArchiveReady(row, now),
               (draft) => {
                 draft.execution.suppressSessionEffects = true;
-                return draft;
               },
             );
             if (!updated) {
@@ -135,7 +134,6 @@ export async function sweepCollectorArchiveGroups(
               (row) => isCollectorArchiveReady(row, now),
               (draft) => {
                 draft.contextEngineCleanupCompletedAt = Date.now();
-                return draft;
               },
             ))
           ) {

@@ -185,8 +185,7 @@ export async function deleteSubagentSessionForCleanup(
   }
 
   clearDeferredCleanupRetry(params.childSessionKey);
-  const prepareCurrent = params.prepareCurrent;
-  const isCurrent = params.isCurrent;
+  const { prepareCurrent, isCurrent } = params;
   const cleanupParams: SessionsDeleteParams = {
     key: params.childSessionKey,
     deleteTranscript: params.deleteTranscript ?? true,

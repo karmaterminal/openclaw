@@ -131,6 +131,7 @@ const contextCleanup = createSubagentRegistryContextCleanup({
 });
 
 const subagentLifecycleController = new SubagentLifecycleController({
+  ...contextCleanup,
   runs: subagentRuns,
   resumedRuns,
   subagentAnnounceTimeoutMs: SUBAGENT_ANNOUNCE_TIMEOUT_MS,
@@ -140,11 +141,7 @@ const subagentLifecycleController = new SubagentLifecycleController({
   // as a late-bound callback instead of threading a partially built API object.
   countPendingDescendantRuns,
   getLatestRunForChildSession: getLatestLiveSubagentRunByChildSessionKey,
-  suppressAnnounceForSteerRestart: contextCleanup.suppressAnnounceForSteerRestart,
-  shouldEmitEndedHookForRun: contextCleanup.shouldEmitEndedHookForRun,
-  emitSubagentEndedHookForRun: contextCleanup.emitSubagentEndedHookForRun,
   emitSubagentProgressEndedForRun: emitSubagentProgressEndedHook,
-  notifyContextEngineSubagentEnded: contextCleanup.notifyContextEngineSubagentEnded,
   retireSupersededRun: retireSupersededSubagentRun,
   resumeSubagentRun,
   callGateway: callSubagentRegistryGateway,
@@ -366,7 +363,7 @@ function resumeFinalizedSubagentRun(
   // Wait for completion again after restart.
   const cfg = getRuntimeConfig();
   const waitTimeoutMs = resolveSubagentWaitTimeoutMs(cfg, entry.runTimeoutSeconds);
-  void subagentRunManager.waitForSubagentCompletion(runId, waitTimeoutMs, entry, true);
+  void subagentRunManager.waitForSubagentCompletion(runId, entry, waitTimeoutMs, true);
   resumedRuns.add(getSubagentRunRuntimeKey(entry));
 }
 
@@ -484,6 +481,7 @@ function retireSupersededSubagentRun(
 }
 
 const subagentSweeper = createSubagentRegistrySweeper({
+  ...contextCleanup,
   runs: subagentRuns,
   resumedRuns,
   clearPendingLifecycleError,
@@ -502,13 +500,8 @@ const subagentSweeper = createSubagentRegistrySweeper({
   shouldSuppressSessionEffects: (entry, effects) =>
     subagentLifecycleController.shouldSuppressSessionEffects(entry, effects),
   discardTerminalDelivery: SubagentLifecycleController.discardTerminalDelivery,
-  shouldEmitEndedHookForRun: contextCleanup.shouldEmitEndedHookForRun,
-  emitSubagentEndedHookForRun: contextCleanup.emitSubagentEndedHookForRun,
   shouldDeferArchive: hasContinuationWorkForSweepEntry,
   callGateway: callGatewayForSweep,
-  cleanupCollectorLaunchResources: contextCleanup.cleanupCollectorLaunchResources,
-  runContextEngineSubagentEnded: contextCleanup.runContextEngineSubagentEnded,
-  notifyContextEngineSubagentEnded: contextCleanup.notifyContextEngineSubagentEnded,
   retireSupersededRun: retireSupersededSubagentRun,
   getRunsForChildSession: getSubagentRunsForChildSession,
   getRunsForCollectorGroup: getSubagentRunsForCollectorGroup,

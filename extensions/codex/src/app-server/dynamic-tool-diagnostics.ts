@@ -29,69 +29,55 @@ function diagnosticToolIdentity(params: DynamicToolDiagnosticContext) {
   };
 }
 
-export function emitDynamicToolStartedDiagnostic(params: DynamicToolDiagnosticContext): void {
-  emitTrustedDiagnosticEvent({
-    type: "tool.execution.started",
-    ...diagnosticToolIdentity(params),
-  });
-}
-
-/** Starts one diagnostic child and installs it around the dynamic handler. */
-export function startDynamicToolDiagnosticExecution<T>(
-  params: DynamicToolDiagnosticContext,
-  execute: () => T,
-) {
-  const trace = freezeDiagnosticTraceContext(createDiagnosticTraceContextFromActiveScope());
-  emitDynamicToolStartedDiagnostic({ ...params, trace });
-  return {
-    trace,
-    execution: runWithDiagnosticTraceContext(trace, execute),
+export function createCodexDynamicToolDiagnostics(params: DynamicToolDiagnosticContext) {
+  // A started execution's trace child is shared by its terminal events.
+  let trace = params.trace;
+  const identity = () => diagnosticToolIdentity({ ...params, trace });
+  const started = () => {
+    emitTrustedDiagnosticEvent({
+      type: "tool.execution.started",
+      ...identity(),
+    });
   };
-}
-
-export function emitDynamicToolErrorDiagnostic(
-  params: DynamicToolDiagnosticContext & {
-    durationMs: number;
-    terminalReason?: "failed" | "cancelled" | "timed_out";
-  },
-): void {
-  emitTrustedDiagnosticEvent({
-    type: "tool.execution.error",
-    ...diagnosticToolIdentity(params),
-    durationMs: params.durationMs,
-    errorCategory: "codex_dynamic_tool_error",
-    terminalReason: params.terminalReason ?? "failed",
-  });
-}
-
-/** Emits the terminal event matching a dynamic tool response's diagnostic type. */
-export function emitDynamicToolTerminalDiagnostic(
-  params: DynamicToolDiagnosticContext & {
-    response: CodexDynamicToolRuntimeResponse;
-    durationMs: number;
-  },
-): void {
-  const terminalType =
-    params.response.diagnosticTerminalType ?? (params.response.success ? "completed" : "error");
-  if (terminalType === "completed") {
+  const error = (
+    durationMs: number,
+    terminalReason: "failed" | "cancelled" | "timed_out" = "failed",
+  ) => {
     emitTrustedDiagnosticEvent({
-      type: "tool.execution.completed",
-      ...diagnosticToolIdentity(params),
-      durationMs: params.durationMs,
+      type: "tool.execution.error",
+      ...identity(),
+      durationMs,
+      errorCategory: "codex_dynamic_tool_error",
+      terminalReason,
     });
-    return;
-  }
-  if (terminalType === "blocked") {
-    emitTrustedDiagnosticEvent({
-      type: "tool.execution.blocked",
-      ...diagnosticToolIdentity(params),
-      deniedReason: "plugin-before-tool-call",
-      reason: "Tool call blocked",
-    });
-    return;
-  }
-  emitDynamicToolErrorDiagnostic({
-    ...params,
-    terminalReason: params.response.diagnosticTerminalReason ?? "failed",
-  });
+  };
+  return {
+    started,
+    /** Starts one diagnostic child and installs it around the dynamic handler. */
+    startExecution<T>(execute: () => T) {
+      trace = freezeDiagnosticTraceContext(createDiagnosticTraceContextFromActiveScope());
+      started();
+      return { trace, execution: runWithDiagnosticTraceContext(trace, execute) };
+    },
+    error,
+    terminal(response: CodexDynamicToolRuntimeResponse, durationMs: number) {
+      const type = response.diagnosticTerminalType ?? (response.success ? "completed" : "error");
+      if (type === "completed") {
+        emitTrustedDiagnosticEvent({
+          type: "tool.execution.completed",
+          ...identity(),
+          durationMs,
+        });
+      } else if (type === "blocked") {
+        emitTrustedDiagnosticEvent({
+          type: "tool.execution.blocked",
+          ...identity(),
+          deniedReason: "plugin-before-tool-call",
+          reason: "Tool call blocked",
+        });
+      } else {
+        error(durationMs, response.diagnosticTerminalReason ?? "failed");
+      }
+    },
+  };
 }
