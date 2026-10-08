@@ -426,12 +426,14 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
       },
     });
 
+    // This completion is the file's first to run the announce and delegate-dispatch
+    // path; cold, it took 4.3-4.9 s to register the delegate on a 4-CPU runner.
     await waitFor(
       () =>
         listSubagentRunsForRequester(hop1ChildSessionKey).some((entry) =>
           entry.task.includes("[continuation:chain-hop:2]"),
         ),
-      4_000,
+      15_000,
     );
     const requesterRuns = listSubagentRunsForRequester(hop1ChildSessionKey);
     const hop2Runs = requesterRuns.filter((entry) =>
