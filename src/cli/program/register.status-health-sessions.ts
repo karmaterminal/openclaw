@@ -8,6 +8,8 @@ import { runCommandWithRuntime } from "../cli-utils.js";
 import { ExpectedCliError } from "../failure-output.js";
 import { formatDocsHelp, formatHelpExamples } from "../help-format.js";
 import type { SessionsImportOptions } from "../sessions-import.js";
+import { collectOption } from "./helpers.js";
+import { applyParentDefaultHelpAction } from "./parent-default-help.js";
 
 type SessionsListCliOptions = Omit<Parameters<typeof sessionsCommand>[0], "limit"> & {
   verbose?: boolean;
@@ -186,6 +188,97 @@ async function runWithVerboseAndTimeout(
     }
     await action({ verbose, timeoutMs });
   });
+}
+
+/** The parent `sessions --json` flag also claims a trailing `--json`; honor either placement. */
+function resolveDeliveriesJson(opts: { json?: boolean }, command: Command): boolean {
+  const sessionsOpts = command.parent?.parent?.opts() as SessionsListCliOptions | undefined;
+  return Boolean(opts.json || sessionsOpts?.json);
+}
+
+function registerSessionsDeliveriesCommands(sessionsCmd: Command): void {
+  const deliveries = sessionsCmd
+    .command("deliveries")
+    .description(
+      "Inspect, quarantine and requeue durable session deliveries (requires the Gateway to be stopped)",
+    );
+
+  deliveries
+    .command("list")
+    .description("List pending (or failed) session deliveries; shows text length, never text")
+    .option("--status <status>", "Row status: pending or failed", "pending")
+    .option("--json", "Output JSON", false)
+    .action(async (opts, command: Command) => {
+      await runCommandWithRuntime(defaultRuntime, async () => {
+        const { sessionsDeliveriesListCommand } =
+          await import("../../commands/sessions-deliveries.js");
+        await sessionsDeliveriesListCommand(
+          { ...opts, json: resolveDeliveriesJson(opts, command) },
+          defaultRuntime,
+        );
+      });
+    });
+
+  for (const action of ["quarantine", "requeue"] as const) {
+    const command = deliveries
+      .command(action)
+      .description(
+        action === "quarantine"
+          ? "Move selected pending session deliveries to failed so boot recovery skips them (dry-run unless --apply)"
+          : "Return rows quarantined by `sessions deliveries quarantine` to pending (dry-run unless --apply)",
+      )
+      .option("--id <id>", "Delivery id to select (repeatable)", collectOption, [])
+      .option("--idempotency-prefix <prefix>", "Select rows whose idempotency key starts with this")
+      .option(
+        "--older-than <duration>",
+        "With --idempotency-prefix: only rows enqueued before now-duration",
+      )
+      .option("--apply", "Change the selected rows (default: dry-run)", false)
+      .option("--receipt <path>", "Also write the JSON receipt to this new file")
+      .option("--json", "Output the receipt as JSON", false);
+    if (action === "quarantine") {
+      command.option("--reason <text>", "Reason recorded after the operator-quarantine: prefix");
+    }
+    command
+      .addHelpText(
+        "after",
+        () =>
+          `\n${theme.heading("Examples:")}\n${formatHelpExamples(
+            action === "quarantine"
+              ? [
+                  [
+                    "openclaw sessions deliveries quarantine --idempotency-prefix continuation-return: --older-than 6h",
+                    "Preview quarantining stale continuation returns.",
+                  ],
+                  [
+                    "openclaw sessions deliveries quarantine --id <id> --apply --receipt ./quarantine.json",
+                    "Quarantine one row and keep a receipt.",
+                  ],
+                ]
+              : [
+                  [
+                    "openclaw sessions deliveries requeue --id <id> --apply",
+                    "Return one quarantined row to the pending queue.",
+                  ],
+                ],
+          )}`,
+      )
+      .action(async (opts, actionCommand: Command) => {
+        await runCommandWithRuntime(defaultRuntime, async () => {
+          const commands = await import("../../commands/sessions-deliveries.js");
+          const handler =
+            action === "quarantine"
+              ? commands.sessionsDeliveriesQuarantineCommand
+              : commands.sessionsDeliveriesRequeueCommand;
+          await handler(
+            { ...opts, json: resolveDeliveriesJson(opts, actionCommand) },
+            defaultRuntime,
+          );
+        });
+      });
+  }
+
+  applyParentDefaultHelpAction(deliveries);
 }
 
 /** Register status/health plus persistent session inspection command groups. */
@@ -422,6 +515,7 @@ export function registerStatusHealthSessionsCommands(program: Command) {
       });
     });
 
+  registerSessionsDeliveriesCommands(sessionsCmd);
   registerSessionsLifecycleCommand(sessionsCmd, "archive");
   registerSessionsLifecycleCommand(sessionsCmd, "delete");
 

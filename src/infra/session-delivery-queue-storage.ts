@@ -670,3 +670,44 @@ export async function moveSessionDeliveryToFailed(
 ): Promise<void> {
   return executeSessionDelivery(context, { type: "sessionDelivery.moveToFailed", input: { id } });
 }
+
+export {
+  formatSessionDeliveryBatchRefusal,
+  SESSION_DELIVERY_QUARANTINE_REASON_PREFIX,
+  SessionDeliveryBatchRefusedError,
+  type SessionDeliveryBatchAction,
+  type SessionDeliveryBatchRefusal,
+  type SessionDeliveryInspectStatus,
+  type SessionDeliverySummary,
+} from "./session-delivery-queue-quarantine.kernel.js";
+
+/** Summarize session-queue rows for operators; never returns message text or payload. */
+export async function listSessionDeliverySummaries(
+  statuses: SessionDeliveryWorkerOperations["sessionDelivery.inspect"]["input"]["statuses"],
+  context: OpenClawStateWorkerContext,
+): Promise<SessionDeliveryWorkerOperations["sessionDelivery.inspect"]["output"]> {
+  return executeSessionDelivery(context, { type: "sessionDelivery.inspect", input: { statuses } });
+}
+
+/** Atomically park every selected pending delivery as failed, or refuse and change nothing. */
+export async function quarantineSessionDeliveries(
+  entries: SessionDeliveryWorkerOperations["sessionDelivery.quarantineBatch"]["input"]["entries"],
+  reason: string,
+  context: OpenClawStateWorkerContext,
+): Promise<void> {
+  return executeSessionDelivery(context, {
+    type: "sessionDelivery.quarantineBatch",
+    input: { entries, reason },
+  });
+}
+
+/** Atomically requeue every selected operator-quarantined delivery, or refuse and change nothing. */
+export async function requeueQuarantinedSessionDeliveries(
+  entries: SessionDeliveryWorkerOperations["sessionDelivery.requeueQuarantinedBatch"]["input"]["entries"],
+  context: OpenClawStateWorkerContext,
+): Promise<void> {
+  return executeSessionDelivery(context, {
+    type: "sessionDelivery.requeueQuarantinedBatch",
+    input: { entries },
+  });
+}

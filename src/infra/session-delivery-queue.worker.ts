@@ -34,6 +34,14 @@ import {
   scrubTerminalQueuedAttachments,
 } from "./session-delivery-queue-attachment-metadata.js";
 import {
+  listSessionDeliverySummariesInDatabase,
+  quarantineSessionDeliveriesInDatabase,
+  requeueQuarantinedSessionDeliveriesInDatabase,
+  type SessionDeliveryBatchEntry,
+  type SessionDeliveryInspectStatus,
+  type SessionDeliverySummary,
+} from "./session-delivery-queue-quarantine.kernel.js";
+import {
   SESSION_DELIVERY_QUEUE_NAME,
   type QueuedSessionDelivery,
 } from "./session-delivery-queue.records.js";
@@ -320,6 +328,22 @@ export const sessionDeliveryOperations = {
         throw deliveryQueueEntryNotFoundError(SESSION_DELIVERY_QUEUE_NAME, id);
       }
     });
+  },
+  "sessionDelivery.inspect": (
+    input: { statuses: SessionDeliveryInspectStatus[] },
+    { open },
+  ): SessionDeliverySummary[] => listSessionDeliverySummariesInDatabase(open(), input.statuses),
+  "sessionDelivery.quarantineBatch": (
+    input: { entries: SessionDeliveryBatchEntry[]; reason: string },
+    { open },
+  ) => {
+    quarantineSessionDeliveriesInDatabase(open(), { ...input, now: Date.now() });
+  },
+  "sessionDelivery.requeueQuarantinedBatch": (
+    input: { entries: SessionDeliveryBatchEntry[] },
+    { open },
+  ) => {
+    requeueQuarantinedSessionDeliveriesInDatabase(open(), { ...input, now: Date.now() });
   },
 } satisfies WorkerOperationHandlers;
 
