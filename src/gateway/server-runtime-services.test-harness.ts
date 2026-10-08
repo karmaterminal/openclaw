@@ -79,6 +79,7 @@ vi.mock("../infra/heartbeat-runner-scheduler.js", () => ({
   startHeartbeatRunner: runtimeServiceMocks.startHeartbeatRunner,
 }));
 
+// mock-isolation: Heartbeat runs are recorded; the real module would run agent heartbeats.
 vi.mock("../infra/heartbeat-runner-run.js", () => ({
   // The module exports `runHeartbeatOnceCore`; a factory keyed on the old name
   // leaves the lazy loader with an undefined export.
@@ -122,6 +123,7 @@ vi.mock("./server-restart-sentinel.js", () => ({
   settleQueuedSessionDelivery: runtimeServiceMocks.settleQueuedSessionDelivery,
 }));
 
+// mock-isolation: Startup delegate recovery is recorded without reading continuation custody.
 vi.mock("../auto-reply/continuation/delegate-dispatch-recovery.js", () => ({
   recoverPendingContinuationDelegates: runtimeServiceMocks.recoverPendingContinuationDelegates,
   requeueAwaitingNextCompactionDelegates:
@@ -130,6 +132,7 @@ vi.mock("../auto-reply/continuation/delegate-dispatch-recovery.js", () => ({
     runtimeServiceMocks.recoverAndReleaseStagedPostCompactionDelegates,
 }));
 
+// mock-isolation: Startup work recovery is recorded without reading continuation custody.
 vi.mock("../auto-reply/continuation/work-dispatch.js", () => ({
   recoverPendingContinuationWork: runtimeServiceMocks.recoverPendingContinuationWork,
 }));

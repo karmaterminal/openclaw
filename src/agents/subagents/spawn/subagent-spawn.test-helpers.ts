@@ -445,6 +445,7 @@ export async function loadSubagentSpawnModuleForTest(params: {
     getSubagentDepthFromSessionStore: params.getSubagentDepthFromSessionStore ?? (() => 0),
   }));
 
+  // mock-isolation: Each spawn case scripts registration and swarm queries; the real registry restores and persists runs.
   vi.doMock("../registry/subagent-registry.js", () => ({
     completeCollectorLaunchCleanup:
       params.completeCollectorLaunchCleanupMock ?? vi.fn(async () => {}),

@@ -9,17 +9,21 @@ import {
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
 // Keep completion, session cleanup, and transport outside this settlement proof.
+// mock-isolation: Keep run completion outside this settlement proof.
 vi.mock("./subagent-registry-lifecycle-completion.js", () => ({
   completeSubagentRunAttempt: vi.fn(),
 }));
+// mock-isolation: Keep announce cleanup outside this settlement proof.
 vi.mock("./subagent-registry-lifecycle-announce-cleanup.js", () => ({
   finalizeResumedAnnounceGiveUp: vi.fn(),
   resumeAncestorCleanup: vi.fn(),
   startSubagentAnnounceCleanupFlow: vi.fn(),
 }));
+// mock-isolation: Keep requester-turn settlement outside this proof.
 vi.mock("./subagent-registry-requester-yield.js", () => ({
   settleRequesterTurnAfterSessionSpawns: vi.fn(),
 }));
+// mock-isolation: Keep delivery-state writes outside this settlement proof.
 vi.mock("./subagent-registry-lifecycle-delivery.js", () => ({
   buildSafeLifecycleErrorMeta: (error: unknown) => ({
     message: error instanceof Error ? error.message : String(error),
@@ -30,17 +34,21 @@ vi.mock("./subagent-registry-lifecycle-delivery.js", () => ({
   refreshFrozenResultFromSession: vi.fn(),
   safeSetSubagentTaskDeliveryStatus: vi.fn(),
 }));
+// mock-isolation: The completion batch publishes without the admission store's database writes.
 vi.mock("../completion/subagent-completion-admission.store.js", () => ({
   blockSubagentCompletionDelivery: vi.fn(),
   // Upstream 10e951e857 reads the settlement's publication receipt.
   mutateRequesterCompletionBatch: vi.fn(async () => ({ applied: true, publication: "published" })),
 }));
+// mock-isolation: Keep MCP runtime retirement outside this settlement proof.
 vi.mock("../../agent-bundle-mcp-tools.js", () => ({
   retireSessionMcpRuntimeForSessionKey: vi.fn(),
 }));
+// mock-isolation: Keep session cleanup outside this settlement proof.
 vi.mock("../../internal-session-effects.js", () => ({
   removeInternalSessionEffectsSession: vi.fn(),
 }));
+// mock-isolation: Keep cron authority revocation outside this settlement proof.
 vi.mock("../requester-cron-authority.js", () => ({
   revokeRequesterCronAuthorityBatch: vi.fn(),
 }));
@@ -51,7 +59,9 @@ vi.mock("./subagent-registry-memory.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./subagent-registry-memory.js")>()),
   subagentRuns: { confirmRetirement: vi.fn() },
 }));
+// mock-isolation: Runtime log lines are dropped instead of writing to the terminal.
 vi.mock("../../../runtime.js", () => ({ defaultRuntime: { log: vi.fn() } }));
+// mock-isolation: Drop subsystem log lines without loading the logging runtime or its process-wide sinks.
 vi.mock("../../../logging/subsystem.js", () => ({
   createSubsystemLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));

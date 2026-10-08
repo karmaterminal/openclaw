@@ -45,10 +45,12 @@ const serviceMock = vi.hoisted(() => ({
   readRuntime: vi.fn(async () => ({ status: "stopped" as const })),
 }));
 
+// mock-isolation: A fake gateway service records install steps; the real service manages systemd or launchd units.
 vi.mock("../../daemon/service.js", () => ({
   resolveGatewayService: () => serviceMock,
 }));
 
+// mock-isolation: CLI output is captured by the test runtime instead of the terminal.
 vi.mock("../../runtime.js", () => ({
   defaultRuntime,
 }));

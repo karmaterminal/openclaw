@@ -50,6 +50,7 @@ afterEach(() => {
 const mocks = vi.hoisted(() => ({
   register: vi.fn<SubagentLaunchManager["registerSubagentRun"]>(),
 }));
+// mock-isolation: Registration and launch markers act on the fixture's own registry, not the live process-wide one.
 vi.mock("./subagent-registry.js", () => ({
   registerSubagentRun: mocks.register,
   completeCollectorLaunchCleanup: vi.fn(),

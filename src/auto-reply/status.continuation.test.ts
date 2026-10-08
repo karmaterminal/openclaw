@@ -24,6 +24,7 @@ const { listPluginCommands } = vi.hoisted(() => ({
   ),
 }));
 
+// mock-isolation: Plugin commands come from the test; the real list reads the active plugin registry.
 vi.mock("../plugins/commands.js", () => ({
   listPluginCommands,
 }));

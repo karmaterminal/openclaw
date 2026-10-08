@@ -62,6 +62,7 @@ const { subagentRegistryRuntimeMock } = vi.hoisted(() => ({
   },
 }));
 
+// mock-isolation: Gateway, config and session reads are scripted; the real runtime calls the Gateway and opens session stores.
 vi.mock("./subagent-announce.runtime.js", () => ({
   callGateway: (request: unknown) => callGatewayMock(request),
   callSubagentLifecycleGateway: (request: unknown) => callGatewayMock(request),

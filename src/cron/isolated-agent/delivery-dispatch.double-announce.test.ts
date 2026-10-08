@@ -154,6 +154,7 @@ vi.mock("./session.js", () => ({
   loadCronSessionEntryLatest: loadCronSessionEntryLatestMock,
 }));
 
+// mock-isolation: Outbound send deps are scripted; no channel send runs.
 vi.mock("../../cli/outbound-send-deps.js", () => ({
   createOutboundSendDeps: createOutboundSendDepsMock,
 }));
@@ -167,6 +168,7 @@ vi.mock("../../logger.js", () => ({
   logError: vi.fn(),
 }));
 
+// mock-isolation: System events are captured instead of entering the process-wide event queue.
 vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEvent: enqueueSystemEventMock,
   enqueueSystemEventRaw: enqueueSystemEventMock,

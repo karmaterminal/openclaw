@@ -26,6 +26,7 @@ import {
 } from "./subagent-spawn.in-process-gateway.test-support.js";
 import { spawnSubagentDirect } from "./subagent-spawn.js";
 
+// mock-isolation: No runtime plugin registry loads; these cases cover launch keys, not plugin activation.
 vi.mock("../../runtime-plugins.js", () => ({
   loadAgentRuntimePluginRegistryHandle:
     vi.fn<typeof import("../../runtime-plugins.js").loadAgentRuntimePluginRegistryHandle>(),

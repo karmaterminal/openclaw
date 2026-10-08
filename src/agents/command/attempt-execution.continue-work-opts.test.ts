@@ -178,16 +178,19 @@ vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => {
   };
 });
 
+// mock-isolation: CLI agent runs are recorded without spawning a CLI process.
 vi.mock("../cli-runner.js", () => ({
   runCliAgent: runCliAgentMock,
 }));
 
+// mock-isolation: Provider ids normalize locally; the real module imports the catalog lookup and model config resolvers.
 vi.mock("../model-selection.js", () => ({
   isCliProvider: (provider: string) =>
     provider.trim().toLowerCase() === "claude-cli" || provider.trim().toLowerCase() === "codex-cli",
   normalizeProviderId: (provider: string) => provider.trim().toLowerCase(),
 }));
 
+// mock-isolation: No auth aliases apply; the real map reads provider plugin metadata.
 vi.mock("../provider-auth-aliases.js", () => ({
   resolveProviderAuthAliasMap: () => ({}),
   resolveProviderIdForAuth: (provider: string) => provider.trim().toLowerCase(),
@@ -203,6 +206,7 @@ vi.mock("../model-runtime-aliases.js", async () => {
   };
 });
 
+// mock-isolation: Embedded agent runs are scripted; no agent session or provider runs.
 vi.mock("../embedded-agent.js", () => ({
   runEmbeddedAgent: runEmbeddedAgentMock,
 }));

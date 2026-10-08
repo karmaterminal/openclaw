@@ -132,6 +132,7 @@ vi.mock("@opentelemetry/api", async (importOriginal) => ({
   },
 }));
 
+// mock-isolation: SDK registration is recorded without setting the global OpenTelemetry context manager and propagator.
 vi.mock("./service-propagation.js", () => ({
   registerOwnedSdkRuntime: registerOwnedSdkRuntimeMock,
 }));
@@ -169,10 +170,12 @@ vi.mock("@opentelemetry/exporter-logs-otlp-proto", () => ({
   },
 }));
 
+// mock-isolation: The rejection handler is captured instead of joining the process-wide rejection registry.
 vi.mock("openclaw/plugin-sdk/runtime-env", () => ({
   registerUnhandledRejectionHandler: unhandledRejectionHandlerState.register,
 }));
 
+// mock-isolation: Proxy agent creation is recorded; no real network agent is built.
 vi.mock("openclaw/plugin-sdk/fetch-runtime", () => ({
   createNodeProxyAgent: createNodeProxyAgentMock,
 }));
