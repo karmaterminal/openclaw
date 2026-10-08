@@ -162,7 +162,7 @@ describe("sessions.usage details", () => {
         key: "agent:opus:storeless",
       });
       expect(vi.mocked(loadSessionUsageTimeSeries)).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionFile: canonicalSessionFile, sessionEntry: undefined }),
+        expect.objectContaining({ sessionFile: canonicalSessionFile, entry: undefined }),
       );
     });
   });
