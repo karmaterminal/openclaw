@@ -29,7 +29,8 @@ const logMocks = {
   error: vi.fn(),
 };
 
-vi.mock("../../logging/subsystem.js", () => ({
+vi.mock("../../logging/subsystem.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
   createSubsystemLogger: () => ({
     subsystem: "continuation/request-compaction",
     isEnabled: () => true,
