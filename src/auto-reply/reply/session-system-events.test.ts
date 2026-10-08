@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   isSessionRecipientAuthorityCurrent: vi.fn(() => true),
 }));
 
+// mock-isolation: Continuation spans are captured without the process-wide tracer.
 vi.mock("../../infra/continuation-tracer.js", () => ({
   emitContinuationQueueDrainSpan: mocks.emitContinuationQueueDrainSpan,
 }));
@@ -31,6 +32,7 @@ vi.mock("../../infra/system-events.js", async (importOriginal) => {
   };
 });
 
+// mock-isolation: Channel summaries come from the test; the real builder inspects channel plugin accounts.
 vi.mock("../../infra/channel-summary.js", () => ({
   buildChannelSummary: mocks.buildChannelSummary,
 }));
@@ -42,6 +44,7 @@ vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) 
     ackSessionDelivery: mocks.ackSessionDelivery,
   };
 });
+// mock-isolation: Transcript events come from the test; the real accessor reads SQLite.
 vi.mock("../../config/sessions/session-accessor.js", () => ({
   isSessionRecipientAuthorityCurrent: mocks.isSessionRecipientAuthorityCurrent,
   loadTranscriptEvents: mocks.loadTranscriptEvents,
@@ -52,6 +55,7 @@ vi.mock("../../config/sessions/session-entry-read-runtime.js", async (importOrig
   readSessionEntryReadOnlyInWorker: async (scope: unknown) => mocks.loadSessionEntry(scope),
 }));
 
+// mock-isolation: Runtime log lines are dropped instead of writing to the terminal.
 vi.mock("../../runtime.js", () => ({
   defaultRuntime: {
     log: vi.fn(),
