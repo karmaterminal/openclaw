@@ -10,6 +10,7 @@ import { seedDeliveryQueueEntry } from "../infra/delivery-queue-sqlite.test-supp
 import {
   enqueueSessionDelivery,
   loadPendingSessionDeliveries,
+  markSessionDeliverySettlement,
 } from "../infra/session-delivery-queue-storage.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
@@ -309,11 +310,12 @@ describe("sessions deliveries", () => {
     const second = await seed({ key: "continuation-return:b", ageMs: 30 * HOUR });
     const queueContext = captureOpenClawStateWorkerContext({ env: env() });
     const entry = (await loadPendingSessionDeliveries(queueContext)).find((e) => e.id === second);
-    seedDeliveryQueueEntry({
-      queueName: "session",
-      entry: { ...entry!, settlementOutcome: "recovered" },
-      stateDir,
+    // The product's own settlement write: records settlementOutcome in the still-pending entry.
+    await markSessionDeliverySettlement(entry!, "recovered", queueContext);
+    expect(JSON.parse(String(rowById(second)!.entry_json))).toMatchObject({
+      settlementOutcome: "recovered",
     });
+    expect(rowById(second)).toMatchObject({ status: "pending", recovery_state: null });
     const before = readRows();
     const receiptPath = path.join(stateDir, "refused-receipt.json");
 
@@ -324,7 +326,7 @@ describe("sessions deliveries", () => {
         runtime,
       ),
     ).rejects.toThrow(
-      `Refusing sessions deliveries quarantine; nothing was changed. ${second}: owned by recovery settlement`,
+      `Refusing sessions deliveries quarantine; nothing was changed. ${second}: owned by recovery settlement (settlement or acknowledgement recorded)`,
     );
     expect(readRows()).toStrictEqual(before);
     expect(rowById(first)).toMatchObject({ status: "pending" });

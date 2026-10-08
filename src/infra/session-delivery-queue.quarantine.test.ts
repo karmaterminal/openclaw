@@ -10,12 +10,17 @@ vi.mock("../utils/sleep.js", async (importOriginal) => ({
   sleep: sleepMock,
 }));
 
+import {
+  quarantineSessionDeliveriesInDatabase,
+  requeueQuarantinedSessionDeliveriesInDatabase,
+} from "./session-delivery-queue-quarantine.kernel.js";
 import { recoverPendingSessionDeliveries } from "./session-delivery-queue-recovery.js";
 import {
   enqueueSessionDelivery,
   failSessionDelivery,
   listSessionDeliverySummaries,
   loadPendingSessionDeliveries,
+  markSessionDeliverySettlement,
   quarantineSessionDeliveries,
   requeueQuarantinedSessionDeliveries,
   SESSION_DELIVERY_QUARANTINE_REASON_PREFIX,
@@ -253,17 +258,21 @@ describe("session delivery operator quarantine", () => {
         queueContext,
       );
       const entry = (await loadPendingSessionDeliveries(queueContext)).find((e) => e.id === second);
-      seedDeliveryQueueEntry({
-        queueName: "session",
-        entry: { ...entry!, settlementOutcome: "recovered" },
-        stateDir,
+      // The product's own settlement write: records settlementOutcome in the still-pending entry.
+      await markSessionDeliverySettlement(entry!, "recovered", queueContext);
+      expect(JSON.parse(readRawRow(stateDir, second)!.entry_json)).toMatchObject({
+        settlementOutcome: "recovered",
+      });
+      expect(readRawRow(stateDir, second)).toMatchObject({
+        status: "pending",
+        recovery_state: null,
       });
       const before = [readRawRow(stateDir, first), readRawRow(stateDir, second)];
 
       await expect(
         quarantineSessionDeliveries([{ id: first }, { id: second }], REASON, queueContext),
       ).rejects.toThrow(
-        `Refusing sessions deliveries quarantine; nothing was changed. ${second}: owned by recovery settlement`,
+        `Refusing sessions deliveries quarantine; nothing was changed. ${second}: owned by recovery settlement (settlement or acknowledgement recorded)`,
       );
       expect([readRawRow(stateDir, first), readRawRow(stateDir, second)]).toStrictEqual(before);
       expect(before[0]).toMatchObject({ status: "pending" });
@@ -313,4 +322,66 @@ describe("session delivery operator quarantine", () => {
       expect(readRawRow(stateDir, id)).toStrictEqual(before);
     });
   });
+
+  it.each(["quarantine", "requeue"] as const)(
+    "rolls back every row when the %s update phase fails after an earlier row was updated",
+    async (action) => {
+      await withSessionDeliveryQueue(async (stateDir, queueContext) => {
+        const first = await enqueueSessionDelivery(
+          { kind: "systemEvent", sessionKey: "agent:main:main", text: "first" },
+          queueContext,
+        );
+        const second = await enqueueSessionDelivery(
+          { kind: "systemEvent", sessionKey: "agent:main:main", text: "second" },
+          queueContext,
+        );
+        if (action === "requeue") {
+          await quarantineSessionDeliveries([{ id: first }, { id: second }], REASON, queueContext);
+        }
+        const before = [readRawRow(stateDir, first), readRawRow(stateDir, second)];
+        const database = openOpenClawStateDatabase({
+          env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
+        });
+        const seen: Array<{ id: string; firstStatus: unknown }> = [];
+        // After the first row's UPDATE ran, change the second row so its compare-and-set misses.
+        const hooks = {
+          beforeRowTransition: (id: string, index: number) => {
+            seen.push({ id, firstStatus: readRawRow(stateDir, first)?.status });
+            if (index === 1) {
+              database.db
+                .prepare(
+                  "UPDATE delivery_queue_entries SET entry_json = json_set(entry_json, '$.text', 'raced') WHERE queue_name = 'session' AND id = ?",
+                )
+                .run(second);
+            }
+          },
+        };
+        const run = () =>
+          action === "quarantine"
+            ? quarantineSessionDeliveriesInDatabase(
+                database,
+                { entries: [{ id: first }, { id: second }], reason: REASON, now: Date.now() },
+                hooks,
+              )
+            : requeueQuarantinedSessionDeliveriesInDatabase(
+                database,
+                { entries: [{ id: first }, { id: second }], now: Date.now() },
+                hooks,
+              );
+
+        expect(run).toThrow(
+          `Refusing sessions deliveries ${action}; nothing was changed. ${second}: changed during the transition`,
+        );
+        // The first row's UPDATE had really run inside the transaction before the failure.
+        expect(seen).toStrictEqual([
+          { id: first, firstStatus: action === "quarantine" ? "pending" : "failed" },
+          { id: second, firstStatus: action === "quarantine" ? "failed" : "pending" },
+        ]);
+        expect([readRawRow(stateDir, first), readRawRow(stateDir, second)]).toStrictEqual(before);
+        expect(before[0]).toMatchObject({
+          status: action === "quarantine" ? "pending" : "failed",
+        });
+      });
+    },
+  );
 });

@@ -109,6 +109,11 @@ export function formatSessionDeliveryBatchRefusal(
 
 export type SessionDeliveryBatchEntry = { id: string; entryDigest?: string };
 
+/** Test-only seam: runs inside the transaction just before each row's UPDATE. Defaults to no-op. */
+export type SessionDeliveryBatchHooks = {
+  beforeRowTransition?: (id: string, index: number) => void;
+};
+
 function queueDb(database: OpenClawStateDatabase) {
   return getNodeSqliteKysely<DeliveryQueueDatabase>(database.db);
 }
@@ -202,6 +207,7 @@ function transitionSessionDeliveryBatch(
   action: SessionDeliveryBatchAction,
   entries: readonly SessionDeliveryBatchEntry[],
   transition: (row: EligibilityRow & { id: string }) => boolean,
+  hooks: SessionDeliveryBatchHooks,
 ): void {
   const ids = entries.map((entry) => entry.id);
   if (ids.length === 0 || new Set(ids).size !== ids.length) {
@@ -225,7 +231,8 @@ function transitionSessionDeliveryBatch(
       if (refusals.length > 0) {
         throw new SessionDeliveryBatchRefusedError(action, refusals);
       }
-      for (const { entry, row } of rows) {
+      for (const [index, { entry, row }] of rows.entries()) {
+        hooks.beforeRowTransition?.(entry.id, index);
         // Compare-and-set on the validated bytes; a miss aborts and rolls back the batch.
         if (!transition(row!)) {
           throw new SessionDeliveryBatchRefusedError(action, [
@@ -242,67 +249,81 @@ function transitionSessionDeliveryBatch(
 export function quarantineSessionDeliveriesInDatabase(
   database: OpenClawStateDatabase,
   input: { entries: readonly SessionDeliveryBatchEntry[]; reason: string; now: number },
+  hooks: SessionDeliveryBatchHooks = {},
 ): void {
   if (!isOperatorQuarantine(input.reason)) {
     throw new Error(
       `Session delivery quarantine reason must start with ${SESSION_DELIVERY_QUARANTINE_REASON_PREFIX}`,
     );
   }
-  transitionSessionDeliveryBatch(database, "quarantine", input.entries, (row) => {
-    const result = executeSqliteQuerySync(
-      database.db,
-      queueDb(database)
-        .updateTable("delivery_queue_entries")
-        .set({
-          status: "failed",
-          last_error: input.reason,
-          failed_at: input.now,
-          updated_at: input.now,
-        })
-        .where("queue_name", "=", SESSION_DELIVERY_QUEUE_NAME)
-        .where("id", "=", row.id)
-        .where("status", "=", "pending")
-        .where("recovery_state", "is", null)
-        .where("entry_json", "=", row.entry_json),
-    );
-    return result.numAffectedRows === 1n;
-  });
+  transitionSessionDeliveryBatch(
+    database,
+    "quarantine",
+    input.entries,
+    (row) => {
+      const result = executeSqliteQuerySync(
+        database.db,
+        queueDb(database)
+          .updateTable("delivery_queue_entries")
+          .set({
+            status: "failed",
+            last_error: input.reason,
+            failed_at: input.now,
+            updated_at: input.now,
+          })
+          .where("queue_name", "=", SESSION_DELIVERY_QUEUE_NAME)
+          .where("id", "=", row.id)
+          .where("status", "=", "pending")
+          .where("recovery_state", "is", null)
+          .where("entry_json", "=", row.entry_json),
+      );
+      return result.numAffectedRows === 1n;
+    },
+    hooks,
+  );
 }
 
 /** Return every selected operator-quarantined row to pending with retry state reset, or none. */
 export function requeueQuarantinedSessionDeliveriesInDatabase(
   database: OpenClawStateDatabase,
   input: { entries: readonly SessionDeliveryBatchEntry[]; now: number },
+  hooks: SessionDeliveryBatchHooks = {},
 ): void {
-  transitionSessionDeliveryBatch(database, "requeue", input.entries, (row) => {
-    // Eligibility already proved the payload decodes; keep key order so an uncharged row
-    // round-trips byte-for-byte.
-    const restored: Record<string, unknown> = {
-      ...safeParseJsonRecord(row.entry_json),
-      retryCount: 0,
-    };
-    delete restored.lastError;
-    delete restored.lastAttemptAt;
-    const result = executeSqliteQuerySync(
-      database.db,
-      queueDb(database)
-        .updateTable("delivery_queue_entries")
-        .set({
-          status: "pending",
-          retry_count: 0,
-          last_attempt_at: null,
-          last_error: null,
-          failed_at: null,
-          updated_at: input.now,
-          entry_json: JSON.stringify(restored),
-        })
-        .where("queue_name", "=", SESSION_DELIVERY_QUEUE_NAME)
-        .where("id", "=", row.id)
-        .where("status", "=", "failed")
-        .where("recovery_state", "is", null)
-        .where("last_error", "=", row.last_error)
-        .where("entry_json", "=", row.entry_json),
-    );
-    return result.numAffectedRows === 1n;
-  });
+  transitionSessionDeliveryBatch(
+    database,
+    "requeue",
+    input.entries,
+    (row) => {
+      // Eligibility already proved the payload decodes; keep key order so an uncharged row
+      // round-trips byte-for-byte.
+      const restored: Record<string, unknown> = {
+        ...safeParseJsonRecord(row.entry_json),
+        retryCount: 0,
+      };
+      delete restored.lastError;
+      delete restored.lastAttemptAt;
+      const result = executeSqliteQuerySync(
+        database.db,
+        queueDb(database)
+          .updateTable("delivery_queue_entries")
+          .set({
+            status: "pending",
+            retry_count: 0,
+            last_attempt_at: null,
+            last_error: null,
+            failed_at: null,
+            updated_at: input.now,
+            entry_json: JSON.stringify(restored),
+          })
+          .where("queue_name", "=", SESSION_DELIVERY_QUEUE_NAME)
+          .where("id", "=", row.id)
+          .where("status", "=", "failed")
+          .where("recovery_state", "is", null)
+          .where("last_error", "=", row.last_error)
+          .where("entry_json", "=", row.entry_json),
+      );
+      return result.numAffectedRows === 1n;
+    },
+    hooks,
+  );
 }
