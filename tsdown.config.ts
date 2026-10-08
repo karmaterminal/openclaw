@@ -475,10 +475,10 @@ function buildCoreDistEntries(): Record<string, string> {
     "agents/provider-runtime-lifecycle": "src/agents/provider-runtime-lifecycle.ts",
     "agents/mcp-auth-profile.runtime": "src/agents/mcp-auth-profile.runtime.ts",
     "agents/auth-profiles.runtime": "src/agents/auth-profiles.runtime.ts",
-    // agent-runner.runtime is dynamically imported by get-reply-run.ts. Keep it in
+    // agent-runner-run is dynamically imported by get-reply-run-helpers.ts. Keep it in
     // the unified graph so singleton continuation state is shared; otherwise a
     // split chunk can silently drop continue_work tool calls.
-    "auto-reply/reply/agent-runner.runtime": "src/auto-reply/reply/agent-runner.runtime.ts",
+    "auto-reply/reply/agent-runner-run": "src/auto-reply/reply/agent-runner-run.ts",
     "auto-reply/continuation/lazy.runtime": "src/auto-reply/continuation/lazy.runtime.ts",
     "agents/model-catalog.runtime": "src/agents/model-catalog.runtime.ts",
     "agents/models-config.runtime": "src/agents/models-config.runtime.ts",
