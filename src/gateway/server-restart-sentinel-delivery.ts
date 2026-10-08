@@ -31,6 +31,7 @@ import {
 } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
+import { isSubagentSessionKey } from "../sessions/session-key-utils.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import { deliverQueuedGeneratedMediaAgentTurn } from "./server-restart-sentinel-agent-delivery.js";
@@ -260,6 +261,14 @@ async function deliverResolvedQueuedSessionDelivery(params: {
     // A continuation return settles only on prompt adoption, whether or not it
     // carries recipient authority; rows written before that rule replay the same way.
     const awaitsTurnAdoption = params.entry.awaitPromptAdoption === true || isContinuationReturn;
+    if (awaitsTurnAdoption && !entry && isSubagentSessionKey(canonicalKey)) {
+      // A heartbeat wake for a subagent key runs the agent's main session, which
+      // never reads this queue, so the row could not be adopted and would replay
+      // on every restart without ever settling.
+      throw new SessionDeliveryDeadLetteredError(
+        "adoption-scoped delivery targets a subagent session that no longer exists",
+      );
+    }
     const replayed = enqueueRestartSentinelWake({
       entryId: params.entry.id,
       message: params.entry.text,

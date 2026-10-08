@@ -382,6 +382,30 @@ describe("startHeartbeatRunner", () => {
     expect(runSpy).toHaveBeenCalledTimes(6);
   });
 
+  it("names the wake's source and session when the flood guard trips", async () => {
+    const warn = vi.spyOn(heartbeatLog, "warn").mockImplementation(() => undefined);
+    start();
+    for (let i = 0; i < 5; i++) {
+      await wake({ source: "manual", intent: "manual", reason: "manual", sessionKey });
+    }
+    requestHeartbeat({
+      source: "restart-sentinel",
+      intent: "immediate",
+      reason: "wake",
+      agentId: "main",
+      sessionKey,
+      coalesceMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(warn).toHaveBeenCalledWith("heartbeat: flood guard tripped, deferring wake", {
+      agentId: "main",
+      reason: "wake",
+      source: "restart-sentinel",
+      sessionKey,
+      recentRunCount: 5,
+    });
+  });
+
   it("retains an event that collides with a task until the spacing floor", async () => {
     start();
     requestHeartbeat({ ...taskWake, coalesceMs: 0 });
