@@ -184,6 +184,7 @@ export function listSessionDeliverySummariesInDatabase(
     const idempotencyKey = entry?.idempotencyKey;
     return {
       id: row.id,
+      // SAFETY: The query filters `status IN statuses`, and statuses holds only SessionDeliveryInspectStatus values.
       status: row.status as SessionDeliveryInspectStatus,
       entryKind: row.entry_kind ?? null,
       sessionKey: row.session_key ?? null,

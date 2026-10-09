@@ -156,7 +156,7 @@ function isSessionDeliveryBatchRefusal(error: unknown, action: MutationAction): 
   }
   // The worker boundary may not preserve the class, so also accept the kernel's exact prefix.
   return (
-    (error as { code?: unknown }).code === "SESSION_DELIVERY_BATCH_REFUSED" ||
+    ("code" in error && error.code === "SESSION_DELIVERY_BATCH_REFUSED") ||
     error.message.startsWith(formatSessionDeliveryBatchRefusal(action, []))
   );
 }
@@ -456,7 +456,12 @@ async function runMutationWithReceipt(params: {
     }
   }
   if (failure !== undefined) {
-    throw failure;
+    // Rethrow the original Error unchanged; only a non-Error throw is wrapped.
+    throw failure instanceof Error
+      ? failure
+      : new Error(typeof failure === "string" ? failure : `sessions deliveries ${action} failed`, {
+          cause: failure,
+        });
   }
   return receipt;
 }

@@ -192,6 +192,7 @@ async function runWithVerboseAndTimeout(
 
 /** The parent `sessions --json` flag also claims a trailing `--json`; honor either placement. */
 function resolveDeliveriesJson(opts: { json?: boolean }, command: Command): boolean {
+  // SAFETY: Only `sessions deliveries <sub>` actions call this, so parent.parent is the `sessions` command whose options addSessionsListOptions declares.
   const sessionsOpts = command.parent?.parent?.opts() as SessionsListCliOptions | undefined;
   return Boolean(opts.json || sessionsOpts?.json);
 }

@@ -89,6 +89,7 @@ const JSON_NOT_APPLICABLE = {
       "plugins marketplace",
       "channels",
       "channels dead-letters",
+      "sessions deliveries",
       "directory",
       "directory peers",
       "directory groups",

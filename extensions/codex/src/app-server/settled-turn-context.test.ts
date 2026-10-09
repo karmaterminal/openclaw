@@ -203,6 +203,65 @@ describe("captureCodexSettledTurnFinalizationContext", () => {
     },
   );
 
+  // A user image anywhere in the projected window used to reject the whole
+  // capture, so every later turn that settled without an answer failed (#1438).
+  it.each(["current prompt", "prior history"] as const)(
+    "records a user image in the %s as a bounded placeholder",
+    async (location) => {
+      const imageTurn = (identity: string, text: string) =>
+        message(
+          {
+            role: "user",
+            content: [
+              { type: "text", text },
+              { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+            ],
+          },
+          identity,
+        );
+      const settledMessages = settledTurn();
+      const prior = message({ role: "user", content: "Alice is the recipient." }, "turn-1:prompt");
+      if (location === "current prompt") {
+        settledMessages[0] = imageTurn("turn-2:prompt", "Send it.");
+      }
+      const historyMessages = [
+        location === "prior history"
+          ? imageTurn("turn-1:prompt", "Alice is the recipient.")
+          : prior,
+        ...settledMessages,
+      ];
+      const warn = vi.spyOn(embeddedAgentLog, "warn").mockImplementation(() => {});
+      try {
+        const context = await captureContext({
+          historyMessages,
+          mirroredMessages: settledMessages,
+          settledMessages,
+        });
+
+        expect(warn).not.toHaveBeenCalled();
+        const imageItem = context?.data[location === "current prompt" ? 1 : 0];
+        expect(imageItem).toEqual({
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: location === "current prompt" ? "Send it." : "Alice is the recipient.",
+            },
+            { type: "input_text", text: "[User image omitted: image/png]" },
+          ],
+        });
+        expect(context?.data.at(-1)).toEqual({
+          type: "function_call_output",
+          call_id: "call-2",
+          output: "sent",
+        });
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
+
   it("recovers after a long history without splitting the recent tool exchange", async () => {
     const prior = Array.from({ length: 201 }, (_, index) =>
       message({ role: "user", content: `old-${index}` }, `old-${index}:prompt`),

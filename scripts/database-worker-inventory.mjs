@@ -2046,6 +2046,10 @@ const workerModules = new Set([
   "src/infra/push-apns-store-transaction.ts", // APNs worker cleanup and pairing worker clearApnsNodeIds only.
   "src/infra/push-apns-store.ts", // SQL read kernels are called only by the APNs worker dispatcher.
   "src/infra/session-cost-usage-worker.ts",
+  // SQL kernels are called only by session-delivery-queue.worker.ts (sessionDelivery.inspect,
+  // quarantineBatch, requeueQuarantinedBatch) <- openclaw-state-worker-registry.ts; host
+  // session-delivery-queue-storage.ts re-exports only its pure error/format helpers and types.
+  "src/infra/session-delivery-queue-quarantine.kernel.ts",
   "src/infra/telemetry-store.kernel.ts", // Telemetry SQL executes through the shared-state worker runtime.
   "src/infra/update-candidate-exec-approvals.ts", // Approval projections run in the update-candidate-state worker.
   "src/infra/update-candidate-plugins.ts", // Plugin inventory and copying run in the update-candidate-state worker.

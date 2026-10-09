@@ -468,7 +468,9 @@ export async function withTranscriptWriteLock<T>(
     throw new Error("Transcript lock changed its physical store");
   }
   return withWorkerTranscriptWriteLock(
-    { ...fenced, ...captured, storePath: captured.path },
+    // `path` pins the physical database. Owned-write checks compare the caller's
+    // store selector, so it must survive even when it names the same database.
+    { ...fenced, ...captured, storePath: fenced.storePath ?? captured.path },
     run,
     runNativeTranscriptWriteLock,
   );
