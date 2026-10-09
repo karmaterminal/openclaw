@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { expect, it, vi } from "vitest";
@@ -10,6 +11,7 @@ import {
 } from "../../test/helpers/promise.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { recordChannelFeedbackEvent } from "../channels/feedback-reflection.js";
+import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import {
   replaceSessionEntry,
   loadSessionEntryReadOnly,
@@ -25,6 +27,7 @@ import {
 } from "../config/sessions/session-source-authority.js";
 import {
   SessionTranscriptWriterClaimReboundError,
+  withOwnedSessionTranscriptWrites,
   withSessionTranscriptWriteAssertion,
 } from "../config/sessions/transcript-write-context.js";
 import { createGatewayMetadataCloseFixture } from "../gateway/server-close.metadata.test-support.js";
@@ -185,6 +188,52 @@ it("retains the prepared owner's target binding for a locked write", async () =>
     expect(messageIds(other)).toEqual([]);
   });
 });
+
+// Run targets name the store by its configured selector (the default
+// sessions/sessions.json); the worker lock pins the physical database, but
+// ownership must still compare the caller's own target (#1438).
+it.each(["worker", "released sync callback"] as const)(
+  "accepts a guarded %s append addressed by the store selector",
+  async (mode) => {
+    await withOpenClawTestState({ scenario: "minimal" }, async ({ env }) => {
+      const physical = await seed(env);
+      await replaceSessionEntry(physical, {
+        sessionId: physical.sessionId,
+        updatedAt: 1,
+        lifecycleRevision: "revision-a",
+        activeWriterRunId: "run-a",
+      });
+      const target = {
+        ...physical,
+        storePath: path.join(resolveSessionTranscriptsDirForAgent("main", env), "sessions.json"),
+        expectedLifecycleRevision: "revision-a",
+        expectedWriterRunId: "run-a",
+      };
+      const prepare = mode === "released sync callback" ? (message: unknown) => message : undefined;
+      let checks = 0;
+      const result = await withOwnedSessionTranscriptWrites(
+        {
+          sessionTarget: target,
+          assertCommitAllowed: () => {
+            checks += 1;
+          },
+          withTranscriptWrite: async (write) => await write(),
+        },
+        () =>
+          withSessionTranscriptWriteLock(target, (locked) =>
+            locked.appendMessage({
+              eventId: "selector",
+              message: { role: "assistant", content: "selector append" },
+              prepareMessageAfterIdempotencyCheck: prepare,
+            }),
+          ),
+      );
+      expect(result).toMatchObject({ appended: true, messageId: "selector" });
+      expect(checks).toBeGreaterThan(0);
+      expect(messageIds(physical)).toEqual(["selector"]);
+    });
+  },
+);
 
 it.each(["locked", "mirror"] as const)(
   "persists %s through its real entry without MAIN SQL",

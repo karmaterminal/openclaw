@@ -7,6 +7,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/gateway/server-methods/sessions-reactions.test.ts",
   "src/plugin-sdk/session-transcript-lock.native.test.ts",
   "src/plugin-sdk/session-transcript-lock.worker.test.ts",
+  "src/agents/embedded-agent-runner/run/settled-turn-finalization.fenced-fallback.test.ts",
   "src/gateway/worker-environments/worker-turn-transcript-target.test.ts",
   "src/state/openclaw-agent-db.worker-admission.test.ts",
   "test/e2e/qa-lab/runtime/gateway-codex-delivery-cache.test.ts",
