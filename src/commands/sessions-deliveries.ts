@@ -457,7 +457,11 @@ async function runMutationWithReceipt(params: {
   }
   if (failure !== undefined) {
     // Rethrow the original Error unchanged; only a non-Error throw is wrapped.
-    throw failure instanceof Error ? failure : new Error(String(failure), { cause: failure });
+    throw failure instanceof Error
+      ? failure
+      : new Error(typeof failure === "string" ? failure : `sessions deliveries ${action} failed`, {
+          cause: failure,
+        });
   }
   return receipt;
 }
