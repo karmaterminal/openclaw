@@ -1,6 +1,26 @@
 import { asPositiveSafeInteger } from "@openclaw/normalization-core/number-coercion";
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 
+/**
+ * `last_error` marker written by `openclaw sessions deliveries quarantine`. A failed row carrying
+ * it is operator-held: its payload must survive until the operator requeues it, so every
+ * prune, compaction and terminalization path over `delivery_queue_entries` must leave it alone.
+ * This is the single source for the marker; the CLI kernel and every exemption read it here.
+ */
+export const OPERATOR_QUARANTINE_ERROR_PREFIX = "operator-quarantine:";
+
+/** True for a `last_error` written by operator quarantine. */
+export function isOperatorQuarantineError(lastError: unknown): lastError is string {
+  return typeof lastError === "string" && lastError.startsWith(OPERATOR_QUARANTINE_ERROR_PREFIX);
+}
+
+/**
+ * SQLite predicate (unqualified columns, no bound parameters) matching an operator-quarantined
+ * row; raw prune/compaction statements exclude it with `AND NOT <predicate>`. NULL-safe, and
+ * case-sensitive like {@link isOperatorQuarantineError}.
+ */
+export const OPERATOR_QUARANTINED_ROW_SQL = `(status = 'failed' AND ifnull(substr(last_error, 1, ${OPERATOR_QUARANTINE_ERROR_PREFIX.length}), '') = '${OPERATOR_QUARANTINE_ERROR_PREFIX}')`;
+
 export type DeliveryQueueCompletionRetention =
   | "permanent"
   | Readonly<{ idPrefix: string; maxAgeMs: number; maxEntries: number }>;
