@@ -636,11 +636,14 @@ async function persistSettledToolFallbackTranscript(input: {
     }
     input.assertActive();
     if (!result.ok) {
-      if (hasWriterFence || result.code === "session-rebound") {
+      // Fenced commits that lose the claim throw from the locked write guard.
+      // A result refusal is a rebound only when it says so; the reply's own
+      // delivery authority still fences the visible fallback.
+      if (result.code === "session-rebound") {
         throw new SessionTranscriptWriterClaimReboundError();
       }
       log.warn(
-        `settled-turn fallback transcript append skipped: runId=${input.attempt.runId} sessionId=${input.sessionId} reason=${result.reason}`,
+        `settled-turn fallback transcript append skipped: runId=${input.attempt.runId} sessionId=${input.sessionId} code=${result.code ?? "none"} reason=${result.reason}`,
       );
       return undefined;
     }

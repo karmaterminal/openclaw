@@ -735,9 +735,9 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
     expect(transcriptMocks.appendAssistantMirrorMessageByIdentity).toHaveBeenCalledOnce();
   });
 
-  it("uses a fresh session's committed writer fence for fallback persistence", async () => {
-    const attempt = settledSuccessfulAttempt();
+  function freshSessionFencedInput(attempt: EmbeddedRunAttemptWithReceiptEvidence) {
     const input = finalizationInput(attempt);
+    input.terminalBase.runParams.trigger = "user";
     input.finalization.preparedAttempt.sessionKey = "agent:main:settled";
     input.finalization.preparedAttempt.agentId = "main";
     input.finalization.preparedAttempt.sessionTarget = {
@@ -759,15 +759,20 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
       outcome: "empty",
       result: { assistant: emptyAssistant, usage: emptyAssistant.usage },
     });
+    return input;
+  }
+
+  it("uses a fresh session's committed writer fence for fallback persistence", async () => {
+    const attempt = settledSuccessfulAttempt();
+    const input = freshSessionFencedInput(attempt);
     transcriptMocks.appendAssistantMirrorMessageByIdentity.mockResolvedValueOnce({
-      ok: false,
-      code: "blocked",
-      reason: "writer replaced after the initial transcript commit",
+      ok: true,
+      messageId: "fallback-message",
     });
 
-    await expect(prepareTerminalWithSettledTurnFinalization(input)).rejects.toBeInstanceOf(
-      SessionTranscriptWriterClaimReboundError,
-    );
+    const result = await prepareTerminalWithSettledTurnFinalization(input);
+
+    expect(result.attempt.assistantTranscriptOwned).toBe(true);
     expect(backendMocks.runSettledFinalization).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionTarget: expect.objectContaining({
@@ -783,6 +788,43 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
         expectedLifecycleRevision: "revision-committed",
         expectedWriterRunId: "run-settled",
       }),
+    );
+  });
+
+  // Only a refusal that names a rebound retracts the fallback. Other refusals
+  // keep the visible reply, whose delivery authority still carries the fence.
+  it("keeps the fenced fallback reply when its transcript append is refused for another reason", async () => {
+    const input = freshSessionFencedInput(settledSuccessfulAttempt());
+    transcriptMocks.appendAssistantMirrorMessageByIdentity.mockResolvedValueOnce({
+      ok: false,
+      code: "blocked",
+      reason: "missing active session",
+    });
+
+    const result = await prepareTerminalWithSettledTurnFinalization(input);
+
+    expect(result.prepared.payloadsWithToolMedia).toEqual([
+      expect.objectContaining({ text: SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT }),
+    ]);
+    expect(getReplyPayloadMetadata(result.prepared.payloadsWithToolMedia![0]!)).toMatchObject({
+      sessionWriterDeliveryAuthority: {
+        expectedLifecycleRevision: "revision-committed",
+        expectedWriterRunId: "run-settled",
+      },
+    });
+    expect(result.attempt.assistantTranscriptOwned).not.toBe(true);
+  });
+
+  it("does not construct a fenced fallback after its append reports a session rebound", async () => {
+    const input = freshSessionFencedInput(settledSuccessfulAttempt());
+    transcriptMocks.appendAssistantMirrorMessageByIdentity.mockResolvedValueOnce({
+      ok: false,
+      code: "session-rebound",
+      reason: "session changed",
+    });
+
+    await expect(prepareTerminalWithSettledTurnFinalization(input)).rejects.toBeInstanceOf(
+      SessionTranscriptWriterClaimReboundError,
     );
   });
 });
