@@ -3,6 +3,8 @@ import { safeParseJsonRecord } from "@openclaw/normalization-core";
 import { pruneDeliveryQueueTombstones } from "../infra/delivery-queue-sqlite-bound.js";
 import {
   inferDeliveryQueueFailureRetention,
+  isOperatorQuarantineError,
+  OPERATOR_QUARANTINED_ROW_SQL,
   projectDeliveryQueueTerminalEntry,
 } from "../infra/delivery-queue-sqlite.types.js";
 
@@ -21,13 +23,15 @@ export function compactLegacyDeliveryQueueFailures(db: DatabaseSync): void {
       WHERE queue_name = ? AND id = ? AND status = 'pending' AND entry_json = ?`,
   );
   const select = db.prepare(
-    `SELECT queue_name, id, status, retry_count, entry_json, updated_at, failed_at, recovery_state
+    `SELECT queue_name, id, status, retry_count, entry_json, updated_at, failed_at, recovery_state,
+            last_error
        FROM delivery_queue_entries WHERE status IN ('pending', 'failed')`,
   );
   select.setReadBigInts(true);
   const rows = select.all() as Array<Record<string, unknown>>;
   const remove = db.prepare(
-    `DELETE FROM delivery_queue_entries WHERE queue_name = ? AND id = ? AND status = 'failed'`,
+    `DELETE FROM delivery_queue_entries WHERE queue_name = ? AND id = ? AND status = 'failed'
+        AND NOT ${OPERATOR_QUARANTINED_ROW_SQL}`,
   );
   const compact = db.prepare(
     `UPDATE delivery_queue_entries
@@ -35,9 +39,15 @@ export function compactLegacyDeliveryQueueFailures(db: DatabaseSync): void {
             account_id = NULL, retry_count = @retryCount, last_attempt_at = NULL,
             last_error = NULL, platform_send_started_at = NULL, entry_json = @entryJson,
             enqueued_at = @failedAt, failed_at = @failedAt, recovery_state = @recoveryState
-      WHERE queue_name = @queueName AND id = @id AND status = 'failed'`,
+      WHERE queue_name = @queueName AND id = @id AND status = 'failed'
+        AND NOT ${OPERATOR_QUARANTINED_ROW_SQL}`,
   );
   for (const row of rows) {
+    // Operator-quarantined rows are held for requeue: neither the pending retain rewrite nor the
+    // failed delete/compaction below may touch them (compaction would destroy their payload).
+    if (isOperatorQuarantineError(row.last_error)) {
+      continue;
+    }
     // Failed send custody can still own a restartable completion projection.
     if (row.recovery_state === "settlement_pending") {
       continue;

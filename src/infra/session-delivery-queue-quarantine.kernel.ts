@@ -9,6 +9,10 @@ import type { OpenClawStateDatabase } from "../state/openclaw-state-db-contract.
 import { sha256Hex } from "./crypto-digest.js";
 import type { DeliveryQueueDatabase } from "./delivery-queue-sqlite-bound.js";
 import {
+  isOperatorQuarantineError,
+  OPERATOR_QUARANTINE_ERROR_PREFIX,
+} from "./delivery-queue-sqlite.types.js";
+import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
   getNodeSqliteKysely,
@@ -18,7 +22,7 @@ import { normalizeSqliteNumber } from "./sqlite-number.js";
 import { runSqliteImmediateTransactionSync } from "./sqlite-transaction.js";
 
 /** Failed-reason prefix owned by operator quarantine; requeue only accepts rows carrying it. */
-export const SESSION_DELIVERY_QUARANTINE_REASON_PREFIX = "operator-quarantine:";
+export const SESSION_DELIVERY_QUARANTINE_REASON_PREFIX = OPERATOR_QUARANTINE_ERROR_PREFIX;
 
 export type SessionDeliveryInspectStatus = "pending" | "failed";
 
@@ -142,7 +146,7 @@ function resolveTextLength(entry: Record<string, unknown> | null): number | null
 }
 
 function isOperatorQuarantine(lastError: string | null): lastError is string {
-  return lastError?.startsWith(SESSION_DELIVERY_QUARANTINE_REASON_PREFIX) === true;
+  return isOperatorQuarantineError(lastError);
 }
 
 /** Summarize session-queue rows in enqueue order without exposing any payload text. */

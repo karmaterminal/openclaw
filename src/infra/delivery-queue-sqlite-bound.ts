@@ -1,10 +1,13 @@
 // Database-bound delivery queue serialization and mutations used by shared transactions.
 import type { DatabaseSync } from "node:sqlite";
-import type { RawBuilder, Selectable } from "kysely";
+import { sql, type RawBuilder, type Selectable, type SqlBool } from "kysely";
 import type { OpenClawStateDatabase } from "../state/openclaw-state-db-contract.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-db.generated.js";
 import type { DeliveryQueueSqliteRow } from "./delivery-queue-sqlite-codec.js";
-import type { DeliveryQueueEntryState } from "./delivery-queue-sqlite.types.js";
+import {
+  OPERATOR_QUARANTINED_ROW_SQL,
+  type DeliveryQueueEntryState,
+} from "./delivery-queue-sqlite.types.js";
 import {
   createSqliteQueryCache,
   executeSqliteQuerySync,
@@ -26,6 +29,7 @@ const BOUNDED_DELIVERY_RECEIPTS_SQL = `
       json_extract(entry_json, '$.completionRetention.maxEntries') max_entries
     FROM delivery_queue_entries WHERE status IN ('completed', 'failed')
       AND recovery_state = 'completed_bounded' AND json_valid(entry_json)
+      AND NOT ${OPERATOR_QUARANTINED_ROW_SQL}
        AND json_type(entry_json, '$.completionRetention') = 'object'
   )
   WHERE typeof(id_prefix) = 'text' AND id_prefix <> ''
@@ -34,6 +38,13 @@ const BOUNDED_DELIVERY_RECEIPTS_SQL = `
     AND typeof(max_entries) = 'integer' AND max_entries BETWEEN 1 AND 9007199254740991`;
 
 export type DeliveryQueueDatabase = Pick<OpenClawStateKyselyDatabase, "delivery_queue_entries">;
+
+/** Excludes operator-quarantined rows from generic terminal and overwrite transitions. */
+function notOperatorQuarantined() {
+  const predicate = sql.raw(OPERATOR_QUARANTINED_ROW_SQL); // kysely-allow-raw: fixed shared constant, no input.
+  return sql`NOT ${predicate}`.$castTo<SqlBool>();
+}
+
 const deliveryQueueRowColumns = [
   "id",
   "entry_json",
@@ -116,6 +127,7 @@ export function terminalizeBoundDeliveryQueueEntry(
     ? queueDb
         .updateTable("delivery_queue_entries")
         .where((eb) => eb.and(expected))
+        .where(notOperatorQuarantined())
         .set({
           status: "failed",
           entry_kind: null,
@@ -132,7 +144,10 @@ export function terminalizeBoundDeliveryQueueEntry(
           updated_at: now,
           failed_at: now,
         })
-    : queueDb.deleteFrom("delivery_queue_entries").where((eb) => eb.and(expected));
+    : queueDb
+        .deleteFrom("delivery_queue_entries")
+        .where((eb) => eb.and(expected))
+        .where(notOperatorQuarantined());
   return executeSqliteQuerySync(db, query).numAffectedRows === 1n;
 }
 
@@ -277,9 +292,12 @@ function createDeliveryQueueUpsert(database: DatabaseSync, mode: DeliveryQueueUp
             if (mode === "pending") {
               return update.where("delivery_queue_entries.status", "=", "pending");
             }
+            // Completion and replacement never overwrite an operator-quarantined row.
             return mode === "complete"
-              ? update.where("delivery_queue_entries.status", "in", ["pending", "failed"])
-              : update;
+              ? update
+                  .where("delivery_queue_entries.status", "in", ["pending", "failed"])
+                  .where(notOperatorQuarantined())
+              : update.where(notOperatorQuarantined());
           });
     return query;
   });
