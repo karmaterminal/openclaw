@@ -259,20 +259,55 @@ describe("projectSettledCodexMessages", () => {
   });
 
   it("does not let provenance hide non-text user content", () => {
-    expect(() =>
-      projectSettledCodexMessages([
-        message({
-          role: "user",
-          content: [
-            { type: "text", text: "Send the notice." },
-            { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
-          ],
-          __openclaw: { upstreamUserText: "Send the notice." },
-        }),
-        toolCall(),
-        toolResult(),
-      ]),
-    ).toThrow("unsupported_user_image");
+    const projected = projectSettledCodexMessages([
+      message({
+        role: "user",
+        content: [
+          { type: "text", text: "Send the notice." },
+          { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+        ],
+        __openclaw: { upstreamUserText: "Send the notice." },
+      }),
+      toolCall(),
+      toolResult(),
+    ]);
+    expect(projected[0]).toEqual({
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "Send the notice." },
+        { type: "input_text", text: "[User image omitted: image/png]" },
+      ],
+    });
+    expect(JSON.stringify(projected)).not.toContain("aGVsbG8=");
+  });
+
+  it("keeps image-only user content and custom image evidence as placeholders", () => {
+    const projected = projectSettledCodexMessages([
+      message({ role: "user", content: [{ type: "image", data: "aGVsbG8=" }] }),
+      message({
+        role: "custom",
+        customType: "plugin.note",
+        display: false,
+        content: [{ type: "image", data: "aGVsbG8=", mimeType: "image/png" }],
+        __openclaw: { upstreamUserText: "Cannot replace image evidence." },
+      }),
+      toolCall(),
+      toolResult(),
+    ]);
+    expect(projected.slice(0, 2)).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "[User image omitted: unknown type]" }],
+      },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "[User image omitted: image/png]" }],
+      },
+    ]);
+    expect(JSON.stringify(projected)).not.toContain("aGVsbG8=");
   });
 
   it.each([
@@ -302,15 +337,9 @@ describe("projectSettledCodexMessages", () => {
       reason: "unsupported_content",
     },
     {
-      name: "custom image evidence",
-      value: {
-        role: "custom",
-        customType: "plugin.note",
-        display: false,
-        content: [{ type: "image", data: "aGVsbG8=", mimeType: "image/png" }],
-        __openclaw: { upstreamUserText: "Cannot replace image evidence." },
-      },
-      reason: "unsupported_user_image",
+      name: "unknown user block",
+      value: { role: "user", content: [{ type: "text", text: "Hi." }, { type: "future-block" }] },
+      reason: "unsupported_content",
     },
     {
       name: "unknown custom block",

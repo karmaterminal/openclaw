@@ -105,12 +105,16 @@ class HistoryProjection {
       if (!isRecord(value)) {
         throw new CodexHistoryRejection("invalid_content");
       }
-      if (value.type !== "text") {
-        throw new CodexHistoryRejection(
-          value.type === "image" ? "unsupported_user_image" : "unsupported_content",
-        );
+      let text: string | undefined;
+      if (value.type === "image") {
+        // Like tool-result images, a user image stays visible as bounded
+        // metadata. Rejecting it made every later answerless turn unrecoverable.
+        text = `[User image omitted: ${normalizeOptionalString(value.mimeType) ?? "unknown type"}]`;
+      } else if (value.type === "text") {
+        text = this.readBoundedText(value.text);
+      } else {
+        throw new CodexHistoryRejection("unsupported_content");
       }
-      const text = this.readBoundedText(value.text);
       if (text) {
         hasText = true;
         if (this.omitted) {

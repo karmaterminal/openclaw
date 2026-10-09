@@ -72,14 +72,15 @@ describe("settled prior-history validation", () => {
       ],
     },
     {
-      name: "user image after oversized text in the same message",
-      reason: "unsupported_user_image",
+      name: "user block after oversized text in the same message",
+      reason: "unsupported_content",
       records: [
         {
           role: "user",
           content: [
             { type: "text", text: "x".repeat(65537) },
             { type: "image", data: "image" },
+            { type: "future-block" },
           ],
         },
       ],
