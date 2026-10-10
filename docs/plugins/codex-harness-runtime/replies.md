@@ -81,6 +81,18 @@ required, the host delivers its existing fallback:
 
 > The tool run finished, but no final summary was produced. I did not repeat any completed actions.
 
+When visible replies are message-tool-only (`visibleReplies: "message_tool"`),
+that fallback stays private. If the turn came from a user message and the model
+has not already sent anything with the message tool, OpenClaw instead sends one
+fixed notice to the source conversation:
+
+> I lost that turn before I could answer. Please resend if it still matters.
+
+The notice is sent at most once per run, only while the run still owns the
+session, and never for heartbeat, scheduled, internal, or ambient room-event
+turns. Set `agents.defaults.settledTurnFallbackNotice: false` to keep these
+turns silent.
+
 The original completed outcome, native binding, and tool receipts remain intact.
 If the native turn failed and finalization cannot produce an answer, the reply
 instead explains the failure and the next step. For example, model capacity
