@@ -83,14 +83,17 @@ required, the host delivers its existing fallback:
 
 When visible replies are message-tool-only (`visibleReplies: "message_tool"`),
 that fallback stays private. If the turn came from a user message and the model
-has not already sent anything with the message tool, OpenClaw instead sends one
-fixed notice to the source conversation:
+has not already replied in that conversation, OpenClaw instead sends one fixed
+notice to the source conversation. A message the model sent only to another
+target does not count as a reply:
 
 > I lost the end of that turn before I could reply. Some actions may already have completed, so please check before resending.
 
 The notice is sent at most once per run, only while the run still owns the
 session, and never for heartbeat, scheduled, internal, or ambient room-event
-turns. This applies to every agent harness. Set
+turns. It applies to harnesses that run settled-turn finalization (OpenClaw's
+built-in runner, Codex and Copilot); a harness without a settled-turn finalizer
+keeps its previous behaviour. Set
 `agents.defaults.settledTurnFallbackNotice: false` to keep these turns silent;
 see [Other message keys](/gateway/config-agents/messages-and-talk#other-message-keys).
 

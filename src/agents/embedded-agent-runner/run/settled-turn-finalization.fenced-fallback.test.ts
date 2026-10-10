@@ -215,12 +215,6 @@ describe("fenced settled-turn fallback through the real transcript writer", () =
           input.terminalBase.runParams.currentInboundEventKind = "room_event";
         },
       },
-      {
-        name: "a turn whose model already used the message tool",
-        configure: (_input: FencedInput, attempt: FencedAttempt) => {
-          attempt.didSendViaMessagingTool = true;
-        },
-      },
     ])("keeps the fallback private for $name", async ({ configure }) => {
       const { input, appendedTranscript } = await prepareFencedRun(configure);
 
@@ -238,9 +232,38 @@ describe("fenced settled-turn fallback through the real transcript writer", () =
       ]);
     });
 
+    it("still delivers the notice when the model only messaged another target", async () => {
+      const { input } = await prepareFencedRun((_input, attempt) => {
+        attempt.didSendViaMessagingTool = true;
+        attempt.didDeliverSourceReplyViaMessageTool = false;
+      });
+
+      const result = await prepareTerminalWithSettledTurnFinalization(input);
+
+      expect(result.prepared.payloadsWithToolMedia).toEqual([
+        expect.objectContaining({ text: NOTICE_TEXT }),
+      ]);
+      expect(
+        getReplyPayloadMetadata(result.prepared.payloadsWithToolMedia![0]!)
+          ?.deliverDespiteSourceReplySuppression,
+      ).toBe(true);
+    });
+
     it("sends nothing when the source reply was already delivered", async () => {
       const { input, appendedTranscript } = await prepareFencedRun((run) => {
         run.terminalBase.runParams.resolveReplyDelivery = async () => "delivered";
+      });
+
+      const result = await prepareTerminalWithSettledTurnFinalization(input);
+
+      expect(result.prepared.payloadsWithToolMedia ?? []).toEqual([]);
+      expect(await appendedTranscript()).toEqual([]);
+    });
+
+    it("sends nothing when the model already replied in the source conversation", async () => {
+      const { input, appendedTranscript } = await prepareFencedRun((_input, attempt) => {
+        attempt.didSendViaMessagingTool = true;
+        attempt.didDeliverSourceReplyViaMessageTool = true;
       });
 
       const result = await prepareTerminalWithSettledTurnFinalization(input);

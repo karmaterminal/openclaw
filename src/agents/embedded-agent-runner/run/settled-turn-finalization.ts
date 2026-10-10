@@ -32,6 +32,7 @@ import {
   createAdmittedGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
 } from "../../tools/gateway-caller-context.js";
+import { hasCommittedSourceReplyDeliveryEvidence } from "../delivery-evidence.js";
 import { log } from "../logger.js";
 import {
   mergeAttemptRunStatsIntoAccumulator,
@@ -206,7 +207,8 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
   // Message-tool-only sources keep the host placeholder private, so a lost
   // inbound user turn would otherwise end in silence. Only that turn gets a
   // fixed notice; failures already carry their own reply, and a turn whose
-  // model already used the message tool has spoken.
+  // model already spoke in the source conversation is not silent. A message sent
+  // only to another target leaves the source unanswered, so it does not count.
   const recoveryNoticeEligible =
     runParams.sourceReplyDeliveryMode === "message_tool_only" &&
     runParams.trigger === "user" &&
@@ -216,7 +218,7 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
     input.finalization.preparedAttempt.config?.agents?.defaults?.settledTurnFallbackNotice !==
       false &&
     !terminalFailed &&
-    !initial.attempt.didSendViaMessagingTool;
+    !hasCommittedSourceReplyDeliveryEvidence(initial.attempt);
   let recoveryNotice = false;
   log.warn(
     `settled post-tool turn lacked a final answer: ${describeRun()} — running isolated finalization`,
