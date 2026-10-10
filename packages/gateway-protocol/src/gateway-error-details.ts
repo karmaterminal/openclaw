@@ -175,6 +175,18 @@ export function readCronJobNotFoundError(error: unknown): CronJobNotFoundErrorDe
   return jobId ? { code: GatewayErrorDetailCodes.CRON_JOB_NOT_FOUND, jobId } : null;
 }
 
+/** Reads which agent id an agent-scoped request was refused for, without parsing prose. */
+export function readUnknownAgentIdError(error: unknown): UnknownAgentIdErrorDetails | null {
+  const record = asProtocolRecord(error);
+  const details = asProtocolRecord(record?.details);
+  return record?.code === ErrorCodes.INVALID_REQUEST &&
+    details?.code === GatewayErrorDetailCodes.UNKNOWN_AGENT_ID &&
+    typeof details.agentId === "string" &&
+    details.agentId.length > 0
+    ? { code: details.code, agentId: details.agentId }
+    : null;
+}
+
 /** Builds the canonical stale-draft details shared by Skill Workshop RPCs. */
 export function buildSkillProposalRevisionChangedErrorDetails(params: {
   expectedRevisionHash: string;

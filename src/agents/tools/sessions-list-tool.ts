@@ -2,6 +2,7 @@ import { readStringValue } from "@openclaw/normalization-core/string-coerce";
 import pMap from "p-map";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { readUnknownAgentIdError } from "../../../packages/gateway-protocol/src/gateway-error-details.js";
 import { SessionsListParamsSchema } from "../../../packages/gateway-protocol/src/schema/sessions-list.js";
 import { SessionRunStatusSchema } from "../../../packages/gateway-protocol/src/schema/sessions-row.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
@@ -43,6 +44,7 @@ import {
   createSessionVisibilityRowChecker,
   classifySessionListKind,
   deriveChannel,
+  describeRefusedSessionOwners,
   resolveDisplaySessionKey,
   resolveInternalSessionKey,
   resolveSessionToolContext,
@@ -93,6 +95,12 @@ const SessionsListOutputSchema = Type.Object(
       Type.Boolean({
         description:
           "Inline messages and transcript previews were omitted to fit the byte budget; read session history separately.",
+      }),
+    ),
+    warning: Type.Optional(
+      Type.String({
+        description:
+          "Names owners the Gateway refused as unknown agent ids; their rows are listed without the named enrichment.",
       }),
     ),
     sessionLinkRule: Type.Optional(Type.String({ description: SESSION_LINK_RULE_DESCRIPTION })),
@@ -514,6 +522,25 @@ export function createSessionsListTool(opts?: {
       }
 
       const unavailableRows = new Set<SessionListRow>();
+      const refusedTitleRows = new Set<SessionListRow>();
+      const refusedHistoryRows = new Set<SessionListRow>();
+      // An owner the Gateway refuses (a retired or ACP-only agent) must not erase the other
+      // rows: its rows stay listed without that enrichment, and the result names it.
+      const readUnlessOwnerRefused = async <T>(
+        row: SessionListRow,
+        refused: Set<SessionListRow>,
+        read: () => Promise<T>,
+      ): Promise<T | undefined> => {
+        try {
+          return await read();
+        } catch (error) {
+          if (readUnknownAgentIdError(error)?.agentId !== row.agentId) {
+            throw error;
+          }
+          refused.add(row);
+          return undefined;
+        }
+      };
       await pMap(
         titleTargets,
         async (target) => {
@@ -536,17 +563,22 @@ export function createSessionsListTool(opts?: {
           }
           const described =
             titleRead.needsTranscript && fields === undefined
-              ? await gatewayCall<{ session: GatewaySessionListRow | null }>({
-                  method: "sessions.describe",
-                  ...(signal ? { signal } : {}),
-                  params: {
-                    key: target.sessionKey,
-                    agentId: target.row.agentId,
-                    includeDerivedTitles,
-                    includeLastMessage,
-                  },
-                })
+              ? await readUnlessOwnerRefused(target.row, refusedTitleRows, () =>
+                  gatewayCall<{ session: GatewaySessionListRow | null }>({
+                    method: "sessions.describe",
+                    ...(signal ? { signal } : {}),
+                    params: {
+                      key: target.sessionKey,
+                      agentId: target.row.agentId,
+                      includeDerivedTitles,
+                      includeLastMessage,
+                    },
+                  }),
+                )
               : undefined;
+          if (refusedTitleRows.has(target.row)) {
+            return;
+          }
           if (described && described.session?.sessionId !== target.titleEntry.sessionId) {
             unavailableRows.add(target.row);
             return;
@@ -570,15 +602,20 @@ export function createSessionsListTool(opts?: {
         await pMap(
           historyTargets.filter((target) => !unavailableRows.has(target.row)),
           async (target) => {
-            const history = await gatewayCall<{ messages: Array<unknown> }>({
-              method: "chat.history",
-              ...(signal ? { signal } : {}),
-              params: {
-                sessionKey: target.resolvedKey,
-                agentId: target.row.agentId,
-                limit: messageLimit,
-              },
-            });
+            const history = await readUnlessOwnerRefused(target.row, refusedHistoryRows, () =>
+              gatewayCall<{ messages: Array<unknown> }>({
+                method: "chat.history",
+                ...(signal ? { signal } : {}),
+                params: {
+                  sessionKey: target.resolvedKey,
+                  agentId: target.row.agentId,
+                  limit: messageLimit,
+                },
+              }),
+            );
+            if (refusedHistoryRows.has(target.row)) {
+              return;
+            }
             const rawMessages = Array.isArray(history?.messages) ? history.messages : [];
             const filtered = stripToolMessages(rawMessages);
             target.row.messages =
@@ -610,6 +647,25 @@ export function createSessionsListTool(opts?: {
         );
         const retainedRows = retained.map(({ row }) => row);
         let enrichmentOmitted = false;
+        // Name only returned rows, so a byte-limited page never reports rows it omitted.
+        const refusedOwnerWarning = (count: number) => {
+          const page = retainedRows.slice(0, count);
+          const warning = (
+            [
+              ["titles and previews", refusedTitleRows],
+              ["messages", refusedHistoryRows],
+            ] as const
+          )
+            .flatMap(
+              ([stage, refused]) =>
+                describeRefusedSessionOwners(
+                  stage,
+                  page.filter((row) => refused.has(row)).map((row) => row.agentId),
+                ) ?? [],
+            )
+            .join(" ");
+          return warning ? { warning } : {};
+        };
         const resultFor = (count: number) => ({
           count,
           sessions: retainedRows.slice(0, count),
@@ -621,6 +677,7 @@ export function createSessionsListTool(opts?: {
               : {}),
           limitApplied: outputLimit,
           ...(enrichmentOmitted ? { enrichmentOmitted: true } : {}),
+          ...refusedOwnerWarning(count),
           ...(count < retainedRows.length
             ? { truncationReason: "byte-limit" as const }
             : sessions.length < outputLimit && nextOffset !== undefined

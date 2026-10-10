@@ -133,6 +133,24 @@ export function resolveSessionToolContext(opts?: {
   };
 }
 
+/** Names each owner a broad read skipped, one agent id per skipped session, so a partial result never reads as complete. */
+export function describeRefusedSessionOwners(
+  stage: string,
+  agentIds: readonly string[],
+): string | undefined {
+  if (agentIds.length === 0) {
+    return undefined;
+  }
+  const counts = new Map<string, number>();
+  for (const agentId of agentIds) {
+    counts.set(agentId, (counts.get(agentId) ?? 0) + 1);
+  }
+  const owners = [...counts]
+    .toSorted(([left], [right]) => left.localeCompare(right))
+    .map(([agentId, count]) => `"${agentId}" (${count} ${count === 1 ? "session" : "sessions"})`);
+  return `Skipped ${stage} for agents the Gateway refused as unknown: ${owners.join(", ")}.`;
+}
+
 export function classifySessionListKind(params: {
   classification: NonNullable<GatewaySessionListRow["classification"]>;
   peerKind?: GatewaySessionListRow["peerKind"];

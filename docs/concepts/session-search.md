@@ -40,6 +40,12 @@ cross-agent access.
 Excerpts are redacted before they return to the model. Results are also bounded by count, excerpt
 length, and total response size.
 
+A broad search reads each owner's sessions separately. If the Gateway refuses one owner as an
+unknown agent id (for example an agent removed from `agents.entries` whose store remains, or one now
+configured only in `acp.allowedAgents`), search skips that owner's sessions, still returns the other
+owners' matches, and `warning` names the refused owner with the number of skipped sessions. A
+search of one requested `sessionKey` keeps the refusal, as does `sessions_history`.
+
 ## Control UI search
 
 The command palette and Threads page send their session filters to the Gateway, which

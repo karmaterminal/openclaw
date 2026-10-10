@@ -1,4 +1,5 @@
 import { Type, type Static } from "typebox";
+import { readUnknownAgentIdError } from "../../../packages/gateway-protocol/src/gateway-error-details.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
 import { redactToolPayloadText } from "../../logging/redact.js";
@@ -30,6 +31,7 @@ import {
 } from "./scoped-session-access.js";
 import {
   createSessionVisibilityRowChecker,
+  describeRefusedSessionOwners,
   formatSessionToolAccessDenial,
   isSessionToolMainAlias,
   resolveDisplaySessionKey,
@@ -478,6 +480,7 @@ export function createSessionsSearchTool(opts?: {
       let indexing = false;
       let archivedTranscriptsExcluded = 0;
       let backendTruncated = false;
+      const refusedSessionOwners: string[] = [];
       const sessionsByAgent = new Map<string, SearchSessionCandidate[]>();
       for (const candidate of searchSessions) {
         const agentId = resolveSessionAgentId({
@@ -515,15 +518,26 @@ export function createSessionsSearchTool(opts?: {
               },
             });
           const scopedCandidate = chunk.length === 1 ? chunk[0] : undefined;
-          const result = scopedCandidate?.expectedSessionId
-            ? await runWithScopedSessionAccess({
-                cfg,
-                agentId,
-                expectedSessionId: scopedCandidate.expectedSessionId,
-                targetSessionKey: scopedCandidate.key,
-                run: runSearch,
-              })
-            : await runSearch();
+          let result: Awaited<ReturnType<typeof runSearch>>;
+          try {
+            result = scopedCandidate?.expectedSessionId
+              ? await runWithScopedSessionAccess({
+                  cfg,
+                  agentId,
+                  expectedSessionId: scopedCandidate.expectedSessionId,
+                  targetSessionKey: scopedCandidate.key,
+                  run: runSearch,
+                })
+              : await runSearch();
+          } catch (error) {
+            // An owner the Gateway refuses (a retired or ACP-only agent) must not erase the
+            // other owners' hits; a requested session keeps its refusal.
+            if (sessionTarget || readUnknownAgentIdError(error)?.agentId !== agentId) {
+              throw error;
+            }
+            refusedSessionOwners.push(...chunk.map(() => agentId));
+            continue;
+          }
           indexing ||= result.indexing === true;
           archivedTranscriptsExcluded += result.archivedTranscriptsExcluded ?? 0;
           backendTruncated ||= result.truncated === true;
@@ -559,6 +573,7 @@ export function createSessionsSearchTool(opts?: {
         archivedTranscriptsExcluded > 0
           ? `Search excludes ${archivedTranscriptsExcluded} archived transcripts. Restore a transcript to include it in search.`
           : undefined,
+        describeRefusedSessionOwners("transcript search", refusedSessionOwners),
       ].filter(Boolean);
       return jsonResult({
         results: capped.items,
