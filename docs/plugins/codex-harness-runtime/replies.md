@@ -90,8 +90,9 @@ fixed notice to the source conversation:
 
 The notice is sent at most once per run, only while the run still owns the
 session, and never for heartbeat, scheduled, internal, or ambient room-event
-turns. Set `agents.defaults.settledTurnFallbackNotice: false` to keep these
-turns silent.
+turns. This applies to every agent harness. Set
+`agents.defaults.settledTurnFallbackNotice: false` to keep these turns silent;
+see [Other message keys](/gateway/config-agents/messages-and-talk#other-message-keys).
 
 The original completed outcome, native binding, and tool receipts remain intact.
 If the native turn failed and finalization cannot produce an answer, the reply
