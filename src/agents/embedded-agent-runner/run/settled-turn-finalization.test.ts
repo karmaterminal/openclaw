@@ -49,6 +49,9 @@ const transcriptMocks = vi.hoisted(() => ({
 
 const SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT =
   "The tool run finished, but no final summary was produced. I did not repeat any completed actions.";
+// Message-tool-only user turns replace the private placeholder with this notice.
+const SETTLED_TURN_RECOVERY_NOTICE_TEXT =
+  "I lost that turn before I could answer. Please resend if it still matters.";
 
 vi.mock("./backend.js", () => ({
   resolveRuntimeModelAttempt: backendMocks.resolveRuntimeModelAttempt,
@@ -700,7 +703,7 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
     const result = await prepareTerminalWithSettledTurnFinalization(input);
 
     expect(result.prepared.payloadsWithToolMedia).toEqual([
-      expect.objectContaining({ text: SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT }),
+      expect.objectContaining({ text: SETTLED_TURN_RECOVERY_NOTICE_TEXT }),
     ]);
     expect(transcriptMocks.appendAssistantMirrorMessageByIdentity).not.toHaveBeenCalled();
   });
@@ -804,9 +807,10 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
     const result = await prepareTerminalWithSettledTurnFinalization(input);
 
     expect(result.prepared.payloadsWithToolMedia).toEqual([
-      expect.objectContaining({ text: SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT }),
+      expect.objectContaining({ text: SETTLED_TURN_RECOVERY_NOTICE_TEXT }),
     ]);
     expect(getReplyPayloadMetadata(result.prepared.payloadsWithToolMedia![0]!)).toMatchObject({
+      deliverDespiteSourceReplySuppression: true,
       sessionWriterDeliveryAuthority: {
         expectedLifecycleRevision: "revision-committed",
         expectedWriterRunId: "run-settled",
