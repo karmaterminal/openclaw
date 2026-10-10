@@ -88,7 +88,10 @@ function gatewayCaller(
     }
     const response = await directSessionReq(request.method, request.params);
     const delivered: typeof response =
-      transport === "remote" ? JSON.parse(JSON.stringify(response)) : response;
+      transport === "remote"
+        ? // oxlint-disable-next-line unicorn/prefer-structured-clone -- a remote client receives the Gateway's JSON wire shape
+          JSON.parse(JSON.stringify(response))
+        : response;
     if (!delivered.ok) {
       throw new GatewayClientRequestError(delivered.error ?? {});
     }
@@ -175,9 +178,10 @@ test("broad session reads keep the other owners and name each owner the Gateway 
   if (!isRecord(details) || !Array.isArray(details.results)) {
     throw new Error("Expected sessions_search results");
   }
-  expect(
-    details.results.map((hit: unknown) => (isRecord(hit) ? hit.sessionKey : undefined)).toSorted(),
-  ).toEqual([...MAIN_KEYS, "agent:claude:subagent:retained"].toSorted());
+  const hitKeys = details.results.flatMap((hit: unknown) =>
+    isRecord(hit) && typeof hit.sessionKey === "string" ? [hit.sessionKey] : [],
+  );
+  expect(hitKeys.toSorted()).toEqual([...MAIN_KEYS, "agent:claude:subagent:retained"].toSorted());
 });
 
 test("explicit reads keep their refusal and other broad-read failures stay fatal", async () => {
