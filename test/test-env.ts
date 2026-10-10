@@ -42,6 +42,8 @@ const ISOLATED_TEST_SERVICE_ENV_KEYS = [
   "OPENCLAW_GATEWAY_SERVICE_PID",
   "OPENCLAW_SERVICE_MANAGED_ENV_KEYS",
   "OPENCLAW_WINDOWS_TASK_HIDDEN_LAUNCHER",
+  "KUBERNETES_SERVICE_HOST",
+  "KUBERNETES_SERVICE_PORT",
 ] as const;
 const HERMETIC_TEST_ENV_KEYS = [
   ...LIVE_TEST_TRIGGER_ENV_KEYS,
@@ -269,6 +271,8 @@ function initializeIsolatedTestEnv(tempHome: string): void {
   }
   // A test worker is not the parent Gateway's service. Retaining its identity
   // selects in-band lifecycle guards and detached restart handoffs in fixtures.
+  // Likewise, the Kubernetes service env every pod carries makes Doctor treat
+  // the Gateway as externally supervised.
   for (const key of ISOLATED_TEST_SERVICE_ENV_KEYS) {
     deleteTestEnvValue(key);
   }

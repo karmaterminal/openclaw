@@ -597,6 +597,8 @@ describe("installTestEnv", () => {
         OPENCLAW_GATEWAY_SERVICE_PID: "4321",
         OPENCLAW_SERVICE_MANAGED_ENV_KEYS: "FIXTURE_AUTH_REF",
         OPENCLAW_WINDOWS_TASK_HIDDEN_LAUNCHER: "1",
+        KUBERNETES_SERVICE_HOST: "10.43.0.1",
+        KUBERNETES_SERVICE_PORT: "443",
       };
       for (const [key, value] of Object.entries(supervisorEnv)) {
         setTestEnvValue(key, value);
