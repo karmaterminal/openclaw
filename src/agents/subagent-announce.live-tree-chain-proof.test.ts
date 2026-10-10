@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 
 type GatewayRequest = {
   method?: string;
@@ -119,6 +120,7 @@ import { closeOpenClawAgentDatabasesForTestAsync } from "../state/openclaw-agent
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
 import { createOpenClawContinuationTools } from "./openclaw-tools.continuation.js";
 import { loadSessionEntryByKey } from "./subagents/announce/subagent-announce-delivery.js";
+import { subscribeSubagentRunChanges } from "./subagents/registry/subagent-registry-publication.js";
 import {
   countPendingDescendantRuns,
   getSubagentRunByChildSessionKey,
@@ -327,7 +329,9 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     stateDir = "";
   });
 
-  it("recovers a depth-1 orchestrator after its depth-2 delegate settles exactly once", async () => {
+  it("recovers a depth-1 orchestrator after its depth-2 delegate settles exactly once", async ({
+    signal,
+  }) => {
     const nonce = "CHAINED-DEPTH-2-RECOVERY";
     const childWaiting = `CHILD-WAITING ${nonce}`;
     const grandchildDone = `GRANDCHILD-DONE ${nonce}`;
@@ -426,12 +430,14 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
       },
     });
 
+    // This completion is the file's first to run the announce and delegate-dispatch
+    // path; cold, it took 4.3-4.9 s to register the delegate on a 4-CPU runner.
     await waitFor(
       () =>
         listSubagentRunsForRequester(hop1ChildSessionKey).some((entry) =>
           entry.task.includes("[continuation:chain-hop:2]"),
         ),
-      4_000,
+      15_000,
     );
     const requesterRuns = listSubagentRunsForRequester(hop1ChildSessionKey);
     const hop2Runs = requesterRuns.filter((entry) =>
@@ -516,22 +522,41 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
           terminalReply: { disposition: "visible", text: grandchildDone },
         },
       });
-    emitHop2Completion();
+    // The wake dispatch is recorded before the registry swaps in the wake run:
+    // the swap waits for the dispatch result and a fresh ownership check. Observe
+    // the publication that retires the depth-1 run and registers its replacement.
+    const intermediateReplaced = createDeferred();
+    const stopObserving = subscribeSubagentRunChanges("projection", ({ runIds }) => {
+      if (
+        runIds?.includes(hop1RunId) &&
+        !getSubagentRunByRunId(hop1RunId) &&
+        runIds.some(
+          (runId) => getSubagentRunByRunId(runId)?.childSessionKey === hop1ChildSessionKey,
+        )
+      ) {
+        intermediateReplaced.resolve();
+      }
+    });
+    try {
+      emitHop2Completion();
 
-    await waitFor(
-      () =>
-        countReturns(rootSessionKey, grandchildDone) === rootGrandchildReturnsBefore + 1 &&
-        countReturns(hop1ChildSessionKey, grandchildDone) === hop1GrandchildReturnsBefore + 1 &&
-        inProcessDispatchMock.mock.calls.some(
-          ([method, params]) =>
-            method === "agent" &&
-            params.sessionKey === hop1ChildSessionKey &&
-            typeof params.message === "string" &&
-            params.message.includes(grandchildDone),
-        ),
-      4_000,
-    );
-
+      await waitFor(
+        () =>
+          countReturns(rootSessionKey, grandchildDone) === rootGrandchildReturnsBefore + 1 &&
+          countReturns(hop1ChildSessionKey, grandchildDone) === hop1GrandchildReturnsBefore + 1 &&
+          inProcessDispatchMock.mock.calls.some(
+            ([method, params]) =>
+              method === "agent" &&
+              params.sessionKey === hop1ChildSessionKey &&
+              typeof params.message === "string" &&
+              params.message.includes(grandchildDone),
+          ),
+        4_000,
+      );
+      await withinTest(intermediateReplaced.promise, signal);
+    } finally {
+      stopObserving();
+    }
     const recoveredIntermediate = await getSubagentRunByChildSessionKey(hop1ChildSessionKey);
     if (!recoveredIntermediate || recoveredIntermediate.runId === hop1RunId) {
       throw new Error("expected descendant completion to replace the intermediate run");
