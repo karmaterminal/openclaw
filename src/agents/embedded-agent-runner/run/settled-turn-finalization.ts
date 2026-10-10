@@ -32,6 +32,7 @@ import {
   createAdmittedGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
 } from "../../tools/gateway-caller-context.js";
+import { hasCommittedSourceReplyDeliveryEvidence } from "../delivery-evidence.js";
 import { log } from "../logger.js";
 import {
   mergeAttemptRunStatsIntoAccumulator,
@@ -62,6 +63,31 @@ type CreateAttemptControls = ReturnType<
 const MAX_EMPTY_SETTLED_FINALIZATION_ATTEMPTS = 2;
 const SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT =
   "The tool run finished, but no final summary was produced. I did not repeat any completed actions.";
+// Runs whose recovery notice was already marked for delivery in this process.
+// The transcript row is idempotent, but a second settle of the same run would
+// otherwise return a second deliverable notice. Bounded; restart recovery is
+// excluded from eligibility by its internal provenance.
+const RECOVERY_NOTICE_CLAIM_LIMIT = 2048;
+const recoveryNoticeClaims = new Set<string>();
+function claimRecoveryNotice(runId: string): boolean {
+  if (recoveryNoticeClaims.has(runId)) {
+    return false;
+  }
+  if (recoveryNoticeClaims.size >= RECOVERY_NOTICE_CLAIM_LIMIT) {
+    const oldest = recoveryNoticeClaims.values().next().value;
+    if (oldest !== undefined) {
+      recoveryNoticeClaims.delete(oldest);
+    }
+  }
+  recoveryNoticeClaims.add(runId);
+  return true;
+}
+/** Test-only: forget recovery-notice claims between cases. */
+export function resetRecoveryNoticeClaimsForTest(): void {
+  recoveryNoticeClaims.clear();
+}
+const SETTLED_TURN_RECOVERY_NOTICE_TEXT =
+  "I lost the end of that turn before I could reply. Some actions may already have completed, so please check before resending.";
 type TerminalPreparationBase = Omit<
   TerminalPreparationInput,
   | "attempt"
@@ -178,6 +204,22 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
     input.finalization.preparedAttempt.silentExpected !== true && !preserveOriginalTerminal;
   const terminalFailed =
     classifyAgentRunTerminalOutcome(initial.terminalState.outcome) === "failure";
+  // Message-tool-only sources keep the host placeholder private, so a lost
+  // inbound user turn would otherwise end in silence. Only that turn gets a
+  // fixed notice; failures already carry their own reply, and a turn whose
+  // model already spoke in the source conversation is not silent. A message sent
+  // only to another target leaves the source unanswered, so it does not count.
+  const recoveryNoticeEligible =
+    runParams.sourceReplyDeliveryMode === "message_tool_only" &&
+    runParams.trigger === "user" &&
+    (runParams.inputProvenance === undefined ||
+      runParams.inputProvenance.kind === "external_user") &&
+    runParams.currentInboundEventKind !== "room_event" &&
+    input.finalization.preparedAttempt.config?.agents?.defaults?.settledTurnFallbackNotice !==
+      false &&
+    !terminalFailed &&
+    !hasCommittedSourceReplyDeliveryEvidence(initial.attempt);
+  let recoveryNotice = false;
   log.warn(
     `settled post-tool turn lacked a final answer: ${describeRun()} — running isolated finalization`,
   );
@@ -260,8 +302,13 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
   }
   if (finalizationOutcome !== "answered" && terminalFallbackAllowed) {
     // Scheduled runs have no useful announcement when only a host placeholder remains.
+    recoveryNotice = recoveryNoticeEligible && claimRecoveryNotice(runParams.runId);
     const fallbackText =
-      runParams.trigger === "cron" ? SILENT_REPLY_TOKEN : SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT;
+      runParams.trigger === "cron"
+        ? SILENT_REPLY_TOKEN
+        : recoveryNotice
+          ? SETTLED_TURN_RECOVERY_NOTICE_TEXT
+          : SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT;
     attempt = buildSettledToolFallbackAttemptResult({
       text: fallbackText,
       error: terminalFailed
@@ -325,10 +372,15 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
     replyDeliveryState: await observeSourceDelivery(),
     lastRunPromptUsage,
   });
-  // Only a real finalizer answer may cross source-reply suppression. The
-  // synthetic fallback remains a private diagnostic on message-tool-only runs.
+  // Only a real finalizer answer or the fixed recovery notice may cross
+  // source-reply suppression. Any other synthetic fallback remains a private
+  // diagnostic on message-tool-only runs. Delivery still rechecks the writer
+  // authority attached below.
   finalizedPrepared.payloadsWithToolMedia?.forEach((payload) => {
-    if (finalizationOutcome === "answered") {
+    if (
+      finalizationOutcome === "answered" ||
+      (recoveryNotice && isReplyPayloadTerminalContent(payload))
+    ) {
       markReplyPayloadForSourceSuppressionDelivery(payload);
     }
     if (sessionWriterDeliveryAuthority) {

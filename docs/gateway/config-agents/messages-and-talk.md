@@ -97,6 +97,7 @@ Batching is a bounded timing heuristic, not a guarantee that every part of a lon
 
 - `channels.whatsapp.responsePrefix`: outbound WhatsApp reply prefix. Doctor moves the retired inbound `messagePrefix` value here only when this canonical value is unset.
 - `messages.visibleReplies`: controls visible source replies across direct, group, and channel conversations (`"message_tool"` requires `message(action=send)` for visible output; `"automatic"` posts normal replies as before).
+- `agents.defaults.settledTurnFallbackNotice`: with `"message_tool"` replies, a user turn that ends after tool work without a final answer, and whose recovery also fails, gets one fixed notice ("I lost the end of that turn before I could reply. Some actions may already have completed, so please check before resending.") in the source conversation instead of silence. It applies to harnesses that run settled-turn finalization (the built-in runner, Codex and Copilot), never fires if the model already replied in that conversation (a message sent only to another target does not count), and skips heartbeat, scheduled, internal, and ambient room-event turns. Default: `true`; set `false` to keep these turns silent.
 - `messages.usageTemplate` / `messages.responseUsage`: custom `/usage` footer template and default per-reply usage mode (`off | tokens | full`, plus legacy `on` alias for `tokens`).
 - `messages.groupChat.mentionPatterns` / `historyLimit`: group-message mention triggers and history window sizing.
 

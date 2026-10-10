@@ -64,6 +64,8 @@ export const AgentDefaultsBaseSchema = z.strictObject({
   cwd: z.string().optional(),
   skills: z.array(z.string()).optional(),
   silentReply: SilentReplyPolicyConfigSchema.optional(),
+  /** Send a fixed recovery notice when a message-tool-only turn ends without an answer (default: true). */
+  settledTurnFallbackNotice: z.boolean().optional(),
   repoRoot: z.string().optional(),
   skipBootstrap: z.boolean().optional(),
   skipOptionalBootstrapFiles: z

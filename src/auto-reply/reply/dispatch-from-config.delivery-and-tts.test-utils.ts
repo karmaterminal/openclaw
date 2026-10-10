@@ -240,6 +240,75 @@ describe("dispatchReplyFromConfig", () => {
     expect(mocks.routeReply).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { name: "delivers", replacementWriter: undefined, delivered: true },
+    {
+      name: "drops after writer replacement",
+      replacementWriter: "replacement-run",
+      delivered: false,
+    },
+  ])(
+    "$name a message-tool-only settled recovery notice under its writer authority",
+    async ({ replacementWriter, delivered }) => {
+      setNoAbort();
+      sessionStoreMocks.currentEntry = {
+        sessionId: "s1",
+        lifecycleRevision: "revision-a",
+        activeWriterRunId: "run-settled",
+        updatedAt: 0,
+      };
+      const payload = setReplyPayloadMetadata(
+        {
+          text: "I lost the end of that turn before I could reply. Some actions may already have completed, so please check before resending.",
+        },
+        {
+          deliverDespiteSourceReplySuppression: true,
+          assistantTranscriptOwned: true,
+          assistantTranscriptIdempotencyKey: "run-settled:settled-finalization-fallback",
+          sessionWriterDeliveryAuthority: {
+            expectedLifecycleRevision: "revision-a",
+            expectedSessionId: "s1",
+            expectedWriterRunId: "run-settled",
+            sessionKey: "agent:main:discord:channel:123",
+            storePath: "/tmp/mock-sessions.json",
+          },
+        },
+      );
+      const dispatcher = createDispatcher();
+
+      const result = await dispatchReplyFromConfig({
+        ctx: buildTestCtx({
+          Provider: "discord",
+          Surface: "discord",
+          ChatType: "group",
+          InboundEventKind: "user_request",
+          SessionKey: "agent:main:discord:channel:123",
+        }),
+        cfg: emptyConfig,
+        dispatcher,
+        replyOptions: { runId: "run-settled", sourceReplyDeliveryMode: "message_tool_only" },
+        replyResolver: vi.fn(async () => {
+          if (replacementWriter) {
+            sessionStoreMocks.currentEntry = {
+              ...sessionStoreMocks.currentEntry,
+              activeWriterRunId: replacementWriter,
+            };
+          }
+          return payload;
+        }),
+      });
+
+      expect(result).toMatchObject({ queuedFinal: delivered });
+      if (delivered) {
+        expect(dispatcher.sendFinalReply).toHaveBeenCalledOnce();
+        expect(dispatcher.sendFinalReply).toHaveBeenCalledWith(payload);
+      } else {
+        expect(dispatcher.sendFinalReply).not.toHaveBeenCalled();
+      }
+      expect(mocks.routeReply).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps a block-only channel transform veto terminal", async () => {
     setNoAbort();
     const transport = vi.fn(async () => {});
