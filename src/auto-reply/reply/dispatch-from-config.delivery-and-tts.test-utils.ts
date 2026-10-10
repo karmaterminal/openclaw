@@ -258,7 +258,9 @@ describe("dispatchReplyFromConfig", () => {
         updatedAt: 0,
       };
       const payload = setReplyPayloadMetadata(
-        { text: "I lost that turn before I could answer. Please resend if it still matters." },
+        {
+          text: "I lost the end of that turn before I could reply. Some actions may already have completed, so please check before resending.",
+        },
         {
           deliverDespiteSourceReplySuppression: true,
           assistantTranscriptOwned: true,

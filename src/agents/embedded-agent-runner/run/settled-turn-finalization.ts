@@ -62,8 +62,31 @@ type CreateAttemptControls = ReturnType<
 const MAX_EMPTY_SETTLED_FINALIZATION_ATTEMPTS = 2;
 const SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT =
   "The tool run finished, but no final summary was produced. I did not repeat any completed actions.";
+// Runs whose recovery notice was already marked for delivery in this process.
+// The transcript row is idempotent, but a second settle of the same run would
+// otherwise return a second deliverable notice. Bounded; restart recovery is
+// excluded from eligibility by its internal provenance.
+const RECOVERY_NOTICE_CLAIM_LIMIT = 2048;
+const recoveryNoticeClaims = new Set<string>();
+function claimRecoveryNotice(runId: string): boolean {
+  if (recoveryNoticeClaims.has(runId)) {
+    return false;
+  }
+  if (recoveryNoticeClaims.size >= RECOVERY_NOTICE_CLAIM_LIMIT) {
+    const oldest = recoveryNoticeClaims.values().next().value;
+    if (oldest !== undefined) {
+      recoveryNoticeClaims.delete(oldest);
+    }
+  }
+  recoveryNoticeClaims.add(runId);
+  return true;
+}
+/** Test-only: forget recovery-notice claims between cases. */
+export function resetRecoveryNoticeClaimsForTest(): void {
+  recoveryNoticeClaims.clear();
+}
 const SETTLED_TURN_RECOVERY_NOTICE_TEXT =
-  "I lost that turn before I could answer. Please resend if it still matters.";
+  "I lost the end of that turn before I could reply. Some actions may already have completed, so please check before resending.";
 type TerminalPreparationBase = Omit<
   TerminalPreparationInput,
   | "attempt"
@@ -277,7 +300,7 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
   }
   if (finalizationOutcome !== "answered" && terminalFallbackAllowed) {
     // Scheduled runs have no useful announcement when only a host placeholder remains.
-    recoveryNotice = recoveryNoticeEligible;
+    recoveryNotice = recoveryNoticeEligible && claimRecoveryNotice(runParams.runId);
     const fallbackText =
       runParams.trigger === "cron"
         ? SILENT_REPLY_TOKEN

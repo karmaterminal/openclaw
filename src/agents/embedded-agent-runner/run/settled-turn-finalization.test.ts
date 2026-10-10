@@ -14,7 +14,10 @@ import {
 } from "../../test-helpers/embedded-agent-runner-e2e-fixtures.js";
 import type { EmbeddedRunAttemptWithReceiptEvidence } from "./attempt-result.js";
 import { EMBEDDED_RUN_LANE_TIMEOUT_GRACE_MS } from "./lane-runtime.js";
-import { prepareTerminalWithSettledTurnFinalization } from "./settled-turn-finalization.js";
+import {
+  prepareTerminalWithSettledTurnFinalization,
+  resetRecoveryNoticeClaimsForTest,
+} from "./settled-turn-finalization.js";
 import {
   createSettledFinalizationTestInput,
   createSettledProviderFailureAttempt,
@@ -51,7 +54,7 @@ const SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT =
   "The tool run finished, but no final summary was produced. I did not repeat any completed actions.";
 // Message-tool-only user turns replace the private placeholder with this notice.
 const SETTLED_TURN_RECOVERY_NOTICE_TEXT =
-  "I lost that turn before I could answer. Please resend if it still matters.";
+  "I lost the end of that turn before I could reply. Some actions may already have completed, so please check before resending.";
 
 vi.mock("./backend.js", () => ({
   resolveRuntimeModelAttempt: backendMocks.resolveRuntimeModelAttempt,
@@ -151,6 +154,7 @@ function finalizationInput(attempt: ReturnType<typeof settledFailedAttempt>) {
 describe("prepareTerminalWithSettledTurnFinalization", () => {
   let admission: ReturnType<typeof prepareSystemAgentRunAdmission>;
   beforeEach(async () => {
+    resetRecoveryNoticeClaimsForTest();
     backendMocks.runSettledFinalization.mockReset();
     transcriptMocks.appendAssistantMirrorMessageByIdentity.mockReset();
     admission = prepareSystemAgentRunAdmission({}, "run-settled", "main", "finalization-test");

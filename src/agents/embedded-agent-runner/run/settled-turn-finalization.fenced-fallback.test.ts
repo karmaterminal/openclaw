@@ -20,12 +20,16 @@ import {
   createResolvedEmbeddedRunnerModel,
   makeEmbeddedRunnerAttempt,
 } from "../../test-helpers/embedded-agent-runner-e2e-fixtures.js";
-import { prepareTerminalWithSettledTurnFinalization } from "./settled-turn-finalization.js";
+import {
+  prepareTerminalWithSettledTurnFinalization,
+  resetRecoveryNoticeClaimsForTest,
+} from "./settled-turn-finalization.js";
 import { createSettledFinalizationTestInput } from "./settled-turn-finalization.test-support.js";
 
 const FALLBACK_TEXT =
   "The tool run finished, but no final summary was produced. I did not repeat any completed actions.";
-const NOTICE_TEXT = "I lost that turn before I could answer. Please resend if it still matters.";
+const NOTICE_TEXT =
+  "I lost the end of that turn before I could reply. Some actions may already have completed, so please check before resending.";
 
 type FencedInput = ReturnType<typeof createSettledFinalizationTestInput>;
 type FencedAttempt = ReturnType<typeof makeEmbeddedRunnerAttempt>;
@@ -35,6 +39,7 @@ describe("fenced settled-turn fallback through the real transcript writer", () =
   let admission: ReturnType<typeof prepareSystemAgentRunAdmission>;
 
   beforeEach(() => {
+    resetRecoveryNoticeClaimsForTest();
     admission = prepareSystemAgentRunAdmission({}, "run-settled", "main", "fenced-fallback");
   });
   afterEach(() => admission.close());
@@ -162,12 +167,19 @@ describe("fenced settled-turn fallback through the real transcript writer", () =
       ]);
     });
 
-    it("records the notice once when the same run settles twice", async () => {
+    it("records and marks the notice for delivery once when the same run settles twice", async () => {
       const { input, appendedTranscript } = await prepareFencedRun(() => {});
 
-      await prepareTerminalWithSettledTurnFinalization(input);
-      await prepareTerminalWithSettledTurnFinalization(input);
+      const first = await prepareTerminalWithSettledTurnFinalization(input);
+      const second = await prepareTerminalWithSettledTurnFinalization(input);
 
+      const deliverable = (result: typeof first) =>
+        (result.prepared.payloadsWithToolMedia ?? []).filter(
+          (payload) =>
+            getReplyPayloadMetadata(payload)?.deliverDespiteSourceReplySuppression === true,
+        );
+      expect(deliverable(first)).toEqual([expect.objectContaining({ text: NOTICE_TEXT })]);
+      expect(deliverable(second)).toEqual([]);
       expect(await appendedTranscript()).toMatchObject([
         { message: { role: "assistant", content: [{ type: "text", text: NOTICE_TEXT }] } },
       ]);

@@ -86,7 +86,7 @@ that fallback stays private. If the turn came from a user message and the model
 has not already sent anything with the message tool, OpenClaw instead sends one
 fixed notice to the source conversation:
 
-> I lost that turn before I could answer. Please resend if it still matters.
+> I lost the end of that turn before I could reply. Some actions may already have completed, so please check before resending.
 
 The notice is sent at most once per run, only while the run still owns the
 session, and never for heartbeat, scheduled, internal, or ambient room-event
