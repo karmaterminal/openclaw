@@ -3,7 +3,6 @@ import pMap from "p-map";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { readUnknownAgentIdError } from "../../../packages/gateway-protocol/src/gateway-error-details.js";
-import { SessionsListParamsSchema } from "../../../packages/gateway-protocol/src/schema/sessions-list.js";
 import { SessionRunStatusSchema } from "../../../packages/gateway-protocol/src/schema/sessions-row.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -11,12 +10,10 @@ import { deriveSessionTitle, prepareSessionTitleRead } from "../../gateway/sessi
 import { classifySessionKeyShape, isIncognitoSessionKey } from "../../routing/session-key.js";
 import { getSessionStateVersions } from "../../sessions/session-state-events.js";
 import { resolveSessionAgentIds } from "../agent-scope.js";
-import { requesterProfileSchema, stringEnum } from "../schema/typebox.js";
 import {
   describeSessionLinkRule,
   describeSessionsListTool,
   describeSessionVisibilityScope,
-  SESSION_LINK_RULE_DESCRIPTION,
   SESSIONS_LIST_TOOL_DISPLAY_SUMMARY,
 } from "../tool-description-presets.js";
 import { stripToolMessages } from "./chat-history-text.js";
@@ -48,75 +45,10 @@ import {
   resolveDisplaySessionKey,
   resolveInternalSessionKey,
   resolveSessionToolContext,
-  SESSION_LIST_KINDS,
-  SessionListRowSchema,
   type GatewaySessionListRow,
   type SessionListRow,
 } from "./sessions-helpers.js";
-
-const SessionsListToolSchema = Type.Object({
-  user: requesterProfileSchema(),
-  kinds: Type.Optional(Type.Array(stringEnum(SESSION_LIST_KINDS))),
-  limit: SessionsListParamsSchema.properties.limit,
-  offset: Type.Optional(Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
-  activeMinutes: SessionsListParamsSchema.properties.activeMinutes,
-  activeOnly: SessionsListParamsSchema.properties.activeOnly,
-  excludeSubagents: SessionsListParamsSchema.properties.excludeSubagents,
-  relationship: Type.Optional(
-    stringEnum(["owned", "created", "involving"], {
-      description:
-        "Relation to the authenticated requesting user; unavailable without a trusted user identity.",
-    }),
-  ),
-  ownerId: SessionsListParamsSchema.properties.ownerId,
-  creatorId: SessionsListParamsSchema.properties.creatorId,
-  projectId: SessionsListParamsSchema.properties.projectId,
-  workspaceDir: SessionsListParamsSchema.properties.workspaceDir,
-  group: SessionsListParamsSchema.properties.group,
-  pinned: SessionsListParamsSchema.properties.pinned,
-  messageLimit: Type.Optional(Type.Integer({ minimum: 0 })),
-  label: Type.Optional(Type.String({ minLength: 1 })),
-  agentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
-  search: Type.Optional(Type.String({ minLength: 1 })),
-  archived: SessionsListParamsSchema.properties.archived,
-  includeDerivedTitles: SessionsListParamsSchema.properties.includeDerivedTitles,
-  includeLastMessage: SessionsListParamsSchema.properties.includeLastMessage,
-});
-
-const SessionsListOutputSchema = Type.Object(
-  {
-    count: Type.Number(),
-    sessions: Type.Array(SessionListRowSchema),
-    hasMore: Type.Boolean(),
-    nextOffset: Type.Optional(Type.Integer({ minimum: 0 })),
-    limitApplied: Type.Integer({ minimum: 1, maximum: 200 }),
-    truncationReason: Type.Optional(stringEnum(["scan-limit", "byte-limit"])),
-    enrichmentOmitted: Type.Optional(
-      Type.Boolean({
-        description:
-          "Inline messages and transcript previews were omitted to fit the byte budget; read session history separately.",
-      }),
-    ),
-    warning: Type.Optional(
-      Type.String({
-        description:
-          "Names owners the Gateway refused as unknown agent ids; their rows are listed without the named enrichment.",
-      }),
-    ),
-    sessionLinkRule: Type.Optional(Type.String({ description: SESSION_LINK_RULE_DESCRIPTION })),
-    visibility: Type.Optional(
-      Type.Object(
-        {
-          mode: Type.Union([Type.Literal("self"), Type.Literal("tree"), Type.Literal("agent")]),
-          restricted: Type.Literal(true),
-          warning: Type.String(),
-        },
-        { additionalProperties: false },
-      ),
-    ),
-  },
-  { additionalProperties: false },
-);
+import { SessionsListOutputSchema, SessionsListToolSchema } from "./sessions-list-tool.schema.js";
 
 const SESSIONS_LIST_TRANSCRIPT_FIELD_ROWS = 100;
 const SESSIONS_LIST_MAX_SCAN_PAGES = 5;
