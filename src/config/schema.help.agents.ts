@@ -194,6 +194,8 @@ export const AGENT_FIELD_HELP: Record<string, string> = {
     'Controls when typing starts for agents: "never", "instant", "thinking", or "message". Per-agent typingMode overrides this default.',
   "agents.defaults.typingIntervalSeconds":
     "Controls typing-indicator keepalive cadence in seconds for every agent. Increase it to reduce update frequency across all typing-capable channels.",
+  "agents.defaults.settledTurnFallbackNotice":
+    'When a message-tool-only user turn ends without a final answer and recovery fails, sends one fixed notice ("I lost that turn before I could answer. Please resend if it still matters.") to the source conversation instead of staying silent. Default: true. Set false to keep the loss silent.',
   "agents.entries.*.typingMode":
     "Overrides the default typing start policy for one agent without changing other agents.",
   commands:

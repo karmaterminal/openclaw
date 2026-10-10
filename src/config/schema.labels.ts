@@ -455,6 +455,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.humanDelay.maxMs": "Human Delay Max (ms)",
   "agents.defaults.typingMode": "Typing Mode",
   "agents.defaults.typingIntervalSeconds": "Typing Interval (Seconds)",
+  "agents.defaults.settledTurnFallbackNotice": "Settled Turn Fallback Notice",
   "agents.entries.*.typingMode": "Agent Typing Mode",
   "agents.entries.*.sandbox.browser.network": "Agent Sandbox Browser Network",
   "agents.entries.*.sandbox.browser.cdpSourceRange": "Agent Sandbox Browser CDP Source Range",
