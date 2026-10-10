@@ -29,8 +29,8 @@ const logMocks = {
   error: vi.fn(),
 };
 
-vi.mock("../../logging/subsystem.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
+// mock-isolation: Record the tool's log calls without loading the logging runtime or its process-wide sinks.
+vi.mock("../../logging/subsystem.js", () => ({
   createSubsystemLogger: () => ({
     subsystem: "continuation/request-compaction",
     isEnabled: () => true,

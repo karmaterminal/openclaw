@@ -14,7 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // this file is scoped to the emission tests — the broader
 // request-compaction-tool.test.ts runs without the logger mock.
 const capturedLogs: Array<{ level: string; message: string }> = [];
-vi.mock("../../logging/subsystem.js", async (importOriginal) => {
+// mock-isolation: Capture the tool's journal lines without loading the logging runtime or its process-wide sinks.
+vi.mock("../../logging/subsystem.js", () => {
   const record =
     (level: string) =>
     (message: string): void => {
@@ -33,7 +34,6 @@ vi.mock("../../logging/subsystem.js", async (importOriginal) => {
     child: () => logger,
   };
   return {
-    ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
     createSubsystemLogger: () => logger,
   };
 });
