@@ -23,6 +23,7 @@ import { createContinueWorkTool, type ContinueWorkRequest } from "./continue-wor
 // numeric bounds here ARE the canon the tool is being held to: any drift
 // between this mock and resolveContinuationRuntimeConfig's production
 // defaults means the test is no longer guarding production behavior.
+// mock-isolation: Fixed bounds stand in for the operator config; the real module loads the config loader.
 vi.mock("../../auto-reply/continuation/config.js", () => ({
   resolveContinuationRuntimeConfig: () => ({
     defaultDelayMs: 15_000,

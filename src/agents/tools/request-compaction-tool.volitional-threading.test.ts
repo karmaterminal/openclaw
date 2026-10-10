@@ -29,6 +29,7 @@ const logMocks = {
   error: vi.fn(),
 };
 
+// mock-isolation: Record the tool's log calls without loading the logging runtime or its process-wide sinks.
 vi.mock("../../logging/subsystem.js", () => ({
   createSubsystemLogger: () => ({
     subsystem: "continuation/request-compaction",
