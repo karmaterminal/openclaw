@@ -180,7 +180,7 @@ test("broad session reads keep the other owners and name each owner the Gateway 
   ).toEqual([...MAIN_KEYS, "agent:claude:subagent:retained"].toSorted());
 });
 
-test("explicit history keeps its refusal and other broad-read failures stay fatal", async () => {
+test("explicit reads keep their refusal and other broad-read failures stay fatal", async () => {
   const cfg = await seedMixedOwners();
   const history = createSessionsHistoryTool({
     config: cfg,
@@ -191,6 +191,22 @@ test("explicit history keeps its refusal and other broad-read failures stay fata
     const { details } = await history.execute(`history-${key}`, { sessionKey: key });
     expect(details, key).toEqual({ status: "error", error: `Unknown agent id "${agentId}"` });
   }
+  // Even where session tools may read every agent, a search of one requested session keeps
+  // the refusal that a broad search reports and skips.
+  const explicitSearch = createSessionsSearchTool({
+    config: { ...cfg, tools: { ...cfg.tools, sessions: { visibility: "all" } } },
+    agentSessionKey: REQUESTER_KEY,
+    callGateway: gatewayCaller("in-process"),
+  });
+  await expect(
+    explicitSearch.execute("explicit-search-native-era", {
+      query: NEEDLE,
+      sessionKey: "agent:copilot:subagent:native-era",
+    }),
+  ).rejects.toMatchObject({
+    message: 'Unknown agent id "copilot"',
+    details: { code: "UNKNOWN_AGENT_ID", agentId: "copilot" },
+  });
 
   const failures: Array<[string, (method: string) => Error]> = [
     ["cancellation", (method) => createAbortError(`gateway request aborted for ${method}`)],

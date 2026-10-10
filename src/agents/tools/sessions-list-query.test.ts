@@ -1,5 +1,6 @@
 import { Value } from "typebox/value";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { GatewayClientRequestError } from "../../../packages/gateway-client/src/request-error.js";
 import { createSessionsListTool } from "./sessions-list-tool.js";
 
 const mocks = vi.hoisted(() => ({
@@ -429,6 +430,47 @@ describe("sessions-list inventory queries", () => {
     expect(Buffer.byteLength(JSON.stringify(result.details, null, 2), "utf8")).toBeLessThanOrEqual(
       64 * 1024,
     );
+  });
+
+  it("names a refused owner only for rows the byte-limited page returns", async () => {
+    const shown = {
+      ...sessionRow("agent:retired:dashboard:shown", "dashboard", "retired"),
+      label: "界".repeat(12_000),
+    };
+    const cut = {
+      ...sessionRow("agent:retired:dashboard:cut", "dashboard", "retired"),
+      label: "界".repeat(12_000),
+    };
+    mocks.gatewayCall.mockImplementation(
+      async ({ method, params }: { method: string; params: { agentId?: string } }) => {
+        if (method === "sessions.list") {
+          return { sessions: [shown, cut] };
+        }
+        throw new GatewayClientRequestError({
+          code: "INVALID_REQUEST",
+          message: `Unknown agent id "${params.agentId}"`,
+          details: { code: "UNKNOWN_AGENT_ID", agentId: params.agentId },
+        });
+      },
+    );
+    const tool = createSessionsListTool({
+      config: {
+        ...VALID_CONFIG,
+        tools: { ...VALID_CONFIG.tools, agentToAgent: { enabled: true } },
+      },
+    });
+
+    const details = getSessionsListDetails(
+      await tool.execute("refused-byte-cap", { messageLimit: 1 }),
+    );
+
+    expect(details).toMatchObject({
+      count: 1,
+      truncationReason: "byte-limit",
+      warning: 'Skipped messages for agents the Gateway refused as unknown: "retired" (1 session).',
+    });
+    expect(details.sessions?.map((row) => row.key)).toEqual([shown.key]);
+    expect(Value.Check(tool.outputSchema!, details)).toBe(true);
   });
 
   it("fails explicitly when metadata alone cannot fit without losing associations", async () => {
