@@ -119,8 +119,8 @@ describe("fenced settled-turn fallback through the real transcript writer", () =
   }
 
   it("persists and returns the fallback when the run still owns the writer claim", async () => {
-    const { input, appendedTranscript } = await prepareFencedRun((input) => {
-      input.terminalBase.runParams.sourceReplyDeliveryMode = "automatic";
+    const { input, appendedTranscript } = await prepareFencedRun((run) => {
+      run.terminalBase.runParams.sourceReplyDeliveryMode = "automatic";
     });
 
     const result = await prepareTerminalWithSettledTurnFinalization(input);
@@ -227,8 +227,8 @@ describe("fenced settled-turn fallback through the real transcript writer", () =
     });
 
     it("sends nothing when the source reply was already delivered", async () => {
-      const { input, appendedTranscript } = await prepareFencedRun((input) => {
-        input.terminalBase.runParams.resolveReplyDelivery = async () => "delivered";
+      const { input, appendedTranscript } = await prepareFencedRun((run) => {
+        run.terminalBase.runParams.resolveReplyDelivery = async () => "delivered";
       });
 
       const result = await prepareTerminalWithSettledTurnFinalization(input);
@@ -239,9 +239,9 @@ describe("fenced settled-turn fallback through the real transcript writer", () =
 
     it("sends nothing when the run is cancelled during finalization", async () => {
       const controller = new AbortController();
-      const { input, appendedTranscript } = await prepareFencedRun((input) => {
-        input.finalization.abortSignal = controller.signal;
-        input.finalization.harness.finalizeSettledTurn = vi.fn(async () => {
+      const { input, appendedTranscript } = await prepareFencedRun((run) => {
+        run.finalization.abortSignal = controller.signal;
+        run.finalization.harness.finalizeSettledTurn = vi.fn(async () => {
           controller.abort(new Error("cancelled by user"));
           throw new Error("finalization cancelled");
         });
