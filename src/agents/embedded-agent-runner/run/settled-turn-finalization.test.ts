@@ -14,10 +14,7 @@ import {
 } from "../../test-helpers/embedded-agent-runner-e2e-fixtures.js";
 import type { EmbeddedRunAttemptWithReceiptEvidence } from "./attempt-result.js";
 import { EMBEDDED_RUN_LANE_TIMEOUT_GRACE_MS } from "./lane-runtime.js";
-import {
-  prepareTerminalWithSettledTurnFinalization,
-  resetRecoveryNoticeClaimsForTest,
-} from "./settled-turn-finalization.js";
+import { prepareTerminalWithSettledTurnFinalization } from "./settled-turn-finalization.js";
 import {
   createSettledFinalizationTestInput,
   createSettledProviderFailureAttempt,
@@ -154,7 +151,6 @@ function finalizationInput(attempt: ReturnType<typeof settledFailedAttempt>) {
 describe("prepareTerminalWithSettledTurnFinalization", () => {
   let admission: ReturnType<typeof prepareSystemAgentRunAdmission>;
   beforeEach(async () => {
-    resetRecoveryNoticeClaimsForTest();
     backendMocks.runSettledFinalization.mockReset();
     transcriptMocks.appendAssistantMirrorMessageByIdentity.mockReset();
     admission = prepareSystemAgentRunAdmission({}, "run-settled", "main", "finalization-test");
@@ -500,6 +496,7 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
       transcriptMocks.appendAssistantMirrorMessageByIdentity.mockResolvedValueOnce({
         ok: true,
         messageId: "fallback-message",
+        duplicate: false,
       });
 
       const result = await prepareTerminalWithSettledTurnFinalization(input);
@@ -677,7 +674,7 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
         await appendRelease;
         return params.signal?.aborted
           ? { ok: false, reason: "cancelled", code: "blocked" }
-          : { ok: true, messageId: "fallback-message" };
+          : { ok: true, messageId: "fallback-message", duplicate: false };
       },
     );
 
@@ -775,6 +772,7 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
     transcriptMocks.appendAssistantMirrorMessageByIdentity.mockResolvedValueOnce({
       ok: true,
       messageId: "fallback-message",
+      duplicate: false,
     });
 
     const result = await prepareTerminalWithSettledTurnFinalization(input);
@@ -799,7 +797,8 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
   });
 
   // Only a refusal that names a rebound retracts the fallback. Other refusals
-  // keep the visible reply, whose delivery authority still carries the fence.
+  // keep the reply, whose delivery authority still carries the fence. No row
+  // records the notice's claim, so the notice stays private.
   it("keeps the fenced fallback reply when its transcript append is refused for another reason", async () => {
     const input = freshSessionFencedInput(settledSuccessfulAttempt());
     transcriptMocks.appendAssistantMirrorMessageByIdentity.mockResolvedValueOnce({
@@ -813,13 +812,14 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
     expect(result.prepared.payloadsWithToolMedia).toEqual([
       expect.objectContaining({ text: SETTLED_TURN_RECOVERY_NOTICE_TEXT }),
     ]);
-    expect(getReplyPayloadMetadata(result.prepared.payloadsWithToolMedia![0]!)).toMatchObject({
-      deliverDespiteSourceReplySuppression: true,
+    const metadata = getReplyPayloadMetadata(result.prepared.payloadsWithToolMedia![0]!);
+    expect(metadata).toMatchObject({
       sessionWriterDeliveryAuthority: {
         expectedLifecycleRevision: "revision-committed",
         expectedWriterRunId: "run-settled",
       },
     });
+    expect(metadata?.deliverDespiteSourceReplySuppression).toBeUndefined();
     expect(result.attempt.assistantTranscriptOwned).not.toBe(true);
   });
 

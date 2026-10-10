@@ -95,14 +95,15 @@ describe("channel-final transcript mirrors", () => {
     await append({ role: "assistant", content: "The train leaves at noon." }, "first-answer");
     const request = delivery("stable-delivery");
     const first = await appendAssistantMirrorMessageByIdentity(request);
+    const replay = { ...first, duplicate: true };
     const initialRows = rows();
 
-    await expect(appendAssistantMirrorMessageByIdentity(request)).resolves.toEqual(first);
+    await expect(appendAssistantMirrorMessageByIdentity(request)).resolves.toEqual(replay);
     expect(rows()).toEqual(initialRows);
     await append({ role: "user", content: "And the next train?" });
     await append({ role: "assistant", content: "The next train leaves at two." });
     const laterRows = rows();
-    await expect(appendAssistantMirrorMessageByIdentity(request)).resolves.toEqual(first);
+    await expect(appendAssistantMirrorMessageByIdentity(request)).resolves.toEqual(replay);
     expect(rows()).toEqual(laterRows);
   });
 
@@ -196,7 +197,10 @@ describe("channel-final transcript mirrors", () => {
     );
     const before = rows();
 
-    await expect(appendAssistantMirrorMessageByIdentity(request)).resolves.toEqual(original);
+    await expect(appendAssistantMirrorMessageByIdentity(request)).resolves.toEqual({
+      ...original,
+      duplicate: true,
+    });
 
     expect(rows()).toEqual(before);
     expect((await entries())[0]?.message).not.toHaveProperty(

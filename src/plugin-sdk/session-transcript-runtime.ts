@@ -233,7 +233,12 @@ export type SessionTranscriptWriteLockContext = {
 };
 
 type SessionTranscriptMirrorAppendResult =
-  | { ok: true; messageId: string }
+  | {
+      ok: true;
+      messageId: string;
+      /** True when an existing row satisfied the append and this call wrote nothing. */
+      duplicate: boolean;
+    }
   | Extract<SessionTranscriptAppendResult, { ok: false }>;
 
 /**
@@ -391,6 +396,7 @@ export async function appendAssistantMirrorMessageByIdentity(
       return {
         ok: true,
         messageId: latestEquivalentAssistantId,
+        duplicate: true,
       };
     }
     if (params.deliveryMirror?.kind === "channel-final" && params.idempotencyKey) {
@@ -456,6 +462,7 @@ export async function appendAssistantMirrorMessageByIdentity(
     return {
       ok: true,
       messageId: appendResult.messageId,
+      duplicate: !appendResult.appended,
     };
   });
 }
