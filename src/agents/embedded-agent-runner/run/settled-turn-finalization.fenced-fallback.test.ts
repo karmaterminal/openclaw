@@ -189,8 +189,8 @@ describe("fenced settled-turn fallback through the real transcript writer", () =
       const { input, appendedTranscript } = await prepareFencedRun(() => {});
 
       const first = await prepareTerminalWithSettledTurnFinalization(input);
-      // A restart keeps the session database and loses what this process held:
-      // the finalizer's module state and every open database handle.
+      // Simulated restart: the session database stays, while the finalizer's
+      // module state is fresh and the cached database handles are closed.
       await closeOpenClawAgentDatabasesForTestAsync();
       const restarted = await importFreshModule<typeof import("./settled-turn-finalization.js")>(
         import.meta.url,
@@ -200,6 +200,12 @@ describe("fenced settled-turn fallback through the real transcript writer", () =
 
       expect(deliverable(first)).toEqual([expect.objectContaining({ text: NOTICE_TEXT })]);
       expect(deliverable(second)).toEqual([]);
+      // The second append replayed the run's row; a failed append would also
+      // keep the notice private, but would leave the fallback unowned.
+      expect(second.attempt).toMatchObject({
+        assistantTranscriptOwned: true,
+        assistantTranscriptIdempotencyKey: "run-settled:settled-finalization-fallback",
+      });
       expect(await appendedTranscript()).toMatchObject([
         { message: { role: "assistant", content: [{ type: "text", text: NOTICE_TEXT }] } },
       ]);
