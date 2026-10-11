@@ -89,11 +89,14 @@ target does not count as a reply:
 
 > I lost the end of that turn before I could reply. Some actions may already have completed, so please check before resending.
 
-The notice is sent at most once per run, only while the run still owns the
-session, and never for heartbeat, scheduled, internal, or ambient room-event
-turns. It applies to harnesses that run settled-turn finalization (OpenClaw's
-built-in runner, Codex and Copilot); a harness without a settled-turn finalizer
-keeps its previous behaviour. Set
+The notice is recorded in the session transcript, and OpenClaw does not send it
+again for a run whose transcript already records it, also after a Gateway
+restart. If the transcript cannot record it, the notice is still sent and may be
+repeated. The notice is sent only while the run still owns the session, and
+never for heartbeat, scheduled, internal, or ambient room-event turns. It
+applies to harnesses that run settled-turn finalization (OpenClaw's built-in
+runner, Codex and Copilot); a harness without a settled-turn finalizer keeps its
+previous behaviour. Set
 `agents.defaults.settledTurnFallbackNotice: false` to keep these turns silent;
 see [Other message keys](/gateway/config-agents/messages-and-talk#other-message-keys).
 

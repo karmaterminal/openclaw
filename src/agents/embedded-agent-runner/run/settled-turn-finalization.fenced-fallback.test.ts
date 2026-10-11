@@ -5,6 +5,7 @@
 // worker transcript lock that the Gateway uses.
 import fs from "node:fs";
 import path from "node:path";
+import { importFreshModule } from "openclaw/plugin-sdk/test-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getReplyPayloadMetadata } from "../../../auto-reply/reply-payload.js";
 import { replaceSessionEntry } from "../../../config/sessions/session-accessor.js";
@@ -14,16 +15,14 @@ import {
   appendSessionTranscriptMessageByIdentity,
   readVisibleSessionTranscriptMessageEntries,
 } from "../../../plugin-sdk/session-transcript-runtime.js";
+import { closeOpenClawAgentDatabasesForTestAsync } from "../../../state/openclaw-agent-db-lifecycle.js";
 import { prepareSystemAgentRunAdmission } from "../../admitted-run-context.js";
 import {
   buildEmbeddedRunnerAssistant,
   createResolvedEmbeddedRunnerModel,
   makeEmbeddedRunnerAttempt,
 } from "../../test-helpers/embedded-agent-runner-e2e-fixtures.js";
-import {
-  prepareTerminalWithSettledTurnFinalization,
-  resetRecoveryNoticeClaimsForTest,
-} from "./settled-turn-finalization.js";
+import { prepareTerminalWithSettledTurnFinalization } from "./settled-turn-finalization.js";
 import { createSettledFinalizationTestInput } from "./settled-turn-finalization.test-support.js";
 
 const FALLBACK_TEXT =
@@ -33,13 +32,13 @@ const NOTICE_TEXT =
 
 type FencedInput = ReturnType<typeof createSettledFinalizationTestInput>;
 type FencedAttempt = ReturnType<typeof makeEmbeddedRunnerAttempt>;
+type SettledResult = Awaited<ReturnType<typeof prepareTerminalWithSettledTurnFinalization>>;
 
 describe("fenced settled-turn fallback through the real transcript writer", () => {
   const fixture = useTempSessionsFixture("settled-finalization-fenced-");
   let admission: ReturnType<typeof prepareSystemAgentRunAdmission>;
 
   beforeEach(() => {
-    resetRecoveryNoticeClaimsForTest();
     admission = prepareSystemAgentRunAdmission({}, "run-settled", "main", "fenced-fallback");
   });
   afterEach(() => admission.close());
@@ -167,19 +166,45 @@ describe("fenced settled-turn fallback through the real transcript writer", () =
       ]);
     });
 
+    const deliverable = (result: SettledResult) =>
+      (result.prepared.payloadsWithToolMedia ?? []).filter(
+        (payload) =>
+          getReplyPayloadMetadata(payload)?.deliverDespiteSourceReplySuppression === true,
+      );
+
     it("records and marks the notice for delivery once when the same run settles twice", async () => {
       const { input, appendedTranscript } = await prepareFencedRun(() => {});
 
       const first = await prepareTerminalWithSettledTurnFinalization(input);
       const second = await prepareTerminalWithSettledTurnFinalization(input);
 
-      const deliverable = (result: typeof first) =>
-        (result.prepared.payloadsWithToolMedia ?? []).filter(
-          (payload) =>
-            getReplyPayloadMetadata(payload)?.deliverDespiteSourceReplySuppression === true,
-        );
       expect(deliverable(first)).toEqual([expect.objectContaining({ text: NOTICE_TEXT })]);
       expect(deliverable(second)).toEqual([]);
+      expect(await appendedTranscript()).toMatchObject([
+        { message: { role: "assistant", content: [{ type: "text", text: NOTICE_TEXT }] } },
+      ]);
+    });
+
+    it("marks the notice for delivery once when the same run settles again after a restart", async () => {
+      const { input, appendedTranscript } = await prepareFencedRun(() => {});
+
+      const first = await prepareTerminalWithSettledTurnFinalization(input);
+      // Simulated restart: the session database stays, while the finalizer's
+      // module state is fresh and the cached database handles are closed.
+      await closeOpenClawAgentDatabasesForTestAsync();
+      const restarted = await importFreshModule<typeof import("./settled-turn-finalization.js")>(
+        import.meta.url,
+        "./settled-turn-finalization.js?scope=restart",
+      );
+      const second = await restarted.prepareTerminalWithSettledTurnFinalization(input);
+
+      expect(deliverable(first)).toEqual([expect.objectContaining({ text: NOTICE_TEXT })]);
+      expect(deliverable(second)).toEqual([]);
+      // The second append replayed the run's row instead of writing another.
+      expect(second.attempt).toMatchObject({
+        assistantTranscriptOwned: true,
+        assistantTranscriptIdempotencyKey: "run-settled:settled-finalization-fallback",
+      });
       expect(await appendedTranscript()).toMatchObject([
         { message: { role: "assistant", content: [{ type: "text", text: NOTICE_TEXT }] } },
       ]);

@@ -63,29 +63,6 @@ type CreateAttemptControls = ReturnType<
 const MAX_EMPTY_SETTLED_FINALIZATION_ATTEMPTS = 2;
 const SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT =
   "The tool run finished, but no final summary was produced. I did not repeat any completed actions.";
-// Runs whose recovery notice was already marked for delivery in this process.
-// The transcript row is idempotent, but a second settle of the same run would
-// otherwise return a second deliverable notice. Bounded; restart recovery is
-// excluded from eligibility by its internal provenance.
-const RECOVERY_NOTICE_CLAIM_LIMIT = 2048;
-const recoveryNoticeClaims = new Set<string>();
-function claimRecoveryNotice(runId: string): boolean {
-  if (recoveryNoticeClaims.has(runId)) {
-    return false;
-  }
-  if (recoveryNoticeClaims.size >= RECOVERY_NOTICE_CLAIM_LIMIT) {
-    const oldest = recoveryNoticeClaims.values().next().value;
-    if (oldest !== undefined) {
-      recoveryNoticeClaims.delete(oldest);
-    }
-  }
-  recoveryNoticeClaims.add(runId);
-  return true;
-}
-/** Test-only: forget recovery-notice claims between cases. */
-export function resetRecoveryNoticeClaimsForTest(): void {
-  recoveryNoticeClaims.clear();
-}
 const SETTLED_TURN_RECOVERY_NOTICE_TEXT =
   "I lost the end of that turn before I could reply. Some actions may already have completed, so please check before resending.";
 type TerminalPreparationBase = Omit<
@@ -302,11 +279,12 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
   }
   if (finalizationOutcome !== "answered" && terminalFallbackAllowed) {
     // Scheduled runs have no useful announcement when only a host placeholder remains.
-    recoveryNotice = recoveryNoticeEligible && claimRecoveryNotice(runParams.runId);
+    // The text depends only on eligibility, so a repeated settle of the same run
+    // replays the run-keyed transcript row instead of conflicting with it.
     const fallbackText =
       runParams.trigger === "cron"
         ? SILENT_REPLY_TOKEN
-        : recoveryNotice
+        : recoveryNoticeEligible
           ? SETTLED_TURN_RECOVERY_NOTICE_TEXT
           : SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT;
     attempt = buildSettledToolFallbackAttemptResult({
@@ -320,7 +298,7 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
       agentHarnessId: input.finalization.preparedAttempt.agentHarnessId,
       runtimePlan: input.finalization.preparedAttempt.runtimePlan,
     });
-    const transcriptIdempotencyKey = await persistSettledToolFallbackTranscript({
+    const transcript = await persistSettledToolFallbackTranscript({
       text: attempt.assistantTexts.join("\n\n"),
       attempt: input.finalization.preparedAttempt,
       abortSignal: input.finalization.abortSignal,
@@ -334,9 +312,19 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
       );
       return preserveInitial("failed");
     }
-    if (transcriptIdempotencyKey) {
+    if (transcript) {
       attempt.assistantTranscriptOwned = true;
-      attempt.assistantTranscriptIdempotencyKey = transcriptIdempotencyKey;
+      attempt.assistantTranscriptIdempotencyKey = transcript.idempotencyKey;
+    }
+    // The run-keyed transcript row is the notice's durable claim: a settle whose
+    // append replays the run's existing row keeps the notice private, also after a
+    // restart. Without a recorded row the notice still goes out; a lost turn the
+    // user never hears about is worse than a repeated notice.
+    recoveryNotice = recoveryNoticeEligible && transcript?.duplicate !== true;
+    if (recoveryNoticeEligible && !recoveryNotice) {
+      log.warn(
+        `settled-turn recovery notice withheld: ${describeRun()} — this run's transcript already records it`,
+      );
     }
     if (terminalFailed) {
       finalizationOutcome = "failed";
@@ -634,7 +622,7 @@ async function persistSettledToolFallbackTranscript(input: {
   assertActive: () => void;
   sessionId: string;
   sessionTarget?: EmbeddedRunAttemptParams["sessionTarget"];
-}): Promise<string | undefined> {
+}): Promise<{ idempotencyKey: string; duplicate: boolean } | undefined> {
   input.assertActive();
   const target = input.sessionTarget ?? input.attempt.sessionTarget;
   const sessionKey = target?.sessionKey ?? input.attempt.sessionKey;
@@ -699,7 +687,7 @@ async function persistSettledToolFallbackTranscript(input: {
       );
       return undefined;
     }
-    return idempotencyKey;
+    return { idempotencyKey, duplicate: result.duplicate };
   } catch (error) {
     // The caller preserves queue cancellation instead of synthesizing a reply.
     if (input.abortSignal.aborted) {

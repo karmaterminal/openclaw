@@ -93,12 +93,29 @@ describe("session transcript runtime SDK", () => {
     const unkeyed = await createScope("unkeyed");
     const request = { ...unkeyed, text: "unkeyed assistant reply" };
     const first = await appendAssistantMirrorMessageByIdentity(request);
-    expect(first).toMatchObject({ ok: true, messageId: expect.any(String) });
-    await expect(appendAssistantMirrorMessageByIdentity(request)).resolves.toEqual(first);
+    expect(first).toMatchObject({ ok: true, messageId: expect.any(String), duplicate: false });
+    await expect(appendAssistantMirrorMessageByIdentity(request)).resolves.toEqual({
+      ...first,
+      duplicate: true,
+    });
     expect(await entries(unkeyed)).toHaveLength(1);
     await expect(
       appendAssistantMirrorMessageByIdentity({ ...scope, text: "stale reply" }),
     ).resolves.toMatchObject({ ok: false, code: "session-rebound" });
+  });
+
+  it("reports whether a keyed mirror append wrote its row", async () => {
+    const scope = await createScope();
+    const request = { ...scope, idempotencyKey: "run:fallback", text: "fallback reply" };
+
+    const first = await appendAssistantMirrorMessageByIdentity(request);
+
+    expect(first).toEqual({ ok: true, messageId: expect.any(String), duplicate: false });
+    await expect(appendAssistantMirrorMessageByIdentity(request)).resolves.toEqual({
+      ...first,
+      duplicate: true,
+    });
+    expect(await entries(scope)).toHaveLength(1);
   });
 
   it("does not append an assistant mirror after cancellation", async () => {
