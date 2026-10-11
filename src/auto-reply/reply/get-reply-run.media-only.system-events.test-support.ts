@@ -4,6 +4,7 @@ import { vi } from "vitest";
 import type { PreparedFormattedSystemEvents } from "./session-system-event-adoption.js";
 
 // Continuation modules that the prepared-reply path consults; mocked for every parent case.
+// mock-isolation: Context pressure never fires here; the real check enqueues trusted system events into the process-wide queue.
 vi.mock("../continuation/context-pressure.js", () => ({
   checkContextPressure: vi.fn().mockReturnValue({ fired: false, band: 0 }),
 }));

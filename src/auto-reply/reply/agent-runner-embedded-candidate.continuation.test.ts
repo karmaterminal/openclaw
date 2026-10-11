@@ -15,14 +15,17 @@ const mocks = vi.hoisted(() => ({
   runEmbeddedAgent: vi.fn(),
 }));
 
+// mock-isolation: Embedded agent runs are scripted; no agent session or provider runs.
 vi.mock("../../agents/embedded-agent.js", () => ({
   runEmbeddedAgent: mocks.runEmbeddedAgent,
 }));
 
+// mock-isolation: Compaction is recorded without loading the compaction runtime (context engines, plugins, harness).
 vi.mock("../../agents/embedded-agent-runner/compact.queued.js", () => ({
   compactEmbeddedAgentSession: mocks.compactEmbeddedAgentSession,
 }));
 
+// mock-isolation: Fixed run params replace the builder, which reads config, channel plugins and secrets.
 vi.mock("./agent-runner-utils.js", () => ({
   buildEmbeddedRunExecutionParams: () => ({
     embeddedContext: {
@@ -41,20 +44,24 @@ vi.mock("./agent-runner-utils.js", () => ({
   }),
 }));
 
+// mock-isolation: The harness policy is pinned to openclaw instead of resolving model runtime policy.
 vi.mock("../../agents/harness/policy.js", () => ({
   resolveAgentHarnessPolicy: () => ({ runtime: "openclaw", runtimeSource: "model" }),
 }));
 
+// mock-isolation: The runtime provider is pinned to openai; the real module imports model selection and route resolvers.
 vi.mock("../../agents/openai-routing.js", () => ({
   resolveOpenAIRuntimeProvider: () => "openai",
 }));
 
+// mock-isolation: No capability is minted into the process-wide capability table.
 vi.mock("../../gateway/message-action-turn-capability.js", () => ({
   isTrustedMessageActionTurnIngress: () => false,
   mintMessageActionTurnCapability: vi.fn(),
   revokeMessageActionTurnCapability: vi.fn(),
 }));
 
+// mock-isolation: An inert backstop replaces the real one, which emits on the process-wide agent event bus.
 vi.mock("./agent-lifecycle-terminal.js", () => ({
   createAgentLifecycleTerminalBackstop: () => ({
     emit: vi.fn(),
@@ -62,10 +69,12 @@ vi.mock("./agent-lifecycle-terminal.js", () => ({
   }),
 }));
 
+// mock-isolation: Run events are dropped instead of streaming to channels.
 vi.mock("./agent-runner-event-handler.js", () => ({
   createAgentRunEventHandler: () => vi.fn(),
 }));
 
+// mock-isolation: Compaction release is recorded without the session store or delegate queue.
 vi.mock("./agent-runner-post-compaction-release.js", () => ({
   computeRequestCompactionContextUsage: () => 0.75,
   releaseQueuedCompactionTolerant: mocks.releaseQueuedCompactionTolerant,

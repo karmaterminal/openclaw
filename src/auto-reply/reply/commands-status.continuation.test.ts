@@ -65,8 +65,10 @@ vi.mock("../../plugins/provider-thinking-active.js", async (importOriginal) => (
   resolveActiveProviderThinkingProfile: activeProviderThinkingMock.resolveThinkingProfile,
 }));
 
+// mock-isolation: Plugin health comes from the test; the real runtime reads the active plugin and context-engine registries.
 vi.mock("../../status/status-plugin-health.runtime.js", () => pluginHealthRuntimeMock);
 
+// mock-isolation: A stub OpenClaw harness is listed; the real one loads the attempt runner.
 vi.mock("../../agents/harness/builtin-openclaw.js", () => ({
   createOpenClawAgentHarness: () => ({
     id: "openclaw",
