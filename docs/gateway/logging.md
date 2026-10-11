@@ -27,7 +27,7 @@ If a plugin reload supersedes startup plugin loading, the model line, loaded-plu
 
 ## File-based logger
 
-- Default rolling log files are under `/tmp/openclaw/` (one file per day), dated by the gateway host's local timezone. The default profile uses `openclaw-YYYY-MM-DD.log`. Named profiles use `openclaw-<profile>-YYYY-MM-DD.log` (for example, `openclaw-dev-YYYY-MM-DD.log`). If that directory is unsafe or unwritable (wrong owner, world-writable, a symlink), OpenClaw falls back to a user-scoped `os.tmpdir()/openclaw-<uid>` path instead. On Windows it always uses that OS-tmpdir fallback.
+- Default rolling log files are under `/tmp/openclaw/` (one file per day), dated by the gateway host's local timezone. The default profile uses `openclaw-YYYY-MM-DD.log`. Named profiles use `openclaw-<profile>-YYYY-MM-DD.log` (for example, `openclaw-dev-YYYY-MM-DD.log`). If that directory is unsafe or unwritable (wrong owner, world-writable, a symlink), OpenClaw falls back to a user-scoped `os.tmpdir()/openclaw-<uid>` path instead. On Windows it always uses that OS-tmpdir fallback. When [`OPENCLAW_TMP_DIR`](/help/environment#openclaw_tmp_dir) is set, rolling logs go under that directory instead.
 - Active log files rotate at `logging.maxFileBytes` (default: 100 MB). Rotation keeps up to five numbered archives (`.1` through `.5`), and continues to write a fresh active file.
 - Configure the log file path and level via `~/.openclaw/openclaw.json`: `logging.file`, `logging.level`.
 - The file format is one JSON object per line.

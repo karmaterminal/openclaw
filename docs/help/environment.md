@@ -44,6 +44,7 @@ The variables below are the supported environment contract for operators. Undocu
 | `OPENCLAW_GIT_DIR`        | Override the source checkout used by development-channel updates.                                    |
 | `OPENCLAW_INCLUDE_ROOTS`  | Allow `$include` to resolve from additional roots.                                                   |
 | `OPENCLAW_SQLITE_LIBRARY` | Override the SQLite library for [Bun on macOS](/install/bun-compatibility#sqlite-library-selection). |
+| `OPENCLAW_TMP_DIR`        | Give one process its own temp root instead of the shared `/tmp/openclaw`.                            |
 
 #### `OPENCLAW_HOME`
 
@@ -68,6 +69,27 @@ Blank values and the literal strings `undefined` and `null` (after trimming) are
 `OPENCLAW_HOME` can also be set to a tilde path (e.g. `~/svc`), which gets expanded using the same OS home fallback chain before use.
 
 Explicit path variables such as `OPENCLAW_STATE_DIR`, `OPENCLAW_CONFIG_PATH`, and `OPENCLAW_GIT_DIR` still take precedence. OS-account tasks such as shell startup file detection, package-manager setup, and host `~` expansion may still use the real system home.
+
+#### `OPENCLAW_TMP_DIR`
+
+`OPENCLAW_TMP_DIR` gives one process, and the OpenClaw processes it starts, a temp root of its own in place of the shared `/tmp/openclaw` (or its per-user fallback). It is meant for isolated runs such as CI test shards, so their temp files, rolling logs, and cleanup never touch the temp root of a Gateway on the same host. A Gateway that does not set it keeps the default temp root.
+
+Set it in the process environment, for example:
+
+```bash
+export OPENCLAW_TMP_DIR="$RUNNER_TEMP/shard-1/openclaw-tmp"
+```
+
+OpenClaw accepts the value only as a private directory:
+
+- It must be an absolute path (on Windows, with a drive letter or share).
+- It must not be `/tmp/openclaw` or `/tmp/openclaw-<uid>`, sit inside either, or contain either. Symlinked parent directories are resolved for this check.
+- If the directory exists, it must be a real directory (not a symlink) owned by the current user, writable by that user, and not writable by group or others. On Windows, OpenClaw checks only that it is a directory it can write.
+- If it does not exist, OpenClaw creates it with mode `0700`. Its parent must already exist and be writable by the current user.
+
+When the value fails any check, OpenClaw refuses to start the operation that needed a temp root and names the reason. It never falls back to `/tmp/openclaw` or to `TMPDIR` while `OPENCLAW_TMP_DIR` is set, and it never changes the permissions of a directory it did not create. An empty value is an error, not a way to unset it. Setting only `TMPDIR` does not move OpenClaw off `/tmp/openclaw`; `TMPDIR` places only the fallback used when `/tmp/openclaw` is unsafe.
+
+OpenClaw passes `OPENCLAW_TMP_DIR` on to node-host workers. Container-isolated workers keep a private `/tmp` inside the container instead. Workspace `.env` files and the config `env` block cannot set it.
 
 ### Temporary compile cache
 

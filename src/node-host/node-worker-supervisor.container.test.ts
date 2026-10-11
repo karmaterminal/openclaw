@@ -125,6 +125,7 @@ describe("node worker supervisor container isolation", () => {
         LANG: "en_US.UTF-8",
         PATH: "/private/operator-bin",
         TMPDIR: "/private/operator-temp",
+        OPENCLAW_TMP_DIR: "/private/operator-openclaw-temp",
         NODE_OPTIONS: "--title=forbidden-worker-title",
         SUPPLIED_SECRET: "must-not-enter-container",
       },
@@ -198,6 +199,7 @@ describe("node worker supervisor container isolation", () => {
       expect(create?.container?.env).not.toHaveProperty("NODE_OPTIONS");
       expect(create?.container?.env).not.toHaveProperty("SUPPLIED_SECRET");
       expect(create?.container?.env).not.toHaveProperty("OPENCLAW_STATE_DIR");
+      expect(create?.container?.env).not.toHaveProperty("OPENCLAW_TMP_DIR");
       const started = fixture.events().find((event) => event.argv[0] === "start");
       expect(started?.argv).toEqual([
         "start",

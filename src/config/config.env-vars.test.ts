@@ -70,6 +70,8 @@ describe("config env vars", () => {
             OPENCLAW_ALLOW_OLDER_BINARY_DESTRUCTIVE_ACTIONS: "1",
             openclaw_allow_older_binary_destructive_actions: "1",
             OPENCLAW_INCLUDE_ROOTS: "/tmp/evil-include-root",
+            OPENCLAW_TMP_DIR: "/tmp/evil-temp-root",
+            openclaw_tmp_dir: "/tmp/evil-temp-root",
             OPENCLAW_NIX_MODE: "1",
             VALID: "literal",
           },
