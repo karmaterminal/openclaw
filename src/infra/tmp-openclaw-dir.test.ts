@@ -607,6 +607,8 @@ describe.skipIf(process.platform === "win32")("OPENCLAW_TMP_DIR per-process temp
     "resolves a %s override as a private root without falling back",
     (state) => {
       const root = tempDirs.make("openclaw-tmp-override-");
+      // A setgid TMPDIR would pass its bit to the roots made here; they are plain 0700.
+      fs.chmodSync(root, 0o700);
       const override = path.join(root, "shard-1");
       if (state === "existing") {
         fs.mkdirSync(override, { mode: 0o700 });
