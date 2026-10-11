@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
+import { useAutoCleanupTempDirTracker } from "openclaw/plugin-sdk/test-env";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getPwToolsCoreSessionMocks,
@@ -37,6 +38,7 @@ let mod: Pick<
 >;
 let tmpDirModule: typeof import("openclaw/plugin-sdk/temp-path");
 let tmpRoot: string;
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
 const target = { cdpUrl: "http://127.0.0.1:18792", targetId: "T1" };
 
@@ -53,7 +55,7 @@ describe("pw-tools-core", () => {
     mod = await import("./pw-tools-core.downloads.js");
   });
 
-  beforeEach(async () => {
+  beforeEach(() => {
     for (const fn of Object.values(tmpDirMocks)) {
       fn.mockClear();
     }
@@ -64,12 +66,8 @@ describe("pw-tools-core", () => {
       fn.mockClear();
     }
     // Implicit downloads land under the temp root; keep them out of shared /tmp paths.
-    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-browser-download-root-"));
+    tmpRoot = tempDirs.make("openclaw-browser-download-root-");
     tmpDirMocks.resolvePreferredOpenClawTmpDir.mockReturnValue(tmpRoot);
-  });
-
-  afterEach(async () => {
-    await fs.rm(tmpRoot, { recursive: true, force: true });
   });
 
   async function withTempDir<T>(run: (tempDir: string) => Promise<T>): Promise<T> {
