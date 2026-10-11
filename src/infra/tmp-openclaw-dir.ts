@@ -154,6 +154,7 @@ function resolveTmpDirOverride(
   try {
     existing = lstatSync(preferredDir);
   } catch (error) {
+    // SAFETY: lstat failures are Node errno errors; optional chaining tolerates any other throw.
     const code = (error as NodeJS.ErrnoException | undefined)?.code;
     if (code !== "ENOENT") {
       throw refuse(`it cannot be inspected (${code ?? String(error)})`);
