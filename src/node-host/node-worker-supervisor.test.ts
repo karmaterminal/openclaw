@@ -283,6 +283,7 @@ describe("node worker supervisor", () => {
       NODE_EXTRA_CA_CERTS: path.join(root, "private-ca.pem"),
       NODE_USE_SYSTEM_CA: "1",
       OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: "1",
+      OPENCLAW_TMP_DIR: path.join(root, "worker-openclaw-tmp"),
       OPENCLAW_LAUNCHD_LABEL: "ai.openclaw.node",
       OPENCLAW_SERVICE_KIND: "node",
       OPENCLAW_SUPPLIED_SECRET: "supplied-openclaw-secret",
@@ -312,6 +313,7 @@ describe("node worker supervisor", () => {
           NODE_USE_SYSTEM_CA: suppliedEnv.NODE_USE_SYSTEM_CA,
           NODE_COMPILE_CACHE: expect.stringContaining("node-worker-compile-cache"),
           OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: suppliedEnv.OPENCLAW_ALLOW_INSECURE_PRIVATE_WS,
+          OPENCLAW_TMP_DIR: suppliedEnv.OPENCLAW_TMP_DIR,
           OPENCLAW_NO_RESPAWN: "1",
           [suppliedPathKey]: suppliedEnv[suppliedPathKey],
         };

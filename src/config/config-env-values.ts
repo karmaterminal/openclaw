@@ -16,12 +16,14 @@ import type { OpenClawConfig } from "./types.js";
 /** Returns whether a config-controlled environment entry is safe to apply at runtime. */
 export function isConfigRuntimeEnvVarAllowed(key: string, value: string): boolean {
   const upperKey = key.toUpperCase();
-  // Config cannot select host write/startup policy or publish unresolved credentials.
+  // Config cannot select host write/startup policy, including the temp root, or publish
+  // unresolved credentials.
   return (
     Boolean(value.trim()) &&
     upperKey !== ALLOW_OLDER_BINARY_DESTRUCTIVE_ACTIONS_ENV &&
     upperKey !== "OPENCLAW_INCLUDE_ROOTS" &&
     upperKey !== "OPENCLAW_CONFIG_READONLY" &&
+    upperKey !== "OPENCLAW_TMP_DIR" &&
     !isDangerousHostEnvVarName(key) &&
     !isDangerousHostEnvOverrideVarName(key) &&
     !containsEnvVarReference(value)

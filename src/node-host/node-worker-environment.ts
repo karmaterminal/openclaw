@@ -8,6 +8,7 @@ const POSIX_WORKER_ENV_KEYS = new Set([
   "TMPDIR",
   "TMP",
   "TEMP",
+  "OPENCLAW_TMP_DIR",
   "LANG",
   "LANGUAGE",
   "TZ",

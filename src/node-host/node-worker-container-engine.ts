@@ -318,6 +318,8 @@ export async function createNodeWorkerContainer(
       containerEnv[key] = "/tmp";
     }
   }
+  // The host's temp-root override names a host path; the container's own /tmp is private.
+  delete containerEnv.OPENCLAW_TMP_DIR;
   if (containerEnv.NODE_COMPILE_CACHE !== undefined) {
     containerEnv.NODE_COMPILE_CACHE = "/tmp/openclaw-node-worker-compile-cache";
   }
