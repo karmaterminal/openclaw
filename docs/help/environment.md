@@ -83,7 +83,8 @@ export OPENCLAW_TMP_DIR="$RUNNER_TEMP/shard-1/openclaw-tmp"
 OpenClaw accepts the value only as a private directory:
 
 - It must be an absolute path (on Windows, with a drive letter or share).
-- It must not be `/tmp/openclaw` or `/tmp/openclaw-<uid>`, sit inside either, or contain either. Symlinked parent directories are resolved for this check.
+- It must not be `/tmp/openclaw` or `/tmp/openclaw-<uid>`, sit inside either, or contain either. Letter case is ignored, as it is on a case-insensitive volume such as the macOS default, and symlinked parent directories are resolved for this check.
+- Every directory above it, including the targets of symlinked parents, must be owned by root or the current user. Only a sticky directory such as `/tmp` may be writable by other users. Otherwise another user could swap the directory for a link after OpenClaw admits it.
 - If the directory exists, it must be a real directory (not a symlink) owned by the current user, writable by that user, and not writable by group or others. On Windows, OpenClaw checks only that it is a directory it can write.
 - If it does not exist, OpenClaw creates it with mode `0700`. Its parent must already exist and be writable by the current user.
 

@@ -589,12 +589,13 @@ describe.skipIf(process.platform === "win32")("OPENCLAW_TMP_DIR per-process temp
     // Nothing here may create a default temp root or anything in it, even if the override
     // were ignored. The resolver creates directories through fs.mkdirSync.
     defaultRootWrites = [];
+    // Compared without case, as a case-insensitive volume would resolve them.
     const defaultRoots = [DEFAULT_POSIX_TMP_ROOT, `${DEFAULT_POSIX_TMP_ROOT}-${currentUid()}`].map(
-      physicalPath,
+      (root) => physicalPath(root).toLowerCase(),
     );
     const mkdirSync = fs.mkdirSync;
     vi.spyOn(fs, "mkdirSync").mockImplementation((target, options) => {
-      const physical = physicalPath(path.resolve(String(target)));
+      const physical = physicalPath(path.resolve(String(target))).toLowerCase();
       if (defaultRoots.some((root) => physical === root || physical.startsWith(`${root}/`))) {
         defaultRootWrites.push(physical);
         throw nodeErrorWithCode("EACCES");
@@ -625,6 +626,23 @@ describe.skipIf(process.platform === "win32")("OPENCLAW_TMP_DIR per-process temp
       expect(warn).not.toHaveBeenCalled();
     },
   );
+
+  it("admits an override below a sticky directory other users can write, as /tmp is", () => {
+    const root = tempDirs.make("openclaw-tmp-override-");
+    fs.chmodSync(root, 0o700);
+    const sticky = path.join(root, "sticky");
+    fs.mkdirSync(sticky);
+    // Sticky: others may add entries but never rename or remove the current user's.
+    fs.chmodSync(sticky, 0o1777);
+    const override = path.join(sticky, "shard-1");
+    vi.stubEnv("OPENCLAW_TMP_DIR", override);
+    const warn = vi.fn();
+
+    expect(resolvePreferredOpenClawTmpDir({ tmpdir: vi.fn(() => root), warn })).toBe(override);
+
+    expectPrivateDirectory(override, currentUid());
+    expect(warn).not.toHaveBeenCalled();
+  });
 
   it.each<{
     name: string;
@@ -664,6 +682,14 @@ describe.skipIf(process.platform === "win32")("OPENCLAW_TMP_DIR per-process temp
       arrange: (_root, uid) => ({
         value: `${DEFAULT_POSIX_TMP_ROOT}-${uid}`,
         reason: `it is the default temp root ${DEFAULT_POSIX_TMP_ROOT}-${uid}`,
+      }),
+    },
+    {
+      // A case-insensitive volume, the macOS default, resolves this to the shared root.
+      name: "the shared root in other letter case",
+      arrange: () => ({
+        value: DEFAULT_POSIX_TMP_ROOT.toUpperCase(),
+        reason: `it is the default temp root ${DEFAULT_POSIX_TMP_ROOT}`,
       }),
     },
     {
@@ -727,6 +753,73 @@ describe.skipIf(process.platform === "win32")("OPENCLAW_TMP_DIR per-process temp
             },
           },
           reason: "the current user cannot write to it",
+        };
+      },
+    },
+    {
+      // Another user could rename the private directory away and leave a link in its place.
+      name: "a private directory below one other users can write",
+      arrange: (root) => {
+        const open = path.join(root, "open");
+        fs.mkdirSync(open);
+        fs.chmodSync(open, 0o777);
+        fs.mkdirSync(path.join(open, "shard-1"), { mode: 0o700 });
+        return {
+          value: path.join(open, "shard-1"),
+          reason: `other users can rename entries in its ancestor ${fs.realpathSync.native(open)} (mode 777, not sticky)`,
+        };
+      },
+    },
+    {
+      name: "a path through a link that other users can replace",
+      arrange: (root) => {
+        const open = path.join(root, "open");
+        fs.mkdirSync(open);
+        fs.chmodSync(open, 0o777);
+        fs.mkdirSync(path.join(root, "private"), { mode: 0o700 });
+        fs.symlinkSync(path.join(root, "private"), path.join(open, "link"));
+        return {
+          value: path.join(open, "link", "shard-1"),
+          reason: `other users can rename entries in its ancestor ${fs.realpathSync.native(open)} (mode 777, not sticky)`,
+        };
+      },
+    },
+    {
+      name: "a directory below one another user owns",
+      arrange: (root, uid) => {
+        const foreign = path.join(root, "foreign");
+        fs.mkdirSync(foreign, { mode: 0o755 });
+        const physical = fs.realpathSync.native(foreign);
+        return {
+          value: path.join(foreign, "shard-1"),
+          // Ownership is simulated so the case also runs as root, which owns every directory.
+          options: {
+            lstatSync: (target: string) =>
+              target === physical
+                ? makeDirStat({ uid: uid + 1, mode: 0o40755 })
+                : fs.lstatSync(target),
+          },
+          reason: `its ancestor ${physical} is owned by uid ${uid + 1}, neither root nor the current user (uid ${uid})`,
+        };
+      },
+    },
+    {
+      name: "a directory below one that cannot be inspected",
+      arrange: (root) => {
+        const hidden = path.join(root, "hidden");
+        fs.mkdirSync(hidden, { mode: 0o700 });
+        const physical = fs.realpathSync.native(hidden);
+        return {
+          value: path.join(hidden, "shard-1"),
+          options: {
+            lstatSync: (target: string) => {
+              if (target === physical) {
+                throw nodeErrorWithCode("EACCES");
+              }
+              return fs.lstatSync(target);
+            },
+          },
+          reason: `its ancestor ${physical} cannot be inspected (EACCES)`,
         };
       },
     },

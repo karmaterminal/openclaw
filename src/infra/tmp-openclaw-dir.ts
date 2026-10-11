@@ -90,12 +90,15 @@ function describeDefaultRootOverlap(
   if (uid !== undefined) {
     defaultRoots.push(`${DEFAULT_POSIX_TMP_ROOT}-${uid}`);
   }
+  // Letter case is ignored: on a case-insensitive volume, the macOS default, /TMP/OPENCLAW
+  // is /tmp/openclaw.
+  const fold = (target: string) => target.toLowerCase();
   const physicalCandidate = physicalPosixPath(candidate, fs, posix);
   for (const root of defaultRoots) {
     const physicalRoot = physicalPosixPath(root, fs, posix);
     for (const [directory, defaultRoot] of [
-      [candidate, root],
-      [physicalCandidate, physicalRoot],
+      [fold(candidate), fold(root)],
+      [fold(physicalCandidate), fold(physicalRoot)],
     ] as const) {
       if (directory === defaultRoot) {
         return `it is the default temp root ${root}`;
@@ -109,6 +112,54 @@ function describeDefaultRootOverlap(
     }
   }
   return undefined;
+}
+
+function errnoCode(error: unknown): string | undefined {
+  // SAFETY: fs failures are Node errno errors; optional chaining tolerates any other throw.
+  return (error as NodeJS.ErrnoException | undefined)?.code;
+}
+
+// Another user who can rename entries in a directory above the override could swap the
+// override for a link after admission. So each directory the path passes through, symlinked
+// prefixes' targets included, must be owned by root or the current user, and only a sticky
+// directory such as /tmp may let other users write to it.
+function describeReplaceableAncestor(
+  directory: string,
+  uid: number | undefined,
+  lstatSync: (candidate: string) => SecureDirStat,
+  fs: NodeFs,
+  posix: PosixPath,
+): string | undefined {
+  const checked = new Set<string>();
+  for (let prefix = directory; ; prefix = posix.dirname(prefix)) {
+    let ancestor: string | undefined;
+    try {
+      ancestor = fs.realpathSync.native(prefix);
+    } catch {
+      // A missing parent is refused when the resolver tries to create the override.
+    }
+    // A checked directory's own ancestors were checked with it.
+    while (ancestor !== undefined && !checked.has(ancestor)) {
+      checked.add(ancestor);
+      let stat: SecureDirStat;
+      try {
+        stat = lstatSync(ancestor);
+      } catch (error) {
+        return `its ancestor ${ancestor} cannot be inspected (${errnoCode(error) ?? String(error)})`;
+      }
+      if (uid !== undefined && stat.uid !== undefined && stat.uid !== 0 && stat.uid !== uid) {
+        return `its ancestor ${ancestor} is owned by uid ${stat.uid}, neither root nor the current user (uid ${uid})`;
+      }
+      if (stat.mode !== undefined && (stat.mode & 0o022) !== 0 && (stat.mode & 0o1000) === 0) {
+        return `other users can rename entries in its ancestor ${ancestor} (mode ${(stat.mode & 0o7777).toString(8)}, not sticky)`;
+      }
+      const parent = posix.dirname(ancestor);
+      ancestor = parent === ancestor ? undefined : parent;
+    }
+    if (prefix === posix.dirname(prefix)) {
+      return undefined;
+    }
+  }
 }
 
 /** Admits OPENCLAW_TMP_DIR as this process's temp root or refuses it; it never falls back. */
@@ -154,8 +205,7 @@ function resolveTmpDirOverride(
   try {
     existing = lstatSync(preferredDir);
   } catch (error) {
-    // SAFETY: lstat failures are Node errno errors; optional chaining tolerates any other throw.
-    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    const code = errnoCode(error);
     if (code !== "ENOENT") {
       throw refuse(`it cannot be inspected (${code ?? String(error)})`);
     }
@@ -179,6 +229,18 @@ function resolveTmpDirOverride(
       (options.accessSync ?? fs.accessSync)(preferredDir, fs.constants.W_OK | fs.constants.X_OK);
     } catch {
       throw refuse("the current user cannot write to it");
+    }
+  }
+  if (!windows) {
+    const ancestry = describeReplaceableAncestor(
+      path.posix.dirname(preferredDir),
+      uid,
+      lstatSync,
+      fs,
+      path.posix,
+    );
+    if (ancestry) {
+      throw refuse(ancestry);
     }
   }
 
