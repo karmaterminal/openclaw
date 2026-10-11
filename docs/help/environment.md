@@ -87,7 +87,7 @@ OpenClaw accepts the value only as a private directory:
 - If the directory exists, it must be a real directory (not a symlink) owned by the current user, writable by that user, and not writable by group or others. On Windows, OpenClaw checks only that it is a directory it can write.
 - If it does not exist, OpenClaw creates it with mode `0700`. Its parent must already exist and be writable by the current user.
 
-When the value fails any check, OpenClaw refuses to start the operation that needed a temp root and names the reason. It never falls back to `/tmp/openclaw` or to `TMPDIR` while `OPENCLAW_TMP_DIR` is set, and it never changes the permissions of a directory it did not create. An empty value is an error, not a way to unset it. Setting only `TMPDIR` does not move OpenClaw off `/tmp/openclaw`; `TMPDIR` places only the fallback used when `/tmp/openclaw` is unsafe.
+When the value fails any check, OpenClaw refuses to start the operation that needed a temp root and names the reason. It never falls back to `/tmp/openclaw` or to `TMPDIR` while `OPENCLAW_TMP_DIR` is set, and it refuses an existing directory that fails a check rather than changing its permissions. An empty value is an error, not a way to unset it. Setting only `TMPDIR` does not move OpenClaw off `/tmp/openclaw`; `TMPDIR` places only the fallback used when `/tmp/openclaw` is unsafe.
 
 OpenClaw passes `OPENCLAW_TMP_DIR` on to node-host workers. Container-isolated workers keep a private `/tmp` inside the container instead. Workspace `.env` files and the config `env` block cannot set it.
 
