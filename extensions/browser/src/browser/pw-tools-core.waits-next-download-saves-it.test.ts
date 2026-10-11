@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getPwToolsCoreSessionMocks,
   getPwToolsCoreNavigationGuardMocks,
@@ -36,6 +36,7 @@ let mod: Pick<
   "downloadViaPlaywright" | "waitForDownloadViaPlaywright"
 >;
 let tmpDirModule: typeof import("openclaw/plugin-sdk/temp-path");
+let tmpRoot: string;
 
 const target = { cdpUrl: "http://127.0.0.1:18792", targetId: "T1" };
 
@@ -52,7 +53,7 @@ describe("pw-tools-core", () => {
     mod = await import("./pw-tools-core.downloads.js");
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     for (const fn of Object.values(tmpDirMocks)) {
       fn.mockClear();
     }
@@ -62,7 +63,13 @@ describe("pw-tools-core", () => {
     for (const fn of Object.values(clientFetchMocks)) {
       fn.mockClear();
     }
-    tmpDirMocks.resolvePreferredOpenClawTmpDir.mockReturnValue("/tmp/openclaw");
+    // Implicit downloads land under the temp root; keep them out of shared /tmp paths.
+    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-browser-download-root-"));
+    tmpDirMocks.resolvePreferredOpenClawTmpDir.mockReturnValue(tmpRoot);
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpRoot, { recursive: true, force: true });
   });
 
   async function withTempDir<T>(run: (tempDir: string) => Promise<T>): Promise<T> {
@@ -489,15 +496,12 @@ describe("pw-tools-core", () => {
   );
 
   it("sanitizes suggested download filenames to prevent traversal escapes", async () => {
-    tmpDirMocks.resolvePreferredOpenClawTmpDir.mockReturnValue("/tmp/openclaw-preferred");
     const { res, outPath } = await waitForImplicitDownloadOutput({
       downloadUrl: "https://example.com/evil",
       suggestedFilename: "../../../../etc/passwd",
     });
     expect(typeof outPath).toBe("string");
-    const expectedRootedDownloadsDir = await fs.realpath(
-      path.resolve(path.join(path.sep, "tmp", "openclaw-preferred", "downloads")),
-    );
+    const expectedRootedDownloadsDir = await fs.realpath(path.join(tmpRoot, "downloads"));
     const relativeStagedPath = path.relative(expectedRootedDownloadsDir, outPath);
     expect(relativeStagedPath.startsWith(`..${path.sep}`)).toBe(false);
     expect(path.isAbsolute(relativeStagedPath)).toBe(false);
@@ -509,7 +513,7 @@ describe("pw-tools-core", () => {
     await expectPathMissing(outPath);
     await expect(fs.readFile(res.path, "utf8")).resolves.toBe("download-content");
     expect(path.normalize(res.path)).toContain(
-      path.normalize(`${path.join("tmp", "openclaw-preferred", "downloads")}${path.sep}`),
+      `${path.sep}${path.join(path.basename(tmpRoot), "downloads")}${path.sep}`,
     );
   });
 
