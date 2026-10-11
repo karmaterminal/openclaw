@@ -55,6 +55,15 @@ function symlinkTmpDirLstat() {
   return vi.fn(() => makeDirStat({ isSymbolicLink: true, mode: 0o120777 }));
 }
 
+// Reports one real link as another user's, so link cases also run as root, which owns every
+// entry it creates.
+function foreignLinkLstat(link: string, uid: number) {
+  return (target: string) =>
+    target === link
+      ? makeDirStat({ isDirectory: false, isSymbolicLink: true, uid, mode: 0o120777 })
+      : fs.lstatSync(target);
+}
+
 function expectFallsBackToOsTmpDir(params: { lstatSync: NonNullable<TmpDirOptions["lstatSync"]> }) {
   const { resolved, tmpdir } = resolveWithMocks({ lstatSync: params.lstatSync });
   expect(resolved).toBe(fallbackTmp());
@@ -585,6 +594,13 @@ describe.skipIf(process.platform === "win32")("OPENCLAW_TMP_DIR per-process temp
       }
     }
   };
+  // Sticky, as /tmp is: other users may add entries but never rename or remove the current user's.
+  const makeSticky = (root: string) => {
+    const sticky = path.join(root, "sticky");
+    fs.mkdirSync(sticky);
+    fs.chmodSync(sticky, 0o1777);
+    return sticky;
+  };
   beforeEach(() => {
     // Nothing here may create a default temp root or anything in it, even if the override
     // were ignored. The resolver creates directories through fs.mkdirSync.
@@ -627,20 +643,57 @@ describe.skipIf(process.platform === "win32")("OPENCLAW_TMP_DIR per-process temp
     },
   );
 
-  it("admits an override below a sticky directory other users can write, as /tmp is", () => {
+  it.each<{
+    name: string;
+    arrange: (root: string, uid: number) => { value: string; options?: TmpDirOptions };
+  }>([
+    {
+      name: "below a sticky directory other users can write",
+      arrange: (root) => ({ value: path.join(makeSticky(root), "shard-1") }),
+    },
+    {
+      name: "through the current user's link in a sticky directory",
+      arrange: (root) => {
+        fs.mkdirSync(path.join(root, "private"), { mode: 0o700 });
+        fs.symlinkSync(path.join(root, "private"), path.join(makeSticky(root), "link"));
+        return { value: path.join(root, "sticky", "link", "shard-1") };
+      },
+    },
+    {
+      // Only a user who can write the directory holding a link can replace the link.
+      name: "through another user's link in a directory only the current user can write",
+      arrange: (root, uid) => {
+        // Existing, since fs-safe never creates a directory when filesystem hooks are injected.
+        fs.mkdirSync(path.join(root, "private", "shard-1"), { recursive: true, mode: 0o700 });
+        fs.symlinkSync(path.join(root, "private"), path.join(root, "theirs"));
+        return {
+          value: path.join(root, "theirs", "shard-1"),
+          options: { lstatSync: foreignLinkLstat(path.join(root, "theirs"), uid + 1) },
+        };
+      },
+    },
+    {
+      // An update stages an install below its temp root and gives the install a TMPDIR there;
+      // the install inherits OPENCLAW_TMP_DIR, so its TMPDIR fallback root sits inside it.
+      name: "that holds this process's TMPDIR, as an update's staged install does",
+      arrange: (root) => {
+        const value = path.join(root, "shard-1");
+        vi.stubEnv("TMPDIR", path.join(value, "openclaw-update-artifact-1", "tmp"));
+        return { value };
+      },
+    },
+  ])("admits an override $name", ({ arrange }) => {
     const root = tempDirs.make("openclaw-tmp-override-");
     fs.chmodSync(root, 0o700);
-    const sticky = path.join(root, "sticky");
-    fs.mkdirSync(sticky);
-    // Sticky: others may add entries but never rename or remove the current user's.
-    fs.chmodSync(sticky, 0o1777);
-    const override = path.join(sticky, "shard-1");
-    vi.stubEnv("OPENCLAW_TMP_DIR", override);
+    const { value, options } = arrange(root, currentUid());
+    vi.stubEnv("OPENCLAW_TMP_DIR", value);
     const warn = vi.fn();
 
-    expect(resolvePreferredOpenClawTmpDir({ tmpdir: vi.fn(() => root), warn })).toBe(override);
+    expect(resolvePreferredOpenClawTmpDir({ ...options, tmpdir: vi.fn(() => root), warn })).toBe(
+      value,
+    );
 
-    expectPrivateDirectory(override, currentUid());
+    expectPrivateDirectory(value, currentUid());
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -683,6 +736,27 @@ describe.skipIf(process.platform === "win32")("OPENCLAW_TMP_DIR per-process temp
         value: `${DEFAULT_POSIX_TMP_ROOT}-${uid}`,
         reason: `it is the default temp root ${DEFAULT_POSIX_TMP_ROOT}-${uid}`,
       }),
+    },
+    {
+      // A Gateway that shares this TMPDIR falls back there when /tmp/openclaw is unsafe.
+      name: "the per-user fallback root under this process's TMPDIR",
+      arrange: (root, uid) => {
+        vi.stubEnv("TMPDIR", root);
+        return {
+          value: path.join(root, `openclaw-${uid}`),
+          reason: `it is the default temp root ${path.join(root, `openclaw-${uid}`)}`,
+        };
+      },
+    },
+    {
+      name: "a directory inside that fallback root",
+      arrange: (root, uid) => {
+        vi.stubEnv("TMPDIR", root);
+        return {
+          value: path.join(root, `openclaw-${uid}`, "shard-1"),
+          reason: `it is inside the default temp root ${path.join(root, `openclaw-${uid}`)}`,
+        };
+      },
     },
     {
       // A case-insensitive volume, the macOS default, resolves this to the shared root.
@@ -824,6 +898,72 @@ describe.skipIf(process.platform === "win32")("OPENCLAW_TMP_DIR per-process temp
       },
     },
     {
+      // A sticky directory still lets a link's owner replace it with one pointing elsewhere.
+      name: "a path through another user's link in a sticky directory",
+      arrange: (root, uid) => {
+        fs.mkdirSync(path.join(root, "private"), { mode: 0o700 });
+        const link = path.join(makeSticky(root), "link");
+        fs.symlinkSync(path.join(root, "private"), link);
+        return {
+          value: path.join(link, "shard-1"),
+          options: { lstatSync: foreignLinkLstat(link, uid + 1) },
+          reason: `its path follows ${link}, a symbolic link that uid ${uid + 1} owns in a directory other users can write`,
+        };
+      },
+    },
+    {
+      // Resolving the first link in one step would hide the second.
+      name: "a path through the current user's link to another user's link",
+      arrange: (root, uid) => {
+        fs.mkdirSync(path.join(root, "private"), { mode: 0o700 });
+        const theirs = path.join(makeSticky(root), "theirs");
+        fs.symlinkSync(path.join(root, "private"), theirs);
+        fs.symlinkSync(theirs, path.join(root, "mine"));
+        return {
+          value: path.join(root, "mine", "shard-1"),
+          options: { lstatSync: foreignLinkLstat(theirs, uid + 1) },
+          reason: `its path follows ${theirs}, a symbolic link that uid ${uid + 1} owns in a directory other users can write`,
+        };
+      },
+    },
+    {
+      // The kernel resolves "l2/.." through l2's target, deep/er, so l1 leads to deep; a
+      // lexical "l2/.." would stay in root.
+      name: "a path through relative links that lead into a directory others can write",
+      arrange: (root) => {
+        fs.mkdirSync(path.join(root, "deep", "er"), { recursive: true, mode: 0o700 });
+        fs.chmodSync(path.join(root, "deep"), 0o775);
+        fs.symlinkSync("deep/er", path.join(root, "l2"));
+        fs.symlinkSync("l2/..", path.join(root, "l1"));
+        return {
+          value: path.join(root, "l1", "shard-1"),
+          reason: `other users can rename entries in its ancestor ${path.join(root, "deep")} (mode 775, not sticky)`,
+        };
+      },
+    },
+    {
+      name: "a path through a link loop",
+      arrange: (root) => {
+        const loop = path.join(root, "loop");
+        fs.symlinkSync(loop, loop);
+        const value = path.join(loop, "shard-1");
+        return {
+          value,
+          // The kernel already refuses the override itself (ELOOP). Reporting it missing, as a
+          // link changed after that check could, shows the walk stops on its own.
+          options: {
+            lstatSync: (target: string) => {
+              if (target === value) {
+                throw nodeErrorWithCode("ENOENT");
+              }
+              return fs.lstatSync(target);
+            },
+          },
+          reason: `its ancestor ${path.join(fs.realpathSync.native(root), "loop")} cannot be inspected (ELOOP)`,
+        };
+      },
+    },
+    {
       name: "a path below a file",
       arrange: (root) => {
         fs.writeFileSync(path.join(root, "file"), "");
@@ -837,9 +977,21 @@ describe.skipIf(process.platform === "win32")("OPENCLAW_TMP_DIR per-process temp
       name: "a directory whose parent is missing",
       arrange: (root) => ({
         value: path.join(root, "missing", "openclaw-tmp"),
+        reason: `its ancestor ${path.join(root, "missing")} does not exist`,
+        check: () => expect(fs.existsSync(path.join(root, "missing"))).toBe(false),
+      }),
+    },
+    {
+      name: "a directory whose parent the current user cannot write",
+      arrange: (root) => ({
+        value: path.join(root, "openclaw-tmp"),
+        options: {
+          accessSync: () => {
+            throw nodeErrorWithCode("EACCES");
+          },
+        },
         reason:
           "it could not be created as a private directory; its parent must exist and be writable by the current user",
-        check: () => expect(fs.existsSync(path.join(root, "missing"))).toBe(false),
       }),
     },
   ])("refuses $name without falling back", ({ arrange }) => {
@@ -857,6 +1009,31 @@ describe.skipIf(process.platform === "win32")("OPENCLAW_TMP_DIR per-process temp
     expect(fs.readdirSync(root).toSorted()).toEqual(before);
     check?.();
   });
+
+  // APFS, the macOS default, refuses names that are not valid UTF-8.
+  it.skipIf(process.platform === "darwin")(
+    "refuses a path through a link whose target is not UTF-8 without falling back",
+    () => {
+      const root = tempDirs.make("openclaw-tmp-override-");
+      // The kernel follows the target's bytes to a directory other users can write; decoded,
+      // the target would name a private one.
+      const followed = Buffer.concat([Buffer.from(`${root}/`), Buffer.from([0xff])]);
+      fs.mkdirSync(followed);
+      fs.chmodSync(followed, 0o777);
+      fs.mkdirSync(path.join(root, "\uFFFD"), { mode: 0o700 });
+      fs.symlinkSync(Buffer.from([0xff]), path.join(root, "link"));
+      const value = path.join(root, "link", "shard-1");
+      vi.stubEnv("OPENCLAW_TMP_DIR", value);
+      const tmpdir = vi.fn(() => root);
+
+      expect(() => resolvePreferredOpenClawTmpDir({ tmpdir })).toThrow(
+        `OpenClaw refused OPENCLAW_TMP_DIR=${JSON.stringify(value)}: its path follows ${path.join(root, "link")}, a symbolic link whose target is not valid UTF-8.`,
+      );
+
+      expect(tmpdir).not.toHaveBeenCalled();
+      expect(fs.readdirSync(followed)).toEqual([]);
+    },
+  );
 
   it("gives concurrent processes separate roots that never share children", async () => {
     const root = tempDirs.make("openclaw-tmp-override-");

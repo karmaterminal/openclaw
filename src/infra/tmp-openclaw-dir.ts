@@ -29,7 +29,9 @@ export type ResolvePreferredOpenClawTmpDirOptions = {
 
 type ResolveSecureTempRoot =
   typeof import("@openclaw/fs-safe/secure-temp-root").resolveSecureTempRoot;
+type NodeBuffer = typeof import("node:buffer");
 type NodeFs = typeof import("node:fs");
+type NodeOs = typeof import("node:os");
 type PosixPath = typeof import("node:path").posix;
 
 let resolveSecureTempRootRuntime: ResolveSecureTempRoot | undefined;
@@ -83,18 +85,30 @@ function describeDefaultRootOverlap(
   candidate: string,
   uid: number | undefined,
   fs: NodeFs,
+  os: NodeOs,
   posix: PosixPath,
 ): string | undefined {
-  // The shared root, and the per-user fallback a Gateway with the usual TMPDIR selects.
-  const defaultRoots = [DEFAULT_POSIX_TMP_ROOT];
+  // Each root, and whether an override may contain it. It may not be, sit inside, or contain the
+  // shared root or the per-user fallback a Gateway with the usual TMPDIR selects.
+  const defaultRoots = new Map([[DEFAULT_POSIX_TMP_ROOT, false]]);
   if (uid !== undefined) {
-    defaultRoots.push(`${DEFAULT_POSIX_TMP_ROOT}-${uid}`);
+    defaultRoots.set(`${DEFAULT_POSIX_TMP_ROOT}-${uid}`, false);
+  }
+  // A Gateway sharing this process's TMPDIR, the only one visible from here, falls back below it.
+  // The override may contain that root: OpenClaw gives a child a TMPDIR inside its own temp root
+  // (withPrivateStagedPackageInstall), and the child inherits the override.
+  const fallbackRoot = posix.resolve(
+    os.tmpdir(),
+    uid === undefined ? "openclaw" : `openclaw-${uid}`,
+  );
+  if (!defaultRoots.has(fallbackRoot)) {
+    defaultRoots.set(fallbackRoot, true);
   }
   // Letter case is ignored: on a case-insensitive volume, the macOS default, /TMP/OPENCLAW
   // is /tmp/openclaw.
   const fold = (target: string) => target.toLowerCase();
   const physicalCandidate = physicalPosixPath(candidate, fs, posix);
-  for (const root of defaultRoots) {
+  for (const [root, mayContain] of defaultRoots) {
     const physicalRoot = physicalPosixPath(root, fs, posix);
     for (const [directory, defaultRoot] of [
       [fold(candidate), fold(root)],
@@ -106,7 +120,7 @@ function describeDefaultRootOverlap(
       if (isPosixPathInside(defaultRoot, directory, posix)) {
         return `it is inside the default temp root ${root}`;
       }
-      if (isPosixPathInside(directory, defaultRoot, posix)) {
+      if (!mayContain && isPosixPathInside(directory, defaultRoot, posix)) {
         return `it contains the default temp root ${root}`;
       }
     }
@@ -119,46 +133,82 @@ function errnoCode(error: unknown): string | undefined {
   return (error as NodeJS.ErrnoException | undefined)?.code;
 }
 
-// Another user who can rename entries in a directory above the override could swap the
-// override for a link after admission. So each directory the path passes through, symlinked
-// prefixes' targets included, must be owned by root or the current user, and only a sticky
-// directory such as /tmp may let other users write to it.
+// Linux stops resolving a path after this many symbolic links (ELOOP).
+const MAX_SYMLINK_FOLLOWS = 40;
+
+// Another user who can rename entries in a directory on the override's path, or replace a
+// symbolic link on it, could point the override elsewhere after admission. So the path is
+// resolved here one entry at a time, following each link as the kernel would. Every directory
+// it passes through must be owned by root or the current user, and only a sticky directory such
+// as /tmp may let other users write to it; a link there, which its owner can replace, must be
+// owned by root or the current user too.
 function describeReplaceableAncestor(
   directory: string,
   uid: number | undefined,
   lstatSync: (candidate: string) => SecureDirStat,
   fs: NodeFs,
+  buffer: NodeBuffer,
   posix: PosixPath,
 ): string | undefined {
-  const checked = new Set<string>();
-  for (let prefix = directory; ; prefix = posix.dirname(prefix)) {
-    let ancestor: string | undefined;
+  const foreign = (owner: number | undefined) =>
+    uid !== undefined && owner !== undefined && owner !== 0 && owner !== uid;
+  const pending = directory.split("/");
+  // Directories other users can add entries to; only sticky ones get past the checks.
+  const shared = new Set<string>();
+  // The directory resolved so far, through every link followed.
+  let resolved = "/";
+  for (let entry = "/", follows = 0; ;) {
+    let stat: SecureDirStat;
+    let link: Buffer | undefined;
     try {
-      ancestor = fs.realpathSync.native(prefix);
-    } catch {
-      // A missing parent is refused when the resolver tries to create the override.
+      stat = lstatSync(entry);
+      // As bytes: the kernel follows a target that is not UTF-8, which a decoded string renames.
+      link = stat.isSymbolicLink() ? fs.readlinkSync(entry, { encoding: "buffer" }) : undefined;
+    } catch (error) {
+      const code = errnoCode(error);
+      // The resolver would refuse to create the override there too, but another user could
+      // create a missing entry in a sticky directory before it tries.
+      if (code === "ENOENT") {
+        return `its ancestor ${entry} does not exist`;
+      }
+      return `its ancestor ${entry} cannot be inspected (${code ?? String(error)})`;
     }
-    // A checked directory's own ancestors were checked with it.
-    while (ancestor !== undefined && !checked.has(ancestor)) {
-      checked.add(ancestor);
-      let stat: SecureDirStat;
-      try {
-        stat = lstatSync(ancestor);
-      } catch (error) {
-        return `its ancestor ${ancestor} cannot be inspected (${errnoCode(error) ?? String(error)})`;
+    if (link === undefined) {
+      if (foreign(stat.uid)) {
+        return `its ancestor ${entry} is owned by uid ${stat.uid}, neither root nor the current user (uid ${uid})`;
       }
-      if (uid !== undefined && stat.uid !== undefined && stat.uid !== 0 && stat.uid !== uid) {
-        return `its ancestor ${ancestor} is owned by uid ${stat.uid}, neither root nor the current user (uid ${uid})`;
+      if (stat.mode !== undefined && (stat.mode & 0o022) !== 0) {
+        if ((stat.mode & 0o1000) === 0) {
+          return `other users can rename entries in its ancestor ${entry} (mode ${(stat.mode & 0o7777).toString(8)}, not sticky)`;
+        }
+        shared.add(entry);
       }
-      if (stat.mode !== undefined && (stat.mode & 0o022) !== 0 && (stat.mode & 0o1000) === 0) {
-        return `other users can rename entries in its ancestor ${ancestor} (mode ${(stat.mode & 0o7777).toString(8)}, not sticky)`;
+      resolved = entry;
+    } else {
+      if (shared.has(posix.dirname(entry)) && foreign(stat.uid)) {
+        return `its path follows ${entry}, a symbolic link that uid ${stat.uid} owns in a directory other users can write`;
       }
-      const parent = posix.dirname(ancestor);
-      ancestor = parent === ancestor ? undefined : parent;
+      if (!buffer.isUtf8(link)) {
+        return `its path follows ${entry}, a symbolic link whose target is not valid UTF-8`;
+      }
+      if (++follows > MAX_SYMLINK_FOLLOWS) {
+        return `its ancestor ${entry} cannot be inspected (ELOOP)`;
+      }
+      const target = link.toString("utf8");
+      // The target replaces the link; a relative target resolves from the link's directory.
+      pending.unshift(...target.split("/"));
+      if (target.startsWith("/")) {
+        resolved = "/";
+      }
     }
-    if (prefix === posix.dirname(prefix)) {
+    let name: string | undefined;
+    do {
+      name = pending.shift();
+    } while (name === "" || name === ".");
+    if (name === undefined) {
       return undefined;
     }
+    entry = name === ".." ? posix.dirname(resolved) : posix.join(resolved, name);
   }
 }
 
@@ -192,7 +242,8 @@ function resolveTmpDirOverride(
   const preferredDir = windows ? path.win32.resolve(value) : path.posix.resolve(value);
   const uid = windows ? undefined : options.getuid ? options.getuid() : process.getuid?.();
   if (!windows) {
-    const overlap = describeDefaultRootOverlap(preferredDir, uid, fs, path.posix);
+    const os = process.getBuiltinModule("node:os");
+    const overlap = describeDefaultRootOverlap(preferredDir, uid, fs, os, path.posix);
     if (overlap) {
       throw refuse(overlap);
     }
@@ -237,6 +288,7 @@ function resolveTmpDirOverride(
       uid,
       lstatSync,
       fs,
+      process.getBuiltinModule("node:buffer"),
       path.posix,
     );
     if (ancestry) {
