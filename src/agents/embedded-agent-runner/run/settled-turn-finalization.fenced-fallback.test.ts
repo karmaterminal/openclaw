@@ -200,8 +200,7 @@ describe("fenced settled-turn fallback through the real transcript writer", () =
 
       expect(deliverable(first)).toEqual([expect.objectContaining({ text: NOTICE_TEXT })]);
       expect(deliverable(second)).toEqual([]);
-      // The second append replayed the run's row; a failed append would also
-      // keep the notice private, but would leave the fallback unowned.
+      // The second append replayed the run's row instead of writing another.
       expect(second.attempt).toMatchObject({
         assistantTranscriptOwned: true,
         assistantTranscriptIdempotencyKey: "run-settled:settled-finalization-fallback",

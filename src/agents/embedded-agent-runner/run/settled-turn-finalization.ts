@@ -316,14 +316,14 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
       attempt.assistantTranscriptOwned = true;
       attempt.assistantTranscriptIdempotencyKey = transcript.idempotencyKey;
     }
-    // The run-keyed transcript row is the notice's durable claim: only the settle
-    // whose append wrote it marks the notice, so a repeated settle of the same run
-    // stays private, also after a restart. Without a recorded row the notice also
-    // stays private; a missed notice is better than two.
-    recoveryNotice = recoveryNoticeEligible && transcript?.duplicate === false;
+    // The run-keyed transcript row is the notice's durable claim: a settle whose
+    // append replays the run's existing row keeps the notice private, also after a
+    // restart. Without a recorded row the notice still goes out; a lost turn the
+    // user never hears about is worse than a repeated notice.
+    recoveryNotice = recoveryNoticeEligible && transcript?.duplicate !== true;
     if (recoveryNoticeEligible && !recoveryNotice) {
       log.warn(
-        `settled-turn recovery notice withheld: ${describeRun()} — ${transcript ? "this run's transcript already records it" : "no transcript row records it"}`,
+        `settled-turn recovery notice withheld: ${describeRun()} — this run's transcript already records it`,
       );
     }
     if (terminalFailed) {

@@ -797,8 +797,7 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
   });
 
   // Only a refusal that names a rebound retracts the fallback. Other refusals
-  // keep the reply, whose delivery authority still carries the fence. No row
-  // records the notice's claim, so the notice stays private.
+  // keep the visible reply, whose delivery authority still carries the fence.
   it("keeps the fenced fallback reply when its transcript append is refused for another reason", async () => {
     const input = freshSessionFencedInput(settledSuccessfulAttempt());
     transcriptMocks.appendAssistantMirrorMessageByIdentity.mockResolvedValueOnce({
@@ -812,15 +811,54 @@ describe("prepareTerminalWithSettledTurnFinalization", () => {
     expect(result.prepared.payloadsWithToolMedia).toEqual([
       expect.objectContaining({ text: SETTLED_TURN_RECOVERY_NOTICE_TEXT }),
     ]);
-    const metadata = getReplyPayloadMetadata(result.prepared.payloadsWithToolMedia![0]!);
-    expect(metadata).toMatchObject({
+    expect(getReplyPayloadMetadata(result.prepared.payloadsWithToolMedia![0]!)).toMatchObject({
+      deliverDespiteSourceReplySuppression: true,
       sessionWriterDeliveryAuthority: {
         expectedLifecycleRevision: "revision-committed",
         expectedWriterRunId: "run-settled",
       },
     });
-    expect(metadata?.deliverDespiteSourceReplySuppression).toBeUndefined();
     expect(result.attempt.assistantTranscriptOwned).not.toBe(true);
+  });
+
+  // Only a replayed row proves the run already sent its notice; without a
+  // recorded row the notice still crosses source suppression.
+  it.each([
+    {
+      name: "its transcript append throws",
+      appendCalls: 1,
+      prepare: () => {
+        const input = freshSessionFencedInput(settledSuccessfulAttempt());
+        transcriptMocks.appendAssistantMirrorMessageByIdentity.mockRejectedValueOnce(
+          new Error("transcript store unavailable"),
+        );
+        return input;
+      },
+    },
+    {
+      name: "it has no session to write to",
+      appendCalls: 0,
+      prepare: () => {
+        const input = finalizationInput(settledSuccessfulAttempt());
+        input.terminalBase.runParams.trigger = "user";
+        backendMocks.runSettledFinalization.mockRejectedValueOnce(new Error("summary unavailable"));
+        return input;
+      },
+    },
+  ])("marks the recovery notice for delivery when $name", async ({ appendCalls, prepare }) => {
+    const result = await prepareTerminalWithSettledTurnFinalization(prepare());
+
+    expect(result.prepared.payloadsWithToolMedia).toEqual([
+      expect.objectContaining({ text: SETTLED_TURN_RECOVERY_NOTICE_TEXT }),
+    ]);
+    expect(
+      getReplyPayloadMetadata(result.prepared.payloadsWithToolMedia![0]!)
+        ?.deliverDespiteSourceReplySuppression,
+    ).toBe(true);
+    expect(result.attempt.assistantTranscriptOwned).not.toBe(true);
+    expect(transcriptMocks.appendAssistantMirrorMessageByIdentity).toHaveBeenCalledTimes(
+      appendCalls,
+    );
   });
 
   it("does not construct a fenced fallback after its append reports a session rebound", async () => {
