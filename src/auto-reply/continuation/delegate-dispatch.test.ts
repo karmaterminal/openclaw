@@ -28,10 +28,12 @@ const loadOwnerSession = (_target: object, sessionKey: string | symbol) =>
     : undefined;
 const ownerSessionStore = new Proxy<Record<string, unknown>>({}, { get: loadOwnerSession });
 
+// mock-isolation: Spawn requests are recorded without starting real subagent runs.
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
 
+// mock-isolation: System events are captured instead of entering the process-wide event queue.
 vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEventRaw: (text: string, options: unknown) => enqueueSystemEventMock(text, options),
 }));
@@ -83,7 +85,7 @@ vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) 
   loadPendingSessionDeliveries: vi.fn(async () => pendingSessionDeliveriesForRecovery),
 }));
 
-vi.mock("../../logging/subsystem.js", () => {
+vi.mock("../../logging/subsystem.js", async (importOriginal) => {
   const record =
     (level: string) =>
     (message: string): void => {
@@ -102,6 +104,7 @@ vi.mock("../../logging/subsystem.js", () => {
     child: () => logger,
   };
   return {
+    ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
     createSubsystemLogger: () => logger,
   };
 });

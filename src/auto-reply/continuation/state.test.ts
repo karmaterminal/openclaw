@@ -5,10 +5,12 @@ const delegateCounts = vi.hoisted(() => ({
   stagedPostCompaction: 0,
 }));
 
+// mock-isolation: Pending delegate counts come from the test, not the delegate store.
 vi.mock("./delegate-store.js", () => ({
   pendingDelegateCount: () => delegateCounts.pendingDelegates,
 }));
 
+// mock-isolation: Staged post-compaction counts come from the test, not the post-compaction store.
 vi.mock("./delegate-store-post-compaction.js", () => ({
   stagedPostCompactionDelegateCount: () => delegateCounts.stagedPostCompaction,
 }));

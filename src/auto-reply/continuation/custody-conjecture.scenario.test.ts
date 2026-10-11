@@ -31,6 +31,7 @@ const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
 const getReplyFromConfigMock = vi.hoisted(() => vi.fn());
 
 // The spawn owner is the boundary where "a child was started" is observable.
+// mock-isolation: Spawn requests are recorded without starting real subagent runs.
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));

@@ -99,10 +99,12 @@ function resolveCommandLaneIdle(lane = "main"): void {
   }
 }
 
+// mock-isolation: Work dispatch reads a synthetic session-store config, never the operator's config file.
 vi.mock("../../config/config.js", () => ({
   getRuntimeConfig: () => ({ session: { store: "test-store" } }),
 }));
 
+// mock-isolation: The session store path comes from the test, never the operator's state dir.
 vi.mock("../../config/sessions/paths.js", () => ({
   resolveSessionStorePathCore: () => mockStorePath,
 }));
@@ -130,6 +132,7 @@ vi.mock("../../sessions/session-key-utils.js", async (importOriginal) => ({
   },
 }));
 
+// mock-isolation: A scripted reply-run registry drives active and idle sessions instead of the process-wide registry.
 vi.mock("../reply/reply-run-registry.js", () => ({
   replyRunRegistry: {
     isActive(sessionKey: string) {
@@ -152,6 +155,7 @@ vi.mock("../reply/reply-run-registry.js", () => ({
   },
 }));
 
+// mock-isolation: Scripted active-run queue outcomes stand in for live embedded agent runs.
 vi.mock("../../agents/embedded-agent-runner/runs.js", () => ({
   isEmbeddedAgentRunHandleActive: vi.fn(() => activeQueueHandleAvailable),
   queueEmbeddedAgentMessageWithOutcomeAsync: vi.fn(async (sessionId: string, text: string) => {
@@ -185,6 +189,7 @@ vi.mock("../../agents/embedded-agent-runner/runs.js", () => ({
   }),
 }));
 
+// mock-isolation: Scripted lane size, drain and idle waits replace the process-wide command queue.
 vi.mock("../../process/command-queue.js", () => ({
   getQueueSize: () => mainQueueSize,
   isGatewayDraining: () => gatewayDraining,
@@ -202,6 +207,7 @@ vi.mock("../../process/command-queue.js", () => ({
   }),
 }));
 
+// mock-isolation: A recorded turn grant replaces the reply pipeline, so no provider or transcript runs.
 vi.mock("../reply/get-reply.js", () => ({
   getReplyFromConfig: vi.fn(async (context: unknown, options: unknown, cfg: unknown) => {
     workTransitionEvents.push("provider-called");
@@ -240,10 +246,12 @@ vi.mock("../reply/get-reply.js", () => ({
   }),
 }));
 
+// mock-isolation: Loading the heartbeat runner fails the test: work dispatch must never use it.
 vi.mock("../../infra/heartbeat-runner.js", () => {
   throw new Error("continuation_work dispatch must not use the heartbeat runner");
 });
 
+// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
 vi.mock("../../infra/heartbeat-wake.js", () => ({
   isRetryableHeartbeatBusySkipReason: (reason: string) => reason === "requests-in-flight",
   markTrustedContinuationHeartbeatWake: <T>(request: T) => request,
@@ -252,6 +260,7 @@ vi.mock("../../infra/heartbeat-wake.js", () => ({
   },
 }));
 
+// mock-isolation: System events are captured instead of entering the process-wide event queue.
 vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEventRaw: (text: string, options: unknown) => {
     systemEvents.push({ text, options });
@@ -261,6 +270,7 @@ vi.mock("../../infra/system-events.js", () => ({
 // The notice row is inserted by the custody commit into the real durable
 // queue; delivery scheduling is recorded so the suite can assert the handoff
 // without running the delivery runtime.
+// mock-isolation: Delivery scheduling is recorded without running the session delivery runtime.
 vi.mock("../../infra/session-delivery-queue-runtime.js", () => ({
   scheduleSessionDelivery: (id: string) => {
     scheduledDeliveries.push(id);
@@ -280,6 +290,7 @@ vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) 
   };
 });
 
+// mock-isolation: Continuation spans are captured without the process-wide tracer.
 vi.mock("../../infra/continuation-tracer.js", () => ({
   emitContinuationWorkFireSpan: emitContinuationWorkFireSpanMock,
   emitContinuationWorkSpan: vi.fn(),
@@ -316,10 +327,12 @@ const { subsystemLoggerMock } = vi.hoisted(() => {
   return { subsystemLoggerMock: logger };
 });
 
-vi.mock("../../logging/subsystem.js", () => ({
+vi.mock("../../logging/subsystem.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
   createSubsystemLogger: () => subsystemLoggerMock,
 }));
 
+// mock-isolation: The helper returns the real custody store with every export kept, adding test hooks and in-flight counting.
 vi.mock("./custody/custody-store.js", async (importOriginal) =>
   (await import("./work-dispatch-flow-mock.test-support.js")).wrapCustodyStoreForWorkDispatch(
     await importOriginal(),
