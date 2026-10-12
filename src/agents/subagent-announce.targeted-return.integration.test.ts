@@ -38,6 +38,7 @@ let mockConfig: OpenClawConfig = {
 };
 let mockCrossSessionTargeting: "disabled" | "enabled" = "disabled";
 
+// mock-isolation: Runtime log and error lines are captured instead of writing to the terminal.
 vi.mock("../runtime.js", () => ({
   defaultRuntime: {
     log: (...args: unknown[]) => runtimeLogMock(...args),
@@ -45,6 +46,7 @@ vi.mock("../runtime.js", () => ({
   },
 }));
 
+// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
 vi.mock("../infra/heartbeat-wake.js", () => ({
   markTrustedContinuationHeartbeatWake: <T>(request: T) => request,
   requestHeartbeatNow: (...args: unknown[]) => requestHeartbeatNowMock(...args),
@@ -59,12 +61,14 @@ vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
   };
 });
 
+// mock-isolation: Session store targets are fixed test paths, never the operator's state dir.
 vi.mock("../config/sessions/targets.js", () => ({
   resolveAllAgentSessionStoreTargetsSync: () => [
     { agentId: "main", storePath: "/tmp/targeted-return-all.sqlite" },
   ],
 }));
 
+// mock-isolation: Gateway, config and session reads are scripted; the real runtime calls the Gateway and opens session stores.
 vi.mock("./subagents/announce/subagent-announce.runtime.js", () => ({
   callGateway: vi.fn(async () => ({})),
   callSubagentLifecycleGateway: vi.fn(async () => ({})),
@@ -91,6 +95,7 @@ vi.mock("./subagents/announce/subagent-announce.runtime.js", () => ({
   waitForEmbeddedAgentRunEnd: vi.fn(async () => true),
 }));
 
+// mock-isolation: Delivery and requester lookups are scripted; the real module reads the session store and delivers to channels.
 vi.mock("./subagents/announce/subagent-announce-delivery.js", () => ({
   deliverSubagentAnnouncement: async () => ({ delivered: true, path: "direct" }),
   loadRequesterSessionEntry: (sessionKey: string) => ({
@@ -113,6 +118,7 @@ vi.mock("./subagents/announce/subagent-announce-delivery.js", () => ({
   runAnnounceDeliveryWithRetry: async <T>(params: { run: () => Promise<T> }) => await params.run(),
 }));
 
+// mock-isolation: Registry reads come from the test; the real reader opens the shared-state worker.
 vi.mock("./subagents/registry/subagent-registry-read.js", () => registryRuntimeMock);
 // The descendant wake loads the registry module directly (the runtime barrel is
 // gone); only the steer replacement this suite stubbed there is intercepted.
@@ -121,6 +127,7 @@ vi.mock("./subagents/registry/subagent-registry.js", async (importOriginal) => (
   replaceSubagentRunAfterSteerCore: registryRuntimeMock.replaceSubagentRunAfterSteer,
 }));
 
+// mock-isolation: Subagent depth is fixed by the test instead of read from the session store.
 vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: () => requesterDepthMock(),
 }));

@@ -11,6 +11,7 @@ const { warnSpy, debugSpy, infoSpy, errorSpy, traceSpy, fatalSpy, rawSpy } = vi.
   rawSpy: vi.fn(),
 }));
 
+// mock-isolation: Capture the misconfiguration warnings without loading the logging runtime or its process-wide sinks.
 vi.mock("../logging/subsystem.js", () => {
   return {
     createSubsystemLogger: (subsystem: string) => ({

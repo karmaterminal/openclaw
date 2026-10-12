@@ -20,16 +20,19 @@ const cleanupSessionIdentity = {
   expectedLifecycleRevision: "child-lifecycle-revision",
 } as const;
 
+// mock-isolation: Capture cleanup warnings without loading the logging runtime or its process-wide sinks.
 vi.mock("../logging/subsystem.js", () => ({
   createSubsystemLogger: () => ({
     warn: logWarnMock,
   }),
 }));
 
+// mock-isolation: Live custody checks come from the test; the real store reads continuation custody.
 vi.mock("../auto-reply/continuation/work-store.js", () => ({
   hasLiveContinuationCustody: hasLiveContinuationCustodyMock,
 }));
 
+// mock-isolation: Post-compaction delegate cleanup is recorded without the custody store.
 vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", () => ({
   failStagedPostCompactionDelegatesForCleanup: failStagedPostCompactionDelegatesForCleanupMock,
 }));
