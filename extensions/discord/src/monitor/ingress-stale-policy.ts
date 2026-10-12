@@ -141,14 +141,36 @@ function isStoredMessageReference(value: unknown): boolean {
 }
 
 /**
- * Every field APIMessage requires, with the element shapes of its arrays, the
- * message reference and the nested reply target, so the stored frame really is the Message
- * constructor's input. A frame that is anything less is not policy-readable
- * and stays with the claim-time codec.
+ * The stored frame as the Message constructor's input: the same object the
+ * claim-time codec (ingress.ts) gives preflight as APIMessage. Message reads
+ * the fields this policy did not check lazily, with defaults.
+ */
+function asStoredDiscordMessage(rawMessage: object): APIMessage {
+  // SAFETY: the durable payload persists the gateway's MESSAGE_CREATE frame
+  // verbatim, and preflight receives this same object as APIMessage.
+  return rawMessage as APIMessage;
+}
+
+/** The stored-frame fields this policy reads itself, with their checked types. */
+type StalePolicyFrame = Record<string, unknown> & {
+  content: string;
+  timestamp: string;
+  mention_everyone: boolean;
+  attachments: unknown[];
+  mention_roles: unknown[];
+};
+
+/**
+ * The fields APIMessage requires, with the element shapes of its arrays, the
+ * message reference and the nested reply target. A frame missing any of them is
+ * not policy-readable and stays with the claim-time codec. Optional fields
+ * (embeds' contents, components, snapshots) are not judged here: the policy
+ * projects text from the same object preflight does (`asStoredDiscordMessage`),
+ * and a projection that throws on one leaves the row claimable.
  */
 function isStoredMessageCreateFrame(
   rawMessage: Record<string, unknown>,
-): rawMessage is Record<string, unknown> & APIMessage {
+): rawMessage is StalePolicyFrame {
   const { attachments, embeds, mention_roles: mentionRoles, mentions } = rawMessage;
   const referencedMessage = rawMessage.referenced_message;
   return (
@@ -199,7 +221,7 @@ function readDiscordStalePolicyRow(
   const payloadReceivedAt = payload.receivedAt;
   let text: string;
   try {
-    const message = new Message(client, rawMessage);
+    const message = new Message(client, asStoredDiscordMessage(rawMessage));
     // Preflight's own projection (documents, then native mentions rewritten to
     // usernames), so pre-claim matches exactly the text preflight matches.
     text = resolveDiscordMessageText(message, { includeForwarded: false });
