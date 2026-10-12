@@ -227,7 +227,9 @@ function resolveTmpDirOverride(
   }
   const fs = process.getBuiltinModule("node:fs");
   const path = process.getBuiltinModule("node:path");
-  const windows = process.platform === "win32" || options.platform === "win32";
+  // The override names a directory on this host, so the host's path rules judge it. Node fixes
+  // path.sep at startup; process.platform can be stubbed, as tests that act as Windows do.
+  const windows = options.platform === "win32" || path.sep === "\\";
   if (value === "") {
     throw refuse("it is empty");
   }
