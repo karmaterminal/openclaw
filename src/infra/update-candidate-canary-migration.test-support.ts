@@ -122,4 +122,26 @@ export function registerCanaryMigrationPolicyTests({
       expect(mocks.spawn).not.toHaveBeenCalled();
     },
   );
+  it("keeps the service's OPENCLAW_TMP_DIR for startup-only validation", async () => {
+    const options = canaryStateOptions(3_000);
+    vi.stubEnv("OPENCLAW_TMP_DIR", path.join(path.dirname(options.root), "updater-tmp"));
+    const serviceTmpDir = path.join(path.dirname(options.root), "service-tmp");
+    const childTmpDirs: Array<string | undefined> = [];
+    const spawnNormally = mocks.spawn.getMockImplementation()!;
+    mocks.spawn.mockImplementation((command, args: string[], spawnOptions) => {
+      childTmpDirs.push(spawnOptions.env.OPENCLAW_TMP_DIR);
+      return spawnNormally(command, args, spawnOptions);
+    });
+    stubHealthyGateway();
+
+    const result = await validateUpdateCandidateCanary({
+      ...options,
+      env: { OPENCLAW_TMP_DIR: serviceTmpDir },
+      migrationPolicy: "startup-only",
+    });
+
+    expect(result, result.logTail.join("\n")).toMatchObject({ status: "ok" });
+    expect(childTmpDirs).not.toHaveLength(0);
+    expect(new Set(childTmpDirs)).toEqual(new Set([serviceTmpDir]));
+  });
 }
