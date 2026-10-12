@@ -97,6 +97,29 @@ function readAudioAttachment(attachments: unknown[]): boolean {
   });
 }
 
+/**
+ * The structural checks that make a stored frame a MESSAGE_CREATE payload this
+ * policy and preflight's projection can read. The caller checks `channel_id`
+ * and `mentions`, whose parsed values it keeps.
+ */
+function isStoredMessageCreateFrame(
+  rawMessage: Record<string, unknown>,
+): rawMessage is Record<string, unknown> & APIMessage {
+  const referencedMessage = rawMessage.referenced_message;
+  return (
+    Boolean(nonEmptyString(rawMessage.id)) &&
+    isRecord(rawMessage.author) &&
+    typeof rawMessage.content === "string" &&
+    typeof rawMessage.timestamp === "string" &&
+    typeof rawMessage.mention_everyone === "boolean" &&
+    Array.isArray(rawMessage.attachments) &&
+    (rawMessage.embeds == null || Array.isArray(rawMessage.embeds)) &&
+    (rawMessage.mention_roles == null || Array.isArray(rawMessage.mention_roles)) &&
+    (referencedMessage == null || isRecord(referencedMessage)) &&
+    (rawMessage.message_reference == null || isRecord(rawMessage.message_reference))
+  );
+}
+
 /** Null for anything not fully readable, so such rows stay with the claim-time codec. */
 function readDiscordStalePolicyRow(
   payload: unknown,
@@ -110,20 +133,7 @@ function readDiscordStalePolicyRow(
   const channelId = nonEmptyString(rawMessage.channel_id);
   const mentionedUserIds = readMentionedUserIds(rawMessage.mentions);
   const referencedMessage = rawMessage.referenced_message;
-  if (
-    !channelId ||
-    !nonEmptyString(rawMessage.id) ||
-    !isRecord(rawMessage.author) ||
-    !mentionedUserIds ||
-    typeof rawMessage.content !== "string" ||
-    typeof rawMessage.timestamp !== "string" ||
-    typeof rawMessage.mention_everyone !== "boolean" ||
-    !Array.isArray(rawMessage.attachments) ||
-    (rawMessage.embeds != null && !Array.isArray(rawMessage.embeds)) ||
-    (rawMessage.mention_roles != null && !Array.isArray(rawMessage.mention_roles)) ||
-    (referencedMessage != null && !isRecord(referencedMessage)) ||
-    (rawMessage.message_reference != null && !isRecord(rawMessage.message_reference))
-  ) {
+  if (!channelId || !mentionedUserIds || !isStoredMessageCreateFrame(rawMessage)) {
     return null;
   }
   const guildId = nonEmptyString(rawMessage.guild_id);
@@ -132,8 +142,7 @@ function readDiscordStalePolicyRow(
   const payloadReceivedAt = payload.receivedAt;
   let text: string;
   try {
-    // SAFETY: the structural checks above prove the stored frame is a MESSAGE_CREATE payload.
-    const message = new Message(client, rawMessage as unknown as APIMessage);
+    const message = new Message(client, rawMessage);
     // Preflight's own projection (documents, then native mentions rewritten to
     // usernames), so pre-claim matches exactly the text preflight matches.
     text = resolveDiscordMessageText(message, { includeForwarded: false });
