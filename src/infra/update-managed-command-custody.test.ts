@@ -184,6 +184,9 @@ describe.skipIf(process.platform === "win32")("managed command process custody",
       ...process.env,
       HOME: f.directory,
       OPENCLAW_STATE_DIR: path.join(f.directory, "state"),
+      // The handoff binding owns these children's OpenClaw temp root. A CI shard's
+      // OPENCLAW_TMP_DIR would replace it and move the handoff database out of the fixture.
+      OPENCLAW_TMP_DIR: undefined,
     });
     const holder = spawn(process.execPath, ["-e", "process.stdin.resume()"], {
       env,

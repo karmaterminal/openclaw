@@ -221,18 +221,6 @@ export function installManagedHandoffTestBinding(binding: Binding) {
   );
 }
 
-// A CI shard sets OPENCLAW_TMP_DIR for every test process, and OpenClaw then asks for that
-// directory in place of the shared default. The binding still owns this process's scratch root.
-function namesTmpDirOverride(options: Parameters<SecureTempResolver>[0]) {
-  const override = process.env.OPENCLAW_TMP_DIR;
-  return (
-    options.fallbackPrefix === "openclaw" &&
-    override !== undefined &&
-    path.isAbsolute(override) &&
-    options.preferredDir === path.resolve(override)
-  );
-}
-
 export function resolveManagedHandoffTestTempRoot(
   binding: Binding,
   original: SecureTempResolver,
@@ -244,7 +232,7 @@ export function resolveManagedHandoffTestTempRoot(
   if (
     options.preferredDir === undefined
       ? options.fallbackPrefix !== "openclaw"
-      : !sharedRoots.has(options.preferredDir) && !namesTmpDirOverride(options)
+      : !sharedRoots.has(options.preferredDir)
   ) {
     return original(options);
   }

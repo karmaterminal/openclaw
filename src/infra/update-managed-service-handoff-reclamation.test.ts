@@ -60,6 +60,9 @@ function fixture() {
     USERPROFILE: root,
     OPENCLAW_STATE_DIR: state,
     OPENCLAW_CONFIG_PATH: path.join(state, "openclaw.json"),
+    // The handoff binding owns these children's OpenClaw temp root. A CI shard's
+    // OPENCLAW_TMP_DIR would replace it and move the handoff database out of the fixture.
+    OPENCLAW_TMP_DIR: undefined,
   });
   const store = createManagedHandoffLeaseStore({ databasePath: handoff, serviceManagerEnv: env });
   const child = path.join(root, "original-owner.mts");
