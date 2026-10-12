@@ -125,9 +125,24 @@ function isStoredAttachment(value: unknown): boolean {
   );
 }
 
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+/** APIMessageReference: `channel_id` is required, the rest optional but typed. */
+function isStoredMessageReference(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.channel_id === "string" &&
+    isOptionalString(value.message_id) &&
+    isOptionalString(value.guild_id) &&
+    (value.type === undefined || typeof value.type === "number")
+  );
+}
+
 /**
- * Every field APIMessage requires, with the element shapes of its arrays and
- * the nested reply target, so the stored frame really is the Message
+ * Every field APIMessage requires, with the element shapes of its arrays, the
+ * message reference and the nested reply target, so the stored frame really is the Message
  * constructor's input. A frame that is anything less is not policy-readable
  * and stays with the claim-time codec.
  */
@@ -155,7 +170,8 @@ function isStoredMessageCreateFrame(
     embeds.every(isRecord) &&
     typeof rawMessage.pinned === "boolean" &&
     typeof rawMessage.type === "number" &&
-    (rawMessage.message_reference == null || isRecord(rawMessage.message_reference)) &&
+    (rawMessage.message_reference === undefined ||
+      isStoredMessageReference(rawMessage.message_reference)) &&
     (referencedMessage == null ||
       (isRecord(referencedMessage) && isStoredMessageCreateFrame(referencedMessage)))
   );
