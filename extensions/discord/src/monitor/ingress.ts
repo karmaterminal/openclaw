@@ -17,6 +17,7 @@ import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
 import { getDiscordRuntime } from "../runtime.js";
 import { getGateway } from "./gateway-registry.js";
 import { createDiscordStaleAmbientPendingDisposition } from "./ingress-stale-policy.js";
+import { asStoredDiscordMessage } from "./ingress-stored-message.js";
 import type { DiscordMessageEvent } from "./listeners.js";
 import type { DiscordLivePolicyReader } from "./live-policy.js";
 
@@ -72,18 +73,23 @@ function decodeDiscordIngressPayload(
     throw new DiscordIngressPayloadError("Discord ingress payload must be an object");
   }
   const candidate = payload as Partial<DiscordIngressPayload>;
+  const rawMessage = candidate.rawMessage;
   try {
-    inspectDiscordMessage(candidate.rawMessage);
+    inspectDiscordMessage(rawMessage);
   } catch (error) {
     throw new DiscordIngressPayloadError(`Discord ingress payload ${claimedId} is invalid`, {
       cause: error,
     });
   }
+  if (!rawMessage) {
+    // inspectDiscordMessage already refused a missing frame; this narrows the type.
+    throw new DiscordIngressPayloadError(`Discord ingress payload ${claimedId} is invalid`);
+  }
   return {
     version: candidate.version,
     body: {
       receivedAt: candidate.receivedAt as number,
-      rawMessage: candidate.rawMessage as APIMessage,
+      rawMessage: asStoredDiscordMessage(rawMessage),
     },
   };
 }
