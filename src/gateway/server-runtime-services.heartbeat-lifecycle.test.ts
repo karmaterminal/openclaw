@@ -30,6 +30,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // mock-isolation: Restore the recorded heartbeat run for later cases; real heartbeats never run here.
   vi.doMock("../infra/heartbeat-runner-run.js", () => ({
     runHeartbeatOnceCore: runtimeServiceMocks.runHeartbeatOnce,
   }));
@@ -43,6 +44,7 @@ describe("scheduled heartbeat execution loading", { concurrent: false }, () => {
     async (action) => {
       const loading = createDeferredCore();
       const release = createDeferredCore();
+      // mock-isolation: Hold the run module's load open so the lifecycle change lands mid-import.
       vi.doMock("../infra/heartbeat-runner-run.js", async () => {
         loading.resolve();
         await release.promise;

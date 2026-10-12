@@ -6,6 +6,7 @@ import { createDeferred } from "../../test/helpers/promise.js";
 import { resetCommandQueueStateForTest } from "./command-queue.test-support.js";
 import { CommandLane } from "./lanes.js";
 
+// mock-isolation: Lane diagnostics stay silent; the real module tracks process-wide diagnostic activity.
 vi.mock("../logging/diagnostic-runtime.js", () => ({
   logLaneEnqueue: vi.fn(),
   logLaneDequeue: vi.fn(),

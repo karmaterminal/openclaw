@@ -23,6 +23,7 @@ beforeEach(() => {
   vi.setSystemTime(0);
   executionLoaded.mockClear();
   execute.mockReset().mockResolvedValue({ status: "ran", durationMs: 1 });
+  // mock-isolation: Record when the scheduler first loads the run module; real heartbeats never run.
   vi.doMock("./heartbeat-runner-run.js", () => {
     executionLoaded();
     return { runHeartbeatOnceCore: execute };
@@ -89,6 +90,7 @@ describe("heartbeat scheduler execution loading", { concurrent: false }, () => {
       expect(executionLoaded).not.toHaveBeenCalled();
       const loading = createDeferredCore();
       const release = createDeferredCore();
+      // mock-isolation: Hold the run module's load open so the config change lands mid-import.
       vi.doMock("./heartbeat-runner-run.js", async () => {
         executionLoaded();
         loading.resolve();
@@ -152,6 +154,7 @@ describe("heartbeat scheduler execution loading", { concurrent: false }, () => {
       const original = start({ cfg, abortSignal: owner.signal });
       const loading = createDeferredCore();
       const release = createDeferredCore();
+      // mock-isolation: Hold the run module's load open so stop, abort or replace lands mid-import.
       vi.doMock("./heartbeat-runner-run.js", async () => {
         loading.resolve();
         await release.promise;

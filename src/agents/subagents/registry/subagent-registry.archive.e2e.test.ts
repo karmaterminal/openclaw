@@ -100,6 +100,7 @@ vi.mock("../../runtime-plugins.js", async () => {
   };
 });
 
+// mock-isolation: Live custody checks come from the test; the real store reads continuation custody.
 vi.mock("../../../auto-reply/continuation/work-store.js", () => ({
   hasLiveContinuationCustody: hasLiveContinuationCustodyMock,
   hasLiveOrRecentlyDispatchedContinuationWork: hasLiveOrRecentlyDispatchedContinuationWorkMock,
