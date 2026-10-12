@@ -7,6 +7,7 @@ import { DiscordGatewayChannelInventory } from "../internal/gateway-channel-inve
 import { createInternalTestClient } from "../internal/test-builders.test-support.js";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
 import { createDiscordStaleAmbientPendingDisposition } from "./ingress-stale-policy.js";
+import { completeGatewayFrame } from "./ingress-stale-policy.test-support.js";
 import type { DiscordLivePolicy } from "./live-policy.js";
 
 const STALE_AT = 0;
@@ -34,7 +35,7 @@ function staleRow(): ChannelIngressQueueRecord<unknown> {
     payload: {
       version: 1,
       receivedAt: STALE_AT,
-      rawMessage: {
+      rawMessage: completeGatewayFrame({
         id: "m1",
         channel_id: "c1",
         guild_id: "g1",
@@ -44,7 +45,7 @@ function staleRow(): ChannelIngressQueueRecord<unknown> {
         mentions: [],
         attachments: [],
         author: { id: "user-1", username: "alice" },
-      },
+      }),
     },
     receivedAt: STALE_AT,
     updatedAt: STALE_AT,

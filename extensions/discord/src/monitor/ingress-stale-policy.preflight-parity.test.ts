@@ -58,6 +58,8 @@ type Row = {
   /** Canonical stored target by another user, or a bodiless one REST resolves to the bot. */
   replyTo?: "other-canonical" | "bot-via-rest";
   botId?: string;
+  /** The gateway inventory's parent category; preflight sees no parent for a non-thread channel. */
+  channelParentId?: string;
 };
 
 const ROWS: Row[] = [
@@ -87,6 +89,20 @@ const ROWS: Row[] = [
     discordConfig: DENY_HERE,
   },
   { name: "direct-open channel", content: "just chatting", guildEntries: gated(false) },
+  {
+    // ClawSweeper (a8eafa8d): the category entry must not outrank the wildcard.
+    name: "ordinary channel under a gated category, direct-open wildcard",
+    content: "just chatting",
+    channelParentId: "2000",
+    guildEntries: {
+      [GUILD_ID]: {
+        channels: {
+          "*": { enabled: true, requireMention: false },
+          "2000": { enabled: true, requireMention: true },
+        },
+      },
+    },
+  },
   // Preflight rewrites native <@id> mentions to usernames before matching, so a
   // mention of another user whose username matches an agent pattern is a request.
   // 🩸's frame (openclaw/openclaw#121204, comment 5966482733), verbatim.
@@ -239,7 +255,12 @@ async function policyKeeps(row: Row): Promise<boolean> {
     botUserId: row.botId ?? BOT_ID,
     client: createInternalTestClient(),
     readPolicy: async () => policy,
-    resolveChannelInfo: () => ({ guildId: GUILD_ID, name: "general", type: ChannelType.GuildText }),
+    resolveChannelInfo: () => ({
+      guildId: GUILD_ID,
+      name: "general",
+      type: ChannelType.GuildText,
+      ...(row.channelParentId ? { parentId: row.channelParentId } : {}),
+    }),
     isChannelInventoryHydrating: () => false,
   });
   const sentAt = Date.parse(STALE_TIMESTAMP);

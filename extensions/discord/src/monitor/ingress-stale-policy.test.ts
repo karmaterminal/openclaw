@@ -6,6 +6,7 @@ import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inve
 import { createInternalTestClient } from "../internal/test-builders.test-support.js";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
 import { createDiscordStaleAmbientPendingDisposition } from "./ingress-stale-policy.js";
+import { completeGatewayFrame } from "./ingress-stale-policy.test-support.js";
 import type { DiscordLivePolicy } from "./live-policy.js";
 
 // The policy's contract values, pinned here rather than exported for tests only.
@@ -53,7 +54,7 @@ function livePolicy(overrides: PolicyOverrides = {}): DiscordLivePolicy {
 }
 
 function rawMessage(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
+  return completeGatewayFrame({
     id: "m1",
     channel_id: "c1",
     guild_id: "g1",
@@ -65,7 +66,7 @@ function rawMessage(overrides: Record<string, unknown> = {}): Record<string, unk
     type: MessageType.Default,
     author: { id: "user-1", username: "alice" },
     ...overrides,
-  };
+  });
 }
 
 function record(overrides: {
@@ -161,7 +162,17 @@ describe("discord stale ambient pending disposition", () => {
       },
     );
     await expect(
-      resolve({ message: { referenced_message: { author: { id: BOT_ID } } } }),
+      resolve({
+        message: {
+          referenced_message: {
+            id: "m0",
+            channel_id: "c1",
+            content: "earlier answer",
+            timestamp: new Date(STALE_AT - 1_000).toISOString(),
+            author: { id: BOT_ID },
+          },
+        },
+      }),
     ).resolves.toBeNull();
   });
 
@@ -246,10 +257,10 @@ describe("discord stale ambient pending disposition", () => {
     };
     for (const authorId of ["user-2", BOT_ID]) {
       const author = { id: authorId, username: authorId };
+      const target = { channel_id: "c1", timestamp: new Date(STALE_AT - 1_000).toISOString() };
       for (const referenced_message of [
-        { author, content: "earlier answer" },
-        { id: "m9", author, content: "earlier answer", attachments: [] },
-        { id: "m0", author, content: "", attachments: [], embeds: [] },
+        { ...target, id: "m9", author, content: "earlier answer" },
+        { ...target, id: "m0", author, content: "" },
       ]) {
         await expect(resolve({ message: { ...reply, referenced_message } })).resolves.toBeNull();
       }
@@ -344,11 +355,14 @@ describe("discord stale ambient pending disposition", () => {
         },
       }),
     ).resolves.toBeNull();
-    // A category-level direct-open override reaches its child channel.
+    // ClawSweeper (a8eafa8d): preflight passes a parent only for threads, so a
+    // direct-open wildcard governs an ordinary channel under a gated category.
     await expect(
       resolve({
         channelInfo: { ...GENERAL, parentId: "cat1" },
-        guildEntries: { g1: { channels: { cat1: { requireMention: false } } } },
+        guildEntries: {
+          g1: { channels: { "*": { requireMention: false }, cat1: { requireMention: true } } },
+        },
       }),
     ).resolves.toBeNull();
   });
@@ -480,7 +494,7 @@ describe("discord stale ambient pending disposition", () => {
     await expect(resolve({ message: { content: undefined } })).resolves.toBeNull();
     await expect(resolve({ message: { timestamp: undefined } })).resolves.toBeNull();
     await expect(resolve({ message: { embeds: "not-an-array" } })).resolves.toBeNull();
-    // Container-valid, but the text projection throws on the null embed.
+    // A null embed is not an APIEmbed, so the frame is not policy-readable.
     await expect(resolve({ message: { content: "", embeds: [null] } })).resolves.toBeNull();
   });
 
