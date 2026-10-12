@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
+import * as tempRoot from "../../../infra/tmp-openclaw-dir.js";
 import { normalizeMediaFacts, resolveMediaFacts } from "../../../media/media-facts.js";
 import { captureEnv, setTestEnvValue } from "../../../test-utils/env.js";
 import * as utils from "../../../utils.js";
@@ -64,6 +65,25 @@ describe("fact-carried image references", () => {
       expect(hasHydratableMediaImages([{ path: "/tmp/photo.png", contentType }])).toBe(false);
     }
   });
+
+  it.each(["R:\\", "\\\\server\\share\\"])(
+    "does not hydrate the CLI image cache when the OpenClaw temp root is %s",
+    (root) => {
+      // OPENCLAW_TMP_DIR can name a drive or share root, which keeps its separator. The CLI
+      // runner names its cache with path.join, as path.win32 does here.
+      const resolveRoot = vi
+        .spyOn(tempRoot, "resolvePreferredOpenClawTmpDir")
+        .mockReturnValue(root);
+      try {
+        const cached = path.win32.join(root, "openclaw-cli-images", "stale.png");
+        expect(hasHydratableMediaImages([{ path: cached, contentType: "image/png" }])).toBe(false);
+        const nested = path.win32.join(root, "photos", "openclaw-cli-images", "current.png");
+        expect(hasHydratableMediaImages([{ path: nested, contentType: "image/png" }])).toBe(true);
+      } finally {
+        resolveRoot.mockRestore();
+      }
+    },
+  );
 
   it("shares canonical SVG, TIFF, and document classification with embedded image refs", () => {
     expect(hasHydratableMediaImages([{ path: "/tmp/diagram.svg" }])).toBe(false);

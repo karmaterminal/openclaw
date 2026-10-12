@@ -24,12 +24,15 @@ export type MediaImageRef = MediaFileRef & {
   workspaceDir?: string;
 };
 
-// The CLI runner caches temp-scope images in this process's OpenClaw temp root, which
-// OPENCLAW_TMP_DIR can give any name. Undefined when the root cannot be resolved here, for
-// example on a refused override: the runner could not have written under it either.
-function resolveCliImageCacheRoot(): string | undefined {
+// The CLI runner caches temp-scope images in openclaw-cli-images under this process's OpenClaw
+// temp root, which OPENCLAW_TMP_DIR can give any name. Undefined when the root cannot be
+// resolved here, for example on a refused override: the runner could not have written under it
+// either.
+function resolveCliImageCacheDir(): string | undefined {
   try {
-    return resolvePreferredOpenClawTmpDir().replaceAll("\\", "/");
+    const root = resolvePreferredOpenClawTmpDir().replaceAll("\\", "/");
+    // A drive or share root such as D:\ ends in its separator; drop it before joining.
+    return `${root.endsWith("/") ? root.slice(0, -1) : root}/openclaw-cli-images`;
   } catch {
     return undefined;
   }
@@ -47,7 +50,7 @@ export function isOpenClawCliImageCachePath(filePath: string): boolean {
     // A root named openclaw or openclaw-<uid> covers caches that other processes and earlier
     // runs wrote under their own temp roots.
     return (
-      parts.slice(0, index).join("/") === resolveCliImageCacheRoot() ||
+      parts.slice(0, index + 1).join("/") === resolveCliImageCacheDir() ||
       /^openclaw(?:-\d+)?$/.test(parts[index - 1] ?? "")
     );
   });
