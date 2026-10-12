@@ -16,6 +16,7 @@ import { GatewayPlugin } from "../internal/gateway.js";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
 import { clearGateways, registerGateway } from "./gateway-registry.js";
 import { createDiscordIngressMonitor } from "./ingress.js";
+import { gatewayUser } from "./ingress-stale-policy.test-support.js";
 import type { DiscordLivePolicy } from "./live-policy.js";
 
 type DiscordIngressPayload = {
@@ -62,11 +63,12 @@ function rawMessage(params: {
       id: "user-1",
       username: "alice",
       discriminator: "0",
+      global_name: null,
       avatar: null,
     },
     attachments: [],
     embeds: params.embeds ?? [],
-    mentions: params.mentions ?? [],
+    mentions: (params.mentions ?? []).map(gatewayUser),
     mention_roles: [],
     mention_everyone: false,
     timestamp: new Date(params.sentAt).toISOString(),

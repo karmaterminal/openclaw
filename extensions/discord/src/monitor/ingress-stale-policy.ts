@@ -97,26 +97,67 @@ function readAudioAttachment(attachments: unknown[]): boolean {
   });
 }
 
+function isNullableString(value: unknown): boolean {
+  return value === null || typeof value === "string";
+}
+
+/** APIUser's required fields. */
+function isStoredUser(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.username === "string" &&
+    typeof value.discriminator === "string" &&
+    isNullableString(value.global_name) &&
+    isNullableString(value.avatar)
+  );
+}
+
+/** APIAttachment's required fields. */
+function isStoredAttachment(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.filename === "string" &&
+    typeof value.size === "number" &&
+    typeof value.url === "string" &&
+    typeof value.proxy_url === "string"
+  );
+}
+
 /**
- * The structural checks that make a stored frame a MESSAGE_CREATE payload this
- * policy and preflight's projection can read. The caller checks `channel_id`
- * and `mentions`, whose parsed values it keeps.
+ * Every field APIMessage requires, with the element shapes of its arrays and
+ * the nested reply target, so the stored frame really is the Message
+ * constructor's input. A frame that is anything less is not policy-readable
+ * and stays with the claim-time codec.
  */
 function isStoredMessageCreateFrame(
   rawMessage: Record<string, unknown>,
 ): rawMessage is Record<string, unknown> & APIMessage {
+  const { attachments, embeds, mention_roles: mentionRoles, mentions } = rawMessage;
   const referencedMessage = rawMessage.referenced_message;
   return (
     Boolean(nonEmptyString(rawMessage.id)) &&
-    isRecord(rawMessage.author) &&
+    typeof rawMessage.channel_id === "string" &&
+    isStoredUser(rawMessage.author) &&
     typeof rawMessage.content === "string" &&
     typeof rawMessage.timestamp === "string" &&
+    isNullableString(rawMessage.edited_timestamp) &&
+    typeof rawMessage.tts === "boolean" &&
     typeof rawMessage.mention_everyone === "boolean" &&
-    Array.isArray(rawMessage.attachments) &&
-    (rawMessage.embeds == null || Array.isArray(rawMessage.embeds)) &&
-    (rawMessage.mention_roles == null || Array.isArray(rawMessage.mention_roles)) &&
-    (referencedMessage == null || isRecord(referencedMessage)) &&
-    (rawMessage.message_reference == null || isRecord(rawMessage.message_reference))
+    Array.isArray(mentions) &&
+    mentions.every(isStoredUser) &&
+    Array.isArray(mentionRoles) &&
+    mentionRoles.every((role) => typeof role === "string") &&
+    Array.isArray(attachments) &&
+    attachments.every(isStoredAttachment) &&
+    Array.isArray(embeds) &&
+    embeds.every(isRecord) &&
+    typeof rawMessage.pinned === "boolean" &&
+    typeof rawMessage.type === "number" &&
+    (rawMessage.message_reference == null || isRecord(rawMessage.message_reference)) &&
+    (referencedMessage == null ||
+      (isRecord(referencedMessage) && isStoredMessageCreateFrame(referencedMessage)))
   );
 }
 
@@ -182,8 +223,9 @@ function readDiscordStalePolicyRow(
 }
 
 /**
- * Every inventory fact the verdict reads: the type gate, the channel config
- * match by name/slug, and the parent-category fallback (plus the owning guild).
+ * Every inventory fact the verdict reads: the type gate and the channel config
+ * match by name/slug (plus the owning guild). The parent stays in the key so a
+ * move between categories still re-decides, though the verdict no longer reads it.
  */
 function channelFactsKey(channelInfo: DiscordGatewayChannelInfo | undefined): string | undefined {
   return channelInfo
@@ -284,8 +326,8 @@ function isMentionedForPreflight(
 
 /**
  * True only when the channel is provably mention-gated under the published
- * policy, resolved as preflight resolves it: channel entry (id, name, slug or
- * parent category) over guild entry, default gated. Direct-open channels
+ * policy, resolved as preflight resolves it for a non-thread channel: channel
+ * entry (id, name, slug or wildcard) over guild entry, default gated. Direct-open channels
  * (`requireMention: false`) keep their ambient work, however old.
  */
 function isMentionGatedChannel(
@@ -306,7 +348,8 @@ function isMentionGatedChannel(
     channelId: message.channelId,
     channelName: channelInfo.name,
     channelSlug: channelInfo.name ? normalizeDiscordSlug(channelInfo.name) : "",
-    ...(channelInfo.parentId ? { parentId: channelInfo.parentId } : {}),
+    // No parentId: preflight passes a parent only for threads, so a category
+    // entry never governs an ordinary channel (a wildcard or the guild does).
     scope: "channel",
   });
   return resolveDiscordMentionPolicy({

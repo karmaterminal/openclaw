@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createInternalTestClient } from "../internal/test-builders.test-support.js";
 import { createDiscordStaleAmbientPendingDisposition } from "./ingress-stale-policy.js";
+import { completeGatewayFrame } from "./ingress-stale-policy.test-support.js";
 import { createDiscordLivePolicyReader } from "./live-policy.js";
 import type { resolveDiscordAllowlistConfig } from "./provider.allowlist.js";
 
@@ -94,7 +95,7 @@ function staleRow(content: string): ChannelIngressQueueRecord<unknown> {
     payload: {
       version: 1,
       receivedAt: STALE_AT,
-      rawMessage: {
+      rawMessage: completeGatewayFrame({
         id: "m1",
         channel_id: "c1",
         guild_id: "g1",
@@ -104,7 +105,7 @@ function staleRow(content: string): ChannelIngressQueueRecord<unknown> {
         mentions: [],
         attachments: [],
         author: { id: "user-1", username: "alice" },
-      },
+      }),
     },
     receivedAt: STALE_AT,
     updatedAt: STALE_AT,
