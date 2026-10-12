@@ -271,12 +271,6 @@ export async function validateUpdateCandidateCanary(params: {
     };
     await recordStep(snapshotStep);
     env = { ...rehearsal.env };
-    // Doctor admits its receipt path only inside its own OpenClaw temp root, and this process
-    // names the path from its own root. The caller's environment may omit OPENCLAW_TMP_DIR or
-    // name another, so give the children this process's. Startup-only validation runs no
-    // Doctor and keeps the service's own value.
-    const startupOnly = params.migrationPolicy === "startup-only";
-    env.OPENCLAW_TMP_DIR = startupOnly ? env.OPENCLAW_TMP_DIR : process.env.OPENCLAW_TMP_DIR;
     const { port, stateDir: copiedStateDir } = rehearsal;
     const doctorResultOptions = { tmpdir: () => copiedStateDir };
     listenerIsolation = {
