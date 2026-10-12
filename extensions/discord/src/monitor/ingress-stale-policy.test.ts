@@ -502,6 +502,9 @@ describe("discord stale ambient pending disposition", () => {
       { ...complete, author: {} },
       { ...complete, mentions: [{ id: "user-2" }] },
       { ...complete, attachments: [{ id: "a1" }] },
+      // 🕯 on a05aa8f5: APIMessageReference requires channel_id.
+      { ...complete, type: MessageType.Reply, message_reference: {} },
+      { ...complete, type: MessageType.Reply, message_reference: { message_id: "m0" } },
       withoutTts,
     ]) {
       await expect(
