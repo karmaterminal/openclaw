@@ -1,5 +1,5 @@
 import { trySafeFileURLToPath } from "@openclaw/fs-safe/advanced";
-import { readOpenClawTmpDirOverridePath } from "../../../infra/tmp-openclaw-dir.js";
+import { resolvePreferredOpenClawTmpDir } from "../../../infra/tmp-openclaw-dir.js";
 import {
   isImageMediaFact,
   normalizeMediaFacts,
@@ -24,6 +24,17 @@ export type MediaImageRef = MediaFileRef & {
   workspaceDir?: string;
 };
 
+// The CLI runner caches temp-scope images in this process's OpenClaw temp root, which
+// OPENCLAW_TMP_DIR can give any name. Undefined when the root cannot be resolved here, for
+// example on a refused override: the runner could not have written under it either.
+function resolveCliImageCacheRoot(): string | undefined {
+  try {
+    return resolvePreferredOpenClawTmpDir().replaceAll("\\", "/");
+  } catch {
+    return undefined;
+  }
+}
+
 export function isOpenClawCliImageCachePath(filePath: string): boolean {
   const parts = filePath.replaceAll("\\", "/").split("/");
   return parts.some((part, index) => {
@@ -33,12 +44,11 @@ export function isOpenClawCliImageCachePath(filePath: string): boolean {
     if (part !== "openclaw-cli-images") {
       return false;
     }
-    // The CLI runner caches temp-scope images in its temp root: a directory named openclaw or
-    // openclaw-<uid>, or the one OPENCLAW_TMP_DIR names.
-    const parent = parts[index - 1] ?? "";
+    // A root named openclaw or openclaw-<uid> covers caches that other processes and earlier
+    // runs wrote under their own temp roots.
     return (
-      /^openclaw(?:-\d+)?$/.test(parent) ||
-      parts.slice(0, index).join("/") === readOpenClawTmpDirOverridePath()?.replaceAll("\\", "/")
+      parts.slice(0, index).join("/") === resolveCliImageCacheRoot() ||
+      /^openclaw(?:-\d+)?$/.test(parts[index - 1] ?? "")
     );
   });
 }
