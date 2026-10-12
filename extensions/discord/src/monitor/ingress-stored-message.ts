@@ -10,8 +10,8 @@ import type { APIMessage } from "discord-api-types/v10";
  * field APIMessage requires); Message reads the rest lazily, with defaults.
  */
 export function asStoredDiscordMessage(rawMessage: object): APIMessage {
-  // SAFETY: the durable payload persists the gateway's MESSAGE_CREATE frame
-  // verbatim (the codec serializes rawMessage as received), so its fields are
-  // the APIMessage the gateway delivered.
+  // The codec serializes rawMessage as received, so its fields are the
+  // APIMessage the gateway delivered.
+  // SAFETY: the durable payload persists the gateway's MESSAGE_CREATE frame verbatim.
   return rawMessage as APIMessage;
 }
