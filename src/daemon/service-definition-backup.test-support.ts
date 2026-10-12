@@ -61,6 +61,11 @@ async function fixture(
     OPENCLAW_WINDOWS_TASK_HIDDEN_LAUNCHER: "1",
   };
   vi.spyOn(process, "platform", "get").mockReturnValue(platform);
+  if (platform === "win32") {
+    // OpenClaw on Windows refuses a POSIX OPENCLAW_TMP_DIR such as a CI shard's. Without it,
+    // the temp root falls back under TMPDIR.
+    vi.stubEnv("OPENCLAW_TMP_DIR", undefined);
+  }
   const readFile = fs.readFile.bind(fs);
   if (platform === "linux") {
     vi.spyOn(fs, "readFile").mockImplementation(async (...args) => {

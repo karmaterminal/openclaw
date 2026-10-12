@@ -52,7 +52,9 @@ it(
         root: process.cwd(),
         stateDir,
         config,
-        env: { PATH: process.env.PATH },
+        // As `openclaw update` does, give the candidate this updater's OpenClaw temp root: the
+        // canary names Doctor's receipt path in it, and Doctor admits the path only in its own.
+        env: { PATH: process.env.PATH, OPENCLAW_TMP_DIR: process.env.OPENCLAW_TMP_DIR },
         timeoutMs: 300_000,
       });
       expect(result, result.logTail.join("\n")).toMatchObject({ status: "ok", phase: "readiness" });

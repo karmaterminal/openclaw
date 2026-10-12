@@ -265,6 +265,9 @@ it.skipIf(process.platform === "win32").for([
               TMPDIR: root,
               TMP: root,
               TEMP: root,
+              // The handoff binding owns this child's OpenClaw temp root. A CI shard's
+              // OPENCLAW_TMP_DIR would replace it and move the handoff database out of the fixture.
+              OPENCLAW_TMP_DIR: undefined,
               OPENCLAW_STATE_DIR: stateDir,
               OPENCLAW_CONFIG_PATH: configPath,
               ...(mode.endsWith("-compensation")

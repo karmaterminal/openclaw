@@ -113,6 +113,9 @@ describe("memory session directory ownership", () => {
 
   it("preserves canonical SQLite session identity on Windows", async () => {
     const platform = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    // OpenClaw on Windows refuses a POSIX OPENCLAW_TMP_DIR such as a CI shard's. Without it,
+    // the temp root falls back under TMPDIR.
+    vi.stubEnv("OPENCLAW_TMP_DIR", undefined);
     const tempDirs = createTempDirTracker();
     const tmpDir = fsSync.realpathSync.native(tempDirs.make("session-windows-ownership-"));
     const originalStateDir = process.env.OPENCLAW_STATE_DIR;
