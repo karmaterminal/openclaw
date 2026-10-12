@@ -2,6 +2,7 @@
 import path from "node:path";
 import { Value } from "typebox/value";
 import { afterEach, describe, expect, it } from "vitest";
+import { GatewayClientRequestError } from "../../../packages/gateway-client/src/request-error.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -40,6 +41,7 @@ function createTool(params: {
   indexing?: boolean;
   archivedTranscriptsExcluded?: number;
   truncated?: boolean;
+  refusedAgentIds?: readonly string[];
 }) {
   const config = params.config ?? { tools: { sessions: { visibility: "self" } } };
   return createSessionsSearchTool({
@@ -87,7 +89,18 @@ function createTool(params: {
           hasMore: false,
         } as T;
       }
-      const sessionKeys = (request.params as { sessionKeys?: unknown } | undefined)?.sessionKeys;
+      const searchParams = request.params as
+        | { agentId?: unknown; sessionKeys?: unknown }
+        | undefined;
+      const searchAgentId = searchParams?.agentId;
+      if (typeof searchAgentId === "string" && params.refusedAgentIds?.includes(searchAgentId)) {
+        throw new GatewayClientRequestError({
+          code: "INVALID_REQUEST",
+          message: `Unknown agent id "${searchAgentId}"`,
+          details: { code: "UNKNOWN_AGENT_ID", agentId: searchAgentId },
+        });
+      }
+      const sessionKeys = searchParams?.sessionKeys;
       return {
         results: results.filter(
           (row) => Array.isArray(sessionKeys) && sessionKeys.includes(row.sessionKey),
@@ -486,6 +499,31 @@ describe("sessions_search tool", () => {
       limit: 2,
     });
     expect(backendLimitedResult.details).toMatchObject({ truncated: true });
+  });
+
+  it("names at most ten refused owners and counts the rest", async () => {
+    const refusedAgentIds = Array.from(
+      { length: 12 },
+      (_, index) => `retired-${String(index).padStart(2, "0")}`,
+    );
+    const tool = createTool({
+      config: { tools: { sessions: { visibility: "all" }, agentToAgent: { enabled: true } } },
+      results: [
+        hit(),
+        ...refusedAgentIds.map((agentId) =>
+          hit({ sessionKey: `agent:${agentId}:main`, messageId: agentId }),
+        ),
+      ],
+      refusedAgentIds,
+    });
+
+    const result = await tool.execute("refused-owners", { query: "text" });
+
+    const named = refusedAgentIds.slice(0, 10).map((agentId) => `"${agentId}" (1 session)`);
+    expect(result.details).toMatchObject({
+      results: [expect.objectContaining({ messageId: "message-1" })],
+      warning: `Skipped transcript search for agents the Gateway refused as unknown: ${named.join(", ")}, and 2 more agents (2 sessions).`,
+    });
   });
 
   it("resolves and sends a one-session restriction", async () => {

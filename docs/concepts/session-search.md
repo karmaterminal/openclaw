@@ -43,8 +43,9 @@ length, and total response size.
 A broad search reads each owner's sessions separately. If the Gateway refuses one owner as an
 unknown agent id (for example an agent removed from `agents.entries` whose store remains, or one now
 configured only in `acp.allowedAgents`), search skips that owner's sessions, still returns the other
-owners' matches, and `warning` names the refused owner with the number of skipped sessions. A
-search of one requested `sessionKey` keeps the refusal, as does `sessions_history`.
+owners' matches, and `warning` names each refused owner with the number of skipped sessions. It
+names the first ten owners by id and counts the rest, so the warning stays small. A search of one
+requested `sessionKey` keeps the refusal, as does `sessions_history`.
 
 ## Control UI search
 
