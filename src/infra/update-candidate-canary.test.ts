@@ -410,6 +410,37 @@ describe("update candidate canary", () => {
       expect(step?.failureFacts).toEqual(receipt.failureFacts);
     },
   );
+  it("keeps Doctor's receipt in its temp root when the caller's env omits OPENCLAW_TMP_DIR", async () => {
+    const tmpRoot = path.join(await fs.realpath(tempDirs.make("canary-tmp-root-")), "tmp");
+    vi.stubEnv("OPENCLAW_TMP_DIR", tmpRoot);
+    const receipt = createDeferredConfiguredPluginRepairDoctorResult(["Deferred repair."]);
+    mocks.spawn.mockImplementationOnce(
+      (_command: string, args: string[], options: { env: NodeJS.ProcessEnv }) => {
+        expect(args).toContain("doctor");
+        const child = new FakeChild(nextPid++);
+        children.set(child.pid, child);
+        const resultPath = options.env[UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH_ENV] ?? "";
+        // Doctor admits the path only inside the temp root its own environment names.
+        const admitted = path.dirname(resultPath) === options.env.OPENCLAW_TMP_DIR;
+        void (
+          admitted
+            ? writeUpdatePostInstallDoctorResult({ resultPath, result: receipt })
+            : Promise.reject(new Error("Unsafe post-install doctor result path"))
+        ).then(
+          () => child.emit("close", 86),
+          (error: unknown) => child.emit("error", error),
+        );
+        return child;
+      },
+    );
+    stubHealthyGateway();
+    const result = await validateUpdateCandidateCanary(canaryStateOptions(3_000));
+    expect(result.status).toBe("ok");
+    expect(result.steps.find((step) => step.name === "candidate-doctor")?.advisory).toEqual({
+      kind: "recoverable-maintenance",
+      message: "Deferred repair.",
+    });
+  });
   it.each([
     {
       label: "plugin load failure",

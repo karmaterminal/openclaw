@@ -271,6 +271,10 @@ export async function validateUpdateCandidateCanary(params: {
     };
     await recordStep(snapshotStep);
     env = { ...rehearsal.env };
+    // Doctor admits its receipt path only inside its own OpenClaw temp root, and this process
+    // names the path from its own root. The caller's environment may omit OPENCLAW_TMP_DIR or
+    // name another, so give the children this process's.
+    env.OPENCLAW_TMP_DIR = process.env.OPENCLAW_TMP_DIR;
     const { port, stateDir: copiedStateDir } = rehearsal;
     const doctorResultOptions = { tmpdir: () => copiedStateDir };
     listenerIsolation = {
