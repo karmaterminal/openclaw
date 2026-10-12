@@ -192,6 +192,9 @@ describe("Windows command execution", () => {
   });
 
   beforeEach(() => {
+    // These tests act as Windows, where OpenClaw refuses a POSIX OPENCLAW_TMP_DIR such as a
+    // CI shard's. Without it, the temp root falls back under TMPDIR.
+    vi.stubEnv("OPENCLAW_TMP_DIR", undefined);
     execaMock.mockReset();
     execaMock.mockImplementation(() => createMockSubprocess());
     isRegularFileMock.mockReset();

@@ -33,6 +33,9 @@ export function registerStatusTimeoutTests(params: {
     "keeps the Windows native budget independent of RPC for timeout %s",
     async (timeout) =>
       withMockedPlatform("win32", async () => {
+        // OpenClaw on Windows refuses a POSIX OPENCLAW_TMP_DIR such as a CI shard's. Without
+        // it, the temp root falls back under TMPDIR.
+        vi.stubEnv("OPENCLAW_TMP_DIR", undefined);
         const clock = vi.spyOn(performance, "now").mockReturnValue(1_000);
         onTestFinished(() => clock.mockRestore());
         const stateDir = params.makeTempDir();
