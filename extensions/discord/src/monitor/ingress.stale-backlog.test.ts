@@ -15,8 +15,8 @@ import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inve
 import { GatewayPlugin } from "../internal/gateway.js";
 import type { DiscordGuildEntryResolved } from "./allow-list.js";
 import { clearGateways, registerGateway } from "./gateway-registry.js";
-import { createDiscordIngressMonitor } from "./ingress.js";
 import { gatewayUser } from "./ingress-stale-policy.test-support.js";
+import { createDiscordIngressMonitor } from "./ingress.js";
 import type { DiscordLivePolicy } from "./live-policy.js";
 
 type DiscordIngressPayload = {
