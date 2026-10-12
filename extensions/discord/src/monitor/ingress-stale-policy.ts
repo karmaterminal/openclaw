@@ -23,12 +23,12 @@ import {
   resolveDiscordGuildEntry,
   resolveDiscordMentionPolicy,
 } from "./allow-list.js";
+import { asStoredDiscordMessage } from "./ingress-stored-message.js";
 import type { DiscordLivePolicy, DiscordLivePolicyReader } from "./live-policy.js";
 import {
   resolveReferencedMessagePayloadState,
   shouldHydrateDiscordMessagePayload,
 } from "./message-handler.hydration.js";
-import { asStoredDiscordMessage } from "./ingress-stored-message.js";
 import { resolveDiscordMessageText } from "./message-text.js";
 
 /** Ambient guild chatter older than this can no longer be the user's live turn. */
