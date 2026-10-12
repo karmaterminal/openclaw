@@ -494,6 +494,24 @@ describe("discord stale ambient pending disposition", () => {
     await expect(resolve({ message: { content: undefined } })).resolves.toBeNull();
     await expect(resolve({ message: { timestamp: undefined } })).resolves.toBeNull();
     await expect(resolve({ message: { embeds: "not-an-array" } })).resolves.toBeNull();
+    // ClawSweeper (a8eafa8d): a frame missing what APIMessage requires is not the
+    // Message constructor's input, so it stays claimable even in a gated channel.
+    const complete = rawMessage();
+    const { tts: _tts, ...withoutTts } = complete;
+    for (const incomplete of [
+      { ...complete, author: {} },
+      { ...complete, mentions: [{ id: "user-2" }] },
+      { ...complete, attachments: [{ id: "a1" }] },
+      withoutTts,
+    ]) {
+      await expect(
+        resolve({ payload: { version: 1, receivedAt: STALE_AT, rawMessage: incomplete } }),
+      ).resolves.toBeNull();
+    }
+    // The control: the same frame, complete, is stale backlog.
+    await expect(
+      resolve({ payload: { version: 1, receivedAt: STALE_AT, rawMessage: complete } }),
+    ).resolves.toMatchObject({ reason: DISCORD_STALE_AMBIENT_BACKLOG_REASON });
     // A null embed is not an APIEmbed, so the frame is not policy-readable.
     await expect(resolve({ message: { content: "", embeds: [null] } })).resolves.toBeNull();
   });
