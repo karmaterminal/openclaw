@@ -1,4 +1,5 @@
 import { trySafeFileURLToPath } from "@openclaw/fs-safe/advanced";
+import { readOpenClawTmpDirOverridePath } from "../../../infra/tmp-openclaw-dir.js";
 import {
   isImageMediaFact,
   normalizeMediaFacts,
@@ -29,8 +30,16 @@ export function isOpenClawCliImageCachePath(filePath: string): boolean {
     if (part === ".openclaw-cli-images") {
       return true;
     }
+    if (part !== "openclaw-cli-images") {
+      return false;
+    }
+    // The CLI runner caches temp-scope images in its temp root: a directory named openclaw or
+    // openclaw-<uid>, or the one OPENCLAW_TMP_DIR names.
     const parent = parts[index - 1] ?? "";
-    return part === "openclaw-cli-images" && /^openclaw(?:-\d+)?$/.test(parent);
+    return (
+      /^openclaw(?:-\d+)?$/.test(parent) ||
+      parts.slice(0, index).join("/") === readOpenClawTmpDirOverridePath()?.replaceAll("\\", "/")
+    );
   });
 }
 

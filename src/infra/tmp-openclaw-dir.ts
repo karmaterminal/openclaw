@@ -315,6 +315,19 @@ function resolveTmpDirOverride(
 }
 
 /**
+ * The directory OPENCLAW_TMP_DIR names, or undefined when it is unset, for recognizing paths
+ * OpenClaw wrote under that temp root, whose name can be anything. It admits nothing: OpenClaw
+ * writes only where resolvePreferredOpenClawTmpDir admits.
+ */
+export function readOpenClawTmpDirOverridePath(): string | undefined {
+  const value = process.env[TMP_DIR_OVERRIDE_ENV];
+  if (!value || typeof process.getBuiltinModule !== "function") {
+    return undefined;
+  }
+  return process.getBuiltinModule("node:path").resolve(value);
+}
+
+/**
  * Resolves this process's OpenClaw temp root: OPENCLAW_TMP_DIR when set, which fails closed,
  * otherwise the shared root, falling back to user-scoped os.tmpdir paths when needed.
  */

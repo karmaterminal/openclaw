@@ -65,6 +65,37 @@ describe("prepareCliPromptImagePayload prompt references", () => {
     expect(sanitizeImageBlocksSpy).not.toHaveBeenCalled();
   });
 
+  it("does not reload images it cached in the temp root OPENCLAW_TMP_DIR names", async () => {
+    const tmpRoot = tempDirs.make("openclaw-cli-tmp-root-");
+    const envSnapshot = captureEnv(["OPENCLAW_TMP_DIR"]);
+    setTestEnvValue("OPENCLAW_TMP_DIR", tmpRoot);
+    const backend = { command: "codex" };
+
+    try {
+      const cached = await prepareCliPromptImagePayload({
+        backend,
+        prompt: "",
+        workspaceDir: "/workspace",
+        images: [pngImage(createSolidPngBuffer(1, 1, { r: 255, g: 0, b: 0 }))],
+      });
+      const cachedPath = expectDefined(cached.imagePaths?.[0], "cached image path");
+      expect(path.dirname(cachedPath)).toBe(path.join(tmpRoot, "openclaw-cli-images"));
+      const detectAndLoadPromptImagesSpy = vi.spyOn(promptImageUtils, "detectAndLoadPromptImages");
+
+      await expect(
+        prepareCliPromptImagePayload({
+          backend,
+          prompt: `Prior turn wrote ${cachedPath}`,
+          workspaceDir: "/workspace",
+          localRoots: [tmpRoot],
+        }),
+      ).resolves.toStrictEqual({ prompt: `Prior turn wrote ${cachedPath}` });
+      expect(detectAndLoadPromptImagesSpy).not.toHaveBeenCalled();
+    } finally {
+      envSnapshot.restore();
+    }
+  });
+
   it("hydrates structured media from the active agent workspace without widening sibling access", async () => {
     const stateDir = tempDirs.make("openclaw-cli-agent-image-");
     const workspaceDir = path.join(stateDir, "workspace-arthur");
