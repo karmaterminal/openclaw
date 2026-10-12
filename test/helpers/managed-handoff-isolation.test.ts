@@ -16,6 +16,7 @@ const require = createRequire(import.meta.url);
 const tsxUrl = pathToFileURL(require.resolve("tsx/esm/api")).href;
 const leaseUrl = new URL("../../src/infra/update-managed-service-handoff-lease.ts", import.meta.url)
   .href;
+const tmpDirUrl = new URL("../../src/infra/tmp-openclaw-dir.ts", import.meta.url).href;
 const temporary = useAutoCleanupTempDirTracker(afterEach);
 
 function fixture() {
@@ -88,6 +89,26 @@ describe("explicit managed handoff test binding", () => {
       ).toThrow(/No bound handoff resolver witness/);
       expect(fs.existsSync(binding.databasePath)).toBe(false);
     }
+  });
+
+  it("keeps the binding when OPENCLAW_TMP_DIR names a shard's own temp root", () => {
+    const { binding, program, run } = fixture();
+    const override = path.join(temporary.make("openclaw-shard-tmp-"), "openclaw-tmp");
+    // OpenClaw admits the override, then asks fs-safe for it in place of /tmp/openclaw.
+    fs.writeFileSync(
+      program,
+      [
+        `import { register } from ${JSON.stringify(tsxUrl)};`,
+        `register({ tsconfig: ${JSON.stringify(path.resolve("tsconfig.json"))} });`,
+        `const { resolvePreferredOpenClawTmpDir } = await import(${JSON.stringify(tmpDirUrl)});`,
+        "process.stdout.write(resolvePreferredOpenClawTmpDir());",
+      ].join("\n"),
+    );
+    const child = run({ ...resolveServiceManagerEnv(), OPENCLAW_TMP_DIR: override });
+    expect(child.status, child.stderr).toBe(0);
+    expect(child.stdout).toBe(binding.directory);
+    assertManagedHandoffTestConsumer(binding, child.pid, path.resolve("src"));
+    expect(fs.existsSync(override)).toBe(false);
   });
 
   it("admits a second worker while another is publishing its resolver shim", () => {
