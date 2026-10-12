@@ -14,7 +14,7 @@ import {
   isRecord,
   normalizeNullableString as nonEmptyString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
-import { Message, type APIMessage } from "../internal/discord.js";
+import { Message } from "../internal/discord.js";
 import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inventory.js";
 import type { StructureClient } from "../internal/structures.js";
 import {
@@ -28,6 +28,7 @@ import {
   resolveReferencedMessagePayloadState,
   shouldHydrateDiscordMessagePayload,
 } from "./message-handler.hydration.js";
+import { asStoredDiscordMessage } from "./ingress-stored-message.js";
 import { resolveDiscordMessageText } from "./message-text.js";
 
 /** Ambient guild chatter older than this can no longer be the user's live turn. */
@@ -140,17 +141,6 @@ function isStoredMessageReference(value: unknown): boolean {
   );
 }
 
-/**
- * The stored frame as the Message constructor's input: the same object the
- * claim-time codec (ingress.ts) gives preflight as APIMessage. Message reads
- * the fields this policy did not check lazily, with defaults.
- */
-function asStoredDiscordMessage(rawMessage: object): APIMessage {
-  // SAFETY: the durable payload persists the gateway's MESSAGE_CREATE frame
-  // verbatim, and preflight receives this same object as APIMessage.
-  return rawMessage as APIMessage;
-}
-
 /** The stored-frame fields this policy reads itself, with their checked types. */
 type StalePolicyFrame = Record<string, unknown> & {
   content: string;
@@ -165,8 +155,9 @@ type StalePolicyFrame = Record<string, unknown> & {
  * message reference and the nested reply target. A frame missing any of them is
  * not policy-readable and stays with the claim-time codec. Optional fields
  * (embeds' contents, components, snapshots) are not judged here: the policy
- * projects text from the same object preflight does (`asStoredDiscordMessage`),
- * and a projection that throws on one leaves the row claimable.
+ * projects text from the same object, through the same `asStoredDiscordMessage`,
+ * that the claim-time codec gives preflight, and a projection that throws on one
+ * leaves the row claimable.
  */
 function isStoredMessageCreateFrame(
   rawMessage: Record<string, unknown>,
