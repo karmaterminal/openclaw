@@ -2,9 +2,9 @@ import type { SqliteCommitReceipt } from "../../infra/sqlite-commit-receipt.js";
 import type { SessionRowFacts } from "../../sessions/session-row-changes.js";
 import type { SessionAccessScope } from "./session-accessor.sqlite-contract.js";
 import type { SessionActor, SessionOwnerAssignment } from "./session-entry-provenance.js";
+import type { SessionMember } from "./session-membership-facts.types.js";
 import type { SessionParticipantIdentity } from "./session-participant-identity.js";
 import type { SessionRecipientAuthority } from "./session-recipient-authority-types.js";
-import type { SessionMember } from "./session-sharing-store.kernel.js";
 import type { SessionEntry, SessionProfileInvolvement } from "./types.js";
 
 export type SessionCollaborationMutation = Exclude<
