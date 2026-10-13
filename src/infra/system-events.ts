@@ -18,6 +18,12 @@ import {
 } from "../utils/delivery-context.shared.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
+import {
+  execRequestMatches,
+  readExecRequestOwners,
+  withExecRequestOwners,
+  type ExecRequestIdentity,
+} from "./exec-request-context.js";
 import { generateSecureUuid } from "./secure-random.js";
 import {
   isDeliveryAdoptionClaimed,
@@ -161,11 +167,22 @@ function normalizeContextKey(key?: string | null): string | null {
 }
 
 function getSessionQueue(sessionKey: string): SessionQueue | undefined {
-  return queues.get(requireSessionKey(sessionKey));
+  const key = requireSessionKey(sessionKey);
+  const entry = queues.get(key);
+  if (entry) {
+    const live = entry.queue.filter(
+      (event) => !readExecRequestOwners(event)?.some((owner) => owner.signal.aborted),
+    );
+    if (live.length !== entry.queue.length) {
+      entry.queue = live;
+      resetQueueState(key, entry);
+    }
+  }
+  return queues.get(key);
 }
 
 function getOrCreateSessionQueue(key: string): SessionQueue {
-  const existing = queues.get(key);
+  const existing = getSessionQueue(key);
   if (existing) {
     return existing;
   }
@@ -240,6 +257,9 @@ function enqueueOwnedSystemEventEntry(
   receiptOptions?: ReceiptOptions & { throwOnFull?: boolean },
 ): SystemEvent | null {
   const key = requireSessionKey(options.sessionKey);
+  if (readExecRequestOwners(options)?.some((owner) => owner.signal.aborted)) {
+    return null;
+  }
   const sessionStorePath =
     options.sessionStorePath === undefined
       ? getSystemEventStorePath(key)
@@ -260,27 +280,32 @@ function enqueueOwnedSystemEventEntry(
   const normalizedDeliveryContext = normalizeDeliveryContext(options.deliveryContext);
   const normalizedTraceparent = normalizeTraceparent(options.traceparent);
   const sessionDeliveryAckStateDir = resolveSessionDeliveryAckStateDir(options);
-  const event: SystemEvent = {
-    id: generateSecureUuid(),
-    text: cleaned,
-    ts: Date.now(),
-    ...(sessionStorePath === undefined ? {} : { sessionStorePath }),
-    contextKey: normalizedContextKey,
-    deliveryContext: normalizedDeliveryContext,
-    ...(options.sessionDeliveryAckId ? { sessionDeliveryAckId: options.sessionDeliveryAckId } : {}),
-    ...(sessionDeliveryAckStateDir ? { sessionDeliveryAckStateDir } : {}),
-    ...(options.trusted === true && options.sessionDeliveryAwaitsTurnAdoption
-      ? { sessionDeliveryAwaitsTurnAdoption: true }
-      : {}),
-    ...(options.trusted === true && options.expectedSessionId
-      ? { expectedSessionId: options.expectedSessionId }
-      : {}),
-    ...(options.trusted === true && options.recipientAuthority
-      ? { recipientAuthority: { ...options.recipientAuthority } }
-      : {}),
-    ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
-    ...(options.fromConversationTurn ? { fromConversationTurn: true as const } : {}),
-  };
+  const event: SystemEvent = withExecRequestOwners(
+    {
+      id: generateSecureUuid(),
+      text: cleaned,
+      ts: Date.now(),
+      ...(sessionStorePath === undefined ? {} : { sessionStorePath }),
+      contextKey: normalizedContextKey,
+      deliveryContext: normalizedDeliveryContext,
+      ...(options.sessionDeliveryAckId
+        ? { sessionDeliveryAckId: options.sessionDeliveryAckId }
+        : {}),
+      ...(sessionDeliveryAckStateDir ? { sessionDeliveryAckStateDir } : {}),
+      ...(options.trusted === true && options.sessionDeliveryAwaitsTurnAdoption
+        ? { sessionDeliveryAwaitsTurnAdoption: true }
+        : {}),
+      ...(options.trusted === true && options.expectedSessionId
+        ? { expectedSessionId: options.expectedSessionId }
+        : {}),
+      ...(options.trusted === true && options.recipientAuthority
+        ? { recipientAuthority: { ...options.recipientAuthority } }
+        : {}),
+      ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
+      ...(options.fromConversationTurn ? { fromConversationTurn: true as const } : {}),
+    },
+    readExecRequestOwners(options),
+  );
   if (
     event.sessionDeliveryAckId &&
     isDeliveryAdoptionClaimed(event.sessionDeliveryAckId, event.sessionDeliveryAckStateDir)
@@ -395,7 +420,7 @@ export function drainSystemEventEntries(sessionKey: string): SystemEvent[] {
 
 function drainSystemEventsWith<T>(sessionKey: string, project: (event: SystemEvent) => T): T[] {
   const key = requireSessionKey(sessionKey);
-  const entry = queues.get(key);
+  const entry = getSessionQueue(key);
   if (!entry || entry.queue.length === 0) {
     return [];
   }
@@ -446,24 +471,30 @@ function replaceSystemEventEntry(
   const normalizedDeliveryContext = normalizeDeliveryContext(options.deliveryContext);
   const normalizedTraceparent = normalizeTraceparent(options.traceparent);
   const sessionDeliveryAckStateDir = resolveSessionDeliveryAckStateDir(options);
-  const replacement: SystemEvent = {
-    id: generateSecureUuid(),
-    text: cleaned,
-    ts: Date.now(),
-    ...(sessionStorePath === undefined ? {} : { sessionStorePath }),
-    contextKey: normalizedContextKey,
-    deliveryContext: normalizedDeliveryContext,
-    ...(options.sessionDeliveryAckId ? { sessionDeliveryAckId: options.sessionDeliveryAckId } : {}),
-    ...(sessionDeliveryAckStateDir ? { sessionDeliveryAckStateDir } : {}),
-    ...(options.trusted === true && options.expectedSessionId
-      ? { expectedSessionId: options.expectedSessionId }
-      : {}),
-    ...(options.trusted === true && options.recipientAuthority
-      ? { recipientAuthority: { ...options.recipientAuthority } }
-      : {}),
-    ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
-    ...(options.fromConversationTurn ? { fromConversationTurn: true as const } : {}),
-  };
+  const replacement: SystemEvent = withExecRequestOwners(
+    {
+      id: generateSecureUuid(),
+      text: cleaned,
+      ts: Date.now(),
+      ...(sessionStorePath === undefined ? {} : { sessionStorePath }),
+      contextKey: normalizedContextKey,
+      deliveryContext: normalizedDeliveryContext,
+      ...(options.sessionDeliveryAckId
+        ? { sessionDeliveryAckId: options.sessionDeliveryAckId }
+        : {}),
+      ...(sessionDeliveryAckStateDir ? { sessionDeliveryAckStateDir } : {}),
+      ...(options.trusted === true && options.expectedSessionId
+        ? { expectedSessionId: options.expectedSessionId }
+        : {}),
+      ...(options.trusted === true && options.recipientAuthority
+        ? { recipientAuthority: { ...options.recipientAuthority } }
+        : {}),
+      ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
+      ...(options.fromConversationTurn ? { fromConversationTurn: true as const } : {}),
+    },
+    readExecRequestOwners(options),
+  );
+
   const matches = (event: SystemEvent) =>
     (event.contextKey ?? null) === normalizedContextKey &&
     areDeliveryContextsEqual(event.deliveryContext, normalizedDeliveryContext);
@@ -585,7 +616,7 @@ export function consumeSelectedSystemEventEntries(
   options?: { deferredEventIds?: readonly string[] },
 ): SystemEvent[] {
   const key = requireSessionKey(sessionKey);
-  const entry = queues.get(key);
+  const entry = getSessionQueue(key);
   if (!entry || entry.queue.length === 0 || consumedEntries.length === 0) {
     return [];
   }
@@ -677,6 +708,22 @@ export function removeSystemEvents(
 
 export function peekSystemEventEntries(sessionKey: string): SystemEvent[] {
   return getSessionQueue(sessionKey)?.queue.map(cloneSystemEvent) ?? [];
+}
+
+/** Routed completions retain request ownership after process output expires. Stop is a cold path. */
+export function peekExecRequestSystemEventEntries(
+  target: ExecRequestIdentity,
+): Array<{ sessionKey: string; events: SystemEvent[] }> {
+  const selected = [];
+  for (const sessionKey of queues.keys()) {
+    const events = peekSystemEventEntries(sessionKey).filter((event) =>
+      readExecRequestOwners(event)?.some((owner) => execRequestMatches(owner, target)),
+    );
+    if (events.length > 0) {
+      selected.push({ sessionKey, events });
+    }
+  }
+  return selected;
 }
 
 export function peekSystemEvents(sessionKey: string): string[] {

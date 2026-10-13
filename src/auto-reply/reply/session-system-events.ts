@@ -153,6 +153,7 @@ export async function prepareFormattedSystemEvents(params: {
   suppressHeartbeatOwnedEvents?: boolean;
   events?: readonly SystemEvent[];
   deferredEventIds?: readonly string[];
+  onEventsAdmitted?: (events: readonly SystemEvent[]) => void;
 }): Promise<PreparedFormattedSystemEvents> {
   const blocks: PreparedSystemEventBlock[] = [];
   const queueKey = resolveSystemEventQueueKey(params.sessionKey, params.agentId);
@@ -329,6 +330,9 @@ export async function prepareFormattedSystemEvents(params: {
       !(event.sessionDeliveryAckId && excludedAdoptedAckIds.has(event.sessionDeliveryAckId)) &&
       (!event.expectedSessionId || event.expectedSessionId === currentSessionId),
   );
+  // Upstream's admission hook sees every consumed entry (deferred ones included)
+  // so the heartbeat can retire its ordinary generic events after delivery.
+  params.onEventsAdmitted?.(queued);
   const sessionStateNotices = promptEvents.flatMap((event) => {
     const targetSessionKey = event.contextKey
       ? decodeSessionStateNoticeContextKey(event.contextKey)
