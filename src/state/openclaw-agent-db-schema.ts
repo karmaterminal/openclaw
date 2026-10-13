@@ -33,14 +33,19 @@ import {
 } from "./agent-deletion-journal.js";
 import { ensureOpenClawAgentBoardSchemaInTransaction } from "./openclaw-agent-board-schema.js";
 import {
+  ensureLegacySessionEntryValidityTriggers,
+  withLegacyCanonicalSessionValidationTriggers,
+  migrateCanonicalSessionWriterValidation,
+} from "./openclaw-agent-canonical-validation-migration.js";
+import {
   canonicalSessionValidationSchemaSql,
   assertCanonicalSessionValidationSchema,
-  withoutCanonicalSessionValidationSchema,
 } from "./openclaw-agent-canonical-validation-schema.js";
 import {
   AGENT_MEDIA_SCHEMA_VERSION,
   AGENT_STORAGE_SCHEMA_VERSION,
   CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION,
+  CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION,
   OPENCLAW_AGENT_SCHEMA_VERSION,
   TRANSCRIPT_FTS_ROW_SCHEMA_VERSION,
   type OpenClawAgentDatabaseOptions,
@@ -365,6 +370,26 @@ function finishAgentSchemaMigration(
 
 type AgentSchemaMutationGuard = <T>(run: () => T) => T;
 
+type AgentSchema25Shape = "canonical-writer" | "recipient-authority";
+
+/** Classify a schema-25 database by its physical shape; mixed shapes are refused. */
+function readAgentSchema25Shape(db: DatabaseSync, pathname: string): AgentSchema25Shape {
+  const has = (type: "table" | "trigger", name: string) =>
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?").get(type, name) !==
+    undefined;
+  const authority = has("table", "session_recipient_authority");
+  const legacyTriggers = has("trigger", "session_nodes_entry_valid_after_insert");
+  if (authority && legacyTriggers) {
+    return "recipient-authority";
+  }
+  if (!authority && !legacyTriggers) {
+    return "canonical-writer";
+  }
+  throw new Error(
+    `OpenClaw agent database ${pathname} has an unrecognized schema-25 shape (recipient authority: ${authority}, legacy validation triggers: ${legacyTriggers}); restore its pre-upgrade backup rather than migrating it.`,
+  );
+}
+
 function ensureAgentSchema(
   db: DatabaseSync,
   agentId: string,
@@ -425,6 +450,19 @@ function ensureAgentSchema(
         previousVersion === 0 &&
         readExistingAgentSchemaMeta(db) === null &&
         !db.prepare("SELECT 1 FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' LIMIT 1").get();
+      // Schema 25 has two histories: upstream's canonical-writer validation, and the
+      // fleet's earlier (unreleased) recipient-authority schema. Only the second still
+      // carries the legacy validation triggers and already has the authority table.
+      const schema25Shape =
+        previousVersion === CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
+        targetVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
+          ? readAgentSchema25Shape(db, pathname)
+          : undefined;
+      const requiresCanonicalWriterMigration =
+        !isEmptyDatabase &&
+        targetVersion >= CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
+        (previousVersion < CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION ||
+          schema25Shape === "recipient-authority");
       const requiresStorageMigration =
         !isEmptyDatabase &&
         previousVersion < AGENT_STORAGE_SCHEMA_VERSION &&
@@ -458,15 +496,23 @@ function ensureAgentSchema(
           migrateRetiredAgentStateLeaseSchema(db, pathname, targetVersion);
           ensureSessionAdditiveColumns(db);
           ensureSessionEntryValidityProjection(db);
+          if (
+            previousVersion < CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION ||
+            schema25Shape === "recipient-authority"
+          ) {
+            ensureLegacySessionEntryValidityTriggers(db);
+          }
           ensureSessionKeyContractSchemaInTransaction(db);
           if (hasPendingMemoryChunkMetadataMigration(db)) {
             migrateMemoryChunkMetadataSchema(db);
           }
         }
         const previousSchema =
-          previousVersion < CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION
-            ? withoutCanonicalSessionValidationSchema(migrationSchemaSql)
-            : migrationSchemaSql;
+          schema25Shape === "recipient-authority"
+            ? withLegacyCanonicalSessionValidationTriggers(
+                getOpenClawAgentMigrationSchema(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION),
+              )
+            : getOpenClawAgentMigrationSchema(previousVersion);
         repairCanonicalSqliteIndexes(db, pathname, previousSchema, {
           verifyPhysicalIntegrity: false,
         });
@@ -477,13 +523,18 @@ function ensureAgentSchema(
         );
         if (previousVersion < CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION) {
           db.exec(canonicalSessionValidationSchemaSql(migrationSchemaSql));
-          seedCanonicalSessionValidationPending(db);
+          if (!requiresCanonicalWriterMigration) {
+            seedCanonicalSessionValidationPending(db);
+          }
         }
         if (requiresStorageMigration) {
           migrateAgentStorageInTransaction(db, storageSchemaSql, previousVersion, warnings);
         }
         if (requiresSnapshotMigration) {
           migrateSessionEntrySnapshotsInTransaction(db);
+        }
+        if (requiresCanonicalWriterMigration) {
+          migrateCanonicalSessionWriterValidation(db);
         }
         if (requiresRecipientAuthorityMigration) {
           migrateSessionRecipientAuthorityInTransaction(db);
@@ -501,6 +552,7 @@ function ensureAgentSchema(
       }
       if (previousVersion === AGENT_MEDIA_SCHEMA_VERSION) {
         ensureSessionAdditiveColumns(db);
+        ensureLegacySessionEntryValidityTriggers(db);
         assertSqliteIntegrity(db, pathname);
         migrateMemoryChunkMetadataSchema(db);
         // Validate before CREATE IF NOT EXISTS can conceal missing required storage.
@@ -572,7 +624,8 @@ function ensureAgentSchema(
       }
       if (
         previousVersion < CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION &&
-        targetVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION
+        targetVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION &&
+        !requiresCanonicalWriterMigration
       ) {
         seedCanonicalSessionValidationPending(db);
       }
@@ -581,6 +634,9 @@ function ensureAgentSchema(
       }
       if (requiresSnapshotMigration) {
         migrateSessionEntrySnapshotsInTransaction(db);
+      }
+      if (requiresCanonicalWriterMigration) {
+        migrateCanonicalSessionWriterValidation(db);
       }
       if (requiresRecipientAuthorityMigration) {
         migrateSessionRecipientAuthorityInTransaction(db);
