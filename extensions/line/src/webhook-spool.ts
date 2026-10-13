@@ -299,7 +299,9 @@ export function createLineWebhookSpool(options: LineWebhookSpoolOptions) {
         // Hand every claim back, not just the one the drain is holding: the rest
         // of a set was deferred into this turn and would otherwise stay deferred
         // forever, with stop() waiting on claims nothing will ever finish.
-        await fannedIn.abandon();
+        // Shutdown returning ownership is cancellation, not a failed attempt, so
+        // a row at the retry ceiling stays recoverable.
+        await fannedIn.cancel();
         return undefined;
       }
       return undefined;
