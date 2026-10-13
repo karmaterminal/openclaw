@@ -258,19 +258,45 @@ export function createSubagentRegistryRestorer(config: {
     startSweeper();
     // Resume only this captured owner set; registration may change the live map while we yield.
     const capturedRuns = [...runs];
+    const lifecycleGeneration = getAgentEventLifecycleGeneration();
+    const assertReadCurrent = () => {
+      assertCurrent();
+      if (!isAgentEventLifecycleGenerationCurrent(lifecycleGeneration)) {
+        throw new Error("Restored subagent read lost its Gateway lifecycle");
+      }
+    };
     let visited = 0;
-    for (const [runId, snapshot] of capturedRuns) {
+    captured: for (const [runId, snapshot] of capturedRuns) {
       if (++visited % 128 === 0) {
         await yieldToEventLoop();
         assertCurrent();
       }
-      const entry = getCurrentSubagentRunOwner(runs, snapshot);
-      if (!entry) {
-        continue;
+      let selectedOwner = getCurrentSubagentRunOwner(runs, snapshot);
+      let sessionEntry;
+      while (selectedOwner && selectedOwner.runId === runId) {
+        // Restart recovery retains exclusive custody of these source rows.
+        if (
+          selectedOwner.execution.restartRecovery ||
+          selectedOwner.killIntent ||
+          selectedOwner.killReconciliation
+        ) {
+          continue captured;
+        }
+        const selected = selectedOwner;
+        assertReadCurrent();
+        sessionEntry = await loadSubagentSessionEntry({
+          childSessionKey: selected.childSessionKey,
+          childAgentId: selected.childAgentId,
+          assertCurrent: assertReadCurrent,
+        });
+        assertReadCurrent();
+        selectedOwner = getCurrentSubagentRunOwner(runs, snapshot);
+        if (selectedOwner === selected) {
+          break;
+        }
       }
-      // Restart recovery exclusively owns receipt-bearing source rows until it
-      // remaps or terminalizes them. Generic resume would wait on an obsolete run.
-      if (entry.execution.restartRecovery || entry.killIntent || entry.killReconciliation) {
+      const entry = selectedOwner;
+      if (!entry || entry.runId !== runId) {
         continue;
       }
       // F1 (H1): an armed row is never resumed or relaunched; with no owner left
@@ -284,9 +310,7 @@ export function createSubagentRegistryRestorer(config: {
         if (entry.acceptedSpawnRollback) {
           continue;
         }
-        const cleanupSessionEntry = loadSubagentSessionEntry({
-          childSessionKey: entry.childSessionKey,
-        });
+        const cleanupSessionEntry = sessionEntry;
         const launch = entry.queuedLaunch;
         if (!launch) {
           const cleanupLifecycleGeneration = getAgentEventLifecycleGeneration();
@@ -430,9 +454,6 @@ export function createSubagentRegistryRestorer(config: {
         );
         continue;
       }
-      const sessionEntry = loadSubagentSessionEntry({
-        childSessionKey: entry.childSessionKey,
-      });
       // Orphan recovery owns aborted sessions and exact still-running retired
       // executions. Completed sessions must resume normal settlement and delivery.
       if (
@@ -630,6 +651,7 @@ export function createSubagentRegistryRestorer(config: {
                 gatewayBinding: { resolveGatewayContext: getEntryGatewayContextResolver(entry) },
                 isCurrent: ownsCleanup,
                 childSessionKey: entry.childSessionKey,
+                childAgentId: entry.childAgentId,
                 expectedSessionId,
                 expectedLifecycleRevision,
                 onError: (cleanupError) => {
