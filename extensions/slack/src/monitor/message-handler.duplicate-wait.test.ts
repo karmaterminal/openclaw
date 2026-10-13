@@ -1,5 +1,4 @@
 import { createTestInboundDebounceFlush } from "openclaw/plugin-sdk/channel-test-helpers";
-import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { clearRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";

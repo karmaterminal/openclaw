@@ -382,9 +382,9 @@ describe("Slack durable ingress", () => {
       const migrationStarted = Promise.withResolvers<void>();
       const migrationClaimed = Promise.withResolvers<void>();
       // The drain's own claim commit, so the test waits on it instead of polling.
-      const claimNext = queue.claimNext;
+      const claimNext = queue.claimNext.bind(queue);
       queue.claimNext = async (...args) => {
-        const claimed = await claimNext.apply(queue, args);
+        const claimed = await claimNext(...args);
         if (claimed?.id === "Ev-migration") {
           migrationClaimed.resolve();
         }
