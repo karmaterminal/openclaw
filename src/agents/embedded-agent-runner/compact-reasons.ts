@@ -6,6 +6,7 @@ import { extractErrorHttpStatus } from "../../shared/assistant-error-format.js";
 import type { CompactionSafeguardCancellation } from "../agent-hooks/compaction-safeguard-runtime.js";
 import { hasModelFallbackStop } from "../failover-error.js";
 import { extractFailoverHttpStatus } from "../failover/retry-evidence.js";
+import type { EmbeddedAgentCompactResult } from "./types.js";
 
 const MAX_COMPACTION_REASON_DETAIL_CHARS = 100;
 const COMPACTION_PROVIDER_4XX = new Set([400, 401, 403, 429]);
@@ -70,6 +71,13 @@ const SKIP_CODES: ReadonlySet<CompactionReasonCode> = new Set([
 
 export function isCompactionSkipCode(code: CompactionReasonCode): boolean {
   return SKIP_CODES.has(code);
+}
+
+export function buildCompactionFailureResult(
+  reason: string,
+  failure?: EmbeddedAgentCompactResult["failure"],
+): EmbeddedAgentCompactResult {
+  return { ok: false, compacted: false, reason, ...(failure ? { failure } : {}) };
 }
 
 function isGenericCompactionCancelledReason(reason: string): boolean {

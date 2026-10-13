@@ -133,7 +133,6 @@ function publishSharingChange(params: {
   context: GatewayRequestContext;
   actor: SharingActorFacts;
   event: Omit<SessionSharingEvidenceEvent, "actorState">;
-  agentId: string;
 }): void {
   bumpGatewayAccessRevision();
   invalidateSessionSharingSnapshot(params.event.sessionKey);
@@ -153,7 +152,7 @@ function publishSharingChange(params: {
   emitSessionsChanged(params.context, {
     reason: "sharing",
     sessionKey: params.event.sessionKey,
-    agentId: params.agentId,
+    agentId: params.event.agentId,
   });
   // Draft recipients cannot receive the scoped row, but still need a redacted
   // catalog invalidation so their next canonical list drops a newly hidden session.
@@ -480,7 +479,6 @@ export const sessionSharingHandlers: GatewayRequestHandlers = {
         const actor = actorIdentity(client);
         publishSharingChange({
           context,
-          agentId: current.agentId,
           actor,
           event: {
             action: "visibility",
@@ -556,7 +554,6 @@ export const sessionSharingHandlers: GatewayRequestHandlers = {
       }
       publishSharingChange({
         context,
-        agentId: current.agentId,
         actor,
         event: {
           action: "member-added",
@@ -612,7 +609,6 @@ export const sessionSharingHandlers: GatewayRequestHandlers = {
         const actor = actorIdentity(client);
         publishSharingChange({
           context,
-          agentId: current.agentId,
           actor,
           event: {
             action: "member-removed",

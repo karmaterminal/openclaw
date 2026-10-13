@@ -118,13 +118,9 @@ export function buildEmbeddedRunPayloads(params: {
     deliveredSourceReplyViaMessageTool,
     completedSourceReplyViaMessageTool,
   } = buildSourceReplyPayloadState({
+    ...params,
     payloads: params.messagingToolSourceReplyPayloads,
     sentTargets: params.messagingToolSentTargets,
-    sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
-    didDeliverSourceReplyViaMessageTool: params.didDeliverSourceReplyViaMessageTool,
-    runId: params.runId,
-    sessionKey: params.sessionKey,
-    agentId: params.agentId,
   });
   // Multi-hop continuation items keep their own whitespace; the final trim pass skips them.
   const whitespacePreservedReplyItems = new WeakSet<ReplyPayload>();
@@ -377,13 +373,7 @@ export function buildEmbeddedRunPayloads(params: {
     }
     textStart = segment.textEnd;
   }
-  appendSegmentAnswer({
-    assistantTexts: params.assistantTexts.slice(textStart),
-    lastAssistant: params.lastAssistant,
-    currentAssistant: params.currentAssistant,
-    assistantMessageIndex: params.assistantMessageIndex,
-    keptAnswer: params.keptAnswer,
-  });
+  appendSegmentAnswer({ ...params, assistantTexts: params.assistantTexts.slice(textStart) });
   // A conversational NO_REPLY is an authored outcome, not a missing answer.
   // Native shell calls are conservatively classified as mutating even when
   // they only search files. That replay-safety classification must not replace
