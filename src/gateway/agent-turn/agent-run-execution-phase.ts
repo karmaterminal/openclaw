@@ -56,13 +56,13 @@ import {
   resolveAgentRestartRecoveryContext,
   resolveAgentRestartRecoveryExecutionIdentityAdmission,
 } from "./agent-restart-recovery-context.js";
-import { dispatchAgentRunWithCommentaryMedia } from "./agent-run-commentary-media.js";
 import { createAgentRunDiagnostics } from "./agent-run-diagnostics.js";
 import { withAgentRunDispatchExecutionIdentity } from "./agent-run-dispatch-execution-identity.js";
 import { projectWithdrawnAgentInput } from "./agent-run-dispatch-outcome.js";
 import { resolveExecutionIdentitySpawnFacts } from "./agent-run-execution-lineage.js";
 import { resolveAgentRunContinuationHandoff } from "./agent-run-execution-phase.continuation.js";
 import type { StartAgentRunExecutionParams } from "./agent-run-execution-types.js";
+import { dispatchAgentRunWithMedia } from "./agent-run-media.js";
 import { emitAgentRunSessionChanges } from "./agent-run-session-effects.js";
 import { settleUnstartedGatewayFollowup } from "./agent-run-subagent.js";
 import {
@@ -183,12 +183,12 @@ async function executeAgentRun(
     };
     let dispatched = false;
     const dispatchAdmittedAgentRun = (
-      dispatch: Parameters<typeof dispatchAgentRunWithCommentaryMedia>[0],
+      dispatch: Parameters<typeof dispatchAgentRunWithMedia>[0],
     ) => {
       const run = () => {
         const execution = withPreparedModelRuntimePluginGenerationScope(
           replyDispatchRuntime.pluginGeneration,
-          () => dispatchAgentRunWithCommentaryMedia(dispatch, params),
+          () => dispatchAgentRunWithMedia(dispatch, params),
           () => (leaseActive ? preparedModelRuntimeLease?.snapshot : undefined),
         );
         dispatched = true;

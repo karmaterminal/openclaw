@@ -96,6 +96,13 @@ function prepareEmbeddedAssistantTextForPhase(
   requestedPhase: AssistantPhase,
   prepareText?: Parameters<typeof prepareAssistantVisibleText>[1],
 ): () => string {
+  const prepareRender = (selectedPhase: AssistantPhase | undefined, renderText: () => string) => {
+    const errorContext = msg.stopReason === "error";
+    return () => {
+      const extracted = finalizeAssistantExtraction(errorContext, renderText());
+      return selectedPhase === "final_answer" && !extracted.trim() ? "" : extracted;
+    };
+  };
   const messagePhase = normalizeAssistantPhase((msg as { phase?: unknown }).phase);
   if (typeof msg.content === "string") {
     const selectedPhase =
@@ -106,14 +113,9 @@ function prepareEmbeddedAssistantTextForPhase(
       return () => "";
     }
     const preparedText = prepareText ? prepareText(msg.content, true, messagePhase) : msg.content;
-    const errorContext = msg.stopReason === "error";
-    return () => {
-      const text = finalizeAssistantExtraction(
-        errorContext,
-        sanitizeAssistantDisplayText(preparedText, messagePhase),
-      );
-      return selectedPhase === "final_answer" && !text.trim() ? "" : text;
-    };
+    return prepareRender(selectedPhase, () =>
+      sanitizeAssistantDisplayText(preparedText, messagePhase),
+    );
   }
   if (!Array.isArray(msg.content)) {
     return () => "";
@@ -168,19 +170,14 @@ function prepareEmbeddedAssistantTextForPhase(
       part.text = prepareText(part.text, index === parts.length - 1, part.phase, part.contentIndex);
     }
   }
-  const errorContext = msg.stopReason === "error";
-  return () => {
-    const extracted = finalizeAssistantExtraction(
-      errorContext,
-      // A native block boundary can divide markup; finalize only the selected snapshot.
-      parts
-        .map(({ text, phase }) => sanitizeAssistantDisplayText(text, phase))
-        .filter((text) => text.trim())
-        .join("\n")
-        .trimEnd(),
-    );
-    return selectedPhase === "final_answer" && !extracted.trim() ? "" : extracted;
-  };
+  return prepareRender(selectedPhase, () =>
+    // A native block boundary can divide markup; finalize only the selected snapshot.
+    parts
+      .map(({ text, phase }) => sanitizeAssistantDisplayText(text, phase))
+      .filter((text) => text.trim())
+      .join("\n")
+      .trimEnd(),
+  );
 }
 
 /** Prepare selected source parts now; render their visible text only when requested. */
@@ -312,7 +309,6 @@ function splitThinkingTaggedText(text: string): ThinkTaggedSplitBlock[] | null {
 
   let inThinking = false;
   let cursor = 0;
-  let thinkingStart = 0;
   const blocks: ThinkTaggedSplitBlock[] = [];
 
   const pushBlock = (type: ThinkTaggedSplitBlock["type"], value: string) => {
@@ -326,18 +322,13 @@ function splitThinkingTaggedText(text: string): ThinkTaggedSplitBlock[] | null {
     const index = match.index ?? 0;
     const isClose = match[1]?.includes("/") ?? false;
 
-    if (!inThinking && !isClose) {
-      pushBlock("text", text.slice(cursor, index));
-      thinkingStart = index + match[0].length;
-      inThinking = true;
+    // Ignore nested opens and unmatched closes.
+    if (isClose !== inThinking) {
       continue;
     }
-
-    if (inThinking && isClose) {
-      pushBlock("thinking", text.slice(thinkingStart, index));
-      cursor = index + match[0].length;
-      inThinking = false;
-    }
+    pushBlock(inThinking ? "thinking" : "text", text.slice(cursor, index));
+    cursor = index + match[0].length;
+    inThinking = !isClose;
   }
 
   if (inThinking) {
@@ -345,21 +336,14 @@ function splitThinkingTaggedText(text: string): ThinkTaggedSplitBlock[] | null {
   }
   pushBlock("text", text.slice(cursor));
 
-  const hasThinking = blocks.some((b) => b.type === "thinking");
-  if (!hasThinking) {
-    return null;
-  }
-  return blocks;
+  return blocks.some((block) => block.type === "thinking") ? blocks : null;
 }
 
 export function promoteThinkingTagsToBlocks(message: AssistantMessage): void {
-  if (!Array.isArray(message.content)) {
-    return;
-  }
-  const hasThinkingBlock = message.content.some(
-    (block) => block && typeof block === "object" && block.type === "thinking",
-  );
-  if (hasThinkingBlock) {
+  if (
+    !Array.isArray(message.content) ||
+    message.content.some((block) => block && typeof block === "object" && block.type === "thinking")
+  ) {
     return;
   }
 

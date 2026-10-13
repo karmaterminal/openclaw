@@ -48,6 +48,7 @@ import {
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeMediaReferenceForComparison } from "../media/media-reference-comparison.js";
 import { getMediaDir } from "../media/store.js";
+import { isSessionWorkAdmissionActive } from "../sessions/session-lifecycle-admission.js";
 import { readAssistantDisplayContent } from "../shared/assistant-display-content.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
@@ -578,6 +579,22 @@ export async function deliverQueuedGeneratedMediaAgentTurn(input: {
       params.queueContext,
     );
   }
+  const assertRequesterIdle = () => {
+    if (
+      isSessionWorkAdmissionActive(params.storePath, [params.canonicalKey, sessionEntry?.sessionId])
+    ) {
+      throw new SessionDeliveryDeferredError(
+        "queued generated-media turn is waiting for its requester to finish",
+      );
+    }
+  };
+  try {
+    // The originating turn can still own terminal persistence after its model has stopped.
+    assertRequesterIdle();
+  } catch (error) {
+    await deferSessionDelivery(entry.id, AGENT_DELIVERY_OWNERSHIP_RETRY_MS, params.queueContext);
+    throw error;
+  }
   // `host_owned` is the explicit-send equivalent of message-tool-only policy.
   // The queue owner fixes route/media and disables the model-facing message tool,
   // so only this one system completion can use the normal final-delivery transport.
@@ -593,7 +610,16 @@ export async function deliverQueuedGeneratedMediaAgentTurn(input: {
   const cronSessionId = cronLifecycleRevision ? sessionEntry?.sessionId?.trim() : undefined;
   // Fence before gateway admission. Recovery clears it only for an explicit
   // pre-acceptance safe retry; accepted or deduped runs may already have effects.
-  await markSessionDeliveryAttemptStarted(entry, params.queueContext);
+  await markSessionDeliveryAttemptStarted(entry, {
+    ...params.queueContext,
+    admission: {
+      ...params.queueContext.admission,
+      assertCurrent: () => {
+        params.queueContext.admission.assertCurrent();
+        assertRequesterIdle();
+      },
+    },
+  });
   let accepted = false;
   let response: unknown;
   try {

@@ -21,10 +21,13 @@ import { formatActiveContinuationTraceparent } from "../../infra/continuation-tr
 import { formatErrorMessage } from "../../infra/errors.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
+import type { InputProvenance } from "../../sessions/input-provenance.js";
 import { parseCronRunScopeSuffix } from "../../sessions/session-key-utils.js";
 import { runOutsideAsyncWorkScope } from "../../shared/async-work-scope.js";
 import { runInDetachedAsyncContext } from "../../shared/detached-async-context.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
+import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel-constants.js";
+import { normalizeMessageChannel } from "../../utils/message-channel-core.js";
 import { captureAgentToolSourceExecutionGuard } from "../agent-tool-source-execution-guard.js";
 import {
   resolveRequiredCompletionDeliveryFailureTerminalResult,
@@ -102,6 +105,7 @@ type CreateMediaGenerationTaskRunParams = {
   requesterRunSessionKey?: string;
   requesterAgentId?: string;
   requesterOrigin?: DeliveryContext;
+  inputProvenance?: InputProvenance;
   prompt: string;
   providerId?: string;
   assertCurrent?: () => void;
@@ -251,7 +255,13 @@ async function createMediaGenerationTaskRun(
           )
         : undefined;
     assertCurrent();
-    const requesterOrigin = resolveAnnounceOrigin(entry, params.requesterOrigin);
+    // Interactive WebChat media returns to its session. Internal wakes can use
+    // the same channel sentinel and still need their saved external route.
+    const requesterOrigin =
+      params.inputProvenance?.kind === "external_user" &&
+      normalizeMessageChannel(params.requesterOrigin?.channel) === INTERNAL_MESSAGE_CHANNEL
+        ? { channel: INTERNAL_MESSAGE_CHANNEL }
+        : resolveAnnounceOrigin(entry, params.requesterOrigin);
     const requesterTranscript =
       entry?.sessionId && agentId && storePath
         ? {
