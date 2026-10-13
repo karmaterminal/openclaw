@@ -133,31 +133,32 @@ export async function deleteSweptSession(
   const isOwnerCurrent = () => isCleanupCurrent(runs.get(entry.runId), entry);
   // Continuation cleanup fails staged delegates before the CAS delete; a reset
   // successor session must stop it as well as a replaced run. Session reads are
-  // worker-backed, so the frozen identity is re-read before the guards and again
-  // before dispatch.
-  const isIdentityCurrent = async () => {
+  // worker-backed, so the frozen identity is re-read once before the guards. A
+  // read that cannot complete leaves the decision to the delete's own CAS.
+  if (!isOwnerCurrent()) {
+    return "changed";
+  }
+  let readFailed = false;
+  const current = await freezeSessionIdentity(entry, () => {
     if (!isOwnerCurrent()) {
-      return false;
+      throw new Error("subagent cleanup owner is no longer current");
     }
-    const current = await freezeSessionIdentity(entry, () => {
-      if (!isOwnerCurrent()) {
-        throw new Error("subagent cleanup owner is no longer current");
-      }
-    }).catch(() => undefined);
-    return (
-      isOwnerCurrent() &&
-      current?.sessionId === identity.sessionId &&
-      current.lifecycleRevision === identity.lifecycleRevision
-    );
-  };
-  if (!(await isIdentityCurrent())) {
+  }).catch(() => {
+    readFailed = true;
+    return undefined;
+  });
+  if (
+    !isOwnerCurrent() ||
+    (!readFailed &&
+      (current?.sessionId !== identity.sessionId ||
+        current.lifecycleRevision !== identity.lifecycleRevision))
+  ) {
     return "changed";
   }
   const outcome = await deleteSubagentSessionForCleanup({
     callGateway: call,
     gatewayBinding: { resolveGatewayContext: getGatewayContextResolver(entry) },
     isCurrent: isOwnerCurrent,
-    prepareCurrent: isIdentityCurrent,
     childSessionKey: entry.childSessionKey,
     childAgentId: entry.childAgentId,
     expectedSessionId: identity.sessionId,

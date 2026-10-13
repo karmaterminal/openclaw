@@ -960,6 +960,7 @@ describe("subagent registry persistence", () => {
     expect(listSubagentRunsForRequester("agent:main:main")).toEqual([
       expect.objectContaining({ runId, terminalOwner: "interrupted-recovery" }),
     ]);
+    await fixture.settle();
     await testing.sweepOnceForTests();
   });
 

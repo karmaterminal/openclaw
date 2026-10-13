@@ -175,7 +175,7 @@ async function executeAgentRun(
             agentId: params.activeSessionAgentId,
             reason: "agent.input.settled",
           },
-          { accessChanged: false },
+          { accessChanged: false, rowScope: "runtime" },
         );
       }
     };

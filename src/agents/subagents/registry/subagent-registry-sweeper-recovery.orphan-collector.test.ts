@@ -116,6 +116,10 @@ describe("subagent registry recovery scheduling: orphans and collector groups", 
         sendFarewell: true,
         accountId: undefined,
         triggerCleanup: true,
+        recoveryCurrent: {
+          isHostCurrent: expect.any(Function),
+          prepare: expect.any(Function),
+        },
       },
       "sweeper-lost-context",
     );

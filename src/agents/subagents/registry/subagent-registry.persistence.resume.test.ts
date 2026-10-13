@@ -942,13 +942,15 @@ describe("subagent registry persistence resume", () => {
         }
 
         if (requesterYielded) {
-          expect(restored?.requesterSettleWake).toMatchObject({
+          await settleSubagentRegistryPersistenceWork();
+          expect(wakeRequester).toHaveBeenCalledOnce();
+          // Restore-time resume reads are asynchronous (#166845), so the settling
+          // wake can complete before this point; assert the batch it was handed.
+          expect(wakeRequester.mock.calls[0]?.[0].settledEntry?.requesterSettleWake).toMatchObject({
             batchRunIds: prepared ? [predecessor.runId, run.runId] : [run.runId],
             requesterYieldBatch: true,
             afterRequesterYield: true,
           });
-          await settleSubagentRegistryPersistenceWork();
-          expect(wakeRequester).toHaveBeenCalledOnce();
           expect(readPersistedRun(run.runId)?.requesterSettleWake).toBeUndefined();
         } else {
           expect(restored?.requesterSettleWake).toBeUndefined();

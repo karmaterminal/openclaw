@@ -404,9 +404,23 @@ export type PluginRuntimeCore = {
         params: RuntimeCreateSessionEntryParams,
       ) => Promise<RuntimeCreateSessionEntryResult>;
       getSessionEntry: (params: RuntimeSessionStoreReadParams) => RuntimeSessionEntry | undefined;
+      /** Worker-backed descriptive read; final synchronous authority checks still use getSessionEntry. */
+      getSessionEntryAsync?: (
+        params: RuntimeSessionStoreReadParams,
+      ) => Promise<RuntimeSessionEntry | undefined>;
       listSessionEntries: (
         params?: RuntimeSessionStoreListParams,
       ) => RuntimeSessionStoreEntrySummary[];
+      createSessionEntryListReader: (params: {
+        agentId: string;
+        storePath: string;
+        env?: NodeJS.ProcessEnv;
+      }) => Promise<
+        () => Promise<{
+          entries: RuntimeSessionStoreEntrySummary[];
+          assertCurrent: () => void;
+        }>
+      >;
       patchSessionEntry: (
         params: RuntimeSessionStoreEntryPatchParams,
       ) => Promise<RuntimeSessionEntry | null>;

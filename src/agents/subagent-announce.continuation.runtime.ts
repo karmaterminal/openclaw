@@ -31,6 +31,7 @@ import {
 } from "../infra/continuation-tracer.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../infra/system-events.js";
 import { runWithGatewayDetachedWorkContinuation } from "../process/gateway-work-admission.js";
+import { parseAgentSessionKey } from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import {
@@ -75,7 +76,10 @@ async function drainChildContinuationQueue(params: {
     return undefined;
   }
   try {
-    const childEntry = await loadSessionEntryByKey(params.childSessionKey, params.childAgentId);
+    const childEntry = await loadSessionEntryByKey(
+      params.childSessionKey,
+      parseAgentSessionKey(params.childSessionKey) ? undefined : params.childAgentId,
+    );
     const config = resolveContinuationRuntimeConfig(params.cfg);
     const baseChainState = params.chainStateOverride ?? loadContinuationChainState(childEntry);
     const chainState =

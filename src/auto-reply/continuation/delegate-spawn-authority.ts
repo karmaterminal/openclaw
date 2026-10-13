@@ -11,6 +11,7 @@ import {
   getAgentEventLifecycleGeneration,
   isAgentEventLifecycleGenerationCurrent,
 } from "../../infra/agent-events.js";
+import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { registerContinuationDispatchClaim } from "./continuation-dispatch-claims.js";
 import {
   checkPendingDelegateClaimInProjection,
@@ -33,10 +34,12 @@ export function createContinuationOwnerSessionLoader(
   load: () => SessionEntry | undefined;
 } {
   const cfg = getRuntimeConfig();
+  // An agent-scoped key names its own owner; a recorded agent id only owns a
+  // legacy (unscoped) key, as upstream's announce reads do (#166845).
   const agentId = resolveSessionAgentId({
     sessionKey: ownerSessionKey,
     config: cfg,
-    agentId: expectedAgentId,
+    agentId: parseAgentSessionKey(ownerSessionKey) ? undefined : expectedAgentId,
   });
   const storePath = resolveSessionStorePathCore(cfg.session?.store, { agentId });
   return {

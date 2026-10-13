@@ -304,17 +304,14 @@ export async function runAgentFallbackCandidates(params: AgentFallbackCycleParam
         try {
           const common = {
             ...runOptions,
-            preparedRunAdmission: params.preparedRunAdmission,
-            messageActionTurnCapability,
+            ...params,
             turn,
+            messageActionTurnCapability,
             candidateRun,
-            runtimeConfig: params.runtimeConfig,
             provider,
             model,
             candidateThinkLevel,
             candidateFastMode,
-            runId: params.runId,
-            runAbortSignal: params.runAbortSignal,
             runLane,
             suppressQueuedUserPersistenceForCandidate:
               (turn.followupRun.run.suppressNextUserMessagePersistence ?? false) ||
@@ -327,13 +324,10 @@ export async function runAgentFallbackCandidates(params: AgentFallbackCycleParam
             fastModeAutoProgressState,
             bootstrapContextRunKind,
             bootstrapPromptWarningSignaturesSeen: params.state.bootstrapPromptWarningSignaturesSeen,
-            currentTurnImages: params.currentTurnImages,
             signalExecutionPhaseForTyping: signalExecutionPhaseForCandidate,
             prepareAgentRunStart: runStart.prepareAgentRunStart,
             notifyAgentRunStart: runStart.notifyAgentRunStart,
             preserveProgressCallbackStartOrder,
-            presentation: params.presentation,
-            timing: params.timing,
             onLifecycleBackstop: (backstop: AgentLifecycleTerminalBackstop) => {
               params.state.pendingLifecycleTerminal = { provider, model, backstop };
             },
@@ -350,13 +344,10 @@ export async function runAgentFallbackCandidates(params: AgentFallbackCycleParam
             const candidate = await runEmbeddedFallbackCandidate({
               ...common,
               candidateAgentRuntime,
-              effectiveRun: params.effectiveRun,
-              directBlockDeliveries: params.directBlockDeliveries,
               getLifecycleGeneration: () => params.state.lifecycleGeneration,
               onLifecycleGeneration: (generation) => {
                 params.state.lifecycleGeneration = generation;
               },
-              notifyUserAboutCompaction: params.notifyUserAboutCompaction,
               messageToolDeliveryState,
               onCompactionFacts: ({ accounting, postCompactionModelAttempted }) => {
                 if (accounting) {

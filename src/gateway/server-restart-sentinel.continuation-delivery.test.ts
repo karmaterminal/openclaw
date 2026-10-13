@@ -3,6 +3,7 @@
 // Register the shared module mocks before any module they replace is imported.
 import "./server-restart-sentinel.mocks.test-harness.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getRuntimeConfig } from "../config/io.js";
 import {
   assignSessionOwner,
   captureSessionRecipientAuthority,
@@ -25,6 +26,7 @@ import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../test-utils/openclaw-test-state.js";
+import { configureRestartSessionEventMocks } from "./server-restart-sentinel.test-support.js";
 import * as restartUpdateRun from "./server-restart-update-run.js";
 
 const { mocks } = await import("./server-restart-sentinel.mocks.test-harness.js");
@@ -158,6 +160,12 @@ describe("scheduleRestartSentinelWake", () => {
       storeKeys: [sessionKey],
       legacyKey: undefined,
     }));
+    // Worker session reads and plain-notice session events (#167113) read these rows.
+    configureRestartSessionEventMocks(mocks as never);
+    // Upstream's sentinel reads the command owner from the runtime config, not the row.
+    vi.mocked(getRuntimeConfig).mockReturnValue({
+      commands: { ownerAllowFrom: ["+15550002"] },
+    } as never);
     mocks.isSessionRecipientAuthorityCurrent.mockReset().mockReturnValue(true);
     mocks.deliveryContextFromSession.mockReset();
     mocks.deliveryContextFromSession.mockReturnValue(undefined);
@@ -482,20 +490,23 @@ describe("scheduleRestartSentinelWake", () => {
       stateDir: "/tmp/restart-delivery-state",
     });
 
-    expect(mocks.enqueueSystemEvent).toHaveBeenNthCalledWith(1, "continue after restart", {
-      sessionKey: "agent:main:main",
-      contextKey: "task:restart-sentinel:session-delivery-a",
-      sessionDeliveryAckId: "session-delivery-a",
-      sessionDeliveryAckStateDir: "/tmp/restart-delivery-state",
-      trusted: true,
-    });
-    expect(mocks.enqueueSystemEvent).toHaveBeenNthCalledWith(2, "continue after restart", {
-      sessionKey: "agent:main:main",
-      contextKey: "task:restart-sentinel:session-delivery-b",
-      sessionDeliveryAckId: "session-delivery-b",
-      sessionDeliveryAckStateDir: "/tmp/restart-delivery-state",
-      trusted: true,
-    });
+    // Each durable row keeps its own occurrence identity in the session event.
+    expect(mocks.enqueueSessionEvent).toHaveBeenNthCalledWith(
+      1,
+      "continue after restart",
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        contextKey: "task:restart-sentinel:session-delivery-a",
+      }),
+    );
+    expect(mocks.enqueueSessionEvent).toHaveBeenNthCalledWith(
+      2,
+      "continue after restart",
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        contextKey: "task:restart-sentinel:session-delivery-b",
+      }),
+    );
   });
 
   it("replays a main-child continuation return only for its helper recipient", async () => {
@@ -609,26 +620,22 @@ describe("scheduleRestartSentinelWake", () => {
 
     expect(mocks.enqueueSessionDelivery).toHaveBeenCalledTimes(1);
     expect(mocks.recordInboundSessionAndDispatchReply).not.toHaveBeenCalled();
-    const continuationQueueId = await getEnqueuedSessionDeliveryId(0);
-    expect(mocks.enqueueSystemEvent).toHaveBeenCalledWith("continue after restart", {
-      sessionKey: "agent:main:main",
-      contextKey: `task:restart-sentinel:${await mocks.enqueueSessionDelivery.mock.results[0]!.value}`,
-      deliveryContext: {
-        channel: "whatsapp",
-        to: "+15550002",
-        accountId: "acct-2",
-        threadId: "thread-42",
-      },
-      sessionDeliveryAckId: continuationQueueId,
-      sessionDeliveryAckStateDir: testState.stateDir,
-      trusted: true,
-    });
-    expect(mocks.requestHeartbeat).toHaveBeenCalledWith({
-      source: "restart-sentinel",
-      intent: "immediate",
-      reason: "wake",
-      sessionKey: "agent:main:main",
-    });
+    // A plain restart continuation runs as an ordinary session event (#167113).
+    expect(mocks.enqueueSessionEvent).toHaveBeenCalledWith(
+      "continue after restart",
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        source: "restart",
+        contextKey: `task:restart-sentinel:${await getEnqueuedSessionDeliveryId(0)}`,
+        deliveryContext: {
+          channel: "whatsapp",
+          to: "+15550002",
+          accountId: "acct-2",
+          threadId: "thread-42",
+        },
+      }),
+    );
+    expect(mocks.enqueueSystemEvent).not.toHaveBeenCalled();
     expect(mocks.logWarn).toHaveBeenCalledWith("restart continuation skipped: session changed", {
       sessionKey: "agent:main:main",
       queueId: expect.any(String),
@@ -654,20 +661,19 @@ describe("scheduleRestartSentinelWake", () => {
 
     await wakeRestartSentinel();
 
-    const wakeQueueId = await getEnqueuedSessionDeliveryId(0);
-    expect(mocks.enqueueSystemEvent).toHaveBeenCalledWith("restart message", {
-      sessionKey: "agent:main:main",
-      contextKey: `task:restart-sentinel:${await mocks.enqueueSessionDelivery.mock.results[0]!.value}`,
-      deliveryContext: {
-        channel: "whatsapp",
-        to: "+15550002",
-        accountId: "acct-2",
-        threadId: "fresh-thread",
-      },
-      sessionDeliveryAckId: wakeQueueId,
-      sessionDeliveryAckStateDir: testState.stateDir,
-      trusted: true,
-    });
+    expect(mocks.enqueueSessionEvent).toHaveBeenCalledWith(
+      "restart message",
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        contextKey: `task:restart-sentinel:${await getEnqueuedSessionDeliveryId(0)}`,
+        deliveryContext: {
+          channel: "whatsapp",
+          to: "+15550002",
+          accountId: "acct-2",
+          threadId: "fresh-thread",
+        },
+      }),
+    );
   });
 
   it("still delivers systemEvent continuations for completed run entries", async () => {
@@ -693,20 +699,20 @@ describe("scheduleRestartSentinelWake", () => {
 
     await wakeRestartSentinel();
 
-    const continuationQueueId = await getEnqueuedSessionDeliveryId(1);
-    expect(mocks.enqueueSystemEvent).toHaveBeenNthCalledWith(2, "continue after restart", {
-      sessionKey: "agent:main:main",
-      contextKey: `task:restart-sentinel:${await mocks.enqueueSessionDelivery.mock.results[1]!.value}`,
-      deliveryContext: {
-        channel: "whatsapp",
-        to: "+15550002",
-        accountId: "acct-2",
-        threadId: "thread-42",
-      },
-      sessionDeliveryAckId: continuationQueueId,
-      sessionDeliveryAckStateDir: testState.stateDir,
-      trusted: true,
-    });
+    expect(mocks.enqueueSessionEvent).toHaveBeenNthCalledWith(
+      2,
+      "continue after restart",
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        contextKey: `task:restart-sentinel:${await getEnqueuedSessionDeliveryId(1)}`,
+        deliveryContext: {
+          channel: "whatsapp",
+          to: "+15550002",
+          accountId: "acct-2",
+          threadId: "thread-42",
+        },
+      }),
+    );
     expect(mocks.recordInboundSessionAndDispatchReply).not.toHaveBeenCalled();
     expect(mocks.logWarn).not.toHaveBeenCalledWith(
       "restart continuation skipped: session changed",
@@ -714,7 +720,7 @@ describe("scheduleRestartSentinelWake", () => {
     );
   });
 
-  it("requests another wake after enqueueing a systemEvent continuation", async () => {
+  it("hands both the restart notice and a systemEvent continuation to session execution", async () => {
     mockRestartContinuation(
       {
         kind: "systemEvent",
@@ -725,28 +731,23 @@ describe("scheduleRestartSentinelWake", () => {
 
     await wakeRestartSentinel();
 
-    const continuationQueueId = await getEnqueuedSessionDeliveryId(1);
-    expect(mocks.enqueueSystemEvent).toHaveBeenNthCalledWith(2, "continue after restart", {
-      sessionKey: "agent:main:main",
-      contextKey: `task:restart-sentinel:${await mocks.enqueueSessionDelivery.mock.results[1]!.value}`,
-      deliveryContext: {
-        channel: "whatsapp",
-        to: "+15550002",
-        accountId: "acct-2",
-        threadId: "thread-42",
-      },
-      sessionDeliveryAckId: continuationQueueId,
-      sessionDeliveryAckStateDir: testState.stateDir,
-      trusted: true,
-    });
-    const wake = {
-      source: "restart-sentinel",
-      intent: "immediate",
-      reason: "wake",
-      agentId: "main",
-      sessionKey: "agent:main:main",
-    };
-    expect(mocks.requestHeartbeat).toHaveBeenNthCalledWith(1, wake);
-    expect(mocks.requestHeartbeat).toHaveBeenNthCalledWith(2, wake);
+    expect(mocks.enqueueSessionEvent).toHaveBeenCalledTimes(2);
+    expect(mocks.enqueueSessionEvent).toHaveBeenNthCalledWith(
+      2,
+      "continue after restart",
+      expect.objectContaining({
+        agentId: "main",
+        sessionKey: "agent:main:main",
+        contextKey: `task:restart-sentinel:${await getEnqueuedSessionDeliveryId(1)}`,
+        deliveryContext: {
+          channel: "whatsapp",
+          to: "+15550002",
+          accountId: "acct-2",
+          threadId: "thread-42",
+        },
+      }),
+    );
+    // Plain notices no longer ride a heartbeat wake (#167113).
+    expect(mocks.requestHeartbeat).not.toHaveBeenCalled();
   });
 });
