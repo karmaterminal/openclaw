@@ -32,6 +32,7 @@ import {
 import { removeDirectiveSpan } from "./directive-parsing.js";
 import type { PreparedReplyRunContext } from "./get-reply-run-context.js";
 import {
+  finishReplyPreparation,
   loadAgentRunnerRuntime,
   loadEmbeddedAgentRuntime,
   loadSessionUpdatesRuntime,
@@ -132,7 +133,6 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
       prefixedBodyBase = removeDirectiveSpan(prefixedBodyBase, 0, firstToken.length);
     }
   }
-  const prefixedBodyCore = prefixedBodyBase;
   const threadStarterBody = normalizeOptionalString(ctx.ThreadStarterBody);
   const threadHistoryBody = normalizeOptionalString(ctx.ThreadHistoryBody);
   const threadContextNote = threadHistoryBody
@@ -201,12 +201,14 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
     }
   };
   const rebuildPromptBodies = () =>
-    context.buildPromptBodies({
-      prefixedBody: prefixedBodyCore,
-      threadContextNote,
-      systemEventBlocks: drainedSystemEventBlocks.map((block) => block.text),
-      media: opts?.media,
-    });
+    traceRunPhase("reply.build_prompt_bodies", () =>
+      context.buildPromptBodies({
+        prefixedBody: prefixedBodyBase,
+        threadContextNote,
+        systemEventBlocks: drainedSystemEventBlocks.map((block) => block.text),
+        media: opts?.media,
+      }),
+    );
   const skillResult = isFastTestRuntimeEnv()
     ? {
         sessionEntry,
@@ -247,7 +249,7 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
     sessionEntryHandle?.replaceCurrent(sessionEntry);
   }
   const skillsSnapshot = skillResult.skillsSnapshot;
-  let promptBodies = await traceRunPhase("reply.build_prompt_bodies", () => rebuildPromptBodies());
+  let promptBodies = await rebuildPromptBodies();
   const isRoomEvent = inboundEventKind === "room_event";
   if (!resolvedThinkLevel) {
     resolvedThinkLevel = await traceRunPhase("reply.resolve_default_thinking", () =>
@@ -284,13 +286,9 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
       (directives.hasThinkDirective && directives.thinkLevel !== undefined) ||
       explicitThinkingLevelOverride !== undefined;
     if (explicitThink) {
-      typing.cleanup();
-      return {
-        kind: "reply",
-        reply: {
-          text: `Thinking level "${resolvedThinkLevel}" is not supported for ${provider}/${model}. Use one of: ${formatThinkingLevels(provider, model, ", ", thinkingCatalog, thinkingRuntime)}.`,
-        },
-      } as const;
+      return finishReplyPreparation(typing, () => ({
+        text: `Thinking level "${resolvedThinkLevel}" is not supported for ${provider}/${model}. Use one of: ${formatThinkingLevels(provider, model, ", ", thinkingCatalog, thinkingRuntime)}.`,
+      }));
     }
     // Execution fallbacks are turn-local; directive/model persistence owns
     // durable thinking remaps so explicit session overrides survive replies.
@@ -298,6 +296,8 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
   }
 
   const providedReplyOperation = opts?.replyOperation;
+  const isProvidedOperationQueued = () =>
+    providedReplyOperation?.result === null && providedReplyOperation.phase === "queued";
   // Native command turns reserve their operation under the slash SOURCE key so
   // commands never contend with the target's active run (#104144). When such a
   // turn continues into a full agent turn (/steer fallback, /goal, /learn,
@@ -306,8 +306,7 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
   // split the session (#104844).
   const commandTurnContinuationTargetKey =
     providedReplyOperation !== undefined &&
-    providedReplyOperation.result === null &&
-    providedReplyOperation.phase === "queued" &&
+    isProvidedOperationQueued() &&
     sessionKey !== undefined &&
     providedReplyOperation.key !== sessionKey &&
     resolveCommandTurnTargetSessionKey(ctx) !== undefined
@@ -317,8 +316,7 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
     if (
       commandTurnContinuationTargetKey === undefined &&
       providedReplyOperation !== undefined &&
-      providedReplyOperation.result === null &&
-      providedReplyOperation.phase === "queued" &&
+      isProvidedOperationQueued() &&
       nextSessionId !== providedReplyOperation.sessionId
     ) {
       // Dispatch can reserve a queued operation before session init discovers the
@@ -329,8 +327,7 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
   };
   const isOwnPreDispatchOperationSession = (candidateSessionId: string | undefined): boolean =>
     providedReplyOperation !== undefined &&
-    providedReplyOperation.result === null &&
-    providedReplyOperation.phase === "queued" &&
+    isProvidedOperationQueued() &&
     candidateSessionId === providedReplyOperation.sessionId;
   const sessionIdFinal = sessionId ?? providedReplyOperation?.sessionId ?? crypto.randomUUID();
   const sessionFilePathOptions = resolveSessionFilePathOptions({ agentId, storePath });
@@ -406,11 +403,7 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
         )
       : "not-heartbeat";
   if (heartbeatPreemption === "timed-out") {
-    typing.cleanup();
-    return {
-      kind: "reply",
-      reply: { text: REPLY_RUN_STILL_SHUTTING_DOWN_TEXT },
-    } as const;
+    return finishReplyPreparation(typing, () => ({ text: REPLY_RUN_STILL_SHUTTING_DOWN_TEXT }));
   }
   const visibleTurnPreemptsHeartbeat = heartbeatPreemption === "drained";
   if (
@@ -557,8 +550,7 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
       adoptOperation: providedReplyOperation,
     });
     if (adoption.status === "skipped" && adoption.reason === "aborted") {
-      typing.cleanup();
-      return { kind: "reply", reply: undefined } as const;
+      return finishReplyPreparation(typing);
     }
     if (
       adoption.status === "owned" &&
@@ -634,21 +626,18 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
         preparedSessionState = resolvePreparedSessionState();
         // The interrupted run may have changed goal or suggestion state while admission waited.
         await refreshInboundContextAfterAdmissionWait();
-        promptBodies = await traceRunPhase("reply.build_prompt_bodies", () =>
-          rebuildPromptBodies(),
-        );
+        promptBodies = await rebuildPromptBodies();
       },
       resolveBusyState: resolveQueueBusyState,
     });
     if (queueReply) {
-      typing.cleanup();
-      return { kind: "reply", reply: queueReply } as const;
+      return finishReplyPreparation(typing, () => queueReply);
     }
   }
   const refreshSystemEventPromptBodies = async () => {
     if (activeRunQueueAction !== "drop") {
       await traceRunPhase("reply.drain_system_events", () => drainSystemEventBlocks());
-      promptBodies = await traceRunPhase("reply.build_prompt_bodies", () => rebuildPromptBodies());
+      promptBodies = await rebuildPromptBodies();
     }
     return {
       ...promptBodies,

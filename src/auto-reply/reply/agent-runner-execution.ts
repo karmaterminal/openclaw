@@ -52,7 +52,6 @@ import {
   type AppContextTurnParams,
 } from "./agent-runner-execution-mcp-context.js";
 import { recordAgentTurnExecutionOutcome } from "./agent-runner-execution-outcome.js";
-import { createAgentTurnReplyMediaContext } from "./agent-runner-execution-reply-media.js";
 import type {
   AgentTurnCompaction,
   AgentTurnExecutionResult,
@@ -70,6 +69,7 @@ import type {
   AgentFallbackCycleState,
 } from "./agent-runner-fallback-cycle.types.js";
 import { createAgentTurnPresentation } from "./agent-runner-presentation.js";
+import { buildReplyMediaContextParams } from "./agent-runner-run-params.js";
 import {
   createAgentTurnTimingTracker,
   resolveRunStartupPhase,
@@ -81,7 +81,7 @@ import { type CurrentTurnImages, resolveCurrentTurnImages } from "./current-turn
 import type { FollowupRun } from "./queue.js";
 import { resolveFollowupAbortSignal } from "./queue/types.js";
 import { resolveReplyFailureVisibility, type DirectBlockDelivery } from "./reply-delivery.js";
-import type { ReplyMediaContext } from "./reply-media-paths.js";
+import { createReplyMediaContext, type ReplyMediaContext } from "./reply-media-paths.js";
 import { resolveReplyOperationAbortReason } from "./reply-operation-abort.js";
 import {
   markReplyOperationExecutionStarted,
@@ -179,7 +179,9 @@ async function executeAgentTurnInternalLoop(
     replyMediaContext =
       params.replyMediaContext ??
       agentTurnTiming.measureSync("reply_media_context", () =>
-        createAgentTurnReplyMediaContext(params, runtimeConfig),
+        createReplyMediaContext(
+          buildReplyMediaContextParams(params.followupRun, params.sessionKey, runtimeConfig),
+        ),
       );
     const internalFollowupRun = params.followupRun as InternalFollowupRun;
     const hasQueuedCurrentTurnImages =

@@ -187,8 +187,8 @@ function runCandidate(
     messageToolDeliveryState: { toolCallIds: new Set(), completed: false },
     preserveProgressCallbackStartOrder: false,
     presentation: {
-      classifyStreamingPartial: () => ({ skip: true }),
-      sanitizeStreamingText: () => ({ skip: true }),
+      // Partial replies are not part of this fixture: present none of them.
+      presentPartialReply: async () => {},
       normalizeStreamingText: () => ({ skip: true }),
       presentWithTyping: async (_typingPromise, startPresentation) => startPresentation(),
       blockReplyHandler: undefined,
