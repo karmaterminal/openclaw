@@ -378,14 +378,30 @@ describe("Slack durable ingress", () => {
       const starts: string[] = [];
       const redeliveredAttempts: number[] = [];
       let routed: ReturnType<typeof resolveSlackIngressTurnLifecycle> | undefined;
+      const routedDeferred = Promise.withResolvers<void>();
+      const migrationStarted = Promise.withResolvers<void>();
+      const migrationClaimed = Promise.withResolvers<void>();
+      // The drain's own claim commit, so the test waits on it instead of polling.
+      const claimNext = queue.claimNext;
+      queue.claimNext = async (...args) => {
+        const claimed = await claimNext.apply(queue, args);
+        if (claimed?.id === "Ev-migration") {
+          migrationClaimed.resolve();
+        }
+        return claimed;
+      };
       const processEvent = vi.fn(async (receiverEvent: ReceiverEvent) => {
         const id = (receiverEvent.body as { event_id: string }).event_id;
         const lifecycle = resolveSlackIngressTurnLifecycle(receiverEvent.customProperties)!;
         starts.push(id);
+        if (id === "Ev-migration") {
+          migrationStarted.resolve();
+        }
         if (id === "Ev-routed" && !routed) {
           await lifecycle.onSessionRouted?.("agent:main:slack:channel:C_TEST");
           lifecycle.onDeferred();
           routed = lifecycle;
+          routedDeferred.resolve();
           return;
         }
         if (id === "Ev-routed") {
@@ -398,20 +414,21 @@ describe("Slack durable ingress", () => {
       ingress.start();
       try {
         await receive(createReceiverEvent("Ev-routed"));
-        await vi.waitFor(() => expect(routed).toBeDefined());
+        await routedDeferred.promise;
         await receive(
           createReceiverEventWithBody(
             createChannelIdChangedEnvelope("Ev-migration", "C_OLD", "C_TEST"),
           ),
         );
-        await vi.waitFor(async () => expect(await queue.listClaims()).toHaveLength(2));
+        await migrationClaimed.promise;
+        expect(await queue.listClaims()).toHaveLength(2);
         expect(starts).toEqual(["Ev-routed"]);
 
         // The reply lane settles a cleared queued turn through onCancelled and
         // falls back to abandonment only when the lifecycle cannot cancel.
         await (routed?.onCancelled ? routed.onCancelled() : routed?.onAbandoned());
 
-        await vi.waitFor(() => expect(starts).toContain("Ev-migration"));
+        await migrationStarted.promise;
         await ingress.waitForIdle();
         expect(await queue.listFailed?.()).toEqual([]);
         expect(await queue.listClaims()).toEqual([]);

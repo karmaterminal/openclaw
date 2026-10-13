@@ -370,8 +370,10 @@ describe("LINE webhook spool", () => {
 
         // Shutdown rejects the late deferral by intent: ownership ends through
         // cancellation, so the row keeps its prior retry facts.
+        const released = observeChannelIngressQueueWrite(queue, "release", eventId);
         lateLifecycle.onDeferred();
-        await vi.waitFor(async () => expect(await queue.listClaims()).toEqual([]));
+        await expect(released).resolves.toBe(true);
+        expect(await queue.listClaims()).toEqual([]);
         expect(await queue.listFailed?.()).toEqual([]);
         expect(await queue.listPending()).toEqual([
           expect.objectContaining({

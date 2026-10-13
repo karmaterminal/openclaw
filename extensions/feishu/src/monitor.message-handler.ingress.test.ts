@@ -403,10 +403,12 @@ describe("Feishu durable ingress debounce lifecycle", () => {
       },
     });
     const finishRedelivery = createDeferred<void>();
+    const redelivered = createDeferred<void>();
     const invoke = vi
       .fn()
       .mockImplementationOnce(async (data: unknown) => await handler(data as never))
       .mockImplementationOnce(async (data: unknown) => {
+        redelivered.resolve();
         await finishRedelivery.promise;
         await ingress.resolveLifecycle(data)?.onAdopted();
       });
@@ -421,7 +423,8 @@ describe("Feishu durable ingress debounce lifecycle", () => {
       ingress.start();
       // The abort ends ownership by intent, so the drain redelivers the row with
       // its prior retry facts instead of dead-lettering it.
-      await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(2));
+      await redelivered.promise;
+      expect(invoke).toHaveBeenCalledTimes(2);
       expect(handleMessage).not.toHaveBeenCalled();
       expect(await queue.listFailed?.()).toEqual([]);
       expect(await queue.listClaims()).toEqual([

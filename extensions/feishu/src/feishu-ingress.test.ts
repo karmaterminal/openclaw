@@ -382,6 +382,7 @@ describe("Feishu durable ingress", () => {
       };
       const beforeFlush = vi.fn();
       const finishRedelivery = Promise.withResolvers<void>();
+      const redelivered = Promise.withResolvers<void>();
       const dispatch = vi
         .fn()
         .mockImplementationOnce(async (data: ReturnType<typeof messageEnvelope>) => {
@@ -397,6 +398,7 @@ describe("Feishu durable ingress", () => {
           return { kind: "deferred" };
         })
         .mockImplementationOnce(async (data: ReturnType<typeof messageEnvelope>) => {
+          redelivered.resolve();
           await finishRedelivery.promise;
           await ingress.resolveLifecycle(flattenEnvelope(data))?.onAdopted();
         });
@@ -405,7 +407,8 @@ describe("Feishu durable ingress", () => {
         ingress.start();
         // Cancellation spends no budget, so the drain redelivers the row with
         // its prior retry facts instead of dead-lettering it.
-        await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(2));
+        await redelivered.promise;
+        expect(dispatch).toHaveBeenCalledTimes(2);
         expect(await queue.listFailed?.()).toEqual([]);
         expect(await queue.listClaims()).toEqual([
           expect.objectContaining({
