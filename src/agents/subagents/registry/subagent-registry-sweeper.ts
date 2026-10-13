@@ -165,13 +165,13 @@ export function createSubagentRegistrySweeper(params: {
     scheduled = { timer, at: nextAt };
   }
 
-  async function runTick() {
+  async function runTick(recoveryOnly = false) {
     if (sweepInProgress) {
       rerunRequested = true;
       return;
     }
     try {
-      await runWithGatewayDetachedWorkAdmission(sweepOnce, "subagents:sweeper");
+      await runWithGatewayDetachedWorkAdmission(() => sweepOnce(recoveryOnly), "subagents:sweeper");
     } catch (error) {
       if (isGatewayRestartDrainError(error)) {
         return params.warn("subagent run sweep skipped: gateway is draining for restart");
@@ -208,7 +208,7 @@ export function createSubagentRegistrySweeper(params: {
     );
   }
 
-  async function sweepOnce() {
+  async function sweepOnce(recoveryOnly = false) {
     if (sweepInProgress) {
       return;
     }
@@ -216,6 +216,13 @@ export function createSubagentRegistrySweeper(params: {
     try {
       const now = Date.now();
       recovery.prune();
+      if (recoveryOnly) {
+        const restoredRuns = [...runs];
+        for (const [runId, entry] of restoredRuns) {
+          await recovery.recover(runId, entry);
+        }
+        return;
+      }
       const collectorArchiveCandidates = new Map<
         string,
         { requesterSessionKey: string; groupId: string; requesterAgentId?: string }
@@ -363,12 +370,7 @@ export function createSubagentRegistrySweeper(params: {
           });
           continue;
         }
-        if (
-          (entry.execution.restartRecovery !== undefined ||
-            entry.terminalOwner === "interrupted-recovery" ||
-            (!getAgentRunContext(runId) && typeof entry.execution.endedAt !== "number")) &&
-          (await recovery.recover(runId, entry))
-        ) {
+        if (await recovery.recover(runId, entry)) {
           continue;
         }
         if (typeof entry.execution.endedAt !== "number") {
@@ -604,6 +606,7 @@ export function createSubagentRegistrySweeper(params: {
     schedule,
     sweepOnce: () => trackWork(sweepOnce),
     runTick: () => trackWork(runTick),
+    recoverInterruptedRuns: () => trackWork(() => runTick(true)),
     async reset() {
       stop();
       acceptedSpawnRollbackCursor = undefined;

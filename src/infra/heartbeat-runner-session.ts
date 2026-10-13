@@ -5,6 +5,7 @@ import {
 } from "../config/sessions/main-session.js";
 import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
 import { loadSessionEntry, patchSessionEntryCore } from "../config/sessions/session-accessor.js";
+import { readSessionEntryInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
@@ -115,14 +116,14 @@ export type ResolvedHeartbeatSession = {
   entry: SessionEntry | undefined;
 };
 
-export function resolveHeartbeatSession(
+export async function resolveHeartbeatSession(
   cfg: OpenClawConfig,
   agentId: string,
   heartbeat?: HeartbeatConfig,
   forcedSessionKey?: string,
   env: NodeJS.ProcessEnv = process.env,
   options?: { allowSubagentSession?: boolean },
-): ResolvedHeartbeatSession {
+): Promise<ResolvedHeartbeatSession> {
   const resolved = resolveHeartbeatSessionKey(
     cfg,
     agentId,
@@ -133,7 +134,7 @@ export function resolveHeartbeatSession(
   );
   return {
     ...resolved,
-    entry: loadSessionEntry({
+    entry: await readSessionEntryInWorker({
       agentId,
       storePath: resolved.storePath,
       sessionKey: resolved.sessionKey,

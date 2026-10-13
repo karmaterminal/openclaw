@@ -355,6 +355,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
       }
     },
     pluginRuntimeRefreshMessages: params.pluginRuntimeRefreshMessages,
+    continuation: sessionPromptState.continuation,
     permissionChange: input.permissionChange,
     admittedRunContext: params.admittedRunContext,
     startedAtMs: runInput.startedAtMs,

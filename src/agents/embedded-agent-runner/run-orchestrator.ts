@@ -13,6 +13,7 @@ import {
   captureAgentRunLifecycleGeneration,
   withAgentRunLifecycleGeneration,
 } from "../../infra/agent-events.js";
+import { captureExecRequestOwners, withExecRequestTurn } from "../../infra/exec-request-context.js";
 import {
   buildHandledBeforeAgentReplyPayloads,
   runBeforeAgentReplyForTurn,
@@ -216,7 +217,8 @@ async function runEmbeddedAgentForSession(
     params = { ...params, messageActionTurnCapability: recoveryMessageActionTurnCapability };
   }
 
-  return enqueueSession(async () => {
+  const requestOwners = captureExecRequestOwners(params);
+  const runSession = async () => {
     throwIfAborted();
     if (params.sessionKey) {
       resetContinueDelegateTurnBudget(params.sessionKey);
@@ -721,7 +723,22 @@ async function runEmbeddedAgentForSession(
         refresh.close();
       }
     });
-  }).finally(() => {
+  };
+  return enqueueSession(() =>
+    withExecRequestTurn(
+      {
+        identity: {
+          runId: params.runId,
+          sessionKey: params.sessionKey,
+          sessionId: params.sessionId,
+          agentId: params.agentId,
+        },
+        owners: requestOwners,
+        abortSignal: params.abortSignal,
+      },
+      runSession,
+    ),
+  ).finally(() => {
     revokeMessageActionTurnCapability(recoveryMessageActionTurnCapability);
   });
 }

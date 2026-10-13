@@ -10,6 +10,7 @@ import {
   type SessionTranscriptTurnPersistOptions,
 } from "../config/sessions/session-accessor.js";
 import { rewritePreparedTranscriptMessageAtAnchor } from "../config/sessions/session-message-rewrite.js";
+import { createDynamicSessionSourceAssertion } from "../config/sessions/session-source-authority.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import { registerUserTurnTranscriptAdmissionOwner } from "./user-turn-transcript-admission.js";
 import { createUserTurnProcessingCompletion } from "./user-turn-transcript-processing.js";
@@ -503,11 +504,15 @@ export function createUserTurnTranscriptRecorder(
     },
     resolveMessage: resolveMessageForPersistence,
     assertOriginalInputCommit: params.assertOriginalInputCommit
-      ? () => {
-          if (!blocked && !persisted && !runtimePersisted && !pendingInput) {
-            params.assertOriginalInputCommit!();
-          }
-        }
+      ? createDynamicSessionSourceAssertion(
+          () =>
+            !blocked && !persisted && !runtimePersisted && !pendingInput
+              ? params.assertOriginalInputCommit
+              : undefined,
+          () => {
+            throw new Error("Original input custody changed before transcript commit");
+          },
+        )
       : undefined,
     stageApproved: (options) => {
       staging ??= (async () => {

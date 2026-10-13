@@ -67,6 +67,7 @@ export function createSubagentRegistryRestorer(config: {
   ensureListener: () => void;
   startSweeper: () => void;
   scheduleSweep: () => void;
+  recoverInterruptedRuns: () => Promise<void>;
   resumeRun: (runId: string) => void;
   listSwarmRunsForGroup: (
     groupId: string,
@@ -217,6 +218,10 @@ export function createSubagentRegistryRestorer(config: {
     assertCurrent();
     if (!runsResumed) {
       await resumeRestoredRuns(cfg, assertCurrent);
+      assertCurrent();
+      // Requester transfer precedes interruption settlement; ordinary wake retries
+      // and cleanup retain their scheduled maintenance pass.
+      await config.recoverInterruptedRuns();
       assertCurrent();
       runsResumed = true;
     }
