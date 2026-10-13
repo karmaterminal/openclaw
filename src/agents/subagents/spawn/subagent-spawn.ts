@@ -1,4 +1,8 @@
 import { resolveSessionStorePathCore } from "../../../config/sessions/paths.js";
+import {
+  readExecRequestOwners,
+  withExecRequestOwners,
+} from "../../../infra/exec-request-context.js";
 import { recordSessionParticipantBestEffort } from "../../../sessions/session-participant-recording.js";
 import { recordSubagentSpawned } from "../../../sessions/session-state-events.js";
 import { parseInlineAttachmentMountPath } from "../../../shared/inline-attachments.js";
@@ -510,6 +514,7 @@ export async function spawnSubagentDirect(
     };
     pipelineEntered = true;
     const pipelineResult = await runSpawnPipeline({
+      ...withExecRequestOwners({}, readExecRequestOwners(ctx)),
       adapter,
       assertActive,
       admissionReservation,

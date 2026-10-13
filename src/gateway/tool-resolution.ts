@@ -22,7 +22,6 @@ import {
   createSwarmCollectorWriteAuthority,
   resolveSwarmCollectorToolContext,
 } from "../agents/openclaw-tools.swarm.js";
-import type { PreparedRootedExecutionCapability } from "../agents/rooted-run-params.js";
 import { resolveSandboxRuntimeStatus } from "../agents/sandbox/runtime-status.js";
 import { createScheduledMessageInvocationAdmission } from "../agents/scheduled-message-invocation.js";
 import { resolveScheduledToolCallerContext } from "../agents/scheduled-tool-policy.js";
@@ -55,6 +54,7 @@ import {
   hasSessionControlAuthority,
   prepareSandboxSessionRename,
 } from "../agents/tools/sessions-operator-authority.js";
+import type { SkillWorkshopRunOptions } from "../agents/tools/skill-workshop-tool-factory.js";
 import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
 import type { ConversationReadInvocationOrigin } from "../channels/plugins/conversation-read-origin.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -66,7 +66,6 @@ import {
   DEFAULT_GATEWAY_HTTP_TOOL_DENY,
   GATEWAY_OWNER_ONLY_CORE_TOOLS,
 } from "../security/dangerous-tools.js";
-import type { SkillWorkshopRunOptions } from "../skills/workshop/types.js";
 import type { McpLoopbackRequestContext } from "./mcp-grant-store.js";
 import {
   captureGatewayToolResolutionAuthority,
@@ -81,7 +80,6 @@ export async function resolveGatewayScopedTools(
     McpLoopbackRequestContext,
     | "senderIsOwner"
     | "currentMessageId"
-    | "skillWorkshop"
     | "nativeCronCreatorToolAllowlist"
     | "toolsAllow"
     | "nodeExecAllowed"
@@ -90,7 +88,6 @@ export async function resolveGatewayScopedTools(
     cfg: OpenClawConfig;
     /** Workspace from the invocation owner's exact session read. */
     preparedSessionWorkspaceDir?: string;
-    rootedExecution?: PreparedRootedExecutionCapability;
     messageActionTurnCapability?: string;
     authProfileStore?: AuthProfileStore;
     agentDir?: string;
@@ -211,9 +208,8 @@ export async function resolveGatewayScopedTools(
     accountId: gatewayCaller.accountId,
   });
   const { groupPolicy, senderPolicy, subagentPolicy, inheritedToolPolicy } = requesterPolicies;
-  const sessionPermissionPolicy = params.rootedExecution
-    ? params.rootedExecution.sessionPermissionPolicy
-    : requesterPolicies.inheritedToolPolicySource === "sender"
+  const sessionPermissionPolicy =
+    requesterPolicies.inheritedToolPolicySource === "sender"
       ? params.sessionPermissionPolicy
       : undefined;
   const sandboxRuntime = resolveSandboxRuntimeStatus({
@@ -223,14 +219,8 @@ export async function resolveGatewayScopedTools(
     classificationSessionKey: runtimePolicySessionKey,
     classificationAgentId: policyAgentId,
   });
-  const sandboxed = params.rootedExecution
-    ? Boolean(params.rootedExecution.sandbox)
-    : sandboxRuntime.sandboxed;
-  const preparedSandboxPolicy = params.rootedExecution
-    ? params.rootedExecution.sandbox?.tools
-    : sandboxRuntime.sandboxed
-      ? sandboxRuntime.toolPolicy
-      : undefined;
+  const sandboxed = sandboxRuntime.sandboxed;
+  const preparedSandboxPolicy = sandboxRuntime.sandboxed ? sandboxRuntime.toolPolicy : undefined;
   const sessionControlAuthority = readAdmittedRunOperatorAuthority(params.admittedRunContext);
   const { policy: sandboxPolicy, renameOnly: sandboxSessionRenameOnly } =
     prepareSandboxSessionRename({
@@ -284,12 +274,11 @@ export async function resolveGatewayScopedTools(
   ];
   // HTTP callers start with additional surface denies because they cross auth only.
   const workspaceDir =
-    params.rootedExecution?.workspaceDir ??
-    ((requesterPolicies.inheritedToolPolicySource === "sender"
+    (requesterPolicies.inheritedToolPolicySource === "sender"
       ? params.preparedSessionWorkspaceDir?.trim()
       : undefined) ||
-      params.workspaceDir?.trim() ||
-      resolveAgentWorkspaceDir(params.cfg, sessionAgentId));
+    params.workspaceDir?.trim() ||
+    resolveAgentWorkspaceDir(params.cfg, sessionAgentId);
   const basePolicies = [
     profilePolicy,
     providerProfilePolicy,
@@ -428,19 +417,6 @@ export async function resolveGatewayScopedTools(
     workspaceDir,
     sandboxed,
     sessionPermissionPolicy,
-    ...(params.rootedExecution
-      ? {
-          cwd: params.rootedExecution.cwd,
-          fsPolicy: { workspaceOnly: true, root: params.rootedExecution.root },
-          sandboxRoot: params.rootedExecution.sandbox?.workspaceDir,
-          sandboxContainerWorkdir: params.rootedExecution.sandbox?.containerWorkdir,
-          sandboxFsBridge: params.rootedExecution.sandbox?.fsBridge,
-          sandboxBrowserBridgeUrl: params.rootedExecution.sandbox?.browser?.bridgeUrl,
-          allowHostBrowserControl: params.rootedExecution.sandbox
-            ? params.rootedExecution.sandbox.browserAllowHostControl
-            : true,
-        }
-      : {}),
     pluginToolAllowlist: collectExplicitAllowlist(requestedPolicies),
     pluginToolDenylist: explicitDenylist,
     cronCreatorToolAllowlist,
@@ -496,9 +472,7 @@ export async function resolveGatewayScopedTools(
           operationalRunInstance: params.admittedRunContext?.operationalRunInstance,
           workspaceDir,
           cwd: params.cwd?.trim() || workspaceDir,
-          ...params.rootedExecution,
           sessionPermissionPolicy,
-          sandbox: params.rootedExecution?.sandbox ?? undefined,
           modelProvider: params.modelProvider,
           modelId: params.modelId,
           modelHasVision: params.modelHasVision,

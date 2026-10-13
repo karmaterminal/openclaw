@@ -200,10 +200,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +4: executor controller, binding, context, and resolver.
       // +1: required session cleanup failure preserves native ownership before host reset.
       // +2: approved async upstream-link writes with released sync compatibility.
+      // -8: retired Skill Workshop proposal hook types.
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
       // system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the dd619529b2 merge: upstream 3649, merged tree 3660 (+11).
-      3660,
+      // Measured on the f66ca12402 merge: upstream 3641, merged tree 3652 (+11).
+      3652,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
