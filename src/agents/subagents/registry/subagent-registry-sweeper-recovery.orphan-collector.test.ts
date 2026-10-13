@@ -49,7 +49,7 @@ vi.mock("./subagent-session-reconciliation.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./subagent-session-reconciliation.js")>();
   return {
     ...actual,
-    loadSubagentSessionEntry: vi.fn(() => killSessionEntry.current),
+    loadSubagentSessionEntry: vi.fn(async () => killSessionEntry.current),
   };
 });
 describe("subagent registry recovery scheduling: orphans and collector groups", () => {
@@ -59,7 +59,7 @@ describe("subagent registry recovery scheduling: orphans and collector groups", 
     recoverRow.mockReset();
     vi.mocked(loadSubagentSessionEntry)
       .mockReset()
-      .mockImplementation(() => killSessionEntry.current);
+      .mockImplementation(async () => killSessionEntry.current);
     vi.mocked(prepareSubagentKillSession).mockImplementation(async (_cfg, _key, assertOwner) => {
       assertOwner();
       return {
@@ -116,6 +116,10 @@ describe("subagent registry recovery scheduling: orphans and collector groups", 
         sendFarewell: true,
         accountId: undefined,
         triggerCleanup: true,
+        recoveryCurrent: {
+          isHostCurrent: expect.any(Function),
+          prepare: expect.any(Function),
+        },
       },
       "sweeper-lost-context",
     );

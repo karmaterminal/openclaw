@@ -1,3 +1,4 @@
+import { parseAgentSessionKey } from "../../../routing/session-key.js";
 import { loadRequesterSessionEntry, loadSessionEntryByKey } from "./subagent-announce-delivery.js";
 
 type MaybePromise<T> = T | Promise<T>;
@@ -18,11 +19,15 @@ export function createOwnerBoundContinuationEntryLoader<T extends ContinuationEn
     options?: { refresh?: boolean },
   ) => MaybePromise<T | undefined> | undefined;
 }): (sessionKey: string, options?: { refresh?: boolean }) => MaybePromise<T | undefined> {
+  // An agent-scoped key names its own owner; a recorded agent id only owns a
+  // legacy (unscoped) key, as upstream's announce reads do (#166845).
+  const ownerFor = (sessionKey: string, agentId?: string) =>
+    parseAgentSessionKey(sessionKey) ? undefined : agentId;
   return (sessionKey, options) =>
     sessionKey === params.childSessionKey
-      ? params.loadOwned(sessionKey, params.childAgentId)
+      ? params.loadOwned(sessionKey, ownerFor(sessionKey, params.childAgentId))
       : sessionKey === params.requesterSessionKey
-        ? params.loadOwned(sessionKey, params.requesterAgentId)
+        ? params.loadOwned(sessionKey, ownerFor(sessionKey, params.requesterAgentId))
         : params.loadFallback(sessionKey, options);
 }
 

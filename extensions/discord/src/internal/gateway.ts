@@ -7,8 +7,6 @@ import {
   type APIGatewayBotInfo,
   type APIVoiceState,
   type GatewayDispatchPayload,
-  type GatewayHeartbeat,
-  type GatewayIdentify,
   type GatewayReceivePayload,
   type GatewaySendPayload,
   type GatewayVoiceStateUpdateData,
@@ -256,7 +254,7 @@ export class GatewayPlugin extends Plugin implements GatewayPluginContract {
                 session_id: resumeState.sessionId,
                 seq: resumeState.sequence,
               },
-            } as GatewaySendPayload,
+            },
             true,
           );
         } else {
@@ -314,7 +312,7 @@ export class GatewayPlugin extends Plugin implements GatewayPluginContract {
       return;
     }
     this.lastHeartbeatAck = false;
-    this.send({ op: GatewayOpcodes.Heartbeat, d: this.sequence } as GatewayHeartbeat, true);
+    this.send({ op: GatewayOpcodes.Heartbeat, d: this.sequence }, true);
   }
 
   private identify(): void {
@@ -326,7 +324,7 @@ export class GatewayPlugin extends Plugin implements GatewayPluginContract {
           intents: this.options.intents ?? 0,
           properties: { os: process.platform, browser: "openclaw", device: "openclaw" },
         },
-      } as GatewayIdentify,
+      },
       true,
     );
   }
@@ -370,7 +368,7 @@ export class GatewayPlugin extends Plugin implements GatewayPluginContract {
       return;
     }
     if (payload.t === GatewayDispatchEvents.Ready) {
-      const ready = payload.d as { session_id?: string; resume_gateway_url?: string };
+      const ready = payload.d;
       this.sessionId = ready.session_id ?? null;
       this.resumeGatewayUrl = ready.resume_gateway_url ?? null;
     }
@@ -461,7 +459,7 @@ export class GatewayPlugin extends Plugin implements GatewayPluginContract {
   }
 
   updateVoiceState(data: GatewayVoiceStateUpdateData): void {
-    this.send({ op: GatewayOpcodes.VoiceStateUpdate, d: data } as GatewaySendPayload, true);
+    this.send({ op: GatewayOpcodes.VoiceStateUpdate, d: data }, true);
   }
 
   getRateLimitStatus() {

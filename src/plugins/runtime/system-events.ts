@@ -58,10 +58,10 @@ export const enqueueSystemEventFromSdk = (
     sessionKey: resolveSystemEventSessionKey(options.sessionKey, agentId),
   });
 
-export const enqueueSystemEventEntryFromSdk: typeof events.enqueueSystemEventEntry = (
-  text,
-  options,
-) =>
+export const enqueueSystemEventEntryFromSdk = (
+  text: string,
+  options: Parameters<typeof events.enqueueSystemEventEntry>[1],
+): ReturnType<typeof events.enqueueSystemEventEntry> =>
   events.enqueueSystemEventEntry(text, {
     ...sanitizeSdkSystemEventOptions(options),
     sessionKey: resolveSystemEventSessionKey(options.sessionKey),

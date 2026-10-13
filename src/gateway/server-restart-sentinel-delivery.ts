@@ -6,6 +6,7 @@ import { dispatchReplyWithBufferedBlockDispatcherCore } from "../auto-reply/repl
 import { recordInboundSession } from "../channels/session.js";
 import { dispatchAssembledChannelTurn } from "../channels/turn/lifecycle.js";
 import type { CliDeps } from "../cli/deps.types.js";
+import { getRuntimeConfig } from "../config/io.js";
 import { isSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.js";
 import type { SessionRecipientAuthority } from "../config/sessions/session-recipient-authority-types.js";
 import { toErrorObject } from "../infra/errors.js";
@@ -40,7 +41,9 @@ import {
   resolveQueuedRestartContinuationMessageId,
   RESTART_CONTINUATION_BUSY_RETRY_ERROR,
 } from "./server-restart-sentinel-continuation-intent.js";
-import { loadSessionEntry } from "./session-utils.js";
+import { deliverRestartSentinelEvent } from "./server-restart-sentinel-session-event.js";
+import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
+import { resolveGatewaySessionStoreTargetInWorker } from "./session-utils-store-worker.js";
 
 const log = createSubsystemLogger("gateway/restart-sentinel");
 
@@ -225,13 +228,18 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       "continuation return recipient owner mismatches its target",
     );
   }
-  const { cfg, agentId, entry, storePath, canonicalKey } = loadSessionEntry(
-    params.entry.sessionKey,
-    {
+  // Session reads stay in the worker; queue admission is re-proven after the read (#167113).
+  const cfg = getRuntimeConfig();
+  const { agentId, store, storeKeys, storePath, canonicalKey } =
+    await resolveGatewaySessionStoreTargetInWorker({
+      cfg,
+      key: params.entry.sessionKey,
       env: params.queueContext.environment,
+      assertActive: () => params.queueContext.admission.assertCurrent(),
       ...(recipientAgentId ? { agentId: recipientAgentId } : {}),
-    },
-  );
+    });
+  params.queueContext.admission.assertCurrent();
+  const entry = findCanonicalStoreMatch(store, storeKeys)?.entry;
   if (
     isContinuationReturn &&
     (normalizeAgentId(agentId) !== normalizeAgentId(recipientAgentId) ||
@@ -269,6 +277,20 @@ async function deliverResolvedQueuedSessionDelivery(params: {
         "adoption-scoped delivery targets a subagent session that no longer exists",
       );
     }
+    if (!awaitsTurnAdoption && !recipientAuthority && !isContinuationReturn) {
+      // A plain restart notice carries no continuation custody: run it through
+      // ordinary session execution and settle the row on that turn (#167113).
+      await deliverRestartSentinelEvent(
+        params.entry,
+        canonicalKey,
+        params.entry.agentId ?? agentId,
+        params.queueContext,
+      );
+      return;
+    }
+    // Continuation-owned rows keep adoption-scoped custody: the queued event
+    // carries the row's ack id, recipient authority and return wake, and the
+    // row settles only when a prompt adopts it.
     const replayed = enqueueRestartSentinelWake({
       entryId: params.entry.id,
       message: params.entry.text,
@@ -321,36 +343,12 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       expectedSessionId: params.entry.expectedSessionId,
       actualSessionId: entry?.sessionId ?? null,
     });
-    const replayed = enqueueRestartSentinelWake({
-      entryId: params.entry.id,
-      message: params.entry.message,
-      sessionKey: canonicalKey,
-      agentId,
-      deliveryContext: queuedDeliveryContext,
-      traceparent: params.entry.traceparent,
-      sessionDeliveryAckId: params.entry.id,
-      sessionDeliveryAckStateDir: stateDir,
-    });
-    if (replayed === "refused") {
-      deferRefusedRestartSentinelWake({ sessionKey: canonicalKey, queueId: params.entry.id });
-    }
+    await deliverRestartSentinelEvent(params.entry, canonicalKey, agentId, params.queueContext);
     return;
   }
 
   if (!params.entry.route) {
-    const replayed = enqueueRestartSentinelWake({
-      entryId: params.entry.id,
-      message: params.entry.message,
-      sessionKey: canonicalKey,
-      agentId,
-      deliveryContext: queuedDeliveryContext,
-      traceparent: params.entry.traceparent,
-      sessionDeliveryAckId: params.entry.id,
-      sessionDeliveryAckStateDir: stateDir,
-    });
-    if (replayed === "refused") {
-      deferRefusedRestartSentinelWake({ sessionKey: canonicalKey, queueId: params.entry.id });
-    }
+    await deliverRestartSentinelEvent(params.entry, canonicalKey, agentId, params.queueContext);
     return;
   }
 

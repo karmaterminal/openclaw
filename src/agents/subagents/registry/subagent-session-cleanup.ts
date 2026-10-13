@@ -12,6 +12,7 @@ import {
   isGatewayRestartDrainError,
   runWithGatewayDetachedWorkAdmission,
 } from "../../../process/gateway-work-admission.js";
+import { parseAgentSessionKey } from "../../../routing/session-key.js";
 import { runOutsideAsyncWorkScope } from "../../../shared/async-work-scope.js";
 import { createLazyRuntimeModule } from "../../../shared/lazy-runtime.js";
 import type { SpawnSubagentMode } from "../spawn/subagent-spawn.types.js";
@@ -56,6 +57,7 @@ type DeleteSubagentSessionForCleanupParams = {
   prepareCurrent?: () => Promise<boolean>;
   isCurrent?: () => boolean;
   childSessionKey: string;
+  childAgentId?: string;
   spawnMode?: SpawnSubagentMode;
   emitLifecycleHooks?: boolean;
   deleteTranscript?: boolean;
@@ -188,6 +190,9 @@ export async function deleteSubagentSessionForCleanup(
   const { prepareCurrent, isCurrent } = params;
   const cleanupParams: SessionsDeleteParams = {
     key: params.childSessionKey,
+    ...(params.childAgentId === undefined || parseAgentSessionKey(params.childSessionKey)
+      ? {}
+      : { agentId: params.childAgentId }),
     deleteTranscript: params.deleteTranscript ?? true,
     emitLifecycleHooks: params.emitLifecycleHooks ?? params.spawnMode === "session",
     expectedSessionId: params.expectedSessionId,

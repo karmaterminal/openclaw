@@ -159,6 +159,7 @@ export async function cleanupPluginHostSessionStore(
     return 0;
   }
   const now = Date.now();
+  const cleanupRevoked = new Error("Plugin session cleanup is no longer current");
   let cleared = 0;
   for (const { entry, sessionKey } of await readSessionEntrySummariesInWorker({
     agentId: params.agentId,
@@ -191,14 +192,24 @@ export async function cleanupPluginHostSessionStore(
         return currentEntry;
       },
       {
-        shouldCommit: params.shouldCleanup,
+        workerGuard: {
+          assertCurrent: () => {
+            if (params.shouldCleanup?.() === false) {
+              throw cleanupRevoked;
+            }
+          },
+        },
         onCommitted: () => {
           cleared += 1;
         },
         replaceEntry: true,
         skipMaintenance: true,
       },
-    );
+    ).catch((error: unknown) => {
+      if (error !== cleanupRevoked) {
+        throw error;
+      }
+    });
   }
   return cleared;
 }

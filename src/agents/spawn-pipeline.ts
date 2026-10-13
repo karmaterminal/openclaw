@@ -1,4 +1,5 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { readExecRequestOwners, withExecRequestOwners } from "../infra/exec-request-context.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { SubagentLifecycleHookRunner } from "../plugins/hooks.js";
 import type {
@@ -300,13 +301,19 @@ export async function runSpawnPipeline<TState>(
       params.assertActive?.();
       registration = params.buildRegistration(state, runId);
       params.assertRegistrationAdmission?.();
-      const registrationResult = await registerSubagentRun(registration, {
-        assertCurrent: params.assertActive,
-        retainOwnership: (scope) => {
-          registrationScope = scope;
-          params.adapter.retainRegistrationScope?.(scope);
-        },
-      });
+      const registrationResult = await registerSubagentRun(
+        registration,
+        withExecRequestOwners(
+          {
+            assertCurrent: params.assertActive,
+            retainOwnership: (scope) => {
+              registrationScope = scope;
+              params.adapter.retainRegistrationScope?.(scope);
+            },
+          },
+          readExecRequestOwners(params),
+        ),
+      );
       if (registrationResult.status !== "new-row-committed") {
         throw new SpawnRegistrationOwnershipError(registrationResult);
       }

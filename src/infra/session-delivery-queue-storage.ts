@@ -450,25 +450,34 @@ export async function enqueuePostCompactionDelegateDelivery(
   );
 }
 
+function publishSessionDelivery<
+  Key extends "sessionDelivery.enqueue" | "sessionDelivery.enqueueClaimed",
+>(
+  entry: QueuedSessionDelivery,
+  type: Key,
+  context: OpenClawStateWorkerContext,
+): Promise<SessionDeliveryWorkerOperations[Key]["output"]> {
+  const input = prepareEntry(entry, "insert");
+  return withSessionDeliveryEnqueueAdmission(entry, context, (assertCurrent) =>
+    runOpenClawStateWorkerOperation(context, (scope) => scope.execute<Key>({ type, input }), {
+      assertCurrent,
+      createAdmission: createSqliteWorkerWriteAdmission(assertCurrent, [
+        context.admission.databasePath,
+      ]),
+    }),
+  );
+}
+
 /** Enqueue and lease the first attempt to one caller before recovery can see it as eligible. */
 export async function enqueueClaimedSessionDelivery(
   params: QueuedSessionDeliveryPayload,
   initialAttemptLeaseMs: number,
   context: OpenClawStateWorkerContext,
 ): Promise<SessionDeliveryWorkerOperations["sessionDelivery.enqueueClaimed"]["output"]> {
-  const entry = prepareClaimedSessionDelivery(params, initialAttemptLeaseMs);
-  const input = prepareEntry(entry, "insert");
-  return withSessionDeliveryEnqueueAdmission(entry, context, (assertCurrent) =>
-    runOpenClawStateWorkerOperation(
-      context,
-      (scope) => scope.execute({ type: "sessionDelivery.enqueueClaimed", input }),
-      {
-        assertCurrent,
-        createAdmission: createSqliteWorkerWriteAdmission(assertCurrent, [
-          context.admission.databasePath,
-        ]),
-      },
-    ),
+  return publishSessionDelivery(
+    prepareClaimedSessionDelivery(params, initialAttemptLeaseMs),
+    "sessionDelivery.enqueueClaimed",
+    context,
   );
 }
 

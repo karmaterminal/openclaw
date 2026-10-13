@@ -24,20 +24,16 @@ vi.mock("../../agents/embedded-agent-runner/compact.queued.js", () => ({
 }));
 
 vi.mock("./agent-runner-utils.js", () => ({
+  // Upstream returns one flat run-parameter object (embedded, sender and base facts).
   buildEmbeddedRunExecutionParams: () => ({
-    embeddedContext: {
-      agentId: "main",
-      messageProvider: "discord",
-      sessionId: "session-fallback",
-      sessionKey: "agent:main:fallback",
-    },
-    senderContext: {},
-    runBaseParams: {
-      authProfileId: "openai:fallback-auth",
-      sessionFile: "session-fallback.jsonl",
-      timeoutMs: 1_000,
-      workspaceDir: "/workspace",
-    },
+    agentId: "main",
+    messageProvider: "discord",
+    sessionId: "session-fallback",
+    sessionKey: "agent:main:fallback",
+    authProfileId: "openai:fallback-auth",
+    sessionFile: "session-fallback.jsonl",
+    timeoutMs: 1_000,
+    workspaceDir: "/workspace",
   }),
 }));
 
@@ -187,8 +183,8 @@ function runCandidate(
     messageToolDeliveryState: { toolCallIds: new Set(), completed: false },
     preserveProgressCallbackStartOrder: false,
     presentation: {
-      classifyStreamingPartial: () => ({ skip: true }),
-      sanitizeStreamingText: () => ({ skip: true }),
+      // Partial replies are not part of this fixture: present none of them.
+      presentPartialReply: async () => {},
       normalizeStreamingText: () => ({ skip: true }),
       presentWithTyping: async (_typingPromise, startPresentation) => startPresentation(),
       blockReplyHandler: undefined,

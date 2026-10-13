@@ -147,6 +147,8 @@ export function createChannelIngressDrain<
   const deferredLaneOccupancy = options.deferredLaneOccupancy ?? "hold";
   const activeByClaim = new Map<string, ActiveHandlerState<TPayload, TMetadata>>();
   const laneOwnerByKey = new Map<string, ActiveHandlerState<TPayload, TMetadata>>();
+  const laneKeyFor = (record: ChannelIngressQueueRecord<TPayload, TMetadata>) =>
+    resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey);
   let disposed = false;
 
   const log = (message: string) => {
@@ -362,12 +364,7 @@ export function createChannelIngressDrain<
           }),
         ];
         return waiting
-          .filter(
-            (row) =>
-              row.id !== state.claim.id &&
-              resolveLaneKey(row, options.deriveLaneKey, options.reconcileStoredLaneKey) ===
-                state.laneKey,
-          )
+          .filter((row) => row.id !== state.claim.id && laneKeyFor(row) === state.laneKey)
           .toSorted(
             (left, right) =>
               (orderBy === "received" ? left.receivedAt - right.receivedAt : 0) ||
@@ -636,9 +633,7 @@ export function createChannelIngressDrain<
             !state.superseded
           );
         })
-        .map((claim) =>
-          resolveLaneKey(claim, options.deriveLaneKey, options.reconcileStoredLaneKey),
-        ),
+        .map(laneKeyFor),
     );
     const retryDelayedLaneKeys = new Set<string>();
     const pendingLaneKeys = new Set<string>();
@@ -646,7 +641,7 @@ export function createChannelIngressDrain<
     // listPending and claimNext share order, so the first row per lane is its head.
     // Delayed tails leave this snapshot so a sibling cannot make them start early.
     for (const [index, event] of pending.entries()) {
-      const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
+      const laneKey = laneKeyFor(event);
       if (resolveIngressRetryDelayMs(event, options.retryPolicy, snapshotNow) > 0) {
         retryDelayed[index] = 1;
         if (!pendingLaneKeys.has(laneKey)) {
@@ -670,7 +665,7 @@ export function createChannelIngressDrain<
       if (shouldStop()) {
         break;
       }
-      const laneKey = resolveLaneKey(event, options.deriveLaneKey, options.reconcileStoredLaneKey);
+      const laneKey = laneKeyFor(event);
       // A lane the disposition hook holds is fenced for this pass: its rows
       // neither cancel active work nor get their block lifted.
       if (disposition.blockedLaneKeys.has(laneKey)) {
@@ -696,11 +691,7 @@ export function createChannelIngressDrain<
         if (retryDelayed[index] === 1) {
           continue;
         }
-        const laneKey = resolveLaneKey(
-          event,
-          options.deriveLaneKey,
-          options.reconcileStoredLaneKey,
-        );
+        const laneKey = laneKeyFor(event);
         if (!blockedLaneKeys.has(laneKey)) {
           candidateWindow.set(event.id, laneKey);
         }
@@ -740,11 +731,7 @@ export function createChannelIngressDrain<
         await queue.release(claimed, { recordAttempt: false });
         break;
       }
-      const laneKey = resolveLaneKey(
-        claimed,
-        options.deriveLaneKey,
-        options.reconcileStoredLaneKey,
-      );
+      const laneKey = laneKeyFor(claimed);
       const existing = laneOwnerByKey.get(laneKey);
       if (existing && existing.phase !== "settled") {
         if (await supersedeActiveIfNeeded(claimed, laneKey)) {

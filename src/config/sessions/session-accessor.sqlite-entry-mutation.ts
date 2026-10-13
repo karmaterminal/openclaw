@@ -11,9 +11,11 @@ import {
   readUnchangedLifecycleTargetSnapshot,
   writeSessionEntry,
 } from "./session-accessor.sqlite-entry-store.js";
+import { advanceSessionRecipientAuthorityInTransaction } from "./session-accessor.sqlite-recipient-authority.js";
 import { assertCanonicalSqliteSessionKeysCurrent } from "./session-canonical-key.js";
 import { assertSessionEntryPatchCliHistory } from "./session-entry-patch-guard.js";
 import type { SessionEntryPatchGuard } from "./session-entry-patch.types.js";
+import { doesSessionVisibilityRestrictRecipientAuthority } from "./session-recipient-authority-types.js";
 import { collectSessionEntryLookupKeys } from "./store-entry.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
 
@@ -103,6 +105,17 @@ export function writeSessionEntryPatchInDatabase(
       ? { canonicalPreviousEntry: fresh[0].entry }
       : {}),
   });
+  // Narrowing visibility revokes recipients: advance recipient authority in this
+  // same transaction, for every writer, so a delayed named return cannot land on
+  // a session that was made narrower after it was addressed.
+  if (
+    doesSessionVisibilityRestrictRecipientAuthority(
+      selectedPreviousEntry.visibility ?? "shared",
+      persisted.visibility ?? "shared",
+    )
+  ) {
+    advanceSessionRecipientAuthorityInTransaction(database, params.sessionKey);
+  }
   // Identity publication borrows session and lifecycle facts owned by this canonical write.
   const current = new Map([[params.sessionKey, persisted]]);
   return { entry: structuredClone(persisted), identity: { previous, current } };

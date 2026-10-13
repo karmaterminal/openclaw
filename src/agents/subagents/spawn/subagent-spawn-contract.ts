@@ -1,3 +1,4 @@
+import type { SessionSourceAssertion } from "../../../config/sessions/session-source-authority.js";
 import type { ContinuationSpawnFailurePhase } from "../../../shared/continuation-run-key.js";
 import type { FastMode } from "../../../shared/fast-mode.js";
 import type { SpawnedToolContext } from "../../spawned-context.js";
@@ -107,7 +108,7 @@ export type SpawnSubagentContext = SpawnedToolContext & {
   requesterRunId?: string;
   continuationDelegateAdmission?: SpawnSubagentAdmissionAuthority;
   /** Private invocation fence, consumed only before registration transfers ownership. */
-  assertActive?: () => void;
+  assertActive?: SessionSourceAssertion;
 };
 
 export type SpawnSubagentResult = {

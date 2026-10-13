@@ -29,8 +29,10 @@ import {
 } from "../../auto-reply/reply/source-turn-id.js";
 import { isAbortError } from "../../infra/abort-signal.js";
 import { assertAgentRunLifecycleGenerationCurrent } from "../../infra/agent-events.js";
+import { adoptExecRequestSession } from "../../infra/exec-request-context.js";
 import { bindGatewayContextResolver } from "../../plugins/runtime/gateway-request-scope.js";
 import { retainGatewayRootWorkAdmissionContinuation } from "../../process/gateway-work-admission.js";
+import { readWithdrawnUserTurnInputId } from "../../sessions/user-turn-transcript-admission.js";
 import { completeUserTurnProcessing } from "../../sessions/user-turn-transcript-processing.js";
 import { withCurrentUserTurnInput } from "../../sessions/user-turn-transcript-runtime-context.js";
 import { isOperatorUiClient } from "../../utils/message-channel.js";
@@ -47,23 +49,20 @@ import { prepareSessionWorkspaceForRun } from "../server-methods/session-create-
 import { reactivateCompletedSubagentSession } from "../session-subagent-reactivation.js";
 import { prepareGatewaySkillAuthoring } from "../skill-library-authoring.js";
 import { captureGatewayUiCommandTarget } from "../ui-command-target.js";
-import {
-  buildAbortedAgentPayload,
-  setAbortedAgentDedupeEntries,
-  setGatewayDedupeEntries,
-} from "./agent-dedupe.js";
+import { buildAbortedAgentPayload, setGatewayDedupeEntries } from "./agent-dedupe.js";
 import { yieldAfterAgentAcceptedAck } from "./agent-handler-helpers.js";
 import { captureAgentJobSession } from "./agent-job.js";
 import {
   resolveAgentRestartRecoveryContext,
   resolveAgentRestartRecoveryExecutionIdentityAdmission,
 } from "./agent-restart-recovery-context.js";
-import { dispatchAgentRunWithCommentaryMedia } from "./agent-run-commentary-media.js";
 import { createAgentRunDiagnostics } from "./agent-run-diagnostics.js";
 import { withAgentRunDispatchExecutionIdentity } from "./agent-run-dispatch-execution-identity.js";
+import { projectWithdrawnAgentInput } from "./agent-run-dispatch-outcome.js";
 import { resolveExecutionIdentitySpawnFacts } from "./agent-run-execution-lineage.js";
 import { resolveAgentRunContinuationHandoff } from "./agent-run-execution-phase.continuation.js";
 import type { StartAgentRunExecutionParams } from "./agent-run-execution-types.js";
+import { dispatchAgentRunWithMedia } from "./agent-run-media.js";
 import { emitAgentRunSessionChanges } from "./agent-run-session-effects.js";
 import { settleUnstartedGatewayFollowup } from "./agent-run-subagent.js";
 import {
@@ -107,9 +106,7 @@ async function executeAgentRun(
   let finishUndispatchedFollowup = false;
   try {
     await using runtimeResources = new AsyncDisposableStack();
-    let preparedModelRuntimeLease = prepared.preparedModelRuntimeLease
-      ? runtimeResources.use(prepared.preparedModelRuntimeLease)
-      : undefined;
+    let preparedModelRuntimeLease = runtimeResources.use(prepared.preparedModelRuntimeLease);
     let replyDispatchRuntime = prepared.replyDispatchRuntime;
     let workspaceOverride = prepared.workspaceOverride;
     let leaseActive = true;
@@ -178,19 +175,19 @@ async function executeAgentRun(
             agentId: params.activeSessionAgentId,
             reason: "agent.input.settled",
           },
-          { accessChanged: false },
+          { accessChanged: false, rowScope: "runtime" },
         );
       }
     };
     let dispatched = false;
     const dispatchAdmittedAgentRun = (
-      dispatch: Parameters<typeof dispatchAgentRunWithCommentaryMedia>[0],
+      dispatch: Parameters<typeof dispatchAgentRunWithMedia>[0],
     ) => {
       const run = () => {
         const execution = withPreparedModelRuntimePluginGenerationScope(
           replyDispatchRuntime.pluginGeneration,
-          () => dispatchAgentRunWithCommentaryMedia(dispatch, params),
-          () => (leaseActive ? preparedModelRuntimeLease?.snapshot : undefined),
+          () => dispatchAgentRunWithMedia(dispatch, params),
+          () => (leaseActive ? preparedModelRuntimeLease.snapshot : undefined),
         );
         dispatched = true;
         return execution;
@@ -258,20 +255,19 @@ async function executeAgentRun(
         }
         await settleUnstartedFollowup(outcome);
         publishFinalAfterCleanup = () => {
-          setAbortedAgentDedupeEntries({
+          const payload = projectWithdrawnAgentInput(
+            buildAbortedAgentPayload(params.runId, stopReason, {
+              agentId: params.activeSessionAgentId,
+            }),
+            readWithdrawnUserTurnInputId(prepared.userTurn.recorder),
+          );
+          setGatewayDedupeEntries({
             dedupe: params.context.dedupe,
             keys: params.agentDedupeKeys,
             session: captureAgentJobSession(jobSessionBinding),
-            agentId: params.activeSessionAgentId,
-            runId: params.runId,
-            stopReason,
+            entry: diagnostics.forReplay({ ts: Date.now(), ok: true, payload }),
           });
-          params.io.emitFinal(
-            [true, buildAbortedAgentPayload(params.runId, stopReason), undefined],
-            {
-              runId: params.runId,
-            },
-          );
+          params.io.emitFinal([true, payload, undefined], { runId: params.runId });
         };
       };
       try {
@@ -338,9 +334,6 @@ async function executeAgentRun(
             execApprovalContinuationPromptRange,
           }));
         }
-        const senderIsOwner = prepared.userTurn.senderIsOwner;
-        const userTurnTranscriptRecorder = prepared.userTurn.recorder;
-
         const ingressAgentId = params.resolvedSessionKey
           ? params.activeSessionAgentId
           : params.agentId;
@@ -448,7 +441,7 @@ async function executeAgentRun(
               )
             : undefined;
         finalizePreparedAgentRunUserTurn(prepared.userTurn);
-        const execution = dispatchAdmittedAgentRun(
+        await dispatchAdmittedAgentRun(
           withAgentRunDispatchExecutionIdentity(
             {
               assertCurrent: assertDispatchCurrent,
@@ -531,7 +524,7 @@ async function executeAgentRun(
                 runtimeContextFragments: params.client?.internal?.runtimeContextFragments,
                 inputProvenance: params.inputProvenance,
                 privateCompletion: prepared.userTurn.privateCompletion,
-                senderIsOwner,
+                senderIsOwner: prepared.userTurn.senderIsOwner,
                 sessionEffects: params.sessionEffects,
                 skipInitialSessionTouch: params.skipAgentInitialSessionTouch,
                 preserveUserFacingSessionModelState:
@@ -568,7 +561,7 @@ async function executeAgentRun(
                 internalDeliverySuppressErrors:
                   params.client?.internal?.internalDeliverySuppressErrors,
                 suppressPromptPersistence: prepared.userTurn.suppressPromptPersistence,
-                userTurnTranscriptRecorder,
+                userTurnTranscriptRecorder: prepared.userTurn.recorder,
                 cleanupBundleMcpOnRunEnd: params.request.cleanupBundleMcpOnRunEnd,
                 ...continuationHandoff,
                 abortSignal: prepared.activeRunAbort.controller.signal,
@@ -604,6 +597,11 @@ async function executeAgentRun(
                 }),
                 onSessionIdChanged: (sessionId) => {
                   if (prepared.activeRunAbort.entry) {
+                    adoptExecRequestSession({
+                      runId: params.runId,
+                      previousSessionId: prepared.activeRunAbort.entry.sessionId,
+                      sessionId,
+                    });
                     prepared.activeRunAbort.entry.sessionId = sessionId;
                   }
                 },
@@ -646,7 +644,6 @@ async function executeAgentRun(
             executionIdentitySpawnFacts,
           ),
         );
-        await execution;
       } catch (err) {
         if (prepared.activeRunAbort.controller.signal.aborted && isAbortError(err)) {
           await finishUndispatchedAbort();

@@ -13,6 +13,7 @@ import { resolveContextEngine } from "../../../context-engine/registry.js";
 import { callGateway } from "../../../gateway/call.js";
 import { onAgentEvent } from "../../../infra/agent-events.js";
 import { getAgentRunContext } from "../../../infra/agent-run-registry.js";
+import { sqliteWorkerOwnerProbe as probe } from "../../../infra/sqlite-worker-owner-probe.test-support.js";
 import * as stateWorker from "../../../state/openclaw-state-worker-store.js";
 import * as internalSessionEffects from "../../internal-session-effects.js";
 import { loadAgentRuntimePluginRegistryHandle } from "../../runtime-plugins.js";
@@ -37,9 +38,9 @@ const hasLiveContinuationCustodyMock = vi.hoisted(() =>
   vi.fn<(_sessionKey: string) => Promise<boolean>>(async () => false),
 );
 const sessionAccessorMocks = vi.hoisted(() => ({
-  loadSessionEntryReadOnly: vi.fn<
-    typeof import("../../../config/sessions/session-accessor.js").loadSessionEntryReadOnly
-  >(() => undefined),
+  readSessionEntryReadOnlyInWorker: vi.fn<
+    typeof import("../../../config/sessions/session-entry-read-runtime.js").readSessionEntryReadOnlyInWorker
+  >(async () => undefined),
 }));
 
 const noop = () => {};
@@ -61,12 +62,20 @@ vi.mock("../../../gateway/call.js", () => ({
   callGateway: vi.fn(respondToGatewayRequest),
 }));
 
-vi.mock("../../../config/sessions/session-accessor.js", async (importOriginal) => {
+vi.mock("../../../config/sessions/session-entry-read-runtime.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../../../config/sessions/session-accessor.js")>();
+    await importOriginal<typeof import("../../../config/sessions/session-entry-read-runtime.js")>();
   return {
     ...actual,
-    loadSessionEntryReadOnly: sessionAccessorMocks.loadSessionEntryReadOnly,
+    readSessionEntryReadOnlyInWorker: async (
+      ...args: Parameters<typeof actual.readSessionEntryReadOnlyInWorker>
+    ) => {
+      const [, assertCurrent] = args;
+      assertCurrent?.();
+      const entry = await sessionAccessorMocks.readSessionEntryReadOnlyInWorker(...args);
+      assertCurrent?.();
+      return entry;
+    },
   };
 });
 
@@ -178,7 +187,7 @@ describe("subagent registry archive behavior", () => {
     hasLiveOrRecentlyDispatchedContinuationWorkMock.mockReset().mockReturnValue(false);
     hasLiveContinuationCustodyMock.mockReset().mockResolvedValue(false);
     vi.mocked(getAgentRunContext).mockReset().mockReturnValue(undefined);
-    sessionAccessorMocks.loadSessionEntryReadOnly.mockReset();
+    sessionAccessorMocks.readSessionEntryReadOnlyInWorker.mockReset();
     await mod.resetSubagentRegistryForTests({ persist: false });
     settleRootWork = observeRootWork();
   });
@@ -358,7 +367,7 @@ describe("subagent registry archive behavior", () => {
     const attachmentsDir = path.join(attachmentsRootDir, "child");
     await fs.mkdir(attachmentsDir, { recursive: true });
     await fs.writeFile(path.join(attachmentsDir, "artifact.txt"), "artifact", "utf8");
-    sessionAccessorMocks.loadSessionEntryReadOnly.mockReturnValue({
+    sessionAccessorMocks.readSessionEntryReadOnlyInWorker.mockResolvedValue({
       sessionId: "session-delete-retry",
       lifecycleRevision: "lifecycle-delete-retry",
       updatedAt: Date.now(),
@@ -490,31 +499,19 @@ describe("subagent registry archive behavior", () => {
         ]),
       };
     });
-    const execute = stateWorker.runOpenClawStateWorkerOperation;
     let rejectedWrites = 0;
     let refusedPreimage: SubagentRunRecord | undefined;
-    const writer = vi
-      .spyOn(stateWorker, "runOpenClawStateWorkerOperation")
-      .mockImplementation((owner, run, options) =>
-        execute(
-          owner,
-          (scope) =>
-            run({
-              execute: async (command, executeOptions) => {
-                if (
-                  command.type === "subagents.persistChanges" &&
-                  (command.input as SubagentRegistryWrite).deleteRunIds.includes(runId)
-                ) {
-                  rejectedWrites += 1;
-                  refusedPreimage = subagentRuns.get(runId);
-                  throw new Error("retirement write rejected");
-                }
-                return scope.execute(command, executeOptions);
-              },
-            }),
-          options,
-        ),
-      );
+    const writer = probe.command(stateWorker, async (command, executeOptions, scope) => {
+      if (
+        command.type === "subagents.persistChanges" &&
+        (command.input as SubagentRegistryWrite).deleteRunIds.includes(runId)
+      ) {
+        rejectedWrites += 1;
+        refusedPreimage = subagentRuns.get(runId);
+        throw new Error("retirement write rejected");
+      }
+      return scope.execute(command, executeOptions);
+    });
     try {
       await sweepAndSettleCleanup();
       expect(rejectedWrites).toBe(1);
@@ -792,7 +789,7 @@ describe("subagent registry archive behavior", () => {
     };
     const deleteGate = createDeferred();
     const deleteEntered = createDeferred();
-    sessionAccessorMocks.loadSessionEntryReadOnly.mockReturnValue({
+    sessionAccessorMocks.readSessionEntryReadOnlyInWorker.mockResolvedValue({
       sessionId: "session-delete-inflight",
       lifecycleRevision: "lifecycle-delete-inflight",
       updatedAt: Date.now(),

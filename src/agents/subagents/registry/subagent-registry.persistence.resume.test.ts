@@ -681,6 +681,7 @@ describe("subagent registry persistence resume", () => {
         };
         let firstLifecycleOpen = true;
         const gatewayContext = {
+          localEmbedded: true,
           chatAbortControllers: new Map<string, ChatAbortControllerEntry>(),
           recoveryRuntime,
           resolveGatewayContext: vi.fn(),
@@ -706,6 +707,8 @@ describe("subagent registry persistence resume", () => {
           expect.objectContaining({ method: "agent.wait" }),
         );
 
+        // Activation's collector publications must settle before the manual sweep captures them.
+        await settleSubagentRegistryPersistenceWork(() => settleOwnedWork?.(true));
         const sweptWake = createDeferredCore<boolean>();
         wakeRequester.mockImplementationOnce(() => {
           sweptWake.resolve(false);
@@ -735,6 +738,7 @@ describe("subagent registry persistence resume", () => {
           waitForAgent: vi.fn(async () => ({ status: "pending" })),
         };
         const replacementGateway = {
+          localEmbedded: true,
           chatAbortControllers: new Map<string, ChatAbortControllerEntry>(),
           recoveryRuntime: replacementRuntime,
           resolveGatewayContext: () => replacementGateway as never,
@@ -938,13 +942,15 @@ describe("subagent registry persistence resume", () => {
         }
 
         if (requesterYielded) {
-          expect(restored?.requesterSettleWake).toMatchObject({
+          await settleSubagentRegistryPersistenceWork();
+          expect(wakeRequester).toHaveBeenCalledOnce();
+          // Restore-time resume reads are asynchronous (#166845), so the settling
+          // wake can complete before this point; assert the batch it was handed.
+          expect(wakeRequester.mock.calls[0]?.[0].settledEntry?.requesterSettleWake).toMatchObject({
             batchRunIds: prepared ? [predecessor.runId, run.runId] : [run.runId],
             requesterYieldBatch: true,
             afterRequesterYield: true,
           });
-          await settleSubagentRegistryPersistenceWork();
-          expect(wakeRequester).toHaveBeenCalledOnce();
           expect(readPersistedRun(run.runId)?.requesterSettleWake).toBeUndefined();
         } else {
           expect(restored?.requesterSettleWake).toBeUndefined();

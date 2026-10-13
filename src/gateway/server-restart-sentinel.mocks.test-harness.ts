@@ -91,6 +91,18 @@ const mocks = vi.hoisted(() => {
       }),
     ),
     loadSessionEntry: vi.fn<(sessionKey: string) => LoadedSessionEntry>(),
+    resolveSessionTarget:
+      vi.fn<
+        typeof import("./session-utils-store-worker.js").resolveGatewaySessionStoreTargetInWorker
+      >(),
+    captureSessionEventTarget:
+      vi.fn<
+        typeof import("../auto-reply/reply/session-event-handoff.js").captureSessionEventTargetForHost
+      >(),
+    enqueueSessionEvent:
+      vi.fn<
+        typeof import("../auto-reply/reply/session-event-handoff.js").enqueueSessionEventForHost
+      >(),
     deliveryContextFromSession: vi.fn<
       typeof import("../utils/delivery-context.read.js").deliveryContextFromSession
     >(() => undefined),
@@ -295,6 +307,17 @@ vi.mock("../channels/plugins/session-conversation.js", async (importOriginal) =>
 
 vi.mock("../channels/plugins/session-thread-info-loaded.js", () => ({
   resolveLoadedSessionThreadInfo: mocks.parseSessionThreadInfo,
+}));
+
+// mock-isolation: Delivery reads its session target in the worker; route it through loadSessionEntry rows.
+vi.mock("./session-utils-store-worker.js", () => ({
+  resolveGatewaySessionStoreTargetInWorker: mocks.resolveSessionTarget,
+}));
+
+// mock-isolation: Observe ordinary event adoption for plain restart notices without a model turn.
+vi.mock("../auto-reply/reply/session-event-handoff.js", () => ({
+  captureSessionEventTargetForHost: mocks.captureSessionEventTarget,
+  enqueueSessionEventForHost: mocks.enqueueSessionEvent,
 }));
 
 vi.mock("./session-utils.js", async (importOriginal) => ({

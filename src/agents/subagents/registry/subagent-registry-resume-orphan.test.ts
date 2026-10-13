@@ -1,8 +1,13 @@
 import { expect, it, vi } from "vitest";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
 import { handleOrphanedSubagentResume } from "./subagent-registry-resume-orphan.js";
+import type { SubagentRunOrphanReason } from "./subagent-session-reconciliation.js";
 
-function createHarness(params?: { terminal?: boolean; retainedRequiredDelivery?: boolean }) {
+function createHarness(params?: {
+  terminal?: boolean;
+  retainedRequiredDelivery?: boolean;
+  orphanReason?: SubagentRunOrphanReason | null;
+}) {
   const now = Date.now();
   const retainedRequiredDelivery = params?.retainedRequiredDelivery === true;
   const entry = createSubagentRunRecord({
@@ -29,10 +34,12 @@ function createHarness(params?: { terminal?: boolean; retainedRequiredDelivery?:
     ...(params?.terminal ? { endedAt: now } : {}),
   });
   const complete = vi.fn(async () => {});
+  // The child session store has no row for this child: the resolved orphan check.
   const handled = handleOrphanedSubagentResume({
     runId: entry.runId,
     entry,
-    source: "restore",
+    orphanReason:
+      params?.orphanReason === undefined ? "missing-session-entry" : params.orphanReason,
     complete,
     warn: vi.fn(),
   });
@@ -71,6 +78,13 @@ it("settles a partially terminal orphan through canonical completion", async () 
 
 it("preserves a retained required completion delivery after its child session is gone", () => {
   const harness = createHarness({ terminal: true, retainedRequiredDelivery: true });
+
+  expect(harness.handled).toBe(false);
+  expect(harness.complete).not.toHaveBeenCalled();
+});
+
+it("leaves a run with a current child session to the ordinary resume path", () => {
+  const harness = createHarness({ orphanReason: null });
 
   expect(harness.handled).toBe(false);
   expect(harness.complete).not.toHaveBeenCalled();

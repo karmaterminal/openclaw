@@ -153,11 +153,18 @@ export async function persistAgentSessionPhase(params: {
       channel: sessionDeliveryChannel(entry),
       chatType: entry?.chatType,
     }) === "deny";
+  const rejectDelivery = (): undefined => {
+    params.respond(
+      false,
+      undefined,
+      errorShape(ErrorCodes.INVALID_REQUEST, "send blocked by session policy"),
+    );
+    return undefined;
+  };
   if (params.storePath && !params.suppressVisibleSessionEffects) {
     if (abortForLifecycleRotation()) {
       return undefined;
     }
-    let deniedBySendPolicy = false;
     let deniedSessionEntry: SessionEntry | undefined;
     let persisted: SessionEntry | undefined;
     let mutationError: ReturnType<typeof errorShape> | undefined;
@@ -391,7 +398,6 @@ export async function persistAgentSessionPhase(params: {
               params.setMainRestartRecoveryOwnerLease(mainRestartRecoveryOwnerLease);
             }
             if (isDeliveryDenied(merged)) {
-              deniedBySendPolicy = true;
               deniedSessionEntry = merged;
               return null;
             }
@@ -436,7 +442,7 @@ export async function persistAgentSessionPhase(params: {
     if (abortForLifecycleRotation()) {
       return undefined;
     }
-    if (deniedBySendPolicy && deniedSessionEntry) {
+    if (deniedSessionEntry) {
       sessionEntry = deniedSessionEntry;
       resolvedSessionId = sessionEntry.sessionId;
     } else if (persisted) {
@@ -468,13 +474,8 @@ export async function persistAgentSessionPhase(params: {
       return undefined;
     }
     skipAgentInitialSessionTouch = params.touchInteraction;
-    if (deniedBySendPolicy) {
-      params.respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "send blocked by session policy"),
-      );
-      return undefined;
+    if (deniedSessionEntry) {
+      return rejectDelivery();
     }
   }
 
@@ -532,12 +533,7 @@ export async function persistAgentSessionPhase(params: {
     });
   }
   if (isDeliveryDenied(sessionEntry)) {
-    params.respond(
-      false,
-      undefined,
-      errorShape(ErrorCodes.INVALID_REQUEST, "send blocked by session policy"),
-    );
-    return undefined;
+    return rejectDelivery();
   }
   const isMainSession =
     !params.suppressVisibleSessionEffects &&

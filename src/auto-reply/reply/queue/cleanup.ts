@@ -1,6 +1,10 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { resolveEmbeddedSessionLane } from "../../../agents/embedded-agent-runner/lanes.js";
-import { clearCommandLane, countQueuedCommandsInLane } from "../../../process/command-queue.js";
+import {
+  clearCommandLane,
+  countQueuedCommandsInLane,
+  prepareCommandLaneClear,
+} from "../../../process/command-queue.js";
 import {
   agentSessionKeysMatchByRequestKey,
   normalizeAgentId,
@@ -9,7 +13,7 @@ import {
 import { defaultRuntime } from "../../../runtime.js";
 import { removeQueuedItemsByRef } from "../../../utils/queue-helpers.js";
 import { clearFollowupDrainCallback } from "./drain.js";
-import { completeFollowupRunLifecycle } from "./lifecycle.js";
+import { completeFollowupRuns } from "./lifecycle.js";
 import { FOLLOWUP_QUEUES, followupQueueSources } from "./state.js";
 import { consumeQueueSummaryDelivery } from "./summary-consumption.js";
 import type { FollowupRun } from "./types.js";
@@ -171,14 +175,14 @@ export function prepareSessionFollowupCleanup(params: {
       );
       const detached = new Set([...pending, ...summaries]);
       removed += detached.size;
-      for (const source of detached) {
-        try {
-          // Stop relinquishes queued turns on purpose: cancellation, not abandonment.
-          completeFollowupRunLifecycle(source, "cancelled");
-        } catch (error) {
+      // Stop relinquishes queued turns on purpose: cancellation, not abandonment.
+      completeFollowupRuns(
+        detached,
+        (error) => {
           defaultRuntime.error?.(`followup queue cancellation settlement failed: ${String(error)}`);
-        }
-      }
+        },
+        "cancelled",
+      );
       // Settlement of accepted removals is unconditional; later effects need current authority.
       params.assertCurrent();
       if (
@@ -209,6 +213,31 @@ export function clearSessionLifecycleQueues(
   })();
   const laneCleared = clearSessionLifecycleLanes(params);
   return { followupCleared, laneCleared, keys };
+}
+
+export function prepareSessionLifecycleQueueCleanup(
+  params: SessionLifecycleQueueTarget & { assertCurrent: () => void },
+): () => ClearSessionQueueResult {
+  params.assertCurrent();
+  const { keys, sessionKeyAliases, matchesLaneEntry } = resolveSessionLifecycleQueueKeys(params);
+  const clearFollowups = prepareSessionFollowupCleanup({
+    ...params,
+    keys,
+    sessionKeyAliases,
+  });
+  const lanes = keys.map((key) =>
+    prepareCommandLaneClear(resolveEmbeddedSessionLane(key), matchesLaneEntry(key)),
+  );
+  return () => {
+    params.assertCurrent();
+    const followupCleared = clearFollowups();
+    let laneCleared = 0;
+    for (const clearLane of lanes) {
+      params.assertCurrent();
+      laneCleared += clearLane();
+    }
+    return { followupCleared, laneCleared, keys };
+  };
 }
 
 export function clearSessionLifecycleLanes(
