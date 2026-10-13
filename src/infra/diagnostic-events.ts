@@ -363,7 +363,7 @@ type DiagnosticSessionTurnCreatedEvent = DiagnosticSessionEvent & {
   runId: string;
   agentId?: string;
   channel?: string;
-  trigger: "user" | "heartbeat";
+  trigger: "user" | "event" | "heartbeat";
 };
 
 type DiagnosticLaneEnqueueEvent = DiagnosticBaseEvent & {

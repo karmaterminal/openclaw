@@ -36,6 +36,7 @@ import {
 } from "../../infra/system-event-ownership.js";
 import {
   consumeSelectedSystemEventEntries,
+  isSystemEventTurnOwned,
   restoreConsumedSystemEventEntries,
   peekSystemEventEntries,
   type SystemEvent,
@@ -157,9 +158,13 @@ export async function prepareFormattedSystemEvents(params: {
   // the ownership filter; our delivery-ack/session filtering runs after it.
   // Heartbeat turns pass a prepared generic selection so dedicated reminders
   // never leak into this consume window.
-  let selected = selectGenericSystemEvents(params.events ?? peekSystemEventEntries(queueKey), {
-    suppressHeartbeatOwnedEvents: params.suppressHeartbeatOwnedEvents,
-  });
+  // Claimed turns retain their own execution and delivery owner (#167113).
+  let selected = selectGenericSystemEvents(
+    (params.events ?? peekSystemEventEntries(queueKey)).filter(
+      (event) => !isSystemEventTurnOwned(queueKey, event),
+    ),
+    { suppressHeartbeatOwnedEvents: params.suppressHeartbeatOwnedEvents },
+  );
   // Heartbeat admission may defer captured occurrences to a delivery owner: they
   // are still formatted into this prompt but stay queued until that owner commits.
   // Consume before the first await, as upstream does: a concurrent drain or a

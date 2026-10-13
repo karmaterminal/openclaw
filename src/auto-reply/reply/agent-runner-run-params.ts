@@ -24,6 +24,7 @@ import { isReasoningTagProvider } from "../../utils/provider-utils.js";
 import type { resolveProviderScopedAuthProfile } from "./agent-runner-auth-profile.js";
 import type { AgentFallbackCandidateCommonParams } from "./agent-runner-fallback-cycle.types.js";
 import type { FollowupRun } from "./queue.js";
+import { resolveReplyRunTrigger } from "./reply-turn-kind.js";
 
 export function resolveModelFallbackOptions(
   run: FollowupRun["run"],
@@ -198,7 +199,8 @@ export function buildFallbackCandidateTurnParams(params: AgentFallbackCandidateC
     preparedTtsPreferences: turn.opts?.preparedTtsPreferences,
     preparedRunAdmission: params.preparedRunAdmission,
     messageActionTurnCapability: params.messageActionTurnCapability,
-    trigger: turn.hookTrigger ?? (turn.isHeartbeat ? "heartbeat" : "user"),
+    // Continuation wakes are heartbeat-equivalent; everything else is upstream's user/event.
+    trigger: turn.hookTrigger === "heartbeat" ? "heartbeat" : resolveReplyRunTrigger(turn),
     lane: params.runLane,
     fastModeStartedAtMs: params.fastModeStartedAtMs,
     fastModeAutoProgressState: params.fastModeAutoProgressState,

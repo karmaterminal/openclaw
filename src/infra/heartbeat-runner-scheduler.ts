@@ -35,7 +35,7 @@ import {
 } from "./heartbeat-wake.js";
 import { isSessionEventWakePollDeferred } from "./session-event-wake.js";
 import { resolveSystemEventQueueKey } from "./system-event-ownership.js";
-import { peekSystemEventEntries } from "./system-events.js";
+import { peekDeliverableSystemEventEntries } from "./system-events.js";
 
 const loadHeartbeatExecution = createLazyRuntimeModule(() => import("./heartbeat-runner-run.js"));
 
@@ -231,7 +231,7 @@ export function startHeartbeatRunnerScheduled(opts: {
         agent.heartbeat = { ...agent.heartbeat, every: `${scheduledEveryMs}ms` };
       }
       const pendingEvents = execEventWake
-        ? peekSystemEventEntries(
+        ? peekDeliverableSystemEventEntries(
             resolveSystemEventQueueKey(requestedSessionKey ?? "global", agentId),
           ).filter((event) => !isHeartbeatDeliveryAwarenessEvent(event))
         : [];

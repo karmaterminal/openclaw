@@ -40,6 +40,7 @@ import {
   resolveQueuedRestartContinuationMessageId,
   RESTART_CONTINUATION_BUSY_RETRY_ERROR,
 } from "./server-restart-sentinel-continuation-intent.js";
+import { deliverRestartSentinelEvent } from "./server-restart-sentinel-session-event.js";
 import { loadSessionEntry } from "./session-utils.js";
 
 const log = createSubsystemLogger("gateway/restart-sentinel");
@@ -269,6 +270,20 @@ async function deliverResolvedQueuedSessionDelivery(params: {
         "adoption-scoped delivery targets a subagent session that no longer exists",
       );
     }
+    if (!awaitsTurnAdoption && !recipientAuthority && !isContinuationReturn) {
+      // A plain restart notice carries no continuation custody: run it through
+      // ordinary session execution and settle the row on that turn (#167113).
+      await deliverRestartSentinelEvent(
+        params.entry,
+        canonicalKey,
+        params.entry.agentId ?? agentId,
+        params.queueContext,
+      );
+      return;
+    }
+    // Continuation-owned rows keep adoption-scoped custody: the queued event
+    // carries the row's ack id, recipient authority and return wake, and the
+    // row settles only when a prompt adopts it.
     const replayed = enqueueRestartSentinelWake({
       entryId: params.entry.id,
       message: params.entry.text,
@@ -321,36 +336,12 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       expectedSessionId: params.entry.expectedSessionId,
       actualSessionId: entry?.sessionId ?? null,
     });
-    const replayed = enqueueRestartSentinelWake({
-      entryId: params.entry.id,
-      message: params.entry.message,
-      sessionKey: canonicalKey,
-      agentId,
-      deliveryContext: queuedDeliveryContext,
-      traceparent: params.entry.traceparent,
-      sessionDeliveryAckId: params.entry.id,
-      sessionDeliveryAckStateDir: stateDir,
-    });
-    if (replayed === "refused") {
-      deferRefusedRestartSentinelWake({ sessionKey: canonicalKey, queueId: params.entry.id });
-    }
+    await deliverRestartSentinelEvent(params.entry, canonicalKey, agentId, params.queueContext);
     return;
   }
 
   if (!params.entry.route) {
-    const replayed = enqueueRestartSentinelWake({
-      entryId: params.entry.id,
-      message: params.entry.message,
-      sessionKey: canonicalKey,
-      agentId,
-      deliveryContext: queuedDeliveryContext,
-      traceparent: params.entry.traceparent,
-      sessionDeliveryAckId: params.entry.id,
-      sessionDeliveryAckStateDir: stateDir,
-    });
-    if (replayed === "refused") {
-      deferRefusedRestartSentinelWake({ sessionKey: canonicalKey, queueId: params.entry.id });
-    }
+    await deliverRestartSentinelEvent(params.entry, canonicalKey, agentId, params.queueContext);
     return;
   }
 

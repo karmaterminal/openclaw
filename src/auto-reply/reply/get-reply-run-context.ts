@@ -104,6 +104,7 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
   // subagent completion) is an external turn-entry, so it is deliberately NOT a
   // continuation wake — the reset gate rewinds the chain budget for it.
   const isContinuationWake = continuationTrigger === "work-wake" || isDelegateWake;
+  const isInternalEvent = opts?.internalEventExecution !== undefined;
   const explicitThinkingLevelOverride = normalizeThinkLevel(opts?.thinkingLevelOverride);
   const effectiveQueueMode = opts?.queueModeOverride ?? perMessageQueueMode;
   const traceAttributes = {
@@ -385,26 +386,27 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
           : {}),
       }
     : { ...sessionCtx, ThreadStarterBody: undefined };
-  let inboundContextSessionEntry = isHeartbeat
-    ? undefined
-    : ((sessionKey !== undefined ? sessionStore?.[sessionKey] : undefined) ??
-      sessionEntryHandle?.getCurrent() ??
-      sessionEntry);
-  // Heartbeats are synthetic system turns: delivery facts still drive routing and
-  // formatting, but must not be presented to the model as user-role inbound context.
+  let inboundContextSessionEntry =
+    isHeartbeat || isInternalEvent
+      ? undefined
+      : ((sessionKey !== undefined ? sessionStore?.[sessionKey] : undefined) ??
+        sessionEntryHandle?.getCurrent() ??
+        sessionEntry);
+  // Synthetic turns retain routing facts without inventing user-role inbound context.
   const buildInboundContextState = () => ({
     activeGoalContext: formatActiveGoalContext(inboundContextSessionEntry),
-    inboundUserContext: isHeartbeat
-      ? ""
-      : buildInboundUserContextPrefix(
-          inboundUserContextSessionCtx,
-          envelopeOptions,
-          inboundContextSessionEntry,
-        ),
+    inboundUserContext:
+      isHeartbeat || isInternalEvent
+        ? ""
+        : buildInboundUserContextPrefix(
+            inboundUserContextSessionCtx,
+            envelopeOptions,
+            inboundContextSessionEntry,
+          ),
   });
   let { activeGoalContext, inboundUserContext } = buildInboundContextState();
   const refreshInboundContextAfterAdmissionWait = async () => {
-    if (isHeartbeat) {
+    if (isHeartbeat || isInternalEvent) {
       return;
     }
     inboundContextSessionEntry =

@@ -420,6 +420,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       onModelSelected: opts?.onModelSelected,
       prepareAssistantTranscriptMessage: opts?.prepareAssistantTranscriptMessage,
       resolveReplyDelivery: opts?.resolveReplyDelivery,
+      onDeliberateSilentTerminalReply: opts?.onDeliberateSilentTerminalReply,
     },
     ...(opts?.onFollowupQueueDisposition
       ? { onQueueDisposition: opts.onFollowupQueueDisposition }
@@ -457,6 +458,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
       normalizeOptionalString(sessionCtx.ChatId),
     originatingChatType: replyRoute.chatType,
     run: {
+      internalEventExecution: opts?.internalEventExecution,
       providerReviewAcknowledgment: opts?.providerReviewAcknowledgment,
       agentId,
       agentDir,
