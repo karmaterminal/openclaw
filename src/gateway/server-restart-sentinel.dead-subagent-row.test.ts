@@ -60,7 +60,7 @@ function installMuteTurnWakeHandler(cfg: OpenClawConfig) {
   const wakes: ObservedWake[] = [];
   const dispose = setHeartbeatWakeHandler(async (request: HeartbeatWakeRequest) => {
     // Same resolution the runner's preflight uses for a non-trusted wake.
-    const session = resolveHeartbeatSession(cfg, AGENT_ID, undefined, request.sessionKey);
+    const session = await resolveHeartbeatSession(cfg, AGENT_ID, undefined, request.sessionKey);
     wakes.push({
       requestedSessionKey: request.sessionKey,
       source: request.source,
