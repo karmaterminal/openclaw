@@ -133,6 +133,37 @@ export function resolveSessionToolContext(opts?: {
   };
 }
 
+// sessions_search returns this warning beside its byte-capped results, so the warning names a
+// bounded number of owners and counts the rest.
+const MAX_NAMED_REFUSED_OWNERS = 10;
+
+/** Names the owners a broad read skipped (the first ten by id, then a count of the rest), from one agent id per skipped session, so a partial result never reads as complete. */
+export function describeRefusedSessionOwners(
+  stage: string,
+  agentIds: readonly string[],
+): string | undefined {
+  if (agentIds.length === 0) {
+    return undefined;
+  }
+  const counts = new Map<string, number>();
+  for (const agentId of agentIds) {
+    counts.set(agentId, (counts.get(agentId) ?? 0) + 1);
+  }
+  const sessions = (count: number) => `${count} ${count === 1 ? "session" : "sessions"}`;
+  const owners = [...counts].toSorted(([left], [right]) => left.localeCompare(right));
+  const named = owners
+    .slice(0, MAX_NAMED_REFUSED_OWNERS)
+    .map(([agentId, count]) => `"${agentId}" (${sessions(count)})`);
+  const rest = owners.slice(MAX_NAMED_REFUSED_OWNERS);
+  if (rest.length > 0) {
+    const restSessions = rest.reduce((total, [, count]) => total + count, 0);
+    named.push(
+      `and ${rest.length} more ${rest.length === 1 ? "agent" : "agents"} (${sessions(restSessions)})`,
+    );
+  }
+  return `Skipped ${stage} for agents the Gateway refused as unknown: ${named.join(", ")}.`;
+}
+
 export function classifySessionListKind(params: {
   classification: NonNullable<GatewaySessionListRow["classification"]>;
   peerKind?: GatewaySessionListRow["peerKind"];

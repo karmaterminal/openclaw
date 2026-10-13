@@ -119,7 +119,8 @@ describe("requested session agent ownership", () => {
         agents: { ownership: "explicit", entries: { main: {}, ops: {} } },
       };
 
-      expect(resolveRequestedSessionAgentId(cfg, "global", agentId)).toMatchObject({
+      // No canonical id exists, so the refusal carries no typed agent id.
+      expect(resolveRequestedSessionAgentId(cfg, "global", agentId)).toEqual({
         ok: false,
         error: {
           code: "INVALID_REQUEST",
@@ -128,6 +129,21 @@ describe("requested session agent ownership", () => {
       });
     },
   );
+
+  it("types an unknown explicit agent with its canonical id", () => {
+    const cfg: OpenClawConfig = {
+      agents: { ownership: "explicit", entries: { main: {}, ops: {} } },
+    };
+
+    expect(resolveRequestedSessionAgentId(cfg, "agent:copilot:acp:binding", " Copilot ")).toEqual({
+      ok: false,
+      error: {
+        code: "INVALID_REQUEST",
+        message: 'Unknown agent id " Copilot "',
+        details: { code: "UNKNOWN_AGENT_ID", agentId: "copilot" },
+      },
+    });
+  });
 
   it("keeps retired agent-qualified history readable outside global scope", () => {
     const cfg: OpenClawConfig = {
@@ -143,7 +159,13 @@ describe("requested session agent ownership", () => {
         { ...cfg, session: { scope: "global" } },
         "agent:retired:main",
       ),
-    ).toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } });
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_REQUEST",
+        details: { code: "UNKNOWN_AGENT_ID", agentId: "retired" },
+      },
+    });
   });
 });
 

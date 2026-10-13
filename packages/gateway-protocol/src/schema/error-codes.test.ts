@@ -1,6 +1,7 @@
 import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
 import { readSessionWorkspaceRecoveryRequiredError } from "../error-details.js";
+import { readUnknownAgentIdError } from "../gateway-error-details.js";
 import {
   ErrorCodes,
   CronJobNotFoundErrorDetailsSchema,
@@ -123,11 +124,25 @@ describe("gateway error details", () => {
     );
   });
 
-  it("validates unknown-agent details", () => {
+  it("validates and reads unknown-agent details", () => {
     const details = { code: GatewayErrorDetailCodes.UNKNOWN_AGENT_ID, agentId: "retired" };
     expect(Value.Check(UnknownAgentIdErrorDetailsSchema, details)).toBe(true);
     expect(Value.Check(GatewayErrorDetailsSchema, details)).toBe(true);
     expect(Value.Check(UnknownAgentIdErrorDetailsSchema, { ...details, agentId: "" })).toBe(false);
+    expect(readUnknownAgentIdError({ code: ErrorCodes.INVALID_REQUEST, details })).toEqual(details);
+    expect(readUnknownAgentIdError({ code: ErrorCodes.UNAVAILABLE, details })).toBeNull();
+    expect(
+      readUnknownAgentIdError({
+        code: ErrorCodes.INVALID_REQUEST,
+        details: { ...details, agentId: "" },
+      }),
+    ).toBeNull();
+    expect(
+      readUnknownAgentIdError({
+        code: ErrorCodes.INVALID_REQUEST,
+        message: 'Unknown agent id "retired"',
+      }),
+    ).toBeNull();
   });
 
   it.each(["WIZARD_NOT_FOUND", "SETUP_ADMISSION_BUSY"])("validates closed %s details", (code) => {

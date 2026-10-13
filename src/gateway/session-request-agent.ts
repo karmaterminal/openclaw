@@ -1,4 +1,8 @@
 import { ok, type Result } from "@openclaw/normalization-core/result";
+import {
+  GatewayErrorDetailCodes,
+  type UnknownAgentIdErrorDetails,
+} from "../../packages/gateway-protocol/src/gateway-error-details.js";
 import type { ErrorShape } from "../../packages/gateway-protocol/src/index.js";
 import {
   AgentSelectionRequiredError,
@@ -36,6 +40,19 @@ export function resolveChatSendSessionKey(
   return cfg.session?.scope !== "global" && sessionKey.trim().toLowerCase() === "global"
     ? resolveAgentMainSessionKey({ cfg, agentId })
     : sessionKey;
+}
+
+// Callers that read several owners skip exactly the refused one by this typed id, so the
+// canonical id goes in details while the message keeps the requested spelling.
+function unknownSessionAgent(
+  requestedAgentId: string | undefined,
+  agentId: string,
+): { ok: false; error: ErrorShape } {
+  const details: UnknownAgentIdErrorDetails = {
+    code: GatewayErrorDetailCodes.UNKNOWN_AGENT_ID,
+    agentId,
+  };
+  return invalidSessionRequest(`Unknown agent id "${requestedAgentId}"`, { details });
 }
 
 function admitRequestedAgent(agentId: string): RequestedSessionAgentIdResolution {
@@ -147,7 +164,7 @@ export function resolveRequestedSessionAgentId(
   const configuredAgentIds = listAgentIds(cfg);
   const normalizedRequestedAgentId = input.value;
   if (normalizedRequestedAgentId && !configuredAgentIds.includes(normalizedRequestedAgentId)) {
-    return invalidSessionRequest(`Unknown agent id "${explicitAgentId}"`);
+    return unknownSessionAgent(explicitAgentId, normalizedRequestedAgentId);
   }
   let ownerKey = key;
   if (parsed?.agentId) {
@@ -156,7 +173,7 @@ export function resolveRequestedSessionAgentId(
       cfg.session?.scope === "global" &&
       (parsed.rest === "main" || parsed.rest === normalizeMainKey(cfg.session?.mainKey));
     if (keyIsGlobalMainAlias && !configuredAgentIds.includes(keyAgentId)) {
-      return invalidSessionRequest(`Unknown agent id "${parsed.agentId}"`);
+      return unknownSessionAgent(parsed.agentId, keyAgentId);
     }
     if (normalizedRequestedAgentId && keyAgentId !== normalizedRequestedAgentId) {
       return invalidSessionRequest(
