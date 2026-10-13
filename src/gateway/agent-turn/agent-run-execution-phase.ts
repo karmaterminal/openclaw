@@ -106,9 +106,7 @@ async function executeAgentRun(
   let finishUndispatchedFollowup = false;
   try {
     await using runtimeResources = new AsyncDisposableStack();
-    let preparedModelRuntimeLease = prepared.preparedModelRuntimeLease
-      ? runtimeResources.use(prepared.preparedModelRuntimeLease)
-      : undefined;
+    let preparedModelRuntimeLease = runtimeResources.use(prepared.preparedModelRuntimeLease);
     let replyDispatchRuntime = prepared.replyDispatchRuntime;
     let workspaceOverride = prepared.workspaceOverride;
     let leaseActive = true;
@@ -189,7 +187,7 @@ async function executeAgentRun(
         const execution = withPreparedModelRuntimePluginGenerationScope(
           replyDispatchRuntime.pluginGeneration,
           () => dispatchAgentRunWithMedia(dispatch, params),
-          () => (leaseActive ? preparedModelRuntimeLease?.snapshot : undefined),
+          () => (leaseActive ? preparedModelRuntimeLease.snapshot : undefined),
         );
         dispatched = true;
         return execution;

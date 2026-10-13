@@ -64,7 +64,16 @@ export function collectNormalizedToolSchemaFindings(params: {
   normalizationFailureFinding: (error: unknown) => HealthFinding;
 }): readonly HealthFinding[] {
   const preNormalizationFindings: HealthFinding[] = [];
-  const rawToolsByName = buildReadableToolsByName(params.tools);
+  const rawToolInventory = buildReadableToolsByName(params.tools);
+
+  const projectDiagnostics = (
+    tools: readonly AnyAgentTool[],
+    diagnostics: readonly RuntimeToolSchemaDiagnostic[],
+    rawToolsByName?: ReadonlyMap<string, AnyAgentTool>,
+  ) =>
+    diagnostics.map((diagnostic) =>
+      toolSchemaDiagnosticToFinding({ agentId: params.agentId, tools, diagnostic, rawToolsByName }),
+    );
 
   let normalizedTools: AnyAgentTool[];
   try {
@@ -78,15 +87,7 @@ export function collectNormalizedToolSchemaFindings(params: {
       modelApi: params.model.api,
       model: params.model,
       onPreNormalizationSchemaDiagnostics: (diagnostics, sourceTools) => {
-        preNormalizationFindings.push(
-          ...diagnostics.map((diagnostic) =>
-            toolSchemaDiagnosticToFinding({
-              agentId: params.agentId,
-              tools: sourceTools,
-              diagnostic,
-            }),
-          ),
-        );
+        preNormalizationFindings.push(...projectDiagnostics(sourceTools, diagnostics));
       },
     });
   } catch (error) {
@@ -95,13 +96,10 @@ export function collectNormalizedToolSchemaFindings(params: {
 
   return [
     ...preNormalizationFindings,
-    ...inspectRuntimeToolInputSchemas(normalizedTools).map((diagnostic) =>
-      toolSchemaDiagnosticToFinding({
-        agentId: params.agentId,
-        tools: normalizedTools,
-        rawToolsByName,
-        diagnostic,
-      }),
+    ...projectDiagnostics(
+      normalizedTools,
+      inspectRuntimeToolInputSchemas(normalizedTools),
+      rawToolInventory,
     ),
   ];
 }

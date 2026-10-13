@@ -68,7 +68,11 @@ import { getSessionBindingService } from "../infra/outbound/session-binding-serv
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { runPluginHostCleanup } from "../plugins/host-hook-cleanup.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
-import { isIncognitoSessionKey, isSubagentSessionKey } from "../routing/session-key.js";
+import {
+  isIncognitoSessionKey,
+  isSubagentSessionKey,
+  toAgentStoreSessionKey,
+} from "../routing/session-key.js";
 import { resolveMissingAgentHarnessSessionError } from "../sessions/agent-harness-session-key.js";
 import {
   isModelSelectionLocked,
@@ -224,17 +228,18 @@ async function ensureSessionRuntimeCleanup(params: {
       : undefined,
     assertCurrent: params.assertCurrent,
   });
+  const queueKeys = [
+    ...params.target.storeKeys,
+    params.target.canonicalKey,
+    params.sessionId,
+  ].filter((key) => key !== undefined);
   const closeTrackedBrowserTabs = async () => {
     assertCurrent();
-    const closeKeys = new Set<string>([
-      params.key,
-      params.target.canonicalKey,
-      ...params.target.storeKeys,
-      params.sessionId ?? "",
-    ]);
     await cleanupBrowserSessionsForLifecycleEnd({
       cfg: params.cfg,
-      sessionKeys: [...closeKeys],
+      sessionKeys: [...queueKeys, params.key].map((requestKey) =>
+        toAgentStoreSessionKey({ agentId: params.target.agentId, requestKey }),
+      ),
       onWarn: (message) => logVerbose(message),
     });
     assertCurrent();

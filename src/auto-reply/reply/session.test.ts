@@ -2018,7 +2018,7 @@ describe("initSessionState browser tab cleanup", () => {
       "closeTrackedBrowserTabsForSessions",
     );
     expect(cleanupParams.sessionKeys).toEqual([
-      existingSessionId,
+      `agent:main:${existingSessionId}`,
       canonicalKey,
       "agent:main:telegram:default:direct:12345",
     ]);
