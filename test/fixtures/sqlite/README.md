@@ -24,6 +24,16 @@ Golden source contracts:
 
 Historical fixtures read these sources without deriving old tables from current DDL.
 
+`openclaw-agent-schema-v25.sql` is the exact agent DDL from commit
+`6a8b0dceaf` (#167932), upstream's canonical-writer schema 25.
+`openclaw-agent-schema-v25-fleet-captured.sql` is the DDL captured on 2026-10-13
+from a fleet agent database at the fleet's recipient-authority schema 25, written
+by deployed build `7d8a1a91c6`: `sqlite_master` statements in creation order, no
+rows, with memory-core FTS/vector tables and FTS5 shadow tables omitted. Unlike a
+fresh install it carries migration history (appended and reordered columns,
+quoted rebuilt tables, unmaterialized additive columns). Together they are the
+two real inputs to the schema-25 bridge.
+
 `openclaw-state-v2026.7.1-2.sqlite.gz` is a deterministic fixture for the
 shared state database created by OpenClaw tag `v2026.7.1-2` at commit
 `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.

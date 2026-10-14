@@ -302,7 +302,10 @@ export async function resolveGatewayScopedTools(
     ownerOnlyGatewayDeny.length > 0 ? { deny: ownerOnlyGatewayDeny } : undefined,
     Array.isArray(gatewayToolsCfg?.deny) ? { deny: gatewayToolsCfg.deny } : undefined,
   ]);
-  const inheritedToolDenylist = [...explicitDenylist];
+  const inheritedToolDenylist = [
+    ...explicitDenylist,
+    ...(requesterPolicies.inheritedToolPolicyForSpawn?.deny ?? []),
+  ];
   // Passed by reference to sessions_spawn and populated after the final policy
   // pass so child sessions inherit the actual parent tool surface.
   const inheritedToolAllowlist: string[] = [];
@@ -428,6 +431,7 @@ export async function resolveGatewayScopedTools(
     inheritedToolAllowlist,
     inheritedToolDenylist,
     inheritedToolPolicySource: requesterPolicies.inheritedToolPolicySource,
+    delegatedToolPolicyUnavailable: Boolean(requesterPolicies.delegatedToolPolicy),
     // Gateway tool-resolution builds the tool catalog for dispatch lookup, not
     // for live execution. Register continue_work + request_compaction via inert
     // stub callbacks so the catalog reflects the full continuation surface and

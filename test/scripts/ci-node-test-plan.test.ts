@@ -104,6 +104,7 @@ describe("Control UI release-only inventories", () => {
   const sidebar = "ui/src/components/app-sidebar.stress.browser.test.ts";
   const embed = "ui/src/e2e/native-embed-settings.e2e.test.ts";
   const entry = "ui/src/e2e/chat-session-entry.e2e.test.ts";
+  const staleBuild = "ui/src/e2e/control-ui-stale-build-reload.e2e.test.ts";
   const automationManagement =
     "extensions/qa-lab/src/control-ui-automation-management.real-gateway.e2e.test.ts";
   const releaseOnlyRealGateway = new Set([
@@ -155,6 +156,7 @@ describe("Control UI release-only inventories", () => {
     expect(groups.ui[0]?.includePatterns).not.toContain(sidebar);
     expect(groups.e2e[0]?.includePatterns).toContain(embed);
     expect(groups.e2e[0]?.includePatterns).toContain(entry);
+    expect(groups.e2e[0]?.includePatterns).not.toContain(staleBuild);
     expect(
       uiE2eRealGatewayTestFiles.filter((file) => groups.e2e[0]?.includePatterns?.includes(file)),
     ).toEqual(uiE2eRealGatewayTestFiles.filter((file) => !releaseOnlyRealGateway.has(file)));
@@ -175,6 +177,7 @@ describe("Control UI release-only inventories", () => {
       includeReleaseOnlyTests: false,
       changedPaths: [
         entry,
+        staleBuild,
         ...releaseOnlyRealGateway,
         "ui/src/components/app-sidebar.ts",
         "ui/src/e2e",
@@ -182,6 +185,7 @@ describe("Control UI release-only inventories", () => {
     };
     const groups = createUiTestShardGroups(options);
     expect(groups.e2e[0]?.includePatterns).toContain(entry);
+    expect(groups.e2e[0]?.includePatterns).toContain(staleBuild);
     expect(
       groups.e2e[0]?.includePatterns?.filter((file) => releaseOnlyRealGateway.has(file)).toSorted(),
     ).toEqual(

@@ -7,6 +7,7 @@ import { recordSessionParticipantBestEffort } from "../../../sessions/session-pa
 import { recordSubagentSpawned } from "../../../sessions/session-state-events.js";
 import { parseInlineAttachmentMountPath } from "../../../shared/inline-attachments.js";
 import { hasDeliveryTargetFields } from "../../../utils/delivery-context.shared.js";
+import { prepareNativeDelegatedToolPolicy } from "../../delegated-tool-policy.js";
 import { runSpawnPipeline, type SpawnBackendAdapter } from "../../spawn-pipeline.js";
 import { withGatewayToolOperatorContinuation } from "../../tools/gateway-caller-context.js";
 import {
@@ -78,7 +79,11 @@ export async function spawnSubagentDirect(
   params: SpawnSubagentParams,
   ctx: SpawnSubagentContext,
 ): Promise<SpawnSubagentResult> {
-  const assertActive = ctx.assertActive;
+  let assertDelegationCurrent: (() => void) | undefined;
+  const assertActive = () => {
+    ctx.assertActive?.();
+    assertDelegationCurrent?.();
+  };
   const promptedAt = Date.now();
   const task = params.task;
   const label = params.label?.trim() || "";
@@ -142,7 +147,16 @@ export async function spawnSubagentDirect(
   let contextEnginePreparation: PreparedContextEngineSubagentSpawn | undefined;
   let pipelineEntered = false;
   try {
-    assertActive?.();
+    const delegation = prepareNativeDelegatedToolPolicy({
+      config: cfg,
+      requesterAgentId,
+      targetAgentId,
+      requesterSessionKey: requesterInternalKey,
+      context: ctx,
+    });
+    const delegatedToolPolicy = delegation.policy;
+    assertDelegationCurrent = delegation.assertCurrent;
+    assertActive();
     if (reservationPending && !swarmReservation?.isCurrent()) {
       return { status: "error", error: "Collector FIFO reservation is no longer current" };
     }
@@ -155,7 +169,7 @@ export async function spawnSubagentDirect(
     }
     const childPlan = await resolveSubagentChildPlan({
       request: params,
-      ctx,
+      ctx: { ...ctx, assertActive },
       cfg,
       requesterInternalKey,
       requesterAgentId,
@@ -214,6 +228,7 @@ export async function spawnSubagentDirect(
       inheritedToolAllowlist: ctx.inheritedToolAllowlist,
       inheritedToolDenylist: ctx.inheritedToolDenylist,
       inheritedToolPolicySource: ctx.inheritedToolPolicySource,
+      delegatedToolPolicy,
       modelPatch: plan.initialSessionPatch,
       continuationPatch: buildContinuationSessionPatch(params),
       swarmGroupId,

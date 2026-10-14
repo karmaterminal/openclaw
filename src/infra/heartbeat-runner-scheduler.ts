@@ -70,7 +70,6 @@ export function startHeartbeatRunnerScheduled(opts: {
   // follow-ups. Persisted monitor ticks bypass it.
   const state = {
     cfg: opts.cfg ?? getRuntimeConfig(),
-    runtime,
     agents: new Map<string, HeartbeatAgentState>(),
     stopped: false,
   };
@@ -290,7 +289,7 @@ export function startHeartbeatRunnerScheduled(opts: {
             ? { trustedContinuationRouting: true }
             : {}),
           tasks: requestedTasks,
-          deps: { runtime: state.runtime },
+          deps: { runtime },
         };
         const execute = runOnce ?? (await loadHeartbeatExecution()).runHeartbeatOnceCore;
         // Import can outlive this runner or its wake generation. The wake owner
@@ -381,8 +380,7 @@ export function startHeartbeatRunnerScheduled(opts: {
     // Agent state is disjoint; concurrent broadcast dispatch prevents a slow
     // session from starving another agent's independent wake.
     const agentOutcomes = await Promise.all(enrolledAgents.map((agent) => runOneAgent(agent)));
-    let ran = false;
-    let firstResult: HeartbeatRunResult | undefined;
+    const ran = agentOutcomes.some(({ result }) => result.status === "ran");
     let firstFailure: Extract<HeartbeatRunResult, { status: "failed" }> | undefined;
     let firstGuardSkip: Extract<HeartbeatRunResult, { status: "skipped" }> | undefined;
     for (const { result, retryable } of agentOutcomes) {
@@ -391,8 +389,6 @@ export function startHeartbeatRunnerScheduled(opts: {
         // cooldown, so the retry does not replay their completed work.
         return result;
       }
-      ran ||= result.status === "ran";
-      firstResult ??= result;
       if (result.status === "failed") {
         firstFailure ??= result;
       }
@@ -413,7 +409,7 @@ export function startHeartbeatRunnerScheduled(opts: {
     return (
       firstGuardSkip ??
       firstFailure ??
-      firstResult ?? {
+      agentOutcomes[0]?.result ?? {
         status: "skipped",
         reason: isInterval ? "not-due" : "disabled",
       }

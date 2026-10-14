@@ -22,9 +22,14 @@ import {
   AGENT_V14_BOARD_SCHEMA_SQL,
   ensureOpenClawAgentBoardSchemaInTransaction,
 } from "./openclaw-agent-board-schema.js";
+import {
+  ensureLegacySessionEntryValidityTriggers,
+  withLegacyCanonicalSessionValidationTriggers,
+} from "./openclaw-agent-canonical-validation-migration.js";
 import { withoutCanonicalSessionValidationSchema } from "./openclaw-agent-canonical-validation-schema.js";
 import {
   CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION,
+  CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION,
   AGENT_STORAGE_SCHEMA_VERSION,
 } from "./openclaw-agent-db-contract.js";
 import { AGENT_SCHEMA_COMPATIBILITY } from "./openclaw-agent-db-schema-compatibility.js";
@@ -77,10 +82,14 @@ export {
 
 /** Compare historical migration targets against only the representation they support. */
 export function getOpenClawAgentMigrationSchema(targetVersion: number): string {
+  const canonicalSchemaSql =
+    targetVersion < CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION
+      ? withLegacyCanonicalSessionValidationTriggers(OPENCLAW_AGENT_SCHEMA_SQL)
+      : OPENCLAW_AGENT_SCHEMA_SQL;
   const recipientAuthoritySchemaSql =
     targetVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
-      ? withoutSessionRecipientAuthoritySchema(OPENCLAW_AGENT_SCHEMA_SQL)
-      : OPENCLAW_AGENT_SCHEMA_SQL;
+      ? withoutSessionRecipientAuthoritySchema(canonicalSchemaSql)
+      : canonicalSchemaSql;
   const sessionSchemaSql =
     targetVersion < SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION
       ? withoutSessionEntrySnapshotsSchema(recipientAuthoritySchemaSql)
@@ -237,6 +246,7 @@ export function repairAndAssertOpenClawAgentV14SchemaForMigration(
 
   ensureSessionAdditiveColumns(database);
   ensureSessionEntryValidityProjection(database);
+  ensureLegacySessionEntryValidityTriggers(database);
   ensureSessionKeyContractSchemaInTransaction(database);
 
   // v14 always owned the core schema. Board and collaboration groups were
@@ -328,6 +338,36 @@ function hasLegacyMemoryChunkProvenanceTrigger(db: DatabaseSync): boolean {
 
 export function hasPendingMemoryChunkMetadataMigration(db: DatabaseSync): boolean {
   return hasLegacyMemoryRecallMetadataColumns(db) || hasLegacyMemoryChunkProvenanceTrigger(db);
+}
+
+export type OpenClawAgentSchema25Shape = "canonical-writer" | "recipient-authority";
+
+/** Classify a schema-25 database by its physical shape; mixed shapes are refused. */
+export function readOpenClawAgentSchema25Shape(
+  db: DatabaseSync,
+  pathname: string,
+): OpenClawAgentSchema25Shape {
+  const has = (type: "table" | "trigger", name: string) =>
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?").get(type, name) !==
+    undefined;
+  const authority = has("table", "session_recipient_authority");
+  const legacyTriggers = has("trigger", "session_nodes_entry_valid_after_insert");
+  if (authority && legacyTriggers) {
+    return "recipient-authority";
+  }
+  if (!authority && !legacyTriggers) {
+    return "canonical-writer";
+  }
+  throw new Error(
+    `OpenClaw agent database ${pathname} has an unrecognized schema-25 shape (recipient authority: ${authority}, legacy validation triggers: ${legacyTriggers}); restore its pre-upgrade backup rather than migrating it.`,
+  );
+}
+
+/** The fleet's schema 25: recipient authority plus the legacy validation triggers. */
+export function getOpenClawAgentFleetSchema25MigrationSchema(): string {
+  return withLegacyCanonicalSessionValidationTriggers(
+    getOpenClawAgentMigrationSchema(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION),
+  );
 }
 
 export function migratedEntryChannel(entry: Record<string, unknown>): string | null {

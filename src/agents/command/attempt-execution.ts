@@ -151,10 +151,9 @@ export async function runAgentAttempt(
       onLifecycleGenerationChanged?: (lifecycleGeneration: string) => void;
       onCompactionAccounting?: RunEmbeddedAgentInternalParams["onCompactionAccounting"];
       onCompactionRequestBudget?: RunEmbeddedAgentInternalParams["onCompactionRequestBudget"];
-      onSuccessfulAuthProfile?: (selection: {
-        authProfileId?: string;
-        authProfileIdSource?: "auto" | "user";
-      }) => void;
+      onSuccessfulAuthProfile?: (
+        selection: Pick<RunEmbeddedAgentInternalParams, "authProfileId" | "authProfileIdSource">,
+      ) => void;
     },
 ) {
   const continuation = startAttemptContinuation(params);
@@ -420,6 +419,7 @@ export async function runAgentAttempt(
       workspaceDir: params.workspaceDir,
       cwd: params.cwd,
       config: params.cfg,
+      toolOverrides: params.sessionEntry?.toolOverrides,
       modelHasVision: params.modelHasVision,
       model: params.modelOverride,
       modelRoutingProvenance: params.modelRoutingProvenance,
@@ -455,7 +455,8 @@ export async function runAgentAttempt(
       suppressNextUserMessagePersistence: params.suppressPromptPersistenceOnRetry === true,
       disableTools,
       terminalReplyExpectation: replyExpectation,
-      silentReplyPromptMode: replyExpectation === "required" ? "none" : undefined,
+      silentReplyPromptMode:
+        params.opts.silentReplyPromptMode ?? (replyExpectation === "required" ? "none" : undefined),
       bootstrapPromptWarningSignaturesSeen,
       bootstrapPromptWarningSignature: bootstrapPromptWarningSignaturesSeen.at(-1),
     }) satisfies Partial<RunEmbeddedAgentInternalParams>;
@@ -769,7 +770,6 @@ export async function runAgentAttempt(
     messageThreadId: params.opts.threadId,
     hasRepliedRef: params.runContext.hasRepliedRef,
     permissionMode: params.sessionEntry?.permissionMode,
-    toolOverrides: params.sessionEntry?.toolOverrides,
     sessionRoot: params.sessionEntry?.sessionRoot,
     ...(params.pluginGeneration ? { pluginGeneration: params.pluginGeneration } : {}),
     agentHarnessId: pinnedHarnessId,

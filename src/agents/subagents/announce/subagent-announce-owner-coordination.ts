@@ -1,4 +1,4 @@
-import { parseAgentSessionKey } from "../../../routing/session-key.js";
+import { normalizeAgentId, parseAgentSessionKey } from "../../../routing/session-key.js";
 import { loadRequesterSessionEntry, loadSessionEntryByKey } from "./subagent-announce-delivery.js";
 
 type MaybePromise<T> = T | Promise<T>;
@@ -20,9 +20,22 @@ export function createOwnerBoundContinuationEntryLoader<T extends ContinuationEn
   ) => MaybePromise<T | undefined> | undefined;
 }): (sessionKey: string, options?: { refresh?: boolean }) => MaybePromise<T | undefined> {
   // An agent-scoped key names its own owner; a recorded agent id only owns a
-  // legacy (unscoped) key, as upstream's announce reads do (#166845).
-  const ownerFor = (sessionKey: string, agentId?: string) =>
-    parseAgentSessionKey(sessionKey) ? undefined : agentId;
+  // legacy (unscoped) key, as upstream's announce reads do (#166845). A recorded
+  // id that contradicts the scoped key is refused outright: the owned reads now
+  // answer such a pair with "no entry", and continuation must never chain from
+  // a child whose persisted owner disagrees with its session key.
+  const ownerFor = (sessionKey: string, agentId?: string) => {
+    const scopedAgentId = parseAgentSessionKey(sessionKey)?.agentId;
+    if (!scopedAgentId) {
+      return agentId;
+    }
+    if (agentId?.trim() && normalizeAgentId(agentId) !== normalizeAgentId(scopedAgentId)) {
+      throw new Error(
+        `continuation session ${sessionKey} belongs to agent ${scopedAgentId}, not recorded owner ${agentId}`,
+      );
+    }
+    return undefined;
+  };
   return (sessionKey, options) =>
     sessionKey === params.childSessionKey
       ? params.loadOwned(sessionKey, ownerFor(sessionKey, params.childAgentId))
