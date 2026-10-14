@@ -121,17 +121,6 @@ const ALLOWLIST = [
   },
   {
     file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "activeSessionIdsByKey",
-    owner: "reply run registry singleton",
-    purpose:
-      "Maps each active sessionKey to the current sessionId bound to its live reply operation.",
-    safeVolatileClassification:
-      "The binding is only meaningful while the in-process ReplyOperation exists.",
-    restartContract:
-      "Lost on process restart together with the live ReplyOperation; durable session identity remains in the session store.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
     symbol: "activeKeysBySessionId",
     owner: "reply run registry singleton",
     purpose:
@@ -335,6 +324,17 @@ const ALLOWLIST = [
   },
   {
     file: "src/auto-reply/reply/reply-run-registry.state.ts",
+    symbol: "clearOperationByOperation",
+    owner: "reply run registry singleton",
+    purpose:
+      "Weakly associates a live ReplyOperation with the state-clearing closure forceClearReplyOperation uses to reclaim its slot.",
+    safeVolatileClassification:
+      "WeakMap of process objects to closures; deleted when the operation clears its state and meaningless outside this process.",
+    restartContract:
+      "Lost on process restart; no operation it could force-clear survives the process.",
+  },
+  {
+    file: "src/auto-reply/reply/reply-run-registry.state.ts",
     symbol: "operationsByUpstreamAbortSignal",
     owner: "reply run registry singleton",
     purpose: "Resolves the live ReplyOperation that an upstream AbortSignal should cancel.",
@@ -461,7 +461,16 @@ function scanFileForVolatileCollections(file: string): Finding[] {
   }
 
   visit(sourceFile);
-  return findings.toSorted(compareFindings);
+  // A singleton field may be both declared in its initializer and lazily re-initialized; report it once.
+  const seen = new Set<string>();
+  return findings.toSorted(compareFindings).filter((finding) => {
+    const key = findingKey(finding);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function collectMutatedCollectionSymbols(sourceFile: ts.SourceFile): Set<string> {
@@ -515,6 +524,16 @@ function candidateFromNode(
     }
   }
 
+  // Lazily initialized singleton fields: `state.field ??= new Map()` at module level.
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionEqualsToken &&
+    ts.isPropertyAccessExpression(node.left) &&
+    isModuleLevelExpression(node)
+  ) {
+    return candidateFromInitializer(file, sourceFile, node.left.name.text, node, node.right);
+  }
+
   if (
     ts.isPropertyDeclaration(node) &&
     node.initializer &&
@@ -566,6 +585,22 @@ function isModuleLevelVariableDeclaration(node: ts.VariableDeclaration): boolean
     ts.isVariableDeclarationList(node.parent) &&
     ts.isVariableStatement(node.parent.parent) &&
     ts.isSourceFile(node.parent.parent.parent)
+  );
+}
+
+function isModuleLevelExpression(node: ts.Expression): boolean {
+  let current: ts.Node = node;
+  while (ts.isParenthesizedExpression(current.parent)) {
+    current = current.parent;
+  }
+  const parent = current.parent;
+  if (ts.isExpressionStatement(parent)) {
+    return ts.isSourceFile(parent.parent);
+  }
+  return (
+    ts.isVariableDeclaration(parent) &&
+    parent.initializer === current &&
+    isModuleLevelVariableDeclaration(parent)
   );
 }
 
