@@ -27,6 +27,8 @@ import {
   isPluginControlUiPath,
   isUiBrowserTestFile,
   isUiTestTarget,
+  resolveUiTypeScriptPath,
+  uiTypeScriptPathGlob,
   uiTimingTestFiles,
   uiE2ePrebuiltParallelTestFiles,
   uiE2eRealGatewayTestFiles,
@@ -1428,7 +1430,8 @@ const sharedUiE2eInputs = [
 export function hasSharedUiE2eInput(changedPaths: readonly string[]): boolean {
   return changedPaths.some(
     (file) =>
-      !file.endsWith(".test.ts") && sharedUiE2eInputs.some((glob) => matchesGlob(file, glob)),
+      !/\.test\.tsx?$/u.test(file) &&
+      sharedUiE2eInputs.some((glob) => matchesGlob(file, uiTypeScriptPathGlob(glob))),
   );
 }
 
@@ -1461,8 +1464,15 @@ export function resolveUiE2ePrTestSelection(
   }
   const paths = [...changedPaths];
   const graphOptions = { tooling: true, resolveAliases: true, runtimeOnly: true };
-  const roots = [...new Set(UI_E2E_OWNER_WATCHES.flatMap(({ ownerRoots }) => ownerRoots))];
-  const policyTargets = new Set(resolvePolicyTestTargets(paths));
+  const ownerWatches = UI_E2E_OWNER_WATCHES.map((watch) => ({
+    testFile: resolveUiTypeScriptPath(watch.testFile, cwd),
+    ownerRoots: watch.ownerRoots.map((root) => resolveUiTypeScriptPath(root, cwd)),
+    watchGlobs: watch.watchGlobs,
+  }));
+  const roots = [...new Set(ownerWatches.flatMap(({ ownerRoots }) => ownerRoots))];
+  const policyTargets = new Set(
+    resolvePolicyTestTargets(paths).map((file) => resolveUiTypeScriptPath(file, cwd)),
+  );
   const importedTargets = new Set(
     resolveAffectedTestsFromImportGraph(paths, cwd, { ...graphOptions, forceFull: true }),
   );
@@ -1474,8 +1484,8 @@ export function resolveUiE2ePrTestSelection(
       hasImportGraphImpactOnTargets(paths, [root], cwd, { ...graphOptions, direct: true }),
     ),
   );
-  const watches = new Map(UI_E2E_OWNER_WATCHES.map((watch) => [watch.testFile, watch]));
-  const smoke = new Set<string>(UI_E2E_SMOKE_TEST_FILES);
+  const watches = new Map(ownerWatches.map((watch) => [watch.testFile, watch]));
+  const smoke = new Set(UI_E2E_SMOKE_TEST_FILES.map((file) => resolveUiTypeScriptPath(file, cwd)));
   const reasons: Record<string, string[]> = {};
   const files = inventory.filter((file) => {
     const selected: string[] = [];
@@ -1560,15 +1570,17 @@ export function createUiRealGatewayTestShards(
   );
   const parallelFiles = new Set(uiE2ePrebuiltParallelTestFiles);
   // Balance the serial phase with standalone fixtures that need no preview build.
-  const standaloneCompanions = new Set([
-    "ui/src/e2e/chat-loading-performance.real-gateway.e2e.test.ts",
-    "ui/src/e2e/chat-project-media.real-gateway.e2e.test.ts",
-    "ui/src/e2e/chat-widget-sandbox.real-gateway.e2e.test.ts",
-    "ui/src/e2e/command-palette-catalog.real-gateway.e2e.test.ts",
-    "ui/src/e2e/model-api-keys.real-gateway.e2e.test.ts",
-    "ui/src/e2e/model-catalog-partial-refresh.real-gateway.e2e.test.ts",
-  ]);
-  const desktop = "ui/src/e2e/desktop-resize.real-gateway.e2e.test.ts";
+  const standaloneCompanions = new Set(
+    [
+      "ui/src/e2e/chat-loading-performance.real-gateway.e2e.test.ts",
+      "ui/src/e2e/chat-project-media.real-gateway.e2e.test.ts",
+      "ui/src/e2e/chat-widget-sandbox.real-gateway.e2e.test.ts",
+      "ui/src/e2e/command-palette-catalog.real-gateway.e2e.test.ts",
+      "ui/src/e2e/model-api-keys.real-gateway.e2e.test.ts",
+      "ui/src/e2e/model-catalog-partial-refresh.real-gateway.e2e.test.ts",
+    ].map((file) => resolveUiTypeScriptPath(file)),
+  );
+  const desktop = resolveUiTypeScriptPath("ui/src/e2e/desktop-resize.real-gateway.e2e.test.ts");
   const files = uiE2eRealGatewayTestFiles.filter((file) => selected.has(file) && file !== desktop);
   // Desktop transport proof owns its file separately, alongside the serial phase.
   return ([1, 2] as const).map((shard) => ({
@@ -2876,7 +2888,7 @@ export function createVitestCacheWarmGroups(
       "ui/src/pages/chat/chat-view.test.ts",
       "ui/src/pages/chat/chat-pane-lifecycle.test.ts",
       "ui/src/pages/usage/metrics.node.test.ts",
-    ],
+    ].map((file) => resolveUiTypeScriptPath(file)),
     shard_name: "cache-warm:ui-package",
   };
   if (profile === "hybrid-hosted") {
