@@ -61,10 +61,10 @@ export function bindSqliteWorkerBackend(
         rows: ReturnType<typeof prepareSessionGroupCategoryMutation>;
       }
     | undefined;
-  const categoryDatabase = (scope: SessionAccessScope) => {
+  const workerDatabase = (scope: SessionAccessScope) => {
     const database = getOpenClawAgentDatabaseIfOpen(toDatabaseOptions(resolveSqliteScope(scope)));
     if (!database || database.db !== db || database.path !== context.databasePath) {
-      throw new Error("Session group category write lost its physical store owner");
+      throw new Error("Session collaboration write lost its physical store owner");
     }
     return database;
   };
@@ -81,7 +81,7 @@ export function bindSqliteWorkerBackend(
       }
       scope.storePath = context.databasePath;
       if (command.type === "category.prepare") {
-        const database = categoryDatabase(scope);
+        const database = workerDatabase(scope);
         return withSqlitePostCommitPublications(db, () =>
           runSqliteDeferredTransactionSync(db, () => {
             categoryPlan = {
@@ -120,7 +120,7 @@ export function bindSqliteWorkerBackend(
             const captured = captureSessionRowChanges(db, () => {
               if (command.type === "authority.capture") {
                 return captureSessionRecipientAuthorityInTransaction(
-                  categoryDatabase(scope),
+                  workerDatabase(scope),
                   scope.sessionKey,
                 );
               }
@@ -148,7 +148,7 @@ export function bindSqliteWorkerBackend(
                 return finalizeSessionSuggestionClaim(scope, command.input.params);
               }
               if (command.type === "category.apply") {
-                const database = categoryDatabase(scope);
+                const database = workerDatabase(scope);
                 if (
                   !categoryPlan ||
                   categoryPlan.from !== command.input.from ||
@@ -165,7 +165,11 @@ export function bindSqliteWorkerBackend(
                 );
               }
               if (command.type === "participant") {
-                const value = recordSessionParticipantFromWorker(scope, command.input.params);
+                const value = recordSessionParticipantFromWorker(
+                  workerDatabase(scope),
+                  scope,
+                  command.input.params,
+                );
                 participantResult = {
                   value,
                   projectionChanged: false,

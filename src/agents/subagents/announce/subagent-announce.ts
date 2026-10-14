@@ -33,7 +33,10 @@ import {
   deliverSubagentAnnouncement,
   loadSessionEntryByKey,
 } from "./subagent-announce-delivery.js";
-import { hasUsableSessionEntry } from "./subagent-announce-delivery.runtime.js";
+import {
+  hasUsableSessionEntry,
+  withSubagentRequesterSource,
+} from "./subagent-announce-delivery.runtime.js";
 import { runDescendantWake } from "./subagent-announce-descendant-wake.js";
 import type { SubagentAnnounceDeliveryResult } from "./subagent-announce-dispatch.js";
 import {
@@ -465,146 +468,156 @@ async function runSubagentAnnounceFlowBound(
       return "delivered";
     }
     const requesterIsSubagent = requesterIsInternalSession();
-    let directOrigin = targetRequesterOrigin;
-    if (!requesterIsSubagent) {
-      const { entry } = readRequesterSessionEntry(
-        targetRequesterSessionKey,
-        targetRequesterAgentId,
-      );
-      directOrigin = resolveAnnounceOrigin(entry, targetRequesterOrigin);
-    }
-    const candidateCompletionDirectOrigin =
-      expectsCompletionMessage && !requesterIsSubagent && params.completionTarget !== "parent"
-        ? !(await prepareChildSessionEffects()) || !childSessionEffectsAllowed()
-          ? targetRequesterOrigin
-          : await resolveSubagentCompletionOrigin({
-              childSessionKey: params.childSessionKey,
-              requesterSessionKey: targetRequesterSessionKey,
-              requesterOrigin: directOrigin,
-              childRunId: params.childRunId,
-              spawnMode: params.spawnMode,
-              expectsCompletionMessage,
-            })
-        : targetRequesterOrigin;
-    const completionDirectOrigin =
-      (await prepareChildSessionEffects()) && childSessionEffectsAllowed()
-        ? candidateCompletionDirectOrigin
-        : targetRequesterOrigin;
-    const completionChannel = normalizeMessageChannel(completionDirectOrigin?.channel);
-    const modelRouteChange =
-      params.terminalReply?.disposition === "visible"
-        ? params.terminalReply.modelRouteChange
-        : undefined;
-    const preserveModelRouteNotice =
-      requesterIsSubagent || !completionChannel || !isDeliverableMessageChannel(completionChannel);
-
-    const candidateStatsLine =
-      params.completionTarget === "parent" ||
-      !(await prepareChildSessionEffects()) ||
-      !childSessionEffectsAllowed()
-        ? undefined
-        : await buildCompactAnnounceStatsLine({
-            sessionKey: params.childSessionKey,
-            startedAt: params.startedAt,
-            endedAt: params.endedAt,
-          });
-    const statsLine =
-      (await prepareChildSessionEffects()) && childSessionEffectsAllowed()
-        ? candidateStatsLine
-        : undefined;
-    const { internalEvents, triggerMessage } = buildSubagentAnnounceMessages({
-      requesterIsSubagent,
-      completionTarget: params.completionTarget,
-      childSessionKey: params.childSessionKey,
-      childSessionId: announceSessionId,
-      taskLabel,
-      outcome,
-      findings,
-      noVisibleResult: !childResultText && findings === "(no output)",
-      statsLine,
-      modelRouteChange,
-      preserveModelRouteNotice,
-    });
-    failureStage = "return-routing";
-    const returnRoute = await continuationRuntime.routeSubagentContinuationReturn({
-      cfg,
-      continuationEnabled: continuation.continuationEnabled,
-      isContinuationChainDelegate: continuation.isContinuationChainDelegate,
-      maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
-      task: params.task ?? "",
-      taskLabel,
-      triggerMessage,
-      announceId,
-      childSessionKey: params.childSessionKey,
-      childAgentId: continuation.ownerAgentId,
-      childRunId: params.childRunId,
+    await withSubagentRequesterSource(
       targetRequesterSessionKey,
       targetRequesterAgentId,
-      silentAnnounce: params.silentAnnounce,
-      wakeOnReturn: params.wakeOnReturn,
-      continuationTargetSessionKey: params.continuationTargetSessionKey,
-      continuationTargetSessionKeys: params.continuationTargetSessionKeys,
-      continuationFanoutMode: params.continuationFanoutMode,
-      continuationRecipientAuthorityBinding: params.continuationRecipientAuthorityBinding,
-      persistContinuationRecipientAuthorityBinding:
-        params.persistContinuationRecipientAuthorityBinding,
-      traceparent: params.traceparent,
-      // Resolve the reads lazily: building this object eagerly would touch the
-      // read-module namespace on every announce, including flows that never
-      // reach the continuation-return router.
-      registryRuntime: {
-        shouldIgnorePostCompletionAnnounceForSession: (sessionKey: string) =>
-          shouldIgnorePostCompletionAnnounceForSession(sessionKey),
-      },
-    });
-    if (returnRoute.handled) {
-      return "delivered";
-    }
+      async (isRequesterCurrent) => {
+        let directOrigin = targetRequesterOrigin;
+        if (!requesterIsSubagent) {
+          const { entry } = await readRequesterSessionEntry(
+            targetRequesterSessionKey,
+            targetRequesterAgentId,
+          );
+          directOrigin = resolveAnnounceOrigin(entry, targetRequesterOrigin);
+        }
+        const candidateCompletionDirectOrigin =
+          expectsCompletionMessage && !requesterIsSubagent && params.completionTarget !== "parent"
+            ? !(await prepareChildSessionEffects()) || !childSessionEffectsAllowed()
+              ? targetRequesterOrigin
+              : await resolveSubagentCompletionOrigin({
+                  childSessionKey: params.childSessionKey,
+                  requesterSessionKey: targetRequesterSessionKey,
+                  requesterOrigin: directOrigin,
+                  childRunId: params.childRunId,
+                  spawnMode: params.spawnMode,
+                  expectsCompletionMessage,
+                })
+            : targetRequesterOrigin;
+        const completionDirectOrigin =
+          (await prepareChildSessionEffects()) && childSessionEffectsAllowed()
+            ? candidateCompletionDirectOrigin
+            : targetRequesterOrigin;
+        const completionChannel = normalizeMessageChannel(completionDirectOrigin?.channel);
+        const modelRouteChange =
+          params.terminalReply?.disposition === "visible"
+            ? params.terminalReply.modelRouteChange
+            : undefined;
+        const preserveModelRouteNotice =
+          requesterIsSubagent ||
+          !completionChannel ||
+          !isDeliverableMessageChannel(completionChannel);
 
-    failureStage = "completion-delivery";
-    // Send to the requester session. For nested subagents this is an internal
-    // follow-up injection (deliver=false) so the orchestrator receives it.
-    const directIdempotencyKey = buildAnnounceIdempotencyKey(announceId);
-    let deliveryResultReported = false;
-    const reportDeliveryResult = async (delivery: SubagentAnnounceDeliveryResult) => {
-      if (deliveryResultReported) {
-        return;
-      }
-      deliveryResultReported = true;
-      await params.onDeliveryResult?.(delivery);
-    };
-    const delivery = await deliverSubagentAnnouncement({
-      requesterSessionKey: targetRequesterSessionKey,
-      requesterAgentId: targetRequesterAgentId,
-      triggerMessage,
-      internalEvents,
-      requesterSessionOrigin: targetRequesterOrigin,
-      completionDirectOrigin,
-      directOrigin,
-      sourceSessionKey: params.childSessionKey,
-      sourceRunId: params.childRunId,
-      sourceTool: "subagent_announce",
-      isSourceSessionEffectsAllowed: completionDeliveryAllowed,
-      isCompletionOwnedByRequesterYield: params.isCompletionOwnedByRequesterYield,
-      targetRequesterSessionKey,
-      requesterIsSubagent,
-      expectsCompletionMessage,
-      completionTarget: params.completionTarget,
-      completionRequesterSessionId: params.completionRequesterSessionId,
-      completionRequesterLifecycleRevision: params.completionRequesterLifecycleRevision,
-      directIdempotencyKey,
-      onDeliveryResult: reportDeliveryResult,
-      signal: params.signal,
-      continuationTriggerOverride: returnRoute.continuationTriggerOverride,
-      ...(returnRoute.traceparent ? { traceparent: returnRoute.traceparent } : {}),
-      onExecutionStarted: params.onExecutionStarted,
-      resolveGatewayContext: params.resolveGatewayContext,
-    });
-    await reportDeliveryResult(delivery);
-    announceOutcome =
-      delivery.reason === "requester_turn_pending"
-        ? "requester_turn_pending"
-        : (delivery.disposition ?? (delivery.delivered ? "delivered" : "retryable"));
+        const candidateStatsLine =
+          params.completionTarget === "parent" ||
+          !(await prepareChildSessionEffects()) ||
+          !childSessionEffectsAllowed()
+            ? undefined
+            : await buildCompactAnnounceStatsLine({
+                sessionKey: params.childSessionKey,
+                startedAt: params.startedAt,
+                endedAt: params.endedAt,
+              });
+        const statsLine =
+          (await prepareChildSessionEffects()) && childSessionEffectsAllowed()
+            ? candidateStatsLine
+            : undefined;
+        const { internalEvents, triggerMessage } = buildSubagentAnnounceMessages({
+          requesterIsSubagent,
+          completionTarget: params.completionTarget,
+          childSessionKey: params.childSessionKey,
+          childSessionId: announceSessionId,
+          taskLabel,
+          outcome,
+          findings,
+          noVisibleResult: !childResultText && findings === "(no output)",
+          statsLine,
+          modelRouteChange,
+          preserveModelRouteNotice,
+        });
+        failureStage = "return-routing";
+        const returnRoute = await continuationRuntime.routeSubagentContinuationReturn({
+          cfg,
+          continuationEnabled: continuation.continuationEnabled,
+          isContinuationChainDelegate: continuation.isContinuationChainDelegate,
+          maxChainLength: resolveContinuationRuntimeConfig(cfg).maxChainLength,
+          task: params.task ?? "",
+          taskLabel,
+          triggerMessage,
+          announceId,
+          childSessionKey: params.childSessionKey,
+          childAgentId: continuation.ownerAgentId,
+          childRunId: params.childRunId,
+          targetRequesterSessionKey,
+          targetRequesterAgentId,
+          silentAnnounce: params.silentAnnounce,
+          wakeOnReturn: params.wakeOnReturn,
+          continuationTargetSessionKey: params.continuationTargetSessionKey,
+          continuationTargetSessionKeys: params.continuationTargetSessionKeys,
+          continuationFanoutMode: params.continuationFanoutMode,
+          continuationRecipientAuthorityBinding: params.continuationRecipientAuthorityBinding,
+          persistContinuationRecipientAuthorityBinding:
+            params.persistContinuationRecipientAuthorityBinding,
+          traceparent: params.traceparent,
+          // Resolve the reads lazily: building this object eagerly would touch the
+          // read-module namespace on every announce, including flows that never
+          // reach the continuation-return router.
+          registryRuntime: {
+            shouldIgnorePostCompletionAnnounceForSession: (sessionKey: string) =>
+              shouldIgnorePostCompletionAnnounceForSession(sessionKey),
+          },
+        });
+        if (returnRoute.handled) {
+          announceOutcome = "delivered";
+          return;
+        }
+
+        failureStage = "completion-delivery";
+        // Send to the requester session. For nested subagents this is an internal
+        // follow-up injection (deliver=false) so the orchestrator receives it.
+        const directIdempotencyKey = buildAnnounceIdempotencyKey(announceId);
+        let deliveryResultReported = false;
+        const reportDeliveryResult = async (delivery: SubagentAnnounceDeliveryResult) => {
+          if (deliveryResultReported) {
+            return;
+          }
+          deliveryResultReported = true;
+          await params.onDeliveryResult?.(delivery);
+        };
+        const delivery = await deliverSubagentAnnouncement({
+          requesterSessionKey: targetRequesterSessionKey,
+          requesterAgentId: targetRequesterAgentId,
+          triggerMessage,
+          internalEvents,
+          requesterSessionOrigin: targetRequesterOrigin,
+          completionDirectOrigin,
+          directOrigin,
+          sourceSessionKey: params.childSessionKey,
+          sourceRunId: params.childRunId,
+          sourceTool: "subagent_announce",
+          isSourceSessionEffectsAllowed: () =>
+            isRequesterCurrent?.() !== false && completionDeliveryAllowed(),
+          isCompletionOwnedByRequesterYield: params.isCompletionOwnedByRequesterYield,
+          targetRequesterSessionKey,
+          requesterIsSubagent,
+          expectsCompletionMessage,
+          completionTarget: params.completionTarget,
+          completionRequesterSessionId: params.completionRequesterSessionId,
+          completionRequesterLifecycleRevision: params.completionRequesterLifecycleRevision,
+          directIdempotencyKey,
+          onDeliveryResult: reportDeliveryResult,
+          signal: params.signal,
+          continuationTriggerOverride: returnRoute.continuationTriggerOverride,
+          ...(returnRoute.traceparent ? { traceparent: returnRoute.traceparent } : {}),
+          onExecutionStarted: params.onExecutionStarted,
+          resolveGatewayContext: params.resolveGatewayContext,
+        });
+        await reportDeliveryResult(delivery);
+        announceOutcome =
+          delivery.reason === "requester_turn_pending"
+            ? "requester_turn_pending"
+            : (delivery.disposition ?? (delivery.delivered ? "delivered" : "retryable"));
+      },
+    );
   } catch (err) {
     shouldDeleteChildSession = false;
     if (hasSqliteWorkerOutcomeUnknown(err)) {
