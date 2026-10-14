@@ -15,6 +15,7 @@ import {
 import {
   emitAssistantCommentaryStreamData,
   emitAssistantMessageStart,
+  emitPersistentReasoning,
   emitReasoningEnd,
   extractStandaloneMessageToolText,
   hasMessageToolOnlySourceDelivery,
@@ -47,6 +48,8 @@ export function handleMessageStart(
     return;
   }
 
+  // Persistent reasoning spans all text items in this provider message.
+  ctx.state.lastReasoningSent = undefined;
   // Only message_start opens another message's stream and block replies.
   ctx.resetAssistantMessageState(ctx.state.assistantTexts.length);
   ctx.state.assistantMessageStartIndex = ctx.state.assistantMessageIndex;
@@ -120,15 +123,7 @@ export function handleMessageEnd(
     const suppressedTrimmedReasoning = ctx.state.includeReasoning
       ? extractAssistantThinking(assistantMessage)
       : "";
-    if (
-      canEmitReply() &&
-      suppressedTrimmedReasoning &&
-      ctx.params.onBlockReply &&
-      suppressedTrimmedReasoning !== ctx.state.lastReasoningSent
-    ) {
-      ctx.state.lastReasoningSent = suppressedTrimmedReasoning;
-      ctx.emitBlockReply({ text: suppressedTrimmedReasoning, isReasoning: true });
-    }
+    emitPersistentReasoning(ctx, suppressedTrimmedReasoning);
     return;
   }
   const sourceContent = assistantMessage.content;
@@ -303,28 +298,8 @@ export function handleMessageEnd(
   }
 
   const onBlockReply = ctx.params.onBlockReply;
-  const shouldEmitReasoning = Boolean(
-    canEmitReply() &&
-    ctx.state.includeReasoning &&
-    rawThinking &&
-    onBlockReply &&
-    rawThinking !== ctx.state.lastReasoningSent,
-  );
-  const shouldEmitReasoningBeforeAnswer =
-    shouldEmitReasoning && ctx.state.blockReplyBreak === "message_end" && !addedDuringMessage;
-  const maybeEmitReasoning = () => {
-    if (!shouldEmitReasoning) {
-      return;
-    }
-    ctx.state.lastReasoningSent = rawThinking;
-    // Lane purity: the payload carries raw thinking only. Tool persistence is
-    // the verbose lane's job; interleaving comes from arrival order.
-    ctx.emitBlockReply({ text: rawThinking, isReasoning: true });
-  };
-
-  if (shouldEmitReasoningBeforeAnswer) {
-    maybeEmitReasoning();
-  }
+  // Providers without thinking_end still deliver reasoning before the terminal answer drain.
+  emitPersistentReasoning(ctx, rawThinking);
 
   if (canEmitReply() && onBlockReply) {
     // Reconcile source first, then finalize the parser and attachment selection
@@ -349,9 +324,6 @@ export function handleMessageEnd(
     };
   }
 
-  if (!shouldEmitReasoningBeforeAnswer) {
-    maybeEmitReasoning();
-  }
   if (!ctx.params.silentExpected && rawThinking) {
     // Emit-always: bus/archive get message-end thinking regardless of the
     // streamReasoning rendering setting (gated inside emitReasoningStream).
