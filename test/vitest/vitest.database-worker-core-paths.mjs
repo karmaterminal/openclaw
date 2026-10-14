@@ -1,5 +1,10 @@
 // These consumers need the host-owned SQLite broker, which runs in forked processes.
 export const databaseWorkerCoreTestFiles = [
+  "src/agents/command-runtime.incognito.test.ts",
+  "src/agents/runtime-recovery.incognito.test.ts",
+  "src/agents/cli-runner/history-boundary.incognito.test.ts",
+  "src/agents/sandbox/runtime-status.incognito.test.ts",
+  "src/agents/harness/host-capability.node-authority.test.ts",
   "src/infra/sqlite-foreign-observation.worker.test.ts",
   "src/state/openclaw-state-db-current-reader.test.ts",
   "src/cli/admin-state-owner.process.test.ts",
@@ -681,6 +686,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/sessions/session-manager-mutation-boundaries.test.ts",
   "src/agents/sessions/session-manager-transaction-rollback.test.ts",
   "src/agents/sessions/session-manager-model-context-limits.test.ts",
+  "src/agents/sessions/session-manager-model-context-prefix.test.ts",
   "src/agents/sessions/session-manager-model-context.test.ts",
   "src/agents/sessions/session-manager.persistence-compat.test.ts",
   "src/agents/sessions/session-manager-static-notes.test.ts",
