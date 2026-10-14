@@ -574,7 +574,44 @@ describe("continuation returns at system-event queue capacity (cap=20)", () => {
     expect(await pendingTexts(stateDir)).toEqual([]);
   });
 
-  it("Q-T4: restart-sentinel replay at the cap reports no success and keeps the row for the next replay", async () => {
+  it("Q-T4: the startup replay of a continuation return at the cap defers it uncharged, keeps the row, and neither wakes nor adopts", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    fillQueueWithNotes(MAX_EVENTS);
+    const result = await enqueueContinuationReturnDeliveries({
+      targetSessionKeys: [SESSION_KEY],
+      text: "RETURN-T4",
+      idempotencyKeyBase: "continuation-return:q-t4",
+      wakeRecipients: true,
+      childRunId: "run-q-t4",
+      stateDir,
+      ownerAgentId: "main",
+    });
+    expect(result.delivered).toBe(0);
+    const [deliveryId] = result.deliveryIds as [string];
+    resetObservers();
+
+    // Startup arms every pending row; the replay fires at the cap.
+    await schedulePendingSessionDeliveries();
+    await runClock(0);
+
+    expect(attemptsFor(deliveryId)).toContain("SessionDeliveryDeferredError");
+    expect(peekSystemEvents(SESSION_KEY)).not.toContain("RETURN-T4");
+    const [row] = await pendingRows(stateDir);
+    expect(row?.id).toBe(deliveryId);
+    // A capacity refusal is continuation custody, not a failure: no retry is charged.
+    expect(row?.retryCount).toBe(0);
+    expect(wakesFor(SESSION_KEY)).toEqual([]);
+
+    await expectRefusedReturnRetriedToAdoption({
+      stateDir,
+      text: "RETURN-T4",
+      deliveryId,
+      expectedWake: { kind: "producer", reason: "delegate-return", parentRunId: "run-q-t4" },
+    });
+  });
+
+  it("Q-T4p: an ordinary restart-sentinel row at the cap follows upstream's charged retry (#167113)", async () => {
     const stateDir = custody.stateDir();
     await seedRecipientSession(stateDir);
     const deliveryId = await enqueueSessionDelivery(
@@ -590,32 +627,20 @@ describe("continuation returns at system-event queue capacity (cap=20)", () => {
     fillQueueWithNotes(MAX_EVENTS);
     resetObservers();
 
-    // Startup arms every pending row; the replay fires at the cap.
     await schedulePendingSessionDeliveries();
     await runClock(0);
 
-    expect(attemptsFor(deliveryId)).toContain("SessionDeliveryDeferredError");
+    // A plain notice carries no continuation custody, so the fork's uncharged
+    // capacity deferral does not apply: upstream runs it as an ordinary session
+    // event, whose full queue is an ordinary, charged delivery failure. Its
+    // eventual execution is upstream's session-event contract, not modeled here.
+    expect(attemptsFor(deliveryId)).toEqual(["SystemEventQueueFullError"]);
     expect(peekSystemEvents(SESSION_KEY)).not.toContain("SENTINEL-NOTICE-T4");
-    expect((await pendingRows(stateDir)).map((entry) => entry.id)).toEqual([deliveryId]);
+    const [row] = await pendingRows(stateDir);
+    expect(row?.id).toBe(deliveryId);
+    expect(row?.retryCount).toBe(1);
+    expect(row?.kind === "systemEvent" ? row.awaitPromptAdoption : undefined).not.toBe(true);
     expect(wakesFor(SESSION_KEY)).toEqual([]);
-
-    // Once the queue drains, the scheduler's own retry admits it and wakes.
-    drainSystemEventEntries(SESSION_KEY);
-    await runClock(1_000);
-    expect(peekSystemEvents(SESSION_KEY)).toEqual(["SENTINEL-NOTICE-T4"]);
-    expect(peekSystemEventEntries(SESSION_KEY)[0]?.sessionDeliveryAckId).toBe(deliveryId);
-    expect(wakesFor(SESSION_KEY)).toHaveLength(1);
-
-    // An ordinary (non-return) sentinel row keeps upstream settlement: the
-    // admitting replay settles it, the queued copy reaches one prompt, and
-    // the scheduler does not re-deliver it.
-    const prepared = await runAdoptedTurn();
-    expect(
-      prepared.blocks.filter((block) => block.text.includes("SENTINEL-NOTICE-T4")),
-    ).toHaveLength(1);
-    expect(await pendingRows(stateDir)).toEqual([]);
-    await runClock(5_000);
-    expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
   });
 });
 
