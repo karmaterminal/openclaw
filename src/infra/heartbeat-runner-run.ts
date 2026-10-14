@@ -87,6 +87,7 @@ export async function runHeartbeatOnceCore(opts: HeartbeatRunOptions): Promise<H
   if (cancelledBeforeDispatch) {
     return cancelledBeforeDispatch;
   }
+  const settledResult = () => cancelledExecResult() ?? policy.result;
   const signal = execRequestAbortSignal(execRequestOwners, getHeartbeatWakeAbortSignal());
   const eventQueueKey = resolveSystemEventQueueKey(prepared.sessionKey, agentId);
   const deferredGenericIds = new Set(prepared.deferredGenericEvents.map((event) => event.id));
@@ -238,12 +239,9 @@ export async function runHeartbeatOnceCore(opts: HeartbeatRunOptions): Promise<H
           ),
       },
     });
-    const cancelled = cancelledExecResult();
-    if (cancelled) {
-      return cancelled;
-    }
-    if (policy.result) {
-      return policy.result;
+    const settled = settledResult();
+    if (settled) {
+      return settled;
     }
     const execution = resolveReplyOperationAgentTurn(state);
     const reason =
@@ -255,12 +253,9 @@ export async function runHeartbeatOnceCore(opts: HeartbeatRunOptions): Promise<H
     emitHeartbeatEvent({ status: "skipped", reason, durationMs: Date.now() - startedAt });
     return { status: "skipped", reason };
   } catch (error) {
-    const cancelled = cancelledExecResult();
-    if (cancelled) {
-      return cancelled;
-    }
-    if (policy.result) {
-      return policy.result;
+    const settled = settledResult();
+    if (settled) {
+      return settled;
     }
     const reason = formatErrorMessage(error);
     emitHeartbeatEvent({

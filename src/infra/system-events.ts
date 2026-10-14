@@ -103,26 +103,24 @@ const turnOwners = resolveGlobalSingleton(
       const removed = entry.queue.filter((event) => owners.has(event));
       entry.queue = entry.queue.filter((event) => !owners.has(event));
       resetQueueState(key, entry);
-      for (const event of removed) {
-        retireSystemEvent(event);
-      }
+      retireSystemEvents(removed);
     }
   },
 );
 
-function retireSystemEvent(event: SystemEvent): void {
-  const owner = turnOwners.get(event);
-  if (owner && !owner.started) {
-    owner.cancel();
+function retireSystemEvents(events: readonly SystemEvent[]): void {
+  for (const event of events) {
+    const owner = turnOwners.get(event);
+    if (owner && !owner.started) {
+      owner.cancel();
+    }
   }
 }
 
 function clearSystemEventQueues(value: Map<string, SessionQueue>) {
   const removed = [...value.values()].flatMap((entry) => entry.queue.splice(0));
   value.clear();
-  for (const event of removed) {
-    retireSystemEvent(event);
-  }
+  retireSystemEvents(removed);
 }
 
 const queues = resolveGlobalMap<string, SessionQueue>(
@@ -143,9 +141,7 @@ registerSystemEventStoreOwner(SYSTEM_EVENT_QUEUES_KEY, () => {
     }
     entry.queue = retained;
     resetQueueState(key, entry);
-    for (const event of removed) {
-      retireSystemEvent(event);
-    }
+    retireSystemEvents(removed);
     recordSystemEventStoreReplaced();
   }
 });
@@ -217,9 +213,7 @@ function getSessionQueue(sessionKey: string): SessionQueue | undefined {
     if (cancelled.length > 0) {
       entry.queue = entry.queue.filter((event) => !cancelled.includes(event));
       resetQueueState(key, entry);
-      for (const event of cancelled) {
-        retireSystemEvent(event);
-      }
+      retireSystemEvents(cancelled);
     }
   }
   return queues.get(key);
@@ -389,7 +383,7 @@ function enqueueOwnedSystemEventEntry(
       entry.queue[durableIndex] = event;
       applyContextKeyPolicy(entry, normalizedContextKey);
       // Install the replacement before cancellation callbacks can enqueue more work.
-      retireSystemEvent(existing);
+      retireSystemEvents([existing]);
       return cloneSystemEvent(event);
     }
   }
@@ -562,9 +556,7 @@ function drainSystemEventsWith<T>(sessionKey: string, project: (event: SystemEve
   const removed = entry.queue.splice(0);
   entry.lastContextKey = null;
   queues.delete(key);
-  for (const event of removed) {
-    retireSystemEvent(event);
-  }
+  retireSystemEvents(removed);
   return removed.map(project);
 }
 
@@ -657,9 +649,7 @@ function replaceSystemEventEntry(
   entry.queue.push(replacement);
   entry.lastContextKey = normalizedContextKey;
   // Install the replacement before cancellation callbacks can enqueue more work.
-  for (const previous of matching) {
-    retireSystemEvent(previous);
-  }
+  retireSystemEvents(matching);
   return replacement;
 }
 
@@ -740,9 +730,7 @@ function evictOverflow(entry: SessionQueue): void {
     }
     return true;
   });
-  for (const event of evicted) {
-    retireSystemEvent(event);
-  }
+  retireSystemEvents(evicted);
 }
 
 function resetQueueState(key: string, entry: SessionQueue) {
@@ -785,9 +773,7 @@ export function consumeSelectedSystemEventEntries(
     }
   }
   resetQueueState(key, entry);
-  for (const event of retired) {
-    retireSystemEvent(event);
-  }
+  retireSystemEvents(retired);
   return selected;
 }
 
@@ -853,9 +839,7 @@ export function removeSystemEvents(
   if (removed.length > 0) {
     resetQueueState(key, entry);
   }
-  for (const event of removed) {
-    retireSystemEvent(event);
-  }
+  retireSystemEvents(removed);
   return removed;
 }
 

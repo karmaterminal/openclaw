@@ -63,7 +63,7 @@ export type CronContinuationClaim = {
   mediaTaskIdsBefore: ReadonlySet<string>;
 };
 
-type AgentSessionPersistResult = {
+export type AgentSessionPersistResult = {
   sessionEntry?: SessionEntry;
   consumedContinuationTraceparent?: string;
   resolvedSessionId?: string;
@@ -106,35 +106,26 @@ export async function persistAgentSessionPhase(params: {
   >;
   initialPatchBuild: AgentSessionPatchBuild;
   buildSessionPatch: (entry: SessionEntry | undefined) => Promise<AgentSessionPatchBuild>;
-  initialSessionEntry?: SessionEntry;
-  initialResolvedSessionId?: string;
-  initialSessionPersistedBeforeGatewayAdmission: boolean;
-  initialSupersededSessionId?: string;
+  state: AgentSessionPersistResult;
   touchInteraction: boolean;
   requestedBestEffortDeliver?: boolean;
-  bestEffortDeliver: boolean;
   expectedSession: Parameters<typeof assertExpectedExistingSession>[0]["constraint"];
   maintenanceConfig: SessionEntryPatchOptions["maintenanceConfig"];
   abortForLifecycleRotation: (target?: { sessionKey?: string; agentId?: string }) => boolean;
   assertGatewayWorkAdmissionAllowed: () => void;
   respondToGatewayAdmissionOutcome: () => boolean;
-  updateAdmissionState: (state: {
-    resolvedSessionId?: string;
-    admittedSessionId: string;
-    supersededSessionId?: string;
-    sessionPersistedBeforeGatewayAdmission: boolean;
-  }) => void;
-  getAdmittedSessionId: () => string;
   setCronContinuationClaim: (claim: CronContinuationClaim) => void;
   setMainRestartRecoveryOwnerLease: (lease: MainSessionRecoveryOwnerLease) => void;
   respond: GatewayRequestHandlerOptions["respond"];
 }): Promise<AgentSessionPersistResult | undefined> {
   let patchBuild = params.initialPatchBuild;
-  let sessionEntry = params.initialSessionEntry;
+  let {
+    sessionEntry,
+    resolvedSessionId,
+    sessionPersistedBeforeGatewayAdmission,
+    supersededSessionId,
+  } = params.state;
   let consumedContinuationTraceparent = params.entry?.continuationTraceparent;
-  let resolvedSessionId = params.initialResolvedSessionId;
-  let sessionPersistedBeforeGatewayAdmission = params.initialSessionPersistedBeforeGatewayAdmission;
-  let supersededSessionId = params.initialSupersededSessionId;
   let restoredCronContinuation: RestoredCronContinuation | undefined;
   let mainRestartRecoveryOwnerLease: MainSessionRecoveryOwnerLease | undefined;
   let skipAgentInitialSessionTouch = false;
@@ -458,7 +449,7 @@ export async function persistAgentSessionPhase(params: {
       supersededSessionId = params.entry.sessionId;
     }
     const admittedSessionId = resolvedSessionId ?? params.runId;
-    params.updateAdmissionState({
+    Object.assign(params.state, {
       resolvedSessionId,
       admittedSessionId,
       supersededSessionId,
@@ -546,7 +537,7 @@ export async function persistAgentSessionPhase(params: {
     sessionPersistedBeforeGatewayAdmission,
     supersededSessionId,
     // Admission revalidation can observe a newer session id after persistence.
-    admittedSessionId: params.getAdmittedSessionId(),
+    admittedSessionId: params.state.admittedSessionId,
     skipAgentInitialSessionTouch,
     isNewSession,
     spawnedBy: patchBuild.spawnedBy,
@@ -562,7 +553,7 @@ export async function persistAgentSessionPhase(params: {
     bestEffortDeliver:
       isMainSession && params.requestedBestEffortDeliver === undefined
         ? true
-        : params.bestEffortDeliver,
+        : params.state.bestEffortDeliver,
     restoredCronContinuation,
   };
 }

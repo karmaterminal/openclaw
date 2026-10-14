@@ -213,10 +213,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: required session cleanup failure preserves native ownership before host reset.
       // +2: approved async upstream-link writes with released sync compatibility.
       // -8: retired Skill Workshop proposal hook types.
+      // +3: approved async session entry reads and typed incognito refusal on the existing subpath.
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
       // system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the f66ca12402 merge: upstream 3641, merged tree 3652 (+11).
-      3652,
+      // Measured on the bc524d8903 merge: upstream 3644, merged tree 3655 (+11).
+      3655,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -230,16 +231,18 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: owner-approved async coding-tool construction with retained sync compatibility.
       // +1: resolve the controller from the current invocation registry.
       // +2: approved async upstream-link writes with released sync compatibility.
+      // +3: approved async session entry reads and typed incognito refusal on the existing subpath.
       // +4: the continuation feature's callable contracts; measured +4 over base 2187 on b51feb98eb.
-      // Measured on the dd619529b2 merge: upstream 2111, merged tree 2115 (+4).
-      2115,
+      // Measured on the bc524d8903 merge: upstream 2114, merged tree 2118 (+4).
+      2118,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_DEPRECATED_EXPORTS",
       // Remove deprecated sync channel envelope helpers and their compat records at the next Plugin SDK major.
       // +2: approved synchronous upstream-link write compatibility until the next Plugin SDK major.
-      147,
+      // +1: synchronous session entry getter remains until the next Plugin SDK major.
+      148,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

@@ -46,6 +46,7 @@ import {
   getSubagentAnnounceRuntimeConfig,
   loadRequesterSessionEntry,
   loadSessionEntryByKey,
+  withSubagentRequesterSource,
 } from "./subagent-announce-delivery.runtime.js";
 import {
   sendSubagentAnnounceDirectly,
@@ -115,8 +116,8 @@ function createCompletionUserTurnTranscriptRecorderFactory(params: {
         idempotencyKey: `${params.directIdempotencyKey}:active-wake`,
         provenance,
       },
-      target: () => {
-        const loaded = loadRequesterSessionEntry(
+      target: async () => {
+        const loaded = await loadRequesterSessionEntry(
           params.targetRequesterSessionKey,
           params.requesterAgentId,
         );
@@ -147,6 +148,29 @@ export async function deliverSubagentAnnouncement(
     preparedRequester?: { binding: SessionDeliveryRequesterBinding; entry: SessionEntry };
   },
 ): Promise<SubagentAnnounceDeliveryResult> {
+  return withSubagentRequesterSource(
+    params.targetRequesterSessionKey,
+    params.requesterAgentId,
+    async (
+      isRequesterCurrent,
+    ): Promise<Awaited<ReturnType<typeof deliverSubagentAnnouncement>>> => {
+      const guardedParams = isRequesterCurrent
+        ? {
+            ...params,
+            isSourceSessionEffectsAllowed: () =>
+              isRequesterCurrent() && params.isSourceSessionEffectsAllowed?.() !== false,
+            isSourceSessionAdmissionAllowed: () =>
+              isRequesterCurrent() && params.isSourceSessionAdmissionAllowed?.() !== false,
+          }
+        : params;
+      return deliverSubagentAnnouncementBound(guardedParams);
+    },
+  );
+}
+
+async function deliverSubagentAnnouncementBound(
+  params: Parameters<typeof deliverSubagentAnnouncement>[0],
+): ReturnType<typeof deliverSubagentAnnouncement> {
   const sourceOwnerChanged = () =>
     params.isSourceSessionEffectsAllowed?.() === false ||
     params.isSourceSessionAdmissionAllowed?.() === false;
@@ -180,7 +204,8 @@ export async function deliverSubagentAnnouncement(
         resolveCompletionDeliveryOrigins(params);
       const requesterEntry =
         params.preparedRequester?.entry ??
-        loadRequesterSessionEntry(params.targetRequesterSessionKey, params.requesterAgentId).entry;
+        (await loadRequesterSessionEntry(params.targetRequesterSessionKey, params.requesterAgentId))
+          .entry;
       // No external route exists for an internal-only handoff. Let the normal
       // agent final enter the owning transcript instead of requiring a message tool target.
       const sourceReplyDeliveryMode =

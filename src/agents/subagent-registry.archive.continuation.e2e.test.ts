@@ -51,6 +51,19 @@ vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
   };
 });
 
+// Since absorb step 3 (#166845) the sweeper reads child sessions through the
+// worker; route that read to the same entry the accessor mock serves.
+vi.mock("../config/sessions/session-entry-read-runtime.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../config/sessions/session-entry-read-runtime.js")>();
+  return {
+    ...actual,
+    readSessionEntryReadOnlyInWorker: vi.fn(async (input: { sessionKey: string }) =>
+      sessionAccessorMocks.loadSessionEntryReadOnly(input as never),
+    ),
+  };
+});
+
 vi.mock("../infra/agent-events.js", () => ({
   getAgentEventLifecycleGeneration: () => "test-generation",
   isAgentEventLifecycleGenerationCurrent: (generation: string) => generation === "test-generation",

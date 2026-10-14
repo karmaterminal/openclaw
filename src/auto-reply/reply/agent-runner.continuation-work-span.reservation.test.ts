@@ -160,7 +160,7 @@ vi.mock("../../config/sessions/session-accessor.sqlite-entry.js", async (importO
       operation: Parameters<typeof actual.applySessionEntryOperation>[1],
     ) =>
       updateSessionEntryMock(scope, (entry: SessionEntry) =>
-        reduceSessionEntryPatch(operation, entry),
+        reduceSessionEntryPatch(operation, entry, entry),
       ),
     loadSessionEntryForAdmission: loadCurrentEntry,
   };

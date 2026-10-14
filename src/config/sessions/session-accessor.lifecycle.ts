@@ -1,5 +1,7 @@
+import path from "node:path";
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
+import { INCOGNITO_AGENT_SQLITE_BASENAME } from "../../state/openclaw-agent-db.paths.js";
 import { resolveStateDir } from "../paths.js";
 import { isInternalSessionEffectsKey } from "./internal-session-key.js";
 import {
@@ -37,11 +39,20 @@ const loadSqliteLifecycleRuntime = createLazyRuntimeModule<SqliteLifecycleRuntim
  * Must run in the caller's synchronous frame. The lazy runtime load below is an
  * await, so a caller that mutates `OPENCLAW_STATE_DIR` after calling would
  * otherwise redirect work whose owner was already selected — the static import
- * this replaced resolved the owner before any suspension.
+ * this replaced resolved the owner before any suspension. An explicit
+ * incognito sentinel already names its physical root, and pinning ambient
+ * state onto it would retarget it, so it passes through unchanged.
  */
-function captureLifecycleParams<T extends { env?: NodeJS.ProcessEnv }>(
+function captureLifecycleParams<T extends { env?: NodeJS.ProcessEnv; storePath?: string }>(
   params: T,
-): T & { env: NodeJS.ProcessEnv } {
+): T {
+  if (
+    !params.env &&
+    params.storePath &&
+    path.basename(params.storePath) === INCOGNITO_AGENT_SQLITE_BASENAME
+  ) {
+    return params;
+  }
   const env = { ...(params.env ?? process.env) };
   env.OPENCLAW_STATE_DIR = resolveStateDir(env);
   return { ...params, env };

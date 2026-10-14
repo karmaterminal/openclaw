@@ -6,9 +6,11 @@ import type {
 } from "../infra/sqlite-worker-identity.js";
 import type { OpenClawStateDatabaseOptions } from "./openclaw-state-db-contract.js";
 
-// v25 (continuation) records durable session-key recipient-authority generations for delayed
-// named returns.
-export const OPENCLAW_AGENT_SCHEMA_VERSION = 25;
+// v26 (continuation) records durable session-key recipient-authority generations for delayed
+// named returns. Fleet databases first received it as an unreleased v25; the v26 migration
+// recognizes that shape (see openclaw-agent-db-schema.ts).
+export const OPENCLAW_AGENT_SCHEMA_VERSION = 26;
+export const CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION = 25;
 export const AGENT_STORAGE_SCHEMA_VERSION = 23;
 export const TRANSCRIPT_FTS_ROW_SCHEMA_VERSION = 22;
 export const AGENT_MEDIA_SCHEMA_VERSION = 17;
@@ -49,6 +51,9 @@ export type OpenClawRegisteredAgentDatabase = {
 export type OpenClawAgentDatabaseRegistryReadResult =
   | { status: "available"; entries: OpenClawRegisteredAgentDatabase[] }
   | { status: "unavailable" };
+
+/** An in-process witness from the canonical invalidator, never serialized as authority. */
+export type AgentDatabaseRegistryChange = Readonly<{ previous: symbol; current: symbol }>;
 
 export type OpenClawAgentDatabaseRegistrationCommit = Readonly<{
   agentId: string;
