@@ -160,8 +160,15 @@ describe("sessions.usage details", () => {
       await runSessionsUsageDetail("sessions.usage.timeseries", {
         key: "agent:opus:storeless",
       });
+      // The resolved usage target carries no store row (upstream #163182 renamed it `entry`),
+      // so the loader locates the transcript from the canonical JSONL file alone.
       expect(vi.mocked(loadSessionUsageTimeSeries)).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionFile: canonicalSessionFile, sessionEntry: undefined }),
+        expect.objectContaining({
+          agentId: "opus",
+          sessionId: "storeless",
+          sessionFile: canonicalSessionFile,
+          entry: undefined,
+        }),
       );
     });
   });
