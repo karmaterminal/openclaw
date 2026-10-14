@@ -141,6 +141,8 @@ vi.mock("../../config/sessions/session-accessor.sqlite-entry.js", async (importO
   const actual =
     await importOriginal<typeof import("../../config/sessions/session-accessor.sqlite-entry.js")>();
   const { createCurrentTestDatabaseEntry } = await import("./agent-runner-entry.test-support.js");
+  const { reduceSessionEntryPatch } =
+    await import("../../config/sessions/session-entry-patch-operation.js");
   const loadCurrentEntry = (...args: unknown[]) => {
     const implementation = loadSessionEntryMock.getMockImplementation();
     const entry = implementation
@@ -151,6 +153,15 @@ vi.mock("../../config/sessions/session-accessor.sqlite-entry.js", async (importO
   return {
     ...actual,
     loadSessionEntryWithDatabase: loadCurrentEntry,
+    // Final-delivery persistence moved to fixed operations (#167278); evaluate
+    // them with the canonical reducer against the same in-memory row.
+    applySessionEntryOperation: (
+      scope: unknown,
+      operation: Parameters<typeof actual.applySessionEntryOperation>[1],
+    ) =>
+      updateSessionEntryMock(scope, (entry: SessionEntry) =>
+        reduceSessionEntryPatch(operation, entry),
+      ),
     loadSessionEntryForAdmission: loadCurrentEntry,
   };
 });
