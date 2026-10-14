@@ -8,6 +8,7 @@ import { constants, type DatabaseSync } from "node:sqlite";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
+import { retireSqliteDatabaseAdmissionForPath } from "../infra/sqlite-database-admission.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
 import { withLegacyCanonicalSessionValidationTriggers } from "./openclaw-agent-canonical-validation-migration.js";
 import { withAgentDatabaseMaintenanceLease } from "./openclaw-agent-db-maintenance-lease.js";
@@ -18,6 +19,10 @@ import {
   openOpenClawAgentDatabase as openOpenClawAgentDatabaseRuntime,
   resolveOpenClawAgentSqlitePath,
 } from "./openclaw-agent-db.js";
+import {
+  assertOpenClawMigrationWitnessPreserved,
+  captureOpenClawMigrationWitness,
+} from "./openclaw-migration-witness.js";
 import {
   closeOpenClawStateDatabaseForTest,
   openOpenClawStateDatabase,
@@ -109,9 +114,12 @@ function stageCapturedAgentDatabase(
   const database = new DatabaseSync(databasePath);
   try {
     database.exec(CAPTURED_SCHEMA_25[history]);
+    // A captured file is schema only; live databases also hold the schema's seed row
+    // (ronan's fleet 25 has it).
     database.exec(`PRAGMA user_version = 25;
       INSERT INTO schema_meta (meta_key, role, schema_version, agent_id, created_at, updated_at)
-      VALUES ('primary', 'agent', 25, 'main', 1, 1);`);
+      VALUES ('primary', 'agent', 25, 'main', 1, 1);
+      INSERT OR IGNORE INTO session_key_contract (id, main_key, updated_at) VALUES (1, 'main', 0);`);
     database
       .prepare(`INSERT INTO session_nodes (session_key, current_session_id, entry_json, updated_at)
         VALUES (?, ?, ?, 1)`)
@@ -120,6 +128,8 @@ function stageCapturedAgentDatabase(
         CAPTURED_SESSION.entry.sessionId,
         JSON.stringify(CAPTURED_SESSION.entry),
       );
+    // Live rows are settled: ronan's fleet 25 holds only 1 (valid) and -1 (invalid).
+    database.exec("UPDATE session_nodes SET entry_valid = 1");
     if (history === "fleet") {
       database
         .prepare(
@@ -168,6 +178,9 @@ function stageAgentDatabase(env: NodeJS.ProcessEnv, shape: Shape): string {
     UPDATE schema_meta SET schema_version = ${version} WHERE meta_key = 'primary';
   `);
   closeOpenClawAgentDatabasesForTest();
+  // The staged file now holds an older schema than this process admitted; physical
+  // admission outlives the close (#167739), so retire it as any out-of-band rewrite must.
+  retireSqliteDatabaseAdmissionForPath(databasePath);
   return databasePath;
 }
 
@@ -376,5 +389,36 @@ describe("agent schema 25 → 26 bridge", () => {
       });
       expect(readSqliteUserVersion(openAgentDatabase(env).db)).toBe(26);
     });
+
+    it.each(["fleet", "upstream"] as const)(
+      "witnesses a captured %s schema 25 database as preserved across migration",
+      async (origin) => {
+        const env = { OPENCLAW_STATE_DIR: makeTempDir(tempDirs, `schema25-witness-${origin}-`) };
+        const databasePath = stageCapturedAgentDatabase(env, origin);
+        const witness = () => {
+          const { DatabaseSync } = requireNodeSqlite();
+          const database = new DatabaseSync(databasePath, { readOnly: true });
+          try {
+            return captureOpenClawMigrationWitness(database, { role: "agent", agentId: "main" });
+          } finally {
+            database.close();
+          }
+        };
+        const original = witness();
+
+        await migrateAgentDatabase(env);
+
+        expect(() => assertOpenClawMigrationWitnessPreserved(original, witness())).not.toThrow();
+        if (origin === "fleet") {
+          const { DatabaseSync } = requireNodeSqlite();
+          const database = new DatabaseSync(databasePath);
+          database.exec("DELETE FROM session_recipient_authority");
+          database.close();
+          expect(() => assertOpenClawMigrationWitnessPreserved(original, witness())).toThrow(
+            /session_recipient_authority/u,
+          );
+        }
+      },
+    );
   });
 });

@@ -6,6 +6,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
+import { retireSqliteDatabaseAdmissionForPath } from "../infra/sqlite-database-admission.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
 import { withLegacyCanonicalSessionValidationTriggers } from "./openclaw-agent-canonical-validation-migration.js";
 import { withAgentDatabaseMaintenanceLease } from "./openclaw-agent-db-maintenance-lease.js";
@@ -109,6 +110,9 @@ function stageSchema24AgentDatabase(
     UPDATE schema_meta SET schema_version = 24 WHERE meta_key = 'primary';
   `);
   closeOpenClawAgentDatabasesForTest();
+  // The staged file now holds an older schema than this process admitted; physical
+  // admission outlives the close (#167739), so retire it as any out-of-band rewrite must.
+  retireSqliteDatabaseAdmissionForPath(databasePath);
   return databasePath;
 }
 

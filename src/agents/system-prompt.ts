@@ -42,7 +42,6 @@ import {
   buildLimitedBootstrapPromptLines,
 } from "./bootstrap-prompt.js";
 import { buildCredentialSafetyPrompt } from "./credential-safety-prompt.js";
-import { buildTemporalContextSection } from "./date-time.js";
 import { buildDelegationGuidanceSection } from "./delegation-guidance.js";
 import type { EmbeddedContextFile } from "./embedded-agent-helpers/context-file.js";
 import type {
@@ -230,8 +229,6 @@ export function buildAgentSystemPrompt(params: {
   /** Prepared absence of managed setup after native routing and tool policy. */
   webSearchUnconfigured?: boolean;
   modelAliasLines?: string[];
-  userTimezone?: string;
-  userDate?: string;
   contextFiles?: EmbeddedContextFile[];
   bootstrapMode?: BootstrapMode;
   bootstrapTruncationNotice?: string;
@@ -375,8 +372,6 @@ export function buildAgentSystemPrompt(params: {
       ].join(" ")
     : undefined;
   const reasoningLevel = params.reasoningLevel ?? "off";
-  const userTimezone = params.userTimezone?.trim();
-  const userDate = params.userDate?.trim();
   const skillsPrompt = params.skillsPrompt?.trim();
   const runtimeChannel = normalizeOptionalLowercaseString(runtimeInfo?.channel);
   const runtimeChatType = normalizeChatType(runtimeInfo?.chatType);
@@ -557,7 +552,6 @@ export function buildAgentSystemPrompt(params: {
       providerStablePrefix,
       reasoningHint,
       reasoningLevel,
-      userTimezone,
       sandboxInfo: params.sandboxInfo,
       displayWorkspaceDir,
       workspaceGuidance,
@@ -770,16 +764,6 @@ export function buildAgentSystemPrompt(params: {
   });
 
   const lines: PromptLine[] = [stablePrefix];
-
-  // Local date and timezone can change between turns. Keep them at the front of
-  // the volatile suffix so rollover is visible without invalidating the stable prefix.
-  lines.push(
-    ...buildTemporalContextSection({
-      userDate,
-      userTimezone,
-      sessionStatusAvailable: availableTools.has("session_status"),
-    }),
-  );
 
   // Channel/session-specific guidance lives below the cache boundary so large
   // stable workspace context can remain a byte-identical prefix across turns.

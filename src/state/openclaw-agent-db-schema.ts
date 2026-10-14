@@ -6,6 +6,7 @@ import {
   migrateMemoryIndexStorage,
 } from "../../packages/memory-host-sdk/src/host/memory-schema.js";
 import { migrateSessionCostUsageRollupStorage } from "../infra/session-cost-usage-cache-migration.js";
+import { revokeSqliteDatabaseAdmissions } from "../infra/sqlite-database-admission.js";
 import {
   repairCanonicalSqliteIndexes,
   verifyAndRepairCanonicalSqliteIndexSteps,
@@ -19,7 +20,12 @@ import {
   type SqliteIntegrityOperation,
 } from "../infra/sqlite-integrity.js";
 import { runSqlitePinnedReadSnapshotSync } from "../infra/sqlite-pinned-read-snapshot.js";
-import { admitSqliteSchema, runSqliteReadOperationSync } from "../infra/sqlite-schema-facts.js";
+import {
+  admitSqliteSchema,
+  getAdmittedSqliteSchemaFacts,
+  isSqliteSchemaAdmissionCold,
+  runSqliteReadOperationSync,
+} from "../infra/sqlite-schema-facts.js";
 import { migrateSqliteSchemaToStrictInTransaction } from "../infra/sqlite-strict.js";
 import { runSqliteImmediateTransactionSync } from "../infra/sqlite-transaction.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
@@ -34,7 +40,6 @@ import {
 import { ensureOpenClawAgentBoardSchemaInTransaction } from "./openclaw-agent-board-schema.js";
 import {
   ensureLegacySessionEntryValidityTriggers,
-  withLegacyCanonicalSessionValidationTriggers,
   migrateCanonicalSessionWriterValidation,
 } from "./openclaw-agent-canonical-validation-migration.js";
 import {
@@ -51,12 +56,14 @@ import {
   type OpenClawAgentDatabaseOptions,
   type OpenClawAgentDatabase,
 } from "./openclaw-agent-db-contract.js";
+import { registerOpenClawAgentDatabaseIdentity } from "./openclaw-agent-db-identity.js";
 import * as maintenanceAuthority from "./openclaw-agent-db-lease.js";
 import { migrateOpenClawAgentSchema } from "./openclaw-agent-db-legacy-schema.js";
 import { persistAgentSchemaMetadata } from "./openclaw-agent-db-metadata-write.js";
 import { ensureOpenClawAgentDatabasePermissions } from "./openclaw-agent-db-permissions.js";
 import { registerOpenClawAgentDatabase } from "./openclaw-agent-db-registry.js";
 import {
+  getOpenClawAgentFleetSchema25MigrationSchema,
   getOpenClawAgentMigrationSchema,
   assertExistingAgentSchemaOwner,
   assertCurrentAgentSchemaMetadata,
@@ -72,6 +79,7 @@ import {
   ensureSessionReactionsSchemaInTransaction,
   readExistingAgentSchemaMeta,
   repairAndAssertOpenClawAgentV14SchemaForMigration,
+  readOpenClawAgentSchema25Shape,
 } from "./openclaw-agent-db-schema-helpers.js";
 import {
   backfillSessionConversations,
@@ -379,26 +387,6 @@ function finishAgentSchemaMigration(
 
 type AgentSchemaMutationGuard = <T>(run: () => T) => T;
 
-type AgentSchema25Shape = "canonical-writer" | "recipient-authority";
-
-/** Classify a schema-25 database by its physical shape; mixed shapes are refused. */
-function readAgentSchema25Shape(db: DatabaseSync, pathname: string): AgentSchema25Shape {
-  const has = (type: "table" | "trigger", name: string) =>
-    db.prepare("SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?").get(type, name) !==
-    undefined;
-  const authority = has("table", "session_recipient_authority");
-  const legacyTriggers = has("trigger", "session_nodes_entry_valid_after_insert");
-  if (authority && legacyTriggers) {
-    return "recipient-authority";
-  }
-  if (!authority && !legacyTriggers) {
-    return "canonical-writer";
-  }
-  throw new Error(
-    `OpenClaw agent database ${pathname} has an unrecognized schema-25 shape (recipient authority: ${authority}, legacy validation triggers: ${legacyTriggers}); restore its pre-upgrade backup rather than migrating it.`,
-  );
-}
-
 function ensureAgentSchema(
   db: DatabaseSync,
   agentId: string,
@@ -465,7 +453,7 @@ function ensureAgentSchema(
       const schema25Shape =
         previousVersion === CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
         targetVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
-          ? readAgentSchema25Shape(db, pathname)
+          ? readOpenClawAgentSchema25Shape(db, pathname)
           : undefined;
       const requiresCanonicalWriterMigration =
         !isEmptyDatabase &&
@@ -518,9 +506,7 @@ function ensureAgentSchema(
         }
         const previousSchema =
           schema25Shape === "recipient-authority"
-            ? withLegacyCanonicalSessionValidationTriggers(
-                getOpenClawAgentMigrationSchema(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION),
-              )
+            ? getOpenClawAgentFleetSchema25MigrationSchema()
             : getOpenClawAgentMigrationSchema(previousVersion);
         repairCanonicalSqliteIndexes(db, pathname, previousSchema, {
           verifyPhysicalIntegrity: false,
@@ -606,7 +592,6 @@ function ensureAgentSchema(
       migrateSessionNodesAndWindows(db, previousVersion);
       maintenanceAuthority.renewAgentDatabaseMaintenanceAuthorityIfPresent();
       ensureSessionAdditiveColumns(db);
-      ensureSessionEntryValidityProjection(db);
       // Structure-gated rather than version-gated: some databases already marked
       // 18 retain the legacy actor_type key. The rebuild returns once
       // identity_namespace exists.
@@ -616,6 +601,8 @@ function ensureAgentSchema(
       if (targetVersion >= 19) {
         migrateSessionCreatorNamespaces(db, previousVersion);
       }
+      // Creator migration rewrites entry_json and invalidates its stored validity.
+      ensureSessionEntryValidityProjection(db);
       maintenanceAuthority.renewAgentDatabaseMaintenanceAuthorityIfPresent();
       db.exec(migrationSchemaSql);
       if (previousVersion !== AGENT_MEDIA_SCHEMA_VERSION) {
@@ -696,6 +683,8 @@ export function* ensureOpenClawAgentDatabaseSchemaSteps(
   const agentId = normalizeAgentId(options.agentId);
   const databaseOptions = { ...options, agentId };
   const pathname = resolveOpenClawAgentSqlitePath(databaseOptions);
+  // Explicit maintenance inspects current bytes even when this process previously admitted them.
+  revokeSqliteDatabaseAdmissions(db);
   assertExistingAgentSchemaOwner(readExistingAgentSchemaMeta(db), agentId, pathname);
   const version = assertSupportedAgentSchemaVersion(db, pathname);
   if (version < OPENCLAW_AGENT_SCHEMA_VERSION) {
@@ -773,35 +762,22 @@ export function* ensureOpenClawAgentDatabaseSchemaSteps(
     options.onMigrationWarning,
   );
   ensureOpenClawAgentDatabasePermissions(pathname, databaseOptions);
+  let admittedDb: DatabaseSync | undefined;
+  if (db.location() && (isSqliteSchemaAdmissionCold(db) || getAdmittedSqliteSchemaFacts(db))) {
+    admitSqliteSchema(db);
+    assertCanonicalSessionValidationSchema(db);
+    registerOpenClawAgentDatabaseIdentity(db);
+    setOpenClawAgentDatabaseValidation({ db, path: pathname, agentId });
+    admittedDb = db;
+  }
   if (databaseOptions.register === true) {
-    registerOpenClawAgentDatabase({ agentId, path: pathname, env: databaseOptions.env });
+    registerOpenClawAgentDatabase({
+      agentId,
+      path: pathname,
+      env: databaseOptions.env,
+      admittedDb,
+    });
   }
-}
-
-/** Upgrade older owned databases to the structural schema required by the media cutover. */
-export function* migrateOpenClawAgentDatabaseToMediaPrerequisiteSchemaSteps(
-  db: DatabaseSync,
-  options: OpenClawAgentDatabaseOptions,
-): SqliteIntegrityOperation<void> {
-  const targetVersion = AGENT_MEDIA_SCHEMA_VERSION - 1;
-  if (readSqliteUserVersion(db) > targetVersion) {
-    return;
-  }
-  const agentId = normalizeAgentId(options.agentId);
-  const pathname = resolveOpenClawAgentSqlitePath({ ...options, agentId });
-  assertExistingAgentSchemaOwner(readExistingAgentSchemaMeta(db), agentId, pathname);
-  assertSupportedAgentMigrationSchemas(db, pathname, readSqliteUserVersion(db));
-  if (db.location()) {
-    maintenanceAuthority.invalidateOpenClawAgentDatabaseIntegrityBeforeMutation(
-      pathname,
-      options.env,
-    );
-  }
-  yield* agentDatabaseIntegrityBeforeMutationSteps(db, agentId, pathname);
-  configureSqlitePreSchemaPragmas(db, {
-    busyTimeoutMs: OPENCLAW_SQLITE_BUSY_TIMEOUT_MS,
-  });
-  ensureAgentSchema(db, agentId, pathname, targetVersion);
 }
 
 export { ensureAgentSchema as ensureOpenClawAgentSchema };

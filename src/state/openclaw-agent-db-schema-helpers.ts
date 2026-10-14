@@ -340,6 +340,36 @@ export function hasPendingMemoryChunkMetadataMigration(db: DatabaseSync): boolea
   return hasLegacyMemoryRecallMetadataColumns(db) || hasLegacyMemoryChunkProvenanceTrigger(db);
 }
 
+export type OpenClawAgentSchema25Shape = "canonical-writer" | "recipient-authority";
+
+/** Classify a schema-25 database by its physical shape; mixed shapes are refused. */
+export function readOpenClawAgentSchema25Shape(
+  db: DatabaseSync,
+  pathname: string,
+): OpenClawAgentSchema25Shape {
+  const has = (type: "table" | "trigger", name: string) =>
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?").get(type, name) !==
+    undefined;
+  const authority = has("table", "session_recipient_authority");
+  const legacyTriggers = has("trigger", "session_nodes_entry_valid_after_insert");
+  if (authority && legacyTriggers) {
+    return "recipient-authority";
+  }
+  if (!authority && !legacyTriggers) {
+    return "canonical-writer";
+  }
+  throw new Error(
+    `OpenClaw agent database ${pathname} has an unrecognized schema-25 shape (recipient authority: ${authority}, legacy validation triggers: ${legacyTriggers}); restore its pre-upgrade backup rather than migrating it.`,
+  );
+}
+
+/** The fleet's schema 25: recipient authority plus the legacy validation triggers. */
+export function getOpenClawAgentFleetSchema25MigrationSchema(): string {
+  return withLegacyCanonicalSessionValidationTriggers(
+    getOpenClawAgentMigrationSchema(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION),
+  );
+}
+
 export function migratedEntryChannel(entry: Record<string, unknown>): string | null {
   const delivery = asNullableRecord(entry.delivery);
   const deliveryContext =
