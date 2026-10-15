@@ -61,7 +61,7 @@ import {
 import { withEnvAsync } from "../../test-utils/env.js";
 import { createSessionConversationTestRegistry } from "../../test-utils/session-conversation-registry.js";
 import { useContinuationCustodyTestState } from "../continuation/custody/custody.test-support.js";
-import { buildCommandContext } from "./commands-context.js";
+import { buildCommandContextForTest as buildCommandContext } from "./commands-context.test-support.js";
 import { maybeHandleResetCommand } from "./commands-reset.js";
 import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
 import { resolveDispatchResetAdmission } from "./dispatch-from-config.context.js";
@@ -435,7 +435,7 @@ describe("initSessionState guarded initialization", () => {
       ).rejects.toThrow(/ended during restart recovery/i);
       expect(loadSessionEntry({ storePath, sessionKey })).toMatchObject(tombstoneEntry);
 
-      const resetAdmission = resolveDispatchResetAdmission({
+      const resetAdmission = await resolveDispatchResetAdmission({
         agentId: "main",
         cfg,
         ctx,

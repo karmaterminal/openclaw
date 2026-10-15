@@ -181,6 +181,9 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   // Released synchronous allowlist compatibility during the approved worker-read migration.
   "channel-pairing": 1,
   "channel-policy": 7,
+  // Released synchronous conversation binding APIs remain until the next Plugin SDK major.
+  "conversation-binding-inspection-runtime": 1,
+  "conversation-runtime": 3,
   "channel-send-result": 1,
   "reply-runtime": 1,
   "security-runtime": 1,
@@ -219,10 +222,12 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +7: approved prepared/data-only session patches and their authority contracts.
       // +4: CLI state-owner routing, Gateway owner guards, target selection, and timeout parsing.
       // +1: requester-bound transport effects for owner-routed plugin commands.
+      // +12: async command authorization and native approval contracts (#168482).
+      // +4: async conversation inspection, routing, and V2 adapter registration (#168483).
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
       // system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the fbd830a7c5 merge: upstream 3656, merged tree 3667 (+11).
-      3667,
+      // Measured on the 626eeac26d merge: upstream 3672, merged tree 3683 (+11).
+      3683,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -240,9 +245,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +3: approved prepared/data-only session patches and authority-bound routes.
       // +4: the same four CLI state-owner and transport functions.
       // +1: runWithLocalStateMutationOwner shares the existing transport authority scope.
+      // +8: async command authorization and native approval helpers (#168482).
+      // +3: async conversation inspection, routing, and V2 adapter registration (#168483).
       // +4: the continuation feature's callable contracts; measured +4 over base 2187 on b51feb98eb.
-      // Measured on the fbd830a7c5 merge: upstream 2122, merged tree 2126 (+4).
-      2126,
+      // Measured on the 626eeac26d merge: upstream 2133, merged tree 2137 (+4).
+      2137,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -251,7 +258,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: approved synchronous upstream-link write compatibility until the next Plugin SDK major.
       // +1: synchronous session entry getter remains until the next Plugin SDK major.
       // +6: released session callbacks and provider replay contracts during async migration.
-      154,
+      // +4: released synchronous conversation binding contracts during V2 migration.
+      158,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(
