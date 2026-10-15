@@ -43,20 +43,23 @@ function sanitizeAssistantText(
     text,
     assistantVisibleTextFilters(
       phase === "final_answer" ? "final-answer-delivery" : "delivery",
-      streaming && phase === "final_answer",
+      streaming,
       options,
     ),
   );
 }
 
-function sanitizeAssistantDisplayText(text: string, phase?: AssistantPhase): string {
-  const sanitized = sanitizeAssistantText(text, phase);
-  const stripped = stripContinuationSignal(sanitized);
+function stripContinuationDisplayMarker(text: string): string {
+  const stripped = stripContinuationSignal(text);
   if (stripped.signal) {
     return stripped.text;
   }
-  const trailing = splitTrailingDirective(sanitized);
-  return /^\s*(?:\[\[\s*)?CONT/iu.test(trailing.tail) ? trailing.text : sanitized;
+  const trailing = splitTrailingDirective(text);
+  return /^\s*(?:\[\[\s*)?CONT/iu.test(trailing.tail) ? trailing.text : text;
+}
+
+function sanitizeAssistantDisplayText(text: string, phase?: AssistantPhase): string {
+  return stripContinuationDisplayMarker(sanitizeAssistantText(text, phase));
 }
 
 function isAssistantTextContentBlockType(value: unknown): boolean {
@@ -78,7 +81,7 @@ export function createAssistantVisibleStreamText(phase?: AssistantPhase) {
   return createTextProjection([
     ...assistantVisibleTextFilters(
       phase === "final_answer" ? "final-answer-delivery" : "delivery",
-      phase === "final_answer",
+      true,
     ),
     ...userFacingTextFilters(false, true),
     trimTextFilter("both", { preserveCodeIndentation: true }),
@@ -170,9 +173,27 @@ function prepareEmbeddedAssistantTextForPhase(
       part.text = prepareText(part.text, index === parts.length - 1, part.phase, part.contentIndex);
     }
   }
+  // Adjacent blocks in the same phase share markup state; a phase boundary stays explicit.
+  const groupedParts: { text: string; phase?: AssistantPhase; contentIndex: number }[] = [];
+  for (const part of parts) {
+    // A marker ending an earlier item would sit mid-group after joining; strip it per item.
+    const text = trimTextPreservingCode(stripContinuationDisplayMarker(part.text));
+    const previous = groupedParts.at(-1);
+    if (
+      previous &&
+      previous.phase === part.phase &&
+      previous.contentIndex + 1 === part.contentIndex
+    ) {
+      previous.contentIndex = part.contentIndex;
+      if (text) {
+        previous.text += `\n${text}`;
+      }
+    } else if (text) {
+      groupedParts.push({ text, phase: part.phase, contentIndex: part.contentIndex });
+    }
+  }
   return prepareRender(selectedPhase, () =>
-    // A native block boundary can divide markup; finalize only the selected snapshot.
-    parts
+    groupedParts
       .map(({ text, phase }) => sanitizeAssistantDisplayText(text, phase))
       .filter((text) => text.trim())
       .join("\n")
