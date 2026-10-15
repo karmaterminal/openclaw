@@ -39,6 +39,8 @@ const unscheduledConfig: OpenClawConfig = {
 
 type Turn = { reason?: string; sessionKey?: string; parentRunId?: string; gate: string };
 const turns: Turn[] = [];
+// Turns the scheduler has started; their stage reads the session through the agent worker.
+const startedTurns = new Set<Promise<unknown>>();
 let runner: HeartbeatRunner | undefined;
 
 beforeEach(() => {
@@ -46,18 +48,24 @@ beforeEach(() => {
   turns.length = 0;
   runner = startHeartbeatRunner({
     cfg: unscheduledConfig,
-    runOnce: async (opts) => {
-      // The execution stage applies its own schedule gate; record its verdict.
-      const stage = await resolveHeartbeatWakeStage({ ...opts, cfg: unscheduledConfig });
-      const gate =
-        stage.kind === "skipped" && stage.reason === "disabled" ? "disabled" : "admitted";
-      turns.push({
-        reason: opts.reason,
-        sessionKey: opts.sessionKey,
-        parentRunId: opts.parentRunId,
-        gate,
-      });
-      return { status: "ran", durationMs: 0 };
+    runOnce: (opts) => {
+      const turn = (async () => {
+        // The execution stage applies its own schedule gate; record its verdict.
+        const stage = await resolveHeartbeatWakeStage({ ...opts, cfg: unscheduledConfig });
+        const gate =
+          stage.kind === "skipped" && stage.reason === "disabled" ? "disabled" : "admitted";
+        turns.push({
+          reason: opts.reason,
+          sessionKey: opts.sessionKey,
+          parentRunId: opts.parentRunId,
+          gate,
+        });
+        return { status: "ran" as const, durationMs: 0 };
+      })();
+      const forget = () => startedTurns.delete(turn);
+      startedTurns.add(turn);
+      void turn.then(forget, forget);
+      return turn;
     },
   });
 });
@@ -88,11 +96,17 @@ async function seedRecipientSession(stateDir: string): Promise<void> {
   );
 }
 
-/** Let the wake layer coalesce and dispatch whatever was requested. */
+/**
+ * Let the wake layer coalesce and dispatch whatever was requested, then wait
+ * for every turn it started. The window covers dispatch only (a 250 ms
+ * coalesce); a started turn's stage awaits the agent worker for as long as it
+ * takes, so the window must not bound it.
+ */
 async function settleWakes(): Promise<void> {
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 1_000);
   });
+  await Promise.all(startedTurns);
 }
 
 /** A held return: the full queue refuses the fast path; the durable row remains. */
