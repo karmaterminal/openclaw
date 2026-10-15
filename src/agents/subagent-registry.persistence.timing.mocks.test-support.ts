@@ -10,6 +10,7 @@ export const timingLifecycleMocks = {
   },
 };
 
+// mock-isolation: Terminal states are recorded without writing session state events.
 vi.mock("../sessions/subagent-terminal-state.js", () => ({
   recordSubagentTerminalState: mocks.recordSubagentTerminalState,
 }));

@@ -26,7 +26,9 @@ const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331
 
 // Upstream removed the Tasks runtime (6652f7eac8); media admission now records its
 // own operation and reads the requester through the session worker.
+// mock-isolation: Completion delivery is captured without the session delivery queue or transcript writes.
 vi.mock("../subagents/announce/subagent-announce-delivery.js", () => subagentAnnounceDeliveryMocks);
+// mock-isolation: The fake requester session replaces worker-thread session reads.
 vi.mock("../../config/sessions/session-entry-read-runtime.js", () => ({
   withSessionEntryReadOnlyInWorker: async (
     _scope: unknown,
@@ -37,6 +39,7 @@ vi.mock("../../config/sessions/session-entry-read-runtime.js", () => ({
     return consume({ ok: true, value: sessionMocks.loadSessionEntry() });
   },
 }));
+// mock-isolation: Cron cleanup is recorded without reading or deleting session-store entries.
 vi.mock("../../cron/run-continuation-cleanup.js", () => cronContinuationCleanupMocks);
 
 import { createMediaGenerationTaskLifecycle } from "./media-generate-background-shared.js";

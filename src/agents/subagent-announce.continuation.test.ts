@@ -20,20 +20,24 @@ const mocked = vi.hoisted(() => ({
 
 // ---------- Non-barrel module mocks (these intercept correctly in vitest 4.x) ----------
 
+// mock-isolation: Agent steps cannot run here: this stub has no runAgentStep, so no step reaches the Gateway.
 vi.mock("./tools/agent-step.js", () => ({
   readLatestAssistantReply: mocked.readLatestAssistantReplyMock,
 }));
 
+// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
 vi.mock("../infra/heartbeat-wake.js", () => ({
   markTrustedContinuationHeartbeatWake: <T>(request: T) => request,
   requestHeartbeatNow: (...args: unknown[]) => mocked.requestHeartbeatNowMock(...args),
 }));
 
+// mock-isolation: Subagent depth is fixed by the test instead of read from the session store.
 vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: (sessionKey: string) =>
     sessionKey.includes(":subagent:") ? 1 : 0,
 }));
 
+// mock-isolation: Embedded agent runs are scripted; no agent session or provider runs.
 vi.mock("./embedded-agent.js", () => ({
   isEmbeddedAgentRunActive: () => false,
   isEmbeddedAgentRunStreaming: () => false,
@@ -59,6 +63,7 @@ vi.mock("./subagents/registry/subagent-registry.js", async (importOriginal) => (
   replaceSubagentRunAfterSteerCore: () => true,
 }));
 
+// mock-isolation: No plugin hooks are registered, so plugin hooks never run.
 vi.mock("../plugins/hook-runner-global.js", () => ({
   getGlobalHookRunner: () => ({
     hasHooks: () => false,

@@ -31,6 +31,7 @@ vi.mock("./agent-scope.js", async () => {
   };
 });
 
+// mock-isolation: Project fixture inventories without constructing the agent tool runtime.
 vi.mock("./agent-tools.js", () => ({
   createOpenClawCodingToolsInternalAsync: async (
     options?: Parameters<typeof createOpenClawCodingToolsInternal>[0],
@@ -42,19 +43,23 @@ vi.mock("./auth-profiles/source-check.js", async (importOriginal) => ({
   hasAnyAuthProfileStoreSourceAsync: async () => false,
 }));
 
+// mock-isolation: Tool schemas pass through unchanged instead of provider plugin normalization.
 vi.mock("./embedded-agent-runner/tool-schema-runtime.js", () => ({
   normalizeProviderToolSchemas: (options: { tools: AnyAgentTool[] }) => options.tools,
   logProviderToolSchemaDiagnostics: vi.fn(),
 }));
 
+// mock-isolation: No bundled catalog model resolves; the real lookup scans plugin manifests.
 vi.mock("./embedded-agent-runner/model.static-catalog.js", () => ({
   resolveBundledStaticCatalogModel: () => undefined,
 }));
 
+// mock-isolation: Model resolution is inert; the real resolver loads provider runtimes and auth storage.
 vi.mock("./embedded-agent-runner/model.js", () => ({
   resolveModelAsync: vi.fn(),
 }));
 
+// mock-isolation: No provider plugin normalizes transports; the real runtime loads provider plugins.
 vi.mock("../plugins/provider-runtime.js", () => ({
   normalizeProviderTransportWithPlugin: () => undefined,
 }));

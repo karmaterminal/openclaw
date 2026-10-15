@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   createContinueDelegateTool: vi.fn(() => ({ name: "continue_delegate" })),
 }));
 
+// mock-isolation: The delegate tool factory is recorded so the case can check its session identity without loading delegate stores.
 vi.mock("./tools/continue-delegate-tool.js", () => ({
   createContinueDelegateTool: mocks.createContinueDelegateTool,
 }));

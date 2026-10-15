@@ -44,6 +44,7 @@ import type { SubagentRunRecord } from "./subagents/registry/subagent-registry.t
 const { announceSpy } = vi.hoisted(() => ({
   announceSpy: vi.fn(async () => "delivered" as const),
 }));
+// mock-isolation: Announce flows are recorded without delivering through the Gateway.
 vi.mock("./subagents/announce/subagent-announce.js", () => ({
   runSubagentAnnounceFlow: announceSpy,
   captureSubagentCompletionReply: vi.fn(async () => undefined),
