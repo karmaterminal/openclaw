@@ -216,7 +216,9 @@ export function deriveGatewaySessionLifecycleSnapshot(params: {
     endedAt !== undefined
       ? { lastActivityAt: Math.max(existing?.lastActivityAt ?? 0, endedAt) }
       : {}),
-    abortedLastRun: interruptedForRestart || status === "killed",
+    // A superseded run handed the session to a newer writer; nothing is left to recover.
+    abortedLastRun:
+      interruptedForRestart || (status === "killed" && terminal?.reason !== "superseded"),
   };
 }
 

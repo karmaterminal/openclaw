@@ -112,6 +112,7 @@ import { registerHarnessCompletionRecoveryCases } from "./main-session-harness-c
 import { registerParentRestartRecoveryCases } from "./main-session-parent-recovery.test-harness.js";
 import * as recoveryOwnerRelease from "./main-session-recovery-owner-release.js";
 import { createRecoveryRuntimeFixture } from "./main-session-recovery-runtime.test-support.js";
+import { isMainSessionRecoveryPending } from "./main-session-recovery-state.js";
 import {
   claimMainSessionRecoveryOwner,
   commitMainSessionRecovery,
@@ -3515,6 +3516,69 @@ describe("main-session-restart-recovery", () => {
     });
     expect(failedEntry?.restartRecoveryDeliveryRunId).toBe("recovery-main");
     expect(failedEntry?.restartRecoverySourceReplyDeliveryMode).toBe("message_tool_only");
+  });
+
+  it("does not tombstone a live message-tool-only session after a superseded turn", async () => {
+    // openclaw#1462: a newer writer superseded a message-tool-only room turn without a
+    // restart. Its successor's admission must not open a restart-recovery cycle that
+    // tombstones the live session once the successor releases ownership.
+    await withEnvAsync({ OPENCLAW_STATE_DIR: tmpDir }, async () => {
+      const lifecycleGeneration = getAgentEventLifecycleGeneration();
+      const { sessionsDir, sessionKey, storePath, readEntry } = await makeMainSessionFixture({
+        status: undefined,
+        abortedLastRun: false,
+        mainRestartRecovery: undefined,
+        lifecycleRunId: "room-run",
+        restartRecoveryRuns: [{ runId: "room-run", lifecycleGeneration }],
+        restartRecoveryDeliveryRunId: "room-run",
+        restartRecoverySourceIngress: "channel",
+        restartRecoverySourceReplyDeliveryMode: "message_tool_only",
+        restartRecoveryDeliveryContext: {
+          channel: "discord",
+          to: "discord:channel:room",
+          accountId: "work",
+        },
+      });
+      await writeTranscript(sessionsDir, "main-session", [
+        { role: "user", content: "a room turn a newer writer supersedes" },
+      ]);
+
+      await persistGatewaySessionLifecycleEvent({
+        sessionKey,
+        agentId: "main",
+        event: {
+          ts: Date.now(),
+          sessionId: "main-session",
+          runId: "room-run",
+          lifecycleGeneration,
+          data: { phase: "end", stopReason: "superseded", aborted: true },
+        },
+      });
+      const superseded = readEntry();
+      expect(superseded?.status).toBe("killed");
+      expect(superseded && isMainSessionRecoveryPending(superseded, sessionKey)).toBe(false);
+
+      const successor = await claimMainSessionRecoveryOwner({
+        lifecycleGeneration,
+        sessionId: "main-session",
+        runId: "successor-run",
+        target: { agentId: "main", sessionKey, storePath },
+      });
+      expect(successor.kind).toBe("not_required");
+      expect(readEntry()?.mainRestartRecovery).toBeUndefined();
+
+      await expect(
+        retryRestartAbortedMainSessionRecovery({
+          agentId: "main",
+          expectedSessionId: "main-session",
+          sessionKey,
+          storePath,
+          stateDir: tmpDir,
+        }),
+      ).resolves.toEqual({ started: 0, settled: 0, failed: 0, skipped: 0 });
+      expect(sendRecoveryNotice).not.toHaveBeenCalled();
+      expect(readEntry()?.mainRestartRecovery).toBeUndefined();
+    });
   });
 
   it("does not restore channel authority from a generic session route", async () => {
