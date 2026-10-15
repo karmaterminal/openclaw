@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+// mock-isolation: The test controls the runtime config snapshot; nothing is loaded from disk.
 vi.mock("../../config/config.js", () => ({
   getRuntimeConfig: vi.fn(() => ({})),
   getRuntimeConfigSnapshot: vi.fn(() => null),

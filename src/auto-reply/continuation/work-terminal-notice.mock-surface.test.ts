@@ -23,6 +23,7 @@
 // is intercepted identically, so deferring the *import* alone changes nothing.
 import { describe, expect, it, vi } from "vitest";
 
+// mock-isolation: The closed surface is the test: it copies upstream's two-export factory to catch eager reads of new exports.
 vi.mock("../../infra/session-delivery-queue-runtime.js", () => ({
   // Upstream's surface, verbatim. Deliberately NOT extended.
   startSessionDeliveryRuntime: () => async () => {},

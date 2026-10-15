@@ -1,6 +1,7 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// mock-isolation: A synthetic continuation config replaces the operator config file.
 vi.mock("../../config/config.js", () => ({
   getRuntimeConfig: () => ({
     agents: {

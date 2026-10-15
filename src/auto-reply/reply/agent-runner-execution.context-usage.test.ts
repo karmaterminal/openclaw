@@ -28,6 +28,7 @@ const state = vi.hoisted(() => ({
     >(),
 }));
 
+// mock-isolation: Context windows come from the test; the real lookup reads config and the model context cache.
 vi.mock("../../agents/context.js", () => ({
   resolveContextTokensForModel: (
     params: Parameters<typeof state.resolveContextTokensForModelMock>[0],

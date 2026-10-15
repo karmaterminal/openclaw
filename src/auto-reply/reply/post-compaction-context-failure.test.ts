@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockWarn = vi.fn<(msg: string) => void>();
 
-vi.mock("../../logging/subsystem.js", () => ({
+vi.mock("../../logging/subsystem.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
   createSubsystemLogger: (subsystem: string) => ({
     subsystem,
     info: vi.fn(),
@@ -22,10 +23,12 @@ vi.mock("../../logging/subsystem.js", () => ({
 
 const mockReadPostCompactionContext = vi.fn<() => Promise<string | null>>();
 
+// mock-isolation: Context reads are scripted, including failures; the real reader reads workspace files.
 vi.mock("./post-compaction-context.js", () => ({
   readPostCompactionContext: (...args: unknown[]) => mockReadPostCompactionContext(...(args as [])),
 }));
 
+// mock-isolation: System events are captured instead of entering the process-wide event queue.
 vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEventRaw: vi.fn(),
 }));

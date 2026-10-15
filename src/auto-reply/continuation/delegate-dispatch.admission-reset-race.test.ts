@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const spawnSubagentDirectMock = vi.fn();
 
+// mock-isolation: Spawn requests are recorded without starting real subagent runs.
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
@@ -23,6 +24,7 @@ vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) 
   loadPendingSessionDeliveries: vi.fn(async () => []),
 }));
 
+// mock-isolation: System events are captured instead of entering the process-wide event queue.
 vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEventRaw: vi.fn(),
 }));
