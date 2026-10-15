@@ -134,8 +134,9 @@ function readPluginSdkEntrypointBudgetEnv(
 const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   // +1 each: legacy AgentHarness remains projected through the core and plugin-entry
   // compatibility barrels while external harnesses migrate to AgentHarnessV2.
-  core: 3,
-  "plugin-entry": 1,
+  // +2 each: released provider replay contracts remain while plugins adopt async V2.
+  core: 5,
+  "plugin-entry": 3,
   // Shipped synchronous capture remains available while plugins migrate to async capture.
   "proxy-capture": 9,
   routing: 1,
@@ -215,11 +216,12 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: approved async upstream-link writes with released sync compatibility.
       // -8: retired Skill Workshop proposal hook types.
       // +3: approved async session entry reads and typed incognito refusal on the existing subpath.
+      // +7: approved prepared/data-only session patches and their authority contracts.
       // +4: CLI state-owner routing, Gateway owner guards, target selection, and timeout parsing.
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
       // system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the 7ad362fec9 merge: upstream 3648, merged tree 3659 (+11).
-      3659,
+      // Measured on the 33f7b38f01 merge: upstream 3655, merged tree 3666 (+11).
+      3666,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -234,10 +236,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: resolve the controller from the current invocation registry.
       // +2: approved async upstream-link writes with released sync compatibility.
       // +3: approved async session entry reads and typed incognito refusal on the existing subpath.
+      // +3: approved prepared/data-only session patches and authority-bound routes.
       // +4: the same four CLI state-owner and transport functions.
       // +4: the continuation feature's callable contracts; measured +4 over base 2187 on b51feb98eb.
-      // Measured on the 7ad362fec9 merge: upstream 2118, merged tree 2122 (+4).
-      2122,
+      // Measured on the 33f7b38f01 merge: upstream 2121, merged tree 2125 (+4).
+      2125,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -245,7 +248,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // Remove deprecated sync channel envelope helpers and their compat records at the next Plugin SDK major.
       // +2: approved synchronous upstream-link write compatibility until the next Plugin SDK major.
       // +1: synchronous session entry getter remains until the next Plugin SDK major.
-      148,
+      // +6: released session callbacks and provider replay contracts during async migration.
+      154,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

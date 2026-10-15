@@ -2007,6 +2007,7 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
       "src/auto-reply/reply/new.test.tsx",
       "src/infra/outbound/new.test.ts",
       "test/tsconfig/tsconfig.core.test.messaging.json",
+      "test/tsconfig/tsconfig.core.test.ui-e2e-chat.json",
     ]) {
       expect(resolvePolicyTestTargets([changedPath]), changedPath).toContain(guard);
       expect(isPolicyTestOwnedPath(changedPath), changedPath).toBe(false);
