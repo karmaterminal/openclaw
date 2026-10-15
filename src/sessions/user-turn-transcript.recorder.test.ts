@@ -487,10 +487,13 @@ describe("createUserTurnTranscriptRecorder", () => {
     expect(persisted).toBeDefined();
     recorder.markRuntimePersisted(persisted?.message, persisted?.admission);
     const initialGeneration = recorder.getAdmissionReceipt()?.generation;
+    expect(initialGeneration).toEqual(expect.any(String));
 
     await recorder.confirmSteerTargetRunIdForPersistence?.("active-run");
 
-    expect(recorder.getAdmissionReceipt()?.generation).not.toBe(initialGeneration);
+    // A steer-target confirmation changes no admitted input, so the running turn keeps
+    // its admission (upstream #168394); content and branch rewrites still rotate it.
+    expect(recorder.getAdmissionReceipt()?.generation).toBe(initialGeneration);
     expect(recorder.getPersistedMessage?.()).toMatchObject({
       __openclaw: {
         senderId: "operator-1",
