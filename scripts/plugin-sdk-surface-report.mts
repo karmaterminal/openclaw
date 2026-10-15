@@ -196,7 +196,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
   const budgets = {
     publicEntrypoints: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_ENTRYPOINTS",
-      151,
+      // +1: the shared state-owner boundary for plugin CLIs.
+      152,
       env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
@@ -214,10 +215,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: approved async upstream-link writes with released sync compatibility.
       // -8: retired Skill Workshop proposal hook types.
       // +3: approved async session entry reads and typed incognito refusal on the existing subpath.
+      // +4: CLI state-owner routing, Gateway owner guards, target selection, and timeout parsing.
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
       // system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the bc524d8903 merge: upstream 3644, merged tree 3655 (+11).
-      3655,
+      // Measured on the 7ad362fec9 merge: upstream 3648, merged tree 3659 (+11).
+      3659,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -232,9 +234,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: resolve the controller from the current invocation registry.
       // +2: approved async upstream-link writes with released sync compatibility.
       // +3: approved async session entry reads and typed incognito refusal on the existing subpath.
+      // +4: the same four CLI state-owner and transport functions.
       // +4: the continuation feature's callable contracts; measured +4 over base 2187 on b51feb98eb.
-      // Measured on the bc524d8903 merge: upstream 2114, merged tree 2118 (+4).
-      2118,
+      // Measured on the 7ad362fec9 merge: upstream 2118, merged tree 2122 (+4).
+      2122,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

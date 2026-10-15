@@ -218,6 +218,7 @@ export async function runHeartbeatOnceCore(opts: HeartbeatRunOptions): Promise<H
         },
         {
           sessionKey: prepared.inspectsRunQueue ? prepared.sessionKey : runSessionKey,
+          heartbeatEventQueueSessionKey: eventQueueKey,
           execRequestOwners,
           events: prepared.inspectsRunQueue ? prepared.genericEvents : [],
           deferredEventIds: [...deferredGenericIds, ...ordinaryGenericIds].filter(
