@@ -115,6 +115,14 @@ describe("createAssistantVisibleStreamText", () => {
     expect(second.append("\n\nBravo is here")).toEqual({ text: "Bravo is here", delta: "" });
     expect(first.append("!")).toEqual({ text: "Reset!", delta: "!" });
   });
+
+  it("holds an incomplete GLM tool-call prefix and releases literal prose", () => {
+    const stream = createAssistantVisibleStreamText();
+    expect(stream.replace("Visible\n<tool_call>exec").text).toBe("Visible");
+    expect(
+      stream.replace("Use <tool_call>exec<arg_key> literally. Example: `</arg_key>`.").text,
+    ).toBe("Use <tool_call>exec<arg_key> literally. Example: `</arg_key>`.");
+  });
 });
 
 describe("extractThinkingFromTaggedStream", () => {
@@ -556,6 +564,30 @@ describe("extractAssistantVisibleText", () => {
 
     expect(extractAssistantVisibleText(msg)).toBe("Done.");
   });
+});
+
+describe("extractAssistantVisibleText continuation markers", () => {
+  it.each(["CONTINUE_WORK", "[[CONTINUE_WORK]]"])(
+    "strips %s ending an earlier item before adjacent items are grouped",
+    (marker) => {
+      const msg = makeAssistantMessage({
+        content: [
+          {
+            type: "text",
+            text: `First item. ${marker}`,
+            textSignature: JSON.stringify({ v: 1, id: "item_a", phase: "final_answer" }),
+          },
+          {
+            type: "text",
+            text: "Second item.",
+            textSignature: JSON.stringify({ v: 1, id: "item_b", phase: "final_answer" }),
+          },
+        ],
+      });
+
+      expect(extractAssistantVisibleText(msg)).toBe("First item.\nSecond item.");
+    },
+  );
 });
 
 describe("promoteThinkingTagsToBlocks", () => {
