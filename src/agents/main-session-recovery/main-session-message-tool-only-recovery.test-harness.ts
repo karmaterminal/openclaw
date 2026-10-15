@@ -29,13 +29,13 @@ type MessageToolOnlyRecoveryFixture = {
     skipped: number;
   }) => Promise<void>;
   sendRecoveryNotice: Mock<GatewayRecoveryRuntime["sendRecoveryNotice"]>;
-  retryRecovery(params: {
+  retryRecovery: (params: {
     agentId: string;
     expectedSessionId: string;
     sessionKey: string;
     storePath: string;
     stateDir: string;
-  }): Promise<unknown>;
+  }) => Promise<unknown>;
 };
 
 // Message-tool-only sessions can only be recovered with their delivery authority;
