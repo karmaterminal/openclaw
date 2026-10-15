@@ -306,12 +306,31 @@ describe("attemptServerEndpointCompaction", () => {
     },
   );
 
-  it("keeps volitional compaction on the manual endpoint policy", async () => {
-    const { result } = attempt({ trigger: "volitional", model: openAIModel });
+  it.each([model, openAIModel])(
+    "keeps volitional compaction on the manual endpoint policy for $provider",
+    async (requestModel) => {
+      const runTrigger = async (trigger: "manual" | "volitional") => {
+        requestPreparedCompactionMock.mockClear();
+        requestPreparedCompactionMock.mockResolvedValueOnce(createCompactionResponse(requestModel));
+        const result = await attempt({ trigger, model: requestModel }).result;
+        return {
+          result,
+          requests: requestPreparedCompactionMock.mock.calls.map(
+            ([, requestModelArg, context, { signal, ...options }]) => {
+              expect(signal).toBeInstanceOf(AbortSignal);
+              return [requestModelArg, context, options];
+            },
+          ),
+        };
+      };
 
-    await expect(result).resolves.toBeUndefined();
-    expect(requestPreparedCompactionMock).not.toHaveBeenCalled();
-  });
+      const manual = await runTrigger("manual");
+      const volitional = await runTrigger("volitional");
+
+      expect(manual.requests).toHaveLength(1);
+      expect(volitional).toEqual(manual);
+    },
+  );
 
   it("leaves a missing canonical checkpoint window to client budget compaction", async () => {
     const owner: Pick<AssistantMessage, "providerReplay"> = {};
