@@ -54,6 +54,7 @@ function loadRecoverySessionEntry(
     | undefined;
 }
 
+// mock-isolation: Spawn requests are recorded without starting real subagent runs.
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
@@ -137,7 +138,7 @@ vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../../logging/subsystem.js", () => {
+vi.mock("../../logging/subsystem.js", async (importOriginal) => {
   const record =
     (level: string) =>
     (message: string): void => {
@@ -156,6 +157,7 @@ vi.mock("../../logging/subsystem.js", () => {
     child: () => logger,
   };
   return {
+    ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
     createSubsystemLogger: () => logger,
   };
 });

@@ -274,10 +274,12 @@ vi.mock("../infra/session-delivery-queue-recovery.js", async (importOriginal) =>
   };
 });
 
+// mock-isolation: Cron cleanup is recorded without reading or deleting session-store entries.
 vi.mock("../cron/run-continuation-cleanup.js", () => ({
   removeCronRunContinuationSessionIfIdle: mocks.removeCronRunContinuationSessionIfIdle,
 }));
 
+// mock-isolation: Transcript appends are recorded without writing session transcripts.
 vi.mock("../config/sessions/transcript.js", () => ({
   appendAssistantMessageToSessionTranscript: mocks.appendAssistantMessageToSessionTranscript,
 }));
@@ -298,6 +300,7 @@ vi.mock("../config/sessions/main-session.js", async (importOriginal) => ({
   resolveSystemMainSessionTarget: mocks.resolveSystemMainSessionTarget,
 }));
 
+// mock-isolation: An empty runtime config stands in for the config file loader.
 vi.mock("../config/io.js", () => ({ getRuntimeConfig: vi.fn(() => ({})) }));
 
 vi.mock("../channels/plugins/session-conversation.js", async (importOriginal) => ({
@@ -305,6 +308,7 @@ vi.mock("../channels/plugins/session-conversation.js", async (importOriginal) =>
   resolveSessionThreadInfo: mocks.parseSessionThreadInfo,
 }));
 
+// mock-isolation: Thread info comes from the test; the real resolver reads loaded channel plugins.
 vi.mock("../channels/plugins/session-thread-info-loaded.js", () => ({
   resolveLoadedSessionThreadInfo: mocks.parseSessionThreadInfo,
 }));
@@ -356,6 +360,7 @@ vi.mock("../channels/plugins/index.js", async () => {
   };
 });
 
+// mock-isolation: Channel turns route to a recorded dispatcher instead of the channel reply pipeline.
 vi.mock("../channels/turn/lifecycle.js", () => ({
   dispatchAssembledChannelTurn: async (params: {
     delivery: {
@@ -388,15 +393,18 @@ vi.mock("./server-recovery-runtime-context.js", async () => ({
   dispatchGatewayLifecycleMethod: mocks.dispatchGatewayMethodInProcess,
 }));
 
+// mock-isolation: Outbound targets come from the test; the real resolver reads channel plugins.
 vi.mock("../infra/outbound/targets.js", () => ({
   resolveOutboundTarget: mocks.resolveOutboundTarget,
 }));
 
+// mock-isolation: Outbound sends are recorded; nothing reaches a channel.
 vi.mock("../infra/outbound/deliver.js", () => ({
   deliverOutboundPayloads: mocks.deliverOutboundPayloads,
   deliverOutboundPayloadsInternal: mocks.deliverOutboundPayloads,
 }));
 
+// mock-isolation: Delivery queue rows are scripted; the real storage opens the state database.
 vi.mock("../infra/outbound/delivery-queue-storage.js", () => ({
   ackDelivery: mocks.ackDelivery,
   failDelivery: mocks.failDelivery,
@@ -411,15 +419,18 @@ vi.mock("../infra/outbound/delivery-queue-ack.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../infra/outbound/delivery-queue-ack.js")>()),
   failPendingDelivery: mocks.failPendingDelivery,
 }));
+// mock-isolation: Queue drains are scripted instead of recovering real pending deliveries.
 vi.mock("../infra/outbound/delivery-queue-recovery.js", () => ({
   drainPendingDeliveriesCore: mocks.drainPendingDeliveries,
   withActiveDeliveryClaim: mocks.withActiveDeliveryClaim,
 }));
 
+// mock-isolation: Delivery preparation runs through a test hook instead of the real queue claim.
 vi.mock("../infra/outbound/delivery-queue-preparation.js", () => ({
   withStableDeliveryPreparation: mocks.withStableDeliveryPreparation,
 }));
 
+// mock-isolation: Every payload is accepted as-is; the real preparation runs channel and message hooks.
 vi.mock("../infra/outbound/deliver-prepare.js", () => ({
   prepareOutboundPayloadBatch: vi.fn(async (params: { payloads: unknown[] }) => ({
     schemaVersion: 1,
@@ -436,6 +447,7 @@ vi.mock("../infra/outbound/deliver-prepare.js", () => ({
   })),
 }));
 
+// mock-isolation: Admission enqueues through the test's queue instead of the state database.
 vi.mock("../infra/outbound/deliver-queue-admission.js", () => ({
   stageAndEnqueueOutboundDelivery: vi.fn(
     async (
@@ -458,6 +470,7 @@ vi.mock("../infra/outbound/deliver-queue-admission.js", () => ({
   ),
 }));
 
+// mock-isolation: Durable sends route to the recorded outbound sender instead of channel runtimes.
 vi.mock("../channels/message/runtime.js", () => ({
   sendDurableMessageBatchCore: vi.fn(async (params: Record<string, unknown>) => {
     try {
@@ -476,6 +489,7 @@ vi.mock("./server-restart-update-run.js", async () => {
   return { ...actual, finalizeRestartUpdateRun: vi.fn(actual.finalizeRestartUpdateRun) };
 });
 
+// mock-isolation: System events are captured instead of entering the process-wide event queue.
 vi.mock("../infra/system-events.js", () => ({
   enqueueSystemEvent: mocks.enqueueSystemEvent,
   enqueueSystemEventRaw: mocks.enqueueSystemEvent,

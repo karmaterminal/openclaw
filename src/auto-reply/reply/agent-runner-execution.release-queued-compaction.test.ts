@@ -32,15 +32,18 @@ const state = vi.hoisted(() => ({
   stagePostCompactionDelegateMock: vi.fn(),
 }));
 
+// mock-isolation: Delegate staging is recorded without the custody store.
 vi.mock("../continuation/delegate-store-post-compaction.js", () => ({
   stagePostCompactionDelegate: (sessionKey: string, delegate: unknown) =>
     state.stagePostCompactionDelegateMock(sessionKey, delegate),
 }));
 
-vi.mock("../../globals.js", () => ({
+vi.mock("../../globals.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../globals.js")>()),
   logVerbose: (msg: string) => state.logVerboseMock(msg),
 }));
 
+// mock-isolation: Session-store helpers are inert; the real facade loads session stores, transcripts and cleanup services.
 vi.mock("../../config/sessions.js", () => ({
   resolveFreshSessionTotalTokens: vi.fn(),
   resolveGroupSessionKey: vi.fn(() => null),
@@ -48,19 +51,23 @@ vi.mock("../../config/sessions.js", () => ({
   updateSessionStore: vi.fn(),
 }));
 
+// mock-isolation: The session entry comes from the test; the real accessor reads SQLite.
 vi.mock("../../config/sessions/session-accessor.js", () => ({
   resolveSessionEntryFromStore: (params: unknown) => state.resolveSessionStoreEntryMock(params),
 }));
 
+// mock-isolation: Compaction counts are recorded without writing the session store.
 vi.mock("./session-updates.js", () => ({
   incrementCompactionCount: (params: unknown) => state.incrementRunCompactionCountMock(params),
 }));
 
+// mock-isolation: Delegate dispatch is recorded without the delivery queue or system events.
 vi.mock("./post-compaction-delegate-dispatch.js", () => ({
   dispatchPostCompactionDelegates: (params: unknown) =>
     state.dispatchPostCompactionDelegatesMock(params),
 }));
 
+// mock-isolation: Continuation spans are captured without the process-wide tracer.
 vi.mock("../../infra/continuation-tracer.js", () => ({
   emitContinuationCompactionReleasedSpan: (params: unknown) =>
     state.emitContinuationCompactionReleasedSpanMock(params),

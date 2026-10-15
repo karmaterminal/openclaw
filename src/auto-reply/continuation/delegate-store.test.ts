@@ -11,7 +11,7 @@ import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/sessio
 // Mirrors the shape used in sibling delegate-dispatch.test.ts so log.warn
 // emissions land in `loggerRecords` for inspection.
 const loggerRecords: Array<{ level: string; message: string }> = [];
-vi.mock("../../logging/subsystem.js", () => {
+vi.mock("../../logging/subsystem.js", async (importOriginal) => {
   const record =
     (level: string) =>
     (message: string): void => {
@@ -30,6 +30,7 @@ vi.mock("../../logging/subsystem.js", () => {
     child: () => logger,
   };
   return {
+    ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
     createSubsystemLogger: () => logger,
   };
 });

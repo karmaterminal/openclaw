@@ -48,18 +48,22 @@ vi.mock("./session-fork.js", async (importOriginal) => ({
     sessionForkMocks.forkSessionFromParent(...args),
 }));
 
+// mock-isolation: Tab cleanup is recorded without loading the browser plugin facade.
 vi.mock("../../plugin-sdk/browser-maintenance.js", () => ({
   closeTrackedBrowserTabsForSessions: browserMaintenanceMocks.closeTrackedBrowserTabsForSessions,
 }));
 
+// mock-isolation: No global hook runner is installed, so plugin hooks never run.
 vi.mock("../../plugins/hook-runner-global.js", () => ({
   getGlobalHookRunner: () => null,
 }));
 
+// mock-isolation: Channel summaries come from the test; the real builder inspects channel plugin accounts.
 vi.mock("../../infra/channel-summary.js", () => ({
   buildChannelSummary: channelSummaryMocks.buildChannelSummary,
 }));
 
+// mock-isolation: A fixed model catalog replaces the prepared runtime catalog, which reads config and auth.
 vi.mock("../../agents/prepared-model-catalog.js", () => ({
   loadProviderScopedThinkingCatalog: vi.fn(async () => []),
   readPreparedModelCatalog: vi.fn(async () => [

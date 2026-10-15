@@ -240,6 +240,7 @@ vi.mock("../../config/sessions/group.js", () => ({
   resolveGroupSessionKey: vi.fn().mockReturnValue(undefined),
 }));
 
+// mock-isolation: Session paths resolve to fixed values, never the operator's state dir.
 vi.mock("../../config/sessions/paths.js", () => ({
   resolveSessionFilePathCore: vi.fn().mockReturnValue("/tmp/session.jsonl"),
   resolveSessionFilePathOptions: vi.fn().mockReturnValue({}),
@@ -284,6 +285,7 @@ vi.mock("../../gateway/session-sharing-preparation.js", async (importOriginal) =
 });
 const updateAmbientTranscriptWatermarkMock = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 
+// mock-isolation: Session entries come from the test; the real accessor reads SQLite.
 vi.mock("../../config/sessions/session-accessor.js", () => ({
   isSessionRecipientAuthorityCurrent: recipientAuthorityCurrentMock,
   listSessionEntriesCore: vi.fn().mockReturnValue([]),
@@ -349,6 +351,7 @@ vi.mock("./queue/settings-runtime.js", () => ({
   resolveQueueSettings: vi.fn().mockReturnValue({ mode: "steer" }),
 }));
 
+// mock-isolation: System-event drains are scripted per case, reaching the real prepare only when a case opts in.
 vi.mock("./session-system-events.js", () => sessionSystemEventsMocks);
 
 vi.mock("../../sessions/stored-model-overrides.js", () => ({

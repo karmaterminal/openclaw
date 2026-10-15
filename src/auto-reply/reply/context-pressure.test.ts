@@ -12,7 +12,8 @@ const mockedLog = vi.hoisted(() => ({
   child: vi.fn(),
 }));
 
-vi.mock("../../logging/subsystem.js", () => ({
+vi.mock("../../logging/subsystem.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
   createSubsystemLogger: () => mockedLog,
 }));
 /**

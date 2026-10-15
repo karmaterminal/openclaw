@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Logger mock for breadcrumb assertions (same shape as delegate-store.test.ts).
 const loggerRecords: Array<{ level: string; message: string }> = [];
-vi.mock("../../logging/subsystem.js", () => {
+vi.mock("../../logging/subsystem.js", async (importOriginal) => {
   const record =
     (level: string) =>
     (message: string): void => {
@@ -27,6 +27,7 @@ vi.mock("../../logging/subsystem.js", () => {
     child: () => logger,
   };
   return {
+    ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
     createSubsystemLogger: () => logger,
   };
 });

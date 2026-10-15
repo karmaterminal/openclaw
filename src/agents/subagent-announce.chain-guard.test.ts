@@ -16,6 +16,7 @@ vi.mock("./subagents/announce/subagent-announce.runtime.js", async (importOrigin
   readSessionMessagesAsync: vi.fn(async () => []),
 }));
 
+// mock-isolation: Gateway calls get scripted replies; no live Gateway is contacted.
 vi.mock("../gateway/call.js", () => ({
   callGateway: vi.fn(async (request: Record<string, unknown>) => {
     if (request.method === "chat.history") {
@@ -25,10 +26,12 @@ vi.mock("../gateway/call.js", () => ({
   }),
 }));
 
+// mock-isolation: Subagent depth is fixed by the test instead of read from the session store.
 vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: () => 1,
 }));
 
+// mock-isolation: Embedded agent runs are scripted; no agent session or provider runs.
 vi.mock("./embedded-agent.js", () => ({
   isEmbeddedAgentRunActive: () => false,
   queueEmbeddedAgentMessage: () => false,

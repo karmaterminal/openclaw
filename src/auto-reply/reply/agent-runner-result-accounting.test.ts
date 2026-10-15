@@ -18,6 +18,7 @@ const state = vi.hoisted(() => ({
   resolveContinuationTraceparent: vi.fn<(value: string | undefined) => string | undefined>(),
 }));
 
+// mock-isolation: Context windows come from the test; the real lookup reads config and the model context cache.
 vi.mock("../../agents/context.js", () => ({
   resolveContextTokensForModel: () => state.resolveContextTokensForModel(),
 }));
@@ -42,6 +43,7 @@ vi.mock("../../globals.js", () => ({
   logVerbose: vi.fn(),
 }));
 
+// mock-isolation: Continuation scheduling is recorded without persisting chain state or queuing work.
 vi.mock("./agent-runner-continuation-schedule.js", () => ({
   scheduleReplyContinuation: (...args: unknown[]) => state.scheduleContinuation(...args),
 }));
@@ -65,10 +67,12 @@ vi.mock("./agent-runner-core.js", async (importOriginal) => ({
   }),
 }));
 
+// mock-isolation: Compaction counts are recorded without writing the session store.
 vi.mock("./session-updates.js", () => ({
   incrementCompactionCount: (...args: unknown[]) => state.incrementCompactionCount(...args),
 }));
 
+// mock-isolation: Usage updates are recorded without writing the session store.
 vi.mock("./session-usage.js", () => ({
   persistSessionUsageUpdate: (params: unknown) => state.persistSessionUsageUpdate(params),
 }));
@@ -87,11 +91,13 @@ vi.mock("./no-op-rearm-guard.js", async (importOriginal) => {
   };
 });
 
+// mock-isolation: Delegate dispatch is recorded without the delivery queue or system events.
 vi.mock("./post-compaction-delegate-dispatch.js", () => ({
   dispatchPostCompactionDelegates: (...args: unknown[]) =>
     state.dispatchPostCompactionDelegates(...args),
 }));
 
+// mock-isolation: Continuation spans are captured without the process-wide tracer.
 vi.mock("../../infra/continuation-tracer.js", () => ({
   emitContinuationCompactionReleasedSpan: (...args: unknown[]) =>
     state.emitContinuationCompactionReleasedSpan(...args),
@@ -104,6 +110,7 @@ vi.mock("../../sessions/input-provenance.js", () => ({
   shouldPreserveUserFacingSessionStateForInputProvenance: () => false,
 }));
 
+// mock-isolation: Followup refreshes are recorded without the process-wide followup queue.
 vi.mock("./queue.js", () => ({
   refreshQueuedFollowupSession: (...args: unknown[]) => state.refreshQueuedFollowupSession(...args),
 }));

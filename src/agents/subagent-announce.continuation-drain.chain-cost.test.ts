@@ -171,6 +171,7 @@ const { continuationTargetingMock, subagentRegistryRuntimeMock, deliverSubagentA
     deliverSubagentAnnouncementMock: vi.fn(async () => ({ delivered: true, path: "direct" })),
   }));
 
+// mock-isolation: Gateway, config and session reads are scripted; the real runtime calls the Gateway and opens session stores.
 vi.mock("./subagents/announce/subagent-announce.runtime.js", () => ({
   callGateway: (request: unknown) => callGatewayMock(request),
   callSubagentLifecycleGateway: (request: unknown) => callGatewayMock(request),
@@ -196,6 +197,7 @@ vi.mock("./subagents/announce/subagent-announce.runtime.js", () => ({
     waitForEmbeddedAgentRunEndMock(sessionId, timeoutMs),
 }));
 
+// mock-isolation: The helper spreads the real delivery runtime and scripts its Gateway, session and queue calls.
 vi.mock("./subagents/announce/subagent-announce-delivery.runtime.js", () =>
   createSubagentAnnounceDeliveryRuntimeMock({
     callGateway: (request: unknown) => callGatewayMock(request),
@@ -227,6 +229,7 @@ vi.mock("./subagents/announce/subagent-announce-delivery.runtime.js", () =>
   }),
 );
 
+// mock-isolation: Delivery and requester lookups are scripted; the real module reads the session store and delivers to channels.
 vi.mock("./subagents/announce/subagent-announce-delivery.js", () => ({
   deliverSubagentAnnouncement: deliverSubagentAnnouncementMock,
   loadRequesterSessionEntry: (sessionKey: string) => {
@@ -258,6 +261,7 @@ vi.mock("./subagents/registry/subagent-registry.js", async (importOriginal) => (
   replaceSubagentRunAfterSteerCore: subagentRegistryRuntimeMock.replaceSubagentRunAfterSteer,
 }));
 
+// mock-isolation: Delegate dispatch is recorded without spawning delegates.
 vi.mock("../auto-reply/continuation/delegate-dispatch.js", () => ({
   dispatchToolDelegates: (params: unknown) => dispatchToolDelegatesMock(params),
 }));
@@ -283,17 +287,21 @@ vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", async (i
     stagePostCompactionDelegateMock(sessionKey, delegate),
 }));
 
+// mock-isolation: Spawn requests are recorded without starting real subagent runs.
 vi.mock("./subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (params: Record<string, unknown>, ctx: unknown) =>
     spawnSubagentDirectMock(params, ctx),
 }));
 
+// mock-isolation: Continuation config comes from the test; the real module loads the config loader.
 vi.mock("../auto-reply/continuation/config.js", () => ({
   resolveContinuationRuntimeConfig: (cfg?: unknown) => resolveContinuationRuntimeConfigMock(cfg),
 }));
 
+// mock-isolation: Return deliveries are recorded without the session delivery queue or system events.
 vi.mock("../auto-reply/continuation/targeting.js", () => continuationTargetingMock);
 
+// mock-isolation: Session store targets are fixed test paths, never the operator's state dir.
 vi.mock("../config/sessions/targets.js", () => ({
   resolveAllAgentSessionStoreTargetsSync: () => [
     { agentId: "main", storePath: "/tmp/sessions.json" },

@@ -80,6 +80,7 @@ const { subagentRegistryRuntimeMock } = vi.hoisted(() => ({
   },
 }));
 
+// mock-isolation: Gateway, config and session reads are scripted; the real runtime calls the Gateway and opens session stores.
 vi.mock("./subagents/announce/subagent-announce.runtime.js", () => ({
   callGateway: (request: unknown) => callGatewayMock(request),
   callSubagentLifecycleGateway: (request: unknown) => callGatewayMock(request),
@@ -105,6 +106,7 @@ vi.mock("./subagents/announce/subagent-announce.runtime.js", () => ({
     waitForEmbeddedAgentRunEndMock(sessionId, timeoutMs),
 }));
 
+// mock-isolation: The helper spreads the real delivery runtime and scripts its Gateway, session and queue calls.
 vi.mock("./subagents/announce/subagent-announce-delivery.runtime.js", () =>
   createSubagentAnnounceDeliveryRuntimeMock({
     callGateway: (request: unknown) => callGatewayMock(request),
@@ -136,6 +138,7 @@ vi.mock("./subagents/announce/subagent-announce-delivery.runtime.js", () =>
   }),
 );
 
+// mock-isolation: Delivery and requester lookups are scripted; the real module reads the session store and delivers to channels.
 vi.mock("./subagents/announce/subagent-announce-delivery.js", () => ({
   deliverSubagentAnnouncement: (params: unknown) => deliverSubagentAnnouncementMock(params),
   loadRequesterSessionEntry: (sessionKey: string) => {
@@ -167,10 +170,12 @@ vi.mock("./subagents/registry/subagent-registry.js", async (importOriginal) => (
   replaceSubagentRunAfterSteerCore: subagentRegistryRuntimeMock.replaceSubagentRunAfterSteer,
 }));
 
+// mock-isolation: Delegate dispatch is recorded without spawning delegates.
 vi.mock("../auto-reply/continuation/delegate-dispatch.js", () => ({
   dispatchToolDelegates: (params: unknown) => dispatchToolDelegatesMock(params),
 }));
 
+// mock-isolation: Continuation config comes from the test; the real module loads the config loader.
 vi.mock("../auto-reply/continuation/config.js", () => ({
   resolveContinuationRuntimeConfig: (cfg?: unknown) => resolveContinuationRuntimeConfigMock(cfg),
 }));
@@ -178,12 +183,14 @@ vi.mock("../auto-reply/continuation/config.js", () => ({
 // Dynamic-imported by the silent/wake branch. Both are intercepted at
 // module-resolution time via vi.mock, so the dynamic import yields the
 // mock implementation.
+// mock-isolation: System events are captured instead of entering the process-wide event queue.
 vi.mock("../infra/system-events.js", () => ({
   enqueueSystemEventRaw: (text: string, options?: unknown) => enqueueSystemEventMock(text, options),
   hasQueuedSystemEventDelivery: () => false,
   removeSystemEvents: () => [],
 }));
 
+// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
 vi.mock("../infra/heartbeat-wake.js", () => ({
   markTrustedContinuationHeartbeatWake: <T>(request: T) => request,
   requestHeartbeatNow: (options: unknown) => requestHeartbeatNowMock(options),

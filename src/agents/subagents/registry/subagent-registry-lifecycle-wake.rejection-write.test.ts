@@ -9,17 +9,21 @@ import {
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
 // Keep completion, session cleanup, and transport outside this settlement proof.
+// mock-isolation: Run completion writes terminal state through the state worker; only the settle write is under test.
 vi.mock("./subagent-registry-lifecycle-completion.js", () => ({
   completeSubagentRunAttempt: vi.fn(),
 }));
+// mock-isolation: Announce cleanup delivers through the Gateway and deletes child sessions; only the settle write is under test.
 vi.mock("./subagent-registry-lifecycle-announce-cleanup.js", () => ({
   finalizeResumedAnnounceGiveUp: vi.fn(),
   resumeAncestorCleanup: vi.fn(),
   startSubagentAnnounceCleanupFlow: vi.fn(),
 }));
+// mock-isolation: Requester-turn settlement reads run liveness through the state worker; only the settle write is under test.
 vi.mock("./subagent-registry-requester-yield.js", () => ({
   settleRequesterTurnAfterSessionSpawns: vi.fn(),
 }));
+// mock-isolation: Delivery-state writes go to the session store through the state worker; only the settle write is under test.
 vi.mock("./subagent-registry-lifecycle-delivery.js", () => ({
   buildSafeLifecycleErrorMeta: (error: unknown) => ({
     message: error instanceof Error ? error.message : String(error),
@@ -30,17 +34,21 @@ vi.mock("./subagent-registry-lifecycle-delivery.js", () => ({
   refreshFrozenResultFromSession: vi.fn(),
   safeSetSubagentTaskDeliveryStatus: vi.fn(),
 }));
+// mock-isolation: The completion batch publishes without the admission store's database writes.
 vi.mock("../completion/subagent-completion-admission.store.js", () => ({
   blockSubagentCompletionDelivery: vi.fn(),
   // Upstream 10e951e857 reads the settlement's publication receipt.
   mutateRequesterCompletionBatch: vi.fn(async () => ({ applied: true, publication: "published" })),
 }));
+// mock-isolation: MCP runtime retirement tears down the process-wide session MCP runtimes; only the settle write is under test.
 vi.mock("../../agent-bundle-mcp-tools.js", () => ({
   retireSessionMcpRuntimeForSessionKey: vi.fn(),
 }));
+// mock-isolation: Internal session-effect cleanup writes the agent database; only the settle write is under test.
 vi.mock("../../internal-session-effects.js", () => ({
   removeInternalSessionEffectsSession: vi.fn(),
 }));
+// mock-isolation: Cron authority revocation mutates the process-wide requester authority table; only the settle write is under test.
 vi.mock("../requester-cron-authority.js", () => ({
   revokeRequesterCronAuthorityBatch: vi.fn(),
 }));
@@ -51,7 +59,9 @@ vi.mock("./subagent-registry-memory.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./subagent-registry-memory.js")>()),
   subagentRuns: { confirmRetirement: vi.fn() },
 }));
+// mock-isolation: Runtime log lines are dropped instead of writing to the terminal.
 vi.mock("../../../runtime.js", () => ({ defaultRuntime: { log: vi.fn() } }));
+// mock-isolation: Drop subsystem log lines without loading the logging runtime or its process-wide sinks.
 vi.mock("../../../logging/subsystem.js", () => ({
   createSubsystemLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));

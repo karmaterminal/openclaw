@@ -148,6 +148,7 @@ vi.mock("./subagent-announce-delivery.js", () => ({
   }),
   loadSessionEntryByKey: (sessionKey: string) => sessionStore[sessionKey],
 }));
+// mock-isolation: Gateway, config and session reads are scripted; the real runtime calls the Gateway and opens session stores.
 vi.mock("./subagent-announce.runtime.js", () => ({
   callGateway: createGatewayCallModuleMock().callGateway,
   callSubagentLifecycleGateway: createGatewayCallModuleMock().callGateway,
@@ -184,6 +185,7 @@ vi.mock("./subagent-announce.runtime.js", () => ({
   waitForEmbeddedAgentRunEnd: (sessionId: string, timeoutMs?: number) =>
     waitForEmbeddedAgentRunEndMock(sessionId, timeoutMs),
 }));
+// mock-isolation: Registry reads come from the test; the real reader opens the shared-state worker.
 vi.mock("../registry/subagent-registry-read.js", () => ({
   countPendingDescendantRuns: () => pendingDescendantRuns,
   getLatestLiveSubagentRunByChildSessionKey: () => undefined,
