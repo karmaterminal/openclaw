@@ -9,7 +9,9 @@ import type { SessionEntry, SessionProfileInvolvement } from "./types.js";
 
 export type SessionCollaborationMutation = Exclude<
   keyof SessionSharingWorkerOperations,
-  "category.prepare" | "category.apply" | "involvement"
+  // Recipient-authority capture runs only on the sharing writer's dedicated owner,
+  // never through the inactive incognito actor.
+  "category.prepare" | "category.apply" | "involvement" | "authority.capture"
 >;
 
 export type SessionSharingExpectedEntry = Pick<

@@ -507,7 +507,7 @@ export async function prepareHeartbeatRunStage(wake: ReadyHeartbeatWake) {
         channel: heartbeatDelivery.channel,
         accountId: heartbeatDelivery.accountId,
       }).showAlerts);
-  const { sender } = resolveHeartbeatSenderContext({ cfg, entry, delivery });
+  const { sender } = await resolveHeartbeatSenderContext({ cfg, entry, delivery });
   const replyPrefix = createReplyPrefixContext({
     cfg,
     agentId,
