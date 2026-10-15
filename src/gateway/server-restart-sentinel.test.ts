@@ -495,6 +495,7 @@ vi.mock("./server-restart-update-run.js", async () => {
   return { ...actual, finalizeRestartUpdateRun: vi.fn(actual.finalizeRestartUpdateRun) };
 });
 
+// mock-isolation: System events are captured instead of entering the process-wide event queue.
 vi.mock("../infra/system-events.js", () => ({
   enqueueSystemEvent: mocks.enqueueSystemEvent,
   enqueueSystemEventRaw: mocks.enqueueSystemEvent,

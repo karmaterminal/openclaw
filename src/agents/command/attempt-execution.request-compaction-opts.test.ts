@@ -25,6 +25,7 @@ const runCliAgentMock = vi.hoisted(() => vi.fn());
 const releaseQueuedCompactionTolerantMock = vi.hoisted(() => vi.fn());
 const compactEmbeddedAgentSessionMock = vi.hoisted(() => vi.fn());
 
+// mock-isolation: CLI agent runs are recorded without spawning a CLI process.
 vi.mock("../cli-runner.js", () => ({
   runCliAgent: runCliAgentMock,
 }));
@@ -43,16 +44,19 @@ vi.mock("../../auto-reply/reply/agent-runner-post-compaction-release.js", async 
 
 // Intercept the dynamic import inside triggerCompaction so the closure can be
 // driven without performing a real compaction.
+// mock-isolation: Compaction is recorded without loading the compaction runtime (context engines, plugins, harness).
 vi.mock("../embedded-agent-runner/compact.queued.js", () => ({
   compactEmbeddedAgentSession: compactEmbeddedAgentSessionMock,
 }));
 
+// mock-isolation: Provider ids normalize locally; the real module imports the catalog lookup and model config resolvers.
 vi.mock("../model-selection.js", () => ({
   isCliProvider: (provider: string) =>
     provider.trim().toLowerCase() === "claude-cli" || provider.trim().toLowerCase() === "codex-cli",
   normalizeProviderId: (provider: string) => provider.trim().toLowerCase(),
 }));
 
+// mock-isolation: No auth aliases apply; the real map reads provider plugin metadata.
 vi.mock("../provider-auth-aliases.js", () => ({
   resolveProviderAuthAliasMap: () => ({}),
   resolveProviderIdForAuth: (provider: string) => provider.trim().toLowerCase(),
@@ -68,6 +72,7 @@ vi.mock("../model-runtime-aliases.js", async () => {
   };
 });
 
+// mock-isolation: Embedded agent runs are scripted; no agent session or provider runs.
 vi.mock("../embedded-agent.js", () => ({
   runEmbeddedAgent: runEmbeddedAgentMock,
 }));

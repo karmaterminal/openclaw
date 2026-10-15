@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // this file is scoped to the emission tests — the broader
 // request-compaction-tool.test.ts runs without the logger mock.
 const capturedLogs: Array<{ level: string; message: string }> = [];
+// mock-isolation: Capture the tool's journal lines without loading the logging runtime or its process-wide sinks.
 vi.mock("../../logging/subsystem.js", () => {
   const record =
     (level: string) =>

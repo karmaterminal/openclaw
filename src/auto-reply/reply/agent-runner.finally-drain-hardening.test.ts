@@ -28,6 +28,7 @@ const runEmbeddedAgentMock = vi.fn();
 const runWithModelFallbackMock = vi.fn();
 const consumePendingDelegatesMock = vi.hoisted(() => vi.fn());
 
+// mock-isolation: Turns run through a scripted fallback runner; the real one reads auth profiles and calls providers.
 vi.mock("../../agents/model-fallback-runner.js", () => ({
   runWithModelFallback: (params: {
     provider: string;
@@ -36,6 +37,7 @@ vi.mock("../../agents/model-fallback-runner.js", () => ({
   }) => runWithModelFallbackMock(params),
 }));
 
+// mock-isolation: A scripted entry completes each run; the real entry loads the plugin runtime and agent harness.
 vi.mock("../../agents/embedded-agent-runner/run-entry.js", async () => {
   const { createSuccessfulEmbeddedAgentEntryMock } =
     await import("./agent-runner-entry.test-support.js");
@@ -44,15 +46,18 @@ vi.mock("../../agents/embedded-agent-runner/run-entry.js", async () => {
   };
 });
 
+// mock-isolation: Only the summary-error check is needed; the real module loads the harness registry and command queue.
 vi.mock("../../agents/model-fallback-attempt.js", () => ({
   isFallbackSummaryError: () => false,
 }));
 
+// mock-isolation: Auth is fixed to api-key, so no auth profile or env credential is read.
 vi.mock("../../agents/model-auth.js", () => ({
   isMissingProviderAuthError: () => false,
   resolveModelAuthMode: () => "api-key",
 }));
 
+// mock-isolation: Embedded runs and compaction are scripted; abort and active checks still reach the real run registry.
 vi.mock("../../agents/embedded-agent.js", () => ({
   runEmbeddedAgent: (params: unknown) => runEmbeddedAgentMock(params),
   compactEmbeddedAgentSession: vi.fn().mockResolvedValue({ compacted: false }),
@@ -61,8 +66,10 @@ vi.mock("../../agents/embedded-agent.js", () => ({
   isEmbeddedAgentRunActive: (sessionId: string) => isEmbeddedAgentRunActive(sessionId),
 }));
 
+// mock-isolation: CLI agent runs are recorded without spawning a CLI process.
 vi.mock("../../agents/cli-runner.js", () => ({ runCliAgent: vi.fn() }));
 
+// mock-isolation: Spawn requests are recorded without starting real subagent runs.
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   SUBAGENT_SPAWN_MODES: ["run", "session"],
   SUBAGENT_SPAWN_SANDBOX_MODES: ["inherit", "require"],
@@ -70,12 +77,15 @@ vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: vi.fn().mockResolvedValue({ status: "accepted", childSessionKey: "c" }),
 }));
 
+// mock-isolation: Runtime errors are captured, and exit never reaches process.exit.
 vi.mock("../../runtime.js", () => ({
   defaultRuntime: { log: vi.fn(), error: vi.fn(), exit: vi.fn() },
 }));
 
+// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
 vi.mock("../../infra/heartbeat-wake.js", () => ({ requestHeartbeatNow: vi.fn() }));
 
+// mock-isolation: Keep the process-wide followup queue and drain registry outside runner cases.
 vi.mock("./queue.js", () => ({
   enqueueFollowupRun: vi.fn(),
   scheduleFollowupDrain: vi.fn(),
@@ -83,6 +93,7 @@ vi.mock("./queue.js", () => ({
   refreshQueuedFollowupSession: vi.fn().mockResolvedValue(undefined),
 }));
 
+// mock-isolation: Secret refs resolve to the given config; no Gateway or secret store is contacted.
 vi.mock("../../cli/command-secret-gateway.js", () => ({
   resolveCommandSecretRefsViaGateway: async ({ config }: { config: unknown }) => ({
     resolvedConfig: config,
@@ -90,15 +101,18 @@ vi.mock("../../cli/command-secret-gateway.js", () => ({
   }),
 }));
 
+// mock-isolation: Reasoning-tag providers are fixed here; the real check asks provider plugins.
 vi.mock("../../utils/provider-utils.js", () => ({
   isReasoningTagProvider: () => false,
 }));
 
+// mock-isolation: Cron jobs come from the test; the real store reads the state database.
 vi.mock("../../cron/store.js", () => ({
   loadCronStore: vi.fn().mockResolvedValue({ version: 1, jobs: [] }),
   resolveCronStorePath: (storePath?: string) => storePath ?? "/tmp/openclaw-cron-store.json",
 }));
 
+// mock-isolation: No ACP sessions exist here; the process-wide ACP session manager is never created.
 vi.mock("../../acp/control-plane/manager.js", () => ({
   getAcpSessionManager: () => ({
     resolveSession: () => ({ kind: "none" }),
@@ -106,6 +120,7 @@ vi.mock("../../acp/control-plane/manager.js", () => ({
   }),
 }));
 
+// mock-isolation: An empty registry stands in; the real module registers process-wide maintenance and restores runs.
 vi.mock("../../agents/subagents/registry/subagent-registry.js", () => ({
   getLatestSubagentRunByChildSessionKey: () => null,
   getSwarmRunByLaunchReplayKey: () => undefined,

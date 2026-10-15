@@ -34,12 +34,13 @@ const mockState = vi.hoisted(() => ({
 }));
 
 // Mock spawnSubagentDirect — the queue drain's spawn owner.
+// mock-isolation: Spawn requests are recorded without starting real subagent runs.
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: mockState.spawnSubagentDirect,
 }));
 
 // Mock the subsystem logger to capture recovery warn/info calls
-vi.mock("../../logging/subsystem.js", () => {
+vi.mock("../../logging/subsystem.js", async (importOriginal) => {
   const logger = {
     subsystem: "test",
     isEnabled: () => true,
@@ -52,7 +53,10 @@ vi.mock("../../logging/subsystem.js", () => {
     raw: vi.fn(),
     child: () => logger,
   };
-  return { createSubsystemLogger: () => logger };
+  return {
+    ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
+    createSubsystemLogger: () => logger,
+  };
 });
 
 // Mock enqueueSystemEvent to capture system events

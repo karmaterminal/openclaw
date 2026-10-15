@@ -12,10 +12,12 @@ const loadOwnerSession = (sessionKey: string) => ({
   lifecycleRevision: "revision-1",
 });
 
+// mock-isolation: Spawn requests are recorded without starting real subagent runs.
 vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
 
+// mock-isolation: System events are captured instead of entering the process-wide event queue.
 vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEventRaw: (text: string, options: unknown) => enqueueSystemEventMock(text, options),
 }));
@@ -25,7 +27,7 @@ vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => (
   loadSessionEntry: ({ sessionKey }: { sessionKey: string }) => loadOwnerSession(sessionKey),
 }));
 
-vi.mock("../../logging/subsystem.js", () => {
+vi.mock("../../logging/subsystem.js", async (importOriginal) => {
   const noop = (): void => {};
   const logger = {
     subsystem: "test",
@@ -40,6 +42,7 @@ vi.mock("../../logging/subsystem.js", () => {
     child: () => logger,
   };
   return {
+    ...(await importOriginal<typeof import("../../logging/subsystem.js")>()),
     createSubsystemLogger: () => logger,
   };
 });

@@ -6,6 +6,7 @@ import { withTestDir } from "../test-helpers/temp-dir.js";
 
 const sleepMock = vi.hoisted(() => vi.fn<(ms: number) => Promise<void>>());
 
+// mock-isolation: Retry backoff waits resolve through the test instead of real timers.
 vi.mock("../utils/sleep.js", () => ({ sleep: sleepMock }));
 
 import {

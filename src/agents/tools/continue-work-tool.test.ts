@@ -17,6 +17,7 @@ import {
 import { createContinueWorkTool, type ContinueWorkRequest } from "./continue-work-tool.js";
 
 // Mock continuation config for deterministic delay resolution in tests.
+// mock-isolation: Fixed bounds stand in for the operator config; the real module loads the config loader.
 vi.mock("../../auto-reply/continuation/config.js", () => ({
   resolveContinuationRuntimeConfig: () => ({
     defaultDelayMs: 15_000,

@@ -93,6 +93,7 @@ async function drainRequestCompactionMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+// mock-isolation: Compaction params are captured without loading the compaction runtime (context engines, plugins, harness).
 vi.mock("../../agents/embedded-agent-runner/compact.queued.js", () => ({
   compactEmbeddedAgentSession: (params: CapturedCompactParams) =>
     compactEmbeddedAgentSessionMock(params),

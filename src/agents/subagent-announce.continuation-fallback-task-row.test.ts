@@ -40,6 +40,7 @@ const inProcessDispatchMock = vi.hoisted(() =>
   })),
 );
 
+// mock-isolation: Gateway calls get scripted replies; no live Gateway is contacted.
 vi.mock("../gateway/call.js", () => ({
   callGateway: (...args: [GatewayRequest]) => callGatewayMock(...args),
 }));
@@ -50,9 +51,11 @@ vi.mock("../gateway/server-plugin-in-process-dispatch.js", async (importOriginal
 }));
 // Browser cleanup and plugin runtime activation have owner tests and are not
 // part of the completion ownership under proof.
+// mock-isolation: Browser cleanup has owner tests; these cases load no browser plugin.
 vi.mock("../browser-lifecycle-cleanup.js", () => ({
   cleanupBrowserSessionsForLifecycleEnd: vi.fn(async () => {}),
 }));
+// mock-isolation: Plugin runtime activation has owner tests; these cases load no plugins.
 vi.mock("./runtime-plugins.js", () => ({
   loadAgentRuntimePluginRegistryHandle: vi.fn(),
 }));

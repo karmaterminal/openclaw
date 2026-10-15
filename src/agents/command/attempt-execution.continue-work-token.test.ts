@@ -42,15 +42,19 @@ const runEmbeddedAgentMock = vi.hoisted(() => vi.fn());
 const runCliAgentMock = vi.hoisted(() => vi.fn());
 const getReplyFromConfigMock = vi.hoisted(() => vi.fn());
 
+// mock-isolation: CLI agent runs are recorded without spawning a CLI process.
 vi.mock("../cli-runner.js", () => ({ runCliAgent: runCliAgentMock }));
+// mock-isolation: Provider ids normalize locally; the real module imports the catalog lookup and model config resolvers.
 vi.mock("../model-selection.js", () => ({
   isCliProvider: () => false,
   normalizeProviderId: (p: string) => p.trim().toLowerCase(),
 }));
+// mock-isolation: No auth aliases apply; the real map reads provider plugin metadata.
 vi.mock("../provider-auth-aliases.js", () => ({
   resolveProviderAuthAliasMap: () => ({}),
   resolveProviderIdForAuth: (p: string) => p.trim().toLowerCase(),
 }));
+// mock-isolation: Embedded agent runs are scripted; no agent session or provider runs.
 vi.mock("../embedded-agent.js", () => ({
   runEmbeddedAgent: runEmbeddedAgentMock,
 }));
@@ -58,6 +62,7 @@ vi.mock("../embedded-agent.js", () => ({
 // dispatcher calls getReplyFromConfig for the subagent session — that call IS
 // the proof that hop-2 executes (it is the same entrypoint a normal inbound
 // turn uses, which writes the turn to the session transcript).
+// mock-isolation: The reply entrypoint is recorded as proof that hop 2 runs; no provider or transcript runs.
 vi.mock("../../auto-reply/reply/get-reply.js", () => ({
   getReplyFromConfig: getReplyFromConfigMock,
 }));

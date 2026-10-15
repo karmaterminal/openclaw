@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 
+// mock-isolation: A fixed agent config replaces the operator config file.
 vi.mock("../../config/config.js", () => ({
   getRuntimeConfig: vi.fn(() => ({
     agents: {
