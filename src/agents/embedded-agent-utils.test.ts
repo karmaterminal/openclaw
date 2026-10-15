@@ -566,6 +566,30 @@ describe("extractAssistantVisibleText", () => {
   });
 });
 
+describe("extractAssistantVisibleText continuation markers", () => {
+  it.each(["CONTINUE_WORK", "[[CONTINUE_WORK]]"])(
+    "strips %s ending an earlier item before adjacent items are grouped",
+    (marker) => {
+      const msg = makeAssistantMessage({
+        content: [
+          {
+            type: "text",
+            text: `First item. ${marker}`,
+            textSignature: JSON.stringify({ v: 1, id: "item_a", phase: "final_answer" }),
+          },
+          {
+            type: "text",
+            text: "Second item.",
+            textSignature: JSON.stringify({ v: 1, id: "item_b", phase: "final_answer" }),
+          },
+        ],
+      });
+
+      expect(extractAssistantVisibleText(msg)).toBe("First item.\nSecond item.");
+    },
+  );
+});
+
 describe("promoteThinkingTagsToBlocks", () => {
   it("preserves malformed null content entries while promoting thinking tags", () => {
     const msg = makeAssistantMessage({
