@@ -271,6 +271,51 @@ describe("request_compaction tool", () => {
     );
   });
 
+  it("arms cooldown and tells the owner when a degraded summary is committed", async () => {
+    resetSystemEventsForTest();
+    mockTriggerCompaction.mockResolvedValueOnce({
+      ok: true,
+      compacted: true,
+      qualityDegraded: true,
+    });
+
+    const tool = makeTool({ enqueueSystemEvent: enqueueSystemEventRaw });
+    expect(await executeTool(tool)).toMatchObject({ status: "compaction_requested" });
+    await flushBackgroundCompaction();
+
+    const eventsFor = (agentId: string) =>
+      peekSystemEventEntries(resolveSystemEventQueueKey(SESSION_KEY, agentId)).map(
+        (event) => event.text,
+      );
+    const receipt = {
+      degraded: eventsFor(OWNER_AGENT_ID).filter((text) =>
+        text.includes("[system:compaction-degraded]"),
+      ).length,
+      failed: eventsFor(OWNER_AGENT_ID).filter((text) =>
+        text.includes("[system:compaction-failed]"),
+      ).length,
+      visibleToOtherAgent: eventsFor("other-agent").length,
+    };
+    expect(receipt).toEqual({ degraded: 1, failed: 0, visibleToOtherAgent: 0 });
+    // A degraded commit still shrank the session: the cooldown is armed like any success.
+    expect(await executeTool(tool)).toMatchObject({ status: "rejected", guard: "rate_limit" });
+    resetSystemEventsForTest();
+  });
+
+  it("sends no degraded notice for a clean committed summary", async () => {
+    resetSystemEventsForTest();
+    mockTriggerCompaction.mockResolvedValueOnce({ ok: true, compacted: true });
+
+    const tool = makeTool({ enqueueSystemEvent: enqueueSystemEventRaw });
+    await executeTool(tool);
+    await flushBackgroundCompaction();
+
+    expect(peekSystemEventEntries(resolveSystemEventQueueKey(SESSION_KEY, OWNER_AGENT_ID))).toEqual(
+      [],
+    );
+    resetSystemEventsForTest();
+  });
+
   it("keeps asynchronous compaction failure events owner-bound on a shared session", async () => {
     resetSystemEventsForTest();
     mockTriggerCompaction.mockResolvedValueOnce({

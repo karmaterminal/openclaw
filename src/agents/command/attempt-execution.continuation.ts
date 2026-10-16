@@ -2,6 +2,7 @@
  * Continuation wiring for embedded agent attempts: continue_work and request_compaction
  * tool options, plus post-run settlement of continue_work / continue_delegate elections.
  */
+import { parseCompactionDetails } from "../../../packages/agent-core/src/harness/compaction/compaction-details.js";
 import { sanitizeForLog } from "../../../packages/terminal-core/src/ansi.js";
 import { failQueuedDelegatesOwnedByRun } from "../../auto-reply/continuation/delegate-store.js";
 import {
@@ -190,6 +191,9 @@ export function startAttemptContinuation(params: AttemptContinuationParams) {
                   ok: result.ok,
                   compacted: result.compacted,
                   reason: result.reason,
+                  ...(parseCompactionDetails(result.result?.details)?.qualityDegraded
+                    ? { qualityDegraded: true }
+                    : {}),
                 };
               } catch (err) {
                 return {

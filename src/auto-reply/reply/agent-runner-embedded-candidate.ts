@@ -1,4 +1,5 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { parseCompactionDetails } from "../../../packages/agent-core/src/harness/compaction/compaction-details.js";
 import type {
   CompactionAccountingFact,
   RunEmbeddedAgentInternalParams,
@@ -229,6 +230,9 @@ export async function runEmbeddedFallbackCandidate(
                     ok: compactionResult.ok,
                     compacted: compactionResult.compacted,
                     reason: compactionResult.reason,
+                    ...(parseCompactionDetails(compactionResult.result?.details)?.qualityDegraded
+                      ? { qualityDegraded: true }
+                      : {}),
                   };
                 } catch (error) {
                   return {
