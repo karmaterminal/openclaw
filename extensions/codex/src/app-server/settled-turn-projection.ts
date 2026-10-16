@@ -312,9 +312,9 @@ class HistoryProjection {
     this.items.push(item);
   }
 
-  finish(): void {
+  finish(current = false): void {
     if (this.pending.size) {
-      throw new CodexHistoryRejection("incomplete_pairing");
+      throw new CodexHistoryRejection(current ? "current_pending_calls" : "incomplete_pairing");
     }
   }
 }
@@ -328,9 +328,9 @@ export function projectSettledCodexMessages(
   for (const message of messages) {
     projection.append(message);
   }
-  projection.finish();
+  projection.finish(true);
   if (projection.completedResults === 0) {
-    throw new CodexHistoryRejection("incomplete_pairing");
+    throw new CodexHistoryRejection("current_no_completed_results");
   }
   return projection.items;
 }
