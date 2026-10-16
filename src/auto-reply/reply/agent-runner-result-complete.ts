@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import { applySessionEntryOperation } from "../../config/sessions/session-accessor.sqlite-entry.js";
 import { emitContinuationCompactionReleasedSpan } from "../../infra/continuation-tracer.js";
 import { defaultRuntime } from "../../runtime.js";
 import { sessionDeliveryChannel } from "../../utils/delivery-context.read.js";
@@ -74,6 +73,7 @@ export async function completeReplyAgentRun(input: {
     usage,
     verboseEnabled,
   } = accounting;
+  const { completion } = context;
   const {
     completedSourceReplyDelivery,
     guardedReplyPayloads,
@@ -175,29 +175,36 @@ export async function completeReplyAgentRun(input: {
     }
   }
 
-  setActiveSessionEntry(activeSessionEntry);
-  await scheduleReplyContinuation({
-    cfg,
-    sessionKey,
-    followupRun,
-    runId,
-    usage,
-    effectiveContinuationSignal,
-    continuationExtractionFromBracket,
-    effectiveContinueWorkRequests,
-    continuationWorkReason,
-    internalBracketTraceparent,
-    continuation,
-    getActiveSessionEntry,
-  });
-  activeSessionEntry = getActiveSessionEntry() ?? activeSessionEntry;
+  // Arm continuation only after the terminal completion commits, so a wake is never
+  // visible for a turn whose bookkeeping or final custody rolled back.
+  const settleAndScheduleContinuation = async () => {
+    activeSessionEntry = (await completion?.complete()) ?? activeSessionEntry;
+    setActiveSessionEntry(activeSessionEntry);
+    await scheduleReplyContinuation({
+      cfg,
+      sessionKey,
+      followupRun,
+      runId,
+      usage,
+      effectiveContinuationSignal,
+      continuationExtractionFromBracket,
+      effectiveContinueWorkRequests,
+      continuationWorkReason,
+      internalBracketTraceparent,
+      continuation,
+      getActiveSessionEntry,
+    });
+    activeSessionEntry = getActiveSessionEntry() ?? activeSessionEntry;
+  };
 
   // Silent continuations should produce no user-visible output.
   if (wasSilentContinuation) {
+    await settleAndScheduleContinuation();
     return returnWithQueuedFollowupDrain(undefined);
   }
 
   if (finalPayloads.length === 0 && effectiveContinuationSignal) {
+    await settleAndScheduleContinuation();
     return returnWithQueuedFollowupDrain(undefined);
   }
 
@@ -312,30 +319,18 @@ export async function completeReplyAgentRun(input: {
       });
       // A reset can rebind the key while the model runs; its replacement must
       // never inherit the old run's final or advertise an uncommitted intent.
-      const persistedPendingFinalDelivery = await applySessionEntryOperation(
-        { agentId: followupRun.run.agentId, storePath, sessionKey },
-        {
-          kind: "fields",
-          expected: { sessionId: expectedSessionId },
-          patch: {
-            pendingFinalDelivery: {
-              ...(pendingText && commandOwnerReference === undefined
-                ? { kind: "replayable" as const, text: pendingText }
-                : { kind: "transport-only" as const }),
-              intentId: pendingFinalDeliveryIntentId,
-              deliveries: pendingFinalDeliveries,
-              context: pendingFinalDeliveryContext,
-              createdAt: Date.now(),
-            },
-            updatedAt: Date.now(),
-          },
-        },
-        {
-          skipMaintenance: true,
-          takeCacheOwnership: true,
-          workerGuard: {},
-        },
-      );
+      if (!completion) {
+        throw new Error("Pending final delivery has no admitted completion actor");
+      }
+      const persistedPendingFinalDelivery = await completion.complete({
+        ...(pendingText && commandOwnerReference === undefined
+          ? { kind: "replayable" as const, text: pendingText }
+          : { kind: "transport-only" as const }),
+        intentId: pendingFinalDeliveryIntentId,
+        deliveries: pendingFinalDeliveries,
+        context: pendingFinalDeliveryContext,
+        createdAt: Date.now(),
+      });
       if (
         persistedPendingFinalDelivery?.sessionId !== expectedSessionId ||
         persistedPendingFinalDelivery.pendingFinalDelivery?.intentId !==
@@ -343,8 +338,10 @@ export async function completeReplyAgentRun(input: {
       ) {
         throw new Error("pending final delivery session changed or was deleted");
       }
+      activeSessionEntry = persistedPendingFinalDelivery;
     }
   }
+  await settleAndScheduleContinuation();
   const result = returnWithQueuedFollowupDrain(
     finalPayloads.length === 1 ? finalPayloads[0] : finalPayloads,
   );

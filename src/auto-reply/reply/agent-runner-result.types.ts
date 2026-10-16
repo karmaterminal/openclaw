@@ -1,6 +1,7 @@
 import type { OpenClawConfig } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OriginatingChannelType } from "../templating.js";
+import type { AgentTurnCompletion } from "./agent-runner-completion.types.js";
 import type { ReplyContinuationController } from "./agent-runner-continuation.js";
 import type { RunReplyAgentParams } from "./agent-runner-core.js";
 import type { SettledAgentTurn } from "./agent-runner-execution.types.js";
@@ -34,6 +35,7 @@ export type FinalizeReplyAgentRunInput = Pick<
   activeIsNewSession: boolean;
   activeSessionEntry: SessionEntry | undefined;
   activeSessionStore: Record<string, SessionEntry> | undefined;
+  completion?: AgentTurnCompletion;
   blockReplyPipeline: BlockReplyPipeline | null;
   cfg: OpenClawConfig;
   continuation: ReplyContinuationController;

@@ -15,10 +15,8 @@ import {
   trackSessionEntryCacheWrite,
 } from "./session-accessor.sqlite-entry-cache.js";
 import { readSessionEntryInstanceId } from "./session-accessor.sqlite-entry-identity.js";
-import {
-  getExactSessionEntryQueries,
-  readExactSessionEntryRow,
-} from "./session-accessor.sqlite-entry-read.js";
+import { getExactSessionEntryQueries } from "./session-accessor.sqlite-entry-query.js";
+import { readExactSessionEntryRow } from "./session-accessor.sqlite-entry-read.js";
 import { readIncognitoSessionEntryCurrent } from "./session-accessor.sqlite-incognito-sharing.js";
 import { hasSqliteSessionOwnerColumns } from "./session-accessor.sqlite-owner-projection.js";
 import { advanceSessionRecipientAuthorityInTransaction } from "./session-accessor.sqlite-recipient-authority.js";
