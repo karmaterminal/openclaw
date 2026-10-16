@@ -84,6 +84,32 @@ async function fixture(events: unknown[], entry: Partial<InternalSessionEntry> =
 }
 
 describe("memory actor history facts", () => {
+  it("selects the first usable task with the supplied command metadata", async () => {
+    const { storage } = await fixture([
+      message("control", null, "user", "/status"),
+      message(
+        "skill",
+        "control",
+        "user",
+        "[Mon 2026-08-10 12:00 UTC] /topic_proof /api routing needs repair",
+      ),
+      message("plain", "skill", "user", "Later ordinary task"),
+    ]);
+    const skillCommands = [
+      { name: "topic_proof", skillName: "topic-proof", description: "Review a task" },
+    ];
+    expect(
+      await storage.read({ type: "session.history.title", input: { skillCommands } }, authority),
+    ).toMatchObject({
+      fields: { firstUserMessage: "/api routing needs repair" },
+    });
+    expect(
+      await storage.read({ type: "session.history.title", input: {} }, authority),
+    ).toMatchObject({
+      fields: { firstUserMessage: "Later ordinary task" },
+    });
+  });
+
   it("publishes branch, title, preview and match facts after an in-process write", async () => {
     const { storage, append } = await fixture([
       message("user", null, "user", "Question"),
@@ -125,7 +151,7 @@ describe("memory actor history facts", () => {
     ).toMatchObject({
       status: "ok",
       branches: [
-        { leafEntryId: "new-answer", headline: "**New** branch", messageCount: 2, active: true },
+        { leafEntryId: "new-answer", headline: "New branch", messageCount: 2, active: true },
         { leafEntryId: "old-answer", headline: "Old branch", messageCount: 2, active: false },
       ],
     });
@@ -531,7 +557,7 @@ describe("memory actor history facts", () => {
       type: "session.history.anchors" as const,
       input: { sessionId, entryIds: ["user"], contextAuthority: true as const },
     };
-    await expect(storage.read(retiredWindow, authority)).rejects.toThrow("closed");
+    await expect(async () => storage.read(retiredWindow, authority)).rejects.toThrow("closed");
     const current = await acquire();
     expect(await current.storage!.read(retiredWindow, authority)).toMatchObject({
       anchors: [],

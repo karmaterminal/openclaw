@@ -2,8 +2,8 @@ import "../styles/gateway-vitals.css";
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { formatDurationCompact } from "../lib/format-duration.ts";
 import { i18nRevision } from "../lib/reactive/i18n.ts";
+import { defineSolidBridge } from "../lib/solid-bridge.ts";
 import type { SparklineSample } from "../lib/sparkline-types.ts";
-import { defineSolidBridge } from "../lit/solid-bridge.ts";
 
 export type { SparklineSample } from "../lib/sparkline-types.ts";
 
@@ -172,18 +172,14 @@ function SparklineContent(props: SparklineProps) {
   );
 }
 
-export const SparklineTile = defineSolidBridge<SparklineProps>(
-  "openclaw-sparkline",
-  SparklineContent,
-  {
-    properties: {
-      label: { default: "" },
-      sub: { default: "" },
-      samples: { default: [], attribute: false },
-      format: { default: String, attribute: false },
-      floorMax: { default: 0, attribute: false },
-      stackColors: { default: [], attribute: false },
-      autorange: { default: false },
-    },
+defineSolidBridge<SparklineProps>("openclaw-sparkline", SparklineContent, {
+  properties: {
+    label: { default: "" },
+    sub: { default: "" },
+    samples: { default: [], attribute: false },
+    format: { default: String, attribute: false },
+    floorMax: { default: 0, attribute: false },
+    stackColors: { default: [], attribute: false },
+    autorange: { default: false },
   },
-);
+});

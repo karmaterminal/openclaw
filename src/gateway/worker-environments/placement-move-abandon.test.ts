@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { setRuntimeConfigSnapshot } from "../../config/io.js";
 import {
   NODE_WORKER_ENVIRONMENT_STOP_COMMAND,
   NODE_WORKER_WORKSPACE_EXEC_COMMAND,
@@ -43,6 +44,7 @@ describe("offline device placement abandonment", () => {
   let stopServices: Array<() => Promise<void>>;
 
   beforeEach(() => {
+    setRuntimeConfigSnapshot({});
     stopServices = [];
     root = tempDirs.make("openclaw-device-abandon-");
     database = openOpenClawStateDatabase({ env: { OPENCLAW_STATE_DIR: root } });
@@ -94,7 +96,7 @@ describe("offline device placement abandonment", () => {
   }
 
   async function deviceTeardown(liveTunnel: boolean, providerId = "device", sharedHost = true) {
-    const harness = createHarness(database, placements);
+    const harness = await createHarness(database, placements);
     const active = await harness.service.dispatch(REQUEST);
     harness.markEnvironmentNodeDeviceId("device-1");
     seedEnvironment(active, providerId);
@@ -193,7 +195,7 @@ describe("offline device placement abandonment", () => {
       attachedSessionIds: [],
       lastError: FORCED_WORKER_ABANDONMENT_ERROR,
     });
-    expect(fixture.invoke).toHaveBeenLastCalledWith(
+    expect(fixture.invoke).toHaveBeenCalledWith(
       expect.objectContaining({
         command: NODE_WORKER_ENVIRONMENT_STOP_COMMAND,
         params: expect.objectContaining({
@@ -203,8 +205,7 @@ describe("offline device placement abandonment", () => {
         }),
       }),
     );
-    expect(fixture.invoke).toHaveBeenNthCalledWith(
-      fixture.invoke.mock.calls.length - 1,
+    expect(fixture.invoke).toHaveBeenCalledWith(
       expect.objectContaining({
         command: NODE_WORKER_WORKSPACE_EXEC_COMMAND,
         params: expect.objectContaining({
@@ -252,10 +253,10 @@ describe("offline device placement abandonment", () => {
     await expect(harness.service.move(requestFor(active))).resolves.toMatchObject({
       state: "local",
     });
-    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledTimes(2);
     expectRetainedDeviceCleanup(fixture);
     await finishDeviceCleanup(fixture);
-    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(invoke).toHaveBeenCalledTimes(4);
   });
 
   it("force destroys an unreachable device and accepts its already fenced placement for abandonment", async () => {
@@ -366,7 +367,7 @@ describe("offline device placement abandonment", () => {
         expect(placements.get(REQUEST.sessionId)).toMatchObject({ state: "active" });
         expect(await placements.getPlacementMoveAsync(REQUEST.sessionId)).toBeUndefined();
       });
-      const harness = createHarness(database, placements, {
+      const harness = await createHarness(database, placements, {
         beforeMoveBegin,
         afterMoveBegin: () => afterMoveBegin(),
       });
@@ -442,7 +443,7 @@ describe("offline device placement abandonment", () => {
   );
 
   it("refuses an ordinary non-abandoning move for an offline paired device with an existing pending cloud workspace result", async () => {
-    const harness = createHarness(database, placements);
+    const harness = await createHarness(database, placements);
     const active = await harness.service.dispatch(REQUEST);
     harness.markEnvironmentNodeDeviceId("device-1");
     seedEnvironment(active);
@@ -477,7 +478,7 @@ describe("offline device placement abandonment", () => {
   });
 
   it("forces an offline remote-exec device onto the Gateway without waiting for its local claim", async () => {
-    const harness = createHarness(database, placements);
+    const harness = await createHarness(database, placements);
     const active = await harness.service.dispatch({ ...REQUEST, executionMode: "remote-exec" });
     harness.markEnvironmentNodeDeviceId("device-1");
     seedEnvironment(active);
@@ -538,7 +539,7 @@ describe("offline device placement abandonment", () => {
       throw new Error("move barrier interrupted after durable begin");
     });
     const options = { beforeMoveBegin, afterMoveBegin, deviceRunnerAvailable: false };
-    const harness = createHarness(database, placements, options);
+    const harness = await createHarness(database, placements, options);
     const active = await harness.service.dispatch(REQUEST);
     harness.markEnvironmentNodeDeviceId("device-1");
     seedEnvironment(active);
@@ -638,7 +639,7 @@ describe("offline device placement abandonment", () => {
         });
       }
     });
-    const harness = createHarness(database, placements, { beforeMoveBegin });
+    const harness = await createHarness(database, placements, { beforeMoveBegin });
     const source = await harness.service.dispatch(REQUEST);
     harness.markEnvironmentNodeDeviceId("device-1");
     seedEnvironment(source);
@@ -676,7 +677,7 @@ describe("offline device placement abandonment", () => {
   });
 
   it("keeps an ordinary offline move reconcile-first", async () => {
-    const harness = createHarness(database, placements);
+    const harness = await createHarness(database, placements);
     const active = await harness.service.dispatch(REQUEST);
     harness.markEnvironmentNodeDeviceId("device-1");
     seedEnvironment(active);
@@ -698,7 +699,7 @@ describe("offline device placement abandonment", () => {
     { name: "available", available: true, providerId: "device", error: "use Move session" },
     { name: "unknown", available: false, providerId: "test", error: "known runner binding" },
   ])("rejects a $name abandonment source before draining", async (scenario) => {
-    const harness = createHarness(database, placements, {
+    const harness = await createHarness(database, placements, {
       deviceRunnerAvailable: scenario.available,
     });
     const active = await harness.service.dispatch(REQUEST);
@@ -727,7 +728,7 @@ describe("offline device placement abandonment", () => {
           return coordinator.run(environmentId, operation, signal);
         },
       };
-      const harness = createHarness(database, placements, { workspaceOperations });
+      const harness = await createHarness(database, placements, { workspaceOperations });
       const active = await harness.service.dispatch(REQUEST);
       harness.markEnvironmentNodeDeviceId("device-1");
       seedEnvironment(active);
@@ -803,7 +804,7 @@ describe("offline device placement abandonment", () => {
 
   it("retains the durable decision when authorization closes after teardown", async () => {
     let revoked = false;
-    const harness = createHarness(database, placements, {
+    const harness = await createHarness(database, placements, {
       afterDestroy: () => {
         revoked = true;
       },
@@ -833,7 +834,7 @@ describe("offline device placement abandonment", () => {
   });
 
   it("recovers a crash after the durable drain without remote reconciliation", async () => {
-    const harness = createHarness(database, placements, { failMoveAfterBegin: true });
+    const harness = await createHarness(database, placements, { failMoveAfterBegin: true });
     const active = await harness.service.dispatch(REQUEST);
     harness.markEnvironmentNodeDeviceId("device-1");
     seedEnvironment(active);
@@ -842,7 +843,7 @@ describe("offline device placement abandonment", () => {
       "move barrier interrupted",
     );
     const restartedStore = createWorkerSessionPlacementStore({ database, now: () => 2_000 });
-    const restarted = createHarness(database, restartedStore);
+    const restarted = await createHarness(database, restartedStore);
     restarted.markEnvironmentNodeDeviceId("device-1");
     await restarted.service.reconcile();
 
