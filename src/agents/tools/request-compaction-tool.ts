@@ -104,9 +104,13 @@ export type RequestCompactionToolOpts = {
    * import the heavy compaction module directly. The caller provides a
    * closure over `compactEmbeddedAgentSession` with all required session params.
    */
-  triggerCompaction: (
-    request: RequestCompactionInvocation,
-  ) => Promise<{ ok: boolean; compacted: boolean; reason?: string }>;
+  triggerCompaction: (request: RequestCompactionInvocation) => Promise<{
+    ok: boolean;
+    compacted: boolean;
+    reason?: string;
+    /** The committed summary failed its quality audit and was kept as degraded. */
+    qualityDegraded?: boolean;
+  }>;
   enqueueSystemEvent?: typeof enqueueSystemEvent;
 };
 
@@ -133,6 +137,27 @@ function notifyCompactionFailure(params: {
     log.error(
       `[request_compaction:failure-event-error] session=${params.sessionKey} runId=${params.runId ?? params.sessionId} ` +
         `diagId=${params.diagId} code=${params.code} error=${formatErrorMessage(err)}`,
+    );
+  }
+}
+
+function notifyCompactionDegraded(params: {
+  enqueue: typeof enqueueSystemEvent;
+  sessionKey: string;
+  ownerAgentId?: string;
+  runId?: string;
+  sessionId?: string;
+  diagId: string;
+}): void {
+  try {
+    params.enqueue(
+      `[system:compaction-degraded] Volitional compaction request ${params.diagId} committed a degraded summary: it failed its quality audit and was kept so the session can shrink. Older details, exact identifiers, or pending requests may be missing. Re-establish anything important from your evacuated state before relying on it.`,
+      withContinuationOwner({ sessionKey: params.sessionKey }, params.ownerAgentId),
+    );
+  } catch (err) {
+    log.error(
+      `[request_compaction:degraded-event-error] session=${params.sessionKey} runId=${params.runId ?? params.sessionId} ` +
+        `diagId=${params.diagId} error=${formatErrorMessage(err)}`,
     );
   }
 }
@@ -297,6 +322,20 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
                     `diagId=${diagId} trigger=volitional outcome=compacted`,
                 );
                 incrementVolitionalCompactionCount(sessionKey);
+                if (result.qualityDegraded) {
+                  log.warn(
+                    `[request_compaction:resolved-degraded] session=${sessionKey} runId=${opts.runId ?? opts.sessionId} ` +
+                      `diagId=${diagId} trigger=volitional outcome=compacted quality=degraded`,
+                  );
+                  notifyCompactionDegraded({
+                    enqueue: opts.enqueueSystemEvent ?? enqueueSystemEvent,
+                    sessionKey,
+                    ownerAgentId: opts.ownerAgentId,
+                    runId: opts.runId,
+                    sessionId: opts.sessionId,
+                    diagId,
+                  });
+                }
                 return;
               }
               const code = classifyCompactionReason(result.reason);

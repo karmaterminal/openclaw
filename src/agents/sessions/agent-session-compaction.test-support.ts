@@ -1,7 +1,5 @@
 import type { AssistantMessage } from "openclaw/plugin-sdk/llm";
-import { createTestSession } from "./agent-session-loop-correctness.test-support.js";
 import { createCompactionHandlers } from "./agent-session-loop-resource-loader.test-support.js";
-import type { AgentSessionEvent } from "./agent-session-types.js";
 
 export function createStaleThinkingContent(): AssistantMessage["content"] {
   return [
@@ -41,16 +39,4 @@ export function createResultHandlers(
     },
   ]);
   return handlers;
-}
-
-export function collectCompactionEnds(
-  session: Awaited<ReturnType<typeof createTestSession>>["session"],
-) {
-  const events: Array<Extract<AgentSessionEvent, { type: "compaction_end" }>> = [];
-  session.subscribe((event) => {
-    if (event.type === "compaction_end") {
-      events.push(event);
-    }
-  });
-  return events;
 }

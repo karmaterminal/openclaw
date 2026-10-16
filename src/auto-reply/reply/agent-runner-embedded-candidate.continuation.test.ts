@@ -275,6 +275,47 @@ describe("runEmbeddedFallbackCandidate continuation callbacks", () => {
     );
   });
 
+  it("releases once and reports a degraded committed summary to the request tool", async () => {
+    const config = {
+      agents: { defaults: { continuation: { enabled: true } } },
+    };
+    mocks.releaseQueuedCompactionTolerant.mockClear();
+    mocks.compactEmbeddedAgentSession.mockResolvedValueOnce({
+      ok: true,
+      compacted: true,
+      result: {
+        summary: "best available summary",
+        firstKeptEntryId: "entry-1",
+        tokensBefore: 100,
+        details: { readFiles: [], modifiedFiles: [], qualityDegraded: true },
+      },
+    } as never);
+    let triggerResult: unknown;
+    mocks.runEmbeddedAgent.mockImplementationOnce(async (options: RunEmbeddedAgentParams) => {
+      triggerResult = await options.requestCompactionOpts?.triggerCompaction({
+        sessionKey: "agent:main:fallback",
+        sessionId: "session-fallback",
+        runId: "run-degraded",
+        diagId: "diag-degraded",
+        trigger: "volitional",
+        reason: "degraded audit",
+        contextUsage: 0.9,
+        requestedAtMs: 1,
+      });
+      return { payloads: [{ text: "done" }], meta: { durationMs: 1 } };
+    });
+
+    await runCandidate(config, vi.fn());
+
+    expect(triggerResult).toEqual({
+      ok: true,
+      compacted: true,
+      reason: undefined,
+      qualityDegraded: true,
+    });
+    expect(mocks.releaseQueuedCompactionTolerant).toHaveBeenCalledOnce();
+  });
+
   it("does not retain raw continuation text from replay-unsafe incomplete turns", async () => {
     const config = {
       agents: { defaults: { continuation: { enabled: true } } },

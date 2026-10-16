@@ -282,6 +282,38 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     expect(releaseArgs.followupRun?.run?.workspaceDir).toBe(tmpDir);
   });
 
+  it("triggerCompaction releases once and reports a degraded committed summary", async () => {
+    releaseQueuedCompactionTolerantMock.mockReset();
+    compactEmbeddedAgentSessionMock.mockReset();
+    compactEmbeddedAgentSessionMock.mockResolvedValue({
+      ok: true,
+      compacted: true,
+      result: {
+        summary: "best available summary",
+        firstKeptEntryId: "entry-1",
+        tokensBefore: 100,
+        details: { readFiles: [], modifiedFiles: [], qualityDegraded: true },
+      },
+    });
+
+    await runEmbeddedAttempt(makeContinuationEnabledConfig());
+    const triggerCompaction = (
+      runEmbeddedAgentMock.mock.calls[0]?.[0] as {
+        requestCompactionOpts?: {
+          triggerCompaction: (req: { trigger: string }) => Promise<unknown>;
+        };
+      }
+    )?.requestCompactionOpts?.triggerCompaction;
+
+    expect(await triggerCompaction!({ trigger: "volitional" })).toEqual({
+      ok: true,
+      compacted: true,
+      reason: undefined,
+      qualityDegraded: true,
+    });
+    expect(releaseQueuedCompactionTolerantMock).toHaveBeenCalledTimes(1);
+  });
+
   it("triggerCompaction does NOT release when compaction did not apply", async () => {
     releaseQueuedCompactionTolerantMock.mockReset();
     compactEmbeddedAgentSessionMock.mockReset();
