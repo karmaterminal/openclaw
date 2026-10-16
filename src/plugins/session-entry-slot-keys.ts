@@ -174,6 +174,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "contextBudgetStatus",
   "lastContextPressureBand",
   "compactionCount",
+  "compactionQualityDegraded",
   "transcriptByteCompactionLatch",
   "memoryFlush",
   "cliHistoryBoundary",
