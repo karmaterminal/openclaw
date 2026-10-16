@@ -136,12 +136,21 @@ async function stagePostCompaction(params: { owner: string; createdAt: number })
   });
 }
 
+/**
+ * Reaped notices a session has been given, by identity: a durable row and the
+ * in-memory event that fast-paths it (carrying the row's ack id) are one notice.
+ */
 async function noticesFor(sessionKey: string): Promise<string[]> {
-  const durable = (await loadPendingSessionDeliveries(captureContinuationQueueContext()))
-    .filter((entry) => entry.sessionKey === sessionKey && entry.kind === "systemEvent")
-    .map((entry) => (entry as { text: string }).text);
-  const inMemory = peekSystemEventEntries(sessionKey).map((event) => event.text);
-  return [...durable, ...inMemory].filter((text) => text.includes(REAPED_NOTICE));
+  const notices = new Map<string, string>();
+  for (const entry of await loadPendingSessionDeliveries(captureContinuationQueueContext())) {
+    if (entry.sessionKey === sessionKey && entry.kind === "systemEvent") {
+      notices.set(entry.id, entry.text);
+    }
+  }
+  for (const event of peekSystemEventEntries(sessionKey)) {
+    notices.set(event.sessionDeliveryAckId ?? event.id ?? event.text, event.text);
+  }
+  return [...notices.values()].filter((text) => text.includes(REAPED_NOTICE));
 }
 
 async function loadReaper() {
