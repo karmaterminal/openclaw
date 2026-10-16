@@ -79,7 +79,7 @@ function cacheSessionEntryQuery<Row extends ResolvedSessionEntryRow["row"]>(
 }
 
 // Each query retains only its last exact row at the connection's admitted revision.
-const getExactSessionEntryQueries = createSqliteQueryCache((database) => {
+export const getExactSessionEntryQueries = createSqliteQueryCache((database) => {
   const rowQueries = new Map<string, (key: string) => ResolvedSessionEntryRow["row"] | undefined>();
   const canonicalQueries = new Map<
     string,
@@ -383,21 +383,6 @@ function scanSessionEntryRows(
     }
     return { lookupKeys, rows, selected };
   });
-}
-
-/**
- * Exact row without participant projection.
- *
- * Every decoding reader above projects participant rows, which throws on a
- * corrupt participant identity. A write that only needs the row's own columns
- * (owner assignment reading its previous owner) must not be rolled back by that
- * corruption; the decoding readers still surface it to their own callers.
- */
-export function readExactSessionEntryRawRow(
-  database: OpenClawAgentDatabaseReader,
-  sessionKey: string,
-): ResolvedSessionEntryRow["row"] | undefined {
-  return getExactSessionEntryQueries(database.db).row(sessionKey);
 }
 
 /** Indexed child metadata shared by native compatibility and the incognito actor. */

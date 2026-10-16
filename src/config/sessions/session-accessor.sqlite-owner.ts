@@ -16,7 +16,7 @@ import {
 } from "./session-accessor.sqlite-entry-cache.js";
 import { readSessionEntryInstanceId } from "./session-accessor.sqlite-entry-identity.js";
 import {
-  readExactSessionEntryRawRow,
+  getExactSessionEntryQueries,
   readExactSessionEntryRow,
 } from "./session-accessor.sqlite-entry-read.js";
 import { readIncognitoSessionEntryCurrent } from "./session-accessor.sqlite-incognito-sharing.js";
@@ -165,7 +165,7 @@ export function assignSessionOwner(
       if (incognito) {
         currentEntry = readIncognitoSessionEntryCurrent(database.db, resolved.sessionKey);
       } else {
-        const currentRow = readExactSessionEntryRawRow(database, resolved.sessionKey);
+        const currentRow = getExactSessionEntryQueries(database.db).row(resolved.sessionKey);
         currentEntry = currentRow ? parseSessionEntryJson(currentRow, "list") : null;
       }
       const previousOwner = currentEntry?.owner?.actor ?? currentEntry?.createdActor;
