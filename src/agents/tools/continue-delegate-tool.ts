@@ -267,7 +267,7 @@ export function createContinueDelegateTool(opts: {
       "Call it several times in one turn for parallel fan-out; this session stays free.",
       'mode="silent" adds the result to your context without channel output; mode="silent-wake" also wakes you to act on it; mode="post-compaction" starts the delegate when this session compacts, to carry working state across it.',
       "Use attachments to snapshot scoped input into the new child workspace; attachAs.mountPath is a mount hint.",
-      "Return targeting: by default the result returns to this session; targetSessionKey returns it to one other session; targetSessionKeys to several; fanoutMode=tree to every ancestor in the chain; fanoutMode=all to every known session on this host.",
+      "Return targeting: default returns to the dispatching session; targetSessionKey returns to one other session; targetSessionKeys returns byte-identical enrichment to multiple sessions; fanoutMode=tree returns to all ancestors in the chain; fanoutMode=all returns to all known sessions on this host.",
     ].join(" "),
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {
