@@ -10,7 +10,6 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { closeOpenClawStateDatabaseAsync } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { describe, expect, it, vi } from "vitest";
-import type { TelegramBotDeps } from "./bot-deps.js";
 import { createTelegramMessageProcessor } from "./bot-message.js";
 import {
   createTelegramSpooledReplayDeferredParticipant,
@@ -847,7 +846,6 @@ describe("createTelegramIngressMonitor", () => {
         replyToMode: "auto",
         streamMode: "partial",
         textLimit: 4096,
-        telegramDeps: {} as TelegramBotDeps,
         opts: {},
       } as unknown as Parameters<typeof createTelegramMessageProcessor>[0]);
       const monitor = createTelegramIngressMonitor({
