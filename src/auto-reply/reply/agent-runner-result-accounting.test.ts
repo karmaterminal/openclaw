@@ -11,7 +11,6 @@ const state = vi.hoisted(() => ({
   formatCurrentSpanContinuationTraceparent: vi.fn<() => string | undefined>(),
   incrementCompactionCount: vi.fn(),
   recordNoOpRearmOutcome: vi.fn(),
-  persistSessionUsageUpdate: vi.fn(async (_params: unknown) => undefined),
   refreshQueuedFollowupSession: vi.fn(),
   scheduleContinuation: vi.fn(),
   resolveContextTokensForModel: vi.fn<() => number | undefined>(() => 200_000),
@@ -27,16 +26,8 @@ vi.mock("../../agents/fast-mode.js", () => ({
   resolveFastModeState: () => ({ enabled: false }),
 }));
 
-vi.mock("../../agents/live-model-switch.js", () => ({
-  consolidateLiveModelSwitchAfterRun: vi.fn(async () => {}),
-}));
-
 vi.mock("../../agents/model-selection.js", () => ({
   isCliProvider: () => false,
-}));
-
-vi.mock("../../config/sessions/session-accessor.js", () => ({
-  updateSessionEntry: vi.fn(async () => {}),
 }));
 
 vi.mock("../../globals.js", () => ({
@@ -70,11 +61,6 @@ vi.mock("./agent-runner-core.js", async (importOriginal) => ({
 // mock-isolation: Compaction counts are recorded without writing the session store.
 vi.mock("./session-updates.js", () => ({
   incrementCompactionCount: (...args: unknown[]) => state.incrementCompactionCount(...args),
-}));
-
-// mock-isolation: Usage updates are recorded without writing the session store.
-vi.mock("./session-usage.js", () => ({
-  persistSessionUsageUpdate: (params: unknown) => state.persistSessionUsageUpdate(params),
 }));
 
 vi.mock("./no-op-rearm-guard.js", async (importOriginal) => {
@@ -121,6 +107,13 @@ vi.mock("./reply-usage-state.js", () => ({
 }));
 
 const { accountFollowupTurn } = await import("./agent-runner-result-accounting.js");
+
+// Callers arm continuation only after the terminal completion commits.
+async function accountFollowupTurnAndSchedule(params: Parameters<typeof accountFollowupTurn>[0]) {
+  const accounted = await accountFollowupTurn(params);
+  await accounted?.scheduleContinuation();
+  return accounted;
+}
 
 const continuationConfig = {
   agents: {
@@ -261,7 +254,7 @@ describe("accountFollowupTurn", () => {
       opts: { isHeartbeat: true },
     } satisfies FollowupRunnerParams;
 
-    await accountFollowupTurn({
+    await accountFollowupTurnAndSchedule({
       turn,
       defaults,
       execution: createExecution(),
@@ -282,32 +275,6 @@ describe("accountFollowupTurn", () => {
         }),
         effectiveContinueWorkRequests: [{ reason: "finish queued work", delaySeconds: 30 }],
         continuationWorkReason: "finish queued work",
-      }),
-    );
-  });
-
-  it("forwards typed runtime context provenance to session persistence", async () => {
-    const params = createParams();
-    const result = params.execution.execution.outcome;
-    if (result.kind !== "settled") {
-      throw new Error("expected settled test execution");
-    }
-    result.result.meta.agentMeta = {
-      sessionId: "session-1",
-      provider: "openai",
-      model: "gpt-4o",
-      agentHarnessId: "codex",
-      contextTokens: 1_000_000,
-      contextTokensSource: "runtime",
-    };
-
-    await accountFollowupTurn(params);
-
-    expect(state.persistSessionUsageUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        agentHarnessId: "codex",
-        contextTokensUsed: 1_000_000,
-        contextTokensSource: "runtime",
       }),
     );
   });
@@ -333,7 +300,7 @@ describe("accountFollowupTurn", () => {
     execution.execution.outcome.rawContinuationText =
       "handoff queued\n[[CONTINUE_DELEGATE: inspect followup state]]";
 
-    await accountFollowupTurn({ turn, defaults, execution });
+    await accountFollowupTurnAndSchedule({ turn, defaults, execution });
 
     expect(state.scheduleContinuation).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -345,83 +312,6 @@ describe("accountFollowupTurn", () => {
         effectiveContinueWorkRequests: [{ reason: "finish queued work", delaySeconds: 30 }],
         continuationWorkReason: undefined,
         internalBracketTraceparent: currentTraceparent,
-      }),
-    );
-  });
-
-  it("treats a source-less current-run context window as runtime provenance", async () => {
-    const params = createParams();
-    const result = params.execution.execution.outcome;
-    if (result.kind !== "settled") {
-      throw new Error("expected settled test execution");
-    }
-    result.result.meta.agentMeta = {
-      sessionId: "session-1",
-      provider: "openai",
-      model: "gpt-4o",
-      agentHarnessId: "legacy-runtime",
-      contextTokens: 512_000,
-    };
-
-    await accountFollowupTurn(params);
-
-    expect(state.persistSessionUsageUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        agentHarnessId: "legacy-runtime",
-        contextTokensUsed: 512_000,
-        contextTokensSource: "runtime",
-      }),
-    );
-  });
-
-  it("marks a successful current model lookup with versioned resolved provenance", async () => {
-    const params = createParams();
-
-    await accountFollowupTurn(params);
-
-    expect(state.persistSessionUsageUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        contextTokensUsed: 200_000,
-        contextTokensSource: "resolved-v1",
-      }),
-    );
-  });
-
-  it("does not label a prior context fallback as a current resolution after a model switch", async () => {
-    state.resolveContextTokensForModel.mockReturnValueOnce(undefined);
-    const params = createParams();
-    const session = params.turn.session as unknown as {
-      current: () => SessionEntry;
-      adopt: (entry: SessionEntry) => void;
-    };
-    session.adopt({
-      ...session.current(),
-      modelProvider: "anthropic",
-      model: "claude",
-      agentHarnessId: "openclaw",
-      contextTokens: 272_000,
-      contextTokensSource: "resolved",
-    });
-    const result = params.execution.execution.outcome;
-    if (result.kind !== "settled") {
-      throw new Error("expected settled test execution");
-    }
-    result.result.meta.agentMeta = {
-      sessionId: "session-1",
-      provider: "openai",
-      model: "gpt-4o",
-      agentHarnessId: "codex",
-    };
-
-    await accountFollowupTurn(params);
-
-    expect(state.persistSessionUsageUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providerUsed: "openai",
-        modelUsed: "gpt-4o",
-        agentHarnessId: "codex",
-        contextTokensUsed: 272_000,
-        contextTokensSource: undefined,
       }),
     );
   });
@@ -470,7 +360,7 @@ describe("accountFollowupTurn", () => {
     execution.execution.outcome.result.payloads = [{ text: "more remains" }];
     execution.execution.outcome.rawContinuationText = "more remains\n[[CONTINUE_WORK:45]]";
 
-    await accountFollowupTurn({ turn, defaults, execution });
+    await accountFollowupTurnAndSchedule({ turn, defaults, execution });
 
     expect(state.scheduleContinuation).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -497,7 +387,7 @@ describe("accountFollowupTurn", () => {
     execution.execution.outcome.rawContinuationText =
       "[[CONTINUE_DELEGATE: stale task]]\nfinal answer";
 
-    await accountFollowupTurn({ turn, defaults, execution });
+    await accountFollowupTurnAndSchedule({ turn, defaults, execution });
 
     expect(state.scheduleContinuation).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -528,7 +418,7 @@ describe("accountFollowupTurn", () => {
     execution.execution.outcome.rawContinuationText =
       "preferred\n[[CONTINUE_DELEGATE: stale selected task]]";
 
-    await accountFollowupTurn({ turn, defaults, execution });
+    await accountFollowupTurnAndSchedule({ turn, defaults, execution });
 
     expect(state.scheduleContinuation).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -556,7 +446,7 @@ describe("accountFollowupTurn", () => {
       order.push("schedule");
     });
 
-    await accountFollowupTurn({
+    await accountFollowupTurnAndSchedule({
       turn,
       defaults,
       execution: createExecution({

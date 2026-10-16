@@ -21,6 +21,9 @@ const state = vi.hoisted(() => ({
   execute: vi.fn(),
   resolveDecision: vi.fn(),
   clearRunContext: vi.fn(),
+  withCompletion: undefined as
+    | undefined
+    | ((params: unknown, consume: (completion: unknown) => Promise<unknown>) => Promise<unknown>),
 }));
 
 vi.mock("../../infra/agent-run-registry.js", () => ({
@@ -54,6 +57,20 @@ vi.mock("./queue.js", () => ({
 }));
 
 vi.mock("../../runtime.js", () => ({ defaultRuntime: { error: vi.fn() } }));
+
+vi.mock("./agent-runner-completion.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./agent-runner-completion.js")>();
+  return {
+    ...actual,
+    withAgentTurnCompletion: (
+      params: Parameters<typeof actual.withAgentTurnCompletion>[0],
+      consume: Parameters<typeof actual.withAgentTurnCompletion>[1],
+    ) =>
+      state.withCompletion
+        ? state.withCompletion(params, consume as (completion: unknown) => Promise<unknown>)
+        : actual.withAgentTurnCompletion(params, consume),
+  };
+});
 
 const { createFollowupRunner } = await import("./followup-runner.js");
 const { FollowupRunDeferredError } = await import("./queue.js");
@@ -597,7 +614,10 @@ describe("createFollowupRunner", () => {
     state.execute.mockResolvedValue(execution);
     state.account.mockImplementation(async () => {
       order.push("accounted");
-      return { payloadArray: [{ text: "raw accounting reply" }] };
+      return {
+        payloadArray: [{ text: "raw accounting reply" }],
+        scheduleContinuation: async () => {},
+      };
     });
     state.resolveDecision.mockImplementation(() => {
       order.push("decision");
@@ -661,6 +681,52 @@ describe("createFollowupRunner", () => {
     expect(state.clearRunContext).toHaveBeenCalledWith("run-1");
   });
 
+  it.each([
+    { name: "commits", fails: false },
+    { name: "fails to settle", fails: true },
+  ])(
+    "arms continuation only after the terminal completion commits (completion $name)",
+    async ({ fails }) => {
+      const turn = createTurn();
+      const order: string[] = [];
+      state.withCompletion = async (_params, consume) =>
+        consume({
+          current: () => turn.session.current(),
+          refresh: async () => turn.session.current(),
+          patch: () => undefined,
+          complete: async () => {
+            order.push("completion-committed");
+            if (fails) {
+              throw new Error("terminal accounting failed to settle");
+            }
+            return turn.session.current();
+          },
+        });
+      state.admit.mockResolvedValue({ kind: "admitted", turn });
+      state.execute.mockResolvedValue(createSettledExecution());
+      state.account.mockResolvedValue({
+        scheduleContinuation: async () => {
+          order.push("continuation-scheduled");
+        },
+      });
+      state.resolveDecision.mockResolvedValue({ kind: "suppress", reason: "silent" });
+      state.deliver.mockResolvedValue({ kind: "completed", payloads: [] });
+      try {
+        await createFollowupRunner({
+          typing: createTypingController(),
+          typingMode: "never",
+          defaultModel: "claude",
+        })(turn.queued);
+      } finally {
+        state.withCompletion = undefined;
+      }
+
+      expect(order).toEqual(
+        fails ? ["completion-committed"] : ["completion-committed", "continuation-scheduled"],
+      );
+    },
+  );
+
   it.each(["delivered", "filtered", "delivery-failed", "completion-failed"])(
     "closes queued continuation adoption after its delivery owner settles (%s)",
     async (outcome) => {
@@ -698,7 +764,7 @@ describe("createFollowupRunner", () => {
       };
       state.admit.mockResolvedValue({ kind: "admitted", turn });
       state.execute.mockResolvedValue(createSettledExecution());
-      state.account.mockResolvedValue({});
+      state.account.mockResolvedValue({ scheduleContinuation: async () => {} });
       state.resolveDecision.mockResolvedValue(decision);
       state.deliver.mockImplementation(async () => {
         if (outcome === "delivery-failed") {

@@ -63,6 +63,7 @@ export type AgentFallbackCandidateCommonParams = RunEntryCandidateOptions &
 
 export type AgentFallbackCycleState = {
   maintenanceAuthProfile?: CompletedAgentAuthSelection;
+  sessionWriter?: Extract<AgentTurnInternalResult, { kind: "settled" }>["sessionWriter"];
   compactionRequestBudget?: CompactionRequestBudget;
   deferredLifecycle: DeferredEmbeddedRunLifecycleManager;
   lifecycleGeneration: string;
