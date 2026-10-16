@@ -1,6 +1,7 @@
 import { isIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.js";
 import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { resolveStateDir } from "../state-dir.js";
+import type { ExactSessionEntryReadOnlyResult } from "./session-accessor.sqlite-entry-availability.js";
 import { loadSessionEntryReadOnlyInScope } from "./session-accessor.sqlite-exact-read.js";
 import {
   resolveSqliteScope,
@@ -64,4 +65,28 @@ export function prepareSessionEntryPresenceRead(input: SessionAccessScope): Read
             async (owner) => await owner.readEntryPresence(scope),
           ),
   };
+}
+
+/**
+ * Worker-thread form of the exact-key probe: an unreadable row stays distinct from an
+ * absent one, which the logical entry read cannot report. Incognito rows live with their
+ * in-process actor, not the history worker, so they are refused rather than guessed.
+ */
+export async function readExactSessionEntryAvailabilityInWorker(
+  input: SessionAccessScope,
+): Promise<ExactSessionEntryReadOnlyResult> {
+  const env = { ...(input.env ?? process.env) };
+  env.OPENCLAW_STATE_DIR = resolveStateDir(env);
+  const scope = { ...input, env };
+  const options = toDatabaseOptions(resolveSqliteScope(scope));
+  if (
+    captureIncognitoSessionSource(scope) ||
+    isIncognitoOpenClawAgentSqlitePath(resolveOpenClawAgentSqlitePath(options), options)
+  ) {
+    throw new Error("Incognito session rows have no history-worker availability read");
+  }
+  return await withSessionHistoryWorkerDatabase(
+    options,
+    async (owner) => await owner.readEntryAvailability({ scope }),
+  );
 }

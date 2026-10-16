@@ -50,6 +50,7 @@ import type {
   SessionTranscriptVisibleMessageDeltaResult,
 } from "./session-accessor.sqlite-contract.js";
 import type {
+  ExactSessionEntryReadOnlyResult,
   SessionIdentityEvidenceIdentity,
   SessionIdentityEvidenceResult,
 } from "./session-accessor.sqlite-entry-availability.js";
@@ -228,6 +229,13 @@ export type SessionRowPresenceWorkerInput = {
   scope: SessionAccessScope & { databaseAgentId: string };
 };
 
+/** Exact-key probe that keeps an unreadable row distinct from an absent one. */
+export type SessionRowAvailabilityWorkerInput = {
+  kind: "session-row-availability";
+  database: { agentId: string; path: string };
+  scope: SessionAccessScope;
+};
+
 export type SessionEntryCurrentWorkerInput = Omit<SessionEntryReadWorkerInput, "kind"> & {
   kind: "session-entry-current";
   source?: SessionEntryCurrentSource;
@@ -337,6 +345,7 @@ export type SessionHistoryWorkerInput =
   | SessionActivitySummarySourceWorkerInput
   | SessionRowBackfillWorkerInput
   | SessionRowPresenceWorkerInput
+  | SessionRowAvailabilityWorkerInput
   | SessionProjectionStatusWorkerInput
   | SessionMembersWorkerInput
   | SessionSuggestionsWorkerInput
@@ -462,6 +471,10 @@ export type SessionTranscriptWorkerValues = SessionTranscriptInventoryWorkerValu
     };
     "session-row-backfill": { kind: "session-row-backfill"; fields: SessionRowTranscriptFields };
     "session-row-presence": boolean;
+    "session-row-availability": {
+      kind: "session-row-availability";
+      result: ExactSessionEntryReadOnlyResult;
+    };
     "projection-status": boolean;
     "session-members": { kind: "session-members" } & SessionMembersSnapshot;
     "session-suggestions": { kind: "session-suggestions"; suggestions: StoredSessionSuggestion[] };
@@ -649,6 +662,10 @@ export type SessionHistoryWorkerDatabase = SessionTranscriptInventoryReaders &
       params: SessionRowBackfillWorkerInput["params"],
     ) => Promise<SessionRowTranscriptFields>;
     readEntryPresence: (scope: SessionRowPresenceWorkerInput["scope"]) => Promise<boolean>;
+    readEntryAvailability: SessionHistoryReader<
+      SessionRowAvailabilityWorkerInput,
+      ExactSessionEntryReadOnlyResult
+    >;
     readProjectionStatus: CancellableSessionHistoryReader<SessionProjectionStatusWorkerInput>;
     readIdentityEvidence: SessionHistoryReader<
       SessionIdentityEvidenceWorkerInput,
