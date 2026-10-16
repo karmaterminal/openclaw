@@ -4,6 +4,7 @@
 // then custody recovery (phase B). Phase A also runs on demand under the first
 // custody mutation, so a turn admitted before this boot runs reads committed
 // custody.
+import { reapOrphanedContinuationCustody } from "./custody-orphan-reaper.js";
 import { pruneContinuationRecords, whenContinuationCustodyReady } from "./custody/custody-store.js";
 
 /** Terminal records are retained this long unless they still owe a notice (§5.4.6). */
@@ -11,6 +12,7 @@ const CONTINUATION_CUSTODY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type ContinuationCustodyBootSummary = {
   pruned: number;
+  orphansReaped: number;
   delegates: { sessions: number; dispatched: number; rejected: number };
   awaitingNextCompactionRequeued: number;
   postCompaction: { sessions: number; dispatched: number; failed: number };
@@ -24,11 +26,24 @@ export type ContinuationCustodyBootSummary = {
 };
 
 /** Retention: prune terminal records past the window that owe no notice. */
-export async function pruneExpiredContinuationCustody(now = Date.now()): Promise<number> {
+async function pruneExpiredContinuationCustody(now = Date.now()): Promise<number> {
   const { deletedRecordIds } = await pruneContinuationRecords({
     endedBefore: now - CONTINUATION_CUSTODY_RETENTION_MS,
   });
   return deletedRecordIds.length;
+}
+
+/**
+ * Periodic custody upkeep: prune expired terminal records, then fail queued
+ * records nothing will dispatch (#1469). Reaped records become terminal, so
+ * the next pass prunes them once retention expires.
+ */
+export async function maintainContinuationCustody(
+  now = Date.now(),
+): Promise<{ pruned: number; orphansReaped: number }> {
+  const pruned = await pruneExpiredContinuationCustody(now);
+  const { reaped } = await reapOrphanedContinuationCustody({ now });
+  return { pruned, orphansReaped: reaped };
 }
 
 /**
@@ -64,7 +79,9 @@ async function recoverContinuationCustody(
   armedAt: number,
 ): Promise<ContinuationCustodyBootSummary> {
   await whenContinuationCustodyReady();
-  const pruned = await pruneExpiredContinuationCustody();
+  // Reaping runs before recovery so recovery never spawns a record the reaper
+  // would fail (a missing owner, or a delegate past the overdue cutoff).
+  const { pruned, orphansReaped } = await maintainContinuationCustody();
   const [delegateRecovery, workModule] = await Promise.all([
     import("./delegate-dispatch-recovery.js"),
     import("./work-dispatch.js"),
@@ -85,6 +102,7 @@ async function recoverContinuationCustody(
   const work = await workModule.recoverPendingContinuationWork();
   return {
     pruned,
+    orphansReaped,
     delegates,
     awaitingNextCompactionRequeued,
     postCompaction,

@@ -43,6 +43,11 @@ type DelegateDispatchHedge = {
 
 const hedgeTimers = new Map<string, DelegateDispatchHedge>();
 
+/** Whether a hedge timer will still dispatch this session's queued delegates. */
+export function hasDelegateDispatchHedge(sessionKey: string): boolean {
+  return hedgeTimers.has(sessionKey);
+}
+
 export function clearDelegateDispatchHedge(sessionKey: string): void {
   const existing = hedgeTimers.get(sessionKey);
   if (existing) {
