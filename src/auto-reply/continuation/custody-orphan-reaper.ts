@@ -8,7 +8,7 @@
 import { getRuntimeConfig } from "../../config/config.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { readResolvedSessionEntryInWorker } from "../../config/sessions/session-accessor.entry.js";
-import { loadExactSessionEntryReadOnlyResult } from "../../config/sessions/session-accessor.sqlite-entry-availability.js";
+import { readExactSessionEntryAvailabilityInWorker } from "../../config/sessions/session-entry-presence-read.js";
 import { isTerminalSessionStatus, type SessionEntry } from "../../config/sessions/types.js";
 import { enqueueSessionDeliveryWithStatus } from "../../infra/session-delivery-queue-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -72,7 +72,7 @@ async function readOwnerEntry(sessionKey: string): Promise<SessionEntry | undefi
     }
     // The logical read cannot tell an absent row from an unreadable one; the
     // exact-key probe can, and only an absent row means the session is gone.
-    const exact = loadExactSessionEntryReadOnlyResult({
+    const exact = await readExactSessionEntryAvailabilityInWorker({
       agentId,
       clone: false,
       sessionKey,
