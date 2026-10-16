@@ -430,7 +430,11 @@ describe("live continuation custody is left alone", () => {
     armDelegateDispatchHedge(
       MAIN,
       Date.now() + HOUR_MS,
-      { chainState: { currentChainCount: 0, chainStartedAt: 0, accumulatedChainTokens: 0 } },
+      {
+        chainState: { currentChainCount: 0, chainStartedAt: 0, accumulatedChainTokens: 0 },
+        ctx: { sessionKey: MAIN },
+        maxChainLength: 10,
+      },
       async (params) => ({ dispatched: 0, rejected: 0, chainState: params.chainState }),
     );
 
