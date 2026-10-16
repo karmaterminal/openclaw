@@ -11,6 +11,11 @@ title: "Integrity, troubleshooting, and recovery"
 
 Gateway process owns every OpenClaw database and its state. In-process writer receipts invalidate cached rows across workers and handles; use direct reads when cache cannot be covered. Never add runtime foreign-commit probes (`PRAGMA data_version`, version observations, foreign-observation scopes); remove when touched. Outside writers, including CLI, Doctor, cron, plugin children: must use Gateway or hold exclusive ownership while Gateway stopped. Preserve live-authority checks at effect boundaries and consistent snapshots for multi-statement reads.
 
+Shared-state SQLite workers load operation handlers by domain on first use. A
+session operation does not initialize unrelated cron, secrets, transcript, or
+update handlers. The worker backend still owns database handles, write admission,
+and cleanup; lazy loading changes code residency, not database ownership.
+
 ## Integrity checks
 
 Admission validates SQLite format, schema, required indexes, and required
@@ -147,8 +152,11 @@ and session/model preparation after the listener is ready. Other agents and the
 Control UI can start in the meantime. Inspection starts during foreground
 readiness and continues without an idle retry delay. Deferred writable admission
 starts after Gateway sidecars are ready, with at most two databases opening
-concurrently. Slow opens and index repairs therefore cannot occupy shared SQLite
-workers ahead of plugin-service startup. Agent-local session preparation then
+concurrently. The shared-state writer has its own SQLite carrier and cold-open
+queue, so agent integrity scans cannot hold durable channel intake or shared
+configuration reads behind them. Channels and accounts prepare independently;
+pending channel starts remain tracked for shutdown while plugin services and
+recovery continue. Agent-local session preparation then
 runs with up to four agents concurrently. Only credential/model publication
 and final admission are serialized, in the order agents finish session preparation;
 a slow open or migration does not hold that publication turn. Readiness reports
@@ -346,6 +354,14 @@ inspection copies and verifies both before SQLite recovers the private family.
 It does not discard committed WAL pages, repair the source, or change plan identity.
 Snapshot debug telemetry reports operation and owner,
 main and WAL sizes, copied bytes, attempt, duration, and outcome.
+
+Verified snapshot publication hashes the private staged image once after validation
+and verifies the published file again after transfer. Source and output integrity
+checks, durable backup publication, and recovery ownership remain unchanged.
+Doctor's legacy transcript-label inspection uses stored navigation metadata to skip
+expanding compressed events outside user and assistant messages. A detected repair
+still reads the complete exact transcript and revalidates it before writing;
+plaintext and older transcript stores retain their existing inspection behavior.
 
 Update validation reuses the prepared rehearsal databases for read-only checks.
 The complete updater isolation markers and physical containment of the database
