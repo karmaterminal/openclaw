@@ -1,3 +1,4 @@
+import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import type { JSX } from "@solidjs/web";
 import {
   createEffect,
@@ -10,52 +11,52 @@ import {
   type Accessor,
   untrack,
 } from "solid-js";
+import { readNodePermissionRequest } from "../../../../../packages/gateway-protocol/src/node-permissions.js";
 import { toSanitizedMarkdownHtml } from "../../../components/markdown.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { registerChatMessageMetadataEnglish } from "../../../i18n/locales/en-chat-message-metadata.ts";
 import type { ToolCard } from "../../../lib/chat/chat-types.ts";
 import { resolveMessageDisplayMarkdown } from "../../../lib/chat/message-display.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
-import { presentedContent } from "../../../lit/presentation-binding.ts";
-import { LitContent, solidContent } from "../../../lit/solid-content.tsx";
-import "../../../plugins/control-ui-view.solid.tsx";
+import { PluginSurface } from "../../../plugins/control-ui-view.solid.tsx";
 import { assistantMessageIsInterrupted } from "../chat-assistant-reply.ts";
-import { renderAsyncQuestionSummary } from "./chat-async-question.ts";
+import { usePanePresentation } from "../chat-pane-presentation.ts";
+import { AsyncQuestionSummary } from "./chat-async-question-summary.tsx";
 import "../../../components/person-reference.ts";
 import { ChatBubbleActivity } from "./chat-bubble-activity-view.tsx";
+import { ChatPermissionCard } from "./chat-divider.tsx";
+import { ActivityOperation } from "./chat-message-activity-operation.tsx";
 import { OmittedMedia } from "./chat-message-attachment-status-solid.tsx";
 import { AssistantAttachments, MessageAttachment } from "./chat-message-attachments-solid.tsx";
-import { renderAssistantAttachments } from "./chat-message-attachments.ts";
-import type { GroupedMessageOptions } from "./chat-message-bubble-options.ts";
+import type {
+  ActivityOperationProps,
+  GroupedMessageOptions,
+} from "./chat-message-bubble-options.ts";
 import {
   prepareGroupedMessage,
   type GroupedMessagePresentation,
 } from "./chat-message-bubble-presentation.ts";
 import { MessageWorkContext } from "./chat-message-context-view.tsx";
 import { MessageImages } from "./chat-message-images-solid.tsx";
-import { renderMessageImages } from "./chat-message-images.ts";
 import "./chat-clawhub-card.ts";
 import type { ChatMessageRenderPreparation } from "./chat-message-markdown-view.tsx";
-import type { MarkdownMedia } from "./chat-message-media-markdown.ts";
+import type { MarkdownMedia, PositionedMedia } from "./chat-message-media-markdown.ts";
 import { prepareMarkdownMedia } from "./chat-message-media-markdown.ts";
 import { type AttachmentItem, schedulePairingQrExpiryRefresh } from "./chat-message-media.ts";
 import { MarkdownText, MessageJson, MessageMarkdown } from "./chat-message-text-view.tsx";
-import { renderReplyLine } from "./chat-reply-attribution.ts";
+import { ReplyLineView } from "./chat-reply-attribution.tsx";
 import type { SidebarContent } from "./chat-sidebar-content-types.ts";
 import {
-  renderToolApprovalReviews,
-  renderToolCard,
-  renderToolIcon,
+  ChatToolApprovalReviews,
+  ChatToolCard,
+  ChatToolIcon,
   syncToolDisclosureOverflow,
-} from "./chat-tool-cards.ts";
-import {
-  renderExpandedToolCardContent,
-  renderRawOutputToggle,
-  renderToolOutcome,
-} from "./chat-tool-content.ts";
+  type ToolCardOptions,
+} from "./chat-tool-cards.solid.tsx";
+import { ChatToolContent, ChatToolRawOutput, ChatToolOutcome } from "./chat-tool-content.solid.tsx";
 import { toolResultSurfaceProps } from "./chat-tool-render-model.ts";
-import { renderWorkspaceConflictTranscriptMessage } from "./chat-workspace-conflict.ts";
-import { renderToolPreview } from "./widget-card.ts";
+import { WorkspaceConflictTranscriptMessage } from "./chat-workspace-conflict.ts";
+import { ToolPreview } from "./widget-card.ts";
 
 registerEnglishCatalog(registerChatMessageMetadataEnglish);
 
@@ -72,22 +73,6 @@ type ContentProps = {
   options: GroupedMessageOptions;
   onOpenSidebar?: (content: SidebarContent) => void;
 };
-
-export function renderSolidGroupedMessage(
-  preparation: ChatMessageRenderPreparation,
-  messageKey: string,
-  options: GroupedMessageOptions,
-  onOpenSidebar?: (content: SidebarContent) => void,
-) {
-  return (
-    <GroupedMessage
-      preparation={preparation}
-      messageKey={messageKey}
-      options={options}
-      onOpenSidebar={onOpenSidebar}
-    />
-  );
-}
 
 /** Message identity owns text/media DOM; option refreshes only publish new facts. */
 export function GroupedMessage(props: GroupedMessageProps) {
@@ -135,21 +120,17 @@ export function GroupedMessage(props: GroupedMessageProps) {
             prop:messageActions={props.options.messageActions}
           >
             <Show when={props.options.replyLine}>
-              <LitContent value={renderReplyLine(props.options.replyLine!, props.options, true)} />
+              <ReplyLineView line={props.options.replyLine!} actions={props.options} inline />
             </Show>
             <Switch>
               <Match when={state().onlyToolCards}>
                 <InlineToolCards cards={state().toolCards} options={state().toolRenderOptions} />
               </Match>
               <Match when={state().isStandaloneToolMessage}>
-                <ToolMessage
-                  state={state}
-                  messageKey={props.messageKey}
-                  options={props.options}
-                  onOpenSidebar={props.onOpenSidebar}
-                />
+                <ToolMessage {...props} state={state} />
               </Match>
               <Match when={true}>
+                {/* Keep preparation out of this boundary so refreshes retain embedded media. */}
                 <BubbleContents
                   state={state}
                   messageKey={props.messageKey}
@@ -185,12 +166,10 @@ export function GroupedMessage(props: GroupedMessageProps) {
         </Show>
       }
     >
-      <LitContent
-        value={renderWorkspaceConflictTranscriptMessage(
-          state().workspaceConflict!,
-          props.messageKey,
-          props.options.entryId,
-        )}
+      <WorkspaceConflictTranscriptMessage
+        conflict={state().workspaceConflict!}
+        messageKey={props.messageKey}
+        entryId={props.options.entryId}
       />
     </Show>
   );
@@ -198,10 +177,10 @@ export function GroupedMessage(props: GroupedMessageProps) {
 
 function InlineToolCards(props: {
   cards: ToolCard[];
-  options: Omit<Parameters<typeof renderToolCard>[1], "expanded" | "onToggleExpanded"> & {
+  options: Omit<ToolCardOptions, "expanded" | "onToggleExpanded"> & {
     isToolExpanded?: (id: string) => boolean;
     onToggleToolExpanded?: (id: string, expanded?: boolean) => void;
-    toolCardOverrides?: ReadonlyMap<ToolCard, unknown>;
+    toolCardOverrides?: ReadonlyMap<ToolCard, ActivityOperationProps | null>;
   };
 }) {
   return (
@@ -211,18 +190,24 @@ function InlineToolCards(props: {
           const disclosureId = () => `${props.options.messageKey}:toolcard:${index()}`;
           const expanded = () => props.options.isToolExpanded?.(disclosureId()) ?? false;
           return (
-            <LitContent
-              value={
-                props.options.toolCardOverrides?.has(card())
-                  ? props.options.toolCardOverrides.get(card())
-                  : renderToolCard(card(), {
-                      ...props.options,
-                      expanded: expanded(),
-                      onToggleExpanded: () =>
-                        props.options.onToggleToolExpanded?.(disclosureId(), expanded()),
-                    })
+            <Show
+              when={props.options.toolCardOverrides?.has(card())}
+              fallback={
+                <ChatToolCard
+                  card={card()}
+                  options={{
+                    ...props.options,
+                    expanded: expanded(),
+                    onToggleExpanded: () =>
+                      props.options.onToggleToolExpanded?.(disclosureId(), expanded()),
+                  }}
+                />
               }
-            />
+            >
+              <Show when={props.options.toolCardOverrides?.get(card())}>
+                {(operation) => <ActivityOperation {...operation()} />}
+              </Show>
+            </Show>
           );
         }}
       </For>
@@ -272,20 +257,23 @@ function AssistantViews(props: ContentProps) {
       <For each={props.state().assistantViewBlocks} keyed={false}>
         {(block) => (
           <div class="chat-tool-card__widget-host">
-            <LitContent
-              value={renderToolPreview(block().preview, "chat_message", {
+            <ToolPreview
+              preview={block().preview}
+              surface="chat_message"
+              options={{
                 rawText: block().rawText ?? null,
                 canvasPluginSurfaceUrl: props.options.canvasPluginSurfaceUrl,
                 boardProvider: props.options.boardProvider,
+                widgetLayout: props.options.widgetLayout,
                 embedSandboxMode: props.options.embedSandboxMode ?? "scripts",
                 allowExternalEmbedUrls: props.options.allowExternalEmbedUrls,
                 sessionKey: props.options.sessionKey,
                 messageTimestamp: messageTimestamp(),
-              })}
+              }}
             />
             <Show when={block().rawText}>
               <div class="chat-tool-card__widget-raw">
-                <LitContent value={renderRawOutputToggle(block().rawText!)} />
+                <ChatToolRawOutput text={block().rawText!} style={{ display: "contents" }} />
               </div>
             </Show>
           </div>
@@ -296,6 +284,21 @@ function AssistantViews(props: ContentProps) {
 }
 
 function MessageText(props: ContentProps) {
+  const OrderedMedia = (media: { item: PositionedMedia }) => (
+    <Show
+      when={media.item.type === "image" ? media.item.image : undefined}
+      fallback={
+        <AssistantAttachments
+          attachments={media.item.type === "image" ? [] : [media.item]}
+          options={props.state().imageRenderOptions}
+          onOpenSidebar={props.onOpenSidebar}
+          onAssistantAttachmentLoaded={props.options.onAssistantAttachmentLoaded}
+        />
+      }
+    >
+      {(image) => <MessageImages images={[image()]} options={props.state().imageRenderOptions} />}
+    </Show>
+  );
   const prepared = createMemo(() => {
     const state = props.state();
     const options = {
@@ -305,16 +308,7 @@ function MessageText(props: ContentProps) {
     let text = state.bodyMarkdown;
     let media: MarkdownMedia | undefined;
     if (!state.asyncQuestions && state.renderInOrder) {
-      const ordered = prepareMarkdownMedia(state.orderedContent, (item) =>
-        item.type === "image"
-          ? renderMessageImages([item.image], state.imageRenderOptions)
-          : renderAssistantAttachments(
-              [item],
-              state.imageRenderOptions,
-              props.onOpenSidebar,
-              props.options.onAssistantAttachmentLoaded,
-            ),
-      );
+      const ordered = prepareMarkdownMedia(state.orderedContent, OrderedMedia);
       text = resolveMessageDisplayMarkdown(state.message, {
         ...state.normalizedMessage,
         content: [{ type: "text", text: ordered.markdown }],
@@ -329,11 +323,9 @@ function MessageText(props: ContentProps) {
   return (
     <Switch>
       <Match when={props.state().asyncQuestions}>
-        <LitContent
-          value={renderAsyncQuestionSummary(
-            props.state().asyncQuestions!,
-            props.options.asyncQuestions!,
-          )}
+        <AsyncQuestionSummary
+          questions={props.state().asyncQuestions!}
+          presentation={props.options.asyncQuestions!}
         />
       </Match>
       <Match when={prepared().json}>
@@ -368,22 +360,20 @@ function MessageAvatar(props: { render?: () => JSX.Element }) {
 }
 
 function VideoPreview(props: ContentProps & { item: Accessor<AttachmentItem | undefined> }) {
+  const presented = usePanePresentation(() => props.options.transcriptVisible ?? true);
   return (
     <div class="chat-image-frame chat-video-preview">
       <Show when={props.item()}>
         {(item) => (
-          <LitContent
-            value={presentedContent(
-              props.options.transcriptVisible ?? true,
-              solidContent(MessageAttachment, {
-                item: item(),
-                options: props.state().imageRenderOptions,
-                onOpenSidebar: props.onOpenSidebar,
-                onAssistantAttachmentLoaded: props.options.onAssistantAttachmentLoaded,
-                presentation: "preview",
-              }),
-            )}
-          />
+          <Show when={presented()}>
+            <MessageAttachment
+              item={item()}
+              options={props.state().imageRenderOptions}
+              onOpenSidebar={props.onOpenSidebar}
+              onAssistantAttachmentLoaded={props.options.onAssistantAttachmentLoaded}
+              presentation="preview"
+            />
+          </Show>
         )}
       </Show>
     </div>
@@ -410,13 +400,7 @@ function BubbleContents(props: ContentProps) {
   const previewCount = createMemo(() => props.state().videoPreviews.length);
   const previews = createMemo(() =>
     Array.from({ length: previewCount() }, (_, index) => (
-      <VideoPreview
-        state={props.state}
-        messageKey={props.messageKey}
-        options={props.options}
-        onOpenSidebar={props.onOpenSidebar}
-        item={() => props.state().videoPreviews[index]}
-      />
+      <VideoPreview {...props} item={() => props.state().videoPreviews[index]} />
     )),
   );
   const hasText = () =>
@@ -487,16 +471,19 @@ function BubbleContents(props: ContentProps) {
             />
           }
         >
-          <LitContent
-            value={renderExpandedToolCardContent(
-              props.state().singleToolCard!,
-              props.state().toolRenderOptions,
-            )}
+          <ChatToolContent
+            card={props.state().singleToolCard!}
+            options={props.state().toolRenderOptions}
+            style={{ display: "contents" }}
           />
         </Show>
       </Show>
       <Show when={props.state().isStandaloneToolMessage && props.state().failedToolCard}>
-        <LitContent value={renderToolOutcome("failed", props.state().failedToolCard!.exitCode)} />
+        <ChatToolOutcome
+          outcome="failed"
+          exitCode={props.state().failedToolCard!.exitCode}
+          style={{ display: "contents" }}
+        />
       </Show>
     </>
   );
@@ -525,11 +512,13 @@ function ToolMessageFallback(props: ContentProps) {
       >
         <span class="chat-tool-msg-summary__icon">
           <Show when={props.state().singleToolDisplay} fallback={<Icon name="zap" />}>
-            <LitContent
-              value={renderToolIcon(props.state().singleToolDisplay!.icon, {
+            <ChatToolIcon
+              name={props.state().singleToolDisplay!.icon}
+              tool={{
                 toolName: props.state().singleToolDisplay!.name,
                 pluginToolIcons: props.options.pluginToolIcons,
-              })}
+              }}
+              style={{ display: "contents" }}
             />
           </Show>
         </span>
@@ -559,39 +548,38 @@ function ToolMessageFallback(props: ContentProps) {
         </div>
       </Show>
       <For each={props.state().toolCards} keyed={(card) => card.callId ?? card}>
-        {(card) => <LitContent value={renderToolApprovalReviews(card())} />}
+        {(card) => <ChatToolApprovalReviews card={card()} style={{ display: "contents" }} />}
       </For>
     </div>
   );
 }
 
 function ToolMessage(props: ContentProps) {
-  const fallback = solidContent(ToolMessageFallback, {
-    get state() {
-      return props.state;
-    },
-    get messageKey() {
-      return props.messageKey;
-    },
-    get options() {
-      return props.options;
-    },
-    get onOpenSidebar() {
-      return props.onOpenSidebar;
-    },
-  });
+  const permission = () =>
+    readNodePermissionRequest(
+      asNullableRecord(props.state().singleToolCard?.details)?.permissionMissing,
+    );
   return (
-    <Show when={props.state().singleToolCard} fallback={<LitContent value={fallback} />}>
-      {(card) => (
-        <openclaw-plugin-view
-          prop:surface="tool-result"
-          prop:props={toolResultSurfaceProps(card(), {
-            ...props.state().toolRenderOptions,
-            expanded: props.state().toolMessageExpanded,
-          })}
-          prop:defaultView={fallback}
-          prop:presented={props.options.presented ?? true}
-        />
+    <Show
+      when={permission()}
+      fallback={
+        <Show when={props.state().singleToolCard} fallback={<ToolMessageFallback {...props} />}>
+          {(card) => (
+            <PluginSurface
+              surface="tool-result"
+              props={toolResultSurfaceProps(card(), {
+                ...props.state().toolRenderOptions,
+                expanded: props.state().toolMessageExpanded,
+              })}
+              presented={props.options.presented ?? true}
+              renderDefault={() => <ToolMessageFallback {...props} />}
+            />
+          )}
+        </Show>
+      }
+    >
+      {(request) => (
+        <ChatPermissionCard request={request()} onRetry={props.options.onPermissionRetry} />
       )}
     </Show>
   );

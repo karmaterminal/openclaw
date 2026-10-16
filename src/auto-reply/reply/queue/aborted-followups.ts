@@ -50,7 +50,7 @@ export async function dropAbortedFollowups(
     "cancelled",
   );
   await Promise.all(
-    pending.map(async (item) => {
+    [...pending, ...summaries].map(async (item) => {
       try {
         await runFollowup(item);
       } catch (error) {

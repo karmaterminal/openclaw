@@ -1,8 +1,8 @@
 import type { JSX as SolidJSX } from "@solidjs/web";
 import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
-import { t } from "../../i18n/index.ts";
 import type { BoardWidget } from "../../lib/board/types.ts";
 import type { BoardWidgetAppViewState } from "../../lib/board/view-types.ts";
+import { t } from "../../lib/reactive/i18n.ts";
 
 type ReadyAppView = Extract<BoardWidgetAppViewState, { status: "ready" }>;
 type RetiringAppView = HTMLElement & {
@@ -127,7 +127,9 @@ declare module "@solidjs/web" {
   namespace JSX {
     interface IntrinsicElements {
       "mcp-app-view": HTMLAttributes<HTMLElementTagNameMap["mcp-app-view"]> &
-        Properties<HTMLElementTagNameMap["mcp-app-view"]>;
+        Properties<HTMLElementTagNameMap["mcp-app-view"]> & {
+          "prop:onHeightChange"?: HTMLElementTagNameMap["mcp-app-view"]["onHeightChange"];
+        };
     }
   }
 }
