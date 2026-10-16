@@ -692,10 +692,14 @@ describe("recoverPendingContinuationDelegates", () => {
         message: expect.stringContaining("delegate-recovery-session-missing"),
       }),
     );
+    // Both rows are inside the orphan reaper's grace, so they stay for the
+    // periodic reaper instead of being failed here (#1469).
     expect(loggerRecords).toContainEqual(
       expect.objectContaining({
         level: "warn",
-        message: expect.stringContaining("leaving queued/running delegates recoverable"),
+        message: expect.stringContaining(
+          "reaped=0; running claims and queued rows inside the reap grace stay for the periodic reaper",
+        ),
       }),
     );
   });

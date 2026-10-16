@@ -268,7 +268,9 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
 
   const toolDelegates = isChain ? await consumePendingDelegates(params.childSessionKey) : [];
   if (!isChain) {
-    const orphaned = await consumePendingDelegates(params.childSessionKey);
+    // Nothing drains a non-chain child's queue after this, so a delegate not
+    // yet due is orphaned too; claim it now so it fails here with its reason.
+    const orphaned = await consumePendingDelegates(params.childSessionKey, { ignoreDelay: true });
     if (orphaned.length > 0) {
       defaultRuntime.log(
         `[subagent-chain-hop] WARNING: ${orphaned.length} tool delegate(s) orphaned from non-chain-hop subagent ${params.childSessionKey} — drainsContinuationDelegateQueue was set but task has no chain-hop prefix`,
