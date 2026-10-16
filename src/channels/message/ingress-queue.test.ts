@@ -220,6 +220,8 @@ describe("channel ingress queue", () => {
         expect(competingClaim).toBeNull();
         expect(claim).toMatchObject({
           ...record,
+          // The claim moves updatedAt strictly past the frozen clock.
+          updatedAt: 101,
           claim: { token: expect.any(String), ownerId: "worker", claimedAt: 100 },
         });
         await queue.complete(expectDefined(claim, "claimed event"), {
@@ -904,6 +906,9 @@ describe("channel ingress dead letters", () => {
         channelId: "line",
         accountId: "default",
         stateDir,
+        // Seed clock below every explicit transition time, so each transition's
+        // strictly-forward updatedAt lands on the time that transition passes.
+        now: () => 1,
       });
       const resubmit = expectDefined(queue.resubmit?.bind(queue), "resubmit");
 
