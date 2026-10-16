@@ -131,6 +131,9 @@ describe("continue_work tool", () => {
     expect(tool.description).toContain("concrete follow-up work");
     expect(tool.description).toContain("Do not use continue_work to wait, yield, stand by, park");
     expect(tool.description).toContain("use sessions_yield");
+    expect(tool.description).toContain(
+      "if you end a turn without arming one, nothing else wakes you",
+    );
   });
 
   it("does not expose diagnostic traceparent as a model-facing parameter", () => {
