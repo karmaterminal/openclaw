@@ -283,14 +283,13 @@ describe("broadcast dispatch", () => {
       }
       return { queuedFinal: false, counts: { final: 1 } };
     });
-    const transport = createIngressLifecycle();
     const cancelled = vi.fn(async () => {});
-    transport.lifecycle.onCancelled = cancelled;
+    const transport = { ...createIngressLifecycle(), onCancelled: cancelled };
 
     await dispatchBroadcast("msg-broadcast-cancelled", {
-      turnAdoptionLifecycle: transport.lifecycle,
+      turnAdoptionLifecycle: transport,
     });
-    expect(transport.calls.deferred).toHaveBeenCalledTimes(1);
+    expect(transport.onDeferred).toHaveBeenCalledTimes(1);
 
     // The reply lane settles a cleared queued turn through onCancelled and
     // falls back to abandonment only when the lifecycle cannot cancel.
@@ -299,8 +298,8 @@ describe("broadcast dispatch", () => {
       : deferredLifecycle?.onAbandoned());
 
     expect(cancelled).toHaveBeenCalledOnce();
-    expect(transport.calls.abandoned).not.toHaveBeenCalled();
-    expect(transport.calls.adopted).not.toHaveBeenCalled();
+    expect(transport.onAbandoned).not.toHaveBeenCalled();
+    expect(transport.onAdopted).not.toHaveBeenCalled();
     expect(susanClaim.commit).not.toHaveBeenCalled();
     expect(susanClaim.release).toHaveBeenCalledTimes(1);
     expect(mainClaim.commit).toHaveBeenCalledTimes(1);

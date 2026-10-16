@@ -34,7 +34,7 @@ import {
   type FollowupRun,
 } from "./queue.js";
 import { clearFollowupQueueForTest, createQueueTestRun } from "./queue.test-helpers.js";
-import { resetRecentQueuedMessageIdDedupe } from "./queue/enqueue.test-support.js";
+import { resetRecentQueuedMessageIdDedupe } from "./queue/recent-message-ids.test-support.js";
 import { clearFollowupQueue } from "./queue/state.js";
 import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
 import { testing as replyRunTesting } from "./reply-run-registry.test-support.js";
