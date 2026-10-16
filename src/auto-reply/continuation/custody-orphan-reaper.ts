@@ -24,8 +24,8 @@ import {
   delegateDueAt,
   type DelegateCustodyRecord,
   listDelegateRecords,
+  updateDelegateRecord,
 } from "./delegate-flow-store.js";
-import { markPendingDelegateFailed } from "./delegate-store.js";
 import { formatDelegateTaskForSystemEvent } from "./delegate-system-event.js";
 import {
   classifyPostCompactionDelegateAge,
@@ -286,16 +286,14 @@ export async function reapOrphanedContinuationCustody(
     if (!reason) {
       continue;
     }
-    const failed = await markPendingDelegateFailed(
-      {
-        flowId: record.recordId,
-        expectedRevision: record.revision,
-        task: decodeDelegateState(record)?.task ?? "",
-      },
-      reason,
-      REAPED_PHASE,
-    );
-    if (!failed) {
+    // The write is fenced on the listed revision, so it applies only the
+    // reaper's own queued -> failed transition. A row another path claimed or
+    // failed meanwhile is that path's outcome: not counted, no reaped notice.
+    const failed = await updateDelegateRecord({
+      record,
+      patch: { status: "failed", phase: REAPED_PHASE, failureReason: reason },
+    });
+    if (!failed.applied) {
       continue;
     }
     reaped += 1;

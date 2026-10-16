@@ -174,7 +174,9 @@ describe("releaseQueuedCompactionCompletion: early-return guards", () => {
     expect(state.dispatchPostCompactionDelegatesMock).not.toHaveBeenCalled();
     expect(state.emitContinuationCompactionReleasedSpanMock).not.toHaveBeenCalled();
     expect(state.resolveSessionStoreEntryMock).not.toHaveBeenCalled();
+    expect(state.logVerboseMock).not.toHaveBeenCalled();
     expect(state.releaseWarnMock).not.toHaveBeenCalled();
+    expect(state.releaseInfoMock).not.toHaveBeenCalled();
   });
 
   it("returns without mutation when compactionResult.compacted is false (branch 2)", async () => {
@@ -200,7 +202,9 @@ describe("releaseQueuedCompactionCompletion: early-return guards", () => {
     expect(state.dispatchPostCompactionDelegatesMock).not.toHaveBeenCalled();
     expect(state.emitContinuationCompactionReleasedSpanMock).not.toHaveBeenCalled();
     expect(state.resolveSessionStoreEntryMock).not.toHaveBeenCalled();
+    expect(state.logVerboseMock).not.toHaveBeenCalled();
     expect(state.releaseWarnMock).not.toHaveBeenCalled();
+    expect(state.releaseInfoMock).not.toHaveBeenCalled();
   });
 });
 

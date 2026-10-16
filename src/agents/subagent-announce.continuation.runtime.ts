@@ -268,9 +268,10 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
 
   const toolDelegates = isChain ? await consumePendingDelegates(params.childSessionKey) : [];
   if (!isChain) {
-    // Nothing drains a non-chain child's queue after this, so a delegate not
-    // yet due is orphaned too; claim it now so it fails here with its reason.
-    const orphaned = await consumePendingDelegates(params.childSessionKey, { ignoreDelay: true });
+    // Only due rows are claimed here. A delegate not yet due keeps the hedge the
+    // drain above armed, which dispatches it at its due time in this process; a
+    // restart drops that hedge and the orphan reaper fails the row instead.
+    const orphaned = await consumePendingDelegates(params.childSessionKey);
     if (orphaned.length > 0) {
       defaultRuntime.log(
         `[subagent-chain-hop] WARNING: ${orphaned.length} tool delegate(s) orphaned from non-chain-hop subagent ${params.childSessionKey} — drainsContinuationDelegateQueue was set but task has no chain-hop prefix`,

@@ -17,6 +17,45 @@ vi.mock("../../agents/subagents/spawn/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
 }));
 
+// A fired hedge dispatches as detached work that awaits real custody worker
+// round trips, which advancing the fake clock cannot flush. Record each run so
+// a test awaits the fired dispatch itself instead of polling.
+const detachedWork = vi.hoisted(() => new Set<Promise<unknown>>());
+vi.mock("../../process/gateway-work-admission.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../process/gateway-work-admission.js")>();
+  return {
+    ...actual,
+    runWithGatewayDetachedWorkAdmission: <T>(
+      ...args: Parameters<typeof actual.runWithGatewayDetachedWorkAdmission<T>>
+    ): Promise<T> => {
+      const run = actual.runWithGatewayDetachedWorkAdmission(...args);
+      detachedWork.add(run);
+      return run;
+    },
+  };
+});
+
+// Runs once after the reaper lists its candidates, standing in for another
+// path that settles a row between the reaper's list and its fail.
+const afterDelegateList = vi.hoisted(() => ({
+  run: undefined as (() => Promise<void>) | undefined,
+}));
+vi.mock("./delegate-flow-store.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./delegate-flow-store.js")>();
+  return {
+    ...actual,
+    listDelegateRecords: async (
+      ...args: Parameters<typeof actual.listDelegateRecords>
+    ): ReturnType<typeof actual.listDelegateRecords> => {
+      const records = await actual.listDelegateRecords(...args);
+      const run = afterDelegateList.run;
+      afterDelegateList.run = undefined;
+      await run?.();
+      return records;
+    },
+  };
+});
+
 import { createOpenClawContinuationTools } from "../../agents/openclaw-tools.continuation.js";
 import { coordinateSubagentContinuation } from "../../agents/subagent-announce.continuation.runtime.js";
 import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
@@ -40,9 +79,11 @@ import {
 } from "./custody/custody.test-support.js";
 import {
   armDelegateDispatchHedge,
+  hasDelegateDispatchHedge,
   resetDelegateDispatchHedgesForTests,
 } from "./delegate-dispatch-hedge.js";
 import { createDelegateRecord } from "./delegate-flow-store.js";
+import { markPendingDelegateFailed } from "./delegate-store.js";
 import { captureContinuationQueueContext } from "./queue-context.js";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -76,6 +117,9 @@ beforeEach(() => {
 
 afterEach(() => {
   resetDelegateDispatchHedgesForTests();
+  vi.useRealTimers();
+  detachedWork.clear();
+  afterDelegateList.run = undefined;
   for (const runId of seededRunIds.splice(0)) {
     subagentRuns.delete(runId);
   }
@@ -151,6 +195,30 @@ async function noticesFor(sessionKey: string): Promise<string[]> {
     notices.set(event.sessionDeliveryAckId ?? event.id ?? event.text, event.text);
   }
   return [...notices.values()].filter((text) => text.includes(REAPED_NOTICE));
+}
+
+async function announceNonChainChild(): Promise<void> {
+  await coordinateSubagentContinuation({
+    cfg: CONFIG,
+    childSessionKey: NON_CHAIN_CHILD,
+    childRunId: "orphan-reaper-non-chain-run",
+    targetRequesterSessionKey: PARENT,
+    task: "check the build and report back",
+    findings: "build is green",
+    skipAnnounceDelivery: false,
+    loadEntry: (sessionKey) => loadEntry(sessionKey),
+    invalidateSessionEntry: () => {},
+  });
+}
+
+/** Fire due timers, then await every detached hedge dispatch they started. */
+async function advanceAndSettleHedges(ms: number): Promise<void> {
+  await vi.advanceTimersByTimeAsync(ms);
+  while (detachedWork.size > 0) {
+    const started = [...detachedWork];
+    detachedWork.clear();
+    await Promise.allSettled(started);
+  }
 }
 
 async function loadReaper() {
@@ -264,7 +332,8 @@ describe("orphaned continuation custody is terminalized", () => {
     expect(tools.map((tool) => tool.name)).not.toContain("continue_delegate");
   });
 
-  it("6: a non-chain subagent's delayed delegate fails at announce instead of stranding", async () => {
+  it("6a: a live non-chain subagent's delayed delegate dispatches at its due time through the hedge", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     await seedSession(PARENT);
     await seedSession(NON_CHAIN_CHILD, { spawnedBy: PARENT, status: "done" });
     const record = await queueDelegate({
@@ -273,22 +342,47 @@ describe("orphaned continuation custody is terminalized", () => {
       delayMs: 10 * 60 * 1000,
     });
 
-    await coordinateSubagentContinuation({
-      cfg: CONFIG,
-      childSessionKey: NON_CHAIN_CHILD,
-      childRunId: "orphan-reaper-non-chain-run",
-      targetRequesterSessionKey: PARENT,
-      task: "check the build and report back",
-      findings: "build is green",
-      skipAnnounceDelivery: false,
-      loadEntry: (sessionKey) => loadEntry(sessionKey),
-      invalidateSessionEntry: () => {},
+    await announceNonChainChild();
+
+    expect((await readCustodyRecordForTest(record.recordId))?.status).toBe("queued");
+    expect(hasDelegateDispatchHedge(NON_CHAIN_CHILD)).toBe(true);
+    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+
+    await advanceAndSettleHedges(10 * 60 * 1000);
+
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      task: expect.stringContaining("summarize the overnight logs"),
     });
+    expect((await readCustodyRecordForTest(record.recordId))?.status).toBe("succeeded");
+    expect(await noticesFor(PARENT)).toHaveLength(0);
+  });
+
+  it("6b: a non-chain subagent's delayed delegate stranded across a restart is failed by the reaper", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await seedSession(PARENT);
+    await seedSession(NON_CHAIN_CHILD, { spawnedBy: PARENT, status: "done" });
+    const record = await queueDelegate({
+      owner: NON_CHAIN_CHILD,
+      createdAt: Date.now(),
+      delayMs: 10 * 60 * 1000,
+    });
+    await announceNonChainChild();
+    expect(hasDelegateDispatchHedge(NON_CHAIN_CHILD)).toBe(true);
+
+    // A restart loses the in-memory hedge; nothing else drains this queue.
+    resetDelegateDispatchHedgesForTests();
+    vi.setSystemTime(Date.now() + 2 * HOUR_MS);
+    const { reapOrphanedContinuationCustody } = await loadReaper();
+    const result = await reapOrphanedContinuationCustody();
 
     const after = await readCustodyRecordForTest(record.recordId);
+    expect(result.reaped).toBe(1);
     expect(after?.status).toBe("failed");
-    expect(after?.failureReason).toMatch(/not a continuation chain hop/);
+    expect(after?.phase).toBe(REAPED_PHASE);
+    expect(after?.failureReason).toMatch(/owner run has ended/);
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+    expect(await noticesFor(PARENT)).toHaveLength(1);
   });
 
   it("7: boot rejects a delegate overdue past the cutoff instead of spawning it", async () => {
@@ -305,6 +399,31 @@ describe("orphaned continuation custody is terminalized", () => {
 });
 
 describe("live continuation custody is left alone", () => {
+  it("does not count or notify a row another path failed between the reaper's list and its fail", async () => {
+    await seedSession(MAIN);
+    const record = await queueDelegate({ owner: MAIN, createdAt: Date.now() - 30 * HOUR_MS });
+    afterDelegateList.run = async () => {
+      expect(
+        await markPendingDelegateFailed(
+          { flowId: record.recordId, expectedRevision: record.revision, task: "" },
+          "Cancelled by its owner.",
+          "Delegate rejected",
+        ),
+      ).toBe(true);
+    };
+
+    const { reapOrphanedContinuationCustody } = await loadReaper();
+    const result = await reapOrphanedContinuationCustody();
+
+    const after = await readCustodyRecordForTest(record.recordId);
+    expect(afterDelegateList.run).toBeUndefined();
+    expect(result.reaped).toBe(0);
+    expect(after?.status).toBe("failed");
+    expect(after?.phase).toBe("Delegate rejected");
+    expect(after?.failureReason).toBe("Cancelled by its owner.");
+    expect(await noticesFor(MAIN)).toHaveLength(0);
+  });
+
   it("keeps a live queued delegate whose hedge is armed", async () => {
     await seedSession(MAIN);
     const record = await queueDelegate({ owner: MAIN, createdAt: Date.now() - 30 * HOUR_MS });
