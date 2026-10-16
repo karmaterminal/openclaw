@@ -222,12 +222,13 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +7: approved prepared/data-only session patches and their authority contracts.
       // +4: CLI state-owner routing, Gateway owner guards, target selection, and timeout parsing.
       // +1: requester-bound transport effects for owner-routed plugin commands.
-      // +12: async command authorization and native approval contracts (#168482).
-      // +4: async conversation inspection, routing, and V2 adapter registration (#168483).
+      // +5: approved sync-to-async replacements: inspectConversationBinding,
+      // resolveCommandAuthorization, createApproverRestrictedNativeApprovalCapability,
+      // createChannelApprovalNativeRuntimeAdapter, and createLazyChannelApprovalNativeRuntimeAdapter.
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
       // system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the 626eeac26d merge: upstream 3672, merged tree 3683 (+11).
-      3683,
+      // Measured on the 5843d60cb4 merge: upstream 3661, merged tree 3672 (+11).
+      3672,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -245,11 +246,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +3: approved prepared/data-only session patches and authority-bound routes.
       // +4: the same four CLI state-owner and transport functions.
       // +1: runWithLocalStateMutationOwner shares the existing transport authority scope.
-      // +8: async command authorization and native approval helpers (#168482).
-      // +3: async conversation inspection, routing, and V2 adapter registration (#168483).
+      // +5: the five awaited inspection, authorization, and approval factory replacements above.
       // +4: the continuation feature's callable contracts; measured +4 over base 2187 on b51feb98eb.
-      // Measured on the 626eeac26d merge: upstream 2133, merged tree 2137 (+4).
-      2137,
+      // Measured on the 5843d60cb4 merge: upstream 2127, merged tree 2131 (+4).
+      2131,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

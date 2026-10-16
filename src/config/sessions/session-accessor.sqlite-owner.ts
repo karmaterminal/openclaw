@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { executeSqliteQuerySync } from "../../infra/kysely-sync.js";
+import { withSqliteDatabaseWriteScope } from "../../infra/sqlite-database-admission.js";
 import { SESSION_OWNER_COLUMN_DEFINITIONS } from "../../state/openclaw-agent-db-additive-columns.js";
 import {
   runOpenClawAgentWriteTransaction,
@@ -15,7 +16,7 @@ import {
 } from "./session-accessor.sqlite-entry-cache.js";
 import { readSessionEntryInstanceId } from "./session-accessor.sqlite-entry-identity.js";
 import {
-  readExactSessionEntryRawRow,
+  getExactSessionEntryQueries,
   readExactSessionEntryRow,
 } from "./session-accessor.sqlite-entry-read.js";
 import { readIncognitoSessionEntryCurrent } from "./session-accessor.sqlite-incognito-sharing.js";
@@ -74,30 +75,32 @@ export function replaceSessionOwnerInTransaction(
     }
   }
   let updated: { current_session_id: string; lifecycle_revision: string | null } | undefined;
-  const writeGeneration = trackSessionEntryCacheWrite(database, () => {
-    updated = executeSqliteQuerySync(
-      database.db,
-      getSessionKysely(database.db)
-        .updateTable("session_nodes")
-        .set({
-          owner_actor_type: owner?.actor.type ?? null,
-          owner_actor_id: owner?.actor.id ?? null,
-          owner_assigned_by_type: owner?.assignedBy?.type ?? null,
-          owner_assigned_by_id: owner?.assignedBy?.id ?? null,
-          owner_assigned_at: owner?.assignedAt ?? null,
-        })
-        .where("session_key", "=", sessionKey)
-        .returning((eb) => [
-          "current_session_id",
-          eb
-            .fn<string | null>("json_extract", [
-              eb.ref("entry_json"),
-              eb.val("$.lifecycleRevision"),
-            ])
-            .as("lifecycle_revision"),
-        ]),
-    ).rows[0];
-  });
+  const writeGeneration = trackSessionEntryCacheWrite(database, () =>
+    withSqliteDatabaseWriteScope(database.db, [sessionKey], () => {
+      updated = executeSqliteQuerySync(
+        database.db,
+        getSessionKysely(database.db)
+          .updateTable("session_nodes")
+          .set({
+            owner_actor_type: owner?.actor.type ?? null,
+            owner_actor_id: owner?.actor.id ?? null,
+            owner_assigned_by_type: owner?.assignedBy?.type ?? null,
+            owner_assigned_by_id: owner?.assignedBy?.id ?? null,
+            owner_assigned_at: owner?.assignedAt ?? null,
+          })
+          .where("session_key", "=", sessionKey)
+          .returning((eb) => [
+            "current_session_id",
+            eb
+              .fn<string | null>("json_extract", [
+                eb.ref("entry_json"),
+                eb.val("$.lifecycleRevision"),
+              ])
+              .as("lifecycle_revision"),
+          ]),
+      ).rows[0];
+    }),
+  );
   if (!updated) {
     return false;
   }
@@ -162,7 +165,7 @@ export function assignSessionOwner(
       if (incognito) {
         currentEntry = readIncognitoSessionEntryCurrent(database.db, resolved.sessionKey);
       } else {
-        const currentRow = readExactSessionEntryRawRow(database, resolved.sessionKey);
+        const currentRow = getExactSessionEntryQueries(database.db).row(resolved.sessionKey);
         currentEntry = currentRow ? parseSessionEntryJson(currentRow, "list") : null;
       }
       const previousOwner = currentEntry?.owner?.actor ?? currentEntry?.createdActor;
