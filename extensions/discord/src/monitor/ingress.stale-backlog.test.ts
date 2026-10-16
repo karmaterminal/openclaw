@@ -494,6 +494,7 @@ describe("Discord ingress stale ambient backlog boundary", () => {
 
         await handleDispatch(GatewayDispatchEvents.Ready, {
           session_id: "s1",
+          user: { id: "bot" },
           guilds: [{ id: "g1", unavailable: true }],
         });
         await handleDispatch(GatewayDispatchEvents.GuildCreate, {
@@ -533,6 +534,7 @@ describe("Discord ingress stale ambient backlog boundary", () => {
         registerGateway("default", gateway);
         await handleDispatch(GatewayDispatchEvents.Ready, {
           session_id: "s1",
+          user: { id: "bot" },
           guilds: [{ id: "g1", unavailable: true }],
         });
         await handleDispatch(GatewayDispatchEvents.GuildCreate, {

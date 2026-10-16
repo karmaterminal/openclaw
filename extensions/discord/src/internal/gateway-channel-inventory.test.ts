@@ -104,7 +104,7 @@ describe("discord gateway channel inventory", () => {
     expect(gateway.getGatewayChannelInfo("c1")).toBeUndefined();
     expect(gateway.getGatewayChannelInfo("c2")?.name).toBe("other");
 
-    await handleDispatch(GatewayDispatchEvents.Ready, { session_id: "s1" });
+    await handleDispatch(GatewayDispatchEvents.Ready, { session_id: "s1", user: { id: "bot" } });
     expect(gateway.getGatewayChannelInfo("c2")).toBeUndefined();
   });
 
@@ -115,6 +115,7 @@ describe("discord gateway channel inventory", () => {
 
     await handleDispatch(GatewayDispatchEvents.Ready, {
       session_id: "s1",
+      user: { id: "bot" },
       guilds: [
         { id: "g1", unavailable: true },
         { id: "g2", unavailable: true },
@@ -143,6 +144,7 @@ describe("discord gateway channel inventory", () => {
     const { gateway, handleDispatch } = createGateway();
     await handleDispatch(GatewayDispatchEvents.Ready, {
       session_id: "s1",
+      user: { id: "bot" },
       guilds: [{ id: "g1", unavailable: true }],
     });
     await handleDispatch(GatewayDispatchEvents.GuildCreate, {
@@ -155,6 +157,7 @@ describe("discord gateway channel inventory", () => {
 
     await handleDispatch(GatewayDispatchEvents.Ready, {
       session_id: "s2",
+      user: { id: "bot" },
       guilds: [{ id: "g1", unavailable: true }],
     });
     expect(gateway.isGatewayChannelInventoryHydrating("g1")).toBe(true);
