@@ -451,11 +451,16 @@ describe("dispatchSmsInboundEvent", () => {
       unlinkIfExistsMock.mockImplementationOnce(async () => {
         throw new Error("EACCES");
       });
+      const ownerSettled = Promise.withResolvers<void>();
       const originalLifecycle: SmsTurnAdoptionLifecycle = {
         onAdopted: vi.fn(async () => undefined),
         onDeferred: vi.fn(),
-        onCancelled: vi.fn(async () => undefined),
-        onAbandoned: vi.fn(),
+        onCancelled: vi.fn(async () => {
+          ownerSettled.resolve();
+        }),
+        onAbandoned: vi.fn(() => {
+          ownerSettled.resolve();
+        }),
       };
       let wrappedLifecycle: SmsTurnAdoptionLifecycle | undefined;
       mocks.run.mockImplementationOnce(async (runParams) => {
@@ -475,7 +480,8 @@ describe("dispatchSmsInboundEvent", () => {
 
       await wrappedLifecycle?.[terminal]?.();
       // A failed unlink must not strand the claim: the owner still settles once.
-      await vi.waitFor(() => expect(originalLifecycle[terminal]).toHaveBeenCalledOnce());
+      await ownerSettled.promise;
+      expect(originalLifecycle[terminal]).toHaveBeenCalledOnce();
       const other = terminal === "onCancelled" ? "onAbandoned" : "onCancelled";
       expect(originalLifecycle[other]).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(expect.stringContaining("EACCES"));

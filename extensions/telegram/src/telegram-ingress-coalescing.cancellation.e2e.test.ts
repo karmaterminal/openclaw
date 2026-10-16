@@ -172,16 +172,20 @@ describe("Telegram durable ingress coalescing cancellation", () => {
         lastError: "prior failure",
       }),
     );
+    const cancelledTurnSettled = Promise.withResolvers<void>();
+    const redeliveredTurnAdopted = Promise.withResolvers<void>();
     downstreamTurns
       .mockImplementationOnce(async (_ctx, _abortSignal, lifecycle) => {
         lifecycle?.onDeferred?.();
         // The reply lane settles a cleared queued turn through onCancelled and
         // falls back to abandonment only when the lifecycle cannot cancel.
         await (lifecycle?.onCancelled ? lifecycle.onCancelled() : lifecycle?.onAbandoned?.());
+        cancelledTurnSettled.resolve();
         return { queuedFinal: false, counts: { block: 0, final: 0, tool: 0 } };
       })
       .mockImplementationOnce(async (_ctx, _abortSignal, lifecycle) => {
         await lifecycle?.onAdopted();
+        redeliveredTurnAdopted.resolve();
         return { queuedFinal: false, counts: { block: 0, final: 0, tool: 0 } };
       });
     const albumTimers = holdTelegramMediaTimeouts(40);
@@ -190,30 +194,24 @@ describe("Telegram durable ingress coalescing cancellation", () => {
     try {
       monitor.start();
       await monitor.waitForIdle();
-      await vi.waitFor(async () =>
-        expect((await queue.listClaims()).map((claim) => claim.id).toSorted()).toEqual(eventIds),
-      );
+      expect((await queue.listClaims()).map((claim) => claim.id).toSorted()).toEqual(eventIds);
       flushHeldQuietWindow(albumTimers, 40);
-      await vi.waitFor(
-        () => {
-          expect(downstreamTurns, runtimeErrors.map(String).join("\n")).toHaveBeenCalledTimes(1);
-        },
-        { timeout: 5_000, interval: 5 },
-      );
+      await cancelledTurnSettled.promise;
+      expect(downstreamTurns, runtimeErrors.map(String).join("\n")).toHaveBeenCalledTimes(1);
 
       // Cancellation spends no member's budget: both rows return to the drain
       // with their prior retry facts and are buffered into the album again.
-      await vi.waitFor(async () => {
-        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
-        expect((await queue.listClaims()).toSorted((a, b) => a.id.localeCompare(b.id))).toEqual(
-          agedMembers,
-        );
-      });
       await monitor.waitForIdle();
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      expect((await queue.listClaims()).toSorted((a, b) => a.id.localeCompare(b.id))).toEqual(
+        agedMembers,
+      );
       flushHeldQuietWindow(albumTimers, 40);
+      await redeliveredTurnAdopted.promise;
+      expect(downstreamTurns).toHaveBeenCalledTimes(2);
       await monitor.waitForDeferredClaims();
-      await vi.waitFor(() => expect(downstreamTurns).toHaveBeenCalledTimes(2));
-      await vi.waitFor(async () => expect(await queue.listClaims()).toEqual([]));
+      await monitor.waitForIdle();
+      expect(await queue.listClaims()).toEqual([]);
       await assertSpoolTombstoned({ stateDir, updateIds: [1_101, 1_102] });
     } finally {
       albumTimers.mockRestore();

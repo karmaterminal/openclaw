@@ -447,6 +447,7 @@ describe("Twitch durable ingress", () => {
         await queue.release(claim, { lastError: "prior failure", releasedAt: 1 });
       }
       const finishRedelivery = Promise.withResolvers<void>();
+      const redelivered = Promise.withResolvers<void>();
       const deliver = vi
         .fn()
         .mockImplementationOnce(async (_message, lifecycle) => {
@@ -456,6 +457,7 @@ describe("Twitch durable ingress", () => {
           await (lifecycle.onCancelled ? lifecycle.onCancelled() : lifecycle.onAbandoned());
         })
         .mockImplementationOnce(async (_message, lifecycle) => {
+          redelivered.resolve();
           await finishRedelivery.promise;
           await lifecycle.onAdopted();
         });
@@ -470,7 +472,8 @@ describe("Twitch durable ingress", () => {
         ingress.start();
         // Cancellation spends no budget, so the drain redelivers the row with
         // its prior retry facts instead of dead-lettering it.
-        await vi.waitFor(() => expect(deliver).toHaveBeenCalledTimes(2));
+        await redelivered.promise;
+        expect(deliver).toHaveBeenCalledTimes(2);
         expect(await queue.listFailed?.()).toEqual([]);
         expect(await queue.listClaims()).toEqual([
           expect.objectContaining({

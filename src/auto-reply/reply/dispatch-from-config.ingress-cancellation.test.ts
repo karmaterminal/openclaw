@@ -6,6 +6,8 @@ import {
 import { createChannelIngressDrain } from "../../channels/message/ingress-drain.js";
 import {
   createTestIngressQueue,
+  observeChannelIngressQueueWrite,
+  observeChannelIngressQueueWrites,
   withTempState,
 } from "../../channels/message/ingress-drain.test-helpers.js";
 import { fanInChannelIngressLifecycles } from "../../plugin-sdk/channel-ingress-runtime.js";
@@ -190,10 +192,9 @@ describe("queued ingress cancellation through the reply terminal path", () => {
 
         // Gateway stop while the turn is still queued: the followup queue's
         // abort path cancels ownership instead of abandoning it.
+        const released = observeChannelIngressQueueWrite(queue, "release", messageId);
         stop.abort();
-        await vi.waitFor(async () => {
-          expect(await queue.listClaims()).toEqual([]);
-        });
+        await expect(released).resolves.toBe(true);
         await drain.waitForIdle();
 
         expect(cancelled).toHaveBeenCalledOnce();
@@ -278,10 +279,13 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         expect(await queue.listClaims()).toHaveLength(2);
 
         // The queue is cleared while both turns wait for admission.
-        expect(clearFollowupQueue(key)).toBe(2);
-        await vi.waitFor(async () => {
-          expect(await queue.listClaims()).toEqual([]);
+        const released = observeChannelIngressQueueWrites(queue, {
+          first: "release",
+          second: "release",
         });
+        expect(clearFollowupQueue(key)).toBe(2);
+        await expect(released).resolves.toEqual({ first: true, second: true });
+        expect(await queue.listClaims()).toEqual([]);
 
         expect(await queue.listPending()).toEqual(
           expect.arrayContaining([
@@ -330,11 +334,13 @@ describe("queued ingress cancellation through the reply terminal path", () => {
             : undefined,
         };
 
-        completeFollowupRunLifecycle(run, "cancelled");
-
-        await vi.waitFor(async () => {
-          expect(await queue.listClaims()).toEqual([]);
+        const released = observeChannelIngressQueueWrites(queue, {
+          one: "release",
+          two: "release",
         });
+        completeFollowupRunLifecycle(run, "cancelled");
+        await expect(released).resolves.toEqual({ one: true, two: true });
+        expect(await queue.listClaims()).toEqual([]);
         expect(await queue.listPending()).toEqual(
           expect.arrayContaining([
             expect.objectContaining({ id: "one", attempts: 0 }),
@@ -397,13 +403,16 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         // The collect group never admits, and one source is aborted mid-drain:
         // the post-drain cancellation sweep must not spend its retry budget.
         const groupRuns: string[] = [];
+        const settled = observeChannelIngressQueueWrites(queue, {
+          "cancelled-item": "release",
+          "surviving-item": "fail",
+        });
         scheduleFollowupDrain(key, async (run) => {
           groupRuns.push(run.prompt);
           aborts.get("cancelled-item")?.abort();
         });
-        await vi.waitFor(async () => {
-          expect(await queue.listClaims()).toEqual([]);
-        });
+        await expect(settled).resolves.toEqual({ "cancelled-item": true, "surviving-item": true });
+        expect(await queue.listClaims()).toEqual([]);
 
         expect(groupRuns.length).toBeGreaterThan(0);
         // Same ceiling, opposite dispositions: the aborted source keeps its
