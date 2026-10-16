@@ -148,7 +148,7 @@ vi.mock("../../config/sessions/session-accessor.sqlite-entry.js", async (importO
   const actual =
     await importOriginal<typeof import("../../config/sessions/session-accessor.sqlite-entry.js")>();
   const { createCurrentTestDatabaseEntry } = await import("./agent-runner-entry.test-support.js");
-  const { reduceSessionEntryPatch } =
+  const { projectSessionEntryPatch } =
     await import("../../config/sessions/session-entry-patch-operation.js");
   const loadCurrentEntry = (...args: unknown[]) => {
     const implementation = loadSessionEntryMock.getMockImplementation();
@@ -163,12 +163,21 @@ vi.mock("../../config/sessions/session-accessor.sqlite-entry.js", async (importO
     // Final-delivery persistence moved to fixed operations (#167278); evaluate
     // them with the canonical reducer against the same in-memory row.
     applySessionEntryOperation: (
-      scope: unknown,
+      scope: { sessionKey: string },
       operation: Parameters<typeof actual.applySessionEntryOperation>[1],
+      options?: Parameters<typeof actual.applySessionEntryOperation>[2],
     ) =>
-      updateSessionEntryMock(scope, (entry: SessionEntry) =>
-        reduceSessionEntryPatch(operation, entry, entry),
-      ),
+      updateSessionEntryMock(scope, (entry: SessionEntry) => {
+        const next = projectSessionEntryPatch({
+          existing: entry,
+          writeBase: entry,
+          sessionKey: scope.sessionKey,
+          operation,
+          replaceEntry: options?.replaceEntry,
+          preserveActivity: options?.preserveActivity,
+        });
+        return next ? { ...next } : null;
+      }),
     loadSessionEntryForAdmission: loadCurrentEntry,
   };
 });
@@ -233,6 +242,7 @@ vi.mock("../../agents/subagents/registry/subagent-registry.js", () => ({
   markSubagentRunTerminated: () => 0,
 }));
 
+import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { runReplyAgent } from "./agent-runner-run.js";
 
 type RunWithModelFallbackParams = {
@@ -440,6 +450,10 @@ async function runWorkTurn(
   storePath?: string,
 ): Promise<unknown> {
   setRuntimeConfigSnapshot(run.followupRun.run.config);
+  if (storePath) {
+    // Terminal accounting commits through the session actor, which owns the real row.
+    await upsertSessionEntryCore({ storePath, sessionKey: run.sessionKey }, run.sessionEntry);
+  }
   return runReplyAgent({
     commandBody: "hello",
     followupRun: run.followupRun,
