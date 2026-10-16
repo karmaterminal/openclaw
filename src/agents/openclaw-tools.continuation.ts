@@ -1,5 +1,6 @@
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { isCronRunSessionKey } from "../sessions/session-key-utils.js";
 import type { OpenClawToolsOptions } from "./openclaw-tools.types.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { createContinueDelegateTool } from "./tools/continue-delegate-tool.js";
@@ -42,7 +43,11 @@ export function createOpenClawContinuationTools(
       }),
     );
   }
-  if (options.drainsContinuationDelegateQueue !== false) {
+  // Nothing drains a cron run's delegate queue: the run ends without an
+  // announce, so a delegate it queued could only be reaped (#1469).
+  const registersDelegateTool =
+    options.drainsContinuationDelegateQueue !== false && !isCronRunSessionKey(liveSessionKey);
+  if (registersDelegateTool) {
     tools.push(
       createContinueDelegateTool({ agentSessionKey: liveSessionKey, runId: options.runId }),
     );
@@ -58,7 +63,7 @@ export function createOpenClawContinuationTools(
     );
   }
 
-  if (!options.continueWorkOpts && !options.requestCompactionOpts) {
+  if (registersDelegateTool && !options.continueWorkOpts && !options.requestCompactionOpts) {
     log.warn(
       "continuation.enabled=true but neither continueWorkOpts nor requestCompactionOpts " +
         "were supplied — only continue_delegate will register. If this is a live runner, it " +
