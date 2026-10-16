@@ -5,6 +5,7 @@ import { createInboundDebouncer } from "openclaw/plugin-sdk/channel-inbound-debo
 import {
   closeOpenClawStateDatabaseForTest,
   createChannelIngressQueueForTests,
+  observeChannelIngressQueueWrite,
 } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
 import {
   createChannelIngressMonitor,
@@ -302,17 +303,17 @@ describe("Microsoft Teams drain claim ownership", () => {
       };
       vi.setSystemTime(secondAttempt.lastAttemptAt + 64_001);
       const threshold = createIntegratedIngress();
+      const deadLettered = observeChannelIngressQueueWrite(queue, "fail", "activity-abandon");
       threshold.start();
       await threshold.accept(incoming);
       await threshold.waitForIdle();
       await vi.advanceTimersByTimeAsync(40);
       await threshold.drainDebounce();
-      await vi.waitFor(async () => {
-        expect(await queue.listPending({ limit: "all" })).toEqual([]);
-        expect(await queue.listFailed?.({ limit: "all" })).toEqual([
-          expect.objectContaining(failedCeiling),
-        ]);
-      });
+      await expect(deadLettered).resolves.toBe(true);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([
+        expect.objectContaining(failedCeiling),
+      ]);
       expect(dispatchMock).toHaveBeenCalledTimes(3);
       // Dead-lettering releases the claim too; a retained claim would block the lane.
       expect(await queue.listClaims()).toEqual([]);

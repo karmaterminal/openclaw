@@ -3,6 +3,7 @@ import { GrammyError } from "grammy";
 import {
   closeOpenClawStateDatabaseForTest,
   createChannelIngressQueueForTests,
+  observeChannelIngressQueueWrite,
 } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
 import { DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS } from "openclaw/plugin-sdk/channel-outbound";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
@@ -698,6 +699,7 @@ describe("createTelegramIngressMonitor", () => {
       // A non-head album member only defers its participant; the coalesced
       // turn settles it later with the shared result.
       const participants: TelegramSpooledReplayDeferredParticipant[] = [];
+      const arrivals = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
       const monitor = createTelegramIngressMonitor({
         queue,
         getConfig: () => cfg,
@@ -708,16 +710,18 @@ describe("createTelegramIngressMonitor", () => {
           );
           if (participant) {
             participants.push(participant);
+            arrivals[participants.length - 1]?.resolve();
           }
         },
       });
 
       try {
         monitor.start();
-        await vi.waitFor(() => expect(participants).toHaveLength(1));
+        await arrivals[0]?.promise;
         participants[0]?.settle({ kind: "cancelled" });
 
-        await vi.waitFor(() => expect(participants).toHaveLength(2));
+        // Cancellation spends no budget, so the drain redelivers the row.
+        await arrivals[1]?.promise;
         expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
         expect(await queue.listClaims()).toEqual([
           expect.objectContaining({
@@ -726,8 +730,10 @@ describe("createTelegramIngressMonitor", () => {
             lastError: "prior failure",
           }),
         ]);
+        const completed = observeChannelIngressQueueWrite(queue, "complete", eventId);
         participants[1]?.settle({ kind: "completed" });
-        await vi.waitFor(async () => expect(await queue.listClaims()).toEqual([]));
+        await expect(completed).resolves.toBe(true);
+        expect(await queue.listClaims()).toEqual([]);
         expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       } finally {
         for (const participant of participants) {
@@ -784,6 +790,7 @@ describe("createTelegramIngressMonitor", () => {
         sendTyping: vi.fn().mockResolvedValue(undefined),
       });
       const finishRedelivery = Promise.withResolvers<void>();
+      const redelivered = Promise.withResolvers<void>();
       dispatchTelegramMessage
         .mockImplementationOnce(async ({ turnAdoptionLifecycle }) => {
           turnAdoptionLifecycle?.onDeferred?.();
@@ -797,6 +804,7 @@ describe("createTelegramIngressMonitor", () => {
           return { kind: "completed" };
         })
         .mockImplementationOnce(async ({ turnAdoptionLifecycle }) => {
+          redelivered.resolve();
           await finishRedelivery.promise;
           await turnAdoptionLifecycle?.onAdopted();
           return { kind: "completed" };
@@ -839,7 +847,8 @@ describe("createTelegramIngressMonitor", () => {
         monitor.start();
         // Cancellation spends no budget, so the drain redelivers the row with
         // its prior retry facts instead of dead-lettering it.
-        await vi.waitFor(() => expect(dispatchTelegramMessage).toHaveBeenCalledTimes(2));
+        await redelivered.promise;
+        expect(dispatchTelegramMessage).toHaveBeenCalledTimes(2);
         expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
         expect(await queue.listClaims()).toEqual([
           expect.objectContaining({
@@ -848,8 +857,10 @@ describe("createTelegramIngressMonitor", () => {
             lastError: "prior failure",
           }),
         ]);
+        const completed = observeChannelIngressQueueWrite(queue, "complete", eventId);
         finishRedelivery.resolve();
-        await vi.waitFor(async () => expect(await queue.listClaims()).toEqual([]));
+        await expect(completed).resolves.toBe(true);
+        expect(await queue.listClaims()).toEqual([]);
         expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
       } finally {
         finishRedelivery.resolve();
