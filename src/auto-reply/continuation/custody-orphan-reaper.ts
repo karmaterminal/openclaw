@@ -6,10 +6,13 @@
 // all ask it. Records are failed through the delegate store, never deleted, and
 // the owner (or its parent) gets one durable notice.
 import { getRuntimeConfig } from "../../config/config.js";
+import { collectCanonicalSessionLookupKeys } from "../../config/sessions/main-session-key.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { readResolvedSessionEntryInWorker } from "../../config/sessions/session-accessor.entry.js";
 import { readExactSessionEntryAvailabilityInWorker } from "../../config/sessions/session-entry-presence-read.js";
 import { isTerminalSessionStatus, type SessionEntry } from "../../config/sessions/types.js";
+import { resolveSessionStoreIdentity } from "../../gateway/session-store-key.js";
+import { formatErrorMessage } from "../../infra/errors.js";
 import { enqueueSessionDeliveryWithStatus } from "../../infra/session-delivery-queue-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
@@ -36,9 +39,10 @@ import { captureContinuationQueueContext } from "./queue-context.js";
 const log = createSubsystemLogger("continuation/orphan-reaper");
 
 /**
- * A queued delegate this far past its due time is reaped even when its owner
- * is alive: no dispatcher that still exists would leave it that long. Policy
- * proposed in #1469; it is not yet confirmed.
+ * A queued delegate left this long past its due time while a dispatcher was
+ * running is reaped even when its owner is alive: no dispatcher that still
+ * exists would leave it that long. Policy proposed in #1469; it is not yet
+ * confirmed.
  */
 export const CONTINUATION_DELEGATE_ORPHAN_CUTOFF_MS = 24 * 60 * 60 * 1000;
 
@@ -72,29 +76,56 @@ async function readOwnerEntry(sessionKey: string): Promise<SessionEntry | undefi
     }
     // The logical read cannot tell an absent row from an unreadable one; the
     // exact-key probe can, and only an absent row means the session is gone.
-    const exact = await readExactSessionEntryAvailabilityInWorker({
-      agentId,
-      clone: false,
-      sessionKey,
-      storePath: resolveSessionStorePathCore(cfg.session?.store, { agentId }),
+    // The probe must cover every row the logical read looked at. A templated
+    // store also searches discovered per-agent targets the probe cannot see.
+    if (cfg.session?.store?.includes("{agentId}")) {
+      return "unknown";
+    }
+    const requestedKey = sessionKey.trim();
+    const identity = resolveSessionStoreIdentity({ cfg, sessionKey: requestedKey, agentId });
+    const storePath = resolveSessionStorePathCore(cfg.session?.store, {
+      agentId: identity.agentId,
     });
-    return exact.found ? exact.value?.entry : "unknown";
+    for (const lookupKey of collectCanonicalSessionLookupKeys({
+      agentId: identity.agentId,
+      canonicalKey: identity.canonicalKey,
+      requestedKey,
+      mainKey: cfg.session?.mainKey,
+    })) {
+      const exact = await readExactSessionEntryAvailabilityInWorker({
+        agentId: identity.agentId,
+        clone: false,
+        sessionKey: lookupKey,
+        storePath,
+      });
+      if (!exact.found) {
+        return "unknown";
+      }
+      if (exact.value) {
+        return exact.value.entry;
+      }
+    }
+    return undefined;
   } catch (err) {
     log.warn(
-      `[continuation:orphan-reap-owner-read-failed] session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
+      `[continuation:orphan-reap-owner-read-failed] session=${sessionKey} error=${formatErrorMessage(err)}`,
     );
     return "unknown";
   }
 }
 
+/**
+ * Only a recorded end counts. Age is no evidence: a subagent with no timeout
+ * may legitimately run for hours, and its queued delegates are still drained
+ * by its announce.
+ */
 async function subagentRunEnded(sessionKey: string): Promise<boolean> {
-  const [{ getLatestSubagentRunByChildSessionKey }, { classifySubagentRunLiveness }] =
-    await Promise.all([
-      import("../../agents/subagents/registry/subagent-registry-read.js"),
-      import("../../agents/subagents/registry/subagent-run-liveness.js"),
-    ]);
+  const [{ getLatestSubagentRunByChildSessionKey }, { hasSubagentRunEnded }] = await Promise.all([
+    import("../../agents/subagents/registry/subagent-registry-read.js"),
+    import("../../agents/subagents/registry/subagent-run-liveness.js"),
+  ]);
   const run = await getLatestSubagentRunByChildSessionKey(sessionKey);
-  return classifySubagentRunLiveness(run ?? undefined) === "confident-terminal";
+  return run ? hasSubagentRunEnded(run) : false;
 }
 
 async function resolveOwnerState(sessionKey: string): Promise<OwnerState> {
@@ -108,12 +139,11 @@ async function resolveOwnerState(sessionKey: string): Promise<OwnerState> {
   const isCronRun = isCronRunSessionKey(sessionKey);
   const isSubagent = isSubagentSessionKey(sessionKey);
   // `interrupted` can still be resumed by restart recovery, whose announce
-  // would drain the queue, so it is not an ended owner.
-  if (
-    (isCronRun || isSubagent) &&
-    isTerminalSessionStatus(entry.status) &&
-    entry.status !== "interrupted"
-  ) {
+  // would drain the queue, so it is not an ended owner, whatever its run says.
+  if (entry.status === "interrupted") {
+    return { kind: "live", entry };
+  }
+  if ((isCronRun || isSubagent) && isTerminalSessionStatus(entry.status)) {
     return { kind: "ended", entry, status: entry.status };
   }
   if (isSubagent && (await subagentRunEnded(sessionKey))) {
@@ -150,7 +180,10 @@ function describeOwnerGone(state: OwnerState): string | undefined {
   return undefined;
 }
 
-/** Delegates start their grace at their due time, staged records at staging. */
+/**
+ * The earliest a record can be reaped: delegates start their grace at their
+ * due time, staged records at staging. Owner-dependent rules may wait longer.
+ */
 function isPastGrace(record: DelegateCustodyRecord, now: number): boolean {
   const state = decodeDelegateState(record);
   const startedAt =
@@ -158,11 +191,18 @@ function isPastGrace(record: DelegateCustodyRecord, now: number): boolean {
   return startedAt <= now - CONTINUATION_ORPHAN_REAP_GRACE_MS;
 }
 
-/** Why a queued record past its grace can never be dispatched, or undefined to leave it. */
+/**
+ * Why a queued record past its grace can never be dispatched, or undefined to
+ * leave it. `aliveSince` is when this process's dispatchers started: time the
+ * Gateway was down never counts against a delegate a live owner, or boot
+ * recovery, may still dispatch. A missing owner has no dispatcher in any
+ * process, so only its due time matters.
+ */
 function orphanReason(
   record: DelegateCustodyRecord,
   owner: OwnerState,
   now: number,
+  aliveSince: number,
 ): string | undefined {
   const state = decodeDelegateState(record);
   if (!state) {
@@ -174,11 +214,13 @@ function orphanReason(
     if (hasDelegateDispatchHedge(record.ownerSessionKey)) {
       return undefined;
     }
-    const gone = describeOwnerGone(owner);
-    if (gone) {
-      return `Continuation delegate was never dispatched: ${gone}.`;
+    if (owner.kind === "missing") {
+      return `Continuation delegate was never dispatched: ${describeOwnerGone(owner)}.`;
     }
-    const overdueMs = now - delegateDueAt(record, state);
+    const overdueMs = now - Math.max(delegateDueAt(record, state), aliveSince);
+    if (owner.kind === "ended" && overdueMs >= CONTINUATION_ORPHAN_REAP_GRACE_MS) {
+      return `Continuation delegate was never dispatched: ${describeOwnerGone(owner)}.`;
+    }
     return overdueMs > CONTINUATION_DELEGATE_ORPHAN_CUTOFF_MS
       ? `Continuation delegate was never dispatched: overdue by ${overdueMs}ms.`
       : undefined;
@@ -249,27 +291,34 @@ async function deliverReapedNotice(params: {
 
 /**
  * Fail every queued delegate and staged post-compaction record that nothing
- * will dispatch. `ownerSessionKey` scopes the sweep to one owner, for callers
- * that already hold that owner's rows. Running records are never touched:
- * their claims are settled by recovery from `subagent_runs`.
+ * will dispatch. `aliveSince` is this Gateway's boot cutoff, so downtime never
+ * counts as overdue. Running records are never touched: their claims are
+ * settled by recovery from `subagent_runs`.
  */
-export async function reapOrphanedContinuationCustody(
-  options: { now?: number; ownerSessionKey?: string } = {},
-): Promise<{ reaped: number }> {
+export async function reapOrphanedContinuationCustody(options: {
+  aliveSince: number;
+  now?: number;
+}): Promise<{ reaped: number }> {
   const now = options.now ?? Date.now();
-  const queued = (
-    await listDelegateRecords({
-      statuses: ["queued"],
-      ...(options.ownerSessionKey ? { ownerSessionKey: options.ownerSessionKey } : {}),
-    })
-  ).filter((record) => record.cancelRequestedAt === undefined);
+  const queued = (await listDelegateRecords({ statuses: ["queued"] })).filter(
+    (record) => record.cancelRequestedAt === undefined,
+  );
   const owners = new Map<string, Promise<OwnerFacts>>();
   const factsFor = (sessionKey: string): Promise<OwnerFacts> => {
     let facts = owners.get(sessionKey);
     if (!facts) {
       facts = (async () => {
-        const state = await resolveOwnerState(sessionKey);
-        return { state, noticeTarget: await resolveNoticeTarget(sessionKey, state) };
+        try {
+          const state = await resolveOwnerState(sessionKey);
+          return { state, noticeTarget: await resolveNoticeTarget(sessionKey, state) };
+        } catch (err) {
+          // An owner that cannot be read is unknown, never gone: only the
+          // overdue cutoff can reap its rows.
+          log.warn(
+            `[continuation:orphan-reap-owner-failed] session=${sessionKey} error=${formatErrorMessage(err)}`,
+          );
+          return { state: { kind: "unknown" }, noticeTarget: sessionKey };
+        }
       })();
       owners.set(sessionKey, facts);
     }
@@ -282,17 +331,26 @@ export async function reapOrphanedContinuationCustody(
       continue;
     }
     const owner = await factsFor(record.ownerSessionKey);
-    const reason = orphanReason(record, owner.state, now);
+    const reason = orphanReason(record, owner.state, now, options.aliveSince);
     if (!reason) {
       continue;
     }
     // The write is fenced on the listed revision, so it applies only the
     // reaper's own queued -> failed transition. A row another path claimed or
     // failed meanwhile is that path's outcome: not counted, no reaped notice.
-    const failed = await updateDelegateRecord({
-      record,
-      patch: { status: "failed", phase: REAPED_PHASE, failureReason: reason },
-    });
+    let failed: Awaited<ReturnType<typeof updateDelegateRecord>>;
+    try {
+      failed = await updateDelegateRecord({
+        record,
+        patch: { status: "failed", phase: REAPED_PHASE, failureReason: reason },
+      });
+    } catch (err) {
+      // The row stays queued for the next pass; the rest of the sweep goes on.
+      log.warn(
+        `[continuation:orphan-reap-record-failed] flowId=${record.recordId} session=${record.ownerSessionKey} error=${formatErrorMessage(err)}`,
+      );
+      continue;
+    }
     if (!failed.applied) {
       continue;
     }
@@ -307,7 +365,7 @@ export async function reapOrphanedContinuationCustody(
       await deliverReapedNotice({ record, target: owner.noticeTarget, reason });
     } catch (err) {
       log.warn(
-        `[continuation:delegate-orphan-reaped-notice-failed] flowId=${record.recordId} target=${owner.noticeTarget} error=${err instanceof Error ? err.message : String(err)}`,
+        `[continuation:delegate-orphan-reaped-notice-failed] flowId=${record.recordId} target=${owner.noticeTarget} error=${formatErrorMessage(err)}`,
       );
     }
   }
