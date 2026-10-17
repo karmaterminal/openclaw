@@ -40,13 +40,16 @@ async function pruneExpiredContinuationCustody(now = Date.now()): Promise<number
 /**
  * Periodic custody upkeep: prune expired terminal records, then fail queued
  * records nothing will dispatch (#1469). Reaped records become terminal, so
- * the next pass prunes them once retention expires.
+ * the next pass prunes them once retention expires. `aliveSince` is the boot
+ * cutoff, so time the Gateway was down never counts as overdue.
  */
-export async function maintainContinuationCustody(
-  now = Date.now(),
-): Promise<{ pruned: number; orphansReaped: number }> {
+export async function maintainContinuationCustody(params: {
+  aliveSince: number;
+  now?: number;
+}): Promise<{ pruned: number; orphansReaped: number }> {
+  const now = params.now ?? Date.now();
   const pruned = await pruneExpiredContinuationCustody(now);
-  const { reaped } = await reapOrphanedContinuationCustody({ now });
+  const { reaped } = await reapOrphanedContinuationCustody({ aliveSince: params.aliveSince, now });
   return { pruned, orphansReaped: reaped };
 }
 
@@ -83,16 +86,6 @@ async function recoverContinuationCustody(
   armedAt: number,
 ): Promise<ContinuationCustodyBootSummary> {
   await whenContinuationCustodyReady();
-  // Reaping runs before recovery so recovery never spawns a record the reaper
-  // would fail (a missing owner, or a delegate past the overdue cutoff).
-  // Upkeep is best effort: a failed sweep must not cost the boot its recovery.
-  let upkeep = { pruned: 0, orphansReaped: 0 };
-  try {
-    upkeep = await maintainContinuationCustody();
-  } catch (err) {
-    log.warn(`[continuation:custody-upkeep-failed] error=${formatErrorMessage(err)}`);
-  }
-  const { pruned, orphansReaped } = upkeep;
   const [delegateRecovery, workModule] = await Promise.all([
     import("./delegate-dispatch-recovery.js"),
     import("./work-dispatch.js"),
@@ -111,6 +104,17 @@ async function recoverContinuationCustody(
     runningUpdatedAtOrBefore: armedAt,
   });
   const work = await workModule.recoverPendingContinuationWork();
+  // Upkeep runs after recovery: the backlog recovery dispatches after an
+  // outage is not orphaned. What is left (a missing owner, or a row nothing
+  // took) is reaped here. Upkeep is best effort: a failed sweep is logged and
+  // costs the boot nothing.
+  let upkeep = { pruned: 0, orphansReaped: 0 };
+  try {
+    upkeep = await maintainContinuationCustody({ aliveSince: armedAt });
+  } catch (err) {
+    log.warn(`[continuation:custody-upkeep-failed] error=${formatErrorMessage(err)}`);
+  }
+  const { pruned, orphansReaped } = upkeep;
   return {
     pruned,
     orphansReaped,

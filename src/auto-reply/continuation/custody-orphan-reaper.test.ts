@@ -118,6 +118,8 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const REAPED_NOTICE = "[continuation:delegate-orphan-reaped]";
 const REAPED_PHASE = "Reaped: no dispatcher";
+/** A dispatcher clock that started before every row: the process was never down. */
+const ALIVE_ALL_ALONG = 0;
 const CONFIG = {
   agents: { defaults: { continuation: { enabled: true } } },
 } satisfies OpenClawConfig;
@@ -306,7 +308,7 @@ describe("orphaned continuation custody is terminalized", () => {
     expect(record.createdAt).toBeGreaterThan(armedAt);
 
     const { reapOrphanedContinuationCustody } = await loadReaper();
-    const result = await reapOrphanedContinuationCustody();
+    const result = await reapOrphanedContinuationCustody({ aliveSince: armedAt });
 
     const after = await readCustodyRecordForTest(record.recordId);
     expect(result.reaped).toBe(1);
@@ -322,7 +324,7 @@ describe("orphaned continuation custody is terminalized", () => {
     const record = await stagePostCompaction({ owner: MAIN, createdAt: Date.now() - 8 * DAY_MS });
 
     const { reapOrphanedContinuationCustody } = await loadReaper();
-    await reapOrphanedContinuationCustody();
+    await reapOrphanedContinuationCustody({ aliveSince: ALIVE_ALL_ALONG });
 
     const after = await readCustodyRecordForTest(record.recordId);
     expect(after?.status).toBe("failed");
@@ -346,7 +348,7 @@ describe("orphaned continuation custody is terminalized", () => {
     });
 
     const { reapOrphanedContinuationCustody } = await loadReaper();
-    await reapOrphanedContinuationCustody();
+    await reapOrphanedContinuationCustody({ aliveSince: ALIVE_ALL_ALONG });
 
     const after = await readCustodyRecordForTest(record.recordId);
     expect(after?.status).toBe("failed");
@@ -403,11 +405,15 @@ describe("orphaned continuation custody is terminalized", () => {
     await announceNonChainChild();
     expect(hasDelegateDispatchHedge(NON_CHAIN_CHILD)).toBe(true);
 
-    // A restart loses the in-memory hedge; nothing else drains this queue.
+    // A restart two hours later loses the in-memory hedge. The reaper waits a
+    // full grace of uptime from the restart, not from the downtime before it.
     resetDelegateDispatchHedgesForTests();
-    vi.setSystemTime(Date.now() + 2 * HOUR_MS);
+    const restartedAt = Date.now() + 2 * HOUR_MS;
+    vi.setSystemTime(restartedAt);
     const { reapOrphanedContinuationCustody } = await loadReaper();
-    const result = await reapOrphanedContinuationCustody();
+    expect((await reapOrphanedContinuationCustody({ aliveSince: restartedAt })).reaped).toBe(0);
+    vi.setSystemTime(restartedAt + HOUR_MS);
+    const result = await reapOrphanedContinuationCustody({ aliveSince: restartedAt });
 
     const after = await readCustodyRecordForTest(record.recordId);
     expect(result.reaped).toBe(1);
@@ -418,16 +424,69 @@ describe("orphaned continuation custody is terminalized", () => {
     expect(await noticesFor(PARENT)).toHaveLength(1);
   });
 
-  it("7: boot rejects a delegate overdue past the cutoff instead of spawning it", async () => {
+  it("7a: boot after an outage dispatches a live owner's backlog instead of reaping it", async () => {
     await seedSession(MAIN);
-    const record = await queueDelegate({ owner: MAIN, createdAt: Date.now() - 6 * DAY_MS });
+    // Due two days ago; the Gateway was down the whole time.
+    const record = await queueDelegate({
+      owner: MAIN,
+      createdAt: Date.now() - 2 * DAY_MS,
+      task: "run the backlog after the outage",
+    });
 
-    await bootGateway();
+    const summary = await bootGateway();
 
+    expect(summary.orphansReaped).toBe(0);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      task: expect.stringContaining("run the backlog after the outage"),
+    });
+    const after = await readCustodyRecordForTest(record.recordId);
+    expect(after?.status).not.toBe("failed");
+    expect(after?.phase).not.toBe(REAPED_PHASE);
+    expect(await noticesFor(MAIN)).toHaveLength(0);
+  });
+
+  it("7b: boot after an outage dispatches an ended subagent's backlog instead of reaping it", async () => {
+    await seedSession(PARENT);
+    await seedSession(NON_CHAIN_CHILD, { spawnedBy: PARENT, status: "done" });
+    const record = await queueDelegate({
+      owner: NON_CHAIN_CHILD,
+      createdAt: Date.now() - 3 * HOUR_MS,
+      task: "finish the child's queued work",
+    });
+
+    const summary = await bootGateway();
+
+    expect(summary.orphansReaped).toBe(0);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      task: expect.stringContaining("finish the child's queued work"),
+    });
+    expect((await readCustodyRecordForTest(record.recordId))?.phase).not.toBe(REAPED_PHASE);
+    expect(await noticesFor(PARENT)).toHaveLength(0);
+  });
+
+  it("7c: the overdue cutoff counts only time this Gateway has been up", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await seedSession(MAIN);
+    // Due three days before this boot, and left queued by nothing that dispatches.
+    const bootedAt = Date.now();
+    const record = await queueDelegate({ owner: MAIN, createdAt: bootedAt - 3 * DAY_MS });
+    const { CONTINUATION_DELEGATE_ORPHAN_CUTOFF_MS, reapOrphanedContinuationCustody } =
+      await loadReaper();
+
+    vi.setSystemTime(bootedAt + CONTINUATION_DELEGATE_ORPHAN_CUTOFF_MS - HOUR_MS);
+    expect((await reapOrphanedContinuationCustody({ aliveSince: bootedAt })).reaped).toBe(0);
+    expect((await readCustodyRecordForTest(record.recordId))?.status).toBe("queued");
+
+    vi.setSystemTime(bootedAt + CONTINUATION_DELEGATE_ORPHAN_CUTOFF_MS + HOUR_MS);
+    expect((await reapOrphanedContinuationCustody({ aliveSince: bootedAt })).reaped).toBe(1);
     const after = await readCustodyRecordForTest(record.recordId);
     expect(after?.status).toBe("failed");
     expect(after?.phase).toBe(REAPED_PHASE);
+    expect(after?.failureReason).toMatch(/overdue/);
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+    expect(await noticesFor(MAIN)).toHaveLength(1);
   });
 });
 
@@ -517,7 +576,7 @@ describe("live continuation custody is left alone", () => {
     };
 
     const { reapOrphanedContinuationCustody } = await loadReaper();
-    const result = await reapOrphanedContinuationCustody();
+    const result = await reapOrphanedContinuationCustody({ aliveSince: ALIVE_ALL_ALONG });
 
     const after = await readCustodyRecordForTest(record.recordId);
     expect(afterDelegateList.run).toBeUndefined();
@@ -564,7 +623,7 @@ describe("live continuation custody is left alone", () => {
     });
 
     const { reapOrphanedContinuationCustody } = await loadReaper();
-    const result = await reapOrphanedContinuationCustody();
+    const result = await reapOrphanedContinuationCustody({ aliveSince: ALIVE_ALL_ALONG });
 
     expect(result.reaped).toBe(0);
     expect((await readCustodyRecordForTest(longRunning.recordId))?.status).toBe("queued");
@@ -595,7 +654,7 @@ describe("live continuation custody is left alone", () => {
     });
 
     const { reapOrphanedContinuationCustody } = await loadReaper();
-    const result = await reapOrphanedContinuationCustody();
+    const result = await reapOrphanedContinuationCustody({ aliveSince: ALIVE_ALL_ALONG });
 
     expect(result.reaped).toBe(0);
     expect((await readCustodyRecordForTest(record.recordId))?.status).toBe("queued");
@@ -616,7 +675,7 @@ describe("live continuation custody is left alone", () => {
     );
 
     const { reapOrphanedContinuationCustody } = await loadReaper();
-    const result = await reapOrphanedContinuationCustody();
+    const result = await reapOrphanedContinuationCustody({ aliveSince: ALIVE_ALL_ALONG });
 
     expect(result.reaped).toBe(0);
     expect((await readCustodyRecordForTest(record.recordId))?.status).toBe("queued");
@@ -627,7 +686,7 @@ describe("live continuation custody is left alone", () => {
     const record = await stagePostCompaction({ owner: MAIN, createdAt: Date.now() - 2 * DAY_MS });
 
     const { reapOrphanedContinuationCustody } = await loadReaper();
-    const result = await reapOrphanedContinuationCustody();
+    const result = await reapOrphanedContinuationCustody({ aliveSince: ALIVE_ALL_ALONG });
 
     expect(result.reaped).toBe(0);
     expect((await readCustodyRecordForTest(record.recordId))?.status).toBe("queued");
@@ -660,7 +719,7 @@ describe("live continuation custody is left alone", () => {
     expect(work.outcome).toBe("created");
 
     const { reapOrphanedContinuationCustody } = await loadReaper();
-    const result = await reapOrphanedContinuationCustody();
+    const result = await reapOrphanedContinuationCustody({ aliveSince: ALIVE_ALL_ALONG });
 
     expect(result.reaped).toBe(0);
     expect((await readCustodyRecordForTest(running.recordId))?.status).toBe("running");

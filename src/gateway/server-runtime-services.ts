@@ -551,7 +551,7 @@ function startPendingContinuationRecovery(params: {
       }
       pruneTimer = setInterval(() => {
         void runWithGatewayIndependentRootWorkAdmission(
-          async () => void (await maintainContinuationCustody()),
+          async () => void (await maintainContinuationCustody({ aliveSince: recoveryArmedAt })),
           "runtime:continuation-custody-prune",
         ).catch((err: unknown) =>
           bootLog.warn(`Continuation custody retention and orphan reap failed: ${String(err)}`),

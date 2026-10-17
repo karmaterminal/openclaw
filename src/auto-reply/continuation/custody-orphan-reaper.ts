@@ -39,9 +39,10 @@ import { captureContinuationQueueContext } from "./queue-context.js";
 const log = createSubsystemLogger("continuation/orphan-reaper");
 
 /**
- * A queued delegate this far past its due time is reaped even when its owner
- * is alive: no dispatcher that still exists would leave it that long. Policy
- * proposed in #1469; it is not yet confirmed.
+ * A queued delegate left this long past its due time while a dispatcher was
+ * running is reaped even when its owner is alive: no dispatcher that still
+ * exists would leave it that long. Policy proposed in #1469; it is not yet
+ * confirmed.
  */
 export const CONTINUATION_DELEGATE_ORPHAN_CUTOFF_MS = 24 * 60 * 60 * 1000;
 
@@ -179,7 +180,10 @@ function describeOwnerGone(state: OwnerState): string | undefined {
   return undefined;
 }
 
-/** Delegates start their grace at their due time, staged records at staging. */
+/**
+ * The earliest a record can be reaped: delegates start their grace at their
+ * due time, staged records at staging. Owner-dependent rules may wait longer.
+ */
 function isPastGrace(record: DelegateCustodyRecord, now: number): boolean {
   const state = decodeDelegateState(record);
   const startedAt =
@@ -187,11 +191,18 @@ function isPastGrace(record: DelegateCustodyRecord, now: number): boolean {
   return startedAt <= now - CONTINUATION_ORPHAN_REAP_GRACE_MS;
 }
 
-/** Why a queued record past its grace can never be dispatched, or undefined to leave it. */
+/**
+ * Why a queued record past its grace can never be dispatched, or undefined to
+ * leave it. `aliveSince` is when this process's dispatchers started: time the
+ * Gateway was down never counts against a delegate a live owner, or boot
+ * recovery, may still dispatch. A missing owner has no dispatcher in any
+ * process, so only its due time matters.
+ */
 function orphanReason(
   record: DelegateCustodyRecord,
   owner: OwnerState,
   now: number,
+  aliveSince: number,
 ): string | undefined {
   const state = decodeDelegateState(record);
   if (!state) {
@@ -203,11 +214,13 @@ function orphanReason(
     if (hasDelegateDispatchHedge(record.ownerSessionKey)) {
       return undefined;
     }
-    const gone = describeOwnerGone(owner);
-    if (gone) {
-      return `Continuation delegate was never dispatched: ${gone}.`;
+    if (owner.kind === "missing") {
+      return `Continuation delegate was never dispatched: ${describeOwnerGone(owner)}.`;
     }
-    const overdueMs = now - delegateDueAt(record, state);
+    const overdueMs = now - Math.max(delegateDueAt(record, state), aliveSince);
+    if (owner.kind === "ended" && overdueMs >= CONTINUATION_ORPHAN_REAP_GRACE_MS) {
+      return `Continuation delegate was never dispatched: ${describeOwnerGone(owner)}.`;
+    }
     return overdueMs > CONTINUATION_DELEGATE_ORPHAN_CUTOFF_MS
       ? `Continuation delegate was never dispatched: overdue by ${overdueMs}ms.`
       : undefined;
@@ -278,20 +291,18 @@ async function deliverReapedNotice(params: {
 
 /**
  * Fail every queued delegate and staged post-compaction record that nothing
- * will dispatch. `ownerSessionKey` scopes the sweep to one owner, for callers
- * that already hold that owner's rows. Running records are never touched:
- * their claims are settled by recovery from `subagent_runs`.
+ * will dispatch. `aliveSince` is this Gateway's boot cutoff, so downtime never
+ * counts as overdue. Running records are never touched: their claims are
+ * settled by recovery from `subagent_runs`.
  */
-export async function reapOrphanedContinuationCustody(
-  options: { now?: number; ownerSessionKey?: string } = {},
-): Promise<{ reaped: number }> {
+export async function reapOrphanedContinuationCustody(options: {
+  aliveSince: number;
+  now?: number;
+}): Promise<{ reaped: number }> {
   const now = options.now ?? Date.now();
-  const queued = (
-    await listDelegateRecords({
-      statuses: ["queued"],
-      ...(options.ownerSessionKey ? { ownerSessionKey: options.ownerSessionKey } : {}),
-    })
-  ).filter((record) => record.cancelRequestedAt === undefined);
+  const queued = (await listDelegateRecords({ statuses: ["queued"] })).filter(
+    (record) => record.cancelRequestedAt === undefined,
+  );
   const owners = new Map<string, Promise<OwnerFacts>>();
   const factsFor = (sessionKey: string): Promise<OwnerFacts> => {
     let facts = owners.get(sessionKey);
@@ -320,7 +331,7 @@ export async function reapOrphanedContinuationCustody(
       continue;
     }
     const owner = await factsFor(record.ownerSessionKey);
-    const reason = orphanReason(record, owner.state, now);
+    const reason = orphanReason(record, owner.state, now, options.aliveSince);
     if (!reason) {
       continue;
     }
