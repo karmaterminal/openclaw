@@ -8,7 +8,6 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { parseAgentSessionKey } from "../../sessions/session-key-utils.js";
 import { deliveryContextFromSession } from "../../utils/delivery-context.read.js";
 import { resolveContinuationRuntimeConfig } from "./config.js";
-import { reapOrphanedContinuationCustody } from "./custody-orphan-reaper.js";
 import { DelegateTerminalChainStatePersistError } from "./delegate-dispatch-chain-state.js";
 import type { DelegateDispatchContext } from "./delegate-dispatch-contract.js";
 import { dispatchToolDelegates } from "./delegate-dispatch.js";
@@ -129,16 +128,11 @@ export async function recoverPendingContinuationDelegates(
       );
       continue;
     }
-    // The orphan reaper owns the age check and the "owner is gone" decision:
-    // it fails queued rows past the overdue cutoff, and every queued row of a
-    // missing owner, before anything here can spawn them.
-    const { reaped } = await reapOrphanedContinuationCustody({ ownerSessionKey: sessionKey });
-    rejected += reaped;
     let recoveryChainState = params.chainState;
     if (!recoveryChainState) {
       if (!recoveredEntry) {
         log.warn(
-          `[continuation:delegate-recovery-session-missing] path=${storePath} session=${sessionKey} reaped=${reaped}; running claims and queued rows inside the reap grace stay for the periodic reaper`,
+          `[continuation:delegate-recovery-session-missing] path=${storePath} session=${sessionKey} leaving queued/running delegates recoverable`,
         );
         continue;
       }

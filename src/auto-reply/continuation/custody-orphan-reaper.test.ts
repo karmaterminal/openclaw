@@ -39,6 +39,7 @@ vi.mock("../../process/gateway-work-admission.js", async (importOriginal) => {
 // path that settles a row between the reaper's list and its fail.
 const afterDelegateList = vi.hoisted(() => ({
   run: undefined as (() => Promise<void>) | undefined,
+  queries: [] as Array<Record<string, unknown>>,
 }));
 vi.mock("./delegate-flow-store.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./delegate-flow-store.js")>();
@@ -47,6 +48,7 @@ vi.mock("./delegate-flow-store.js", async (importOriginal) => {
     listDelegateRecords: async (
       ...args: Parameters<typeof actual.listDelegateRecords>
     ): ReturnType<typeof actual.listDelegateRecords> => {
+      afterDelegateList.queries.push({ ...args[0] });
       const records = await actual.listDelegateRecords(...args);
       const run = afterDelegateList.run;
       afterDelegateList.run = undefined;
@@ -149,6 +151,7 @@ afterEach(() => {
   vi.useRealTimers();
   detachedWork.clear();
   afterDelegateList.run = undefined;
+  afterDelegateList.queries.length = 0;
   throwingRegistryReads.clear();
   for (const runId of seededRunIds.splice(0)) {
     subagentRuns.delete(runId);
@@ -477,6 +480,25 @@ describe("reaper failures stay inside the reaper", () => {
       task: expect.stringContaining("recover this delegate at boot"),
     });
     expect((await readCustodyRecordForTest(recoverable.recordId))?.status).not.toBe("queued");
+  });
+});
+
+describe("boot reaps once", () => {
+  it("sweeps queued custody once per boot, not again for each recovered owner", async () => {
+    const armedAt = Date.now();
+    await seedSession(MAIN);
+    await seedSession(PARENT);
+    await queueDelegate({ owner: MAIN, createdAt: armedAt - 10 * 60 * 1000 });
+    await queueDelegate({ owner: PARENT, createdAt: armedAt - 10 * 60 * 1000 });
+
+    await bootGateway(armedAt);
+
+    // The reaper's sweep is its only queued-only list of delegate custody.
+    const reaperSweeps = afterDelegateList.queries.filter(
+      (query) =>
+        JSON.stringify(query.statuses) === JSON.stringify(["queued"]) && query.kinds === undefined,
+    );
+    expect(reaperSweeps).toEqual([{ statuses: ["queued"] }]);
   });
 });
 
