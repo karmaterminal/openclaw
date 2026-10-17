@@ -43,8 +43,11 @@ export function createOpenClawContinuationTools(
       }),
     );
   }
-  // Nothing drains a cron run's delegate queue: the run ends without an
-  // announce, so a delegate it queued could only be reaped (#1469).
+  // Nothing drains a cron run's delegate queue (#1469). Embedded cron runs
+  // already disable continuation tools; a CLI-backend cron run reaches this
+  // through the MCP loopback catalog, which keeps continue_delegate, and ends
+  // without an announce. Accepted cost: a chat.send turn on a restored cron
+  // run session, which would drain, is not offered continue_delegate either.
   const registersDelegateTool =
     options.drainsContinuationDelegateQueue !== false && !isCronRunSessionKey(liveSessionKey);
   if (registersDelegateTool) {
