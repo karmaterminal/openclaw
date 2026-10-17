@@ -56,6 +56,27 @@ vi.mock("./delegate-flow-store.js", async (importOriginal) => {
   };
 });
 
+// Owner lookups for these child sessions throw, standing in for a registry
+// read that fails mid-sweep.
+const throwingRegistryReads = vi.hoisted(() => new Set<string>());
+vi.mock("../../agents/subagents/registry/subagent-registry-read.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../agents/subagents/registry/subagent-registry-read.js")
+    >();
+  return {
+    ...actual,
+    getLatestSubagentRunByChildSessionKey: async (
+      ...args: Parameters<typeof actual.getLatestSubagentRunByChildSessionKey>
+    ): ReturnType<typeof actual.getLatestSubagentRunByChildSessionKey> => {
+      if (throwingRegistryReads.has(args[0])) {
+        throw new Error("subagent registry read failed");
+      }
+      return await actual.getLatestSubagentRunByChildSessionKey(...args);
+    },
+  };
+});
+
 import { createOpenClawContinuationTools } from "../../agents/openclaw-tools.continuation.js";
 import { coordinateSubagentContinuation } from "../../agents/subagent-announce.continuation.runtime.js";
 import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
@@ -101,6 +122,7 @@ const NON_CHAIN_CHILD = "agent:main:subagent:orphan-reaper-non-chain";
 const CRON_RUN = "agent:main:cron:orphan-reaper-job:run:orphan-reaper-run";
 const LONG_SUBAGENT = "agent:main:subagent:orphan-reaper-long-running";
 const INTERRUPTED_SUBAGENT = "agent:main:subagent:orphan-reaper-interrupted";
+const THROWING_SUBAGENT = "agent:main:subagent:orphan-reaper-throwing";
 
 useContinuationCustodyTestState();
 
@@ -122,6 +144,7 @@ afterEach(() => {
   vi.useRealTimers();
   detachedWork.clear();
   afterDelegateList.run = undefined;
+  throwingRegistryReads.clear();
   for (const runId of seededRunIds.splice(0)) {
     subagentRuns.delete(runId);
   }
@@ -397,6 +420,58 @@ describe("orphaned continuation custody is terminalized", () => {
     expect(after?.status).toBe("failed");
     expect(after?.phase).toBe(REAPED_PHASE);
     expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("reaper failures stay inside the reaper", () => {
+  it("a throwing owner read neither stops boot recovery nor the sweep of other rows", async () => {
+    const armedAt = Date.now() - 4 * HOUR_MS;
+    await seedSession(MAIN);
+    await seedSession(PARENT);
+    await seedSession(THROWING_SUBAGENT, { spawnedBy: PARENT });
+    throwingRegistryReads.add(THROWING_SUBAGENT);
+    seedSubagentRunForReadTest({
+      runId: "orphan-reaper-missing-isolation-run",
+      childSessionKey: MISSING_SUBAGENT,
+      requesterSessionKey: PARENT,
+      createdAt: Date.now() - 4 * HOUR_MS,
+      execution: {
+        status: "done",
+        startedAt: Date.now() - 4 * HOUR_MS,
+        endedAt: Date.now() - 3 * HOUR_MS,
+      },
+    } as never);
+    seededRunIds.push("orphan-reaper-missing-isolation-run");
+    // Queued before the boot cutoff, so boot recovery owns it.
+    const recoverable = await queueDelegate({
+      owner: MAIN,
+      createdAt: armedAt - HOUR_MS,
+      task: "recover this delegate at boot",
+    });
+    // Queued after the cutoff: only the reaper looks at these, the throwing
+    // owner's row first.
+    const throwing = await queueDelegate({
+      owner: THROWING_SUBAGENT,
+      createdAt: Date.now() - 3 * HOUR_MS - 60_000,
+    });
+    const orphaned = await queueDelegate({
+      owner: MISSING_SUBAGENT,
+      createdAt: Date.now() - 3 * HOUR_MS,
+    });
+
+    const summary = await bootGateway(armedAt);
+
+    expect(summary.orphansReaped).toBe(1);
+    expect((await readCustodyRecordForTest(throwing.recordId))?.status).toBe("queued");
+    const reaped = await readCustodyRecordForTest(orphaned.recordId);
+    expect(reaped?.status).toBe("failed");
+    expect(reaped?.phase).toBe(REAPED_PHASE);
+    expect(await noticesFor(PARENT)).toHaveLength(1);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    expect(spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
+      task: expect.stringContaining("recover this delegate at boot"),
+    });
+    expect((await readCustodyRecordForTest(recoverable.recordId))?.status).not.toBe("queued");
   });
 });
 

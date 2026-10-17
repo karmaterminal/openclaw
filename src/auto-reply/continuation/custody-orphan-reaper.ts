@@ -10,6 +10,7 @@ import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { readResolvedSessionEntryInWorker } from "../../config/sessions/session-accessor.entry.js";
 import { readExactSessionEntryAvailabilityInWorker } from "../../config/sessions/session-entry-presence-read.js";
 import { isTerminalSessionStatus, type SessionEntry } from "../../config/sessions/types.js";
+import { formatErrorMessage } from "../../infra/errors.js";
 import { enqueueSessionDeliveryWithStatus } from "../../infra/session-delivery-queue-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
@@ -81,7 +82,7 @@ async function readOwnerEntry(sessionKey: string): Promise<SessionEntry | undefi
     return exact.found ? exact.value?.entry : "unknown";
   } catch (err) {
     log.warn(
-      `[continuation:orphan-reap-owner-read-failed] session=${sessionKey} error=${err instanceof Error ? err.message : String(err)}`,
+      `[continuation:orphan-reap-owner-read-failed] session=${sessionKey} error=${formatErrorMessage(err)}`,
     );
     return "unknown";
   }
@@ -271,8 +272,17 @@ export async function reapOrphanedContinuationCustody(
     let facts = owners.get(sessionKey);
     if (!facts) {
       facts = (async () => {
-        const state = await resolveOwnerState(sessionKey);
-        return { state, noticeTarget: await resolveNoticeTarget(sessionKey, state) };
+        try {
+          const state = await resolveOwnerState(sessionKey);
+          return { state, noticeTarget: await resolveNoticeTarget(sessionKey, state) };
+        } catch (err) {
+          // An owner that cannot be read is unknown, never gone: only the
+          // overdue cutoff can reap its rows.
+          log.warn(
+            `[continuation:orphan-reap-owner-failed] session=${sessionKey} error=${formatErrorMessage(err)}`,
+          );
+          return { state: { kind: "unknown" }, noticeTarget: sessionKey };
+        }
       })();
       owners.set(sessionKey, facts);
     }
@@ -292,10 +302,19 @@ export async function reapOrphanedContinuationCustody(
     // The write is fenced on the listed revision, so it applies only the
     // reaper's own queued -> failed transition. A row another path claimed or
     // failed meanwhile is that path's outcome: not counted, no reaped notice.
-    const failed = await updateDelegateRecord({
-      record,
-      patch: { status: "failed", phase: REAPED_PHASE, failureReason: reason },
-    });
+    let failed: Awaited<ReturnType<typeof updateDelegateRecord>>;
+    try {
+      failed = await updateDelegateRecord({
+        record,
+        patch: { status: "failed", phase: REAPED_PHASE, failureReason: reason },
+      });
+    } catch (err) {
+      // The row stays queued for the next pass; the rest of the sweep goes on.
+      log.warn(
+        `[continuation:orphan-reap-record-failed] flowId=${record.recordId} session=${record.ownerSessionKey} error=${formatErrorMessage(err)}`,
+      );
+      continue;
+    }
     if (!failed.applied) {
       continue;
     }
@@ -310,7 +329,7 @@ export async function reapOrphanedContinuationCustody(
       await deliverReapedNotice({ record, target: owner.noticeTarget, reason });
     } catch (err) {
       log.warn(
-        `[continuation:delegate-orphan-reaped-notice-failed] flowId=${record.recordId} target=${owner.noticeTarget} error=${err instanceof Error ? err.message : String(err)}`,
+        `[continuation:delegate-orphan-reaped-notice-failed] flowId=${record.recordId} target=${owner.noticeTarget} error=${formatErrorMessage(err)}`,
       );
     }
   }

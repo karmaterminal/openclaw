@@ -4,8 +4,12 @@
 // then custody recovery (phase B). Phase A also runs on demand under the first
 // custody mutation, so a turn admitted before this boot runs reads committed
 // custody.
+import { formatErrorMessage } from "../../infra/errors.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { reapOrphanedContinuationCustody } from "./custody-orphan-reaper.js";
 import { pruneContinuationRecords, whenContinuationCustodyReady } from "./custody/custody-store.js";
+
+const log = createSubsystemLogger("continuation/custody-boot");
 
 /** Terminal records are retained this long unless they still owe a notice (§5.4.6). */
 const CONTINUATION_CUSTODY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -81,7 +85,14 @@ async function recoverContinuationCustody(
   await whenContinuationCustodyReady();
   // Reaping runs before recovery so recovery never spawns a record the reaper
   // would fail (a missing owner, or a delegate past the overdue cutoff).
-  const { pruned, orphansReaped } = await maintainContinuationCustody();
+  // Upkeep is best effort: a failed sweep must not cost the boot its recovery.
+  let upkeep = { pruned: 0, orphansReaped: 0 };
+  try {
+    upkeep = await maintainContinuationCustody();
+  } catch (err) {
+    log.warn(`[continuation:custody-upkeep-failed] error=${formatErrorMessage(err)}`);
+  }
+  const { pruned, orphansReaped } = upkeep;
   const [delegateRecovery, workModule] = await Promise.all([
     import("./delegate-dispatch-recovery.js"),
     import("./work-dispatch.js"),
