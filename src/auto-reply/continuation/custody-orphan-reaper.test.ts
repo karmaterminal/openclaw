@@ -84,10 +84,15 @@ import { seedSubagentRunForReadTest } from "../../agents/subagents/registry/suba
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
+import {
+  resolveSqliteScope,
+  toDatabaseOptions,
+} from "../../config/sessions/session-accessor.sqlite-scope.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { loadPendingSessionDeliveries } from "../../infra/session-delivery-queue-storage.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../../infra/system-events.js";
+import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { runContinuationCustodyBoot } from "./custody-boot.js";
 import {
   claimContinuationSpawnAttempt,
@@ -543,6 +548,35 @@ describe("live continuation custody is left alone", () => {
     expect((await readCustodyRecordForTest(longRunning.recordId))?.status).toBe("queued");
     expect((await readCustodyRecordForTest(interrupted.recordId))?.status).toBe("queued");
     expect(await noticesFor(PARENT)).toHaveLength(0);
+  });
+
+  it("keeps the queue of an alias owner whose canonical row is unreadable", async () => {
+    // With mainKey "work", the alias agent:main:main is stored at agent:main:work.
+    setRuntimeConfigSnapshot({ ...CONFIG, session: { mainKey: "work" } });
+    await seedSession("agent:main:work");
+    openOpenClawAgentDatabase(
+      toDatabaseOptions(
+        resolveSqliteScope({
+          agentId: "main",
+          sessionKey: "agent:main:work",
+          storePath: storePath(),
+        }),
+      ),
+    )
+      .db.prepare(
+        "UPDATE session_nodes SET entry_json = '{}', entry_valid = -1 WHERE session_key = ?",
+      )
+      .run("agent:main:work");
+    const record = await queueDelegate({
+      owner: "agent:main:main",
+      createdAt: Date.now() - 3 * HOUR_MS,
+    });
+
+    const { reapOrphanedContinuationCustody } = await loadReaper();
+    const result = await reapOrphanedContinuationCustody();
+
+    expect(result.reaped).toBe(0);
+    expect((await readCustodyRecordForTest(record.recordId))?.status).toBe("queued");
   });
 
   it("keeps a live queued delegate whose hedge is armed", async () => {

@@ -6,10 +6,12 @@
 // all ask it. Records are failed through the delegate store, never deleted, and
 // the owner (or its parent) gets one durable notice.
 import { getRuntimeConfig } from "../../config/config.js";
+import { collectCanonicalSessionLookupKeys } from "../../config/sessions/main-session-key.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { readResolvedSessionEntryInWorker } from "../../config/sessions/session-accessor.entry.js";
 import { readExactSessionEntryAvailabilityInWorker } from "../../config/sessions/session-entry-presence-read.js";
 import { isTerminalSessionStatus, type SessionEntry } from "../../config/sessions/types.js";
+import { resolveSessionStoreIdentity } from "../../gateway/session-store-key.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { enqueueSessionDeliveryWithStatus } from "../../infra/session-delivery-queue-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -73,13 +75,36 @@ async function readOwnerEntry(sessionKey: string): Promise<SessionEntry | undefi
     }
     // The logical read cannot tell an absent row from an unreadable one; the
     // exact-key probe can, and only an absent row means the session is gone.
-    const exact = await readExactSessionEntryAvailabilityInWorker({
-      agentId,
-      clone: false,
-      sessionKey,
-      storePath: resolveSessionStorePathCore(cfg.session?.store, { agentId }),
+    // The probe must cover every row the logical read looked at. A templated
+    // store also searches discovered per-agent targets the probe cannot see.
+    if (cfg.session?.store?.includes("{agentId}")) {
+      return "unknown";
+    }
+    const requestedKey = sessionKey.trim();
+    const identity = resolveSessionStoreIdentity({ cfg, sessionKey: requestedKey, agentId });
+    const storePath = resolveSessionStorePathCore(cfg.session?.store, {
+      agentId: identity.agentId,
     });
-    return exact.found ? exact.value?.entry : "unknown";
+    for (const lookupKey of collectCanonicalSessionLookupKeys({
+      agentId: identity.agentId,
+      canonicalKey: identity.canonicalKey,
+      requestedKey,
+      mainKey: cfg.session?.mainKey,
+    })) {
+      const exact = await readExactSessionEntryAvailabilityInWorker({
+        agentId: identity.agentId,
+        clone: false,
+        sessionKey: lookupKey,
+        storePath,
+      });
+      if (!exact.found) {
+        return "unknown";
+      }
+      if (exact.value) {
+        return exact.value.entry;
+      }
+    }
+    return undefined;
   } catch (err) {
     log.warn(
       `[continuation:orphan-reap-owner-read-failed] session=${sessionKey} error=${formatErrorMessage(err)}`,
