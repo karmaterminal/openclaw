@@ -99,6 +99,8 @@ const PARENT = "agent:main:discord:channel:orphan-reaper-parent";
 const MISSING_SUBAGENT = "agent:main:subagent:orphan-reaper-missing";
 const NON_CHAIN_CHILD = "agent:main:subagent:orphan-reaper-non-chain";
 const CRON_RUN = "agent:main:cron:orphan-reaper-job:run:orphan-reaper-run";
+const LONG_SUBAGENT = "agent:main:subagent:orphan-reaper-long-running";
+const INTERRUPTED_SUBAGENT = "agent:main:subagent:orphan-reaper-interrupted";
 
 useContinuationCustodyTestState();
 
@@ -422,6 +424,50 @@ describe("live continuation custody is left alone", () => {
     expect(after?.phase).toBe("Delegate rejected");
     expect(after?.failureReason).toBe("Cancelled by its owner.");
     expect(await noticesFor(MAIN)).toHaveLength(0);
+  });
+
+  it("keeps the queue of a subagent still running hours later, and of an interrupted one", async () => {
+    await seedSession(PARENT);
+    await seedSession(LONG_SUBAGENT, { spawnedBy: PARENT });
+    await seedSession(INTERRUPTED_SUBAGENT, { spawnedBy: PARENT, status: "interrupted" });
+    // No timeout and no recorded end: age alone says nothing about this run.
+    seedSubagentRunForReadTest({
+      runId: "orphan-reaper-long-running-run",
+      childSessionKey: LONG_SUBAGENT,
+      requesterSessionKey: PARENT,
+      createdAt: Date.now() - 5 * HOUR_MS,
+      execution: { status: "running", startedAt: Date.now() - 5 * HOUR_MS },
+    } as never);
+    seededRunIds.push("orphan-reaper-long-running-run");
+    // Restart recovery can resume an interrupted child even though its run ended.
+    seedSubagentRunForReadTest({
+      runId: "orphan-reaper-interrupted-run",
+      childSessionKey: INTERRUPTED_SUBAGENT,
+      requesterSessionKey: PARENT,
+      createdAt: Date.now() - 5 * HOUR_MS,
+      execution: {
+        status: "interrupted",
+        startedAt: Date.now() - 5 * HOUR_MS,
+        endedAt: Date.now() - 4 * HOUR_MS,
+      },
+    } as never);
+    seededRunIds.push("orphan-reaper-interrupted-run");
+    const longRunning = await queueDelegate({
+      owner: LONG_SUBAGENT,
+      createdAt: Date.now() - 3 * HOUR_MS,
+    });
+    const interrupted = await queueDelegate({
+      owner: INTERRUPTED_SUBAGENT,
+      createdAt: Date.now() - 3 * HOUR_MS,
+    });
+
+    const { reapOrphanedContinuationCustody } = await loadReaper();
+    const result = await reapOrphanedContinuationCustody();
+
+    expect(result.reaped).toBe(0);
+    expect((await readCustodyRecordForTest(longRunning.recordId))?.status).toBe("queued");
+    expect((await readCustodyRecordForTest(interrupted.recordId))?.status).toBe("queued");
+    expect(await noticesFor(PARENT)).toHaveLength(0);
   });
 
   it("keeps a live queued delegate whose hedge is armed", async () => {

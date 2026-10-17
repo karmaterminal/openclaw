@@ -87,14 +87,18 @@ async function readOwnerEntry(sessionKey: string): Promise<SessionEntry | undefi
   }
 }
 
+/**
+ * Only a recorded end counts. Age is no evidence: a subagent with no timeout
+ * may legitimately run for hours, and its queued delegates are still drained
+ * by its announce.
+ */
 async function subagentRunEnded(sessionKey: string): Promise<boolean> {
-  const [{ getLatestSubagentRunByChildSessionKey }, { classifySubagentRunLiveness }] =
-    await Promise.all([
-      import("../../agents/subagents/registry/subagent-registry-read.js"),
-      import("../../agents/subagents/registry/subagent-run-liveness.js"),
-    ]);
+  const [{ getLatestSubagentRunByChildSessionKey }, { hasSubagentRunEnded }] = await Promise.all([
+    import("../../agents/subagents/registry/subagent-registry-read.js"),
+    import("../../agents/subagents/registry/subagent-run-liveness.js"),
+  ]);
   const run = await getLatestSubagentRunByChildSessionKey(sessionKey);
-  return classifySubagentRunLiveness(run ?? undefined) === "confident-terminal";
+  return run ? hasSubagentRunEnded(run) : false;
 }
 
 async function resolveOwnerState(sessionKey: string): Promise<OwnerState> {
@@ -108,12 +112,11 @@ async function resolveOwnerState(sessionKey: string): Promise<OwnerState> {
   const isCronRun = isCronRunSessionKey(sessionKey);
   const isSubagent = isSubagentSessionKey(sessionKey);
   // `interrupted` can still be resumed by restart recovery, whose announce
-  // would drain the queue, so it is not an ended owner.
-  if (
-    (isCronRun || isSubagent) &&
-    isTerminalSessionStatus(entry.status) &&
-    entry.status !== "interrupted"
-  ) {
+  // would drain the queue, so it is not an ended owner, whatever its run says.
+  if (entry.status === "interrupted") {
+    return { kind: "live", entry };
+  }
+  if ((isCronRun || isSubagent) && isTerminalSessionStatus(entry.status)) {
     return { kind: "ended", entry, status: entry.status };
   }
   if (isSubagent && (await subagentRunEnded(sessionKey))) {
