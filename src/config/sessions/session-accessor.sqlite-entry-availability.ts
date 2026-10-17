@@ -30,7 +30,7 @@ export type {
   SessionIdentityEvidenceResult,
 } from "./session-entry-read-source.types.js";
 
-type ExactSessionEntryReadOnlyResult =
+export type ExactSessionEntryReadOnlyResult =
   | { found: true; value: ExactSessionEntry | undefined }
   | {
       found: false;

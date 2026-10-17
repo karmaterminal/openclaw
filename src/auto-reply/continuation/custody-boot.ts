@@ -4,13 +4,19 @@
 // then custody recovery (phase B). Phase A also runs on demand under the first
 // custody mutation, so a turn admitted before this boot runs reads committed
 // custody.
+import { formatErrorMessage } from "../../infra/errors.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { reapOrphanedContinuationCustody } from "./custody-orphan-reaper.js";
 import { pruneContinuationRecords, whenContinuationCustodyReady } from "./custody/custody-store.js";
+
+const log = createSubsystemLogger("continuation/custody-boot");
 
 /** Terminal records are retained this long unless they still owe a notice (§5.4.6). */
 const CONTINUATION_CUSTODY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type ContinuationCustodyBootSummary = {
   pruned: number;
+  orphansReaped: number;
   delegates: { sessions: number; dispatched: number; rejected: number };
   awaitingNextCompactionRequeued: number;
   postCompaction: { sessions: number; dispatched: number; failed: number };
@@ -24,11 +30,27 @@ export type ContinuationCustodyBootSummary = {
 };
 
 /** Retention: prune terminal records past the window that owe no notice. */
-export async function pruneExpiredContinuationCustody(now = Date.now()): Promise<number> {
+async function pruneExpiredContinuationCustody(now = Date.now()): Promise<number> {
   const { deletedRecordIds } = await pruneContinuationRecords({
     endedBefore: now - CONTINUATION_CUSTODY_RETENTION_MS,
   });
   return deletedRecordIds.length;
+}
+
+/**
+ * Periodic custody upkeep: prune expired terminal records, then fail queued
+ * records nothing will dispatch (#1469). Reaped records become terminal, so
+ * the next pass prunes them once retention expires. `aliveSince` is the boot
+ * cutoff, so time the Gateway was down never counts as overdue.
+ */
+export async function maintainContinuationCustody(params: {
+  aliveSince: number;
+  now?: number;
+}): Promise<{ pruned: number; orphansReaped: number }> {
+  const now = params.now ?? Date.now();
+  const pruned = await pruneExpiredContinuationCustody(now);
+  const { reaped } = await reapOrphanedContinuationCustody({ aliveSince: params.aliveSince, now });
+  return { pruned, orphansReaped: reaped };
 }
 
 /**
@@ -64,7 +86,6 @@ async function recoverContinuationCustody(
   armedAt: number,
 ): Promise<ContinuationCustodyBootSummary> {
   await whenContinuationCustodyReady();
-  const pruned = await pruneExpiredContinuationCustody();
   const [delegateRecovery, workModule] = await Promise.all([
     import("./delegate-dispatch-recovery.js"),
     import("./work-dispatch.js"),
@@ -83,8 +104,20 @@ async function recoverContinuationCustody(
     runningUpdatedAtOrBefore: armedAt,
   });
   const work = await workModule.recoverPendingContinuationWork();
+  // Upkeep runs after recovery: the backlog recovery dispatches after an
+  // outage is not orphaned. What is left (a missing owner, or a row nothing
+  // took) is reaped here. Upkeep is best effort: a failed sweep is logged and
+  // costs the boot nothing.
+  let upkeep = { pruned: 0, orphansReaped: 0 };
+  try {
+    upkeep = await maintainContinuationCustody({ aliveSince: armedAt });
+  } catch (err) {
+    log.warn(`[continuation:custody-upkeep-failed] error=${formatErrorMessage(err)}`);
+  }
+  const { pruned, orphansReaped } = upkeep;
   return {
     pruned,
+    orphansReaped,
     delegates,
     awaitingNextCompactionRequeued,
     postCompaction,
