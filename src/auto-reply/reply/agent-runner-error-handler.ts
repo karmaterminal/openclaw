@@ -20,6 +20,7 @@ import { isAgentHarnessPreflightError } from "../../agents/harness/errors.js";
 import { LiveSessionModelSwitchError } from "../../agents/live-model-switch-error.js";
 import { resolveReplyExpectation } from "../../agents/reply-completion.js";
 import { isSqliteTranscriptMutationConflict } from "../../config/sessions/session-mutation-conflict-error.js";
+import { logVerbose } from "../../globals.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -144,11 +145,21 @@ export async function handleAgentExecutionError(params: {
     kind: "final" as const,
     payload: markAgentRunFailureReplyPayload({ text }),
   });
-  if (turn.isHeartbeat && isSqliteTranscriptMutationConflict(err)) {
+  if (
+    turn.isHeartbeat &&
+    isSqliteTranscriptMutationConflict(err) &&
+    turn.replyOperation?.sourceReplyDelivered === false
+  ) {
     // A newer writer, such as room input, moved the transcript under this background
     // turn, and its prepared reply cannot rebase over it. Yield exactly as visible-turn
-    // preemption does: no failure reply and no interrupted run to recover (#1475).
-    turn.replyOperation?.supersede();
+    // preemption does: no failure reply and no interrupted run to recover (#1475). A turn
+    // that already answered through the message tool keeps failure settlement, which
+    // consumes its events instead of replaying a delivered heartbeat.
+    if (turn.replyOperation.supersede()) {
+      logVerbose(
+        `heartbeat yielded to a newer transcript writer: ${turn.sessionKey ?? turn.followupRun.run.sessionId}`,
+      );
+    }
   }
   const replyOperationAbortAction = resolveReplyOperationAbortAction(err);
   if (replyOperationAbortAction) {
