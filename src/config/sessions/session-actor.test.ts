@@ -132,21 +132,49 @@ it.each([false, true])(
         throw new Error("Durable session must be actor-owned");
       }
       try {
+        const beforeEntry = fixture.read();
+        const revoked = await actor.patch(
+          {
+            commandId: "durable-revoked-transfer",
+            phaseId: "transfer-revocation",
+            reducers: [{ kind: "activity", updatedAt: 542 }],
+          },
+          {
+            assertCurrent() {},
+            authorize(stage) {
+              if (stage === "commit") {
+                throw new Error("synthetic live authority revocation");
+              }
+            },
+          },
+        );
+        // The refused commit grant rolls the transfer back before its witness can commit.
+        expect(revoked).toMatchObject({
+          kind: "rolled-back",
+          error: { message: "SQLite transaction admission was refused" },
+        });
+        expect(fixture.read()).toEqual(beforeEntry);
+
+        // Outcome frames add no caller authorization: authorities see one transaction
+        // and one commit stage whether or not the outcome is framed.
+        const stages: string[] = [];
         const result = await actor.patch(
           {
             commandId: "durable",
             phaseId: "turn",
             reducers: [{ kind: "activity", updatedAt: 543 }],
           },
-          authority,
+          { assertCurrent() {}, authorize: (stage) => void stages.push(stage) },
         );
-        expect({ kind: result.kind, error: "error" in result ? result.error : undefined }).toEqual({
-          kind: "committed",
-          error: undefined,
-        });
+        expect({
+          kind: result.kind,
+          error: "error" in result ? result.error : undefined,
+          failure: "failure" in result ? result.failure : undefined,
+        }).toEqual({ kind: "committed", error: undefined, failure: undefined });
         if (result.kind !== "committed") {
           throw new Error("Expected the durable worker to commit the patch");
         }
+        expect(stages).toEqual(["transaction", "commit"]);
         expect(result.receipt.postimage.transcript.idempotency).toHaveLength(
           oversized ? OVERSIZED_TRANSCRIPT_MESSAGE_COUNT : 0,
         );
@@ -162,10 +190,11 @@ it.each([false, true])(
           },
           authority,
         );
-        expect({ kind: next.kind, error: "error" in next ? next.error : undefined }).toEqual({
-          kind: "committed",
-          error: undefined,
-        });
+        expect({
+          kind: next.kind,
+          error: "error" in next ? next.error : undefined,
+          failure: "failure" in next ? next.failure : undefined,
+        }).toEqual({ kind: "committed", error: undefined, failure: undefined });
         expect(fixture.read()?.updatedAt).toBe(544);
       } finally {
         await actor.release();
