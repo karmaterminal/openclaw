@@ -252,8 +252,12 @@ describe("registered message action source completion", () => {
           );
           expect(deliveryFact?.sourceReplyDelivered).toBe(expected);
           expect(operation.sourceReplyDelivered).toBe(expected === true);
-          // #1477: every committed send counts as delivered, wherever it went.
-          expect(operation.messageToolDelivered).toBe(deliveryFact?.status === "settled");
+          // #1477: every committed send except a progress post counts as delivered, including
+          // a plugin send that reached another channel.
+          expect(operation.messageToolDelivered).toBe(
+            mode === "redirected media" ||
+              (deliveryFact?.status === "settled" && mode !== "progress"),
+          );
           if (expected) {
             expect(deliveryFact).toMatchObject({
               status: "settled",
@@ -339,11 +343,12 @@ describe("message tool queued gateway delivery", () => {
 
 describe("message tool delivery on the turn's reply operation", () => {
   it.each([
-    { mode: "send", delivered: true },
-    { mode: "dry run", delivered: false },
+    { mode: "send", handledBy: "core", delivered: true },
+    { mode: "dry run", handledBy: "core", delivered: false },
+    { mode: "send", handledBy: "plugin", delivered: true },
   ] as const)(
-    "records a core $mode to another destination as delivered=$delivered",
-    async ({ mode, delivered }) => {
+    "records a $handledBy $mode to another destination as delivered=$delivered",
+    async ({ mode, handledBy, delivered }) => {
       // #1477: a heartbeat's post to any destination would repeat if its turn replayed.
       const dryRun = mode === "dry run";
       const to = "telegram:elsewhere";
@@ -361,14 +366,15 @@ describe("message tool delivery on the turn's reply operation", () => {
         action: "send",
         channel: "telegram",
         to,
-        handledBy: "core",
-        payload: sendResult,
-        sendResult,
+        handledBy,
+        ...(handledBy === "core"
+          ? { payload: sendResult, sendResult }
+          : { payload: { ok: true, messageId: "plugin-message-elsewhere" } }),
         dryRun,
       }));
       const operation = createReplyOperation({
         sessionKey: "agent:main:main",
-        sessionId: `delivered-elsewhere-${mode}`,
+        sessionId: `delivered-elsewhere-${handledBy}-${mode}`,
         resetTriggered: false,
       });
       try {

@@ -9,6 +9,7 @@ import {
   createEmbeddedRunHandle,
   testing as embeddedRunTesting,
 } from "../agents/embedded-agent-runner/runs.test-support.js";
+import { createCommittedSendMessageTool } from "../agents/tools/message-tool-committed-send.test-support.js";
 import { runReplyAgent } from "../auto-reply/reply/agent-runner-run.js";
 import {
   createTestFollowupRun,
@@ -365,6 +366,61 @@ describe("heartbeat runner busy ownership", () => {
       expect(preempt).toHaveBeenCalledOnce();
       expect(telegram).not.toHaveBeenCalled();
     }),
+  );
+
+  it.each([
+    { post: "none", settled: false },
+    { post: "progress", settled: false },
+    { post: "answer", settled: true },
+  ] as const)(
+    "settles a superseded heartbeat's events only once it answered (post=$post)",
+    ({ post, settled }) =>
+      heartbeatCase(async ({ seed, run, replySpy }) => {
+        // #1477 review: a visible turn supersedes a heartbeat after its message-tool post.
+        // Only a delivered answer completes the work; a progress post still needs the retry.
+        const sessionKey = await seed();
+        const reminder = "Reminder: rotate the offsite backup drive.";
+        enqueueSystemEvent(reminder, { sessionKey, contextKey: "cron:offsite-backup" });
+        replySpy.mockImplementationOnce(
+          async (_ctx, options: InternalGetReplyOptions | undefined) => {
+            const operation = options?.replyOperation;
+            const runState = resolveReplyOperationRunState(options);
+            if (!operation || !runState) {
+              throw new Error("Expected admitted heartbeat operation");
+            }
+            if (post !== "none") {
+              const { tool } = createCommittedSendMessageTool({
+                sessionId: operation.sessionId,
+                runId: "superseded-heartbeat",
+                currentTarget: "123",
+              });
+              await tool.execute("heartbeat-post", {
+                action: "send",
+                message: "Drive rotated.",
+                ...(post === "progress" ? { final: false } : {}),
+              });
+            }
+            runState.agentTurn = "ok";
+            runState.agentTurnOwner = operation;
+            operation.freezeAbort();
+            expect(operation.supersede()).toBe(true);
+            operation.complete();
+            return { text: "Background work finished." };
+          },
+        );
+        const telegram = vi.fn().mockResolvedValue({ messageId: "m1", chatId: "123" });
+        const result = await run(
+          { source: "cron", intent: "immediate", reason: "cron:offsite-backup", sessionKey },
+          { telegram },
+        );
+        expect(result).toEqual(
+          settled
+            ? { status: "ran", durationMs: expect.any(Number) }
+            : { status: "skipped", reason: "preempted" },
+        );
+        expect(peekSystemEvents(sessionKey)).toEqual(settled ? [] : [reminder]);
+        expect(telegram).not.toHaveBeenCalled();
+      })(),
   );
 
   it(
