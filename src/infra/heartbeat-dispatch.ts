@@ -136,6 +136,9 @@ async function prepareHeartbeatDispatchReply(
       readExecRequestOwners(event)?.some((owner) => owner.signal.aborted),
     );
   if (execution === "cancelled" || execution === "superseded" || admissionBusy || execCancelled()) {
+    if (!execCancelled() && settleDeliveredSupersededHeartbeat(policy, runState)) {
+      return {};
+    }
     const reason =
       execution === "superseded"
         ? "preempted"
@@ -551,6 +554,35 @@ async function prepareHeartbeatDispatchReply(
       }
     },
   };
+}
+
+/**
+ * A superseded heartbeat normally keeps its events for a retry. One that already posted
+ * through the message tool settles them instead: replaying would post its answer again
+ * (#1477). Events outside this turn's inspected batch wait for the next heartbeat.
+ */
+export function settleDeliveredSupersededHeartbeat(
+  policy: HeartbeatDispatch,
+  runState: ReplyOperationRunState,
+): HeartbeatRunResult | undefined {
+  if (
+    resolveReplyOperationAgentTurn(runState) !== "superseded" ||
+    runState.agentTurnOwner?.messageToolDelivered !== true
+  ) {
+    return undefined;
+  }
+  const { agentId, startedAt, preflight } = policy.wake;
+  const { sessionKey, inspectedSystemEventsToConsume, deferredGenericEvents } = policy.prepared;
+  if (preflight.shouldInspectPendingEvents) {
+    consumeSelectedSystemEventEntries(resolveSystemEventQueueKey(sessionKey, agentId), [
+      ...inspectedSystemEventsToConsume,
+      ...deferredGenericEvents,
+    ]);
+  }
+  const durationMs = Date.now() - startedAt;
+  emitHeartbeatEvent({ status: "sent", durationMs, accountId: policy.prepared.delivery.accountId });
+  policy.result = { status: "ran", durationMs };
+  return policy.result;
 }
 
 /** The core dispatcher owns custody; monitoring supplies its existing transport policy. */

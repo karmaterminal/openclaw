@@ -11,7 +11,11 @@ import type { MsgContext } from "../auto-reply/templating.js";
 import { formatErrorMessage } from "./errors.js";
 import { execRequestAbortSignal, readExecRequestOwners } from "./exec-request-context.js";
 import { resolveHeartbeatTimeoutOverrideSeconds } from "./heartbeat-config.js";
-import { createHeartbeatDispatch, deliverHeartbeatDispatch } from "./heartbeat-dispatch.js";
+import {
+  createHeartbeatDispatch,
+  deliverHeartbeatDispatch,
+  settleDeliveredSupersededHeartbeat,
+} from "./heartbeat-dispatch.js";
 import { emitHeartbeatEvent, resolveIndicatorType } from "./heartbeat-events.js";
 import { heartbeatLog } from "./heartbeat-log.js";
 import {
@@ -240,7 +244,7 @@ export async function runHeartbeatOnceCore(opts: HeartbeatRunOptions): Promise<H
           ),
       },
     });
-    const settled = settledResult();
+    const settled = settledResult() ?? settleDeliveredSupersededHeartbeat(policy, state);
     if (settled) {
       return settled;
     }
