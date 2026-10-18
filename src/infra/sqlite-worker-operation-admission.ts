@@ -27,12 +27,10 @@ import {
   getSqliteDatabaseAdmissionUpstream,
 } from "./sqlite-worker-database-admission-relay.js";
 import {
-  captureSqliteWorkerCommitReceipt,
   deferSqliteWorkerNativeCommitReceipt,
   currentSqliteWorkerOperationAdmission as currentAdmission,
   type WorkerAdmissionScope,
   readNativeCommitReceipt,
-  type CapturedSqliteWorkerCommitReceipt,
   type NativeCommitReceipt,
   type RetainedWorkerTransactionAdmission,
   type SqliteWorkerNativeSettlement,
@@ -632,25 +630,7 @@ export function deferSqliteWorkerCommitReceipt(
   if (!scope?.active) {
     throw new SqliteWorkerError("SQLite receipt requires its retained admission", "unavailable");
   }
-  deferSqliteWorkerNativeCommitReceipt(
-    scope.owner,
-    database,
-    captureSqliteWorkerCommitReceipt(facts),
-    delivery,
-  );
-}
-
-/** Reuse the capture that selected an inline transport; publication still belongs to COMMIT. */
-export function deferCapturedSqliteWorkerCommitReceipt(
-  database: DatabaseSync,
-  captured: Extract<CapturedSqliteWorkerCommitReceipt, { kind: "inline" }>,
-  delivery: "commit" | "settlement" = "commit",
-): void {
-  const scope = currentAdmission.getStore();
-  if (!scope?.active) {
-    throw new SqliteWorkerError("SQLite receipt requires its retained admission", "unavailable");
-  }
-  deferSqliteWorkerNativeCommitReceipt(scope.owner, database, captured, delivery);
+  deferSqliteWorkerNativeCommitReceipt(scope.owner, database, facts, delivery);
 }
 
 /** A typed fenced write cannot commit without its destination owner's settlement evidence. */
