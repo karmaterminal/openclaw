@@ -29,9 +29,9 @@ import { resolveExecDefaults } from "../exec-defaults.js";
 import type { MainSessionRecoveryAdmission } from "./main-session-recovery-admission.js";
 import { buildMainSessionRecoverySettlementPatch } from "./main-session-recovery-clear.js";
 import { createCurrentProcessOwnerLookup } from "./main-session-recovery-live-owners.js";
+import { hasMainSessionRestartEvidence } from "./main-session-recovery-restart-evidence.js";
 import {
   getMainSessionRecoveryRetryCount,
-  hasMainSessionRestartEvidence,
   isMainRestartRecoveryTerminalOnly,
 } from "./main-session-recovery-state.js";
 import {
