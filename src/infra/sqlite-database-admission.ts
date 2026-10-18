@@ -751,6 +751,11 @@ export function canShareSqliteDatabaseAdmissions(): boolean {
   return threadId === 0 || state.exchange.getStore() !== undefined;
 }
 
+/** A write begun here would mark this admitted worker connection unproven until it reopens. */
+export function wouldRevokeSqliteDatabaseAdmission(database: DatabaseSync): boolean {
+  return !canShareSqliteDatabaseAdmissions() && admission(database, false) !== undefined;
+}
+
 const inherited = readSqliteDatabaseAdmissions(getEnvironmentData(SQLITE_DATABASE_ADMISSIONS_KEY));
 if (inherited) {
   installSqliteDatabaseAdmissions(inherited);

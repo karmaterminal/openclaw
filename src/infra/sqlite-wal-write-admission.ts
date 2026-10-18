@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { setImmediate } from "node:timers/promises";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+import { wouldRevokeSqliteDatabaseAdmission } from "./sqlite-database-admission.js";
 import { assertTransactionUsable } from "./sqlite-transaction.js";
 import type {
   SqliteWalCheckpointMode,
@@ -71,8 +72,14 @@ export function createSqliteWalMaintenanceScheduler(
   return () => {
     if (!pending) {
       const run = async () => {
-        // A zero budget runs one checkpoint-only pass without vacuum units.
-        let remaining = pageBudget();
+        // A zero budget runs one checkpoint-only pass without vacuum units. Timers carry no
+        // admission, so an admitted worker connection without a maintenance owner only
+        // checkpoints: an inline vacuum would revoke its admission until it reopens, failing
+        // every receipt-checked write on it. Its host routes vacuum through an admitted
+        // command instead (#1475 D5).
+        const budget = pageBudget();
+        let remaining =
+          admissions.has(database) || !wouldRevokeSqliteDatabaseAdmission(database) ? budget : 0;
         let continuation = false;
         while (true) {
           const request = prepare(remaining);
