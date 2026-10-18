@@ -1,3 +1,4 @@
+import { serialize } from "node:v8";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { expect, it, vi } from "vitest";
 import { runSqliteImmediateTransactionSync } from "../../infra/sqlite-transaction.js";
@@ -32,6 +33,11 @@ import { createSessionActor, type SessionActorTransport } from "./session-actor.
 import { createSessionActorWorker } from "./session-actor.worker.js";
 import { createSessionCompoundWorkerFixture } from "./session-compound-worker.test-support.js";
 
+// mock-isolation: Count real receipt encodings; every call still runs the actual encoder.
+vi.mock("node:v8", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:v8")>();
+  return { ...actual, serialize: vi.fn(actual.serialize) };
+});
 // mock-isolation: this transport proof does not schedule unrelated maintenance.
 vi.mock("./session-accessor.sqlite-maintenance-kick.js", () => ({
   kickSessionEntryMaintenanceAfterWrite() {},
@@ -547,6 +553,39 @@ it("installs a cold command and stale preimage without a separate read request",
     ]);
   });
 });
+
+it.each([false, true])(
+  "encodes a committed actor outcome once for its receipt transport (oversized=%s)",
+  async (oversized) => {
+    // #1477 review of #1475 D1: transport selection reuses the receipt capture's encoding.
+    await withActor(async ({ actor, seedOversizedTranscript }) => {
+      if (oversized) {
+        seedOversizedTranscript();
+      }
+      await actor.read(authority);
+      vi.mocked(serialize).mockClear();
+      const result = await actor.patch(
+        {
+          commandId: "receipt-encoding",
+          phaseId: "turn",
+          reducers: [{ kind: "activity", updatedAt: 545 }],
+        },
+        authority,
+      );
+      expect(result.kind).toBe("committed");
+      const outcomeEncodings = vi
+        .mocked(serialize)
+        .mock.calls.filter(
+          ([value]) =>
+            isRecord(value) &&
+            value.kind === "committed" &&
+            isRecord(value.receipt) &&
+            value.receipt.kind === "session-actor-committed",
+        );
+      expect(outcomeEncodings).toHaveLength(1);
+    });
+  },
+);
 
 it("installs the full append receipt and releases FIFO before retained follow-up work", async () => {
   await withActor(async ({ actor, fault }) => {
