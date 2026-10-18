@@ -77,7 +77,7 @@ import { resolveReplyTurnKind } from "./reply-turn-kind.js";
 import {
   isDuplicateRestartRecoverySource,
   retireTerminalRestartRecoverySourceClaim,
-} from "./restart-recovery-claim.js";
+} from "./restart-recovery-source.js";
 import { resolveRoutedDeliveryThreadId } from "./routed-delivery-thread.js";
 import { resolveReplyHookTrigger } from "./run-provenance.js";
 import { resolveSourceReplyExpectation } from "./source-reply-delivery-mode.js";

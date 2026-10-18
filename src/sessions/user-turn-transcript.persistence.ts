@@ -1,8 +1,8 @@
-// Store-backed single-turn user transcript persistence used by the turn recorder.
 import { randomUUID } from "node:crypto";
 import {
   persistSessionTranscriptTurn,
   type SessionTranscriptTurnPersistOptions,
+  type TranscriptMessageAppendResult,
 } from "../config/sessions/session-accessor.js";
 import { readActiveTranscriptEntryAnchorAsync } from "../config/sessions/session-transcript-anchor-read.js";
 import { waitForSessionTranscriptProjection } from "../config/sessions/session-transcript-reconcile.js";
@@ -15,10 +15,53 @@ import type {
   UserTurnTranscriptPersistResult,
 } from "./user-turn-transcript.types.js";
 
+export type CommittedUserTurnTranscript = TranscriptMessageAppendResult<PersistedUserTurnMessage> &
+  Pick<UserTurnTranscriptPersistResult, "sessionEntry" | "sessionTurnMutationResult">;
+
+export function admittedUserTurnResult(
+  committed: CommittedUserTurnTranscript,
+  logicalTurnId: string,
+  sessionKey: string,
+): UserTurnTranscriptPersistResult | undefined {
+  if (!committed.anchor) {
+    return undefined;
+  }
+  return {
+    ...committed,
+    admission: { ...committed.anchor, logicalTurnId, role: "user" },
+    sessionFile: sessionKey,
+  };
+}
+
+export async function resolveCommittedUserTurnTranscript(
+  originalCommit: CommittedUserTurnTranscript,
+  params: PersistUserTurnTranscriptParams,
+): Promise<UserTurnTranscriptPersistResult | undefined> {
+  let committed = originalCommit;
+  if (!committed.anchor) {
+    const assertCurrent = captureOwnedTranscriptWriteAssertion(params);
+    await waitForSessionTranscriptProjection(params);
+    const anchor = await readActiveTranscriptEntryAnchorAsync({
+      ...params,
+      entryId: committed.messageId,
+    });
+    assertCurrent();
+    if (anchor) {
+      committed = { ...committed, anchor };
+    }
+  }
+  return admittedUserTurnResult(committed, params.logicalTurnId ?? randomUUID(), params.sessionKey);
+}
+
 // Store-backed persistence resolves the current session transcript file lazily
 // so callers can pass a session entry/store without knowing the final path.
 export async function persistUserTurnTranscript(
-  params: PersistUserTurnTranscriptParams,
+  params: PersistUserTurnTranscriptParams & {
+    onCommitted?: (
+      committed: CommittedUserTurnTranscript,
+      acceptCompletion: (complete: () => Promise<void>) => void,
+    ) => void;
+  },
 ): Promise<UserTurnTranscriptPersistResult | undefined> {
   const message = resolvePersistedUserTurnMessage(params);
   if (!message) {
@@ -26,8 +69,6 @@ export async function persistUserTurnTranscript(
   }
   let committedWithoutAnchor = false;
 
-  // SAFETY: the caller's runtime config is the persist-options config shape.
-  const persistConfig = params.config as SessionTranscriptTurnPersistOptions["config"] | undefined;
   const turn = await persistSessionTranscriptTurn(
     {
       sessionId: params.sessionId,
@@ -40,7 +81,12 @@ export async function persistUserTurnTranscript(
     },
     {
       ...(params.cwd ? { cwd: params.cwd } : {}),
-      ...(persistConfig ? { config: persistConfig } : {}),
+      ...(params.config
+        ? {
+            // SAFETY: Recorder targets carry the host's loaded config; their public contract keeps it opaque.
+            config: params.config as SessionTranscriptTurnPersistOptions["config"],
+          }
+        : {}),
       ...(params.expectedSessionId ? { expectedSessionId: params.expectedSessionId } : {}),
       ...(params.initialSessionEntry ? { initialSessionEntry: params.initialSessionEntry } : {}),
       ...(params.expectedSessionState ? { expectedSessionState: params.expectedSessionState } : {}),
@@ -49,8 +95,17 @@ export async function persistUserTurnTranscript(
         : {}),
       ...(params.sessionTurnMutation ? { sessionTurnMutation: params.sessionTurnMutation } : {}),
       updateMode: params.updateMode ?? "inline",
-      onMessageCommitted: (result) => {
-        if (!result.appended || !isUserMessage(result.message)) {
+      onMessageCommitted: (result, acceptCompletion, committedTurn) => {
+        if (!isUserMessage(result.message)) {
+          return;
+        }
+        if (committedTurn) {
+          params.onCommitted?.(
+            { ...result, message: result.message, ...committedTurn },
+            acceptCompletion,
+          );
+        }
+        if (!result.appended) {
           return;
         }
         if (result.anchor) {
@@ -67,7 +122,7 @@ export async function persistUserTurnTranscript(
             beforeFreshMessageCommit: params.beforeFreshMessageCommit,
             prepareMessageAfterIdempotencyCheck: (candidate) =>
               preparePersistedUserTurnMessageForTranscriptWrite(
-                // SAFETY: candidates are the single user message this call submitted.
+                // SAFETY: Preparation receives the typed user message above; goal preparation only adds metadata.
                 candidate as PersistedUserTurnMessage,
                 params,
               ),
@@ -80,37 +135,23 @@ export async function persistUserTurnTranscript(
   if (!result || !isUserMessage(result.message)) {
     return undefined;
   }
-  let appended = { ...result, message: result.message };
-  if (!appended.anchor) {
-    const assertCurrent = captureOwnedTranscriptWriteAssertion(params);
-    await waitForSessionTranscriptProjection(params);
-    const anchor = await readActiveTranscriptEntryAnchorAsync({
-      ...params,
-      entryId: appended.messageId,
-    });
-    assertCurrent();
-    appended = anchor ? { ...appended, anchor } : appended;
-  }
-  if (!appended.anchor) {
+  const appended = await resolveCommittedUserTurnTranscript(
+    {
+      ...result,
+      message: result.message,
+      sessionEntry: turn.sessionEntry,
+      sessionTurnMutationResult: turn.sessionTurnMutationResult,
+    },
+    params,
+  );
+  if (!appended) {
     return undefined;
   }
   if (committedWithoutAnchor && appended.appended) {
     // A deferred projection supplies its anchor later; only the captured fresh
     // append may complete here, never an idempotent history match.
-    params.onOriginalInputCommitted?.({ message: appended.message, anchor: appended.anchor });
+    params.onOriginalInputCommitted?.({ message: appended.message, anchor: appended.admission });
   }
 
-  return {
-    ...appended,
-    admission: {
-      ...appended.anchor,
-      logicalTurnId: params.logicalTurnId ?? randomUUID(),
-      role: "user",
-    },
-    sessionEntry: turn.sessionEntry,
-    ...(turn.sessionTurnMutationResult
-      ? { sessionTurnMutationResult: turn.sessionTurnMutationResult }
-      : {}),
-    sessionFile: params.sessionKey,
-  };
+  return appended;
 }
