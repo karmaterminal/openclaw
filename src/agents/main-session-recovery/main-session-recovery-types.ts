@@ -120,6 +120,12 @@ export type MainSessionRecoveryCommand =
       observation: MainSessionRecoveryObservation;
       reason: string;
     }
+  | {
+      kind: "retire_live_interruption";
+      lifecycleGeneration: string;
+      now: number;
+      observation: MainSessionRecoveryObservation;
+    }
   | { kind: "doctor_repair"; now: number }
   | { kind: "clear" };
 
