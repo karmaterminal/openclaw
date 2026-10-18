@@ -296,6 +296,13 @@ function* createMessageToolSteps(
       const requestedSourceReplyFinal =
         typeof params.final === "boolean" ? params.final : undefined;
       delete params.final;
+      // A committed or gateway-queued send is visible wherever it went, so a replayed turn
+      // would repeat it. A progress post (final: false) leaves the turn's work unfinished.
+      const markMessageToolDelivered = () => {
+        if (requestedSourceReplyFinal !== false && options?.sessionId) {
+          resolveActiveReplyOperationForSessionId(options.sessionId)?.markMessageToolDelivered();
+        }
+      };
 
       const suppressedVisiblePayloadReason = sanitizeMessageToolVisiblePayload(
         params,
@@ -626,11 +633,7 @@ function* createMessageToolSteps(
               // of the same content collapses instead of minting a second send.
               const queuedDelivery = projectGatewayQueuedDeliveryResult(error);
               if (queuedDelivery) {
-                if (options?.sessionId) {
-                  resolveActiveReplyOperationForSessionId(
-                    options.sessionId,
-                  )?.markMessageToolDelivered();
-                }
+                markMessageToolDelivered();
                 return jsonResult(queuedDelivery);
               }
               decisions.recordTypedDenial(error);
@@ -688,9 +691,8 @@ function* createMessageToolSteps(
             currentSourceReply,
           );
           groupThread.record(result, sourceReply, currentSourceReply, requestedSourceReplyFinal);
-          if (messageDelivery?.status === "settled" && !result.dryRun && options?.sessionId) {
-            // A send the tool reports committed is visible wherever it went; a replay repeats it.
-            resolveActiveReplyOperationForSessionId(options.sessionId)?.markMessageToolDelivered();
+          if (embeddedMessageDelivery.isCommittedMessageSend(result, messageDelivery)) {
+            markMessageToolDelivered();
           }
           if (
             messageDelivery?.status === "settled" &&

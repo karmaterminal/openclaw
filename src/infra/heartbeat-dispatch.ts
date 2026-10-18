@@ -253,27 +253,7 @@ async function prepareHeartbeatDispatchReply(
       }
     }
     if (consume && settleEvents && preflight.shouldInspectPendingEvents) {
-      consumeSelectedSystemEventEntries(resolveSystemEventQueueKey(sessionKey, agentId), [
-        ...prepared.inspectedSystemEventsToConsume,
-        ...prepared.deferredGenericEvents,
-      ]);
-      if (prepared.hasExecCompletion && prepared.hasCronEvents) {
-        // Coalesced waiters share this turn, but exec and cron retain separate prompt/delivery policy.
-        requestHeartbeat({
-          source: "cron",
-          intent: "immediate",
-          reason: "cron:pending",
-          agentId,
-          sessionKey,
-          heartbeat: wake.heartbeat && {
-            ...(wake.heartbeat.target !== undefined ? { target: wake.heartbeat.target } : {}),
-            ...(wake.heartbeat.to !== undefined ? { to: wake.heartbeat.to } : {}),
-            ...(wake.heartbeat.accountId !== undefined
-              ? { accountId: wake.heartbeat.accountId }
-              : {}),
-          },
-        });
-      }
+      consumeSettledHeartbeatEvents(policy);
     }
     if (
       completedExecTurn &&
@@ -283,22 +263,7 @@ async function prepareHeartbeatDispatchReply(
         (policy.deliveryError && !policy.retryUnqueuedDelivery)) &&
       preflight.deferredEventEntries.length > 0
     ) {
-      const next = peekDeliverableSystemEventEntries(queueKey);
-      if (next.length > 0) {
-        const source = next.some(isExecCompletionSystemEvent)
-          ? "exec-event"
-          : next.some((entry) => entry.contextKey?.startsWith("cron:"))
-            ? "cron"
-            : "hook";
-        requestHeartbeat({
-          source,
-          intent: source === "exec-event" ? "event" : "immediate",
-          reason: source === "exec-event" ? source : source + ":pending",
-          heartbeat: wake.heartbeat,
-          agentId,
-          sessionKey,
-        });
-      }
+      requestDeferredHeartbeatEvents(policy);
     }
     policy.result =
       outcome.kind === "failure"
@@ -556,10 +521,58 @@ async function prepareHeartbeatDispatchReply(
   };
 }
 
+/** A settled turn consumes its inspected batch; coalesced cron work gets its own prompt turn. */
+function consumeSettledHeartbeatEvents(policy: HeartbeatDispatch): void {
+  const { agentId, heartbeat } = policy.wake;
+  const { sessionKey, inspectedSystemEventsToConsume, deferredGenericEvents } = policy.prepared;
+  consumeSelectedSystemEventEntries(resolveSystemEventQueueKey(sessionKey, agentId), [
+    ...inspectedSystemEventsToConsume,
+    ...deferredGenericEvents,
+  ]);
+  if (policy.prepared.hasExecCompletion && policy.prepared.hasCronEvents) {
+    // Coalesced waiters share this turn, but exec and cron retain separate prompt/delivery policy.
+    requestHeartbeat({
+      source: "cron",
+      intent: "immediate",
+      reason: "cron:pending",
+      agentId,
+      sessionKey,
+      heartbeat: heartbeat && {
+        ...(heartbeat.target !== undefined ? { target: heartbeat.target } : {}),
+        ...(heartbeat.to !== undefined ? { to: heartbeat.to } : {}),
+        ...(heartbeat.accountId !== undefined ? { accountId: heartbeat.accountId } : {}),
+      },
+    });
+  }
+}
+
+/** Work deferred past a completed exec turn's batch wakes its own heartbeat. */
+function requestDeferredHeartbeatEvents(policy: HeartbeatDispatch): void {
+  const { agentId, heartbeat } = policy.wake;
+  const { sessionKey } = policy.prepared;
+  const next = peekDeliverableSystemEventEntries(resolveSystemEventQueueKey(sessionKey, agentId));
+  if (next.length === 0) {
+    return;
+  }
+  const source = next.some(isExecCompletionSystemEvent)
+    ? "exec-event"
+    : next.some((entry) => entry.contextKey?.startsWith("cron:"))
+      ? "cron"
+      : "hook";
+  requestHeartbeat({
+    source,
+    intent: source === "exec-event" ? "event" : "immediate",
+    reason: source === "exec-event" ? source : source + ":pending",
+    heartbeat,
+    agentId,
+    sessionKey,
+  });
+}
+
 /**
- * A superseded heartbeat normally keeps its events for a retry. One that already posted
- * through the message tool settles them instead: replaying would post its answer again
- * (#1477). Events outside this turn's inspected batch wait for the next heartbeat.
+ * A superseded heartbeat normally keeps its events for a retry. One that already answered
+ * through the message tool settles them like a completed turn instead: replaying would
+ * post its answer again (#1477).
  */
 export function settleDeliveredSupersededHeartbeat(
   policy: HeartbeatDispatch,
@@ -571,13 +584,12 @@ export function settleDeliveredSupersededHeartbeat(
   ) {
     return undefined;
   }
-  const { agentId, startedAt, preflight } = policy.wake;
-  const { sessionKey, inspectedSystemEventsToConsume, deferredGenericEvents } = policy.prepared;
+  const { startedAt, preflight } = policy.wake;
   if (preflight.shouldInspectPendingEvents) {
-    consumeSelectedSystemEventEntries(resolveSystemEventQueueKey(sessionKey, agentId), [
-      ...inspectedSystemEventsToConsume,
-      ...deferredGenericEvents,
-    ]);
+    consumeSettledHeartbeatEvents(policy);
+  }
+  if (policy.prepared.hasExecCompletion && preflight.deferredEventEntries.length > 0) {
+    requestDeferredHeartbeatEvents(policy);
   }
   const durationMs = Date.now() - startedAt;
   emitHeartbeatEvent({ status: "sent", durationMs, accountId: policy.prepared.delivery.accountId });
