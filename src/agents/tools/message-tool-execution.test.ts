@@ -235,6 +235,7 @@ describe("registered message action source completion", () => {
         let result;
         if (mode === "throw") {
           await expect(execution).rejects.toThrow("synthetic upload failure");
+          expect(operation.messageToolDelivered).toBe(false);
         } else {
           result = await execution;
         }
@@ -251,6 +252,8 @@ describe("registered message action source completion", () => {
           );
           expect(deliveryFact?.sourceReplyDelivered).toBe(expected);
           expect(operation.sourceReplyDelivered).toBe(expected === true);
+          // #1477: every committed send counts as delivered, wherever it went.
+          expect(operation.messageToolDelivered).toBe(deliveryFact?.status === "settled");
           if (expected) {
             expect(deliveryFact).toMatchObject({
               status: "settled",
@@ -267,13 +270,14 @@ describe("registered message action source completion", () => {
   );
 });
 
-function createFailingMessageTool(error: Error) {
+function createFailingMessageTool(error: Error, sessionId?: string) {
   const runMessageAction = vi.fn(async () => {
     throw error;
   });
   const tool = createMessageTool({
     config: {},
     runId: "run-queued-delivery",
+    sessionId,
     preparedMessageToolCatalog: EMPTY_CATALOG,
     sourceReplyOnly: true,
     sourceReplyDeliveryMode: "message_tool_only",
@@ -300,24 +304,94 @@ describe("message tool queued gateway delivery", () => {
       message: "connect ECONNREFUSED",
       ...(queued ? { details: { code: GatewayErrorDetailCodes.OUTBOUND_DELIVERY_QUEUED } } : {}),
     });
-    const { tool, runMessageAction } = createFailingMessageTool(error);
-    const pending = tool.execute("send", { action: "send", message: "hello" });
-    if (!queued) {
-      await expect(pending).rejects.toBe(error);
-      return;
-    }
-    expect(await pending).toMatchObject({
-      details: {
-        status: "delivery_queued",
-        delivered: false,
-        message:
-          "Delivery is pending: connect ECONNREFUSED. The gateway owns retry or reconciliation; delivery is not yet confirmed. Do not resend it.",
-      },
+    // #1477: the gateway owns a queued send durably, so a replayed turn would repeat it.
+    const operation = createReplyOperation({
+      sessionKey: "agent:main:main",
+      sessionId: `queued-delivery-${queued}`,
+      resetTriggered: false,
     });
-    await tool.execute("send-again", { action: "send", message: "hello" });
-    expect(sentIdempotencyKey(runMessageAction, 0)).toBeDefined();
-    expect(sentIdempotencyKey(runMessageAction, 1)).toBe(sentIdempotencyKey(runMessageAction, 0));
+    try {
+      const { tool, runMessageAction } = createFailingMessageTool(error, operation.sessionId);
+      const pending = tool.execute("send", { action: "send", message: "hello" });
+      if (!queued) {
+        await expect(pending).rejects.toBe(error);
+        expect(operation.messageToolDelivered).toBe(false);
+        return;
+      }
+      const queuedResult = await pending;
+      expect(operation.messageToolDelivered).toBe(true);
+      expect(queuedResult).toMatchObject({
+        details: {
+          status: "delivery_queued",
+          delivered: false,
+          message:
+            "Delivery is pending: connect ECONNREFUSED. The gateway owns retry or reconciliation; delivery is not yet confirmed. Do not resend it.",
+        },
+      });
+      await tool.execute("send-again", { action: "send", message: "hello" });
+      expect(sentIdempotencyKey(runMessageAction, 0)).toBeDefined();
+      expect(sentIdempotencyKey(runMessageAction, 1)).toBe(sentIdempotencyKey(runMessageAction, 0));
+    } finally {
+      operation.complete();
+    }
   });
+});
+
+describe("message tool delivery on the turn's reply operation", () => {
+  it.each([
+    { mode: "send", delivered: true },
+    { mode: "dry run", delivered: false },
+  ] as const)(
+    "records a core $mode to another destination as delivered=$delivered",
+    async ({ mode, delivered }) => {
+      // #1477: a heartbeat's post to any destination would repeat if its turn replayed.
+      const dryRun = mode === "dry run";
+      const to = "telegram:elsewhere";
+      const sendResult = {
+        channel: "telegram",
+        to,
+        via: "direct" as const,
+        mediaUrl: null,
+        deliveryStatus: "sent" as const,
+        dryRun,
+        result: { channel: "telegram", messageId: "message-elsewhere" },
+      };
+      const runMessageAction = vi.fn(async (): Promise<MessageActionResult> => ({
+        kind: "send",
+        action: "send",
+        channel: "telegram",
+        to,
+        handledBy: "core",
+        payload: sendResult,
+        sendResult,
+        dryRun,
+      }));
+      const operation = createReplyOperation({
+        sessionKey: "agent:main:main",
+        sessionId: `delivered-elsewhere-${mode}`,
+        resetTriggered: false,
+      });
+      try {
+        const tool = createMessageTool({
+          config: {},
+          runId: "run-delivered-elsewhere",
+          sessionId: operation.sessionId,
+          preparedMessageToolCatalog: EMPTY_CATALOG,
+          currentChannelProvider: "telegram",
+          currentChannelId: "chat-123",
+          currentMessagingTarget: "telegram:chat-123",
+          ...secretDeps,
+          runMessageAction,
+        });
+        await tool.execute("send-elsewhere", { action: "send", target: to, message: "status" });
+        expect(runMessageAction).toHaveBeenCalledOnce();
+        expect(operation.sourceReplyDelivered).toBe(false);
+        expect(operation.messageToolDelivered).toBe(delivered);
+      } finally {
+        operation.complete();
+      }
+    },
+  );
 });
 
 it.each(["read", "edit", "delete", "pin", "unpin"] as const)(
