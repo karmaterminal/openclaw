@@ -19,6 +19,7 @@ import {
 import { isAgentHarnessPreflightError } from "../../agents/harness/errors.js";
 import { LiveSessionModelSwitchError } from "../../agents/live-model-switch-error.js";
 import { resolveReplyExpectation } from "../../agents/reply-completion.js";
+import { isSqliteTranscriptMutationConflict } from "../../config/sessions/session-mutation-conflict-error.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -143,6 +144,12 @@ export async function handleAgentExecutionError(params: {
     kind: "final" as const,
     payload: markAgentRunFailureReplyPayload({ text }),
   });
+  if (turn.isHeartbeat && isSqliteTranscriptMutationConflict(err)) {
+    // A newer writer, such as room input, moved the transcript under this background
+    // turn, and its prepared reply cannot rebase over it. Yield exactly as visible-turn
+    // preemption does: no failure reply and no interrupted run to recover (#1475).
+    turn.replyOperation?.supersede();
+  }
   const replyOperationAbortAction = resolveReplyOperationAbortAction(err);
   if (replyOperationAbortAction) {
     return replyOperationAbortAction;
