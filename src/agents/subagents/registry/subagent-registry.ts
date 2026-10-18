@@ -100,7 +100,7 @@ export async function prepareSubagentSessionCleanupRevocation(
   childAgentId?: string,
   assertCurrent?: () => void,
 ): Promise<() => void> {
-  await subagentRestorer.restoreOnce(undefined, true);
+  await subagentRestorer.restoreOnce(true);
   await subagentLifecycleController.revokeTerminalSessionEffects(
     getSubagentRunsForChildSession(sessionKey, childAgentId),
     assertCurrent,
@@ -713,7 +713,7 @@ export { prependAgentSteeringPrompt };
 
 const publicApi = createSubagentRegistryPublicApi({
   runs: subagentRuns,
-  restoreOnce: (context) => subagentRestorer.restoreOnce(undefined, true, context),
+  restoreOnce: (context) => subagentRestorer.restoreOnce(true, context),
   startAnnounceCleanup: startSubagentAnnounceCleanupFlow,
   settleRequesterTurn: settleRequesterTurnAfterSessionSpawns,
   markRequesterYielded: subagentLifecycleController.markRequesterTurnYielded,

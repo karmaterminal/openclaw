@@ -89,8 +89,10 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
           isCurrent: deleteSessionOnMiss ? params.isCurrent : isAbortCurrent,
           sessionCleanup: deleteSessionOnMiss ? "delete-on-abort-miss" : "preserve",
           ...(callGateway ? { callGateway } : {}),
-          retry: false,
-        });
+        }).then(
+          () => true,
+          () => false,
+        );
         if (!terminated) {
           throw new Error(
             `Accepted child termination was not confirmed: ${params.acceptedChildRunId}`,

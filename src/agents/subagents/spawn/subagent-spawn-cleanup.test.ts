@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { callGateway } from "../../../gateway/call.js";
-import { withPluginRuntimeGatewayRequestScope } from "../../../plugins/runtime/gateway-request-scope.js";
 import {
+  cleanupFailedSpawnBeforeAgentStart,
   cleanupProvisionalSession,
   terminateAcceptedCollectorRun,
 } from "./subagent-spawn-cleanup.js";
@@ -20,7 +20,7 @@ function sessionChangedError(): Error {
 }
 
 describe("subagent spawn cleanup identity", () => {
-  it("returns truthful one-shot termination confirmation", async () => {
+  it("resolves only when termination is confirmed and rejects after one failed attempt", async () => {
     const confirmedGateway = vi.fn(async () => ({
       ok: true,
       aborted: true,
@@ -30,11 +30,10 @@ describe("subagent spawn cleanup identity", () => {
       terminateAcceptedCollectorRun({
         childSessionKey: "agent:main:subagent:child",
         gatewayRunId: "gateway-run",
-        retry: false,
         sessionCleanup: "preserve",
         callGateway: confirmedGateway,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBeUndefined();
 
     const unavailableGateway = vi.fn(async () => {
       throw new Error("gateway unavailable");
@@ -43,11 +42,10 @@ describe("subagent spawn cleanup identity", () => {
       terminateAcceptedCollectorRun({
         childSessionKey: "agent:main:subagent:child",
         gatewayRunId: "gateway-run",
-        retry: false,
         sessionCleanup: "preserve",
         callGateway: unavailableGateway,
       }),
-    ).resolves.toBe(false);
+    ).rejects.toThrow("gateway unavailable");
     expect(unavailableGateway).toHaveBeenCalledOnce();
   });
 
@@ -61,6 +59,46 @@ describe("subagent spawn cleanup identity", () => {
       }),
     ).resolves.toBe(false);
 
+    expect(callGateway).not.toHaveBeenCalled();
+  });
+
+  // An abort miss falls through to exact-session deletion only for a frozen identity;
+  // deleting by key alone could remove a successor generation.
+  it("never deletes by key alone when the accepted run's session identity is not frozen", async () => {
+    const callGateway = vi.fn(async (_request: GatewayRequest) => ({
+      ok: true,
+      aborted: false,
+      runIds: [],
+    }));
+
+    await expect(
+      terminateAcceptedCollectorRun({
+        childSessionKey: "agent:main:subagent:child",
+        gatewayRunId: "gateway-run",
+        expectedSessionId: "session-id",
+        callGateway,
+      }),
+    ).rejects.toThrow("Gateway did not confirm accepted child termination");
+
+    expect(callGateway).toHaveBeenCalledOnce();
+    expect(callGateway.mock.calls[0]?.[0]).toMatchObject({ method: "chat.abort" });
+  });
+
+  it("skips waited provisional deletion without a frozen session identity", async () => {
+    const callGateway = vi.fn();
+    const waitForCleanup = vi.fn(async () => {});
+
+    await expect(
+      cleanupFailedSpawnBeforeAgentStart({
+        childSessionKey: "agent:main:subagent:child",
+        waitForSessionDeletion: true,
+        waitForCleanup,
+        expectedLifecycleRevision: "session-revision",
+        callGateway,
+      }),
+    ).resolves.toEqual({ attachmentsRemoved: true, sessionDeleted: false });
+
+    expect(waitForCleanup).not.toHaveBeenCalled();
     expect(callGateway).not.toHaveBeenCalled();
   });
 
@@ -89,8 +127,7 @@ describe("subagent spawn cleanup identity", () => {
         ([request]) => (request as { method?: string }).method === "sessions.delete",
       ),
     ).toHaveLength(0);
-    // Bounded: the conjunctive shouldRetry short-circuits on the flipped predicate,
-    // so there is no second abort attempt either.
+    // Bounded: termination makes a single attempt, so there is no second abort either.
     expect(
       callGateway.mock.calls.filter(
         ([request]) => (request as { method?: string }).method === "chat.abort",
@@ -160,47 +197,17 @@ describe("subagent spawn cleanup identity", () => {
     expect(callGateway).toHaveBeenCalledOnce();
   });
 
-  it("retries abort without deleting a durable session after a gateway error", async () => {
-    const callGateway = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("gateway unavailable"))
-      .mockResolvedValueOnce({ ok: true, aborted: false, runIds: [] });
-
-    await terminateAcceptedCollectorRun({
-      childSessionKey: "agent:main:subagent:child",
-      gatewayRunId: "gateway-run",
-      sessionCleanup: "preserve",
-      callGateway,
-    });
-
-    expect(callGateway).toHaveBeenCalledTimes(2);
-    expect(callGateway).toHaveBeenNthCalledWith(2, {
-      method: "chat.abort",
-      params: {
-        sessionKey: "agent:main:subagent:child",
-        runId: "gateway-run",
-      },
-      timeoutMs: 60_000,
-    });
-  });
-
-  it("stops accepted-run cleanup when its Gateway request owner is retired", async () => {
-    const callGateway = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("Gateway request owner is retired"))
-      .mockResolvedValue({ aborted: false, runIds: [] });
-
-    await withPluginRuntimeGatewayRequestScope(
-      { resolveGatewayContext: () => undefined, isWebchatConnect: () => false },
-      () =>
-        terminateAcceptedCollectorRun({
-          childSessionKey: "agent:main:subagent:child",
-          gatewayRunId: "gateway-run",
-          sessionCleanup: "preserve",
-          callGateway,
-        }),
-    );
-
+  it("reports an abort failure without deleting or retrying a durable session", async () => {
+    const failure = new Error("gateway unavailable");
+    const callGateway = vi.fn().mockRejectedValue(failure);
+    await expect(
+      terminateAcceptedCollectorRun({
+        childSessionKey: "agent:main:subagent:child",
+        gatewayRunId: "gateway-run",
+        sessionCleanup: "preserve",
+        callGateway,
+      }),
+    ).rejects.toBe(failure);
     expect(callGateway).toHaveBeenCalledOnce();
   });
 
@@ -210,18 +217,11 @@ describe("subagent spawn cleanup identity", () => {
       .mockResolvedValueOnce({ ok: true, aborted: true, runIds: ["different-run"] })
       .mockRejectedValueOnce(sessionChangedError());
 
-    // Guards the boolean return contract. terminateAcceptedCollectorRun was
-    // previously declared Promise<void> and this case asserted toBeUndefined().
-    // It now returns Promise<boolean>, and that verdict is load-bearing: it is consumed by
-    // subagent-spawn-rollback, subagent-registry-sweep-kill (both call sites), and
-    // returned by subagent-registry. If this assertion has to go back to
-    // toBeUndefined(), the boolean contract was dropped and those consumers are
-    // silently reading undefined.
-    //
-    // true is the truthful verdict here, not a success claim about deletion: the
+    // Termination resolves when the accepted run is stopped or provably no longer
+    // ours, and rejects when that is unconfirmed; the rollback, sweep and collector
+    // consumers translate the rejection into their kept-custody outcome. Here the
     // abort confirmed a DIFFERENT run, so deletion was attempted and refused with
-    // session-changed, which proves a successor owns the session. The accepted run
-    // is therefore no longer ours to clean up.
+    // session-changed, which proves a successor owns the session: resolved.
     await expect(
       terminateAcceptedCollectorRun({
         childSessionKey: "agent:main:subagent:child",
@@ -230,7 +230,7 @@ describe("subagent spawn cleanup identity", () => {
         expectedLifecycleRevision: "session-revision",
         callGateway,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBeUndefined();
 
     // Unchanged and the point of the case: bounded at exactly one abort plus one
     // guarded deletion, and no successor-owned session was deleted.
