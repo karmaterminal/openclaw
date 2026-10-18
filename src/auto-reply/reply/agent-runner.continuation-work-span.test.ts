@@ -206,7 +206,8 @@ vi.mock("../../config/sessions/session-accessor.sqlite-entry.js", async (importO
         });
         return next ? { ...next } : null;
       }),
-    loadSessionEntryForAdmission: loadCurrentEntry,
+    // Admission stays real: restart recovery acquires the session actor through its
+    // database claim (#168607), and every store-backed turn here owns a real row.
   };
 });
 
