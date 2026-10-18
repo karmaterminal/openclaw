@@ -321,9 +321,11 @@ export function createSessionActorWorker(
                       finalFrames = [frame, next];
                       break;
                     }
+                    // Frames carry only their target; the final commit admission
+                    // still discloses the complete postimage for authorization.
                     admit("transaction", {
                       kind: "session-actor-admission",
-                      snapshot: projectSessionActorHotState(working),
+                      snapshot: { target: working.hot.target },
                       publication: {
                         kind: "session-actor-outcome",
                         transfer: { handle, frames: [frame] },
