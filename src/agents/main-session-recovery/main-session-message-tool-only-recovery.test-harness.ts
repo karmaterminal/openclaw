@@ -235,4 +235,84 @@ export function registerMessageToolOnlyRecoveryCases(
       });
     },
   );
+  it.each([
+    { gateway: "the live Gateway", restart: false },
+    { gateway: "an earlier Gateway generation", restart: true },
+  ] as const)(
+    "tombstones a message-tool-only room only for restart work: failed turn retires its fence after marking on $gateway",
+    async (variant) => {
+      // #1477 review of #1475 D3b: reconciliation marks the row while the failed turn
+      // is still settling. The turn's own error terminal then lands and retires its
+      // fence, so the recovery pass observes a marked row with no open fence.
+      await withEnvAsync({ OPENCLAW_STATE_DIR: tmpDir() }, async () => {
+        const lifecycleGeneration = getAgentEventLifecycleGeneration();
+        const runGeneration = variant.restart ? "earlier-gateway-generation" : lifecycleGeneration;
+        const { sessionsDir, sessionKey, storePath, readEntry } = await makeMainSessionFixture({
+          sessionKey: "agent:main:discord:channel:room",
+          status: undefined,
+          abortedLastRun: false,
+          mainRestartRecovery: undefined,
+          lifecycleRunId: "background-run",
+          restartRecoveryRuns: [{ runId: "background-run", lifecycleGeneration: runGeneration }],
+          restartRecoveryDeliveryRunId: "background-run",
+          restartRecoverySourceReplyDeliveryMode: "message_tool_only",
+        });
+        await writeTranscript(sessionsDir, "main-session", [
+          { role: "user", content: "a room message the background turn raced" },
+        ]);
+        await expect(
+          markOrphanedMainSessionForRecovery({
+            target: { agentId: "main", sessionKey, storePath },
+            expectedSessionId: "main-session",
+          }),
+        ).resolves.toEqual({ marked: 1, skipped: 0 });
+        await persistGatewaySessionLifecycleEvent({
+          sessionKey,
+          agentId: "main",
+          event: {
+            ts: Date.now(),
+            sessionId: "main-session",
+            runId: "background-run",
+            lifecycleGeneration: runGeneration,
+            data: {
+              phase: "error",
+              error:
+                "SqliteTranscriptMutationConflictError: SQLite transcript changed while preparing rewrite for main-session",
+            },
+          },
+        });
+        if (variant.restart) {
+          // A late terminal from the interrupted generation retires only its own fence.
+          expect(readEntry()).toMatchObject({ abortedLastRun: true, status: "interrupted" });
+          expect(readEntry()?.restartRecoveryRuns).toBeUndefined();
+        }
+
+        await retryRecovery({
+          agentId: "main",
+          expectedSessionId: "main-session",
+          sessionKey,
+          storePath,
+          stateDir: tmpDir(),
+        });
+        const settled = readEntry();
+        if (variant.restart) {
+          expect(settled?.mainRestartRecovery?.tombstone).toEqual({
+            reason: "message-tool-only recovery authority is unavailable",
+          });
+          return;
+        }
+        expect(settled?.mainRestartRecovery?.tombstone).toBeUndefined();
+        expect(settled).toMatchObject({ abortedLastRun: false, status: "failed" });
+        expect(sendRecoveryNotice).not.toHaveBeenCalled();
+        await expect(
+          claimMainSessionRecoveryOwner({
+            lifecycleGeneration,
+            sessionId: "main-session",
+            runId: "next-room-run",
+            target: { agentId: "main", sessionKey, storePath },
+          }),
+        ).resolves.toMatchObject({ kind: "not_required" });
+      });
+    },
+  );
 }
