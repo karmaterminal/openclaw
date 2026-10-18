@@ -177,7 +177,7 @@ export function createSessionActor(params: {
     observe?: (
       native: NativeAdmission,
       stage: "transaction" | "commit",
-      state: SessionActorHotState,
+      state: SessionActorHotState | undefined,
       final: boolean,
       transfer: unknown,
     ) => void,
@@ -205,25 +205,31 @@ export function createSessionActor(params: {
         ) {
           throw new Error("Session actor admission belongs to another target");
         }
-        // SAFETY: The paired actor kernel supplies this full snapshot on its private admission port.
-        const snapshot = structuredClone(facts.snapshot) as SessionActorHotState;
         // Oversized outcomes travel as framed actor publications; authorities see only kernel facts.
         const outcome =
           isRecord(facts.publication) && facts.publication.kind === "session-actor-outcome"
             ? facts.publication
             : undefined;
-        authority.authorize(
-          request.stage,
-          structuredClone(snapshot),
-          outcome ? outcome.publication : facts.publication,
-        );
-        observe?.(
-          native,
-          request.stage,
-          structuredClone(snapshot),
-          facts.final === true,
-          outcome?.transfer,
-        );
+        if (outcome && request.stage === "transaction") {
+          // An intermediate frame adds no state to authorize; the commit grant below and the
+          // final commit admission still check live authority against the complete postimage.
+          observe?.(native, request.stage, undefined, false, outcome.transfer);
+        } else {
+          // SAFETY: The paired actor kernel supplies this full snapshot on its private admission port.
+          const snapshot = structuredClone(facts.snapshot) as SessionActorHotState;
+          authority.authorize(
+            request.stage,
+            structuredClone(snapshot),
+            outcome ? outcome.publication : facts.publication,
+          );
+          observe?.(
+            native,
+            request.stage,
+            structuredClone(snapshot),
+            facts.final === true,
+            outcome?.transfer,
+          );
+        }
       } else if (
         actorAdmissionSeen &&
         (request.stage === "commit" || (request.stage === "transaction" && facts !== undefined))
@@ -451,10 +457,10 @@ export function createSessionActor(params: {
             if (outcomeTransfer !== undefined) {
               transfer.accept(outcomeTransfer);
             }
-            if (stage === "transaction") {
+            if (stage === "transaction" && snapshot) {
               selected.transactionSnapshot ??= snapshot;
             }
-            if (stage === "commit" && final) {
+            if (stage === "commit" && final && snapshot) {
               selected.commitSnapshot = snapshot;
             }
           }),
