@@ -25,8 +25,9 @@ import { requestHeartbeat } from "./heartbeat-wake.js";
 import { isRetryableSessionEventWakeReason } from "./session-event-wake.js";
 import { enqueueSystemEvent, peekSystemEvents, resetSystemEventsForTest } from "./system-events.js";
 
-// mock-isolation: Only inference is synthetic; admission, the reply pipeline, its error
-// handling, heartbeat settlement and channel delivery stay real.
+// Admission, the reply pipeline, its error handling, heartbeat settlement and channel
+// delivery stay real.
+// mock-isolation: only inference is synthetic
 vi.mock("../agents/embedded-agent-runner/run.js", () => ({ runEmbeddedAgent: vi.fn() }));
 // mock-isolation: Observe follow-up wakes; every request still reaches the real wake owner.
 vi.mock("./heartbeat-wake.js", async (importOriginal) => {
