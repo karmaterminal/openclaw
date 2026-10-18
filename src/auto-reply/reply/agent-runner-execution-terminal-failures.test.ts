@@ -385,6 +385,50 @@ describe("executeAgentTurn: terminal failures", () => {
     },
   );
 
+  it("spends a heartbeat's yield budget only when the turn actually yields", async () => {
+    // #1477 review: a conflict whose operation can no longer be superseded settles as a
+    // failure and leaves the session's yield budget for a later heartbeat.
+    const sessionKey = "agent:main:discord:channel:budget-room";
+    const { executeAgentTurn } = await import("./agent-runner-execution.js");
+    const conflictingHeartbeat = async (supersedable: boolean) => {
+      const replyOperation = createReplyOperation({
+        sessionKey,
+        sessionId: "budget-session",
+        resetTriggered: false,
+        turnKind: "heartbeat",
+      });
+      replyOperation.setPhase("running");
+      if (!supersedable) {
+        vi.spyOn(replyOperation, "supersede").mockReturnValue(false);
+      }
+      state.runEmbeddedAgentMock.mockImplementationOnce(async (params: EmbeddedAgentParams) => {
+        await params.onAgentEvent?.({ stream: "lifecycle", data: { phase: "start" } });
+        params.onExecutionPhase?.({
+          phase: "model_call_started",
+          provider: "openai",
+          model: "gpt-5.4",
+        });
+        throw new SqliteTranscriptMutationConflictError("budget-session");
+      });
+      try {
+        return await executeAgentTurn({
+          ...createMinimalRunAgentTurnParams({ replyOperation }),
+          sessionKey,
+          isHeartbeat: true,
+        });
+      } finally {
+        replyOperation.complete();
+      }
+    };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      expect((await conflictingHeartbeat(false)).outcome.kind).toBe("rejected");
+    }
+    expect((await conflictingHeartbeat(true)).outcome).toEqual({
+      kind: "aborted",
+      reason: "superseded",
+    });
+  });
+
   it.for([false, true])(
     "preserves the prior terminal row when cancellation precedes execution (started=%s)",
     async (started, { signal }) => {

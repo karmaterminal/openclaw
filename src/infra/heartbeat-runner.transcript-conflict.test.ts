@@ -5,6 +5,7 @@ import { heartbeatRunnerTelegramPlugin } from "../../test/helpers/infra/heartbea
 import type { RunEmbeddedAgentParams } from "../agents/embedded-agent-runner/run/params.js";
 import { runEmbeddedAgent } from "../agents/embedded-agent.js";
 import * as runtimePlugins from "../agents/runtime-plugins.js";
+import { createCommittedSendMessageTool } from "../agents/tools/message-tool-committed-send.test-support.js";
 import { resolveActiveReplyOperationForSessionId } from "../auto-reply/reply/reply-run-registry.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
@@ -20,12 +21,18 @@ import { createTestRegistry } from "../test-utils/channel-plugins.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
 import { runHeartbeatOnceCore as runHeartbeatOnce } from "./heartbeat-runner-run.js";
+import { requestHeartbeat } from "./heartbeat-wake.js";
 import { isRetryableSessionEventWakeReason } from "./session-event-wake.js";
 import { enqueueSystemEvent, peekSystemEvents, resetSystemEventsForTest } from "./system-events.js";
 
 // mock-isolation: Only inference is synthetic; admission, the reply pipeline, its error
 // handling, heartbeat settlement and channel delivery stay real.
 vi.mock("../agents/embedded-agent-runner/run.js", () => ({ runEmbeddedAgent: vi.fn() }));
+// mock-isolation: Observe follow-up wakes; every request still reaches the real wake owner.
+vi.mock("./heartbeat-wake.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./heartbeat-wake.js")>();
+  return { ...actual, requestHeartbeat: vi.fn(actual.requestHeartbeat) };
+});
 const model = vi.mocked(runEmbeddedAgent);
 await Promise.all([
   import("../auto-reply/dispatch.js"),
@@ -46,6 +53,7 @@ const DESTINATION = "-1001234567890";
 async function withConflictingHeartbeat(
   label: string,
   run: (fixture: {
+    cfg: OpenClawConfig;
     sessionKey: string;
     heartbeat: () => ReturnType<typeof runHeartbeatOnce>;
     channelSends: ReturnType<typeof vi.fn>;
@@ -95,6 +103,7 @@ async function withConflictingHeartbeat(
     enqueueSystemEvent(REMINDER, { sessionKey, contextKey: "cron:offsite-backup" });
     try {
       await run({
+        cfg,
         sessionKey,
         channelSends,
         heartbeat: () =>
@@ -122,27 +131,41 @@ async function startTurn(params: RunEmbeddedAgentParams) {
   await params.onAgentEvent?.({ stream: "lifecycle", data: { phase: "start" } });
 }
 
+/** One post through the real message tool, as the model would make it. */
+async function postThroughMessageTool(
+  params: RunEmbeddedAgentParams,
+  args: { target?: string; final?: false },
+) {
+  const { tool, sends } = createCommittedSendMessageTool({
+    sessionId: params.sessionId,
+    runId: params.runId,
+    currentTarget: DESTINATION,
+  });
+  await tool.execute("heartbeat-post", { action: "send", message: "Drive rotated.", ...args });
+  return sends.mock.calls.length;
+}
+
 it.each([
-  { steered: false, label: "answered" },
-  { steered: true, label: "answered-then-steered" },
+  { label: "answered", steered: false },
+  { label: "answered-then-steered", steered: true },
+  { label: "answered-elsewhere", steered: false, target: "telegram:ops-log" },
 ] as const)(
   "does not replay a heartbeat that answered through the message tool before losing its transcript ($label)",
-  async ({ steered, label }) => {
+  async ({ label, steered, ...post }) => {
     await withConflictingHeartbeat(label, async ({ sessionKey, heartbeat, channelSends }) => {
       // #1477 F1: the reminder's only visible effect is this message-tool post.
-      const posts: string[] = [];
+      let posts = 0;
       model.mockReset().mockImplementation(async (params) => {
         await startTurn(params);
         if (!params.prompt.includes(REMINDER)) {
           return { payloads: [{ text: "HEARTBEAT_OK" }], meta: { durationMs: 1 } };
         }
-        posts.push(posts.length === 0 ? "answer" : "replayed answer");
-        const operation = resolveActiveReplyOperationForSessionId(params.sessionId);
-        // The message tool records the delivered answer on its reply operation.
-        operation?.markSourceReplyDelivered();
+        posts += await postThroughMessageTool(params, post);
         if (steered) {
           // Room input steered into the running heartbeat after its answer.
-          operation?.markSteeredInputAccepted({ inboundAudio: false });
+          resolveActiveReplyOperationForSessionId(params.sessionId)?.markSteeredInputAccepted({
+            inboundAudio: false,
+          });
         }
         throw new SqliteTranscriptMutationConflictError(params.sessionId);
       });
@@ -150,12 +173,39 @@ it.each([
       await heartbeat();
       // A retry or the next heartbeat finds the answered reminder already settled.
       await heartbeat();
-      expect(posts).toEqual(["answer"]);
+      expect(posts).toBe(1);
       expect(channelSends).not.toHaveBeenCalled();
       expect(peekSystemEvents(sessionKey)).toEqual([]);
     });
   },
 );
+
+it("re-wakes coalesced work that an answered, superseded heartbeat did not inspect", async () => {
+  await withConflictingHeartbeat("answered-coalesced", async ({ cfg, sessionKey }) => {
+    // #1477 review: an exec completion owns this turn's prompt; the coalesced cron reminder
+    // is not part of its batch and must get its own prompt turn, as after a settled turn.
+    const completion = "Exec completed (nightly-backup, code 0) :: backup verified";
+    enqueueSystemEvent(completion, { sessionKey, contextKey: "exec:nightly-backup" });
+    model.mockReset().mockImplementation(async (params) => {
+      await startTurn(params);
+      await postThroughMessageTool(params, {});
+      throw new SqliteTranscriptMutationConflictError(params.sessionId);
+    });
+    vi.mocked(requestHeartbeat).mockClear();
+    await runHeartbeatOnce({
+      cfg,
+      agentId: "main",
+      sessionKey,
+      source: "exec-event",
+      intent: "event",
+      reason: "exec-event",
+    });
+    expect(peekSystemEvents(sessionKey)).toEqual([REMINDER]);
+    expect(vi.mocked(requestHeartbeat)).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "cron", reason: "cron:pending", sessionKey }),
+    );
+  });
+});
 
 it("stops yielding a heartbeat that keeps losing its transcript after a small retry budget", async () => {
   await withConflictingHeartbeat(
