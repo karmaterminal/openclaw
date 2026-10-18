@@ -361,15 +361,17 @@ describe("executeAgentTurn: terminal failures", () => {
           entry: { updatedAt: 1 },
           event: { ...terminals[0]!, ts: 2 },
         });
-        if (!isHeartbeat || delivered) {
-          // Visible input owns its turn, and a heartbeat that already answered consumes its
-          // events through failure settlement instead of replaying them; neither yields.
+        if (!isHeartbeat) {
+          // Visible input owns its turn and fails visibly to its sender.
           expect(result.outcome.kind).toBe("rejected");
           expect(patch).toMatchObject({ status: "failed", abortedLastRun: false });
           return;
         }
         // The background turn yields to the newer writer: no failure copy in the room and
-        // no interrupted run left behind for restart recovery.
+        // no interrupted run left behind for restart recovery. Failure settlement would not
+        // consume a heartbeat's events either, so one that already answered yields too and
+        // its heartbeat owner settles the answered events (#1477).
+        expect(replyOperation.messageToolDelivered).toBe(delivered);
         expect(result.outcome).toEqual({ kind: "aborted", reason: "superseded" });
         expect(replyOperation.result).toEqual({
           kind: "aborted",
