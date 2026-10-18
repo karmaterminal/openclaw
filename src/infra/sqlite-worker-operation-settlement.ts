@@ -80,19 +80,35 @@ export type RetainedWorkerTransactionAdmission = {
   readonly settled: Promise<SqliteWorkerOperationSettlement>;
 };
 
+export type CapturedSqliteWorkerCommitReceipt =
+  | { kind: "inline"; facts: unknown }
+  | { kind: "oversized"; serialized: Uint8Array };
+
+export function captureSqliteWorkerCommitReceipt(
+  facts: unknown,
+): CapturedSqliteWorkerCommitReceipt {
+  const serialized = serialize(facts);
+  if (serialized.byteLength > SQLITE_WORKER_MAX_MESSAGE_BYTES) {
+    return { kind: "oversized", serialized };
+  }
+  // Keep the size and detached facts together so transport selection and native
+  // publication use one capture, even if the producer mutates its result later.
+  return { kind: "inline", facts: structuredClone(facts) };
+}
+
 export function deferSqliteWorkerNativeCommitReceipt(
   owner: SqliteWorkerOperationContext,
   database: DatabaseSync,
-  facts: unknown,
+  captured: CapturedSqliteWorkerCommitReceipt,
   delivery: "commit" | "settlement",
 ): void {
-  if (serialize(facts).byteLength > SQLITE_WORKER_MAX_MESSAGE_BYTES) {
+  if (captured.kind === "oversized") {
     throw new SqliteWorkerError(
       "SQLite worker commit receipt exceeds the transport limit",
       "overloaded",
     );
   }
-  const captured = structuredClone(facts);
+  const { facts } = captured;
   const operationId = nativeCommitReceipts.get(owner)?.operationId ?? randomUUID();
   const counts = owner.sourceReservations ? (owner.pendingReceipts ??= new Map()) : undefined;
   const pending = (delta: number) => {
@@ -117,10 +133,10 @@ export function deferSqliteWorkerNativeCommitReceipt(
           version: 1,
           operationId: previous?.operationId ?? operationId,
           sequence: (previous?.sequence ?? 0) + 1,
-          facts: captured,
+          facts,
         };
         nativeCommitReceipts.set(owner, receipt);
-        owner.committed = { facts: captured };
+        owner.committed = { facts };
         if (delivery === "commit") {
           owner.port.postMessage({ kind: "native-commit", committed: receipt }, []);
         }
