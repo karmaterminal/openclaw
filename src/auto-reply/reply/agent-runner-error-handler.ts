@@ -48,6 +48,25 @@ import {
 import { hasReplyOperationExecutionStarted } from "./reply-run-registry.state.js";
 
 const MAX_LIVE_SWITCH_RETRIES = 2;
+// A yielded heartbeat is retried as preemption and reruns its model turn. A session whose
+// room keeps winning the transcript race gets a few fast retries, then settles like any
+// failed run (#1477). Process-local: a restart starts a fresh budget.
+const HEARTBEAT_TRANSCRIPT_YIELD_LIMIT = 3;
+const HEARTBEAT_TRANSCRIPT_YIELD_WINDOW_MS = 10 * 60_000;
+const heartbeatTranscriptYields = new Map<string, number[]>();
+
+function takeHeartbeatTranscriptYield(key: string): boolean {
+  const now = Date.now();
+  const recent = (heartbeatTranscriptYields.get(key) ?? []).filter(
+    (at) => now - at < HEARTBEAT_TRANSCRIPT_YIELD_WINDOW_MS,
+  );
+  const allowed = recent.length < HEARTBEAT_TRANSCRIPT_YIELD_LIMIT;
+  if (allowed) {
+    recent.push(now);
+  }
+  heartbeatTranscriptYields.set(key, recent);
+  return allowed;
+}
 
 type ErrorAction =
   | { kind: "retry"; liveModelSwitchError?: LiveSessionModelSwitchError }
@@ -145,20 +164,20 @@ export async function handleAgentExecutionError(params: {
     kind: "final" as const,
     payload: markAgentRunFailureReplyPayload({ text }),
   });
+  const heartbeatYieldKey = turn.sessionKey ?? turn.followupRun.run.sessionId;
   if (
     turn.isHeartbeat &&
     isSqliteTranscriptMutationConflict(err) &&
-    turn.replyOperation?.sourceReplyDelivered === false
+    turn.replyOperation &&
+    // A heartbeat that already posted settles its events when superseded, so only an
+    // unanswered one is retried and spends the budget.
+    (turn.replyOperation.messageToolDelivered || takeHeartbeatTranscriptYield(heartbeatYieldKey))
   ) {
     // A newer writer, such as room input, moved the transcript under this background
     // turn, and its prepared reply cannot rebase over it. Yield exactly as visible-turn
-    // preemption does: no failure reply and no interrupted run to recover (#1475). A turn
-    // that already answered through the message tool keeps failure settlement, which
-    // consumes its events instead of replaying a delivered heartbeat.
+    // preemption does: no failure reply and no interrupted run to recover (#1475).
     if (turn.replyOperation.supersede()) {
-      logVerbose(
-        `heartbeat yielded to a newer transcript writer: ${turn.sessionKey ?? turn.followupRun.run.sessionId}`,
-      );
+      logVerbose(`heartbeat yielded to a newer transcript writer: ${heartbeatYieldKey}`);
     }
   }
   const replyOperationAbortAction = resolveReplyOperationAbortAction(err);

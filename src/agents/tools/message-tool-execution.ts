@@ -630,6 +630,11 @@ function* createMessageToolSteps(
               // of the same content collapses instead of minting a second send.
               const queuedDelivery = projectGatewayQueuedDeliveryResult(error);
               if (queuedDelivery) {
+                if (options?.sessionId) {
+                  resolveActiveReplyOperationForSessionId(
+                    options.sessionId,
+                  )?.markMessageToolDelivered();
+                }
                 return jsonResult(queuedDelivery);
               }
               decisions.recordTypedDenial(error);
@@ -687,6 +692,10 @@ function* createMessageToolSteps(
             currentSourceReply,
           );
           groupThread.record(result, sourceReply, currentSourceReply, requestedSourceReplyFinal);
+          if (messageDelivery?.status === "settled" && !result.dryRun && options?.sessionId) {
+            // A send the tool reports committed is visible wherever it went; a replay repeats it.
+            resolveActiveReplyOperationForSessionId(options.sessionId)?.markMessageToolDelivered();
+          }
           if (
             messageDelivery?.status === "settled" &&
             !messageDelivery.partialDelivery &&
