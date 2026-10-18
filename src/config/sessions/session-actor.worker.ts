@@ -12,11 +12,14 @@ import { stageSqliteTransactionState } from "../../infra/sqlite-post-commit.js";
 import { readSqliteNativeMutationRevision } from "../../infra/sqlite-schema-facts.js";
 import { assertTransactionUsable } from "../../infra/sqlite-transaction.js";
 import {
-  SQLITE_WORKER_MAX_MESSAGE_BYTES,
   hasSqliteWorkerOutcomeUnknown,
   type SqliteWorkerCommand,
 } from "../../infra/sqlite-worker-contract.js";
-import { deferSqliteWorkerCommitReceipt } from "../../infra/sqlite-worker-operation-admission.js";
+import {
+  deferCapturedSqliteWorkerCommitReceipt,
+  deferSqliteWorkerCommitReceipt,
+} from "../../infra/sqlite-worker-operation-admission.js";
+import { captureSqliteWorkerCommitReceipt } from "../../infra/sqlite-worker-operation-settlement.js";
 import { createSqliteWorkerTransferOwner } from "../../infra/sqlite-worker-transfer.js";
 import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db-contract.js";
 import type { AgentWorkerOperationContext } from "../../state/openclaw-agent-operation-context.js";
@@ -310,12 +313,13 @@ export function createSessionActorWorker(
             } else {
               // Long sessions grow the postimage past the inline receipt budget. Frame the
               // outcome through live admission and commit only its transfer witness (#169843).
-              const serialized = serialize(accepted);
-              if (serialized.byteLength > SQLITE_WORKER_MAX_MESSAGE_BYTES) {
+              const captured = captureSqliteWorkerCommitReceipt(accepted);
+              if (captured.kind === "oversized") {
                 const transfer = createSqliteWorkerTransferOwner();
-                const handle = transfer.start([{ kind: "outcome", serialized }].values(), {
-                  kinds: ["outcome"],
-                });
+                const handle = transfer.start(
+                  [{ kind: "outcome", serialized: captured.serialized }].values(),
+                  { kinds: ["outcome"] },
+                );
                 try {
                   let frame = transfer.next(handle.id);
                   let finalFrames;
@@ -356,7 +360,7 @@ export function createSessionActorWorker(
                   transfer.cancel();
                 }
               }
-              deferSqliteWorkerCommitReceipt(opened.db, accepted);
+              deferCapturedSqliteWorkerCommitReceipt(opened.db, captured);
             }
             admit("commit", {
               kind: "session-actor-admission",
