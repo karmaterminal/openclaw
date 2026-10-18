@@ -311,11 +311,12 @@ describe("executeAgentTurn: terminal failures", () => {
   );
 
   it.each([
-    { turn: "heartbeat", isHeartbeat: true },
-    { turn: "visible", isHeartbeat: false },
+    { turn: "heartbeat turn", isHeartbeat: true, delivered: false },
+    { turn: "heartbeat turn that already answered", isHeartbeat: true, delivered: true },
+    { turn: "visible turn", isHeartbeat: false, delivered: false },
   ] as const)(
-    "serializes a $turn turn that loses its transcript to a newer writer",
-    async ({ isHeartbeat }) => {
+    "serializes a $turn when its transcript loses to a newer writer",
+    async ({ isHeartbeat, delivered }) => {
       // openclaw#1475: a background turn and room input rewrote one transcript; the
       // background turn's prepared reply cannot rebase over the newer user turn.
       const agentEvents = await import("../../infra/agent-events.js");
@@ -330,6 +331,10 @@ describe("executeAgentTurn: terminal failures", () => {
       state.runEmbeddedAgentMock.mockImplementationOnce(async (params: EmbeddedAgentParams) => {
         // The model ran; persisting its prepared reply then lost to the newer user turn.
         await params.onAgentEvent?.({ stream: "lifecycle", data: { phase: "start" } });
+        if (delivered) {
+          // A message-tool send already answered the source before persistence lost.
+          replyOperation.markSourceReplyDelivered();
+        }
         params.onExecutionPhase?.({
           phase: "model_call_started",
           provider: "openai",
@@ -356,8 +361,9 @@ describe("executeAgentTurn: terminal failures", () => {
           entry: { updatedAt: 1 },
           event: { ...terminals[0]!, ts: 2 },
         });
-        if (!isHeartbeat) {
-          // Visible input owns its turn; its failure stays visible to the sender.
+        if (!isHeartbeat || delivered) {
+          // Visible input owns its turn, and a heartbeat that already answered consumes its
+          // events through failure settlement instead of replaying them; neither yields.
           expect(result.outcome.kind).toBe("rejected");
           expect(patch).toMatchObject({ status: "failed", abortedLastRun: false });
           return;
