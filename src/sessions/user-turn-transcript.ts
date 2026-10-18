@@ -26,6 +26,7 @@ import {
   capturePersistedModelPromptProjection,
   confirmPersistedSteerTargetRunId,
 } from "./user-turn-transcript-updates.js";
+import { createSessionDeliveryAckReplacement } from "./user-turn-transcript.delivery-acks.js";
 import {
   buildLateResolvedMediaMessage,
   resolvePersistedUserTurnMessage,
@@ -118,18 +119,7 @@ export function createUserTurnTranscriptRecorder(
     params.pendingInputSources,
   );
   let staging: Promise<boolean> | undefined;
-  const replacementSessionDeliveryAckIds = new Set<string>();
-  let hasReplacementSessionDeliveryAckIds = false;
-  const initialSessionDeliveryAckIds = message?.["__openclaw"]?.sessionDeliveryAckIds;
-  if (Array.isArray(initialSessionDeliveryAckIds)) {
-    hasReplacementSessionDeliveryAckIds = true;
-    for (const deliveryId of initialSessionDeliveryAckIds) {
-      if (typeof deliveryId === "string" && deliveryId.trim()) {
-        replacementSessionDeliveryAckIds.add(deliveryId.trim());
-      }
-    }
-  }
-
+  const deliveryAcks = createSessionDeliveryAckReplacement(message);
   const replaceSessionDeliveryAckIds = (deliveryIds: readonly string[]): boolean => {
     if (
       pendingInput ||
@@ -142,34 +132,8 @@ export function createUserTurnTranscriptRecorder(
     ) {
       return false;
     }
-    hasReplacementSessionDeliveryAckIds = true;
-    replacementSessionDeliveryAckIds.clear();
-    for (const deliveryId of deliveryIds) {
-      const normalized = deliveryId.trim();
-      if (normalized) {
-        replacementSessionDeliveryAckIds.add(normalized);
-      }
-    }
+    deliveryAcks.replace(deliveryIds);
     return true;
-  };
-
-  const applyReplacementSessionDeliveryAckIds = (
-    candidate: PersistedUserTurnMessage | undefined,
-  ): PersistedUserTurnMessage | undefined => {
-    if (!candidate || !hasReplacementSessionDeliveryAckIds) {
-      return candidate;
-    }
-    const metadata = { ...candidate["__openclaw"] };
-    delete metadata.sessionDeliveryAckIds;
-    return {
-      ...candidate,
-      __openclaw: {
-        ...metadata,
-        ...(replacementSessionDeliveryAckIds.size > 0
-          ? { sessionDeliveryAckIds: [...replacementSessionDeliveryAckIds] }
-          : {}),
-      },
-    };
   };
 
   const applyReplacementText = (
@@ -190,7 +154,7 @@ export function createUserTurnTranscriptRecorder(
 
   const applyMessageOverrides = (candidate: PersistedUserTurnMessage | undefined) => {
     const next = rewritePersistedSteerTargetRunId(
-      applyReplacementSessionDeliveryAckIds(applyReplacementText(candidate)),
+      deliveryAcks.apply(applyReplacementText(candidate)),
       confirmedSteerTargetRunId,
     );
     // Native mirrors must reuse this admission even when no transport supplied a key.
