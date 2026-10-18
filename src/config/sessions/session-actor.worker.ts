@@ -15,11 +15,11 @@ import {
   hasSqliteWorkerOutcomeUnknown,
   type SqliteWorkerCommand,
 } from "../../infra/sqlite-worker-contract.js";
+import { deferSqliteWorkerCommitReceipt } from "../../infra/sqlite-worker-operation-admission.js";
 import {
+  captureSqliteWorkerCommitReceipt,
   deferCapturedSqliteWorkerCommitReceipt,
-  deferSqliteWorkerCommitReceipt,
-} from "../../infra/sqlite-worker-operation-admission.js";
-import { captureSqliteWorkerCommitReceipt } from "../../infra/sqlite-worker-operation-settlement.js";
+} from "../../infra/sqlite-worker-operation-settlement.js";
 import { createSqliteWorkerTransferOwner } from "../../infra/sqlite-worker-transfer.js";
 import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db-contract.js";
 import type { AgentWorkerOperationContext } from "../../state/openclaw-agent-operation-context.js";

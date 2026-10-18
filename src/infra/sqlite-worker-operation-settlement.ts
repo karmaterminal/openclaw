@@ -99,6 +99,33 @@ export function captureSqliteWorkerCommitReceipt(
 export function deferSqliteWorkerNativeCommitReceipt(
   owner: SqliteWorkerOperationContext,
   database: DatabaseSync,
+  facts: unknown,
+  delivery: "commit" | "settlement",
+): void {
+  deferCapturedNativeCommitReceipt(
+    owner,
+    database,
+    captureSqliteWorkerCommitReceipt(facts),
+    delivery,
+  );
+}
+
+/** Reuse the capture that selected an inline transport; publication still belongs to COMMIT. */
+export function deferCapturedSqliteWorkerCommitReceipt(
+  database: DatabaseSync,
+  captured: Extract<CapturedSqliteWorkerCommitReceipt, { kind: "inline" }>,
+  delivery: "commit" | "settlement" = "commit",
+): void {
+  const scope = currentSqliteWorkerOperationAdmission.getStore();
+  if (!scope?.active) {
+    throw new SqliteWorkerError("SQLite receipt requires its retained admission", "unavailable");
+  }
+  deferCapturedNativeCommitReceipt(scope.owner, database, captured, delivery);
+}
+
+function deferCapturedNativeCommitReceipt(
+  owner: SqliteWorkerOperationContext,
+  database: DatabaseSync,
   captured: CapturedSqliteWorkerCommitReceipt,
   delivery: "commit" | "settlement",
 ): void {
