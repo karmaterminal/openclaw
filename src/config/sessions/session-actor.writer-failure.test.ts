@@ -238,11 +238,18 @@ it.each([
   { mode: 3, failure: "COMMIT and ROLLBACK", hits: 2 },
   { mode: 4, failure: "worker exit", hits: 1 },
 ])("recovers the next turn after a lost native $failure without replay", async (input) => {
-  await withDurableActorTurns(async ({ read, turn }) => {
-    expect(await turn(10)).toEqual({ kind: "committed" });
-    Atomics.store(new Int32Array(fault.cell), 0, input.mode);
-    expect(await turn(20)).toMatchObject({ kind: "unknown" });
-    expect(Atomics.load(new Int32Array(fault.cell), 1)).toBe(input.hits);
+  await withDurableActorTurns(async ({ acquire, read, turn }) => {
+    // Arm the fault only after acquisition, so it can hit only this command.
+    const lost = await acquire();
+    try {
+      expect(await turn(10, lost)).toEqual({ kind: "committed" });
+      Atomics.store(new Int32Array(fault.cell), 0, input.mode);
+      expect(await turn(20, lost)).toMatchObject({ kind: "unknown" });
+      expect(Atomics.load(new Int32Array(fault.cell), 1)).toBe(input.hits);
+    } finally {
+      await lost.release().catch(() => undefined);
+    }
+    // The next production turn acquires a fresh actor over a replacement worker.
     expect(await turn(30)).toEqual({ kind: "committed" });
     expect(read()).toBe(30);
   });
