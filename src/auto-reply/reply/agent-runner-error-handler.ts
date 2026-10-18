@@ -55,17 +55,17 @@ const HEARTBEAT_TRANSCRIPT_YIELD_LIMIT = 3;
 const HEARTBEAT_TRANSCRIPT_YIELD_WINDOW_MS = 10 * 60_000;
 const heartbeatTranscriptYields = new Map<string, number[]>();
 
-function takeHeartbeatTranscriptYield(key: string): boolean {
+function recentHeartbeatTranscriptYields(key: string): number[] {
   const now = Date.now();
   const recent = (heartbeatTranscriptYields.get(key) ?? []).filter(
     (at) => now - at < HEARTBEAT_TRANSCRIPT_YIELD_WINDOW_MS,
   );
-  const allowed = recent.length < HEARTBEAT_TRANSCRIPT_YIELD_LIMIT;
-  if (allowed) {
-    recent.push(now);
+  if (recent.length > 0) {
+    heartbeatTranscriptYields.set(key, recent);
+  } else {
+    heartbeatTranscriptYields.delete(key);
   }
-  heartbeatTranscriptYields.set(key, recent);
-  return allowed;
+  return recent;
 }
 
 type ErrorAction =
@@ -164,20 +164,23 @@ export async function handleAgentExecutionError(params: {
     kind: "final" as const,
     payload: markAgentRunFailureReplyPayload({ text }),
   });
-  const heartbeatYieldKey = turn.sessionKey ?? turn.followupRun.run.sessionId;
-  if (
-    turn.isHeartbeat &&
-    isSqliteTranscriptMutationConflict(err) &&
-    turn.replyOperation &&
-    // A heartbeat that already posted settles its events when superseded, so only an
-    // unanswered one is retried and spends the budget.
-    (turn.replyOperation.messageToolDelivered || takeHeartbeatTranscriptYield(heartbeatYieldKey))
-  ) {
+  if (turn.isHeartbeat && isSqliteTranscriptMutationConflict(err) && turn.replyOperation) {
     // A newer writer, such as room input, moved the transcript under this background
     // turn, and its prepared reply cannot rebase over it. Yield exactly as visible-turn
     // preemption does: no failure reply and no interrupted run to recover (#1475).
-    if (turn.replyOperation.supersede()) {
-      logVerbose(`heartbeat yielded to a newer transcript writer: ${heartbeatYieldKey}`);
+    // A heartbeat that already answered settles its events when superseded, so only an
+    // unanswered yield is retried and spends the session's budget.
+    const yieldKey = turn.sessionKey ?? turn.followupRun.run.sessionId;
+    const answered = turn.replyOperation.messageToolDelivered;
+    const yields = recentHeartbeatTranscriptYields(yieldKey);
+    if (
+      (answered || yields.length < HEARTBEAT_TRANSCRIPT_YIELD_LIMIT) &&
+      turn.replyOperation.supersede()
+    ) {
+      if (!answered) {
+        heartbeatTranscriptYields.set(yieldKey, [...yields, Date.now()]);
+      }
+      logVerbose(`heartbeat yielded to a newer transcript writer: ${yieldKey}`);
     }
   }
   const replyOperationAbortAction = resolveReplyOperationAbortAction(err);
