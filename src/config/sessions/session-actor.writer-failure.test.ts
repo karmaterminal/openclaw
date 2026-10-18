@@ -176,8 +176,8 @@ async function withDurableActorTurns(
   });
 }
 
-it.each(["failed transaction", "committed transaction", "autocommit"] as const)(
-  "keeps later turns live after a %s settles behind a parked read cursor",
+it.each(["failed transaction", "committed transaction", "autocommit write"] as const)(
+  "keeps later turns live after a settled %s behind a parked read cursor",
   async (write) => {
     await withDurableActorTurns(async ({ path, read, turn }) => {
       expect(await turn(10)).toEqual({ kind: "committed" });
