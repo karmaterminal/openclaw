@@ -7,6 +7,7 @@ import type {
   MainSessionRecoveryObservation,
   MainSessionRecoveryTransitionResult,
 } from "./main-session-recovery-types.js";
+import { resolveRestartRecoveryTerminalClientRunId } from "./main-session-restart-recovery-shared.js";
 
 /**
  * A restart can explain an interruption only if an open fence predates this Gateway
@@ -53,6 +54,7 @@ export function retireMainSessionLiveInterruption(
   }
   // The turn ended in this process without a reply. Retire its claim like any
   // failed turn; the live session stays usable and nothing is replayed.
+  entry.lastRunId = resolveRestartRecoveryTerminalClientRunId(entry) ?? entry.lastRunId;
   Object.assign(
     entry,
     buildMainSessionRecoverySettlementPatch({ entry, recordTerminalSource: true }),

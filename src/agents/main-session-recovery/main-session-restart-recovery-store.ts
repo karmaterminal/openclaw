@@ -348,9 +348,7 @@ export async function recoverStore(params: {
             target,
           });
           skip(
-            retired.transition.kind === "applied"
-              ? "message_action_authority_unavailable"
-              : "state_changed",
+            retired.transition.kind === "applied" ? "live_interruption_retired" : "state_changed",
           );
           continue;
         }
