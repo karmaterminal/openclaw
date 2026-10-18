@@ -29,9 +29,9 @@ import {
 import { enqueueSessionDelivery } from "../infra/session-delivery-queue-storage.js";
 import type { QueuedSessionDelivery } from "../infra/session-delivery-queue.records.js";
 import { isPendingControlPlaneUpdateRestartSentinel } from "../infra/update-control-plane-sentinel.js";
-import { recordUpdateRunVerification } from "../infra/update-run-ledger.js";
 import { renderUpdateRunSummary } from "../infra/update-run-notice.js";
 import { updateRunReportInputFromSentinel } from "../infra/update-run-report.js";
+import { recordUpdateRunVerificationAsync as recordUpdateRunVerification } from "../infra/update-run-write.async.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runWithGatewayIndependentRootWorkAdmission } from "../process/gateway-work-admission.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
@@ -278,7 +278,7 @@ async function loadRestartSentinelStartupTask(params: {
         !updateRun.origin.sessionKey &&
         !updateRun.origin.deliveryContext
       ) {
-        recordUpdateRunNoticeSkipped(updateRun.runId, "no delivery target", env);
+        await recordUpdateRunNoticeSkipped(updateRun.runId, "no delivery target", env);
         await clearRestartSentinelIfRevision(sentinelRevision, env);
         return { status: "ran" as const };
       }
@@ -339,7 +339,7 @@ async function loadRestartSentinelStartupTask(params: {
     });
     queueContext.admission.assertCurrent();
     if (target.kind === "none") {
-      recordUpdateRunNoticeSkipped(updateRunId, target.reason, env);
+      await recordUpdateRunNoticeSkipped(updateRunId, target.reason, env);
       // A diagnostic wake would bypass the same owner-only notice decision.
       await clearRestartSentinelIfRevision(sentinelRevision, env);
       return { status: "ran" as const };
@@ -371,7 +371,7 @@ async function loadRestartSentinelStartupTask(params: {
       }).catch((error: unknown) => ({ ok: false as const, reason: formatErrorMessage(error) }));
       internalNoticeWritten = notice.ok;
       if (notice.ok && updateRunId) {
-        recordUpdateRunVerification(updateRunId, { noticeDelivered: true }, { env });
+        await recordUpdateRunVerification(updateRunId, { noticeDelivered: true }, { env });
       }
       if (!notice.ok) {
         log.warn(
@@ -480,7 +480,7 @@ async function loadRestartSentinelStartupTask(params: {
             noticeContext,
           );
           if (delivered && updateRunId) {
-            recordUpdateRunVerification(updateRunId, { noticeDelivered: true }, { env });
+            await recordUpdateRunVerification(updateRunId, { noticeDelivered: true }, { env });
           }
         } else if (noticeQueueId && !noticeQueueCreated) {
           log.info(`${summary}: durable restart notice already owned`, {
