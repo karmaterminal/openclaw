@@ -21,6 +21,7 @@ import {
   createAgentRunSupersededAbortError,
   createSessionPlacementSettlementClosedAbortError,
 } from "../../agents/run-termination.js";
+import { SqliteTranscriptMutationConflictError } from "../../config/sessions/session-mutation-conflict-error.js";
 import { deriveGatewaySessionLifecycleProjectionPatch } from "../../gateway/session-lifecycle-state.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import type { TemplateContext } from "../templating.js";
@@ -305,6 +306,73 @@ describe("executeAgentTurn: terminal failures", () => {
       } finally {
         replyOperation.complete();
         failMock.mockRestore();
+      }
+    },
+  );
+
+  it.each([
+    { turn: "heartbeat", isHeartbeat: true },
+    { turn: "visible", isHeartbeat: false },
+  ] as const)(
+    "serializes a $turn turn that loses its transcript to a newer writer",
+    async ({ isHeartbeat }) => {
+      // openclaw#1475: a background turn and room input rewrote one transcript; the
+      // background turn's prepared reply cannot rebase over the newer user turn.
+      const agentEvents = await import("../../infra/agent-events.js");
+      const emitAgentEvent = vi.mocked(agentEvents.emitAgentEvent);
+      const replyOperation = createReplyOperation({
+        sessionKey: "agent:main:discord:channel:room",
+        sessionId: "room-session",
+        resetTriggered: false,
+        turnKind: isHeartbeat ? "heartbeat" : "visible",
+      });
+      replyOperation.setPhase("running");
+      state.runEmbeddedAgentMock.mockImplementationOnce(async (params: EmbeddedAgentParams) => {
+        // The model ran; persisting its prepared reply then lost to the newer user turn.
+        await params.onAgentEvent?.({ stream: "lifecycle", data: { phase: "start" } });
+        params.onExecutionPhase?.({
+          phase: "model_call_started",
+          provider: "openai",
+          model: "gpt-5.4",
+        });
+        throw new SqliteTranscriptMutationConflictError("room-session");
+      });
+      try {
+        const { executeAgentTurn } = await import("./agent-runner-execution.js");
+        const result = await executeAgentTurn({
+          ...createMinimalRunAgentTurnParams({ replyOperation }),
+          isHeartbeat,
+        });
+        const terminals = emitAgentEvent.mock.calls
+          .map(([event]) => event)
+          .filter(
+            (event) =>
+              event.runId === result.runId &&
+              event.stream === "lifecycle" &&
+              (event.data.phase === "end" || event.data.phase === "error"),
+          );
+        expect(terminals).toHaveLength(1);
+        const patch = deriveGatewaySessionLifecycleProjectionPatch({
+          entry: { updatedAt: 1 },
+          event: { ...terminals[0]!, ts: 2 },
+        });
+        if (!isHeartbeat) {
+          // Visible input owns its turn; its failure stays visible to the sender.
+          expect(result.outcome.kind).toBe("rejected");
+          expect(patch).toMatchObject({ status: "failed", abortedLastRun: false });
+          return;
+        }
+        // The background turn yields to the newer writer: no failure copy in the room and
+        // no interrupted run left behind for restart recovery.
+        expect(result.outcome).toEqual({ kind: "aborted", reason: "superseded" });
+        expect(replyOperation.result).toEqual({
+          kind: "aborted",
+          code: "aborted_for_supersession",
+        });
+        expect(terminals[0]?.data).toMatchObject({ aborted: true, stopReason: "superseded" });
+        expect(patch).toMatchObject({ abortedLastRun: false });
+      } finally {
+        replyOperation.complete();
       }
     },
   );
