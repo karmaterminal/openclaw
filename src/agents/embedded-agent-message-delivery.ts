@@ -342,6 +342,19 @@ export function projectEmbeddedMessageDeliveryFact(
   );
 }
 
+/** A send that reached any destination; plugin sends elsewhere report through their payload. */
+export function isCommittedMessageSend(
+  result: MessageActionResult,
+  delivery: ReturnType<typeof projectEmbeddedMessageDeliveryFact>,
+): boolean {
+  const committed =
+    delivery ??
+    (result.kind === "send" && result.handledBy === "plugin"
+      ? projectPluginMessageDeliveryFact(result.payload)
+      : undefined);
+  return !result.dryRun && committed?.status === "settled";
+}
+
 export function hasAcceptedBroadcastDelivery(result: MessageActionResult): boolean {
   return (
     !result.dryRun &&

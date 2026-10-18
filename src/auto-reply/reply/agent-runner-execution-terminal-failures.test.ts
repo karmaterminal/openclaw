@@ -21,6 +21,7 @@ import {
   createAgentRunSupersededAbortError,
   createSessionPlacementSettlementClosedAbortError,
 } from "../../agents/run-termination.js";
+import { SqliteTranscriptMutationConflictError } from "../../config/sessions/session-mutation-conflict-error.js";
 import { deriveGatewaySessionLifecycleProjectionPatch } from "../../gateway/session-lifecycle-state.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import type { TemplateContext } from "../templating.js";
@@ -308,6 +309,125 @@ describe("executeAgentTurn: terminal failures", () => {
       }
     },
   );
+
+  it.each([
+    { turn: "heartbeat turn", isHeartbeat: true, delivered: false },
+    { turn: "heartbeat turn that already answered", isHeartbeat: true, delivered: true },
+    { turn: "visible turn", isHeartbeat: false, delivered: false },
+  ] as const)(
+    "serializes a $turn when its transcript loses to a newer writer",
+    async ({ isHeartbeat, delivered }) => {
+      // openclaw#1475: a background turn and room input rewrote one transcript; the
+      // background turn's prepared reply cannot rebase over the newer user turn.
+      const agentEvents = await import("../../infra/agent-events.js");
+      const emitAgentEvent = vi.mocked(agentEvents.emitAgentEvent);
+      const replyOperation = createReplyOperation({
+        sessionKey: "agent:main:discord:channel:room",
+        sessionId: "room-session",
+        resetTriggered: false,
+        turnKind: isHeartbeat ? "heartbeat" : "visible",
+      });
+      replyOperation.setPhase("running");
+      state.runEmbeddedAgentMock.mockImplementationOnce(async (params: EmbeddedAgentParams) => {
+        // The model ran; persisting its prepared reply then lost to the newer user turn.
+        await params.onAgentEvent?.({ stream: "lifecycle", data: { phase: "start" } });
+        if (delivered) {
+          // A message-tool send already answered the source before persistence lost.
+          replyOperation.markSourceReplyDelivered();
+        }
+        params.onExecutionPhase?.({
+          phase: "model_call_started",
+          provider: "openai",
+          model: "gpt-5.4",
+        });
+        throw new SqliteTranscriptMutationConflictError("room-session");
+      });
+      try {
+        const { executeAgentTurn } = await import("./agent-runner-execution.js");
+        const result = await executeAgentTurn({
+          ...createMinimalRunAgentTurnParams({ replyOperation }),
+          isHeartbeat,
+        });
+        const terminals = emitAgentEvent.mock.calls
+          .map(([event]) => event)
+          .filter(
+            (event) =>
+              event.runId === result.runId &&
+              event.stream === "lifecycle" &&
+              (event.data.phase === "end" || event.data.phase === "error"),
+          );
+        expect(terminals).toHaveLength(1);
+        const patch = deriveGatewaySessionLifecycleProjectionPatch({
+          entry: { updatedAt: 1 },
+          event: { ...terminals[0]!, ts: 2 },
+        });
+        if (!isHeartbeat) {
+          // Visible input owns its turn and fails visibly to its sender.
+          expect(result.outcome.kind).toBe("rejected");
+          expect(patch).toMatchObject({ status: "failed", abortedLastRun: false });
+          return;
+        }
+        // The background turn yields to the newer writer: no failure copy in the room and
+        // no interrupted run left behind for restart recovery. Failure settlement would not
+        // consume a heartbeat's events either, so one that already answered yields too and
+        // its heartbeat owner settles the answered events (#1477).
+        expect(replyOperation.messageToolDelivered).toBe(delivered);
+        expect(result.outcome).toEqual({ kind: "aborted", reason: "superseded" });
+        expect(replyOperation.result).toEqual({
+          kind: "aborted",
+          code: "aborted_for_supersession",
+        });
+        expect(terminals[0]?.data).toMatchObject({ aborted: true, stopReason: "superseded" });
+        expect(patch).toMatchObject({ abortedLastRun: false });
+      } finally {
+        replyOperation.complete();
+      }
+    },
+  );
+
+  it("spends a heartbeat's yield budget only when the turn actually yields", async () => {
+    // #1477 review: a conflict whose operation can no longer be superseded settles as a
+    // failure and leaves the session's yield budget for a later heartbeat.
+    const sessionKey = "agent:main:discord:channel:budget-room";
+    const { executeAgentTurn } = await import("./agent-runner-execution.js");
+    const conflictingHeartbeat = async (supersedable: boolean) => {
+      const replyOperation = createReplyOperation({
+        sessionKey,
+        sessionId: "budget-session",
+        resetTriggered: false,
+        turnKind: "heartbeat",
+      });
+      replyOperation.setPhase("running");
+      if (!supersedable) {
+        vi.spyOn(replyOperation, "supersede").mockReturnValue(false);
+      }
+      state.runEmbeddedAgentMock.mockImplementationOnce(async (params: EmbeddedAgentParams) => {
+        await params.onAgentEvent?.({ stream: "lifecycle", data: { phase: "start" } });
+        params.onExecutionPhase?.({
+          phase: "model_call_started",
+          provider: "openai",
+          model: "gpt-5.4",
+        });
+        throw new SqliteTranscriptMutationConflictError("budget-session");
+      });
+      try {
+        return await executeAgentTurn({
+          ...createMinimalRunAgentTurnParams({ replyOperation }),
+          sessionKey,
+          isHeartbeat: true,
+        });
+      } finally {
+        replyOperation.complete();
+      }
+    };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      expect((await conflictingHeartbeat(false)).outcome.kind).toBe("rejected");
+    }
+    expect((await conflictingHeartbeat(true)).outcome).toEqual({
+      kind: "aborted",
+      reason: "superseded",
+    });
+  });
 
   it.for([false, true])(
     "preserves the prior terminal row when cancellation precedes execution (started=%s)",

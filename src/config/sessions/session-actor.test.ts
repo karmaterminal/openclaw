@@ -1,5 +1,7 @@
+import { serialize } from "node:v8";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { expect, it, vi } from "vitest";
+import { runSqliteImmediateTransactionSync } from "../../infra/sqlite-transaction.js";
 import type { SqliteWorkerCommand } from "../../infra/sqlite-worker-contract.js";
 import {
   createSqliteWorkerOperationAdmission,
@@ -23,6 +25,7 @@ import {
   readExactSessionEntryRow,
   writeSessionEntry,
 } from "./session-accessor.sqlite-entry-store.js";
+import { appendTranscriptEventsInTransaction } from "./session-accessor.sqlite-transcript-store.js";
 import type { SessionActorAuthority, SessionActorOperations } from "./session-actor-contract.js";
 import { createDurableSessionActorFactory } from "./session-actor-durable.js";
 import { createSessionActorReplica } from "./session-actor-replica.js";
@@ -30,6 +33,11 @@ import { createSessionActor, type SessionActorTransport } from "./session-actor.
 import { createSessionActorWorker } from "./session-actor.worker.js";
 import { createSessionCompoundWorkerFixture } from "./session-compound-worker.test-support.js";
 
+// mock-isolation: Count real receipt encodings; every call still runs the actual encoder.
+vi.mock("node:v8", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:v8")>();
+  return { ...actual, serialize: vi.fn(actual.serialize) };
+});
 // mock-isolation: this transport proof does not schedule unrelated maintenance.
 vi.mock("./session-accessor.sqlite-maintenance-kick.js", () => ({
   kickSessionEntryMaintenanceAfterWrite() {},
@@ -70,51 +78,136 @@ it("declines native incognito without changing its existing owner", async () => 
   });
 });
 
-it("acquires the exact cold durable execution owner and installs a real worker commit", async () => {
-  await withOpenClawTestState({ scenario: "minimal" }, async ({ env }) => {
-    const fixture = createSessionCompoundWorkerFixture();
-    const identity = readOpenClawAgentDatabaseIdentity(fixture.database);
-    if (typeof identity.identity !== "string") {
-      throw new Error("Fixture requires durable storage");
-    }
-    const factory = createDurableSessionActorFactory({
-      agentId: "main",
-      path: fixture.database.path,
-      env,
-    });
-    const actor = await factory.acquire(
-      {
-        sessionKey: fixture.scope.sessionKey,
-        database: {
-          kind: "file",
-          physicalIdentity: identity.identity,
-          birthtime: identity.birthtime,
-          nativeLocation: fixture.database.path,
-        },
-      },
-      { assertCurrent() {}, assertReadable() {} },
-    );
-    if ("kind" in actor) {
-      throw new Error("Durable session must be actor-owned");
-    }
-    try {
-      const result = await actor.patch(
+const OVERSIZED_TRANSCRIPT_MESSAGE_COUNT = 4_000;
+
+/** Long room sessions grow actor hot facts past the 32 MiB inline receipt budget (#1475). */
+function seedOversizedActorTranscript(
+  fixture: ReturnType<typeof createSessionCompoundWorkerFixture>,
+): void {
+  const keyPayload = "k".repeat(4_608);
+  const events = Array.from({ length: OVERSIZED_TRANSCRIPT_MESSAGE_COUNT }, (_, index) => ({
+    type: "message",
+    id: `bounded-message-${String(index).padStart(5, "0")}`,
+    parentId: index === 0 ? null : `bounded-message-${String(index - 1).padStart(5, "0")}`,
+    timestamp: "2026-01-01T00:00:01Z",
+    message: {
+      role: "user",
+      content: "Synthetic retained transcript identity for receipt transport coverage.",
+      idempotencyKey: `${String(index).padStart(5, "0")}:${keyPayload}`,
+    },
+  }));
+  runSqliteImmediateTransactionSync(fixture.database.db, () =>
+    appendTranscriptEventsInTransaction(
+      fixture.database,
+      { ...fixture.scope, path: fixture.database.path },
+      events,
+    ),
+  );
+}
+
+it.each([false, true])(
+  "acquires the exact cold durable execution owner and installs a real worker commit (oversized=%s)",
+  async (oversized) => {
+    await withOpenClawTestState({ scenario: "minimal" }, async ({ env }) => {
+      const fixture = createSessionCompoundWorkerFixture();
+      if (oversized) {
+        seedOversizedActorTranscript(fixture);
+      }
+      const identity = readOpenClawAgentDatabaseIdentity(fixture.database);
+      if (typeof identity.identity !== "string") {
+        throw new Error("Fixture requires durable storage");
+      }
+      const factory = createDurableSessionActorFactory({
+        agentId: "main",
+        path: fixture.database.path,
+        env,
+      });
+      const actor = await factory.acquire(
         {
-          commandId: "durable",
-          phaseId: "turn",
-          reducers: [{ kind: "activity", updatedAt: 543 }],
+          sessionKey: fixture.scope.sessionKey,
+          database: {
+            kind: "file",
+            physicalIdentity: identity.identity,
+            birthtime: identity.birthtime,
+            nativeLocation: fixture.database.path,
+          },
         },
-        authority,
+        { assertCurrent() {}, assertReadable() {} },
       );
-      expect(result.kind).toBe("committed");
-      expect(actor.snapshot(authority)?.entry?.sessionId).toBe(fixture.scope.sessionId);
-      expect(actor.snapshot(authority)?.entry?.updatedAt).toBe(543);
-      expect(fixture.read()?.updatedAt).toBe(543);
-    } finally {
-      await actor.release();
-    }
-  });
-});
+      if ("kind" in actor) {
+        throw new Error("Durable session must be actor-owned");
+      }
+      try {
+        const beforeEntry = fixture.read();
+        const revoked = await actor.patch(
+          {
+            commandId: "durable-revoked-transfer",
+            phaseId: "transfer-revocation",
+            reducers: [{ kind: "activity", updatedAt: 542 }],
+          },
+          {
+            assertCurrent() {},
+            authorize(stage) {
+              if (stage === "commit") {
+                throw new Error("synthetic live authority revocation");
+              }
+            },
+          },
+        );
+        // The refused commit grant rolls the transfer back before its witness can commit.
+        expect(revoked).toMatchObject({
+          kind: "rolled-back",
+          error: { message: "SQLite transaction admission was refused" },
+        });
+        expect(fixture.read()).toEqual(beforeEntry);
+
+        // Outcome frames add no caller authorization: authorities see one transaction
+        // and one commit stage whether or not the outcome is framed.
+        const stages: string[] = [];
+        const result = await actor.patch(
+          {
+            commandId: "durable",
+            phaseId: "turn",
+            reducers: [{ kind: "activity", updatedAt: 543 }],
+          },
+          { assertCurrent() {}, authorize: (stage) => void stages.push(stage) },
+        );
+        expect({
+          kind: result.kind,
+          error: "error" in result ? result.error : undefined,
+          failure: "failure" in result ? result.failure : undefined,
+        }).toEqual({ kind: "committed", error: undefined, failure: undefined });
+        if (result.kind !== "committed") {
+          throw new Error("Expected the durable worker to commit the patch");
+        }
+        expect(stages).toEqual(["transaction", "commit"]);
+        expect(result.receipt.postimage.transcript.idempotency).toHaveLength(
+          oversized ? OVERSIZED_TRANSCRIPT_MESSAGE_COUNT : 0,
+        );
+        expect(actor.snapshot(authority)?.entry?.sessionId).toBe(fixture.scope.sessionId);
+        expect(actor.snapshot(authority)?.entry?.updatedAt).toBe(543);
+        expect(fixture.read()?.updatedAt).toBe(543);
+        // The next command on the same actor must not inherit a wedge from the large receipt.
+        const next = await actor.patch(
+          {
+            commandId: "durable-next",
+            phaseId: "turn-next",
+            reducers: [{ kind: "activity", updatedAt: 544 }],
+          },
+          authority,
+        );
+        expect({
+          kind: next.kind,
+          error: "error" in next ? next.error : undefined,
+          failure: "failure" in next ? next.failure : undefined,
+        }).toEqual({ kind: "committed", error: undefined, failure: undefined });
+        expect(fixture.read()?.updatedAt).toBe(544);
+      } finally {
+        await actor.release();
+      }
+    });
+  },
+);
 
 /** Real transaction kernels and native receipts with publication and transport faults. */
 async function withActor(
@@ -128,7 +221,12 @@ async function withActor(
       drain?: Promise<void>;
       onExecuted?: () => void;
       admissionCancelled?: boolean;
+      incompleteOutcomeTransfer?: boolean;
     };
+    seedOversizedTranscript(this: void): void;
+    readEntry(
+      this: void,
+    ): ReturnType<ReturnType<typeof createSessionCompoundWorkerFixture>["read"]>;
     retireGeneration(this: void): void;
     nativePatch(this: void, updatedAt: number): void;
   }) => Promise<void>,
@@ -170,6 +268,7 @@ async function withActor(
     let admit: (stage: "transaction" | "commit", publication?: unknown) => void = () => {
       throw new Error("No active transport admission");
     };
+    let admittedOutcomeFrames = 0;
     const createKernel = () =>
       createSessionActorWorker(
         {
@@ -199,6 +298,7 @@ async function withActor(
             command: SqliteWorkerCommand<SessionActorOperations>,
           ): Promise<SessionActorOperations[keyof SessionActorOperations]["output"]> {
             commands.push(command.type);
+            admittedOutcomeFrames = 0;
             const completion = Promise.withResolvers<SqliteWorkerOperationSettlement>();
             const retained = { settled: completion.promise };
             const admission = createSqliteWorkerOperationAdmission((_request, grant) => {
@@ -223,12 +323,25 @@ async function withActor(
             const native: SqliteWorkerOperationContext = {
               port: admission.port,
             };
-            admit = (stage, publication) =>
+            admit = (stage, publication) => {
+              const actorPublication = isRecord(publication) ? publication.publication : undefined;
+              if (
+                fault.incompleteOutcomeTransfer &&
+                stage === "transaction" &&
+                isRecord(actorPublication) &&
+                actorPublication.kind === "session-actor-outcome"
+              ) {
+                admittedOutcomeFrames += 1;
+                if (admittedOutcomeFrames > 1) {
+                  throw new Error("Synthetic incomplete actor outcome transfer");
+                }
+              }
               authorize(
                 { stage, facts: { identity, publication } },
                 { admission, retained },
                 () => true,
               );
+            };
             try {
               await kernel.prepare(command);
               const value = withSqliteWorkerOperationAdmission(native, () =>
@@ -288,6 +401,10 @@ async function withActor(
         actor,
         commands,
         fault,
+        seedOversizedTranscript() {
+          seedOversizedActorTranscript(fixture);
+        },
+        readEntry: () => fixture.read(),
         retireGeneration() {
           epoch += 1;
           kernel.close();
@@ -310,6 +427,58 @@ async function withActor(
     }
   });
 }
+
+it("recovers a transferred native commit after ordinary reply loss without replay", async () => {
+  await withActor(async ({ actor, commands, fault, seedOversizedTranscript, readEntry }) => {
+    seedOversizedTranscript();
+    fault.reply = "lost";
+    const result = await actor.patch(
+      {
+        commandId: "lost-transfer-reply",
+        phaseId: "activity",
+        reducers: [{ kind: "activity", updatedAt: 600 }],
+      },
+      authority,
+    );
+    expect(result).toMatchObject({
+      kind: "committed",
+      failure: { message: "Ordinary reply lost" },
+    });
+    if (result.kind !== "committed") {
+      throw new Error("Expected native transfer evidence to recover the committed outcome");
+    }
+    expect(result.receipt.postimage.transcript.idempotency).toHaveLength(
+      OVERSIZED_TRANSCRIPT_MESSAGE_COUNT,
+    );
+    expect(commands).toEqual(["session.actor.patch"]);
+    expect(readEntry()?.updatedAt).toBe(600);
+  });
+});
+
+it("does not publish a candidate when its outcome transfer is incomplete", async () => {
+  await withActor(async ({ actor, commands, fault, seedOversizedTranscript, readEntry }) => {
+    seedOversizedTranscript();
+    const before = readEntry();
+    fault.incompleteOutcomeTransfer = true;
+    const observer = { committed: vi.fn() };
+    const result = await actor.patch(
+      {
+        commandId: "incomplete-transfer",
+        phaseId: "activity",
+        reducers: [{ kind: "activity", updatedAt: 601 }],
+      },
+      authority,
+      observer,
+    );
+    expect(result).toMatchObject({
+      kind: "rolled-back",
+      error: { message: "Synthetic incomplete actor outcome transfer" },
+    });
+    expect(readEntry()).toEqual(before);
+    expect(observer.committed).not.toHaveBeenCalled();
+    expect(commands).toEqual(["session.actor.patch"]);
+  });
+});
 
 it("serves installed state without a request and reconciles a retired worker generation", async () => {
   await withActor(async ({ actor, commands, retireGeneration }) => {
@@ -384,6 +553,39 @@ it("installs a cold command and stale preimage without a separate read request",
     ]);
   });
 });
+
+it.each([false, true])(
+  "encodes a committed actor outcome once for its receipt transport (oversized=%s)",
+  async (oversized) => {
+    // #1477 review of #1475 D1: transport selection reuses the receipt capture's encoding.
+    await withActor(async ({ actor, seedOversizedTranscript }) => {
+      if (oversized) {
+        seedOversizedTranscript();
+      }
+      await actor.read(authority);
+      vi.mocked(serialize).mockClear();
+      const result = await actor.patch(
+        {
+          commandId: "receipt-encoding",
+          phaseId: "turn",
+          reducers: [{ kind: "activity", updatedAt: 545 }],
+        },
+        authority,
+      );
+      expect(result.kind).toBe("committed");
+      const outcomeEncodings = vi
+        .mocked(serialize)
+        .mock.calls.filter(
+          ([value]) =>
+            isRecord(value) &&
+            value.kind === "committed" &&
+            isRecord(value.receipt) &&
+            value.receipt.kind === "session-actor-committed",
+        );
+      expect(outcomeEncodings).toHaveLength(1);
+    });
+  },
+);
 
 it("installs the full append receipt and releases FIFO before retained follow-up work", async () => {
   await withActor(async ({ actor, fault }) => {
