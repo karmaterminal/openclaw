@@ -11,6 +11,7 @@ import type {
   SqliteWorkerOperationAdmission,
 } from "../../infra/sqlite-worker-operation-admission.js";
 import type { RetainedWorkerTransactionAdmission } from "../../infra/sqlite-worker-operation-settlement.js";
+import { createSqliteWorkerTransferCollector } from "../../infra/sqlite-worker-transfer.js";
 import { freezeJsonSnapshot } from "../../shared/immutable-data.js";
 import type {
   SessionActor,
@@ -177,6 +178,7 @@ export function createSessionActor(params: {
       stage: "transaction" | "commit",
       state: SessionActorHotState,
       final: boolean,
+      transfer: unknown,
     ) => void,
   ) => {
     let actorAdmissionSeen = false;
@@ -204,8 +206,23 @@ export function createSessionActor(params: {
         }
         // SAFETY: The paired actor kernel supplies this full snapshot on its private admission port.
         const snapshot = structuredClone(facts.snapshot) as SessionActorHotState;
-        authority.authorize(request.stage, structuredClone(snapshot), facts.publication);
-        observe?.(native, request.stage, structuredClone(snapshot), facts.final === true);
+        // Oversized outcomes travel as framed actor publications; authorities see only kernel facts.
+        const outcome =
+          isRecord(facts.publication) && facts.publication.kind === "session-actor-outcome"
+            ? facts.publication
+            : undefined;
+        authority.authorize(
+          request.stage,
+          structuredClone(snapshot),
+          outcome ? outcome.publication : facts.publication,
+        );
+        observe?.(
+          native,
+          request.stage,
+          structuredClone(snapshot),
+          facts.final === true,
+          outcome?.transfer,
+        );
       } else if (
         actorAdmissionSeen &&
         (request.stage === "commit" || (request.stage === "transaction" && facts !== undefined))
@@ -274,6 +291,13 @@ export function createSessionActor(params: {
       } = {};
       let running: Promise<Outcome> | undefined;
       let committed: Extract<Outcome, { kind: "committed" }> | undefined;
+      let candidate: unknown;
+      const transfer = createSqliteWorkerTransferCollector("outcome", (value) => {
+        if (candidate !== undefined) {
+          throw new Error("Session actor transferred more than one outcome");
+        }
+        candidate = value;
+      });
       const unknown = (error: unknown): Outcome => ({
         kind: "unknown",
         target,
@@ -316,7 +340,14 @@ export function createSessionActor(params: {
               let result: Outcome;
               if (native) {
                 const settled = await native.retained.settled;
-                const evidence = native.admission.committed?.facts;
+                const witness = native.admission.committed?.facts;
+                // A transfer witness certifies only the complete outcome framed under its live grants.
+                const evidence =
+                  isRecord(witness) && witness.kind === "session-actor-committed-transfer"
+                    ? transfer.completed && witness.transferId === transfer.id
+                      ? candidate
+                      : undefined
+                    : witness;
                 const receipt = isRecord(evidence) ? evidence.receipt : undefined;
                 if (
                   isRecord(evidence) &&
@@ -352,7 +383,7 @@ export function createSessionActor(params: {
                     result = preserveFailure(error);
                   }
                 } else if (
-                  evidence === undefined &&
+                  witness === undefined &&
                   reply.ok &&
                   (reply.value.kind === "rolled-back" ||
                     (reply.value.kind === "stale-version" &&
@@ -407,8 +438,11 @@ export function createSessionActor(params: {
             })();
             return running;
           },
-          authorize(authority, (native, stage, snapshot, final) => {
+          authorize(authority, (native, stage, snapshot, final, outcomeTransfer) => {
             selected.native = native;
+            if (outcomeTransfer !== undefined) {
+              transfer.accept(outcomeTransfer);
+            }
             if (stage === "transaction") {
               selected.transactionSnapshot ??= snapshot;
             }
