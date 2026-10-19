@@ -1663,12 +1663,13 @@ function createAutoReplyReplySplitShards(): NodeTestSplitShard[] {
     "auto-reply-reply-session": [] as string[],
     "auto-reply-reply-state-routing": [] as string[],
     // The reply config also collects the continuation subtree; without its own
-    // group those files would be collected by no shard at all. Like the reply
-    // groups, it claims only subtree files the reply config runs: database-worker
-    // and unit-fast files already run under their own owners.
+    // group those files would be collected by no shard at all. The group
+    // claims only files inside that subtree, whatever the inventory returns,
+    // and like the reply groups only those the reply config runs:
+    // database-worker and unit-fast files already run under their own owners.
     "auto-reply-continuation": listScopedOwnerTestFiles({
       root: "src/auto-reply/continuation",
-      include: autoReplyReplySubtreeTestInclude,
+      include: ["src/auto-reply/continuation/**/*.test.ts"],
       exclude: databaseWorkerCoreTestFiles,
     }),
   };
