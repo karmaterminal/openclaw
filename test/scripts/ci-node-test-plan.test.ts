@@ -1,4 +1,4 @@
-import { existsSync, globSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, matchesGlob } from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -77,10 +77,7 @@ import { createPluginSdkVitestConfig } from "../vitest/vitest.plugin-sdk.config.
 import { createPluginsVitestConfig } from "../vitest/vitest.plugins.config.ts";
 import { createRuntimeConfigVitestConfig } from "../vitest/vitest.runtime-config.config.ts";
 import { startupCorpusTestFiles } from "../vitest/vitest.startup-corpus-paths.mjs";
-import {
-  autoReplyReplySubtreeTestInclude,
-  fullSuiteVitestShards,
-} from "../vitest/vitest.test-shards.mjs";
+import { fullSuiteVitestShards } from "../vitest/vitest.test-shards.mjs";
 import { createToolingVitestConfig } from "../vitest/vitest.tooling.config.ts";
 import { uiE2eRealGatewayTestFiles } from "../vitest/vitest.ui-paths.mjs";
 import {
@@ -4173,30 +4170,21 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
     },
   );
 
-  it("covers every auto-reply reply test exactly once across split shards", () => {
+  it("covers every executable auto-reply reply test exactly once across split shards", () => {
+    // The reply config also collects the continuation subtree, which only its
+    // own split group claims.
     const actual = defaultShards
-      .filter((shard) => shard.shardName.startsWith("auto-reply-reply-"))
+      .filter(
+        (shard) =>
+          shard.shardName.startsWith("auto-reply-reply-") ||
+          shard.shardName === "auto-reply-continuation",
+      )
       .flatMap((shard) => shard.includePatterns ?? [])
       .toSorted((a, b) => a.localeCompare(b));
 
-    expect(actual).toEqual(listTestFiles("src/auto-reply/reply"));
+    expect(actual).toEqual(listMatchedTestFiles(createAutoReplyReplyVitestConfig({})));
     expect(new Set(actual).size).toBe(actual.length);
-  });
-});
-
-describe("auto-reply reply config shard ownership", () => {
-  it("schedules every tracked file the reply subtree include collects", () => {
-    // The reply config is only run as include-pattern splits, never whole, so any
-    // subtree file missing from every split would silently never run in CI.
-    const scheduled = new Set(
-      createNodeTestShards({ includeReleaseOnlyPluginShards: true }).flatMap(
-        (shard) => shard.includePatterns ?? [],
-      ),
-    );
-    const collected = autoReplyReplySubtreeTestInclude.flatMap((pattern) =>
-      globSync(pattern, { cwd: process.cwd() }).map((file) => file.replaceAll("\\", "/")),
-    );
-    expect(collected.some((file) => file.startsWith("src/auto-reply/continuation/"))).toBe(true);
-    expect(collected.filter((file) => !scheduled.has(file))).toEqual([]);
+    // Losing both the subtree include and its group would still match above.
+    expect(actual.some((file) => file.startsWith("src/auto-reply/continuation/"))).toBe(true);
   });
 });

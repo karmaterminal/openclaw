@@ -19,7 +19,10 @@ import {
   isGatewayServerTestFile,
 } from "../../test/vitest/vitest.gateway-server-paths.mjs";
 import { startupCorpusTestFiles } from "../../test/vitest/vitest.startup-corpus-paths.mjs";
-import { fullSuiteVitestShards } from "../../test/vitest/vitest.test-shards.mjs";
+import {
+  autoReplyReplySubtreeTestInclude,
+  fullSuiteVitestShards,
+} from "../../test/vitest/vitest.test-shards.mjs";
 import { toolingIsolatedTestFiles } from "../../test/vitest/vitest.tooling-isolated-paths.mjs";
 import { uiIsolatedTestFiles } from "../../test/vitest/vitest.ui-isolated-paths.mjs";
 import {
@@ -1645,7 +1648,11 @@ const AUTO_REPLY_REPLY_SHARD_RULES = [
 ] as const;
 
 function createAutoReplyReplySplitShards(): NodeTestSplitShard[] {
-  const files = listTrackedTestFiles("src/auto-reply/reply");
+  const files = listScopedOwnerTestFiles({
+    root: "src/auto-reply/reply",
+    include: autoReplyReplySubtreeTestInclude,
+    exclude: databaseWorkerCoreTestFiles,
+  });
   const groups = {
     "auto-reply-reply-agent-runner": [] as string[],
     "auto-reply-reply-commands": [] as string[],
@@ -1657,10 +1664,14 @@ function createAutoReplyReplySplitShards(): NodeTestSplitShard[] {
     "auto-reply-reply-state-routing": [] as string[],
     // The reply config also collects the continuation subtree; without its own
     // group those files would be collected by no shard at all. The group
-    // claims only files inside that subtree, whatever the inventory returns.
-    "auto-reply-continuation": listTrackedTestFiles("src/auto-reply/continuation").filter((file) =>
-      file.startsWith("src/auto-reply/continuation/"),
-    ),
+    // claims only files inside that subtree, whatever the inventory returns,
+    // and like the reply groups only those the reply config runs: it skips the
+    // database-worker, unit-fast, e2e and live files that config excludes.
+    "auto-reply-continuation": listScopedOwnerTestFiles({
+      root: "src/auto-reply/continuation",
+      include: ["src/auto-reply/continuation/**/*.test.ts"],
+      exclude: databaseWorkerCoreTestFiles,
+    }),
   };
   const namedEntrypoints = new Map<string, keyof typeof groups>([
     ["dispatch-from-config.test.ts", "auto-reply-reply-dispatch-core"],
