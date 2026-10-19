@@ -31,6 +31,7 @@ import { createSessionActorReplica } from "./session-actor-replica.js";
 import { createSessionActor, type SessionActorTransport } from "./session-actor.js";
 import { createSessionActorWorker } from "./session-actor.worker.js";
 import { createSessionCompoundWorkerFixture } from "./session-compound-worker.test-support.js";
+import { buildRestartRecoveryExpectedState } from "./session-transcript-turn-state.js";
 
 // mock-isolation: this transport proof does not schedule unrelated maintenance.
 vi.mock("./session-accessor.sqlite-maintenance-kick.js", () => ({
@@ -444,6 +445,65 @@ it("does not publish a candidate when its outcome transfer is incomplete", async
     expect(commands).toEqual(["session.actor.patch"]);
   });
 });
+
+it.each([false, true])(
+  "discloses a committed turn to its commit authority (oversized=%s)",
+  async (oversized) => {
+    await withActor(async ({ actor, seedOversizedTranscript }) => {
+      if (oversized) {
+        seedOversizedTranscript();
+      }
+      const before = await actor.read(authority);
+      const entry = before.entry!;
+      // Turn custody rechecks its pending-input owner against this commit-stage publication.
+      const commitPublications: unknown[] = [];
+      const result = await actor.adoptRun(
+        {
+          commandId: "adopt-turn",
+          phaseId: "adoption",
+          expected: before.version,
+          sessionId: entry.sessionId,
+          expectedState: buildRestartRecoveryExpectedState(entry),
+          runId: "turn-run",
+          lifecycle: { startedAt: 2 },
+          turn: {
+            agentId: "main",
+            sessionKey: before.target.sessionKey,
+            options: {
+              expectedSessionId: entry.sessionId,
+              sessionFile: "synthetic.jsonl",
+              messages: [
+                {
+                  eventId: "adopted-message",
+                  message: { role: "user", content: "adopted", idempotencyKey: "adopted-once" },
+                },
+              ],
+            },
+          },
+        },
+        {
+          assertCurrent() {},
+          authorize(stage, _facts, publication) {
+            if (stage === "commit" && isRecord(publication)) {
+              commitPublications.push(publication.kind);
+            }
+          },
+        },
+      );
+      expect({ kind: result.kind, error: "error" in result ? result.error : undefined }).toEqual({
+        kind: "committed",
+        error: undefined,
+      });
+      if (result.kind !== "committed") {
+        throw new Error("Expected the adopted turn to commit");
+      }
+      expect(result.receipt.postimage.transcript.idempotency).toHaveLength(
+        oversized ? OVERSIZED_TRANSCRIPT_MESSAGE_COUNT + 1 : 1,
+      );
+      expect(commitPublications).toEqual(["session-turn"]);
+    });
+  },
+);
 
 it("serves installed state without a request and reconciles a retired worker generation", async () => {
   await withActor(async ({ actor, commands, retireGeneration }) => {
