@@ -29,6 +29,7 @@ import { resolveExecDefaults } from "../exec-defaults.js";
 import type { MainSessionRecoveryAdmission } from "./main-session-recovery-admission.js";
 import { buildMainSessionRecoverySettlementPatch } from "./main-session-recovery-clear.js";
 import { createCurrentProcessOwnerLookup } from "./main-session-recovery-live-owners.js";
+import { hasMainSessionRestartEvidence } from "./main-session-recovery-restart-evidence.js";
 import {
   getMainSessionRecoveryRetryCount,
   isMainRestartRecoveryTerminalOnly,
@@ -329,6 +330,27 @@ export async function recoverStore(params: {
       ) {
         if (stopped()) {
           return result;
+        }
+        if (
+          recoveryView.status !== "exhausted" &&
+          !hasMainSessionRestartEvidence(entry, lifecycleGeneration)
+        ) {
+          // A turn that failed before replying on this live Gateway is not restart work.
+          // Declining its replay already withholds message-tool authority; keep the session.
+          const retired = await commitMainSessionRecovery({
+            command: {
+              kind: "retire_live_interruption",
+              lifecycleGeneration,
+              now: Date.now(),
+              observation: recoveryView.observation,
+            },
+            requireWriteSuccess: true,
+            target,
+          });
+          skip(
+            retired.transition.kind === "applied" ? "live_interruption_retired" : "state_changed",
+          );
+          continue;
         }
         const tombstone = await tombstoneMainRestartRecoveryWithNotice({
           ...target,

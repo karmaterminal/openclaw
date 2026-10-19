@@ -20,6 +20,7 @@ import {
   removeMainSessionRecoveryForegroundClaim,
 } from "./main-session-recovery-clear.js";
 import { isMainRestartRecoveryAggregateEmptyAndUnowned } from "./main-session-recovery-empty-aggregate.js";
+import { retireMainSessionLiveInterruption } from "./main-session-recovery-restart-evidence.js";
 import type {
   MainSessionRecoveryCommand,
   MainSessionRecoveryConflict,
@@ -718,6 +719,8 @@ export function transitionMainSessionRecovery(
       entry.updatedAt = command.now;
       return { kind: "tombstoned" };
     }
+    case "retire_live_interruption":
+      return retireMainSessionLiveInterruption(entry, command, matchesObservation);
     case "doctor_repair": {
       if (!entry.mainRestartRecovery?.tombstone || entry.abortedLastRun !== true) {
         return { kind: "no_change" };

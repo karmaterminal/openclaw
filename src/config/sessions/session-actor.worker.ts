@@ -16,6 +16,11 @@ import {
   type SqliteWorkerCommand,
 } from "../../infra/sqlite-worker-contract.js";
 import { deferSqliteWorkerCommitReceipt } from "../../infra/sqlite-worker-operation-admission.js";
+import {
+  captureSqliteWorkerCommitReceipt,
+  deferCapturedSqliteWorkerCommitReceipt,
+} from "../../infra/sqlite-worker-operation-settlement.js";
+import { createSqliteWorkerTransferOwner } from "../../infra/sqlite-worker-transfer.js";
 import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db-contract.js";
 import type { AgentWorkerOperationContext } from "../../state/openclaw-agent-operation-context.js";
 import type {
@@ -306,7 +311,56 @@ export function createSessionActorWorker(
             if (context.captureCommitReceipt) {
               context.captureCommitReceipt(opened.db, accepted);
             } else {
-              deferSqliteWorkerCommitReceipt(opened.db, accepted);
+              // Long sessions grow the postimage past the inline receipt budget. Frame the
+              // outcome through live admission and commit only its transfer witness (#169843).
+              const captured = captureSqliteWorkerCommitReceipt(accepted);
+              if (captured.kind === "oversized") {
+                const transfer = createSqliteWorkerTransferOwner();
+                const handle = transfer.start(
+                  [{ kind: "outcome", serialized: captured.serialized }].values(),
+                  { kinds: ["outcome"] },
+                );
+                try {
+                  let frame = transfer.next(handle.id);
+                  let finalFrames;
+                  for (;;) {
+                    const next = transfer.next(handle.id);
+                    if (next.done) {
+                      finalFrames = [frame, next];
+                      break;
+                    }
+                    // Frames carry only their target; the final commit admission
+                    // still discloses the complete postimage for authorization.
+                    admit("transaction", {
+                      kind: "session-actor-admission",
+                      snapshot: { target: working.hot.target },
+                      publication: {
+                        kind: "session-actor-outcome",
+                        transfer: { handle, frames: [frame] },
+                      },
+                    });
+                    frame = next;
+                  }
+                  deferSqliteWorkerCommitReceipt(opened.db, {
+                    kind: "session-actor-committed-transfer",
+                    transferId: handle.id,
+                  });
+                  admit("commit", {
+                    kind: "session-actor-admission",
+                    snapshot: projectSessionActorHotState(working),
+                    publication: {
+                      kind: "session-actor-outcome",
+                      transfer: { handle, frames: finalFrames },
+                      publication: turn ?? commitPublication,
+                    },
+                    final: true,
+                  });
+                  return accepted;
+                } finally {
+                  transfer.cancel();
+                }
+              }
+              deferCapturedSqliteWorkerCommitReceipt(opened.db, captured);
             }
             admit("commit", {
               kind: "session-actor-admission",

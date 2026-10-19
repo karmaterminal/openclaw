@@ -19,6 +19,7 @@ export type MainSessionRecoverySkipReason =
   | "tombstoned"
   | "exhausted"
   | "message_action_authority_unavailable"
+  | "live_interruption_retired"
   | "observation_only"
   | "pending_delivery"
   | "invalid_harness_completion"
@@ -54,6 +55,7 @@ export function skippedMainSessionRecoveryDecision(
     case "inactive":
       return { decision: "deferred", reason, nextOwner: "session-owner" };
     case "invalid_harness_completion":
+    case "live_interruption_retired":
       return { decision: "settled", reason, nextOwner: "none" };
     case "stopped":
       return { decision: "deferred", reason, nextOwner: "next-startup" };

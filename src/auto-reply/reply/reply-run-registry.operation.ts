@@ -108,6 +108,7 @@ export function createReplyOperation(params: {
   let terminalRecovery = false;
   let acceptedSteeredInboundAudio = false;
   let sourceReplyDelivered = false;
+  let messageToolDelivered = false;
   const toolAuthority = createReplyOperationToolAuthority({
     isOpen: () => result === null,
     ownsRunSlot: () => replyRunState.activeRunsByKey.get(currentSessionKey) === operation,
@@ -324,6 +325,9 @@ export function createReplyOperation(params: {
     get sourceReplyDelivered() {
       return sourceReplyDelivered;
     },
+    get messageToolDelivered() {
+      return messageToolDelivered;
+    },
     get acceptedSteeredInboundAudio() {
       return acceptedSteeredInboundAudio;
     },
@@ -419,6 +423,10 @@ export function createReplyOperation(params: {
     },
     markSourceReplyDelivered() {
       sourceReplyDelivered = true;
+      messageToolDelivered = true;
+    },
+    markMessageToolDelivered() {
+      messageToolDelivered = true;
     },
     bindToolAuthoritySnapshot: toolAuthority.bindToolAuthoritySnapshot,
     bindToolAuthoritySnapshotAsync: toolAuthority.bindToolAuthoritySnapshotAsync,

@@ -388,8 +388,10 @@ export type ReplyOperation = {
    * Final delivery reads it because the original dispatch context cannot change.
    */
   readonly acceptedSteeredInboundAudio: boolean;
-  /** Sticky fact: a final message-tool send already answered this turn's source. */
+  /** A final message-tool send answered this turn's source; a later steered input needs its own. */
   readonly sourceReplyDelivered: boolean;
+  /** Sticky fact: a message-tool send from this operation reached a channel; steering never clears it. */
+  readonly messageToolDelivered: boolean;
   /** Immutable tool authority accepted by the active backend for steered user turns. */
   readonly toolAuthorityFingerprint?: string;
   /** Initial selected model; a concrete attempt must not replace user intent. */
@@ -418,6 +420,8 @@ export type ReplyOperation = {
   /** A steered input joined this operation; any earlier source answer predates it. */
   markSteeredInputAccepted(params: { inboundAudio: boolean }): void;
   markSourceReplyDelivered(): void;
+  /** Record a committed message-tool send to any destination; a replayed turn would repeat it. */
+  markMessageToolDelivered(): void;
   /** Freeze the complete caller policy before a concrete backend attempt attaches. */
   /** @deprecated Use bindToolAuthoritySnapshotAsync. */
   bindToolAuthoritySnapshot(snapshot: ReplyToolAuthoritySnapshot): void;
