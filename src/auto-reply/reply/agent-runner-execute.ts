@@ -45,6 +45,10 @@ import {
 import { recordReplyOperationAgentTurn } from "./reply-operation-run-state.js";
 import type { ReplyOperation } from "./reply-run-registry.js";
 import { replyRunRegistry } from "./reply-run-registry.js";
+import {
+  acquireReplyOperationSessionActor,
+  getReplyOperationSessionTarget,
+} from "./reply-run-registry.state.js";
 import { createReplyRestartRecoveryClaimController } from "./restart-recovery-claim.js";
 import { resolveReplyHookTrigger } from "./run-provenance.js";
 import { resolveReplySourceTurnId } from "./source-turn-id.js";
@@ -500,6 +504,17 @@ export function createReplyAgentRestartRecoveryController(
     normalizeOptionalString(sessionCtx.MessageSidFull);
   const recovery = createReplyRestartRecoveryClaimController({
     agentId: followupRun.run.agentId,
+    acquireSessionActor: async () => {
+      const actor = await acquireReplyOperationSessionActor(replyOperation);
+      if (!actor) {
+        return undefined;
+      }
+      const target = getReplyOperationSessionTarget(replyOperation);
+      if (!target) {
+        throw new Error("Reply operation has no session actor target");
+      }
+      return { actor, target };
+    },
     operatorAuthority: followupRun.operatorAuthority,
     inputProvenance: followupRun.run.inputProvenance,
     lifecycleGeneration: replyOperation.lifecycleGeneration,

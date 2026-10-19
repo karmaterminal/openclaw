@@ -28,7 +28,6 @@ import type { holdQueuedSwarmRun, activateSwarmRun } from "../swarm/swarm-schedu
 import {
   type bindSubagentSpawnCleanup,
   type cleanupFailedSpawnBeforeAgentStart,
-  retrySubagentCleanup,
   terminateAcceptedCollectorRun,
 } from "./subagent-spawn-cleanup.js";
 import type { PreparedContextEngineSubagentSpawn } from "./subagent-spawn-context.js";
@@ -229,16 +228,20 @@ export function createCollectorLaunchCallbacks(params: {
       // Out-of-process Gateway tracking finds that exact runId and suppresses its CLI row.
       const gatewayRunId = readGatewayRunId(launch.response) ?? childRunId;
       if (registrationScope?.canAcceptLaunch() === false) {
-        await terminateAcceptedCollectorRun({
-          childSessionKey,
-          gatewayRunId,
-          ...provisionalSessionIdentity,
-          isCurrent: canCleanupCreatedSession,
-          ...(callCleanupGateway ? { callGateway: callCleanupGateway } : {}),
-          sessionCleanup: "preserve",
-        });
-        launchTerminationConfirmed = true;
-        releaseSubagentSpawnAcceptanceHoldForRun(childRunId);
+        try {
+          await terminateAcceptedCollectorRun({
+            childSessionKey,
+            gatewayRunId,
+            ...provisionalSessionIdentity,
+            isCurrent: canCleanupCreatedSession,
+            ...(callCleanupGateway ? { callGateway: callCleanupGateway } : {}),
+            sessionCleanup: "preserve",
+          });
+          launchTerminationConfirmed = true;
+        } finally {
+          // An unconfirmed stop throws; the dispatched launch is released either way.
+          releaseSubagentSpawnAcceptanceHoldForRun(childRunId);
+        }
         throw new Error("Collector registration changed during launch");
       }
       params.recordParticipant();
@@ -279,8 +282,6 @@ export function createCollectorLaunchCallbacks(params: {
     await disposeFailedPreparation();
     releaseAuthority();
   };
-  // Scheduler retries repeat settlement, never the launch or admitted cleanup.
-  let startAttempt: Promise<void> | undefined;
   const cleanupOnce = async () =>
     await Promise.allSettled([
       Promise.resolve().then(() => preparation?.rollback()),
@@ -363,26 +364,18 @@ export function createCollectorLaunchCallbacks(params: {
       await waitForStopPublications();
       const failure = error;
       if (pendingLaunchTermination && !launchTerminationConfirmed) {
-        let terminated: boolean;
-        try {
-          terminated = await terminateAcceptedCollectorRun({
-            childSessionKey,
-            gatewayRunId: pendingLaunchTermination,
-            ...provisionalSessionIdentity,
-            isCurrent: canCleanupCreatedSession,
-            ...(callCleanupGateway ? { callGateway: callCleanupGateway } : {}),
-          });
-        } catch (terminationError) {
-          // Rollback custody was recorded before termination, so the sweeper
-          // owns reconciliation of an accepted child whose termination failed.
-          launchTerminationConfirmed = true;
-          const aggregate = new AggregateError(
-            [failure, terminationError],
-            `Accepted collector rollback incomplete: ${childRunId}`,
-          );
-          aggregate.cause = failure;
-          throw aggregate;
-        }
+        // Termination rejects when the stop is unconfirmed. Rollback custody was
+        // recorded before it, so the sweeper owns reconciliation of that child.
+        const terminated = await terminateAcceptedCollectorRun({
+          childSessionKey,
+          gatewayRunId: pendingLaunchTermination,
+          ...provisionalSessionIdentity,
+          isCurrent: canCleanupCreatedSession,
+          ...(callCleanupGateway ? { callGateway: callCleanupGateway } : {}),
+        }).then(
+          () => true,
+          () => false,
+        );
         launchTerminationConfirmed = true;
         // Releasing custody supersedes any staged Stop write on this row.
         await waitForStopPublications();
@@ -402,10 +395,7 @@ export function createCollectorLaunchCallbacks(params: {
           await registrationScope.settleFailedLaunch(launchError);
           return;
         }
-        await retrySubagentCleanup(async () => {
-          await settleFailedQueuedSubagentLaunch(childRunId, launchError);
-          return true;
-        });
+        await settleFailedQueuedSubagentLaunch(childRunId, launchError);
       };
       if (!dispatchAttempted && registrationScope) {
         await settleFailure();
@@ -431,7 +421,7 @@ export function createCollectorLaunchCallbacks(params: {
   };
   return {
     signal: params.operatorAuthority?.signal,
-    start: () => (startAttempt ??= startOnce()),
+    start: startOnce,
     onStartFailure: settleLaunchFailure,
     onRemoved: async (reason) => {
       try {

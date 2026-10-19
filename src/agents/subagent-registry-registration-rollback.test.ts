@@ -227,12 +227,13 @@ describe("subagent registration rollback", () => {
   it("persists exact-registration rollback custody even after cleanup ownership flips", async () => {
     const childSessionKey = "agent:main:subagent:rollback-custody-survives-revocation";
     const runId = "run-rollback-custody-survives-revocation";
+    // The test add is a real registry write, so the row is already durable. A raw re-save
+    // would be an out-of-band writer, whose version the registry refuses since #168789.
     await addSubagentRunForTests(createAcceptedLiveRun(runId, childSessionKey));
-    saveSubagentRegistryToSqlite(
-      canonicalSubagentRunFixtures(
-        new Map([[runId, createAcceptedLiveRun(runId, childSessionKey)]]),
-      ),
-    );
+    expect(loadSubagentRegistryFromSqlite().get(runId)).toMatchObject({
+      runId,
+      execution: { status: "running" },
+    });
 
     // Ownership is already gone by the time the rollback is recorded.
     const result = await recordAcceptedSubagentSpawnRollback({

@@ -95,14 +95,17 @@ export async function reconcileAcceptedSpawnRollback(params: {
   ) {
     rollback = recorded.acceptedSpawnRollback;
   }
+  // One attempt per sweep pass: an unconfirmed stop keeps the row armed for the next pass.
   const terminated = await terminateAcceptedCollectorRun({
     childSessionKey: params.entry.childSessionKey,
     gatewayRunId: rollback.gatewayRunId,
     expectedSessionId: rollback.expectedSessionId,
     expectedLifecycleRevision: rollback.expectedLifecycleRevision,
     callGateway: params.callGateway,
-    retry: false,
-  });
+  }).then(
+    () => true,
+    () => false,
+  );
   const current = params.runs.get(params.runId);
   if (
     !terminated ||

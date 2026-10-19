@@ -1,13 +1,10 @@
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
-import { sleepWithAbort } from "@openclaw/retry";
 import type { callGateway } from "../../../gateway/call.js";
 import { waitForChatAbortControllerRemoval } from "../../../gateway/chat-abort-lifecycle-internal.js";
 import type { ChatAbortControllerEntry } from "../../../gateway/chat-abort.js";
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
 import { bindGatewayLifecycleRequest } from "../../../gateway/server-recovery-runtime-context.js";
-import { isFastTestRuntimeEnv } from "../../../infra/env.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
-import { getPluginRuntimeGatewayRequestScope } from "../../../plugins/runtime/gateway-request-scope.js";
 import { getAsyncWorkSignal } from "../../../shared/async-work-scope.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import { deleteSubagentSessionForCleanup } from "../registry/subagent-session-cleanup.js";
@@ -172,20 +169,9 @@ export function bindSubagentSpawnCleanup(params: {
                 }
                 signal.throwIfAborted();
                 scheduling.resolve({ status: "pending", error: abortError });
-                let cleanupError = abortError;
-                const terminated = await retrySubagentCleanup(
-                  async () => {
-                    await abort(signal);
-                    return true;
-                  },
-                  {
-                    shouldRetry: () => !signal.aborted && isCurrent("chat.abort"),
-                    onError: (error) => {
-                      cleanupError = error;
-                    },
-                  },
-                );
-                if (!terminated) {
+                try {
+                  await abort(signal);
+                } catch (cleanupError) {
                   context.logGateway.warn(
                     `Accepted child ${runId} termination remains unconfirmed: ${formatErrorMessage(cleanupError)}`,
                   );
@@ -242,17 +228,6 @@ function isMatchingAbortResponse(response: unknown, gatewayRunId: string): boole
   );
 }
 
-function isSettledAbortResponse(response: unknown, gatewayRunId: string): boolean {
-  if (isMatchingAbortResponse(response, gatewayRunId)) {
-    return true;
-  }
-  const result = asNullableRecord(response);
-  if (!result) {
-    return false;
-  }
-  return result.aborted === false && Array.isArray(result.runIds) && result.runIds.length === 0;
-}
-
 function isDefinitiveAbortMiss(response: unknown, gatewayRunId: string): boolean {
   const result = asNullableRecord(response);
   return (
@@ -263,31 +238,13 @@ function isDefinitiveAbortMiss(response: unknown, gatewayRunId: string): boolean
   );
 }
 
+// Deleting by key alone could remove a newer generation; only a frozen session
+// identity (id + lifecycle revision) is safe to delete against.
 function hasFrozenSessionIdentity(options?: SessionCleanupOptions): boolean {
   return Boolean(options?.expectedSessionId && options.expectedLifecycleRevision);
 }
 
-export async function retrySubagentCleanup(
-  attempt: () => boolean | Promise<boolean>,
-  options?: { shouldRetry?: () => boolean | Promise<boolean>; onError?: (error: unknown) => void },
-): Promise<boolean> {
-  for (;;) {
-    try {
-      if (await attempt()) {
-        return true;
-      }
-    } catch (error) {
-      options?.onError?.(error);
-    }
-    if ((await options?.shouldRetry?.()) === false) {
-      return false;
-    }
-    await sleepWithAbort(isFastTestRuntimeEnv() ? 1 : 1_000, undefined, { ref: false });
-  }
-}
-
 type SessionCleanupOptions = {
-  waitForCleanup?: () => Promise<void> | undefined;
   isCurrent?: () => boolean;
   emitLifecycleHooks?: boolean;
   deleteTranscript?: boolean;
@@ -317,37 +274,6 @@ export async function cleanupProvisionalSession(
   return (await requestProvisionalSessionCleanup(childSessionKey, options)) === "deleted";
 }
 
-async function waitForProvisionalSessionDeletion(
-  childSessionKey: string,
-  options?: SessionCleanupOptions,
-): Promise<boolean> {
-  if (!hasFrozenSessionIdentity(options)) {
-    return false;
-  }
-  let deleted = false;
-  await retrySubagentCleanup(
-    async () => {
-      const outcome = await requestProvisionalSessionCleanup(childSessionKey, options);
-      deleted = outcome === "deleted";
-      return outcome !== "failed";
-    },
-    {
-      shouldRetry: async () => {
-        for (
-          let pending = options?.waitForCleanup?.();
-          pending;
-          pending = options?.waitForCleanup?.()
-        ) {
-          await pending;
-        }
-        // A provisional claim pauses cleanup; decide ownership after that claim settles.
-        return options?.isCurrent?.() !== false;
-      },
-    },
-  );
-  return deleted;
-}
-
 export async function cleanupFailedSpawnBeforeAgentStart(params: {
   isCurrent?: () => boolean;
   callGateway?: GatewayCall;
@@ -360,8 +286,13 @@ export async function cleanupFailedSpawnBeforeAgentStart(params: {
   expectedSessionId?: string;
   expectedLifecycleRevision?: string;
 }): Promise<{ attachmentsRemoved: boolean; sessionDeleted: boolean }> {
-  const { childSessionKey, attachmentId, waitForSessionDeletion, ...sessionCleanupOptions } =
-    params;
+  const {
+    childSessionKey,
+    attachmentId,
+    waitForSessionDeletion,
+    waitForCleanup,
+    ...sessionCleanupOptions
+  } = params;
   let attachmentsRemoved = true;
   if (attachmentId) {
     try {
@@ -374,11 +305,17 @@ export async function cleanupFailedSpawnBeforeAgentStart(params: {
       attachmentsRemoved = false;
     }
   }
+  if (waitForSessionDeletion) {
+    // Waiting lets a provisional claim rebind the key; afterwards only a frozen
+    // generation is safe to delete.
+    if (!hasFrozenSessionIdentity(sessionCleanupOptions)) {
+      return { attachmentsRemoved, sessionDeleted: false };
+    }
+    await waitForCleanup?.();
+  }
   return {
     attachmentsRemoved,
-    sessionDeleted: await (
-      waitForSessionDeletion ? waitForProvisionalSessionDeletion : cleanupProvisionalSession
-    )(childSessionKey, sessionCleanupOptions),
+    sessionDeleted: await cleanupProvisionalSession(childSessionKey, sessionCleanupOptions),
   };
 }
 
@@ -411,59 +348,39 @@ export async function terminateAcceptedCollectorRun(params: {
   expectedLifecycleRevision?: string;
   callGateway?: GatewayCall;
   timeoutMs?: number;
-  retry?: boolean;
   sessionCleanup?: "delete-on-abort-miss" | "preserve";
-}): Promise<boolean> {
+}): Promise<void> {
   const call = params.callGateway ?? callSubagentGateway;
   const timeoutMs = params.timeoutMs ?? SUBAGENT_CONTROL_GATEWAY_TIMEOUT_MS;
-  const resolveGatewayContext = getPluginRuntimeGatewayRequestScope()?.resolveGatewayContext;
-  return await retrySubagentCleanup(
-    async () => {
-      try {
-        const response = await requestAcceptedRunAbort(params);
-        if (
-          isMatchingAbortResponse(response, params.gatewayRunId) ||
-          (params.sessionCleanup === "preserve" &&
-            isSettledAbortResponse(response, params.gatewayRunId))
-        ) {
-          return true;
-        }
-        if (
-          params.sessionCleanup === "preserve" &&
-          isDefinitiveAbortMiss(response, params.gatewayRunId)
-        ) {
-          return true;
-        }
-      } catch {
-        if (params.sessionCleanup === "preserve") {
-          return false;
-        }
-        // Fall through to exact-session deletion for provisional sessions only.
-      }
-      if (params.sessionCleanup === "preserve" || !hasFrozenSessionIdentity(params)) {
-        return false;
-      }
-      const cleanup = await requestProvisionalSessionCleanup(params.childSessionKey, {
-        isCurrent: params.isCurrent,
-        deleteTranscript: true,
-        expectedSessionId: params.expectedSessionId,
-        expectedLifecycleRevision: params.expectedLifecycleRevision,
-        callGateway: call,
-        timeoutMs,
-      });
-      // A changed lifecycle proves the accepted run no longer owns this session.
-      return cleanup !== "failed" || params.isCurrent?.() === false;
-    },
-    {
-      // Conjunctive: retry only while the request owner can still dispatch AND the
-      // cleanup owner is still current AND identity is safe to delete against. A
-      // retired scope can never dispatch again; `isCurrent` is upstream's live-ownership bound and
-      // must be threaded by every caller or the guard reads undefined and passes.
-      shouldRetry: () =>
-        params.retry !== false &&
-        params.isCurrent?.() !== false &&
-        (!resolveGatewayContext || Boolean(resolveGatewayContext())) &&
-        (params.sessionCleanup === "preserve" || hasFrozenSessionIdentity(params)),
-    },
-  );
+  try {
+    const response = await requestAcceptedRunAbort(params);
+    if (
+      isMatchingAbortResponse(response, params.gatewayRunId) ||
+      (params.sessionCleanup === "preserve" && isDefinitiveAbortMiss(response, params.gatewayRunId))
+    ) {
+      return;
+    }
+    if (params.sessionCleanup === "preserve") {
+      throw new Error("Gateway did not confirm accepted child termination");
+    }
+  } catch (error) {
+    if (params.sessionCleanup === "preserve") {
+      throw error;
+    }
+    // Exact-session deletion can still stop a provisional child after an RPC failure.
+  }
+  if (!hasFrozenSessionIdentity(params)) {
+    throw new Error("Gateway did not confirm accepted child termination");
+  }
+  const cleanup = await requestProvisionalSessionCleanup(params.childSessionKey, {
+    isCurrent: params.isCurrent,
+    deleteTranscript: true,
+    expectedSessionId: params.expectedSessionId,
+    expectedLifecycleRevision: params.expectedLifecycleRevision,
+    callGateway: call,
+    timeoutMs,
+  });
+  if (cleanup === "failed" && params.isCurrent?.() !== false) {
+    throw new Error("Gateway did not confirm accepted child cleanup");
+  }
 }

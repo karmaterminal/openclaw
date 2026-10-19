@@ -196,17 +196,6 @@ const ALLOWLIST = [
   },
   {
     file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "completionObservationsByKey",
-    owner: "reply run registry singleton",
-    purpose:
-      "Holds the per-sessionKey observers that record owner departures for the lifetime of one awaited admission attempt.",
-    safeVolatileClassification:
-      "Observers are scoped to an in-process await and disposed when it settles; they carry no durable state.",
-    restartContract:
-      "Lost on process restart; the awaiting admission callers disappear with the process.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
     symbol: "lifecycleAdmissionByOperation",
     owner: "reply run registry singleton",
     purpose:
@@ -270,17 +259,6 @@ const ALLOWLIST = [
       "The map stores Node timeout handles for the current process; the terminal-notice intent itself is persisted durably.",
     restartContract:
       "Lost on process restart; the durable terminal notice remains and the next delivery pass can arm a fresh retry timer.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-finalization-lease.ts",
-    symbol: "activeLeases",
-    owner: "reply run finalization lease registry",
-    purpose:
-      "Tracks the finalization leases currently held by in-process reply runs so shutdown can drain them.",
-    safeVolatileClassification:
-      "Leases wrap live in-process callbacks and abort plumbing that cannot outlive the Node process.",
-    restartContract:
-      "Lost on process restart; no lease is reported held and a new run acquires a fresh lease before finalizing.",
   },
   {
     file: "src/auto-reply/reply/reply-run-finalization-lease.ts",

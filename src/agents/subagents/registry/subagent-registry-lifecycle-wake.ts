@@ -271,11 +271,7 @@ function scheduleRequesterSettleWakeRetry(
 ): void {
   const pending = getPendingWakeCommit(context, entry);
   const nextAttemptAt = pending?.nextAttemptAt ?? entry.requesterSettleWake?.nextAttemptAt;
-  if (
-    pending?.initialTransfer?.blocked ||
-    nextAttemptAt === undefined ||
-    nextAttemptAt <= Date.now()
-  ) {
+  if (nextAttemptAt === undefined || nextAttemptAt <= Date.now()) {
     return;
   }
   const rearmGeneration = pending?.generation ?? entry.requesterSettleWake?.rearmGeneration;
@@ -329,7 +325,6 @@ export function scheduleRequesterSettleWake(
   const admittedWake = entry.requesterSettleWake;
   const requesterSessionKey = entry.requesterSessionKey?.trim();
   if (
-    pendingAtAdmission?.initialTransfer?.blocked ||
     (!admittedWake && !pendingAtAdmission) ||
     entry.collect ||
     (!pendingAtAdmission &&
@@ -472,7 +467,6 @@ export function scheduleRequesterSettleWake(
                     retainReplay ||
                     episode.committedWake !== undefined ||
                     hasSqliteWorkerOutcomeUnknown(error),
-                  false,
                   stateContext,
                 );
                 if (!published && isCurrent()) {
@@ -485,6 +479,10 @@ export function scheduleRequesterSettleWake(
                   batch,
                   rearmGeneration,
                   async (members, episode) => {
+                    // A no-outcome decision needs its whole batch; let the next sweep reselect it.
+                    if (!outcome && !episode.committedWake && members.length !== batch.length) {
+                      return true;
+                    }
                     if (
                       Boolean(admittedWake?.pauseNotice) !==
                       Boolean(entry.requesterSettleWake?.pauseNotice)
@@ -505,7 +503,6 @@ export function scheduleRequesterSettleWake(
                     return committed;
                   },
                   true,
-                  outcome === undefined,
                   stateContext,
                 ),
             });
@@ -573,7 +570,6 @@ export function scheduleRequesterSettleWake(
                         },
                       ),
                 true,
-                false,
                 stateContext,
               );
             } catch (settleError) {

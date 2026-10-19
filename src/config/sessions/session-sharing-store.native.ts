@@ -32,7 +32,12 @@ function assertAuthorizedSessionInstance(
   expectedSessionId: string | undefined,
   expectedEntry?: SessionSharingExpectedEntry,
 ): string {
-  const sessionId = readSessionEntryInstanceId(database, sessionKey);
+  const entry = expectedEntry
+    ? readExactSessionEntryRow(database, sessionKey, "list")?.entry
+    : undefined;
+  const sessionId = expectedEntry
+    ? entry?.sessionId
+    : readSessionEntryInstanceId(database, sessionKey);
   if (
     sessionId === undefined ||
     (expectedSessionId !== undefined && sessionId !== expectedSessionId)
@@ -40,7 +45,6 @@ function assertAuthorizedSessionInstance(
     throw new Error("session changed before sharing mutation");
   }
   if (expectedEntry) {
-    const entry = readExactSessionEntryRow(database, sessionKey, "list")?.entry;
     if (
       !entry ||
       !isDeepStrictEqual(
@@ -151,29 +155,28 @@ export function removeSessionMember(
         expectedEntry,
       );
       const db = getSessionMemberKysely(database);
-      const row = executeSqliteQueryTakeFirstSync(
-        database.db,
-        db
-          .selectFrom("session_members")
-          .select(["identity_id", "added_by", "added_at"])
-          .where("session_key", "=", sessionKey)
-          .where("identity_id", "=", normalizedIdentityId),
-      );
-      if (
-        !row ||
-        (expected && (row.added_by !== expected.addedBy || row.added_at !== expected.addedAt))
-      ) {
+      // SQLite replaces lone surrogates at binding; the expected grant uses decoded row values.
+      if (expected && expected.addedBy !== toUSVString(expected.addedBy)) {
         return null;
       }
-      withSqliteDatabaseWriteScope(database.db, [sessionKey], () =>
-        executeSqliteQuerySync(
+      let removal = db
+        .deleteFrom("session_members")
+        .where("session_key", "=", sessionKey)
+        .where("identity_id", "=", normalizedIdentityId);
+      if (expected) {
+        removal = removal
+          .where("added_by", "=", expected.addedBy)
+          .where("added_at", "=", expected.addedAt);
+      }
+      const row = withSqliteDatabaseWriteScope(database.db, [sessionKey], () =>
+        executeSqliteQueryTakeFirstSync(
           database.db,
-          db
-            .deleteFrom("session_members")
-            .where("session_key", "=", sessionKey)
-            .where("identity_id", "=", normalizedIdentityId),
+          removal.returning(["identity_id", "added_by", "added_at"]),
         ),
       );
+      if (!row) {
+        return null;
+      }
       // Removal revokes access, so advance recipient authority before observers
       // are notified of the membership change.
       advanceSessionRecipientAuthorityInTransaction(database, sessionKey);

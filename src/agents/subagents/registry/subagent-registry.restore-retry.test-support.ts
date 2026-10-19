@@ -20,7 +20,7 @@ export function registerRegistryRestoreRetryTest({
   mocks,
   hydrateAndActivateRegistry,
 }: RestoreRetryTestOptions): void {
-  it("retries registry restore after a transient partial-merge failure", async () => {
+  it("reconciles a partial merge on the next explicit restore", async () => {
     const mod = getRegistry();
     const runId = "run-restore-retry";
     const restored = createSubagentRunRecord({
@@ -41,13 +41,13 @@ export function registerRegistryRestoreRetryTest({
     expect(mocks.restoreSubagentRunsFromDisk).toHaveBeenCalledOnce();
     expect(mocks.onAgentEvent).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(1_000);
+    await hydrateAndActivateRegistry();
 
     expect(mocks.restoreSubagentRunsFromDisk).toHaveBeenCalledTimes(2);
     expect(mod.getSubagentRunByRunId(runId)?.runId).toBe(runId);
     expect(mocks.onAgentEvent).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(1);
-    // Successful restore must retire its retry timer.
+    // Restore never schedules its own retry; only an explicit restore re-reads.
     vi.advanceTimersByTime(2_000);
     expect(mocks.restoreSubagentRunsFromDisk).toHaveBeenCalledTimes(2);
 
