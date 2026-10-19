@@ -433,6 +433,34 @@ describe("Feishu durable ingress", () => {
     });
   });
 
+  it("settles a cancelled flush once, without spending retry budget, when other callbacks overlap", async () => {
+    const transport = createLifecycle();
+    const cancellation = Promise.withResolvers<void>();
+    const cancelled = vi.fn(async () => await cancellation.promise);
+    transport.lifecycle.onCancelled = cancelled;
+    const replayClaim = {
+      keys: ["overlapping-cancel"] as const,
+      commit: vi.fn(async () => true),
+      release: vi.fn(),
+    };
+    const { lifecycle } = buildFeishuFlushIngressLifecycle([
+      { lifecycle: transport.lifecycle, replayClaim },
+    ]);
+
+    // The first terminal callback owns the flush; later ones may not repeat or replace it.
+    const cancelling = lifecycle?.onCancelled?.();
+    const abandoning = lifecycle?.onAbandoned();
+    const adopting = lifecycle?.onAdopted();
+    cancellation.resolve();
+    await Promise.all([cancelling, abandoning, adopting]);
+
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(transport.calls.abandoned).not.toHaveBeenCalled();
+    expect(transport.calls.adopted).not.toHaveBeenCalled();
+    expect(replayClaim.release).toHaveBeenCalledOnce();
+    expect(replayClaim.commit).not.toHaveBeenCalled();
+  });
+
   it("suppresses a captioned post redelivery after upgrade when the pre-upgrade record exists", async () => {
     await withQueue(async () => {
       const preUpgradeKey = "om_post";
