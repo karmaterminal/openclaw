@@ -51,6 +51,9 @@ async function seedMixedOwners(): Promise<OpenClawConfig> {
   clearConfigCache();
   const cfg = getRuntimeConfig();
   cfg.acp = { allowedAgents: ["copilot"] };
+  // Store maintenance runs after each write and removes subagent and ACP sessions idle past its
+  // 30-day default, so the seeded sessions must be current to stay listed.
+  const seededAt = Date.now() - FIXTURE.length;
   for (const [index, { agentId, key }] of FIXTURE.entries()) {
     const storePath = path.join(stateDir, "agents", agentId, "sessions", "sessions.json");
     const sessionId = `mixed-owner-${index}`;
@@ -58,7 +61,7 @@ async function seedMixedOwners(): Promise<OpenClawConfig> {
       { agentId, sessionKey: key, storePath },
       {
         sessionId,
-        updatedAt: 1_781_000_000_000 + index,
+        updatedAt: seededAt + index,
         ...(key === REQUESTER_KEY ? {} : { spawnedBy: REQUESTER_KEY }),
       },
     );
