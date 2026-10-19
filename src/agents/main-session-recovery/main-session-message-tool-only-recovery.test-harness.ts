@@ -1,4 +1,4 @@
-import { expect, it, type Mock } from "vitest";
+import { expect, it, vi, type Mock } from "vitest";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
 import type { GatewayRecoveryRuntime } from "../../gateway/server-instance-runtime.types.js";
 import { persistGatewaySessionLifecycleEvent } from "../../gateway/session-lifecycle-state.js";
@@ -8,6 +8,7 @@ import type { SessionEntryFixture } from "../subagent-test-fixtures.test-helpers
 import { isMainSessionRecoveryPending } from "./main-session-recovery-state.js";
 import { claimMainSessionRecoveryOwner } from "./main-session-recovery-store.js";
 import { markOrphanedMainSessionForRecovery } from "./main-session-restart-recovery-marking.js";
+import { mainSessionRecoveryLog } from "./main-session-restart-recovery-shared.js";
 
 type MessageToolOnlyRecoveryFixture = {
   prepareRoot: () => void;
@@ -155,6 +156,7 @@ export function registerMessageToolOnlyRecoveryCases(
   it.each([
     { gateway: "the live Gateway", restart: false },
     { gateway: "an earlier Gateway generation", restart: true },
+    { gateway: "the live Gateway, Control UI ingress", restart: false, ingress: "control-ui" },
   ] as const)(
     "tombstones a message-tool-only room only for restart work: turn failed before reply on $gateway",
     async (variant) => {
@@ -174,6 +176,12 @@ export function registerMessageToolOnlyRecoveryCases(
           restartRecoveryRuns: [{ runId: "background-run", lifecycleGeneration: runGeneration }],
           restartRecoveryDeliveryRunId: "background-run",
           restartRecoverySourceReplyDeliveryMode: "message_tool_only",
+          ...("ingress" in variant
+            ? {
+                restartRecoverySourceIngress: variant.ingress,
+                restartRecoveryDeliverySourceRunId: "background-client-run",
+              }
+            : {}),
         });
         await writeTranscript(sessionsDir, "main-session", [
           { role: "user", content: "a room message the background turn raced" },
@@ -202,15 +210,45 @@ export function registerMessageToolOnlyRecoveryCases(
         ).resolves.toEqual({ marked: 1, skipped: 0 });
         expect(readEntry()).toMatchObject({ abortedLastRun: true, status: "interrupted" });
 
-        await expect(
-          retryRecovery({
-            agentId: "main",
-            expectedSessionId: "main-session",
-            sessionKey,
-            storePath,
-            stateDir: tmpDir(),
-          }),
-        ).resolves.toEqual({ started: 0, settled: 0, failed: 0, skipped: 1 });
+        const info = vi.spyOn(mainSessionRecoveryLog, "info");
+        try {
+          await expect(
+            retryRecovery({
+              agentId: "main",
+              expectedSessionId: "main-session",
+              sessionKey,
+              storePath,
+              stateDir: tmpDir(),
+            }),
+          ).resolves.toEqual({ started: 0, settled: 0, failed: 0, skipped: 1 });
+          const candidatePrefix = "main-session restart recovery candidate ";
+          const decisions = info.mock.calls
+            .map(([line]) => line)
+            .filter((line) => line.startsWith(candidatePrefix))
+            .map((line) => JSON.parse(line.slice(candidatePrefix.length)));
+          // A retired live interruption is already settled; it names no owner to act next.
+          expect(decisions).toEqual(
+            variant.restart
+              ? [
+                  expect.objectContaining({
+                    sessionKey,
+                    decision: "blocked",
+                    reason: "message_action_authority_unavailable",
+                    nextOwner: "operator",
+                  }),
+                ]
+              : [
+                  expect.objectContaining({
+                    sessionKey,
+                    decision: "settled",
+                    reason: "live_interruption_retired",
+                    nextOwner: "none",
+                  }),
+                ],
+          );
+        } finally {
+          info.mockRestore();
+        }
         const settled = readEntry();
         if (variant.restart) {
           expect(settled?.mainRestartRecovery?.tombstone).toEqual({
@@ -222,6 +260,8 @@ export function registerMessageToolOnlyRecoveryCases(
         expect(settled).toMatchObject({ abortedLastRun: false, status: "failed" });
         expect(settled?.restartRecoveryDeliveryRunId).toBeUndefined();
         expect(settled?.restartRecoveryRuns).toBeUndefined();
+        // Like the tombstone path, retirement records the terminal client run it settled.
+        expect(settled?.lastRunId).toBe("ingress" in variant ? "background-client-run" : undefined);
         expect(sendRecoveryNotice).not.toHaveBeenCalled();
         // The next room turn is admitted as ordinary work.
         await expect(
