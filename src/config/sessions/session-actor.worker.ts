@@ -345,6 +345,7 @@ export function createSessionActorWorker(
                     publication: {
                       kind: "session-actor-outcome",
                       transfer: { handle, frames: finalFrames },
+                      publication: turn ?? commitPublication,
                     },
                     final: true,
                   });
