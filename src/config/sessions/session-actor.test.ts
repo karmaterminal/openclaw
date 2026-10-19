@@ -155,10 +155,11 @@ it.each([false, true])(
             },
           },
         );
-        // The refused commit grant rolls the transfer back before its witness can commit.
+        // The refused commit grant rolls the transfer back before its witness can commit,
+        // and the outcome names the authority's own refusal.
         expect(revoked).toMatchObject({
           kind: "rolled-back",
-          error: { message: "SQLite transaction admission was refused" },
+          error: { message: "synthetic live authority revocation" },
         });
         expect(fixture.read()).toEqual(beforeEntry);
 
