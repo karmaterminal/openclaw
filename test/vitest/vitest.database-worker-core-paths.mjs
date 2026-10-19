@@ -546,6 +546,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/continuation/continuation-return.pending-sweep.test.ts",
   "src/auto-reply/reply/session-system-events.ack-formatted.test.ts",
   "src/auto-reply/continuation/custody-conjecture.scenario.test.ts",
+  "src/auto-reply/continuation/custody-orphan-reaper.test.ts",
   "src/auto-reply/continuation/post-compaction-chain-charge.test.ts",
   // Continuation delegate dispatch suites on real continuation custody.
   "src/auto-reply/continuation/delegate-dispatch.test.ts",

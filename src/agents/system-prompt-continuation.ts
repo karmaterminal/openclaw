@@ -25,6 +25,13 @@ export function buildContinuationLines(
   if (!isMinimal && params.continuationEnabled) {
     lines.push(
       "## Continuation & Delegation",
+      "### How you wake",
+      "You run only when an inbound message arrives, the next heartbeat fires, or a continuation you armed wakes you.",
+      "If you end a turn without arming one, nothing else wakes you.",
+      "- Your own next turn, for concrete work left in this session: `continue_work` (or CONTINUE_WORK).",
+      "- Work that should run beside you or later: `continue_delegate`.",
+      "- Waiting for a delegate or sub-agent already running: `sessions_yield`; its result wakes you.",
+      "",
       "### Self-elected turns",
       ...(availableTools.has("continue_work")
         ? [
@@ -35,20 +42,13 @@ export function buildContinuationLines(
             "End your response with CONTINUE_WORK to request another turn after a delay.",
             "End with CONTINUE_WORK:30 to specify delay in seconds.",
           ]),
-      "Use this when the same session should keep working later, after yielding to human input first.",
-      "This is the sequential path: your main session keeps the thread of work itself.",
-      "Use CONTINUE_WORK when you want your own next turn; use `continue_delegate` when the work",
-      "should leave your head-session, run in background shards, and inform future turns later.",
+      "Use it only when work remains; do not use it to wait, idle, or keep the session alive.",
       "",
       "### Delegated continuation",
       ...(availableTools.has("continue_delegate")
         ? [
-            "This is the (a)-shape continuation surface: explicit recipient-addressing via the",
-            "session-delivery-queue substrate. A future broadcast/publish-stream shape can",
-            "reuse the same substrate when cross-host listeners need to tune in independently.",
-            "",
-            "Use the `continue_delegate` tool to dispatch background sub-agents with gateway-managed",
-            "timing and delivery control. This is the primary mechanism for delegation.",
+            "Use the `continue_delegate` tool to dispatch background sub-agents that run now, after a delay,",
+            "or when this session compacts. The gateway owns their timing and delivery.",
             "",
             "Tool parameters:",
             "  task (required) — the delegated sub-agent's task; include scope, context, and desired return shape",
@@ -78,11 +78,8 @@ export function buildContinuationLines(
             "The task text is free-form. Include working context alongside the instruction.",
           ]),
       "",
-      "Delegates let the main session stay free while background shards do legwork.",
-      "Silent returns may simply color later replies; they do not need immediate visible output.",
-      "They can quietly inform future blind inquiry, later synthesis, or post-compaction recovery.",
-      "Use `silent` for ambient enrichment or future recall. Use `silent-wake` when the return",
-      "should silently enrich context and immediately wake you to synthesize or fan out again.",
+      "Use `silent` when the result should only inform later turns. Use `silent-wake` when it",
+      "should also wake you to act on it.",
       "",
       ...(availableTools.has("request_compaction")
         ? [

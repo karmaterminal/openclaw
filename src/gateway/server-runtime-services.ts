@@ -485,7 +485,10 @@ function startPendingSessionDeliveryRuntime(params: {
   };
 }
 
-/** Custody retention runs at boot and then on this interval (RFC §5.4.6). */
+/**
+ * Custody retention and the orphan reaper run at boot and then on this
+ * interval (RFC §5.4.6, #1469).
+ */
 const CONTINUATION_CUSTODY_PRUNE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 function startPendingContinuationRecovery(params: {
@@ -509,7 +512,7 @@ function startPendingContinuationRecovery(params: {
       return;
     }
     recovery = (async () => {
-      const [{ runContinuationCustodyBoot, pruneExpiredContinuationCustody }, registry] =
+      const [{ runContinuationCustodyBoot, maintainContinuationCustody }, registry] =
         await Promise.all([
           import("../auto-reply/continuation/custody-boot.js"),
           import("../agents/subagents/registry/subagent-registry.js"),
@@ -536,10 +539,11 @@ function startPendingContinuationRecovery(params: {
         work.sessions > 0 ||
         work.terminalNotices > 0 ||
         summary.awaitingNextCompactionRequeued > 0 ||
-        summary.pruned > 0
+        summary.pruned > 0 ||
+        summary.orphansReaped > 0
       ) {
         bootLog.info(
-          `recovered delegates sessions=${delegates.sessions} dispatched=${delegates.dispatched} rejected=${delegates.rejected} postCompaction sessions=${postCompaction.sessions} released=${postCompaction.dispatched} failed=${postCompaction.failed} requeued=${summary.awaitingNextCompactionRequeued} work sessions=${work.sessions} dispatched=${work.dispatched} failed=${work.failed} reaped=${work.reaped} terminalNotices=${work.terminalNotices} pruned=${summary.pruned}`,
+          `recovered delegates sessions=${delegates.sessions} dispatched=${delegates.dispatched} rejected=${delegates.rejected} postCompaction sessions=${postCompaction.sessions} released=${postCompaction.dispatched} failed=${postCompaction.failed} requeued=${summary.awaitingNextCompactionRequeued} work sessions=${work.sessions} dispatched=${work.dispatched} failed=${work.failed} reaped=${work.reaped} terminalNotices=${work.terminalNotices} pruned=${summary.pruned} orphansReaped=${summary.orphansReaped}`,
         );
       }
       if (stopped) {
@@ -547,10 +551,10 @@ function startPendingContinuationRecovery(params: {
       }
       pruneTimer = setInterval(() => {
         void runWithGatewayIndependentRootWorkAdmission(
-          async () => void (await pruneExpiredContinuationCustody()),
+          async () => void (await maintainContinuationCustody({ aliveSince: recoveryArmedAt })),
           "runtime:continuation-custody-prune",
         ).catch((err: unknown) =>
-          bootLog.warn(`Continuation custody retention prune failed: ${String(err)}`),
+          bootLog.warn(`Continuation custody retention and orphan reap failed: ${String(err)}`),
         );
       }, CONTINUATION_CUSTODY_PRUNE_INTERVAL_MS);
       pruneTimer.unref?.();

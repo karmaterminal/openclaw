@@ -554,6 +554,18 @@ serveOwnedWorkerTasks(
           card: result.found ? result.value : null,
         };
       }
+      if (request.kind === "session-row-availability") {
+        const { loadExactSessionEntryReadOnlyResult } =
+          await import("./session-accessor.sqlite-entry-availability.js");
+        return {
+          kind: "session-row-availability" as const,
+          result: loadExactSessionEntryReadOnlyResult({
+            ...request.scope,
+            env: cloneEnvWithPlatformSemantics(request.scope.env ?? process.env),
+            clone: false,
+          }),
+        };
+      }
       if (request.kind === "session-row-presence") {
         const { loadSessionEntryReadOnlyInScope } =
           await import("./session-accessor.sqlite-exact-read.js");

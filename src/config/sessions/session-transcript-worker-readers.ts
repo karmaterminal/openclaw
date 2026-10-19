@@ -512,6 +512,11 @@ export function createSessionHistoryWorkerReaders(
       (value) => value,
     ),
     readStoreSummary: reader("session-store-summary", "a store summary", (value) => value.summary),
+    readEntryAvailability: reader(
+      "session-row-availability",
+      "row availability",
+      (value) => value.result,
+    ),
     readIdentityEvidence: reader(
       "session-identity-evidence",
       "identity evidence",
