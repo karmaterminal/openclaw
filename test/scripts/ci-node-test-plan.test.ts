@@ -4184,5 +4184,7 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
 
     expect(actual).toEqual(listMatchedTestFiles(createAutoReplyReplyVitestConfig({})));
     expect(new Set(actual).size).toBe(actual.length);
+    // Losing both the subtree include and its group would still match above.
+    expect(actual.some((file) => file.startsWith("src/auto-reply/continuation/"))).toBe(true);
   });
 });
