@@ -8,12 +8,17 @@ import {
   type EmbeddedRunAttemptParamsV2 as EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
-import { createPluginRuntimeMock } from "openclaw/plugin-sdk/plugin-test-runtime";
+import {
+  createPluginRuntimeMock,
+  loadUserTurnTranscriptRecorderFactoryForTest,
+} from "openclaw/plugin-sdk/plugin-test-runtime";
+import { asOptionalRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { expect, it, vi } from "vitest";
 import plugin from "../../index.js";
 import * as boundedTurn from "./bounded-turn.js";
 import type { JsonObject } from "./protocol.js";
 import {
+  bindProductionHarnessHostCapabilitiesForTest,
   createCodexRuntimePlanFixture,
   createParams,
   createStartedThreadHarness,
@@ -41,6 +46,7 @@ const EMPTY_RESPONSE_RETRY_PROMPT =
 const SETTLED_FINALIZATION_PROMPT =
   "The previous assistant turn completed its tool calls but did not produce a user-visible answer. Continue from the current transcript and produce the final user-visible answer now. Do not repeat completed tool calls or restart from scratch. Tools are unavailable in this step: it is a text-only pass, so reply with plain text and do not attempt any tool call.";
 const FINAL_ANSWER = "Sent the amber inventory update to Alice.";
+const FOLLOW_UP_REQUEST = "Check that Alice received the amber inventory update.";
 
 const emptyAnswer = (id: string): JsonObject => ({ type: "agentMessage", id, text: "" });
 const sendCommand = (workspaceDir: string, status: "inProgress" | "completed"): JsonObject => ({
@@ -57,30 +63,33 @@ const sendCommand = (workspaceDir: string, status: "inProgress" | "completed"): 
   durationMs: status === "completed" ? 12 : null,
 });
 
-it.each([
+const followUps = [
   {
     label: "the empty-response visible-answer continuation",
     // Same run: the host retries the admitted request with an internal prompt.
-    followUp: {
-      runId: "run-1",
-      prompt: EMPTY_RESPONSE_RETRY_PROMPT,
-      suppressNextUserMessagePersistence: true,
-    },
+    runId: "run-1",
+    prompt: EMPTY_RESPONSE_RETRY_PROMPT,
+    suppressNextUserMessagePersistence: true,
     // Internal control prompts are model-only context, never user transcript turns.
     expectedUserTurns: [ORIGINAL_REQUEST],
   },
   {
     label: "an ordinary follow-up user turn (control)",
-    followUp: {
-      runId: "run-2",
-      prompt: "Check that Alice received the amber inventory update.",
-      suppressNextUserMessagePersistence: false,
-    },
-    expectedUserTurns: [ORIGINAL_REQUEST, "Check that Alice received the amber inventory update."],
+    runId: "run-2",
+    prompt: FOLLOW_UP_REQUEST,
+    suppressNextUserMessagePersistence: false,
+    expectedUserTurns: [ORIGINAL_REQUEST, FOLLOW_UP_REQUEST],
   },
-])(
-  "finalizes a settled tool turn on the same native thread after $label",
-  async ({ followUp, expectedUserTurns }) => {
+] as const;
+
+it.each(
+  // Codex mirrors the prompt itself, or annotates the row a channel host admitted first.
+  (["codex-mirror", "host-admitted"] as const).flatMap((admission) =>
+    followUps.map((followUp) => ({ admission, followUp })),
+  ),
+)(
+  "finalizes a settled tool turn on the same native thread after $followUp.label ($admission prompt)",
+  async ({ admission, followUp }) => {
     const sessionFile = path.join(tempDir, "empty-retry-session.jsonl");
     const workspaceDir = path.join(tempDir, "empty-retry-workspace");
     const storePath = path.join(tempDir, "empty-retry.sqlite");
@@ -106,9 +115,48 @@ it.each([
       managedHooksEnabled: false,
     });
 
+    const createRecorder = await loadUserTurnTranscriptRecorderFactoryForTest();
+    const prepareAttempt = async (
+      identity: { runId: string; prompt: string },
+      options: { suppressNextUserMessagePersistence: boolean; recorder?: "admit" | "reuse" },
+      previous?: EmbeddedRunAttemptParams,
+    ) => {
+      const params = createParams(sessionFile, workspaceDir, identity);
+      if (previous) {
+        params.sessionTarget = previous.sessionTarget;
+      } else {
+        await attachSqliteSessionTarget(params, storePath, "session-1");
+      }
+      params.suppressNextUserMessagePersistence = options.suppressNextUserMessagePersistence;
+      if (admission === "host-admitted") {
+        params.agentId = "main";
+        if (options.recorder === "reuse" && previous?.userTurnTranscriptRecorder) {
+          // A same-run retry keeps the recorder that already holds the admitted row.
+          params.userTurnTranscriptRecorder = previous.userTurnTranscriptRecorder;
+        } else {
+          const recorder = createRecorder({
+            input: { text: identity.prompt, idempotencyKey: `${identity.runId}:user` },
+            target: {
+              agentId: "main",
+              sessionId: params.sessionId,
+              sessionKey: params.sessionKey!,
+              storePath,
+              sessionEntry: undefined,
+            },
+          });
+          await recorder.persistApproved();
+          params.userTurnTranscriptRecorder = recorder;
+        }
+        await bindProductionHarnessHostCapabilitiesForTest(params);
+      }
+      return params;
+    };
+
     // Turn 1: the admitted request; the model stops with an empty answer and no tools.
-    const first = createParams(sessionFile, workspaceDir, { prompt: ORIGINAL_REQUEST });
-    await attachSqliteSessionTarget(first, storePath, "session-1");
+    const first = await prepareAttempt(
+      { runId: "run-1", prompt: ORIGINAL_REQUEST },
+      { suppressNextUserMessagePersistence: false, recorder: "admit" },
+    );
     const firstRun = runCodexAppServerAttempt(first);
     await firstRun.waitForTurnAccepted();
     // Native events arrive in wire order; local projection must not delay terminal receipt.
@@ -123,11 +171,25 @@ it.each([
     expect(firstResult.currentAttemptAssistant?.stopReason).toBe("stop");
     expect(firstResult.toolMetas).toEqual([]);
     expect(firstResult.settledTurnFinalizationContext).toBeUndefined();
+    // Precondition shared by both admission paths: turn 1 owns the persisted prompt row.
+    expect(
+      (await readTranscriptMessagesByIdentity(first))
+        .filter((message) => message.role === "user")
+        .map((message) => [
+          readTextContent(message),
+          asOptionalRecord(message["__openclaw"])?.mirrorIdentity,
+        ]),
+    ).toEqual([[ORIGINAL_REQUEST, "turn-1:prompt"]]);
 
     // Turn 2 on the same native thread: one completed tool, then another empty answer.
-    const second = createParams(sessionFile, workspaceDir, followUp);
-    second.sessionTarget = first.sessionTarget;
-    second.suppressNextUserMessagePersistence = followUp.suppressNextUserMessagePersistence;
+    const second = await prepareAttempt(
+      { runId: followUp.runId, prompt: followUp.prompt },
+      {
+        suppressNextUserMessagePersistence: followUp.suppressNextUserMessagePersistence,
+        recorder: followUp.suppressNextUserMessagePersistence ? "reuse" : "admit",
+      },
+      first,
+    );
     const secondRun = runCodexAppServerAttempt(second);
     await secondRun.waitForTurnAccepted();
     await Promise.all([
@@ -155,24 +217,25 @@ it.each([
       }),
     );
     const codexHarness = registerAgentHarness.mock.calls[0]![0];
-    const finalizationAttempt: EmbeddedRunAttemptParams = {
-      ...second,
-      prompt: SETTLED_FINALIZATION_PROMPT,
-      runtimePlan: {
-        ...createCodexRuntimePlanFixture(),
-        auth: {
-          providerForAuth: "openai",
-          authProfileProviderForAuth: "openai",
-          modelRoute: {
-            provider: "openai",
-            modelId: second.modelId,
-            api: "openai-responses",
-            baseUrl: "https://api.openai.com/v1",
-            authRequirement: "api-key",
-            requestTransportOverrides: "none",
-          },
-        },
+    const runtimePlan = createCodexRuntimePlanFixture();
+    runtimePlan.auth = {
+      providerForAuth: "openai",
+      authProfileProviderForAuth: "openai",
+      modelRoute: {
+        provider: "openai",
+        modelId: second.modelId,
+        api: "openai-responses",
+        baseUrl: "https://api.openai.com/v1",
+        authRequirement: "api-key",
+        requestTransportOverrides: "none",
       },
+    };
+    // Isolated finalization never receives the settled attempt's host capabilities.
+    const { hostCapabilities: _hostCapabilities, ...finalizationBase } = second;
+    const finalizationAttempt = {
+      ...finalizationBase,
+      prompt: SETTLED_FINALIZATION_PROMPT,
+      runtimePlan,
       resolvedApiKey: "synthetic-finalizer-key",
       authProfileStore: { version: 1, profiles: {} },
       timeoutMs: 60_000,
@@ -191,7 +254,10 @@ it.each([
     expect({
       captureFailures: warnings("codex settled-turn finalization context capture failed"),
       unavailable: warnings("codex settled-turn finalization context is unavailable").map(
-        (meta) => ({ turnId: (meta as JsonObject).turnId, reason: (meta as JsonObject).reason }),
+        (meta) => ({
+          turnId: asOptionalRecord(meta)?.turnId,
+          reason: asOptionalRecord(meta)?.reason,
+        }),
       ),
       contextSource: settled.settledTurnFinalizationContext?.source,
       finalization,
@@ -224,7 +290,7 @@ it.each([
     );
     const transcript = await readTranscriptMessagesByIdentity(second);
     expect(transcript.filter((message) => message.role === "user").map(readTextContent)).toEqual(
-      expectedUserTurns,
+      followUp.expectedUserTurns,
     );
     expect(
       transcript.filter((message) => message.role === "toolResult").map(readTextContent),
