@@ -1,7 +1,7 @@
 import { embeddedAgentLog, type AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CodexHistoryRejection } from "./history-rejection.js";
+import { CodexHistoryRejection, type CodexHistoryRejectionReason } from "./history-rejection.js";
 import { captureCodexSettledTurnFinalizationContext } from "./settled-turn-context.js";
 import { attachCodexMirrorIdentity, attachUpstreamUserText } from "./upstream-prompt-provenance.js";
 
@@ -83,6 +83,7 @@ async function captureContext(params: {
   mirroredMessages: AgentMessage[];
   settledMessages: AgentMessage[];
   turnId?: string;
+  promptIdentity?: string;
   model?: string;
   modelProvider?: string;
   authProfileId?: string;
@@ -96,10 +97,26 @@ async function captureContext(params: {
     mirroredMessages: params.mirroredMessages,
     settledMessages: params.settledMessages,
     turnId: params.turnId ?? "turn-2",
+    ...(params.promptIdentity ? { promptIdentity: params.promptIdentity } : {}),
     model: params.model ?? "gpt-5.6-luna",
     modelProvider: params.modelProvider,
     authProfileId: params.authProfileId,
   });
+}
+
+async function expectRejected(
+  params: Parameters<typeof captureContext>[0],
+  reason: CodexHistoryRejectionReason,
+) {
+  const warn = vi.spyOn(embeddedAgentLog, "warn").mockImplementation(() => {});
+  try {
+    await expect(captureContext(params)).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith("codex settled-turn finalization context capture failed", {
+      reason,
+    });
+  } finally {
+    warn.mockRestore();
+  }
 }
 
 describe("captureCodexSettledTurnFinalizationContext", () => {
@@ -325,13 +342,14 @@ describe("captureCodexSettledTurnFinalizationContext", () => {
       message({ role: "user", content: "prior" }, `old-${index}:prompt`),
     );
     const settledMessages = settledTurn();
-    await expect(
-      captureContext({
+    await expectRejected(
+      {
         historyMessages: [...prior, prior[0]!, ...settledMessages],
         mirroredMessages: settledMessages,
         settledMessages,
-      }),
-    ).resolves.toBeUndefined();
+      },
+      "provenance_duplicate_identity",
+    );
   });
 
   it.each([undefined])(
@@ -358,47 +376,68 @@ describe("captureCodexSettledTurnFinalizationContext", () => {
   it("refuses unannotated host prompts even with the same durable key and adjacent native messages", async () => {
     const turn = settledHostPromptTurn();
     const before = structuredClone(turn.historyMessages);
-    await expect(captureContext(turn)).resolves.toBeUndefined();
+    await expectRejected(turn, "provenance_mirror_prefix");
     expect(turn.historyMessages).toEqual(before);
   });
 
-  it.each([
+  it.each<{
+    name: string;
+    settledMessages: AgentMessage[];
+    historyMessages: AgentMessage[];
+    turnId?: string;
+    promptIdentity?: string;
+    reason: CodexHistoryRejectionReason;
+  }>([
     {
       name: "missing current prompt",
       settledMessages: settledTurn().slice(1),
       historyMessages: settledTurn(),
+      reason: "provenance_missing_prompt",
+    },
+    {
+      name: "continued prompt that was never persisted",
+      settledMessages: [
+        message({ role: "user", content: "Send it." }, "turn-1:prompt"),
+        ...settledTurn().slice(1),
+      ],
+      historyMessages: settledTurn().slice(1),
+      promptIdentity: "turn-1:prompt",
+      reason: "provenance_history_order",
     },
     {
       name: "missing current tool call",
       settledMessages: settledTurn(),
       historyMessages: [settledTurn()[0]!, settledTurn()[2]!],
+      reason: "provenance_history_order",
     },
     {
       name: "duplicate persisted identity",
       settledMessages: settledTurn(),
       historyMessages: [...settledTurn(), settledTurn()[2]!],
+      reason: "provenance_duplicate_identity",
     },
     {
       name: "duplicate prompt after the settled boundary",
       settledMessages: settledTurn(),
       historyMessages: [...settledTurn(), settledTurn()[0]!],
+      reason: "provenance_duplicate_identity",
     },
     {
       name: "foreign boundary turn",
       settledMessages: settledTurn(),
       historyMessages: settledTurn(),
       turnId: "turn-3",
+      reason: "provenance_missing_boundary",
     },
-  ])("fails closed for $name", async ({ settledMessages, historyMessages, turnId }) => {
-    await expect(
-      captureContext({
-        historyMessages,
-        mirroredMessages: settledMessages,
-        settledMessages,
-        turnId: turnId ?? "turn-2",
-      }),
-    ).resolves.toBeUndefined();
-  });
+  ])(
+    "fails closed for $name",
+    async ({ settledMessages, historyMessages, reason, ...identity }) => {
+      await expectRejected(
+        { historyMessages, mirroredMessages: settledMessages, settledMessages, ...identity },
+        reason,
+      );
+    },
+  );
 
   it("fails closed when a persisted payload drifts under the same mirror identity", async () => {
     const settledMessages = settledTurn();
@@ -413,26 +452,22 @@ describe("captureCodexSettledTurnFinalizationContext", () => {
       "turn-2:tool:call-2:result",
     );
 
-    await expect(
-      captureContext({
-        historyMessages,
-        mirroredMessages: settledMessages,
-        settledMessages,
-        turnId: "turn-2",
-      }),
-    ).resolves.toBeUndefined();
+    await expectRejected(
+      { historyMessages, mirroredMessages: settledMessages, settledMessages },
+      "provenance_fingerprint_drift",
+    );
   });
 
   it("fails closed when current mirrored messages are reordered", async () => {
     const settledMessages = settledTurn();
-    await expect(
-      captureContext({
+    await expectRejected(
+      {
         historyMessages: settledMessages,
         mirroredMessages: [settledMessages[1]!, settledMessages[0]!, settledMessages[2]!],
         settledMessages,
-        turnId: "turn-2",
-      }),
-    ).resolves.toBeUndefined();
+      },
+      "provenance_mirror_prefix",
+    );
   });
 
   it("rejects a read failure after the complete prefix instead of accepting partial verification", async () => {

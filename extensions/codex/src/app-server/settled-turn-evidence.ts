@@ -1,5 +1,5 @@
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime";
-import { CodexHistoryRejection } from "./history-rejection.js";
+import { CodexHistoryRejection, type CodexHistoryRejectionReason } from "./history-rejection.js";
 import type { JsonValue } from "./protocol.js";
 import { projectSettledCodexMessages, SettledTurnPriorContext } from "./settled-turn-projection.js";
 import { serializeCodexMirrorSourceEvidence } from "./transcript-mirror-attestation.js";
@@ -9,10 +9,12 @@ export type SettledTurnMessages = {
   mirroredMessages: readonly AgentMessage[];
   settledMessages: readonly AgentMessage[];
   turnId: string;
+  /** The run's persisted prompt when a same-run continuation started a later native turn. */
+  promptIdentity?: string;
 };
 
-function rejectEvidence(): never {
-  throw new CodexHistoryRejection("provenance_rejected");
+function rejectEvidence(reason: CodexHistoryRejectionReason): never {
+  throw new CodexHistoryRejection(reason);
 }
 
 /** The worker consumes this verifier lazily; rejection never acquires the remaining payloads. */
@@ -36,7 +38,7 @@ function* verifiedSettledMessages(
   params: SettledTurnMessages,
   prior: SettledTurnPriorContext,
 ): Generator<AgentMessage> {
-  const promptIdentity = `${params.turnId}:prompt`;
+  const promptIdentity = params.promptIdentity ?? `${params.turnId}:prompt`;
   const boundaryIndex = params.settledMessages.findLastIndex(
     (message) => message.role === "toolResult",
   );
@@ -45,25 +47,31 @@ function* verifiedSettledMessages(
   const requiredIds = params.settledMessages
     .slice(0, boundaryIndex + 1)
     .flatMap((message) => readMirrorIdentity(message) ?? []);
-  if (
-    !boundaryIdentity?.startsWith(`${params.turnId}:tool:`) ||
-    requiredIds.length !== boundaryIndex + 1 ||
-    new Set(requiredIds).size !== requiredIds.length ||
-    !requiredIds.includes(promptIdentity)
-  ) {
-    rejectEvidence();
+  if (!boundaryIdentity?.startsWith(`${params.turnId}:tool:`)) {
+    rejectEvidence("provenance_missing_boundary");
+  }
+  if (requiredIds.length !== boundaryIndex + 1) {
+    rejectEvidence("provenance_unattested_prefix");
+  }
+  if (new Set(requiredIds).size !== requiredIds.length) {
+    rejectEvidence("provenance_duplicate_identity");
+  }
+  if (!requiredIds.includes(promptIdentity)) {
+    rejectEvidence("provenance_missing_prompt");
   }
   const mirrored = params.mirroredMessages;
   const mirroredIds = mirrored.flatMap((message) => readMirrorIdentity(message) ?? []);
   const mirroredBoundaryIndex = mirrored.findIndex(
     (message) => readMirrorIdentity(message) === boundaryIdentity,
   );
+  if (new Set(mirroredIds).size !== mirroredIds.length) {
+    rejectEvidence("provenance_duplicate_identity");
+  }
   if (
-    new Set(mirroredIds).size !== mirroredIds.length ||
     mirroredBoundaryIndex + 1 !== requiredIds.length ||
     requiredIds.some((id, index) => readMirrorIdentity(mirrored[index]!) !== id)
   ) {
-    rejectEvidence();
+    rejectEvidence("provenance_mirror_prefix");
   }
   const required = new Map(requiredIds.map((id, index) => [id, mirrored[index]!]));
   const seen = new Set<string>();
@@ -74,17 +82,19 @@ function* verifiedSettledMessages(
     const identity = readMirrorIdentity(message);
     if (identity) {
       if (seen.has(identity)) {
-        rejectEvidence();
+        rejectEvidence("provenance_duplicate_identity");
       }
       seen.add(identity);
       const expected = required.get(identity);
       if (expected) {
+        if (identity !== requiredIds[matched]) {
+          rejectEvidence("provenance_history_order");
+        }
         if (
-          identity !== requiredIds[matched] ||
           serializeCodexMirrorSourceEvidence(message) !==
-            serializeCodexMirrorSourceEvidence(expected)
+          serializeCodexMirrorSourceEvidence(expected)
         ) {
-          rejectEvidence();
+          rejectEvidence("provenance_fingerprint_drift");
         }
         matched += 1;
       }
@@ -98,6 +108,6 @@ function* verifiedSettledMessages(
     throughBoundary ||= identity === boundaryIdentity;
   }
   if (!throughBoundary || matched !== requiredIds.length) {
-    rejectEvidence();
+    rejectEvidence("provenance_history_incomplete");
   }
 }
