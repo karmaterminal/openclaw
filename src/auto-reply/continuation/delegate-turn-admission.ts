@@ -34,8 +34,10 @@ export type ContinueDelegateTurnReservation =
  * Reset a session's per-turn delegate budget. Called at the provider-turn
  * boundary so a later turn in the same run gets a fresh `maxDelegatesPerTurn`.
  */
-export function resetContinueDelegateTurnBudget(sessionKey: string): void {
-  delegatesScheduledThisTurn.delete(sessionKey);
+export function resetContinueDelegateTurnBudget(sessionKey: string | undefined): void {
+  if (sessionKey) {
+    delegatesScheduledThisTurn.delete(sessionKey);
+  }
 }
 
 /**

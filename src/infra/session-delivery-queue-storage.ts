@@ -38,7 +38,6 @@ import {
   SessionDeliveryAttemptStartError,
   SessionDeliveryDeadLetteredError,
   SessionDeliveryDeferredError,
-  SessionDeliveryRetryChargedError,
   SessionDeliverySafeRetryError,
   type QueuedSessionDelivery,
   type QueuedSessionDeliveryPayload,
@@ -157,11 +156,8 @@ export type {
 
 export {
   SESSION_DELIVERY_QUEUE_NAME,
-  SessionDeliveryAcknowledgementFinalizeError,
-  SessionDeliveryAttemptStartError,
   SessionDeliveryDeadLetteredError,
   SessionDeliveryDeferredError,
-  SessionDeliveryRetryChargedError,
   SessionDeliverySafeRetryError,
 };
 

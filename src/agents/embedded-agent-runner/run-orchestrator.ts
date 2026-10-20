@@ -216,9 +216,7 @@ async function runEmbeddedAgentForSession(
   const requestOwners = captureExecRequestOwners(params);
   const runSession = async () => {
     throwIfAborted();
-    if (params.sessionKey) {
-      resetContinueDelegateTurnBudget(params.sessionKey);
-    }
+    resetContinueDelegateTurnBudget(params.sessionKey);
     // Same-session reads below must see any prior deferred transcript rewrite.
     // Checkpoint before the global lane so unrelated sessions can still start
     // while this session waits on its own maintenance lane.
