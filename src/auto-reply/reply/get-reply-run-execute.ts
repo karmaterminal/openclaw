@@ -409,6 +409,7 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
     turnAdoptionLifecycle: effectiveTurnAdoptionLifecycle,
     runObservers: {
       onAgentRunStart: opts?.onAgentRunStart,
+      onPreparedAgentRunStart: opts?.onPreparedAgentRunStart,
       onAgentRunTerminalOutcome: opts?.onAgentRunTerminalOutcome,
       onModelSelected: opts?.onModelSelected,
       prepareAssistantTranscriptMessage: opts?.prepareAssistantTranscriptMessage,

@@ -284,7 +284,6 @@ async function deleteSqliteSessionEntryLifecycleLocked(
         commitGuard: _commitGuard,
         env: _env,
         expectedDatabaseIdentity: _expectedDatabaseIdentity,
-        descendantRunBasis: _descendantRunBasis,
         ...deleteParams
       } = params;
       const preparation = await runSessionDeletionPlanning(
@@ -341,7 +340,6 @@ async function deleteSqliteSessionEntryLifecycleLocked(
               commitGuard: _generationGuard,
               env: _generationEnv,
               expectedDatabaseIdentity: _generationIdentity,
-              descendantRunBasis: _generationBasis,
               ...generationParams
             } = generation.deleteParams;
             const generationValidation = {
@@ -406,7 +404,6 @@ async function deleteSqliteSessionEntryLifecycleLocked(
                 return DELETE_EXPECTED_ENTRY_MISMATCH;
               }
               const reclamationPlan: SqliteSessionReclamationPlan = {
-                descendantRunBasis: generation.deleteParams.descendantRunBasis,
                 databaseOptions: resolveSessionReclamationDatabaseOptions(databaseOptions),
                 deleteParams: prepareReclamationDeleteParams(generation.deleteParams),
                 kind: "historical-generation",
@@ -457,7 +454,6 @@ async function deleteSqliteSessionEntryLifecycleLocked(
             const diagnostics: SqliteSessionReclamationDiagnostics = {};
             // The reclamation transaction rereads the exact target immediately before mutation.
             const reclamationPlan: SqliteSessionReclamationPlan = {
-              descendantRunBasis: params.descendantRunBasis,
               databaseOptions: resolveSessionReclamationDatabaseOptions(databaseOptions),
               deleteParams: prepareReclamationDeleteParams(params),
               kind: "entry",

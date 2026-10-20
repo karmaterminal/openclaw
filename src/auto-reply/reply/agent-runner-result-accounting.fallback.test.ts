@@ -14,6 +14,7 @@ import { buildGatewaySessionRow } from "../../gateway/session-utils-row.js";
 import { clearAgentRunContext, registerAgentRunContext } from "../../infra/agent-run-registry.js";
 import { disposeOpenClawAgentDatabaseByPath } from "../../state/openclaw-agent-db-disposal.js";
 import { closeOpenClawAgentDatabasesAsync } from "../../state/openclaw-agent-db.js";
+import { readSessionFallbackModelAsync } from "../../status/session-fallback-model.js";
 import { withAgentTurnCompletion } from "./agent-runner-completion.js";
 import { createReplyContinuationController } from "./agent-runner-continuation.js";
 import { accountAgentTurn } from "./agent-runner-result-accounting.js";
@@ -260,7 +261,7 @@ it.each([false, true])(
       selectedModel: `${diagnostic.provider}/${diagnostic.model}`,
       activeModel: "fallback-fixture/plain",
     });
-    const project = (rowEntry: InternalSessionEntry) =>
+    const project = async (rowEntry: InternalSessionEntry) =>
       buildGatewaySessionRow({
         cfg: context.cfg,
         agentId: "main",
@@ -270,8 +271,16 @@ it.each([false, true])(
         store: { [context.sessionKey!]: rowEntry },
         key: context.sessionKey!,
         entry: rowEntry,
+        terminalModel:
+          (await readSessionFallbackModelAsync({
+            config: context.cfg,
+            selectedProvider: diagnostic.provider,
+            selectedModel: diagnostic.model,
+            sessionEntry: rowEntry,
+            sessionScope: { agentId: "main", storePath, sessionKey: context.sessionKey! },
+          })) ?? null,
       });
-    expect(project(stored)).toMatchObject({
+    expect(await project(stored)).toMatchObject({
       modelProvider: diagnostic.provider,
       model: diagnostic.model,
       activeModelProvider: "fallback-fixture",
@@ -282,7 +291,7 @@ it.each([false, true])(
       { sessionId: "another-session" },
       { providerOverride: "another-provider", modelOverride: "another-model" },
     ]) {
-      const row = project({ ...stored, ...changed });
+      const row = await project({ ...stored, ...changed });
       expect(row.activeModel, JSON.stringify(changed)).toBeUndefined();
       expect(row.activeModelProvider, JSON.stringify(changed)).toBeUndefined();
     }
@@ -295,7 +304,7 @@ it.each([false, true])(
       projectSessionActive: true,
     });
     try {
-      const row = project(stored);
+      const row = await project(stored);
       expect(row.activeModel).toBeUndefined();
       expect(row.activeModelProvider).toBeUndefined();
     } finally {
@@ -323,7 +332,7 @@ it.each([false, true])(
         ],
       },
     );
-    expect(project(fixture.read()!).activeModel).toBeUndefined();
+    expect((await project(fixture.read()!)).activeModel).toBeUndefined();
     await persistSessionTranscriptTurn(
       { agentId: "main", storePath, sessionKey: context.sessionKey!, sessionId: entry.sessionId },
       {
@@ -347,7 +356,7 @@ it.each([false, true])(
     // The newer completed primary answer rejects the old notice even before accounting clears it.
     const recovered = fixture.read()!;
     expect(recovered.fallbackNotice).toEqual(stored.fallbackNotice);
-    expect(project(recovered)).toMatchObject({
+    expect(await project(recovered)).toMatchObject({
       modelProvider: diagnostic.provider,
       model: diagnostic.model,
       activeModelProvider: undefined,
