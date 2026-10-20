@@ -1,104 +1,159 @@
-// `session.visibility.set` advances recipient authority inside the visibility
-// write transaction through `afterPersistInTransaction`. The incognito-actor
-// writer (`patchIncognitoSessionEntry`) has no main-thread transaction and does
-// not run that hook. These tests pin why that cannot leave a narrowed incognito
-// session with live recipient authority: while an incognito actor owns a
-// session namespace, no recipient authority can be captured for it, and no
-// authority captured natively for the same key is current.
-import assert from "node:assert/strict";
-import { afterAll, expect, it } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
-import { closeOpenClawAgentDatabasesForTestAsync } from "../../state/openclaw-agent-db-lifecycle.js";
-import type { IncognitoAgentDatabaseExecution } from "../../state/openclaw-agent-execution-incognito.js";
-import { captureOpenClawAgentDatabaseExecution } from "../../state/openclaw-agent-execution.js";
+// Narrowing visibility advances recipient authority inside the native entry
+// mutation transaction (session-accessor.sqlite-entry-mutation.ts). Incognito
+// sessions are owned by the memory-only session actor (upstream #170712): its
+// writer has no SQLite transaction and runs neither that advance nor an
+// `afterPersistInTransaction` hook. These tests pin why that cannot leave a
+// narrowed incognito session with live recipient authority: while an incognito
+// owner holds a session namespace, no recipient authority can be captured for
+// it, and no authority captured natively for the same key is current.
+import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import { afterEach, expect, it } from "vitest";
+import {
+  closeOpenClawAgentDatabasesForTest,
+  openOpenClawAgentDatabase,
+} from "../../state/openclaw-agent-db.js";
+import {
+  resolveIncognitoOpenClawAgentSqlitePath,
+  resolveOpenClawAgentSqlitePath,
+} from "../../state/openclaw-agent-db.paths.js";
+import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { captureRuntimeConfigAsyncReader } from "../io.runtime.js";
 import {
   captureSessionRecipientAuthority,
   isSessionRecipientAuthorityCurrent,
 } from "./session-accessor.js";
 import { patchSessionEntryCore } from "./session-accessor.sqlite-entry.js";
-import { withIncognitoSessionActor } from "./session-incognito-binding.js";
-import type { IncognitoSessionAuthority } from "./session-incognito-contract.js";
+import { readSessionRecipientAuthorityEpochInDatabase } from "./session-accessor.sqlite-recipient-authority.js";
+import type { SessionActorAuthority } from "./session-actor-contract.js";
+import { memorySessionActorOwners } from "./session-actor-memory-owner.js";
+import { commitMemory } from "./session-actor-memory-publication.test-support.js";
+import {
+  acquireSessionActorStorage,
+  runWithSessionActorStorage,
+} from "./session-actor-storage-binding.js";
+import {
+  sessionRecipientAuthorityMatches,
+  type SessionRecipientAuthority,
+} from "./session-recipient-authority-types.js";
 
-const tempDirs = useAutoCleanupTempDirTracker(afterAll);
-const authority: IncognitoSessionAuthority = { assertCurrent() {} };
+const DEDICATED_OWNER = "Incognito collaboration command requires its dedicated owner";
+const authority: SessionActorAuthority = { assertCurrent() {}, authorize() {} };
+const lifetime = { assertCurrent() {}, assertReadable() {} };
 
-async function openActor(env: NodeJS.ProcessEnv): Promise<IncognitoAgentDatabaseExecution> {
-  const actor = await captureOpenClawAgentDatabaseExecution({
-    kind: "ephemeral",
-    agentId: "main",
-    env,
-    authority,
-  });
-  assert(actor);
-  return actor;
-}
-
-async function createIncognitoSession(actor: IncognitoAgentDatabaseExecution, name: string) {
-  const sessionKey = `agent:main:dashboard:incognito-${name}`;
-  await actor.sessions.create(authority, {
-    sessionKey,
-    entry: { sessionId: name, lifecycleRevision: name, updatedAt: 1, incognito: true },
-  });
-  return sessionKey;
-}
-
-it("refuses to capture recipient authority for a session its incognito actor owns", async () => {
-  const env = { OPENCLAW_STATE_DIR: tempDirs.make("incognito-authority-capture-") };
-  const actor = await openActor(env);
-  try {
-    const sessionKey = await createIncognitoSession(actor, "capture");
-    const scope = { agentId: actor.agentId, storePath: actor.path, sessionKey, env };
-
-    // Through the actor's collaboration owner: no authority owner exists.
-    await expect(
-      captureSessionRecipientAuthority({ ...scope, incognito: { actor, authority } } as never),
-    ).rejects.toThrow("Incognito collaboration command requires its dedicated owner");
-    // Through the native writer while the actor binding is active: refused.
-    await expect(
-      withIncognitoSessionActor(actor, async () => await captureSessionRecipientAuthority(scope)),
-    ).rejects.toThrow();
-  } finally {
-    await actor.close().catch(() => undefined);
-  }
+afterEach(() => {
+  memorySessionActorOwners.reset();
+  closeOpenClawAgentDatabasesForTest();
 });
 
-it("never treats natively captured authority as current while an incognito actor owns the key", async () => {
-  const env = { OPENCLAW_STATE_DIR: tempDirs.make("incognito-authority-current-") };
-  const probe = await openActor(env);
-  const storePath = probe.path;
-  await probe.close();
-  const sessionKey = "agent:main:dashboard:incognito-narrow";
-  const scope = { agentId: "main", storePath, sessionKey, env };
-
-  // Authority bound by the native owner before any actor existed.
-  const nativeAuthority = await captureSessionRecipientAuthority(scope);
-  expect(isSessionRecipientAuthorityCurrent(scope, nativeAuthority)).toBe(true);
-  await closeOpenClawAgentDatabasesForTestAsync();
-
-  const actor = await openActor(env);
-  try {
-    await createIncognitoSession(actor, "narrow");
-    // While the actor owns the namespace the native epoch is not current, so
-    // no return carrying it can be delivered or adopted.
-    expect(isSessionRecipientAuthorityCurrent(scope, nativeAuthority)).toBe(false);
-
-    // The actor writer commits a narrowing visibility change without running
-    // the in-transaction hook, and authority stays non-current afterwards.
-    let hookRan = false;
-    const patched = await withIncognitoSessionActor(
-      actor,
-      async () =>
-        await patchSessionEntryCore(scope, () => ({ visibility: "draft" }), {
-          afterPersistInTransaction: () => {
-            hookRan = true;
-          },
-        }),
-    );
-    expect(patched?.visibility).toBe("draft");
-    expect(hookRan).toBe(false);
-    expect(isSessionRecipientAuthorityCurrent(scope, nativeAuthority)).toBe(false);
-    expect((await actor.sessions.read(authority, { sessionKey })).entry?.visibility).toBe("draft");
-  } finally {
-    await actor.close().catch(() => undefined);
+/** Create the session through its memory owner, exactly as incognito acquisition does. */
+async function createIncognitoSession(env: NodeJS.ProcessEnv, name: string) {
+  const sessionKey = `agent:main:dashboard:incognito-${name}`;
+  const binding = await acquireSessionActorStorage(
+    { agentId: "main", sessionKey, env },
+    { authority, lifetime, create: true },
+  );
+  if (!binding) {
+    throw new Error("Expected the incognito memory owner to admit creation");
   }
+  await commitMemory(binding.actor.storage, "session.entry.create", {
+    entry: { sessionId: name, lifecycleRevision: name, updatedAt: 1, incognito: true },
+  });
+  const owner = memorySessionActorOwners.read({
+    agentId: "main",
+    path: resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main", env }),
+  });
+  if (!owner) {
+    throw new Error("Expected the incognito memory owner to hold the namespace");
+  }
+  return { binding, owner, sessionKey };
+}
+
+it("refuses to capture recipient authority for a session its incognito owner holds", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await captureRuntimeConfigAsyncReader()();
+    const env = state.env;
+    const { binding, sessionKey } = await createIncognitoSession(env, "capture");
+    const nativeStorePath = resolveOpenClawAgentSqlitePath({ agentId: "main", env });
+    try {
+      // Through the memory owner's collaboration path: no authority owner exists.
+      await expect(
+        captureSessionRecipientAuthority({ agentId: "main", sessionKey, env }),
+      ).rejects.toThrow(DEDICATED_OWNER);
+      // Naming the native store while the owner's binding is active: still refused.
+      await expect(
+        runWithSessionActorStorage(
+          binding,
+          async () =>
+            await captureSessionRecipientAuthority({
+              agentId: "main",
+              storePath: nativeStorePath,
+              sessionKey,
+              env,
+            }),
+        ),
+      ).rejects.toThrow(DEDICATED_OWNER);
+      // Neither refusal reached the native writer, which would have created the store.
+      expect(fs.existsSync(nativeStorePath)).toBe(false);
+    } finally {
+      await binding.actor.release();
+    }
+  });
+});
+
+it("never treats natively captured authority as current while an incognito owner holds the key", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    await captureRuntimeConfigAsyncReader()();
+    const env = state.env;
+    const sessionKey = "agent:main:dashboard:incognito-narrow";
+    const controlKey = "agent:main:dashboard:durable-narrow";
+    const durable = openOpenClawAgentDatabase({ agentId: "main", env });
+    const scope = { agentId: "main", storePath: durable.path, sessionKey, env };
+
+    // The native writer cannot bind authority for an incognito key at all.
+    await expect(captureSessionRecipientAuthority(scope)).rejects.toThrow(DEDICATED_OWNER);
+    // A native epoch row for the same key (as the retired SQLite incognito owner
+    // wrote) and the same epoch for a durable control key.
+    const nativeAuthority: SessionRecipientAuthority = { state: "bound", epoch: randomUUID() };
+    const insertEpoch = durable.db.prepare(
+      "INSERT INTO session_recipient_authority (session_key, epoch, created_at, updated_at) VALUES (?, ?, 1, 1)",
+    );
+    insertEpoch.run(sessionKey, nativeAuthority.epoch);
+    insertEpoch.run(controlKey, nativeAuthority.epoch);
+    const readNativeEpoch = () => readSessionRecipientAuthorityEpochInDatabase(durable, sessionKey);
+    expect(sessionRecipientAuthorityMatches(nativeAuthority, readNativeEpoch())).toBe(true);
+    // The durable control proves the row would be current for a natively owned key.
+    expect(
+      isSessionRecipientAuthorityCurrent({ ...scope, sessionKey: controlKey }, nativeAuthority),
+    ).toBe(true);
+    expect(isSessionRecipientAuthorityCurrent(scope, nativeAuthority)).toBe(false);
+
+    const { binding, owner } = await createIncognitoSession(env, "narrow");
+    try {
+      // While the owner holds the namespace the native epoch is not current, so
+      // no return carrying it can be delivered or adopted.
+      expect(isSessionRecipientAuthorityCurrent(scope, nativeAuthority)).toBe(false);
+
+      // The memory writer commits a narrowing visibility change without running
+      // the in-transaction hook, and authority stays non-current afterwards.
+      let hookRan = false;
+      const patched = await runWithSessionActorStorage(
+        binding,
+        async () =>
+          await patchSessionEntryCore(scope, () => ({ visibility: "draft" }), {
+            afterPersistInTransaction: () => {
+              hookRan = true;
+            },
+          }),
+      );
+      expect(patched?.visibility).toBe("draft");
+      expect(hookRan).toBe(false);
+      expect(isSessionRecipientAuthorityCurrent(scope, nativeAuthority)).toBe(false);
+      expect(owner.readSession(sessionKey, authority)?.entry?.visibility).toBe("draft");
+      // The memory write never reached the native store's epoch row.
+      expect(sessionRecipientAuthorityMatches(nativeAuthority, readNativeEpoch())).toBe(true);
+    } finally {
+      await binding.actor.release();
+    }
+  });
 });

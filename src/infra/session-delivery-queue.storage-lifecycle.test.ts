@@ -188,7 +188,6 @@ describe("session-delivery queue storage", () => {
         {
           message: "only missing media",
           expectedMediaUrls: ["/tmp/two.png"],
-          suppressTextDelivery: true,
         },
         queueContext,
       );
@@ -198,7 +197,6 @@ describe("session-delivery queue storage", () => {
         retryCount: 1,
         message: "only missing media",
         expectedMediaUrls: ["/tmp/two.png"],
-        suppressTextDelivery: true,
       });
     });
   });

@@ -6,13 +6,15 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import * as preparedModelRuntime from "../agents/prepared-model-runtime.js";
-import * as killControl from "../agents/subagents/registry/subagent-control-kill.js";
 import * as registryMemory from "../agents/subagents/registry/subagent-registry-memory.js";
 import { loadSubagentRegistryFromSqlite } from "../agents/subagents/registry/subagent-registry-state.fixture.test-support.js";
+import * as subagentRegistry from "../agents/subagents/registry/subagent-registry.js";
 import { spawnSubagentDirect } from "../agents/subagents/spawn/subagent-spawn.js";
 import { testing as spawnTesting } from "../agents/subagents/spawn/subagent-spawn.test-support.js";
 import { closeSwarmScheduler } from "../agents/subagents/swarm/swarm-scheduler.js";
 import { clearAgentRunContext } from "../infra/agent-run-registry.js";
+import { requestRpcSourceCancellation } from "../sessions/session-controller.rpc-sources.js";
+import { rpcSourceTesting } from "../sessions/session-lifecycle-admission.test-support.js";
 import { unwrapGatewayMethodDispatchResponse } from "./server-in-process-dispatch.js";
 import { agentRunHandler } from "./server-methods/agent-run-handler.js";
 import { handleChatAbortRequest } from "./server-methods/chat-abort-handler.js";
@@ -25,16 +27,19 @@ const { parentKey, requestContext, operatorClient } = useQueuedCollectorFixture(
 
 // The upstream admission test proves the Stop still wins this race. This one
 // proves the accepted child's rollback custody is already durable while that
-// Stop holds its publication, and is discharged only after the child is stopped.
+// Stop holds its retirement publication, and is discharged only after the child
+// is stopped. Upstream #177787 retired the Stop's publication-preparation
+// handshake; the Stop's retirement publication now spans its kill run, so the
+// Stop is held right after its committed kill write, inside that publication.
 describe("queued collector rollback custody behind a publishing Stop", () => {
   it.each([false, true])(
-    "persists custody before the publication wait (publicationFailure=%s)",
-    async (publicationFailure) => {
+    "persists custody before the publication wait (stopFailure=%s)",
+    async (stopFailure) => {
       const context = requestContext();
       const entered = createDeferred();
       const dispatched = createDeferred();
-      const publicationEntered = createDeferred();
-      const releasePublication = createDeferred();
+      const killWriteCommitted = createDeferred();
+      const releaseStop = createDeferred();
       const cleanupWaiting = createDeferred();
       const abortedRunIds: string[] = [];
       let nativeRunId: string | undefined;
@@ -49,29 +54,19 @@ describe("queued collector rollback custody behind a publishing Stop", () => {
           }
           return pending;
         });
-      const kill = killControl.killSubagentRunAdmin;
+      const markTerminated = subagentRegistry.markSubagentRunTerminated;
       const killGate = vi
-        .spyOn(killControl, "killSubagentRunAdmin")
-        .mockImplementation((params, control) => {
-          const currentControl = expectDefined(control, "native cancellation control");
-          const preparation = expectDefined(
-            currentControl.preparePublication,
-            "native publication preparation",
-          );
-          return kill(params, {
-            ...currentControl,
-            preparePublication: {
-              ...preparation,
-              prepare: async (publishPrepared) => {
-                publicationEntered.resolve();
-                await releasePublication.promise;
-                if (publicationFailure) {
-                  throw new Error("publication preparation failed");
-                }
-                return await preparation.prepare(publishPrepared);
-              },
-            },
-          });
+        .spyOn(subagentRegistry, "markSubagentRunTerminated")
+        .mockImplementation(async (params) => {
+          const marked = await markTerminated(params);
+          if (params.runId === nativeRunId) {
+            killWriteCommitted.resolve();
+            await releaseStop.promise;
+            if (stopFailure) {
+              throw new Error("Stop failed after its kill write");
+            }
+          }
+          return marked;
         });
       const runtimeGate = vi
         .spyOn(preparedModelRuntime, "loadPublishedGatewayReplyDispatchRuntime")
@@ -156,9 +151,14 @@ describe("queued collector rollback custody behind a publishing Stop", () => {
             isWebchatConnect: () => false,
           }),
         );
-        await Promise.all([dispatched.promise, publicationEntered.promise, cleanupWaiting.promise]);
+        await Promise.race([
+          Promise.all([dispatched.promise, killWriteCommitted.promise, cleanupWaiting.promise]),
+          stopping.then(() => {
+            throw new Error("Stop settled before its held kill write");
+          }),
+        ]);
 
-        // The collector now waits on the Stop's publication. A crash here must
+        // The collector now waits on the Stop's retirement publication. A crash here must
         // leave a durable owner for the accepted child, and the Stop's staged
         // kill write must have kept its kill alongside that custody.
         const durable = loadSubagentRegistryFromSqlite().get(entry.runId);
@@ -166,7 +166,7 @@ describe("queued collector rollback custody behind a publishing Stop", () => {
         expect(durable?.endedReason).toBe("subagent-killed");
         expect(abortedRunIds).toEqual([]);
 
-        releasePublication.resolve();
+        releaseStop.resolve();
         await stopping;
         await dispatched.promise;
         await closeSwarmScheduler();
@@ -182,9 +182,12 @@ describe("queued collector rollback custody behind a publishing Stop", () => {
         expect(settled?.acceptedSpawnRollback).toBeUndefined();
         expect(settled?.collectorCompletion?.status).toBe("killed");
       } finally {
-        releasePublication.resolve();
+        releaseStop.resolve();
         if (nativeRunId) {
-          context.chatAbortControllers.get(nativeRunId)?.controller.abort();
+          const source = rpcSourceTesting.get(nativeRunId);
+          if (source) {
+            requestRpcSourceCancellation(source);
+          }
           await dispatched.promise;
           clearAgentRunContext(nativeRunId);
         }
