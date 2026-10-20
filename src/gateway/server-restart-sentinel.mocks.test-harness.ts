@@ -54,7 +54,7 @@ const mocks = vi.hoisted(() => {
     initialOutboundDelivery: null as Record<string, unknown> | null,
   };
 
-  return {
+  const harnessMocks = {
     resolveSessionAgentId: vi.fn(() => "agent-from-key"),
     isSessionRecipientAuthorityCurrent: vi.fn<typeof isActualSessionRecipientAuthorityCurrent>(
       () => true,
@@ -193,6 +193,12 @@ const mocks = vi.hoisted(() => {
     logInfo: vi.fn(),
     logWarn: vi.fn(),
     logError: vi.fn(),
+  };
+  return {
+    ...harnessMocks,
+    // Upstream's restart session-event mocks read entries asynchronously; the fork's cases
+    // keep scripting the synchronous loadSessionEntry.
+    loadSessionEntryAsync: async (sessionKey: string) => harnessMocks.loadSessionEntry(sessionKey),
   };
 });
 

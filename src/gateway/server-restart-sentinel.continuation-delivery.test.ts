@@ -5,6 +5,10 @@ import "./server-restart-sentinel.mocks.test-harness.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getRuntimeConfig } from "../config/io.js";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
+import {
   assignSessionOwner,
   captureSessionRecipientAuthority,
   deleteSessionEntryLifecycle,
@@ -101,6 +105,7 @@ function wakeRestartSentinel() {
 
 describe("scheduleRestartSentinelWake", () => {
   afterEach(async () => {
+    clearRuntimeConfigSnapshot();
     await scheduler.stop();
     await closeOpenClawStateDatabaseAsync();
     vi.restoreAllMocks();
@@ -119,6 +124,9 @@ describe("scheduleRestartSentinelWake", () => {
       label: "gateway-restart-sentinel",
       layout: "state-only",
     });
+    // #169714: real session-store writes resolve their path from the published snapshot,
+    // which applying the test state's env clears.
+    setRuntimeConfigSnapshot({});
     resetGatewayWorkAdmission();
     vi.useRealTimers();
     mocks.queuedSessionDelivery = null;
