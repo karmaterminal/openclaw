@@ -221,8 +221,8 @@ export async function executePreparedReplyRun(
       extractedFileImages: opts?.extractedFileImages,
     }),
   );
-  // ABSORB-8083-LEAD: MANUAL ledger row (fork's deferred system-event refresh and managed
-  // turn-adoption lifecycle kept; the lifecycle binding moved to managed-delivery-turn-lifecycle).
+  // Continuation: system-event bodies refresh here, after admission, and managed-delivery turn
+  // adoption binds in managed-delivery-turn-lifecycle.ts.
   const refreshed = await refreshSystemEventPromptBodies();
   const { prefixedCommandBody, queuedBody, transcriptBody, transcriptCommandBody } = refreshed;
   const { currentInboundContext, managedSystemEventDeliveries } = refreshed;

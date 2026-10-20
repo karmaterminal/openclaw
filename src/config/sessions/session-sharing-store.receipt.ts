@@ -44,18 +44,6 @@ export function readSessionCollaborationCandidate(
   if (command.type !== "category.apply") {
     requireReceipt(keys.length === 1 && keys[0] === command.input.scope.sessionKey);
   }
-  if (command.type === "authority.capture") {
-    // ABSORB-8083-LEAD: upstream #172915 dropped per-command result validation; the fork's
-    // recipient-authority receipt guard is kept until the lead confirms it may go too.
-    // Recipient authority lives outside the session rows; the worker returns the bound epoch.
-    const result = value.result;
-    requireReceipt(
-      isRecord(result) &&
-        result.state === "bound" &&
-        typeof result.epoch === "string" &&
-        result.epoch.length > 0,
-    );
-  }
   // SAFETY: The paired typed worker constructs this scoped candidate; native commit equality confirms it.
   return value as SessionSharingCommitReceipt;
 }

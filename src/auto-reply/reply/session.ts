@@ -877,8 +877,7 @@ async function initSessionStateAttemptLocked(
       current: committed.sessionEntry,
     });
   }
-  // ABSORB-8083-LEAD: MANUAL ledger row (fork's awaited durable reset cleanup kept; upstream's
-  // controller-target capture ported into clearReplacedSessionRuntimeState via storePath).
+  // Durable continuation cleanup is awaited; the controller target is captured from storePath.
   if (previousSessionEntry) {
     const cleanup = { sessionKey, agentId, previousSessionEntry, previousSessionEndReason };
     await clearReplacedSessionRuntimeState({ ...cleanup, storePath, signal: params.signal });

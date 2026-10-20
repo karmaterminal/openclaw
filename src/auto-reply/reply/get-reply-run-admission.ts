@@ -231,8 +231,7 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
         continue;
       }
       const isCurrentSession = systemEventSessionKey === sessionKey;
-      // ABSORB-8083-LEAD: MANUAL ledger row (fork staged prepare/adoption kept);
-      // upstream's pre-drain liveness assertion now guards the staged prepare.
+      // The staged prepare (adopted later) still runs only while preparation is live.
       assertPreparationActive();
       const prepared = await prepareFormattedSystemEvents({
         cfg,

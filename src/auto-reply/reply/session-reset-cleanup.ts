@@ -131,8 +131,6 @@ function interruptsContinuationAuthority(reason: SessionRuntimeCleanupReason): b
   return reason === "new" || reason === "reset" || reason === "delete";
 }
 
-// ABSORB-8083-LEAD: MANUAL ledger row (fork's awaited durable continuation cancellation kept;
-// upstream's controllerTarget, settings/cache disposal and controller stop adopted).
 /** Clears queued follow-ups and pending system events visible to the resetting agent. */
 export async function clearSessionResetRuntimeState(
   keys: Array<string | undefined>,
