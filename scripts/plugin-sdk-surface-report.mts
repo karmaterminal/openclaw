@@ -210,7 +210,6 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
     publicExports: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_EXPORTS",
       // +1: createChannelSecretContract consolidates seven channel secret contracts (approved by Peter, 2026-10-01).
-      // +1: createSessionHeaderLink shares plugin-owned conversation navigation (PR #158742).
       // +4: owner-approved replay V2 types on core and plugin-entry (2026-10-01).
       // +11: ten service-lifetime type exports and the owner-bound scheduler resolver.
       // +1: owner-approved async watched-session preparation with retained sync compatibility.
@@ -231,16 +230,16 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: approved final-delivery capture ownership predicate for channel transcript mirrors.
       // +7: approved GitHub publication V2 requester/action contracts: five types and two preparers.
       // +3: approved async skill-command preparation pairs on two existing entrypoints.
+      // +1: preview adapters strip only normalization-owned response decoration.
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
       // system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the 0bc7491825 merge: upstream 3672, merged tree 3683 (+11).
-      3683,
+      // Measured on the 408a1f314e merge: upstream 3673, merged tree 3684 (+11).
+      3684,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_FUNCTION_EXPORTS",
       // +1: createChannelSecretContract consolidates seven channel secret contracts (approved by Peter, 2026-10-01).
-      // +1: createSessionHeaderLink shares plugin-owned conversation navigation (PR #158742).
       // +1: resolvePluginServiceScheduler borrows an existing service/account/CLI owner.
       // +1: owner-approved async watched-session preparation with retained sync compatibility.
       // +1: captureToolAuthoredSourceReply lets the Codex harness deliver canDeliverSourceReply tool replies.
@@ -256,9 +255,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: the same final-delivery capture ownership predicate.
       // +2: prepareGitHubPublicationRequesterV2 and preparePersonalGitHubSessionActionV2.
       // +3: the same skill-command preparation replacements.
+      // +1: stripReplyPayloadResponsePrefix preserves durable text while assembling previews.
       // +4: the continuation feature's callable contracts; measured +4 over base 2187 on b51feb98eb.
-      // Measured on the 0bc7491825 merge: upstream 2133, merged tree 2137 (+4).
-      2137,
+      // Measured on the 408a1f314e merge: upstream 2134, merged tree 2138 (+4).
+      2138,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

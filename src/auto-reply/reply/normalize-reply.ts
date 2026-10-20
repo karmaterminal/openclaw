@@ -35,6 +35,7 @@ const channelReplyTransformOwners = new WeakMap<
   (payload: ReplyPayload) => ReplyPayload | null,
   object
 >();
+
 export function bindNormalizeReplyTransformOwner<
   T extends (payload: ReplyPayload) => ReplyPayload | null,
 >(transform: T, owner: object): T {
@@ -174,7 +175,9 @@ export function normalizeReplyPayloadOutcome(
     text.trim() !== HEARTBEAT_TOKEN &&
     !text.startsWith(effectivePrefix)
   ) {
-    text = `${effectivePrefix} ${text}`;
+    const prefix = `${effectivePrefix} `;
+    text = `${prefix}${text}`;
+    setReplyPayloadMetadata(enrichedPayload, { responsePrefix: prefix });
   }
 
   enrichedPayload = copyReplyPayloadMetadata(enrichedPayload, { ...enrichedPayload, text });
