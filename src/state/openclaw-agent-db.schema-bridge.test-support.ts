@@ -92,23 +92,6 @@ export async function migrateAgentDatabase(
   }
 }
 
-/** Removes schema 26's JSON predicate columns, returning a staged file to its pre-26 shape. */
-export function dropAgentJsonPredicateColumns(database: DatabaseSync): void {
-  for (const [table, columns] of Object.entries(AGENT_JSON_PREDICATE_COLUMNS)) {
-    const present = new Set(
-      database
-        .prepare(`PRAGMA table_info(${table})`)
-        .all()
-        .map((row) => row.name),
-    );
-    for (const column of columns) {
-      if (present.has(column)) {
-        database.exec(`ALTER TABLE ${table} DROP COLUMN ${column};`);
-      }
-    }
-  }
-}
-
 /** Writes a closed agent database from captured DDL plus one settled session row. */
 export function stageCapturedAgentDatabase(
   env: NodeJS.ProcessEnv,

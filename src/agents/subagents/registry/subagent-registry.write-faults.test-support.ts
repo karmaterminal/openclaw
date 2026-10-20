@@ -11,7 +11,7 @@ import type { OpenClawStateWorkerOperations } from "../../../state/openclaw-stat
 import * as stateWorker from "../../../state/openclaw-state-worker-store.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
-export type RegistryWrite = Extract<
+type RegistryWrite = Extract<
   SqliteWorkerCommand<OpenClawStateWorkerOperations>,
   { type: "subagents.persistChanges" }
 >["input"];

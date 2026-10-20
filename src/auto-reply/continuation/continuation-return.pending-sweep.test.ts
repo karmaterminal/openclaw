@@ -42,7 +42,7 @@ import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
 } from "../../test-utils/gateway-scheduler-clock.js";
-import { composeManagedDeliveryTurnLifecycle } from "../reply/managed-delivery-turn-lifecycle.js";
+import { bindManagedDeliveryReplyTurn } from "../reply/managed-delivery-turn-lifecycle.js";
 import { settleManagedSystemEventsAfterTurnAdoption } from "../reply/session-system-event-adoption.js";
 import { prepareFormattedSystemEvents } from "../reply/session-system-events.js";
 import { useContinuationCustodyTestState } from "./custody/custody.test-support.js";
@@ -585,17 +585,19 @@ describe("pending rows nothing armed: periodic sweep without duplicate adoption"
     const prepared = await preparePrompt();
     expect(prepared.managedDeliveries.map((delivery) => delivery.id)).toEqual([deliveryId]);
     const turnEnded = { abandoned: 0, settled: 0, adopted: 0 };
-    const turn = composeManagedDeliveryTurnLifecycle({
+    const turn = bindManagedDeliveryReplyTurn({
       deliveries: new Map(prepared.managedDeliveries.map((delivery) => [delivery.id, delivery])),
-      original: {
-        onAdopted: () => {
-          turnEnded.adopted += 1;
-        },
-        onAbandoned: () => {
-          turnEnded.abandoned += 1;
-        },
-        onSettled: () => {
-          turnEnded.settled += 1;
+      opts: {
+        turnAdoptionLifecycle: {
+          onAdopted: () => {
+            turnEnded.adopted += 1;
+          },
+          onAbandoned: () => {
+            turnEnded.abandoned += 1;
+          },
+          onSettled: () => {
+            turnEnded.settled += 1;
+          },
         },
       },
       getPersistedMessage: () => ({ __openclaw: { sessionDeliveryAckIds: [deliveryId] } }),
@@ -645,9 +647,9 @@ describe("pending rows nothing armed: periodic sweep without duplicate adoption"
     await seedRecipientSession(stateDir);
     const deliveryId = await admitTargetedReturn(stateDir, "q4-l2");
     const prepared = await preparePrompt();
-    const turn = composeManagedDeliveryTurnLifecycle({
+    const turn = bindManagedDeliveryReplyTurn({
       deliveries: new Map(prepared.managedDeliveries.map((delivery) => [delivery.id, delivery])),
-      original: { onAdopted: () => {} },
+      opts: { turnAdoptionLifecycle: { onAdopted: () => {} } },
       getPersistedMessage: () => undefined,
     });
     const realNow = Date.now();

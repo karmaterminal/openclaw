@@ -13,13 +13,13 @@ import {
   type PreparedManagedSystemEventDelivery,
 } from "./session-system-event-adoption.js";
 
-export type ManagedDeliveryTurnLifecycle = {
+type ManagedDeliveryTurnLifecycle = {
   lifecycle: TurnAdoptionLifecycle | undefined;
   /** Call once the immediate run returns: restores unless adopted or handed off. */
   restoreIfNotHandedOff: () => void;
 };
 
-export function composeManagedDeliveryTurnLifecycle(params: {
+function composeManagedDeliveryTurnLifecycle(params: {
   deliveries: ReadonlyMap<string, PreparedManagedSystemEventDelivery>;
   original: TurnAdoptionLifecycle | undefined;
   getPersistedMessage: () => unknown;

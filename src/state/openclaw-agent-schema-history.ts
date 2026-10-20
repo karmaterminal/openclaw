@@ -260,11 +260,8 @@ export function sessionParticipantsSchemaSql(): string {
   });
 }
 
-/**
- * Historical structural/media validation must not require a future identity key. The
- * continuation recipient-authority v18 fixture reuses it.
- */
-export function withLegacySessionParticipantsSchema(sql: string): string {
+/** Historical structural/media validation must not require a future identity key. */
+function withLegacySessionParticipantsSchema(sql: string): string {
   return withoutCanonicalSessionValidationSchema(sql).replace(
     sessionParticipantsSchemaSql().trim(),
     LEGACY_PARTICIPANTS_SCHEMA,

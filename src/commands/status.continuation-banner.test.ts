@@ -1,6 +1,6 @@
 // "RFC §" references herein cite docs/design/continue-work-signal-v2.md (Agent Self-Elected Turn Continuation / CONTINUE_WORK).
 import { describe, expect, it } from "vitest";
-import { formatContinuationBannerValue } from "./status.command-report.ts";
+import { formatContinuationBannerValue } from "./status.continuation-banner.ts";
 
 describe("formatContinuationBannerValue (status /status continuation banner, RFC §6.3)", () => {
   const baseEnabled = {

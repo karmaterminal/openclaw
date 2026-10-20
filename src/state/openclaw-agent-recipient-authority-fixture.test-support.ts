@@ -1,9 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 import { removeCanonicalValidationFromHistoricalAgentFixture } from "./openclaw-agent-db.test-support.js";
-import { withLegacySessionParticipantsSchema } from "./openclaw-agent-schema-history.js";
+import { LEGACY_PARTICIPANTS_SCHEMA } from "./openclaw-agent-schema-history.js";
 import { restoreEmptyV21StorageForHistoricalFixture } from "./openclaw-agent-schema-v21.test-support.js";
-import { sessionParticipantsSchemaSql } from "./openclaw-agent-session-participants-schema.js";
 
 type RecipientAuthorityV18FixtureLineage = "covenant" | "upstream";
 
@@ -50,7 +49,7 @@ export function stageRecipientAuthorityV18Fixture(
 
   if (lineage === "covenant") {
     database.exec("DROP TABLE session_participants;");
-    database.exec(withLegacySessionParticipantsSchema(sessionParticipantsSchemaSql()));
+    database.exec(LEGACY_PARTICIPANTS_SCHEMA);
     database
       .prepare(
         `INSERT INTO session_participants (
