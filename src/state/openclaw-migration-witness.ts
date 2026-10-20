@@ -19,14 +19,15 @@ import {
   MEDIA_ROWS_MIGRATION_META_KEY,
   OPENCLAW_AGENT_SCHEMA_VERSION,
 } from "./openclaw-agent-db-contract.js";
-import {
-  assertOpenClawAgentSchemaContains,
-  readOpenClawAgentHistoricalSchema,
-} from "./openclaw-agent-db-schema-helpers.js";
 import { AGENT_JSON_PREDICATE_COLUMNS } from "./openclaw-agent-json-predicate-schema.js";
 import { LEGACY_MEMORY_REVISION_TRIGGER_NAMES } from "./openclaw-agent-memory-revision-migration.js";
 import { withoutOutboxEnqueueSequence } from "./openclaw-agent-outbox-sequence-migration.js";
-import { AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION } from "./openclaw-agent-recipient-authority-schema.js";
+import {
+  AGENT_WITNESS_SCHEMA_VERSIONS,
+  assertAgentWitnessHistoricalSchema,
+  omitAddedRecipientAuthority,
+  RECIPIENT_AUTHORITY_TABLE,
+} from "./openclaw-migration-witness.continuation.js";
 import { OPENCLAW_STATE_SCHEMA_VERSION } from "./openclaw-state-db-contract.js";
 import { assertCurrentStateRuntimeSchema } from "./openclaw-state-db-fast-path.js";
 import { readStateSchemaContentVersion } from "./openclaw-state-db-schema-version.js";
@@ -111,8 +112,7 @@ function parseOpenClawMigrationWitness(value: unknown): OpenClawMigrationWitness
   }
   if (
     (witness.role === "agent" &&
-      (witness.agentId === null ||
-        !AGENT_WITNESS_SCHEMA_VERSIONS.includes(witness.schemaVersion))) ||
+      (witness.agentId === null || !AGENT_WITNESS_SCHEMA_VERSIONS.has(witness.schemaVersion))) ||
     (witness.role !== "agent" && witness.agentId !== null) ||
     (witness.role !== "agent" && witness.schemaSha256 !== witness.migrationSchemaSha256) ||
     (witness.role !== "global" && witness.registryMigrationBinding !== null) ||
@@ -141,21 +141,8 @@ function parseOpenClawMigrationWitness(value: unknown): OpenClawMigrationWitness
   return witness;
 }
 
-// Schemas 25 and 26 change these derived facts only, as does continuation's recipient-authority
-// step. persistAgentSchemaMetadata also publishes the target app version and timestamp; payload
-// and creation time stay exact.
-const RECIPIENT_AUTHORITY_TABLE = "session_recipient_authority";
-const AGENT_WITNESS_SCHEMA_VERSIONS = [
-  24,
-  25,
-  26,
-  27,
-  28,
-  29,
-  30,
-  31,
-  AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
-];
+// Schemas 25 and 26 change these derived facts only. persistAgentSchemaMetadata also
+// publishes the target app version and timestamp; payload and creation time stay exact.
 
 function migrationColumn(role: OpenClawMigrationWitness["role"], table: string, column: string) {
   return !(
@@ -438,17 +425,10 @@ export function captureOpenClawMigrationWitness(
         throw new Error("Migration witness database owner does not match the backup inventory");
       }
       if (owner.role === "agent") {
-        if (!AGENT_WITNESS_SCHEMA_VERSIONS.includes(schemaVersion)) {
+        if (!AGENT_WITNESS_SCHEMA_VERSIONS.has(schemaVersion)) {
           throw new Error(`Unsupported agent migration witness schema: ${schemaVersion}`);
         }
-        // Schemas 25 and 26 have two histories; a fleet backup carries recipient authority.
-        const history = readOpenClawAgentHistoricalSchema(
-          database,
-          "migration witness",
-          schemaVersion,
-        );
-        legacyValidationTriggers ||= history.legacyValidationTriggers;
-        assertOpenClawAgentSchemaContains(database, "migration witness", history.schema);
+        legacyValidationTriggers ||= assertAgentWitnessHistoricalSchema(database, schemaVersion);
       } else {
         if (schemaVersion !== OPENCLAW_STATE_SCHEMA_VERSION) {
           throw new Error(`Unsupported shared-state migration witness schema: ${schemaVersion}`);
@@ -737,11 +717,7 @@ export function assertOpenClawMigrationWitnessPreserved(
     }
     currentTables.delete(table.name);
   }
-  // Schema 27 creates recipient authority; a migration that adds it may not populate it.
-  const addedAuthority = currentTables.get(RECIPIENT_AUTHORITY_TABLE);
-  if (crossing && addedAuthority?.rowCount === 0) {
-    currentTables.delete(RECIPIENT_AUTHORITY_TABLE);
-  }
+  omitAddedRecipientAuthority(currentTables, crossing);
   if (currentTables.size > 0) {
     throw new Error("Migration added unclassified database content");
   }
