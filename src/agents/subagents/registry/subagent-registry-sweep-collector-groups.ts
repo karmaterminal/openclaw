@@ -1,12 +1,11 @@
 // Sweeper archival for completed collector groups (split from the sweeper for its line
 // budget): a group archives only as a whole, after every member's session, attachments
 // and context-engine cleanup succeed, and stops for this pass once any member changes.
-import type { callGateway } from "../../../gateway/call.js";
+import { resolveSubagentChildAuthority } from "./subagent-child-owner-match.js";
 import { shouldSuppressSubagentRecoverySessionEffects } from "./subagent-recovery-state.js";
 import { safeRemoveAttachmentsDir } from "./subagent-registry-helpers.js";
 import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
 import {
-  deleteSweptSession,
   mutateCleanup,
   sweptContext,
   isCollectorArchiveReady,
@@ -36,7 +35,11 @@ export async function sweepCollectorArchiveGroups(
       groupId: string,
       requesterAgentId?: string,
     ) => Iterable<[string, SubagentRunRecord]>;
-    callGateway: typeof callGateway;
+    /** The sweeper's swept-session delete, bound to its read scope. */
+    deleteSession: (
+      entry: SubagentRunRecord,
+      identity: FrozenSessionIdentity,
+    ) => Promise<"deleted" | "changed">;
     runContextEngineSubagentEnded: (params: ContextEngineSubagentEndedParams) => Promise<void>;
     clearPendingLifecycleError: (runId: string) => void;
     warn: (message: string, meta?: Record<string, unknown>) => void;
@@ -50,8 +53,11 @@ export async function sweepCollectorArchiveGroups(
     if (
       groupEntries.some(
         ([, candidate]) =>
+          resolveSubagentChildAuthority(candidate).status === "mismatch" ||
           !isCollectorArchiveReady(candidate, now) ||
           !cleanupIdentities.has(getSubagentRunRuntimeKey(candidate)) ||
+          (!shouldSuppressSubagentRecoverySessionEffects(candidate) &&
+            !cleanupIdentities.get(getSubagentRunRuntimeKey(candidate))) ||
           !isCleanupCurrent(candidate, candidate),
       )
     ) {
@@ -83,8 +89,7 @@ export async function sweepCollectorArchiveGroups(
         try {
           const changed =
             !sessionIdentity ||
-            (await deleteSweptSession(current, sessionIdentity, runs, params.callGateway)) ===
-              "changed";
+            (await params.deleteSession(current, sessionIdentity)) === "changed";
           if (changed) {
             const updated = await mutateCleanup(
               runs,

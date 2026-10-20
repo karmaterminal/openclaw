@@ -158,6 +158,8 @@ function spawnNative(options: {
       ({
         runId: acceptedRunId,
         childSessionKey,
+        childAgentId: "main",
+        sessionEntry: { sessionId: "sess-acceptance", lifecycleRevision: "revision-acceptance" },
         requesterSessionKey: "agent:main:main",
         requesterDisplayKey: "main",
         task: "armed acceptance",

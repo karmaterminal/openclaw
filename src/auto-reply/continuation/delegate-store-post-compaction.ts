@@ -130,16 +130,25 @@ export async function requeueAwaitingNextCompactionDelegatesRaw(options: {
   return requeued;
 }
 
+/**
+ * Fails a cleaned-up child's staged post-compaction delegates. `isOwnerLive` is asked only
+ * when there is a record to fail; false leaves them to the session that now holds the key.
+ */
 export async function failStagedPostCompactionDelegatesForCleanup(
   sessionKey: string,
   failureReason: string,
+  isOwnerLive?: () => Promise<boolean>,
 ): Promise<number> {
-  let failed = 0;
-  for (const record of await listDelegateRecords({
+  const records = await listDelegateRecords({
     ownerSessionKey: sessionKey,
     kinds: ["post_compaction"],
     statuses: ["queued", "running"],
-  })) {
+  });
+  if (records.length === 0 || (isOwnerLive && !(await isOwnerLive()))) {
+    return 0;
+  }
+  let failed = 0;
+  for (const record of records) {
     const result = await updateDelegateRecord({
       record,
       patch: {

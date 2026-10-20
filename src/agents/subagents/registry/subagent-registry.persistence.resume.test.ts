@@ -161,6 +161,8 @@ describe("subagent registry persistence resume", () => {
       await mod.registerSubagentRun({
         runId: "run-all-authority",
         childSessionKey,
+        childAgentId: "main",
+        sessionEntry: { sessionId: "sess-all-authority" },
         requesterSessionKey: "agent:main:main",
         requesterDisplayKey: "main",
         task: "fan out at completion",
@@ -207,6 +209,7 @@ describe("subagent registry persistence resume", () => {
           runId,
           requesterTurnRunId: "run-requester",
           childSessionKey,
+          childSessionIdentity: { sessionId: `sess-pending-${label}-delivery` },
           task: "deliver before waking requester",
           createdAt: 100,
           endedReason: "subagent-complete",
@@ -885,6 +888,7 @@ describe("subagent registry persistence resume", () => {
             rearmGeneration: 7,
           };
           predecessor.childSessionKey = "agent:main:subagent:old-child";
+          predecessor.childSessionIdentity = { sessionId: "sess-run-old-child-continued" };
           predecessor.taskRunId = "task-old-child";
           predecessor.requesterSettleWake = structuredClone(run.requesterSettleWake);
           nonannouncing.push({
@@ -903,6 +907,7 @@ describe("subagent registry persistence resume", () => {
             runId: `run-nonannouncing-${collect}`,
             taskRunId: `run-nonannouncing-${collect}`,
             childSessionKey: `agent:main:subagent:nonannouncing-${collect}`,
+            childSessionIdentity: { sessionId: `sess-run-nonannouncing-${collect}` },
             expectsCompletionMessage: false,
             requesterTurnYielded: undefined,
             requesterSettleWake: undefined,

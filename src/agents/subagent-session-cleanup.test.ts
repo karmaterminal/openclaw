@@ -100,6 +100,7 @@ describe("deleteSubagentSessionForCleanup", () => {
       method: "sessions.delete",
       params: {
         key: "agent:main:subagent:child",
+        agentId: "main",
         deleteTranscript: true,
         emitLifecycleHooks: false,
         expectedSessionId: cleanupSessionIdentity.expectedSessionId,
@@ -130,6 +131,7 @@ describe("deleteSubagentSessionForCleanup", () => {
       method: "sessions.delete",
       params: {
         key: "agent:main:subagent:post-compaction-owner",
+        agentId: "main",
         deleteTranscript: true,
         emitLifecycleHooks: false,
         expectedSessionId: cleanupSessionIdentity.expectedSessionId,
@@ -158,6 +160,7 @@ describe("deleteSubagentSessionForCleanup", () => {
     expect(failStagedPostCompactionDelegatesForCleanupMock).toHaveBeenCalledWith(
       "agent:main:subagent:post-compaction-owner",
       expect.stringContaining("will not receive a future compaction seam"),
+      expect.any(Function),
     );
     expect(hasLiveContinuationCustodyMock).toHaveBeenCalledWith(
       "agent:main:subagent:post-compaction-owner",
@@ -169,6 +172,7 @@ describe("deleteSubagentSessionForCleanup", () => {
       method: "sessions.delete",
       params: {
         key: "agent:main:subagent:post-compaction-owner",
+        agentId: "main",
         deleteTranscript: true,
         emitLifecycleHooks: false,
         expectedSessionId: cleanupSessionIdentity.expectedSessionId,
@@ -192,7 +196,7 @@ describe("deleteSubagentSessionForCleanup", () => {
       isCurrent: () => false,
     });
 
-    expect(result).toBe("changed");
+    expect(result).toBe("failed");
     expect(hasLiveContinuationCustodyMock).not.toHaveBeenCalled();
     expect(countActiveDescendantRunsMock).not.toHaveBeenCalled();
     expect(failStagedPostCompactionDelegatesForCleanupMock).not.toHaveBeenCalled();

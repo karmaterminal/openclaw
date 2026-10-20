@@ -12,6 +12,7 @@ export function createHydratedRegistryRuns(endedAt: number) {
     requesterTurnRunId: "run-requester",
     requesterTurnYielded: true,
     childSessionKey: "agent:main:subagent:hydrated-yield",
+    childSessionIdentity: { sessionId: "sess-hydrated-yield" },
     task: "wake only after lifecycle activation",
     createdAt: endedAt - 1_000,
     endedReason: "subagent-complete",
@@ -22,6 +23,10 @@ export function createHydratedRegistryRuns(endedAt: number) {
   const queuedCollector = createSubagentRunRecord({
     runId: "run-hydrated-collector",
     childSessionKey: "agent:main:subagent:hydrated-collector",
+    childSessionIdentity: {
+      sessionId: "sess-hydrated-collector",
+      lifecycleRevision: "revision-hydrated-collector",
+    },
     task: "clean only after lifecycle activation",
     createdAt: endedAt - 500,
     collect: true,
@@ -39,6 +44,7 @@ export function createHydratedRegistryRuns(endedAt: number) {
   const runningRun = createSubagentRunRecord({
     runId: "run-hydrated-running",
     childSessionKey: "agent:main:subagent:hydrated-running",
+    childSessionIdentity: { sessionId: "sess-hydrated-running" },
     task: "wait through the activated instance",
     createdAt: endedAt,
     execution: { status: "running", startedAt: endedAt },

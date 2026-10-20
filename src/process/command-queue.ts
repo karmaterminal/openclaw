@@ -19,7 +19,6 @@ import {
 import {
   notifyAllCommandLaneIdleWaiters,
   notifyCommandLaneIdleWaiters,
-  waitForCommandLaneIdle,
 } from "./command-queue.lane-idle.js";
 import {
   createLaneQueue,
@@ -50,7 +49,7 @@ export {
   isGatewayWorkAdmissionClosed as isGatewayDraining,
   markGatewayRestartDraining as markGatewayDraining,
 } from "./gateway-work-admission.js";
-export { waitForCommandLaneIdle };
+export { waitForCommandLaneIdle } from "./command-queue.lane-idle.js";
 export type { CommandLaneTaskMarker } from "./command-queue.state.js";
 export type { CommandLaneSnapshot } from "./command-queue.types.js";
 export class CommandLaneClearedError extends Error {

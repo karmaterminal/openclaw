@@ -144,7 +144,6 @@ type ExecutePreparedReplyAgentRunInput = Omit<
     >["checkpointBeforeAgentReply"];
     resolveVisibleReplyDelivery: () => Promise<boolean>;
     getActiveSessionEntry: () => SessionEntry | undefined;
-    hookTrigger: ReturnType<typeof resolveReplyHookTrigger>;
     isContinuationWake: boolean;
     isRestartRecoveryArmed: () => Promise<boolean>;
     sendDirectCompactionNotice: ((phase: CompactionNoticePhase) => Promise<void>) | undefined;
@@ -161,7 +160,7 @@ export async function executePreparedReplyAgentRun(
   input: ExecutePreparedReplyAgentRunInput,
 ): Promise<ReplyPayload | ReplyPayload[] | undefined> {
   // Preserve the invocation snapshot across preparation; live session state uses its getters.
-  const context = { ...input };
+  const context = { ...input, hookTrigger: resolveReplyHookTrigger(input.opts) };
   const {
     activeSessionStore,
     admitUserTurn,

@@ -253,143 +253,6 @@ describe("subagent registry persistence", () => {
     expect(persisted?.abortedLastRun).toBeUndefined();
   });
 
-  it("persists continuation return metadata and replays it after restart", async () => {
-    await fixture.allocateStateDir();
-    let releaseInitialWait:
-      | ((value: { status: "ok"; startedAt: number; endedAt: number }) => void)
-      | undefined;
-    vi.mocked(callGateway)
-      .mockImplementationOnce(
-        async () =>
-          await new Promise((resolve) => {
-            releaseInitialWait = resolve as typeof releaseInitialWait;
-          }),
-      )
-      .mockResolvedValueOnce({
-        status: "ok",
-        startedAt: 111,
-        endedAt: 222,
-      });
-    await registerSubagentRun({
-      runId: "run-silent",
-      childSessionKey: "agent:main:subagent:silent-test",
-      requesterSessionKey: "agent:main:main",
-      requesterDisplayKey: "main",
-      task: "quiet enrichment",
-      cleanup: "keep",
-      silentAnnounce: true,
-      wakeOnReturn: true,
-      continuationTargetSessionKeys: ["agent:main:subagent:silent-test", "agent:main:main"],
-      continuationFanoutMode: "tree",
-      continuationRecipientAuthorityBinding: {
-        version: 1,
-        selection: "selected",
-        recipients: [
-          {
-            sessionKey: "agent:main:subagent:silent-test",
-            authority: { state: "bound", epoch: "11111111-1111-4111-8111-111111111111" },
-          },
-          {
-            sessionKey: "agent:main:main",
-            authority: { state: "bound", epoch: "22222222-2222-4222-8222-222222222222" },
-          },
-        ],
-      },
-      traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-    });
-    await writeChildSessionEntry({
-      sessionKey: "agent:main:subagent:silent-test",
-      sessionId: "sess-silent",
-    });
-    const run = loadSubagentRegistryFromSqlite().get("run-silent") as
-      | {
-          silentAnnounce?: boolean;
-          wakeOnReturn?: boolean;
-          continuationTargetSessionKeys?: string[];
-          continuationFanoutMode?: "tree" | "all";
-          continuationRecipientAuthorityBinding?: unknown;
-          traceparent?: string;
-        }
-      | undefined;
-    expect(run).toMatchObject({
-      silentAnnounce: true,
-      wakeOnReturn: true,
-      continuationTargetSessionKeys: ["agent:main:subagent:silent-test", "agent:main:main"],
-      continuationFanoutMode: "tree",
-      continuationRecipientAuthorityBinding: {
-        version: 1,
-        selection: "selected",
-        recipients: [
-          {
-            sessionKey: "agent:main:subagent:silent-test",
-            authority: { state: "bound", epoch: "11111111-1111-4111-8111-111111111111" },
-          },
-          {
-            sessionKey: "agent:main:main",
-            authority: { state: "bound", epoch: "22222222-2222-4222-8222-222222222222" },
-          },
-        ],
-      },
-      traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-    });
-    const restarted = restartRegistry();
-    releaseInitialWait?.({
-      status: "ok",
-      startedAt: 111,
-      endedAt: 222,
-    });
-    await restarted;
-    // Wait on the DURABLE OUTCOME, not on the spy. Under the retired injection seam
-    // the announce dependency was reached with no intervening async hop, so polling
-    // the spy doubled as the trigger. The lazy module boundary adds hops, which made
-    // that poll a timing artefact rather than a behaviour check -- measured: at the
-    // 2s mark baseline and port are byte-identical (execution terminal, metadata
-    // intact, delivery pending, spy 0); given enough turns BOTH reach delivered.
-    // So gate on replay driving delivery terminal, then keep the original
-    // enriched-params assertion, which still holds once announce is reached.
-    await vi.waitFor(
-      () => {
-        const replayed = loadSubagentRegistryFromSqlite().get("run-silent") as
-          | { delivery?: { status?: string } }
-          | undefined;
-        expect(replayed?.delivery?.status).toBe("delivered");
-      },
-      { interval: 25, timeout: 20_000 },
-    );
-    await vi.waitFor(() => {
-      expect(announceSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          childRunId: "run-silent",
-          silentAnnounce: true,
-          wakeOnReturn: true,
-          continuationTargetSessionKeys: ["agent:main:subagent:silent-test", "agent:main:main"],
-          continuationFanoutMode: "tree",
-          continuationRecipientAuthorityBinding: {
-            version: 1,
-            selection: "selected",
-            recipients: [
-              {
-                sessionKey: "agent:main:subagent:silent-test",
-                authority: {
-                  state: "bound",
-                  epoch: "11111111-1111-4111-8111-111111111111",
-                },
-              },
-              {
-                sessionKey: "agent:main:main",
-                authority: {
-                  state: "bound",
-                  epoch: "22222222-2222-4222-8222-222222222222",
-                },
-              },
-            ],
-          },
-          traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-        }),
-      );
-    });
-  });
-
   it("reuses the persisted registry cache on hot internal read snapshots", async () => {
     await persistRuns([makeRun("run-cached-read", { startedAt: 1 })], false);
     const previousFlag = process.env.OPENCLAW_TEST_READ_SUBAGENT_RUNS_FROM_SQLITE;
@@ -422,6 +285,8 @@ describe("subagent registry persistence", () => {
     await registerSubagentRun({
       runId: " run-live ",
       childSessionKey: " agent:main:subagent:live-child ",
+      childAgentId: "main",
+      sessionEntry: { sessionId: "session-live-child" },
       controllerSessionKey: " agent:main:subagent:live-controller ",
       requesterSessionKey: " agent:main:main ",
       requesterDisplayKey: "main",
@@ -522,7 +387,13 @@ describe("subagent registry persistence", () => {
     },
   ] as const)("$name", async ({ runId, cleanup, reject }) => {
     const childSessionKey = `agent:main:subagent:${runId}`;
-    await persistRuns([endedRun(runId, { childSessionKey, cleanup })]);
+    await persistRuns([
+      endedRun(runId, {
+        childSessionKey,
+        childSessionIdentity: { sessionId: `sess-${runId}` },
+        cleanup,
+      }),
+    ]);
     const announcement = createDeferred<"retryable">();
     const releaseAnnouncement = () =>
       reject ? announcement.reject(new Error("announce boom")) : announcement.resolve("retryable");
@@ -618,7 +489,10 @@ describe("subagent registry persistence", () => {
 
   it("settles orphaned restored runs through canonical completion", async () => {
     const runId = "run-orphan-restore";
-    await persistRuns([endedRun(runId)], false);
+    await persistRuns(
+      [endedRun(runId, { childSessionIdentity: { sessionId: "sess-orphan-restore" } })],
+      false,
+    );
     await restartRegistry();
     await waitForRegistryWork(() => readPersistedRun(runId)?.cleanupCompletedAt !== undefined);
     expect(readPersistedRun(runId)?.execution).toMatchObject({
@@ -635,6 +509,7 @@ describe("subagent registry persistence", () => {
       const now = Date.now();
       const entry = makeRun(runId, {
         createdAt: now,
+        childSessionIdentity: { sessionId: "admitted-resume-session" },
         expectsCompletionMessage: false,
         execution: { status: "running", startedAt: now },
       });
@@ -737,6 +612,14 @@ describe("subagent registry persistence", () => {
     const entry = makeRun(runId, {
       createdAt: now,
       startedAt: now,
+      childSessionIdentity: {
+        sessionId:
+          change === "worker read failure"
+            ? "read-error-session"
+            : change === "session publication"
+              ? "published-resume-session"
+              : "held-resume-session",
+      },
       expectsCompletionMessage: false,
       execution: { status: "running", startedAt: now },
     });
@@ -995,6 +878,7 @@ describe("subagent registry persistence", () => {
       [
         makeRun(runId, {
           childSessionKey,
+          childSessionIdentity: { sessionId: "sess-stale-aborted-restore" },
           createdAt: now - 3 * 60 * 60 * 1_000,
           startedAt: now - 3 * 60 * 60 * 1_000,
         }),

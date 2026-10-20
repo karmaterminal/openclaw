@@ -163,6 +163,8 @@ describe("subagent registration rollback", () => {
     return {
       runId,
       childSessionKey,
+      childAgentId: "main",
+      sessionEntry: { sessionId: `sess-${runId}` },
       requesterSessionKey: "agent:main:main",
       requesterDisplayKey: "main",
       task: "registration ownership integration",
@@ -355,6 +357,8 @@ describe("subagent registration rollback", () => {
       registerSubagentRun({
         runId,
         childSessionKey,
+        childAgentId: "main",
+        sessionEntry: { sessionId: `sess-${runId}` },
         requesterSessionKey: "agent:main:main",
         requesterDisplayKey: "main",
         task: "task registration failure",
@@ -402,6 +406,8 @@ describe("subagent registration rollback", () => {
       registerSubagentRun({
         runId,
         childSessionKey,
+        childAgentId: "main",
+        sessionEntry: { sessionId: `sess-${runId}` },
         requesterSessionKey: "agent:main:main",
         requesterDisplayKey: "main",
         task: "replacement that must roll back",

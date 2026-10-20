@@ -125,6 +125,11 @@ const nativeDelegateSpawn: PostCompactionDelegateSpawn = async (_params, ctx) =>
       ({
         runId,
         childSessionKey,
+        childAgentId: "main",
+        sessionEntry: {
+          sessionId: "sess-post-compaction",
+          lifecycleRevision: "revision-post-compaction",
+        },
         requesterSessionKey: "agent:main:main",
         requesterDisplayKey: "main",
         task: "post-compaction delegate",

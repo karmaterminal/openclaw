@@ -52,14 +52,22 @@ export function isSubagentSpawnDisarmUncertain(entry: SubagentRunRecord): boolea
   return uncertainDisarm.has(getSubagentRunRuntimeKey(entry));
 }
 
-/** Records the first deferred resume source; confirmation replays it exactly once. */
+/**
+ * Records the first deferred resume source; confirmation replays it exactly once. An
+ * unheld armed row has no acceptance owner left to confirm it, so the sweeper is woken
+ * to fail it closed.
+ */
 export function deferArmedSubagentResume(
   entry: SubagentRunRecord,
   source: ArmedResumeSource,
+  wakeSweeper: () => void,
 ): void {
   const key = getSubagentRunRuntimeKey(entry);
   if (!deferredResumes.has(key)) {
     deferredResumes.set(key, source);
+  }
+  if (!isSubagentSpawnAcceptanceHeld(entry)) {
+    wakeSweeper();
   }
 }
 

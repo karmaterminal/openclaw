@@ -23,9 +23,6 @@ import { createSubagentAnnounceDeliveryRuntimeMock } from "./subagents/announce/
 
 const callGatewayMock = vi.fn(async (_request: unknown) => ({}));
 const loadSessionStoreMock = vi.fn((_storePath: string) => ({}) as Record<string, unknown>);
-const resolveAgentIdFromSessionKeyMock = vi.fn((sessionKey: string) => {
-  return sessionKey.match(/^agent:([^:]+)/)?.[1] ?? "main";
-});
 const resolveStorePathMock = vi.fn((_store: unknown, _options: unknown) => "/tmp/sessions.json");
 const resolveMainSessionKeyMock = vi.fn((_cfg: unknown) => "agent:main:main");
 const isEmbeddedAgentRunActiveMock = vi.fn((_sessionId: string) => false);
@@ -97,8 +94,6 @@ vi.mock("./subagents/announce/subagent-announce.runtime.js", () => ({
   resolveContinuationRuntimeConfig: (cfg?: unknown) => resolveContinuationRuntimeConfigMock(cfg),
   queueEmbeddedAgentMessage: (sessionId: string, text: string) =>
     queueEmbeddedAgentMessageMock(sessionId, text),
-  resolveAgentIdFromSessionKey: (sessionKey: string) =>
-    resolveAgentIdFromSessionKeyMock(sessionKey),
   resolveMainSessionKey: (cfg: unknown) => resolveMainSessionKeyMock(cfg),
   resolveSessionStorePathCore: (store: unknown, options: unknown) =>
     resolveStorePathMock(store, options),
@@ -113,8 +108,6 @@ vi.mock("./subagents/announce/subagent-announce-delivery.runtime.js", () =>
     dispatchGatewayMethodInProcess: vi.fn(),
     getRuntimeConfig: () => mockConfig,
     loadSessionStore: (storePath: string) => loadSessionStoreMock(storePath),
-    resolveAgentIdFromSessionKey: (sessionKey: string) =>
-      resolveAgentIdFromSessionKeyMock(sessionKey),
     resolveMainSessionKey: (cfg: unknown) => resolveMainSessionKeyMock(cfg),
     resolveSessionStorePathCore: (store: unknown, options: unknown) =>
       resolveStorePathMock(store, options),
@@ -250,7 +243,6 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (RFC §2
       contextPressureThreshold: undefined,
     }));
     loadSessionStoreMock.mockReset();
-    resolveAgentIdFromSessionKeyMock.mockReset().mockImplementation(() => "main");
     resolveStorePathMock.mockReset().mockImplementation(() => "/tmp/sessions.json");
     resolveMainSessionKeyMock.mockReset().mockImplementation(() => "agent:main:main");
     isEmbeddedAgentRunActiveMock.mockReset().mockReturnValue(false);

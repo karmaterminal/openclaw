@@ -78,8 +78,9 @@ function createTimeoutHistoryWithNoReply() {
 
 vi.mock("../../../gateway/call.js", createGatewayCallModuleMock);
 vi.mock("../spawn/subagent-depth.js", createSubagentDepthModuleMock);
-vi.mock("./subagent-announce-delivery.runtime.js", () =>
-  createSubagentAnnounceDeliveryRuntimeMock({
+vi.mock("./subagent-announce-delivery.runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./subagent-announce-delivery.runtime.js")>()),
+  ...(await createSubagentAnnounceDeliveryRuntimeMock({
     callGateway: async (request: unknown) => {
       const typed = request as GatewayCall;
       gatewayCalls.push(typed);
@@ -90,7 +91,6 @@ vi.mock("./subagent-announce-delivery.runtime.js", () =>
     },
     getRuntimeConfig: () => configOverride,
     loadSessionStore: () => sessionStore,
-    resolveAgentIdFromSessionKey: () => "main",
     resolveMainSessionKey: () => "agent:main:main",
     resolveSessionStorePathCore: () => "/tmp/sessions-main.json",
     isEmbeddedAgentRunActive: (sessionId: string) => isEmbeddedAgentRunActiveMock(sessionId),
@@ -100,8 +100,8 @@ vi.mock("./subagent-announce-delivery.runtime.js", () =>
       reason: "not_streaming",
       gatewayHealth: "live",
     }),
-  }),
-);
+  })),
+}));
 vi.mock("./subagent-announce-delivery.js", () => ({
   deliverSubagentAnnouncement: async (params: {
     targetRequesterSessionKey: string;
@@ -148,8 +148,8 @@ vi.mock("./subagent-announce-delivery.js", () => ({
   }),
   loadSessionEntryByKey: (sessionKey: string) => sessionStore[sessionKey],
 }));
-// mock-isolation: Gateway, config and session reads are scripted; the real runtime calls the Gateway and opens session stores.
-vi.mock("./subagent-announce.runtime.js", () => ({
+vi.mock("./subagent-announce.runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./subagent-announce.runtime.js")>()),
   callGateway: createGatewayCallModuleMock().callGateway,
   callSubagentLifecycleGateway: createGatewayCallModuleMock().callGateway,
   dispatchGatewayMethodInProcess: async (
@@ -176,7 +176,6 @@ vi.mock("./subagent-announce.runtime.js", () => ({
     minDelayMs: 5_000,
     maxDelayMs: 300_000,
   }),
-  resolveAgentIdFromSessionKey: () => "main",
   resolveSessionStorePathCore: () => "/tmp/sessions-main.json",
   resolveMainSessionKey: () => "agent:main:main",
   isEmbeddedAgentRunActive: (sessionId: string) => isEmbeddedAgentRunActiveMock(sessionId),

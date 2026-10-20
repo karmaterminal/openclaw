@@ -850,6 +850,7 @@ describe("durable continuation_work dispatch", () => {
       method: "sessions.delete",
       params: {
         key: childSessionKey,
+        agentId: "main",
         deleteTranscript: true,
         emitLifecycleHooks: false,
         expectedSessionId: "continuation-child-session",

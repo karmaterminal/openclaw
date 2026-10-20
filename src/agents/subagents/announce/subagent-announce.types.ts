@@ -12,6 +12,7 @@ export type SubagentAnnounceFlowOutcome =
 export type SubagentAnnounceFlowParams = {
   childSessionKey: string;
   childAgentId?: string;
+  childSessionIdentity?: { sessionId: string; lifecycleRevision?: string };
   childRunId: string;
   runTimeoutSeconds?: number;
   requesterSessionKey: string;

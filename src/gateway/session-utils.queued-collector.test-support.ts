@@ -255,26 +255,30 @@ export function useQueuedCollectorFixture() {
     const runId = `${name}-collector`;
     const groupId = `swarm:${parentKey}:parent-turn`;
     reserveSwarmRun({ runId, groupId, maxConcurrent: 1, activeRunIds: [] });
-    expect(
-      await createInitialSubagentSession({
-        cfg: getRuntimeConfig(),
-        requesterAgentId: "main",
-        targetAgentId: "main",
-        childSessionKey,
-        label: "Reserved collector",
-        incognito: false,
-        requesterInternalKey: parentKey,
-        completionOwnerSessionKey: parentKey,
-        creationPolicy,
-        modelPatch: {},
-        continuationPatch: {},
-        swarmGroupId: groupId,
-        collect: true,
-      }),
-    ).toMatchObject({ status: "ok" });
+    const created = await createInitialSubagentSession({
+      cfg: getRuntimeConfig(),
+      requesterAgentId: "main",
+      targetAgentId: "main",
+      childSessionKey,
+      label: "Reserved collector",
+      incognito: false,
+      requesterInternalKey: parentKey,
+      completionOwnerSessionKey: parentKey,
+      creationPolicy,
+      modelPatch: {},
+      continuationPatch: {},
+      swarmGroupId: groupId,
+      collect: true,
+    });
+    expect(created.status).toBe("ok");
+    if (created.status !== "ok") {
+      throw new Error(created.error);
+    }
     const registration = {
       runId,
       childSessionKey,
+      childAgentId: "main",
+      sessionEntry: expectDefined(created.entry, "created reservation identity"),
       requesterSessionKey: parentKey,
       requesterTurnRunId: "parent-turn",
       requesterDisplayKey: parentKey,

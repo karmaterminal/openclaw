@@ -79,7 +79,6 @@ import {
   retireTerminalRestartRecoverySourceClaim,
 } from "./restart-recovery-source.js";
 import { resolveRoutedDeliveryThreadId } from "./routed-delivery-thread.js";
-import { resolveReplyHookTrigger } from "./run-provenance.js";
 import { prepareSessionVerboseLevelReader } from "./session-verbose-level.js";
 import { resolveSourceReplyExpectation } from "./source-reply-delivery-mode.js";
 import { readChannelSourceTurnId } from "./source-turn-id.js";
@@ -142,9 +141,10 @@ export async function runReplyAgent(
       cfg: followupRun.run.config,
       isHeartbeat,
     }));
-  const visiblePartialReply = bindVisiblePartialReplyObserver(opts);
+  const { runOpts: observedOpts, hasDeliveredVisiblePartialReply } =
+    bindVisiblePartialReplyObserver(opts);
   // Every reply run carries a run id so the live run registry can own its liveness.
-  const runOpts = { ...visiblePartialReply.runOpts, runId: opts?.runId ?? randomUUID() };
+  const runOpts = { ...observedOpts, runId: opts?.runId ?? randomUUID() };
   const replyOperationRunState = replyRunState.resolveReplyOperationRunState(opts);
   if (replyOperationRunState) {
     replyOperationRunState.replyCompletion = resolveReplyCompletion(
@@ -515,10 +515,7 @@ export async function runReplyAgent(
         `failed to flush streamed reply blocks before surfacing run failure: ${String(flushError)}`,
       );
     }
-    return (
-      visiblePartialReply.hasDeliveredVisiblePartialReply() ||
-      blockReplyPipeline?.didStream() === true
-    );
+    return hasDeliveredVisiblePartialReply() || blockReplyPipeline?.didStream() === true;
   };
   const replySessionKey = sessionKey ?? followupRun.run.sessionKey;
   const replyRouteThreadId = resolveRoutedDeliveryThreadId({
@@ -666,7 +663,6 @@ export async function runReplyAgent(
       resolveVisibleReplyDelivery,
       activeIsNewSession: isNewSession,
       getActiveSessionEntry: () => activeSessionEntry,
-      hookTrigger: resolveReplyHookTrigger(opts),
       isContinuationWake: isContinuationWake === true,
       isHeartbeat,
       isRestartRecoveryArmed,

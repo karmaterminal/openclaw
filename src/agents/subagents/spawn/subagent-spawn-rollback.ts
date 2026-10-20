@@ -15,6 +15,7 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
   error: unknown;
   runId: string;
   childSessionKey: string;
+  childAgentId: string;
   acceptedChildRunId?: string;
   /** Only a run whose registration is required is terminated on register failure. */
   registrationRequired: boolean;
@@ -127,6 +128,7 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
     try {
       await cleanupMaterializedSubagentAttachments({
         childSessionKey: params.childSessionKey,
+        childAgentId: params.childAgentId,
         attachmentId: params.attachmentId,
         isCurrent: params.isCurrent,
       });

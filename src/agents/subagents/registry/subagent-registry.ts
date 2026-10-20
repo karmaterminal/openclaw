@@ -38,6 +38,7 @@ import { suspendReplacedStoreNotifications } from "./subagent-registry-lifecycle
 import { SubagentLifecycleController } from "./subagent-registry-lifecycle.js";
 import { createSubagentRegistryListener } from "./subagent-registry-listener.js";
 import {
+  getSubagentChildSessionCandidates,
   getSubagentRunsForChildSession,
   getSubagentRunsForCollectorGroup,
   subagentRuns,
@@ -60,7 +61,6 @@ import { createSubagentRunManager } from "./subagent-registry-run-manager.js";
 import { createSubagentSpawnAcceptanceApi } from "./subagent-registry-spawn-acceptance-api.js";
 import {
   deferArmedSubagentResume,
-  isSubagentSpawnAcceptanceHeld,
   isSubagentSpawnArmed,
 } from "./subagent-registry-spawn-acceptance.js";
 import { clearSubagentRunsReadCacheForTest } from "./subagent-registry-state.js";
@@ -267,10 +267,7 @@ export function resumeSubagentRun(runId: string, source: "live" | "restore" = "l
     // give-up and announce/wake until its acceptance owner confirms. Confirmation
     // replays this deferred resume exactly once; resumedRuns stays unset so it can.
     resumeReader.retirePending(entry);
-    deferArmedSubagentResume(entry, source);
-    if (!isSubagentSpawnAcceptanceHeld(entry)) {
-      scheduleSubagentRegistrySweep({ delayMs: 0 });
-    }
+    deferArmedSubagentResume(entry, source, () => scheduleSubagentRegistrySweep({ delayMs: 0 }));
     return;
   }
   // The child session may be gone while its requester delivery remains durable:
@@ -304,10 +301,7 @@ function resumeCheckedSubagentRun(
   if (isSubagentSpawnArmed(entry)) {
     // An asynchronous orphan read can finish after the row was armed; the F2
     // fence still owns it until acceptance confirms.
-    deferArmedSubagentResume(entry, source);
-    if (!isSubagentSpawnAcceptanceHeld(entry)) {
-      scheduleSubagentRegistrySweep({ delayMs: 0 });
-    }
+    deferArmedSubagentResume(entry, source, () => scheduleSubagentRegistrySweep({ delayMs: 0 }));
     return;
   }
   if (
@@ -589,6 +583,7 @@ const subagentRunManager = createSubagentRunManager({
   acquireTerminalCompletionLock: (runId) =>
     subagentLifecycleController.acquireTerminalCompletionLock(runId),
   runs: subagentRuns,
+  getChildSessionCandidates: getSubagentChildSessionCandidates,
   getRunsForChildSession: getSubagentRunsForChildSession,
   resumedRuns,
   callGateway: async <T>(request: Parameters<typeof callGateway>[0]) => {

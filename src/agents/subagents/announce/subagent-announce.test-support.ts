@@ -19,7 +19,6 @@ type DeliveryRuntimeMockOptions = {
   dispatchGatewayMethodInProcess?: typeof dispatchGatewayMethodInProcess;
   getRuntimeConfig: () => OpenClawConfig;
   loadSessionStore: (storePath: string) => unknown;
-  resolveAgentIdFromSessionKey: (sessionKey: string) => string;
   resolveMainSessionKey: (cfg: unknown) => string;
   resolveSessionStorePathCore: (store: unknown, options: unknown) => string;
   isEmbeddedAgentRunActive: (sessionId: string) => boolean;
@@ -91,7 +90,6 @@ export async function createSubagentAnnounceDeliveryRuntimeMock(
         scope.sessionKey
       ],
     loadSessionStore: options.loadSessionStore,
-    resolveAgentIdFromSessionKey: options.resolveAgentIdFromSessionKey,
     resolveMainSessionKey: options.resolveMainSessionKey,
     resolveSessionStorePathCore: options.resolveSessionStorePathCore,
     isEmbeddedAgentRunActive: options.isEmbeddedAgentRunActive,

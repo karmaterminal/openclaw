@@ -3,17 +3,14 @@ import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { callGateway as GatewayCaller } from "../../../gateway/call.js";
 import { bindGatewayLifecycleRequest } from "../../../gateway/server-recovery-runtime-context.js";
 import { normalizeDiagnosticTraceparent } from "../../../infra/diagnostic-trace-context.js";
-import { resolveAgentIdFromSessionKey } from "../../../routing/session-key.js";
+import { resolveSubagentChildAgentId } from "../registry/subagent-child-owner-match.js";
 import type { SubagentRunRecord } from "../registry/subagent-registry.types.js";
 import { withSubagentSessionSource } from "../spawn/subagent-session-source.js";
 
 export { resolveContinuationRuntimeConfig } from "../../../auto-reply/continuation/config.js";
 export { dispatchGatewayMethodInProcess } from "../../../gateway/server-plugin-in-process-dispatch.js";
 export { getRuntimeConfig } from "../../../config/config.js";
-export {
-  resolveAgentIdFromSessionKey,
-  resolveSessionStorePathCore,
-} from "../../../config/sessions.js";
+export { resolveSessionStorePathCore } from "../../../config/sessions.js";
 
 export type ContinuationSpawnParams = Pick<
   SubagentRunRecord,
@@ -71,12 +68,18 @@ export function buildContinuationSessionPatch(
   return patch;
 }
 
-export function readSubagentSessionEntry(
+export async function readSubagentSessionEntry(
   storePath: string,
   sessionKey: string,
   explicitAgentId?: string,
 ) {
-  const agentId = explicitAgentId ?? resolveAgentIdFromSessionKey(sessionKey);
+  const agentId = resolveSubagentChildAgentId({
+    childSessionKey: sessionKey,
+    childAgentId: explicitAgentId,
+  });
+  if (!agentId) {
+    return undefined;
+  }
   return withSubagentSessionSource({ agentId, storePath, sessionKey }, async () =>
     readSessionEntryReadOnlyInWorker({ storePath, sessionKey, agentId }),
   );

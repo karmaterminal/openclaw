@@ -25,6 +25,10 @@ export function registerRegistryRestoreRetryTest({
     const runId = "run-restore-retry";
     const restored = createSubagentRunRecord({
       runId,
+      childSessionIdentity: {
+        sessionId: "sess-child",
+        lifecycleRevision: "revision-child",
+      },
       task: "retry registry restore",
       cleanup: "keep",
       pauseReason: "sessions_yield",

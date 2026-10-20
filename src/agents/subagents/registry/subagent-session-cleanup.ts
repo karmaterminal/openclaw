@@ -12,10 +12,10 @@ import {
   isGatewayRestartDrainError,
   runWithGatewayDetachedWorkAdmission,
 } from "../../../process/gateway-work-admission.js";
-import { parseAgentSessionKey } from "../../../routing/session-key.js";
 import { runOutsideAsyncWorkScope } from "../../../shared/async-work-scope.js";
 import { createLazyRuntimeModule } from "../../../shared/lazy-runtime.js";
 import type { SpawnSubagentMode } from "../spawn/subagent-spawn.types.js";
+import { resolveSubagentChildAgentId } from "./subagent-child-owner-match.js";
 
 // Shutdown preparation must retain this importer's promise before installed chunks can change.
 export const loadSubagentSessionCleanupRuntime = createLazyRuntimeModule(
@@ -113,18 +113,20 @@ export function resetSubagentSessionCleanupForTests(): void {
 
 async function runCleanupContinuationGuards(
   params: DeleteSubagentSessionForCleanupParams,
-): Promise<"changed" | "deferred" | "clear"> {
+): Promise<"stale" | "deferred" | "clear"> {
   const [
     { hasLiveContinuationCustody },
     { failStagedPostCompactionDelegatesForCleanup },
     { countActiveDescendantRuns },
+    { loadSubagentSessionEntry },
   ] = await Promise.all([
     import("../../../auto-reply/continuation/work-store.js"),
     import("../../../auto-reply/continuation/delegate-store-post-compaction.js"),
     import("./subagent-registry-read.js"),
+    import("./subagent-session-reconciliation.js"),
   ]);
   if (params.isCurrent?.() === false) {
-    return "changed";
+    return "stale";
   }
   // Live continuation work, an in-flight regular continuation delegate, or an
   // accepted child run that still uses this session as requester owns
@@ -149,6 +151,20 @@ async function runCleanupContinuationGuards(
   const failedPostCompactionDelegates = await failStagedPostCompactionDelegatesForCleanup(
     params.childSessionKey,
     "Post-compaction delegate was staged by a delete-mode child session during cleanup; the completed child will not receive a future compaction seam.",
+    // A reset successor reuses the child session key, so its staged delegates are not this
+    // child's: only the recorded incarnation's are failed, and a replaced session is left
+    // to the delete's CAS. A read that cannot complete keeps the cleanup.
+    async () => {
+      const live = await loadSubagentSessionEntry({
+        childSessionKey: params.childSessionKey,
+        childAgentId: resolveSubagentChildAgentId(params),
+      }).catch(() => undefined);
+      return (
+        !live ||
+        (live.sessionId === params.expectedSessionId &&
+          live.lifecycleRevision === params.expectedLifecycleRevision)
+      );
+    },
   );
   if (failedPostCompactionDelegates > 0) {
     log.warn(
@@ -161,14 +177,15 @@ async function runCleanupContinuationGuards(
 export async function deleteSubagentSessionForCleanup(
   params: DeleteSubagentSessionForCleanupParams,
 ): Promise<SubagentSessionCleanupOutcome> {
-  if (!params.expectedSessionId || !params.expectedLifecycleRevision) {
+  const childAgentId = resolveSubagentChildAgentId(params);
+  if (!childAgentId || !params.expectedSessionId || !params.expectedLifecycleRevision) {
     return "failed";
   }
   // The continuation guards read durable state. A run's finalizer can call this while its
   // Gateway closes, and upstream requires that cleanup to settle before the Gateway
   // retires, so the reads must not inherit the closing request's work scope. A guard that
   // still fails is reported like a failed delete: onError, deferred retry, "failed".
-  let guard: "changed" | "deferred" | "clear";
+  let guard: "stale" | "deferred" | "clear";
   try {
     guard = await runOutsideAsyncWorkScope(() => runCleanupContinuationGuards(params));
   } catch (error) {
@@ -179,8 +196,11 @@ export async function deleteSubagentSessionForCleanup(
     scheduleDeferredCleanupRetry(params);
     return "failed";
   }
-  if (guard === "changed") {
-    return "changed";
+  if (guard === "stale") {
+    // Reported as the dispatch's own owner check would, without a retry for an owner
+    // that cannot become current again.
+    params.onError?.(new Error("subagent cleanup owner is no longer current"));
+    return "failed";
   }
   if (guard === "deferred") {
     return "failed";
@@ -190,9 +210,7 @@ export async function deleteSubagentSessionForCleanup(
   const { prepareCurrent, isCurrent } = params;
   const cleanupParams: SessionsDeleteParams = {
     key: params.childSessionKey,
-    ...(params.childAgentId === undefined || parseAgentSessionKey(params.childSessionKey)
-      ? {}
-      : { agentId: params.childAgentId }),
+    agentId: childAgentId,
     deleteTranscript: params.deleteTranscript ?? true,
     emitLifecycleHooks: params.emitLifecycleHooks ?? params.spawnMode === "session",
     expectedSessionId: params.expectedSessionId,

@@ -62,9 +62,10 @@ vi.mock("./subagent-registry-memory.js", async (importOriginal) => ({
 // mock-isolation: Runtime log lines are dropped instead of writing to the terminal.
 vi.mock("../../../runtime.js", () => ({ defaultRuntime: { log: vi.fn() } }));
 // mock-isolation: Drop subsystem log lines without loading the logging runtime or its process-wide sinks.
-vi.mock("../../../logging/subsystem.js", () => ({
-  createSubsystemLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn() }),
-}));
+vi.mock("../../../logging/subsystem.js", () => {
+  const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), child: () => logger };
+  return { createSubsystemLogger: () => logger };
+});
 
 type Harness = {
   readonly controller: SubagentLifecycleController;

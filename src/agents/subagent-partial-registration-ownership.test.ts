@@ -65,6 +65,8 @@ describe("partial subagent registration ownership", () => {
         buildRegistration: () => ({
           runId,
           childSessionKey,
+          childAgentId: "main",
+          sessionEntry: { sessionId: `sess-${runId}` },
           requesterSessionKey: "agent:main:main",
           requesterDisplayKey: "main",
           task: "negative control partial registration",

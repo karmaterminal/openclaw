@@ -94,6 +94,11 @@ async function seedQueuedCollector(): Promise<SubagentRunRecord> {
   await addSubagentRunForTests({
     runId,
     childSessionKey,
+    childAgentId: "main",
+    childSessionIdentity: {
+      sessionId: "sess-launch-dispatch",
+      lifecycleRevision: "revision-launch-dispatch",
+    },
     requesterSessionKey: "agent:main:main",
     requesterDisplayKey: "main",
     task: "collector launch dispatch",
