@@ -4,6 +4,7 @@ import {
   clearEmbeddedSessionPromptStates,
   retainEmbeddedSessionPromptState,
 } from "../../agents/embedded-agent-runner/session-prompt-state.js";
+import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import {
   captureSessionRecipientAuthority,
   isSessionRecipientAuthorityCurrent,
@@ -260,6 +261,7 @@ describe("clearSessionResetRuntimeState", () => {
       await withOpenClawTestState(
         { layout: "state-only", prefix: "openclaw-session-reset-continuation-" },
         async () => {
+          await captureRuntimeConfigAsyncReader()();
           // The fixture moved the state directory; hydrate its custody projection.
           await hydrateContinuationCustody();
           vi.useFakeTimers();

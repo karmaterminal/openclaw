@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ensureMemoryIndexSchema } from "../../packages/memory-host-sdk/src/host/memory-schema.js";
 import { compactDoctorSessionSqliteTarget } from "../commands/doctor-session-sqlite-compact.js";
 import { recoverDoctorSessionSqliteTargets } from "../commands/doctor-session-sqlite-recover-report.js";
+import { captureRuntimeConfigAsyncReader } from "../config/io.runtime.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
@@ -417,6 +418,7 @@ describe("participant identity migration", () => {
     "converges the %s physical v18 lineage to the exact v20 schema",
     async (lineage) => {
       await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+        await captureRuntimeConfigAsyncReader()();
         const validKey = `${sessionKey}:${lineage}:valid`;
         const malformedKey = `${sessionKey}:${lineage}:malformed`;
         const importedEpoch = "11111111-1111-4111-8111-111111111111";

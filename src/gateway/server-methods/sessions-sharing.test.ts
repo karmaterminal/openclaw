@@ -8,6 +8,7 @@ import {
   type SessionSharingEvidenceEvent,
   type SessionSharingEvent,
 } from "../../../packages/gateway-protocol/src/index.js";
+import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import {
   captureSessionRecipientAuthority,
   isSessionRecipientAuthorityCurrent,
@@ -94,6 +95,7 @@ function sharingEvidenceEvents(broadcast: ReturnType<typeof vi.fn>): SessionShar
 describe("session sharing handlers", () => {
   it("revokes recipient authority only when visibility becomes more restrictive", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       const sessionKey = "agent:main:visibility-authority";
       const scope = { agentId: "main", sessionKey };
       await upsertSessionEntryCore(scope, {

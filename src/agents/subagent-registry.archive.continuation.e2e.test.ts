@@ -278,9 +278,14 @@ describe("subagent registry archive behavior (continuation work)", () => {
       lifecycleRevision: "lifecycle-delete-custody-live",
       updatedAt: Date.now(),
     });
+    // Since #167966 the sweep deletes only a recorded child incarnation.
     await addCanonicalSubagentRunForTests({
       runId: "run-delete-custody-live",
       childSessionKey,
+      childSessionIdentity: {
+        sessionId: "session-delete-custody-live",
+        lifecycleRevision: "lifecycle-delete-custody-live",
+      },
       requesterSessionKey: "agent:main:main",
       requesterDisplayKey: "main",
       task: "guard the session delete on authoritative custody",
