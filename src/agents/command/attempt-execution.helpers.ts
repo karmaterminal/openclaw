@@ -381,16 +381,19 @@ function formatFallbackTurns(
 }
 
 /** Prefer the harvested summary, then retain recent turns within the fallback prompt budget. */
-export function buildClaudeCliFallbackContextPrelude(params: {
+export async function buildClaudeCliFallbackContextPrelude(params: {
   cliSessionId: string | undefined;
   homeDir?: string;
   charBudget?: number;
-}): string {
+}): Promise<string> {
   const sessionId = params.cliSessionId?.trim();
   if (!sessionId) {
     return "";
   }
-  const seed = readClaudeCliFallbackSeed({ cliSessionId: sessionId, homeDir: params.homeDir });
+  const seed = await readClaudeCliFallbackSeed({
+    cliSessionId: sessionId,
+    homeDir: params.homeDir,
+  });
   if (!seed) {
     return "";
   }
@@ -432,7 +435,7 @@ export function buildClaudeCliFallbackContextPrelude(params: {
 }
 
 /** Claude CLI context prelude for a fallback retry that moves off claude-cli. */
-export function resolveClaudeCliFallbackPrelude(
+export async function resolveClaudeCliFallbackPrelude(
   params: {
     isFallbackRetry: boolean;
     originalProvider: string;
@@ -440,12 +443,12 @@ export function resolveClaudeCliFallbackPrelude(
     sessionEntry: SessionEntry | undefined;
   },
   isRawModelRun: boolean,
-): string {
+): Promise<string> {
   return !isRawModelRun &&
     params.isFallbackRetry &&
     isClaudeCliProvider(params.originalProvider) &&
     !isClaudeCliProvider(params.providerOverride)
-    ? buildClaudeCliFallbackContextPrelude({
+    ? await buildClaudeCliFallbackContextPrelude({
         cliSessionId: getCliSessionBinding(params.sessionEntry, "claude-cli")?.sessionId,
       })
     : "";

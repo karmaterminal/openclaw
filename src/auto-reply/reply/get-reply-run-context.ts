@@ -146,7 +146,7 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
   const sessionPromptSourceReplyDeliveryMode =
     opts?.sessionPromptSourceReplyDeliveryMode ??
     (isSyntheticTurn && sessionEntry
-      ? resolveSessionStableReplyMode({
+      ? await resolveSessionStableReplyMode({
           cfg,
           ctx: { ...promptSessionCtx, CommandAuthorized: false },
           sessionEntry,

@@ -354,8 +354,9 @@ vi.mock("./queue/settings-runtime.js", () => ({
 // mock-isolation: System-event drains are scripted per case, reaching the real prepare only when a case opts in.
 vi.mock("./session-system-events.js", () => sessionSystemEventsMocks);
 
-vi.mock("../../sessions/stored-model-overrides.js", () => ({
-  resolveStoredModelOverride: vi.fn(
+// mock-isolation: reply orchestration uses fixture model overrides without opening host session stores.
+vi.mock("../../sessions/stored-model-overrides.js", () => {
+  const resolveStoredModelOverride = vi.fn(
     (params: {
       sessionEntry?: { providerOverride?: string; modelOverride?: string };
       sessionStore?: Record<string, { providerOverride?: string; modelOverride?: string }>;
@@ -366,8 +367,14 @@ vi.mock("../../sessions/stored-model-overrides.js", () => ({
       }
       return null;
     },
-  ),
-}));
+  );
+  return {
+    resolveStoredModelOverride,
+    resolveStoredModelOverrideAsync: async (
+      params: Parameters<typeof resolveStoredModelOverride>[0],
+    ) => resolveStoredModelOverride(params),
+  };
+});
 
 vi.mock("./session-reset-prompt.js", () => ({
   resolveBareResetBootstrapFileAccess: vi.fn().mockReturnValue(false),

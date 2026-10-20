@@ -6,6 +6,7 @@ import { pendingDelegateCount } from "../auto-reply/continuation/delegate-store.
 import type { SessionEntry } from "../config/sessions.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveStatusTtsSnapshot } from "../tts/status-config.js";
+import type { PreparedTtsPreferences } from "../tts/tts-preferences.js";
 
 // Optional per-session /status rows derived from config and the session entry.
 
@@ -66,6 +67,7 @@ export const formatVoiceModeLine = (
   config?: OpenClawConfig,
   sessionEntry?: SessionEntry,
   agentId?: string,
+  preparedTtsPreferences?: PreparedTtsPreferences,
 ): string | null => {
   if (!config) {
     return null;
@@ -74,6 +76,7 @@ export const formatVoiceModeLine = (
     cfg: config,
     sessionAuto: sessionEntry?.ttsAuto,
     agentId,
+    preparedTtsPreferences,
   });
   if (!snapshot) {
     return null;
