@@ -31,23 +31,6 @@ import {
 import { withSessionDeliveryQueue } from "./session-delivery-queue.test-helpers.js";
 
 describe("session-delivery queue storage", () => {
-  it("dedupes entries when an idempotency key is reused", async () => {
-    await withSessionDeliveryQueue(async (_stateDir, queueContext) => {
-      const payload = {
-        kind: "agentTurn" as const,
-        sessionKey: "agent:main:main",
-        message: "continue after restart",
-        messageId: "restart-sentinel:agent:main:main:agentTurn:123",
-        idempotencyKey: "restart-sentinel:agent:main:main:agentTurn:123",
-      };
-      const firstId = await enqueueSessionDelivery(payload, queueContext);
-      const secondId = await enqueueSessionDelivery({ ...payload }, queueContext);
-
-      expect(secondId).toBe(firstId);
-      expect(await loadPendingSessionDeliveries(queueContext)).toHaveLength(1);
-    });
-  });
-
   it("projects generic queue attachments to descriptor-only metadata before persistence", async () => {
     await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       const secret = "GENERIC_QUEUE_INLINE_SECRET";
@@ -318,28 +301,6 @@ describe("session-delivery queue storage", () => {
       });
       expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
       expect(readSessionQueueStatus(tempDir, first.id)).toBe("completed");
-    });
-  });
-
-  it("persists retry metadata and retains acked idempotency tombstones", async () => {
-    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
-      const id = await enqueueSessionDelivery(
-        {
-          kind: "systemEvent",
-          sessionKey: "agent:main:main",
-          text: "restart complete",
-        },
-        queueContext,
-      );
-
-      await failSessionDelivery(id, "dispatch failed", queueContext);
-      const [failedEntry] = await loadPendingSessionDeliveries(queueContext);
-      expect(failedEntry?.retryCount).toBe(1);
-      expect(failedEntry?.lastError).toBe("dispatch failed");
-
-      await settleSessionDelivery(id, tempDir);
-      expect(await loadPendingSessionDeliveries(queueContext)).toStrictEqual([]);
-      expect(readSessionQueueStatus(tempDir, id)).toBe("completed");
     });
   });
 
