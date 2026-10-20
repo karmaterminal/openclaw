@@ -10,7 +10,6 @@ import { waitForSessionTranscriptProjection } from "../../config/sessions/sessio
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { revokeMessageActionTurnCapability } from "../../gateway/message-action-turn-capability.js";
 import {
-  assertAgentRunLifecycleGenerationCurrent,
   captureAgentRunLifecycleGeneration,
   withAgentRunLifecycleGeneration,
 } from "../../infra/agent-events.js";
@@ -271,7 +270,10 @@ async function runEmbeddedAgentForSession(
           (reason) => laneController.laneTaskAbortController.abort(reason),
         );
         using _ = { [Symbol.dispose]: () => preReplyGeneration?.release() };
-        const preReplyAssertCurrent = preReplyGeneration?.assertCurrent;
+        const preReplyAssertCurrent = () => {
+          laneController.assertCurrent();
+          preReplyGeneration?.assertCurrent();
+        };
         const startupStages = createStageTimingTracker(Date.now);
         const {
           requestedWorkspaceResolution,
@@ -426,8 +428,7 @@ async function runEmbeddedAgentForSession(
                 tracker: startupStages,
               });
               await params.onExecutionStarted?.({ lifecycleGeneration });
-              throwIfAborted();
-              assertAgentRunLifecycleGenerationCurrent(lifecycleGeneration);
+              preReplyAssertCurrent();
               notifyExecutionPhase("runner_entered");
               const canonicalWorkspace = resolveUserPath(
                 resolveAgentWorkspaceDir(preparedModelRuntime.config, preparedAgentId),
@@ -487,6 +488,7 @@ async function runEmbeddedAgentForSession(
                 ...buildAgentHookContextIdentityFields(params),
               };
               const hookResult = await runBeforeAgentReplyForTurn({
+                awaitSessionDiffBaseline: params.awaitSessionDiffBaseline,
                 assertCurrent: preReplyAssertCurrent,
                 runId: params.runId,
                 trigger: params.trigger,
@@ -693,10 +695,7 @@ async function runEmbeddedAgentForSession(
           result.meta.executionTrace?.runner !== "cli" &&
           params.isFinalFallbackAttempt === undefined
         ) {
-          await settleRequesterRun(params, result, () => {
-            throwIfAborted();
-            params.preparedRunAdmission?.assertSourceCurrent();
-          });
+          await settleRequesterRun(params, result, laneController.assertCurrent);
         }
         const error = result.meta.error?.message ?? terminal?.getDeferredError();
         terminal?.emit(error ? "error" : "end", error ? new Error(error) : result, {

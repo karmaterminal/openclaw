@@ -1,4 +1,5 @@
 import { resolveSessionStorePathCore } from "../../../config/sessions/paths.js";
+import { composeSessionSourceAssertion } from "../../../config/sessions/session-source-authority.js";
 import {
   readExecRequestOwners,
   withExecRequestOwners,
@@ -79,10 +80,10 @@ export async function spawnSubagentDirect(
   ctx: SpawnSubagentContext,
 ): Promise<SpawnSubagentResult> {
   let assertDelegationCurrent: (() => void) | undefined;
-  const assertActive = () => {
-    ctx.assertActive?.();
+  const assertActive = composeSessionSourceAssertion([ctx.assertActive], (assertSource) => {
+    assertSource();
     assertDelegationCurrent?.();
-  };
+  });
   const promptedAt = Date.now();
   const task = params.task;
   const label = params.label?.trim() || "";
