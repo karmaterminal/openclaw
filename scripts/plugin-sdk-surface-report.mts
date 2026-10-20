@@ -212,7 +212,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
     publicEntrypoints: readPluginSdkSurfaceBudgetEnv(
       "OPENCLAW_PLUGIN_SDK_MAX_PUBLIC_ENTRYPOINTS",
       // +1: the shared state-owner boundary for plugin CLIs.
-      152,
+      // +2: shared database-engine host and worker adapters.
+      154,
       env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
@@ -245,10 +246,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: approved async transcript event/stat read replacements.
       // +1: approved PreparedAgentRunStart contract.
       // +1: deprecated createSessionHeaderLink retained from shipped 2026.10.1.
+      // +10: shared database-engine contracts and operations after the SQLite export cutover.
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
       // system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the 2cddf96f6c merge: upstream 3700, merged tree 3711 (+11).
-      3711,
+      // Measured on the d0dbb628ca merge: upstream 3710, merged tree 3721 (+11).
+      3721,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -275,9 +277,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: the same bounded stale-read cache factory on collection-runtime.
       // +2: the same transcript read replacement pairs.
       // +1: the same deprecated createSessionHeaderLink.
+      // +5: shared database-engine host and worker operations.
       // +4: the continuation feature's callable contracts; measured +4 over base 2187 on b51feb98eb.
-      // Measured on the 2cddf96f6c merge: upstream 2160, merged tree 2164 (+4).
-      2164,
+      // Measured on the d0dbb628ca merge: upstream 2165, merged tree 2169 (+4).
+      2169,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
