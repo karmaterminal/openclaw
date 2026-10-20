@@ -35,6 +35,8 @@ vi.mock("../infra/heartbeat-wake.js", () => ({
 vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: (sessionKey: string) =>
     sessionKey.includes(":subagent:") ? 1 : 0,
+  getSubagentDepthFromSessionStoreInWorker: async (sessionKey: string) =>
+    sessionKey.includes(":subagent:") ? 1 : 0,
 }));
 
 // mock-isolation: Embedded agent runs are scripted; no agent session or provider runs.

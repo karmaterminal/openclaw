@@ -130,6 +130,7 @@ vi.mock("./subagents/registry/subagent-registry.js", async (importOriginal) => (
 // mock-isolation: Subagent depth is fixed by the test instead of read from the session store.
 vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: () => requesterDepthMock(),
+  getSubagentDepthFromSessionStoreInWorker: async () => requesterDepthMock(),
 }));
 
 const { runSubagentAnnounceFlow } = await import("./subagents/announce/subagent-announce.js");

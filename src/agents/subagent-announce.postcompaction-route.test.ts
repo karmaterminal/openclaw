@@ -25,6 +25,7 @@ vi.mock("../gateway/call.js", () => ({
 // mock-isolation: Subagent depth is fixed by the test instead of read from the session store.
 vi.mock("./subagents/spawn/subagent-depth.js", () => ({
   getSubagentDepthFromSessionStore: () => 1,
+  getSubagentDepthFromSessionStoreInWorker: async () => 1,
 }));
 
 // mock-isolation: Embedded agent runs are scripted; no agent session or provider runs.
