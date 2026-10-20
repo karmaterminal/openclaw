@@ -8,6 +8,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../../config/io.js";
 // Shared mocks must load before the registry modules below.
 // oxfmt-ignore
 import { sharedRegistryMocks } from "./subagent-registry.mocks.shared.js";
@@ -84,6 +85,8 @@ const confirmWrite: WriteRule["match"] = (rows, write) =>
   );
 
 beforeEach(async () => {
+  // #169714: runtime config reads only the published snapshot.
+  setRuntimeConfigSnapshot({});
   stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-acceptance-custody-"));
   setTestEnvValue("OPENCLAW_STATE_DIR", stateDir);
   abortCalls.length = 0;
@@ -113,6 +116,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  clearRuntimeConfigSnapshot();
   liftFaults();
   // Unknown-outcome writes fence their runs in process memory; resolve them as a
   // new process would (one canonical restore) so no fence leaks into the next test.

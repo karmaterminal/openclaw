@@ -1,7 +1,8 @@
 // Gate 2.7: announce cleanup derives the requester agent for registry rows that
 // predate requesterAgentId, as upstream does. Harness mirrors
 // subagent-registry-lifecycle.test.ts (same module mocks, same controller fixture).
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../../config/io.js";
 import * as sessionAccessor from "../../../config/sessions/session-accessor.js";
 import type { CallGatewayOptions } from "../../../gateway/call.js";
 import { resetGatewayWorkAdmission } from "../../../process/gateway-work-admission.js";
@@ -72,9 +73,15 @@ describe("announce cleanup requester agent", () => {
   });
 
   beforeEach(() => {
+    // #169714: runtime config reads only the published snapshot.
+    setRuntimeConfigSnapshot({});
     resetGatewayWorkAdmission();
     vi.clearAllMocks();
     mockBlockedCompletionDeliveryOwner(completionDeliveryMocks);
+  });
+
+  afterEach(() => {
+    clearRuntimeConfigSnapshot();
   });
 
   it.each([
