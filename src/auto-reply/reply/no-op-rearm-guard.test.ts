@@ -249,14 +249,19 @@ describe("turn outcome classification", () => {
     expect(classifyNoOpRearmTurnOutcome(facts).kind).toBe("no_op");
   });
 
-  it("does not treat reasoning-prefixed silent payload text as a visible reply", () => {
+  // #170534: only the exact token is silent; reasoning-wrapped NO_REPLY is delivered as text,
+  // so the guard counts it as visible instead of keeping a silence heuristic of its own.
+  it("treats reasoning-wrapped silent text as a visible reply, as delivery does", () => {
     const result: EmbeddedAgentRunResult = {
       payloads: [{ text: "<think>internal notes</think>\nNO_REPLY" }],
       meta: { durationMs: 1 },
     };
     const facts = summarizeEmbeddedRunOutcome(result);
-    expect(facts.hasVisibleReply).toBe(false);
-    expect(classifyNoOpRearmTurnOutcome(facts).kind).toBe("no_op");
+    expect(facts.hasVisibleReply).toBe(true);
+    expect(classifyNoOpRearmTurnOutcome(facts)).toEqual({
+      kind: "substantive",
+      reason: "visible-reply",
+    });
   });
 
   it("does not treat structural continuation markers as visible replies", () => {

@@ -983,7 +983,7 @@ describe("createFollowupRunner", () => {
       state.completedSourceDelivery = visible;
       state.admit.mockResolvedValue({ kind: "admitted", turn });
       state.execute.mockResolvedValue(execution);
-      state.account.mockResolvedValue({});
+      state.account.mockResolvedValue({ scheduleContinuation: async () => {} });
       state.deliver.mockResolvedValue({ kind: "completed", payloads: [] });
 
       await createFollowupRunner({
