@@ -17,10 +17,7 @@ import {
   spawnResultNeverDispatched,
 } from "../auto-reply/continuation/delegate-store.js";
 import { stripContinuationSignal } from "../auto-reply/continuation/signal.js";
-import {
-  loadContinuationChainState,
-  persistContinuationChainState,
-} from "../auto-reply/continuation/state.js";
+import { loadContinuationChainState } from "../auto-reply/continuation/state.js";
 import { withContinuationOwner } from "../auto-reply/continuation/system-event-ownership.js";
 import { resolveAgentIdFromSessionKey, resolveSessionStorePathCore } from "../config/sessions.js";
 import { updateSessionEntry } from "../config/sessions/session-accessor.js";
@@ -96,14 +93,9 @@ async function drainChildContinuationQueue(params: {
     const persistAdvancedChainState = async (
       advanced: ContinuationChainState,
     ): Promise<boolean> => {
+      // The loaded entry may be an owner's immutable snapshot; the floor carries the advance
+      // through this drain and updateSessionEntry persists it.
       chainStateFloor = mergeContinuationChainStateFloor(advanced, chainStateFloor);
-      persistContinuationChainState({
-        sessionEntry: childEntry,
-        count: advanced.currentChainCount,
-        startedAt: advanced.chainStartedAt,
-        tokens: advanced.accumulatedChainTokens,
-        ...(advanced.chainId ? { chainId: advanced.chainId } : {}),
-      });
       try {
         const agentId = resolveAgentIdFromSessionKey(params.childSessionKey);
         const storePath = resolveSessionStorePathCore(params.cfg.session?.store, { agentId });

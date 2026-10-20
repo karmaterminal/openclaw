@@ -1,10 +1,7 @@
 // A sub-agent's `CONTINUE_WORK` token arms a same-session continue_work wake
 // for the child session itself, unless the child already holds live
 // continuation custody.
-import {
-  loadContinuationChainState,
-  persistContinuationChainState,
-} from "../auto-reply/continuation/state.js";
+import { loadContinuationChainState } from "../auto-reply/continuation/state.js";
 import { scheduleContinuationWorkBatch } from "../auto-reply/continuation/work-dispatch.js";
 import { hasLiveContinuationCustody } from "../auto-reply/continuation/work-store.js";
 import { resolveAgentIdFromSessionKey, resolveSessionStorePathCore } from "../config/sessions.js";
@@ -46,13 +43,6 @@ export async function scheduleSubagentSelfContinuationWork(params: {
     if (result.scheduledCount === 0) {
       return;
     }
-    persistContinuationChainState({
-      sessionEntry: childEntry,
-      count: result.chainState.currentChainCount,
-      startedAt: result.chainState.chainStartedAt,
-      tokens: result.chainState.accumulatedChainTokens,
-      ...(result.chainState.chainId ? { chainId: result.chainState.chainId } : {}),
-    });
     const agentId = resolveAgentIdFromSessionKey(params.childSessionKey);
     const storePath = resolveSessionStorePathCore(params.cfg.session?.store, { agentId });
     const persisted = await updateSessionEntry(
