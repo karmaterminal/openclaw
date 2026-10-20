@@ -33,7 +33,11 @@ import {
   AGENT_MEMORY_REVISION_POSTGRES_SQL,
   withLegacyAgentPostgresMemoryRevisionTriggers,
 } from "./openclaw-agent-memory-revision-migration.js";
-import { AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION } from "./openclaw-agent-recipient-authority-schema.js";
+import {
+  AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+  sessionRecipientAuthorityPostgresSql,
+  withoutSessionRecipientAuthorityPostgresSchema,
+} from "./openclaw-agent-recipient-authority-schema.js";
 import { agentTranscriptSearchSchema } from "./openclaw-agent-search-schema.js";
 import {
   AGENT_TRAJECTORY_STORAGE_POSTGRES_MIGRATION_SQL,
@@ -76,7 +80,9 @@ export function admitAgentEngineSearchExtensions(
 }
 
 const agentPostgresSql = `${agentPostgresRuntime.sql}\n${agentSearchPostgresRuntime.sql}`;
-const agentPostgresV30Sql = withLegacyAgentPostgresMemoryRevisionTriggers(agentPostgresSql);
+// Continuation's recipient authority (v32) is the newest step; schema 31 lacks its table.
+const agentPostgresV31Sql = withoutSessionRecipientAuthorityPostgresSchema(agentPostgresSql);
+const agentPostgresV30Sql = withLegacyAgentPostgresMemoryRevisionTriggers(agentPostgresV31Sql);
 const agentPostgresV29Sql = withLegacyAgentPostgresTrajectoryStorage(agentPostgresV30Sql);
 const agentPostgresV28Sql = withLegacyAgentPostgresIndexes(agentPostgresV29Sql);
 
@@ -125,7 +131,7 @@ export const agentEngineSchema: StoreSchema = {
     {
       version: AGENT_MEMORY_REVISION_SCHEMA_VERSION,
       fromSchema: { postgres: agentPostgresV30Sql },
-      schema: { postgres: agentPostgresSql },
+      schema: { postgres: agentPostgresV31Sql },
       sql: `${AGENT_MEMORY_REVISION_POSTGRES_SQL}
         UPDATE schema_meta
         SET schema_version = ${AGENT_MEMORY_REVISION_SCHEMA_VERSION},
@@ -134,11 +140,11 @@ export const agentEngineSchema: StoreSchema = {
         WHERE meta_key = 'primary';`,
     },
     {
-      // Continuation's recipient authority is SQLite-only: the PostgreSQL layout is unchanged.
       version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
-      fromSchema: { postgres: agentPostgresSql },
+      fromSchema: { postgres: agentPostgresV31Sql },
       schema: { postgres: agentPostgresSql },
-      sql: `UPDATE schema_meta
+      sql: `${sessionRecipientAuthorityPostgresSql(agentPostgresSql)}
+        UPDATE schema_meta
         SET schema_version = ${AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION},
           app_version = '${VERSION.replaceAll("'", "''")}',
           updated_at = CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS bigint)

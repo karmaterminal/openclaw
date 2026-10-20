@@ -168,6 +168,10 @@
       "identities": []
     },
     {
+      "name": "session_recipient_authority",
+      "identities": []
+    },
+    {
       "name": "session_suggestions",
       "identities": []
     },
@@ -430,8 +434,8 @@
       "name": "session_conversations_route_context_invalidate_after_update",
       "table": "session_conversations",
       "range": [
-        10172,
-        10555
+        10528,
+        10911
       ]
     },
     {
@@ -462,41 +466,41 @@
       "name": "session_transcript_fts_rows_after_delete",
       "table": "session_transcript_fts_rows",
       "range": [
-        31189,
-        31372
+        31545,
+        31728
       ]
     },
     {
       "name": "standing_intents_fts_after_delete",
       "table": "standing_intents",
       "range": [
-        28729,
-        28976
+        29085,
+        29332
       ]
     },
     {
       "name": "standing_intents_fts_after_insert",
       "table": "standing_intents",
       "range": [
-        28512,
-        28727
+        28868,
+        29083
       ]
     },
     {
       "name": "standing_intents_fts_after_update",
       "table": "standing_intents",
       "range": [
-        28978,
-        29354
+        29334,
+        29710
       ]
     }
   ],
   "preData": [
     0,
-    29373
+    29596
   ],
   "postData": [
-    29373,
-    45231
+    29596,
+    45454
   ]
 }

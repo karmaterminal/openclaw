@@ -349,6 +349,19 @@
       "file": "fragment-outbound_message_progress.postgres.sql"
     },
     {
+      "id": "continuation_records",
+      "tables": [
+        "continuation_records"
+      ],
+      "indexes": [
+        "idx_continuation_records_owner",
+        "idx_continuation_records_due"
+      ],
+      "dependencies": [],
+      "activation": "first-use",
+      "file": "fragment-continuation_records.postgres.sql"
+    },
+    {
       "id": "agent_provenance",
       "tables": [
         "agent_provenance"

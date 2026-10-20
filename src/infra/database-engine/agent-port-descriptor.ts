@@ -26,6 +26,10 @@ import {
   LEGACY_MEMORY_REVISION_SQLITE_TRIGGERS,
   withLegacyAgentPostgresMemoryRevisionTriggers,
 } from "../../state/openclaw-agent-memory-revision-migration.js";
+import {
+  AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+  RECIPIENT_AUTHORITY_TABLE,
+} from "../../state/openclaw-agent-recipient-authority-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "../../state/openclaw-agent-schema.js";
 import { agentTranscriptSearchSchema } from "../../state/openclaw-agent-search-schema.js";
 import { withLegacyAgentPostgresTrajectoryStorage } from "../../state/openclaw-agent-trajectory-storage-migration.js";
@@ -128,9 +132,9 @@ export async function loadAgentPortDescriptor(
     if (backup?.version === sourceVersion && backup.id === "agent") {
       return backup;
     }
-    // Schema 30 appends trajectory columns; schema 31 removes revision triggers.
-    // Continuation's schema 32 adds no PostgreSQL DDL (recipient authority is
-    // SQLite-only). Pin the remaining shared layout so future DDL gets its own descriptor.
+    // Schema 30 appends trajectory columns; schema 31 removes revision triggers; schema 32
+    // (continuation) adds the recipient-authority table, which older sources omit.
+    // Pin the remaining shared layout so future DDL gets its own descriptor.
     if (
       backup ||
       OPENCLAW_AGENT_SCHEMA_VERSION !== 32 ||
@@ -146,12 +150,14 @@ export async function loadAgentPortDescriptor(
   ): fact is typeof fact & { value: PortTable["columns"][number] } => fact.kind === "column";
   const historical = sourceVersion !== agentEngineSchema.version;
   const legacyTrajectory = sourceVersion < 30;
+  const hasRecipientAuthority = sourceVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION;
   const catalog = agentPostgresRuntime.expectedCatalog.filter(
     (fact) =>
-      !legacyTrajectory ||
-      fact.table !== "trajectory_runtime_events" ||
-      !isColumn(fact) ||
-      !["event_utf8_bytes", "event_payload", "event_codec"].includes(fact.value.name),
+      (hasRecipientAuthority || fact.table !== RECIPIENT_AUTHORITY_TABLE) &&
+      (!legacyTrajectory ||
+        fact.table !== "trajectory_runtime_events" ||
+        !isColumn(fact) ||
+        !["event_utf8_bytes", "event_payload", "event_codec"].includes(fact.value.name)),
   );
   const columns = catalog.filter(isColumn);
   const keys = catalog.filter(
@@ -163,14 +169,16 @@ export async function loadAgentPortDescriptor(
     minimumPostgresVersion: manifest.minimumPostgresVersion,
     sqlite: OPENCLAW_AGENT_SCHEMA_SQL.replace(/^INSERT OR IGNORE INTO[^;]+;/gm, ""),
     tables: [
-      ...metadata.tables.map(({ name, identities }) => ({
-        name,
-        identities,
-        columns: columns
-          .filter((fact) => fact.table === name)
-          .map((fact) => ({ name: fact.value.name, type: fact.value.type })),
-        pk: keys.find((fact) => fact.table === name)?.value ?? [],
-      })),
+      ...metadata.tables
+        .filter(({ name }) => hasRecipientAuthority || name !== RECIPIENT_AUTHORITY_TABLE)
+        .map(({ name, identities }) => ({
+          name,
+          identities,
+          columns: columns
+            .filter((fact) => fact.table === name)
+            .map((fact) => ({ name: fact.value.name, type: fact.value.type })),
+          pk: keys.find((fact) => fact.table === name)?.value ?? [],
+        })),
       ...metadata.sqliteTables,
     ],
     triggers: metadata.triggers.map(({ name, table, range }) => ({

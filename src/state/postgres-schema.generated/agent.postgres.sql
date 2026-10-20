@@ -444,6 +444,14 @@ CREATE TABLE "session_reactions" (
   PRIMARY KEY ("session_key", "session_id", "message_id", "emoji", "identity_id")
 );
 
+CREATE TABLE "session_recipient_authority" (
+  "session_key" text COLLATE "C" NOT NULL,
+  "epoch" text COLLATE "C" NOT NULL,
+  "created_at" bigint NOT NULL,
+  "updated_at" bigint NOT NULL,
+  PRIMARY KEY ("session_key")
+);
+
 CREATE TABLE "session_suggestions" (
   "id" text COLLATE "C" NOT NULL,
   "session_key" text COLLATE "C" NOT NULL,

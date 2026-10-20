@@ -4,9 +4,12 @@ import {
   assertOpenClawAgentSchemaContains,
   readOpenClawAgentHistoricalSchema,
 } from "./openclaw-agent-db-schema-helpers.js";
-import { AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION } from "./openclaw-agent-recipient-authority-schema.js";
+import {
+  AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+  RECIPIENT_AUTHORITY_TABLE,
+} from "./openclaw-agent-recipient-authority-schema.js";
 
-export const RECIPIENT_AUTHORITY_TABLE = "session_recipient_authority";
+export { RECIPIENT_AUTHORITY_TABLE };
 
 /** Agent schemas a witness admits: upstream's 24..31 and continuation's authority step. */
 export const AGENT_WITNESS_SCHEMA_VERSIONS: ReadonlySet<number> = new Set([
