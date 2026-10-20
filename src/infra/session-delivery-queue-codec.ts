@@ -392,7 +392,8 @@ const QueuedAgentTurnSchema = z
         kind: z.literal("subagent_completion"),
         runId: z.string().min(1),
         taskId: z.string().min(1),
-        generation: z.number().int().positive(),
+        // Upstream types the owner generation as a number; production starts at 1, fixtures use 0.
+        generation: z.number().int().nonnegative(),
         deadlineAt: z.number(),
       })
       .strict()
