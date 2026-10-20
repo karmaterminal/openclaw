@@ -326,12 +326,13 @@ export function buildEmbeddedRunPayloads(params: {
       const rawAnswerHopParts = preserveCanonicalItemWhitespace
         ? fallbackRawAnswerParts.filter((part) => part.trim().length > 0)
         : [];
+      // An empty canonical terminal is still authoritative; accumulated text may precede tools.
       const answerDirectives =
         shouldUseCanonicalFinalAnswer || shouldPreferRawAnswerText
           ? rawAnswerHopParts.length > 1
             ? rawAnswerHopParts.map((part) => parseReplyDirectives(part))
             : [fallbackAnswerDirectiveState ?? parseReplyDirectives(fallbackAnswerSourceText)]
-          : nonEmptyAssistantTexts.length > 0
+          : !assistantForPayload && nonEmptyAssistantTexts.length > 0
             ? nonEmptyAssistantTexts.map((text) => parseReplyDirectives(text))
             : fallbackAnswerDirectiveState
               ? [fallbackAnswerDirectiveState]

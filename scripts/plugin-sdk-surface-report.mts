@@ -231,10 +231,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +7: approved GitHub publication V2 requester/action contracts: five types and two preparers.
       // +3: approved async skill-command preparation pairs on two existing entrypoints.
       // +1: preview adapters strip only normalization-owned response decoration.
+      // +1: shared stale-read cache replaces board, preview, search, and credential cache policies.
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
       // system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the 408a1f314e merge: upstream 3673, merged tree 3684 (+11).
-      3684,
+      // Measured on the 0b0c2f2166 merge: upstream 3674, merged tree 3685 (+11).
+      3685,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -256,9 +257,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: prepareGitHubPublicationRequesterV2 and preparePersonalGitHubSessionActionV2.
       // +3: the same skill-command preparation replacements.
       // +1: stripReplyPayloadResponsePrefix preserves durable text while assembling previews.
+      // +1: the same bounded stale-read cache factory on collection-runtime.
       // +4: the continuation feature's callable contracts; measured +4 over base 2187 on b51feb98eb.
-      // Measured on the 408a1f314e merge: upstream 2134, merged tree 2138 (+4).
-      2138,
+      // Measured on the 0b0c2f2166 merge: upstream 2135, merged tree 2139 (+4).
+      2139,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
