@@ -386,40 +386,37 @@ export function prepareSessionDeliveryEnqueue(
   params: QueuedSessionDeliveryPayload,
   now = Date.now(),
 ): { id: string; bound: ReturnType<typeof bindDeliveryQueueEntry> } {
+  const entry = prepareSessionDeliveryEntry(params, now);
+  return { id: entry.id, bound: prepareEntry(entry, "insert") };
+}
+
+/** Upstream's prepareSessionDelivery plus continuation traceparent and storage normalization. */
+function prepareSessionDeliveryEntry(
+  params: QueuedSessionDeliveryPayload,
+  now = Date.now(),
+): QueuedSessionDelivery {
   const payload = normalizeQueuedSessionDeliveryTraceparent(params);
-  const id = buildEntryId(payload.idempotencyKey);
-  const entry = normalizeSessionDeliveryForStorage({
+  return normalizeSessionDeliveryForStorage({
     ...payload,
     ...(payload.completionRetention === "permanent" ? { retainOnFailure: true as const } : {}),
-    id,
+    id: buildEntryId(payload.idempotencyKey),
     enqueuedAt: now,
     retryCount: 0,
   });
-  return { id, bound: prepareEntry(entry, "insert") };
 }
 
 export async function enqueueSessionDeliveryWithStatus(
   params: QueuedSessionDeliveryPayload,
   context: OpenClawStateWorkerContext,
 ): Promise<SessionDeliveryEnqueueResult> {
-  const { id, bound } = prepareSessionDeliveryEnqueue(params);
-  const { status: current } = await withSessionDeliveryEnqueueAdmission(
-    params,
+  const entry = prepareSessionDeliveryEntry(params);
+  const { status: current } = await publishSessionDelivery(
+    entry,
+    "sessionDelivery.enqueue",
     context,
-    (assertCurrent) =>
-      runOpenClawStateWorkerOperation(
-        context,
-        (scope) => scope.execute({ type: "sessionDelivery.enqueue", input: bound }),
-        {
-          assertCurrent,
-          createAdmission: createSqliteWorkerWriteAdmission(assertCurrent, [
-            context.admission.databasePath,
-          ]),
-        },
-      ),
   );
   const status = current === "completed" || current === "pending" ? current : "unknown";
-  return { id, status };
+  return { id: entry.id, status };
 }
 
 /**
