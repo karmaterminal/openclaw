@@ -64,8 +64,6 @@ import { persistAgentSchemaMetadata } from "./openclaw-agent-db-metadata-write.j
 import { ensureOpenClawAgentDatabasePermissions } from "./openclaw-agent-db-permissions.js";
 import { registerOpenClawAgentDatabase } from "./openclaw-agent-db-registry.js";
 import {
-  getOpenClawAgentFleetSchema25MigrationSchema,
-  getOpenClawAgentFleetSchema26MigrationSchema,
   getOpenClawAgentMigrationSchema,
   assertExistingAgentSchemaOwner,
   assertCurrentAgentSchemaMetadata,
@@ -82,8 +80,6 @@ import {
   ensureSessionReactionsSchemaInTransaction,
   readExistingAgentSchemaMeta,
   repairAndAssertOpenClawAgentV14SchemaForMigration,
-  readOpenClawAgentSchema25Shape,
-  readOpenClawAgentSchema26Shape,
 } from "./openclaw-agent-db-schema-helpers.js";
 import {
   backfillSessionConversations,
@@ -109,12 +105,10 @@ import {
   isPersistentOpenClawAgentDatabasePath,
   resolveOpenClawAgentSqlitePath,
 } from "./openclaw-agent-db.paths.js";
+import { planAgentFleetSchemaHistory } from "./openclaw-agent-fleet-schema-history.js";
 import { migrateAgentJsonPredicatesInTransaction } from "./openclaw-agent-json-predicate-schema.js";
 import { migrateSessionParticipantsSchema } from "./openclaw-agent-participants-migration.js";
-import {
-  AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
-  withoutSessionRecipientAuthoritySchema,
-} from "./openclaw-agent-recipient-authority-schema.js";
+import { withoutSessionRecipientAuthoritySchema } from "./openclaw-agent-recipient-authority-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import { migrateSessionEntrySnapshotsInTransaction } from "./openclaw-agent-session-snapshots-migration.js";
 import {
@@ -427,25 +421,12 @@ function ensureAgentSchema(
         previousVersion === 0 &&
         readExistingAgentSchemaMeta(db) === null &&
         !db.prepare("SELECT 1 FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' LIMIT 1").get();
-      // Schemas 25 and 26 each have two histories: upstream's, and the fleet's earlier
-      // (unreleased) recipient-authority schema. The fleet's 25 still carries the legacy
-      // validation triggers; its 26 lacks upstream's JSON predicate columns. Both already
-      // have the authority table.
-      const schema25Shape =
-        previousVersion === CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
-        targetVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
-          ? readOpenClawAgentSchema25Shape(db, pathname)
-          : undefined;
-      const schema26Shape =
-        previousVersion === AGENT_JSON_PREDICATE_SCHEMA_VERSION &&
-        targetVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
-          ? readOpenClawAgentSchema26Shape(db, pathname)
-          : undefined;
+      const fleet = planAgentFleetSchemaHistory(db, pathname, previousVersion, targetVersion);
       const requiresCanonicalWriterMigration =
         !isEmptyDatabase &&
         targetVersion >= CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
         (previousVersion < CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION ||
-          schema25Shape === "recipient-authority");
+          fleet.fleetSchema25);
       const requiresStorageMigration =
         !isEmptyDatabase &&
         previousVersion < AGENT_STORAGE_SCHEMA_VERSION &&
@@ -457,13 +438,9 @@ function ensureAgentSchema(
       const requiresJsonPredicateMigration =
         !isEmptyDatabase &&
         targetVersion >= AGENT_JSON_PREDICATE_SCHEMA_VERSION &&
-        (previousVersion < AGENT_JSON_PREDICATE_SCHEMA_VERSION ||
-          schema26Shape === "recipient-authority");
+        (previousVersion < AGENT_JSON_PREDICATE_SCHEMA_VERSION || fleet.fleetSchema26);
       // Idempotent: the fleet's schemas 25 and 26 keep their existing authority rows.
-      const requiresRecipientAuthorityMigration =
-        !isEmptyDatabase &&
-        previousVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION &&
-        targetVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION;
+      const requiresRecipientAuthorityMigration = !isEmptyDatabase && fleet.addsRecipientAuthority;
       const recipientAuthoritySchemaSql = requiresRecipientAuthorityMigration
         ? withoutSessionRecipientAuthoritySchema(schemaSql)
         : schemaSql;
@@ -499,20 +476,18 @@ function ensureAgentSchema(
           assertMigration,
         );
       };
-      if (schema26Shape !== undefined) {
+      if (fleet.schema26MigrationSchema !== undefined) {
         assertAgentSchemaVersion(
           db,
           { agentId, pathname, version: previousVersion },
-          schema26Shape === "recipient-authority"
-            ? getOpenClawAgentFleetSchema26MigrationSchema()
-            : getOpenClawAgentMigrationSchema(previousVersion),
+          fleet.schema26MigrationSchema,
         );
         finishStorageMigration();
         return;
       }
       if (
         previousVersion === CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
-        schema25Shape !== "recipient-authority" &&
+        !fleet.fleetSchema25 &&
         targetVersion >= AGENT_JSON_PREDICATE_SCHEMA_VERSION
       ) {
         assertAgentSchemaVersion(
@@ -537,7 +512,7 @@ function ensureAgentSchema(
           ensureSessionEntryValidityProjection(db);
           if (
             previousVersion < CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION ||
-            schema25Shape === "recipient-authority"
+            fleet.fleetSchema25
           ) {
             ensureLegacySessionEntryValidityTriggers(db);
           }
@@ -547,9 +522,7 @@ function ensureAgentSchema(
           }
         }
         const previousSchema =
-          schema25Shape === "recipient-authority"
-            ? getOpenClawAgentFleetSchema25MigrationSchema()
-            : getOpenClawAgentMigrationSchema(previousVersion);
+          fleet.schema25MigrationSchema ?? getOpenClawAgentMigrationSchema(previousVersion);
         repairCanonicalSqliteIndexes(db, pathname, previousSchema, {
           verifyPhysicalIntegrity: false,
         });

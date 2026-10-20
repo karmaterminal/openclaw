@@ -462,10 +462,7 @@ export function readOpenClawAgentSchema26Shape(
   db: DatabaseSync,
   pathname: string,
 ): OpenClawAgentSchema26Shape {
-  const authority =
-    db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
-      .get("session_recipient_authority") !== undefined;
+  const authority = readSqliteTableColumns(db, "session_recipient_authority") !== null;
   // Upstream's schema 26 adds every predicate column to these two required tables; the
   // optional outbox table is created on first use, so it cannot classify a database.
   const predicateColumns = (["session_nodes", "transcript_events"] as const).flatMap((table) => {
