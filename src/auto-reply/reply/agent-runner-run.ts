@@ -181,7 +181,7 @@ export async function runReplyAgent(
   let restartRecoveryTarget: SessionEntryTargetPatchScope | undefined;
   try {
     restartRecoveryEntry =
-      sessionKey && storePath
+      sessionKey && storePath && (restartRecoverySourceTurnId || (shouldSteer && isActive))
         ? ((await readSessionEntryInWorker(
             { agentId: followupRun.run.agentId, storePath, sessionKey },
             assertReadCurrent,
