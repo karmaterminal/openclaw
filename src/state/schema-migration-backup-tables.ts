@@ -1,5 +1,6 @@
 import { CLIENT_CREDENTIAL_SOURCE_TABLES } from "../infra/client-credential-schema.js";
 import { AGENT_TRAJECTORY_STORAGE_SCHEMA_VERSION } from "./openclaw-agent-db-contract.js";
+import { AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION } from "./openclaw-agent-recipient-authority-schema.js";
 import {
   CLIENT_CREDENTIAL_CUTOVER_SCHEMA_VERSION,
   MEETING_TRANSCRIPT_START_TIME_SCHEMA_VERSION,
@@ -26,6 +27,10 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
     ],
     29: ["session_nodes", "session_reactions", "sqlite_stat1", "sqlite_stat4"],
     31: ["memory_index_sources", "memory_index_chunks"],
+    // Continuation (karmaterminal): the authority step only creates its table. The fleet's own
+    // schema 26 also crosses upstream's undeclared step 26, so Doctor keeps its full image
+    // (isAgentFleetSchema26Migration).
+    [AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION]: ["session_recipient_authority"],
   },
   state: {
     [CLIENT_CREDENTIAL_CUTOVER_SCHEMA_VERSION]: [
