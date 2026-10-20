@@ -69,6 +69,10 @@ describe("tools.catalog Disable All for continuation tools", { timeout: 240000 }
     const identityCount = vi
       .spyOn(userProfileList, "hasMultipleSessionSharingIdentities")
       .mockReturnValue(false);
+    // tools.catalog reads the resident profile catalog (#170021), as upstream's catalog suite stubs.
+    const residentIdentityCount = vi
+      .spyOn(userProfileList, "hasMultipleResidentSessionSharingIdentities")
+      .mockReturnValue(false);
     try {
       const baseConfig: OpenClawConfig = {
         agents: {
@@ -91,6 +95,7 @@ describe("tools.catalog Disable All for continuation tools", { timeout: 240000 }
       expect(buildContinuationToolNames(disabledConfig)).toEqual([]);
     } finally {
       identityCount.mockRestore();
+      residentIdentityCount.mockRestore();
     }
   });
 });
