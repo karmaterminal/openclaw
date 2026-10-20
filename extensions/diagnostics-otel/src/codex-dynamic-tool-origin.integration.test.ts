@@ -263,6 +263,10 @@ test("exports Codex dynamic continuation origins through the production tool bou
             otel: { enabled: true, traces: true, metrics: false, logs: false },
           },
         };
+        // The first production tool build in a fresh worker evaluates every tool owner
+        // (2.6-3.0 s measured under load), which would spend most of the run's 5 s
+        // execution budget before turn/start. Build once here so the budget covers the run.
+        createOpenClawCodingTools({ config: params.config });
         params.continueWorkOpts = {
           requestContinuation: (request) => continueWorkRequests.push(request),
         };
