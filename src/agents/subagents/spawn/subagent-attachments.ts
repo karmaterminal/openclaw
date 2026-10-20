@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { resolveIntegerOption } from "@openclaw/normalization-core/number-coercion";
+import { resolveNonNegativeIntegerOption } from "@openclaw/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { privateFileStore } from "../../../infra/private-file-store.js";
@@ -8,6 +8,7 @@ import {
   DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS,
   MAX_INLINE_ATTACHMENT_BASENAME_BYTES,
   MAX_INLINE_ATTACHMENT_MIME_TYPE_BYTES,
+  normalizeInlineAttachmentBase64,
   prepareInlineAttachmentSnapshots,
   validateInlineAttachmentSnapshots,
   type InlineAttachment,
@@ -60,40 +61,51 @@ type MaterializeSubagentAttachmentsResult =
 
 type PreparedSubagentAttachment = PreparedInlineAttachmentSnapshot;
 
-function resolveAttachmentLimits(config: OpenClawConfig): AttachmentLimits {
+type SubagentAttachmentRequestParams = {
+  config: OpenClawConfig;
+  attachments?: SubagentInlineAttachment[];
+  /**
+   * Continuation delegate input. It persists as a durable inline snapshot, so
+   * configured limits may tighten, never widen, the snapshot ceilings, and
+   * model-visible errors are redacted.
+   */
+  continuationDelegateSnapshot?: boolean;
+};
+
+function resolveAttachmentLimits(
+  config: OpenClawConfig,
+  continuationDelegateSnapshot: boolean,
+): AttachmentLimits {
   const attachmentsCfg = config.tools?.sessions_spawn?.attachments;
-  return {
+  const limits: AttachmentLimits = {
     enabled: attachmentsCfg?.enabled === true,
-    // Configured limits may tighten, never widen, the inline snapshot ceilings.
-    maxTotalBytes: resolveIntegerOption(
-      attachmentsCfg?.maxTotalBytes,
-      DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxTotalBytes,
-      { min: 0, max: DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxTotalBytes },
-    ),
-    maxFiles: resolveIntegerOption(
-      attachmentsCfg?.maxFiles,
-      DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFiles,
-      { min: 0, max: DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFiles },
-    ),
-    maxFileBytes: resolveIntegerOption(
-      attachmentsCfg?.maxFileBytes,
-      DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFileBytes,
-      { min: 0, max: DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFileBytes },
-    ),
+    maxTotalBytes: resolveNonNegativeIntegerOption(attachmentsCfg?.maxTotalBytes, 5 * 1024 * 1024),
+    maxFiles: resolveNonNegativeIntegerOption(attachmentsCfg?.maxFiles, 50),
+    maxFileBytes: resolveNonNegativeIntegerOption(attachmentsCfg?.maxFileBytes, 1024 * 1024),
     retainOnSessionKeep: attachmentsCfg?.retainOnSessionKeep === true,
+  };
+  if (!continuationDelegateSnapshot) {
+    return limits;
+  }
+  const ceilings = DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS;
+  return {
+    ...limits,
+    maxTotalBytes: Math.min(limits.maxTotalBytes, ceilings.maxTotalBytes),
+    maxFiles: Math.min(limits.maxFiles, ceilings.maxFiles),
+    maxFileBytes: Math.min(limits.maxFileBytes, ceilings.maxFileBytes),
   };
 }
 
-function resolveSubagentAttachmentRequest(params: {
-  config: OpenClawConfig;
-  attachments?: SubagentInlineAttachment[];
-}) {
+function resolveSubagentAttachmentRequest(params: SubagentAttachmentRequestParams) {
   const requestedAttachments = Array.isArray(params.attachments) ? params.attachments : [];
   if (requestedAttachments.length === 0) {
     return null;
   }
 
-  const limits = resolveAttachmentLimits(params.config);
+  const limits = resolveAttachmentLimits(
+    params.config,
+    params.continuationDelegateSnapshot === true,
+  );
   if (!limits.enabled) {
     return {
       status: "forbidden" as const,
@@ -108,7 +120,11 @@ function resolveSubagentAttachmentRequest(params: {
     };
   }
 
-  return { status: "ok" as const, attachments: requestedAttachments, limits };
+  return {
+    status: "ok" as const,
+    attachments: normalizeInlineAttachmentBase64(requestedAttachments, limits.maxFileBytes),
+    limits,
+  };
 }
 
 function sanitizeMountPathHint(value?: string): string | undefined {
@@ -215,11 +231,9 @@ function redactContinuationAttachmentValidationError(params: {
   return fields.length > 0 ? `${code} (${fields.join(" ")})` : code;
 }
 
-export function validateSubagentAttachments(params: {
-  config: OpenClawConfig;
-  attachments?: SubagentInlineAttachment[];
-  redactContinuationErrorDetails?: boolean;
-}): string | undefined {
+export function validateSubagentAttachments(
+  params: SubagentAttachmentRequestParams,
+): string | undefined {
   const request = resolveSubagentAttachmentRequest(params);
   if (!request) {
     return undefined;
@@ -231,7 +245,7 @@ export function validateSubagentAttachments(params: {
     attachments: request.attachments,
     limits: request.limits,
   });
-  return params.redactContinuationErrorDetails && error
+  return params.continuationDelegateSnapshot && error
     ? redactContinuationAttachmentValidationError({
         error,
         limits: request.limits,
@@ -274,16 +288,15 @@ export function resolveAcpSessionsSpawnImageAttachments(params: {
   }
 }
 
-export async function materializeSubagentAttachments(params: {
-  assertActive?: () => void;
-  config: OpenClawConfig;
-  childSessionKey: string;
-  targetAgentId: string;
-  sandboxed: boolean;
-  attachments?: SubagentInlineAttachment[];
-  mountPathHint?: string;
-  redactContinuationErrorDetails?: boolean;
-}): Promise<MaterializeSubagentAttachmentsResult | null> {
+export async function materializeSubagentAttachments(
+  params: SubagentAttachmentRequestParams & {
+    assertActive?: () => void;
+    childSessionKey: string;
+    targetAgentId: string;
+    sandboxed: boolean;
+    mountPathHint?: string;
+  },
+): Promise<MaterializeSubagentAttachmentsResult | null> {
   const request = resolveSubagentAttachmentRequest(params);
   if (!request || request.status !== "ok") {
     return request;
@@ -339,7 +352,7 @@ export async function materializeSubagentAttachments(params: {
     // Validation errors have stable structural categories and are filename-free.
     return {
       status: "error",
-      error: params.redactContinuationErrorDetails
+      error: params.continuationDelegateSnapshot
         ? redactContinuationAttachmentValidationError({
             error: err,
             limits: request.limits,
@@ -396,7 +409,7 @@ export async function materializeSubagentAttachments(params: {
     }
     return {
       status: "error",
-      error: params.redactContinuationErrorDetails
+      error: params.continuationDelegateSnapshot
         ? "attachments_materialization_failed"
         : err instanceof Error
           ? err.message

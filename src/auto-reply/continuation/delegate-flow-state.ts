@@ -8,6 +8,8 @@ import {
   normalizeDiagnosticTraceparent,
 } from "../../infra/diagnostic-trace-context.js";
 import {
+  DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS,
+  normalizeInlineAttachmentBase64,
   parseInlineAttachmentMountPath,
   validateInlineAttachmentSnapshots,
   type InlineAttachment,
@@ -188,16 +190,20 @@ function canonicalizeDelegateAttachments(
   if (!attachments?.length) {
     return undefined;
   }
-  const canonical = attachments.map((attachment) => ({
-    name: attachment.name.trim(),
-    content: attachment.content,
-    ...(attachment.encoding ? { encoding: attachment.encoding } : {}),
-    ...(attachment.mimeType !== undefined ? { mimeType: attachment.mimeType.trim() } : {}),
-  }));
+  // The snapshot stores base64 without whitespace; its codec rejects whitespace.
+  const canonical = normalizeInlineAttachmentBase64(
+    attachments.map((attachment) => ({
+      name: attachment.name.trim(),
+      content: attachment.content,
+      ...(attachment.encoding ? { encoding: attachment.encoding } : {}),
+      ...(attachment.mimeType !== undefined ? { mimeType: attachment.mimeType.trim() } : {}),
+    })),
+    DEFAULT_INLINE_ATTACHMENT_SNAPSHOT_LIMITS.maxFileBytes,
+  );
   const error = validateSubagentAttachments({
     config,
     attachments: canonical,
-    redactContinuationErrorDetails: true,
+    continuationDelegateSnapshot: true,
   });
   if (error) {
     throw new Error(error);

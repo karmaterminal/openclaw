@@ -208,6 +208,38 @@ describe("continue_delegate tool", () => {
     ]);
   });
 
+  it.each(["normal", "post-compaction"] as const)(
+    "persists whitespace-wrapped base64 input in normalized form for %s delegates",
+    async (mode) => {
+      setRuntimeConfigSnapshot({
+        tools: { sessions_spawn: { attachments: { enabled: true } } },
+      });
+      const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
+      const encoded = Buffer.from("line-wrapped delegate input\n".repeat(4)).toString("base64");
+
+      const result = await executeTool(tool, 0, {
+        task: `read the ${mode} wrapped handoff`,
+        mode,
+        attachments: [
+          {
+            name: "handoff.bin",
+            content: ` ${encoded.replace(/.{1,76}/g, "$&\r\n")}`,
+            encoding: "base64",
+          },
+        ],
+      });
+
+      expect(result).toMatchObject({ attachmentCount: 1 });
+      const delegates =
+        mode === "post-compaction"
+          ? await claimStagedPostCompactionDelegates("test-session")
+          : await consumePendingDelegates("test-session");
+      expect(delegates).toMatchObject([
+        { attachments: [{ name: "handoff.bin", content: encoded, encoding: "base64" }] },
+      ]);
+    },
+  );
+
   it("canonicalizes empty attachAs away while accepting the snake-case mount hint", async () => {
     setRuntimeConfigSnapshot({
       tools: { sessions_spawn: { attachments: { enabled: true } } },
@@ -493,7 +525,8 @@ describe("continue_delegate tool", () => {
     const tool = createContinueDelegateTool({ agentSessionKey: "test-session" });
     const invalidInputs = [
       {
-        attachments: [{ name: "handoff.bin", content: "Z g==", encoding: "base64" }],
+        // Whitespace is stripped at admission; noncanonical padding bits still fail.
+        attachments: [{ name: "handoff.bin", content: "Zh==", encoding: "base64" }],
       },
       {
         attachments: [{ name: "handoff.txt", content: "data", mimeType: "m".repeat(257) }],
