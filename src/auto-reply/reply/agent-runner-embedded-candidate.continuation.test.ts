@@ -173,7 +173,7 @@ function runCandidate(
     userTurnTranscriptRecorder: undefined,
     contextEngineLogicalTurnLease: {} as never,
     onContextEngineTurnCandidate: vi.fn(),
-    assistantErrorTranscript: createAssistantErrorTranscript({ runId: "run-fallback" }),
+    assistantErrorTranscript: createAssistantErrorTranscript(),
     authProfileFailurePolicy: undefined,
     notifyUserMessagePersisted: vi.fn(),
     fastModeStartedAtMs: Date.now(),
