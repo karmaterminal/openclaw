@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { restoreDoctorMigrationBackup } from "../commands/doctor-migration-backup-restore.js";
 import { createScopedMigrationSnapshot } from "../infra/sqlite-migration-scoped-snapshot.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { OPENCLAW_AGENT_SCHEMA_VERSION } from "./openclaw-agent-db-contract.js";
 import { withAgentDatabaseMaintenanceLease } from "./openclaw-agent-db-maintenance-lease.js";
 import { ensureOpenClawAgentDatabaseSchema } from "./openclaw-agent-db-schema.js";
 import {
@@ -14,8 +15,14 @@ import { resolveSchemaMigrationBackupTables } from "./schema-migration-backup-sc
 import { assertSqliteMigrationScopePreserved } from "./sqlite-migration-scope.test-support.js";
 
 const predecessor = 30;
-const target = 31;
-const scope = ["memory_index_chunks", "memory_index_sources", "schema_meta"];
+// Continuation (karmaterminal): recipient authority (32) is the step after 31 and creates its table.
+const target = OPENCLAW_AGENT_SCHEMA_VERSION;
+const scope = [
+  "memory_index_chunks",
+  "memory_index_sources",
+  "schema_meta",
+  "session_recipient_authority",
+];
 // Frozen schema plus the previously published bundle DDL, independent of the new migration.
 const schemaV27 = fs.readFileSync(
   new URL("../../test/fixtures/sqlite/openclaw-agent-schema-v27.sql", import.meta.url),

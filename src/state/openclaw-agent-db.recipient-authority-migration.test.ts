@@ -6,7 +6,6 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
-import { retireSqliteDatabaseAdmissionForPath } from "../infra/sqlite-database-admission.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
 import { withAgentDatabaseMaintenanceLease } from "./openclaw-agent-db-maintenance-lease.js";
 import {
@@ -17,12 +16,14 @@ import {
   resolveOpenClawAgentSqlitePath,
 } from "./openclaw-agent-db.js";
 import {
-  dropAgentJsonPredicateColumns,
+  readCapturedAgentSchema,
   requireNativeAgentSqlite,
+  stageCapturedAgentDatabase,
 } from "./openclaw-agent-db.schema-bridge.test-support.js";
 import { removeCanonicalValidationFromHistoricalAgentFixture } from "./openclaw-agent-db.test-support.js";
-import { withLegacyCanonicalSessionValidationTriggers } from "./openclaw-agent-schema-history.js";
+import { sessionRecipientAuthoritySchemaSql } from "./openclaw-agent-recipient-authority-schema.js";
 import { materializeV21WorkerAgentDatabase } from "./openclaw-agent-schema-v21.test-support.js";
+import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import {
   closeOpenClawStateDatabaseForTest,
   openOpenClawStateDatabase,
@@ -83,42 +84,32 @@ async function migrateAndOpenLegacyAgentDatabaseForTest(
   return openOpenClawAgentDatabase(options);
 }
 
-/** Writes a schema-24 file; `withTable` keeps the table an earlier build created early. */
+/**
+ * Writes a schema-24 file from upstream's captured DDL; `withTable` keeps the table an
+ * earlier build created early. Upstream's steps 27–31 rebuild tables, so a current
+ * database rolled back to 24 is not a schema 24 ever wrote.
+ */
 function stageSchema24AgentDatabase(
   env: NodeJS.ProcessEnv,
   options: { withTable: boolean; authority?: { sessionKey: string; epoch: string } },
 ): string {
-  const initial = openOpenClawAgentDatabase({ agentId: "main", env });
-  const databasePath = initial.path;
-  if (options.withTable) {
-    if (options.authority) {
-      initial.db
-        .prepare(
-          "INSERT INTO session_recipient_authority (session_key, epoch, created_at, updated_at) VALUES (?, ?, 1, 2)",
-        )
-        .run(options.authority.sessionKey, options.authority.epoch);
-    }
-  } else {
-    initial.db.exec("DROP TABLE session_recipient_authority;");
+  const ddl = readCapturedAgentSchema("openclaw-agent-schema-v24.sql");
+  const databasePath = stageCapturedAgentDatabase(env, agentDbTempDirs, {
+    ddl: options.withTable
+      ? `${ddl}\n${sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL)}`
+      : ddl,
+    version: 24,
+    authorityRow: false,
+  });
+  if (options.authority) {
+    const { DatabaseSync } = requireNodeSqlite();
+    using database = new DatabaseSync(databasePath);
+    database
+      .prepare(
+        "INSERT INTO session_recipient_authority (session_key, epoch, created_at, updated_at) VALUES (?, ?, 1, 2)",
+      )
+      .run(options.authority.sessionKey, options.authority.epoch);
   }
-  // Schema 24 predates schema 26's JSON predicate columns and still carried the legacy
-  // validation triggers that schema 25 retired.
-  dropAgentJsonPredicateColumns(requireNativeAgentSqlite(initial.db));
-  const anchors =
-    "CREATE TABLE IF NOT EXISTS session_windows (\nCREATE TABLE IF NOT EXISTS conversations (";
-  initial.db.exec(
-    withLegacyCanonicalSessionValidationTriggers(anchors)
-      .replace("CREATE TABLE IF NOT EXISTS session_windows (", "")
-      .replace("CREATE TABLE IF NOT EXISTS conversations (", ""),
-  );
-  initial.db.exec(`
-    PRAGMA user_version = 24;
-    UPDATE schema_meta SET schema_version = 24 WHERE meta_key = 'primary';
-  `);
-  closeOpenClawAgentDatabasesForTest();
-  // The staged file now holds an older schema than this process admitted; physical
-  // admission outlives the close (#167739), so retire it as any out-of-band rewrite must.
-  retireSqliteDatabaseAdmissionForPath(databasePath);
   return databasePath;
 }
 

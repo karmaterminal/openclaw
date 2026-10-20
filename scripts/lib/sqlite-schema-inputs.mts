@@ -16,6 +16,10 @@ import { loadSqliteVecExtension } from "../../src/infra/database-engine/sqlite-v
 import { extractSqliteTableSchema } from "../../src/infra/sqlite-schema-sql.js";
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../../src/state/openclaw-agent-db-contract.js";
 import {
+  getOpenClawAgentFleetSchema25MigrationSchema,
+  getOpenClawAgentFleetSchema26MigrationSchema,
+} from "../../src/state/openclaw-agent-db-schema-helpers.js";
+import {
   AGENT_PROGRESS_CARD_SCHEMA_SQL,
   AGENT_V14_ADDITIVE_SCHEMA_SQL,
   AGENT_V14_BOARD_SCHEMA_SQL,
@@ -216,6 +220,9 @@ export function listSqliteSchemaInputs(): SqliteSchemaInput[] {
   for (let version = 1; version <= OPENCLAW_AGENT_SCHEMA_VERSION; version += 1) {
     add(`agent-version-${version}`, "agent", getOpenClawAgentMigrationSchema(version));
   }
+  // Continuation (karmaterminal): the fleet's own schemas 25 and 26 carry recipient authority.
+  add("agent-fleet-version-25", "agent", getOpenClawAgentFleetSchema25MigrationSchema());
+  add("agent-fleet-version-26", "agent", getOpenClawAgentFleetSchema26MigrationSchema());
   for (const [id, sql] of [
     ["agent-v14-core", AGENT_V14_CORE_SCHEMA_SQL],
     ["agent-v14-session-sharing", AGENT_V14_SESSION_SHARING_SCHEMA_SQL],

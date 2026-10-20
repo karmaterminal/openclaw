@@ -2,11 +2,10 @@
 // validation triggers; the fleet's earlier (unreleased) schema 25 instead added
 // session recipient authority and kept those triggers. Schema 32 must tell them
 // apart by shape, migrate each to the same schema-32 database, and refuse a mix.
-import { constants, type DatabaseSync } from "node:sqlite";
+import { constants } from "node:sqlite";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
-import { retireSqliteDatabaseAdmissionForPath } from "../infra/sqlite-database-admission.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
 import { withAgentDatabaseMaintenanceLease } from "./openclaw-agent-db-maintenance-lease.js";
 import {
@@ -18,7 +17,6 @@ import {
   AUTHORITY,
   CAPTURED_SESSION,
   captureAgentWitness,
-  dropAgentJsonPredicateColumns,
   materializeSharedStateDatabase,
   migrateAgentDatabase,
   openAgentDatabase,
@@ -28,22 +26,12 @@ import {
   readShape,
   stageCapturedAgentDatabase,
 } from "./openclaw-agent-db.schema-bridge.test-support.js";
-import { withLegacyCanonicalSessionValidationTriggers } from "./openclaw-agent-schema-history.js";
+import { sessionRecipientAuthoritySchemaSql } from "./openclaw-agent-recipient-authority-schema.js";
+import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import { assertOpenClawMigrationWitnessPreserved } from "./openclaw-migration-witness.js";
 import { closeOpenClawStateDatabaseForTest } from "./openclaw-state-db.js";
 
 const tempDirs: string[] = [];
-
-/** The legacy trigger groups exactly as schemas 21–24 (and the fleet's 25) wrote them. */
-function restoreLegacyValidationTriggers(database: DatabaseSync): void {
-  const anchors =
-    "CREATE TABLE IF NOT EXISTS session_windows (\nCREATE TABLE IF NOT EXISTS conversations (";
-  database.exec(
-    withLegacyCanonicalSessionValidationTriggers(anchors)
-      .replace("CREATE TABLE IF NOT EXISTS session_windows (", "")
-      .replace("CREATE TABLE IF NOT EXISTS conversations (", ""),
-  );
-}
 
 /** Release DDL captured from real files; never derived from the current schema. */
 const CAPTURED_SCHEMA_25 = {
@@ -63,33 +51,31 @@ function stageCapturedSchema25(env: NodeJS.ProcessEnv, history: keyof typeof CAP
 
 type Shape = "fleet-25" | "upstream-25" | "schema-24" | "mixed-25";
 
-/** Writes a closed agent database at one historical shape and returns its path. */
+/**
+ * Writes a closed agent database at one historical shape and returns its path. Each shape
+ * starts from captured DDL: upstream's steps 27–31 rebuild tables, so a current database
+ * rolled back to 24 or 25 is not a schema those versions wrote.
+ */
 function stageAgentDatabase(env: NodeJS.ProcessEnv, shape: Shape): string {
-  const initial = openAgentDatabase(env, tempDirs);
-  const databasePath = initial.path;
-  const { db } = initial;
-  db.prepare(
-    "INSERT INTO session_recipient_authority (session_key, epoch, created_at, updated_at) VALUES (?, ?, 1, 2)",
-  ).run(AUTHORITY.sessionKey, AUTHORITY.epoch);
-  const version = shape === "schema-24" ? 24 : 25;
-  // Every staged shape predates schema 26's JSON predicate columns.
-  dropAgentJsonPredicateColumns(db);
-  if (shape === "fleet-25" || shape === "schema-24") {
-    restoreLegacyValidationTriggers(db);
+  switch (shape) {
+    case "fleet-25":
+      return stageCapturedSchema25(env, "fleet");
+    case "upstream-25":
+      return stageCapturedSchema25(env, "upstream");
+    case "schema-24":
+      return stageCapturedAgentDatabase(env, tempDirs, {
+        ddl: readCapturedAgentSchema("openclaw-agent-schema-v24.sql"),
+        version: 24,
+        authorityRow: false,
+      });
+    case "mixed-25":
+      // The authority table is present but the legacy triggers are retired.
+      return stageCapturedAgentDatabase(env, tempDirs, {
+        ddl: `${CAPTURED_SCHEMA_25.upstream}\n${sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL)}`,
+        version: 25,
+        authorityRow: true,
+      });
   }
-  if (shape === "upstream-25" || shape === "schema-24") {
-    db.exec("DROP TABLE session_recipient_authority;");
-  }
-  // mixed-25: authority table present, legacy triggers retired.
-  db.exec(`
-    PRAGMA user_version = ${version};
-    UPDATE schema_meta SET schema_version = ${version} WHERE meta_key = 'primary';
-  `);
-  closeOpenClawAgentDatabasesForTest();
-  // The staged file now holds an older schema than this process admitted; physical
-  // admission outlives the close (#167739), so retire it as any out-of-band rewrite must.
-  retireSqliteDatabaseAdmissionForPath(databasePath);
-  return databasePath;
 }
 
 afterAll(() => {

@@ -282,7 +282,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-1, agent-version-2, agent-version-3, agent-version-4, agent-version-5, agent-version-6, agent-version-7, agent-version-8, agent-version-9, agent-version-10, agent-version-11, agent-version-12, agent-version-13, agent-version-14, agent-version-15, agent-version-16, agent-version-17
-  c0bc3584fd187efe4e410e61550b03405cb3d03aac89e9eda66dbbf66136d4de: [
+  "0d8863d033ed867b9e5410fbf5653fff5668cde5bc9933efdc54a948ef28b3a7": [
     "agent-version-1",
     "0ac0c6eca2bd401dba88942343f73a31b0c1fa320b4ef72672a421775667f341",
     [
@@ -293,7 +293,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-18, agent-version-19, agent-version-20
-  "75fbe1821772c345bcc9f6b2e3c09826b58ea154aa60759e094b65ecba84d9c6": [
+  "987c7895f0acfaa27bdd4af5532a6a9d7364cbbefe8fe63fa9775b9520b25f85": [
     "agent-version-18",
     "516c6a0cbc9a63134e84a65c3af806fbc6b526292c614c84109f4a2b2c106afc",
     [
@@ -304,7 +304,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-21
-  "2647b4f29e32c016578fd4f104f0bb1294edf3e7a59be9dde038310fd6456be9": [
+  "7a92498057481f996a0c0716dd078ea69694645fbdb3a011dadaee411478b7ad": [
     "agent-version-21",
     "fd83bd56e757e27046bc16f16e0dfd056a4bdb4c187672807f9286089fd4c130",
     [
@@ -315,7 +315,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-22
-  "170ce33223187935437536b864898fdbca5291ee845bb53adfae343d7f3978e7": [
+  "789a67b22bc47d0b58acb19a6041b3ba55bd68c7e7271a4043573739edae02d1": [
     "agent-version-22",
     "1571750d60d036d5b09e53c9d062396551d72f79642ee52ae104e9213da8592c",
     [
@@ -326,7 +326,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-23
-  "59a694ff77fad7eb4cee7724c44c5261869bee1e53ef4c244ecc782899403aa8": [
+  dd91f9df477a6b80f156003269b951f0d4e55d62e6dec37ad23dc909ed61f71f: [
     "agent-version-23",
     "4cd5cf45ce55fd199d3025021381ad10187c3a5db5340aec56aa108c5a315611",
     [
@@ -337,7 +337,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-24
-  "549c4b8e264d0be03e2ce9b849f91af0f4f56e1d67eff09c2fd1522c98fb6c68": [
+  "9b51fb6f3b7692ed5b1d114c9123184aacb35d5c8450f896b5d289fd46f0ae60": [
     "agent-version-24",
     "7ba969c7ed61eb3596c809150d7c46676bfb3d8310052ca5f07141762b345e9b",
     [
@@ -348,7 +348,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-25
-  abac09eb8ddc98c4388abf069ba1bb3e00dbbcf932a81d47b7e3a48f0654c449: [
+  "17cbb50319db12e22248e0397cb068ce670687a96328f502ce3577e4798ae299": [
     "agent-version-25",
     "f4118fc6b09e2d36542335eec66c82e9846b7f50e69e56076814dea6e1244aeb",
     [
@@ -359,7 +359,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-26
-  "983914a5d62d19bf3d9db44750af9ec85406bba10b738c2902786af6fb32a7eb": [
+  ff21eb3fb5a5836d520af3ea0777944cbcfa61aff52a64d0726a4d6b527823c3: [
     "agent-version-26",
     "86dbc086643d83045d9397da12e5e7a5d197b08a10a8aea4942ee7473f03d9ee",
     [
@@ -370,7 +370,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-27
-  f5a30d81e8b5e0c6516beafdf37106dd61b39b7865189f58dd0f5156d17971ca: [
+  "227fcd299f5dfd3012abd0f110cd028ba6add9155bc74e2e558aadeae2761349": [
     "agent-version-27",
     "40d0b84e2467b65ff57c4e8171af1a6b0cc54e0e1b5602b6abbe53fc8c10e151",
     [
@@ -381,7 +381,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-28
-  "4394cb09a1a7669f6e1a90aa53e38c3fd69aee2e6313c46c9937d2ddc3243e05": [
+  b2e17ebad450773253e5dddaeb87e6baef26b1c20a48982ed9df7ffea4210511: [
     "agent-version-28",
     "a48c6c4d7bc63bb0c14eb2010893f31aa216e4a0ee135e40c81598a39c64b61f",
     [
@@ -392,7 +392,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-29
-  "4e8ab8e4e3e96f5a1c4779c2c50ea630face2a6e7bc98385f2384e43364dd068": [
+  abf65b8c18ccb84f0e65b8e4faa6fef6abc23b6bab5e93086339f640d2146082: [
     "agent-version-29",
     "ede47c9558c7c22dfd89ed56f0bc28a9d22e512aa69af0ae3acacc989337dc0e",
     [
@@ -403,7 +403,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-30
-  d131166c013993eda68ecfb4381ee880e0abd684856875ade86176c0440ca862: [
+  dbab54723ad6be5e0146085df0789ef92d03b867c53bed915d804fb4c60b3068: [
     "agent-version-30",
     "afa4044fdeabdb3042002c27a39be73d1f2edf8c4135515266cf6613adc7f0ba",
     [
@@ -414,7 +414,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     [],
   ],
   // agent-version-31
-  "2e36773493bc49cbc0d0c768856c3e46e293072ca56715a065f3d41d6d839c4e": [
+  "57f4523156caf6b8446afbd95e0fede01f1c917771242cd05c61c1b48b7e157e": [
     "agent-version-31",
     "4ac0d88399760668d6021213299ff6897bcfd672d2373d5c47b6f0afa31e04a1",
     [
@@ -424,8 +424,30 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     ],
     [],
   ],
+  // agent-fleet-version-25
+  "60f18955a1ad9d6c749ee2123833a3f1187bc3d41496f71cd049b54155e3d26a": [
+    "agent-fleet-version-25",
+    "718f3e0a4fdf903122752cb0be2eee6b48722e6985895bfab10d65a4ab9afefe",
+    [
+      0, 1, 2, 3, 4, 5, 57, 7, 8, 9, 10, 59, 12, 13, 74, 15, 61, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+      69, 27, 76, 29, 30, 31, 64, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 71, 47, 48,
+      49, 50, 51, 52, 66, 67, 75, 56,
+    ],
+    [],
+  ],
+  // agent-fleet-version-26
+  "2dc76e51dbd6464d143699c46de6af2f7a6585103dd397c68b00f137467cc026": [
+    "agent-fleet-version-26",
+    "8a0ed094b433a48d5aa38544e232c8d2855ccd35ebc52beaf15ddc0335b4c807",
+    [
+      0, 1, 2, 3, 4, 5, 57, 7, 8, 9, 10, 59, 12, 13, 74, 15, 61, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+      26, 27, 77, 29, 30, 31, 64, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 65, 47, 48,
+      49, 50, 51, 52, 66, 67, 75, 56,
+    ],
+    [],
+  ],
   // agent-v14-core
-  "0b3f254d63a7c8666ad65827792458931a78481815b97c904e63767eff9be456": [
+  "067f95cffb76737d9084b726b640bc79b266b19279e6b1a3d2322d0e298c6ab6": [
     "agent-v14-core",
     "14b30834a4c01ee92da4b3390aebbd49d9a8f4d0fb3a40fb517b8093ffb11c76",
     [
