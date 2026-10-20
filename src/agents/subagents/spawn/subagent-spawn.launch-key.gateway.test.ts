@@ -6,7 +6,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearConfigCache, clearRuntimeConfigSnapshot } from "../../../config/config.js";
+import {
+  captureRuntimeConfigAsyncReader,
+  clearConfigCache,
+  clearRuntimeConfigSnapshot,
+} from "../../../config/config.js";
 import { prepareAgentRequestPreflight } from "../../../gateway/agent-turn/agent-request-preflight.js";
 import { createAgentTurnIo } from "../../../gateway/agent-turn/io.js";
 import type { GatewayRequestContext } from "../../../gateway/server-methods/types.js";
@@ -115,6 +119,8 @@ describe("spawnSubagentDirect continuation launch key at the Gateway boundary", 
       })}\n`,
     );
     clearConfigCache();
+    // #169714: runtime config reads only the published snapshot; publish this file's config.
+    await captureRuntimeConfigAsyncReader()();
   });
 
   afterEach(async () => {

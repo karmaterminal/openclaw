@@ -10,6 +10,7 @@ import {
   stagedPostCompactionDelegateCount,
 } from "../../../auto-reply/continuation/delegate-store-post-compaction.js";
 import { cancelPendingDelegates } from "../../../auto-reply/continuation/delegate-store.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../../config/io.js";
 import { resolveSessionStorePathCore } from "../../../config/sessions.js";
 import {
   deleteSessionEntryLifecycle,
@@ -70,6 +71,8 @@ vi.mock("./subagent-session-reconciliation.js", async (importOriginal) => {
 });
 describe("subagent registry recovery scheduling: orphans and collector groups", () => {
   beforeEach(() => {
+    // #169714: runtime config reads only the published snapshot.
+    setRuntimeConfigSnapshot({});
     vi.useFakeTimers();
     resetGatewayWorkAdmission();
     recoverRow.mockReset();
@@ -105,6 +108,7 @@ describe("subagent registry recovery scheduling: orphans and collector groups", 
   });
 
   afterEach(() => {
+    clearRuntimeConfigSnapshot();
     resetGatewayWorkAdmission();
     vi.useRealTimers();
   });

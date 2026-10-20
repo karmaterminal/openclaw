@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../../config/io.js";
 // Shared mocks must load before the registry modules below.
 // oxfmt-ignore
 import { sharedRegistryMocks } from "./subagent-registry.mocks.shared.js";
@@ -43,6 +44,8 @@ const abortCalls: string[] = [];
 let abortSucceeds = true;
 
 beforeEach(async () => {
+  // #169714: runtime config reads only the published snapshot.
+  setRuntimeConfigSnapshot({});
   stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-rollback-custody-"));
   setTestEnvValue("OPENCLAW_STATE_DIR", stateDir);
   abortCalls.length = 0;
@@ -63,6 +66,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  clearRuntimeConfigSnapshot();
   closeOpenClawStateDatabaseForTest();
   await resetSubagentRegistryForTests({ persist: false });
   if (stateDir) {
