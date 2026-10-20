@@ -3,6 +3,7 @@ import { assert, expect, it, vi } from "vitest";
 import { HEARTBEAT_EXTERNAL_RUN_FAILURE_TEXT } from "../../agents/failover/user-copy.js";
 import { getReplyPayloadMetadata, setReplyPayloadMetadata } from "../reply-payload.js";
 import type { GetReplyOptions } from "../types.js";
+import { createReplyContinuationController } from "./agent-runner-continuation.js";
 import { setupExecutionSuite } from "./agent-runner-execution-suite.test-support.js";
 import {
   createRunAgentTurnParams,
@@ -113,16 +114,29 @@ it("preserves one core missing-answer notice through queued message-tool-only de
   expect(execution.outcome.result.payloads).toEqual([]);
   expect(execution.outcome.terminalFailurePayload).toBe(notice);
 
+  const getActiveSessionEntry = () => undefined;
   const accounting = await accountAgentTurn({
     activeSessionEntry: undefined,
     activeSessionStore: undefined,
     blockReplyPipeline: null,
     cfg: followupRun.run.config,
+    continuation: createReplyContinuationController({
+      cfg: followupRun.run.config,
+      sessionKey: undefined,
+      storePath: undefined,
+      isContinuationWake: false,
+      activeSessionStore: undefined,
+      getActiveSessionEntry,
+      setActiveSessionEntry: () => {},
+    }),
     defaultModel: followupRun.run.model,
     followupRun,
+    getActiveSessionEntry,
     isHeartbeat: false,
+    noOpRearmWakeClass: undefined,
     pendingToolTasks: params.pendingToolTasks,
     preflightCompactionApplied: false,
+    replySessionKey: undefined,
     resolvedVerboseLevel: "off",
     execution: execution.outcome,
     runId: execution.runId,

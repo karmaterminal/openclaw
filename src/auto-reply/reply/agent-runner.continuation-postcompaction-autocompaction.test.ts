@@ -5,14 +5,12 @@
 // the next seam consumes it.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  abortEmbeddedAgentRun,
-  isEmbeddedAgentRunActive,
-} from "../../agents/embedded-agent-runner/runs.js";
+import { abortEmbeddedAgentRun } from "../../agents/embedded-agent-runner/runs.js";
 import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runner/runs.test-support.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { clearMemoryPluginState } from "../../plugins/memory-state.js";
+import { testing as sessionControllerTesting } from "../../sessions/session-controller.test-support.js";
 import {
   listCustodyRecordsForTest,
   useContinuationCustodyTestState,
@@ -22,7 +20,6 @@ import { stagedPostCompactionDelegateCount } from "../continuation/delegate-stor
 import { resetContinuationStateForTests } from "../continuation/state.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
-import { testing as replyRunRegistryTesting } from "./reply-run-registry.test-support.js";
 import { createMockTypingController } from "./test-helpers.js";
 
 const runEmbeddedAgentMock = vi.fn();
@@ -67,7 +64,7 @@ vi.mock("../../agents/model-auth.js", () => ({
   resolveModelAuthMode: () => "api-key",
 }));
 
-// mock-isolation: Embedded runs and compaction are scripted; abort and active checks still reach the real run registry.
+// mock-isolation: Embedded runs and compaction are scripted; abort still reaches the real run registry.
 vi.mock("../../agents/embedded-agent.js", () => ({
   runEmbeddedAgent: (params: unknown) => runEmbeddedAgentMock(params),
   compactEmbeddedAgentSession: (params: unknown) =>
@@ -77,7 +74,6 @@ vi.mock("../../agents/embedded-agent.js", () => ({
     abortEmbeddedAgentRunMock(sessionId);
     return abortEmbeddedAgentRun(sessionId);
   },
-  isEmbeddedAgentRunActive: (sessionId: string) => isEmbeddedAgentRunActive(sessionId),
 }));
 
 // mock-isolation: CLI agent runs are recorded without spawning a CLI process.
@@ -108,7 +104,8 @@ vi.mock("../../infra/heartbeat-wake.js", () => ({
 }));
 
 // mock-isolation: Keep the process-wide followup queue and drain registry outside runner cases.
-vi.mock("./queue.js", () => ({
+vi.mock("./queue.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./queue.js")>()),
   enqueueFollowupRun: vi.fn(),
   scheduleFollowupDrain: vi.fn(),
   clearSessionQueues: vi.fn().mockReturnValue({ followupCleared: 0, laneCleared: 0, keys: [] }),
@@ -165,7 +162,7 @@ useContinuationCustodyTestState();
 
 beforeEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
-  replyRunRegistryTesting.resetReplyRunRegistry();
+  sessionControllerTesting.resetSessionControllerForTest();
   runEmbeddedAgentMock.mockReset();
   runWithModelFallbackMock.mockReset();
   runtimeErrorMock.mockClear();
@@ -200,7 +197,7 @@ afterEach(() => {
   resetContinuationStateForTests();
   clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
-  replyRunRegistryTesting.resetReplyRunRegistry();
+  sessionControllerTesting.resetSessionControllerForTest();
   embeddedRunTesting.resetActiveEmbeddedRuns();
 });
 

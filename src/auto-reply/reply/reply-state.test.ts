@@ -218,7 +218,10 @@ describe("incrementCompactionCount", () => {
       compactionCount: 2,
       lastContextPressureBand: 90,
     } as SessionEntry;
-    const { storePath, sessionKey, sessionStore } = await createCompactionSessionFixture(entry);
+    const storePath = path.join(sessionDirs.make(), "sessions.json");
+    const sessionKey = "main";
+    const sessionStore = { [sessionKey]: entry };
+    await seedSessionStore(storePath, sessionKey, entry);
 
     const count = await incrementCompactionCount({
       sessionEntry: entry,
@@ -228,8 +231,7 @@ describe("incrementCompactionCount", () => {
     });
     expect(count).toBe(3);
     expect(sessionStore[sessionKey]).toMatchObject({ sessionId: "s1", compactionCount: 3 });
-    const stored = { [sessionKey]: await loadStoredEntry(storePath, sessionKey) };
-    const storedEntry = requireStoredSession(stored, sessionKey);
+    const storedEntry = loadStoredEntry(storePath, sessionKey);
     expect(storedEntry).toMatchObject({
       sessionId: "s1",
       compactionCount: 3,
@@ -264,7 +266,10 @@ describe("incrementCompactionCount", () => {
       },
       claudeCliSessionId: "claude-session",
     } as SessionEntry;
-    const { storePath, sessionKey, sessionStore } = await createCompactionSessionFixture(entry);
+    const storePath = path.join(sessionDirs.make(), "sessions.json");
+    const sessionKey = "main";
+    const sessionStore = { [sessionKey]: entry };
+    await seedSessionStore(storePath, sessionKey, entry);
 
     await incrementCompactionCount({
       sessionEntry: entry,
@@ -274,7 +279,7 @@ describe("incrementCompactionCount", () => {
       compactionKind: testCase.compactionKind,
     });
 
-    const stored = await loadStoredEntry(storePath, sessionKey);
+    const stored = loadStoredEntry(storePath, sessionKey);
     expect(stored.cliSessionIds).toEqual(testCase.expectedIds);
     expect(stored.cliSessionBindings).toEqual(
       testCase.expectedIds
