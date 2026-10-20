@@ -31,6 +31,7 @@ export type PendingWake = HeartbeatWakeRequest & {
   requestedAt: number;
   readyAt: number;
   notBefore: number;
+  channelRetryDelayMs?: number;
   settlements: Settlement[];
   retired?: true;
   /** Admission/preparation may have effects even before model dispatch. Never reset on retry. */
@@ -52,6 +53,9 @@ export type WakeAttempt = {
   signal: AbortSignal;
   wake: PendingWake;
   terminalPollDisposition: boolean;
+  retryIntervalMs?: number | null;
+  /** An earlier attempt of this wake already started work, so a refusal now must retry. */
+  startedBefore: boolean;
 };
 export type RequestOptions = Omit<HeartbeatWakeRequest, "retainedWork"> & {
   coalesceMs?: number;

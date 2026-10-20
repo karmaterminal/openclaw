@@ -19,7 +19,7 @@ import {
   shouldPreserveUserFacingSessionStateForInputProvenance,
 } from "../../sessions/input-provenance.js";
 import { stripContinuationSignal } from "../continuation/signal.js";
-import { isSilentReplyPayloadText, SILENT_REPLY_TOKEN } from "../tokens.js";
+import { isSilentReplyText } from "../tokens.js";
 
 /**
  * Default consecutive self-rearm no-op turns (within the cadence window) before a
@@ -196,7 +196,7 @@ export function summarizeEmbeddedRunOutcome(
     if (
       typeof payload.text === "string" &&
       payload.text.trim().length > 0 &&
-      !isSilentReplyPayloadText(payload.text, SILENT_REPLY_TOKEN) &&
+      !isSilentReplyText(payload.text) &&
       !isContinuationMarkerOnlyText(payload.text)
     ) {
       return true;
@@ -216,7 +216,7 @@ export function summarizeEmbeddedRunOutcome(
   );
   const visibleText =
     visibleAssistantText !== undefined &&
-    !isSilentReplyPayloadText(visibleAssistantText, SILENT_REPLY_TOKEN) &&
+    !isSilentReplyText(visibleAssistantText) &&
     !isContinuationMarkerOnlyText(visibleAssistantText) &&
     meta?.error?.kind !== "hook_block";
   const hasVisibleReply = payloadVisible || deliveredViaMessaging || visibleText;

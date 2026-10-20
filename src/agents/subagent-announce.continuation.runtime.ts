@@ -227,6 +227,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
   const ownerSession = createContinuationOwnerSessionLoader(
     params.childSessionKey,
     params.childAgentId,
+    params.cfg,
   );
   const childOwnerAgentId = ownerSession.agentId;
   const continuationEnabled = params.cfg.agents?.defaults?.continuation?.enabled === true;
@@ -482,6 +483,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
         ownerSession: createContinuationOwnerSessionLoader(
           params.childSessionKey,
           childOwnerAgentId,
+          params.cfg,
         ),
         ownerSessionKey: params.childSessionKey,
       });

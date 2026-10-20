@@ -1,15 +1,15 @@
-// Record primitives of the continuation custody store (RFC
-// docs/design/continue-work-signal-v2.md §5.4.2): row reads, the in-memory
-// patch planner, and exact-revision writes. Every caller runs inside one
-// custody write transaction in the shared state worker; nothing here opens a
-// transaction or touches another table.
-import type { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
   getNodeSqliteKysely,
 } from "../../../infra/kysely-sync.js";
+// Record primitives of the continuation custody store (RFC
+// docs/design/continue-work-signal-v2.md §5.4.2): row reads, the in-memory
+// patch planner, and exact-revision writes. Every caller runs inside one
+// custody write transaction in the shared state worker; nothing here opens a
+// transaction or touches another table.
+import type { EngineConnection } from "../../../infra/sql-connection.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../../../state/openclaw-state-db.generated.js";
 import {
   decodeContinuationRecordRow,
@@ -38,11 +38,11 @@ export const LIVE_STATUSES = [
   "running",
 ] as const satisfies readonly ContinuationLiveStatus[];
 
-export function custodyDb(db: DatabaseSync) {
+export function custodyDb(db: EngineConnection) {
   return getNodeSqliteKysely<CustodyDatabase>(db);
 }
 
-export function readRecord(db: DatabaseSync, recordId: string): ContinuationRecord | undefined {
+export function readRecord(db: EngineConnection, recordId: string): ContinuationRecord | undefined {
   const row = executeSqliteQueryTakeFirstSync(
     db,
     custodyDb(db)
@@ -55,7 +55,7 @@ export function readRecord(db: DatabaseSync, recordId: string): ContinuationReco
 
 /** Write paths run after the schema ensure, so they select without a presence check. */
 export function selectRecords(
-  db: DatabaseSync,
+  db: EngineConnection,
   query: ContinuationRecordQuery,
 ): ContinuationRecord[] {
   let select = custodyDb(db).selectFrom(CONTINUATION_RECORDS_TABLE).selectAll();
@@ -85,7 +85,7 @@ export function selectRecords(
   );
 }
 
-function readOwnerLiveSet(db: DatabaseSync, ownerSessionKey: string): ContinuationOwnerLiveSet {
+function readOwnerLiveSet(db: EngineConnection, ownerSessionKey: string): ContinuationOwnerLiveSet {
   const records: ContinuationLiveRecordFact[] = selectRecords(db, {
     ownerSessionKey,
     statuses: LIVE_STATUSES,
@@ -109,7 +109,7 @@ function readOwnerLiveSet(db: DatabaseSync, ownerSessionKey: string): Continuati
 
 /** Post-commit facts for the owners a write touched, read inside the same transaction. */
 export function commitFacts(
-  db: DatabaseSync,
+  db: EngineConnection,
   owners: Iterable<string>,
   releasedAttachments: ContinuationCommitFacts["releasedAttachments"],
   ended: readonly ContinuationEndedRecordFact[] = [],
@@ -121,7 +121,7 @@ export function commitFacts(
   };
 }
 
-export function insertRecord(db: DatabaseSync, record: ContinuationRecord): void {
+export function insertRecord(db: EngineConnection, record: ContinuationRecord): void {
   executeSqliteQuerySync(
     db,
     custodyDb(db)
@@ -131,7 +131,7 @@ export function insertRecord(db: DatabaseSync, record: ContinuationRecord): void
 }
 
 export function writeRecord(
-  db: DatabaseSync,
+  db: EngineConnection,
   record: ContinuationRecord,
   expectedRevision: number,
 ): void {
@@ -276,7 +276,7 @@ export function planPatch(
 }
 
 export function writePlanned(
-  db: DatabaseSync,
+  db: EngineConnection,
   planned: readonly Planned[],
 ): ContinuationCommitFacts {
   for (const { next, expectedRevision } of planned) {

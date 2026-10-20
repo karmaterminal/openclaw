@@ -1,5 +1,4 @@
 import { expect, it, vi } from "vitest";
-import type { ChatAbortControllerEntry } from "../../../gateway/chat-abort.types.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import type { maybeWakeRequesterAfterAllChildrenSettled } from "../announce/subagent-announce.requester-settle-wake.js";
 import {
@@ -9,6 +8,7 @@ import {
 import {
   createDeliveredWake,
   observeSubagentRequesterWake,
+  prepareSubagentRecoveryFixture,
   writeRunChildSessions,
 } from "./subagent-registry.persistence.test-support.js";
 
@@ -36,11 +36,9 @@ export function registerStaleRequesterWakeBatchTests({
       let oldParams: WakeParams | undefined;
       let siblingGatewayOpen = true;
       const anchorGateway = {
-        chatAbortControllers: new Map<string, ChatAbortControllerEntry>(),
         resolveGatewayContext: () => anchorGateway as never,
       };
       const nextGateway = {
-        chatAbortControllers: new Map<string, ChatAbortControllerEntry>(),
         resolveGatewayContext: () => nextGateway as never,
       };
       vi.useFakeTimers();
@@ -56,6 +54,9 @@ export function registerStaleRequesterWakeBatchTests({
                 ...(index === 1 ? { nextAttemptAt: Date.now() + 30_000 } : {}),
               }),
             );
+            for (const run of batch) {
+              await prepareSubagentRecoveryFixture(run, { stateDir });
+            }
             const { run: wakeRequester, waitForCalls } = observeSubagentRequesterWake((params) => {
               oldParams ??= params;
               return oldDone.promise;
@@ -128,7 +129,8 @@ export function registerStaleRequesterWakeBatchTests({
               );
               expect(readPersistedRun(anchor.runId)?.requesterSettleWake).toEqual(expected[0]);
 
-              await mod.testing.runSweeperTickForTests();
+              // Explicit resumption evaluates the surviving obligation before the next recovery sweep.
+              mod.resumeSubagentRun(anchor.runId);
               await settleOwnedWork();
               const freshParams = wakeRequester.mock.calls.findLast(
                 ([params]) => params.settledEntry === anchor,

@@ -8,7 +8,11 @@ type RestartSentinel = NonNullable<
   Awaited<ReturnType<typeof import("../infra/restart-sentinel.js").readRestartSentinel>>
 >;
 
-type LoadedSessionEntryBase = ReturnType<typeof import("./session-utils.js").loadSessionEntry>;
+type LoadedSessionEntryBase = Awaited<
+  ReturnType<
+    typeof import("./session-utils-store-worker.js").loadGatewaySessionEntryReadOnlyInWorker
+  >
+>;
 type LoadedSessionEntry = Omit<LoadedSessionEntryBase, "agentId"> &
   Partial<Pick<LoadedSessionEntryBase, "agentId">>;
 type RecordInboundSessionAndDispatchReplyParams = Parameters<
@@ -313,20 +317,18 @@ vi.mock("../channels/plugins/session-thread-info-loaded.js", () => ({
   resolveLoadedSessionThreadInfo: mocks.parseSessionThreadInfo,
 }));
 
-// mock-isolation: Delivery reads its session target in the worker; route it through loadSessionEntry rows.
+// Delivery reads its session target and entry in the worker; both come from loadSessionEntry rows.
+// mock-isolation: Worker session reads are scripted; the real worker opens session stores.
 vi.mock("./session-utils-store-worker.js", () => ({
   resolveGatewaySessionStoreTargetInWorker: mocks.resolveSessionTarget,
+  loadGatewaySessionEntryReadOnlyInWorker: async (params: { key: string }) =>
+    mocks.loadSessionEntry(params.key),
 }));
 
 // mock-isolation: Observe ordinary event adoption for plain restart notices without a model turn.
 vi.mock("../auto-reply/reply/session-event-handoff.js", () => ({
   captureSessionEventTargetForHost: mocks.captureSessionEventTarget,
   enqueueSessionEventForHost: mocks.enqueueSessionEvent,
-}));
-
-vi.mock("./session-utils.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./session-utils.js")>()),
-  loadSessionEntry: mocks.loadSessionEntry,
 }));
 
 vi.mock("../utils/delivery-context.read.js", async (importOriginal) => ({

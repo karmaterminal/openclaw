@@ -23,10 +23,7 @@ type SessionDeliveryRuntime = {
   scheduler: GatewayScheduler;
   queueContext: OpenClawStateWorkerContext;
   deliver: DeliverSessionDeliveryFn;
-  drain?: typeof drainPendingSessionDelivery;
   log: SessionDeliveryRecoveryLogger;
-  reloadPending?: typeof loadPendingSessionDelivery;
-  listPending?: typeof loadPendingSessionDeliveries;
   onSettled?: SettleSessionDeliveryFn;
   /** Jitter source for capacity backoff and the pending sweep, in [0, 1). Injected by tests. */
   random?: () => number;
@@ -74,20 +71,18 @@ type CapacityDeferralState = SessionDeliveryCapacityDeferral & {
   lastWarnedAt?: number;
 };
 
-let runtime:
-  | (Omit<SessionDeliveryRuntime, "scheduler"> & {
-      scheduler: GatewaySchedulerScope;
-      runningEntries: Set<string>;
-      /** Rows with a scheduled attempt that has not started yet. */
-      armedEntries: Set<string>;
-      pendingSchedules: Set<Promise<void>>;
-      /** Process-local: a restart starts every row at the base cadence again. */
-      capacityDeferrals: Map<string, CapacityDeferralState>;
-      /** Queue-order key of the last row a budget-limited sweep armed; the next sweep resumes after it. */
-      sweepCursor?: PendingSweepCursor;
-    })
-  | undefined;
-let runtimeGeneration = 0;
+type ActiveSessionDeliveryRuntime = Omit<SessionDeliveryRuntime, "scheduler"> & {
+  scheduler: GatewaySchedulerScope;
+  runningEntries: Set<string>;
+  /** Rows with a scheduled attempt that has not started yet. */
+  armedEntries: Set<string>;
+  pendingSchedules: Set<Promise<void>>;
+  /** Process-local: a restart starts every row at the base cadence again. */
+  capacityDeferrals: Map<string, CapacityDeferralState>;
+  /** Queue-order key of the last row a budget-limited sweep armed; the next sweep resumes after it. */
+  sweepCursor?: PendingSweepCursor;
+};
+let runtime: ActiveSessionDeliveryRuntime | undefined;
 
 /** Pending rows are listed in (enqueuedAt, id) order. */
 type PendingSweepCursor = { enqueuedAt: number; id: string };
@@ -99,11 +94,11 @@ function isAfterSweepCursor(entry: QueuedSessionDelivery, cursor: PendingSweepCu
   );
 }
 
-function armPendingScan(generation: number): void {
-  if (!runtime || generation !== runtimeGeneration) {
+function armPendingScan(activeRuntime: ActiveSessionDeliveryRuntime): void {
+  if (runtime !== activeRuntime) {
     return;
   }
-  runtime.scheduler.schedule({
+  activeRuntime.scheduler.schedule({
     id: "session-delivery:scan",
     delayMs: RUNTIME_RELOAD_RETRY_MS,
     mode: "earliest",
@@ -123,9 +118,12 @@ function resolveRetryDelayMs(entry: QueuedSessionDelivery, now: number): number 
   return Math.max(claimDelayMs, attemptedAt + computeBackoffMs(entry.retryCount) - now);
 }
 
-function armSessionDeliveryId(id: string, delayMs: number, generation: number): void {
-  const activeRuntime = runtime;
-  if (!activeRuntime || generation !== runtimeGeneration) {
+function armSessionDeliveryId(
+  id: string,
+  delayMs: number,
+  activeRuntime: ActiveSessionDeliveryRuntime,
+): void {
+  if (runtime !== activeRuntime) {
     return;
   }
   activeRuntime.armedEntries.add(id);
@@ -135,14 +133,13 @@ function armSessionDeliveryId(id: string, delayMs: number, generation: number): 
     mode: "earliest",
     run: () => {
       activeRuntime.armedEntries.delete(id);
-      return runScheduledSessionDelivery(id, generation);
+      return runScheduledSessionDelivery(id, activeRuntime);
     },
   });
 }
 
-function armPendingSweep(generation: number): void {
-  const activeRuntime = runtime;
-  if (!activeRuntime || generation !== runtimeGeneration) {
+function armPendingSweep(activeRuntime: ActiveSessionDeliveryRuntime): void {
+  if (runtime !== activeRuntime) {
     return;
   }
   const unit = Math.min(Math.max((activeRuntime.random ?? Math.random)(), 0), 1);
@@ -154,7 +151,7 @@ function armPendingSweep(generation: number): void {
       try {
         await schedulePendingSessionDeliveries({ onlyUnarmed: true });
       } finally {
-        armPendingSweep(generation);
+        armPendingSweep(activeRuntime);
       }
     },
   });
@@ -162,18 +159,18 @@ function armPendingSweep(generation: number): void {
 
 function armSessionDelivery(
   entry: QueuedSessionDelivery,
-  generation: number,
+  activeRuntime: ActiveSessionDeliveryRuntime,
   minimumDelayMs = 0,
 ): void {
   // The active drain owns rearming after its authoritative reload. Coalesce
   // duplicate schedules so they cannot poll the same due row in a timer loop.
-  if (!runtime || runtime.runningEntries.has(entry.id)) {
+  if (activeRuntime.runningEntries.has(entry.id)) {
     return;
   }
   armSessionDeliveryId(
     entry.id,
-    Math.max(minimumDelayMs, resolveRetryDelayMs(entry, runtime.scheduler.now())),
-    generation,
+    Math.max(minimumDelayMs, resolveRetryDelayMs(entry, activeRuntime.scheduler.now())),
+    activeRuntime,
   );
 }
 
@@ -183,7 +180,7 @@ function describeCapacityDeferral(id: string, state: CapacityDeferralState): str
 
 /** Record one capacity refusal; returns the backoff before the next attempt. */
 function noteCapacityDeferral(
-  activeRuntime: NonNullable<typeof runtime>,
+  activeRuntime: ActiveSessionDeliveryRuntime,
   entry: QueuedSessionDelivery,
   deferral: SessionDeliveryCapacityDeferral,
   now: number,
@@ -231,10 +228,9 @@ function resolveCapacityRetryDelayMs(deferrals: number, random: () => number): n
 
 /** The row left the capacity wait (admitted, settled, or deferred for another reason). */
 function clearCapacityDeferral(
-  activeRuntime: NonNullable<typeof runtime>,
+  activeRuntime: ActiveSessionDeliveryRuntime,
   id: string,
   now: number,
-  generation: number,
 ): void {
   const state = activeRuntime.capacityDeferrals.get(id);
   if (!state) {
@@ -251,14 +247,16 @@ function clearCapacityDeferral(
   for (const [otherId, other] of activeRuntime.capacityDeferrals) {
     if (other.sessionKey === state.sessionKey) {
       other.deferrals = 0;
-      armSessionDeliveryId(otherId, RUNTIME_RELOAD_RETRY_MS, generation);
+      armSessionDeliveryId(otherId, RUNTIME_RELOAD_RETRY_MS, activeRuntime);
     }
   }
 }
 
-async function runScheduledSessionDelivery(id: string, generation: number): Promise<void> {
-  const activeRuntime = runtime;
-  if (!activeRuntime || generation !== runtimeGeneration) {
+async function runScheduledSessionDelivery(
+  id: string,
+  activeRuntime: ActiveSessionDeliveryRuntime,
+): Promise<void> {
+  if (runtime !== activeRuntime) {
     return;
   }
   if (activeRuntime.runningEntries.has(id)) {
@@ -272,7 +270,7 @@ async function runScheduledSessionDelivery(id: string, generation: number): Prom
   let attempted = false;
   let drained = false;
   try {
-    pending = await (activeRuntime.drain ?? drainPendingSessionDelivery)({
+    pending = await drainPendingSessionDelivery({
       id,
       queueContext: activeRuntime.queueContext,
       now: () => activeRuntime.scheduler.now(),
@@ -299,28 +297,27 @@ async function runScheduledSessionDelivery(id: string, generation: number): Prom
     drained = true;
   } catch (error) {
     activeRuntime.log.error(`session delivery: runtime drain failed for ${id}: ${String(error)}`);
-    if (runtime && generation === runtimeGeneration) {
-      // The durable row may still be pending. Retry the exact drain so one
-      // transient database error cannot orphan it until the next restart.
-      armSessionDeliveryId(id, RUNTIME_RELOAD_RETRY_MS, generation);
-    }
+    // The durable row may still be pending. Retry the exact drain so one
+    // transient database error cannot orphan it until the next restart.
+    armSessionDeliveryId(id, RUNTIME_RELOAD_RETRY_MS, activeRuntime);
   } finally {
     activeRuntime.runningEntries.delete(id);
   }
-  if (!runtime || generation !== runtimeGeneration) {
+  // Capacity bookkeeping belongs to the live owner; a retired runtime only stops.
+  if (runtime !== activeRuntime) {
     return;
   }
   const now = activeRuntime.scheduler.now();
   if (pending && capacityDeferral) {
     armSessionDelivery(
       pending,
-      generation,
+      activeRuntime,
       noteCapacityDeferral(activeRuntime, pending, capacityDeferral, now),
     );
     return;
   }
   if (drained && (attempted || !pending)) {
-    clearCapacityDeferral(activeRuntime, id, now, generation);
+    clearCapacityDeferral(activeRuntime, id, now);
   }
   if (pending && awaitingAdoptionInMemory) {
     // Delivered into memory; only prompt adoption is outstanding. Polling it
@@ -331,14 +328,12 @@ async function runScheduledSessionDelivery(id: string, generation: number): Prom
   if (pending) {
     // Any still-pending row means the drain deferred, failed, or was owned
     // elsewhere. Never poll an unchanged immediately-due row at timer speed.
-    armSessionDelivery(pending, generation, RUNTIME_RELOAD_RETRY_MS);
+    armSessionDelivery(pending, activeRuntime, RUNTIME_RELOAD_RETRY_MS);
   }
 }
 
 /** Register callbacks; stop fences scheduling and joins admitted reads and drains. */
 export function startSessionDeliveryRuntime(params: SessionDeliveryRuntime): () => Promise<void> {
-  runtimeGeneration += 1;
-  const generation = runtimeGeneration;
   runtime?.scheduler.beginClose();
   const activeRuntime = {
     ...params,
@@ -350,12 +345,11 @@ export function startSessionDeliveryRuntime(params: SessionDeliveryRuntime): () 
   };
   runtime = activeRuntime;
   if (params.pendingSweep !== false) {
-    armPendingSweep(generation);
+    armPendingSweep(activeRuntime);
   }
   let stopPromise: Promise<void> | undefined;
   return () => {
-    if (runtimeGeneration === generation) {
-      runtimeGeneration += 1;
+    if (runtime === activeRuntime) {
       runtime = undefined;
     }
     // Public scheduling reads begin outside scheduler callbacks and must also
@@ -373,7 +367,6 @@ export async function scheduleSessionDelivery(
   id: string,
   queueContext: OpenClawStateWorkerContext,
 ): Promise<boolean> {
-  const generation = runtimeGeneration;
   const activeRuntime = runtime;
   if (!activeRuntime) {
     return false;
@@ -396,19 +389,16 @@ export async function scheduleSessionDelivery(
   try {
     let entry: QueuedSessionDelivery | null;
     try {
-      entry = await (activeRuntime.reloadPending ?? loadPendingSessionDelivery)(
-        id,
-        activeRuntime.queueContext,
-      );
+      entry = await loadPendingSessionDelivery(id, activeRuntime.queueContext);
     } catch (error) {
       activeRuntime.log.error(`session delivery: failed to load ${id}: ${String(error)}`);
-      armSessionDeliveryId(id, RUNTIME_RELOAD_RETRY_MS, generation);
+      armSessionDeliveryId(id, RUNTIME_RELOAD_RETRY_MS, activeRuntime);
       return true;
     }
-    if (!entry || !runtime || generation !== runtimeGeneration) {
+    if (!entry || runtime !== activeRuntime) {
       return !entry;
     }
-    armSessionDelivery(entry, generation);
+    armSessionDelivery(entry, activeRuntime);
     return true;
   } finally {
     activeRuntime.pendingSchedules.delete(settled.promise);
@@ -425,7 +415,6 @@ export async function scheduleSessionDelivery(
 export async function schedulePendingSessionDeliveries(options?: {
   onlyUnarmed?: boolean;
 }): Promise<void> {
-  const generation = runtimeGeneration;
   const activeRuntime = runtime;
   if (!activeRuntime) {
     return;
@@ -435,21 +424,20 @@ export async function schedulePendingSessionDeliveries(options?: {
   try {
     let entries: QueuedSessionDelivery[];
     try {
-      entries = await (activeRuntime.listPending ?? loadPendingSessionDeliveries)(
-        activeRuntime.queueContext,
-      );
+      entries = await loadPendingSessionDeliveries(activeRuntime.queueContext);
     } catch (error) {
       activeRuntime.log.error(`session delivery: failed to scan pending entries: ${String(error)}`);
-      armPendingScan(generation);
-      return;
-    }
-    if (!runtime || generation !== runtimeGeneration) {
+      armPendingScan(activeRuntime);
       return;
     }
     if (!options?.onlyUnarmed) {
       for (const entry of entries) {
-        armSessionDelivery(entry, generation);
+        armSessionDelivery(entry, activeRuntime);
       }
+      return;
+    }
+    // The sweep's cursor and log belong to the live owner.
+    if (runtime !== activeRuntime) {
       return;
     }
     // Resume after the previous budget-limited sweep's last armed row, then wrap.
@@ -470,7 +458,7 @@ export async function schedulePendingSessionDeliveries(options?: {
       if (armed >= PENDING_SWEEP_MAX_ARMED) {
         break;
       }
-      armSessionDelivery(entry, generation);
+      armSessionDelivery(entry, activeRuntime);
       armed += 1;
       if (armed >= PENDING_SWEEP_MAX_ARMED) {
         activeRuntime.sweepCursor = { enqueuedAt: entry.enqueuedAt, id: entry.id };

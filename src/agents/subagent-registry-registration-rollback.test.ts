@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./subagents/registry/subagent-registry.mocks.shared.js";
 import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/config.js";
 import type { SqliteWorkerCommand } from "../infra/sqlite-worker-contract.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import type { OpenClawStateWorkerOperations } from "../state/openclaw-state-worker-contract.js";
@@ -95,6 +96,9 @@ describe("subagent registration rollback", () => {
   let tempStateDir: string | undefined;
 
   beforeEach(async () => {
+    // Registry fixtures resolve the store path from the published config (#169714),
+    // as upstream's subagent-registry.timing suite seeds it.
+    setRuntimeConfigSnapshot({});
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-rollback-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
     interceptRegistryWrites();
@@ -105,6 +109,7 @@ describe("subagent registration rollback", () => {
     vi.restoreAllMocks();
     await resetSubagentRegistryForTests({ persist: false });
     closeOpenClawStateDatabaseForTest();
+    clearRuntimeConfigSnapshot();
     if (tempStateDir) {
       await fs.rm(tempStateDir, { recursive: true, force: true });
       tempStateDir = undefined;

@@ -4,7 +4,7 @@ import {
   resolveAgentMainSessionKey,
 } from "../config/sessions/main-session.js";
 import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
-import { loadSessionEntry, patchSessionEntryCore } from "../config/sessions/session-accessor.js";
+import { patchSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { readSessionEntryInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -65,7 +65,7 @@ export function resolveHeartbeatSessionKey(
     });
     return canonical !== "global" &&
       (allowSubagent || !isSubagentSessionKey(canonical)) &&
-      resolveAgentIdFromSessionKey(canonical) === normalizeAgentId(resolvedAgentId)
+      resolveAgentIdFromSessionKey(canonical) === resolvedAgentId
       ? canonical
       : undefined;
   };
@@ -198,14 +198,14 @@ export type HeartbeatSessionSelection = ResolvedHeartbeatSession & {
 };
 
 /** Selects the execution key and descriptive conversation for an already-resolved event queue. */
-export function resolveHeartbeatSessionSelection(
+export async function resolveHeartbeatSessionSelection(
   cfg: OpenClawConfig,
   agentId: string,
   heartbeat: HeartbeatConfig | undefined,
   session: ResolvedHeartbeatSession,
   isolated: boolean,
   env: NodeJS.ProcessEnv = process.env,
-): HeartbeatSessionSelection {
+): Promise<HeartbeatSessionSelection> {
   if (!isolated) {
     return {
       ...session,
@@ -231,7 +231,7 @@ export function resolveHeartbeatSessionSelection(
     conversationEntry:
       isolatedBaseSessionKey === session.sessionKey
         ? session.entry
-        : loadSessionEntry({
+        : await readSessionEntryInWorker({
             agentId,
             storePath: session.storePath,
             sessionKey: isolatedBaseSessionKey,
@@ -263,10 +263,6 @@ export async function restoreHeartbeatUpdatedAt(params: {
 }) {
   const { updatedAt, ...scope } = params;
   if (typeof updatedAt !== "number") {
-    return;
-  }
-  const entry = loadSessionEntry(scope);
-  if (!entry || entry.updatedAt === Math.max(entry.updatedAt ?? 0, updatedAt)) {
     return;
   }
   await patchSessionEntryCore(

@@ -1,10 +1,14 @@
 // Real continuation custody for suites that exercise continuation behavior
 // (RFC docs/design/continue-work-signal-v2.md §9.2.2): every test gets its own
 // state directory, custody commands run through the real shared-state worker,
-// and the hot-path projection is hydrated from committed rows, as Gateway boot
-// hydrates it. Suites that use this run in the database-worker test lane.
+// and, as at Gateway boot, the runtime config is published and the hot-path
+// projection is hydrated from committed rows. Suites that use this run in the
+// database-worker test lane.
 import { afterEach, beforeEach, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
+// Owner modules, not the config barrel: several custody suites mock that barrel.
+import { captureRuntimeConfigAsyncReader } from "../../../config/io.runtime.js";
+import { clearRuntimeConfigSnapshot } from "../../../config/runtime-snapshot.js";
 import { closeOpenClawStateDatabaseAsync } from "../../../state/openclaw-state-db.js";
 import { invalidateContinuationCustodyLifetime } from "./custody-lifetime.js";
 import { resetContinuationCustodyProjection } from "./custody-projection.js";
@@ -24,6 +28,7 @@ export function useContinuationCustodyTestState(): { stateDir: () => string } {
   const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
     afterEach(async () => {
       resetContinuationCustodyProjection();
+      clearRuntimeConfigSnapshot();
       await closeOpenClawStateDatabaseAsync();
       vi.unstubAllEnvs();
       stateDir = undefined;
@@ -33,6 +38,8 @@ export function useContinuationCustodyTestState(): { stateDir: () => string } {
   beforeEach(async () => {
     stateDir = tempDirs.make("openclaw-continuation-custody-test-");
     vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+    // Since #169714 getRuntimeConfig() reads only the published snapshot.
+    await captureRuntimeConfigAsyncReader()();
     await hydrateContinuationCustody();
   });
   return {

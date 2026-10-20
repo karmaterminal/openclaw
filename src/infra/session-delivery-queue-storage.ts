@@ -9,8 +9,11 @@ import {
   ExpectedExistingSessionChangedError,
 } from "../gateway/server-methods/agent-expected-session.js";
 import { resolveAgentIdFromSessionKey } from "../routing/session-key.js";
+import {
+  captureSessionTarget,
+  beginSessionEffect,
+} from "../sessions/session-controller.lifecycle.js";
 import { parseCronRunScopeSuffix } from "../sessions/session-key-utils.js";
-import { beginSessionWorkAdmission } from "../sessions/session-lifecycle-admission.js";
 import { formatContinuationChildRunId } from "../shared/continuation-run-key.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { runOpenClawStateWorkerOperation } from "../state/openclaw-state-worker-store.js";
@@ -110,11 +113,15 @@ export async function withSessionDeliveryEnqueueAdmission<T>(
     lifecycleRevision: original.lifecycleRevision ?? null,
   };
   let interruption: Error | undefined;
-  let lease: Awaited<ReturnType<typeof beginSessionWorkAdmission>> | undefined;
+  let lease: Awaited<ReturnType<typeof beginSessionEffect>> | undefined;
   try {
-    lease = await beginSessionWorkAdmission({
-      scope: storePath,
-      identities: [sessionKey, constraint.sessionId],
+    lease = await beginSessionEffect({
+      target: captureSessionTarget({
+        storeScope: storePath,
+        sessionKey,
+        incarnation: constraint.sessionId,
+        agentId,
+      }),
       assertAllowed: async (signal) => {
         signal.throwIfAborted();
         assertExpectedExistingSession({

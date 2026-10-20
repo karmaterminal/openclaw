@@ -33,9 +33,10 @@ const ACTIVE_TRACE_CONTEXT: DiagnosticTraceContext = {
 describe("continue_delegate tool", () => {
   useContinuationCustodyTestState();
 
+  // The custody state publishes each test's runtime config (#169714); tests that
+  // pin their own config replace it.
   beforeEach(() => {
     resetContinueDelegateTurnAdmissionForTests();
-    clearRuntimeConfigSnapshot();
   });
 
   afterEach(() => {

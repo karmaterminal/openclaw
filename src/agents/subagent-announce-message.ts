@@ -1,4 +1,5 @@
 import { formatAgentInternalEventsForPrompt, type AgentInternalEvent } from "./internal-events.js";
+import { describeChildrenEndedWithoutResult } from "./subagents/announce/subagent-announce.requester-settle-message.js";
 import {
   SUBAGENT_COMPLETION_OUTCOME_INSTRUCTION,
   SUBAGENT_PRIVATE_COMPLETION_INSTRUCTION,
@@ -39,6 +40,8 @@ export function buildSubagentAnnounceMessages(params: {
   childSessionId: string;
   taskLabel: string;
   outcome: SubagentRunOutcome;
+  /** A killed child produces no further output, so its notice never waits for one. */
+  killed?: boolean;
   findings: string;
   noVisibleResult?: boolean;
   statsLine?: string;
@@ -48,8 +51,9 @@ export function buildSubagentAnnounceMessages(params: {
   internalEvents: AgentInternalEvent[];
   triggerMessage: string;
 } {
-  const statusLabel =
-    params.outcome.status === "ok"
+  const statusLabel = params.killed
+    ? describeChildrenEndedWithoutResult([params.taskLabel])
+    : params.outcome.status === "ok"
       ? "completed; ready for parent review"
       : params.outcome.status === "timeout"
         ? params.outcome.error

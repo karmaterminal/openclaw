@@ -19,7 +19,6 @@ import {
   withEnvAsync,
 } from "../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
-import { resetSubagentRegistryRuntimeLoadersForTests } from "./subagents/registry/subagent-registry-deps.js";
 import {
   loadSubagentRegistryFromSqlite,
   saveSubagentRegistryToSqlite,
@@ -184,7 +183,6 @@ describe("subagent registry persistence", () => {
   };
 
   beforeEach(() => {
-    resetSubagentRegistryRuntimeLoadersForTests();
     setRuntimeConfigSnapshot({});
     announceSpy.mockReset();
     announceSpy.mockResolvedValue("delivered");

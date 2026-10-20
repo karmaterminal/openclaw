@@ -15,6 +15,7 @@ vi.mock("./session-reset-cleanup.js", async (importOriginal) => ({
 
 const params = {
   sessionKey: "agent:main:main",
+  storePath: "/synthetic/reset-cleanup.sqlite",
   agentId: "main",
   previousSessionEntry: { sessionId: "previous", updatedAt: 1 } as SessionEntry,
   previousSessionEndReason: "new",

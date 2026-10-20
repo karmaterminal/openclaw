@@ -14,7 +14,7 @@ export function resolveAgentRunContinuationHandoff(params: {
   resolvedSessionKey?: string;
   request: AgentRunRequest;
   canUseInternalRuntimeHandoff: boolean;
-  sessionContinuationTraceparent?: string;
+  consumedContinuationTraceparent?: string;
 }): Pick<AgentRunRequest, "drainsContinuationDelegateQueue" | "continuationTrigger"> & {
   traceparent?: string;
 } {
@@ -32,6 +32,6 @@ export function resolveAgentRunContinuationHandoff(params: {
     traceparent:
       (params.canUseInternalRuntimeHandoff ? params.request.traceparent : undefined) ??
       subagentTraceparentHandoff ??
-      params.sessionContinuationTraceparent,
+      params.consumedContinuationTraceparent,
   };
 }

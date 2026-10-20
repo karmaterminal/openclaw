@@ -40,7 +40,7 @@ import {
   mergeDeliveryContext,
   normalizeDeliveryContext,
 } from "../utils/delivery-context.shared.js";
-import { deliverQueuedGeneratedMediaAgentTurn } from "./server-restart-sentinel-agent-delivery.js";
+import { deliverQueuedGeneratedMediaCompletion } from "./server-restart-sentinel-agent-delivery.js";
 import {
   buildQueuedRestartContinuation,
   isRestartContinuationBusyRetry,
@@ -97,7 +97,12 @@ export async function deliverQueuedSessionDelivery(params: {
   queueContext.admission.assertCurrent();
   const queuedEntry = resolveCorrelatedSubagentDelivery(params.entry);
   if (queuedEntry.kind === "agentTurn" && queuedEntry.requesterBinding) {
-    await deliverQueuedGeneratedMediaAgentTurn({
+    // ABSORB-8083-LEAD: MANUAL ledger row (gate27-gateway). The fork keeps its delivery-core
+    // extraction (server-restart-sentinel-delivery.ts); upstream f20c3c758b only renamed the
+    // generated-media entry to deliverQueuedGeneratedMediaCompletion and threaded `deps`
+    // (here via an explicit field; upstream spread `...params`). Recovery cases need re-proof.
+    await deliverQueuedGeneratedMediaCompletion({
+      deps: params.deps,
       ...queuedEntry.requesterBinding,
       entry: queuedEntry,
       runtimeContextFragments: queuedEntry.runtimeContextFragments,

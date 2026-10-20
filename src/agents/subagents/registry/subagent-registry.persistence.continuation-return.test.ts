@@ -2,8 +2,7 @@
 // subagent-registry.persistence.test.ts under its line cap): the recorded return
 // fields survive the registry row and reach the replayed announce. Mocks, fixture and
 // restart wiring are that suite's.
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resetSubagentRegistryRuntimeLoadersForTests } from "./subagent-registry-deps.js";
+import { describe, expect, it, vi } from "vitest";
 import "./subagent-registry.mocks.shared.js";
 import "./subagent-registry.persistence.mocks.test-support.js";
 // Preserve module setup before modules that consume it.
@@ -22,12 +21,6 @@ import {
 
 describe("subagent registry persistence: continuation return", () => {
   const fixture = useSubagentPersistenceFixture();
-
-  beforeEach(() => {
-    // The registry reaches announce through a lazy loader cache that survives
-    // resetSubagentRegistryForTests; reset it so this file's announce mock is used.
-    resetSubagentRegistryRuntimeLoadersForTests();
-  });
 
   const restartRegistry = async () => {
     await resetSubagentRegistryForTests({ persist: false });

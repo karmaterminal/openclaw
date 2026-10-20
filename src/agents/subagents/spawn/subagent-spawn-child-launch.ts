@@ -1,5 +1,4 @@
 /** Native child-run dispatch for a subagent spawn, behind the continuation-ownership gate. */
-import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
 import { runWithAgentToolSourceExecutionScope } from "../../agent-tool-source-execution-guard.js";
 import { registerSubagentTraceparentHandoff } from "../../subagent-traceparent-handoff.js";
@@ -8,7 +7,11 @@ import type { bindSubagentSpawnCleanup } from "./subagent-spawn-cleanup.js";
 import type { SpawnSubagentContext } from "./subagent-spawn-contract.js";
 import { withSubagentGatewayExecutionIdentity } from "./subagent-spawn-execution-identity.js";
 import type { buildSubagentSpawnGatewayIdentity } from "./subagent-spawn-gateway-identity.js";
-import { callNativeSubagentGateway, readGatewayRunId } from "./subagent-spawn-gateway.js";
+import {
+  callNativeSubagentGateway,
+  type captureSubagentSpawnGatewayContext,
+  readGatewayRunId,
+} from "./subagent-spawn-gateway.js";
 import type { buildSubagentLaunchRequest } from "./subagent-spawn-launch-request.js";
 
 export function createSubagentChildRunLauncher(launch: {
@@ -19,8 +22,9 @@ export function createSubagentChildRunLauncher(launch: {
   childLaunch: ReturnType<typeof buildSubagentLaunchRequest>["childLaunch"];
   gatewayIdentity: () => ReturnType<typeof buildSubagentSpawnGatewayIdentity>;
   gatewayContextResolver: GatewayContextResolver | undefined;
+  requester: ReturnType<typeof captureSubagentSpawnGatewayContext>["requester"];
   /** Child session committed by spawn preparation; fences dispatch to that exact session. */
-  childEntry: Pick<SessionEntry, "sessionId" | "lifecycleRevision"> | undefined;
+  preparedLaunch: ReturnType<typeof buildSubagentLaunchRequest>["preparedLaunch"];
   cleanupOwner: ReturnType<typeof bindSubagentSpawnCleanup> | undefined;
   onAccepted: (acceptedChildRunId: string) => void;
 }) {
@@ -45,16 +49,12 @@ export function createSubagentChildRunLauncher(launch: {
           },
           launch.gatewayIdentity(),
         ),
-        childLaunch.authorization,
-        launch.gatewayContextResolver,
-        launch.childEntry?.sessionId && launch.childEntry.lifecycleRevision
-          ? {
-              sessionKey: childSessionKey,
-              sessionId: launch.childEntry.sessionId,
-              lifecycleRevision: launch.childEntry.lifecycleRevision,
-              runId: childIdem,
-            }
-          : undefined,
+        {
+          authorization: childLaunch.authorization,
+          gatewayContextResolver: launch.gatewayContextResolver,
+          requester: launch.requester,
+          preparedLaunch: launch.preparedLaunch,
+        },
       ),
     );
     const acceptedChildRunId = readGatewayRunId(result.response) ?? childIdem;

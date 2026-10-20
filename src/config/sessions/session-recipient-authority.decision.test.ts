@@ -6,6 +6,7 @@ import {
   runOpenClawAgentWriteTransaction,
 } from "../../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { captureRuntimeConfigAsyncReader } from "../io.runtime.js";
 import {
   assignSessionOwner,
   captureSessionRecipientAuthority,
@@ -73,6 +74,7 @@ function writeEpochOutOfProcess(env: NodeJS.ProcessEnv, sessionKey: string, epoc
 describe("recipient authority adopt/deliver decision", () => {
   it("decides from a durable read at the decision point, not an earlier worker snapshot", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await captureRuntimeConfigAsyncReader()();
       const { scope, authority } = await seedBoundSession(state.env, "agent:main:foreign-window");
       // A worker-backed check would see this foreign commit land after its read and
       // before its verdict; the decision must never certify that stale snapshot.
@@ -92,6 +94,7 @@ describe("recipient authority adopt/deliver decision", () => {
 
   it("denies an authority another process replaced while the store was closed", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await captureRuntimeConfigAsyncReader()();
       const replaced = await seedBoundSession(state.env, "agent:main:restart-replaced");
       const kept = await seedBoundSession(state.env, "agent:main:restart-kept");
       expect(isSessionRecipientAuthorityCurrent(replaced.scope, replaced.authority)).toBe(true);
@@ -106,6 +109,7 @@ describe("recipient authority adopt/deliver decision", () => {
 
   it("denies after main-thread and worker-thread advances", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await captureRuntimeConfigAsyncReader()();
       const owned = await seedBoundSession(state.env, "agent:main:advance-main");
       expect(
         assignSessionOwner(owned.scope, {
@@ -125,6 +129,7 @@ describe("recipient authority adopt/deliver decision", () => {
 
   it("keeps authority current after a rolled-back advance", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await captureRuntimeConfigAsyncReader()();
       const { scope, authority } = await seedBoundSession(state.env, "agent:main:rollback");
       expect(() =>
         runOpenClawAgentWriteTransaction(
@@ -142,6 +147,7 @@ describe("recipient authority adopt/deliver decision", () => {
 
   it("keeps process-held incognito authority with its native owner", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      await captureRuntimeConfigAsyncReader()();
       const scope = { agentId: "main", sessionKey: "agent:main:dashboard:incognito-authority" };
       await upsertSessionEntryCore(scope, {
         sessionId: "incognito-authority",

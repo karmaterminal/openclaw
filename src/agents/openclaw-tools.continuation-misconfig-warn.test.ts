@@ -48,6 +48,8 @@ vi.mock("../config/config.js", async () => {
   const actual = await vi.importActual<typeof import("../config/config.js")>("../config/config.js");
   return {
     ...actual,
+    // Since #169714 tools read the published runtime snapshot, not a cold load.
+    getRuntimeConfig: () => mockConfig,
     loadConfig: () => mockConfig,
     resolveGatewayPort: () => 18789,
   };

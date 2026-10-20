@@ -1,5 +1,6 @@
 import type { SessionEntry } from "../../config/sessions/types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { captureSessionTarget } from "../../sessions/session-controller.lifecycle.js";
 import { SessionContinuationResetError } from "../continuation/session-reset.js";
 import {
   clearSessionResetRuntimeState,
@@ -17,15 +18,23 @@ const log = createSubsystemLogger("session-init");
  */
 export async function clearReplacedSessionRuntimeState(params: {
   sessionKey: string;
+  storePath: string;
   agentId: string;
-  previousSessionEntry: SessionEntry;
+  previousSessionEntry: Pick<SessionEntry, "sessionId">;
   previousSessionEndReason: string | undefined;
   signal?: AbortSignal;
 }): Promise<void> {
-  const { sessionKey, agentId, previousSessionEntry, previousSessionEndReason, signal } = params;
+  const { sessionKey, storePath, agentId, previousSessionEntry, previousSessionEndReason, signal } =
+    params;
   try {
     await clearSessionResetRuntimeState([sessionKey, previousSessionEntry.sessionId], {
       activeReplySessionId: previousSessionEntry.sessionId,
+      controllerTarget: captureSessionTarget({
+        storeScope: storePath,
+        sessionKey,
+        agentId,
+        incarnation: previousSessionEntry.sessionId,
+      }),
       agentId,
       sessionKey,
       assertCurrent: () => signal?.throwIfAborted(),

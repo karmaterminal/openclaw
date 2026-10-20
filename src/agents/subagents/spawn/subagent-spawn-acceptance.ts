@@ -4,7 +4,9 @@
 import type { runSpawnPipeline } from "../../spawn-pipeline.js";
 import {
   confirmSubagentSpawnAcceptance,
+  recordAcceptedSubagentSpawnRollback,
   releaseSubagentSpawnAcceptanceHoldForRun,
+  rollbackSubagentRunRegistration,
 } from "../registry/subagent-registry.js";
 import type { SpawnSubagentContext, SpawnSubagentResult } from "./subagent-spawn-contract.js";
 
@@ -36,6 +38,31 @@ export function buildNativeSpawnAcceptance(params: {
     deferAcceptanceConfirmation: params.ctx.continuationDelegateAdmission !== undefined,
     releaseAcceptanceHold: (registration) =>
       releaseSubagentSpawnAcceptanceHoldForRun(registration.runId),
+  };
+}
+
+/**
+ * Registration rollback wiring. The accepted child run id and session identity are read
+ * when a rollback is recorded, since both advance after the pipeline starts.
+ */
+export function buildRegistrationRollback(
+  readAccepted: () => {
+    gatewayRunId?: string;
+    identity: { expectedSessionId?: string; expectedLifecycleRevision?: string };
+  },
+): Pick<PipelineParams, "rollbackRegistration" | "recordAcceptedRollback"> {
+  return {
+    rollbackRegistration: rollbackSubagentRunRegistration,
+    recordAcceptedRollback: (registration, error) => {
+      const accepted = readAccepted();
+      return recordAcceptedSubagentSpawnRollback({
+        ...registration,
+        gatewayRunId: accepted.gatewayRunId ?? registration.runId,
+        reason: error instanceof Error ? error.message : String(error),
+        expectedRegistration: registration.expectedRegistration,
+        ...accepted.identity,
+      });
+    },
   };
 }
 

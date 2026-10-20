@@ -7,6 +7,7 @@
 // abandonment, settlement without adoption, and an immediate run that returns
 // before onAdopted without being handed to the followup queue.
 import type { TurnAdoptionLifecycle } from "../get-reply-options.types.js";
+import type { InternalGetReplyOptions } from "./get-reply.types.js";
 import {
   settleManagedSystemEventsAfterTurnAdoption,
   type PreparedManagedSystemEventDelivery,
@@ -89,6 +90,51 @@ export function composeManagedDeliveryTurnLifecycle(params: {
     restoreIfNotHandedOff: () => {
       if (!handedOff) {
         restore();
+      }
+    },
+  };
+}
+
+/** Transcript ack ids for the managed deliveries a user turn adopts, when it carries any. */
+export function resolveManagedDeliveryAckInput(
+  deliveries: ReadonlyMap<string, PreparedManagedSystemEventDelivery>,
+): { sessionDeliveryAckIds?: readonly string[] } {
+  return deliveries.size > 0 ? { sessionDeliveryAckIds: [...deliveries.keys()] } : {};
+}
+
+/**
+ * Binds an immediate reply turn to the managed deliveries its prompt carries. The
+ * queued run and the runner opts carry one settle-on-adoption lifecycle, and the
+ * immediate run restores the deliveries it neither adopted nor handed off.
+ */
+export function bindManagedDeliveryReplyTurn(params: {
+  deliveries: ReadonlyMap<string, PreparedManagedSystemEventDelivery>;
+  opts: InternalGetReplyOptions | undefined;
+  getPersistedMessage: () => unknown;
+}): {
+  lifecycle: TurnAdoptionLifecycle | undefined;
+  opts: InternalGetReplyOptions | undefined;
+  run: <T>(execute: () => Promise<T>) => Promise<T>;
+} {
+  const { opts } = params;
+  const turn = composeManagedDeliveryTurnLifecycle({
+    deliveries: params.deliveries,
+    original: opts?.turnAdoptionLifecycle,
+    getPersistedMessage: params.getPersistedMessage,
+  });
+  return {
+    lifecycle: turn.lifecycle,
+    // The runner adopts an immediate turn through opts; it must carry the same
+    // settle-on-adoption lifecycle the queued followupRun carries.
+    opts:
+      turn.lifecycle === opts?.turnAdoptionLifecycle
+        ? opts
+        : { ...opts, turnAdoptionLifecycle: turn.lifecycle },
+    run: async <T>(execute: () => Promise<T>): Promise<T> => {
+      try {
+        return await execute();
+      } finally {
+        turn.restoreIfNotHandedOff();
       }
     },
   };

@@ -18,7 +18,11 @@ import { isIncognitoSessionKey } from "../shared/incognito-session-key.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { SESSION_CREATED_NOTICE_CONTEXT_PREFIX } from "./session-state-event-kinds.js";
-import { recordSessionStateEventAsync } from "./session-state-events.js";
+import {
+  createSubagentSpawnedEvent,
+  recordSessionStateEventsAsync,
+} from "./session-state-events.js";
+import type { SessionStateEventInput } from "./session-state-events.kernel.js";
 
 const log = createSubsystemLogger("sessions/state-events");
 const CREATION_SUMMARY_MAX_CHARS = 8192;
@@ -29,22 +33,43 @@ function reportCreationSignalFailure(error: unknown): void {
   log.warn(`failed to record session creation: ${String(error)}`);
 }
 
-type SessionCreatedParams = { sessionKey: string; entry: SessionEntry; agentId?: string };
+type SessionCreatedParams = {
+  sessionKey: string;
+  entry: SessionEntry;
+  agentId?: string;
+  spawned?: { runId: string; requesterSessionKey: string };
+};
 
-function buildSessionCreatedEvent(params: SessionCreatedParams, agentId: string) {
+function buildSessionCreatedEvents(
+  params: SessionCreatedParams,
+  agentId: string,
+): SessionStateEventInput[] {
   const actor = params.entry.createdActor;
-  return actor
-    ? {
-        sessionKey: params.sessionKey,
-        sessionId: params.entry.sessionId,
+  const events: SessionStateEventInput[] = actor
+    ? [
+        {
+          sessionKey: params.sessionKey,
+          sessionId: params.entry.sessionId,
+          agentId,
+          kind: "created" as const,
+          actorType: actor.type,
+          ...(actor.id ? { actorId: actor.id } : {}),
+          dedupeKey: `created:${agentId}:${params.sessionKey}:${params.entry.sessionId}`,
+          summary: "session created",
+        },
+      ]
+    : [];
+  if (params.spawned) {
+    events.push(
+      createSubagentSpawnedEvent({
+        childSessionKey: params.sessionKey,
+        childRunId: params.spawned.runId,
+        requesterSessionKey: params.spawned.requesterSessionKey,
         agentId,
-        kind: "created" as const,
-        actorType: actor.type,
-        ...(actor.id ? { actorId: actor.id } : {}),
-        dedupeKey: `created:${agentId}:${params.sessionKey}:${params.entry.sessionId}`,
-        summary: "session created",
-      }
-    : undefined;
+      }),
+    );
+  }
+  return events;
 }
 
 function captureCreationContext(): OpenClawStateWorkerContext | undefined {
@@ -62,24 +87,24 @@ export async function recordSessionCreated(
   params: SessionCreatedParams,
 ): Promise<void> {
   const agentId = params.agentId ?? resolveAgentIdFromSessionKey(params.sessionKey);
-  const event = buildSessionCreatedEvent(params, agentId);
-  const context = event ? captureCreationContext() : undefined;
+  const events = buildSessionCreatedEvents(params, agentId);
+  const context = events.length > 0 ? captureCreationContext() : undefined;
   await notifyHomeOfSessionCreated(cfg, { ...params, agentId });
-  if (event && context) {
-    await recordSessionStateEventAsync(event, { context });
+  if (context) {
+    await recordSessionStateEventsAsync(events, { context });
   }
 }
 
 /**
- * Records only the trusted "created" state event. Callers whose session may still be
- * rolled back record it at creation and notify Home once the session is accepted.
+ * Records only the trusted "created" (and optional child-spawned) state events. Callers whose
+ * session may still be rolled back record them at creation and notify Home once accepted.
  */
 export async function recordSessionCreatedStateEvent(params: SessionCreatedParams): Promise<void> {
   const agentId = params.agentId ?? resolveAgentIdFromSessionKey(params.sessionKey);
-  const event = buildSessionCreatedEvent(params, agentId);
-  const context = event ? captureCreationContext() : undefined;
-  if (event && context) {
-    await recordSessionStateEventAsync(event, { context });
+  const events = buildSessionCreatedEvents(params, agentId);
+  const context = events.length > 0 ? captureCreationContext() : undefined;
+  if (context) {
+    await recordSessionStateEventsAsync(events, { context });
   }
 }
 

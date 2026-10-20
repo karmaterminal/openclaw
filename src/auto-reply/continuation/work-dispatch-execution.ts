@@ -41,18 +41,28 @@ const CONTINUATION_TURN_STALE_CLAIM_REASON = "stale-claim";
 const GATEWAY_RESTARTING_REPLY_TEXT =
   "⚠️ Gateway is restarting. Please wait a few seconds and try again.";
 
-type ReplyRunRegistry = (typeof import("../reply/reply-run-registry.js"))["replyRunRegistry"];
+/** The session-controller reads continuation admission, election, and idle waits share. */
+type ContinuationSessionRuns = {
+  isActive: (sessionKey: string) => boolean;
+  resolveSessionId: (sessionKey: string) => string | undefined;
+  waitForIdle: (typeof import("../../sessions/session-controller.js"))["waitForSessionRunIdle"];
+};
 
-// The dynamic edge keeps the reply graph out of the continuation static graph.
-// One promise is load-bearing: admission, election, and idle waits must observe
-// the same registry instance even while the module import is still in flight.
-let replyRunRegistryModulePromise:
-  | Promise<typeof import("../reply/reply-run-registry.js")>
-  | undefined;
+// The dynamic edge keeps the session-controller graph out of the continuation static
+// graph. One promise is load-bearing: admission, election, and idle waits must observe
+// the same controller modules even while the imports are still in flight.
+let continuationSessionRunsPromise: Promise<ContinuationSessionRuns> | undefined;
 
-export async function getContinuationReplyRunRegistry(): Promise<ReplyRunRegistry> {
-  replyRunRegistryModulePromise ??= import("../reply/reply-run-registry.js");
-  return (await replyRunRegistryModulePromise).replyRunRegistry;
+export async function getContinuationReplyRunRegistry(): Promise<ContinuationSessionRuns> {
+  continuationSessionRunsPromise ??= Promise.all([
+    import("../../sessions/session-controller.queries.js"),
+    import("../../sessions/session-controller.js"),
+  ]).then(([queries, controller]) => ({
+    isActive: queries.isSessionRunActiveForKey,
+    resolveSessionId: (sessionKey) => queries.resolveActiveSessionRunId(sessionKey),
+    waitForIdle: controller.waitForSessionRunIdle,
+  }));
+  return await continuationSessionRunsPromise;
 }
 
 export type ContinuationWorkIdleRetryTrigger =
@@ -265,7 +275,7 @@ async function driveContinuationTurn(
     { resolveSessionStorePathCore },
     { loadSessionEntry },
     { parseAgentSessionKey, isSubagentSessionKey },
-    { resolveSessionLane },
+    { AGENT_LANE_SUBAGENT },
     { getReplyFromConfig },
     replyRunRegistry,
     { getQueueSize, isGatewayDraining },
@@ -274,7 +284,7 @@ async function driveContinuationTurn(
     import("../../config/sessions/paths.js"),
     import("../../config/sessions/session-accessor.js"),
     import("../../sessions/session-key-utils.js"),
-    import("../../agents/embedded-agent-runner/lanes.js"),
+    import("../../agents/lanes.js"),
     import("../reply/get-reply.js"),
     getContinuationReplyRunRegistry(),
     import("../../process/command-queue.js"),
@@ -292,9 +302,9 @@ async function driveContinuationTurn(
       retryTrigger: { kind: "reply-run-ended" },
     };
   }
-  const continuationLane = isSubagentSessionKey(work.sessionKey)
-    ? resolveSessionLane(work.sessionKey)
-    : undefined;
+  // Since #175837 runs serialize per session in its controller; a subagent's continuation
+  // turn takes the subagent lane its own runs use instead of queueing behind main.
+  const continuationLane = isSubagentSessionKey(work.sessionKey) ? AGENT_LANE_SUBAGENT : undefined;
   if (continuationLane === undefined && getQueueSize(mainCommandLane) > 0) {
     return {
       status: "skipped",
@@ -409,22 +419,36 @@ async function deliverFoldedProvenanceNoteToActiveTurn(params: {
   if (!sessionId) {
     return { delivered: false, reason: "missing-active-session-id" };
   }
-  const { isEmbeddedAgentRunHandleActive, queueEmbeddedAgentMessageWithOutcomeAsync } =
-    await import("../../agents/embedded-agent-runner/runs.js");
+  const [{ isEmbeddedAgentRunHandleActive }, { resolveActiveReplyOperationForSessionId }, steer] =
+    await Promise.all([
+      import("../../agents/embedded-agent-runner/runs.js"),
+      import("../../sessions/session-controller.queries.js"),
+      import("../../sessions/session-controller.steer.js"),
+    ]);
   if (!isEmbeddedAgentRunHandleActive(sessionId)) {
     return { delivered: false, reason: "active-embedded-run-required-for-transcript-proof" };
   }
-  const outcome = await queueEmbeddedAgentMessageWithOutcomeAsync(sessionId, params.note, {
-    steeringMode: "all",
-    debounceMs: 0,
-    deliveryTimeoutMs: params.deliveryTimeoutMs,
-    waitForTranscriptCommit: true,
+  const outcome = await steer.steerSessionControllerOperation({
+    operation: resolveActiveReplyOperationForSessionId(sessionId),
+    text: params.note,
+    options: {
+      steeringMode: "all",
+      debounceMs: 0,
+      deliveryTimeoutMs: params.deliveryTimeoutMs,
+      waitForTranscriptCommit: true,
+    },
   });
-  if (outcome.queued && outcome.deliveredAtMs !== undefined) {
-    return { delivered: true, deliveredAt: outcome.deliveredAtMs };
+  if (outcome.status === "accepted") {
+    // With waitForTranscriptCommit, acceptance without a result means the transcript committed.
+    return outcome.result
+      ? {
+          delivered: false,
+          reason: `queued-without-transcript-commit:${outcome.result.errorMessage}`,
+        }
+      : { delivered: true, deliveredAt: Date.now() };
   }
-  if (outcome.queued) {
-    return { delivered: false, reason: `queued-without-transcript-commit:${outcome.target}` };
+  if (outcome.status === "indeterminate") {
+    return { delivered: false, reason: `indeterminate:${outcome.errorMessage}` };
   }
   return { delivered: false, reason: outcome.reason };
 }

@@ -5,6 +5,7 @@ import {
   openOpenClawAgentDatabase,
 } from "../../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { captureRuntimeConfigAsyncReader } from "../io.runtime.js";
 import {
   assignSessionOwner,
   captureSessionRecipientAuthority,
@@ -21,6 +22,7 @@ afterEach(() => closeOpenClawAgentDatabasesForTest());
 describe("session recipient authority", () => {
   it("preserves one logical mailbox across rollover, fallback, compaction, and reopen", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await captureRuntimeConfigAsyncReader()();
       const scope = {
         agentId: "main",
         env: state.env,
@@ -59,6 +61,7 @@ describe("session recipient authority", () => {
     "preserves an absent-target covenant through /%s materialization",
     async (reason) => {
       await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+        await captureRuntimeConfigAsyncReader()();
         const scope = {
           agentId: "main",
           env: state.env,
@@ -83,6 +86,7 @@ describe("session recipient authority", () => {
 
   it("binds an absent target through first materialization and rejects its replacement", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await captureRuntimeConfigAsyncReader()();
       const scope = {
         agentId: "main",
         env: state.env,
@@ -115,6 +119,7 @@ describe("session recipient authority", () => {
 
   it("rejects delete and recreate for a present target", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await captureRuntimeConfigAsyncReader()();
       const scope = {
         agentId: "main",
         env: state.env,
@@ -138,6 +143,7 @@ describe("session recipient authority", () => {
 
   it("advances only for effective owner reassignment and actual member removal", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await captureRuntimeConfigAsyncReader()();
       const scope = {
         agentId: "main",
         env: state.env,
@@ -189,6 +195,7 @@ describe("session recipient authority", () => {
 
   it("initializes missing legacy state and fails closed on malformed persisted epochs", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      await captureRuntimeConfigAsyncReader()();
       const scope = {
         agentId: "main",
         env: state.env,

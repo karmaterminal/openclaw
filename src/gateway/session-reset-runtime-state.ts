@@ -1,6 +1,7 @@
 import { ErrorCodes, errorShape } from "../../packages/gateway-protocol/src/index.js";
 import { SessionContinuationResetError } from "../auto-reply/continuation/session-reset.js";
 import { clearSessionResetRuntimeState } from "../auto-reply/reply/session-reset-cleanup.js";
+import type { SessionTarget } from "../sessions/session-controller.lifecycle.js";
 
 /**
  * Clears finished process records, queued follow-ups, pending system events, and
@@ -16,6 +17,7 @@ export async function clearSessionScopeRuntimeState(
   },
   runtime: {
     agentId: string;
+    controllerTarget: SessionTarget;
     clearFinishedSessionsForScopes: (scopeKeys: Iterable<string>) => void;
     sessionKey: string;
     assertCurrent: () => void;
@@ -32,6 +34,7 @@ export async function clearSessionScopeRuntimeState(
   runtime.clearFinishedSessionsForScopes([...queueKeys, params.key]);
   try {
     await clearSessionResetRuntimeState(queueKeys, {
+      controllerTarget: runtime.controllerTarget,
       activeReplySessionId: params.sessionId,
       agentId: runtime.agentId,
       sessionKey: runtime.sessionKey,

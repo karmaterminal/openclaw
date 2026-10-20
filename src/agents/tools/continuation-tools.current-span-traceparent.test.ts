@@ -92,9 +92,9 @@ const typedContinuationTools: ReadonlyArray<{
 describe("typed continuation tools :: current-span traceparent", () => {
   useContinuationCustodyTestState();
 
+  // The custody state publishes each test's runtime config (#169714).
   beforeEach(() => {
     resetContinueDelegateTurnAdmissionForTests();
-    clearRuntimeConfigSnapshot();
     _resetGuardState();
   });
 

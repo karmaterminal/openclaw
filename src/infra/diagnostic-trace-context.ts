@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
 import { expectDefined } from "@openclaw/normalization-core";
+import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 
 const TRACEPARENT_VERSION = "00";
 const DEFAULT_TRACE_FLAGS = "01";
@@ -49,39 +50,13 @@ function randomNonZeroHex(bytes: number): string {
   return value;
 }
 
-function isDiagnosticTraceScopeState(value: unknown): value is DiagnosticTraceScopeState {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const candidate = value as Partial<DiagnosticTraceScopeState>;
-  return (
-    candidate.marker === DIAGNOSTIC_TRACE_SCOPE_STATE_KEY &&
-    candidate.storage instanceof AsyncLocalStorage
-  );
-}
-
-function getGlobalTraceScopeRecord(): Record<PropertyKey, unknown> {
-  return globalThis as Record<PropertyKey, unknown>;
-}
-
-function getDiagnosticTraceScopeState(): DiagnosticTraceScopeState {
-  const globalRecord = getGlobalTraceScopeRecord();
-  const existing = globalRecord[DIAGNOSTIC_TRACE_SCOPE_STATE_KEY];
-  if (isDiagnosticTraceScopeState(existing)) {
-    return existing;
-  }
-  const state: DiagnosticTraceScopeState = {
+const traceScopeState = resolveGlobalSingleton<DiagnosticTraceScopeState>(
+  DIAGNOSTIC_TRACE_SCOPE_STATE_KEY,
+  () => ({
     marker: DIAGNOSTIC_TRACE_SCOPE_STATE_KEY,
     storage: new AsyncLocalStorage<DiagnosticTraceContext | undefined>(),
-  };
-  Object.defineProperty(globalThis, DIAGNOSTIC_TRACE_SCOPE_STATE_KEY, {
-    configurable: true,
-    enumerable: false,
-    value: state,
-    writable: false,
-  });
-  return state;
-}
+  }),
+);
 
 /** Returns whether a value is a non-zero W3C trace id. */
 export function isValidDiagnosticTraceId(value: unknown): value is string {
@@ -242,16 +217,14 @@ export function freezeDiagnosticTraceContext(
 
 /** Returns the trace context bound to the current async scope. */
 export function getActiveDiagnosticTraceContext(): DiagnosticTraceContext | undefined {
-  return getDiagnosticTraceScopeState().storage.getStore();
+  return traceScopeState.storage.getStore();
 }
 
+// Test isolation: exit every scope bound to the shared store and swap in a fresh one, so
+// duplicated module copies that share the global singleton all observe the reset.
 export function resetDiagnosticTraceContextForTest(): void {
-  const globalRecord = getGlobalTraceScopeRecord();
-  const existing = globalRecord[DIAGNOSTIC_TRACE_SCOPE_STATE_KEY];
-  if (isDiagnosticTraceScopeState(existing)) {
-    existing.storage.disable();
-  }
-  delete globalRecord[DIAGNOSTIC_TRACE_SCOPE_STATE_KEY];
+  traceScopeState.storage.disable();
+  traceScopeState.storage = new AsyncLocalStorage<DiagnosticTraceContext | undefined>();
 }
 
 export function formatActiveDiagnosticTraceparent(): string | undefined {
@@ -263,7 +236,7 @@ export function runWithDiagnosticTraceContext<T>(
   trace: DiagnosticTraceContext | undefined,
   callback: () => T,
 ): T {
-  return getDiagnosticTraceScopeState().storage.run(
+  return traceScopeState.storage.run(
     trace === undefined ? undefined : freezeDiagnosticTraceContext(trace),
     callback,
   );

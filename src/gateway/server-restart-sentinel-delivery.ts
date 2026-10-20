@@ -35,7 +35,7 @@ import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.j
 import { isSubagentSessionKey } from "../sessions/session-key-utils.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
-import { deliverQueuedGeneratedMediaAgentTurn } from "./server-restart-sentinel-agent-delivery.js";
+import { deliverQueuedGeneratedMediaCompletion } from "./server-restart-sentinel-agent-delivery.js";
 import {
   isRestartContinuationBusyPayload,
   resolveQueuedRestartContinuationMessageId,
@@ -353,8 +353,9 @@ async function deliverResolvedQueuedSessionDelivery(params: {
   }
 
   if (
-    await deliverQueuedGeneratedMediaAgentTurn({
+    await deliverQueuedGeneratedMediaCompletion({
       entry: params.entry,
+      deps: params.deps,
       runtimeContextFragments: params.entry.runtimeContextFragments,
       canonicalKey,
       agentId,

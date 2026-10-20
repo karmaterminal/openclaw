@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
+import type { AcpRuntimeTurnAttachment as AcpInlineImageAttachment } from "@openclaw/acp-core/runtime/types";
 import { resolveNonNegativeIntegerOption } from "@openclaw/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
@@ -35,11 +36,6 @@ export { cleanupMaterializedSubagentAttachments } from "../subagent-attachment-c
 const SUBAGENT_ATTACHMENT_PATH_BLOCK_MAX_CHARS = 4096;
 
 type SubagentInlineAttachment = InlineAttachment;
-
-type AcpInlineImageAttachment = {
-  mediaType: string;
-  data: string;
-};
 
 type AttachmentLimits = InlineAttachmentSnapshotLimits & {
   enabled: boolean;
@@ -97,7 +93,7 @@ function resolveAttachmentLimits(
 }
 
 function resolveSubagentAttachmentRequest(params: SubagentAttachmentRequestParams) {
-  const requestedAttachments = Array.isArray(params.attachments) ? params.attachments : [];
+  const requestedAttachments = params.attachments ?? [];
   if (requestedAttachments.length === 0) {
     return null;
   }

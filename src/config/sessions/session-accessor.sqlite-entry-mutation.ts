@@ -10,6 +10,7 @@ import {
   readSessionIdentitySnapshot,
   writeSessionEntry,
 } from "./session-accessor.sqlite-entry-store.js";
+import { withSessionParticipantWriteSnapshot } from "./session-accessor.sqlite-participant-projection.js";
 import { advanceSessionRecipientAuthorityInTransaction } from "./session-accessor.sqlite-recipient-authority.js";
 import { assertCanonicalSqliteSessionKeysCurrent } from "./session-canonical-key.js";
 import { assertSessionEntryPatchCliHistory } from "./session-entry-patch-guard.js";
@@ -39,8 +40,9 @@ export function replaceSessionEntryInDatabase(
 ): SessionEntryIdentityChange {
   const identityKeys = collectSessionEntryLookupKeys(sessionKey);
   const previous = readSessionIdentitySnapshot(database, identityKeys);
-  writeSessionEntry(database, sessionKey, entry);
-  const current = readSessionIdentitySnapshot(database, identityKeys);
+  const written = writeSessionEntry(database, sessionKey, entry);
+  const current = new Map(previous);
+  current.set(sessionKey, written);
   return { previous, current };
 }
 
@@ -65,7 +67,9 @@ export function applySessionEntryPatchInDatabase(
   if (params.validateCanonicalKeys) {
     assertCanonicalSqliteSessionKeysCurrent(database);
   }
-  const fresh = params.readSnapshot(database);
+  const fresh = withSessionParticipantWriteSnapshot(database.db, () =>
+    params.readSnapshot(database),
+  );
   assertLifecycleTargetSnapshotUnchanged(params.prepared, fresh, params.operationLabel);
   return writeSessionEntryPatchInDatabase(database, { ...params, fresh });
 }
@@ -126,13 +130,12 @@ export function writeSessionEntryPatchInDatabase(
     advanceSessionRecipientAuthorityInTransaction(database, params.sessionKey);
   }
   if (postimages.get(params.sessionKey)?.changed === false) {
-    return { applied: true, entry: structuredClone(persisted) };
+    return { applied: true, entry: persisted };
   }
-  const current = new Map([[params.sessionKey, persisted]]);
   return {
     applied: true,
-    entry: structuredClone(persisted),
-    identity: { previous, current },
+    entry: persisted,
+    identity: { previous, current: new Map([[params.sessionKey, persisted]]) },
     postimages,
   };
 }

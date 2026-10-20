@@ -2,7 +2,10 @@
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
+import { prepareAgentRunTerminalReply } from "../../agents/agent-run-terminal-reply.js";
 import type { AgentWaitResult } from "../../agents/run-wait.types.js";
+import { readSubagentRunAnnounceResult } from "../../agents/subagents/announce/subagent-announce-output.js";
+import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
 import { writeSubagentSessionEntry } from "../../agents/subagents/registry/subagent-registry.persistence.test-support.js";
 import {
   addSubagentRunForTests,
@@ -10,6 +13,11 @@ import {
   listSubagentRunsForRequester,
   resetSubagentRegistryForTests,
 } from "../../agents/subagents/registry/subagent-registry.test-helpers.js";
+import {
+  appendTranscriptMessage,
+  replaceSessionEntry,
+} from "../../config/sessions/session-accessor.js";
+import { racePromiseWithAbortSignal } from "../../infra/abort-signal.js";
 import {
   createPluginSubagentTestLifetime,
   withPluginSubagentTestState,
@@ -29,7 +37,9 @@ const mocks = getAgentTestMocks();
 describe("gateway agent handler", () => {
   afterEach(describe0AfterEach0);
 
-  it("registers normally when a follow-up to a paused session names its own requester", async () => {
+  it("registers normally when a follow-up to a paused session names its own requester", async ({
+    signal,
+  }) => {
     await withPluginSubagentTestState(
       "openclaw-gateway-plugin-subagent-own-requester-",
       async ({ stateDir: root }) => {
@@ -43,13 +53,26 @@ describe("gateway agent handler", () => {
           sessionKey: "agent:main:telegram:direct:555",
           origin: { channel: "telegram", to: "telegram:555", accountId: "work" },
         } as const;
+        await replaceSessionEntry(
+          {
+            agentId: "main",
+            sessionKey: followUpRequester.sessionKey,
+            storePath: path.join(root, "agents", "main", "sessions", "sessions.json"),
+          },
+          { sessionId: "followup-requester", updatedAt: Date.now() },
+        );
         const cfg = {
           session: { mainKey: "main", scope: "per-sender" },
           agents: { entries: { main: {}, work: {} } },
         } satisfies typeof mocks.loadConfigReturn;
         mocks.listAgentIds.mockReturnValue(["main", "work"]);
         mocks.loadConfigReturn = cfg;
-        mocks.userTurnStorePath = path.join(root, "agents", "work", "sessions", "sessions.json");
+        mocks.userTurnStorePath = await writeSubagentSessionEntry({
+          stateDir: root,
+          agentId: "work",
+          sessionKey: childSessionKey,
+          defaultSessionId: "spawned-child-session",
+        });
         mocks.loadSessionEntry.mockReturnValue({
           cfg,
           storePath: mocks.userTurnStorePath,
@@ -57,15 +80,8 @@ describe("gateway agent handler", () => {
           canonicalKey: childSessionKey,
         });
         mocks.updateSessionStore.mockResolvedValue(undefined);
-        await writeSubagentSessionEntry({
-          stateDir: root,
-          agentId: "work",
-          sessionKey: childSessionKey,
-          sessionId: "spawned-child-session",
-          updatedAt: Date.now(),
-          defaultSessionId: "spawned-child-session",
-        });
-        const result = "The separately requested follow-up is complete.";
+        const result = `${"Completed follow-up detail. ".repeat(200)}The separately requested follow-up is complete.`;
+        const { terminalReply } = prepareAgentRunTerminalReply({ rawText: result });
         const completion = createDeferred<AgentWaitResult>();
         const announce = mocks.registryAnnounce.mockResolvedValue("delivered");
         mocks.registryCallGateway.mockReturnValue(completion.promise);
@@ -79,14 +95,38 @@ describe("gateway agent handler", () => {
           pauseReason: "sessions_yield",
           expectsCompletionMessage: true,
         });
+        await replaceSessionEntry(
+          { agentId: "work", sessionKey: childSessionKey, storePath: mocks.userTurnStorePath },
+          { sessionId: "spawned-child-session", updatedAt: Date.now() },
+        );
         mocks.agentCommand.mockImplementation(async () => {
+          await appendTranscriptMessage(
+            {
+              agentId: "work",
+              sessionKey: childSessionKey,
+              sessionId: "spawned-child-session",
+              storePath: mocks.userTurnStorePath!,
+            },
+            {
+              message: {
+                role: "assistant",
+                display: true,
+                content: result,
+                stopReason: "stop",
+                __openclaw: { runId },
+              },
+            },
+          );
           completion.resolve({
             status: "ok",
             startedAt: Date.now(),
             endedAt: Date.now(),
-            terminalReply: { disposition: "visible", text: result },
+            terminalReply,
           });
-          return { payloads: [{ text: result }], meta: { durationMs: 1 } };
+          return {
+            payloads: [{ text: result }],
+            meta: { durationMs: 1, terminalReply },
+          };
         });
         const context = makeContext();
         const baseClient = requireValue(backendGatewayClient(), "expected backend client");
@@ -114,7 +154,7 @@ describe("gateway agent handler", () => {
           ),
         );
         expect(response.mock.calls[0]?.[0], JSON.stringify(response.mock.calls[0])).toBe(true);
-        await fixture.cleanupCompleted;
+        await racePromiseWithAbortSignal(fixture.cleanupCompleted, signal);
         expectRecordFields(context.dedupe.get(`agent:${runId}`)?.payload, { status: "ok" });
         expect(announce).toHaveBeenCalledTimes(1);
 
@@ -143,9 +183,13 @@ describe("gateway agent handler", () => {
             childSessionKey,
             childRunId: runId,
             requesterSessionKey: followUpRequester.sessionKey,
-            roundOneReply: result,
+            terminalReply,
           }),
         );
+        // Keep the live owner read independent of post-cleanup payload compaction.
+        const prepared = await readSubagentRunAnnounceResult(run, (id) => subagentRuns.get(id));
+        expect(prepared.text).toBe(result);
+        expect(prepared.isCurrent()).toBe(true);
       },
     );
   });

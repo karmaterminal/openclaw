@@ -9,15 +9,9 @@ import {
   hasReplyPayloadSpeechContent,
   setReplyPayloadMetadata,
 } from "../reply-payload.js";
-import {
-  HEARTBEAT_TOKEN,
-  isInternalFormattingArtifact,
-  isSilentReplyPayloadText,
-  SILENT_REPLY_TOKEN,
-} from "../tokens.js";
+import { HEARTBEAT_TOKEN, isInternalFormattingArtifact } from "../tokens.js";
 import type { ReplyPayload } from "../types.js";
 import { hasCotFramePrefix } from "./cot-frame.js";
-import { stripMixedSilentReplyTokens } from "./mixed-silent-reply-tokens.js";
 import type {
   NormalizeReplyOutcome as PayloadNormalizationOutcome,
   NormalizeReplySkipReason,
@@ -55,7 +49,6 @@ type NormalizeReplyOptions = {
   /** Context for template variable interpolation in responsePrefix */
   responsePrefixContext?: ResponsePrefixContext;
   onHeartbeatStrip?: () => void;
-  silentToken?: string;
   transformReplyPayload?: (payload: ReplyPayload) => ReplyPayload | null;
   conversationContext?: string;
   onSkip?: (reason: NormalizeReplySkipReason) => void;
@@ -86,7 +79,7 @@ export function normalizeReplyPayloadOutcome(
     return suppress("empty");
   }
 
-  let text = payload.text ?? undefined;
+  let text = payload.text;
   // Monitoring already applied its configured acknowledgment and error-text policy.
   if (!getReplyPayloadMetadata(payload)?.heartbeatReply) {
     if (text && hasCotFramePrefix(text)) {
@@ -95,22 +88,11 @@ export function normalizeReplyPayloadOutcome(
       }
       text = "";
     }
-    const silentToken = opts.silentToken ?? SILENT_REPLY_TOKEN;
-    if (text && isSilentReplyPayloadText(text, silentToken)) {
-      if (!hasContent("")) {
+    if (getReplyPayloadMetadata(payload)?.silentReply === true) {
+      if (!hasContent("") && !hasSpeechContent) {
         return suppress("silent");
       }
       text = "";
-    }
-    // Mixed-content silent tokens must not leak to channel delivery.
-    if (text) {
-      const stripped = stripMixedSilentReplyTokens(text, silentToken);
-      if (stripped !== null) {
-        text = stripped;
-        if (!hasContent(text)) {
-          return suppress("silent");
-        }
-      }
     }
     if (text && !trimmed) {
       // Keep empty text when media exists so media-only replies still send.

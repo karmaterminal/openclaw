@@ -4,7 +4,6 @@ import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { observeMainThreadSql } from "../test-utils/main-thread-sql-spies.test-support.js";
-// Covers session delivery queue persistence state transitions.
 import { requireNodeSqlite } from "./node-sqlite.js";
 import {
   advanceSessionDeliveryAgentRun,
@@ -29,6 +28,33 @@ import {
   settleSessionDelivery,
 } from "./session-delivery-queue.storage.test-support.js";
 import { withSessionDeliveryQueue } from "./session-delivery-queue.test-helpers.js";
+
+type Delivery = Parameters<typeof enqueueSessionDelivery>[0];
+function agentTurn(
+  messageId: string,
+  overrides: Partial<Extract<Delivery, { kind: "agentTurn" }>> = {},
+): Extract<Delivery, { kind: "agentTurn" }> {
+  return {
+    kind: "agentTurn",
+    sessionKey: "agent:main:main",
+    message: "generated image ready",
+    messageId,
+    ...overrides,
+  };
+}
+function systemEvent(idempotencyKey: string, permanent = false): Delivery {
+  return {
+    kind: "systemEvent",
+    sessionKey: "agent:main:main",
+    text: "restart complete",
+    idempotencyKey,
+    ...(permanent ? { completionRetention: "permanent" } : {}),
+  };
+}
+const mediaAttachments = {
+  "/tmp/one.png": { type: "image" as const, path: "/tmp/one.png", mimeType: "image/png" },
+  "/tmp/two.png": { type: "image" as const, path: "/tmp/two.png", mimeType: "image/png" },
+};
 
 describe("session-delivery queue storage", () => {
   it("projects generic queue attachments to descriptor-only metadata before persistence", async () => {
@@ -200,14 +226,10 @@ describe("session-delivery queue storage", () => {
   });
 
   it("grants one initial-attempt lease and releases it for recovery", async () => {
-    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
-      const payload = {
-        kind: "agentTurn" as const,
-        sessionKey: "agent:main:main",
-        message: "generated image ready",
-        messageId: "image:task-lease:agent-loop",
+    await withSessionDeliveryQueue(async (_stateDir, queueContext) => {
+      const payload = agentTurn("image:task-lease:agent-loop", {
         idempotencyKey: "image:task-lease:agent-loop",
-      };
+      });
       const first = await enqueueClaimedSessionDelivery(payload, 60_000, queueContext);
       const duplicate = await enqueueClaimedSessionDelivery(payload, 60_000, queueContext);
 
@@ -225,14 +247,10 @@ describe("session-delivery queue storage", () => {
   });
 
   it("reports a dead-letter conflict instead of claiming it as pending", async () => {
-    await withSessionDeliveryQueue(async (tempDir, queueContext) => {
-      const payload = {
-        kind: "agentTurn" as const,
-        sessionKey: "agent:main:main",
-        message: "generated image ready",
-        messageId: "image:task-dead-letter:agent-loop",
+    await withSessionDeliveryQueue(async (_stateDir, queueContext) => {
+      const payload = agentTurn("image:task-dead-letter:agent-loop", {
         idempotencyKey: "image:task-dead-letter:agent-loop",
-      };
+      });
       const first = await enqueueClaimedSessionDelivery(payload, 60_000, queueContext);
       await moveSessionDeliveryToFailed(first.id, queueContext);
 
@@ -246,12 +264,7 @@ describe("session-delivery queue storage", () => {
 
   it("lets an explicit enqueue replace a deleted ordinary failure", async () => {
     await withSessionDeliveryQueue(async (tempDir, queueContext) => {
-      const payload = {
-        kind: "systemEvent" as const,
-        sessionKey: "agent:main:main",
-        text: "restart complete",
-        idempotencyKey: "restart:revive-failed",
-      };
+      const payload = systemEvent("restart:revive-failed");
       const id = await enqueueSessionDelivery(payload, queueContext);
       await moveSessionDeliveryToFailed(id, queueContext);
 
@@ -263,13 +276,7 @@ describe("session-delivery queue storage", () => {
 
   it("never revives a failed permanent producer intent", async () => {
     await withSessionDeliveryQueue(async (tempDir, queueContext) => {
-      const payload = {
-        kind: "systemEvent" as const,
-        sessionKey: "agent:main:main",
-        text: "restart complete",
-        idempotencyKey: "restart:permanent-failed",
-        completionRetention: "permanent" as const,
-      };
+      const payload = systemEvent("restart:permanent-failed", true);
       const id = await enqueueSessionDelivery(payload, queueContext);
       await moveSessionDeliveryToFailed(id, queueContext);
 
@@ -281,13 +288,9 @@ describe("session-delivery queue storage", () => {
 
   it("reports a completed conflict after acknowledgement", async () => {
     await withSessionDeliveryQueue(async (tempDir, queueContext) => {
-      const payload = {
-        kind: "agentTurn" as const,
-        sessionKey: "agent:main:main",
-        message: "generated image ready",
-        messageId: "image:task-completed:agent-loop",
+      const payload = agentTurn("image:task-completed:agent-loop", {
         idempotencyKey: "image:task-completed:agent-loop",
-      };
+      });
       const first = await enqueueClaimedSessionDelivery(payload, 60_000, queueContext);
       await settleSessionDelivery(first.id, tempDir);
 
@@ -479,87 +482,6 @@ describe("session-delivery queue storage", () => {
     });
   });
 
-  it("advances only the agent run attempt and can focus its retry media", async () => {
-    // Keep the one-time SQLite capability check outside the queue observation window.
-    requireNodeSqlite();
-    const sqlCalls = observeMainThreadSql();
-    try {
-      await withSessionDeliveryQueue(async (_stateDir, queueContext) => {
-        const id = await enqueueSessionDelivery(
-          {
-            kind: "agentTurn",
-            sessionKey: "agent:main:main",
-            message: "all generated media",
-            messageId: "image:task-retry:agent-loop",
-            expectedMediaUrls: ["/tmp/one.png", "/tmp/two.png"],
-            expectedMediaAttachments: {
-              "/tmp/one.png": { type: "image", path: "/tmp/one.png", mimeType: "image/png" },
-              "/tmp/two.png": { type: "image", path: "/tmp/two.png", mimeType: "image/png" },
-            },
-          },
-          queueContext,
-        );
-
-        await failSessionDelivery(id, "ambiguous timeout", queueContext);
-        await deferSessionDelivery(id, 1_000, queueContext);
-        let [entry] = await loadPendingSessionDeliveries(queueContext);
-        expect(entry).toMatchObject({ retryCount: 1 });
-        expect(entry?.agentRunAttempt).toBeUndefined();
-        expect(entry?.availableAt).toBeGreaterThan(Date.now());
-
-        await mergeSessionDeliveryPreparedMediaBlocks(
-          id,
-          "/tmp/one.png",
-          [{ type: "image", artifactId: "artifact-one" }],
-          queueContext,
-        );
-        await expect(
-          mergeSessionDeliveryPreparedMediaBlocks(
-            id,
-            "/tmp/one.png",
-            [{ type: "image", artifactId: "replacement-must-not-win" }],
-            queueContext,
-          ),
-        ).resolves.toEqual([{ type: "image", artifactId: "artifact-one" }]);
-        await mergeSessionDeliveryPreparedMediaBlocks(
-          id,
-          "/tmp/two.png",
-          [{ type: "image", artifactId: "artifact-two" }],
-          queueContext,
-        );
-
-        await advanceSessionDeliveryAgentRun(
-          id,
-          {
-            message: "only missing media",
-            expectedMediaUrls: ["/tmp/two.png"],
-            suppressTextDelivery: true,
-          },
-          queueContext,
-        );
-        [entry] = await loadPendingSessionDeliveries(queueContext);
-        expect(entry).toMatchObject({
-          agentRunAttempt: 1,
-          retryCount: 1,
-          message: "only missing media",
-          expectedMediaUrls: ["/tmp/two.png"],
-          expectedMediaAttachments: {
-            "/tmp/one.png": { type: "image", path: "/tmp/one.png", mimeType: "image/png" },
-            "/tmp/two.png": { type: "image", path: "/tmp/two.png", mimeType: "image/png" },
-          },
-          preparedMediaBlocks: {
-            "/tmp/one.png": [{ type: "image", artifactId: "artifact-one" }],
-            "/tmp/two.png": [{ type: "image", artifactId: "artifact-two" }],
-          },
-          suppressTextDelivery: true,
-        });
-      });
-      sqlCalls.expectIdle();
-    } finally {
-      sqlCalls.restore();
-    }
-  });
-
   it("retains ambiguous attempt ownership and clears it only for a safe retry", async () => {
     await withSessionDeliveryQueue(async (_stateDir, queueContext) => {
       const id = await enqueueSessionDelivery(
@@ -596,12 +518,7 @@ describe("session-delivery queue storage", () => {
   it("records which agent run attempt consumed retry budget", async () => {
     await withSessionDeliveryQueue(async (_stateDir, queueContext) => {
       const id = await enqueueSessionDelivery(
-        {
-          kind: "agentTurn",
-          sessionKey: "agent:main:main",
-          message: "generated image ready",
-          messageId: "image:task-charge:agent-loop",
-        },
+        agentTurn("image:task-charge:agent-loop"),
         queueContext,
       );
 
@@ -624,11 +541,8 @@ describe("session-delivery queue storage", () => {
   it("persists agent-loop routing and provenance for restart replay", async () => {
     await withSessionDeliveryQueue(async (_stateDir, queueContext) => {
       await enqueueSessionDelivery(
-        {
-          kind: "agentTurn",
+        agentTurn("image:task-1:agent-loop", {
           sessionKey: "agent:main:discord:channel:123",
-          message: "generated image ready",
-          messageId: "image:task-1:agent-loop",
           route: {
             channel: "discord",
             to: "channel:123",
@@ -643,7 +557,7 @@ describe("session-delivery queue storage", () => {
           },
           sourceReplyDeliveryMode: "message_tool_only",
           expectedMediaUrls: ["/tmp/proof.png"],
-        },
+        }),
         queueContext,
       );
 
@@ -656,6 +570,76 @@ describe("session-delivery queue storage", () => {
         }),
       ]);
     });
+  });
+
+  it("advances only the agent run attempt and can focus its retry media", async () => {
+    // Keep the one-time SQLite capability check outside the queue observation window.
+    requireNodeSqlite();
+    const sqlCalls = observeMainThreadSql();
+    try {
+      await withSessionDeliveryQueue(async (_stateDir, queueContext) => {
+        const id = await enqueueSessionDelivery(
+          agentTurn("image:task-retry:agent-loop", {
+            message: "all generated media",
+            expectedMediaUrls: ["/tmp/one.png", "/tmp/two.png"],
+            expectedMediaAttachments: mediaAttachments,
+          }),
+          queueContext,
+        );
+
+        await failSessionDelivery(id, "ambiguous timeout", queueContext);
+        await deferSessionDelivery(id, 1_000, queueContext);
+        let [entry] = await loadPendingSessionDeliveries(queueContext);
+        expect(entry).toMatchObject({ retryCount: 1 });
+        expect(entry?.agentRunAttempt).toBeUndefined();
+        expect(entry?.availableAt).toBeGreaterThan(Date.now());
+
+        await mergeSessionDeliveryPreparedMediaBlocks(
+          id,
+          "/tmp/one.png",
+          [{ type: "image", artifactId: "artifact-one" }],
+          queueContext,
+        );
+        await expect(
+          mergeSessionDeliveryPreparedMediaBlocks(
+            id,
+            "/tmp/one.png",
+            [{ type: "image", artifactId: "replacement-must-not-win" }],
+            queueContext,
+          ),
+        ).resolves.toEqual([{ type: "image", artifactId: "artifact-one" }]);
+        await mergeSessionDeliveryPreparedMediaBlocks(
+          id,
+          "/tmp/two.png",
+          [{ type: "image", artifactId: "artifact-two" }],
+          queueContext,
+        );
+
+        await advanceSessionDeliveryAgentRun(
+          id,
+          {
+            message: "only missing media",
+            expectedMediaUrls: ["/tmp/two.png"],
+          },
+          queueContext,
+        );
+        [entry] = await loadPendingSessionDeliveries(queueContext);
+        expect(entry).toMatchObject({
+          agentRunAttempt: 1,
+          retryCount: 1,
+          message: "only missing media",
+          expectedMediaUrls: ["/tmp/two.png"],
+          expectedMediaAttachments: mediaAttachments,
+          preparedMediaBlocks: {
+            "/tmp/one.png": [{ type: "image", artifactId: "artifact-one" }],
+            "/tmp/two.png": [{ type: "image", artifactId: "artifact-two" }],
+          },
+        });
+      });
+      sqlCalls.expectIdle();
+    } finally {
+      sqlCalls.restore();
+    }
   });
 
   it("moves entries into completed idempotency state", async () => {
@@ -677,13 +661,7 @@ describe("session-delivery queue storage", () => {
 
   it("retains a permanent completion receipt", async () => {
     await withSessionDeliveryQueue(async (tempDir, queueContext) => {
-      const payload = {
-        kind: "systemEvent" as const,
-        sessionKey: "agent:main:main",
-        text: "restart complete",
-        idempotencyKey: "restart:permanent-completed",
-        completionRetention: "permanent" as const,
-      };
+      const payload = systemEvent("restart:permanent-completed", true);
       const id = await enqueueSessionDelivery(payload, queueContext);
       await settleSessionDelivery(id, tempDir);
 

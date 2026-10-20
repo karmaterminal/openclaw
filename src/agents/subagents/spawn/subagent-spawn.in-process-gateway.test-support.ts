@@ -10,8 +10,6 @@ export function makeGatewayContext(): GatewayRequestContext {
     dedupe: new Map(),
     addChatRun: vi.fn(),
     removeChatRun: vi.fn(),
-    chatAbortControllers: new Map(),
-    chatQueuedTurns: new Map(),
     chatRunBuffers: new Map(),
     chatDeltaSentAt: new Map(),
     chatDeltaLastBroadcastLen: new Map(),

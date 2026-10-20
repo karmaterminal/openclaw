@@ -10,7 +10,7 @@ import { CommandLane } from "./lanes.js";
 function isCommandLaneIdle(lane: string): boolean {
   const state = getQueueState().lanes.get(lane);
   // Same depth as command-queue's getLaneDepth: queued plus active tasks.
-  return !state || state.queue.length + state.activeTaskIds.size === 0;
+  return !state || state.queue.length + state.activeTasks.size === 0;
 }
 
 /** Wake idle waiters on one lane, or on every lane when `lane` is omitted (full reset). */

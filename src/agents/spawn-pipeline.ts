@@ -63,7 +63,6 @@ type SpawnPipelineResult<TState> =
       ok: false;
       phase: SpawnPipelinePhase;
       error: unknown;
-      state?: TState;
       runId?: string;
     };
 
@@ -337,7 +336,7 @@ export async function runSpawnPipeline<TState>(
             `Subagent registration and accepted-run rollback both failed: ${ownedRunId}`,
           );
         }
-        return { ok: false, phase, state, runId, error };
+        return { ok: false, phase, runId, error };
       }
       await params.adapter.cleanupOnFailure({
         phase,
@@ -345,7 +344,7 @@ export async function runSpawnPipeline<TState>(
         error,
         ...(registrationScope ? { registrationScope } : {}),
       });
-      return { ok: false, phase, state, runId, error };
+      return { ok: false, phase, runId, error };
     }
 
     if (params.hookRunner?.hasHooks("subagent_progress")) {
@@ -371,12 +370,11 @@ export async function runSpawnPipeline<TState>(
       } catch (error) {
         try {
           await rollbackAccepted(error);
-          return { ok: false, phase, state, runId, error };
+          return { ok: false, phase, runId, error };
         } catch (rollbackError) {
           return {
             ok: false,
             phase,
-            state,
             runId,
             error: combineSpawnRollbackError(
               error,
@@ -395,12 +393,11 @@ export async function runSpawnPipeline<TState>(
       } catch (error) {
         try {
           await rollbackAccepted(error);
-          return { ok: false, phase, state, runId, error };
+          return { ok: false, phase, runId, error };
         } catch (rollbackError) {
           return {
             ok: false,
             phase,
-            state,
             runId,
             error: combineSpawnRollbackError(
               error,
@@ -418,12 +415,11 @@ export async function runSpawnPipeline<TState>(
         const error = new Error(`Subagent acceptance could not be confirmed: ${runId}`);
         try {
           await rollbackAccepted(error);
-          return { ok: false, phase, state, runId, error };
+          return { ok: false, phase, runId, error };
         } catch (rollbackError) {
           return {
             ok: false,
             phase,
-            state,
             runId,
             error: combineSpawnRollbackError(
               error,

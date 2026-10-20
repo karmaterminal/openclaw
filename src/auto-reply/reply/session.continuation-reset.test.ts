@@ -4,12 +4,14 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import * as bootstrapCache from "../../agents/bootstrap-cache.js";
+import { createDeferred } from "../../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
 import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
 import { testing as sessionBindingTesting } from "../../infra/outbound/session-binding-service.js";
 import { resetSystemEventsForTest } from "../../infra/system-events.js";
+import { createReplyOperation } from "../../sessions/session-controller.js";
+import { isSessionRunActiveForKey } from "../../sessions/session-controller.queries.js";
 import { closeOpenClawStateDatabaseAsync } from "../../state/openclaw-state-db.js";
 import {
   readCustodyRecordForTest,
@@ -19,7 +21,6 @@ import { consumePendingDelegates, enqueuePendingDelegate } from "../continuation
 import type { PendingContinuationWork } from "../continuation/work-flow-state.js";
 import { enqueuePendingWorkReplacing } from "../continuation/work-replacement-store.js";
 import { consumePendingWork } from "../continuation/work-store.js";
-import { createReplyOperation, replyRunRegistry } from "./reply-run-registry.js";
 import {
   initSessionState,
   runExplicitResetCases,
@@ -141,7 +142,7 @@ afterEach(async () => {
 });
 describe("initSessionState guarded initialization", () => {
   // Upstream session.test.ts case (U:591), restored here; see PR-NOTES F1 for the registry clause.
-  it("reports a committed reset as successful when reply cancellation throws", async () => {
+  it("waits for real settlement when reply cancellation throws after committing abort", async () => {
     const storePath = await makeStorePath("openclaw-session-init-reset-cancel-failure-");
     const sessionKey = "agent:main:matrix:channel:cancel-failure";
     const sessionId = "committed-reset-session";
@@ -157,7 +158,9 @@ describe("initSessionState guarded initialization", () => {
         },
       },
     });
+    const cancellationAttempted = createDeferred();
     const cancel = vi.fn(() => {
+      cancellationAttempted.resolve();
       throw new Error("backend cancellation failed");
     });
     const activeReply = createReplyOperation({
@@ -169,7 +172,7 @@ describe("initSessionState guarded initialization", () => {
     activeReply.setPhase("running");
 
     try {
-      const reset = await initSessionState({
+      const initialization = initSessionState({
         ctx: {
           Body: "/new",
           RawBody: "/new",
@@ -184,12 +187,15 @@ describe("initSessionState guarded initialization", () => {
         cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
         commandAuthorized: true,
       });
+      await cancellationAttempted.promise;
+      activeReply.complete();
+      const reset = await initialization;
 
       expect(reset.resetTriggered).toBe(true);
       expect(reset.sessionEntry.mainRestartRecovery).toBeUndefined();
       expect(loadSessionEntry({ storePath, sessionKey })?.mainRestartRecovery).toBeUndefined();
       expect(cancel).toHaveBeenCalledWith("restart");
-      expect(replyRunRegistry.isActive(sessionKey)).toBe(false);
+      expect(isSessionRunActiveForKey(sessionKey)).toBe(false);
     } finally {
       activeReply.complete();
     }
@@ -198,18 +204,12 @@ describe("initSessionState guarded initialization", () => {
 
 describe("initSessionState reset policy", () => {
   useContinuationCustodyTestState();
-  let clearBootstrapSnapshotOnSessionRolloverSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    clearBootstrapSnapshotOnSessionRolloverSpy = vi.spyOn(
-      bootstrapCache,
-      "clearBootstrapSnapshotOnSessionBoundary",
-    );
   });
 
   afterEach(() => {
-    clearBootstrapSnapshotOnSessionRolloverSpy.mockRestore();
     vi.useRealTimers();
   });
 

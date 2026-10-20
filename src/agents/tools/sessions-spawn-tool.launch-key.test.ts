@@ -1,5 +1,9 @@
 import "./sessions-spawn-tool.mocks.test-support.js";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
 import { supportedSpawnModelChoice } from "../subagents/spawn/subagent-spawn.test-helpers.js";
 
 const { hoisted } = await import("./sessions-spawn-tool.mocks.test-support.js");
@@ -14,6 +18,9 @@ describe("sessions_spawn tool continuation launch key", () => {
   });
 
   beforeEach(() => {
+    // The tool reads the published runtime config (#169714), as upstream's
+    // sessions-spawn-tool suite seeds it.
+    setRuntimeConfigSnapshot({});
     hoisted.prepareModelChoiceMock.mockReset().mockImplementation(supportedSpawnModelChoice);
     acpRuntimeRegistry.testing.resetAcpRuntimeBackendsForTests();
     hoisted.spawnSubagentDirectMock.mockReset().mockResolvedValue({
@@ -30,6 +37,10 @@ describe("sessions_spawn tool continuation launch key", () => {
     hoisted.registerSubagentRunMock.mockReset();
     hoisted.inProcessCreationMock.mockReset();
     hoisted.runSubagentProgressMock.mockClear();
+  });
+
+  afterEach(() => {
+    clearRuntimeConfigSnapshot();
   });
 
   it("exposes no continuation launch key and never forwards a model-supplied one", async () => {

@@ -1,10 +1,5 @@
-import { vi } from "vitest";
 import { createSubagentRunRecord } from "../../subagent-test-fixtures.test-helpers.js";
 import { createDeliveredWake } from "./subagent-registry.persistence.test-support.js";
-import type { SubagentRunRecord } from "./subagent-registry.types.js";
-
-type WakeRequester =
-  typeof import("../announce/subagent-announce.requester-settle-wake.js").maybeWakeRequesterAfterAllChildrenSettled;
 
 export function createHydratedRegistryRuns(endedAt: number) {
   const yieldedRun = createDeliveredWake("run-hydrated-yield", undefined, {
@@ -13,7 +8,6 @@ export function createHydratedRegistryRuns(endedAt: number) {
     requesterTurnYielded: true,
     childSessionKey: "agent:main:subagent:hydrated-yield",
     childSessionIdentity: { sessionId: "sess-hydrated-yield" },
-    task: "wake only after lifecycle activation",
     createdAt: endedAt - 1_000,
     endedReason: "subagent-complete",
     startedAt: endedAt - 500,
@@ -27,7 +21,6 @@ export function createHydratedRegistryRuns(endedAt: number) {
       sessionId: "sess-hydrated-collector",
       lifecycleRevision: "revision-hydrated-collector",
     },
-    task: "clean only after lifecycle activation",
     createdAt: endedAt - 500,
     collect: true,
     swarmRequesterSessionKey: "agent:main:main",
@@ -45,13 +38,19 @@ export function createHydratedRegistryRuns(endedAt: number) {
     runId: "run-hydrated-running",
     childSessionKey: "agent:main:subagent:hydrated-running",
     childSessionIdentity: { sessionId: "sess-hydrated-running" },
-    task: "wait through the activated instance",
     createdAt: endedAt,
     execution: { status: "running", startedAt: endedAt },
-    completion: { required: false },
     delivery: { status: "not_required" },
   });
-  return { queuedCollector, runningRun, yieldedRun };
+  const finishedRun = createSubagentRunRecord({
+    runId: "run-hydrated-history",
+    childSessionKey: "agent:main:subagent:hydrated-history",
+    endedAt,
+    cleanupCompletedAt: endedAt,
+    completion: { required: true, resultText: "retained result" },
+    delivery: { status: "delivered", deliveredAt: endedAt },
+  });
+  return { finishedRun, queuedCollector, runningRun, yieldedRun };
 }
 
 export function createRejectedRequesterWake(params: {
@@ -87,37 +86,6 @@ export function createOutstandingWakeRuns(runCount: number) {
   });
 }
 
-export function createSteeredRestoreRuns(endedAt: number, requesterYielded: boolean) {
-  const run = createDeliveredWake("run-steered", undefined, {
-    taskRunId: "run-original",
-    requesterTurnRunId: "run-requester",
-    ...(requesterYielded ? { requesterTurnYielded: true } : {}),
-    childSessionKey: "agent:main:subagent:steered",
-    task: "deliver the steered result",
-    createdAt: endedAt - 1_000,
-    endedReason: "subagent-complete",
-    startedAt: endedAt - 500,
-    endedAt,
-    cleanupCompletedAt: endedAt,
-  });
-  const nonannouncing: SubagentRunRecord[] = [];
-  for (const collect of [false, true]) {
-    nonannouncing.push({
-      ...run,
-      runId: `run-nonannouncing-${collect}`,
-      taskRunId: `run-nonannouncing-${collect}`,
-      childSessionKey: `agent:main:subagent:nonannouncing-${collect}`,
-      expectsCompletionMessage: false,
-      requesterTurnYielded: undefined,
-      collect,
-      completion: { required: false, resultText: "quiet result", capturedAt: endedAt },
-      delivery: { status: "not_required" },
-      ...(collect ? { collectorCompletion: { status: "done" } } : {}),
-    });
-  }
-  return { nonannouncing, run };
-}
-
 export function createSelectedAllRecipientAuthorityBinding() {
   return {
     version: 1 as const,
@@ -132,16 +100,4 @@ export function createSelectedAllRecipientAuthorityBinding() {
       },
     ],
   };
-}
-
-// Settle like the real waker so a later restore replay sees no pending wake.
-export function createSettlingRequesterWake() {
-  return vi.fn<WakeRequester>(async (params) => {
-    const wake = params.settledEntry!.requesterSettleWake!;
-    await params.completeBatch([params.settledEntry!], wake.rearmGeneration!, {
-      delivered: true,
-      path: "direct",
-    });
-    return true;
-  });
 }

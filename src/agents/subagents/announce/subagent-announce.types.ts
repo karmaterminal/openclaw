@@ -1,43 +1,29 @@
 /** Subagent announce flow parameter and outcome types. */
-import type { DeliveryContext } from "../../../utils/delivery-context.shared.js";
-import type { AgentRunTerminalReplySnapshot } from "../../agent-run-terminal-reply.types.js";
-import type { SpawnSubagentMode } from "../spawn/subagent-spawn.types.js";
-import type { SubagentRunOutcome } from "../subagent-run-outcome.types.js";
+import type { ContinuationRecipientAuthorityBinding } from "../../../config/sessions/session-recipient-authority-types.js";
+import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
+import type { SessionControllerInput } from "../../../sessions/session-controller.mailbox.js";
+import type { PendingFinalDeliveryPayload } from "../registry/subagent-registry-read.types.js";
+import type { SubagentRunRecord } from "../registry/subagent-registry.types.js";
 import type { SubagentAnnounceDeliveryResult } from "./subagent-announce-dispatch.js";
 
-export type SubagentAnnounceFlowOutcome =
-  | NonNullable<SubagentAnnounceDeliveryResult["disposition"]>
-  | "requester_turn_pending";
+export type SubagentAnnounceFlowOutcome = NonNullable<
+  SubagentAnnounceDeliveryResult["disposition"]
+>;
 
-export type SubagentAnnounceFlowParams = {
-  childSessionKey: string;
+export type SubagentAnnounceFlowParams = Omit<
+  PendingFinalDeliveryPayload,
+  "requesterDisplayKey"
+> & {
   childAgentId?: string;
   childSessionIdentity?: { sessionId: string; lifecycleRevision?: string };
-  childRunId: string;
   runTimeoutSeconds?: number;
-  requesterSessionKey: string;
   requesterAgentId?: string;
-  requesterOrigin?: DeliveryContext;
-  task: string;
   timeoutMs: number;
   cleanup: "delete" | "keep";
   roundOneReply?: string;
-  terminalReply?: AgentRunTerminalReplySnapshot;
-  /**
-   * Fallback text preserved from the pre-wake run when a wake continuation
-   * completes with NO_REPLY despite an earlier final summary already existing.
-   */
+  /** Cached pre-wake result for legacy runs without terminal facts. */
   fallbackReply?: string;
-  startedAt?: number;
-  endedAt?: number;
-  label?: string;
-  outcome?: SubagentRunOutcome;
-  expectsCompletionMessage?: boolean;
-  completionTarget?: "parent";
-  completionRequesterSessionId?: string;
   completionRequesterLifecycleRevision?: string;
-  spawnMode?: SpawnSubagentMode;
-  wakeOnDescendantSettle?: boolean;
   /** Deliver only frozen terminal facts; never inspect or mutate the child session. */
   suppressChildSessionEffects?: boolean;
   /** Refresh database currency before child-session reads or effects. */
@@ -47,6 +33,8 @@ export type SubagentAnnounceFlowParams = {
   /** Live owner check for requester delivery after awaited phases. */
   isCompletionDeliveryAllowed?: () => boolean;
   isCompletionOwnedByRequesterYield?: () => boolean;
+  /** Exact source reserved synchronously by the durable registry handoff. */
+  controllerInput?: SessionControllerInput;
   signal?: AbortSignal;
   onExecutionStarted?: () => void;
   onDeliveryResult?: (delivery: SubagentAnnounceDeliveryResult) => void | Promise<void>;
@@ -55,11 +43,13 @@ export type SubagentAnnounceFlowParams = {
   continuationTargetSessionKey?: string;
   continuationTargetSessionKeys?: string[];
   continuationFanoutMode?: "tree" | "all";
-  continuationRecipientAuthorityBinding?: import("../../../config/sessions/session-recipient-authority-types.js").ContinuationRecipientAuthorityBinding;
+  continuationRecipientAuthorityBinding?: ContinuationRecipientAuthorityBinding;
   persistContinuationRecipientAuthorityBinding?: (
-    binding: import("../../../config/sessions/session-recipient-authority-types.js").ContinuationRecipientAuthorityBinding,
+    binding: ContinuationRecipientAuthorityBinding,
   ) => boolean | Promise<boolean>;
   traceparent?: string;
   onBeforeDeleteChildSession?: () => boolean | Promise<boolean>;
-  resolveGatewayContext?: import("../../../gateway/server-methods/types.js").GatewayContextResolver;
+  resolveGatewayContext?: GatewayContextResolver;
+  /** A killed child produces no further output, so its notice never waits for one. */
+  endedReason?: SubagentRunRecord["endedReason"];
 };

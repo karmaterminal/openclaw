@@ -5,9 +5,7 @@ import { SESSION_OWNER_COLUMN_DEFINITIONS } from "../../state/openclaw-agent-db-
 import {
   runOpenClawAgentWriteTransaction,
   type OpenClawAgentDatabase,
-  type OpenClawAgentDatabaseOptions,
 } from "../../state/openclaw-agent-db.js";
-import { isIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { ensureColumn } from "../../state/openclaw-state-db-schema-helpers.js";
 import type { SessionAccessScope } from "./session-accessor.sqlite-contract.js";
 import {
@@ -16,7 +14,6 @@ import {
 } from "./session-accessor.sqlite-entry-cache.js";
 import { getExactSessionEntryQueries } from "./session-accessor.sqlite-entry-query.js";
 import { readExactSessionEntryRow } from "./session-accessor.sqlite-entry-read.js";
-import { readIncognitoSessionEntryCurrent } from "./session-accessor.sqlite-incognito-sharing.js";
 import {
   hasSqliteSessionOwnerColumns,
   readSqliteSessionOwner,
@@ -49,11 +46,8 @@ export function sessionMetadataExpectedEntryMatches(
   database: OpenClawAgentDatabase,
   sessionKey: string,
   expectedEntry: SessionMetadataExpectedEntry,
-  options: OpenClawAgentDatabaseOptions,
 ): boolean {
-  const entry = isIncognitoOpenClawAgentSqlitePath(database.path, options)
-    ? readIncognitoSessionEntryCurrent(database.db, sessionKey)
-    : readExactSessionEntryRow(database, sessionKey, "list")?.entry;
+  const entry = readExactSessionEntryRow(database, sessionKey, "list")?.entry;
   return (
     entry !== undefined &&
     isDeepStrictEqual(metadataAuthorityEntry(entry), metadataAuthorityEntry(expectedEntry))
@@ -145,7 +139,6 @@ export function assignSessionOwner(
   const updated = runOpenClawAgentWriteTransaction(
     (database) => {
       params.assertCurrent?.();
-      const incognito = isIncognitoOpenClawAgentSqlitePath(database.path, options);
       if (
         params.expectedSessionId !== undefined &&
         params.expectedEntry &&
@@ -155,32 +148,20 @@ export function assignSessionOwner(
       }
       if (
         params.expectedEntry &&
-        !sessionMetadataExpectedEntryMatches(
-          database,
-          resolved.sessionKey,
-          params.expectedEntry,
-          options,
-        )
+        !sessionMetadataExpectedEntryMatches(database, resolved.sessionKey, params.expectedEntry)
       ) {
         throw new Error("session ownership changed before owner assignment");
       }
       // The effective owner before this assignment: the recorded owner, else the
-      // creator. Session rows answer from their owner and creator columns (the
-      // canonical entry JSON never keeps an owner), so a cold entry's payload is
-      // not decoded and a corrupt participant identity cannot roll back the
-      // assignment. Incognito sessions read the process-held entry, never the rows.
-      let previousOwner: { type?: string; id?: string } | undefined;
-      if (incognito) {
-        const current = readIncognitoSessionEntryCurrent(database.db, resolved.sessionKey);
-        previousOwner = current?.owner?.actor ?? current?.createdActor;
-      } else {
-        const row = getExactSessionEntryQueries(database.db).row(resolved.sessionKey);
-        previousOwner =
-          (row && readSqliteSessionOwner(row)?.actor) ??
-          (row?.created_actor_type
-            ? { type: row.created_actor_type, id: row.created_actor_id ?? undefined }
-            : undefined);
-      }
+      // creator, from their own columns (the canonical entry JSON never keeps an
+      // owner), so a cold entry's payload is not decoded and a corrupt participant
+      // identity cannot roll back the assignment.
+      const row = getExactSessionEntryQueries(database.db).row(resolved.sessionKey);
+      const previousOwner =
+        (row && readSqliteSessionOwner(row)?.actor) ??
+        (row?.created_actor_type
+          ? { type: row.created_actor_type, id: row.created_actor_id ?? undefined }
+          : undefined);
       const ownerChanged =
         previousOwner?.type !== owner.actor.type || previousOwner?.id !== owner.actor.id;
       const replaced = replaceSessionOwnerInTransaction(

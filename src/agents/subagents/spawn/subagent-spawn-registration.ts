@@ -2,12 +2,12 @@
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { notifyHomeOfSessionCreated } from "../../../sessions/session-created.js";
-import { summarizeSpawnError } from "../../spawn-pipeline.js";
 import {
   isSpawnSubagentAdmissionCancelledError,
   type SpawnSubagentResult,
 } from "./subagent-spawn-contract.js";
 import type { resolveSubagentSpawnRequest } from "./subagent-spawn-request.js";
+import { buildSubagentSpawnFailureResult } from "./subagent-spawn-result.js";
 
 type ResolveCollectorAdmission = Extract<
   Awaited<ReturnType<typeof resolveSubagentSpawnRequest>>,
@@ -45,12 +45,9 @@ export async function notifyHomeOfAcceptedSubagentSession(
   }
 }
 
+/** Upstream's failure result, plus continuation's cancelled status and failure phase. */
 export function buildSubagentSpawnPipelineFailureResult(
-  pipelineResult: {
-    phase: "initialize" | "dispatch" | "register";
-    error: unknown;
-    runId?: string;
-  },
+  pipelineResult: Parameters<typeof buildSubagentSpawnFailureResult>[0],
   {
     childIdem,
     childSessionKey,
@@ -60,33 +57,23 @@ export function buildSubagentSpawnPipelineFailureResult(
     childIdem: string;
     childSessionKey: string;
     reportFailurePhase: boolean;
-    /** Upstream's pending accepted-run termination text, appended to the error. */
+    /** Upstream's unconfirmed accepted-run termination text, appended to the error. */
     acceptedRunCleanupError?: string;
   },
 ): SpawnSubagentResult {
-  const runId = pipelineResult.runId ?? childIdem;
-  const spawnError =
-    pipelineResult.error && typeof pipelineResult.error === "object"
-      ? pipelineResult.error
-      : undefined;
-  // SAFETY: spawnError is a non-null object or undefined; spawnStatus is read as unknown and compared.
-  const spawnStatus = (spawnError as { spawnStatus?: unknown } | undefined)?.spawnStatus;
+  const result = buildSubagentSpawnFailureResult(pipelineResult, {
+    childSessionKey,
+    fallbackRunId: childIdem,
+    acceptedRunCleanupError,
+  });
   return {
+    ...result,
     status: isSpawnSubagentAdmissionCancelledError(pipelineResult.error)
       ? "cancelled"
-      : spawnStatus === "forbidden"
+      : result.status === "forbidden"
         ? "forbidden"
         : "error",
-    error: [
-      pipelineResult.phase === "register" && spawnStatus !== "forbidden"
-        ? `Failed to register subagent run: ${summarizeSpawnError(pipelineResult.error)}`
-        : summarizeSpawnError(pipelineResult.error),
-      acceptedRunCleanupError,
-    ]
-      .filter(Boolean)
-      .join(" "),
-    childSessionKey,
-    ...(pipelineResult.phase === "initialize" ? {} : { runId }),
+    context: undefined,
     ...(reportFailurePhase ? { failurePhase: pipelineResult.phase } : {}),
   };
 }

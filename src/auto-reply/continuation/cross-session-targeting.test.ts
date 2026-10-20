@@ -1,5 +1,9 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import {
   resetContinuationTracer,
@@ -39,6 +43,7 @@ describe("continuation cross-session targeting", () => {
     closeOpenClawAgentDatabasesForTest();
     resetContinuationTracer();
     resetSystemEventsForTest();
+    clearRuntimeConfigSnapshot();
   });
 
   it("defaults returns to the dispatching session", () => {
@@ -62,6 +67,8 @@ describe("continuation cross-session targeting", () => {
     await withTestDir({ prefix: "openclaw-targeting-owner-resolution-" }, async (stateDir) => {
       const env = { ...process.env, OPENCLAW_STATE_DIR: stateDir };
       const sessionKey = "legacy-helper-target";
+      // The default store path comes from the published runtime config (#169714).
+      setRuntimeConfigSnapshot({});
       await upsertSessionEntryCore(
         { agentId: "helper", env, sessionKey },
         { sessionId: "helper-target-session", updatedAt: 1 },

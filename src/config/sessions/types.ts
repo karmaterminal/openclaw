@@ -16,6 +16,7 @@ import type { SessionGoal } from "../../../packages/gateway-protocol/src/schema/
 import type { SessionObserverDigest } from "../../../packages/gateway-protocol/src/schema/sessions.js";
 import type { SessionAgentStatus } from "../../../packages/gateway-protocol/src/session-agent-status.js";
 import type { SessionCommunicationPolicy } from "../../../packages/gateway-protocol/src/session-communication.js";
+import type { PreemptiveCompactionRoute as SessionContextBudgetStatusRoute } from "../../agents/embedded-agent-runner/run/preemptive-compaction.types.js";
 import type { ChatType } from "../../channels/chat-type.js";
 import type {
   CronScheduledToolCallerOrigin,
@@ -24,6 +25,7 @@ import type {
   CronToolsAllowExecTargetRequirement,
 } from "../../cron/scheduled-tool-policy.js";
 import type { ChannelRouteRef } from "../../plugin-sdk/channel-route.js";
+import type { PluginJsonValue as SessionPluginJsonValue } from "../../plugins/host-hook-json.js";
 import type { InlineAttachment, InlineAttachmentMount } from "../../shared/inline-attachments.js";
 import type { SessionBoardFace } from "../../shared/session-types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
@@ -157,12 +159,6 @@ type AcpSessionBinding = {
   agentSessionId: string;
 };
 
-type SessionContextBudgetStatusRoute =
-  | "fits"
-  | "compact_only"
-  | "truncate_tool_results_only"
-  | "compact_then_truncate";
-
 export type SessionContextBudgetStatus = {
   schemaVersion: 1;
   source: "pre-prompt-estimate";
@@ -196,13 +192,7 @@ type SessionPluginDebugEntry = {
   lines: string[];
 };
 
-export type SessionPluginJsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | SessionPluginJsonValue[]
-  | { [key: string]: SessionPluginJsonValue };
+export type { SessionPluginJsonValue };
 
 type SessionPluginNextTurnInjection = {
   id: string;
@@ -384,6 +374,8 @@ type SessionEntryCore = SessionRestartRecoveryState &
     spawnedCwd?: string;
     /** Content-free fingerprints for checkout changes that predate this session generation. */
     sessionDiffBaseline?: SessionDiffBaseline;
+    /** Canonical existing directory owned by the user on a paired session host. */
+    deviceFolder?: { deviceId: string; path: string };
     /**
      * Managed worktree bound to this session; set with spawnedCwd at worktree
      * creation and cleared together when a plain New Chat detaches the checkout.
@@ -479,6 +471,8 @@ type SessionEntryCore = SessionRestartRecoveryState &
     status?: PersistedSessionRunStatus;
     /** Compact user-facing reason for the latest failed or timed-out run. */
     lastRunError?: string;
+    /** The latest failed run is diagnostic-only, not a request for the user to retry. */
+    suppressErrorNotice?: boolean;
     /**
      * Session-level stop cutoff captured when /stop is received.
      * Messages at/before this boundary are skipped to avoid replaying
@@ -581,6 +575,8 @@ type SessionEntryCore = SessionRestartRecoveryState &
     queueDrop?: "old" | "new" | "summarize";
     inputTokens?: number;
     outputTokens?: number;
+    /** Completeness of the latest run's token and cost accounting. */
+    usageReport?: { state: "available" | "unavailable" };
     totalTokens?: number;
     pendingFinalDelivery?: PendingFinalDeliveryState;
     pendingDeliveryNotice?: PendingDeliveryNoticeState;
@@ -716,7 +712,25 @@ export type InternalSessionEntryCore = SessionEntryCore & {
   /** Private per-generation ownership for the pre-runtime checkout baseline capture. */
   sessionDiffBaselineCapture?: import("./session-diff-baseline-capture.js").SessionDiffBaselineCapture;
   /** Original host-admitted operator basis, owned by the exact restart source claim. */
-  restartRecoveryOperatorSource?: import("../../gateway/operator-run-recovery-source.js").RestartRecoveryOperatorSource;
+  restartRecoveryOperatorSource?: import("../../gateway/operator-run-recovery-source.codec.js").RestartRecoveryOperatorSource;
+  /** Unhanded exec completion obligations; no command arguments or output. */
+  pendingExecNotifications?: Record<
+    string,
+    {
+      processSessionId: string;
+      sessionId: string;
+      lifecycleRevision?: string;
+      incarnation: string;
+      startedAt: number;
+      label: string;
+      policy: Pick<
+        import("../../auto-reply/reply/session-event-contract.js").SessionEventTarget,
+        "settings" | "deliver" | "deliveryContext" | "chatType"
+      > & { toolsAllow?: readonly string[][] };
+    }
+  >;
+  /** Original requester facts retained by the exact host-admitted restart source claim. */
+  restartRecoveryRequesterSource?: import("../../agents/requester-run-recovery-source.js").RestartRecoveryRequesterSource;
   mainRestartRecovery?: MainRestartRecoveryState;
 };
 

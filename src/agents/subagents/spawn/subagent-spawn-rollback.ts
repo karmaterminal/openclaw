@@ -38,8 +38,6 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
   isAbortCurrent?: () => boolean;
   /** Frozen cleanup owner; its settled termination is used while the session is retained. */
   cleanupOwner?: ReturnType<typeof bindSubagentSpawnCleanup>;
-  /** Launch admission retention for the owner's settled termination (non-collector only). */
-  retainAdmission?: () => () => void;
   /**
    * Retained cleanup dispatch capability from the frozen cleanup owner, which was
    * created specifically to outlive the operator. After source revocation the default
@@ -50,8 +48,8 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
   callGateway?: Parameters<typeof terminateAcceptedCollectorRun>[0]["callGateway"];
 }): Promise<string | undefined> {
   const cleanupFailures: unknown[] = [];
-  // Upstream's #158251 contract: termination the retained owner is still retrying is
-  // reported in the error result, not thrown; the owner keeps the admission until it settles.
+  // Upstream's contract: an unconfirmed termination of a retained child is reported in
+  // the error result, not thrown; its Gateway still owns execution and shutdown.
   let acceptedRunCleanupError: string | undefined;
   const ownsChild = params.isCurrent?.() !== false;
   const isAbortCurrent = params.isAbortCurrent ?? params.isCurrent;
@@ -65,25 +63,14 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
     try {
       // Upstream's terminateFailedRegistrationRun split (fdbf48d138): while the
       // registry still retains the row, stop the accepted run but preserve its
-      // session. A pending retry is upstream's error-result text; termination that could
-      // not be scheduled has no retry left and stays a thrown cleanup failure.
+      // session. An unconfirmed termination is upstream's error-result text.
       const deleteSessionOnMiss = ownsChild;
-      if (
-        !deleteSessionOnMiss &&
-        params.retainAdmission &&
-        params.cleanupOwner?.terminateAcceptedRun
-      ) {
-        const termination = await params.cleanupOwner.terminateAcceptedRun(params.retainAdmission);
-        if (termination.status === "pending") {
+      if (!deleteSessionOnMiss && params.cleanupOwner?.terminateAcceptedRun) {
+        const termination = await params.cleanupOwner.terminateAcceptedRun();
+        if (termination.status !== "settled") {
           acceptedRunCleanupError =
             `Child termination is not confirmed: ${formatErrorMessage(termination.error)}. ` +
-            "Its session is retained, and Gateway cleanup is pending.";
-        } else if (termination.status !== "settled") {
-          throw new Error(
-            `Accepted child termination was not confirmed: ${params.acceptedChildRunId}: ${formatErrorMessage(termination.error)}. ` +
-              "Its session is retained; Gateway cleanup could not be scheduled.",
-            { cause: params.error },
-          );
+            "Its session is retained; stop the child by its run ID or restart the Gateway.";
         }
       } else {
         const terminated = await terminateAcceptedCollectorRun({

@@ -1,30 +1,39 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { captureRequesterOrigin } from "../agents/requester-origin.js";
 import {
   bindSessionPendingInputSources,
-  stageSessionPendingInput,
   withSessionPendingInputPersistence,
-  resolveSessionTranscriptRuntimeTarget,
   type TranscriptEntryAnchor,
-  type SessionTranscriptTurnPersistOptions,
 } from "../config/sessions/session-accessor.js";
-import { readWithdrawnSessionPendingInputId } from "../config/sessions/session-accessor.pending-inputs.js";
+import {
+  readSessionPendingInputRequesterOrigin,
+  readWithdrawnSessionPendingInputId,
+} from "../config/sessions/session-accessor.pending-inputs.js";
 import {
   registerUserTurnInputActor,
   withSessionInputActor,
   type SessionInputActorBinding,
 } from "../config/sessions/session-input-actor.js";
-import { createDynamicSessionSourceAssertion } from "../config/sessions/session-source-authority.js";
+import {
+  composeSessionSourceAssertion,
+  runWithSessionSourceScope,
+  prepareSessionSourceAuthority,
+  type SessionSourceAssertion,
+  createDynamicSessionSourceAssertion,
+} from "../config/sessions/session-source-authority.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import {
   getUserTurnTranscriptAdmissionOwner,
   registerUserTurnTranscriptAdmissionOwner,
   inheritUserTurnPromptReactionSource,
 } from "./user-turn-transcript-admission.js";
+import { persistUserTurnInput, stageUserTurnPendingInput } from "./user-turn-transcript-media.js";
 import { createUserTurnProcessingCompletion } from "./user-turn-transcript-processing.js";
 import {
   capturePersistedModelPromptProjection,
   confirmPersistedSteerTargetRunId,
+  preparePersistedModelPromptProjection,
 } from "./user-turn-transcript-updates.js";
 import { createSessionDeliveryAckReplacement } from "./user-turn-transcript.delivery-acks.js";
 import {
@@ -32,16 +41,18 @@ import {
   resolvePersistedUserTurnMessage,
 } from "./user-turn-transcript.message.js";
 import {
+  applyPersistedUserTurnReplacementText,
   buildRunUserTurnIdempotencyKey,
   normalizePersistedSteerTargetRunId,
   preparePersistedUserTurnMessageForTranscriptWrite,
+  projectPersistedUserTurnRequesterOrigin,
   restorePreparedUserTurnOperationalMetaForRuntime,
   rewritePersistedSteerTargetRunId,
 } from "./user-turn-transcript.metadata.js";
 import {
   admittedUserTurnResult,
-  persistUserTurnTranscript,
   resolveCommittedUserTurnTranscript,
+  resolveUserTurnTranscriptTarget,
   type CommittedUserTurnTranscript,
 } from "./user-turn-transcript.persistence.js";
 import type {
@@ -52,7 +63,6 @@ import type {
   UserTurnTranscriptPersistResult,
   UserTurnTranscriptRecorder,
   UserTurnTranscriptTarget,
-  UserTurnTranscriptTargetResolver,
   UserTurnTranscriptUpdateMode,
 } from "./user-turn-transcript.types.js";
 
@@ -81,16 +91,11 @@ export {
   restorePreparedUserTurnOperationalMetaForRuntime,
 };
 
-async function resolveUserTurnTranscriptTarget(
-  target: UserTurnTranscriptTargetResolver,
-): Promise<UserTurnTranscriptTarget | undefined> {
-  return typeof target === "function" ? await target() : target;
-}
-
 export function createUserTurnTranscriptRecorder(
   params: CreateUserTurnTranscriptRecorderParams,
 ): UserTurnTranscriptRecorder {
   const logicalTurnId = randomUUID();
+  let requesterOrigin = captureRequesterOrigin({ requesterOrigin: params.input?.requesterOrigin });
   let message = resolvePersistedUserTurnMessage(params);
   let blocked = false;
   let runtimePersisted = false;
@@ -113,7 +118,7 @@ export function createUserTurnTranscriptRecorder(
   let admissionWrite: Promise<void> | undefined;
   let replacementText: string | undefined;
   let confirmedSteerTargetRunId: string | undefined;
-  let pendingInput: Awaited<ReturnType<typeof stageSessionPendingInput>>;
+  let pendingInput: Awaited<ReturnType<typeof stageUserTurnPendingInput>>;
   const processing = createUserTurnProcessingCompletion(
     () => pendingInput,
     params.pendingInputSources,
@@ -136,25 +141,21 @@ export function createUserTurnTranscriptRecorder(
     return true;
   };
 
-  const applyReplacementText = (
-    candidate: PersistedUserTurnMessage | undefined,
-  ): PersistedUserTurnMessage | undefined => {
-    if (!candidate || replacementText === undefined) {
-      return candidate;
-    }
-    const metadata = { ...candidate["__openclaw"] };
-    if (candidate.content !== replacementText) {
-      delete metadata.humanMentions;
-      delete metadata.workContext;
-    }
-    const next = { ...candidate, content: replacementText };
-    delete next["__openclaw"];
-    return Object.keys(metadata).length > 0 ? { ...next, __openclaw: metadata } : next;
+  // Projections live in the metadata sibling to keep this recorder under its line cap.
+  const projectRequesterOrigin = <T extends PersistedUserTurnMessage | undefined>(candidate: T) =>
+    projectPersistedUserTurnRequesterOrigin(candidate, requesterOrigin);
+
+  const adoptPendingInput = (receipt: NonNullable<typeof pendingInput>) => {
+    pendingInput = receipt;
+    requesterOrigin = readSessionPendingInputRequesterOrigin(receipt);
+    message = projectRequesterOrigin(receipt.message);
+    resolvedMessagePromise = Promise.resolve(message);
   };
 
   const applyMessageOverrides = (candidate: PersistedUserTurnMessage | undefined) => {
+    const replaced = applyPersistedUserTurnReplacementText(candidate, replacementText);
     const next = rewritePersistedSteerTargetRunId(
-      deliveryAcks.apply(applyReplacementText(candidate)),
+      projectRequesterOrigin(deliveryAcks.apply(replaced)),
       confirmedSteerTargetRunId,
     );
     // Native mirrors must reuse this admission even when no transport supplied a key.
@@ -186,10 +187,16 @@ export function createUserTurnTranscriptRecorder(
       resolvedMessagePromise = (async () => {
         try {
           const resolvedInput = await params.resolveInput?.();
+          if (!requesterOrigin && resolvedInput?.requesterOrigin) {
+            requesterOrigin = captureRequesterOrigin({
+              requesterOrigin: resolvedInput.requesterOrigin,
+            });
+          }
+          const input = resolvedInput ?? params.input;
           const resolvedMessage =
             resolvePersistedUserTurnMessage({
               message: params.message,
-              input: resolvedInput ?? params.input,
+              input: input ? { ...input, requesterOrigin } : undefined,
             }) ?? message;
           return applyMessageOverrides(resolvedMessage);
         } catch (error) {
@@ -212,8 +219,7 @@ export function createUserTurnTranscriptRecorder(
       }
       pendingInput = bindSessionPendingInputSources(sources, resolved);
       if (pendingInput) {
-        message = pendingInput.message;
-        resolvedMessagePromise = Promise.resolve(message);
+        adoptPendingInput(pendingInput);
       }
     }
     return pendingInput?.message ?? resolved;
@@ -282,9 +288,7 @@ export function createUserTurnTranscriptRecorder(
       "logicalTurnId" in receipt ? receipt : { ...receipt, logicalTurnId, role: "user" };
     admissionReceipt = admission;
     admittedMessage = persistedMessage;
-    const run = async () => {
-      await admissionHandler?.(admission);
-    };
+    const run = async () => admissionHandler?.(admission);
     // Runtime writes must queue behind the transcript writer instead of reentering it.
     admissionWrite = detached ? runInDetachedAsyncContext(run) : run();
     // The turn owner awaits this write; an early rejection must not be unobserved.
@@ -314,6 +318,31 @@ export function createUserTurnTranscriptRecorder(
     }
     // A failed durable admission reaches the turn owner before provider dispatch.
     await admissionWrite;
+  };
+
+  const prepareProjectionParams = async (text: string, assertCurrent: () => void) => {
+    await waitForRuntimePersistence();
+    if (!admissionReceipt && selfPersistencePromise) {
+      await selfPersistencePromise;
+    }
+    assertCurrent();
+    const admission = admissionReceipt;
+    if (blocked || !admission || !admittedMessage) {
+      throw new Error("Model prompt projection requires a live, persisted user turn");
+    }
+    return {
+      admission,
+      message: admittedMessage,
+      text,
+      assertCurrent,
+      assertWritable: () => {
+        assertCurrent();
+        if (blocked || sentToProvider) {
+          throw new Error("Model prompt projection must be captured before provider dispatch");
+        }
+      },
+      onCommitted: refreshAdmission,
+    };
   };
 
   let inputActorBinding: SessionInputActorBinding | undefined;
@@ -392,21 +421,27 @@ export function createUserTurnTranscriptRecorder(
         candidate: PersistedUserTurnMessage,
         candidateUpdateMode: UserTurnTranscriptUpdateMode,
       ) => {
+        const assertOriginalInput =
+          candidate.idempotencyKey === message?.idempotencyKey
+            ? recorder.assertOriginalInputCommit
+            : undefined;
         const persist = () =>
-          persistUserTurnTranscript({
+          persistUserTurnInput(recorder, {
             ...resolvedTarget,
             logicalTurnId,
-            message: candidate,
+            message: projectRequesterOrigin(candidate),
             sessionTurnMutation: params.sessionTurnMutation,
             expectedSessionId: options.expectedSessionId || resolvedTarget.expectedSessionId,
             sessionLifecyclePatch: options.sessionLifecyclePatch ?? params.sessionLifecyclePatch,
             expectedSessionState: options.expectedSessionState ?? params.expectedSessionState,
             updateMode: candidateUpdateMode,
             beforeMessageWrite: params.beforeMessageWrite ?? resolvedTarget.beforeMessageWrite,
-            beforeFreshMessageCommit:
-              candidate.idempotencyKey === message?.idempotencyKey
-                ? recorder.assertOriginalInputCommit
-                : undefined,
+            beforeFreshMessageCommit: options.beforeFreshMessageCommit
+              ? composeSessionSourceAssertion([
+                  options.beforeFreshMessageCommit,
+                  assertOriginalInput,
+                ])
+              : assertOriginalInput,
             onOriginalInputCommitted: notifyOriginalInputCommitted,
             onCommitted: (committed, acceptCompletion) => {
               committedInput = committed;
@@ -423,8 +458,11 @@ export function createUserTurnTranscriptRecorder(
               notifyMessagePersisted(committed.message);
             },
           });
-        // Collection can resolve its media lazily during admission. Bind custody
-        // here too so the canonical append always consumes the exact sources.
+        // Queued input prepares current custody before its worker transaction;
+        // consumed input can still mirror its committed bytes after custody closes.
+        if (pendingInput?.state === "queued" && pendingInput.runAsync) {
+          return await pendingInput.runAsync(persist);
+        }
         return await (pendingInput
           ? withSessionPendingInputPersistence(pendingInput, persist)
           : persist());
@@ -449,9 +487,7 @@ export function createUserTurnTranscriptRecorder(
           }
         }
         const appendedMedia = await persistMessage(lateMediaMessage, "none");
-        if (appendedMedia) {
-          persistedResult = appendedMedia;
-        }
+        persistedResult = appendedMedia ?? persistedResult;
         return appendedMedia;
       }
       if (runtimePersisted) {
@@ -485,17 +521,34 @@ export function createUserTurnTranscriptRecorder(
       throw error;
     }
   };
-  const persistPrepared = (options: Parameters<typeof persistPreparedWithoutActor>[0]) =>
-    withSessionInputActor(inputActorBinding, () => persistPreparedWithoutActor(options));
+  const persistPrepared = (options: Parameters<typeof persistPreparedWithoutActor>[0]) => {
+    const persist = () =>
+      withSessionInputActor(inputActorBinding, () => persistPreparedWithoutActor(options));
+    const guard: SessionSourceAssertion | undefined = params.sessionTurnMutation?.assertCurrent;
+    if (!guard?.prepareSessionSourceScope || (!options.message && persistedResult)) {
+      return persist();
+    }
+    // Goal admission may enter a worker-owned database runtime. Prepare sharing
+    // predicates before that boundary, rather than recursively reading its writer.
+    const source = Object.assign(() => guard(), {
+      async prepareSessionSourceScope() {
+        const prepared = await prepareSessionSourceAuthority(guard);
+        return { ...prepared, scopedSources: new Map([[guard, prepared]]) };
+      },
+    });
+    return runWithSessionSourceScope(source, persist);
+  };
   const recorder: UserTurnTranscriptRecorder = {
     get message() {
       return message;
     },
-    resolveMessage: resolveMessageForPersistence,
+    // Runtime replay consumes the committed hook decision; persistence still resolves late media.
+    resolveMessage: async () =>
+      recorder.getPersistedMessage?.() ?? (await resolveMessageForPersistence()),
     assertOriginalInputCommit: params.assertOriginalInputCommit
       ? createDynamicSessionSourceAssertion(
           () =>
-            !blocked && !persistedResult && !runtimePersisted && !pendingInput
+            !blocked && !persistedResult && !runtimePersisted && !pendingInput && !sentToProvider
               ? params.assertOriginalInputCommit
               : undefined,
           () => {
@@ -507,38 +560,32 @@ export function createUserTurnTranscriptRecorder(
       withSessionInputActor(inputActorBinding, () => {
         staging ??= (async () => {
           const candidate = await resolveMessageForPersistence();
+          if (pendingInput) {
+            return pendingInput.state !== "consumed";
+          }
           const target = await resolveUserTurnTranscriptTarget(params.target);
           if (!candidate || !target || persistedResult || runtimePersisted) {
             return false;
           }
-          const config = target.config as SessionTranscriptTurnPersistOptions["config"];
-          const runtimeTarget = await resolveSessionTranscriptRuntimeTarget(target, config);
-          pendingInput = await stageSessionPendingInput(
-            { ...target, ...runtimeTarget },
-            {
-              ...options,
-              requestFingerprint: params.pendingInputRequestFingerprint,
-              trackCompletion: params.trackInputCompletion,
-              replaySourceSessionKeys: params.pendingInputReplaySourceSessionKeys,
-              message: candidate,
-              config,
-              onCommitted: (receipt) => {
-                pendingInput = receipt;
-                message = receipt.message;
-                resolvedMessagePromise = Promise.resolve(message);
-              },
-              prepareMessageAfterIdempotencyCheck: (next) =>
-                preparePersistedUserTurnMessageForTranscriptWrite(next, {
-                  ...target,
-                  beforeMessageWrite: params.beforeMessageWrite ?? target.beforeMessageWrite,
-                }),
-            },
-          );
+          pendingInput = await stageUserTurnPendingInput(recorder, target, {
+            ...options,
+            requestFingerprint: params.pendingInputRequestFingerprint,
+            trackCompletion: params.trackInputCompletion,
+            retryInterrupted:
+              options.retryInterrupted || params.sessionTurnMutation?.kind === "goal",
+            replaySourceSessionKeys: params.pendingInputReplaySourceSessionKeys,
+            message: projectRequesterOrigin(candidate),
+            onCommitted: adoptPendingInput,
+            prepareMessageAfterIdempotencyCheck: (next) =>
+              preparePersistedUserTurnMessageForTranscriptWrite(projectRequesterOrigin(next), {
+                ...target,
+                beforeMessageWrite: params.beforeMessageWrite ?? target.beforeMessageWrite,
+              }),
+          });
           if (!pendingInput) {
             return false;
           }
-          message = pendingInput.message;
-          resolvedMessagePromise = Promise.resolve(message);
+          adoptPendingInput(pendingInput);
           return pendingInput.state !== "consumed";
         })();
         return staging;
@@ -595,34 +642,10 @@ export function createUserTurnTranscriptRecorder(
     },
     getPersistedMessage: () =>
       admittedMessage ?? runtimePersistedMessage ?? persistedResult?.message,
-    captureModelPromptProjection: async (text, assertCurrent) => {
-      assertCurrent();
-      await waitForRuntimePersistence();
-      assertCurrent();
-      if (!admissionReceipt && selfPersistencePromise) {
-        await selfPersistencePromise;
-        assertCurrent();
-      }
-      resolvedPersistenceTarget ??= await resolveUserTurnTranscriptTarget(params.target);
-      assertCurrent();
-      const admission = admissionReceipt;
-      if (blocked || !admission || !admittedMessage) {
-        throw new Error("Model prompt projection requires a live, persisted user turn");
-      }
-      return await capturePersistedModelPromptProjection({
-        admission,
-        message: admittedMessage,
-        text,
-        assertCurrent,
-        assertWritable: () => {
-          assertCurrent();
-          if (blocked || sentToProvider) {
-            throw new Error("Model prompt projection must be captured before provider dispatch");
-          }
-        },
-        onCommitted: refreshAdmission,
-      });
-    },
+    captureModelPromptProjection: async (text, assertCurrent) =>
+      capturePersistedModelPromptProjection(await prepareProjectionParams(text, assertCurrent)),
+    prepareModelPromptProjection: async (text, assertCurrent) =>
+      preparePersistedModelPromptProjection(await prepareProjectionParams(text, assertCurrent)),
     getAdmissionReceipt: () => admissionReceipt,
     setAdmissionHandler: (handler) => {
       admissionHandler = handler;
@@ -662,37 +685,24 @@ export function createUserTurnTranscriptRecorder(
     waitForRuntimePersistence,
     persistApproved: async (options) =>
       await persistPrepared({
+        ...options,
         waitForRuntime: false,
         skipWhenBlocked: true,
-        target: options?.target,
-        storageTarget: options?.storageTarget,
-        updateMode: options?.updateMode,
-        cwd: options?.cwd,
-        expectedSessionId: options?.expectedSessionId,
-        expectedSessionState: options?.expectedSessionState,
-        sessionLifecyclePatch: options?.sessionLifecyclePatch,
-        retryIfUnpersisted: options?.retryIfUnpersisted,
       }),
     persistBlocked: async (blockedMessage, options) => {
       blocked = true;
       return await persistPrepared({
+        ...options,
         waitForRuntime: false,
         skipWhenBlocked: false,
         message: blockedMessage,
-        target: options?.target,
-        storageTarget: options?.storageTarget,
-        updateMode: options?.updateMode,
-        cwd: options?.cwd,
       });
     },
     persistFallback: async (options) =>
       await persistPrepared({
+        ...options,
         waitForRuntime: true,
         skipWhenBlocked: true,
-        target: options?.target,
-        storageTarget: options?.storageTarget,
-        updateMode: options?.updateMode,
-        cwd: options?.cwd,
       }),
   };
   originalInputCommitNotifiers.set(recorder, (anchor) => {
@@ -705,6 +715,8 @@ export function createUserTurnTranscriptRecorder(
     inputActorBinding = binding;
   });
   registerUserTurnTranscriptAdmissionOwner(recorder, {
+    requesterOrigin: () =>
+      pendingInput ? readSessionPendingInputRequesterOrigin(pendingInput) : requesterOrigin,
     pendingInput: () => pendingInput,
     withdrawnInputId: () => readWithdrawnSessionPendingInputId(pendingInput),
     receipt: () => admissionReceipt,

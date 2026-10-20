@@ -4,9 +4,9 @@
 // state worker. Each operation validates every precondition before its first
 // write, so a refusal commits nothing and a thrown write rolls the whole
 // transaction back.
-import type { DatabaseSync } from "node:sqlite";
 import { executeSqliteQuerySync } from "../../../infra/kysely-sync.js";
-import type { SqliteWorkerCommand } from "../../../infra/sqlite-worker-contract.js";
+import type { EngineConnection } from "../../../infra/sql-connection.js";
+import { createSqliteSchemaEnsurer } from "../../../infra/sqlite-schema-ensure.js";
 import { requestSqliteWorkerOperationAdmission } from "../../../infra/sqlite-worker-operation-admission.js";
 import {
   formatContinuationChildRunId,
@@ -14,11 +14,9 @@ import {
 } from "../../../shared/continuation-run-key.js";
 import type { OpenClawStateDatabase } from "../../../state/openclaw-state-db-contract.js";
 import { tableExists } from "../../../state/openclaw-state-db-schema-helpers.js";
-import {
-  runOpenClawStateWriteTransaction,
-  type OpenClawStateDatabaseOptions,
-} from "../../../state/openclaw-state-db.js";
-import { createOpenClawStateSchemaEnsurer } from "../../../state/openclaw-state-feature-schema.js";
+import { runOpenClawStateWriteTransaction } from "../../../state/openclaw-state-db.js";
+import { getOpenClawStateFeatureSchemaSql } from "../../../state/openclaw-state-feature-schema.js";
+import type { WorkerOperationContext } from "../../../state/worker-operation-registry.js";
 import { CONTINUATION_SPAWN_FAILURE_PHASES } from "./custody-record-codec.js";
 import {
   CONTINUATION_RECORDS_TABLE,
@@ -59,18 +57,21 @@ import {
  * Creates the canonical first-use table and indexes once per database handle,
  * before the first custody write transaction. Reads never create it.
  */
-export const ensureContinuationCustodySchema = createOpenClawStateSchemaEnsurer({
-  table: CONTINUATION_RECORDS_TABLE,
-  endMarker: "  ON continuation_records(status, kind, due_at);\n",
-  operationLabel: "continuation.custody.schema.ensure",
-});
+export const ensureContinuationCustodySchema = createSqliteSchemaEnsurer(
+  () =>
+    getOpenClawStateFeatureSchemaSql(CONTINUATION_RECORDS_TABLE, {
+      endMarker: "  ON continuation_records(status, kind, due_at);\n",
+      errorMessage: "Canonical state schema markers are missing for continuation_records",
+    }),
+  { tables: [CONTINUATION_RECORDS_TABLE] },
+);
 
 /**
  * FIFO list in `(created_at, record_id)` order. The first-use table may be
  * absent on reads; presence comes from the handle's admitted schema facts.
  */
 export function listContinuationRecordsInDatabase(
-  db: DatabaseSync,
+  db: EngineConnection,
   query: ContinuationRecordQuery,
 ): ContinuationRecord[] {
   return tableExists(db, CONTINUATION_RECORDS_TABLE) ? selectRecords(db, query) : [];
@@ -78,7 +79,7 @@ export function listContinuationRecordsInDatabase(
 
 /** Durable create keyed by owner and kind; an existing record ID is never overwritten. */
 export function createContinuationRecordInDatabase(
-  db: DatabaseSync,
+  db: EngineConnection,
   input: NewContinuationRecord,
 ): ContinuationCreateResult {
   const invalid = validateNewRecord(input);
@@ -103,7 +104,7 @@ export function createContinuationRecordInDatabase(
  * this is the rollback write: no owner condition, only exact revisions.
  */
 export function updateContinuationRecordsInDatabase(
-  db: DatabaseSync,
+  db: EngineConnection,
   updates: readonly ContinuationRecordUpdate[],
   now: number,
 ): ContinuationUpdateResult {
@@ -147,7 +148,7 @@ export function updateContinuationRecordsInDatabase(
  * of it. Chain identity is not part of the condition (Q5).
  */
 export function electContinuationWorkInDatabase(
-  db: DatabaseSync,
+  db: EngineConnection,
   election: ContinuationElection,
 ): ContinuationElectionResult {
   const { create, ownerSessionKey } = election;
@@ -236,7 +237,7 @@ export function electContinuationWorkInDatabase(
  * never reused, and the child run ID comes only from the shared run-key formatter.
  */
 export function claimContinuationSpawnAttemptInDatabase(
-  db: DatabaseSync,
+  db: EngineConnection,
   input: { recordId: string; expectedRevision: number; now: number },
 ): ContinuationClaimResult {
   const current = readRecord(db, input.recordId);
@@ -279,7 +280,7 @@ export function claimContinuationSpawnAttemptInDatabase(
 
 /** Record the phase in which the latest spawn attempt failed, with an optional CAS patch. */
 export function recordContinuationSpawnAttemptFailureInDatabase(
-  db: DatabaseSync,
+  db: EngineConnection,
   input: ContinuationAttemptFailureInput,
   now: number,
 ): ContinuationUpdateResult {
@@ -324,7 +325,7 @@ export function recordContinuationSpawnAttemptFailureInDatabase(
  * for a create that reopens the custody the handoff moved away.
  */
 export function deleteContinuationRecordInDatabase(
-  db: DatabaseSync,
+  db: EngineConnection,
   input: { recordId: string; expectedRevision: number },
 ): ContinuationDeleteResult {
   const current = readRecord(db, input.recordId);
@@ -361,7 +362,7 @@ export function deleteContinuationRecordInDatabase(
 
 /** Retention: terminal records end after the cutoff unless a notice obligation is pending. */
 export function pruneContinuationRecordsInDatabase(
-  db: DatabaseSync,
+  db: EngineConnection,
   input: { endedBefore: number },
 ): ContinuationPruneResult {
   if (!tableExists(db, CONTINUATION_RECORDS_TABLE)) {
@@ -379,63 +380,84 @@ export function pruneContinuationRecordsInDatabase(
   return { deletedRecordIds: deleted.map((row) => row.record_id).toSorted() };
 }
 
-export function isContinuationCustodyCommand(command: {
-  type: string;
-}): command is SqliteWorkerCommand<ContinuationCustodyWorkerOperations> {
-  return command.type.startsWith("continuationCustody.");
-}
-
 /** Commands that read or delete only, so they never create the first-use table. */
 const SCHEMALESS_COMMANDS: ReadonlySet<keyof ContinuationCustodyWorkerOperations> = new Set<
   keyof ContinuationCustodyWorkerOperations
 >(["continuationCustody.list", "continuationCustody.prune", "continuationCustody.readBootFacts"]);
 
+type ContinuationCustodyOperationHandlers = {
+  [Type in keyof ContinuationCustodyWorkerOperations]: (
+    input: ContinuationCustodyWorkerOperations[Type]["input"],
+    context: WorkerOperationContext,
+  ) => ContinuationCustodyWorkerOperations[Type]["output"];
+};
+
 /** One custody command is one state write transaction in the shared state worker. */
-export function executeContinuationCustodyCommand(
-  command: SqliteWorkerCommand<ContinuationCustodyWorkerOperations>,
-  databaseOptions: OpenClawStateDatabaseOptions,
-): ContinuationCustodyWorkerOperations[keyof ContinuationCustodyWorkerOperations]["output"] {
-  if (!SCHEMALESS_COMMANDS.has(command.type)) {
-    ensureContinuationCustodySchema(databaseOptions);
-  }
-  return runOpenClawStateWriteTransaction((database) => {
-    requestSqliteWorkerOperationAdmission({ stage: "transaction", facts: undefined });
-    const result = executeInTransaction(database, command);
-    requestSqliteWorkerOperationAdmission({ stage: "commit", facts: undefined });
-    return result;
-  }, databaseOptions);
+function runCustodyCommand<Result>(
+  type: keyof ContinuationCustodyWorkerOperations,
+  { open, stateOptions }: WorkerOperationContext,
+  apply: (database: OpenClawStateDatabase) => Result,
+): Result {
+  return runOpenClawStateWriteTransaction(
+    (database) => {
+      if (!SCHEMALESS_COMMANDS.has(type)) {
+        ensureContinuationCustodySchema(database.db);
+      }
+      requestSqliteWorkerOperationAdmission({ stage: "transaction", facts: undefined });
+      const result = apply(database);
+      requestSqliteWorkerOperationAdmission({ stage: "commit", facts: undefined });
+      return result;
+    },
+    { database: open(), ...stateOptions() },
+  );
 }
 
-function executeInTransaction(
-  database: OpenClawStateDatabase,
-  command: SqliteWorkerCommand<ContinuationCustodyWorkerOperations>,
-): ContinuationCustodyWorkerOperations[keyof ContinuationCustodyWorkerOperations]["output"] {
-  const { db } = database;
-  switch (command.type) {
-    case "continuationCustody.create":
-      return createContinuationRecordInDatabase(db, command.input.record);
-    case "continuationCustody.update":
-      return updateContinuationRecordsInDatabase(db, command.input.updates, command.input.now);
-    case "continuationCustody.elect":
-      return electContinuationWorkInDatabase(db, command.input);
-    case "continuationCustody.claimSpawnAttempt":
-      return claimContinuationSpawnAttemptInDatabase(db, command.input);
-    case "continuationCustody.recordSpawnAttemptFailure":
-      return recordContinuationSpawnAttemptFailureInDatabase(db, command.input, command.input.now);
-    case "continuationCustody.delete":
-      return deleteContinuationRecordInDatabase(db, command.input);
-    case "continuationCustody.prune":
-      return pruneContinuationRecordsInDatabase(db, command.input);
-    case "continuationCustody.settleNotice":
-      return settleContinuationNoticeInDatabase(database, command.input);
-    case "continuationCustody.releasePostCompaction":
-      return releaseContinuationPostCompactionInDatabase(database, command.input);
-    case "continuationCustody.list":
-      // Recovery and projection hydration read inside the write FIFO so they
-      // observe every earlier committed custody write.
-      return listContinuationRecordsInDatabase(db, command.input);
-    case "continuationCustody.readBootFacts":
-      return { live: listContinuationRecordsInDatabase(db, { statuses: ["queued", "running"] }) };
-  }
-  throw new Error("Unknown continuation custody command");
-}
+/** The shared-state worker's `continuationCustody` domain (openclaw-state-worker-registry.ts). */
+export const continuationCustodyOperations: ContinuationCustodyOperationHandlers = {
+  "continuationCustody.create": (input, context) =>
+    runCustodyCommand("continuationCustody.create", context, ({ db }) =>
+      createContinuationRecordInDatabase(db, input.record),
+    ),
+  "continuationCustody.update": (input, context) =>
+    runCustodyCommand("continuationCustody.update", context, ({ db }) =>
+      updateContinuationRecordsInDatabase(db, input.updates, input.now),
+    ),
+  "continuationCustody.elect": (input, context) =>
+    runCustodyCommand("continuationCustody.elect", context, ({ db }) =>
+      electContinuationWorkInDatabase(db, input),
+    ),
+  "continuationCustody.claimSpawnAttempt": (input, context) =>
+    runCustodyCommand("continuationCustody.claimSpawnAttempt", context, ({ db }) =>
+      claimContinuationSpawnAttemptInDatabase(db, input),
+    ),
+  "continuationCustody.recordSpawnAttemptFailure": (input, context) =>
+    runCustodyCommand("continuationCustody.recordSpawnAttemptFailure", context, ({ db }) =>
+      recordContinuationSpawnAttemptFailureInDatabase(db, input, input.now),
+    ),
+  "continuationCustody.delete": (input, context) =>
+    runCustodyCommand("continuationCustody.delete", context, ({ db }) =>
+      deleteContinuationRecordInDatabase(db, input),
+    ),
+  "continuationCustody.prune": (input, context) =>
+    runCustodyCommand("continuationCustody.prune", context, ({ db }) =>
+      pruneContinuationRecordsInDatabase(db, input),
+    ),
+  "continuationCustody.settleNotice": (input, context) =>
+    runCustodyCommand("continuationCustody.settleNotice", context, (database) =>
+      settleContinuationNoticeInDatabase(database, input),
+    ),
+  "continuationCustody.releasePostCompaction": (input, context) =>
+    runCustodyCommand("continuationCustody.releasePostCompaction", context, (database) =>
+      releaseContinuationPostCompactionInDatabase(database, input),
+    ),
+  // Recovery and projection hydration read inside the write FIFO so they
+  // observe every earlier committed custody write.
+  "continuationCustody.list": (input, context) =>
+    runCustodyCommand("continuationCustody.list", context, ({ db }) =>
+      listContinuationRecordsInDatabase(db, input),
+    ),
+  "continuationCustody.readBootFacts": (_input, context) =>
+    runCustodyCommand("continuationCustody.readBootFacts", context, ({ db }) => ({
+      live: listContinuationRecordsInDatabase(db, { statuses: ["queued", "running"] }),
+    })),
+};

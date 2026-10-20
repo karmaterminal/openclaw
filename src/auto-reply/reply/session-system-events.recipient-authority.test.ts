@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import * as sessionAccessor from "../../config/sessions/session-accessor.js";
 import { advanceSessionRecipientAuthorityInTransaction } from "../../config/sessions/session-accessor.sqlite-recipient-authority.js";
 import {
@@ -107,6 +108,7 @@ describe("recipient authority prompt-adoption fence", () => {
     async (invalidation) => {
       await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
         vi.stubEnv("OPENCLAW_STATE_DIR", state.env.OPENCLAW_STATE_DIR);
+        await captureRuntimeConfigAsyncReader()();
         const sessionKey = `agent:main:transcript-race-${invalidation.replaceAll(" ", "-")}`;
         const scope = { agentId: "main", env: state.env, sessionKey };
         await sessionAccessor.upsertSessionEntryCore(scope, {
@@ -187,6 +189,7 @@ describe("recipient authority prompt-adoption fence", () => {
     async (invalidation) => {
       await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
         vi.stubEnv("OPENCLAW_STATE_DIR", state.env.OPENCLAW_STATE_DIR);
+        await captureRuntimeConfigAsyncReader()();
         const sessionKey = `agent:main:early-fence-${invalidation.replaceAll(" ", "-")}`;
         const scope = { agentId: "main", env: state.env, sessionKey };
         await sessionAccessor.upsertSessionEntryCore(scope, {
@@ -240,6 +243,7 @@ describe("recipient authority prompt-adoption fence", () => {
     async (invalidation) => {
       await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
         vi.stubEnv("OPENCLAW_STATE_DIR", state.env.OPENCLAW_STATE_DIR);
+        await captureRuntimeConfigAsyncReader()();
         const sessionKey = `agent:main:final-fence-${invalidation.replaceAll(" ", "-")}`;
         const scope = { agentId: "main", env: state.env, sessionKey };
         await sessionAccessor.upsertSessionEntryCore(scope, {
@@ -307,6 +311,7 @@ describe("recipient authority prompt-adoption fence", () => {
   it("keeps route and current-session authority scoped to their own prepared batches", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       vi.stubEnv("OPENCLAW_STATE_DIR", state.env.OPENCLAW_STATE_DIR);
+      await captureRuntimeConfigAsyncReader()();
       const prepareBatch = async (agentId: string, sessionKey: string) => {
         const scope = { agentId, env: state.env, sessionKey };
         await sessionAccessor.upsertSessionEntryCore(scope, {

@@ -154,6 +154,10 @@ async function processPendingSessionDelivery(opts: {
     result = "recovered";
   } catch (err) {
     if (err instanceof SessionDeliveryDeadLetteredError) {
+      // Terminal receipts retain no error, and settlement can fail; record the decision first.
+      context.log.warn(
+        `${context.logLabel}: dead-letter decision for entry ${entry.id}: ${formatErrorMessage(err)}`,
+      );
       try {
         await markSessionDeliverySettlement(entry, "moved-to-failed", context.queueContext);
       } catch (markError) {
@@ -198,6 +202,7 @@ async function processPendingSessionDelivery(opts: {
   return { status: result, finalized };
 }
 
+// Shared by the exact drain and the continuation family drain below, so it stays a helper.
 async function processDrainedSessionDelivery(
   entry: QueuedSessionDelivery,
   context: SessionDeliveryDrainContext,
@@ -214,6 +219,10 @@ async function processDrainedSessionDelivery(
   if (result.status === "max-retries" && result.finalized) {
     context.log.warn(
       `${context.logLabel}: entry ${entry.id} exceeded max retries and was moved to failed`,
+    );
+  } else if (result.status === "moved-to-failed" && result.finalized) {
+    context.log.warn(
+      `${context.logLabel}: entry ${entry.id} was dead-lettered and moved to failed`,
     );
   } else if (result.status === "backoff") {
     context.log.info(
@@ -316,9 +325,9 @@ export async function recoverPendingSessionDeliveries(opts: {
     }
     return "continue" as const;
   };
-  const onFailed = (_failedEntry: QueuedSessionDelivery, errMsg: string) => {
+  const onFailed = (failedEntry: QueuedSessionDelivery, errMsg: string) => {
     summary.failed += 1;
-    opts.log.warn(`Session delivery retry failed: ${errMsg}`);
+    opts.log.warn(`Session delivery retry failed for entry ${failedEntry.id}: ${errMsg}`);
   };
   await recoveryCoordinator.scan({
     entries: pending,
@@ -349,6 +358,11 @@ export async function recoverPendingSessionDeliveries(opts: {
       if (result.status === "recovered" && result.finalized) {
         summary.recovered += 1;
         opts.log.info(`Recovered session delivery ${currentEntry.id}`);
+      } else if (result.status === "moved-to-failed" && result.finalized) {
+        summary.failed += 1;
+        opts.log.warn(
+          `Session delivery: entry ${currentEntry.id} was dead-lettered and moved to failed`,
+        );
       }
       return "continue";
     },

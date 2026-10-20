@@ -5,6 +5,8 @@
 import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
+import { captureRuntimeConfigAsyncReader } from "../../../config/io.runtime.js";
+import { clearRuntimeConfigSnapshot } from "../../../config/runtime-snapshot.js";
 import {
   closeOpenClawStateDatabaseAsync,
   closeOpenClawStateDatabaseByPathAsync,
@@ -118,17 +120,19 @@ vi.mock("../../../state/openclaw-state-worker-store.js", async (importOriginal) 
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
   afterEach(async () => {
     resetContinuationCustodyProjection();
+    clearRuntimeConfigSnapshot();
     await closeOpenClawStateDatabaseAsync();
     vi.unstubAllEnvs();
     cleanup();
   }),
 );
 
-beforeEach(() => {
+beforeEach(async () => {
   arrivals.reset();
   // Deliberately no hydration: each test starts as a Gateway that has not
-  // run custody boot yet.
+  // run custody boot yet, but has published its runtime config.
   vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("openclaw-continuation-readiness-"));
+  await captureRuntimeConfigAsyncReader()();
   bootReadControl.calls = 0;
   bootReadControl.throwNext = false;
   bootReadControl.pauseNext = undefined;

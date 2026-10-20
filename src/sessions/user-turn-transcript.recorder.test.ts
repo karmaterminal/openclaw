@@ -3,8 +3,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { castAgentMessage } from "openclaw/plugin-sdk/test-fixtures";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { formatSqliteSessionFileMarker } from "../config/sessions/legacy-sqlite-marker.js";
 import {
   loadTranscriptEvents,
@@ -19,6 +23,10 @@ import {
 import { persistUserTurnTranscript } from "./user-turn-transcript.test-support.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+// Transcript targets read the published runtime config (#169714); upstream's
+// user-turn-transcript.test.ts seeds the same empty config (2dc1dad964).
+beforeEach(() => setRuntimeConfigSnapshot({}));
+afterEach(() => clearRuntimeConfigSnapshot());
 const unusedRecorderTarget = {
   agentId: "main",
   sessionEntry: undefined,

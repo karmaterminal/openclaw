@@ -227,7 +227,6 @@ vi.mock("../../agents/embedded-agent-runner/runs.js", () => ({
 
 // mock-isolation: Scripted lane size, drain and idle waits replace the process-wide command queue.
 vi.mock("../../process/command-queue.js", () => ({
-  clearCommandLane: vi.fn(),
   getQueueSize: () => mainQueueSize,
   isGatewayDraining: () => gatewayDraining,
   waitForCommandLaneIdle: async (

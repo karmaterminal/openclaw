@@ -1,8 +1,6 @@
-// Queued-launch helpers split from the launch manager for its line budget: the swarm
-// wait-owner walk and the queued -> running start-transition plan.
+// Queued-launch helper split from the launch manager for its line budget: the
+// queued -> running start-transition plan.
 import { isAgentEventLifecycleGenerationCurrent } from "../../../infra/agent-events.js";
-import { parseAgentSessionKey } from "../../../routing/session-key.js";
-import { matchesSubagentChildSessionOwner } from "./subagent-child-owner-match.js";
 import {
   SubagentRegistryMutationRejectedError,
   waitForPendingSubagentKillClaim,
@@ -12,39 +10,7 @@ import {
   bindSubagentRunRuntimeKey,
   getSubagentRunRuntimeKey,
   isSameSubagentRunOwner,
-  latestSubagentRun,
 } from "./subagent-run-generation.js";
-
-export function resolveSwarmWaitOwnerSessionKeys(
-  getRunsForChildSession: (
-    childSessionKey: string,
-    childAgentId?: string,
-  ) => Iterable<SubagentRunRecord>,
-  requesterSessionKey: string,
-  requesterAgentId?: string,
-): string[] {
-  const ownerSessionKeys: string[] = [];
-  const visited: Array<{ childSessionKey: string; childAgentId?: string }> = [];
-  let currentSessionKey = requesterSessionKey.trim();
-  let currentAgentId = requesterAgentId;
-  while (
-    currentSessionKey &&
-    !visited.some((entry) =>
-      matchesSubagentChildSessionOwner(entry, currentSessionKey, currentAgentId),
-    )
-  ) {
-    visited.push({ childSessionKey: currentSessionKey, childAgentId: currentAgentId });
-    ownerSessionKeys.push(currentSessionKey);
-    const latestOwner = latestSubagentRun(
-      getRunsForChildSession(currentSessionKey, currentAgentId),
-    );
-    currentSessionKey =
-      latestOwner?.controllerSessionKey?.trim() || latestOwner?.requesterSessionKey.trim() || "";
-    currentAgentId =
-      parseAgentSessionKey(currentSessionKey)?.agentId ?? latestOwner?.requesterAgentId;
-  }
-  return ownerSessionKeys;
-}
 
 /** Plans the queued -> running start transition, which also disarms a dispatched launch marker. */
 export function planQueuedSubagentRunStart(
@@ -84,7 +50,7 @@ export function planQueuedSubagentRunStart(
       `collector gateway run id already exists: ${nextRunId}`,
     );
   }
-  const entry = structuredClone(current);
+  const entry = { ...current };
   entry.swarmRunId ??= current.runId;
   entry.schedulerSlotId ??= entry.swarmRunId;
   entry.runId = nextRunId;

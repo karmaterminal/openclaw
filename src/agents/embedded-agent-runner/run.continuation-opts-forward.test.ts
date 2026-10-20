@@ -42,11 +42,15 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
     ({ runEmbeddedAgent } = await loadRunOverflowCompactionHarness());
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     overflowBaseRunParams = createOverflowRunParams({
       workspaceDir: tempDirs.make("openclaw-continuation-opts-forward-"),
     });
     resetRunOverflowCompactionHarnessMocks();
+    // Session placement reads the published runtime config (#169714), as in
+    // upstream's run.session-permissions suite on the same harness.
+    const { setRuntimeConfigSnapshot } = await import("../../config/runtime-snapshot.js");
+    setRuntimeConfigSnapshot({});
     useOpenAIPlatformAuthFixture();
     resetContinueDelegateTurnBudgetMock.mockReset();
     mockedGlobalHookRunner.hasHooks.mockImplementation(() => false);

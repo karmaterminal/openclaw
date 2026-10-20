@@ -1571,8 +1571,11 @@ export default {
         const agentDir = path.join(fixture.stateDir, "agents", "main", "agent");
         const sqlitePath = path.join(agentDir, "openclaw-agent.sqlite");
         expect(await stat(sqlitePath).then((entry) => entry.isFile())).toBe(true);
+        await reloadSharedAuthStoreOwnership({
+          ...process.env,
+          OPENCLAW_STATE_DIR: fixture.stateDir,
+        });
         const store = withEnv({ OPENCLAW_STATE_DIR: fixture.stateDir }, () => {
-          reloadSharedAuthStoreOwnership();
           return loadAuthProfileStoreForRuntime(agentDir, {
             readOnly: true,
             syncExternalCli: false,
@@ -2357,8 +2360,7 @@ export default {
     "renders a non-deliverable direct reply failure through the real Gateway and TUI",
     async ({ onTestFinished }) => {
       const fixture = await startGatewayModeTui("emptyReply", onTestFinished);
-      const failureText =
-        "I finished the turn, but it did not produce a visible reply. Please try again, or start a new session if this keeps happening.";
+      const failureText = "No answer was returned. Ask again if you still need one.";
       const chatEvents: unknown[] = [];
       fixture.controlClient.onEvent = ({ event, payload }) => {
         if (event === "chat") {
@@ -2376,8 +2378,7 @@ export default {
 
         await waitFor({
           timeoutMs: LOCAL_OUTPUT_TIMEOUT_MS,
-          read: () =>
-            fixture.visibleOutput().includes("did not produce a visible reply") ? true : null,
+          read: () => (fixture.visibleOutput().includes(failureText) ? true : null),
           onTimeout: () =>
             new Error(
               `empty-reply fallback was not rendered\nchatEvents=${JSON.stringify(chatEvents)}\nrequests=${JSON.stringify(

@@ -177,7 +177,7 @@ beforeEach(() => {
   updateSessionStoreForRecoveryThrowOnRequiredWriteCall = undefined;
   resetGatewayWorkAdmission();
   vi.useFakeTimers();
-  clearRuntimeConfigSnapshot();
+  // The custody state already published this test's runtime config (#169714).
 });
 
 afterEach(() => {

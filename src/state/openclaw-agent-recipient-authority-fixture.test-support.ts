@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 import { removeCanonicalValidationFromHistoricalAgentFixture } from "./openclaw-agent-db.test-support.js";
-import { withLegacySessionParticipantsSchema } from "./openclaw-agent-participants-migration.js";
+import { withLegacySessionParticipantsSchema } from "./openclaw-agent-schema-history.js";
 import { restoreEmptyV21StorageForHistoricalFixture } from "./openclaw-agent-schema-v21.test-support.js";
 import { sessionParticipantsSchemaSql } from "./openclaw-agent-session-participants-schema.js";
 

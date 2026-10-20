@@ -1,18 +1,12 @@
 import type { SqliteCommitReceipt } from "../../infra/sqlite-commit-receipt.js";
 import type { SessionRowFacts } from "../../sessions/session-row-changes.js";
 import type { SessionAccessScope } from "./session-accessor.sqlite-contract.js";
+import type { SessionActorVersion } from "./session-actor-state.types.js";
 import type { SessionActor, SessionOwnerAssignment } from "./session-entry-provenance.js";
-import type { SessionMember } from "./session-membership-facts.types.js";
+import type { SessionMember, SessionParticipantRecord } from "./session-membership-facts.types.js";
 import type { SessionParticipantIdentity } from "./session-participant-identity.js";
 import type { SessionRecipientAuthority } from "./session-recipient-authority-types.js";
 import type { SessionEntry, SessionProfileInvolvement } from "./types.js";
-
-export type SessionCollaborationMutation = Exclude<
-  keyof SessionSharingWorkerOperations,
-  // Recipient-authority capture runs only on the sharing writer's dedicated owner,
-  // never through the inactive incognito actor.
-  "category.prepare" | "category.apply" | "involvement" | "authority.capture"
->;
 
 export type SessionSharingExpectedEntry = Pick<
   SessionEntry,
@@ -86,6 +80,8 @@ export type MembershipPublication = { facts?: Extract<SessionRowFacts, { kind: "
 type ParticipantPublication = {
   projectionChanged: boolean;
   participants: Pick<SessionEntry, "participants" | "participantCount">;
+  records?: SessionParticipantRecord[];
+  actorVersion?: SessionActorVersion;
 };
 
 export type SessionInvolvementMutation = {

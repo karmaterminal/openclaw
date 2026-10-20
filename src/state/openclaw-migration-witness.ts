@@ -12,12 +12,20 @@ import { parseSqliteTableDefinition } from "../infra/sqlite-schema-contract-asse
 import { runSqliteReadSnapshotSync } from "../infra/sqlite-transaction.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
 import { LEGACY_CANONICAL_VALIDATION_TRIGGER_NAMES } from "./openclaw-agent-canonical-validation-migration.js";
-import { OPENCLAW_AGENT_SCHEMA_VERSION } from "./openclaw-agent-db-contract.js";
+import {
+  AGENT_INDEX_RETIREMENT_SCHEMA_VERSION,
+  AGENT_MEMORY_REVISION_SCHEMA_VERSION,
+  AGENT_WRITE_LAYOUT_SCHEMA_VERSION,
+  MEDIA_ROWS_MIGRATION_META_KEY,
+  OPENCLAW_AGENT_SCHEMA_VERSION,
+} from "./openclaw-agent-db-contract.js";
 import {
   assertOpenClawAgentSchemaContains,
   readOpenClawAgentHistoricalSchema,
 } from "./openclaw-agent-db-schema-helpers.js";
 import { AGENT_JSON_PREDICATE_COLUMNS } from "./openclaw-agent-json-predicate-schema.js";
+import { LEGACY_MEMORY_REVISION_TRIGGER_NAMES } from "./openclaw-agent-memory-revision-migration.js";
+import { withoutOutboxEnqueueSequence } from "./openclaw-agent-outbox-sequence-migration.js";
 import { AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION } from "./openclaw-agent-recipient-authority-schema.js";
 import { OPENCLAW_STATE_SCHEMA_VERSION } from "./openclaw-state-db-contract.js";
 import { assertCurrentStateRuntimeSchema } from "./openclaw-state-db-fast-path.js";
@@ -59,11 +67,12 @@ const witnessSchema = z
 type OpenClawMigrationWitness = z.infer<typeof witnessSchema>;
 type OpenClawMigrationWitnessOwner = { role: "agent"; agentId: string } | { role: "global" };
 
-const predicateColumns = new Map<string, ReadonlySet<string>>(
-  Object.entries(AGENT_JSON_PREDICATE_COLUMNS).map(([table, columns]) => [
-    table,
-    new Set<string>(columns),
-  ]),
+const derivedMigrationColumns = new Map<string, ReadonlySet<string>>(
+  Object.entries({
+    ...AGENT_JSON_PREDICATE_COLUMNS,
+    session_windows: ["row_transcript_json", "row_transcript_updated_at"],
+    trajectory_runtime_events: ["event_utf8_bytes", "event_payload", "event_codec"],
+  }).map(([table, columns]) => [table, new Set<string>(columns)]),
 );
 
 function assertUnique(values: readonly string[]): void {
@@ -77,31 +86,24 @@ function parseOpenClawMigrationWitness(value: unknown): OpenClawMigrationWitness
   const witness = witnessSchema.parse(value);
   assertUnique(witness.tables.map((table) => table.name));
   for (const table of witness.tables) {
+    const isRegistryTable =
+      witness.role === "global" &&
+      witness.registryMigrationBinding &&
+      table.name === "agent_databases";
     assertUnique(table.columns);
     if (table.registryRows) {
       assertUnique(table.registryRows.map((row) => row.locator));
     }
-    if (
-      table.registryRows &&
-      !(
-        witness.role === "global" &&
-        witness.registryMigrationBinding &&
-        table.name === "agent_databases"
-      )
-    ) {
+    if (table.registryRows && !isRegistryTable) {
       throw new Error("Migration witness has unexpected registry observations");
     }
     if (
       !(
         witness.role === "agent" &&
-        (["schema_meta", "session_key_contract"].includes(table.name) ||
-          predicateColumns.has(table.name))
+        (["schema_meta", "session_key_contract", "memory_entry_origins"].includes(table.name) ||
+          derivedMigrationColumns.has(table.name))
       ) &&
-      !(
-        witness.role === "global" &&
-        witness.registryMigrationBinding &&
-        table.name === "agent_databases"
-      ) &&
+      !isRegistryTable &&
       table.sha256 !== table.migrationSha256
     ) {
       throw new Error("Migration witness has an unsupported content transformation");
@@ -139,10 +141,21 @@ function parseOpenClawMigrationWitness(value: unknown): OpenClawMigrationWitness
   return witness;
 }
 
-// Schemas 25, 26 and 27 change these derived facts only. persistAgentSchemaMetadata also
-// publishes the target app version and timestamp; payload and creation time stay exact.
+// Schemas 25 and 26 change these derived facts only, as does continuation's recipient-authority
+// step. persistAgentSchemaMetadata also publishes the target app version and timestamp; payload
+// and creation time stay exact.
 const RECIPIENT_AUTHORITY_TABLE = "session_recipient_authority";
-const AGENT_WITNESS_SCHEMA_VERSIONS = [24, 25, 26, AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION];
+const AGENT_WITNESS_SCHEMA_VERSIONS = [
+  24,
+  25,
+  26,
+  27,
+  28,
+  29,
+  30,
+  31,
+  AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+];
 
 function migrationColumn(role: OpenClawMigrationWitness["role"], table: string, column: string) {
   return !(
@@ -150,7 +163,7 @@ function migrationColumn(role: OpenClawMigrationWitness["role"], table: string, 
     ((table === "schema_meta" &&
       ["schema_version", "app_version", "updated_at"].includes(column)) ||
       (table === "session_key_contract" && column === "canonical_ready") ||
-      predicateColumns.get(table)?.has(column))
+      derivedMigrationColumns.get(table)?.has(column))
   );
 }
 
@@ -215,7 +228,11 @@ function captureTable(
   if (columns.length === 0 || columns.length > 256) {
     throw new Error(`Unsupported migration witness columns: ${table}`);
   }
-  const names = columns.map(({ name }) => name);
+  const outbox = role === "agent" && table === "context_engine_turn_outbox";
+  // The named sequence aliases rowid; hash it once, retaining the old witness layout.
+  const names = columns
+    .map(({ name }) => name)
+    .filter((name) => !outbox || name !== "enqueue_sequence");
   if (!withoutRowid) {
     const rowid = ["rowid", "_rowid_", "oid"].find(
       (alias) => !names.some((name) => name.toLowerCase() === alias),
@@ -225,7 +242,12 @@ function captureTable(
     }
     names.unshift(rowid);
   }
-  const retained = names.map((name) => migrationColumn(role, table, name));
+  // Admission fixes the old origins layout; only its injected alias is physical identity.
+  const retained = names.map(
+    (name, index) =>
+      !(role === "agent" && table === "memory_entry_origins" && !withoutRowid && index === 0) &&
+      migrationColumn(role, table, name),
+  );
   const sha256 = createHash("sha256").update(JSON.stringify(names));
   const migrationSha256 =
     retained.every(Boolean) && !registry
@@ -251,8 +273,16 @@ function captureTable(
         ];
       }),
     );
+  if (role === "agent" && table === "schema_meta") {
+    // This exact row records derived repair completion, not retained agent content.
+    query = query.where(
+      witnessIdentifier("meta_key", "witness"),
+      "!=",
+      MEDIA_ROWS_MIGRATION_META_KEY,
+    );
+  }
   const primary = columns.filter(({ pk }) => pk > 0).toSorted((a, b) => a.pk - b.pk);
-  const primaryNames = primary.map(({ name }) => name);
+  const primaryNames = outbox ? ["advancement_key"] : primary.map(({ name }) => name);
   for (const column of [...primaryNames, ...names.filter((name) => !primaryNames.includes(name))]) {
     query = query.orderBy(witnessIdentifier(column, "witness"));
   }
@@ -489,12 +519,27 @@ export function captureOpenClawMigrationWitness(
         continue;
       }
       schemaHash.update(JSON.stringify(object)).update("\n");
+      // Admission validates canonical objects before migration-only normalization.
+      const indexKey = `${object.tbl_name}.${object.name}`;
       if (
         role === "agent" &&
         ((legacyValidationTriggers &&
           object.type === "trigger" &&
           LEGACY_CANONICAL_VALIDATION_TRIGGER_NAMES.includes(object.name)) ||
-          // Recipient authority is compared by content; schema 27 adds the table.
+          (schemaVersion < AGENT_MEMORY_REVISION_SCHEMA_VERSION &&
+            object.type === "trigger" &&
+            LEGACY_MEMORY_REVISION_TRIGGER_NAMES.includes(object.name)) ||
+          (object.type === "index" &&
+            (indexKey === "session_windows.idx_agent_session_windows_conversation" ||
+              indexKey === "trajectory_runtime_events.idx_agent_trajectory_runtime_run" ||
+              (schemaVersion < AGENT_INDEX_RETIREMENT_SCHEMA_VERSION &&
+                (indexKey === "session_nodes.idx_agent_session_nodes_last_interaction_at" ||
+                  indexKey === "session_reactions.idx_agent_session_reactions_message")) ||
+              (schemaVersion < AGENT_WRITE_LAYOUT_SCHEMA_VERSION &&
+                (indexKey === "transcript_event_identities.idx_agent_transcript_event_parent" ||
+                  (indexKey === "memory_entry_origins.sqlite_autoindex_memory_entry_origins_1" &&
+                    object.sql === null))))) ||
+          // Recipient authority is compared by content; its continuation step adds the table.
           object.tbl_name === RECIPIENT_AUTHORITY_TABLE)
       ) {
         continue;
@@ -502,9 +547,16 @@ export function captureOpenClawMigrationWitness(
       if (
         role === "agent" &&
         object.type === "table" &&
-        (object.name === "session_key_contract" || predicateColumns.has(object.name))
+        (object.name === "session_key_contract" ||
+          object.name === "memory_entry_origins" ||
+          derivedMigrationColumns.has(object.name))
       ) {
-        const definition = parseSqliteTableDefinition(object.sql, object.name);
+        const definition = parseSqliteTableDefinition(
+          object.name === "context_engine_turn_outbox" && object.sql
+            ? withoutOutboxEnqueueSequence(object.sql)
+            : object.sql,
+          object.name,
+        );
         for (const column of definition.columns.keys()) {
           if (!migrationColumn(role, object.name, column)) {
             definition.columns.delete(column);
@@ -518,6 +570,7 @@ export function captureOpenClawMigrationWitness(
                 columns: [...definition.columns],
                 constraints: definition.constraints,
                 ...tableKinds.get(object.name),
+                ...(object.name === "memory_entry_origins" ? { withoutRowid: false } : {}),
               },
             }),
           )
@@ -660,7 +713,17 @@ export function assertOpenClawMigrationWitnessPreserved(
       .map((table) => ({
         name: table.name,
         columns: crossing
-          ? table.columns.filter((column) => migrationColumn(witness.role, table.name, column))
+          ? table.columns
+              .filter(
+                (_, index) =>
+                  !(
+                    witness.role === "agent" &&
+                    witness.schemaVersion < AGENT_WRITE_LAYOUT_SCHEMA_VERSION &&
+                    table.name === "memory_entry_origins" &&
+                    index === 0
+                  ),
+              )
+              .filter((column) => migrationColumn(witness.role, table.name, column))
           : table.columns,
         rowCount: table.rowCount,
         sha256: crossing || witness.registryMigrationBinding ? table.migrationSha256 : table.sha256,

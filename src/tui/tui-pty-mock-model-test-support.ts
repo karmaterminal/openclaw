@@ -2,6 +2,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { writeOpenAiResponsesSse } from "../../test/helpers/openai-responses-sse.js";
 import { createDeferred } from "../../test/helpers/promise.js";
+import { readRequestBody, writeTuiModelHttpJson } from "./tui-pty-model-http-test-support.js";
 
 export type MockModelServer = {
   baseUrl: string;
@@ -25,24 +26,6 @@ type MockModelRequest = {
   authorization?: string;
   body: Record<string, unknown>;
 };
-
-async function readRequestBody(req: IncomingMessage): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-function writeJson(res: ServerResponse, status: number, body: unknown) {
-  const text = JSON.stringify(body);
-  res.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
-    "content-length": Buffer.byteLength(text),
-    "cache-control": "no-store",
-  });
-  res.end(text);
-}
 
 async function writeResponsesSse(
   res: ServerResponse,
@@ -176,11 +159,11 @@ export async function startRoutedMockModelServer(
     void (async () => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       if (req.method === "GET" && (url.pathname === "/healthz" || url.pathname === "/readyz")) {
-        writeJson(res, 200, { ok: true });
+        writeTuiModelHttpJson(res, 200, { ok: true });
         return;
       }
       if (req.method === "GET" && url.pathname === "/v1/models") {
-        writeJson(res, 200, {
+        writeTuiModelHttpJson(res, 200, {
           data: Object.keys(behaviors).map((id) => ({
             id,
             object: "model",
@@ -201,7 +184,9 @@ export async function startRoutedMockModelServer(
           const behavior = behaviors[modelId];
           if (!behavior) {
             rejectedRequests.push(request);
-            writeJson(res, 400, { error: `unknown mock model: ${modelId || "missing"}` });
+            writeTuiModelHttpJson(res, 400, {
+              error: `unknown mock model: ${modelId || "missing"}`,
+            });
             return;
           }
           const modelRequests = requestsByModel.get(modelId) ?? [];
@@ -224,10 +209,10 @@ export async function startRoutedMockModelServer(
           );
           return;
         }
-        writeJson(res, 404, { error: "not found" });
+        writeTuiModelHttpJson(res, 404, { error: "not found" });
         return;
       }
-      writeJson(res, 404, { error: "not found" });
+      writeTuiModelHttpJson(res, 404, { error: "not found" });
     })();
   });
 

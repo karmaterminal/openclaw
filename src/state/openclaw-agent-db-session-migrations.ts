@@ -11,7 +11,7 @@ import { normalizeAccountId } from "../routing/account-id.js";
 import { buildConversationRef, normalizeConversationPeerId } from "../routing/conversation-ref.js";
 import { deriveSessionChatTypeFromKey } from "../sessions/session-chat-type-shared.js";
 import { migrateLegacySessionCreator } from "./creator-namespace-migration.js";
-import { ensurePendingInputConsumptionColumn } from "./openclaw-agent-pending-inputs-schema.js";
+import { STARTUP_ADDITIVE_AGENT_COLUMN_DEFINITIONS } from "./openclaw-agent-db-additive-columns.js";
 import { sessionRecipientAuthoritySchemaSql } from "./openclaw-agent-recipient-authority-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import { ensureColumn, tableExists } from "./openclaw-state-db-schema-helpers.js";
@@ -351,12 +351,10 @@ export function readSqliteTableColumns(db: DatabaseSync, tableName: string): Set
 
 /** Installs same-version session projections on first updated-binary open. */
 export function ensureSessionAdditiveColumns(db: DatabaseSync): void {
-  ensurePendingInputConsumptionColumn(db);
-  // NULL records an older writer's unclassified projection; the transcript
-  // reconcile owner fills it without parsing payloads during schema open.
-  ensureColumn(db, "session_transcript_active_events", "context_eligible INTEGER");
-  ensureColumn(db, "session_nodes", "project_id TEXT");
-  ensureColumn(db, "session_conversations", "route_context_json TEXT");
+  // NULL leaves derived projections for their owning reconcilers, without parsing rows here.
+  for (const { tableName, columnName, dataType } of STARTUP_ADDITIVE_AGENT_COLUMN_DEFINITIONS) {
+    ensureColumn(db, tableName, `${columnName} ${dataType}`);
+  }
   if (
     tableExists(db, "session_conversations") &&
     !getAdmittedSqliteSchemaFacts(db)?.triggers.has(
@@ -380,14 +378,9 @@ export function ensureSessionAdditiveColumns(db: DatabaseSync): void {
   }
 }
 
-export function hasPendingSessionConversationRouteContextColumn(db: DatabaseSync): boolean {
-  const columns = readSqliteTableColumns(db, "session_conversations");
-  return Boolean(columns && !columns.has("route_context_json"));
-}
-
 /**
- * Schema 25 step. Databases written by earlier builds may already carry the
- * table, so creation is idempotent; valid entry-local epochs move to it.
+ * Continuation schema step (AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION). The fleet's schemas 25
+ * and 26 already carry the table, so creation is idempotent; valid entry-local epochs move to it.
  */
 export function migrateSessionRecipientAuthorityInTransaction(db: DatabaseSync): void {
   // sqlite-allow-raw -- Versioned schema DDL precedes the epoch data migration.
@@ -446,16 +439,6 @@ export function migrateSessionRecipientAuthority(db: DatabaseSync): boolean {
   );
   removeEpochs.setReadBigInts(true);
   return Number(removeEpochs.run().changes) > 0;
-}
-
-export function hasPendingSessionProjectColumn(db: DatabaseSync): boolean {
-  const columns = readSqliteTableColumns(db, "session_nodes");
-  return Boolean(columns && !columns.has("project_id"));
-}
-
-export function hasPendingSessionTranscriptContextEligibilityColumn(db: DatabaseSync): boolean {
-  const columns = readSqliteTableColumns(db, "session_transcript_active_events");
-  return Boolean(columns && !columns.has("context_eligible"));
 }
 
 /** Adds the v11 exact delivery target before the conversation backfill writes canonical rows. */

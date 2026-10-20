@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { AgentTurnCompaction } from "./agent-runner-execution.types.js";
-import type { AdmittedFollowupTurn, FollowupRunnerParams } from "./followup-turn-admission.js";
 import type { FollowupExecutionResult } from "./followup-turn-execution.js";
+import type { AdmittedFollowupTurn, FollowupRunnerParams } from "./reply-agent-turn-preparation.js";
 
 const state = vi.hoisted(() => ({
   dispatchPostCompactionDelegates: vi.fn(),
@@ -173,10 +173,6 @@ function createTurn(): AdmittedFollowupTurn {
           sessionStore.main = entry;
         }
       },
-      adopt: (entry) => {
-        currentEntry = entry;
-        sessionStore.main = entry;
-      },
     },
     sendPolicy: "allow",
     preflightCompactionApplied: false,
@@ -218,7 +214,6 @@ function createExecution(
         fallback: { exhausted: false, attempts: [] },
         autoCompactionCount: overrides.autoCompactionCount ?? 0,
         ...(overrides.compaction ? { compaction: overrides.compaction } : {}),
-        didLogHeartbeatStrip: false,
       },
     },
     runStartedAt: Date.now() - 10,
@@ -286,10 +281,6 @@ function createParams(
           sessionStore.main = next;
         }
       },
-      adopt: (next: SessionEntry) => {
-        entry = next;
-        sessionStore.main = next;
-      },
     },
     sessionStore,
     sendPolicy: "allow",
@@ -322,7 +313,6 @@ function createParams(
           ],
         },
         autoCompactionCount: 0,
-        didLogHeartbeatStrip: false,
       },
     },
     runStartedAt: 1,

@@ -7,6 +7,7 @@ import { getRuntimeConfig } from "../../config/config.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   getAgentEventLifecycleGeneration,
   isAgentEventLifecycleGenerationCurrent,
@@ -26,14 +27,15 @@ type DelegateClaim = {
 
 type OwnerLifecycleIdentity = Pick<SessionEntry, "lifecycleRevision" | "sessionId">;
 
+/** Callers that already hold the run's prepared config pass it; others read the published one. */
 export function createContinuationOwnerSessionLoader(
   ownerSessionKey: string,
   expectedAgentId?: string,
+  cfg: OpenClawConfig = getRuntimeConfig(),
 ): {
   agentId: string;
   load: () => SessionEntry | undefined;
 } {
-  const cfg = getRuntimeConfig();
   // An agent-scoped key names its own owner; a recorded agent id only owns a
   // legacy (unscoped) key, as upstream's announce reads do (#166845).
   const agentId = resolveSessionAgentId({
