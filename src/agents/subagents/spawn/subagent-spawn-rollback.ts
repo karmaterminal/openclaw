@@ -22,7 +22,11 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
   attachmentId?: string;
   expectedSessionId?: string;
   expectedLifecycleRevision?: string;
-  emitLifecycleHooks: boolean;
+  /**
+   * Upstream's order (#158251): the spawn-failed presentation hook resolves after
+   * termination and context rollback, right before session cleanup.
+   */
+  resolveLifecycleHooks: () => Promise<boolean>;
   cleanupCreatedSession: (emitLifecycleHooks: boolean) => Promise<unknown>;
   /** Retained queued-registration ownership; false means another owner holds the child now. */
   isCurrent?: () => boolean;
@@ -104,7 +108,8 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
       cleanupFailures.push(error);
     }
   }
-  if (!ownsChild) {
+  // Ownership can change while termination is awaited; re-read it, as upstream does.
+  if (params.isCurrent?.() === false) {
     await params.contextEnginePreparation?.dispose().catch(() => {});
   } else {
     try {
@@ -118,7 +123,7 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
       cleanupFailures.push(error);
     }
   }
-  if (params.attachmentId && ownsChild) {
+  if (params.attachmentId && params.isCurrent?.() !== false) {
     try {
       await cleanupMaterializedSubagentAttachments({
         childSessionKey: params.childSessionKey,
@@ -129,8 +134,9 @@ export async function cleanupAcceptedSubagentSpawnFailure(params: {
       // Best-effort cleanup only.
     }
   }
+  const emitLifecycleHooks = await params.resolveLifecycleHooks();
   try {
-    await params.cleanupCreatedSession(params.emitLifecycleHooks);
+    await params.cleanupCreatedSession(emitLifecycleHooks);
   } catch (error) {
     cleanupFailures.push(error);
   }

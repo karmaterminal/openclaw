@@ -52,7 +52,6 @@ import type {
   SpawnSubagentResult as BaseSpawnSubagentResult,
 } from "./subagent-spawn-contract.js";
 import { prepareSubagentSpawnEnvelope } from "./subagent-spawn-envelope.js";
-import { resolveSubagentSpawnFailureLifecycleHooks } from "./subagent-spawn-failure-hooks.js";
 import { buildSubagentSpawnGatewayIdentity } from "./subagent-spawn-gateway-identity.js";
 import { captureSubagentSpawnGatewayContext, readGatewayRunId } from "./subagent-spawn-gateway.js";
 import { buildSubagentLaunchRequest } from "./subagent-spawn-launch-request.js";
@@ -498,15 +497,6 @@ export async function spawnSubagentDirect(
           await cleanupFailedSpawn();
           return;
         }
-        const emitLifecycleHooks = await resolveSubagentSpawnFailureLifecycleHooks({
-          phase,
-          threadBindingReady,
-          hookRunner,
-          childSessionKey,
-          accountId: childSessionOrigin?.accountId,
-          runId: childIdem,
-          requesterSessionKey: requesterInternalKey,
-        });
         acceptedRunCleanupError = await cleanupAcceptedSubagentSpawnFailure({
           phase,
           error,
@@ -517,7 +507,10 @@ export async function spawnSubagentDirect(
           contextEnginePreparation: state?.contextEnginePreparation,
           attachmentId,
           ...provisionalSessionIdentity,
-          emitLifecycleHooks,
+          resolveLifecycleHooks: async () =>
+            phase === "dispatch" && threadBindingReady
+              ? !(await spawnLifecycle.failed(childIdem))
+              : threadBindingReady,
           cleanupCreatedSession,
           isCurrent: isCleanupCurrent,
           isAbortCurrent,

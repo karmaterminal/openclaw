@@ -6,7 +6,7 @@ import {
   resolveHeartbeatPreflight,
   resolveHeartbeatRunPrompt,
 } from "../infra/heartbeat-runner-prompt.js";
-import { startHeartbeatRunner } from "../infra/heartbeat-runner.js";
+import { startHeartbeatRunner } from "../infra/heartbeat-runner-scheduler.js";
 import { requestHeartbeatAndWait } from "../infra/heartbeat-wake.js";
 import {
   drainSystemEvents,
