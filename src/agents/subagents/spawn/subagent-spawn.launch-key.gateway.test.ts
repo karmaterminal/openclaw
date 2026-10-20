@@ -53,7 +53,7 @@ function installPreflightTurnFacade(gatewayContext: GatewayRequestContext) {
     ({
       dispatch: async (request: Record<string, unknown>) => {
         const respond = vi.fn();
-        const preflight = prepareAgentRequestPreflight({
+        const preflight = await prepareAgentRequestPreflight({
           request,
           io: createAgentTurnIo(respond),
           context: gatewayContext,
