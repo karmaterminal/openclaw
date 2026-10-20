@@ -6,6 +6,7 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { makeTempDir } from "../../test/helpers/temp-dir.js";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
+import { isPostgresSqlConnection, type EngineConnection } from "../infra/sql-connection.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
 import { withAgentDatabaseMaintenanceLease } from "./openclaw-agent-db-maintenance-lease.js";
 import {
@@ -61,9 +62,18 @@ export function materializeSharedStateDatabase(env: NodeJS.ProcessEnv, tempDirs:
   fs.copyFileSync(stateTemplatePath, target);
 }
 
+/** Bridge fixtures read and write SQLite directly, so they need the native handle. */
+export function requireNativeAgentSqlite(db: EngineConnection): DatabaseSync {
+  if (isPostgresSqlConnection(db)) {
+    throw new Error("Schema bridge fixtures require a native SQLite agent database");
+  }
+  return db;
+}
+
 export function openAgentDatabase(env: NodeJS.ProcessEnv, tempDirs: string[]) {
   materializeSharedStateDatabase(env, tempDirs);
-  return openOpenClawAgentDatabaseRuntime({ agentId: "main", env });
+  const database = openOpenClawAgentDatabaseRuntime({ agentId: "main", env });
+  return { ...database, db: requireNativeAgentSqlite(database.db) };
 }
 
 export async function migrateAgentDatabase(

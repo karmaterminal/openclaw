@@ -17,6 +17,7 @@ import {
   OPENCLAW_AGENT_SCHEMA_VERSION,
   openOpenClawAgentDatabase,
 } from "./openclaw-agent-db.js";
+import { requireNativeAgentSqlite } from "./openclaw-agent-db.schema-bridge.test-support.js";
 import { removeCanonicalValidationFromHistoricalAgentFixture } from "./openclaw-agent-db.test-support.js";
 import { stageRecipientAuthorityV18Fixture } from "./openclaw-agent-recipient-authority-fixture.test-support.js";
 import { LEGACY_PARTICIPANTS_SCHEMA } from "./openclaw-agent-schema-history.js";
@@ -69,7 +70,9 @@ describe("participant identity migration", () => {
         db.prepare("SELECT schema_version FROM schema_meta WHERE meta_key = 'primary'").get()
           ?.schema_version,
       ).toBe(OPENCLAW_AGENT_SCHEMA_VERSION);
-      expect(normalizeSqliteSchemaShapeSql(collectSqliteSchemaShape(db))).toEqual(
+      expect(
+        normalizeSqliteSchemaShapeSql(collectSqliteSchemaShape(requireNativeAgentSqlite(db))),
+      ).toEqual(
         normalizeSqliteSchemaShapeSql(
           createSqliteSchemaShapeFromSql(new URL("./openclaw-agent-schema.sql", import.meta.url)),
         ),
@@ -411,7 +414,7 @@ describe("participant identity migration", () => {
         const databasePath = initial.path;
         const { expectedEpoch, originalMalformedEntryJson, originalValidEntryJson } =
           stageRecipientAuthorityV18Fixture({
-            database: initial.db,
+            database: requireNativeAgentSqlite(initial.db),
             importedEpoch,
             lineage,
             malformedSessionKey: malformedKey,

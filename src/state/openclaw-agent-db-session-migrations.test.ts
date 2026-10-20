@@ -139,8 +139,7 @@ describe("agent DB conversation migration", () => {
 
   it("moves only valid entry-local recipient epochs and strips malformed fields", () => {
     const sqlite = requireNodeSqlite();
-    const database = new sqlite.DatabaseSync(":memory:");
-    databases.push(database);
+    using database = new sqlite.DatabaseSync(":memory:");
     database.exec(`
       CREATE TABLE session_nodes (
         session_key TEXT PRIMARY KEY,
