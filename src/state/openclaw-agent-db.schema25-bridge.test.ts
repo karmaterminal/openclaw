@@ -57,25 +57,22 @@ type Shape = "fleet-25" | "upstream-25" | "schema-24" | "mixed-25";
  * rolled back to 24 or 25 is not a schema those versions wrote.
  */
 function stageAgentDatabase(env: NodeJS.ProcessEnv, shape: Shape): string {
-  switch (shape) {
-    case "fleet-25":
-      return stageCapturedSchema25(env, "fleet");
-    case "upstream-25":
-      return stageCapturedSchema25(env, "upstream");
-    case "schema-24":
-      return stageCapturedAgentDatabase(env, tempDirs, {
-        ddl: readCapturedAgentSchema("openclaw-agent-schema-v24.sql"),
-        version: 24,
-        authorityRow: false,
-      });
-    case "mixed-25":
-      // The authority table is present but the legacy triggers are retired.
-      return stageCapturedAgentDatabase(env, tempDirs, {
-        ddl: `${CAPTURED_SCHEMA_25.upstream}\n${sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL)}`,
-        version: 25,
-        authorityRow: true,
-      });
+  if (shape === "fleet-25" || shape === "upstream-25") {
+    return stageCapturedSchema25(env, shape === "fleet-25" ? "fleet" : "upstream");
   }
+  if (shape === "schema-24") {
+    return stageCapturedAgentDatabase(env, tempDirs, {
+      ddl: readCapturedAgentSchema("openclaw-agent-schema-v24.sql"),
+      version: 24,
+      authorityRow: false,
+    });
+  }
+  // mixed-25: the authority table is present but the legacy triggers are retired.
+  return stageCapturedAgentDatabase(env, tempDirs, {
+    ddl: `${CAPTURED_SCHEMA_25.upstream}\n${sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL)}`,
+    version: 25,
+    authorityRow: true,
+  });
 }
 
 afterAll(() => {

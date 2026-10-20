@@ -78,11 +78,11 @@ export function composeManagedDeliveryTurnLifecycle(params: {
     },
     onAbandoned: () => {
       restore();
-      original?.onAbandoned?.();
+      return original?.onAbandoned?.();
     },
     onSettled: () => {
       restore();
-      original?.onSettled?.();
+      return original?.onSettled?.();
     },
   };
   return {

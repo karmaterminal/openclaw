@@ -625,7 +625,7 @@ describe("pending rows nothing armed: periodic sweep without duplicate adoption"
 
       // The turn completes and adopts.
       await turn.lifecycle?.onAdopted?.();
-      turn.lifecycle?.onSettled?.();
+      await turn.lifecycle?.onSettled?.();
       expect(turnEnded).toEqual({ abandoned: 0, settled: 1, adopted: 1 });
       expect(acksFor(deliveryId)).toBe(1);
       expect(await pendingRows(stateDir)).toEqual([]);
@@ -658,7 +658,7 @@ describe("pending rows nothing armed: periodic sweep without duplicate adoption"
       expect(peekSystemEvents(SESSION_KEY)).toEqual([]);
 
       // The turn ends without adopting: its event goes back, its claim is gone.
-      turn.lifecycle?.onAbandoned?.();
+      await turn.lifecycle?.onAbandoned?.();
       expect(peekSystemEvents(SESSION_KEY)).toEqual(["RETURN-q4-l2"]);
       await stepClock(SWEEP_PERIOD_MAX_MS);
       expect(peekSystemEvents(SESSION_KEY)).toEqual(["RETURN-q4-l2"]);

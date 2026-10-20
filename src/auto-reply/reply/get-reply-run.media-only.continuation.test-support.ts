@@ -61,7 +61,7 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
     // The runner adopts during the run (before returning), as the real runner does.
     vi.mocked(runReplyAgent).mockImplementationOnce(async (runParams) => {
       await runParams.opts?.turnAdoptionLifecycle?.onAdopted();
-      runParams.opts?.turnAdoptionLifecycle?.onSettled?.();
+      await runParams.opts?.turnAdoptionLifecycle?.onSettled?.();
       return undefined;
     });
     await runPreparedReply(
@@ -112,7 +112,7 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
     // The runner adopts during the run (before returning), as the real runner does.
     vi.mocked(runReplyAgent).mockImplementationOnce(async (runParams) => {
       await runParams.opts?.turnAdoptionLifecycle?.onAdopted();
-      runParams.opts?.turnAdoptionLifecycle?.onSettled?.();
+      await runParams.opts?.turnAdoptionLifecycle?.onSettled?.();
       return undefined;
     });
     await runPreparedReply(
@@ -271,8 +271,8 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
     await runPreparedReply(baseParams());
 
     const lifecycle = requireRunReplyAgentCall().followupRun.turnAdoptionLifecycle;
-    lifecycle?.onAbandoned?.();
-    lifecycle?.onSettled?.();
+    await lifecycle?.onAbandoned?.();
+    await lifecycle?.onSettled?.();
     expect(acknowledge).not.toHaveBeenCalled();
     expect(restore).toHaveBeenCalled();
   });
@@ -389,8 +389,8 @@ export function registerMediaOnlyContinuationCases(resolveCurrentTurnImagesMock:
     expect(peekSystemEventEntries(sessionKey)).toEqual([]);
 
     // The handed-off turn is abandoned: the return goes back to the queue, once.
-    call.followupRun.turnAdoptionLifecycle?.onAbandoned?.();
-    call.followupRun.turnAdoptionLifecycle?.onSettled?.();
+    await call.followupRun.turnAdoptionLifecycle?.onAbandoned?.();
+    await call.followupRun.turnAdoptionLifecycle?.onSettled?.();
     expect(peekSystemEventEntries(sessionKey).map((event) => event.sessionDeliveryAckId)).toEqual([
       "delivery-deferred",
     ]);
