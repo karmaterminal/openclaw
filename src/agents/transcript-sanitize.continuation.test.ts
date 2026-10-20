@@ -1,10 +1,11 @@
-// Continuation transcript redaction tests cover continue_delegate inline
-// attachment snapshots so delegated secrets do not persist in transcripts.
+// continue_delegate inline attachment snapshots must not persist in transcripts:
+// the storage sanitizer applies the continuation tool-call projection even though
+// tool payloads are otherwise stored as given (#169063).
 
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-core";
 import { describe, expect, it } from "vitest";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { redactTranscriptMessage } from "./transcript-redact.js";
+import { sanitizeTranscriptMessageForStorage } from "../config/sessions/session-accessor.sqlite-transcript-store.js";
+import { sanitizeTranscriptMessage } from "./transcript-sanitize.js";
 
 // AgentMessage includes custom message types without content; this accessor
 // keeps strict union checks local to the redaction fixtures.
@@ -12,13 +13,7 @@ function msgContent(msg: AgentMessage): unknown {
   return (msg as unknown as { content: unknown }).content;
 }
 
-function cfg(patterns?: string[]): OpenClawConfig {
-  return {
-    logging: patterns ? { redactPatterns: patterns } : {},
-  } satisfies OpenClawConfig;
-}
-
-describe("redactTranscriptMessage", () => {
+describe("sanitizeTranscriptMessage", () => {
   it("redacts continue_delegate inline snapshots at the canonical transcript boundary", () => {
     const secret = "CANONICAL_TRANSCRIPT_CONTINUATION_ATTACHMENT_SECRET";
     const attachmentName = "CANONICAL_TRANSCRIPT_ATTACHMENT_NAME_MUST_NOT_ECHO.md";
@@ -63,7 +58,9 @@ describe("redactTranscriptMessage", () => {
       ],
     } as unknown as AgentMessage;
 
-    const result = redactTranscriptMessage(msg, cfg());
+    const result = sanitizeTranscriptMessage(msg);
+    // Every canonical transcript writer stores through this boundary.
+    expect(sanitizeTranscriptMessageForStorage(msg)).toEqual(result);
     const persistedBytes = JSON.stringify(result);
     expect(persistedBytes).not.toContain(secret);
     expect(persistedBytes).not.toContain(attachmentName);
