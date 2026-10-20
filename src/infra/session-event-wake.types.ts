@@ -47,7 +47,7 @@ export type WakeGroup = {
   trustedEvent?: PendingWake;
   blockedUntil: number;
 };
-export type ActiveWake = { generation: number; controller: AbortController; wakes: PendingWake[] };
+export type ActiveWake = { controller: AbortController; wakes: PendingWake[] };
 export type WakeAttempt = {
   signal: AbortSignal;
   wake: PendingWake;
