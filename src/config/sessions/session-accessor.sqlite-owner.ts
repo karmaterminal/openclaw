@@ -17,21 +17,22 @@ import {
 import { getExactSessionEntryQueries } from "./session-accessor.sqlite-entry-query.js";
 import { readExactSessionEntryRow } from "./session-accessor.sqlite-entry-read.js";
 import { readIncognitoSessionEntryCurrent } from "./session-accessor.sqlite-incognito-sharing.js";
-import { hasSqliteSessionOwnerColumns } from "./session-accessor.sqlite-owner-projection.js";
+import {
+  hasSqliteSessionOwnerColumns,
+  readSqliteSessionOwner,
+} from "./session-accessor.sqlite-owner-projection.js";
 import { advanceSessionRecipientAuthorityInTransaction } from "./session-accessor.sqlite-recipient-authority.js";
 import {
   getSessionKysely,
   resolveSqliteScope,
   toDatabaseOptions,
 } from "./session-accessor.sqlite-scope.js";
-import { parseSessionEntryJson } from "./session-accessor.sqlite-status.js";
 import type { SessionOwnerAssignment } from "./session-entry-provenance.js";
 import type { SessionEntryWritePostimages } from "./session-entry-write-postimage.js";
 import type {
   SessionMetadataExpectedEntry,
   SessionOwnerAssignParams,
 } from "./session-sharing-store.types.js";
-import type { InternalSessionEntry } from "./types.js";
 
 function metadataAuthorityEntry(entry: SessionMetadataExpectedEntry): SessionMetadataExpectedEntry {
   return {
@@ -163,19 +164,23 @@ export function assignSessionOwner(
       ) {
         throw new Error("session ownership changed before owner assignment");
       }
-      // Decode the row's own owner and creator only. Resolving the full entry
-      // projects participant rows, and a corrupt participant identity there must
-      // not roll back a recorded owner assignment; the read projection still
-      // surfaces that corruption to its own callers. Incognito sessions read the
-      // process-held entry, never the session rows.
-      let currentEntry: Pick<InternalSessionEntry, "owner" | "createdActor"> | null | undefined;
+      // The effective owner before this assignment: the recorded owner, else the
+      // creator. Session rows answer from their owner and creator columns (the
+      // canonical entry JSON never keeps an owner), so a cold entry's payload is
+      // not decoded and a corrupt participant identity cannot roll back the
+      // assignment. Incognito sessions read the process-held entry, never the rows.
+      let previousOwner: { type?: string; id?: string } | undefined;
       if (incognito) {
-        currentEntry = readIncognitoSessionEntryCurrent(database.db, resolved.sessionKey);
+        const current = readIncognitoSessionEntryCurrent(database.db, resolved.sessionKey);
+        previousOwner = current?.owner?.actor ?? current?.createdActor;
       } else {
-        const currentRow = getExactSessionEntryQueries(database.db).row(resolved.sessionKey);
-        currentEntry = currentRow ? parseSessionEntryJson(currentRow, "list") : null;
+        const row = getExactSessionEntryQueries(database.db).row(resolved.sessionKey);
+        previousOwner =
+          (row && readSqliteSessionOwner(row)?.actor) ??
+          (row?.created_actor_type
+            ? { type: row.created_actor_type, id: row.created_actor_id ?? undefined }
+            : undefined);
       }
-      const previousOwner = currentEntry?.owner?.actor ?? currentEntry?.createdActor;
       const ownerChanged =
         previousOwner?.type !== owner.actor.type || previousOwner?.id !== owner.actor.id;
       const replaced = replaceSessionOwnerInTransaction(

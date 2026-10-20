@@ -23,6 +23,8 @@ export type SessionEntrySnapshotRow = {
 export type ResolvedSessionEntryRow = {
   entry: SessionEntry;
   row: Pick<SessionEntryRow, "current_session_id" | "entry_json" | "session_key" | "updated_at"> &
+    // Present on full-projection rows, which select every session_nodes column.
+    Partial<Pick<SessionEntryRow, "created_actor_type" | "created_actor_id">> &
     SqliteSessionOwnerRow &
     SessionEntrySnapshotRow &
     Partial<Pick<SessionEntryRow, "legacy_acp_migration_json">> & {
