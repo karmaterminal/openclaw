@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, join, posix } from "node:path";
-import * as ts from "typescript/unstable/ast";
+import * as ts from "typescript/ast";
 import { afterAll, describe, expect, it } from "vitest";
 import { createNativeTypeScriptParser } from "../../../scripts/lib/native-typescript.mts";
 
@@ -32,6 +32,8 @@ type Candidate = Finding & {
 
 const SOURCE_ROOT = process.cwd();
 
+// Reply-run registry and finalization-lease state moved into the session controller
+// (src/sessions, upstream #175837), which is outside this continuation surface.
 const ALLOWLIST = [
   {
     file: "src/auto-reply/continuation/state.ts",
@@ -110,113 +112,6 @@ const ALLOWLIST = [
       "Lost on process restart; running custody records are resolved by boot recovery after the stale-running cutoff and are never re-driven by a fresh controller.",
   },
   {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "activeRunsByKey",
-    owner: "reply run registry singleton",
-    purpose: "Maps sessionKey to the live ReplyOperation currently executing in this process.",
-    safeVolatileClassification:
-      "ReplyOperation wraps live AbortController/backend state and cannot be serialized or resumed across process boundaries.",
-    restartContract:
-      "Lost on process restart; no in-flight operation is reported active and a later request creates a new ReplyOperation.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "activeKeysBySessionId",
-    owner: "reply run registry singleton",
-    purpose:
-      "Provides the reverse sessionId to sessionKey lookup for active in-process reply operations.",
-    safeVolatileClassification:
-      "The reverse index mirrors activeRunsByKey and contains no durable state beyond the live operation registry.",
-    restartContract:
-      "Lost on process restart; lookups return no active run until a new operation registers itself.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "waitKeysBySessionId",
-    owner: "reply run registry singleton",
-    purpose:
-      "Keeps temporary sessionId to sessionKey wait bindings while a live reply operation may rebind session ids.",
-    safeVolatileClassification:
-      "Wait bindings serve current-process waitForIdle callers and are valid only alongside the live operation.",
-    restartContract:
-      "Lost on process restart; callers waiting in the old process disappear with that process.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "waitersByKey",
-    owner: "reply run registry singleton",
-    purpose: "Stores waitForIdle promise resolvers and timeout handles by active sessionKey.",
-    safeVolatileClassification:
-      "Waiters and their timeout handles are process-local continuations for callers in this Node process.",
-    restartContract:
-      "Lost on process restart; old waiters cannot be resolved because their callers no longer exist.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "attachedBackendByOperation",
-    owner: "reply run registry singleton",
-    purpose: "Weakly associates live ReplyOperation objects with their current backend handles.",
-    safeVolatileClassification:
-      "WeakMap keys and backend handles are process objects; persisting either would be meaningless and would defeat weak-reference semantics.",
-    restartContract:
-      "Lost on process restart; new ReplyOperation instances attach fresh backend handles when work resumes.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "followupAdmissionBarriersByKey",
-    owner: "reply run registry singleton",
-    purpose:
-      "Maps each active sessionKey to its in-flight followup admission barrier (a settle Promise plus the bound sessionId) that gates whether a followup reply may be admitted.",
-    safeVolatileClassification:
-      "Each barrier holds a live in-process settle Promise and a failsafe timer; Promises and timer handles cannot be serialized or resumed across process boundaries.",
-    restartContract:
-      "Lost on process restart; durable followup intent remains in continuation custody and the session store, and the next admission pass arms a fresh barrier.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "afterClearByOperation",
-    owner: "reply run registry singleton",
-    purpose:
-      "Weakly associates a live ReplyOperation with the set of after-clear callbacks (plus the optional followup admission barrier they wait on) to run once that operation no longer owns its session lane.",
-    safeVolatileClassification:
-      "WeakMap keys are live ReplyOperation process objects and the values are in-process callback closures; persisting either would be meaningless and would defeat weak-reference semantics.",
-    restartContract:
-      "Lost on process restart; new ReplyOperation instances register fresh after-clear callbacks when work resumes.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "sourceTurnByKey",
-    owner: "reply run registry singleton",
-    purpose:
-      "Maps an active sessionKey to the channel source-turn id of its live reply operation so message injection can target the owning turn.",
-    safeVolatileClassification:
-      "The binding is set only while the ReplyOperation is the active run for the key and is deleted when that operation clears.",
-    restartContract:
-      "Lost on process restart together with the live ReplyOperation; a new run records its own source turn.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "lifecycleAdmissionByOperation",
-    owner: "reply run registry singleton",
-    purpose:
-      "Weakly associates a live ReplyOperation with its session-work admission lease and agent database identity.",
-    safeVolatileClassification:
-      "WeakMap keyed by live ReplyOperations; the lease is an in-process release handle and would defeat weak-reference semantics if persisted.",
-    restartContract:
-      "Lost on process restart; the next admission pass acquires a fresh lease for its new ReplyOperation.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "producerCompletionByOperation",
-    owner: "reply run registry singleton",
-    purpose:
-      "Weakly associates a live ReplyOperation with the Promise that settles when its reply producer completes, for successor handoff.",
-    safeVolatileClassification:
-      "WeakMap of live ReplyOperations to in-process Promises; neither is serializable across processes.",
-    restartContract:
-      "Lost on process restart; there is no in-flight producer left to hand off from.",
-  },
-  {
     file: "src/auto-reply/continuation/delegate-turn-admission.ts",
     symbol: "delegatesScheduledThisTurn",
     owner: "continue_delegate per-turn admission",
@@ -259,99 +154,6 @@ const ALLOWLIST = [
       "The map stores Node timeout handles for the current process; the terminal-notice intent itself is persisted durably.",
     restartContract:
       "Lost on process restart; the durable terminal notice remains and the next delivery pass can arm a fresh retry timer.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-finalization-lease.ts",
-    symbol: "activeSettleTimers",
-    owner: "reply run finalization lease registry",
-    purpose: "Tracks the live settle timers armed for in-process reply-run finalization.",
-    safeVolatileClassification:
-      "Settle timers are Node timeout wrappers; persisting them could not make a restarted process clear or fire the old timeout.",
-    restartContract:
-      "Lost on process restart; the durable reply/continuation state remains and a later run arms new settle timers.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-finalization-lease.ts",
-    symbol: "leasesByOwner",
-    owner: "reply run finalization lease registry",
-    purpose: "Weakly maps a live owner object to the finalization lease it currently holds.",
-    safeVolatileClassification:
-      "WeakMap keyed by process objects; persisting it would be meaningless and would defeat weak-reference semantics.",
-    restartContract:
-      "Lost on process restart together with its owner objects; no durable finalization state depends on it.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "successorAdmissionBarriersByKey",
-    owner: "reply run registry singleton",
-    purpose:
-      "Holds the admission barrier a successor reply run must clear before it may start on a sessionKey.",
-    safeVolatileClassification:
-      "Barriers wrap in-process promises/resolvers that only gate live operations in this Node process.",
-    restartContract:
-      "Lost on process restart; with no live predecessor operation there is nothing to fence, so a new run admits immediately.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "evictOperationByOperation",
-    owner: "reply run registry singleton",
-    purpose: "Weakly associates a live ReplyOperation with its registry eviction callback.",
-    safeVolatileClassification:
-      "WeakMap of process objects to closures; neither side is serializable or meaningful across processes.",
-    restartContract: "Lost on process restart; the operations it would evict no longer exist.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "clearOperationByOperation",
-    owner: "reply run registry singleton",
-    purpose:
-      "Weakly associates a live ReplyOperation with the state-clearing closure forceClearReplyOperation uses to reclaim its slot.",
-    safeVolatileClassification:
-      "WeakMap of process objects to closures; deleted when the operation clears its state and meaningless outside this process.",
-    restartContract:
-      "Lost on process restart; no operation it could force-clear survives the process.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "operationsByUpstreamAbortSignal",
-    owner: "reply run registry singleton",
-    purpose: "Resolves the live ReplyOperation that an upstream AbortSignal should cancel.",
-    safeVolatileClassification:
-      "AbortSignals and ReplyOperations are process objects; the mapping has no meaning outside this process.",
-    restartContract:
-      "Lost on process restart; the upstream callers holding those signals are gone with the process.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    // Upstream 14fe10d01c replaced the successor-barrier start callbacks with this map.
-    symbol: "backendReadyByOperation",
-    owner: "reply run registry singleton",
-    purpose:
-      "Weakly records the promise that resolves once a live operation's backend is attached, so successor fences wait for it.",
-    safeVolatileClassification:
-      "WeakMap of live ReplyOperations to in-process promises; nothing durable is represented.",
-    restartContract:
-      "Lost on process restart; no live operation or successor is waiting, so no readiness needs signalling.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "successorBarrierGroupsByOperation",
-    owner: "reply run registry singleton",
-    purpose:
-      "Weakly groups the alias-keyed successor fences that rotate together for one lane of a live operation.",
-    safeVolatileClassification:
-      "WeakMap of live ReplyOperations to in-process barrier sets; lane identity is rebuilt from durable session state when runs restart.",
-    restartContract:
-      "Lost on process restart; a restarted process re-registers lane fences when it creates new operations.",
-  },
-  {
-    file: "src/auto-reply/reply/reply-run-registry.state.ts",
-    symbol: "expireReplyOperationByOperation",
-    owner: "reply run registry singleton",
-    purpose: "Weakly associates a live ReplyOperation with its stale-expiry callback.",
-    safeVolatileClassification:
-      "WeakMap of process objects to closures; expiring an operation is only meaningful while it is running.",
-    restartContract: "Lost on process restart; there is no in-flight operation left to expire.",
   },
   {
     file: "src/auto-reply/reply/reply-run-typing.ts",

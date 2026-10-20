@@ -132,61 +132,68 @@ vi.mock("../../sessions/session-key-utils.js", async (importOriginal) => ({
   },
 }));
 
-// mock-isolation: A scripted reply-run registry drives active and idle sessions instead of the process-wide registry.
-vi.mock("../reply/reply-run-registry.js", () => ({
-  replyRunRegistry: {
-    isActive(sessionKey: string) {
+// Continuation reads the session controller through one memoized accessor
+// (getContinuationReplyRunRegistry). Scripted reads drive active and idle
+// sessions, and each records its receiver: the accessor object.
+vi.mock("../../sessions/session-controller.queries.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../sessions/session-controller.queries.js")>();
+  return {
+    ...actual,
+    isSessionRunActiveForKey(this: unknown, sessionKey: string) {
       replyRegistryReceivers.add(this);
       return activeSessions.has(sessionKey);
     },
-    resolveSessionId(sessionKey: string) {
-      replyRegistryReceivers.add(this);
-      return activeSessions.has(sessionKey) ? `active-session:${sessionKey}` : undefined;
-    },
-    waitForIdle(sessionKey: string, _timeoutMs?: number, opts?: { signal?: AbortSignal }) {
-      replyRegistryReceivers.add(this);
-      return waitForMockIdle(
-        replyIdleWaiters,
-        sessionKey,
-        () => !activeSessions.has(sessionKey),
-        opts?.signal,
-      );
-    },
+    resolveActiveSessionRunId: (sessionKey: string) =>
+      activeSessions.has(sessionKey) ? `active-session:${sessionKey}` : undefined,
+    // The scripted active run's operation handle; other ids resolve through the controller.
+    resolveActiveReplyOperationForSessionId: (sessionId: string) =>
+      sessionId.startsWith("active-session:")
+        ? { sessionId }
+        : actual.resolveActiveReplyOperationForSessionId(sessionId),
+  };
+});
+
+vi.mock("../../sessions/session-controller.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../sessions/session-controller.js")>()),
+  waitForSessionRunIdle(
+    this: unknown,
+    sessionKey: string,
+    _timeoutMs?: number | null,
+    opts?: { signal?: AbortSignal },
+  ) {
+    replyRegistryReceivers.add(this);
+    return waitForMockIdle(
+      replyIdleWaiters,
+      sessionKey,
+      () => !activeSessions.has(sessionKey),
+      opts?.signal,
+    );
   },
 }));
 
-// mock-isolation: Scripted active-run queue outcomes stand in for live embedded agent runs.
+// mock-isolation: A scripted run-handle check stands in for live embedded agent runs.
 vi.mock("../../agents/embedded-agent-runner/runs.js", () => ({
   isEmbeddedAgentRunHandleActive: vi.fn(() => activeQueueHandleAvailable),
-  queueEmbeddedAgentMessageWithOutcomeAsync: vi.fn(async (sessionId: string, text: string) => {
-    workTransitionEvents.push("fold-transcript-committed");
-    activeQueueDeliveries.push({ sessionId, text });
-    if (activeQueueMode === "delivered") {
-      return {
-        queued: true,
-        sessionId,
-        target: "embedded_run" as const,
-        gatewayHealth: "live" as const,
-        enqueuedAtMs: Date.now(),
-        deliveredAtMs: Date.now(),
-      };
-    }
-    if (activeQueueMode === "queued-without-proof") {
-      return {
-        queued: true,
-        sessionId,
-        target: "reply_run" as const,
-        gatewayHealth: "live" as const,
-        enqueuedAtMs: Date.now(),
-      };
-    }
-    return {
-      queued: false,
-      sessionId,
-      reason: "no_active_run" as const,
-      gatewayHealth: "live" as const,
-    };
-  }),
+}));
+
+// Scripted steer outcomes stand in for the active run's transcript-committed fold note.
+vi.mock("../../sessions/session-controller.steer.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../sessions/session-controller.steer.js")>()),
+  steerSessionControllerOperation: vi.fn(
+    async ({ operation, text }: { operation?: { sessionId: string }; text: string }) => {
+      workTransitionEvents.push("fold-transcript-committed");
+      activeQueueDeliveries.push({ sessionId: operation?.sessionId, text });
+      if (activeQueueMode === "delivered") {
+        return { status: "accepted" as const };
+      }
+      if (activeQueueMode === "queued-without-proof") {
+        const result = { transcriptCommit: "unconfirmed" as const, errorMessage: "reply_run" };
+        return { status: "accepted" as const, result };
+      }
+      return { status: "rejected" as const, reason: "no_active_run" as const };
+    },
+  ),
 }));
 
 // mock-isolation: Scripted lane size, drain and idle waits replace the process-wide command queue.

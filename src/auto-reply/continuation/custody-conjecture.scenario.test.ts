@@ -117,7 +117,7 @@ async function bootGateway() {
     import("../reply/agent-runner-continuation.js"),
     import("../reply/post-compaction-delegate-dispatch.js"),
     import("../reply/session-reset-cleanup.js"),
-    import("../reply/reply-run-registry.js"),
+    import("../../sessions/session-controller.js"),
     import("../../infra/session-delivery-queue-storage.js"),
     import("../../gateway/server-restart-sentinel.js"),
     import("../../state/openclaw-state-worker-context.js"),
@@ -323,20 +323,24 @@ async function bootGateway() {
  * run eviction below and drive work from beyond the grave. The rest of
  * continuation's state is module-local and goes with the module graph. The
  * process-wide singletons a new process would not inherit are the Gateway
- * lifecycle generation (its rotation evicts prior-lifecycle reply runs) and
- * the in-memory event queue.
+ * lifecycle generation (its rotation aborts prior-lifecycle reply runs), the
+ * session controllers those runs stay registered in until their producers
+ * settle (#175837), and the in-memory event queue.
  */
 async function discardProcessState(): Promise<void> {
-  const [continuationRuntime, delegateDispatch, agentEvents, systemEvents] = await Promise.all([
-    import("../../plugin-sdk/continuation-test-runtime.js"),
-    import("./delegate-dispatch.js"),
-    import("../../infra/agent-events.js"),
-    import("../../infra/system-events.js"),
-  ]);
+  const [continuationRuntime, delegateDispatch, agentEvents, systemEvents, sessionControllers] =
+    await Promise.all([
+      import("../../plugin-sdk/continuation-test-runtime.js"),
+      import("./delegate-dispatch.js"),
+      import("../../infra/agent-events.js"),
+      import("../../infra/system-events.js"),
+      import("../../sessions/session-controller.test-support.js"),
+    ]);
   continuationRuntime.resetContinuationWorkDispatchForTests();
   continuationRuntime.resetContinueDelegateTurnAdmissionForTests();
   delegateDispatch.resetDelegateDispatchHedgesForTests();
   agentEvents.rotateAgentEventLifecycleGeneration();
+  sessionControllers.testing.resetSessionControllerForTest();
   recordNotices(deliveredNoticeLedger, systemEvents.drainSystemEventEntries(OWNER));
   vi.resetModules();
 }

@@ -3,6 +3,7 @@
 // the production write path runs unchanged and fails exactly between steps.
 import { afterEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
+import type { EngineConnection } from "../../../infra/sql-connection.js";
 import {
   formatContinuationChildRunId,
   parseContinuationChildRunId,
@@ -45,16 +46,21 @@ function stateOptions() {
 
 type Options = ReturnType<typeof stateOptions>;
 
-type Db = import("node:sqlite").DatabaseSync;
-
-/** Mirrors the worker executor: custody writes run after the first-use schema ensure. */
-function write<T>(options: Options, operation: (db: Db) => T): T {
-  ensureContinuationCustodySchema(options);
-  return runOpenClawStateWriteTransaction(({ db }) => operation(db), options);
+/**
+ * Mirrors the worker command body (continuationCustodyOperations): custody
+ * writes run after the first-use schema ensure, inside the same transaction.
+ * The handlers themselves need the worker's retained admission, so the proofs
+ * drive the kernel operations they wrap.
+ */
+function write<T>(options: Options, operation: (db: EngineConnection) => T): T {
+  return runOpenClawStateWriteTransaction(({ db }) => {
+    ensureContinuationCustodySchema(db);
+    return operation(db);
+  }, options);
 }
 
 /** Reads, like the list and prune commands, never create the first-use table. */
-function read<T>(options: Options, operation: (db: Db) => T): T {
+function read<T>(options: Options, operation: (db: EngineConnection) => T): T {
   return runOpenClawStateWriteTransaction(({ db }) => operation(db), options);
 }
 
