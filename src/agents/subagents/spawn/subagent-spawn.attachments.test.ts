@@ -143,6 +143,98 @@ describe("spawnSubagentDirect filename validation", () => {
     });
   });
 
+  it("accepts whitespace-wrapped base64 and stages the decoded bytes", async () => {
+    const bytes = Buffer.from("line-wrapped attachment bytes\n".repeat(8));
+    const wrapped = ` ${bytes.toString("base64").replace(/.{1,76}/g, "$&\r\n")}\t`;
+    const result = await subagentSpawnModule.spawnSubagentDirect(
+      {
+        task: "test",
+        attachments: [{ name: "wrapped.bin", content: wrapped, encoding: "base64" }],
+      },
+      ctx,
+    );
+
+    expect(result.status, result.error).toBe("accepted");
+    expect(result.attachments?.count).toBe(1);
+    const relDir = expectDefined(result.attachments?.relDir, "attachment receipt");
+    const stagedFile = path.join(
+      resolveStagedDir(relDir, result.childSessionKey as string),
+      "wrapped.bin",
+    );
+    expect(fs.readFileSync(stagedFile)).toEqual(bytes);
+  });
+
+  it("bounds whitespace-padded base64 at twice the encoded file ceiling", async () => {
+    configOverride = createSubagentSpawnTestConfig(workspaceDirOverride, {
+      tools: {
+        sessions_spawn: {
+          attachments: {
+            enabled: true,
+            maxFiles: 50,
+            maxFileBytes: 1024,
+            maxTotalBytes: 5 * 1024 * 1024,
+          },
+        },
+      },
+    });
+    // maxFileBytes=1024 encodes to at most 1368 base64 characters, so the raw
+    // text may carry whitespace up to 2736 characters before it is stripped.
+    const spawnPadded = (rawLength: number) =>
+      subagentSpawnModule.spawnSubagentDirect(
+        {
+          task: "test",
+          attachments: [
+            {
+              name: "padded.bin",
+              content: validContent.padEnd(rawLength, " "),
+              encoding: "base64",
+            },
+          ],
+        },
+        ctx,
+      );
+
+    const accepted = await spawnPadded(2736);
+    expect(accepted.status, accepted.error).toBe("accepted");
+    await expect(spawnPadded(2737)).resolves.toMatchObject({
+      status: "error",
+      error: expect.stringContaining("attachments_invalid_base64_or_too_large"),
+    });
+  });
+
+  it.each([
+    {
+      limit: "maxFileBytes",
+      configured: { maxFileBytes: 2 * 1024 * 1024 },
+      sizes: [1024 * 1024 + 1],
+    },
+    {
+      limit: "maxTotalBytes",
+      configured: { maxTotalBytes: 6 * 1024 * 1024 },
+      sizes: Array.from({ length: 6 }, () => 1024 * 1024),
+    },
+  ])("honors a configured $limit above the default", async ({ configured, sizes }) => {
+    configOverride = createSubagentSpawnTestConfig(workspaceDirOverride, {
+      tools: { sessions_spawn: { attachments: { enabled: true, ...configured } } },
+    });
+    const result = await subagentSpawnModule.spawnSubagentDirect(
+      {
+        task: "test",
+        attachments: sizes.map((size, index) => ({
+          name: `large-${index}.txt`,
+          content: "x".repeat(size),
+        })),
+      },
+      ctx,
+    );
+
+    expect(result.status, result.error).toBe("accepted");
+    expect(result.attachments).toMatchObject({
+      count: sizes.length,
+      totalBytes: sizes.reduce((total, size) => total + size, 0),
+    });
+  });
+
   it("name with / returns attachments_invalid_name", async () => {
     const result = await spawnWithName("foo/bar");
     expect(result.status).toBe("error");

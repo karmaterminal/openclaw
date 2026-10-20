@@ -68,8 +68,34 @@ export type PreparedInlineAttachmentSnapshot = {
   bytes: number;
 };
 
+function maxEncodedBase64Length(maxDecodedBytes: number): number {
+  return Math.ceil(maxDecodedBytes / 3) * 4;
+}
+
+/**
+ * Admission form of base64 inline content: sessions_spawn accepts whitespace
+ * inside base64 (for example MIME line wrapping). The raw text is bounded at
+ * twice the encoded file ceiling before the strip; longer text stays as given
+ * and fails strict decoding. Durable snapshots store only this normalized
+ * form, so their codecs keep rejecting whitespace.
+ */
+export function normalizeInlineAttachmentBase64(
+  attachments: InlineAttachment[],
+  maxFileBytes: number,
+): InlineAttachment[] {
+  const maxRawLength = maxEncodedBase64Length(maxFileBytes) * 2;
+  return attachments.map((attachment) =>
+    isRecord(attachment) &&
+    attachment.encoding === "base64" &&
+    typeof attachment.content === "string" &&
+    attachment.content.length <= maxRawLength
+      ? { ...attachment, content: attachment.content.replace(/\s+/g, "") }
+      : attachment,
+  );
+}
+
 function decodeStrictBase64(value: string, maxDecodedBytes: number): Buffer | null {
-  const maxEncodedBytes = Math.ceil(maxDecodedBytes / 3) * 4;
+  const maxEncodedBytes = maxEncodedBase64Length(maxDecodedBytes);
   if (!value || value.length > maxEncodedBytes || value.length % 4 !== 0) {
     return null;
   }

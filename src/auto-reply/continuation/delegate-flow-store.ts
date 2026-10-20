@@ -226,7 +226,7 @@ async function decodeDelegateFlowWithOptions(
   const attachmentError = validateSubagentAttachments({
     config: getRuntimeConfig(),
     attachments: delegate.attachments,
-    redactContinuationErrorDetails: true,
+    continuationDelegateSnapshot: true,
   });
   return attachmentError ? undefined : delegate;
 }

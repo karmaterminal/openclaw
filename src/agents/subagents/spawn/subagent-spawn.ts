@@ -359,7 +359,7 @@ export async function spawnSubagentDirect(
         sandboxed: childRuntimeSandboxed,
         attachments: params.attachments,
         mountPathHint,
-        redactContinuationErrorDetails: params.drainsContinuationDelegateQueue === true,
+        continuationDelegateSnapshot: params.drainsContinuationDelegateQueue === true,
       }),
     );
     if (materializedAttachments && materializedAttachments.status !== "ok") {
