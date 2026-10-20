@@ -24,6 +24,8 @@ export function handleOrphanedSubagentResume(params: {
     return false;
   }
   const { isHostCurrent } = params;
+  // An orphan still owns its task and requester obligation. Settle through
+  // the same completion path before cleanup can remove that ownership.
   void params
     .complete(
       {
