@@ -7,11 +7,16 @@ import "./subagent-registry.mocks.shared.js";
 import "./subagent-registry.persistence.mocks.test-support.js";
 // Preserve module setup before modules that consume it.
 // oxfmt-ignore
-import { announceSpy, createSubagentPersistenceRuntime, useSubagentPersistenceFixture } from "./subagent-registry.persistence-fixture.test-support.js";
+import { activateSubagentPersistenceRegistry, announceSpy, useSubagentPersistenceFixture } from "./subagent-registry.persistence-fixture.test-support.js";
 import { callGateway } from "../../../gateway/call.js";
-import type { ChatAbortControllerEntry } from "../../../gateway/chat-abort.types.js";
-import { loadSubagentRegistryFromSqlite } from "./subagent-registry-state.fixture.test-support.js";
-import { writeSubagentSessionEntry } from "./subagent-registry.persistence.test-support.js";
+import {
+  loadSubagentRegistryFromSqlite,
+  saveSubagentRegistryToSqlite,
+} from "./subagent-registry-state.fixture.test-support.js";
+import {
+  prepareSubagentRecoveryFixture,
+  writeSubagentSessionEntry,
+} from "./subagent-registry.persistence.test-support.js";
 import {
   activateSubagentRegistry,
   initSubagentRegistry,
@@ -25,13 +30,8 @@ describe("subagent registry persistence: continuation return", () => {
   const restartRegistry = async () => {
     await resetSubagentRegistryForTests({ persist: false });
     await initSubagentRegistry();
-    const recoveryRuntime = createSubagentPersistenceRuntime(callGateway);
-    const gateway = {
-      recoveryRuntime,
-      chatAbortControllers: new Map<string, ChatAbortControllerEntry>(),
-      resolveGatewayContext: () => gateway as never,
-    };
-    await activateSubagentRegistry(() => gateway as never);
+    // Upstream (36e277d761) removed chatAbortControllers from the Gateway context.
+    await activateSubagentPersistenceRegistry({ activateSubagentRegistry }, callGateway);
   };
 
   it("persists continuation return metadata and replays it after restart", async () => {
@@ -118,6 +118,16 @@ describe("subagent registry persistence: continuation return", () => {
       },
       traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
     });
+    // Upstream (37d210e4aa) replays a restored completion only under its original
+    // operator source; seed that source on the persisted row as upstream's restart
+    // fixtures do, so the replay owns announce authority.
+    const persisted = loadSubagentRegistryFromSqlite().get("run-silent");
+    if (!persisted) {
+      throw new Error("expected the persisted run-silent row");
+    }
+    const recoverable = structuredClone(persisted);
+    await prepareSubagentRecoveryFixture(recoverable, { stateDir: fixture.stateDir });
+    saveSubagentRegistryToSqlite(new Map([[recoverable.runId, recoverable]]));
     const restarted = restartRegistry();
     releaseInitialWait?.({
       status: "ok",

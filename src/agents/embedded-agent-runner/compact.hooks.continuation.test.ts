@@ -1,20 +1,20 @@
 // Continuation coverage for embedded compaction: nested compaction tool rebuilds
 // must not expose continuation tools to the maintenance run.
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCompactHooksSessionFixture } from "./compact.hooks.fixture.test-support.js";
 import {
   createOpenClawCodingToolsMock,
   hookRunner,
   loadCompactHooksHarness,
-  resetCompactSessionStateMocks,
   resolveModelMock,
   sessionCompactImpl,
   triggerInternalHookMock,
 } from "./compact.hooks.harness.js";
-import { createCompactHooksAuthStorage } from "./compact.hooks.metadata.test-support.js";
+import { createCompactHooksResolvedModel } from "./compact.hooks.metadata.test-support.js";
 
 let compactEmbeddedAgentSessionDirect: typeof import("./compact.js").compactEmbeddedAgentSessionDirect;
+let configRuntime: typeof import("../../config/runtime-snapshot.js");
 
 let TEST_STORE_PATH: string;
 let TEST_SESSION_ID: string;
@@ -44,19 +44,9 @@ function mockCallArg(mock: ReturnType<typeof vi.fn>, callIndex = 0, argIndex = 0
 
 function mockResolvedModel() {
   resolveModelMock.mockReset();
-  resolveModelMock.mockImplementation((provider = "openai", modelId = "fake") => ({
-    logicalRef: { provider, model: modelId },
-    model: {
-      provider,
-      api: "openai-responses",
-      baseUrl: "https://api.openai.com/v1",
-      id: modelId,
-      input: [],
-    },
-    error: null,
-    authStorage: createCompactHooksAuthStorage(),
-    modelRegistry: {},
-  }));
+  resolveModelMock.mockImplementation((provider = "openai", modelId = "fake") =>
+    createCompactHooksResolvedModel(provider, modelId),
+  );
 }
 
 function wrappedCompactionArgs(overrides: Record<string, unknown> = {}) {
@@ -79,12 +69,17 @@ function wrappedCompactionArgs(overrides: Record<string, unknown> = {}) {
 
 beforeAll(async () => {
   const loaded = await loadCompactHooksHarness();
+  // getRuntimeConfig() reads only the published snapshot (#169714); load the
+  // snapshot owner after the harness so both share one module graph.
+  configRuntime = await import("../../config/runtime-snapshot.js");
   compactEmbeddedAgentSessionDirect = (params) =>
     loaded.compactEmbeddedAgentSessionDirect({ agentId: "main", ...params });
   TEST_STORE_PATH = await compactionFixture.prepare();
 });
 
 beforeEach(async () => {
+  configRuntime.setRuntimeConfigSnapshot({});
+  // prepareSession resets the harness, including its session-state mocks.
   ({ workspaceDir: TEST_WORKSPACE_DIR, sessionId: TEST_SESSION_ID } =
     await compactionFixture.prepareSession());
   triggerInternalHookMock.mockClear();
@@ -99,8 +94,9 @@ beforeEach(async () => {
     tokensBefore: 120,
     details: { ok: true },
   });
-  resetCompactSessionStateMocks();
 });
+
+afterEach(() => configRuntime.clearRuntimeConfigSnapshot());
 
 describe("compactEmbeddedAgentSessionDirect continuation tools", () => {
   it("disables continuation tools when rebuilding nested compaction tools", async () => {

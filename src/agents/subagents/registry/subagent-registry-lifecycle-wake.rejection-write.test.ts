@@ -117,6 +117,8 @@ function buildHarness(wakeFailure: Error): Harness {
     notifyContextEngineSubagentEnded: unexpected,
     retireSupersededRun: unexpected,
     resumeSubagentRun: vi.fn(),
+    // The fixture row holds no provisional kill, so settlement never confirms one.
+    confirmProvisionalKill: vi.fn(),
     callGateway: unexpected,
     captureSubagentCompletionReply: unexpected,
     cleanupBrowserSessionsForLifecycleEnd: unexpected,
@@ -163,7 +165,8 @@ describe("requester settle wake rejection write", () => {
       });
       expect(settled?.entries.map((settledEntry) => settledEntry.runId)).toEqual(["rejection-run"]);
     } finally {
-      controller.clearScheduledResumeTimers();
+      // Upstream (36e277d761) folded timer cleanup into clearRuntimeState.
+      controller.clearRuntimeState();
       await origin.drain();
       resetGatewayWorkAdmission();
     }

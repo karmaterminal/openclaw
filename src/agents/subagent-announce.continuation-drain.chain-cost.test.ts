@@ -202,23 +202,8 @@ vi.mock("./subagents/announce/subagent-announce-delivery.runtime.js", () =>
     resolveMainSessionKey: (cfg: unknown) => resolveMainSessionKeyMock(cfg),
     resolveSessionStorePathCore: (store: unknown, options: unknown) =>
       resolveStorePathMock(store, options),
-    isEmbeddedAgentRunActive: (sessionId: string) => isEmbeddedAgentRunActiveMock(sessionId),
-    queueEmbeddedAgentMessageWithOutcome: (sessionId: string, text: string) => {
-      const queued = queueEmbeddedAgentMessageMock(sessionId, text);
-      return queued
-        ? {
-            queued: true as const,
-            sessionId,
-            target: "reply_run" as const,
-            gatewayHealth: "live" as const,
-          }
-        : {
-            queued: false as const,
-            sessionId,
-            reason: "no_active_run" as const,
-            gatewayHealth: "live" as const,
-          };
-    },
+    // The session controller owns run activity; delivery no longer injects into active runs.
+    isSessionRunActive: (sessionId: string) => isEmbeddedAgentRunActiveMock(sessionId),
   }),
 );
 

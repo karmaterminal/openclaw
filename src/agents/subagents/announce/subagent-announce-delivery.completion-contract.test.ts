@@ -7,13 +7,10 @@ import type { SessionEntry } from "../../../config/sessions.js";
 import type { callGateway as runtimeCallGateway } from "../../../gateway/call.js";
 import { sendMessage as runtimeSendMessage } from "../../../infra/outbound/message.js";
 import { setActivePluginRegistry } from "../../../plugins/runtime.js";
+import { captureSessionTarget } from "../../../sessions/session-controller.lifecycle.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.types.js";
 import { createTestRegistry } from "../../../test-utils/channel-plugins.js";
-import type {
-  EmbeddedAgentQueueMessageOptions,
-  EmbeddedAgentQueueMessageOutcome,
-} from "../../embedded-agent-runner/runs.js";
 import type { AgentInternalEvent } from "../../internal-events.js";
 import {
   expectDeliveryPath,
@@ -23,6 +20,7 @@ import {
   taskCompletionEvents,
 } from "../../subagent-test-fixtures.test-helpers.js";
 import { testing, deliverSubagentAnnouncement } from "./subagent-announce-delivery.test-support.js";
+import type { SubagentAnnounceDeliveryTestDeps } from "./subagent-announce-overrides.test-support.js";
 
 const sessionDeliveryQueueMocks = vi.hoisted(() => ({
   enqueueClaimedSessionDelivery: vi.fn(
@@ -115,32 +113,23 @@ function createSendMessageMock() {
   })) as unknown as typeof runtimeSendMessage;
 }
 
-type QueueEmbeddedAgentMessageWithOutcome = (
-  sessionId: string,
-  message: string,
-  options?: EmbeddedAgentQueueMessageOptions,
-) => EmbeddedAgentQueueMessageOutcome | Promise<EmbeddedAgentQueueMessageOutcome>;
-
-function createQueueOutcomeMock(
-  queued: boolean,
-): ReturnType<typeof vi.fn<QueueEmbeddedAgentMessageWithOutcome>> {
-  return vi.fn((sessionId: string) =>
-    queued
-      ? {
-          queued: true,
-          sessionId,
-          target: "embedded_run",
-          gatewayHealth: "live",
-          enqueuedAtMs: 4_100,
-          deliveredAtMs: 4_200,
-        }
-      : {
-          queued: false,
-          sessionId,
-          reason: "not_streaming",
-          gatewayHealth: "live",
-        },
-  );
+// Upstream retired the queue-outcome type with completion steering (36e277d761).
+// Requester activity carries the physical controller target (upstream fixture shape).
+function requesterActivity(
+  sessionId: string | undefined,
+  isActive: boolean,
+): SubagentAnnounceDeliveryTestDeps["getRequesterSessionActivity"] {
+  return (sessionKey, requester) => ({
+    sessionId,
+    isActive,
+    target: captureSessionTarget({
+      storeScope: requester.storePath ?? "/synthetic/announce-delivery/sessions.json",
+      sessionKey: requester.canonicalKey,
+      aliases: [sessionKey],
+      agentId: requester.agentId,
+      incarnation: sessionId,
+    }),
+  });
 }
 
 function expectGatewayAgentParams(
@@ -166,7 +155,6 @@ async function deliverDiscordDirectMessageCompletion(params: {
     typeof deliverSubagentAnnouncement
   >[0]["completionDirectOrigin"];
   runtimeConfig?: Record<string, unknown>;
-  queueEmbeddedAgentMessageWithOutcome?: QueueEmbeddedAgentMessageWithOutcome;
   sourceSessionKey?: string;
   sourceTool?: string;
   signal?: AbortSignal;
@@ -183,18 +171,14 @@ async function deliverDiscordDirectMessageCompletion(params: {
   const requesterSessionKey = params.requesterSessionKey ?? "agent:main:discord:dm:U123";
   testing.setDepsForTest({
     callGateway: params.callGateway,
-    getRequesterSessionActivity: () => ({
-      sessionId:
-        params.currentRequesterSessionId === null
-          ? undefined
-          : (params.currentRequesterSessionId ?? "requester-session-dm"),
-      isActive: params.isActive === true,
-    }),
+    getRequesterSessionActivity: requesterActivity(
+      params.currentRequesterSessionId === null
+        ? undefined
+        : (params.currentRequesterSessionId ?? "requester-session-dm"),
+      params.isActive === true,
+    ),
     getRuntimeConfig: () => (params.runtimeConfig ?? {}) as never,
     sendMessage: params.sendMessage ?? runtimeSendMessage,
-    ...(params.queueEmbeddedAgentMessageWithOutcome
-      ? { queueEmbeddedAgentMessageWithOutcome: params.queueEmbeddedAgentMessageWithOutcome }
-      : {}),
   });
 
   return deliverSubagentAnnouncement({
@@ -246,7 +230,6 @@ async function deliverSlackChannelAnnouncement(params: {
     accountId?: string;
     threadId?: string | number;
   };
-  queueEmbeddedAgentMessageWithOutcome?: QueueEmbeddedAgentMessageWithOutcome;
   sendMessage?: typeof runtimeSendMessage;
   internalEvents?: AgentInternalEvent[];
   sourceSessionKey?: string;
@@ -262,10 +245,10 @@ async function deliverSlackChannelAnnouncement(params: {
   } as const;
   testing.setDepsForTest({
     callGateway: params.callGateway,
-    getRequesterSessionActivity: () => ({
-      sessionId: params.sessionId ?? "requester-session-channel",
-      isActive: params.isActive === true,
-    }),
+    getRequesterSessionActivity: requesterActivity(
+      params.sessionId ?? "requester-session-channel",
+      params.isActive === true,
+    ),
     getRuntimeConfig: () => (params.runtimeConfig ?? {}) as never,
     ...(params.requesterSessionEntry
       ? {
@@ -277,9 +260,6 @@ async function deliverSlackChannelAnnouncement(params: {
         }
       : {}),
     sendMessage: params.sendMessage ?? runtimeSendMessage,
-    ...(params.queueEmbeddedAgentMessageWithOutcome
-      ? { queueEmbeddedAgentMessageWithOutcome: params.queueEmbeddedAgentMessageWithOutcome }
-      : {}),
   });
 
   return deliverSubagentAnnouncement({
@@ -302,54 +282,6 @@ async function deliverSlackChannelAnnouncement(params: {
 }
 
 describe("deliverSubagentAnnouncement completion delivery", () => {
-  it("keeps synthetic missing output on the generic retry path", async () => {
-    const callGateway = createPayloadGatewayMock();
-    const sendMessage = createSendMessageMock();
-    const queueEmbeddedAgentMessageWithOutcome = createQueueOutcomeMock(false);
-    const childSessionKey = "agent:worker:subagent:empty-success";
-    const result = await deliverDiscordDirectMessageCompletion({
-      callGateway,
-      sendMessage,
-      isActive: true,
-      queueEmbeddedAgentMessageWithOutcome,
-      sourceSessionKey: childSessionKey,
-      internalEvents: taskCompletionEvents({
-        childSessionKey,
-        childSessionId: "child-session-id",
-        status: "ok",
-        statusLabel: "completed successfully",
-        result: "(no output)",
-        noVisibleResult: true,
-      }),
-    });
-
-    expectRecordFields(result, {
-      delivered: false,
-      path: "direct",
-      error: "completion agent did not produce a visible reply",
-      reason: "visible_reply_missing",
-      phases: [
-        {
-          phase: "direct-primary",
-          delivered: false,
-          path: "direct",
-          reason: "visible_reply_missing",
-          error: "completion agent did not produce a visible reply",
-        },
-        {
-          phase: "steer-fallback",
-          delivered: false,
-          path: "none",
-          reason: "steer_dropped",
-          error: undefined,
-        },
-      ],
-    });
-    expect(result.terminal).toBeUndefined();
-    expect(queueEmbeddedAgentMessageWithOutcome).toHaveBeenCalledTimes(2);
-    expect(sendMessage).not.toHaveBeenCalled();
-  });
-
   it("preserves continuation trigger and trace on the direct completion path", async () => {
     const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
     const callGateway = createGatewayMock({
@@ -398,36 +330,6 @@ describe("deliverSubagentAnnouncement completion delivery", () => {
       expectQueueContext(),
     );
     expect(callGateway).not.toHaveBeenCalled();
-  });
-
-  // These inputs differ only in the typed no-visible-result fact. Keep the
-  // authority boundary on the fact rather than the placeholder wording.
-  it("gates a reworded no-visible-result placeholder for channel completions", async () => {
-    const callGateway = createPayloadGatewayMock({ text: "NO_REPLY" });
-    const childSessionKey = "agent:worker:subagent:reworded-placeholder";
-    const result = await deliverSlackChannelAnnouncement({
-      callGateway,
-      directIdempotencyKey: "announce-channel-subagent-reworded-placeholder",
-      sourceTool: "subagent_announce",
-      sourceSessionKey: childSessionKey,
-      runtimeConfig: { messages: { groupChat: { visibleReplies: "automatic" } } },
-      internalEvents: taskCompletionEvents({
-        childSessionKey,
-        childSessionId: "child-session-id",
-        taskLabel: "reworded placeholder completion smoke",
-        status: "ok",
-        statusLabel: "completed successfully",
-        result: "(no result yet; child still running)",
-        noVisibleResult: true,
-      }),
-    });
-
-    expectRecordFields(result, {
-      delivered: false,
-      path: "direct",
-      reason: "visible_reply_missing",
-      error: "completion agent did not produce a visible reply",
-    });
   });
 
   it("does not gate visible output that only resembles the placeholder", async () => {

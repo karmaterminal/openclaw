@@ -5,7 +5,7 @@ import { cleanupSessionResources } from "@openclaw/ai/internal/runtime";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { Type } from "typebox";
 import { afterEach, expect, it, vi } from "vitest";
-import { clearCommittedSessionResetRuntimeState } from "../auto-reply/reply/session-reset-cleanup.js";
+import { clearReplacedSessionRuntimeState } from "../auto-reply/reply/session-init-reset-cleanup.js";
 import { captureRuntimeConfigAsyncReader } from "../config/io.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
@@ -38,6 +38,19 @@ import { Agent, type StreamFn } from "./runtime/index.js";
 import * as sessionPlacementAdmission from "./session-placement-admission.js";
 import { makeProviderModelFixture } from "./test-helpers/provider-model-fixture.js";
 import { createZeroUsageFixture } from "./test-helpers/usage-fixtures.js";
+
+// The committed-reset cleanup reports non-durable failures as session-init warnings.
+const sessionInitWarn = vi.hoisted(() => vi.fn());
+vi.mock("../logging/subsystem.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../logging/subsystem.js")>();
+  return {
+    ...actual,
+    createSubsystemLogger: (...args: Parameters<typeof actual.createSubsystemLogger>) => {
+      const logger = actual.createSubsystemLogger(...args);
+      return args[0] === "session-init" ? { ...logger, warn: sessionInitWarn } : logger;
+    },
+  };
+});
 
 const response = (api: WireApi, model: string, tool: boolean): Response =>
   providerResponse({
@@ -129,7 +142,7 @@ it.each([
       const host = getAiTransportHost();
       const payloads: Array<Record<string, unknown>> = [];
       let toolsRemaining = 0;
-      let beforeProviderResponse: (() => void) | undefined;
+      let beforeProviderResponse: (() => unknown) | undefined;
       configureAiTransportHost({
         ...host,
         buildModelFetch: () => async (input, init) => {
@@ -140,7 +153,7 @@ it.each([
           payloads.push(payload);
           const tool = toolsRemaining > 0;
           toolsRemaining--;
-          beforeProviderResponse?.();
+          await beforeProviderResponse?.();
           return response(api, model, tool);
         },
       });
@@ -308,16 +321,18 @@ it.each([
         beforeProviderResponse = () => pluginAbort.abort(new Error("plugin runtime retired"));
         await expect(fork(pluginAbort.signal)).rejects.toThrow();
         const onResetError = vi.fn();
+        sessionInitWarn.mockClear();
         beforeProviderResponse = () =>
-          clearCommittedSessionResetRuntimeState({
+          clearReplacedSessionRuntimeState({
             previousSessionEntry: { sessionId },
+            previousSessionEndReason: "reset",
             agentId: "main",
             sessionKey,
             storePath: target.storePath,
-            onError: onResetError,
-          });
+          }).catch(onResetError);
         await expect(fork()).rejects.toThrow("requires a parent turn");
         expect(onResetError).not.toHaveBeenCalled();
+        expect(sessionInitWarn).not.toHaveBeenCalled();
         beforeProviderResponse = undefined;
         const beforeReset = payloads.length;
         await expect(fork()).rejects.toThrow("requires a parent turn");

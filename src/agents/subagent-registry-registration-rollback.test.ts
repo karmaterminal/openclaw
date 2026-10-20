@@ -353,8 +353,11 @@ describe("subagent registration rollback", () => {
     const persistenceScopes: string[][] = [];
     const persistError = new Error("registration sqlite busy");
     persistOrThrowOverride = (write) => {
-      // The FIFO writer admits every selected run id as a version fence (sorted).
-      persistenceScopes.push(write.versions.map(({ runId: id }) => id).toSorted());
+      // Upstream retired per-row version fences (3f22cf58f8); the write's scope is
+      // now the run rows it upserts or deletes (sorted).
+      persistenceScopes.push(
+        [...write.values.map((row) => row.run_id), ...write.deleteRunIds].toSorted(),
+      );
       throw persistError;
     };
 

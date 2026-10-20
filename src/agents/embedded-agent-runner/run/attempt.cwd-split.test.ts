@@ -139,10 +139,8 @@ describe("runEmbeddedAttempt cwd/workspace split", () => {
     // Upstream removed the Tasks/TaskFlow runtime (#159179), so a cron run no
     // longer settles by reading completion-required task records; the
     // in-memory task/flow store setup this case once needed is gone with it.
-    await createContextEngineAttemptRunner({
-      contextEngine: createContextEngineBootstrapAndAssemble(),
+    await runAttempt({
       sessionKey: "agent:main:cron:job:run:attempt",
-      tempPaths,
       attemptOverrides: {
         disableTools: false,
         disableContinuationTools: true,
