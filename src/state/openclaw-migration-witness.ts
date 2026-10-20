@@ -15,10 +15,9 @@ import { LEGACY_CANONICAL_VALIDATION_TRIGGER_NAMES } from "./openclaw-agent-cano
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "./openclaw-agent-db-contract.js";
 import {
   assertOpenClawAgentSchemaContains,
-  getOpenClawAgentFleetSchema25MigrationSchema,
-  getOpenClawAgentMigrationSchema,
-  readOpenClawAgentSchema25Shape,
+  readOpenClawAgentHistoricalSchema,
 } from "./openclaw-agent-db-schema-helpers.js";
+import { AGENT_JSON_PREDICATE_COLUMNS } from "./openclaw-agent-json-predicate-schema.js";
 import { AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION } from "./openclaw-agent-recipient-authority-schema.js";
 import { OPENCLAW_STATE_SCHEMA_VERSION } from "./openclaw-state-db-contract.js";
 import { assertCurrentStateRuntimeSchema } from "./openclaw-state-db-fast-path.js";
@@ -60,6 +59,13 @@ const witnessSchema = z
 type OpenClawMigrationWitness = z.infer<typeof witnessSchema>;
 type OpenClawMigrationWitnessOwner = { role: "agent"; agentId: string } | { role: "global" };
 
+const predicateColumns = new Map<string, ReadonlySet<string>>(
+  Object.entries(AGENT_JSON_PREDICATE_COLUMNS).map(([table, columns]) => [
+    table,
+    new Set<string>(columns),
+  ]),
+);
+
 function assertUnique(values: readonly string[]): void {
   if (new Set(values).size !== values.length) {
     throw new Error("Migration witness contains duplicate identities");
@@ -86,7 +92,11 @@ function parseOpenClawMigrationWitness(value: unknown): OpenClawMigrationWitness
       throw new Error("Migration witness has unexpected registry observations");
     }
     if (
-      !(witness.role === "agent" && ["schema_meta", "session_key_contract"].includes(table.name)) &&
+      !(
+        witness.role === "agent" &&
+        (["schema_meta", "session_key_contract"].includes(table.name) ||
+          predicateColumns.has(table.name))
+      ) &&
       !(
         witness.role === "global" &&
         witness.registryMigrationBinding &&
@@ -129,17 +139,18 @@ function parseOpenClawMigrationWitness(value: unknown): OpenClawMigrationWitness
   return witness;
 }
 
-// Schema 25 changes these derived facts only. persistAgentSchemaMetadata also
+// Schemas 25, 26 and 27 change these derived facts only. persistAgentSchemaMetadata also
 // publishes the target app version and timestamp; payload and creation time stay exact.
 const RECIPIENT_AUTHORITY_TABLE = "session_recipient_authority";
-const AGENT_WITNESS_SCHEMA_VERSIONS = [24, 25, AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION];
+const AGENT_WITNESS_SCHEMA_VERSIONS = [24, 25, 26, AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION];
 
 function migrationColumn(role: OpenClawMigrationWitness["role"], table: string, column: string) {
   return !(
     role === "agent" &&
     ((table === "schema_meta" &&
       ["schema_version", "app_version", "updated_at"].includes(column)) ||
-      (table === "session_key_contract" && column === "canonical_ready"))
+      (table === "session_key_contract" && column === "canonical_ready") ||
+      predicateColumns.get(table)?.has(column))
   );
 }
 
@@ -404,18 +415,14 @@ export function captureOpenClawMigrationWitness(
         if (!AGENT_WITNESS_SCHEMA_VERSIONS.includes(schemaVersion)) {
           throw new Error(`Unsupported agent migration witness schema: ${schemaVersion}`);
         }
-        // Schema 25 has two histories; a fleet backup carries recipient authority.
-        const fleetSchema25 =
-          schemaVersion === 25 &&
-          readOpenClawAgentSchema25Shape(database, "migration witness") === "recipient-authority";
-        legacyValidationTriggers ||= fleetSchema25;
-        assertOpenClawAgentSchemaContains(
+        // Schemas 25 and 26 have two histories; a fleet backup carries recipient authority.
+        const history = readOpenClawAgentHistoricalSchema(
           database,
           "migration witness",
-          fleetSchema25
-            ? getOpenClawAgentFleetSchema25MigrationSchema()
-            : getOpenClawAgentMigrationSchema(schemaVersion),
+          schemaVersion,
         );
+        legacyValidationTriggers ||= history.legacyValidationTriggers;
+        assertOpenClawAgentSchemaContains(database, "migration witness", history.schema);
       } else {
         if (schemaVersion !== OPENCLAW_STATE_SCHEMA_VERSION) {
           throw new Error(`Unsupported shared-state migration witness schema: ${schemaVersion}`);
@@ -492,14 +499,22 @@ export function captureOpenClawMigrationWitness(
         ((legacyValidationTriggers &&
           object.type === "trigger" &&
           LEGACY_CANONICAL_VALIDATION_TRIGGER_NAMES.includes(object.name)) ||
-          // Recipient authority is compared by content; schema 26 adds the table.
+          // Recipient authority is compared by content; schema 27 adds the table.
           object.tbl_name === RECIPIENT_AUTHORITY_TABLE)
       ) {
         continue;
       }
-      if (role === "agent" && object.type === "table" && object.name === "session_key_contract") {
+      if (
+        role === "agent" &&
+        object.type === "table" &&
+        (object.name === "session_key_contract" || predicateColumns.has(object.name))
+      ) {
         const definition = parseSqliteTableDefinition(object.sql, object.name);
-        definition.columns.delete("canonical_ready");
+        for (const column of definition.columns.keys()) {
+          if (!migrationColumn(role, object.name, column)) {
+            definition.columns.delete(column);
+          }
+        }
         migrationSchemaHash
           .update(
             JSON.stringify({
@@ -664,7 +679,7 @@ export function assertOpenClawMigrationWitnessPreserved(
     }
     currentTables.delete(table.name);
   }
-  // Schema 26 creates recipient authority; a migration that adds it may not populate it.
+  // Schema 27 creates recipient authority; a migration that adds it may not populate it.
   const addedAuthority = currentTables.get(RECIPIENT_AUTHORITY_TABLE);
   if (crossing && addedAuthority?.rowCount === 0) {
     currentTables.delete(RECIPIENT_AUTHORITY_TABLE);

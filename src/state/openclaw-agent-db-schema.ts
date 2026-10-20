@@ -49,6 +49,7 @@ import {
 import {
   AGENT_MEDIA_SCHEMA_VERSION,
   AGENT_STORAGE_SCHEMA_VERSION,
+  AGENT_JSON_PREDICATE_SCHEMA_VERSION,
   CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION,
   CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION,
   OPENCLAW_AGENT_SCHEMA_VERSION,
@@ -64,6 +65,7 @@ import { ensureOpenClawAgentDatabasePermissions } from "./openclaw-agent-db-perm
 import { registerOpenClawAgentDatabase } from "./openclaw-agent-db-registry.js";
 import {
   getOpenClawAgentFleetSchema25MigrationSchema,
+  getOpenClawAgentFleetSchema26MigrationSchema,
   getOpenClawAgentMigrationSchema,
   assertExistingAgentSchemaOwner,
   assertCurrentAgentSchemaMetadata,
@@ -72,6 +74,7 @@ import {
   assertSupportedAgentSchemaVersion,
   assertCanonicalAgentPersistenceVersion,
   assertAgentSchemaVersion,
+  finishAgentSchemaMigration,
   hasPendingCurrentVersionAgentDatabaseMigration,
   hasPendingMemoryChunkMetadataMigration,
   migrateRetiredAgentStateLeaseSchema,
@@ -80,6 +83,7 @@ import {
   readExistingAgentSchemaMeta,
   repairAndAssertOpenClawAgentV14SchemaForMigration,
   readOpenClawAgentSchema25Shape,
+  readOpenClawAgentSchema26Shape,
 } from "./openclaw-agent-db-schema-helpers.js";
 import {
   backfillSessionConversations,
@@ -105,6 +109,7 @@ import {
   isPersistentOpenClawAgentDatabasePath,
   resolveOpenClawAgentSqlitePath,
 } from "./openclaw-agent-db.paths.js";
+import { migrateAgentJsonPredicatesInTransaction } from "./openclaw-agent-json-predicate-schema.js";
 import { migrateSessionParticipantsSchema } from "./openclaw-agent-participants-migration.js";
 import {
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
@@ -360,27 +365,6 @@ function migrateAgentStorageInTransaction(
   }
 }
 
-function finishAgentSchemaMigration(
-  db: DatabaseSync,
-  agentId: string,
-  pathname: string,
-  targetVersion: number,
-  schemaSql: string,
-  requiresMaintenance: boolean,
-  assertMigration: () => void,
-): void {
-  repairCanonicalSqliteIndexes(db, pathname, schemaSql, {
-    verifyPhysicalIntegrity: false,
-  });
-  db.exec(`PRAGMA user_version = ${targetVersion};`);
-  persistAgentSchemaMetadata(db, agentId, targetVersion);
-  assertAgentSchemaVersion(db, { agentId, pathname, version: targetVersion }, schemaSql);
-  if (requiresMaintenance && db.prepare("PRAGMA foreign_key_check").all().length > 0) {
-    throw new Error(`Agent schema migration failed foreign key validation for ${pathname}.`);
-  }
-  assertMigration();
-}
-
 type AgentSchemaMutationGuard = <T>(run: () => T) => T;
 
 function ensureAgentSchema(
@@ -443,13 +427,19 @@ function ensureAgentSchema(
         previousVersion === 0 &&
         readExistingAgentSchemaMeta(db) === null &&
         !db.prepare("SELECT 1 FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' LIMIT 1").get();
-      // Schema 25 has two histories: upstream's canonical-writer validation, and the
-      // fleet's earlier (unreleased) recipient-authority schema. Only the second still
-      // carries the legacy validation triggers and already has the authority table.
+      // Schemas 25 and 26 each have two histories: upstream's, and the fleet's earlier
+      // (unreleased) recipient-authority schema. The fleet's 25 still carries the legacy
+      // validation triggers; its 26 lacks upstream's JSON predicate columns. Both already
+      // have the authority table.
       const schema25Shape =
         previousVersion === CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
         targetVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
           ? readOpenClawAgentSchema25Shape(db, pathname)
+          : undefined;
+      const schema26Shape =
+        previousVersion === AGENT_JSON_PREDICATE_SCHEMA_VERSION &&
+        targetVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
+          ? readOpenClawAgentSchema26Shape(db, pathname)
           : undefined;
       const requiresCanonicalWriterMigration =
         !isEmptyDatabase &&
@@ -464,6 +454,12 @@ function ensureAgentSchema(
         !isEmptyDatabase &&
         previousVersion < SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION &&
         targetVersion >= SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION;
+      const requiresJsonPredicateMigration =
+        !isEmptyDatabase &&
+        targetVersion >= AGENT_JSON_PREDICATE_SCHEMA_VERSION &&
+        (previousVersion < AGENT_JSON_PREDICATE_SCHEMA_VERSION ||
+          schema26Shape === "recipient-authority");
+      // Idempotent: the fleet's schemas 25 and 26 keep their existing authority rows.
       const requiresRecipientAuthorityMigration =
         !isEmptyDatabase &&
         previousVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION &&
@@ -487,6 +483,9 @@ function ensureAgentSchema(
         if (requiresCanonicalWriterMigration) {
           migrateCanonicalSessionWriterValidation(db);
         }
+        if (requiresJsonPredicateMigration) {
+          migrateAgentJsonPredicatesInTransaction(db);
+        }
         if (requiresRecipientAuthorityMigration) {
           migrateSessionRecipientAuthorityInTransaction(db);
         }
@@ -500,10 +499,34 @@ function ensureAgentSchema(
           assertMigration,
         );
       };
+      if (schema26Shape !== undefined) {
+        assertAgentSchemaVersion(
+          db,
+          { agentId, pathname, version: previousVersion },
+          schema26Shape === "recipient-authority"
+            ? getOpenClawAgentFleetSchema26MigrationSchema()
+            : getOpenClawAgentMigrationSchema(previousVersion),
+        );
+        finishStorageMigration();
+        return;
+      }
+      if (
+        previousVersion === CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
+        schema25Shape !== "recipient-authority" &&
+        targetVersion >= AGENT_JSON_PREDICATE_SCHEMA_VERSION
+      ) {
+        assertAgentSchemaVersion(
+          db,
+          { agentId, pathname, version: previousVersion },
+          getOpenClawAgentMigrationSchema(previousVersion),
+        );
+        finishStorageMigration();
+        return;
+      }
       if (
         previousVersion < targetVersion &&
         previousVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION - 1 &&
-        previousVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION &&
+        previousVersion < AGENT_JSON_PREDICATE_SCHEMA_VERSION &&
         targetVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION
       ) {
         if (previousVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION) {

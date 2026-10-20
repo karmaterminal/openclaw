@@ -42,7 +42,8 @@ backup and its matching build, not just reinstalling the older package.
 | 23      | Selective transcript compression, binary memory embeddings, and stable memory full-text index identities                                                                                                                                               | `v2026.9.6`  |
 | 24      | Canonical session hot facts separated from keyed diff, skills, and system-prompt snapshots                                                                                                                                                             | `v2026.9.7`  |
 | 25      | Canonical writers validate their own rows; offline import and repair explicitly queue admission work instead of per-write invalidation triggers                                                                                                        | `Unreleased` |
-| 26      | Durable session-key recipient-authority generations for delayed named returns                                                                                                                                                                          | Unreleased   |
+| 26      | Portable query columns for session maintenance, transcript navigation discriminators, and context-engine outbox state                                                                                                                                  | `Unreleased` |
+| 27      | Durable session-key recipient-authority generations for delayed named returns                                                                                                                                                                          | Unreleased   |
 
 Schema 1 first appeared in `v2026.5.30-beta.1` and was also written by the
 extended-stable `v2026.7.35`. Versions 2, 4, 5–6, and 7 were development-only
@@ -62,6 +63,38 @@ including shared agent registration. Run `openclaw doctor --fix` with OpenClaw
 be verified, follow the explicit agent-restoration instructions it reports, then
 rerun Doctor before upgrading the copy. Schema-8 and later session migrations
 remain supported.
+
+### JSON predicate columns
+
+Agent schema **26** promotes query fields from canonical JSON into `TEXT` and
+`INTEGER` columns. Session nodes record the session start time and whether optional
+history references are present. Transcript events record navigation type, custom
+type, display visibility, message role, and the last type/custom-type member used
+by legacy navigation; a validity flag preserves the existing malformed-input path.
+The context-engine turn outbox records its payload state. Shared TypeScript
+derivations populate these fields in the same statement as each JSON write.
+The session actor uses the same session derivation.
+
+The migration classifies every existing row once in its owning agent database's
+transaction, preserving canonical JSON and compressed transcript bytes. SQLite
+classification retains first-member JSON lookup and last-member legacy navigation
+semantics. Optional outbox tables remain absent until first use. Fresh and
+incognito databases start at schema 26. Later opens reuse admitted schema facts;
+runtime predicates do not fall back to JSON or re-run the backfill.
+
+The [accepted design](https://github.com/openclaw/openclaw/issues/169254) keeps
+predicate types portable and uses the same derivations for future engine adapters.
+PostgreSQL bootstrap DDL is generated from the canonical schema; an engine that
+supports this database must provide each forward migration under the same version.
+Size-limiting JSON projections and current writer-authority checks keep their
+existing owners and semantics.
+
+Schema 25 and older builds refuse schema 26. Rollback requires restoring the
+verified pre-migration backup with its matching build; never lower either version
+marker. Update-time Doctor retains its private rehearsal and verified backup
+requirements for older update drivers. First-upgrade cost scales with retained
+rows in each agent database and the number of databases on a host; implementation
+proof records both measurements.
 
 ### Canonical writer validation
 
@@ -101,13 +134,14 @@ the existing [schema migration handoff](/reference/database-schemas/versioning#s
 
 ### Session recipient authority
 
-Agent schema **26** adds `session_recipient_authority`, one durable recipient-authority
-generation per canonical logical `sessionKey` for delayed named returns. The
-generation survives session materialization and deletion; the table has no
-`session_nodes` foreign key because deletion is one of its generation edges.
+Agent schema **27** adds `session_recipient_authority`, one durable recipient-authority
+generation per canonical logical `sessionKey` for delayed named returns, on top of
+schema 26's JSON predicate columns. The generation survives session materialization
+and deletion; the table has no `session_nodes` foreign key because deletion is one of
+its generation edges.
 
 The existing startup/Doctor schema owner creates the table in the same transaction
-that advances both schema markers. Some databases written before schema 26 already
+that advances both schema markers. Some databases written before schema 27 already
 carry the table; creation is idempotent and retains their rows. Some earlier
 databases also stored the epoch inside `session_nodes.entry_json`; the migration
 imports only valid UUID-v4 values and removes the field from valid JSON. Invalid
@@ -115,17 +149,25 @@ values never create authority, and malformed Doctor-owned session entries remain
 unchanged for Doctor repair. Transcript bytes, retention, and permissions are
 unchanged.
 
-Older builds refuse schema 26; rollback requires the pre-upgrade database backup and
+Older builds refuse schema 27; rollback requires the pre-upgrade database backup and
 matching build, not lower version markers.
 
-Some fleet databases are marked schema 25 but carry this recipient-authority table
-instead of upstream's schema 25: they kept the legacy entry-validity and canonical-pending
-triggers. The schema 26 owner tells the two schema-25 shapes apart by their physical
-schema (authority table plus legacy triggers, or neither) and refuses any other mixed
-shape. For the recipient-authority shape it runs the canonical-writer validation
-migration and the idempotent authority migration in one transaction, keeping existing
-authority rows. Rolling back means restoring the pre-migration backup with its
-matching build.
+Some fleet databases carry this table under earlier version markers, because the
+fleet received recipient authority as an unreleased schema 25 and then 26:
+
+- The fleet's schema 25 kept the legacy entry-validity and canonical-pending triggers
+  instead of upstream's schema 25. The schema 27 owner tells the two schema-25 shapes
+  apart by their physical schema (authority table plus legacy triggers, or neither).
+  For the fleet shape it runs the canonical-writer validation, JSON predicate, and
+  idempotent authority migrations in one transaction.
+- The fleet's schema 26 is upstream's schema 25 plus the authority table, without
+  upstream's schema-26 JSON predicate columns. The owner tells the two schema-26 shapes
+  apart by the authority table and the predicate columns on `session_nodes` and
+  `transcript_events` (all or none). For the fleet shape it runs the JSON predicate
+  backfill and keeps the authority rows; for upstream's shape it adds the table.
+
+Any other mixed shape is refused. Existing authority rows are kept. Rolling back means
+restoring the pre-migration backup with its matching build.
 
 ### Session hot facts and snapshots
 

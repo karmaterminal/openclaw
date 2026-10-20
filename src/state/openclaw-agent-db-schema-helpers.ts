@@ -32,7 +32,9 @@ import {
   CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION,
   CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION,
   AGENT_STORAGE_SCHEMA_VERSION,
+  AGENT_JSON_PREDICATE_SCHEMA_VERSION,
 } from "./openclaw-agent-db-contract.js";
+import { persistAgentSchemaMetadata } from "./openclaw-agent-db-metadata-write.js";
 import { AGENT_SCHEMA_COMPATIBILITY } from "./openclaw-agent-db-schema-compatibility.js";
 import {
   readExistingAgentSchemaMeta,
@@ -47,6 +49,10 @@ import {
   hasPendingSessionTranscriptContextEligibilityColumn,
   ensureSessionEntryValidityProjection,
 } from "./openclaw-agent-db-session-migrations.js";
+import {
+  AGENT_JSON_PREDICATE_COLUMNS,
+  withoutAgentJsonPredicateColumns,
+} from "./openclaw-agent-json-predicate-schema.js";
 import {
   LEGACY_PARTICIPANT_OPTIONAL_COLUMNS,
   withLegacySessionParticipantsSchema,
@@ -83,10 +89,14 @@ export {
 
 /** Compare historical migration targets against only the representation they support. */
 export function getOpenClawAgentMigrationSchema(targetVersion: number): string {
+  const predicateSchemaSql =
+    targetVersion < AGENT_JSON_PREDICATE_SCHEMA_VERSION
+      ? withoutAgentJsonPredicateColumns(OPENCLAW_AGENT_SCHEMA_SQL)
+      : OPENCLAW_AGENT_SCHEMA_SQL;
   const canonicalSchemaSql =
     targetVersion < CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION
-      ? withLegacyCanonicalSessionValidationTriggers(OPENCLAW_AGENT_SCHEMA_SQL)
-      : OPENCLAW_AGENT_SCHEMA_SQL;
+      ? withLegacyCanonicalSessionValidationTriggers(predicateSchemaSql)
+      : predicateSchemaSql;
   const recipientAuthoritySchemaSql =
     targetVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
       ? withoutSessionRecipientAuthoritySchema(canonicalSchemaSql)
@@ -340,6 +350,27 @@ export function assertAgentSchemaVersion(
   );
 }
 
+export function finishAgentSchemaMigration(
+  db: DatabaseSync,
+  agentId: string,
+  pathname: string,
+  targetVersion: number,
+  schemaSql: string,
+  requiresMaintenance: boolean,
+  assertMigration: () => void,
+): void {
+  repairCanonicalSqliteIndexes(db, pathname, schemaSql, {
+    verifyPhysicalIntegrity: false,
+  });
+  db.exec(`PRAGMA user_version = ${targetVersion};`);
+  persistAgentSchemaMetadata(db, agentId, targetVersion);
+  assertAgentSchemaVersion(db, { agentId, pathname, version: targetVersion }, schemaSql);
+  if (requiresMaintenance && db.prepare("PRAGMA foreign_key_check").all().length > 0) {
+    throw new Error(`Agent schema migration failed foreign key validation for ${pathname}.`);
+  }
+  assertMigration();
+}
+
 function hasLegacyMemoryChunkProvenanceTrigger(db: DatabaseSync): boolean {
   return Boolean(
     db
@@ -377,10 +408,80 @@ export function readOpenClawAgentSchema25Shape(
   );
 }
 
-/** The fleet's schema 25: recipient authority plus the legacy validation triggers. */
+/** The fleet's schema 26: upstream's schema 25 plus recipient authority, no JSON predicates. */
+export function getOpenClawAgentFleetSchema26MigrationSchema(): string {
+  return withoutAgentJsonPredicateColumns(
+    getOpenClawAgentMigrationSchema(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION),
+  );
+}
+
+/** The fleet's schema 25: its schema 26 plus the legacy validation triggers. */
 export function getOpenClawAgentFleetSchema25MigrationSchema(): string {
   return withLegacyCanonicalSessionValidationTriggers(
-    getOpenClawAgentMigrationSchema(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION),
+    getOpenClawAgentFleetSchema26MigrationSchema(),
+  );
+}
+
+/**
+ * The schema a database at a historical version must contain, by its physical history:
+ * the fleet's schemas 25 and 26 carry recipient authority (and its 25 the legacy triggers).
+ */
+export function readOpenClawAgentHistoricalSchema(
+  db: DatabaseSync,
+  pathname: string,
+  schemaVersion: number,
+): { schema: string; legacyValidationTriggers: boolean } {
+  if (
+    schemaVersion === CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
+    readOpenClawAgentSchema25Shape(db, pathname) === "recipient-authority"
+  ) {
+    return {
+      schema: getOpenClawAgentFleetSchema25MigrationSchema(),
+      legacyValidationTriggers: true,
+    };
+  }
+  if (
+    schemaVersion === AGENT_JSON_PREDICATE_SCHEMA_VERSION &&
+    readOpenClawAgentSchema26Shape(db, pathname) === "recipient-authority"
+  ) {
+    return {
+      schema: getOpenClawAgentFleetSchema26MigrationSchema(),
+      legacyValidationTriggers: false,
+    };
+  }
+  return {
+    schema: getOpenClawAgentMigrationSchema(schemaVersion),
+    legacyValidationTriggers: schemaVersion < CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION,
+  };
+}
+
+export type OpenClawAgentSchema26Shape = "json-predicate" | "recipient-authority";
+
+/** Classify a schema-26 database by its physical shape; mixed shapes are refused. */
+export function readOpenClawAgentSchema26Shape(
+  db: DatabaseSync,
+  pathname: string,
+): OpenClawAgentSchema26Shape {
+  const authority =
+    db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get("session_recipient_authority") !== undefined;
+  // Upstream's schema 26 adds every predicate column to these two required tables; the
+  // optional outbox table is created on first use, so it cannot classify a database.
+  const predicateColumns = (["session_nodes", "transcript_events"] as const).flatMap((table) => {
+    const columns = readSqliteTableColumns(db, table);
+    return AGENT_JSON_PREDICATE_COLUMNS[table].map((column) => columns?.has(column) === true);
+  });
+  const predicates = predicateColumns.every(Boolean);
+  const noPredicates = !predicateColumns.some(Boolean);
+  if (authority && noPredicates) {
+    return "recipient-authority";
+  }
+  if (!authority && predicates) {
+    return "json-predicate";
+  }
+  throw new Error(
+    `OpenClaw agent database ${pathname} has an unrecognized schema-26 shape (recipient authority: ${authority}, JSON predicate columns: ${predicates ? "all" : noPredicates ? "none" : "some"}); restore its pre-upgrade backup rather than migrating it.`,
   );
 }
 

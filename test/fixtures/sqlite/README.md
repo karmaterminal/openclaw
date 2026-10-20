@@ -34,6 +34,15 @@ fresh install it carries migration history (appended and reordered columns,
 quoted rebuilt tables, unmaterialized additive columns). Together they are the
 two real inputs to the schema-25 bridge.
 
+Agent schema 26 also has two histories. `openclaw-agent-schema-v26.sql` is the exact
+agent DDL from commit `84a834e233` (#169315), upstream's JSON-predicate schema 26.
+`openclaw-agent-schema-v26-fleet.sql` is the exact agent DDL of deployed build
+`03de0ce5d3` (the 2026-10-19 fleet cut), the fleet's recipient-authority schema 26 as a
+fresh install writes it. `openclaw-agent-schema-v26-fleet-migrated.sql` is the DDL that
+build's own schema owner wrote when it migrated `openclaw-agent-schema-v25-fleet-captured.sql`
+to schema 26, the path fleet seats took through `doctor --fix`; it keeps that file's
+migration history. Together they are the inputs to the schema-26 bridge.
+
 `openclaw-state-v2026.7.1-2.sqlite.gz` is a deterministic fixture for the
 shared state database created by OpenClaw tag `v2026.7.1-2` at commit
 `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.

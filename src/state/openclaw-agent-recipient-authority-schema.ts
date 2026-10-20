@@ -1,6 +1,6 @@
 import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
 
-export const AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION = 26;
+export const AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION = 27;
 
 export function sessionRecipientAuthoritySchemaSql(schema: string): string {
   return extractSqliteTableSchema(schema, "session_recipient_authority");

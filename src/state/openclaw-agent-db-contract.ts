@@ -6,10 +6,11 @@ import type {
 } from "../infra/sqlite-worker-identity.js";
 import type { OpenClawStateDatabaseOptions } from "./openclaw-state-db-contract.js";
 
-// v26 (continuation) records durable session-key recipient-authority generations for delayed
-// named returns. Fleet databases first received it as an unreleased v25; the v26 migration
-// recognizes that shape (see openclaw-agent-db-schema.ts).
-export const OPENCLAW_AGENT_SCHEMA_VERSION = 26;
+// v27 (continuation) records durable session-key recipient-authority generations for delayed
+// named returns on top of upstream's v26. Fleet databases first received it as an unreleased v25
+// and then v26; the v27 migration recognizes those shapes (see openclaw-agent-db-schema.ts).
+export const OPENCLAW_AGENT_SCHEMA_VERSION = 27;
+export const AGENT_JSON_PREDICATE_SCHEMA_VERSION = 26;
 export const CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION = 25;
 export const AGENT_STORAGE_SCHEMA_VERSION = 23;
 export const TRANSCRIPT_FTS_ROW_SCHEMA_VERSION = 22;
