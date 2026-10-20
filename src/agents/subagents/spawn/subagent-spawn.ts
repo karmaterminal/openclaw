@@ -1,13 +1,11 @@
-import { resolveSessionStorePathCore } from "../../../config/sessions/paths.js";
 import { composeSessionSourceAssertion } from "../../../config/sessions/session-source-authority.js";
 import {
   readExecRequestOwners,
   withExecRequestOwners,
 } from "../../../infra/exec-request-context.js";
-import { recordSessionParticipantBestEffort } from "../../../sessions/session-participant-recording.js";
-import { recordSubagentSpawned } from "../../../sessions/session-state-events.js";
 import { parseInlineAttachmentMountPath } from "../../../shared/inline-attachments.js";
 import { hasDeliveryTargetFields } from "../../../utils/delivery-context.shared.js";
+import { runWithAgentToolSourceExecutionScope } from "../../agent-tool-source-execution-guard.js";
 import { prepareNativeDelegatedToolPolicy } from "../../delegated-tool-policy.js";
 import { runSpawnPipeline, type SpawnBackendAdapter } from "../../spawn-pipeline.js";
 import { withGatewayToolOperatorContinuation } from "../../tools/gateway-caller-context.js";
@@ -56,12 +54,14 @@ import { prepareSubagentSpawnEnvelope } from "./subagent-spawn-envelope.js";
 import { buildSubagentSpawnGatewayIdentity } from "./subagent-spawn-gateway-identity.js";
 import { captureSubagentSpawnGatewayContext, readGatewayRunId } from "./subagent-spawn-gateway.js";
 import { buildSubagentLaunchRequest } from "./subagent-spawn-launch-request.js";
-import { createSubagentSpawnLifecycleEmitter } from "./subagent-spawn-lifecycle.js";
+import {
+  createSubagentSpawnLifecycleEmitter,
+  recordSubagentSessionSetup,
+} from "./subagent-spawn-lifecycle.js";
 import {
   assertSubagentCollectorAdmission,
   buildSubagentSpawnPipelineFailureResult,
   notifyHomeOfAcceptedSubagentSession,
-  recordSubagentSessionCreated,
 } from "./subagent-spawn-registration.js";
 import { resolveSubagentSpawnRequest } from "./subagent-spawn-request.js";
 import { cleanupAcceptedSubagentSpawnFailure } from "./subagent-spawn-rollback.js";
@@ -157,7 +157,6 @@ export async function spawnSubagentDirect(
     });
     const delegatedToolPolicy = delegation.policy;
     assertDelegationCurrent = delegation.assertCurrent;
-    assertActive();
     if (reservationPending && !swarmReservation?.isCurrent()) {
       return { status: "error", error: "Collector FIFO reservation is no longer current" };
     }
@@ -209,35 +208,37 @@ export async function spawnSubagentDirect(
       error,
       childSessionKey,
     });
-    const initialSession = await createInitialSubagentSession({
-      assertActive,
-      cfg,
-      requesterAgentId,
-      targetAgentId,
-      childSessionKey,
-      label: label || undefined,
-      incognito,
-      requesterInternalKey,
-      senderIsOwner: ctx.senderIsOwner,
-      expectedParentSessionId: ctx.expectedParentSessionId,
-      creationPolicy,
-      completionOwnerSessionKey: ownership.completionRequesterSessionKey,
-      spawnedWorkspaceDir,
-      spawnedCwd,
-      sessionPermissionPolicy: ctx.sessionPermissionPolicy,
-      worktree: params.worktree ? params : undefined,
-      admissionPatch: admission.childSessionPatch,
-      inheritedToolAllowlist: ctx.inheritedToolAllowlist,
-      inheritedToolDenylist: ctx.inheritedToolDenylist,
-      inheritedToolPolicySource: ctx.inheritedToolPolicySource,
-      delegatedToolPolicy,
-      modelPatch: plan.initialSessionPatch,
-      continuationPatch: buildContinuationSessionPatch(params),
-      swarmGroupId,
-      collect: params.collect === true,
-      outputSchema: params.outputSchema,
-      continuationDelegateAdmission: ctx.continuationDelegateAdmission,
-    });
+    const initialSession = await runWithAgentToolSourceExecutionScope(assertActive, () =>
+      createInitialSubagentSession({
+        assertActive,
+        cfg,
+        requesterAgentId,
+        targetAgentId,
+        childSessionKey,
+        label: label || undefined,
+        incognito,
+        requesterInternalKey,
+        senderIsOwner: ctx.senderIsOwner,
+        expectedParentSessionId: ctx.expectedParentSessionId,
+        creationPolicy,
+        completionOwnerSessionKey: ownership.completionRequesterSessionKey,
+        spawnedWorkspaceDir,
+        spawnedCwd,
+        sessionPermissionPolicy: ctx.sessionPermissionPolicy,
+        worktree: params.worktree ? params : undefined,
+        admissionPatch: admission.childSessionPatch,
+        inheritedToolAllowlist: ctx.inheritedToolAllowlist,
+        inheritedToolDenylist: ctx.inheritedToolDenylist,
+        inheritedToolPolicySource: ctx.inheritedToolPolicySource,
+        delegatedToolPolicy,
+        modelPatch: plan.initialSessionPatch,
+        continuationPatch: buildContinuationSessionPatch(params),
+        swarmGroupId,
+        collect: params.collect === true,
+        outputSchema: params.outputSchema,
+        continuationDelegateAdmission: ctx.continuationDelegateAdmission,
+      }),
+    );
     if (initialSession.status === "error") {
       return sessionError(initialSession.error);
     }
@@ -271,15 +272,17 @@ export async function spawnSubagentDirect(
         isCurrent: isCleanupCurrent,
         ...(cleanupOwner ? { callGateway: cleanupOwner.callGateway } : {}),
       });
-    const preparedSpawnContext = await prepareSubagentSessionContext({
-      assertActive,
-      cfg,
-      contextMode,
-      requesterAgentId,
-      targetAgentId,
-      requesterInternalKey,
-      childSessionKey,
-    });
+    const preparedSpawnContext = await runWithAgentToolSourceExecutionScope(assertActive, () =>
+      prepareSubagentSessionContext({
+        assertActive,
+        cfg,
+        contextMode,
+        requesterAgentId,
+        targetAgentId,
+        requesterInternalKey,
+        childSessionKey,
+      }),
+    );
     if (preparedSpawnContext.status === "error") {
       await cleanupCreatedSession();
       return sessionError(preparedSpawnContext.error);
@@ -294,21 +297,23 @@ export async function spawnSubagentDirect(
       };
     }
     if (requestThreadBinding) {
-      const bindResult = await bindThreadForSubagentSpawn({
-        assertActive,
-        cfg,
-        childSessionKey,
-        agentId: targetAgentId,
-        label: label || undefined,
-        mode: spawnMode,
-        requesterSessionKey: ownership.controllerSessionKey,
-        requester: {
-          channel: childSessionOrigin?.channel,
-          accountId: childSessionOrigin?.accountId,
-          to: childSessionOrigin?.to,
-          threadId: childSessionOrigin?.threadId,
-        },
-      });
+      const bindResult = await runWithAgentToolSourceExecutionScope(assertActive, () =>
+        bindThreadForSubagentSpawn({
+          assertActive,
+          cfg,
+          childSessionKey,
+          agentId: targetAgentId,
+          label: label || undefined,
+          mode: spawnMode,
+          requesterSessionKey: ownership.controllerSessionKey,
+          requester: {
+            channel: childSessionOrigin?.channel,
+            accountId: childSessionOrigin?.accountId,
+            to: childSessionOrigin?.to,
+            threadId: childSessionOrigin?.threadId,
+          },
+        }),
+      );
       if (bindResult.status === "error") {
         await cleanupCreatedSession();
         return sessionError(bindResult.error);
@@ -345,16 +350,18 @@ export async function spawnSubagentDirect(
     const { completionMode, envelope } = preparedEnvelope;
     let { childSystemPrompt } = preparedEnvelope;
 
-    const materializedAttachments = await materializeSubagentAttachments({
-      assertActive,
-      config: cfg,
-      childSessionKey,
-      targetAgentId,
-      sandboxed: childRuntimeSandboxed,
-      attachments: params.attachments,
-      mountPathHint,
-      redactContinuationErrorDetails: params.drainsContinuationDelegateQueue === true,
-    });
+    const materializedAttachments = await runWithAgentToolSourceExecutionScope(assertActive, () =>
+      materializeSubagentAttachments({
+        assertActive,
+        config: cfg,
+        childSessionKey,
+        targetAgentId,
+        sandboxed: childRuntimeSandboxed,
+        attachments: params.attachments,
+        mountPathHint,
+        redactContinuationErrorDetails: params.drainsContinuationDelegateQueue === true,
+      }),
+    );
     if (materializedAttachments && materializedAttachments.status !== "ok") {
       await cleanupCreatedSession(threadBindingReady);
       return {
@@ -392,21 +399,16 @@ export async function spawnSubagentDirect(
         swarmMaxConcurrent: swarmConfig.maxConcurrent,
       });
     applySubagentContinuationLaunchFields(childLaunch.request, params);
-    await recordSubagentSessionCreated(childEntry, childSessionKey, targetAgentId);
-    await recordSubagentSpawned({
+    const recordRequesterParticipation = await recordSubagentSessionSetup({
+      cfg,
+      childEntry,
       childSessionKey,
       childRunId: childIdem,
       requesterSessionKey: requesterInternalKey,
-      agentId: targetAgentId,
+      requesterAgentId,
+      targetAgentId,
+      promptedAt,
     });
-    const recordRequesterParticipation = () =>
-      recordSessionParticipantBestEffort({
-        promptedAt,
-        identity: { type: "agent", id: requesterAgentId },
-        agentId: targetAgentId,
-        sessionKey: childSessionKey,
-        storePath: resolveSessionStorePathCore(cfg.session?.store, { agentId: targetAgentId }),
-      });
     let acceptedChildRunId: string | undefined;
     const launchChildRun = createSubagentChildRunLauncher({
       ctx,
@@ -471,14 +473,16 @@ export async function spawnSubagentDirect(
         const result =
           params.lightContext && preparedSpawnContext.mode === "isolated"
             ? ({ status: "ok", preparation: undefined } as const)
-            : await prepareContextEngineSubagentSpawn({
-                assertActive,
-                cfg,
-                context: preparedSpawnContext,
-                requesterInternalKey,
-                childSessionKey,
-                runTimeoutSeconds,
-              });
+            : await runWithAgentToolSourceExecutionScope(assertActive, () =>
+                prepareContextEngineSubagentSpawn({
+                  assertActive,
+                  cfg,
+                  context: preparedSpawnContext,
+                  requesterInternalKey,
+                  childSessionKey,
+                  runTimeoutSeconds,
+                }),
+              );
         if (result.status === "error") {
           throw new Error(result.error);
         }

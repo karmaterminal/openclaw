@@ -1,10 +1,7 @@
 /** Subagent spawn registration admission, publication, and pipeline failure results. */
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
-import {
-  notifyHomeOfSessionCreated,
-  recordSessionCreatedStateEvent,
-} from "../../../sessions/session-created.js";
+import { notifyHomeOfSessionCreated } from "../../../sessions/session-created.js";
 import { summarizeSpawnError } from "../../spawn-pipeline.js";
 import {
   isSpawnSubagentAdmissionCancelledError,
@@ -25,21 +22,6 @@ export function assertSubagentCollectorAdmission(
   if (!latestAdmission.ok) {
     throw Object.assign(new Error(latestAdmission.error), {
       spawnStatus: "forbidden" as const,
-    });
-  }
-}
-
-/** Records the child's "created" state event where upstream records it, before child_spawned. */
-export async function recordSubagentSessionCreated(
-  childEntry: SessionEntry | undefined,
-  childSessionKey: string,
-  agentId: string,
-): Promise<void> {
-  if (childEntry) {
-    await recordSessionCreatedStateEvent({
-      sessionKey: childSessionKey,
-      agentId,
-      entry: childEntry,
     });
   }
 }

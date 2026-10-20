@@ -1,6 +1,7 @@
 /** Native child-run dispatch for a subagent spawn, behind the continuation-ownership gate. */
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
+import { runWithAgentToolSourceExecutionScope } from "../../agent-tool-source-execution-guard.js";
 import { registerSubagentTraceparentHandoff } from "../../subagent-traceparent-handoff.js";
 import type { ContinuationSpawnParams } from "../announce/subagent-announce.runtime.js";
 import type { bindSubagentSpawnCleanup } from "./subagent-spawn-cleanup.js";
@@ -33,26 +34,28 @@ export function createSubagentChildRunLauncher(launch: {
       sessionKey: childSessionKey,
       traceparent: launch.traceparent,
     });
-    const result = await callNativeSubagentGateway(
-      withSubagentGatewayExecutionIdentity(
-        {
-          method: "agent",
-          assertDispatchCurrent,
-          params: childLaunch.request,
-          timeoutMs: childLaunch.timeoutMs,
-        },
-        launch.gatewayIdentity(),
+    const result = await runWithAgentToolSourceExecutionScope(assertDispatchCurrent, () =>
+      callNativeSubagentGateway(
+        withSubagentGatewayExecutionIdentity(
+          {
+            method: "agent",
+            assertDispatchCurrent,
+            params: childLaunch.request,
+            timeoutMs: childLaunch.timeoutMs,
+          },
+          launch.gatewayIdentity(),
+        ),
+        childLaunch.authorization,
+        launch.gatewayContextResolver,
+        launch.childEntry?.sessionId && launch.childEntry.lifecycleRevision
+          ? {
+              sessionKey: childSessionKey,
+              sessionId: launch.childEntry.sessionId,
+              lifecycleRevision: launch.childEntry.lifecycleRevision,
+              runId: childIdem,
+            }
+          : undefined,
       ),
-      childLaunch.authorization,
-      launch.gatewayContextResolver,
-      launch.childEntry?.sessionId && launch.childEntry.lifecycleRevision
-        ? {
-            sessionKey: childSessionKey,
-            sessionId: launch.childEntry.sessionId,
-            lifecycleRevision: launch.childEntry.lifecycleRevision,
-            runId: childIdem,
-          }
-        : undefined,
     );
     const acceptedChildRunId = readGatewayRunId(result.response) ?? childIdem;
     launch.onAccepted(acceptedChildRunId);
