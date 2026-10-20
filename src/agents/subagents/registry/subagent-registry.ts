@@ -463,16 +463,15 @@ const subagentRestorer = createSubagentRegistryRestorer({
     timeoutMs,
     expectedSessionId,
     expectedLifecycleRevision,
-  }) => {
-    return terminateAcceptedCollectorRun({
+  }) =>
+    terminateAcceptedCollectorRun({
       childSessionKey: entry.childSessionKey,
       gatewayRunId,
       expectedSessionId,
       expectedLifecycleRevision,
       timeoutMs,
       callGateway: callSubagentRegistryGateway,
-    }).then(() => undefined);
-  },
+    }),
   cleanupCollectorLaunchResources: contextCleanup.cleanupCollectorLaunchResources,
   settleFailedQueuedSubagentLaunch: (runId, error) =>
     subagentRunManager.settleFailedQueuedSubagentLaunch(runId, error),

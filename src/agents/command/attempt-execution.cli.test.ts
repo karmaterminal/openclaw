@@ -1519,9 +1519,7 @@ describe("CLI attempt execution", () => {
         sessionStore,
       });
     if (error) {
-      // runAgentAttempt is async in this lane, so the refusal surfaces as a
-      // rejection rather than a synchronous throw.
-      await expect(run()).rejects.toThrow(error);
+      expect(run).toThrow(error);
       expect(runCliAgentMock).not.toHaveBeenCalled();
     } else {
       await run();

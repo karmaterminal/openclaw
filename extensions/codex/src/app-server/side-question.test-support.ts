@@ -277,10 +277,7 @@ function sideParams(overrides: Partial<SideQuestionParams> = {}): SideQuestionPa
   let hostCapabilities = overrides.hostCapabilities ?? TEST_HOST_CAPABILITIES;
   if (!hostCapabilities.createToolSurfaceAsync) {
     hostCapabilities = createCodexTestHostCapabilities(hostCapabilities);
-    // The shared factory also receives the real builder; the mock records only the tool options.
-    setCodexTestToolFactory({ hostCapabilities }, (toolOptions) =>
-      createOpenClawCodingToolsMock(toolOptions),
-    );
+    setCodexTestToolFactory({ hostCapabilities }, createOpenClawCodingToolsMock);
   }
   const authProfileId = Object.hasOwn(overrides, "authProfileId")
     ? overrides.authProfileId

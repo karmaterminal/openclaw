@@ -7,9 +7,6 @@ import type {
 type ToolsFactory = typeof createOpenClawCodingToolsInternal;
 let createTools: typeof createOpenClawCodingToolsInternalAsync | undefined;
 const factories = new Map<string, ToolsFactory>();
-// Runs whose factory is executing: a factory that extends the real surface through the
-// public builder re-enters this spy, and that inner build must be the real one.
-const activeRuns = new Set<string>();
 
 /** Substitutes construction while preserving the real host's private authority and bindings. */
 export async function setHostToolFactoryForTest(
@@ -22,21 +19,11 @@ export async function setHostToolFactoryForTest(
   const spy = vi
     .spyOn(agentTools, "createOpenClawCodingToolsInternalAsync")
     .mockImplementation(async (...args) => {
-      const runId = args[0]?.runId;
-      const runFactory = runId && !activeRuns.has(runId) ? factories.get(runId) : undefined;
-      if (!runId || !runFactory) {
-        return await actual(...args);
-      }
-      activeRuns.add(runId);
-      try {
-        return runFactory(args[0], args[1], args[2], args[3]);
-      } finally {
-        activeRuns.delete(runId);
-      }
+      const runFactory = args[0]?.runId ? factories.get(args[0].runId) : undefined;
+      return runFactory ? runFactory(args[0], args[1], args[2], args[3]) : await actual(...args);
     });
   onTestFinished(() => {
     factories.clear();
-    activeRuns.clear();
     spy.mockRestore();
   });
 }

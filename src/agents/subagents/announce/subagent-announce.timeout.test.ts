@@ -167,11 +167,9 @@ vi.mock("./subagent-announce.runtime.js", () => ({
     return await callGatewayImpl(request);
   },
   getRuntimeConfig: () => configOverride,
-  loadConfig: () => configOverride,
   loadSessionStore: vi.fn(() => sessionStore),
   readSessionMessagesAsync: vi.fn(async () => []),
-  readSubagentSessionEntry: (_storePath: string, sessionKey: string) =>
-    (sessionStore as Record<string, unknown>)?.[sessionKey],
+  readSubagentSessionEntry: (_storePath: string, sessionKey: string) => sessionStore[sessionKey],
   resolveContinuationRuntimeConfig: () => ({
     maxChainLength: 10,
     costCapTokens: 500_000,

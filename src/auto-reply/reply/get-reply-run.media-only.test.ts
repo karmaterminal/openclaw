@@ -100,7 +100,7 @@ vi.mock("../../agents/harness/hook-helpers.js", () => ({
 }));
 
 // Harness selection and built-in execution are owned by their focused suites. These tests keep
-// the real visible-reply policy resolver while supplying its default OpenClaw harness leaf.
+// the real visible-reply policy resolver while supplying its default delivery metadata.
 const preparedReplyMockState = vi.hoisted(() => ({
   unexpectedCalls: [] as string[],
 }));

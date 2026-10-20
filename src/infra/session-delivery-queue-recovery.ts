@@ -16,6 +16,8 @@ import {
   loadPendingSessionDeliveries,
   markSessionDeliverySettlement,
   moveSessionDeliveryToFailed,
+} from "./session-delivery-queue-storage.js";
+import {
   SessionDeliveryAcknowledgementFinalizeError,
   SessionDeliveryAttemptStartError,
   SessionDeliveryDeadLetteredError,
@@ -24,7 +26,7 @@ import {
   SessionDeliverySafeRetryError,
   type QueuedSessionDelivery,
   type SessionDeliverySettledOutcome,
-} from "./session-delivery-queue-storage.js";
+} from "./session-delivery-queue.records.js";
 import { releaseSystemEventDeliveryAdoptionClaims } from "./system-event-delivery-claims.js";
 
 export type DeliverSessionDeliveryFn = (

@@ -290,6 +290,7 @@ function createSessionEventWakeRuntime() {
         pending.delete(key);
       }
       const wakes: PendingWake[] = [];
+      // Task turns include monitor scratch; otherwise the event consumes the base tick.
       for (const [taskSlot, scheduledSlot, eventSlot] of SLOT_GROUPS) {
         const task = picked[taskSlot];
         const scheduled = picked[scheduledSlot];

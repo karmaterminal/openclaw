@@ -23,6 +23,7 @@ import {
   type InlineAttachment,
   type InlineAttachmentMount,
 } from "../shared/inline-attachments.js";
+import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import type { DeliveryQueueEntryLoadResult } from "./delivery-queue-sqlite-codec.js";
 import type { DeliveryQueueCompletionRetention } from "./delivery-queue-sqlite.js";
 import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
@@ -34,12 +35,10 @@ import {
   type QueuedSessionDeliveryPayloadMetadata,
 } from "./session-delivery-queue-attachment-metadata.js";
 
-export type SessionDeliveryContext = {
-  channel?: string;
-  to?: string;
-  accountId?: string;
-  threadId?: string | number;
-};
+export type SessionDeliveryContext = Pick<
+  DeliveryContext,
+  "channel" | "to" | "accountId" | "threadId"
+>;
 
 type SessionDeliveryRetryPolicy = {
   maxRetries?: number;

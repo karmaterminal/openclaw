@@ -1954,10 +1954,10 @@ describe("subagent announce formatting", () => {
   );
 
   registerNestedCompletionRegressionMatrix({
-    getRunSubagentAnnounceFlow: () => runSubagentAnnounceFlow,
-    defaultOutcomeAnnounce,
     subagentRegistryMock,
     agentSpy,
+    makeChildCompletion,
+    announceWake,
     getAgentCall,
     getAgentCallContext,
   });

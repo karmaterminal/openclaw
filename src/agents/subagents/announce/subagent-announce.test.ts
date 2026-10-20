@@ -74,7 +74,6 @@ vi.mock("./subagent-announce.runtime.js", () => ({
   ) => callGatewayMock({ method, params, timeoutMs: options?.timeoutMs }),
   isEmbeddedAgentRunActive: (sessionId: string) => isEmbeddedAgentRunActiveMock(sessionId),
   getRuntimeConfig: () => mockConfig,
-  loadConfig: () => mockConfig,
   loadSessionStore: (storePath: string) => loadSessionStoreMock(storePath),
   readSessionMessagesAsync: vi.fn(async () => []),
   readSubagentSessionEntry: (storePath: string, sessionKey: string) => {

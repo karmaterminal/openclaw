@@ -1,12 +1,10 @@
 // Queue state types for the session event wake runtime (pending wakes, slot groups, attempts).
 import type { HeartbeatRunResult, HeartbeatWakeRequest } from "./heartbeat-wake-contracts.js";
 
-export type SessionEventWakeResult = HeartbeatRunResult;
-export type SessionEventWakeRequest = HeartbeatWakeRequest;
 export type WakeHandler = (
-  request: SessionEventWakeRequest,
+  request: HeartbeatWakeRequest,
   signal: AbortSignal,
-) => Promise<SessionEventWakeResult>;
+) => Promise<HeartbeatRunResult>;
 export type SessionEventWakeWaitOptions = {
   abortSignal?: AbortSignal;
   /** Called when the queue starts an attempt for this waiter. */
@@ -15,18 +13,18 @@ export type SessionEventWakeWaitOptions = {
   onQueued?: () => void;
   /** Detach this waiter while the queue retains the wake at its retry deadline. */
   stopWaitingOnRetry?: (
-    result: Extract<SessionEventWakeResult, { status: "skipped" }>,
+    result: Extract<HeartbeatRunResult, { status: "skipped" }>,
     retryAtMs: number,
   ) => boolean;
 };
 export type Settlement = {
   active: boolean;
-  settle: (result: SessionEventWakeResult) => void;
+  settle: (result: HeartbeatRunResult) => void;
   onAttemptStarted?: SessionEventWakeWaitOptions["onAttemptStarted"];
   onQueued?: SessionEventWakeWaitOptions["onQueued"];
   stopWaitingOnRetry?: SessionEventWakeWaitOptions["stopWaitingOnRetry"];
 };
-export type PendingWake = SessionEventWakeRequest & {
+export type PendingWake = HeartbeatWakeRequest & {
   trustedContinuationRouting: boolean;
   sequence: number;
   barrierSequence?: number;
@@ -55,6 +53,6 @@ export type WakeAttempt = {
   wake: PendingWake;
   terminalPollDisposition: boolean;
 };
-export type RequestOptions = Omit<SessionEventWakeRequest, "retainedWork"> & {
+export type RequestOptions = Omit<HeartbeatWakeRequest, "retainedWork"> & {
   coalesceMs?: number;
 };

@@ -35,7 +35,7 @@ import {
   registerSessionBindingAdapter,
 } from "../../infra/outbound/session-binding-service.js";
 import {
-  enqueueSystemEventRaw as enqueueSystemEvent,
+  enqueueSystemEvent,
   enqueueSystemEventEntry,
   peekSystemEvents,
   resetSystemEventsForTest,

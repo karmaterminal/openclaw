@@ -203,8 +203,9 @@ describe("sessions.send completed subagent follow-up status", () => {
       applyEnv: false,
     });
     onTestFinished(() => state.cleanup());
+    const storePath = state.statePath("agents", "main", "agent", "openclaw-agent.sqlite");
     const childSessionKey = "agent:main:subagent:followup";
-    loadSession(childSessionKey, "sess-followup");
+    loadSession(childSessionKey, "sess-followup", storePath);
     completedRun(childSessionKey);
     replaceSubagentRunAfterSteerMock.mockReturnValue(true);
     chatSendMock.mockImplementationOnce(async ({ respond }: { respond: RespondFn }) => {
@@ -222,7 +223,7 @@ describe("sessions.send completed subagent follow-up status", () => {
     const projection = createSessionRowProjectionFixture({
       cfg: {},
       agentId: "main",
-      storePath: fixtureStorePath,
+      storePath,
       store: {
         [childSessionKey]: {
           sessionId: "sess-followup",

@@ -49,9 +49,8 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 const maintenance = vi.hoisted(() => ({
   signal: new AbortController().signal,
-  // Empty maintenance facts, as an explicit repair with no service stop reports them.
   serviceUpdateVerdict: undefined,
-  warnings: [] as string[],
+  warnings: [],
   failureFacts: [],
   databaseWrites: undefined,
   run: <T>(operation: () => T): T => operation(),

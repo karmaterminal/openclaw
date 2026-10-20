@@ -95,7 +95,7 @@ import type { AgentCommandOpts, AgentRunContext } from "./types.js";
 
 const log = createSubsystemLogger("agents/agent-command");
 
-export async function runAgentAttempt(
+export function runAgentAttempt(
   params: Pick<RunEntryCandidateOptions, "isFallbackRetry" | "modelRoutingProvenance"> &
     Partial<Omit<RunEntryCandidateOptions, "isFallbackRetry" | "modelRoutingProvenance">> & {
       preparedRunAdmission: PreparedAgentRunAdmission;
