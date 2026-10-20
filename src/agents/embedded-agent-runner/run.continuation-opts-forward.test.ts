@@ -34,12 +34,15 @@ vi.mock("../../auto-reply/continuation/delegate-turn-admission.js", async (impor
 // survive the trip to the attempt layer.
 
 let runEmbeddedAgent: typeof import("./run.js").runEmbeddedAgent;
+let getCurrentSessionControllerClaim: typeof import("../../sessions/session-controller.lifecycle.js").getCurrentSessionControllerClaim;
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 let overflowBaseRunParams: ReturnType<typeof createOverflowRunParams>;
 
 describe("runEmbeddedAgent continuation opts forwarding", () => {
   beforeAll(async () => {
     ({ runEmbeddedAgent } = await loadRunOverflowCompactionHarness());
+    ({ getCurrentSessionControllerClaim } =
+      await import("../../sessions/session-controller.lifecycle.js"));
   });
 
   beforeEach(async () => {
@@ -95,7 +98,15 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
 
   it("does not reset continue_delegate admission before entering the session lane", async () => {
     mockedRunEmbeddedAttempt.mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
-    let enqueueCalls = 0;
+    // #175837 replaced the per-session command lane with the session controller:
+    // `enqueue` now stands in only for the global capacity lane, and entering the
+    // session lane means holding this session's controller mailbox claim.
+    const sessionKeyHeldAtReset: boolean[] = [];
+    resetContinueDelegateTurnBudgetMock.mockImplementation((sessionKey: string) => {
+      sessionKeyHeldAtReset.push(
+        getCurrentSessionControllerClaim()?.mailbox.owner.aliases.has(sessionKey) === true,
+      );
+    });
 
     await runEmbeddedAgent({
       ...overflowBaseRunParams,
@@ -105,18 +116,11 @@ describe("runEmbeddedAgent continuation opts forwarding", () => {
       config: {
         agents: { defaults: { continuation: { enabled: true } } },
       },
-      enqueue: async (task) => {
-        enqueueCalls += 1;
-        if (enqueueCalls === 1) {
-          expect(resetContinueDelegateTurnBudgetMock).not.toHaveBeenCalled();
-        }
-        return await task();
-      },
     });
 
     expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(1);
-    expect(enqueueCalls).toBeGreaterThanOrEqual(1);
     expect(resetContinueDelegateTurnBudgetMock).toHaveBeenCalledWith("agent:main:test-key");
+    expect(sessionKeyHeldAtReset).not.toContain(false);
   });
 
   it("forwards continueWorkOpts to runEmbeddedAttempt", async () => {

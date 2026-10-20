@@ -1,6 +1,10 @@
 // Background media generation trace-context tests cover continuation traceparent
 // propagation from task admission into requester completion delivery.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import {
   runWithDiagnosticTraceContext,
@@ -54,7 +58,13 @@ beforeEach(() => {
     .mockReturnValue({ sessionId: "media-requester", updatedAt: 1 });
 });
 
+afterEach(() => {
+  clearRuntimeConfigSnapshot();
+});
+
 function createImageMediaLifecycle() {
+  // Admission reads the published runtime config (#169714).
+  setRuntimeConfigSnapshot({});
   return createMediaGenerationTaskLifecycle("image");
 }
 

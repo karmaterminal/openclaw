@@ -42,6 +42,10 @@ import { expect, test } from "vitest";
 import { setCodexTestToolFactory } from "../../codex/src/app-server/host-capability.test-support.js";
 import type { JsonObject } from "../../codex/src/app-server/protocol-json.js";
 import {
+  cleanupRunSessionOwnersForTest,
+  seedRunSessionOwnerForTest,
+} from "../../codex/src/app-server/run-attempt-session-owners.test-support.js";
+import {
   bindProductionHarnessHostCapabilitiesForTest,
   createCodexRuntimePlanFixture,
   createParams,
@@ -232,6 +236,11 @@ test("exports Codex dynamic continuation origins through the production tool bou
         await consumePendingDelegates(SESSION_KEY);
         resetContinueDelegateTurnAdmissionForTests();
         await restartContinuationCustodyAfterStateDrain();
+        // createParams models an ordinary durable session (the harness seeds only the
+        // default identity, outside this test state). The prepared Codex execution
+        // policy binds the session store as it exists at run start (#177561), so the
+        // run's own session row must exist before the attempt starts.
+        await seedRunSessionOwnerForTest(SESSION_ID, SESSION_KEY);
 
         const params = createParams(
           path.join(tempDir, "session.jsonl"),
@@ -462,6 +471,8 @@ test("exports Codex dynamic continuation origins through the production tool bou
           ]);
         }
         closeHostCapabilities?.();
+        // Delete the seeded row while this test state still owns its store.
+        await cleanupRunSessionOwnersForTest();
         await cancelPendingDelegates(SESSION_KEY);
         await consumePendingDelegates(SESSION_KEY);
         resetContinueDelegateTurnAdmissionForTests();
