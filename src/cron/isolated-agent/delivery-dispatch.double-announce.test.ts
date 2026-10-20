@@ -133,9 +133,12 @@ vi.mock("../../logger.js", () => ({
 }));
 
 // mock-isolation: System events are captured instead of entering the process-wide event queue.
-vi.mock("../../infra/system-events.js", () => ({
-  enqueueSystemEvent: vi.fn(),
-}));
+vi.mock("../../infra/system-events.js", () => {
+  // The fork's enqueueSystemEventRaw is the same function; continuation modules the
+  // real run path loads import it by that name.
+  const enqueueSystemEvent = vi.fn();
+  return { enqueueSystemEvent, enqueueSystemEventRaw: enqueueSystemEvent };
+});
 
 vi.mock("../../tts/tts.runtime.js", () => ({
   maybeApplyTtsToPayload: maybeApplyTtsToPayloadMock,
