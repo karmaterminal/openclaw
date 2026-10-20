@@ -17,13 +17,19 @@ vi.mock("./agent-runner-execution.js", () => ({
 vi.mock("../../config/sessions/session-accessor.js", async () => {
   const { bindSessionPendingInputSources, withSessionPendingInputPersistence } =
     await import("../../config/sessions/session-accessor.pending-inputs.js");
-  const { loadSessionEntry, patchSessionEntryTarget, replaceSessionEntry } =
+  const { loadSessionEntry, patchSessionEntryCore, patchSessionEntryTarget, replaceSessionEntry } =
     await import("../../config/sessions/session-accessor.sqlite-entry.js");
   const { persistSessionTranscriptTurn } =
     await import("../../config/sessions/session-accessor.transcript-turn.js");
+  // Continuation (karmaterminal): post-compaction delegate delivery binds patchSessionEntryCore
+  // at module load, and system-event adoption checks recipient authority through this barrel.
+  const { isSessionRecipientAuthorityCurrent } =
+    await import("../../config/sessions/session-accessor.sqlite-recipient-authority.js");
   return {
     bindSessionPendingInputSources,
+    isSessionRecipientAuthorityCurrent,
     loadSessionEntry,
+    patchSessionEntryCore,
     patchSessionEntryTarget,
     persistSessionTranscriptTurn,
     replaceSessionEntry,
