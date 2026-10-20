@@ -13,12 +13,13 @@ function isCommandLaneIdle(lane: string): boolean {
   return !state || state.queue.length + state.activeTaskIds.size === 0;
 }
 
-export function notifyCommandLaneIdleWaiters(lane: string): void {
+/** Wake idle waiters on one lane, or on every lane when `lane` is omitted (full reset). */
+export function notifyCommandLaneIdleWaiters(lane?: string): void {
+  if (lane === undefined) {
+    notifyAllCommandLaneIdleWaitersForState(isCommandLaneIdle);
+    return;
+  }
   notifyCommandLaneIdleWaitersForState(lane, isCommandLaneIdle);
-}
-
-export function notifyAllCommandLaneIdleWaiters(): void {
-  notifyAllCommandLaneIdleWaitersForState(isCommandLaneIdle);
 }
 
 /**

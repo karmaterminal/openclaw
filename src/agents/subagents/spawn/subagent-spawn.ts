@@ -46,9 +46,9 @@ import {
   resolveSubagentContinuationChildSessionKey,
 } from "./subagent-spawn-continuation.js";
 import type {
-  SpawnSubagentContext as BaseSpawnSubagentContext,
+  SpawnSubagentContext,
   SpawnSubagentParams as BaseSpawnSubagentParams,
-  SpawnSubagentResult as BaseSpawnSubagentResult,
+  SpawnSubagentResult,
 } from "./subagent-spawn-contract.js";
 import { prepareSubagentSpawnEnvelope } from "./subagent-spawn-envelope.js";
 import { buildSubagentSpawnGatewayIdentity } from "./subagent-spawn-gateway-identity.js";
@@ -72,8 +72,7 @@ import { emitSessionLifecycleEvent, mergeDeliveryContext } from "./subagent-spaw
 export { SUBAGENT_SPAWN_CONTEXT_MODES, SUBAGENT_SPAWN_MODES } from "./subagent-spawn.types.js";
 
 export type SpawnSubagentParams = BaseSpawnSubagentParams & ContinuationSpawnParams;
-export type SpawnSubagentContext = BaseSpawnSubagentContext;
-export type SpawnSubagentResult = BaseSpawnSubagentResult;
+export type { SpawnSubagentContext, SpawnSubagentResult };
 
 export async function spawnSubagentDirect(
   params: SpawnSubagentParams,
