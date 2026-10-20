@@ -239,7 +239,8 @@ async function restartFrom(image: Map<string, SubagentRunRecord>) {
   await initSubagentRegistry();
   const dispatchAgent = vi.fn(async () => ({ runId: "relaunched", status: "accepted" }));
   const gatewayContext = {
-    recoveryRuntime: { dispatchAgent },
+    // Startup recovery has no pending admission to prepare in this fixture.
+    recoveryRuntime: { dispatchAgent, prepareRestartRecovery: () => undefined },
     resolveGatewayContext: () => gatewayContext as never,
   };
   await activateSubagentRegistry(gatewayContext.resolveGatewayContext);

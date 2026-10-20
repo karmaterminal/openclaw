@@ -117,6 +117,8 @@ async function seedQueuedCollector(): Promise<SubagentRunRecord> {
     delivery: { status: "not_required" },
     queuedLaunch: {
       request: { sessionKey: childSessionKey, idempotencyKey: runId },
+      // #157806: restart replay requires the saved requester recovery source.
+      requesterRecovery: {},
       timeoutMs: 1_000,
       schedulerGroupKey: JSON.stringify(["agent:main:main", ""]),
       maxConcurrent: 1,

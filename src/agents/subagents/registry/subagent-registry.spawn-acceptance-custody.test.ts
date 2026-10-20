@@ -14,6 +14,7 @@ import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../../c
 import { sharedRegistryMocks } from "./subagent-registry.mocks.shared.js";
 import "./subagent-registry.persistence.mocks.test-support.js";
 import { createDeferred } from "../../../../test/helpers/promise.js";
+import { replaceSessionEntrySync } from "../../../config/sessions/session-accessor.js";
 import { closeOpenClawStateDatabaseForTest } from "../../../state/openclaw-state-db.js";
 import { captureEnv, setTestEnvValue } from "../../../test-utils/env.js";
 import { runSpawnPipeline } from "../../spawn-pipeline.js";
@@ -276,6 +277,14 @@ function expectNoDeliveryForArmedChild(): void {
   ).toEqual([]);
 }
 
+/** A required completion reserves its requester's controller source before announcing. */
+function seedRequesterSession(): void {
+  replaceSessionEntrySync(
+    { agentId: "main", sessionKey: "agent:main:main" },
+    { sessionId: "sess-requester", updatedAt: Date.now() },
+  );
+}
+
 function expectNoDelivery(): void {
   expect(announceMocks.runSubagentAnnounceFlow).not.toHaveBeenCalled();
   expect(announceMocks.maybeWakeRequesterAfterAllChildrenSettled).not.toHaveBeenCalled();
@@ -366,6 +375,7 @@ describe("armed registration: accepted-spawn custody (H1)", () => {
   it.each([false, true])(
     "T9: a child that ends while armed is not delivered before confirmation (confirm=%s)",
     async (confirm) => {
+      seedRequesterSession();
       const entered = createDeferred();
       const decide = createDeferred();
       const spawning = spawnNative({

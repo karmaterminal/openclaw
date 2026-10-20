@@ -5,6 +5,7 @@ import "./subagent-registry.persistence.mocks.test-support.js";
 // oxfmt-ignore
 import { activateSubagentPersistenceRegistry, announceSpy, createSubagentPersistenceRuntime, useSubagentPersistenceFixture } from "./subagent-registry.persistence-fixture.test-support.js";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../../test/helpers/promise.js";
+import { hydrateContinuationCustody } from "../../../auto-reply/continuation/custody/custody-store.js";
 import { setRuntimeConfigSnapshot } from "../../../config/config.js";
 import {
   patchSessionEntryCore,
@@ -428,6 +429,9 @@ describe("subagent registry persistence", () => {
 
     await resetSubagentRegistryForTests({ persist: false });
     await initSubagentRegistry();
+    // Archive deferral reads the continuation custody projection, which errs toward
+    // retention until hydrated; Gateway boot hydrates it before the registry activates.
+    await hydrateContinuationCustody();
     const gateway = {
       localEmbedded: true,
       recoveryRuntime: createSubagentPersistenceRuntime(callGateway),

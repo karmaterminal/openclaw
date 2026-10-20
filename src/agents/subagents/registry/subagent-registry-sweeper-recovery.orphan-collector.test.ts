@@ -10,6 +10,7 @@ import {
   stagedPostCompactionDelegateCount,
 } from "../../../auto-reply/continuation/delegate-store-post-compaction.js";
 import { cancelPendingDelegates } from "../../../auto-reply/continuation/delegate-store.js";
+import { captureRuntimeConfigAsyncReader } from "../../../config/config.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../../config/io.js";
 import { resolveSessionStorePathCore } from "../../../config/sessions.js";
 import {
@@ -213,6 +214,8 @@ describe("subagent registry recovery scheduling: orphans and collector groups", 
         .mocked(loadSubagentSessionEntry)
         .withImplementation(actual.loadSubagentSessionEntry, async () => {
           await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+            // Applying the fixture env clears the runtime config; publish the fixture's.
+            await captureRuntimeConfigAsyncReader()();
             // The fixture moved the state directory; hydrate its custody projection.
             await hydrateContinuationCustody();
             const { entry, runs, callGateway, sweeper } = createHarness({}, archivedRun());
