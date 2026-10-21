@@ -1,6 +1,10 @@
 // Subagent registry archive tests cover keep/delete cleanup modes, retryable
 // session deletion, and context-engine lifecycle callbacks.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { callGateway } from "../gateway/call.js";
 import { getAgentRunContext } from "../infra/agent-run-registry.js";
 
@@ -162,6 +166,8 @@ describe("subagent registry archive behavior (continuation work)", () => {
       return {};
     });
     loadConfigMock.mockClear();
+    // #169714: readers outside config.js take the published snapshot; publish the same config.
+    setRuntimeConfigSnapshot(currentConfig);
     hasLiveOrRecentlyDispatchedContinuationWorkMock.mockReset().mockReturnValue(false);
     hasLiveContinuationCustodyMock.mockReset().mockResolvedValue(false);
     vi.mocked(getAgentRunContext).mockReset().mockReturnValue(undefined);
@@ -173,6 +179,7 @@ describe("subagent registry archive behavior (continuation work)", () => {
 
   afterEach(async () => {
     await mod.resetSubagentRegistryForTests({ persist: false });
+    clearRuntimeConfigSnapshot();
     vi.useRealTimers();
   });
 
