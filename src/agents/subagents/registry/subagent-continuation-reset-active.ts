@@ -2,6 +2,8 @@
 // persistence so upstream's kill selection can import it without a cycle.
 import { AsyncLocalStorage } from "node:async_hooks";
 
+export type ContinuationResetRetentionOutcome = "adopted" | "aborted" | "superseded" | "orphaned";
+
 export type ContinuationResetRetention = {
   resetId: string;
   sessionKey: string;
@@ -10,7 +12,11 @@ export type ContinuationResetRetention = {
   fromRevision?: string;
   /** The successor head the reset commits; minted before the kill. */
   toRevision: string;
-  state: "pending" | "adopted" | "aborted" | "orphaned";
+  /**
+   * adopted: the successor committed. aborted: the reset did not commit. superseded: a later
+   * lifecycle owns the row under the same authority. orphaned: the recipient authority is gone.
+   */
+  state: "pending" | ContinuationResetRetentionOutcome;
   markedAt: number;
   resolvedAt?: number;
 };

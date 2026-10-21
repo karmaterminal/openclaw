@@ -22,6 +22,7 @@ import {
   resolveSubagentChildAuthority,
 } from "./subagent-child-owner-match.js";
 import { resolveSubagentChildSessionOwner } from "./subagent-child-session-owner.js";
+import { isContinuationRunRetainedByActiveReset } from "./subagent-continuation-reset-active.js";
 import {
   ensureSubagentControllerOwnsRun,
   getLatestOwnedSubagentRun,
@@ -123,6 +124,11 @@ export async function withSubagentKillScope<T>(
     const controller = owner ? { ...owner } : undefined;
     for (const snapshot of runs) {
       assertCurrent();
+      // Continuation (karmaterminal): the reset in flight keeps the continuation runs it marked,
+      // as roots or as descendants of a root it does stop.
+      if (isContinuationRunRetainedByActiveReset(snapshot)) {
+        continue;
+      }
       if (
         parent &&
         (params.exactRunSelection || !isCurrentSubagentRun(parent.entry, params.cfg)) &&

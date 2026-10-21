@@ -1,6 +1,7 @@
 // Continuation (karmaterminal): settles reset-retention marks (session-reset-retention.ts). Runs at
 // the end of each reset flow for that reset's marks, and at Gateway boot for marks a previous
 // process left pending.
+import type { ContinuationResetRetentionOutcome } from "../../agents/subagents/registry/subagent-continuation-reset-active.js";
 import {
   listPendingContinuationResetRetentions,
   settleContinuationResetRetentions,
@@ -21,8 +22,6 @@ import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-wo
 import { parseContinuationRecipientAuthorityBinding } from "./recipient-authority-binding.js";
 
 const log = createSubsystemLogger("continuation/reset-retention");
-
-type RetentionOutcome = "adopted" | "aborted" | "orphaned";
 
 /**
  * The run's captured recipient authority for the reset session. Stale once delete, owner change
@@ -56,7 +55,7 @@ function classifyRetention(
   mark: NonNullable<SubagentRunRecord["continuationResetRetention"]>,
   row: SessionEntry | undefined,
   authority: ReturnType<typeof readRetainedRecipientAuthority>,
-): RetentionOutcome | undefined {
+): ContinuationResetRetentionOutcome | undefined {
   if (authority === "stale" || (authority === "uncaptured" && !row)) {
     return "orphaned";
   }
@@ -67,15 +66,18 @@ function classifyRetention(
   if (row.lifecycleRevision === mark.toRevision) {
     return "adopted";
   }
-  return row.lifecycleRevision === mark.fromRevision ? "aborted" : undefined;
+  // Either way the rotation is over and the row's head is the conversation's current head under
+  // the same authority, which is where these results would have gone without the reset.
+  return row.lifecycleRevision === mark.fromRevision ? "aborted" : "superseded";
 }
 
 /**
  * Settles pending marks: `resetId` selects one reset's marks (its own flow), `markedBefore`
  * selects marks a previous process left (boot). Successor revision: adopted. Replaced revision:
- * aborted (the reset did not commit). Stale recipient authority, or a missing row when the run
- * captured none: orphaned. A missing row or a third revision under current authority stays pending
- * with its results held and a warning: neither proves the root gone or a successor adopted.
+ * aborted (the reset did not commit). Any other revision: superseded. All three release the held
+ * results to the current head. Stale recipient authority, or a missing row when the run captured
+ * none: orphaned. A missing row under current authority stays pending with its results held and a
+ * warning: that is not proof the root is gone.
  */
 export async function resolveContinuationResetRetentions(params: {
   cfg: OpenClawConfig;
@@ -106,7 +108,10 @@ export async function resolveContinuationResetRetentions(params: {
     ]),
   );
   const rows = new Map<string, SessionEntry | undefined>();
-  const outcomes = new Map<string, { expected: SubagentRunRecord; state: RetentionOutcome }>();
+  const outcomes = new Map<
+    string,
+    { expected: SubagentRunRecord; state: ContinuationResetRetentionOutcome }
+  >();
   for (const entry of pending) {
     const mark = entry.continuationResetRetention;
     if (!mark) {
@@ -131,7 +136,7 @@ export async function resolveContinuationResetRetentions(params: {
     );
     if (!state) {
       log.warn(
-        `[continuation:reset-retention] unresolved: session=${mark.sessionKey} is missing or holds neither revision of reset ${mark.resetId}; run=${entry.runId} keeps its results held until a later resolution proves an outcome`,
+        `[continuation:reset-retention] unresolved: session=${mark.sessionKey} is missing under current recipient authority (reset ${mark.resetId}); run=${entry.runId} keeps its results held until a later resolution (next reset or Gateway boot) proves an outcome`,
       );
       continue;
     }
@@ -147,7 +152,10 @@ export async function resolveContinuationResetRetentions(params: {
 async function releaseHeldContinuationResults(
   cfg: OpenClawConfig,
   settledRunIds: readonly string[],
-  outcomes: ReadonlyMap<string, { expected: SubagentRunRecord; state: RetentionOutcome }>,
+  outcomes: ReadonlyMap<
+    string,
+    { expected: SubagentRunRecord; state: ContinuationResetRetentionOutcome }
+  >,
 ): Promise<void> {
   const context = captureOpenClawStateWorkerContext();
   const settled = new Set(settledRunIds);

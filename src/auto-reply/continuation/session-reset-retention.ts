@@ -31,7 +31,10 @@ export type ContinuationResetRetentionScope = {
   ) => Promise<T>;
   /** Runs a later kill of the same reset so it honors the same marks. */
   runKill: <T>(kill: () => Promise<T>) => Promise<T>;
-  /** Settles this reset's marks against the session row and releases or terminalizes results; never throws. */
+  /**
+   * Settles this reset's marks against the session row and releases or terminalizes results;
+   * never throws. While the reset's stop is still running, settlement waits for it.
+   */
   resolve: () => Promise<void>;
 };
 
@@ -48,49 +51,68 @@ export function prepareContinuationResetRetention(params: {
   };
   const successorRevision = randomUUID();
   let markAttempted = false;
+  let stopInFlight = false;
+  let resolveWhenStopped = false;
+  const resolveNow = async () => {
+    try {
+      await resolveContinuationResetRetentions({
+        cfg: params.cfg,
+        sessionKey: params.sessionKey,
+        agentId: params.agentId,
+        storePath: params.storePath,
+        resetId: reset.resetId,
+      });
+    } catch (error) {
+      // Never mask the reset's own outcome. The marks stay pending and their results held
+      // until the next Gateway boot resolves them.
+      log.warn(
+        `[continuation:reset-retention] reset ${reset.resetId} for ${params.sessionKey} left unresolved until the next Gateway boot: ${String(error)}`,
+      );
+    }
+  };
   return {
     successorRevision,
     async stopSubagents(stop, kill) {
       markAttempted = true;
+      stopInFlight = true;
       try {
-        await markContinuationRunsRetainedByReset({
-          cfg: params.cfg,
-          reset,
-          fromRevision: stop.fromRevision,
-          toRevision: successorRevision,
-          assertCurrent: stop.assertCurrent,
-        });
-      } catch (cause) {
-        if (cause instanceof SessionResetCleanupError) {
-          throw cause;
+        try {
+          await markContinuationRunsRetainedByReset({
+            cfg: params.cfg,
+            reset,
+            fromRevision: stop.fromRevision,
+            toRevision: successorRevision,
+            assertCurrent: stop.assertCurrent,
+          });
+        } catch (cause) {
+          if (cause instanceof SessionResetCleanupError) {
+            throw cause;
+          }
+          throw new SessionResetCleanupError(
+            "Reset did not complete because its continuation delegates could not be retained. Retry /reset.",
+            { cause },
+          );
         }
-        throw new SessionResetCleanupError(
-          "Reset did not complete because its continuation delegates could not be retained. Retry /reset.",
-          { cause },
-        );
+        return await runWithActiveContinuationReset(reset, kill);
+      } finally {
+        stopInFlight = false;
+        if (resolveWhenStopped) {
+          await resolveNow();
+        }
       }
-      return await runWithActiveContinuationReset(reset, kill);
     },
     runKill: (kill) => runWithActiveContinuationReset(reset, kill),
     async resolve() {
       if (!markAttempted) {
         return;
       }
-      try {
-        await resolveContinuationResetRetentions({
-          cfg: params.cfg,
-          sessionKey: params.sessionKey,
-          agentId: params.agentId,
-          storePath: params.storePath,
-          resetId: reset.resetId,
-        });
-      } catch (error) {
-        // Never mask the reset's own outcome. The marks stay pending and their results held
-        // until the next Gateway boot resolves them.
-        log.warn(
-          `[continuation:reset-retention] reset ${reset.resetId} for ${params.sessionKey} left unresolved until the next Gateway boot: ${String(error)}`,
-        );
+      if (stopInFlight) {
+        // A preemption timeout ended the mutation while this reset still marks and kills:
+        // resolving now would race both. The stop resolves once it settles.
+        resolveWhenStopped = true;
+        return;
       }
+      await resolveNow();
     },
   };
 }

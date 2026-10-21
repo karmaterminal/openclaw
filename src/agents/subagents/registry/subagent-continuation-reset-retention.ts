@@ -6,7 +6,10 @@
 // committed (aborted). The mark never touches run identity (requester key, agent or store).
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { resolveSubagentRequesterAgentId } from "../../subagent-requester-owner.js";
-import type { ActiveContinuationReset } from "./subagent-continuation-reset-active.js";
+import type {
+  ActiveContinuationReset,
+  ContinuationResetRetentionOutcome,
+} from "./subagent-continuation-reset-active.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
@@ -119,7 +122,7 @@ export function listPendingContinuationResetRetentions(params?: {
 export async function settleContinuationResetRetentions(
   outcomes: ReadonlyMap<
     string,
-    { expected: SubagentRunRecord; state: "adopted" | "aborted" | "orphaned" }
+    { expected: SubagentRunRecord; state: ContinuationResetRetentionOutcome }
   >,
 ): Promise<string[]> {
   if (outcomes.size === 0) {
