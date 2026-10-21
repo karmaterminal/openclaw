@@ -18,6 +18,8 @@ import {
   registerContinuationDispatchClaim,
   resetContinuationDispatchClaimsForTests,
 } from "../continuation/continuation-dispatch-claims.js";
+import { updateContinuationRecords } from "../continuation/custody/custody-store.js";
+import type { ContinuationRecordUpdate } from "../continuation/custody/custody-store.types.js";
 import {
   readCustodyRecordForTest,
   useContinuationCustodyTestState,
@@ -38,8 +40,12 @@ import { initSessionState, writeSessionStore } from "./test/session.test-support
 const sessionInitWarn = vi.hoisted(() => vi.fn());
 // Timing and failure seam over the real custody store; unarmed calls run the real owner.
 const custody = vi.hoisted(() => ({
-  beforeWrite: undefined as (() => Promise<void>) | undefined,
+  beforeWrite: undefined as
+    | ((updates: readonly ContinuationRecordUpdate[]) => Promise<void>)
+    | undefined,
   failWrite: undefined as string | undefined,
+  failOwnerRead: undefined as string | undefined,
+  failRecordRead: undefined as string | undefined,
 }));
 
 // Committed-reset cleanup reports best-effort failures through the session-init warn log.
@@ -58,12 +64,26 @@ vi.mock("../continuation/custody/custody-store.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../continuation/custody/custody-store.js")>();
   return {
     ...actual,
+    listContinuationRecords: async (...args: Parameters<typeof actual.listContinuationRecords>) => {
+      // Each injected read failure fires once, on the reset's own read.
+      const fault = args[0].ownerSessionKey
+        ? "failOwnerRead"
+        : args[0].recordIds
+          ? "failRecordRead"
+          : undefined;
+      const failure = fault ? custody[fault] : undefined;
+      if (fault && failure) {
+        custody[fault] = undefined;
+        throw new Error(failure);
+      }
+      return await actual.listContinuationRecords(...args);
+    },
     updateContinuationRecords: async (
       ...args: Parameters<typeof actual.updateContinuationRecords>
     ) => {
       const before = custody.beforeWrite;
       custody.beforeWrite = undefined;
-      await before?.();
+      await before?.(args[0]);
       if (custody.failWrite) {
         throw new Error(custody.failWrite);
       }
@@ -113,6 +133,8 @@ afterAll(async () => {
 afterEach(() => {
   custody.beforeWrite = undefined;
   custody.failWrite = undefined;
+  custody.failOwnerRead = undefined;
+  custody.failRecordRead = undefined;
   sessionInitWarn.mockReset();
   for (const timer of timers.splice(0)) {
     clearTimeout(timer);
@@ -356,6 +378,42 @@ it("P3: a custody write failure fails the reset visibly, keeps transient state, 
   expect(retry.resetTriggered).toBe(true);
   await expectInterrupted(a);
 });
+
+it.each([
+  ["the owner read", "failOwnerRead"],
+  ["the revision-conflict re-read", "failRecordRead"],
+] as const)(
+  "P3: a custody read failure (%s) fails the reset visibly instead of warning past it, and a retry completes",
+  async (_label, fault) => {
+    const storePath = await seedStore(Date.now());
+    const a = await seedCustody(A);
+    if (fault === "failRecordRead") {
+      // A concurrent owner write lands first, so the reset's write conflicts and re-reads.
+      custody.beforeWrite = async (updates) => {
+        const [update] = updates;
+        await updateContinuationRecords([{ ...update!, patch: { phase: "concurrent writer" } }], {
+          now: Date.now(),
+        });
+      };
+    }
+    custody[fault] = "SqliteWorkerError: state worker exited";
+
+    const failure = await turn(storePath, "/new").then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(SessionResetCleanupError);
+    expect((failure as Error).cause).toBeInstanceOf(SessionContinuationResetError);
+    expect((failure as Error).message).toContain("state worker exited");
+    await expectLive(a);
+
+    const retry = await turn(storePath, "/new");
+
+    expect(retry.resetTriggered).toBe(true);
+    await expectInterrupted(a);
+  },
+);
 
 it("P3 negative: other cleanup errors keep upstream's warn-and-continue and clear nothing", async () => {
   const a = await seedCustody(A);

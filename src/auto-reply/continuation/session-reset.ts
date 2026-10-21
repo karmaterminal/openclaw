@@ -51,6 +51,24 @@ function resetPatch(record: ContinuationRecord, now: number): ContinuationRecord
 }
 
 /**
+ * A failed custody read leaves the records as unretired as a failed write, so
+ * the reset fails retryably instead of warning past it and clearing nothing.
+ */
+async function readRecordsForReset(
+  subject: string,
+  read: () => Promise<ContinuationRecord[]>,
+): Promise<ContinuationRecord[]> {
+  try {
+    return await read();
+  } catch (err) {
+    throw new SessionContinuationResetError(
+      subject,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+/**
  * Terminalize durable continuation work owned by one reset session.
  * `assertCurrent` is the reset's incarnation fence; it throws once a newer
  * incarnation owns the session.
@@ -60,7 +78,9 @@ export async function cancelSessionContinuations(
   assertCurrent: () => void,
 ): Promise<void> {
   const now = Date.now();
-  const records = await listContinuationRecords({ ownerSessionKey: sessionKey });
+  const records = await readRecordsForReset(`owned by ${sessionKey}`, () =>
+    listContinuationRecords({ ownerSessionKey: sessionKey }),
+  );
   for (const initial of records) {
     let current: ContinuationRecord | undefined = initial;
     for (let attempt = 0; current; attempt += 1) {
@@ -103,7 +123,12 @@ export async function cancelSessionContinuations(
       ) {
         throw new SessionContinuationResetError(current.recordId, result.outcome);
       }
-      current = (await listContinuationRecords({ recordIds: [current.recordId] }))[0];
+      const recordId: string = current.recordId;
+      current = (
+        await readRecordsForReset(recordId, () =>
+          listContinuationRecords({ recordIds: [recordId] }),
+        )
+      )[0];
     }
   }
 }
