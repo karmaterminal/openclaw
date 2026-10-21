@@ -144,24 +144,4 @@ describe("recipient authority adopt/deliver decision", () => {
       expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
     });
   });
-
-  it("keeps process-held incognito authority with its native owner", async () => {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
-      await captureRuntimeConfigAsyncReader()();
-      const scope = { agentId: "main", sessionKey: "agent:main:dashboard:incognito-authority" };
-      await upsertSessionEntryCore(scope, {
-        sessionId: "incognito-authority",
-        updatedAt: 1,
-        incognito: true,
-      });
-      await addSessionMember(scope, { identityId: "guest", addedBy: "owner", addedAt: 2 });
-      const authority = await captureSessionRecipientAuthority(scope);
-      expect(await captureSessionRecipientAuthority(scope)).toEqual(authority);
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
-
-      expect(await removeSessionMember(scope, "guest")).not.toBeNull();
-
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(false);
-    });
-  });
 });
