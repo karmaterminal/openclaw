@@ -1164,6 +1164,10 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/post-compaction-delegate-dispatch.lifecycle.test.ts",
   "src/auto-reply/reply/post-compaction-delegate-dispatch.recovery.test.ts",
   "src/auto-reply/reply/session-reset-cleanup.test.ts",
+  // Reset-cleanup proofs: reply resets close continuation custody through the shared-state worker.
+  "src/auto-reply/reply/session-reset-cleanup.stale-scope.proof.test.ts",
+  "src/auto-reply/reply/session.reset-custody.proof.test.ts",
+  "src/auto-reply/reply/session.reset-scope.proof.test.ts",
   "src/auto-reply/reply/session-system-events.recipient-authority.test.ts",
   "src/config/sessions/session-recipient-authority.test.ts",
   "src/config/sessions/session-recipient-authority.decision.test.ts",
