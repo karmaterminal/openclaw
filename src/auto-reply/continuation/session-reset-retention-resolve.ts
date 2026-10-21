@@ -25,14 +25,14 @@ const log = createSubsystemLogger("continuation/reset-retention");
 type RetentionOutcome = "adopted" | "aborted" | "orphaned";
 
 /**
- * False when the run's captured recipient authority for the reset session is no longer current
- * (delete, owner change or visibility narrowing advanced the epoch): no later head may adopt it.
+ * The run's captured recipient authority for the reset session. Stale once delete, owner change
+ * or visibility narrowing advanced the epoch: no later head may adopt its results.
  */
-function isRetainedRecipientAuthorityCurrent(
+function readRetainedRecipientAuthority(
   entry: SubagentRunRecord,
   mark: NonNullable<SubagentRunRecord["continuationResetRetention"]>,
   storePath: string | undefined,
-): boolean {
+): "current" | "stale" | "uncaptured" {
   const parsed = parseContinuationRecipientAuthorityBinding(
     entry.continuationRecipientAuthorityBinding,
   );
@@ -41,22 +41,28 @@ function isRetainedRecipientAuthorityCurrent(
       ? parsed.binding.recipients.find((recipient) => recipient.sessionKey === mark.sessionKey)
           ?.authority
       : undefined;
-  return (
-    !authority ||
-    isSessionRecipientAuthorityCurrent(
-      { agentId: mark.agentId, sessionKey: mark.sessionKey, ...(storePath ? { storePath } : {}) },
-      authority,
-    )
-  );
+  if (!authority) {
+    return "uncaptured";
+  }
+  return isSessionRecipientAuthorityCurrent(
+    { agentId: mark.agentId, sessionKey: mark.sessionKey, ...(storePath ? { storePath } : {}) },
+    authority,
+  )
+    ? "current"
+    : "stale";
 }
 
 function classifyRetention(
   mark: NonNullable<SubagentRunRecord["continuationResetRetention"]>,
   row: SessionEntry | undefined,
-  authorityCurrent: boolean,
+  authority: ReturnType<typeof readRetainedRecipientAuthority>,
 ): RetentionOutcome | undefined {
-  if (!row || !authorityCurrent) {
+  if (authority === "stale" || (authority === "uncaptured" && !row)) {
     return "orphaned";
+  }
+  // A missing head under still-current authority is not proof the root is gone.
+  if (!row) {
+    return undefined;
   }
   if (row.lifecycleRevision === mark.toRevision) {
     return "adopted";
@@ -67,9 +73,9 @@ function classifyRetention(
 /**
  * Settles pending marks: `resetId` selects one reset's marks (its own flow), `markedBefore`
  * selects marks a previous process left (boot). Successor revision: adopted. Replaced revision:
- * aborted (the reset did not commit). Missing row or stale recipient authority: orphaned. A row
- * holding a third revision under the same authority stays pending and keeps its results held:
- * releasing to that head is not proven.
+ * aborted (the reset did not commit). Stale recipient authority, or a missing row when the run
+ * captured none: orphaned. A missing row or a third revision under current authority stays pending
+ * with its results held and a warning: neither proves the root gone or a successor adopted.
  */
 export async function resolveContinuationResetRetentions(params: {
   cfg: OpenClawConfig;
@@ -121,11 +127,11 @@ export async function resolveContinuationResetRetentions(params: {
     const state = classifyRetention(
       mark,
       rows.get(rowKey),
-      isRetainedRecipientAuthorityCurrent(entry, mark, storePath),
+      readRetainedRecipientAuthority(entry, mark, storePath),
     );
     if (!state) {
       log.warn(
-        `[continuation:reset-retention] unresolved: session=${mark.sessionKey} holds neither revision of reset ${mark.resetId}; run=${entry.runId} keeps its results held`,
+        `[continuation:reset-retention] unresolved: session=${mark.sessionKey} is missing or holds neither revision of reset ${mark.resetId}; run=${entry.runId} keeps its results held until a later resolution proves an outcome`,
       );
       continue;
     }

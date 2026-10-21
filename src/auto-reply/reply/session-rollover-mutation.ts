@@ -18,6 +18,7 @@ export async function runReplySessionRolloverMutation<T>(params: {
   stopChildren: StopChildren;
   prepare: () => Promise<void>;
   run: () => Promise<T>;
+  finalize?: () => Promise<void>;
 }): Promise<T> {
   try {
     return await runSessionMutation({
@@ -38,6 +39,7 @@ export async function runReplySessionRolloverMutation<T>(params: {
       },
       prepare: params.prepare,
       run: params.run,
+      finalize: params.finalize,
     });
   } catch (error) {
     if (error instanceof SessionMutationPreemptTimeoutError) {

@@ -1158,11 +1158,16 @@ async function performPreparedGatewaySessionReset({
         };
       },
       finalize: async () => {
-        if (!lifecyclePreparationCommitted) {
-          await rollbackGatewaySessionPreparation({
-            prepared: preparedLifecycle,
-            onError: reportLifecycleCleanupError,
-          });
+        try {
+          if (!lifecyclePreparationCommitted) {
+            await rollbackGatewaySessionPreparation({
+              prepared: preparedLifecycle,
+              onError: reportLifecycleCleanupError,
+            });
+          }
+        } finally {
+          // Inside the lifecycle mutation, so no later rollover can move the row first.
+          await continuationRetention.resolve();
         }
       },
     });
@@ -1178,8 +1183,6 @@ async function performPreparedGatewaySessionReset({
       );
     }
     throw error;
-  } finally {
-    await continuationRetention.resolve();
   }
 }
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
