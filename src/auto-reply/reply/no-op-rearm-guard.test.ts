@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EmbeddedAgentRunResult } from "../../agents/embedded-agent.js";
+import { sanitizeAssistantVisibleText } from "../../shared/text/assistant-visible-text.js";
 import {
   classifyNoOpRearmTurnOutcome,
   classifyNoOpRearmWake,
@@ -249,9 +250,12 @@ describe("turn outcome classification", () => {
     expect(classifyNoOpRearmTurnOutcome(facts).kind).toBe("no_op");
   });
 
-  // #170534: only the exact token is silent; reasoning-wrapped NO_REPLY is delivered as text,
-  // so the guard counts it as visible instead of keeping a silence heuristic of its own.
-  it("treats reasoning-wrapped silent text as a visible reply, as delivery does", () => {
+  // Raw-input contract. The embedded path sanitizes payload text first
+  // (run/payloads.ts sanitizeAssistantVisibleText), so unsanitized text reaches the guard
+  // only through ACP payloadText (acp-lifecycle.ts) or a hook's prepared.text
+  // (before-agent-reply.ts). There, #170534's exact-token rule applies: raw
+  // reasoning-wrapped NO_REPLY is not the silent token, so it counts as visible.
+  it("raw-input contract: unsanitized reasoning-wrapped NO_REPLY is not silent", () => {
     const result: EmbeddedAgentRunResult = {
       payloads: [{ text: "<think>internal notes</think>\nNO_REPLY" }],
       meta: { durationMs: 1 },
@@ -261,6 +265,18 @@ describe("turn outcome classification", () => {
     expect(classifyNoOpRearmTurnOutcome(facts)).toEqual({
       kind: "substantive",
       reason: "visible-reply",
+    });
+  });
+
+  it("counts a sanitized reasoning-wrapped NO_REPLY turn as a no-op toward the rearm cap", () => {
+    // Production shape: the embedded runner strips reasoning before the guard sees payloads.
+    const text = sanitizeAssistantVisibleText("<think>internal notes</think>\nNO_REPLY");
+    expect(text).toBe("NO_REPLY");
+    const facts = summarizeEmbeddedRunOutcome({ payloads: [{ text }], meta: { durationMs: 1 } });
+    expect(facts.hasVisibleReply).toBe(false);
+    expect(classifyNoOpRearmTurnOutcome(facts)).toEqual({
+      kind: "no_op",
+      reason: "blank-or-silent",
     });
   });
 
