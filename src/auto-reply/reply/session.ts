@@ -252,86 +252,82 @@ async function initSessionStateAttempt(params: InitSessionStateParams): Promise<
       : undefined;
     // Drain foreign owners before the rollover takes the writer lane. Holding
     // that lane while waiting would deadlock owners that release after a write.
-    try {
-      rollover = await runReplySessionRolloverMutation<InitSessionStateAttemptOutcome>({
-        storePath: attemptContext.storePath,
-        sessionKey: candidate.sessionKey,
-        sessionId: candidate.sessionId,
-        explicitReset: candidate.resetTriggered,
-        signal: params.signal,
-        shouldPreempt: () => preparedOutcome === undefined,
-        stopChildren: async (applyParentStop) => await stopResetSubagents(applyParentStop),
-        prepare: async () => {
-          // Cancellation affects live work; do not drain a replacement session
-          // selected while this rollover waited for its lifecycle turn.
-          const currentEntry = await readSessionEntryReadOnlyInWorker({
-            agentId: attemptContext.agentId,
-            storePath: attemptContext.storePath,
-            sessionKey: candidate.sessionKey,
-          });
-          if (
-            currentEntry?.sessionId !== candidate.sessionId ||
-            currentEntry.lifecycleRevision !== candidate.lifecycleRevision
-          ) {
-            preparedOutcome = await runLockedAttempt();
-            return;
-          }
-          if (candidate.resetTriggered) {
-            stopResetSubagents = async (applyParentStop) => {
-              // Child cancellation must still target the parent selected by this
-              // mutation after any awaited preparation or stopping-owner callback.
-              const current = await runLockedAttempt();
-              if (
-                current.kind === "complete" ||
-                current.sessionId !== candidate.sessionId ||
-                current.lifecycleRevision !== candidate.lifecycleRevision
-              ) {
-                throw new ReplySessionInitConflictError(candidate.sessionKey);
-              }
-              const cleanup = await prepareSessionResetCleanupGuard({
-                agentId: attemptContext.agentId,
-                sessionKey: candidate.sessionKey,
-                storePath: attemptContext.storePath,
-                expectedSession: current,
-                assertCurrent: () => params.signal?.throwIfAborted(),
-              });
-              try {
-                const stop = () =>
-                  stopSessionResetSubagents({
-                    cfg: params.cfg,
-                    sessionKey: candidate.sessionKey,
-                    agentId: attemptContext.agentId,
-                    assertCurrent: cleanup.assertCurrent,
-                    beforeKill: applyParentStop,
-                  });
-                return continuationRetention
-                  ? await continuationRetention.stopSubagents(
-                      {
-                        fromRevision: current.lifecycleRevision,
-                        assertCurrent: cleanup.assertCurrent,
-                      },
-                      stop,
-                    )
-                  : await stop();
-              } finally {
-                cleanup.release();
-              }
-            };
-          }
-        },
-        // Check the current identity once at the commit instead of rebuilding the
-        // complete initialization before and after draining.
-        run: async () =>
-          preparedOutcome ??
-          runLockedAttempt(
-            continuationRetention
-              ? { ...candidate, nextLifecycleRevision: continuationRetention.successorRevision }
-              : candidate,
-          ),
-      });
-    } finally {
-      await continuationRetention?.resolve();
-    }
+    rollover = await runReplySessionRolloverMutation<InitSessionStateAttemptOutcome>({
+      storePath: attemptContext.storePath,
+      sessionKey: candidate.sessionKey,
+      sessionId: candidate.sessionId,
+      explicitReset: candidate.resetTriggered,
+      signal: params.signal,
+      shouldPreempt: () => preparedOutcome === undefined,
+      stopChildren: async (applyParentStop) => await stopResetSubagents(applyParentStop),
+      prepare: async () => {
+        // Cancellation affects live work; do not drain a replacement session
+        // selected while this rollover waited for its lifecycle turn.
+        const currentEntry = await readSessionEntryReadOnlyInWorker({
+          agentId: attemptContext.agentId,
+          storePath: attemptContext.storePath,
+          sessionKey: candidate.sessionKey,
+        });
+        if (
+          currentEntry?.sessionId !== candidate.sessionId ||
+          currentEntry.lifecycleRevision !== candidate.lifecycleRevision
+        ) {
+          preparedOutcome = await runLockedAttempt();
+          return;
+        }
+        if (candidate.resetTriggered) {
+          stopResetSubagents = async (applyParentStop) => {
+            // Child cancellation must still target the parent selected by this
+            // mutation after any awaited preparation or stopping-owner callback.
+            const current = await runLockedAttempt();
+            if (
+              current.kind === "complete" ||
+              current.sessionId !== candidate.sessionId ||
+              current.lifecycleRevision !== candidate.lifecycleRevision
+            ) {
+              throw new ReplySessionInitConflictError(candidate.sessionKey);
+            }
+            const cleanup = await prepareSessionResetCleanupGuard({
+              agentId: attemptContext.agentId,
+              sessionKey: candidate.sessionKey,
+              storePath: attemptContext.storePath,
+              expectedSession: current,
+              assertCurrent: () => params.signal?.throwIfAborted(),
+            });
+            try {
+              const stop = () =>
+                stopSessionResetSubagents({
+                  cfg: params.cfg,
+                  sessionKey: candidate.sessionKey,
+                  agentId: attemptContext.agentId,
+                  assertCurrent: cleanup.assertCurrent,
+                  beforeKill: applyParentStop,
+                });
+              return continuationRetention
+                ? await continuationRetention.stopSubagents(
+                    {
+                      fromRevision: current.lifecycleRevision,
+                      assertCurrent: cleanup.assertCurrent,
+                    },
+                    stop,
+                  )
+                : await stop();
+            } finally {
+              cleanup.release();
+            }
+          };
+        }
+      },
+      // Check the current identity once at the commit instead of rebuilding the
+      // complete initialization before and after draining.
+      run: async () =>
+        preparedOutcome ??
+        runLockedAttempt(
+          continuationRetention
+            ? { ...candidate, nextLifecycleRevision: continuationRetention.successorRevision }
+            : candidate,
+        ),
+    }).finally(async () => await continuationRetention?.resolve());
   }
   return rollover.result;
 }
