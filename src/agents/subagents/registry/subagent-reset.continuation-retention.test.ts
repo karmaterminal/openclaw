@@ -6,6 +6,7 @@
 // oxfmt-ignore
 import { useSubagentControlFixture } from "./subagent-control.test-support.js";
 import { beforeEach, expect, it, vi } from "vitest";
+import { runNodeScript } from "../../../../test/helpers/run-node-script.js";
 import { captureContinuationRecipientAuthorities } from "../../../auto-reply/continuation/recipient-authority-binding.js";
 import {
   prepareContinuationResetRetention,
@@ -15,7 +16,10 @@ import { finalizeInboundContext } from "../../../auto-reply/reply/inbound-contex
 import { stopSessionResetSubagents } from "../../../auto-reply/reply/session-reset-cleanup.js";
 import { initSessionState } from "../../../auto-reply/reply/session.js";
 import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../../config/config.js";
-import { loadSessionEntry } from "../../../config/sessions/session-accessor.js";
+import {
+  loadSessionEntry,
+  patchSessionEntryCore,
+} from "../../../config/sessions/session-accessor.js";
 import { createChatAbortContext } from "../../../gateway/server-methods/chat.abort.test-helpers.js";
 import { sessionDeleteHandlers } from "../../../gateway/server-methods/sessions-delete.js";
 import { sessionMutationHandlers } from "../../../gateway/server-methods/sessions-mutations.js";
@@ -306,6 +310,7 @@ async function leavePendingRetention(
     },
   );
   expect(subagentRuns.get("elected")?.continuationResetRetention?.state).toBe("pending");
+  return retention;
 }
 
 it("an explicit kill still stops a run a pending reset retained", async () => {
@@ -357,3 +362,81 @@ it("delete stops a pending-retained run and its held return never reaches a new 
   expect(await returnRows()).toEqual([]);
   expect(parentEvents(text, requester)).toEqual([]);
 });
+
+const bootChildEntry = new URL(
+  "../../../auto-reply/continuation/session-reset-retention.boot-child.test-support.ts",
+  import.meta.url,
+);
+
+/** A new Gateway process on the same state: registry restore, boot resolution, one replay. */
+async function bootFreshProcess(text: string, signal: AbortSignal) {
+  const env: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: "1" };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("VITEST") || key === "NODE_OPTIONS") {
+      delete env[key];
+    }
+  }
+  const result = await runNodeScript(
+    (workerArgv) => [...workerArgv(bootChildEntry), parentKey, "elected", text],
+    env,
+    120_000,
+    { signal, maxBuffer: 4 * 1024 * 1024 },
+  );
+  expect(result.error, result.stderr).toBeUndefined();
+  expect(result.status, result.stderr).toBe(0);
+  const line = result.stdout
+    .trim()
+    .split("\n")
+    .findLast((candidate) => candidate.startsWith("{"));
+  expect(line, result.stdout + result.stderr).toBeDefined();
+  return JSON.parse(line!) as {
+    pid: number;
+    before?: string;
+    after?: string;
+    resolvedAt?: number;
+    rowIds: string[];
+    replays: string[];
+    events: string[];
+  };
+}
+
+it.for(["adopted", "aborted"] as const)(
+  "fresh processes resolve a reset that died before resolving (%s) exactly once",
+  async (outcome, { signal }) => {
+    const storePath = await writeSession(parentKey, "parent", "before-reset");
+    await addChild("elected", true);
+    const text = `elected result before the crash (${outcome})`;
+    const retention = await leavePendingRetention(storePath, async () => {
+      await returnFromElected(text);
+    });
+    if (outcome === "adopted") {
+      // The reset committed its successor; the process died before its resolution ran.
+      await patchSessionEntryCore({ storePath, sessionKey: parentKey }, (entry) => ({
+        ...entry,
+        lifecycleRevision: retention.successorRevision,
+      }));
+    }
+    const [row] = await returnRows();
+    expect(row).toBeDefined();
+
+    const first = await bootFreshProcess(text, signal);
+    const second = await bootFreshProcess(text, signal);
+
+    expect(first).toMatchObject({
+      before: "pending",
+      after: outcome,
+      rowIds: [row!.id],
+      replays: ["queued"],
+      events: [row!.id],
+    });
+    expect(second).toMatchObject({
+      before: outcome,
+      after: outcome,
+      resolvedAt: first.resolvedAt,
+      rowIds: [row!.id],
+      replays: ["queued"],
+      events: [row!.id],
+    });
+    expect(new Set([process.pid, first.pid, second.pid]).size).toBe(3);
+  },
+);
