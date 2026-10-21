@@ -25,6 +25,7 @@ import { registerInternalHook, unregisterInternalHook } from "../../../hooks/int
 import { createDeferredCore } from "../../../shared/deferred.js";
 import { killSubagentRunAdmin } from "./subagent-control-kill.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
+import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
 import {
   childKey,
   createResetRetentionFixture,
@@ -330,4 +331,33 @@ it("resolution waits for a reset stop still running after its mutation gave up",
   expect(displayStatus("ordinary")).toBe("killed");
   expect(displayStatus("elected")).toBe(WAITING);
   expect(retentionState("elected")).toBe("aborted");
+});
+
+it("a retained run with suppressed session effects keeps its completion obligation through the reset", async () => {
+  await writeSession(parentKey, "parent", "before-reset");
+  for (const [runId, elected] of [
+    ["elected", true],
+    ["ordinary", false],
+  ] as const) {
+    await addChild(runId, elected);
+    await mutateSubagentRuns([runId], (rows) => {
+      const draft = structuredClone(rows.get(runId)!);
+      draft.pauseReason = undefined;
+      draft.execution = {
+        status: "terminal",
+        endedAt: 1_000,
+        outcome: { status: "error", error: "original session incarnation changed" },
+        suppressSessionEffects: true,
+      };
+      draft.completion = { required: false, capturedAt: 1_000, resultText: "stopped" };
+      draft.requesterSettleWake = { status: "pending", attemptCount: 0 };
+      return { value: undefined, postimages: new Map([[runId, draft]]) };
+    });
+  }
+
+  await reset("rpc");
+
+  expect(subagentRuns.get("ordinary")?.requesterSettleWake).toBeUndefined();
+  expect(subagentRuns.get("elected")?.requesterSettleWake).toBeDefined();
+  expect(retentionState("elected")).toBe("adopted");
 });
