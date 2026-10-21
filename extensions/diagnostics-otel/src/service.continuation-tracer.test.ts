@@ -38,6 +38,8 @@ const telemetryState = vi.hoisted(() => {
     setSpanContext: vi.fn((_ctx: unknown, spanContext: unknown) => ({ spanContext })),
   };
   const meter = {
+    // Upstream #175203 starts the operator-connection gauge with the metrics SDK.
+    createGauge: vi.fn(() => ({ record: vi.fn() })),
     createCounter: vi.fn((name: string) => {
       const counter = { add: vi.fn() };
       counters.set(name, counter);
