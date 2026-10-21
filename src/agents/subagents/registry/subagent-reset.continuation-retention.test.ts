@@ -62,21 +62,21 @@ async function updateRun(runId: string, update: (draft: SubagentRunRecord) => vo
 }
 
 /** A paused child of the parent; `elected` gives it a continuation recipient binding. */
-async function addChild(runId: string, elected: boolean): Promise<void> {
+async function addChild(runId: string, elected: boolean, requester = parentKey): Promise<void> {
   await writeSession(childKey(runId), runId);
   await registerSubagentRun({
     runId,
     childSessionKey: childKey(runId),
     childAgentId: "main",
     sessionEntry: { sessionId: runId },
-    requesterSessionKey: parentKey,
+    requesterSessionKey: requester,
     requesterAgentId: "main",
-    requesterDisplayKey: parentKey,
+    requesterDisplayKey: requester,
     task: runId,
     cleanup: "keep",
     expectsCompletionMessage: true,
   });
-  const binding = elected ? await captureContinuationRecipientAuthorities([parentKey]) : undefined;
+  const binding = elected ? await captureContinuationRecipientAuthorities([requester]) : undefined;
   await updateRun(runId, (entry) => {
     expect(markSubagentRunPausedAfterYield({ entry })).toBe(true);
     if (binding) {
@@ -126,7 +126,7 @@ async function reset(boundary: "chat" | "rpc"): Promise<void> {
 }
 
 /** The elected child's continuation return through the real router and producer. */
-async function returnFromElected(text: string) {
+async function returnFromElected(text: string, requester = parentKey) {
   return await routeSubagentContinuationReturn({
     cfg: getRuntimeConfig(),
     continuationEnabled: true,
@@ -139,7 +139,7 @@ async function returnFromElected(text: string) {
     childSessionKey: childKey("elected"),
     childAgentId: "main",
     childRunId: "elected",
-    targetRequesterSessionKey: parentKey,
+    targetRequesterSessionKey: requester,
     targetRequesterAgentId: "main",
     continuationRecipientAuthorityBinding:
       subagentRuns.get("elected")?.continuationRecipientAuthorityBinding,
@@ -169,8 +169,8 @@ async function replay(row: Awaited<ReturnType<typeof returnRows>>[number]) {
   }
 }
 
-const parentEvents = (text: string) =>
-  peekSystemEventEntries(resolveSystemEventQueueKey(parentKey, "main")).filter(
+const parentEvents = (text: string, requester = parentKey) =>
+  peekSystemEventEntries(resolveSystemEventQueueKey(requester, "main")).filter(
     (event) => event.text === text,
   );
 
@@ -288,10 +288,14 @@ it("a reset that kills but never commits releases its held return once to the un
 });
 
 /** A reset that marked its tree and then died: nothing in this process resolves the mark. */
-async function leavePendingRetention(storePath: string, during?: () => Promise<void>) {
+async function leavePendingRetention(
+  storePath: string,
+  during?: () => Promise<void>,
+  requester = parentKey,
+) {
   const retention = prepareContinuationResetRetention({
     cfg: getRuntimeConfig(),
-    sessionKey: parentKey,
+    sessionKey: requester,
     agentId: "main",
     storePath,
   });
@@ -320,22 +324,30 @@ it("an explicit kill still stops a run a pending reset retained", async () => {
 });
 
 it("delete stops a pending-retained run and its held return never reaches a new head on the key", async () => {
-  const storePath = await writeSession(parentKey, "parent", "before-reset");
-  await addChild("elected", true);
+  // The main session cannot be deleted; a direct session can.
+  const requester = "agent:main:telegram:default:direct:delete-me";
+  const storePath = await writeSession(requester, "parent", "before-reset");
+  await addChild("elected", true, requester);
   const text = "elected result before delete";
-  await leavePendingRetention(storePath, async () => {
-    await returnFromElected(text);
-  });
+  await leavePendingRetention(
+    storePath,
+    async () => {
+      await returnFromElected(text, requester);
+    },
+    requester,
+  );
   expect(await returnRows()).toHaveLength(1);
 
-  const deletion = adminCall({ key: parentKey });
+  const deletion = adminCall({ key: requester });
   await sessionDeleteHandlers["sessions.delete"]!(deletion.request);
   expect(deletion.respond).toHaveBeenCalledWith(true, expect.anything(), undefined);
   expect(displayStatus("elected")).toBe("killed");
 
-  await writeSession(parentKey, "new-head", "new-head-revision");
+  await writeSession(requester, "new-head", "new-head-revision");
+  // Delete advanced the recipient authority epoch: replay skips the row without queueing it.
   const [held] = await returnRows();
-  expect(await replay(held!)).toBe("held");
+  expect(await replay(held!)).toBe("returned");
+  expect(parentEvents(text, requester)).toEqual([]);
   await resolveContinuationResetRetentions({
     cfg: getRuntimeConfig(),
     markedBefore: Date.now() + 1,
@@ -343,5 +355,5 @@ it("delete stops a pending-retained run and its held return never reaches a new 
 
   expect(subagentRuns.get("elected")?.continuationResetRetention?.state).toBe("orphaned");
   expect(await returnRows()).toEqual([]);
-  expect(parentEvents(text)).toEqual([]);
+  expect(parentEvents(text, requester)).toEqual([]);
 });
