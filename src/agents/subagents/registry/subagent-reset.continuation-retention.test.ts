@@ -14,11 +14,15 @@ import { finalizeInboundContext } from "../../../auto-reply/reply/inbound-contex
 import { stopSessionResetSubagents } from "../../../auto-reply/reply/session-reset-cleanup.js";
 import { initSessionState } from "../../../auto-reply/reply/session.js";
 import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../../config/config.js";
-import { loadSessionEntry } from "../../../config/sessions/session-accessor.js";
+import {
+  loadSessionEntry,
+  patchSessionEntryCore,
+} from "../../../config/sessions/session-accessor.js";
 import { createChatAbortContext } from "../../../gateway/server-methods/chat.abort.test-helpers.js";
 import { sessionDeleteHandlers } from "../../../gateway/server-methods/sessions-delete.js";
 import { sessionMutationHandlers } from "../../../gateway/server-methods/sessions-mutations.js";
 import { registerInternalHook, unregisterInternalHook } from "../../../hooks/internal-hooks.js";
+import { createDeferredCore } from "../../../shared/deferred.js";
 import { killSubagentRunAdmin } from "./subagent-control-kill.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 import {
@@ -247,4 +251,83 @@ it("delete stops a pending-retained run and its held return never reaches a new 
   expect(retentionState("elected")).toBe("orphaned");
   expect(await returnRows("elected")).toEqual([]);
   expect(queuedEvents(text, requester)).toEqual([]);
+});
+
+it("a retained chain-hop delegate survives when the reset stops the sibling that controls it", async () => {
+  await writeSession(parentKey, "parent", "before-reset");
+  await addChild("ordinary", false);
+  // A chain hop returns to the parent session but is controlled by the child that spawned it.
+  await addChild("hop", true, parentKey, childKey("ordinary"));
+
+  await reset("rpc");
+
+  expect(displayStatus("ordinary")).toBe("killed");
+  expect(displayStatus("hop")).toBe(WAITING);
+  expect(retentionState("hop")).toBe("adopted");
+});
+
+it("a mark whose row moved on to a later lifecycle releases its held return once to that head", async () => {
+  const storePath = await writeSession(parentKey, "parent", "before-reset");
+  await addChild("elected", true);
+  const text = "elected result before a later rollover";
+  await leavePendingRetention(storePath, {
+    during: async () => {
+      await returnFrom("elected", text);
+    },
+  });
+  await patchSessionEntryCore({ storePath, sessionKey: parentKey }, (entry) => ({
+    ...entry,
+    lifecycleRevision: "later-rollover",
+  }));
+  const [row] = await returnRows("elected");
+  expect(await replay(row!)).toBe("held");
+
+  await resolveContinuationResetRetentions({
+    cfg: getRuntimeConfig(),
+    markedBefore: Date.now() + 1,
+  });
+
+  expect(retentionState("elected")).toBe("superseded");
+  expect(await replay(row!)).toBe("queued");
+  expect(await replay(row!)).toBe("queued");
+  expect(queuedEvents(text)).toEqual([expect.objectContaining({ sessionDeliveryAckId: row!.id })]);
+});
+
+it("resolution waits for a reset stop still running after its mutation gave up", async () => {
+  const storePath = await writeSession(parentKey, "parent", "before-reset");
+  await addChild("elected", true);
+  await addChild("ordinary", false);
+  const cfg = getRuntimeConfig();
+  const retention = prepareContinuationResetRetention({
+    cfg,
+    sessionKey: parentKey,
+    agentId: "main",
+    storePath,
+  });
+  const marked = createDeferredCore();
+  const proceed = createDeferredCore();
+  const stop = retention.stopSubagents(
+    { fromRevision: "before-reset", assertCurrent: () => {} },
+    async () => {
+      marked.resolve();
+      await proceed.promise;
+      return await stopSessionResetSubagents({
+        cfg,
+        sessionKey: parentKey,
+        agentId: "main",
+        assertCurrent: () => {},
+      });
+    },
+  );
+  await marked.promise;
+  // A preemption timeout finalized the mutation while its stop still runs.
+  await retention.resolve();
+  expect(retentionState("elected")).toBe("pending");
+
+  proceed.resolve();
+  await stop;
+
+  expect(displayStatus("ordinary")).toBe("killed");
+  expect(displayStatus("elected")).toBe(WAITING);
+  expect(retentionState("elected")).toBe("aborted");
 });

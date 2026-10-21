@@ -26,8 +26,16 @@ export function createResetRetentionFixture(stateDir: () => string) {
   const writeSession = (sessionKey: string, sessionId: string, lifecycleRevision?: string) =>
     writeChildSession(stateDir(), sessionKey, sessionId, lifecycleRevision);
 
-  /** A paused child of `requester`; `elected` gives it a continuation recipient binding. */
-  async function addChild(runId: string, elected: boolean, requester = parentKey) {
+  /**
+   * A paused child of `requester`; `elected` gives it a continuation recipient binding. A
+   * `controller` other than the requester models a chain hop controlled by its spawning child.
+   */
+  async function addChild(
+    runId: string,
+    elected: boolean,
+    requester = parentKey,
+    controller?: string,
+  ) {
     await writeSession(childKey(runId), runId);
     await registerSubagentRun({
       runId,
@@ -37,6 +45,7 @@ export function createResetRetentionFixture(stateDir: () => string) {
       requesterSessionKey: requester,
       requesterAgentId: "main",
       requesterDisplayKey: requester,
+      ...(controller ? { controllerSessionKey: controller } : {}),
       task: runId,
       cleanup: "keep",
       expectsCompletionMessage: true,
