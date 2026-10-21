@@ -252,7 +252,7 @@ async function initSessionStateAttempt(params: InitSessionStateParams): Promise<
       : undefined;
     // Drain foreign owners before the rollover takes the writer lane. Holding
     // that lane while waiting would deadlock owners that release after a write.
-    rollover = await runReplySessionRolloverMutation<InitSessionStateAttemptOutcome>({
+    const rolloverMutation = runReplySessionRolloverMutation<InitSessionStateAttemptOutcome>({
       storePath: attemptContext.storePath,
       sessionKey: candidate.sessionKey,
       sessionId: candidate.sessionId,
@@ -327,7 +327,12 @@ async function initSessionStateAttempt(params: InitSessionStateParams): Promise<
             ? { ...candidate, nextLifecycleRevision: continuationRetention.successorRevision }
             : candidate,
         ),
-    }).finally(async () => await continuationRetention?.resolve());
+    });
+    try {
+      rollover = await rolloverMutation;
+    } finally {
+      await continuationRetention?.resolve();
+    }
   }
   return rollover.result;
 }
