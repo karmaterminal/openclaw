@@ -200,3 +200,89 @@ it.each(["chat", "rpc"] as const)(
     expect(subagentRuns.get("elected")?.killIntent).toBeUndefined();
   },
 );
+
+it("a return produced across the reset commit is held, then released once to the proven successor", async () => {
+  const storePath = await writeSession(parentKey, "parent", "before-reset");
+  await addChild("elected", true);
+  const text = "elected result during reset";
+  // command:reset runs after the reset's kill marked the tree and before its commit.
+  const inFlight: Record<string, unknown> = {};
+  const produceInFlight = async () => {
+    inFlight.handled = (await returnFromElected(text)).handled;
+    inFlight.queuedAtProducer = parentEvents(text).length;
+    const rows = await returnRows();
+    inFlight.rows = rows.length;
+    inFlight.replay = rows[0] ? await replay(rows[0]) : "missing";
+    inFlight.queuedAfterReplay = parentEvents(text).length;
+    inFlight.revision = readParent(storePath)?.lifecycleRevision;
+  };
+  registerInternalHook("command:reset", produceInFlight);
+  try {
+    await reset("rpc");
+  } finally {
+    unregisterInternalHook("command:reset", produceInFlight);
+  }
+  expect(inFlight).toEqual({
+    handled: true,
+    queuedAtProducer: 0,
+    rows: 1,
+    replay: "held",
+    queuedAfterReplay: 0,
+    revision: "before-reset",
+  });
+
+  const committed = readParent(storePath)?.lifecycleRevision;
+  expect(committed).not.toBe("before-reset");
+  expect(subagentRuns.get("elected")?.continuationResetRetention).toMatchObject({
+    state: "adopted",
+    toRevision: committed,
+  });
+  const [row] = await returnRows();
+  expect(row).toBeDefined();
+  expect(await replay(row!)).toBe("queued");
+  expect(await replay(row!)).toBe("queued");
+  expect(parentEvents(text)).toEqual([expect.objectContaining({ sessionDeliveryAckId: row!.id })]);
+});
+
+it("a reset that kills but never commits releases its held return once to the unchanged head", async () => {
+  const storePath = await writeSession(parentKey, "parent", "before-reset");
+  await addChild("elected", true);
+  await addChild("ordinary", false);
+  const cfg = getRuntimeConfig();
+  const text = "elected result during aborted reset";
+  const retention = prepareContinuationResetRetention({
+    cfg,
+    sessionKey: parentKey,
+    agentId: "main",
+    storePath,
+  });
+  let replayInFlight: string | undefined;
+  // The reset paths' own sequence: mark, upstream kill, then a failure before the commit.
+  await retention.stopSubagents(
+    { fromRevision: "before-reset", assertCurrent: () => {} },
+    async () => {
+      const killed = await stopSessionResetSubagents({
+        cfg,
+        sessionKey: parentKey,
+        agentId: "main",
+        assertCurrent: () => {},
+      });
+      await returnFromElected(text);
+      const [row] = await returnRows();
+      replayInFlight = row ? await replay(row) : "missing";
+      return killed;
+    },
+  );
+  expect(replayInFlight).toBe("held");
+  expect(parentEvents(text)).toEqual([]);
+  await retention.resolve();
+
+  expect(readParent(storePath)?.lifecycleRevision).toBe("before-reset");
+  expect(displayStatus("ordinary")).toBe("killed");
+  expect(displayStatus("elected")).toBe(WAITING);
+  expect(subagentRuns.get("elected")?.continuationResetRetention?.state).toBe("aborted");
+  const [row] = await returnRows();
+  expect(await replay(row!)).toBe("queued");
+  expect(await replay(row!)).toBe("queued");
+  expect(parentEvents(text)).toEqual([expect.objectContaining({ sessionDeliveryAckId: row!.id })]);
+});
