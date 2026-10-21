@@ -7,6 +7,7 @@ import type { FailoverReason } from "../../agents/failover/signal.js";
 import type { CompactionRequestBudget } from "../../agents/sessions/compaction/request-budget.js";
 import type { ContinueWorkRequest } from "../../agents/tools/continue-work-tool.js";
 import type { SessionEntry } from "../../config/sessions.js";
+import type { AutomationResult } from "../../infra/agent-run-registry.types.js";
 import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
 import type { TemplateContext } from "../templating.js";
 import type { VerboseLevel } from "../thinking.js";
@@ -78,6 +79,8 @@ export type AgentTurnInternalResult =
 
 type SettledAgentTurnBase = {
   kind: "settled";
+  /** Captured before terminal event settlement consumes the invocation. */
+  automation?: { result?: AutomationResult; includeReasoning: boolean };
   /** The runtime's claimed writer, independent of whether it compacted. */
   sessionWriter?: CompactionAccountingTarget;
   maintenanceAuthProfile?: CompletedAgentAuthSelection;

@@ -232,7 +232,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: owner-approved service-bound remote Control UI ingress.
       // +2: shared database-engine host and worker adapters.
       // +1: maintainer-requested context-engine-transcript-runtime watermark subpath (2026-10-08).
-      156,
+      // +1: approved shared OpenAI Decisions codec used by OpenAI and ClawRouter.
+      157,
       env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
@@ -290,10 +291,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // ControlUiChannelSettingsView for plugin-owned channel Settings presentations.
       // +1: the shared message-tool source-reply finality resolver.
       // +1: awaited web_search policy preparation for harnesses; the sync resolver stays.
-      // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
-      // system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the f20c3c758b merge: upstream 3810, merged tree 3821 (+11).
-      3821,
+      // +3 (upstream 79ab1c4904): shared Decisions support/evaluation functions and the canonical
+      // capability schema. +11: the continuation feature's public contracts (runtime, trace,
+      // channel-ingress, system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
+      // Measured on the 79ab1c4904 merge: upstream 3813, merged tree 3824 (+11).
+      3824,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -336,9 +338,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: maintainer-requested context-engine transcript watermark reader.
       // +1: the shared message-tool source-reply finality resolver, so harnesses apply a run's default.
       // +1: the same awaited web_search policy preparation.
+      // +2 (upstream 79ab1c4904): the same shared Decisions support predicate and evaluator.
       // +4: the continuation feature's callable contracts; measured +4 over base 2187 on b51feb98eb.
-      // Measured on the f20c3c758b merge: upstream 2208, merged tree 2212 (+4).
-      2212,
+      // Measured on the 79ab1c4904 merge: upstream 2210, merged tree 2214 (+4).
+      2214,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

@@ -23,6 +23,7 @@ import {
 } from "../../plugins/hook-agent-context.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { loadPluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.js";
+import { withPluginRetentionOwner } from "../../plugins/plugin-retention-diagnostics.js";
 import {
   runOutsidePluginRuntimeGenerationScope,
   withPluginRuntimeGenerationScope,
@@ -94,6 +95,7 @@ import {
 import { createEmbeddedRunProgressController } from "./run/progress-controller.js";
 import { createRecoveryMessageActionTurnCapability } from "./run/recovery-message-action-capability.js";
 import {
+  resolveEmbeddedRuntimePluginPreparation,
   resolveEmbeddedRuntimePluginSelections,
   resolveInitialEmbeddedRunModel,
 } from "./run/runtime-resolution.js";
@@ -117,23 +119,32 @@ export function runEmbeddedAgent(
     (internalParamsInput.preparedModelRuntimeMode === "isolated-read-only"
       ? undefined
       : getPreparedModelRuntimePluginGeneration());
-  return withAgentRunLifecycleGeneration(lifecycleGeneration, async () => {
-    const prepared = await prepareEmbeddedRunSession({
-      ...internalParamsInput,
-      config,
-      lifecycleGeneration,
-      ...(pluginGeneration ? { pluginGeneration } : {}),
-    });
-    return await withRequiredSessionPlacement(
-      prepared.runSessionTarget,
-      {
-        config: prepared.params.config,
-        assertCurrent: prepared.params.preparedRunAdmission?.assertSourceCurrent,
-        signal: prepared.params.abortSignal,
-      },
-      () => runEmbeddedAgentForSession(prepared),
-    );
-  });
+  // Capture host-selected facts before session preparation can retain a generation.
+  return withPluginRetentionOwner(
+    {
+      agentId: internalParamsInput.agentId,
+      sessionKey: internalParamsInput.sessionKey,
+      runId: internalParamsInput.runId,
+    },
+    () =>
+      withAgentRunLifecycleGeneration(lifecycleGeneration, async () => {
+        const prepared = await prepareEmbeddedRunSession({
+          ...internalParamsInput,
+          config,
+          lifecycleGeneration,
+          ...(pluginGeneration ? { pluginGeneration } : {}),
+        });
+        return await withRequiredSessionPlacement(
+          prepared.runSessionTarget,
+          {
+            config: prepared.params.config,
+            assertCurrent: prepared.params.preparedRunAdmission?.assertSourceCurrent,
+            signal: prepared.params.abortSignal,
+          },
+          () => runEmbeddedAgentForSession(prepared),
+        );
+      }),
+  );
 }
 
 async function runEmbeddedAgentForSession(
@@ -305,9 +316,7 @@ async function runEmbeddedAgentForSession(
           workspaceDir: runtimeWorkspaceResolution.workspaceDir,
           preserveWorkspaceDirOnRefresh: !runtimeWorkspaceResolution.isCanonicalWorkspace,
           ...(params.allowGatewaySubagentBinding ? { allowGatewaySubagentBinding: true } : {}),
-          ...(params.preparedModelRuntimeMode === "isolated-read-only"
-            ? { loadRuntimePlugins: true }
-            : {}),
+          ...resolveEmbeddedRuntimePluginPreparation(params),
           runtimePluginSelections,
         };
         startupStages.mark("harness-selection");

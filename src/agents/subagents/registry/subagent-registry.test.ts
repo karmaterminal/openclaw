@@ -40,7 +40,7 @@ import {
 } from "../../subagent-test-fixtures.test-helpers.js";
 import { maybeWakeRequesterAfterAllChildrenSettled } from "../announce/subagent-announce.requester-settle-wake.js";
 import { releaseSwarmRun } from "../swarm/swarm-scheduler.js";
-import { testing as swarmSchedulerTesting } from "../swarm/swarm-scheduler.test-support.js";
+import { observeSwarmSchedulerWork } from "../swarm/swarm-scheduler.lifecycle.test-support.js";
 import {
   SUBAGENT_ENDED_REASON_COMPLETE,
   SUBAGENT_ENDED_REASON_ERROR,
@@ -222,6 +222,7 @@ vi.mock("../../internal-session-effects.js", () => ({
 
 describe("subagent registry seam flow", () => {
   let mod: SubagentRegistryHarness;
+  let schedulerWork: ReturnType<typeof observeSwarmSchedulerWork>;
   let bindWakeMutation: Awaited<ReturnType<typeof mockRegistryRequesterWakeMutation>>;
   const recoveryRuntime = createMockGatewayRecoveryRuntime({
     dispatchSessionMethod: async <T>(
@@ -249,7 +250,6 @@ describe("subagent registry seam flow", () => {
   };
   const findRequesterRun = (runId: string, requesterSessionKey = "agent:main:main") =>
     mod.listSubagentRunsForRequester(requesterSessionKey).find((entry) => entry.runId === runId);
-  const { mockRestoredRuns } = mocks;
   const mockAgentWait = (
     response:
       | Record<string, unknown>
@@ -320,6 +320,7 @@ describe("subagent registry seam flow", () => {
   });
 
   beforeEach(async () => {
+    schedulerWork = observeSwarmSchedulerWork();
     resetGatewayWorkAdmission();
     // Archive deferral reads the continuation custody projection, which errs
     // toward retention until hydrated; hydrate it as Gateway boot does.
@@ -397,16 +398,15 @@ describe("subagent registry seam flow", () => {
       }),
     );
     await mod.resetSubagentRegistryForTests({ persist: false });
-    swarmSchedulerTesting.reset();
     bindWakeMutation = await mockRegistryRequesterWakeMutation();
   });
 
   afterEach(async () => {
+    await schedulerWork.close();
     resetGatewayWorkAdmission();
     resetContinuationCustodyProjection();
     vi.mocked(cleanupBrowserSessionsForLifecycleEnd).mockReset();
     await mod.resetSubagentRegistryForTests({ persist: false });
-    swarmSchedulerTesting.reset();
     clearRuntimeConfigSnapshot();
     vi.unstubAllEnvs();
     vi.useRealTimers();
@@ -551,7 +551,7 @@ describe("subagent registry seam flow", () => {
         pauseNotice: { acknowledgment: "RESTORED-PAUSE" },
       },
     });
-    mockRestoredRuns(() => [restored]);
+    mocks.mockRestoredRuns(() => [restored]);
     wakeRequester.mockImplementation(async (params) => {
       bindWakeMutation([params.settledEntry]);
       await params.completeBatch([params.settledEntry], 1);
@@ -585,7 +585,7 @@ describe("subagent registry seam flow", () => {
     getRegistry: () => mod,
     mocks,
     hydrateAndActivateRegistry,
-    mockRestoredRuns,
+    mockRestoredRuns: mocks.mockRestoredRuns,
   });
 
   it("does not double-run reentrant registry restore calls", async () => {
@@ -612,7 +612,7 @@ describe("subagent registry seam flow", () => {
 
   it("does not relaunch a restored queued collector with durable kill intent", async () => {
     const now = Date.now();
-    mockRestoredRuns(() => [
+    mocks.mockRestoredRuns(() => [
       makeQueuedRun({
         runId: "run-queued-kill-intent",
         childSessionKey: "agent:main:subagent:queued-kill-intent",
@@ -647,7 +647,7 @@ describe("subagent registry seam flow", () => {
         maxConcurrent: 2,
       },
     };
-    mockRestoredRuns(() => [
+    mocks.mockRestoredRuns(() => [
       createSubagentRunRecord({
         runId: "run-active",
         childSessionKey: "agent:main:subagent:run-active",
@@ -832,12 +832,12 @@ describe("subagent registry seam flow", () => {
     mocks,
     hydrateAndActivateRegistry,
     mockSingleCollectorConcurrency,
-    mockRestoredRuns,
+    mockRestoredRuns: mocks.mockRestoredRuns,
   });
 
   it("settles restored collector session cleanup before announcing deletion", async () => {
     const now = Date.now();
-    mockRestoredRuns(() => [
+    mocks.mockRestoredRuns(() => [
       makeQueuedRun({
         runId: "run-queued-cleanup-retry",
         childSessionKey: "agent:main:subagent:queued-cleanup-retry",
@@ -1283,7 +1283,7 @@ describe("subagent registry seam flow", () => {
             sessionStartedAt: createdAt,
           });
           await prepareSubagentRecoveryFixture(restored, { entries: mocks.entries });
-          mockRestoredRuns(() => [restored]);
+          mocks.mockRestoredRuns(() => [restored]);
           await hydrateAndActivateRegistry();
         } else {
           await mod.registerSubagentRun({

@@ -85,7 +85,7 @@ export async function spawnSubagentDirect(
   const sandboxMode = params.sandbox === "require" ? "require" : "inherit";
   // Capture before any await. operatorAuthority is a separate gate from
   // continuationChainState: chain state is accounting, never authorization.
-  const { gatewayContextResolver, operatorAuthority, requester } =
+  const { gatewayContextResolver, operatorAuthority, requester, creatorProfileId } =
     captureSubagentSpawnGatewayContext();
   const continuationLaunchError = await resolveSubagentContinuationLaunchError(params);
   if (continuationLaunchError) {
@@ -172,6 +172,7 @@ export async function spawnSubagentDirect(
       sandboxMode,
       swarmEnabled: swarmConfig.enabled,
       requesterSandboxed: ctx.sandboxed,
+      creatorProfileId,
     });
     if (!childPlan.ok) {
       return childPlan.result;
