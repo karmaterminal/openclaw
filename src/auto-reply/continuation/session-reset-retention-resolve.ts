@@ -13,10 +13,7 @@ import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-
 import { resolveAllAgentSessionStoreTargetsSync } from "../../config/sessions/targets.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import {
-  loadPendingSessionDeliveries,
-  moveSessionDeliveryToFailed,
-} from "../../infra/session-delivery-queue-storage.js";
+import { loadPendingSessionDeliveries } from "../../infra/session-delivery-queue-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import { parseContinuationRecipientAuthorityBinding } from "./recipient-authority-binding.js";
@@ -77,7 +74,8 @@ function classifyRetention(
  * aborted (the reset did not commit). Any other revision: superseded. All three release the held
  * results to the current head. Stale recipient authority, or a missing row when the run captured
  * none: orphaned. A missing row under current authority stays pending with its results held and a
- * warning: that is not proof the root is gone.
+ * warning: that is not proof the root is gone. Each held return still expires to failed after
+ * CONTINUATION_RESET_HOLD_MAX_MS at replay, and the run keeps running.
  */
 export async function resolveContinuationResetRetentions(params: {
   cfg: OpenClawConfig;
@@ -136,7 +134,7 @@ export async function resolveContinuationResetRetentions(params: {
     );
     if (!state) {
       log.warn(
-        `[continuation:reset-retention] unresolved: session=${mark.sessionKey} is missing under current recipient authority (reset ${mark.resetId}); run=${entry.runId} keeps its results held until a later resolution (next reset or Gateway boot) proves an outcome`,
+        `[continuation:reset-retention] unresolved: session=${mark.sessionKey} is missing under current recipient authority (reset ${mark.resetId}); run=${entry.runId} keeps its results held until a later resolution (Gateway boot) proves an outcome; each held return expires after 7 days`,
       );
       continue;
     }
@@ -166,13 +164,11 @@ async function releaseHeldContinuationResults(
     return mark?.continuationResetRetention?.sessionKey === row.sessionKey;
   });
   const { scheduleSessionDelivery } = await import("../../infra/session-delivery-queue-runtime.js");
+  // The settled mark decides each row at replay: delivered for adopted, aborted and superseded,
+  // moved to failed for orphaned (the durable fence in server-restart-sentinel-delivery.ts). One
+  // path terminalizes, so a sweep racing this release reaches the same outcome.
   for (const row of heldRows) {
-    const runId = row.kind === "systemEvent" ? row.continuationSourceRunId : undefined;
-    const state = runId ? outcomes.get(runId)?.state : undefined;
-    if (state === "orphaned") {
-      // The session is gone; no head may adopt this private result.
-      await moveSessionDeliveryToFailed(row.id, context);
-    } else if (!(await scheduleSessionDelivery(row.id, context))) {
+    if (!(await scheduleSessionDelivery(row.id, context))) {
       // No delivery runtime here; the Gateway's pending sweep replays the released row.
       log.info(`[continuation:reset-retention] released row ${row.id} awaits the pending sweep`);
     }

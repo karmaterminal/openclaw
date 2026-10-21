@@ -20,7 +20,7 @@ import {
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { defaultRuntime } from "../runtime.js";
 import { parseContinuationChainHop } from "./subagent-announce.continuation.accounting.js";
-import { isContinuationResultHeldForReset } from "./subagents/registry/subagent-continuation-reset-retention.js";
+import { findContinuationResetHold } from "./subagents/registry/subagent-continuation-reset-retention.js";
 
 const continuationLog = createSubsystemLogger("continuation/announce");
 
@@ -178,7 +178,7 @@ export async function routeSubagentContinuationReturn(params: {
             wakeRecipients: params.wakeOnReturn === true || params.silentAnnounce !== true,
             childRunId: params.childRunId,
             holdForReset: (sessionKey) =>
-              isContinuationResultHeldForReset(params.childRunId, sessionKey),
+              findContinuationResetHold(params.childRunId, sessionKey) !== undefined,
             ...(recipientAuthorities ? { recipientAuthorities } : {}),
             ...(params.continuationFanoutMode ? { fanoutMode: params.continuationFanoutMode } : {}),
             ...(completionTrace.chainStepRemaining !== undefined

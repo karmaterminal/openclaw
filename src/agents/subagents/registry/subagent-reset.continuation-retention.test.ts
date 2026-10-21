@@ -23,6 +23,7 @@ import { sessionDeleteHandlers } from "../../../gateway/server-methods/sessions-
 import { sessionMutationHandlers } from "../../../gateway/server-methods/sessions-mutations.js";
 import { registerInternalHook, unregisterInternalHook } from "../../../hooks/internal-hooks.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
+import { CONTINUATION_RESET_HOLD_MAX_MS } from "./subagent-continuation-reset-retention.js";
 import { killSubagentRunAdmin } from "./subagent-control-kill.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
@@ -41,6 +42,9 @@ const {
   returnFrom,
   returnRows,
   replay,
+  drain,
+  removeSessionRow,
+  enqueueReturnWithoutAuthority,
   queuedEvents,
   leavePendingRetention,
 } = createResetRetentionFixture(() => fixture.stateDir);
@@ -219,39 +223,83 @@ it("an explicit kill still stops a run a pending reset retained", async () => {
   expect(displayStatus("elected")).toBe("killed");
 });
 
-it("delete stops a pending-retained run and its held return never reaches a new head on the key", async () => {
+it("delete orphans a pending-retained run; a sweep on either side of resolution never hands its held returns to a new head", async () => {
   // The main session cannot be deleted; a direct session can.
   const requester = "agent:main:telegram:default:direct:delete-me";
   const storePath = await writeSession(requester, "parent", "before-reset");
   await addChild("elected", true, requester);
   const text = "elected result before delete";
+  const legacy = "legacy result before delete";
   await leavePendingRetention(storePath, {
     requester,
     during: async () => {
       await returnFrom("elected", text, requester);
     },
   });
+  // A row with no captured recipient authority: replay's own authority check is vacuous for it.
+  await enqueueReturnWithoutAuthority("elected", legacy, requester);
   expect(retentionState("elected")).toBe("pending");
-  expect(await returnRows("elected")).toHaveLength(1);
+  expect(await returnRows("elected")).toHaveLength(2);
 
   const deletion = adminCall({ key: requester });
   await sessionDeleteHandlers["sessions.delete"]!(deletion.request);
   expect(deletion.respond).toHaveBeenCalledWith(true, expect.anything(), undefined);
   expect(displayStatus("elected")).toBe("killed");
-
   await writeSession(requester, "new-head", "new-head-revision");
-  // Delete advanced the recipient authority epoch: replay skips the row without queueing it.
-  const [held] = await returnRows("elected");
-  expect(await replay(held!)).toBe("returned");
-  expect(queuedEvents(text, requester)).toEqual([]);
+
+  // Sweep before resolution: both rows stay held, neither is acked.
+  for (const row of await returnRows("elected")) {
+    expect(await drain(row)).toBe("pending");
+  }
   await resolveContinuationResetRetentions({
     cfg: getRuntimeConfig(),
     markedBefore: Date.now() + 1,
   });
-
   expect(retentionState("elected")).toBe("orphaned");
+
+  // Sweep after the mark settled, before any release reaches the rows (the reviewed gap): both
+  // rows move to failed, neither is acked as delivered, and nothing reaches the new head.
+  const released = await returnRows("elected");
+  expect(released).toHaveLength(2);
+  for (const row of released) {
+    expect(await drain(row)).toBe("moved-to-failed");
+  }
   expect(await returnRows("elected")).toEqual([]);
   expect(queuedEvents(text, requester)).toEqual([]);
+  expect(queuedEvents(legacy, requester)).toEqual([]);
+});
+
+it("a return held seven days by an unresolved reset expires to failed, never delivered, and its run keeps running", async () => {
+  const storePath = await writeSession(parentKey, "parent", "before-reset");
+  await addChild("elected", true);
+  const text = "elected result held for a week";
+  await leavePendingRetention(storePath, {
+    during: async () => {
+      await returnFrom("elected", text);
+    },
+  });
+  // The head is missing under unchanged recipient authority, so boot cannot prove an outcome.
+  removeSessionRow(parentKey);
+  await resolveContinuationResetRetentions({
+    cfg: getRuntimeConfig(),
+    markedBefore: Date.now() + 1,
+  });
+  expect(retentionState("elected")).toBe("pending");
+  const [row] = await returnRows("elected");
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    vi.setSystemTime(row!.enqueuedAt + CONTINUATION_RESET_HOLD_MAX_MS - 1);
+    expect(await drain(row!)).toBe("pending");
+    vi.setSystemTime(row!.enqueuedAt + CONTINUATION_RESET_HOLD_MAX_MS);
+    expect(await drain(row!)).toBe("moved-to-failed");
+  } finally {
+    vi.useRealTimers();
+  }
+  expect(await returnRows("elected")).toEqual([]);
+  expect(queuedEvents(text)).toEqual([]);
+  // The handover stays unresolved and visible; age alone never stops a valid child.
+  expect(retentionState("elected")).toBe("pending");
+  expect(subagentRuns.get("elected")?.killIntent).toBeUndefined();
 });
 
 it("a retained chain-hop delegate survives when the reset stops the sibling that controls it", async () => {

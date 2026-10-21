@@ -4,13 +4,18 @@ import { expect } from "vitest";
 import { captureContinuationRecipientAuthorities } from "../../../auto-reply/continuation/recipient-authority-binding.js";
 import { prepareContinuationResetRetention } from "../../../auto-reply/continuation/session-reset-retention.js";
 import { getRuntimeConfig } from "../../../config/config.js";
+import { deleteSessionEntryRows } from "../../../config/sessions/session-accessor.sqlite-entry-store.js";
+import { clearSessionStoreCacheForTest } from "../../../config/sessions/store-writer-state.js";
 import { deliverQueuedSessionDeliveryCore } from "../../../gateway/server-restart-sentinel-delivery.js";
+import { drainPendingSessionDelivery } from "../../../infra/session-delivery-queue-recovery.js";
 import {
+  enqueueSessionDelivery,
   loadPendingSessionDeliveries,
   SessionDeliveryDeferredError,
 } from "../../../infra/session-delivery-queue-storage.js";
 import { resolveSystemEventQueueKey } from "../../../infra/system-event-ownership.js";
 import { peekSystemEventEntries } from "../../../infra/system-events.js";
+import { runOpenClawAgentWriteTransaction } from "../../../state/openclaw-agent-db.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
 import { routeSubagentContinuationReturn } from "../../subagent-announce.continuation-return.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
@@ -107,6 +112,55 @@ export function createResetRetentionFixture(stateDir: () => string) {
     }
   }
 
+  /**
+   * One row through the real recovery drain, as the Gateway's pending sweep runs it. Returns the
+   * settlement it recorded (`recovered` acks it as delivered), or whether it is still pending.
+   */
+  async function drain(row: Awaited<ReturnType<typeof returnRows>>[number]) {
+    let settled: string | undefined;
+    const remaining = await drainPendingSessionDelivery({
+      id: row.id,
+      bypassBackoff: true,
+      queueContext: captureOpenClawStateWorkerContext(),
+      logLabel: "reset-retention drain",
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+      deliver: (entry, context) =>
+        deliverQueuedSessionDeliveryCore({
+          deps: {} as never,
+          entry,
+          queueContext: context.queueContext,
+        }),
+      onSettled: (_entry, outcome) => {
+        settled = outcome;
+      },
+    });
+    return settled ?? (remaining ? "pending" : "gone");
+  }
+
+  /** Removes the session row and leaves its recipient authority epoch where it was. */
+  function removeSessionRow(sessionKey: string) {
+    runOpenClawAgentWriteTransaction((database) => deleteSessionEntryRows(database, sessionKey), {
+      agentId: "main",
+    });
+    clearSessionStoreCacheForTest();
+  }
+
+  /** A return row written before recipient authority existed: replay's authority check is vacuous. */
+  async function enqueueReturnWithoutAuthority(runId: string, text: string, requester = parentKey) {
+    await enqueueSessionDelivery(
+      {
+        kind: "systemEvent",
+        sessionKey: requester,
+        agentId: "main",
+        text,
+        idempotencyKey: `continuation-return:legacy:${text}:${requester}`,
+        awaitPromptAdoption: true,
+        continuationSourceRunId: runId,
+      },
+      captureOpenClawStateWorkerContext(),
+    );
+  }
+
   const queuedEvents = (text: string, requester = parentKey) =>
     peekSystemEventEntries(resolveSystemEventQueueKey(requester, "main")).filter(
       (event) => event.text === text,
@@ -138,6 +192,9 @@ export function createResetRetentionFixture(stateDir: () => string) {
     returnFrom,
     returnRows,
     replay,
+    drain,
+    removeSessionRow,
+    enqueueReturnWithoutAuthority,
     queuedEvents,
     leavePendingRetention,
   };

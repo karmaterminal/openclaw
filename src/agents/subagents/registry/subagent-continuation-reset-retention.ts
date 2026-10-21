@@ -8,6 +8,7 @@ import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { resolveSubagentRequesterAgentId } from "../../subagent-requester-owner.js";
 import type {
   ActiveContinuationReset,
+  ContinuationResetRetention,
   ContinuationResetRetentionOutcome,
 } from "./subagent-continuation-reset-active.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
@@ -15,17 +16,25 @@ import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { isSameSubagentRunOwner } from "./subagent-run-generation.js";
 
+/** A terminal return held this long by an unresolved reset expires to failed, never delivered. */
+export const CONTINUATION_RESET_HOLD_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+
 /**
- * A continuation result from this run to the session whose head a reset is replacing waits for
- * that reset's successor proof. Returns to other sessions are not this reset's to hold.
+ * The reset mark that withholds this run's continuation results from the session whose head a
+ * reset replaced. A pending mark holds them until the successor is proven; an orphaned mark is a
+ * durable fence that discards them, so no later head on the key ever receives them. Returns to
+ * other sessions are not this reset's to hold.
  */
-export function isContinuationResultHeldForReset(
+export function findContinuationResetHold(
   runId: string | undefined,
   recipientSessionKey: string,
-): boolean {
+): ContinuationResetRetention | undefined {
   const mark =
     runId === undefined ? undefined : subagentRuns.get(runId)?.continuationResetRetention;
-  return mark?.state === "pending" && mark.sessionKey === recipientSessionKey;
+  return mark?.sessionKey === recipientSessionKey &&
+    (mark.state === "pending" || mark.state === "orphaned")
+    ? mark
+    : undefined;
 }
 
 /** Continuation-elected runs the reset of this session may retain. Ordinary runs never qualify. */

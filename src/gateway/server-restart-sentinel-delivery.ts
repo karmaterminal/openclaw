@@ -1,6 +1,9 @@
 import type { RuntimeContextFragment } from "../agents/internal-runtime-context.js";
 import { resolveCorrelatedSubagentDelivery } from "../agents/subagents/completion/subagent-completion-delivery.js";
-import { isContinuationResultHeldForReset } from "../agents/subagents/registry/subagent-continuation-reset-retention.js";
+import {
+  CONTINUATION_RESET_HOLD_MAX_MS,
+  findContinuationResetHold,
+} from "../agents/subagents/registry/subagent-continuation-reset-retention.js";
 import { finalizeInboundContext } from "../auto-reply/reply/inbound-context.js";
 import { deliverQueuedPostCompactionDelegate } from "../auto-reply/reply/post-compaction-delegate-delivery.js";
 import { dispatchReplyWithBufferedBlockDispatcherCore } from "../auto-reply/reply/provider-dispatcher.js";
@@ -253,6 +256,30 @@ async function deliverResolvedQueuedSessionDelivery(params: {
   const queuedDeliveryContext = resolveQueuedSessionDeliveryContext(params.entry);
 
   if (params.entry.kind === "systemEvent") {
+    // Continuation: a reset replacing this head retained the source run. A pending mark holds the
+    // row until resolution releases (schedules) it; an orphaned mark fences it durably, so a sweep
+    // racing resolution never hands it to a later head. Checked before recipient authority, which
+    // is vacuous for a row that captured none. Both terminal outcomes move the row to failed with
+    // the drain's dead-letter warning; neither acks it as delivered.
+    const resetHold = findContinuationResetHold(params.entry.continuationSourceRunId, canonicalKey);
+    if (resetHold?.state === "orphaned") {
+      throw new SessionDeliveryDeadLetteredError(
+        `continuation return discarded: session reset ${resetHold.resetId} orphaned its source run`,
+      );
+    }
+    if (resetHold) {
+      // The 60 s pending sweep re-checks held rows, so expiry needs no reset or boot to fire. The
+      // mark and its run are left alone: an old handover is not a reason to stop a valid child.
+      const heldMs = Date.now() - Math.max(resetHold.markedAt, params.entry.enqueuedAt);
+      if (heldMs >= CONTINUATION_RESET_HOLD_MAX_MS) {
+        throw new SessionDeliveryDeadLetteredError(
+          `continuation return expired after ${Math.floor(heldMs / 86_400_000)} days held by unresolved session reset ${resetHold.resetId}`,
+        );
+      }
+      throw new SessionDeliveryDeferredError("continuation return is held by a pending reset", {
+        heldByOwner: true,
+      });
+    }
     const recipientAuthority = params.entry.recipientAuthority;
     const recipientAuthorityCurrent = () =>
       !recipientAuthority ||
@@ -266,13 +293,6 @@ async function deliverResolvedQueuedSessionDelivery(params: {
         queueId: params.entry.id,
       });
       return;
-    }
-    // Continuation: a reset replacing this head retained the source run. Its resolution releases
-    // (schedules) or terminalizes the row once the successor is proven or the reset is known void.
-    if (isContinuationResultHeldForReset(params.entry.continuationSourceRunId, canonicalKey)) {
-      throw new SessionDeliveryDeferredError("continuation return is held by a pending reset", {
-        heldByOwner: true,
-      });
     }
     // A continuation return settles only on prompt adoption, whether or not it
     // carries recipient authority; rows written before that rule replay the same way.
