@@ -286,3 +286,62 @@ it("a reset that kills but never commits releases its held return once to the un
   expect(await replay(row!)).toBe("queued");
   expect(parentEvents(text)).toEqual([expect.objectContaining({ sessionDeliveryAckId: row!.id })]);
 });
+
+/** A reset that marked its tree and then died: nothing in this process resolves the mark. */
+async function leavePendingRetention(storePath: string, during?: () => Promise<void>) {
+  const retention = prepareContinuationResetRetention({
+    cfg: getRuntimeConfig(),
+    sessionKey: parentKey,
+    agentId: "main",
+    storePath,
+  });
+  await retention.stopSubagents(
+    { fromRevision: "before-reset", assertCurrent: () => {} },
+    async () => {
+      await during?.();
+    },
+  );
+  expect(subagentRuns.get("elected")?.continuationResetRetention?.state).toBe("pending");
+}
+
+it("an explicit kill still stops a run a pending reset retained", async () => {
+  const storePath = await writeSession(parentKey, "parent", "before-reset");
+  await addChild("elected", true);
+  await leavePendingRetention(storePath);
+
+  const result = await killSubagentRunAdmin({
+    cfg: getRuntimeConfig(),
+    sessionKey: childKey("elected"),
+    expectedRunId: "elected",
+  });
+
+  expect(result).toMatchObject({ found: true, killed: true });
+  expect(displayStatus("elected")).toBe("killed");
+});
+
+it("delete stops a pending-retained run and its held return never reaches a new head on the key", async () => {
+  const storePath = await writeSession(parentKey, "parent", "before-reset");
+  await addChild("elected", true);
+  const text = "elected result before delete";
+  await leavePendingRetention(storePath, async () => {
+    await returnFromElected(text);
+  });
+  expect(await returnRows()).toHaveLength(1);
+
+  const deletion = adminCall({ key: parentKey });
+  await sessionDeleteHandlers["sessions.delete"]!(deletion.request);
+  expect(deletion.respond).toHaveBeenCalledWith(true, expect.anything(), undefined);
+  expect(displayStatus("elected")).toBe("killed");
+
+  await writeSession(parentKey, "new-head", "new-head-revision");
+  const [held] = await returnRows();
+  expect(await replay(held!)).toBe("held");
+  await resolveContinuationResetRetentions({
+    cfg: getRuntimeConfig(),
+    markedBefore: Date.now() + 1,
+  });
+
+  expect(subagentRuns.get("elected")?.continuationResetRetention?.state).toBe("orphaned");
+  expect(await returnRows()).toEqual([]);
+  expect(parentEvents(text)).toEqual([]);
+});
