@@ -566,6 +566,21 @@ function startPendingContinuationRecovery(params: {
       if (stopped) {
         return;
       }
+      // Continuation: settle reset-retention marks a previous process left pending (a reset
+      // that died between its kill and its resolution), then release or terminalize their results.
+      await runWithGatewayIndependentRootWorkAdmission(async () => {
+        const { resolveContinuationResetRetentions } =
+          await import("../auto-reply/continuation/session-reset-retention-resolve.js");
+        await resolveContinuationResetRetentions({
+          cfg: getRuntimeConfig(),
+          markedBefore: recoveryArmedAt,
+        });
+      }, "runtime:continuation-recovery").catch((err: unknown) =>
+        bootLog.warn(`Continuation reset-retention recovery failed: ${String(err)}`),
+      );
+      if (stopped) {
+        return;
+      }
       pruneTimer = setInterval(() => {
         void runWithGatewayIndependentRootWorkAdmission(
           async () => void (await pruneExpiredContinuationCustody()),
