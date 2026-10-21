@@ -428,7 +428,9 @@ export function captureOpenClawMigrationWitness(
         if (!AGENT_WITNESS_SCHEMA_VERSIONS.has(schemaVersion)) {
           throw new Error(`Unsupported agent migration witness schema: ${schemaVersion}`);
         }
-        legacyValidationTriggers ||= assertAgentWitnessHistoricalSchema(database, schemaVersion);
+        // Assert first: `||=` would skip the schema check whenever schema 24 already set the flag.
+        legacyValidationTriggers =
+          assertAgentWitnessHistoricalSchema(database, schemaVersion) || legacyValidationTriggers;
       } else {
         if (schemaVersion !== OPENCLAW_STATE_SCHEMA_VERSION) {
           throw new Error(`Unsupported shared-state migration witness schema: ${schemaVersion}`);
