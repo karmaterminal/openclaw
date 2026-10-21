@@ -332,6 +332,36 @@ describe("deliverSubagentAnnouncement completion delivery", () => {
     expect(callGateway).not.toHaveBeenCalled();
   });
 
+  // These inputs differ only in the typed no-visible-result fact. Keep the
+  // authority boundary on the fact rather than the placeholder wording.
+  it("gates a reworded no-visible-result placeholder for channel completions", async () => {
+    const callGateway = createPayloadGatewayMock({ text: "NO_REPLY" });
+    const childSessionKey = "agent:worker:subagent:reworded-placeholder";
+    const result = await deliverSlackChannelAnnouncement({
+      callGateway,
+      directIdempotencyKey: "announce-channel-subagent-reworded-placeholder",
+      sourceTool: "subagent_announce",
+      sourceSessionKey: childSessionKey,
+      runtimeConfig: { messages: { groupChat: { visibleReplies: "automatic" } } },
+      internalEvents: taskCompletionEvents({
+        childSessionKey,
+        childSessionId: "child-session-id",
+        taskLabel: "reworded placeholder completion smoke",
+        status: "ok",
+        statusLabel: "completed successfully",
+        result: "(no result yet; child still running)",
+        noVisibleResult: true,
+      }),
+    });
+
+    expectRecordFields(result, {
+      delivered: false,
+      path: "direct",
+      reason: "visible_reply_missing",
+      error: "completion agent did not produce a visible reply",
+    });
+  });
+
   it("does not gate visible output that only resembles the placeholder", async () => {
     const callGateway = createPayloadGatewayMock({ text: "NO_REPLY" });
     const childSessionKey = "agent:worker:subagent:placeholder-shaped-output";
