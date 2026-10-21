@@ -34,6 +34,26 @@ import {
 } from "./subagent-reset.continuation-retention.test-support.js";
 import { resolveSubagentDisplayStatus } from "./subagent-session-metrics.js";
 
+// Runs a sweep at the two edges of mark settlement inside resolution (sweep-vs-resolution probe).
+const settleInterleave = vi.hoisted(
+  () => ({}) as { before?: () => Promise<void>; after?: () => Promise<void> },
+);
+vi.mock("./subagent-continuation-reset-retention.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./subagent-continuation-reset-retention.js")>();
+  return {
+    ...actual,
+    settleContinuationResetRetentions: async (
+      ...args: Parameters<typeof actual.settleContinuationResetRetentions>
+    ) => {
+      await settleInterleave.before?.();
+      const settled = await actual.settleContinuationResetRetentions(...args);
+      await settleInterleave.after?.();
+      return settled;
+    },
+  };
+});
+
 const fixture = useSubagentControlFixture();
 beforeEach(async () => captureRuntimeConfigAsyncReader()());
 const {
@@ -247,27 +267,40 @@ it("delete orphans a pending-retained run; a sweep on either side of resolution 
   expect(displayStatus("elected")).toBe("killed");
   await writeSession(requester, "new-head", "new-head-revision");
 
-  // Sweep before resolution: both rows stay held (pending, nothing queued), neither is acked.
+  const late = "legacy result after orphaning";
+  // One pending sweep: every held row through the real drain, plus anything queued to the head.
   const sweep = async () => {
     const outcomes: string[] = [];
     for (const row of await returnRows("elected")) {
       outcomes.push(await drain(row));
     }
-    return {
-      outcomes,
-      queued: [...queuedEvents(text, requester), ...queuedEvents(legacy, requester)],
-    };
+    const queued = [text, legacy, late].flatMap((result) => queuedEvents(result, requester));
+    return { mark: retentionState("elected"), outcomes, queued };
   };
-  expect(await sweep()).toEqual({ outcomes: ["pending", "pending"], queued: [] });
-  await resolveContinuationResetRetentions({
-    cfg: getRuntimeConfig(),
-    markedBefore: Date.now() + 1,
-  });
-  expect(retentionState("elected")).toBe("orphaned");
+  // Before resolution both rows stay held: pending, nothing queued, neither acked.
+  expect(await sweep()).toEqual({ mark: "pending", outcomes: ["pending", "pending"], queued: [] });
 
-  // Sweep after the mark settled, before any release reaches the rows (the reviewed gap): both
-  // rows move to failed, neither is acked as delivered, and nothing reaches the new head.
-  expect(await sweep()).toEqual({ outcomes: ["moved-to-failed", "moved-to-failed"], queued: [] });
+  // A sweep at each step of resolution: the rows are already failed before the mark leaves
+  // pending, so neither sweep finds one to deliver or ack.
+  const sweeps: Array<Awaited<ReturnType<typeof sweep>>> = [];
+  settleInterleave.before = async () => void sweeps.push(await sweep());
+  settleInterleave.after = async () => void sweeps.push(await sweep());
+  try {
+    await resolveContinuationResetRetentions({
+      cfg: getRuntimeConfig(),
+      markedBefore: Date.now() + 1,
+    });
+  } finally {
+    settleInterleave.before = settleInterleave.after = undefined;
+  }
+  expect(sweeps).toEqual([
+    { mark: "pending", outcomes: [], queued: [] },
+    { mark: "orphaned", outcomes: [], queued: [] },
+  ]);
+
+  // A no-authority row written after resolution meets the durable orphan fence.
+  await enqueueReturnWithoutAuthority("elected", late, requester);
+  expect(await sweep()).toEqual({ mark: "orphaned", outcomes: ["moved-to-failed"], queued: [] });
   expect(await returnRows("elected")).toEqual([]);
 });
 

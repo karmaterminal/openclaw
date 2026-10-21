@@ -257,9 +257,10 @@ async function deliverResolvedQueuedSessionDelivery(params: {
 
   if (params.entry.kind === "systemEvent") {
     // Continuation: a reset replacing this head retained the source run. A pending mark holds the
-    // row until resolution releases (schedules) it; an orphaned mark fences it durably, so a sweep
-    // racing resolution never hands it to a later head. Checked before recipient authority, which
-    // is vacuous for a row that captured none. Both terminal outcomes move the row to failed with
+    // row until resolution releases (schedules) it or, for an orphaned run, moves it to failed
+    // before the mark leaves pending. An orphaned mark still fences any row written after that, so
+    // none reaches a later head. Checked before recipient authority, which is vacuous for a row
+    // that captured none. Both terminal outcomes move the row to failed with
     // the drain's dead-letter warning; neither acks it as delivered.
     const resetHold = findContinuationResetHold(params.entry.continuationSourceRunId, canonicalKey);
     if (resetHold?.state === "orphaned") {
