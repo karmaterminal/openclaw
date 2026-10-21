@@ -1,4 +1,4 @@
-import { existsSync, globSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, matchesGlob } from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -83,10 +83,7 @@ import { createPluginSdkVitestConfig } from "../vitest/vitest.plugin-sdk.config.
 import { createPluginsVitestConfig } from "../vitest/vitest.plugins.config.ts";
 import { createRuntimeConfigVitestConfig } from "../vitest/vitest.runtime-config.config.ts";
 import { startupCorpusTestFiles } from "../vitest/vitest.startup-corpus-paths.mjs";
-import {
-  autoReplyReplySubtreeTestInclude,
-  fullSuiteVitestShards,
-} from "../vitest/vitest.test-shards.mjs";
+import { fullSuiteVitestShards } from "../vitest/vitest.test-shards.mjs";
 import { createToolingVitestConfig } from "../vitest/vitest.tooling.config.ts";
 import {
   uiE2ePrebuiltParallelTestFiles,
@@ -4135,9 +4132,9 @@ describe("auto-reply reply config shard ownership", () => {
         (shard) => shard.includePatterns ?? [],
       ),
     );
-    const collected = autoReplyReplySubtreeTestInclude.flatMap((pattern) =>
-      globSync(pattern, { cwd: process.cwd() }).map((file) => file.replaceAll("\\", "/")),
-    );
+    // Files the reply config actually runs; the include also matches files other
+    // configs own (unit-fast, end-to-end), which those configs schedule.
+    const collected = listMatchedTestFiles(createAutoReplyReplyVitestConfig({}));
     expect(collected.some((file) => file.startsWith("src/auto-reply/continuation/"))).toBe(true);
     expect(collected.filter((file) => !scheduled.has(file))).toEqual([]);
   });

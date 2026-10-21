@@ -1667,12 +1667,15 @@ function createAutoReplyReplySplitShards(): NodeTestSplitShard[] {
     "auto-reply-reply-dispatch-lifecycle": [] as string[],
     "auto-reply-reply-session": [] as string[],
     "auto-reply-reply-state-routing": [] as string[],
-    // The reply config also collects the continuation subtree; without its own
-    // group those files would be collected by no shard at all. The group
-    // claims only files inside that subtree, whatever the inventory returns.
-    "auto-reply-continuation": listTrackedTestFiles("src/auto-reply/continuation").filter((file) =>
-      file.startsWith("src/auto-reply/continuation/"),
-    ),
+    // Continuation (karmaterminal): the reply config also collects the continuation
+    // subtree. Claim exactly the files it collects there (unit-fast and database-worker
+    // owners keep theirs), so each runs once and the reply split covers its config.
+    // Only files inside that subtree, whatever the inventory returns.
+    "auto-reply-reply-continuation": listScopedOwnerTestFiles({
+      root: "src/auto-reply/continuation",
+      include: autoReplyReplySubtreeTestInclude,
+      exclude: databaseWorkerCoreTestFiles,
+    }).filter((file) => file.startsWith("src/auto-reply/continuation/")),
   };
   const namedEntrypoints = new Map<string, keyof typeof groups>([
     ["dispatch-from-config.test.ts", "auto-reply-reply-dispatch-core"],
